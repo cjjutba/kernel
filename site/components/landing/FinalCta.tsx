@@ -1,15 +1,15 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
-import { ArrowIcon, DownloadIcon, GitHubIcon } from '@/components/ui/icons'
-import { DOWNLOAD_URL, REPO_URL } from '@/lib/links'
+import { ArrowIcon, DownloadIcon } from '@/components/ui/icons'
+import { DOWNLOAD_URL } from '@/lib/links'
 
 // The last ask on the page: one panel with the download beside the three steps from install to the first brief.
 // The heading comes first, with no icon above it (tests/e2e/pages.spec.ts).
 
 const STEPS = [
-  { title: 'Download Kernel', text: 'Free, for Macs with Apple silicon.' },
-  { title: 'Sign in to your agent', text: 'Kernel uses the Claude Code or Codex login you already have.' },
-  { title: 'Open a repo and brief Kernel', text: 'Approve the plan, and the team builds it.' }
+  { title: 'Download Kernel', text: 'Free, for Macs with Apple silicon.', href: '/docs/install' },
+  { title: 'Sign in to your agent', text: 'Kernel uses the Claude Code or Codex login you already have.', href: '/docs/accounts' },
+  { title: 'Open a repo and brief Kernel', text: 'Approve the plan, and the team builds it.', href: '/docs/first-brief' }
 ]
 
 /** `version` is the newest release's label, such as "0.4.1". */
@@ -32,8 +32,8 @@ export function FinalCta({ version }: { version: string }) {
                 <Button href={DOWNLOAD_URL} size="lg" icon={<DownloadIcon />}>
                   Download for macOS
                 </Button>
-                <Button href={REPO_URL} variant="secondary" size="lg" external icon={<GitHubIcon />}>
-                  View on GitHub
+                <Button href="/docs" variant="secondary" size="lg">
+                  Read the docs
                 </Button>
               </div>
               <Link href="/changelog" className="mt-6 inline-flex items-center gap-1.5 text-small text-faint transition-colors hover:text-ink-2">
@@ -43,14 +43,17 @@ export function FinalCta({ version }: { version: string }) {
             </div>
             <ol aria-label="Getting started" className="rounded-lg border border-line bg-canvas/60">
               {STEPS.map((s, i) => (
-                <li key={s.title} className="flex gap-4 border-b border-line-soft p-5 last:border-b-0">
-                  <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-edge font-mono text-badge text-ink-2">
-                    {i + 1}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-item text-ink">{s.title}</span>
-                    <span className="mt-1 block text-body text-muted">{s.text}</span>
-                  </span>
+                <li key={s.title} className="border-b border-line-soft last:border-b-0">
+                  <Link href={s.href} className="group flex gap-4 p-5 transition-colors hover:bg-white/3">
+                    <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-edge font-mono text-badge text-ink-2">
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-item text-ink">{s.title}</span>
+                      <span className="mt-1 block text-body text-muted">{s.text}</span>
+                    </span>
+                    <ArrowIcon className="mt-1.5 shrink-0 text-faint transition-colors group-hover:text-ink" />
+                  </Link>
                 </li>
               ))}
             </ol>

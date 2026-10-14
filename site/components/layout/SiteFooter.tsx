@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { KernelMark } from '@/components/brand/KernelMark'
 import { Wordmark } from '@/components/brand/Wordmark'
+import { Button } from '@/components/ui/Button'
+import { DownloadIcon } from '@/components/ui/icons'
 import { CONTRIBUTING_URL, DOWNLOAD_URL, ISSUES_URL, LICENSE_URL, RELEASES_URL, REPO_URL, SECURITY_URL } from '@/lib/links'
 
 type FooterLink = { href: string; label: string; external?: boolean }
@@ -10,9 +12,10 @@ const columns: { title: string; links: FooterLink[] }[] = [
     title: 'Product',
     links: [
       { href: DOWNLOAD_URL, label: 'Download' },
-      { href: '/#features', label: 'Features' },
+      { href: '/docs', label: 'Docs' },
+      { href: '/pricing', label: 'Pricing' },
       { href: '/changelog', label: 'Changelog' },
-      { href: '/#faq', label: 'FAQ' }
+      { href: '/#waitlist', label: 'Windows and Linux' }
     ]
   },
   {
@@ -27,6 +30,7 @@ const columns: { title: string; links: FooterLink[] }[] = [
   {
     title: 'Legal',
     links: [
+      { href: '/docs/privacy', label: 'Privacy' },
       { href: LICENSE_URL, label: 'License', external: true },
       { href: SECURITY_URL, label: 'Security', external: true }
     ]
@@ -47,6 +51,9 @@ export function SiteFooter() {
             <Wordmark />
           </Link>
           <p className="mt-4 max-w-70 text-ui leading-relaxed text-muted">Your coding agents, working as a team. Free, with the source on GitHub.</p>
+          <Button href={DOWNLOAD_URL} icon={<DownloadIcon size={14} />} className="mt-6">
+            Download for macOS
+          </Button>
         </div>
         {columns.map((col) => (
           <nav key={col.title} aria-label={col.title}>

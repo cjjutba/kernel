@@ -13,5 +13,7 @@ site/test-results
 site/playwright-report
 site/*.tsbuildinfo
 
-# The landing page demo, built by pnpm demo:build
-site/public/demo/
+
+# The site's local secrets, such as RESEND_API_KEY. site/.env.example lists them.
+site/.env*.local
+site/.env

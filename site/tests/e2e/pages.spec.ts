@@ -1,7 +1,7 @@
 import { DOWNLOAD_URL } from '@/lib/links'
 import { expect, isMobile, test } from './fixtures'
 
-for (const path of ['/', '/changelog']) {
+for (const path of ['/', '/changelog', '/pricing', '/docs', '/docs/permissions']) {
   test(`${path} loads`, async ({ page }) => {
     const res = await page.goto(path)
     expect(res?.status()).toBe(200)
@@ -74,20 +74,19 @@ test('the final call to action has no icon above its heading', async ({ page }) 
   await expect(firstVisible).toHaveText('Put your agents to work.')
 })
 
-for (const from of ['/', '/changelog']) {
-  test(`nav anchors scroll to their sections from ${from}`, async ({ page }, testInfo) => {
-    test.skip(isMobile(testInfo), 'the nav links are hidden on narrow screens')
-    const nav = page.getByRole('navigation', { name: 'Main' })
-    for (const [label, id] of [
-      ['Features', 'features'],
-      ['How it works', 'how'],
-      ['Privacy', 'privacy'],
-      ['FAQ', 'faq']
-    ]) {
+for (const from of ['/', '/changelog', '/docs/install']) {
+  test(`the nav goes to Docs, Pricing and Changelog from ${from}`, async ({ page }, testInfo) => {
+    for (const [label, path] of [
+      ['Docs', '/docs'],
+      ['Pricing', '/pricing'],
+      ['Changelog', '/changelog']
+    ] as const) {
       await page.goto(from)
-      await nav.getByRole('link', { name: label }).click()
-      await expect(page).toHaveURL(`/#${id}`)
-      await expect(page.locator(`#${id}`)).toBeInViewport()
+      // On narrow screens the links sit in the menu.
+      if (isMobile(testInfo)) await page.locator('header summary[aria-label="Menu"]').click()
+      await page.getByRole('navigation', { name: 'Main' }).filter({ visible: true }).getByRole('link', { name: label }).click()
+      await expect(page).toHaveURL(path)
+      await expect(page.locator('h1')).toBeVisible()
     }
   })
 }

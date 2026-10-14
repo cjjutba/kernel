@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from './fixtures'
 
-for (const path of ['/', '/changelog']) {
+for (const path of ['/', '/changelog', '/pricing', '/docs', '/docs/permissions']) {
   test(`${path} has no axe violations`, async ({ page }) => {
     await page.goto(path)
     // Also run the experimental rule Lighthouse uses, which checks that a link's name includes its visible text.

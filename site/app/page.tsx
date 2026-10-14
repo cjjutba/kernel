@@ -5,6 +5,7 @@ import { Hero } from '@/components/landing/Hero'
 import { HowItWorks } from '@/components/landing/HowItWorks'
 import { Privacy } from '@/components/landing/Privacy'
 import { Shipped } from '@/components/landing/Shipped'
+import { Waitlist } from '@/components/landing/Waitlist'
 import { SiteFooter } from '@/components/layout/SiteFooter'
 import { SiteNav } from '@/components/layout/SiteNav'
 import { latestRelease } from '@/content/changelog'
@@ -44,6 +45,7 @@ export default async function Home() {
         <Features />
         <Privacy />
         <Shipped />
+        <Waitlist className="pt-32" />
         <Faq />
         <FinalCta version={latest.version} />
       </main>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Eyebrow } from '@/components/ui/Eyebrow'
+import Link from 'next/link'
 import { ISSUES_URL } from '@/lib/links'
 
 const faqs = [
@@ -25,7 +25,10 @@ const faqs = [
     q: 'Can I change the team?',
     a: "Yes. Agents are plain files in your repo, and a repo that brings its own works as it is. Edit them, add new ones, or retire one you don't need."
   },
-  { q: 'Does it work on Intel Macs or Windows?', a: 'Not right now. Kernel is built for Macs with Apple silicon.' },
+  {
+    q: 'Does it work on Intel Macs, Windows or Linux?',
+    a: 'Not yet. Kernel runs on Macs with Apple silicon today. Leave your email in the waitlist above, and we will write once if that changes.'
+  },
   {
     q: 'Can I contribute?',
     a: 'Yes. Issues and pull requests are welcome on GitHub, and the contributing guide explains how to build and test it.'
@@ -38,14 +41,17 @@ export function Faq() {
   return (
     <section id="faq" aria-labelledby="faq-title" className="mx-auto grid max-w-312 grid-faq items-start gap-16 px-6 pt-40 max-faq:grid-cols-1 max-faq:gap-10">
       <div>
-        <Eyebrow>FAQ</Eyebrow>
-        <h2 id="faq-title" className="mt-4 text-h2 text-balance">
+        <h2 id="faq-title" className="text-h2 text-balance">
           Questions,
           <br />
           answered.
         </h2>
         <p className="mt-4 text-lead text-muted">
-          Something missing?{' '}
+          The{' '}
+          <Link href="/docs" className="text-ink underline decoration-rule underline-offset-3 hover:text-white">
+            docs
+          </Link>{' '}
+          go deeper. Something missing?{' '}
           <a
             href={ISSUES_URL}
             target="_blank"
