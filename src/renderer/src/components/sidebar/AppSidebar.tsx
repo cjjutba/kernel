@@ -66,14 +66,11 @@ const KeyHint = ({ n }: { n: number }) => <span className="mono nav-key" aria-hi
 /** A row's place in the room's ⌘1 to ⌘9 order, and whether ⌘ is held so it should show. Rows of other rooms get none. */
 type RowKey = { n: number; hint: boolean }
 
-/** The icon a row shows while it runs: the one it has at rest, since the spinner goes to the row's right end. `rest` is the glyph without the activity, `fallback` stands in when the rest state is a spinner too. */
+/** The icon a row has at rest, which the loader takes the place of while it runs (`busy` on `Glyph`). `rest` is the glyph without the activity, `fallback` stands in when the rest state is a spinner too. */
 const restIcon = (g: WorkspaceGlyph, rest: WorkspaceGlyph, fallback: IconName): WorkspaceGlyph & { icon: IconName } => {
   const at = g.icon === 'spin' ? rest : g
   return { ...g, icon: at.icon === 'spin' ? fallback : at.icon, tone: at.tone }
 }
-
-/** The spinner at a row's right end, 10px from the counts. It leaves with them when Archive takes the end on hover (`archivable`). */
-const RunningMark = ({ archivable }: { archivable?: boolean }) => <Spinner label={null} className={archivable ? 'ws-right' : undefined} />
 
 function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen, leaving }: { route: Route; icon: IconName | ReactElement; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; slot?: RowKey; /** The row's name when it has something new: its title goes bold and its label ends in Unread (KERNEL-508). */ unread?: string; /** In place of going to `route`. */ onOpen?: () => void; /** The row's workspace was archived. It folds away, keeping the fill it had on the screen the archive left (`from`), or `held` waits for its chat to fold. */ leaving?: Gone }) {
   // Issues opens on an issue too, so any issue is the Issues row's page.
@@ -88,18 +85,18 @@ function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen,
   )
 }
 
-/** A row's state icon. Its state is the accessible name. */
-function Glyph({ g }: { g: WorkspaceGlyph }) {
+/** A row's state icon. Its state is the accessible name. While the row runs (`busy`), the loader takes the icon's box, so nothing moves when the run starts or stops. */
+function Glyph({ g, busy }: { g: WorkspaceGlyph & { icon: IconName }; busy?: boolean }) {
   return (
     <span className="nav-glyph" data-tone={g.tone} role="img" aria-label={g.label}>
-      {g.icon === 'spin' ? <Spinner label={null} /> : <Icon name={g.icon} />}
+      {busy ? <Spinner label={null} /> : <Icon name={g.icon} />}
     </span>
   )
 }
 
 /**
  * The room's Lead, shown only while it has no open chat to list. It opens New chat, where the first message starts a chat in its
- * own workspace (KERNEL-405). Its icon shows what waits on you, and a working Lead adds the spinner at its right end.
+ * own workspace (KERNEL-405). Its icon shows what waits on you, and a working Lead swaps it for the loader.
  */
 function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
   const lead = useStore((s) => leadOf(s.agents, roomId))
@@ -114,9 +111,9 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
   return (
     <>
       <button className="nav-item nav-sub" {...card.bind} aria-current={current ? 'page' : undefined} data-arrive={arrive ? '' : undefined} aria-label={`New chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'lead' })}>
-        <Glyph g={shown} />
+        <Glyph g={shown} busy={g.icon === 'spin'} />
         <span className="grow ellipsis">New chat</span>
-        {slot?.hint ? <KeyHint n={slot.n} /> : g.icon === 'spin' ? <RunningMark /> : null}
+        {slot?.hint ? <KeyHint n={slot.n} /> : null}
       </button>
       {card.at && <LeadCard roomId={roomId} at={card.at} id={card.id} hold={card.hold} />}
     </>
@@ -128,8 +125,8 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
  * needs you in any tab wins, then its own workspace's setup, trust, failed setup or missing folder (KERNEL-405), then a running turn in any tab, else
  * the chat icon. They read the same approvals and `running` flags as the tabs. It opens the chat's own workspace on the tab last shown in it. A chat
  * that handed off workspaces folds like a room: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the icon also shows what a
- * hidden workspace needs from you, so nothing waits out of sight. Hover shows Archive, like a workspace row's (KERNEL-405). A running turn never changes
- * the icon: it adds the spinner at the row's right end, unless the chat itself waits on you, where the wait is all the row shows (KERNEL-601).
+ * hidden workspace needs from you, so nothing waits out of sight. Hover shows Archive, like a workspace row's (KERNEL-405). A running turn swaps
+ * the icon for the loader, unless something waits on you, where the wait keeps the icon (KERNEL-601).
  */
 function ChatItemRow({ roomId, thread, ws, tabs, owned, folded, slot, leaving, onSettled }: { roomId: string; thread: Thread; ws?: Workspace; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey; leaving?: Gone; onSettled?: () => void }) {
   const approvals = useStore((s) => s.approvals)
@@ -148,8 +145,8 @@ function ChatItemRow({ roomId, thread, ws, tabs, owned, folded, slot, leaving, o
   // Plan mode tints the icon `plan` blue, like the composer: a tab that plans, or a plan waiting for approval. The shape still says the state (no-amber-icons).
   const planning = tabs.some((c) => c.plan) || waiting.some(isPlanApproval)
   const g = chatGlyph({ ws, waiting, running, trust })
-  // The icon is the one the chat has at rest. A wait on one of its own tabs stops the turn, so it shows no spinner; one on a hidden workspace doesn't.
-  const busy = g.icon === 'spin' || (running && !waits.some((w) => w.key.startsWith('chat:')))
+  // The loader takes the icon only when nothing waits on you: a wait, on a tab or on a hidden workspace, keeps its icon until it is answered.
+  const busy = g.icon === 'spin'
   const shown = restIcon(g, chatGlyph({ ws, waiting, running: false, trust }), 'chat')
   // A new reply in any tab, or in a hidden workspace while folded, bolds the title. The icon keeps its own state (KERNEL-508).
   const unread = useStore((s) => chatUnread({ tabs, owned, chats: s.chats, folded, current }))
@@ -163,9 +160,9 @@ function ChatItemRow({ roomId, thread, ws, tabs, owned, folded, slot, leaving, o
         className="nav-item nav-sub" aria-current={current && !leaving ? 'page' : undefined} data-was-current={current && leaving ? '' : undefined} data-arrive={arrive ? '' : undefined} aria-label={unread ? `${name}, Unread` : name} data-unread={unread ? '' : undefined}
         aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'chat', thread, tabs, owned, folded })}
       >
-        <span className="nav-glyph" data-tone={shown.tone} data-owned={owned.length ? '' : undefined} data-plan={planning ? '' : undefined} aria-hidden="true"><Icon name={shown.icon} /></span>
+        <span className="nav-glyph" data-tone={shown.tone} data-owned={owned.length ? '' : undefined} data-plan={planning ? '' : undefined} aria-hidden="true">{busy ? <Spinner label={null} /> : <Icon name={shown.icon} />}</span>
         <span className="grow ellipsis">{thread.title}</span>
-        {slot?.hint ? <KeyHint n={slot.n} /> : busy && <RunningMark archivable={!!ws} />}
+        {slot?.hint && <KeyHint n={slot.n} />}
       </button>
       {ws && (
         <div className="more ws-archive">
@@ -210,7 +207,7 @@ async function archiveFromSidebar(ws: Workspace) {
 }
 
 /**
- * A workspace row: its state icon (needs you, then the PR, or the branch), its name, its diff totals from 300px of sidebar, and a spinner while it runs. Hover swaps
+ * A workspace row: its state icon (needs you, then the PR, or the branch), its name, its diff totals from 300px of sidebar, and the loader in the icon's place while it runs. Hover swaps
  * that right end for Archive. Resting on it opens its card.
  */
 function WorkspaceItemRow({ ws, parent, slot, nested, leaving, onSettled }: { ws: Workspace; /** The title of the chat that started it, for the card. */ parent?: string; slot?: RowKey; nested?: boolean; leaving?: Gone; onSettled?: () => void }) {
@@ -221,7 +218,7 @@ function WorkspaceItemRow({ ws, parent, slot, nested, leaving, onSettled }: { ws
   const local = useLocalMerge(ws)
   const pending = useStore((s) => s.prPending[ws.id])
   const g = workspaceGlyph(ws, { waiting, running, local, pending })
-  // Running adds the spinner at the row's right end and leaves the icon the workspace has at rest.
+  // Running puts the loader in the icon's place, and the icon the workspace has at rest returns when it stops.
   const shown = restIcon(g, workspaceGlyph(ws, { waiting, running: false, local }), 'branch')
   const current = useStore((s) => same(leaving ? leaving.from ?? s.ui.route : s.ui.route, { name: 'workspace', workspaceId: ws.id }))
   const unread = useStore((s) => workspaceRowUnread(s.chats[ws.id], current))
@@ -232,12 +229,11 @@ function WorkspaceItemRow({ ws, parent, slot, nested, leaving, onSettled }: { ws
   return (
     <div {...card.bind} className={`hv ws-row${archiving ? ' busy' : ''}${leaving && !leaving.held ? ' row-fold' : ''}`} data-key={slot?.hint || undefined} inert={leaving ? true : undefined} onAnimationEnd={(e) => { if (e.target === e.currentTarget && e.animationName === 'archive-fold') onSettled?.() }}>
       <NavItem
-        sub nested={nested} leaving={leaving} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={shown} />} label={label} slot={slot} unread={unread ? (g.label ? `${label}, ${g.label}` : label) : undefined}
+        sub nested={nested} leaving={leaving} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={shown} busy={g.icon === 'spin'} />} label={label} slot={slot} unread={unread ? (g.label ? `${label}, ${g.label}` : label) : undefined}
         onOpen={() => openRow(ws.roomId, { kind: 'workspace', ws, nested: !!nested })}
         right={<>
           {diff && ws.stat && <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>}
           {ws.prNumber ? <span className="mono muted ws-right ws-pr" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
-          {g.icon === 'spin' && <RunningMark archivable />}
         </>}
       />
       <div className="more ws-archive">
