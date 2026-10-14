@@ -1986,6 +1986,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's team updates in Kernel's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),
+  // A merged PR whose workspace isn't archived yet: the row reads the merged icon and Merged beside Open.
+  TeamUpdateMerged: scene((f) => { const m = teamUpdateMerge(f); return { ...m, workspaces: (m.workspaces ?? []).map((w) => (w.id === 'ws-163' ? { ...w, status: 'ready' as const, archivedAt: undefined } : w)) } }),
   // KERNEL-557: a merge Kernel made by itself, a PR still blocked after its review rounds, and a skipped review.
   TeamUpdateReview: scene((f) => teamUpdateReview(f)),
   // KERNEL-747: a teammate's question and a hand-off another teammate proposed.
