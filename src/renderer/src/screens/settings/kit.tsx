@@ -390,11 +390,13 @@ export function NoRoom() {
 export const isOverride = (rs: RoomSettings | null, path: string) => rs?.sources?.[path] === 'local' || rs?.sources?.[path] === 'override'
 
 /**
- * The row props that say where a room's value comes from, the same on every room page: a room that sets it says "Changed for this room" and gets Reset,
- * and one that doesn't shows the app's value with a link to where it is set (`from`). A value with no app default passes no `from`.
+ * The row props that say where a room's value comes from, the same on every room page: a value the room sets, in its personal file or in the repo's
+ * settings.toml, says "Changed for this room". Reset only shows when the personal file sets it, since it can't remove a value from settings.toml.
+ * A room that sets nothing shows the app's value with a link to where it is set (`from`). A value with no app default passes no `from`.
  */
 export function roomValue(rs: RoomSettings | null, path: string, reset: () => void, from?: { to: SettingsTarget; label: string }) {
   if (isOverride(rs, path)) return { changed: true, onReset: reset }
+  if (rs?.sources?.[path] === 'shared') return { changed: true }
   return from ? { inherited: from } : {}
 }
 

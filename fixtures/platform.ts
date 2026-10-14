@@ -626,6 +626,26 @@ export const platformFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'prs' } }
   })),
   // KERNEL-726: a shared review setting was just changed, so the page says to commit settings.toml.
+  // KERNEL-726: settings.toml sets the merge method, so the row says Changed for this room and has no Reset.
+  SettingsRoomPrsShared: scene((f) => ({
+    ...clientA({
+      review: {
+        rounds: 2,
+        kinds: {
+          code: { enabled: true, paths: [], required: true, model: 'claude-opus-5-5', provider: 'claude' },
+          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'theo', model: 'claude-opus-5-5', provider: 'claude' },
+          ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren', model: 'claude-sonnet-5-5', provider: 'claude' }
+        }
+      },
+      // KERNEL-594: the shared `[merge] always_review`, as the canvas's box lists it.
+      merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] },
+      pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
+      sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'shared' }
+    }),
+    agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'prs' } }
+  })),
+  // KERNEL-726: a shared review setting was just changed, so the page says to commit settings.toml.
   SettingsRoomPrsSaved: scene((f) => ({
     ...clientA({
       review: {

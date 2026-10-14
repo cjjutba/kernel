@@ -98,5 +98,12 @@ describe('a personal override in a room', () => {
     expect(roomValue(null, 'scripts.setup', () => undefined)).toEqual({})
     const reset = () => undefined
     expect(roomValue({ sources: { 'workspace.mode': 'local' } } as never, 'workspace.mode', reset, from)).toEqual({ changed: true, onReset: reset })
+    expect(roomValue({ sources: { 'workspace.mode': 'override' } } as never, 'workspace.mode', reset, from)).toEqual({ changed: true, onReset: reset })
+  })
+
+  it('reads a value from settings.toml as changed for the room, never as the app default, and offers no Reset for it', async () => {
+    const { roomValue } = await import('../src/renderer/src/screens/settings/kit')
+    const from = { to: { page: 'prs' as const }, label: 'Settings, Pull requests' }
+    expect(roomValue({ sources: { 'pr.mergeMethod': 'shared' } } as never, 'pr.mergeMethod', () => undefined, from)).toEqual({ changed: true })
   })
 })
