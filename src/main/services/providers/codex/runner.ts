@@ -522,7 +522,7 @@ export class CodexRunner implements Runner {
     await this.held()
     const command = unwrapShell(p.command ?? '')
     const leaves = leavesSandbox(p)
-    const step: Step = { tool: 'Bash', command, network: !!p.networkApprovalContext, sandbox: leaves ? 'outside' : 'inside' }
+    const step: Step = { tool: 'Bash', command, network: !!p.networkApprovalContext, sandbox: leaves ? 'outside' : 'inside', cwd: p.cwd ?? this.host.workspace.path }
     const verdict = decide(step, rulesOf(this.host))
     // Codex's answer carries no reason, so a refusal shows in the chat, where the user sees why the step failed.
     if (verdict?.behavior === 'deny') return this.declined(verdict.message)

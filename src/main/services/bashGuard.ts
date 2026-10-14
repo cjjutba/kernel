@@ -723,25 +723,52 @@ export function bashVerdict(command: string, p: { neverAllow: string[]; alwaysAs
 /**
  * A push Bypass permissions can't let through, because it might reach a protected branch (KERNEL-447): one `pushVerdict`
  * denies or asks about, a command Kernel can't read that mentions a protected branch, a `git` whose command is only known at
- * run time, and a `git push` that leaves its destination to git (`pushesUnnamed`). Every mode but Bypass asks about the
+ * run time, and a `git push` that leaves its destination to git (`unnamedPush`). Every mode but Bypass asks about the
  * ones `bashVerdict` asks about and leaves the unnamed ones to the user's own settings.
+ *
+ * `head` reads the branch checked out where the command runs. A push of `HEAD` or `@` lands on that branch, so it goes
+ * through when the branch is known and not protected, the push is written as `git push …` itself, and nothing in the command
+ * moves to another directory first (KERNEL-687). A bare push, or one naming only the remote, is still left to git.
  */
-export function pushMightReach(command: string, branches: string[]): boolean {
+export function pushMightReach(command: string, branches: string[], head?: () => string | undefined): boolean {
   if (!branches.length) return false
-  return analyze(command.trim()).effective.some((s) => {
+  const a = analyze(command.trim())
+  let own: boolean | undefined
+  const ownHead = (s: Simple) => {
+    if (!head || !direct(a).has(s.words)) return false
+    if (own === undefined) { const b = head(); own = !!b && !branches.includes(b) }
+    return own
+  }
+  return a.effective.some((s) => {
     if (pushVerdict(s, branches) || (s.unknown && mentions(s.words, branches))) return true
     const g = gitCall(s)
-    return !!g && ((g.sub === undefined && !g.scripts.length) || pushesUnnamed(g))
+    if (!g) return false
+    if (g.sub === undefined && !g.scripts.length) return true
+    const unnamed = unnamedPush(g)
+    return unnamed === 'bare' || (unnamed === 'head' && !ownHead(s))
   })
 }
 
+/** Commands that change the directory the rest of a command runs in. */
+const MOVES = new Set(['cd', 'pushd', 'popd'])
+
 /**
- * A `git push` that names no branch to push to, so git picks it from the upstream and `push.default`, which can be a
- * protected branch: a bare push, one naming only the remote, or one pushing `HEAD` or `@` without `:dst`. With `--tags` and
- * no refspec it pushes tags only.
+ * The `git push` commands written as such, with no wrapper, assignment, global option or expansion, as the words `unwrap`
+ * keeps for them: it hands a plain simple command's own words on, while a wrapper or `ssh host git push` gives a new list.
+ * None when the command changes directory anywhere, since the push may then run in another checkout.
  */
-function pushesUnnamed(g: GitCall): boolean {
-  if (g.sub !== 'push') return false
+function direct(a: Analysis): Set<string[]> {
+  if (a.effective.some((s) => MOVES.has(base(s.words[0] ?? '')))) return new Set()
+  return new Set(a.simples.filter((s) => s.words[0] === 'git' && s.words[1] === 'push' && !s.unknown && !s.dynamic.some(Boolean)).map((s) => s.words))
+}
+
+/**
+ * What a `git push` leaves to git. `bare` when it names no refspec, so git picks the branch from the upstream and
+ * `push.default`, which can be a protected branch: a bare push, or one naming only the remote. `head` when it pushes `HEAD`
+ * or `@` without `:dst`, which lands on the branch checked out. With `--tags` and no refspec it pushes tags only.
+ */
+function unnamedPush(g: GitCall): 'bare' | 'head' | undefined {
+  if (g.sub !== 'push') return undefined
   const words: string[] = []
   let tags = false
   let end = false
@@ -756,8 +783,8 @@ function pushesUnnamed(g: GitCall): boolean {
     words.push(a)
   }
   const refspecs = words.slice(1)
-  if (!refspecs.length) return !tags
-  return refspecs.some((r) => /^\+?(?:HEAD|@)$/.test(r))
+  if (!refspecs.length) return tags ? undefined : 'bare'
+  return refspecs.some((r) => /^\+?(?:HEAD|@)$/.test(r)) ? 'head' : undefined
 }
 
 /** A `git push` that names a protected branch (`origin main`, `origin "main"`, `origin HEAD:refs/heads/main`, `git -C dir push ...`), or pushes `--all` or `--mirror`. A bare `git push` names none, so it is left alone. */

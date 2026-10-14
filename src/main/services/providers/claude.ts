@@ -83,6 +83,8 @@ export class ClaudeRunner implements Runner {
   private readonly agentModels = new Set<string>()
   /** Bash commands by tool use id, as the model wrote them. Other hooks may rewrite the input canUseTool sees. */
   private readonly commands = new Map<string, string>()
+  /** The folder each Bash command runs in, from the hook, for the push guard in canUseTool (KERNEL-687). */
+  private readonly cwds = new Map<string, string>()
   /** The session id this process resumed, until its first init shows Claude Code found it (KERNEL-286). */
   private resume?: string
   /** The mode Kernel last put the CLI in: the start's, then each one `setPermissionMode` took (KERNEL-447). */
@@ -131,8 +133,8 @@ export class ClaudeRunner implements Runner {
       ...(off ? { settings: off } : {}),
       ...(tools?.hidden.length ? { disallowedTools: tools.hidden } : {}),
       hooks: kernelHooks({
-        ctx, commands: this.commands, tools,
-        verdict: (command) => hookVerdict({ tool: 'Bash', command }, this.rules()),
+        ctx, commands: this.commands, cwds: this.cwds, tools,
+        verdict: (command, cwd) => hookVerdict({ tool: 'Bash', command, cwd }, this.rules()),
         roomAllows: (tool, input) => hookVerdict({ tool, input }, this.rules())?.behavior === 'allow',
         askUser: (command, reason, signal) => this.askFromHook(command, reason, signal),
         askTool: (tool, input, reason, signal) => this.askToolFromHook(tool, input, reason, signal),
@@ -364,6 +366,7 @@ export class ClaudeRunner implements Runner {
           if (block?.type !== 'tool_result') continue
           const item = this.toolItems.get(block.tool_use_id)
           this.commands.delete(block.tool_use_id)
+          this.cwds.delete(block.tool_use_id)
           // A step that went through after a PreToolUse refusal: the agent found its way past it.
           if (item && !block.is_error) host.toolSucceeded()
           if (!item) continue
@@ -409,7 +412,7 @@ export class ClaudeRunner implements Runner {
     const host = this.host
     return async (toolName, input, { signal, suggestions, suppressAlwaysAllowRule, toolUseID, decisionReason, blockedPath, description }): Promise<PermissionResult> => {
       const command = toolName === 'Bash' ? this.commands.get(toolUseID) ?? String((input as any).command ?? '') : ''
-      const step = { tool: toolName, command, input }
+      const step = { tool: toolName, command, input, cwd: this.cwds.get(toolUseID) }
       const verdict = decide(step, this.rules())
       if (verdict?.behavior === 'deny') return { behavior: 'deny', message: verdict.message }
       if (verdict?.behavior === 'allow') return { behavior: 'allow', updatedInput: input }
@@ -642,8 +645,9 @@ function toolDetail(name: string, input: any): string {
 function kernelHooks(o: {
   ctx: { roomId: string; workspaceId: string; agentId?: string }
   commands: Map<string, string>
-  /** Kernel's answer about a command in the hook (`hookVerdict`). */
-  verdict: (command: string) => Verdict
+  cwds: Map<string, string>
+  /** Kernel's answer about a command in the hook (`hookVerdict`), run in `cwd`. */
+  verdict: (command: string, cwd?: string) => Verdict
   /** A room's tool rule lets an MCP or web tool call through from the hook (`hookVerdict`, KERNEL-454). */
   roomAllows: (tool: string, input: unknown) => boolean
   /** Asks the user about an Always ask command and waits, for the hook's answer (`awaitDecision`). */
@@ -667,17 +671,18 @@ function kernelHooks(o: {
   /** Settings, Hooks, read each time a gate runs (KERNEL-537). */
   gates?: () => AppSettings['hooks'] | undefined
 }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, verdict, roomAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
+  const { ctx, commands, cwds, verdict, roomAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
     return {}
   }
   const guard: HookCallback = async (input, _id, { signal }) => {
-    const { tool_use_id, tool_input } = input as PreToolUseHookInput
+    const { tool_use_id, tool_input, cwd } = input as PreToolUseHookInput
     const command = String((tool_input as any)?.command ?? '')
     commands.set(tool_use_id, command)
-    const v = verdict(command)
+    if (cwd) cwds.set(tool_use_id, cwd)
+    const v = verdict(command, cwd)
     if (v?.behavior === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: v.message } }
     // A command the tools line refuses is neither asked about nor allowed: the gate denies it (KERNEL-447).
     if (tools && !tools.allows('Bash', tool_input)) return {}

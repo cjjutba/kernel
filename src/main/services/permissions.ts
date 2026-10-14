@@ -5,6 +5,7 @@ import type { AppSettings } from './settings'
 import type { RunnerHost } from './providers/types'
 import { needsUser } from './approvals'
 import { bashVerdict, pushMightReach, roomRule, usesNetwork } from './bashGuard'
+import { checkedOutBranch } from './worktrees'
 
 // The permission rules both runners apply (KERNEL-434). A runner describes the step, asks `decide`, and turns the answer
 // into its own protocol: Claude's canUseTool result or hook output, Codex's approval decision. The mode a chat runs in is
@@ -73,7 +74,7 @@ export const neverAllowed = (command: string) => `Kernel blocks "${command}" in 
 /** What a push that might reach a protected branch gets in Bypass permissions, with the push that works instead. */
 export function pushOwnBranch(branches: string[], branch?: string): string {
   const named = branches.length > 1 ? `${branches.slice(0, -1).join(', ')} or ${branches[branches.length - 1]}` : branches[0]
-  const own = branch && !branches.includes(branch) ? `: git push origin ${branch}` : ''
+  const own = branch && !branches.includes(branch) ? `: git push -u origin ${branch}` : ''
   return `Kernel blocks pushes that might reach ${named} in Bypass permissions. Push your own branch by name${own}.`
 }
 
@@ -98,6 +99,8 @@ export interface Step {
    * Claude, which runs no sandbox and applies the mode itself before it asks.
    */
   sandbox?: 'inside' | 'outside'
+  /** The folder a Bash step runs in, where the guard reads which branch a push of `HEAD` would land on (KERNEL-687). */
+  cwd?: string
 }
 
 /** What a step is decided by. */
@@ -129,11 +132,13 @@ const ALLOW: Verdict = { behavior: 'allow' }
  * Kernel's lists on one command: Never allow and protected-branch pushes deny, a room's Always allow rule allows, Always ask
  * asks. In Bypass permissions only the denials hold, and a push that might reach a protected branch is one of them. That
  * denial also holds wherever Claude Code may still run in bypass (`mayBypass`), since nothing would ask there (KERNEL-447).
+ * A push of `HEAD` from `cwd` goes through when the branch checked out there now is not protected (KERNEL-687).
  */
-export function guardVerdict(command: string, rules: Rules): Verdict {
+export function guardVerdict(command: string, rules: Rules, cwd?: string): Verdict {
   const bypass = rules.mode === 'bypassPermissions'
   const branches = rules.permissions.protectedBranches ?? []
-  if ((bypass || rules.mayBypass) && pushMightReach(command, branches)) return { behavior: 'deny', message: pushOwnBranch(branches, rules.branch) }
+  const head = cwd ? () => checkedOutBranch(cwd) : undefined
+  if ((bypass || rules.mayBypass) && pushMightReach(command, branches, head)) return { behavior: 'deny', message: pushOwnBranch(branches, rules.branch) }
   const v = bashVerdict(command, rules.permissions, rules.roomAllow())
   if (bypass) return v === 'deny' ? { behavior: 'deny', message: neverAllowed(command) } : undefined
   if (v === 'deny') return { behavior: 'deny', message: neverAllowed(command) }
@@ -149,7 +154,7 @@ export function guardVerdict(command: string, rules: Rules): Verdict {
 export function decide(step: Step, rules: Rules): Verdict {
   if (step.tool.startsWith('mcp__kernel__')) return ALLOW
   if (networkOff(step, rules)) return { behavior: 'deny', message: NETWORK_OFF }
-  return (step.command ? guardVerdict(step.command, rules) : roomTool(step, rules)) ?? byMode(step, rules)
+  return (step.command ? guardVerdict(step.command, rules, step.cwd) : roomTool(step, rules)) ?? byMode(step, rules)
 }
 
 const WEB_TOOLS = new Set(['WebFetch', 'WebSearch'])
@@ -166,7 +171,7 @@ const HOOK_ALLOWS = new Set<RunMode>(['default', 'acceptEdits', 'auto'])
  * still allows it if Claude Code asks. Bypass permissions reads no room rule. Network off denies before any rule.
  */
 export function hookVerdict(step: Step, rules: Rules): Verdict {
-  const v = step.command ? guardVerdict(step.command, rules)
+  const v = step.command ? guardVerdict(step.command, rules, step.cwd)
     : networkOff(step, rules) ? { behavior: 'deny' as const, message: NETWORK_OFF } : roomTool(step, rules)
   return v?.behavior === 'allow' && !HOOK_ALLOWS.has(rules.mode) ? undefined : v
 }

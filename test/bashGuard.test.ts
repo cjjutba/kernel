@@ -302,6 +302,56 @@ describe('a push that might reach a protected branch', () => {
     expect(pushMightReach(command, branches)).toBe(false)
   })
 
+  describe('a push of HEAD, with the branch checked out where it runs (KERNEL-687)', () => {
+    const on = (branch: string | undefined) => () => branch
+
+    it.each([
+      ['git push origin HEAD'],
+      ['git push -u origin HEAD'],
+      ['git push --set-upstream origin @'],
+      ['git add -A && git commit -m x && git push -u origin HEAD'],
+      ["sed -i '' s/a/b/ f.ts && git add -A && git commit -m 'fix: x' && git push -u origin HEAD"],
+      ['git push origin HEAD feat/other']
+    ])('lets %s through from a feature branch', (command) => {
+      expect(pushMightReach(command, branches, on('feat/x'))).toBe(false)
+    })
+
+    it.each([
+      // Git still picks where a bare push goes, whatever is checked out.
+      ['git add -A && git commit -m x && git push'],
+      ['git push -u origin'],
+      ['git push --all origin'],
+      ['git push origin HEAD main'],
+      ['git push origin HEAD:main'],
+      // The push may run in another checkout.
+      ['cd ../other && git push -u origin HEAD'],
+      ['pushd ../other; git push origin HEAD'],
+      ['git -C ../other push origin HEAD'],
+      ['git --git-dir=../other/.git push origin HEAD'],
+      ['git -c remote.origin.push=HEAD:refs/heads/main push origin HEAD'],
+      ['ssh host git push origin HEAD'],
+      ['env -C ../other git push origin HEAD'],
+      ['GIT_DIR=../other/.git git push origin HEAD'],
+      ['bash -c "git push origin HEAD"'],
+      ['git push "$REMOTE" HEAD']
+    ])('still blocks %s', (command) => {
+      expect(pushMightReach(command, branches, on('feat/x'))).toBe(true)
+    })
+
+    it('blocks a HEAD push when a protected branch is checked out, or the branch is unknown', () => {
+      for (const head of [on('main'), on('dev'), on(undefined), undefined]) expect(pushMightReach('git add -A && git commit -m x && git push -u origin HEAD', branches, head)).toBe(true)
+    })
+
+    it('reads the branch only for a HEAD push', () => {
+      let reads = 0
+      const head = () => { reads++; return 'feat/x' }
+      pushMightReach('git push origin feat/x && git status', branches, head)
+      expect(reads).toBe(0)
+      pushMightReach('git push origin HEAD && git push origin @', branches, head)
+      expect(reads).toBe(1)
+    })
+  })
+
   it('lets every push through when no branch is protected', () => {
     expect(pushMightReach('git push', [])).toBe(false)
     expect(pushMightReach('git push origin main', [])).toBe(false)

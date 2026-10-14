@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { join } from 'node:path'
+import { tempRepo } from './helpers'
+import { createWorktree } from '../src/main/services/worktrees'
 import type { Decision, PermissionMode } from '@shared/types'
 import { DEFAULT_SETTINGS, type AppSettings } from '../src/main/services/settings'
 import { ALWAYS_ASK, chatMode, decide, effectiveMode, guardVerdict, hookVerdict, matchesToolRule, NETWORK_OFF, neverAllowed, pushOwnBranch, rulesOf, saveAlwaysAllow, stricter, toolRule, type ChatAvailability, type Rules, type RunMode, type Step } from '../src/main/services/permissions'
@@ -59,8 +62,28 @@ describe('guardVerdict', () => {
     expect(guardVerdict('ls', leaving)).toBeUndefined()
   })
 
+  it('lets a HEAD push through in Bypass permissions from a folder whose checked-out branch is not protected (KERNEL-687)', async () => {
+    const repo = await tempRepo()
+    const feature = await createWorktree({ repo, root: join(repo, '..', 'wt-perm-' + Date.now()), branch: 'feat/invoice-schema', baseRef: 'main' })
+    const command = 'git add -A && git commit -m x && git push -u origin HEAD'
+    const own = { behavior: 'deny', message: pushOwnBranch(['main'], 'feat/invoice-schema') }
+    const bypass = rules({ mode: 'bypassPermissions' })
+    expect(guardVerdict(command, bypass, feature)).toBeUndefined()
+    expect(hookVerdict({ tool: 'Bash', command, cwd: feature }, bypass)).toBeUndefined()
+    expect(decide({ tool: 'Bash', command, cwd: feature }, bypass)).toBeUndefined()
+    // A bare push, main checked out, or no folder to read: still refused, naming the branch to push.
+    expect(guardVerdict('git add -A && git commit -m x && git push', bypass, feature)).toEqual(own)
+    expect(guardVerdict(command, bypass, repo)).toEqual(own)
+    expect(guardVerdict(command, bypass)).toEqual(own)
+    expect(guardVerdict(`cd ${repo} && git push -u origin HEAD`, bypass, feature)).toEqual(own)
+    // The same holds where Claude Code may still run in bypass.
+    const leaving = { ...rules(), mayBypass: true }
+    expect(guardVerdict('git push -u origin HEAD', leaving, feature)).toBeUndefined()
+    expect(guardVerdict('git push -u origin HEAD', leaving, repo)).toEqual(own)
+  })
+
   it('names the protected branches, and the push that works when the workspace has its own branch', () => {
-    expect(pushOwnBranch(['main'], 'feat/x')).toBe('Kernel blocks pushes that might reach main in Bypass permissions. Push your own branch by name: git push origin feat/x.')
+    expect(pushOwnBranch(['main'], 'feat/x')).toBe('Kernel blocks pushes that might reach main in Bypass permissions. Push your own branch by name: git push -u origin feat/x.')
     expect(pushOwnBranch(['main', 'dev', 'release'], 'feat/x')).toContain('might reach main, dev or release')
     expect(pushOwnBranch(['main'], 'main')).toBe('Kernel blocks pushes that might reach main in Bypass permissions. Push your own branch by name.')
   })

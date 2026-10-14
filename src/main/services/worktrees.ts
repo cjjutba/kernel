@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { readFileSync, statSync } from 'node:fs'
 import { copyFile, mkdir, realpath, rename, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
@@ -320,7 +321,8 @@ export async function moveWorktree(repo: string, from: string, to: string): Prom
 /**
  * Creates <root>/<branch-slug> on a new branch from baseRef (see `resolveBaseRef`). Returns the worktree path.
  * `worktree add -b` makes the branch before it checks the folder, so a failed add deletes the branch it made, never one
- * that was already there (KERNEL-276). A check git can't answer counts as "keep the branch".
+ * that was already there (KERNEL-276). A check git can't answer counts as "keep the branch". `--no-track` leaves the branch
+ * without an upstream until its first `push -u`, so a bare `git push` can't land on the base (KERNEL-687).
  */
 export async function createWorktree(o: CreateWorktree): Promise<string> {
   await mkdir(o.root, { recursive: true })
@@ -328,12 +330,35 @@ export async function createWorktree(o: CreateWorktree): Promise<string> {
   if (o.detach) { await gitSlow(o.repo, 'worktree', 'add', '--detach', path, o.baseRef); return path }
   const wasMissing = (await branchState(o.repo, o.branch)) === 'missing'
   try {
-    await gitSlow(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
+    await gitSlow(o.repo, 'worktree', 'add', '--no-track', '-b', o.branch, path, o.baseRef)
   } catch (e) {
     if (wasMissing && (await branchState(o.repo, o.branch)) === 'exists') await exec('git', ['-C', o.repo, 'branch', '-D', o.branch])
     throw e
   }
   return path
+}
+
+/**
+ * The branch checked out in the git checkout holding `dir`, read from its HEAD file without running git, so the Bash guard
+ * can ask in the hook (KERNEL-687). Follows a worktree's `.git` file to its own HEAD. Undefined when HEAD is detached, the
+ * folder isn't in a checkout, or anything can't be read, including a reftable repo, whose HEAD names `.invalid`.
+ */
+export function checkedOutBranch(dir: string): string | undefined {
+  try {
+    for (let d = resolve(dir); ; d = dirname(d)) {
+      const dotGit = join(d, '.git')
+      const st = statSync(dotGit, { throwIfNoEntry: false })
+      if (st) {
+        const gitDir = st.isDirectory() ? dotGit : /^gitdir: (.+)$/m.exec(readFileSync(dotGit, 'utf8'))?.[1].trim()
+        if (!gitDir) return undefined
+        const branch = /^ref: refs\/heads\/(.+)$/.exec(readFileSync(join(resolve(d, gitDir), 'HEAD'), 'utf8').trim())?.[1]
+        return branch && branch !== '.invalid' ? branch : undefined
+      }
+      if (dirname(d) === d) return undefined
+    }
+  } catch {
+    return undefined
+  }
 }
 
 /**

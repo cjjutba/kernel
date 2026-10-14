@@ -1751,7 +1751,7 @@ export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: s
   const where = ws.lead && ws.mode === 'worktree' && ws.branch === 'HEAD'
     ? `You are working in your own git worktree at ${ws.path}, detached at ${ws.baseRef}, not on a branch. It is not the main checkout, which the user may be running. Stay inside it.`
     : ws.mode === 'worktree'
-    ? `You are working in a git worktree at ${ws.path} on branch ${ws.branch}, created from ${ws.baseRef}.${ws.lead ? ' It is not the main checkout, which the user may be running.' : ''} Stay inside it.`
+    ? `You are working in a git worktree at ${ws.path} on branch ${ws.branch}, created from ${ws.baseRef}.${ws.lead ? ' It is not the main checkout, which the user may be running.' : ''} Stay inside it. Push with \`git push -u origin ${ws.branch}\` (or \`HEAD\`), never a bare \`git push\`.`
     : `You are working directly in the main checkout at ${ws.path} on ${ws.branch}. Some files already had changes before you started; never commit those unless asked.`
   const port = `If you start a dev server, use port ${ws.port} ($KERNEL_PORT).`
   return [agent?.prompt, agent?.lead && LEAD_RULE, rule, where, port].filter(Boolean).join('\n\n')
