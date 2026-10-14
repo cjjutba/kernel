@@ -84,6 +84,10 @@ const nodeTs = (code: string, env: NodeJS.ProcessEnv = {}) => {
   children.push(child)
   return child
 }
+// A command that starts a worker and stays up, on Node alone so no shell or PATH is involved.
+const workerTree = `const w = require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' })
+console.log(w.pid)
+setTimeout(() => {}, 30000)`
 const readPid = (child: ChildProcess) => new Promise<number>((r) => child.stdout!.once('data', (d) => r(Number(String(d).trim()))))
 
 describe('process groups (KERNEL-812)', () => {
@@ -119,13 +123,15 @@ describe('process groups (KERNEL-812)', () => {
   it('leaves nothing running when the run is killed with SIGKILL', async () => {
     const runner = nodeTs(`
       import(${JSON.stringify(resolve(import.meta.dirname, '../scripts/testSlots.ts'))}).then(({ runInSlot }) =>
-        runInSlot('sh', ['-c', 'sleep 30 & echo $!; wait'], { dir: ${JSON.stringify(dir)}, env: {} }))`)
+        runInSlot(process.execPath, ['-e', ${JSON.stringify(workerTree)}], { dir: ${JSON.stringify(dir)}, env: {} }))`)
     const worker = await readPid(runner)
     expect(isAlive(worker)).toBe(true)
     process.kill(runner.pid!, 'SIGKILL')
     await new Promise((r) => runner.on('exit', r))
     expect(takeSlot(dir, 1, process.pid)).toEqual({ busy: 1 })
-    process.kill(worker, 'SIGKILL')
+    const pgid = Number(readFileSync(join(dir, 'slot-0'), 'utf8').split(' ')[1])
+    expect(isGroupAlive(pgid)).toBe(true)
+    process.kill(-pgid, 'SIGKILL')
     let taken: string | undefined
     expect(await until(() => (taken ??= takeSlot(dir, 1, process.pid).file) !== undefined)).toBe(true)
   })
