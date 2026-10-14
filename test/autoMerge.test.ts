@@ -405,26 +405,37 @@ describe('a PR behind its base', () => {
   }
 
   it('merges the first PR of a wave, brings the second up to date, and merges it once its checks pass again, with no new review', async () => {
-    const s = await setup()
+    const s = await setup({ app: { pr: { autoMerge: { on: true }, autoReview: true } } })
     const h = await hub(s, { 'src/a.ts': 'export const a = 1\n' }, { 'src/b.ts': 'export const b = 1\n' })
-    const [a, b] = h.wss
+    const [a] = h.wss
+    // The code review approved Kai's second PR in its first round.
+    const b = s.k.store.saveWorkspace({ ...h.wss[1], reviewRound: { n: 1, rounds: 3, head: h.wss[1].prHead!, prNumber: 102, kinds: ['code'] } })
+    const started = vi.spyOn(s.k.reviews as unknown as { startReview: () => Promise<unknown> }, 'startReview').mockResolvedValue(b)
+    const again = vi.spyOn(s.k.reviews as unknown as { reviewAgain: () => Promise<unknown> }, 'reviewAgain').mockResolvedValue(undefined)
+    // The new head's checks pass before Kernel has recorded the update, and a read of the PR comes in meanwhile. Its ready
+    // waits for the record, or `onReady` would start a round on the new head.
+    const record = s.k.reviews.recordBaseUpdate.bind(s.k.reviews)
+    vi.spyOn(s.k.reviews, 'recordBaseUpdate').mockImplementation(async (id, from, to) => {
+      h.pass(id)
+      await s.k.prs.refreshPr(id)
+      expect(s.k.store.workspace(id)?.prHead).toBe(from)
+      return record(id, from, to)
+    })
     expect(await s.k.prs.autoMerge(a.id)).toEqual({ merged: expect.objectContaining({ prState: 'merged' }) })
     const r = await s.k.prs.autoMerge(b.id)
     expect(r).toEqual({ updated: expect.stringMatching(/^[0-9a-f]{40}$/) })
     const to = (r as { updated: string }).updated
-    expect(h.merged).toEqual([101])
     expect(h.updates).toEqual([102])
     expect(s.k.store.workspace(b.id)?.baseUpdates).toEqual([{ from: b.prHead, to }])
     // Kai's worktree was clean and idle, so it moved to the merge.
     expect((await git(b.path, 'rev-parse', 'HEAD')).trim()).toBe(to)
     expect(h.branchUpdated).toHaveBeenCalledWith(expect.objectContaining({ id: b.id }), 'main')
-    await vi.waitFor(() => expect(s.k.store.workspace(b.id)).toMatchObject({ prState: 'checks', prHead: to }))
-    h.pass(b.id)
-    await s.k.prs.refreshPr(b.id)
     await vi.waitFor(() => expect(s.k.store.workspace(b.id)?.prState).toBe('merged'))
     expect(h.merged).toEqual([101, 102])
     expect(h.updates).toEqual([102])
-    expect(s.k.store.workspace(b.id)?.reviewRound).toBeUndefined()
+    expect(started).not.toHaveBeenCalled()
+    expect(again).not.toHaveBeenCalled()
+    expect(s.k.store.workspace(b.id)?.reviewRound).toMatchObject({ n: 1, head: b.prHead })
   })
 
   it('moves a PR whose update conflicts to conflict, which reaches the Lead', async () => {
@@ -447,14 +458,18 @@ describe('a PR behind its base', () => {
     const s = await setup()
     const h = await hub(s, { 'src/a.ts': 'export const a = 1\n' })
     const [w] = h.wss
+    // Main moves each time the new head's checks are running, and the read after they pass weighs it.
     for (const n of [1, 2, 3]) {
       await h.moveMain(`moved-${n}.txt`)
-      const r = await s.k.prs.autoMerge(w.id)
-      expect(r).toEqual({ updated: expect.any(String) })
-      await vi.waitFor(() => expect(s.k.store.workspace(w.id)).toMatchObject({ prState: 'checks', prHead: (r as { updated: string }).updated }))
-      h.pass(w.id)
+      if (n > 1) h.pass(w.id)
+      await s.k.prs.refreshPr(w.id)
+      await vi.waitFor(() => expect(h.updates).toHaveLength(n))
+      await vi.waitFor(() => expect(s.k.store.workspace(w.id)).toMatchObject({ prState: 'checks', prHead: h.prs.get(w.id)!.head }))
     }
     await h.moveMain('moved-4.txt')
+    h.pass(w.id)
+    await s.k.prs.refreshPr(w.id)
+    await vi.waitFor(() => expect(s.k.store.workspace(w.id)?.prState).toBe('ready'))
     const said = 'main moved past it again after Kernel brought it up to date 3 times, so Kernel stopped updating it.'
     expect(await s.k.prs.autoMerge(w.id)).toEqual({ refused: said })
     expect(await s.k.prs.autoMerge(w.id)).toEqual({ refused: said })
