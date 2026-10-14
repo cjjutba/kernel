@@ -1557,6 +1557,19 @@ function sidebarPlanChat(f: Fixture): Partial<Fixture> {
   return { ...g, chats: g.chats!.map((c) => (c.id === 'chat-table' || c.id === 'chat-login' ? { ...c, plan: true } : c)) }
 }
 
+/** WorkspaceLead with three open items on the Export chat: Noor's question, blockers in Kai's work and Ivy's proposed hand-off. */
+function leadOpenItems(f: Fixture): Partial<Fixture> {
+  const base = { roomId: ids.roomA, threadId: GROUPED.export, chatId: ids.leadChat, createdAt: at(10, 20) }
+  return {
+    ...leadWaiting(f),
+    openItems: [
+      { ...base, id: 'oi-q', kind: 'question', workspaceId: 'ws-176', agentId: 'noor', name: 'Noor', text: 'Should the PDF include the VAT breakdown?' },
+      { ...base, id: 'oi-b', kind: 'blockers', workspaceId: 'ws-182', agentId: 'kai', name: 'Kai', blockers: 2 },
+      { ...base, id: 'oi-h', kind: 'handoff.proposed', workspaceId: 'ws-176', agentId: 'noor', name: 'Noor', text: 'Snapshot tests for three invoice types', proposed: { agentId: 'ivy', name: 'Ivy' } }
+    ]
+  }
+}
+
 /** WorkspaceLead.png: `grouped` with the export chat's plan still waiting, so it has one tab and nothing handed off, and no demo chat. */
 function leadWaiting(f: Fixture): Partial<Fixture> {
   const plan = leadPlan(f, { agentId: 'kernel-lead' })
@@ -2118,6 +2131,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
   WorkspaceLead: scene((f) => leadWaiting(f)),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'kernel-lead' })),
+  /** What the Lead chat still owes, above the composer (KERNEL-792): a question, blockers and a proposed hand-off. The collapsed line, and the same with the list opened by scripts/shots.ts. */
+  LeadOpenItems: scene((f) => leadOpenItems(f)),
+  LeadOpenItemsOpen: scene((f) => leadOpenItems(f)),
   // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
   LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
   // The right panel's two panes (KERNEL-513): 2/3 over 1/3 in a teammate's workspace, which starts with the bottom open, and Kernel's chat, which starts with it
