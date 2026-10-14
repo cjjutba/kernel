@@ -22,7 +22,7 @@ import { ModelPicker } from './ModelPicker'
 import { SWITCH_TOAST, SWITCH_TOAST_MS, lastRanOn, noteOpened, noteSent, warnsOnSwitch } from './modelSwitch'
 import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMemory } from './modelPrefs'
-import { MODE_ICON, buttonName, modeAria, modePatch, nextMode, offLine, shownMode, type ComposerMode } from './modes'
+import { MODE_ICON, buttonName, modeAria, cyclePatch, cycleRun, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
 import { PlusMenu, type PlusPanel } from './PlusMenu'
 import { QueueList } from './QueueList'
 import { sendsOn, useSendWith } from './sendKey'
@@ -71,6 +71,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const [at, setAt] = useState(0)
   const [dismissed, setDismissed] = useState('')
   const filePick = useRef<HTMLInputElement>(null)
+  const run = useRef<CycleRun | null>(null)
   const modelAnchor = useRef<HTMLSpanElement>(null)
   const modeAnchor = useRef<HTMLSpanElement>(null)
   const plusAnchor = useRef<HTMLSpanElement>(null)
@@ -180,12 +181,16 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   }, [chat.id])
   const shown = shownMode(chat.plan, runMode, chat.mode ?? roomMode ?? appMode ?? 'default')
   /** Plan sets `plan` and leaves the chat's `mode`. Every other mode sets `mode` and leaves plan. Bypass permissions asks once first, and what it saves is this chat's mode. */
-  const setMode = (mode: ComposerMode) => {
+  const setMode = (mode: ComposerMode, patch: (m: ComposerMode) => ReturnType<typeof modePatch> | ReturnType<typeof cyclePatch> = modePatch) => {
     if (mode === shown.picked) return
-    if (mode === 'bypassPermissions' && !bypassConfirmed()) { setMenu(null); return actions.ui.openModal({ name: 'confirm', kind: 'bypass', chatId: chat.id }) }
-    void configure(modePatch(mode))
+    if (mode === 'bypassPermissions' && !bypassConfirmed()) { run.current = null; setMenu(null); return actions.ui.openModal({ name: 'confirm', kind: 'bypass', chatId: chat.id }) }
+    void configure(patch(mode))
   }
-  const cycleMode = () => setMode(nextMode(shown.picked, (m) => !offLine(m, provider, availability)))
+  const pickMode = (mode: ComposerMode) => { run.current = null; setMode(mode) }
+  const cycleMode = () => {
+    const { before } = (run.current = cycleRun(run.current, chat.id, chat.mode))
+    setMode(nextMode(shown.picked, (m) => !offLine(m, provider, availability)), (m) => cyclePatch(before, m))
+  }
   const providerModels = useProviderModels(provider)
   const efforts = effortsOf(chat.model, providerModels)
   const newChatOn = (p: Provider, m: string, x: Effort) => void attempt('Could not open a tab', async () => {
@@ -210,11 +215,12 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     if (suggested && (e.key === 'Tab' || e.key === 'ArrowRight') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); d.setText(suggested); d.focus(); return }
     if (sendsOn(e, sendWith)) { e.preventDefault(); void send(); return }
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); cycleMode(); return }
+    if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) run.current = null
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
     if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i' && roomId) { e.preventDefault(); setMenu('linkIssue') }
   }
 
-  const configure = (patch: { model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode }, onDone?: () => void) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); onDone?.(); await loadWorkspace(chat.workspaceId) })
+  const configure = (patch: { model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode | undefined }, onDone?: () => void) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); onDone?.(); await loadWorkspace(chat.workspaceId) })
   const editQueued = (q: QueuedMessage) => {
     const id = chat.id
     void attempt('Could not edit the message', async () => {
@@ -330,7 +336,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
                 <Button variant="ghost" className="cmp-model cmp-mode" data-mode={shown.runs} aria-label={modeAria(shown)} aria-haspopup="menu" aria-expanded={menu === 'mode'} onClick={() => setMenu(menu === 'mode' ? null : 'mode')}>
                   <Icon name={MODE_ICON[shown.runs]} size={14} /><span className="cmp-mode-name">{buttonName(shown.runs)}</span><Icon name="chevron" size={12} />
                 </Button>
-                {menu === 'mode' && <ModeMenu anchorRef={modeAnchor} provider={provider} availability={availability} shown={shown} onPick={(m) => { setMenu(null); setMode(m); d.focus() }} onCycle={cycleMode} onClose={() => setMenu(null)} />}
+                {menu === 'mode' && <ModeMenu anchorRef={modeAnchor} provider={provider} availability={availability} shown={shown} onPick={(m) => { setMenu(null); pickMode(m); d.focus() }} onCycle={cycleMode} onClose={() => setMenu(null)} />}
               </span>
               <span className="grow" />
               {chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
