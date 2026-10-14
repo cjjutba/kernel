@@ -18,7 +18,7 @@ export class Inbox extends Feature {
     const ws = a.workspaceId ? this.store.workspace(a.workspaceId) : undefined
     if (!ws || !(await stat(ws.path).then(() => true, () => false))) throw new Error('Its workspace folder is gone. Copy the plan instead.')
     if (a.planFile && (await planExists(ws.path, a.planFile))) return { path: join(ws.path, a.planFile), relative: a.planFile }
-    const relative = await savePlan(ws.path, text, { fallback: a.title, reuse: a.planFile })
+    const relative = await savePlan(ws.path, text, { reuse: a.planFile })
     if (relative !== a.planFile) this.approvals.update(a.id, { planFile: relative })
     return { path: join(ws.path, relative), relative }
   }
