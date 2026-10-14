@@ -1739,7 +1739,9 @@ describe('One login, one row (KERNEL-701)', () => {
       if (provider === 'claude') process.env.FAKE_EMAIL = email
       else process.env.FAKE_CODEX_LOGIN_EMAIL = email
       const added = await h['accounts.add']({ provider })
-      await settleReads(t.k)
+      // Adding reads the account's usage and MCP servers in the background. A read still running when the test sets the next
+      // login's email reads that email into this account's row.
+      await quiet()
       return added
     }
     /** Run login: Claude Code's own login in Terminal signs in as `email`. */
