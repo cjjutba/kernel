@@ -264,8 +264,8 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(mergeView(ws('w1', { prState: 'merging' }), pr(), rules)).toEqual({ kind: 'merging' })
     expect(mergeView(ws('w1', { prState: 'merged' }), pr(), rules)).toEqual({ kind: 'merged' })
     // An open PR that can't merge yet says where it stands, in the PRs tab's words (KERNEL-411). One with no PR yet says nothing.
-    expect(mergeView(ws('w1', { prState: 'cifail', prNumber: 7 }), pr(), rules)).toEqual({ kind: 'state', label: 'Checks failed', tone: 'fail', spin: false })
-    expect(mergeView(ws('w1', { prState: 'checks', prNumber: 7 }), pr(), rules)).toEqual({ kind: 'state', label: 'Checks running', tone: 'idle', spin: true })
+    expect(mergeView(ws('w1', { prState: 'cifail', prNumber: 7 }), pr(), rules)).toEqual({ kind: 'state', label: 'Checks failed', tone: 'fail', glyph: 'prCifail', spin: false })
+    expect(mergeView(ws('w1', { prState: 'checks', prNumber: 7 }), pr(), rules)).toEqual({ kind: 'state', label: 'Checks running', tone: 'idle', glyph: 'pr', spin: true })
     expect(mergeView(ws('w1', { prState: 'none' }), pr(), rules)).toEqual({ kind: 'none' })
     // A merge pending on the PR reads merging before GitHub's state moves, whoever pressed it (KERNEL-520).
     expect(mergeView(ws('w1'), pr(), rules, undefined, 'merge')).toEqual({ kind: 'merging' })
@@ -289,10 +289,10 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(draw({ kind: 'merging' }, 'Merging')).toMatch(/aria-busy="true"[^>]*>.*Merging/)
     expect(draw({ kind: 'merging' })).toMatch(/^<span class="pr-word pr-run" data-tone="ready" aria-busy="true">.*Merging<\/span>$/)
     // An open PR's state, as the PR band says it: a spinner while checks run, and the word in red for what failed.
-    expect(draw({ kind: 'state', label: 'Checks running', tone: 'idle', spin: true })).toMatch(/^<span class="pr-word pr-run" data-tone="idle" aria-busy="true">.*Checks running<\/span>$/)
+    expect(draw({ kind: 'state', label: 'Checks running', tone: 'idle', glyph: 'pr', spin: true })).toMatch(/^<span class="pr-word pr-run" data-tone="idle" aria-busy="true">.*Checks running<\/span>$/)
     // Merge anyway is a quiet outline, since the row's red state already says what is wrong (KERNEL-757).
     expect(draw({ kind: 'override', reviewer: 'The code review', count: 2 })).toMatch(/^<span class="pr-tone" data-tone="idle"><button[^>]*class="[^"]*pr-outline[^"]*"[^>]*>Merge anyway<\/button><\/span>$/)
-    expect(draw({ kind: 'state', label: 'Checks failed', tone: 'fail', spin: false })).toBe('<span class="pr-word" data-tone="fail">Checks failed</span>')
+    expect(draw({ kind: 'state', label: 'Checks failed', tone: 'fail', glyph: 'prCifail', spin: false })).toMatch(/^<span class="pr-word pr-run" data-tone="fail"><svg[^>]*>.*<\/svg>Checks failed<\/span>$/)
     expect(draw({ kind: 'blocked', reason: "Theo hasn't approved the latest commit. Merging waits (Settings, Pull requests)." })).toContain("Theo hasn&#x27;t approved the latest commit.</span>")
     expect(draw({ kind: 'blocked', reason: 'x' })).not.toContain('<button')
     expect(draw({ kind: 'merged' })).toContain('tucard-merged')
