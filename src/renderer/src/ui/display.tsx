@@ -102,7 +102,7 @@ function phaseOf(seed: string) {
 
 /**
  * The loader: a 3x3 grid of dots whose opacity loops, in an order that says what kind of wait it is. `action` ripples out from the center (busy buttons), `agent` crosses the diagonals (an agent working, the default),
- * `process` sweeps the columns (a script or setup step), `load` sweeps the rows (loading data) and `swap` ripples in from the corners (a small inline change). It is sized in em, so it follows the text beside it, and it always sits beside words.
+ * `process` sweeps the columns (a script or setup step), `load` sweeps the rows (loading data) and `swap` ripples in from the corners (a small inline change). It is a fixed 12px grid that loops in about 1s and never goes blank, and it always sits beside words.
  * A string `label` makes it a status. `null` makes it decorative, for a button or row that already shows a word. `seed` starts the loop at a point taken from an id. Under reduced motion it holds the first group of its kind lit and dim (KERNEL-714, KERNEL-740, KERNEL-759).
  */
 export function Spinner({ label = 'Loading', kind = 'agent', seed, className }: { label?: string | null; kind?: SpinnerKind; seed?: string; className?: string }) {
