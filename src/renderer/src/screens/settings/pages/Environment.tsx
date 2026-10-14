@@ -6,7 +6,7 @@ import { call, cleanError } from '../../../api'
 import { FileLabel } from '../../../components/FileIcon'
 import { actions, getState } from '../../../store'
 import { Button, ConfirmDialog, Modal, useBusy } from '../../../ui'
-import { DataTable, NoRoom, Page, RoomPage, Section, sourceLine, useRoomPage, type TableRow } from '../kit'
+import { appliesTo, DataTable, NoRoom, Page, RoomPage, Section, sourceLine, useRoomPage, type TableRow } from '../kit'
 import { RowMenu } from './RowMenu'
 import { envChanged, useEnv, type EnvList } from '../env'
 import { patchRoomSettings } from '../useSettings'
@@ -125,7 +125,7 @@ function EnvFiles({ roomId, rs, env }: { roomId: string; rs: RoomSettings | null
           <Button icon="plus" disabled={!env || busy !== null} onClick={() => setAdding(true)}>Add env file</Button>
         </>}
         note="Read in this order. A later file wins, and a missing file is skipped."
-        footnote={source}
+        footnote={[source, appliesTo('env.files')].filter(Boolean).join('. ')}
       >
         <DataTable label="Env files" columns={['File', 'Status']} grid="minmax(0, 1fr) 120px" rows={rows} empty="No env files. Add one, like .env, and its variables reach every chat and script." />
       </Section>

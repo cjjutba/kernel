@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { McpAccount } from '@shared/types'
 import { Toggle } from '../../../ui'
-import { Row, Section, SettingsLink } from '../kit'
+import { appliesTo, Row, Section, SettingsLink } from '../kit'
 import { serverName, useMcpAccounts } from './mcpAccounts'
 
 // A room's MCP servers (KERNEL-661): one switch per server. A status shows only when the server needs you (KERNEL-680). Signing in happens in Settings, MCP servers.
@@ -19,7 +19,7 @@ export function RoomMcp({ isOn, flip }: { isOn: (name: string) => boolean; flip:
   const { accounts } = useMcpAccounts()
   const names = useMemo(() => [...new Set((accounts ?? []).flatMap((a) => a.servers.map((s) => s.name)))], [accounts])
   return (
-    <Section title="MCP servers" count={names.length || undefined} scope="mac" note={<>Sign-ins are on <SettingsLink to={{ page: 'mcp' }}>Settings, MCP servers</SettingsLink>.</>}>
+    <Section title="MCP servers" count={names.length || undefined} scope="mac" note={<>Sign-ins are on <SettingsLink to={{ page: 'mcp' }}>Settings, MCP servers</SettingsLink>.</>} footnote={appliesTo('disabled.mcp')}>
       {!accounts && <p className="set-empty">Checking MCP servers</p>}
       {accounts && names.length === 0 && <p className="set-empty">No MCP servers yet. Add one in <SettingsLink to={{ page: 'mcp' }}>Settings, MCP servers</SettingsLink>.</p>}
       {names.map((name) => {

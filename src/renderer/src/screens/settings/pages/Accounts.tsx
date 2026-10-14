@@ -309,7 +309,7 @@ function CliRows({ provider, s, status, busy, act, setStatus }: {
         <Button aria-label={`Open ${tilde(status?.configFile ?? '') || `${NAME[provider]} config file`}`} busy={busy === `${provider}:config`} busyLabel="Opening" disabled={busy !== null} onClick={() => void act(`${provider}:config`, 'Could not open the file', () => call('providers.openConfig', { provider }))}>Open</Button>
       </Row>
       {provider === 'codex' && (
-        <Row label="Personality" desc="How Codex talks to you in new chats. It doesn't change what it can do.">
+        <Row setting="providers.codex.personality" label="Personality" desc="How Codex talks to you in new chats. It doesn't change what it can do.">
           <SegmentedControl label="Personality" value={s.providers.codex.personality} options={PERSONALITIES} onChange={(v) => void patchSettings({ providers: { codex: { personality: v as CodexPersonality } } })} />
         </Row>
       )}

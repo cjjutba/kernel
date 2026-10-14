@@ -4,7 +4,7 @@ import { getState } from '../../../store'
 import { selectedPreset, useTerminalPresets } from '../../../terminalPresets'
 import './system.css'
 import { Button, Icon, Modal, Toggle, useBusy } from '../../../ui'
-import { Page, Row, Section } from '../kit'
+import { appliesTo, Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 
 type Custom = AppSettings['terminal']['custom'][number]
@@ -39,12 +39,12 @@ export function BigTerminal({ s }: { s: AppSettings }) {
       <Page title="Big terminal">
         <Section label="Tab">
           <Row label="Big terminal tab" desc="Opens in the workspace folder."><Toggle label="Big terminal tab" checked={t.enabled} onChange={(v) => set({ enabled: v })} /></Row>
-          <Row label="Terminal tabs only in worktrees" desc="Never on your current branch."><Toggle label="Terminal tabs only in worktrees" checked={t.onlyInWorktrees} onChange={(v) => set({ onlyInWorktrees: v })} /></Row>
+          <Row setting="terminal.onlyInWorktrees" label="Terminal tabs only in worktrees" desc="Never on your current branch."><Toggle label="Terminal tabs only in worktrees" checked={t.onlyInWorktrees} onChange={(v) => set({ onlyInWorktrees: v })} /></Row>
         </Section>
         <Section
           title="New tab opens"
           action={<Button disabled={!presets} onClick={() => setEditing('new')}>Add command</Button>}
-          footnote="The + menu in the tab strip lists every preset."
+          footnote={`The + menu in the tab strip lists every preset. ${appliesTo('terminal.preset')}.`}
         >
           {presets
             ? <PresetList presets={presets} selected={selected} onlyInWorktrees={t.onlyInWorktrees} onPick={(id) => set({ preset: id })} onEdit={(id) => setEditing(t.custom.find((c) => c.id === id) ?? null)} onRemove={(id) => { const c = t.custom.find((x) => x.id === id); if (c) remove(c) }} />
