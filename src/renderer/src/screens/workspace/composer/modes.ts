@@ -57,6 +57,9 @@ export function offLine(mode: ComposerMode, provider: Provider, availability: Mo
 /** What `chats.configure` is given for a pick: Plan sets `plan` and leaves the chat's own `mode` where it is, so leaving Plan returns to it. The others set `mode` and clear `plan`. */
 export const modePatch = (mode: ComposerMode): { plan: true } | { mode: PermissionMode; plan: false } => (mode === 'plan' ? { plan: true } : { mode, plan: false })
 
+/** What a run of Shift+Tab presses saves where it lands. `before` is the chat's own `mode` from before the run, or undefined when it followed the room or Settings. A run that lands on Plan puts it back, so the plan's approval leaves the chat where it was (KERNEL-772). */
+export const cyclePatch = (before: PermissionMode | undefined, landed: ComposerMode): { plan: true; mode: PermissionMode | undefined } | { mode: PermissionMode; plan: false } => (landed === 'plan' ? { plan: true, mode: before } : modePatch(landed) as { mode: PermissionMode; plan: false })
+
 /** The mode Shift+Tab goes to from `from`: the next in the order that `can` run, round to the start. It stays put when nothing else can run. */
 export function nextMode(from: ComposerMode, can: (mode: ComposerMode) => boolean): ComposerMode {
   const at = MODE_ORDER.indexOf(from)
