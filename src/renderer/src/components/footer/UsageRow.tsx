@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useRef } from 'react'
 import { actions, useStore } from '../../store'
-import { IconButton, Meter, ProviderMark, useBusy } from '../../ui'
+import { Icon, IconButton, Meter, ProviderMark, useBusy } from '../../ui'
 import { call } from '../../api'
-import { chipLabel, footerGroups, tightest, tone, type FooterChip, type FooterGroup } from './usageModel'
+import { chipLabel, footerGroups, moreLabel, switchTip, tightest, tone, type FooterChip, type FooterGroup } from './usageModel'
 import { UsagePopover } from './UsagePopover'
 import { useUsageActions } from './useUsageActions'
 
@@ -10,8 +10,8 @@ const pct = (v: number) => `${Math.round(v * 100)}%`
 
 /**
  * Usage for Claude Code and Codex, always in the footer's bottom left (UsageFooter.png, KERNEL-674). Each provider lists its signed-in accounts: the one it runs on first
- * with its mark, a 5-hour bar and its numbers inline (5h, wk, and Fable 5.1 when reported), the others as a name and one number. The refresh button follows the row. The active chip opens the Usage popover. Another chip switches to that account, by the same rules as
- * the popover's Switch. Claude Code, a hairline, then Codex. The popover's Detailed and Compact switch picks how much each active chip says.
+ * with its mark, a 5-hour bar and its numbers inline (5h, wk, and Fable 5.1 when reported), the others as a swap icon, a name and one number. The refresh button follows the row. The active chip opens the Usage popover on its provider. Another chip switches to that account, by the same rules as
+ * the popover's Switch. Past two others, or in a narrow window, a "more" chip opens the popover with the Switch list showing (KERNEL-697). Claude Code, a hairline, then Codex. The popover's Detailed and Compact switch picks how much each active chip says.
  */
 export function UsageRow() {
   const accounts = useStore((s) => s.accounts)
@@ -22,7 +22,8 @@ export function UsageRow() {
   const opener = useRef<HTMLElement | null>(null)
   const { busy, switchTo, signIn } = useUsageActions()
   const compact = view === 'compact'
-  const groups = footerGroups(accounts, usage, Date.now())
+  const now = Date.now()
+  const groups = footerGroups(accounts, usage, now)
 
   // Escape closes the popover with focus inside it, which leaves focus on the page. It goes back to the chip that opened it.
   const wasOpen = useRef(open)
@@ -31,15 +32,21 @@ export function UsageRow() {
     wasOpen.current = open
   }, [open])
 
-  const toggle = (el: HTMLElement) => { opener.current = el; actions.ui.toggleMenu('plan') }
+  const openUsage = (provider: FooterGroup['provider'], el: HTMLElement) => { opener.current = el; actions.ui.openUsage(provider) }
   return (
     <div ref={anchor} className="ft-usage">
       {groups.map((g, i) => (
         <Fragment key={g.provider}>
           {i > 0 && <span className="ft-div" aria-hidden="true" />}
           {g.signedOut
-            ? <button type="button" className="ft-chip" aria-label={`${g.name}, not signed in. Opens usage`} aria-haspopup="dialog" aria-expanded={open} onClick={(e) => toggle(e.currentTarget)}><span className="ft-mark"><ProviderMark provider={g.provider} size={13} /></span><span className="ft-out">Sign in</span></button>
-            : g.chips.map((c) => <Chip key={c.id} g={g} c={c} compact={compact} open={open} busy={busy} onOpen={toggle} onSwitch={switchTo} />)}
+            ? <button type="button" className="ft-chip" aria-label={`${g.name}, not signed in. Opens usage`} aria-haspopup="dialog" aria-expanded={open} onClick={(e) => openUsage(g.provider, e.currentTarget)}><span className="ft-mark"><ProviderMark provider={g.provider} size={13} /></span><span className="ft-out">Sign in</span></button>
+            : (
+              <>
+                {g.chips.map((c) => <Chip key={c.id} g={g} c={c} compact={compact} open={open} busy={busy} now={now} onOpen={openUsage} onSwitch={switchTo} />)}
+                {g.overflow.length > 0 && <More g={g} n={g.overflow.length} open={open} busy={busy} onOpen={openUsage} />}
+                {g.others > 0 && <More g={g} n={g.others} open={open} busy={busy} onOpen={openUsage} narrow />}
+              </>
+            )}
         </Fragment>
       ))}
       <RefreshButton />
@@ -48,20 +55,21 @@ export function UsageRow() {
   )
 }
 
-function Chip({ g, c, compact, open, busy, onOpen, onSwitch }: { g: FooterGroup; c: FooterChip; compact: boolean; open: boolean; busy: string | null; onOpen: (el: HTMLElement) => void; onSwitch: (provider: FooterGroup['provider'], accountId: string) => void }) {
+function Chip({ g, c, compact, open, busy, now, onOpen, onSwitch }: { g: FooterGroup; c: FooterChip; compact: boolean; open: boolean; busy: string | null; now: number; onOpen: (provider: FooterGroup['provider'], el: HTMLElement) => void; onSwitch: (provider: FooterGroup['provider'], accountId: string) => void }) {
   const label = chipLabel(g, c, compact)
   if (!c.active) {
     const switching = busy === `switch:${g.provider}:${c.id}`
     return (
-      <button type="button" className="ft-chip ft-other" aria-label={label} aria-busy={switching || undefined} disabled={busy !== null} onClick={() => onSwitch(g.provider, c.id)}>
+      <button type="button" className="ft-chip ft-other" aria-label={label} data-tip={switchTip(g, c, now)} aria-busy={switching || undefined} disabled={busy !== null} onClick={() => onSwitch(g.provider, c.id)}>
+        <span className="ft-swap" aria-hidden="true">{switching ? <span className="spin" /> : <Icon name="swap" size={12} />}</span>
         <span className="ft-name" data-dim="">{c.name}</span>
-        {switching ? <span className="spin" aria-hidden="true" /> : c.five !== undefined && <span className="ft-pc" data-tone={tone(c.five)}>{pct(c.five)}</span>}
+        {c.five !== undefined && <span className="ft-pc" data-tone={tone(c.five)}>{pct(c.five)}</span>}
       </button>
     )
   }
   const top = compact ? tightest(c) : undefined
   return (
-    <button type="button" className="ft-chip" data-on="" aria-label={label} aria-haspopup="dialog" aria-expanded={open} onClick={(e) => onOpen(e.currentTarget)}>
+    <button type="button" className="ft-chip" data-on="" aria-label={label} aria-haspopup="dialog" aria-expanded={open} onClick={(e) => onOpen(g.provider, e.currentTarget)}>
       <span className="ft-mark"><ProviderMark provider={g.provider} size={13} /></span>
       {(c.billed || !compact) && <span className="ft-name">{c.name}</span>}
       {!c.billed && !compact && (
@@ -75,6 +83,16 @@ function Chip({ g, c, compact, open, busy, onOpen, onSwitch }: { g: FooterGroup;
         </>
       )}
       {!c.billed && compact && <Window label={`${g.name} ${top?.title ?? 'usage'}`} value={top?.value} />}
+    </button>
+  )
+}
+
+/** "⇄ 3 more": the others that don't fit inline. The `narrow` one counts every other account and takes over from the inline chips when the window is narrow, so nothing disappears. */
+function More({ g, n, open, busy, onOpen, narrow }: { g: FooterGroup; n: number; open: boolean; busy: string | null; onOpen: (provider: FooterGroup['provider'], el: HTMLElement) => void; narrow?: boolean }) {
+  return (
+    <button type="button" className="ft-chip ft-other ft-more" data-narrow={narrow || undefined} aria-label={moreLabel(g, n)} aria-haspopup="dialog" aria-expanded={open} disabled={busy !== null} onClick={(e) => onOpen(g.provider, e.currentTarget)}>
+      <span className="ft-swap" aria-hidden="true"><Icon name="swap" size={12} /></span>
+      <span className="ft-name" data-dim="">{n} more</span>
     </button>
   )
 }
