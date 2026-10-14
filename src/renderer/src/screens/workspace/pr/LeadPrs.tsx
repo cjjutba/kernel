@@ -77,7 +77,7 @@ function Row({ row }: { row: LeadPr }) {
             {prDisplayTitle(ws)}
           </button>
           {row.ready || row.blockers
-            ? <span className="lp-act"><MergeButton ws={ws} short /></span>
+            ? <span className="lp-act"><MergeButton ws={ws} short icon={false} /></span>
             : <span className="lp-chev" aria-hidden="true"><Icon name="right" size={14} /></span>}
         </div>
         <div className="lp-l2">

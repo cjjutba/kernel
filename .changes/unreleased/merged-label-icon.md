@@ -1,4 +1,4 @@
 ---
 type: improved
 ---
-The purple Merged label in Team updates and the Lead's PRs tab now shows the merged icon before the word.
+PR states in Team updates, such as Merged, Merge conflicts and Checks failed, now show their icon before the word.

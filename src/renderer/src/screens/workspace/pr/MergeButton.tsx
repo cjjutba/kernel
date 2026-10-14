@@ -39,12 +39,12 @@ const firstSentence = (reason: string) => reason.split(/(?<=\.)\s/)[0]
 
 /**
  * Merge for one workspace's PR, wherever a PR is listed: the row of a Team update, the Lead's PRs tab. Give it the workspace
- * whose PR merges (a reviewer's row passes the reviewed one). `short` drops the number from the label, for a row that already shows it. It reads the rules, the PR and the reviewer's name itself, so a
+ * whose PR merges (a reviewer's row passes the reviewed one). `short` drops the number from the label, for a row that already shows it. `icon={false}` drops the state's icon, for a row that draws its own. It reads the rules, the PR and the reviewer's name itself, so a
  * caller knows nothing about when a PR may merge. The click spins the pressed button at once. Main then announces the merge
  * (`prPending`), which spins every place showing the PR in the same frame, and the PR reading merging keeps them spinning
  * (KERNEL-417, KERNEL-520). Merge anyway asks first, in a confirm of its own (KERNEL-501).
  */
-export function MergeButton({ ws, short }: { ws: Workspace; short?: boolean }) {
+export function MergeButton({ ws, short, icon }: { ws: Workspace; short?: boolean; icon?: boolean }) {
   const rules = useStore((s) => s.settings?.pr) ?? NO_RULES
   const pr = useStore((s) => s.prs[ws.id])
   const reviewer = useStore((s) => s.agents[ws.roomId])
@@ -67,7 +67,7 @@ export function MergeButton({ ws, short }: { ws: Workspace; short?: boolean }) {
   const merge = () => (view.kind === 'override' ? setConfirm({ reviewer: view.reviewer, count: view.count }) : void run(busyLabel.merge, () => mergeAndToast(ws.id)))
   return (
     <>
-      <MergeSlot ws={ws} view={view} busy={busy} short={short} onMerge={merge} />
+      <MergeSlot ws={ws} view={view} busy={busy} short={short} icon={icon} onMerge={merge} />
       {confirm && createPortal(<ConfirmMergeAnyway ws={ws} {...confirm} onClose={() => setConfirm(null)} />, document.body)}
     </>
   )
@@ -83,13 +83,13 @@ export async function mergeAndToast(workspaceId: string) {
  * that reads merging, or has a merge pending, spins in every place it shows, whoever started the merge: a button or the Lead
  * (KERNEL-417, KERNEL-520).
  */
-export function MergeSlot({ ws, view, busy, short, onMerge }: { ws: Workspace; view: MergeView; busy?: string | null; short?: boolean; onMerge: () => void }) {
+export function MergeSlot({ ws, view, busy, short, icon = true, onMerge }: { ws: Workspace; view: MergeView; busy?: string | null; short?: boolean; icon?: boolean; onMerge: () => void }) {
   switch (view.kind) {
     case 'none': return null
-    case 'merged': return <span className="tucard-merged"><Icon name="merged" size={14} />Merged</span>
+    case 'merged': return <span className="tucard-merged">{icon && <Icon name="merged" size={14} />}Merged</span>
     case 'blocked': return <span className="tucard-why" data-tip={view.reason}>{firstSentence(view.reason)}</span>
-    case 'state': return <PrStatusTag status={view} />
-    case 'merging': return <PrStatusTag status={PR_STATUS.merging} />
+    case 'state': return <PrStatusTag status={view} icon={icon} />
+    case 'merging': return <PrStatusTag status={PR_STATUS.merging} icon={icon} />
     case 'ready': return (
       <span className="pr-tone" data-tone="ready">
         <Button className="pr-soft tucard-merge" busy={!!busy} busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber && !short ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
@@ -105,10 +105,10 @@ export function MergeSlot({ ws, view, busy, short, onMerge }: { ws: Workspace; v
 
 /**
  * An open PR's state in a PRs tab or Team update row, in the words and tone the PR band uses (KERNEL-417): the word, red for what
- * needs fixing, and while something runs the spinner before it. It is never a button, so nothing looks pressable but the one
+ * needs fixing, and the state's icon before it, a spinner while something runs. It is never a button, so nothing looks pressable but the one
  * button a person pressed (KERNEL-757). `why` is its tooltip.
  */
-export function PrStatusTag({ status, why }: { status: PrStatus; why?: string }) {
-  if (status.spin) return <span className="pr-word pr-run" data-tone={status.tone} aria-busy="true" data-tip={why}><Spinner label={null} pattern="checker" />{status.label}</span>
-  return <span className="pr-word" data-tone={status.tone} data-tip={why}>{status.label}</span>
+export function PrStatusTag({ status, why, icon = true }: { status: PrStatus; why?: string; icon?: boolean }) {
+  if (status.spin) return <span className="pr-word pr-run" data-tone={status.tone} aria-busy="true" data-tip={why}>{icon && <Spinner label={null} pattern="checker" />}{status.label}</span>
+  return <span className="pr-word pr-run" data-tone={status.tone} data-tip={why}>{icon && <Icon name={status.glyph} size={14} />}{status.label}</span>
 }
