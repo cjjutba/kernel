@@ -209,6 +209,18 @@ export async function fastForward(path: string, ref: string): Promise<boolean> {
   return (await exec('git', ['-C', path, 'merge', '--ff-only', '--quiet', ref])).code === 0
 }
 
+/** `commit` is in `ref`'s history. Undefined when git can't tell, as for a commit the repo doesn't have (KERNEL-691). */
+export async function isAncestor(path: string, commit: string, ref: string): Promise<boolean | undefined> {
+  const r = await exec('git', ['-C', path, 'merge-base', '--is-ancestor', commit, ref])
+  return r.code === 0 ? true : r.code === 1 ? false : undefined
+}
+
+/** The commit `ref` points at, or undefined when it doesn't name one. */
+export async function revParse(path: string, ref: string): Promise<string | undefined> {
+  const r = await exec('git', ['-C', path, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`])
+  return r.code === 0 ? r.stdout.trim() || undefined : undefined
+}
+
 /** `owner/name` from a GitHub remote URL, https or ssh. A dot in the name, a `.git` suffix and a trailing slash are fine (KERNEL-231). */
 export function githubRepoOf(url: string): string | undefined {
   const m = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(url.trim())

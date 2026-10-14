@@ -138,6 +138,8 @@ const pending = (k: Kernel) => (k.store.meta<{ pending: [string, { events: { kin
 /** The turn Kernel started in the workspace's chat has ended. */
 const idle = (k: Kernel, ws: Workspace) => vi.waitFor(() => expect(k.sessions.isRunning(chatOf(k, ws).id)).toBe(false), SLOW)
 const released = (k: Kernel, ws: Workspace) => vi.waitFor(() => { expect(k.store.workspace(ws.id)?.waitsFor).toBeUndefined() }, SLOW)
+/** What the teammate does with Kernel's rebase message, before its turn ends (KERNEL-691). */
+const rebase = (ws: Workspace) => run('git', ['-C', ws.path, 'rebase', '-q', 'origin/main'])
 /** What the renderer was last told each chat's queue waits for (KERNEL-361). `done` stops listening. */
 function reasonsPushed() {
   const why = new Map<string, string | undefined>()
@@ -304,6 +306,7 @@ describe('a hand-off that waits for a merge', () => {
     await idle(k, w)
     await mergeOnGitHub(k, noor)
     await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.', 'kernel']), SLOW)
+    await rebase(w)
     callsIn(w)[0].feed(result('r2'))
     await released(k, w)
     await k.stop()
@@ -464,8 +467,8 @@ describe('a hand-off that waits for a merge', () => {
 })
 
 describe('a teammate that already started', () => {
-  it('gets the rebase message posted when its chat is idle', async () => {
-    const { k, room, lead, target, mergeOnGitHub } = await setup()
+  it('gets the rebase message posted when its chat is idle, and the wait ends once the turn rebased', async () => {
+    const { k, room, lead, repo, target, mergeOnGitHub } = await setup()
     const noor = await target(k, 164)
     const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id })
     callsIn(w)[0].feed(result('r1'))
@@ -474,8 +477,34 @@ describe('a teammate that already started', () => {
     await mergeOnGitHub(k, noor)
     const chat = chatOf(k, w)
     await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.', 'kernel']), SLOW)
-    expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ releasing: true })
+    const tip = (await exec('git', ['-C', repo, 'rev-parse', 'origin/main'])).stdout.trim()
+    expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ releasing: true, tip })
+    await rebase(w)
     callsIn(w)[0].feed(result('r2'))
+    await released(k, w)
+    expect(pending(k).filter((e) => e.kind === 'wait.rebase_missing')).toEqual([])
+    await k.stop()
+  })
+
+  it("keeps the wait and tells the Lead when the turn ends without the rebase, and ends it once a later turn rebased (KERNEL-691)", async () => {
+    const { k, room, lead, target, mergeOnGitHub } = await setup()
+    const noor = await target(k, 164)
+    const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id })
+    callsIn(w)[0].feed(result('r1'))
+    await idle(k, w)
+    await k.setWait(w.id, [noor.id])
+    await mergeOnGitHub(k, noor)
+    const chat = chatOf(k, w)
+    await vi.waitFor(() => expect(users(k, chat).at(-1)?.[1]).toBe('kernel'), SLOW)
+    callsIn(w)[0].feed(result('r2'))
+    await vi.waitFor(() => expect(pending(k).filter((e) => e.kind === 'wait.rebase_missing' && e.workspaceId === w.id)).toHaveLength(1), SLOW)
+    const kept = k.store.workspace(w.id)!.waitsFor!
+    expect(kept).toMatchObject({ on: [noor.id], held: false, tip: expect.any(String) })
+    expect(kept.releasing).toBeUndefined()
+    // The Lead asks again, and the teammate rebases this time.
+    expect((await k.lead['messageWorkspace'](room.id, w.id, 'Rebase onto origin/main, please.', lead.id)).sent).toBe(true)
+    await rebase(w)
+    callsIn(w)[0].feed(result('r3'))
     await released(k, w)
     await k.stop()
   })
@@ -502,6 +531,7 @@ describe('a teammate that already started', () => {
     callsIn(w)[before].feed(result('r2'))
     await vi.waitFor(() => expect(users(k2, chat).filter(([t]) => t === REBASE)).toHaveLength(2), SLOW)
     expect(k2.store.workspace(w.id)?.waitsFor).toMatchObject({ releasing: true })
+    await rebase(w)
     callsIn(w)[before].feed(result('r3'))
     await released(k2, w)
     await k2.stop()

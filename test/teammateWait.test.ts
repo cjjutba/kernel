@@ -160,6 +160,8 @@ describe("a teammate's wait_for_merge", () => {
     await mergeOnGitHub(noor)
     const chat = chatOf(k, kai)
     await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.', 'kernel']), SLOW)
+    // The teammate rebases before its turn ends, so the wait ends (KERNEL-691).
+    await run('git', ['-C', kai.path, 'rebase', '-q', 'origin/main'])
     callsIn(kai)[0].feed(result('r2'))
     await vi.waitFor(() => expect(k.store.workspace(kai.id)?.waitsFor).toBeUndefined(), SLOW)
     await k.stop()

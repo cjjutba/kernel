@@ -1,7 +1,7 @@
 import type { ChatPart, NoteRef, PrState, Workspace } from '@shared/types'
 import { waitersOf } from '@shared/waits'
 import type { TeammateToolDeps } from '../services/teammateMcp'
-import { fastForward, fetchOrigin, stripRemote } from '../services/worktrees'
+import { fastForward, fetchOrigin, isAncestor, revParse, stripRemote } from '../services/worktrees'
 import { issueTracker } from '../services/trackers'
 import { buildsIssue, isMerged, joinLabels, waitLabel, waitMet, waitRefusal } from '../services/waits'
 import { head } from './shared'
@@ -157,6 +157,8 @@ export class Waits extends Feature {
   /** The Lead or the user ends a wait before its merge: a held brief goes now, with whatever merged already under it. */
   private async dropWait(id: string) {
     const ws = this.mustWs(id)
+    // Kept for a missing rebase: Kernel asked already, so ending it asks nothing again (KERNEL-691).
+    if (ws.waitsFor?.tip && !ws.waitsFor.releasing) return this.clearWait(id)
     if (ws.waitsFor && ws.status === 'ready' && !ws.waitsFor.releasing) return this.releaseWait(id, { now: true })
     this.clearWait(id)
   }
@@ -172,12 +174,19 @@ export class Waits extends Feature {
    * agent slot taken, waits for the next poll.
    */
   private async deliverRelease(id: string) {
-    const remote = await this.k.config.remoteOfWs(this.mustWs(id))
-    // Read after the await, and marked before the send, so the poll and a merge can't both send it.
+    const was = this.mustWs(id)
+    // Every poll comes here while a wait is releasing, so one already sent doesn't fetch again.
+    if (this.releaseSent.has(id)) return
+    const remote = await this.k.config.remoteOfWs(was)
+    // The base it rebases onto, as the fetch leaves it. The turn's end checks the branch has it (KERNEL-691).
+    const room = this.store.room(was.roomId)
+    const tip = room && (await fetchOrigin(room.path, remote, { fresh: true })).ok ? await revParse(room.path, `${remote}/${stripRemote(was.baseRef, remote)}`) : undefined
+    // Read after the awaits, and marked before the send, so the poll and a merge can't both send it.
     const ws = this.store.workspace(id)
     if (!ws?.waitsFor?.releasing || ws.status === 'archived' || this.releaseSent.has(id)) return
     const chat = this.prChat(id)
     if (!chat) return
+    if (tip !== ws.waitsFor.tip) this.updateWs(id, { waitsFor: { ...ws.waitsFor, tip } })
     const base = stripRemote(ws.baseRef, remote)
     const parts: ChatPart[] = [{ type: 'text', text: `${this.waitLabelOf(ws)} merged into ${base}. Fetch ${remote}, rebase onto ${remote}/${base}, re-run the tests, then carry on with your task.` }]
     const busy = this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 || !!this.store.room(ws.roomId)?.paused || this.sessions.heldFor().length > 0
@@ -186,13 +195,36 @@ export class Waits extends Feature {
     else if (!this.sessions.post(chat.id, parts)) this.releaseSent.delete(id)
   }
 
-  /** A turn Kernel started ended, with nothing of Kernel's left in the queue: the teammate took the rebase message. */
-  releaseTaken(id: string, chatId: string, by: string) {
+  /**
+   * A turn Kernel started ended, with nothing of Kernel's left in the queue: the teammate took the rebase message. The wait
+   * ends once the branch contains the base Kernel asked it to rebase onto. The branch, not HEAD: a rebase stopped on a
+   * conflict leaves HEAD on the base. Without it, the wait stays with nothing being released, and the Lead hears
+   * (KERNEL-691). A wait saved before that has no tip and ends as it did.
+   */
+  async releaseTaken(id: string, chatId: string, by: string) {
     const ws = this.store.workspace(id)
+    if (ws?.waitsFor && !ws.waitsFor.releasing && ws.waitsFor.tip && this.prChat(id)?.id === chatId) return this.rebasedLater(id, ws.waitsFor.tip)
     if (by !== 'kernel' || !ws?.waitsFor?.releasing || !this.releaseSent.has(id) || this.prChat(id)?.id !== chatId) return
     if (this.sessions.queued(chatId).some((q) => q.from === 'kernel')) return
+    const tip = ws.waitsFor.tip
+    // Git can't tell, as for a branch that is gone: the wait ends as it did before the check.
+    const rebased = !tip || await isAncestor(ws.path, tip, `refs/heads/${ws.branch}`) !== false
+    // Changed while git ran: a new wait, or one ended.
+    const now = this.store.workspace(id)
+    if (!now?.waitsFor?.releasing || now.waitsFor.tip !== tip || !this.releaseSent.has(id)) return
     this.releaseSent.delete(id)
-    this.updateWs(id, { waitsFor: undefined })
+    if (rebased) { this.updateWs(id, { waitsFor: undefined }); return }
+    const { releasing: _, ...wait } = now.waitsFor
+    const kept = this.updateWs(id, { waitsFor: wait })
+    const remote = await this.k.config.remoteOfWs(kept)
+    this.leadUpdates.waits(kept, 'wait.rebase_missing', { on: wait.on, label: this.waitLabelOf(kept), held: false, onto: `${remote}/${stripRemote(kept.baseRef, remote)}` })
+  }
+
+  /** A wait kept for a missing rebase ends at the end of any later turn, the Lead's message or the user's, that rebased (KERNEL-691). */
+  private async rebasedLater(id: string, tip: string) {
+    const rebased = await isAncestor(this.mustWs(id).path, tip, `refs/heads/${this.mustWs(id).branch}`) !== false
+    const now = this.store.workspace(id)?.waitsFor
+    if (rebased && now && !now.releasing && now.tip === tip) this.clearWait(id)
   }
 
   /**
