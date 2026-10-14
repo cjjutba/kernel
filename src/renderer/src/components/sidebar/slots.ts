@@ -126,6 +126,31 @@ export function openSlot(n: number): void {
 }
 
 /**
+ * The workspaces the ⌃1 to ⌃9 shortcuts reach: those the current chat handed off, oldest first as the sidebar draws them, folded away or not
+ * (KERNEL-814). The current chat is the one whose row holds the page in view: the Lead chat you are in, or the chat that handed off the
+ * workspace you are in while that chat is open. Any other page, and a workspace no open chat owns, has none.
+ */
+export function workspaceSlotsFor(
+  route: Route, room: Room, agents: Record<string, AgentDef[]>, workspaces: Workspace[], chats: Record<string, Chat[]>, threads: Record<string, Thread> = {}
+): Workspace[] {
+  if (route.name !== 'workspace') return []
+  const id = route.workspaceId
+  const chat = sidebarRows(room, agents, workspaces, chats, threads).find((r): r is Extract<Slot, { kind: 'chat' }> => r.kind === 'chat' && (r.ws?.id === id || r.owned.some((w) => w.id === id)))
+  return chat ? chat.owned.slice(0, MAX_SLOTS) : []
+}
+
+/** Opens the n-th workspace (1 to 9) of the current chat. With no current chat, or a number past the last workspace, it returns false and does nothing. */
+export function openWorkspaceSlot(n: number): boolean {
+  const s = getState()
+  const route = s.ui.route
+  const room = route.name === 'workspace' ? s.rooms.find((r) => r.id === s.workspaces.find((w) => w.id === route.workspaceId)?.roomId) : undefined
+  const ws = room && workspaceSlotsFor(route, room, s.agents, s.workspaces, s.chats, s.threads)[n - 1]
+  if (!room || !ws) return false
+  openRow(room.id, { kind: 'workspace', ws, nested: true })
+  return true
+}
+
+/**
  * Opens a row with the caret in the message box of the chat it shows, whether it was clicked or reached with ⌘1 to ⌘9.
  * The Lead row asks the engine which chat to open, and lands on New chat when none is open (KERNEL-405).
  */
