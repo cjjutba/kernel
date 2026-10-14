@@ -4,6 +4,7 @@ import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { Icon } from '../../ui'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
+import { leadModeOf } from '@shared/leadMode'
 import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { isLeadWorkspace, leadOf, openRoom } from '../../lead'
@@ -178,7 +179,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
 
   if (!ws) return <div className="panel" />
   // A Lead chat with work of its own shows its PR actions, Create PR included, like a teammate's (KERNEL-405, D-106).
-  const ownPr = !isLead || (isLeadChatWorkspace(ws) && (hasChanges(ws) || !!ws.prNumber || ws.prState !== 'none'))
+  // In Build here the chat is a builder from its first turn, so its PR header shows before it has changes (KERNEL-780).
+  const ownPr = !isLead || (isLeadChatWorkspace(ws) && (leadModeOf(ws) === 'build' || hasChanges(ws) || !!ws.prNumber || ws.prState !== 'none'))
   const title = headerTitle(ws)
   // the Lead's shared worktree and a current-branch workspace say what they follow instead of a branch. That label carries meaning, so it
   // stays, and it has no copy: the title is plain text there.
