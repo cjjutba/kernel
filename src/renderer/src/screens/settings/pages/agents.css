@@ -6,6 +6,7 @@
 .ag-info { color: var(--muted); }
 
 .ag-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.ag-bar:empty { display: none; }
 .ag-bar-gap { flex: 1; }
 .ag-summary { font-size: 12.5px; color: var(--muted); }
 .ag-filter { position: relative; display: flex; align-items: center; width: 220px; max-width: 100%; }
@@ -18,7 +19,6 @@
 
 .ag-group { display: flex; flex-direction: column; gap: 10px; }
 .ag-group-head { align-self: flex-start; display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 2px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
-.ag-group-head h2 { display: flex; align-items: baseline; gap: 8px; }
 .ag-group-head > svg { color: var(--muted); transition: transform 0.15s; }
 .ag-group-head[aria-expanded='true'] > svg { transform: rotate(90deg); }
 .ag-group-head:focus-visible { outline-offset: 3px; border-radius: var(--r-xs); }
