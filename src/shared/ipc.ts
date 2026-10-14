@@ -102,6 +102,11 @@ export interface KernelApi {
   'agents.customize': { req: { roomId: string; agentId: string }; res: AgentDef }
   /** Deletes .claude/agents/kernel.md, so the room's Lead is Kernel as it ships again, and returns the team (KERNEL-692). */
   'agents.resetLead': { req: { roomId: string }; res: AgentDef[] }
+  /**
+   * Renames the file that customizes Kernel (an older Lead file, or the one `[team] lead` names) to .claude/agents/kernel.md,
+   * keeping its content, and clears `[team] lead` when it named that file. Returns the team (KERNEL-741).
+   */
+  'agents.moveLead': { req: { roomId: string }; res: AgentDef[] }
   /** Team > Add a starter agent: copies one of Kernel's starter files into .claude/agents. Refuses one the team already has. */
   'agents.addStarter': { req: { roomId: string; id: string }; res: AgentDef }
   /**
