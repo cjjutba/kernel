@@ -1,6 +1,6 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { AgentChangePr, AgentDef, AgentReach, AgentScope, Approval, AskedQuestion, ChatPart, Decision, IssueTaken, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
+import { isRunName, RUN_SCRIPT_NAME, type AgentChangePr, type AgentDef, type AgentReach, type AgentScope, type Approval, type AskedQuestion, type ChatPart, type Decision, type IssueTaken, type PrState, type QueueReason, type RoomSettingsPatch, type Workspace, type WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { blockedWhy, headBlockers, notMergeable, reviewsText } from '@shared/merge'
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
@@ -13,6 +13,7 @@ import { firstLine } from './text'
 import { archiveSkip, CLOSED_PR } from './archiveGuard'
 import { isMerged, joinLabels, waitLabel, waitRefusal, waitTargets } from './waits'
 import { trackerName } from './trackers'
+import { convertScriptVariables, SCRIPT_VARIABLES } from './scriptImport'
 
 export interface KernelToolDeps {
   roomId: string
@@ -100,6 +101,8 @@ export interface KernelToolDeps {
    */
   planApproved?: () => string | void | Promise<string | void>
   handedOff?: () => void
+  /** Saves set_room_scripts' patch to the room's `.kernel/settings.local.toml` as Settings does. Left out, the tool refuses (KERNEL-683). */
+  saveRoomScripts?: (patch: RoomSettingsPatch) => Promise<unknown>
 }
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
@@ -283,6 +286,58 @@ function reachNote(name: string, r: AgentReach): string {
   }
   return out.join(' ')
 }
+
+/** Kernel's variables and the Conductor and Superset names that become each, for set_room_scripts' description. */
+const VARIABLE_TABLE = [...new Set(Object.values(SCRIPT_VARIABLES))].map((to) => {
+  const from = Object.keys(SCRIPT_VARIABLES).filter((name) => SCRIPT_VARIABLES[name] === to)
+  return `${joinLabels(from.map((name) => `$${name}`))} ${from.length > 1 ? 'become' : 'becomes'} $${to}`
+}).join(', ')
+
+/** set_room_scripts' description, which holds how to read a pasted Conductor or Superset config (KERNEL-683). */
+export const SET_ROOM_SCRIPTS_DESCRIBE = [
+  "Save this room's scripts to .kernel/settings.local.toml on the user's Mac. The user sees every script in full on a card, after Kernel renames variables, and nothing is written unless they press Save.",
+  'Pass only what changes. setup runs once when a workspace is made, run starts the app, archive runs when a workspace is archived, run_scripts adds run scripts by name, and run_mode says whether run scripts run in every workspace at once (concurrent) or in one workspace at a time (single).',
+  'Commands are non-interactive, non-destructive and safe in a git worktree. A run script takes its port from $KERNEL_PORT.',
+  `Kernel renames Conductor's and Superset's variables: ${VARIABLE_TABLE}. Any other CONDUCTOR_* or SUPERSET_* name stays as written, and the result names it.`,
+  "Reading a pasted config: Conductor's conductor.json has scripts.setup, scripts.run and scripts.archive, and runScriptMode nonconcurrent is run_mode single.",
+  "Conductor's .conductor/settings.toml has setup, run, archive and run_mode (nonconcurrent is single) under [scripts]. Each [scripts.run.<id>] table is a run script: command, then args, with cd <options.cwd> && first when it has one. The one with default = true, or the only one, is run, and the rest go in run_scripts under their id. Leave out one with hide = true or whose available_in lacks local.",
+  "Superset's .superset/config.json has setup, teardown and run as lists of commands: join each list with &&, put cd <cwd> && first when it has a cwd, and teardown is archive."
+].join(' ')
+
+/** The patch set_room_scripts saves, and what its card shows: each script after conversion, exactly as saved. */
+function roomScripts(a: { setup?: string; run?: string; archive?: string; run_scripts?: Record<string, string>; run_mode?: 'concurrent' | 'single' }): { refusal: string } | { patch: RoomSettingsPatch; card: string; saved: string[]; renamed: string[]; unknown: string[] } {
+  const named = Object.entries(a.run_scripts ?? {})
+  const bad = named.find(([name]) => isRunName(name) || !RUN_SCRIPT_NAME.test(name))
+  if (bad) return { refusal: isRunName(bad[0]) ? 'pass the main run script as run, not in run_scripts.' : `"${bad[0]}" can't name a run script. Use up to 32 letters, digits, - and _, starting with a letter or digit.` }
+  const asked: { label: string; text: string; put: (patch: RoomSettingsPatch, text: string) => void }[] = [
+    ...(['setup', 'run', 'archive'] as const).flatMap((key) => (a[key] === undefined ? [] : [{ label: `${key[0].toUpperCase()}${key.slice(1)} script`, text: a[key]!, put: (p: RoomSettingsPatch, t: string) => { p.scripts = { ...p.scripts, [key]: t } } }])),
+    ...named.map(([name, text]) => ({ label: `Run script "${name}"`, text, put: (p: RoomSettingsPatch, t: string) => { p.runScripts = { ...p.runScripts, [name]: t } } }))
+  ]
+  const empty = asked.find((s) => !s.text.trim())
+  if (empty) return { refusal: `${empty.label} is empty. Leave out a script you don't change.` }
+  if (!asked.length && !a.run_mode) return { refusal: 'pass at least one script, or run_mode.' }
+  const patch: RoomSettingsPatch = {}
+  const renamed = new Set<string>()
+  const unknown = new Set<string>()
+  const card: string[] = []
+  for (const s of asked) {
+    const c = convertScriptVariables(s.text.trim())
+    c.renamed.forEach((n) => renamed.add(n))
+    c.unknown.forEach((n) => unknown.add(n))
+    s.put(patch, c.script)
+    card.push(`${s.label}\n${c.script}`)
+  }
+  if (a.run_mode) {
+    patch.scripts = { ...patch.scripts, runMode: a.run_mode }
+    card.push(`Run mode\n${a.run_mode === 'single' ? 'One at a time' : 'Concurrent'}`)
+  }
+  const saved = [...asked.map((s) => s.label.replace(/^[A-Z]/, (c) => c.toLowerCase())), ...(a.run_mode ? [`run mode ${a.run_mode}`] : [])]
+  return { patch, card: card.join('\n\n'), saved, renamed: [...renamed].sort(), unknown: [...unknown].sort() }
+}
+
+/** The question on set_room_scripts' card, and its answers (KERNEL-683). */
+export const SAVE_SCRIPTS_QUESTION = 'Save these scripts to .kernel/settings.local.toml?'
+const SAVE = 'Save'
 
 /** What the Lead's server tells the model, next to the tools. */
 export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, propose who gets what in one yes-or-no question, and call create_workspace only on a go-ahead that raises nothing new, quoted in go_ahead. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Filing tracker issues needs the same go-ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off.'
@@ -614,6 +669,32 @@ export function kernelTools(d: KernelToolDeps) {
       if (d.lead) bus.push({ type: 'agent.status', roomId: d.roomId, agentId: d.lead.id, status: 'working' })
       bus.activity({ kind: 'agent.say', roomId: d.roomId, agentId: d.lead?.id, text: t })
       return text('ok')
+    }),
+    tool('set_room_scripts', SET_ROOM_SCRIPTS_DESCRIBE, {
+      setup: z.string().optional().describe('The setup script, for example "pnpm install"'),
+      run: z.string().optional().describe('The main run script, for example "pnpm dev --port $KERNEL_PORT"'),
+      archive: z.string().optional().describe('The archive script, for example "docker compose down"'),
+      run_scripts: z.record(z.string(), z.string()).optional().describe('More run scripts by name, for example {"storybook": "pnpm storybook --port $KERNEL_PORT"}'),
+      run_mode: z.enum(['concurrent', 'single']).optional()
+    }, async (args, extra) => {
+      const refuse = (why: string) => ({ ...text(`Not saved: ${why}`), isError: true })
+      if (!d.saveRoomScripts) return refuse('saving scripts is not available here.')
+      const asked = roomScripts(args)
+      if ('refusal' in asked) return refuse(asked.refusal)
+      // The card's text is the converted text, exactly what Save writes (KERNEL-683).
+      const options = [{ label: SAVE, description: 'Write them to .kernel/settings.local.toml, on this Mac only' }, { label: 'Cancel', description: 'Write nothing' }]
+      const decision = await d.askUser({ kind: 'question', title: SAVE_SCRIPTS_QUESTION, detail: asked.card, options: options.map((o) => o.label), questions: [{ question: SAVE_SCRIPTS_QUESTION, options }] }, signalOf(extra))
+      if (!decision) return text('Not saved: the card closed without an answer.')
+      if (decision.behavior !== 'answer' || decision.text !== SAVE) return text(decision.behavior === 'answer' && decision.text !== 'Cancel' ? `Not saved. The user answered: ${decision.text}` : 'Not saved: the user canceled.')
+      try { await d.saveRoomScripts(asked.patch) } catch (e) { return refuse((e as Error).message) }
+      const renamed = asked.renamed.map((n) => `$${n} to $${SCRIPT_VARIABLES[n]}`)
+      const unknown = asked.unknown.map((n) => `$${n}`)
+      return text([
+        `Saved ${joinLabels(asked.saved)} to .kernel/settings.local.toml.`,
+        renamed.length ? `Kernel renamed ${joinLabels(renamed)}.` : '',
+        unknown.length ? `Kernel has no variable for ${joinLabels(unknown)}, so ${unknown.length > 1 ? 'they were' : 'it was'} left as written. Tell the user, since the script may not work in Kernel.` : '',
+        asked.patch.scripts?.setup ? 'Workspaces already open keep the old setup until the user clicks Run setup in each.' : ''
+      ].filter(Boolean).join(' '))
     }),
     tool('create_agent', 'Create a new agent by proposing its file. The user approves it and picks who gets it: just them (~/.claude/agents on their Mac, in every room) or the team (a pull request that adds .claude/agents/<id>.md). Set scope only when the user said which. Leave tools out for the role\'s defaults: Read, Grep and Glob for a reviewer, and Read, Edit, Write, Bash, Grep and Glob for everyone else. An agent takes tasks only when its tools include Bash, and Edit or Write. Name each MCP server it needs in tools, as mcp__<server>.', {
       id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),

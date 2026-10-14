@@ -1729,7 +1729,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
       approvals: [pending('question', 'noor', { title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
     })
   }),
-  WorkspaceQuestionSteps: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+  // set_room_scripts' card: every script in full, as Save writes it, multi-line setup included (KERNEL-683).
+  WorkspaceQuestionScripts: scene((f) => {
+    const question = 'Save these scripts to .kernel/settings.local.toml?'
+    const options = [{ label: 'Save', description: 'Write them to .kernel/settings.local.toml, on this Mac only' }, { label: 'Cancel', description: 'Write nothing' }]
+    const detail = 'Setup script\npnpm install\ncp "$KERNEL_ROOT_PATH/.env" .env\n\nRun script\npnpm dev --port $KERNEL_PORT\n\nRun script "storybook"\npnpm storybook -p $((KERNEL_PORT + 1))\n\nRun mode\nOne at a time'
+    return scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Room scripts', [
+      userMsg('qs1', 'Here is our conductor.json, set this room up the same way.'),
+      tool('qs-t1', 'Read package.json', 'cat package.json', { name: 'Read' })
+    ], {
+      approvals: [pending('question', 'rowan', { workspaceId: ids.lead, title: question, detail, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
+    }, { model: 'claude-opus-5-5' })
+  }),
+  WorkspaceQuestionSteps:scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
     userMsg('qs1', 'Build T-15b from the approved plan.', true),
     ...folded('qs', 6, 0),
     { kind: 'result', id: 'qs-res', ts: at(10, 29), durationMs: 60_000, ok: true }

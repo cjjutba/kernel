@@ -1,0 +1,7 @@
+**Rowan saves a room's scripts only through a card that shows them as Kernel will save them.** `set_room_scripts` is a Lead tool. It converts Conductor's and Superset's variables first (KERNEL-682), then asks with a question card whose `detail` holds every script in full. The card's text and the saved text are the same string. Nothing is written until the user presses Save. Cancel, another answer, or a card that closes without one writes nothing. Save goes through `config.setRoom`, the code behind `settings.setRoom`, so a script Rowan saves meets the same trust steps as one the user types in Settings. It always writes `.kernel/settings.local.toml`, so it stays on this Mac. Committing scripts for the team is still a Settings choice.
+
+The question card shows its `detail` now, in the code style, so a multi-line script keeps its lines. No other question sets `detail` today, so other cards look the same.
+
+The Conductor and Superset mapping lives in the tool's description, not in `LEAD_RULE`. Every Lead turn carries `LEAD_RULE`, and the mapping only matters when Rowan sets scripts.
+
+`scripts.askLead` starts a new Lead chat out of plan mode. Main writes the message, and the renderer sends none. The Save card is where the user checks the work, so a plan to approve first would ask twice. What `scripts.suggest` found goes into the message as JSON inside a `<repo-content>` block marked as repo content, not instructions, with `<` escaped so the repo can't close the block. KERNEL-683.

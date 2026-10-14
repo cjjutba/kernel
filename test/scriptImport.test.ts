@@ -21,7 +21,8 @@ describe('convertScriptVariables (KERNEL-682)', () => {
     expect(convertScriptVariables('PORT=$((CONDUCTOR_PORT + 1)) pnpm e2e').script).toBe('PORT=$((KERNEL_PORT + 1)) pnpm e2e')
     expect(convertScriptVariables('echo $(( (CONDUCTOR_PORT + 1) * 2 )) $(($CONDUCTOR_PORT+2))').script).toBe('echo $(( (KERNEL_PORT + 1) * 2 )) $(($KERNEL_PORT+2))')
     expect(convertScriptVariables('cp "$CONDUCTOR_ROOT_PATH/.env" "$CONDUCTOR_WORKSPACE_PATH" # ${CONDUCTOR_WORKSPACE_NAME} on $CONDUCTOR_DEFAULT_BRANCH')).toEqual({
-      script: 'cp "$KERNEL_ROOT_PATH/.env" "$KERNEL_WORKSPACE" # ${KERNEL_WORKSPACE_NAME} on $KERNEL_DEFAULT_BRANCH', unknown: []
+      script: 'cp "$KERNEL_ROOT_PATH/.env" "$KERNEL_WORKSPACE" # ${KERNEL_WORKSPACE_NAME} on $KERNEL_DEFAULT_BRANCH', unknown: [],
+      renamed: ['CONDUCTOR_DEFAULT_BRANCH', 'CONDUCTOR_ROOT_PATH', 'CONDUCTOR_WORKSPACE_NAME', 'CONDUCTOR_WORKSPACE_PATH']
     })
     expect(convertScriptVariables('ln -s $SUPERSET_ROOT_PATH/node_modules ${SUPERSET_WORKSPACE_PATH}/node_modules; echo $SUPERSET_WORKSPACE_NAME').script)
       .toBe('ln -s $KERNEL_ROOT_PATH/node_modules ${KERNEL_WORKSPACE}/node_modules; echo $KERNEL_WORKSPACE_NAME')
@@ -29,14 +30,14 @@ describe('convertScriptVariables (KERNEL-682)', () => {
 
   it('leaves a longer name alone, and a name outside a variable', () => {
     expect(convertScriptVariables('open $CONDUCTOR_PORTAL ${CONDUCTOR_PORT_BASE} $((CONDUCTOR_PORTS + 1))')).toEqual({
-      script: 'open $CONDUCTOR_PORTAL ${CONDUCTOR_PORT_BASE} $((CONDUCTOR_PORTS + 1))', unknown: ['CONDUCTOR_PORTAL', 'CONDUCTOR_PORTS', 'CONDUCTOR_PORT_BASE']
+      script: 'open $CONDUCTOR_PORTAL ${CONDUCTOR_PORT_BASE} $((CONDUCTOR_PORTS + 1))', unknown: ['CONDUCTOR_PORTAL', 'CONDUCTOR_PORTS', 'CONDUCTOR_PORT_BASE'], renamed: []
     })
-    expect(convertScriptVariables('echo CONDUCTOR_PORT is $MY_CONDUCTOR_PORT')).toEqual({ script: 'echo CONDUCTOR_PORT is $MY_CONDUCTOR_PORT', unknown: [] })
+    expect(convertScriptVariables('echo CONDUCTOR_PORT is $MY_CONDUCTOR_PORT')).toEqual({ script: 'echo CONDUCTOR_PORT is $MY_CONDUCTOR_PORT', unknown: [], renamed: [] })
   })
 
   it("names what Kernel has no variable for, and keeps it as written", () => {
     expect(convertScriptVariables('$CONDUCTOR_BIN_DIR/tool --port $CONDUCTOR_PORT && echo ${SUPERSET_PORT_BASE} $SUPERSET_PORT_BASE')).toEqual({
-      script: '$CONDUCTOR_BIN_DIR/tool --port $KERNEL_PORT && echo ${SUPERSET_PORT_BASE} $SUPERSET_PORT_BASE', unknown: ['CONDUCTOR_BIN_DIR', 'SUPERSET_PORT_BASE']
+      script: '$CONDUCTOR_BIN_DIR/tool --port $KERNEL_PORT && echo ${SUPERSET_PORT_BASE} $SUPERSET_PORT_BASE', unknown: ['CONDUCTOR_BIN_DIR', 'SUPERSET_PORT_BASE'], renamed: ['CONDUCTOR_PORT']
     })
   })
 })
