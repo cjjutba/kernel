@@ -63,12 +63,12 @@ export function Integrations() {
         </Row>
         <Row id="linear" lead={<Mark name="linear" />} label="Linear" desc={linear?.detail} full={form('linear')}>
           {linear?.connected
-            ? <Button variant="ghost" busy={busy === 'linear'} busyLabel="Disconnecting" disabled={busy !== null} onClick={() => void disconnectLinear()}>Disconnect</Button>
+            ? <Button variant="ghost" busy={busy === 'linear'} busyPattern="scatter" busyLabel="Disconnecting" disabled={busy !== null} onClick={() => void disconnectLinear()}>Disconnect</Button>
             : asking !== 'linear' && <Button disabled={!linear || busy !== null} onClick={() => { close(); setAsking('linear') }}>Connect</Button>}
         </Row>
         <Row id="jira" lead={<Mark name="jira" />} label="Jira" desc={jira ? `Connected to ${jira.site} as ${jira.name}. Issues open as workspaces.` : jiraError ?? 'Not connected. Issues open as workspaces once it is.'} full={form('jira')}>
           {jira
-            ? <Button variant="ghost" busy={busy === 'jira'} busyLabel="Disconnecting" disabled={busy !== null} onClick={() => void disconnectJira()}>Disconnect</Button>
+            ? <Button variant="ghost" busy={busy === 'jira'} busyPattern="scatter" busyLabel="Disconnecting" disabled={busy !== null} onClick={() => void disconnectJira()}>Disconnect</Button>
             : asking !== 'jira' && <Button disabled={jira === undefined || busy !== null} onClick={() => { close(); setAsking('jira') }}>Connect</Button>}
         </Row>
       </Section>

@@ -24,7 +24,7 @@ export function ReviewCard({ ws, pr, agentName }: { ws: Workspace; pr: PrInfo; a
       <div className="code">{reviewLines(comments).join('\n')}</div>
       <div className="acts">
         <button type="button" className="btn" onClick={() => void call('system.openExternal', { url: pr.url })}>Open on GitHub</button>
-        <Button variant="primary" busy={!!busy} busyLabel="Sending" onClick={() => void send()}>Send to {agentName}</Button>
+        <Button variant="primary" busy={!!busy} busyPattern="arrow-right" busyLabel="Sending" onClick={() => void send()}>Send to {agentName}</Button>
       </div>
     </section>
   )

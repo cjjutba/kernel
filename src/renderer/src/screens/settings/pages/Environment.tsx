@@ -85,7 +85,7 @@ function Variables({ roomId, room, env, error, action }: { roomId?: string; room
         <ConfirmDialog
           title={`Remove ${removing}?`}
           body={`${room ? `Chats and scripts in ${room.name}` : 'Chats and scripts in every room'} stop getting ${removing} once they start afterwards. The ones already running keep it.`}
-          confirmLabel="Remove" danger busy={busy === 'remove'} busyLabel="Removing"
+          confirmLabel="Remove" danger busy={busy === 'remove'} busyPattern="scatter" busyLabel="Removing"
           onConfirm={() => void remove(removing)} onCancel={() => setRemoving(null)}
         />
       )}
@@ -113,7 +113,7 @@ function EnvFiles({ roomId, rs, env }: { roomId: string; rs: RoomSettings | null
   const rows: TableRow[] = files.map((f) => ({
     key: f.path,
     cells: [<span className="mono"><FileLabel path={f.path} /></span>, f.missing ? 'Missing' : ''],
-    actions: <Button variant="ghost" aria-label={`Remove ${f.path}`} busy={busy === `remove:${f.path}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void save(`remove:${f.path}`, () => latest().filter((p) => p !== f.path))}>Remove</Button>
+    actions: <Button variant="ghost" aria-label={`Remove ${f.path}`} busy={busy === `remove:${f.path}`} busyPattern="scatter" busyLabel="Removing" disabled={busy !== null} onClick={() => void save(`remove:${f.path}`, () => latest().filter((p) => p !== f.path))}>Remove</Button>
   }))
   const source = isOverride(rs, path) ? 'Changed for this room' : undefined
   return (

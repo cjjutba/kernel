@@ -29,6 +29,18 @@ function Controls() {
           <IconButton icon="plus" label="Add" /><IconButton icon="more" label="More" /><IconButton icon="archive" label="Archive" busy busyLabel="Archiving" />
         </div>
       </Section>
+      <Section title="Busy buttons">
+        <div className="devui-row">
+          <Button variant="primary" busy busyLabel="Sending" busyPattern="arrow-right">Send</Button>
+          <Button busy busyLabel="Merging" busyPattern="ripple-in">Merge</Button>
+          <Button variant="primary" busy busyLabel="Approving" busyPattern="pulse">Approve</Button>
+          <Button variant="danger" busy busyLabel="Archiving" busyPattern="scatter">Archive</Button>
+          <Button busy busyLabel="Refreshing" busyPattern="rotate">Refresh</Button>
+          <Button busy busyLabel="Starting" busyPattern="snake">Run</Button>
+          <Button busy busyLabel="Restoring" busyPattern="wave-back">Restore</Button>
+          <Button busy busyLabel="Saving">Save</Button>
+        </div>
+      </Section>
       <Section title="Pills, tabs, segmented control, toggle, select">
         <div className="devui-row">
           <Pill pressed={pill} onClick={() => setPill(!pill)}>All rooms</Pill><Pill>Needs you</Pill>

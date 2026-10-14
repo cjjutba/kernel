@@ -33,7 +33,7 @@ export function RoomReferences({ roomId, rs }: { roomId: string; rs: RoomSetting
   const rows: TableRow[] = folders.map((path) => ({
     key: path,
     cells: [<span className="mono" title={path}>{home(path)}</span>, missing.includes(path) ? 'Missing' : ''],
-    actions: <Button variant="ghost" aria-label={`Remove ${home(path)}`} busy={busy === `remove:${path}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void remove(path)}>Remove</Button>
+    actions: <Button variant="ghost" aria-label={`Remove ${home(path)}`} busy={busy === `remove:${path}`} busyPattern="scatter" busyLabel="Removing" disabled={busy !== null} onClick={() => void remove(path)}>Remove</Button>
   }))
   return (
     <Section

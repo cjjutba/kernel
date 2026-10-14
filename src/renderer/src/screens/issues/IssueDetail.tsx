@@ -167,7 +167,7 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
             <span className="grow" />
             <a className="btn lg" href={issue.url} target="_blank" rel="noreferrer">Open in Linear<Icon name="ext" size={12} /></a>
             <Button size="lg" disabled={!room} onClick={newChat}>New chat</Button>
-            <Button size="lg" variant="primary" busy={busy === 'plan'} busyLabel="Sending" disabled={!room || busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
+            <Button size="lg" variant="primary" busy={busy === 'plan'} busyPattern="arrow-right" busyLabel="Sending" disabled={!room || busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
           </div>
         </div>
       </div>

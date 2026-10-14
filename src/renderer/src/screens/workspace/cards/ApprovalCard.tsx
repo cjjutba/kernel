@@ -37,9 +37,9 @@ function PermCard({ a, who }: { a: Approval; who: string }) {
       {a.reason && <p className="reason"><Icon name="info" size={14} />{a.reason}</p>}
       {a.status === 'pending' ? (
         <div className="acts">
-          <Button busy={busy === 'deny'} busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))}>Deny</Button>
-          <Button busy={busy === 'always'} busyLabel="Allowing" disabled={busy !== null} onClick={() => void run('always', () => decide(a, { behavior: 'allow', always: true }))}>Always allow here</Button>
-          <Button variant="primary" busy={busy === 'once'} busyLabel="Allowing" disabled={busy !== null} onClick={() => void run('once', () => decide(a, { behavior: 'allow' }))}>Allow once</Button>
+          <Button busy={busy === 'deny'} busyPattern="pulse" busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))}>Deny</Button>
+          <Button busy={busy === 'always'} busyPattern="pulse" busyLabel="Allowing" disabled={busy !== null} onClick={() => void run('always', () => decide(a, { behavior: 'allow', always: true }))}>Always allow here</Button>
+          <Button variant="primary" busy={busy === 'once'} busyPattern="pulse" busyLabel="Allowing" disabled={busy !== null} onClick={() => void run('once', () => decide(a, { behavior: 'allow' }))}>Allow once</Button>
         </div>
       ) : <Result a={a} />}
     </section>
@@ -259,7 +259,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
       </div>
       <div className="acts">
         {step > 0 && <Button disabled={busy !== null} onClick={() => move(step - 1)}>Back</Button>}
-        <Button variant="primary" busy={busy === 'send'} busyLabel="Sending" disabled={!pickReady(p) || busy !== null} onClick={primary}>{many && !done ? 'Next' : 'Send'}</Button>
+        <Button variant="primary" busy={busy === 'send'} busyPattern="arrow-right" busyLabel="Sending" disabled={!pickReady(p) || busy !== null} onClick={primary}>{many && !done ? 'Next' : 'Send'}</Button>
       </div>
     </section>
   )
@@ -282,7 +282,7 @@ function ChangesNote({ onSend, onCancel }: { onSend: (note: string) => Promise<u
     <div className="acts" style={{ flexWrap: 'nowrap' }}>
       <input className="grow-input" aria-label="What should change" placeholder="What should change" autoFocus value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send(); if (e.key === 'Escape') onCancel() }} />
       <Button disabled={!!busy} onClick={onCancel}>Cancel</Button>
-      <Button variant="primary" busy={!!busy} busyLabel="Sending" onClick={send}>Send</Button>
+      <Button variant="primary" busy={!!busy} busyPattern="arrow-right" busyLabel="Sending" onClick={send}>Send</Button>
     </div>
   )
 }
@@ -312,7 +312,7 @@ function PlanDecision({ a, lead }: { a: Approval; lead: boolean }) {
   return (
     <div className="acts">
       <Button disabled={!!busy} onClick={() => setAsking(true)}>{lead ? 'Request changes' : 'Keep planning'}</Button>
-      <Button variant="primary" busy={!!busy} busyLabel="Approving" onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))}>{lead ? 'Approve and hand off' : 'Approve and build'}</Button>
+      <Button variant="primary" busy={!!busy} busyPattern="pulse" busyLabel="Approving" onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))}>{lead ? 'Approve and hand off' : 'Approve and build'}</Button>
     </div>
   )
 }
@@ -400,7 +400,7 @@ function HireCard({ a, lead }: { a: Approval; lead: string }) {
       ) : (
         <div className="acts">
           <Button disabled={!!busy} onClick={() => setAsking(true)}>Edit file</Button>
-          <Button variant="primary" busy={!!busy} busyLabel="Creating" onClick={() => void run('create', () => decide(a, { behavior: 'allow' }))}>Create agent</Button>
+          <Button variant="primary" busy={!!busy} busyPattern="pulse" busyLabel="Creating" onClick={() => void run('create', () => decide(a, { behavior: 'allow' }))}>Create agent</Button>
         </div>
       )}
     </section>

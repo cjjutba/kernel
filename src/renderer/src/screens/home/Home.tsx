@@ -47,8 +47,8 @@ function NeedsRow({ item }: { item: InboxItem }) {
       : <span>{who} wants to {a.title.charAt(0).toLowerCase()}{a.title.slice(1)}</span>
     actionsEl = (
       <>
-        <Button busy={busy === 'deny'} busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))} aria-label={busy === 'deny' ? `Denying: ${a.title}` : `Deny: ${a.title}`}>Deny</Button>
-        <Button variant="primary" busy={busy === 'approve'} busyLabel="Approving" disabled={busy !== null} onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))} aria-label={busy === 'approve' ? `Approving: ${a.title}` : `Approve: ${a.title}`}>Approve</Button>
+        <Button busy={busy === 'deny'} busyPattern="pulse" busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))} aria-label={busy === 'deny' ? `Denying: ${a.title}` : `Deny: ${a.title}`}>Deny</Button>
+        <Button variant="primary" busy={busy === 'approve'} busyPattern="pulse" busyLabel="Approving" disabled={busy !== null} onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))} aria-label={busy === 'approve' ? `Approving: ${a.title}` : `Approve: ${a.title}`}>Approve</Button>
       </>
     )
   } else if (n.kind === 'trust' && n.roomId) {

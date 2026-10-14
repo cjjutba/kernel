@@ -142,6 +142,19 @@ A button that waits on the main process shows it is working until the call retur
 - The dot loader (one 12px size, small round `faint` dots that fade in and out, rippling out from the center as `pattern="ripple-out"`, which `Button` and `IconButton` set) takes the icon's place and the label says what is happening: "Archiving", "Merging", "Creating". One or two plain words, no trailing dots, the way the PR header writes "Creating PR".
 - The button is disabled while the call runs, so a second click, Enter or a shortcut can't start the work twice. Buttons next to it that act on the same thing (Deny beside Approve, Cancel beside Send) are disabled too.
 - Every variant takes the Creating PR look at full opacity: surface-3 fill, line-3 border, ink-3 text. A busy primary or danger button turns grey. The PR header band is the exception: there a busy button keeps the band's tone, with its soft fill and edge, dimmer text and a dot loader in the band's text color, so it never reads as a hole in the band (KERNEL-274).
+- The pattern says what kind of action is waiting. `Button`, `IconButton` and `ConfirmDialog` take `busyPattern`, which defaults to `ripple-out`, and the inline action links and the segmented control pick from the same table. A new busy button picks its row here and falls back to `ripple-out` when none fits (KERNEL-759).
+
+  | Action | `busyPattern` |
+  | --- | --- |
+  | Send (messages, answers, plans, tests) | `arrow-right` |
+  | Merge | `ripple-in` |
+  | Approve, allow, deny, trust | `pulse` |
+  | Archive, discard, remove, delete, close, disconnect, cancel | `scatter` |
+  | Refresh, retry, reload, restart, recheck | `rotate` |
+  | Run and stop scripts | `snake` |
+  | Restore, revert, reset, switch account, sign in to a usage account | `wave-back` |
+  | Everything else (save, create, open, copy, add, install, connect, export, move, compact, commit, link) | `ripple-out` |
+
 - In code, `useBusy()` tracks which button started the work, and `Button` and `IconButton` take `busy` and `busyLabel`. `ConfirmDialog` passes the same two to its confirm button and takes `disabled` for "can't confirm yet". The sidebar's archive button is the one exception. It stays a plain icon with no spinner or word, and still ignores a second click.
 - No spinner for navigation, menus, opening a dialog, toggles and selects that save in place, links that open the browser or the editor, copying, or sending a chat message, which shows up in the thread.
 
