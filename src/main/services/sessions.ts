@@ -128,6 +128,8 @@ export interface SessionDeps {
   aliasesFor?: (ws: Workspace) => Record<string, string> | undefined
   /** The room's `[agents]` table for the workspace's agent: `unlisted_tools` and its `allow` servers (KERNEL-537). */
   accessFor?: (ws: Workspace) => { unlisted: UnlistedTools; allow: string[] } | undefined
+  /** The room's reference folders that are there now, which a Claude chat may read but not edit (KERNEL-748). */
+  referencesFor?: (ws: Workspace) => string[] | undefined
   /**
    * A session reported how its MCP servers are doing. Returns every report the room holds for that provider since, which
    * may name servers this session's report doesn't yet, such as claude.ai connectors that join late (KERNEL-464).
@@ -1348,7 +1350,7 @@ export class Sessions {
       live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, apiKey: c?.apiKey, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), bypass: live.threadBypass })
     } else {
       live.bypass = bypass
-      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.() ?? {}, compact: this.compactFor(ws, agent), root, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), mode, bypass })
+      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.() ?? {}, compact: this.compactFor(ws, agent), root, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), references: this.d.referencesFor?.(ws), mode, bypass })
     }
     this.live.set(chat.id, live)
     live.runner.start()

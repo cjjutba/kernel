@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { appendFile, lstat, readFile, realpath, rm, writeFile, mkdir } from 'node:fs/promises'
-import { join, dirname, relative, resolve, sep } from 'node:path'
+import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
@@ -427,6 +427,22 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is
 /** A list of repo paths: the text entries, trimmed, blank ones left out. */
 const pathList = (v: unknown): string[] => strings(v).map((p) => p.trim()).filter(Boolean)
 
+/** The personal file's top-level `references`: absolute folder paths, each once (KERNEL-748). A relative or blank entry is left out. */
+const referencesOf = (doc: Record<string, unknown>): string[] => [...new Set(pathList(doc.references).filter((p) => isAbsolute(p)).map((p) => resolve(p)))]
+
+const isFolder = (path: string) => { try { return statSync(path).isDirectory() } catch { return false } }
+
+/**
+ * A room's reference folders (KERNEL-748): the ones that are a folder on this Mac now, and the ones that aren't, which sessions
+ * and the @ menu skip. Only `.kernel/settings.local.toml` sets them, since the paths differ per Mac. Read synchronously, as a
+ * session starts.
+ */
+export function referencesInRoom(repo: string): { present: string[]; missing: string[] } {
+  const all = referencesOf(readTomlSync(repoFile(repo, 'settings.local.toml')))
+  const present = all.filter(isFolder)
+  return { present, missing: all.filter((p) => !present.includes(p)) }
+}
+
 /** What files.copy is when neither settings file sets it. Kernel's own list, so it never needs trusting (KERNEL-209). */
 const DEFAULT_COPY = ['.env', '.env.local']
 
@@ -570,6 +586,10 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
   for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
   if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
   const { scripts, files, workspace, disabled, linear, pr, preview, env, tracker, jira, mcp, agents } = merged
+  // `references` only from the personal file: the paths differ per Mac (KERNEL-748).
+  const references = referencesOf(localDoc)
+  const missingReferences = references.filter((p) => !isFolder(p))
+  if (references.length) sources.references = 'local'
   // `[team]` (KERNEL-397), read like the other tables but written only by `saveTeamSettings`.
   const sharedTeam = teamValues(sharedDoc.team)
   const localTeam = teamValues(localDoc.team)
@@ -585,6 +605,8 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
     ...(Object.keys(pr).length ? { pr } : {}),
     preview: { urls: preview.urls ?? [] },
     env: { files: env.files ?? [] },
+    references,
+    ...(missingReferences.length ? { missingReferences } : {}),
     ...(Object.keys(team).length ? { team } : {}),
     // `[review]` comes from the shared file only: it is the team's policy, and a PR reads it from its base branch (KERNEL-549).
     review: reviewOf(sharedDoc.review),
@@ -1002,7 +1024,7 @@ export function agentAccessInRoom(repo: string, agentId?: string): { unlisted: U
  * A `null` or a blank string removes the key, so the other file or the app default applies again. The other file is left alone.
  * `runScripts` writes the `[run_scripts]` table by name, and `run` writes `[scripts] run` (KERNEL-244).
  * `preview.urls` replaces the whole `[[preview.urls]]` list. A list with no entry that has an address removes the key, like
- * `null`, so the shared file's URLs show again (KERNEL-246).
+ * `null`, so the shared file's URLs show again (KERNEL-246). `references` replaces the personal file's list (KERNEL-748).
  */
 export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, shared = false): Promise<RepoSettings> {
   const file = repoFile(repo, shared ? 'settings.toml' : 'settings.local.toml')
@@ -1029,6 +1051,13 @@ export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, s
   for (const [id, servers] of Object.entries(patch.agents?.allow ?? {})) {
     const kept = (servers ?? []).map((s) => s.trim()).filter(Boolean)
     named(['agents', id], 'allow', kept.length ? kept : undefined)
+  }
+  if (patch.references !== undefined) {
+    if (shared) throw new Error('Reference folders are saved in settings.local.toml only, since their paths differ per Mac.')
+    if ((patch.references ?? []).some((p) => p.trim() && !isAbsolute(p.trim()))) throw new Error('A reference folder needs its full path, starting with /.')
+    const kept = referencesOf({ references: patch.references ?? [] })
+    if (kept.length) doc.references = kept
+    else delete doc.references
   }
   for (const [name, command] of Object.entries(patch.runScripts ?? {})) {
     if (!RUN_SCRIPT_NAME.test(name)) throw new Error(`${name} is not a valid run script name. Use letters, digits, - and _, up to 32 characters.`)

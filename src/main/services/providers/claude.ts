@@ -12,7 +12,7 @@ import { failureOf } from '../health'
 import { toolKind, toolPolicy, type ToolPolicy } from '../agentTools'
 import { mcpStatus, type McpReport } from '../mcp'
 import { IMAGE_DATA_URL, imageMarker, imagesNote } from '../plans'
-import { decide, hookVerdict, MODE_NAMES, NETWORK_OFF, rulesOf, saveAlwaysAllow, stricter, type Rules, type RunMode, type Verdict } from '../permissions'
+import { decide, hookVerdict, MODE_NAMES, NETWORK_OFF, referenceWrite, rulesOf, saveAlwaysAllow, stricter, type Rules, type RunMode, type Verdict } from '../permissions'
 import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
 import type { Ask, Proc, Runner, RunnerHost } from './types'
@@ -63,6 +63,8 @@ export interface ClaudeStart {
   aliases?: Record<string, string>
   /** The room's `[agents]` table for this agent: `unlisted_tools`, and the MCP servers `allow` adds to its tools line (KERNEL-537). */
   access?: { unlisted: UnlistedTools; allow: string[] }
+  /** The room's reference folders that are there now: Claude may read them, and Kernel denies edits under them (KERNEL-748). */
+  references?: string[]
   /** The mode the session starts in (`effectiveMode`). */
   mode: RunMode
   /**
@@ -100,6 +102,8 @@ export class ClaudeRunner implements Runner {
    * step in Bypass permissions whatever mode Kernel last asked for, until the process ends.
    */
   private readonly bypassable: boolean
+  /** The room's reference folders as the session started with them (KERNEL-748). */
+  private readonly references: string[]
 
   constructor(private readonly host: RunnerHost, o: ClaudeStart) {
     const chat = host.chat()
@@ -115,8 +119,10 @@ export class ClaudeRunner implements Runner {
     const off = switchedOff(o.disabled, Object.keys(o.mcpServers ?? {}))
     this.applied = o.mode
     this.bypassable = o.bypass
+    this.references = o.references ?? []
     const options: Options = {
       cwd: ws.path,
+      ...(o.references?.length ? { additionalDirectories: o.references } : {}),
       // The Lead's worktree takes `.claude` settings, agents, hooks and `.mcp.json` from the room's checkout, as it did when
       // it worked there, and loads each once (KERNEL-348, KERNEL-355).
       ...(ws.lead && ws.mode === 'worktree' && o.root ? { projectConfigRoot: o.root } : {}),
@@ -135,6 +141,7 @@ export class ClaudeRunner implements Runner {
       hooks: kernelHooks({
         ctx, commands: this.commands, cwds: this.cwds, tools,
         verdict: (command, cwd) => hookVerdict({ tool: 'Bash', command, cwd }, this.rules()),
+        writeVerdict: (tool, input, cwd) => referenceWrite({ tool, input, cwd }, this.references),
         roomAllows: (tool, input) => hookVerdict({ tool, input }, this.rules())?.behavior === 'allow',
         askUser: (command, reason, signal) => this.askFromHook(command, reason, signal),
         askTool: (tool, input, reason, signal) => this.askToolFromHook(tool, input, reason, signal),
@@ -237,7 +244,7 @@ export class ClaudeRunner implements Runner {
    */
   private rules(): Rules {
     const mode = [this.host.mode(), ...this.switchingTo, ...(this.reported ? [this.reported] : [])].reduce<RunMode>(stricter, this.applied)
-    return { ...rulesOf(this.host, mode), mayBypass: this.bypassable }
+    return { ...rulesOf(this.host, mode), mayBypass: this.bypassable, references: this.references }
   }
 
   /**
@@ -648,6 +655,8 @@ function kernelHooks(o: {
   cwds: Map<string, string>
   /** Kernel's answer about a command in the hook (`hookVerdict`), run in `cwd`. */
   verdict: (command: string, cwd?: string) => Verdict
+  /** Kernel's answer about a file edit in the hook: a deny under a reference folder (`referenceWrite`, KERNEL-748). */
+  writeVerdict?: (tool: string, input: unknown, cwd?: string) => Verdict
   /** A room's tool rule lets an MCP or web tool call through from the hook (`hookVerdict`, KERNEL-454). */
   roomAllows: (tool: string, input: unknown) => boolean
   /** Asks the user about an Always ask command and waits, for the hook's answer (`awaitDecision`). */
@@ -671,7 +680,7 @@ function kernelHooks(o: {
   /** Settings, Hooks, read each time a gate runs (KERNEL-537). */
   gates?: () => AppSettings['hooks'] | undefined
 }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, cwds, verdict, roomAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
+  const { ctx, commands, cwds, verdict, writeVerdict, roomAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -715,6 +724,15 @@ function kernelHooks(o: {
   const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
   const web: HookCallback = async () => (networkAllowed() ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: NETWORK_OFF } })
   hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'WebFetch|WebSearch', hooks: [web] }, { matcher: ROOM_TOOLS, hooks: [roomTool] })
+  // An edit under a reference folder is denied here, so Accept edits and Bypass permissions, which never ask, still refuse it (KERNEL-748).
+  if (writeVerdict) {
+    const write: HookCallback = async (input) => {
+      const { tool_name: tool, tool_input, cwd } = input as PreToolUseHookInput
+      const v = writeVerdict(tool, tool_input, cwd)
+      return v?.behavior === 'deny' ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: v.message } } : {}
+    }
+    hooks.PreToolUse!.push({ matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [write] })
+  }
   // A tool the agent file doesn't list is refused with the reason, here and in any subagent it starts (KERNEL-397).
   if (tools) {
     const gate: HookCallback = async (input, _id, { signal }) => {

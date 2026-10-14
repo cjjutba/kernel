@@ -280,7 +280,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
                       const i = mentionRows.indexOf(f)
                       return (
                         <button key={f.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                          <FileIcon path={f.path} dir={f.dir} /><span className="mono">{baseName(f.path)}{f.dir && '/'}</span><span className="sub ellipsis">{dirName(f.path)}</span>
+                          <FileIcon path={f.path} dir={f.dir} /><span className="mono">{baseName(f.path)}{f.dir && '/'}</span><span className="sub ellipsis">{f.reference ?? dirName(f.path)}</span>
                         </button>
                       )
                     })}

@@ -8,8 +8,11 @@ const dir = 'src/renderer/src/screens/settings'
 const files = [join(dir, 'kit.tsx'), ...readdirSync(join(dir, 'pages')).filter((f) => f.endsWith('.tsx')).map((f) => join(dir, 'pages', f))]
 const lines = files.flatMap((f) => readFileSync(f, 'utf8').split('\n')).filter((l) => /\bsetting=|appliesTo\(/.test(l))
 
-/** Settings that have no row in Settings at all: main reads them, but only a settings file sets them. */
-const NO_ROW = new Set(['hookPort', 'experimental.sharing', 'models.effortByModel', 'mcp.aliases', 'agents.unlistedTools', 'agents.allow'])
+/**
+ * Settings that have no row in Settings at all: main reads them, but only a settings file sets them. `references` gets its
+ * row in KERNEL-750, which takes it off this list.
+ */
+const NO_ROW = new Set(['hookPort', 'experimental.sharing', 'models.effortByModel', 'mcp.aliases', 'agents.unlistedTools', 'agents.allow', 'references'])
 
 const NOTED = new Set(['newChats', 'newWorkspaces', 'newRooms', 'restart'])
 const noted = (map: Record<string, string>) => Object.entries(map).filter(([, t]) => NOTED.has(t)).map(([k]) => k)

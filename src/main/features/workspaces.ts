@@ -4,7 +4,7 @@ import type { AgentDef, Chat, ChatPart, CompareTarget, Effort, Provider, Room, S
 import { providerOf } from '@shared/providers'
 import { newId } from '../db'
 import { bus } from '../bus'
-import { DEFAULT_BASE_REF, loadRepoSettings, type RepoSettings } from '../services/settings'
+import { DEFAULT_BASE_REF, loadRepoSettings, referencesInRoom, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
 import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
 import { linkNodeModules, portBlock } from '../services/scripts'
@@ -596,7 +596,13 @@ export class Workspaces extends Feature {
         const range = await compareRange(ws.path, target)
         return readImage(ws.path, path, at === 'base' ? range.from : range.to)
       },
-      'workspaces.files': async ({ workspaceId, query, limit }) => this.unmade(workspaceId) ? [] : searchFiles(this.mustWs(workspaceId).path, query, limit),
+      'workspaces.files': async ({ workspaceId, query, limit }) => {
+        if (this.unmade(workspaceId)) return []
+        const ws = this.mustWs(workspaceId)
+        // The room's reference folders too, those that are there now (KERNEL-748).
+        const room = this.k.store.room(ws.roomId)
+        return searchFiles(ws.path, query, limit, room ? referencesInRoom(room.path).present : [])
+      },
       'workspaces.hunks': async ({ workspaceId, path }) => this.unmade(workspaceId) ? [] : this.hunks(workspaceId, path),
       'workspaces.commit': async ({ workspaceId, hunkIds, message }) => {
         this.mustBeMade(workspaceId)
