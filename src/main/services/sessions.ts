@@ -1608,7 +1608,7 @@ export class Sessions {
     this.placeApproval(chatId, approval.id, { afterTurn: o.afterTurn })
     o.placed?.(approval.id)
     if (plan?.trim() && existsSync(ws.path)) {
-      void savePlan(ws.path, plan, { fallback: approval.title, reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
+      void savePlan(ws.path, plan, { reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
     }
     const result = await decision
     this.turns.get(chatId)?.plans?.delete(approval.id)

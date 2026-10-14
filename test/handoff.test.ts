@@ -241,7 +241,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     const asked = tool.handler(plan as never, {})
     for (let i = 0; i < 100 && !plans().length; i++) await new Promise((r) => setTimeout(r, 20))
     expect(plans()).toEqual([expect.objectContaining({ chatId: chat.id, status: 'pending', title: 'KERNEL-53' })])
-    expect(await planSaved()).toBe('.kernel/plans/symlink-node-modules.md')
+    expect(await planSaved()).toBe('.kernel/plans/plan.md')
     k.approvals.decide(plans()[0].id, { behavior: 'allow' })
     // The Lead still has the plan in context, so the note names no file. The settled card says it, so the chat adds no note.
     expect(((await asked).content[0] as { text: string }).text).toBe(`Plan approved.\n\n${HANDOFF_NOW}`)
@@ -278,7 +278,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(k.store.chat(chat.id)?.plan).toBe(false)
     expect(pushed.at(-1)).toMatchObject({ id: chat.id, plan: false })
     expect(k.sessions.handoffs.due(chat.id)).toBe(true)
-    expect(await planSaved()).toBe('.kernel/plans/symlink-node-modules.md')
+    expect(await planSaved()).toBe('.kernel/plans/plan.md')
   })
 
   it('tells the Lead to ask for approval only in plan mode, and otherwise to ask in the chat before handing off', () => {
@@ -434,7 +434,7 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
     }
 
     const first = await ask(PLAN)
-    expect(first.approval).toMatchObject({ detail: PLAN, steps: [{ title: 'Symlink node_modules', agentId: 'noor' }], planFile: '.kernel/plans/symlink-node-modules.md' })
+    expect(first.approval).toMatchObject({ detail: PLAN, steps: [{ title: 'Symlink node_modules', agentId: 'noor' }], planFile: '.kernel/plans/plan.md' })
     expect(await readFile(join(dir, first.approval.planFile!), 'utf8')).toBe(`${PLAN}\n`)
     k.approvals.decide(first.approval.id, { behavior: 'deny', message: 'Add a rollback step' })
     expect(((await first.asked).content[0] as { text: string }).text).toBe('changes requested: Add a rollback step')
@@ -449,7 +449,7 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
 
     await k.sessions.configure(chat.id, { plan: true })
     const third = await ask(PLAN)
-    expect(third.approval.planFile).toBe('.kernel/plans/symlink-node-modules-2.md')
+    expect(third.approval.planFile).toBe('.kernel/plans/plan-2.md')
     expect(await readFile(join(dir, first.approval.planFile!), 'utf8')).toBe(`${revised}\n`)
   })
 
