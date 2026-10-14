@@ -1602,6 +1602,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: longChat },
     ui: open
   })),
+  /** A long chat with shared image cards, read from higher up and shown again after leaving it, with the Scroll to bottom button over it (KERNEL-765). The scroll is the transcript's own, so scripts/shots.ts scrolls it up before the shot. */
+  ChatRestoredSpot: scene(() => ({
+    items: { [ids.tableChat]: [
+      ...longChat.slice(0, 6),
+      { kind: 'shared' as const, id: 'rs-i1', ts: at(10, 30), sharedId: 'sh-image', version: 1 },
+      { kind: 'shared' as const, id: 'rs-i2', ts: at(10, 31), sharedId: 'sh-image', version: 1 },
+      { kind: 'shared' as const, id: 'rs-i3', ts: at(10, 31), sharedId: 'sh-image', version: 1 },
+      ...longChat.slice(6)
+    ] },
+    shared: sharedFiles().filter((x) => x.workspaceId === ids.table),
+    sharedData: sharedStills,
+    ui: open
+  })),
   // KERNEL-599: the chat rail. A teammate's chat read from its 14th message with the right panel hidden, the same with the list open, Kernel's chat with Team updates listed, and the chat at its
   // end with the right panel open, where the rail takes the side padding. The scroll and the hover are local to the transcript and the rail, so scripts/shots.ts does them.
   ChatRail: railScene(),
