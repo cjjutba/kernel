@@ -375,10 +375,7 @@ async function driveWhereByKeyboard(page: Page) {
   await page.waitForTimeout(300)
 }
 // NewChatBuildHere is New chat with Build here picked on the Hand off | Build here switch (KERNEL-805).
-// NewChatEffortMenu and NewChatPermissionMenu are New chat with the effort or the permission menu open.
-async function openEffortMenu(page: Page) {
-  await openWhere(page, /^Effort:/, /High/)
-}
+// NewChatPermissionMenu is New chat with the permission menu open.
 async function openPermissionMenu(page: Page) {
   await openWhere(page, /^Permission mode:/, /Accept edits/)
 }
@@ -561,6 +558,11 @@ async function starModels(page: Page) {
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
+async function openEffortFlyout(page: Page) {
+  await page.getByRole('button', { name: /^Effort/ }).hover()
+  await page.getByRole('menu', { name: 'Effort' }).waitFor()
+  await page.waitForTimeout(300)
+}
 async function hoverLockedProvider(page: Page) {
   await page.getByRole('tab', { name: 'Codex' }).hover()
   await page.waitForTimeout(900)
@@ -571,6 +573,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceModelPickerCodex: openLegacyModels,
   WorkspaceModelPickerKeys: async (page) => { await page.keyboard.press('ArrowUp'); await page.waitForTimeout(300) },
   WorkspaceModelPickerFavorites: starModels,
+  WorkspaceModelPickerEffort: openEffortFlyout,
   WorkspaceModelPickerLocked: hoverLockedProvider,
   ComposerAttaching: dropWhileReading,
   ConfirmOverrule: openOverrule,
@@ -588,7 +591,6 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   NewChatBranchChip: pickBranchChip,
   NewChatPlus: (page) => openWhere(page, 'Add context'),
   NewChatLinkIssue: async (page) => { await page.getByRole('button', { name: 'Add context' }).click(); await page.getByRole('menuitem', { name: /Link issue/ }).click(); await page.getByRole('listbox').waitFor(); await page.mouse.move(0, 0); await page.waitForTimeout(400) },
-  NewChatEffortMenu: openEffortMenu,
   NewChatNarrow: windowAt(600),
   NewChatSwitchNarrow: async (page) => { await page.locator('.ws-main').evaluate((el) => { el.style.width = '460px'; el.style.justifySelf = 'start' }); await page.waitForTimeout(400) },
   ComposerModesNarrow: windowAt(600),

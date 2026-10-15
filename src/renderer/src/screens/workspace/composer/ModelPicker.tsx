@@ -7,7 +7,7 @@ import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, useEffortMemory } from './modelPrefs'
 import { useFavoriteModels, toggleFavoriteModel } from './favoriteModels'
 import { effortsOf, fitEffort, providerLabel, useProviderModels } from './providerModels'
-import { shortcutNumber } from './modelShortcuts'
+import { isCycleEffortKey, shortcutNumber } from './modelShortcuts'
 
 export { EFFORTS }
 
@@ -104,7 +104,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.ctrlKey && e.metaKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); const m = all.find((r) => r.n === Number(e.key)); if (m) pickModel(m); return }
-    if (e.metaKey && e.shiftKey && (e.key === '/' || e.key === '?')) { e.preventDefault(); pickEffort(nextEffort(effort, efforts)); return }
+    if (isCycleEffortKey(e)) { e.preventDefault(); pickEffort(nextEffort(effort, efforts)); return }
     if (e.metaKey && !e.shiftKey && !e.ctrlKey && e.key.toLowerCase() === 'd') {
       e.preventDefault()
       const it = items[at]
@@ -151,7 +151,8 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
             {items.map((it, i) => it.kind === 'legacy' ? (
               <button key="legacy" type="button" className="menu-item pick-row pick-legacy" aria-expanded={legacyOpen} data-active={!sub && i === at}
                 onMouseEnter={() => { setAt(i); setSub(false) }} onMouseDown={(e) => e.preventDefault()} onClick={() => setLegacyOpen((v) => !v)}>
-                <span className="pick-text"><span className="pick-name">Legacy models</span><span className="pick-sub">{it.count} {it.count === 1 ? 'model' : 'models'}</span></span>
+                <span className="pick-name">Legacy models</span>
+                <span className="pick-count">{it.count}</span>
                 <span className="grow" />
                 <span className="pick-chev" data-open={legacyOpen}><Icon name="chevron" size={14} /></span>
               </button>
@@ -160,10 +161,9 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
                 onMouseEnter={() => { setAt(i); setSub(false) }}>
                 <button type="button" role="option" aria-selected={it.row.id === model} tabIndex={-1} className="menu-item pick-row"
                   onMouseDown={(e) => e.preventDefault()} onClick={() => pickModel(it.row)}>
-                  <span className="pick-text">
-                    <span className="pick-name">{it.row.label}</span>
-                    <span className="pick-sub">{providerLabel(it.row.provider)} · {effortLabel(rowEffort(it.row))}</span>
-                  </span>
+                  <ProviderMark provider={it.row.provider} size={16} />
+                  <span className="pick-name">{it.row.label}</span>
+                  <span className="pick-effort">{effortLabel(rowEffort(it.row))}</span>
                   <span className="grow" />
                   {it.row.id === model ? <span className="pick-check"><Icon name="check" size={14} /></span> : it.row.n ? <span className="pick-kbd">^⌘{it.row.n}</span> : null}
                 </button>
@@ -180,9 +180,10 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
         <div className="pick-effort-row">
           <button type="button" tabIndex={-1} className="menu-item pick-row pick-effort-btn" aria-haspopup="menu" aria-expanded={sub} data-active={sub || at === effortRow}
             onMouseEnter={() => { setAt(effortRow); openSub() }} onMouseDown={(e) => e.preventDefault()} onClick={() => (sub ? setSub(false) : openSub())}>
-            <span className="grow">Effort</span>
+            <span className="pick-name">Effort</span>
+            <span className="grow" />
             <span className="pick-effort">{effortLabel(effort)}</span>
-            <Icon name="right" size={12} />
+            <Icon name="right" size={14} />
           </button>
           {sub && <EffortMenu efforts={efforts} effort={effort} at={subAt} onAt={setSubAt} onPick={pickEffort} onClose={() => setSub(false)} />}
         </div>

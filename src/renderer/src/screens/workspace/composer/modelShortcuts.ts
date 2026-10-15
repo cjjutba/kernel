@@ -17,3 +17,10 @@ export function shortcutNumber(model: { id: string; provider: Provider }, provid
 export function shortcutModel(key: string, models: ProviderModel[]): ProviderModel | undefined {
   return /^[1-9]$/.test(key) ? shortcutModels(models)[Number(key) - 1] : undefined
 }
+
+/**
+ * ⌘⇧/ cycles the effort. With Shift held the slash key reports '?', and another layout puts '/' elsewhere, so the physical key counts too.
+ * Both boxes listen on the window (useModelKeys) and the open picker on itself, and all three ask here.
+ */
+export const isCycleEffortKey = (e: { key: string; code?: string; metaKey: boolean; shiftKey: boolean; ctrlKey: boolean; altKey: boolean }): boolean =>
+  e.metaKey && e.shiftKey && !e.ctrlKey && !e.altKey && (e.code === 'Slash' || e.key === '/' || e.key === '?')

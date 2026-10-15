@@ -1,9 +1,9 @@
 import { useRef, type ComponentProps, type JSXElementConstructor, type ReactNode } from 'react'
-import type { Effort, Provider } from '@shared/types'
+import type { Provider } from '@shared/types'
 import { Button, Icon, IconButton, ProviderMark, Spinner } from '../../../ui'
-import { EffortButton } from './EffortMenu'
 import { LeadModeSwitch, ModeButton } from './ModeMenu'
 import { ModelPicker } from './ModelPicker'
+import { effortLabel } from './modelPrefs'
 import { PlusMenu } from './PlusMenu'
 
 type Anchored<C extends JSXElementConstructor<any>> = Omit<ComponentProps<C>, 'anchorRef'>
@@ -13,15 +13,14 @@ export interface SendState { label: string; ready: boolean; disabled?: boolean; 
 
 /**
  * The toolbar of the message box, for a chat's composer and New chat's (KERNEL-805): the Hand off | Build here switch when the chat is with Kernel,
- * then one group of run settings split by hairlines (the model, its effort and the permission mode), a spacer, the context meter, +, attach and send.
+ * then one group of run settings split by a hairline (the model with its effort beside it, and the permission mode), a spacer, the context meter, +, attach and send.
  * Both render this, so a change to it shows in both. Each menu opens upward from its own button.
  */
-export function ComposerToolbar({ lead, agent, model, effort, mode, context, plus, send, disabled }: {
+export function ComposerToolbar({ lead, agent, model, mode, context, plus, send, disabled }: {
   lead?: ComponentProps<typeof LeadModeSwitch>
   /** A teammate's name and role, in place of the Lead's chip. */
   agent?: ReactNode
   model: { label: string; provider: Provider; open: boolean; onOpen: (open: boolean) => void; picker: Anchored<typeof ModelPicker> }
-  effort: { value: Effort; open: boolean; onOpen: (open: boolean) => void; onPick: (effort: Effort) => void }
   mode: ComponentProps<typeof ModeButton>
   context?: ReactNode
   plus: Anchored<typeof PlusMenu>
@@ -36,11 +35,9 @@ export function ComposerToolbar({ lead, agent, model, effort, mode, context, plu
       {agent}
       <div className="cmp-run">
         <span ref={modelAnchor} style={{ position: 'relative' }}>
-          <Button variant="ghost" className="cmp-model cmp-model-name" disabled={disabled} aria-label={`Model: ${model.label}`} aria-haspopup="dialog" aria-expanded={model.open} onClick={() => model.onOpen(!model.open)}><ProviderMark provider={model.provider} size={14} /><span>{model.label}</span><Icon name="chevron" size={12} /></Button>
+          <Button variant="ghost" className="cmp-model cmp-model-name" disabled={disabled} aria-label={`Model: ${model.label}, effort: ${effortLabel(model.picker.effort)}`} aria-haspopup="dialog" aria-expanded={model.open} onClick={() => model.onOpen(!model.open)}><ProviderMark provider={model.provider} size={14} /><span>{model.label}</span><span className="cmp-effort-text">{effortLabel(model.picker.effort)}</span><Icon name="chevron" size={12} /></Button>
           {model.open && <ModelPicker anchorRef={modelAnchor} {...model.picker} />}
         </span>
-        <span className="cmp-sep" aria-hidden="true" />
-        <EffortButton provider={model.provider} model={model.picker.model} effort={effort.value} open={effort.open} onOpen={effort.onOpen} onPick={effort.onPick} disabled={disabled} />
         <span className="cmp-sep" aria-hidden="true" />
         <ModeButton {...mode} />
       </div>
