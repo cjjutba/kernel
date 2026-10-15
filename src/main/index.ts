@@ -25,7 +25,7 @@ import { macKeychain } from './services/providers/claudeHome'
 import { claudeAgents } from './services/pluginAgents'
 import { isAppUrl } from './windowGuard'
 import { appearanceOf, readAppearance, WindowAppearance } from './features/appearance'
-import { handZoom, zoomStepOf } from './windowZoom'
+import { clampLevel, handZoom, lightsFor, placeLights, settleZoom, zoomStepOf, zoomWindow } from './windowZoom'
 import { attachImageMenu } from './imageMenu'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
 import type { Channel, KernelApi, PushEvent } from '@shared/ipc'
@@ -199,9 +199,6 @@ async function rendererGone(w: BrowserWindow, d: RenderProcessGoneDetails) {
 
 const load = (w: BrowserWindow) => { if (rendererUrl) void w.loadURL(rendererUrl); else void w.loadFile(join(here, '../renderer/index.html')) }
 
-/** Traffic lights centered on the screen header row (y 9 to 53), in the same place whether the sidebar is open or hidden (KERNEL-431). */
-const LIGHTS = { x: 20, y: 25 }
-
 /** Settings, Appearance for the window and native UI, made once the app is ready (KERNEL-708). */
 let appearance: WindowAppearance | undefined
 
@@ -214,7 +211,8 @@ function createWindow() {
     minHeight: 520,
     backgroundColor: appearance?.backgroundColor,
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: LIGHTS,
+    // Traffic lights centered on the screen header row (y 9 to 53), whether the sidebar is open or hidden (KERNEL-431). Zoom moves them (KERNEL-901).
+    trafficLightPosition: lightsFor(1),
     show: false,
     // A hidden page counts as in the background, and Chromium would slow its timers and frames.
     webPreferences: { preload: join(here, '../preload/index.mjs'), sandbox: false, contextIsolation: true, backgroundThrottling: !headless, additionalArguments: appearance ? [appearance.arg] : [] }
@@ -224,7 +222,7 @@ function createWindow() {
   // Cmd+Plus, Minus and 0: the page gets those first, for a shared image's tab, and the window zooms when the page leaves them (KERNEL-598).
   win.webContents.on('before-input-event', (e, input) => {
     const zoom = zoomStepOf(input)
-    if (zoom && win) { e.preventDefault(); void handZoom(win.webContents, zoom); return }
+    if (zoom && win) { e.preventDefault(); void handZoom(win, zoom); return }
     // Cmd+Shift+/ is also macOS's own key for searching the Help menu, which the app menu has, so the menu takes it and the page never hears it.
     // The page is handed the key here instead, from the focused element so an open picker sees it too.
     if (input.type === 'keyDown' && input.meta && input.shift && !input.alt && !input.control && (input.code === 'Slash' || input.key === '/' || input.key === '?')) {
@@ -253,6 +251,20 @@ function createWindow() {
   w.webContents.on('render-process-gone', (_e, d) => void rendererGone(w, d))
   // The page's own errors go to the log too: a React error can blank the window with no crash.
   w.webContents.on('console-message', (e) => { if (e.level === 'error') log?.error('[renderer]', e.message, `(${e.sourceId}:${e.lineNumber})`) })
+  // Every zoom moves the traffic lights with the page (KERNEL-901). A pinch only asks: Electron reports it and leaves the page alone, so
+  // the window takes the step itself, unless the page did zoom, which is then kept to the floor. A load picks up the zoom Electron restored
+  // for the page, and leaving full screen can put the lights back where the window was made.
+  w.webContents.on('zoom-changed', (_e, direction) => {
+    const before = w.webContents.getZoomLevel()
+    setImmediate(() => {
+      if (w.isDestroyed()) return
+      const level = w.webContents.getZoomLevel()
+      if (level === before) zoomWindow(w, direction)
+      else { if (clampLevel(level) !== level) w.webContents.setZoomLevel(clampLevel(level)); placeLights(w) }
+    })
+  })
+  w.webContents.on('did-finish-load', () => settleZoom(w))
+  w.on('leave-full-screen', () => placeLights(w))
   load(w)
 }
 
@@ -467,7 +479,10 @@ app.whenReady().then(async () => {
     return handlers['app.openIn']({ path })
   })
   bus.on('push', (event) => mainWindow()?.webContents.send('kernel:event', event))
-  Menu.setApplicationMenu(Menu.buildFromTemplate(appMenu({ copyDiagnostics: () => void copyDiagnostics().catch((err: unknown) => console.error('[kernel] could not copy diagnostics', err)) })))
+  Menu.setApplicationMenu(Menu.buildFromTemplate(appMenu({
+    copyDiagnostics: () => void copyDiagnostics().catch((err: unknown) => console.error('[kernel] could not copy diagnostics', err)),
+    zoom: (step) => { const w = mainWindow(); if (w) zoomWindow(w, step) }
+  })))
   createWindow()
   app.on('activate', () => { if (!mainWindow()) createWindow() })
 }).catch((err: unknown) => void bootFailed(err))
