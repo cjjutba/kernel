@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChatPart, QueuedMessage, QueueReason } from '@shared/types'
 import { Button, Icon } from '../../../ui'
+import { cssMs } from '../archiveMotion'
 import { NoteText } from '../NoteText'
 import type { WaitLine } from '../waitLines'
 
@@ -31,8 +32,6 @@ const WAITING: Partial<Record<QueueReason, string>> = {
 /** Send now can't help while the Mac is offline or setup hasn't passed. It does start a brief held for a merge (KERNEL-259). */
 export const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'setup'
 
-const LEAVE_MS = 160
-
 /** The queue plus the rows that are fading out, so a message that sends leaves the tray the way it came in. */
 function useLeaving(queue: QueuedMessage[]): { rows: { q: QueuedMessage; leaving: boolean }[] } {
   const [rows, setRows] = useState(() => queue.map((q) => ({ q, leaving: false })))
@@ -48,7 +47,7 @@ function useLeaving(queue: QueuedMessage[]): { rows: { q: QueuedMessage; leaving
     const all = [...was, ...queue.filter((q) => !was.some((w) => w.id === q.id))]
     for (const q of all) merged.push({ q: queue.find((x) => x.id === q.id) ?? q, leaving: !queue.some((x) => x.id === q.id) })
     setRows(merged)
-    const t = setTimeout(() => setRows((r) => r.filter((x) => !x.leaving)), LEAVE_MS)
+    const t = setTimeout(() => setRows((r) => r.filter((x) => !x.leaving)), cssMs('--dur-base'))
     return () => clearTimeout(t)
   }, [queue])
   return { rows }

@@ -190,9 +190,9 @@
 .queue-why .note-ref { padding: 0; border: 0; background: transparent; font: inherit; color: var(--ink-2); cursor: pointer; }
 .queue-count { flex-shrink: 0; margin-left: auto; }
 .queue { margin: 0; padding: 0; list-style: none; }
-.queue-row { display: grid; grid-template-rows: 1fr; animation: queue-in 160ms ease-out; }
+.queue-row { display: grid; grid-template-rows: 1fr; animation: queue-in var(--dur-base) var(--ease-out); }
 .queue-row + .queue-row { border-top: 1px solid var(--line-2); }
-.queue-row.leaving { grid-template-rows: 0fr; opacity: 0; animation: queue-out 160ms ease-in forwards; pointer-events: none; }
+.queue-row.leaving { grid-template-rows: 0fr; opacity: 0; animation: queue-out var(--dur-base) var(--ease-out) forwards; pointer-events: none; }
 .queue-row-in { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 0; overflow: hidden; padding: 5px 8px 5px 14px; }
 .queue-icon { display: inline-flex; flex-shrink: 0; color: var(--faint); }
 .queue-text { flex: 1 1 0; min-width: 0; display: flex; padding: 4px 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; text-align: left; }
