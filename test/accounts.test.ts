@@ -10,7 +10,7 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import type { KernelOptions } from '../src/main/features/options'
 import { sessionEnv } from '../src/main/services/providers/claude'
-import { TOO_LONG_NOTE } from '../src/main/services/sessions'
+import { LIMIT_LIFTED, TOO_LONG_NOTE } from '../src/main/services/sessions'
 import { USAGE_AFTER_TURN_MS } from '../src/main/features/providers'
 import { sessionDeps } from '../src/main/features/sessionDeps'
 import { credentialsItem } from '../src/main/services/providers/claudeHome'
@@ -84,11 +84,13 @@ async function quiet() {
     await Promise.allSettled(runs)
   }
 }
-const saved = { codexHome: process.env.CODEX_HOME, claudeDir: process.env.CLAUDE_CONFIG_DIR }
+// The CLI login is the temp home's ~/.claude on the plain Keychain item. Run inside a Kernel session, the Mac's CLAUDE_CONFIG_DIR and
+// CLAUDE_SECURESTORAGE_CONFIG_DIR would point it at the real login's folder and item instead, so each test starts without them.
+const saved = { codexHome: process.env.CODEX_HOME, claudeDir: process.env.CLAUDE_CONFIG_DIR, claudeStore: process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR }
 // The fakes read their answers from FAKE_* variables, and a test sets them on process.env. One left behind (FAKE_LOGIN_WAIT, FAKE_MCP_FAIL,
 // FAKE_CODEX_MCP_STATUS) changes the next test's fake, and a background read of a stopped Kernel sees it too, so each test starts from none.
 const clearFakes = () => { for (const key of Object.keys(process.env)) if (key.startsWith('FAKE_')) delete process.env[key] }
-beforeEach(async () => { kernels = []; background = []; clearFakes(); fake = await fakeCodex(); process.env.FAKE_CODEX_LOG = fake.log; delete process.env.CODEX_HOME; delete process.env.CLAUDE_CONFIG_DIR; sdk.usage = {}; sdk.mcp = {}; sdk.probes = []; sdk.reads = []; sdk.hold = undefined })
+beforeEach(async () => { kernels = []; background = []; clearFakes(); fake = await fakeCodex(); process.env.FAKE_CODEX_LOG = fake.log; delete process.env.CODEX_HOME; delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR; sdk.usage = {}; sdk.mcp = {}; sdk.probes = []; sdk.reads = []; sdk.hold = undefined })
 afterEach(async () => {
   // A Kernel a test leaves running (a failed one, or one it never stops) keeps reading in the background, into the next test's fakes.
   await Promise.all(kernels.map((k) => k.stop({ budgetMs: 0 })))
@@ -96,6 +98,7 @@ afterEach(async () => {
   clearFakes()
   if (saved.codexHome) process.env.CODEX_HOME = saved.codexHome
   if (saved.claudeDir) process.env.CLAUDE_CONFIG_DIR = saved.claudeDir
+  if (saved.claudeStore !== undefined) process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR = saved.claudeStore
   bus.removeAllListeners('push')
 })
 
@@ -1883,7 +1886,7 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
   async function setUp() {
     const t = await kernel()
     type Stored = { id: string; label: string; email?: string; auth?: 'apiKey'; createdAt: number }
-    const file = (t.k.providers as unknown as { load: () => Record<'claude' | 'codex', { cli?: { email?: string }; accounts: Stored[] }> }).load()
+    const file = (t.k.providers as unknown as { load: () => Record<'claude' | 'codex', { cli?: { email?: string }; active?: string; accounts: Stored[] }> }).load()
     file.claude.cli = { email: 'cj@example.com' }
     file.claude.accounts.push({ id: 'side', label: 'Side', email: 'side@example.com', createdAt: 1 }, { id: 'key', label: 'Key', auth: 'apiKey', createdAt: 1 })
     file.codex.accounts.push({ id: 'cx', label: 'Personal', email: 'p@example.com', createdAt: 1 })
@@ -2037,6 +2040,54 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
     await k.stop({ budgetMs: 0 })
   })
 
+  it("gives a long chat's move notice for a move, another model or an idle cache, none once answered, and again once a kept account can't run it", async () => {
+    const { k, file, chat, turn, place } = await setUp()
+    // On the account it ran on: another model re-reads it there, and an hour idle on a plan is only a hint.
+    chat('m', { model: 'claude-sonnet-5-5', lastTurn: turn() })
+    expect(place.moveNotice('m')).toEqual({ kind: 'move', reason: 'model', from: 'cli', to: 'cli', model: 'Sonnet 5.5', tokens: 200_000, keep: false })
+    chat('i', { lastTurn: turn({ at: Date.now() - 61 * MIN }) })
+    expect(place.moveNotice('i')).toEqual({ kind: 'idle', reason: 'idle', from: 'cli', to: 'cli', tokens: 200_000, keep: false })
+    chat('small', { lastTurn: turn({ context: 10_000 }) })
+    expect(place.moveNotice('small')).toBeNull()
+
+    // Moved to Side, the chat re-reads there, and Keep is offered while the CLI login can still run it.
+    chat('a', { lastTurn: turn() })
+    file.claude.active = 'side'
+    place.placeAll('claude', 'side')
+    const move = { kind: 'move', reason: 'account', from: 'cli', to: 'side', tokens: 200_000 }
+    expect(place.moveNotice('a')).toEqual({ ...move, keep: true })
+    expect(place.moveNotice('small')).toBeNull()
+    place.moveChoice('a', 'summarize')
+    expect(place.moveNotice('a')).toBeNull()
+    place.moveChoice('a', 'continue')
+    expect(place.moveNotice('a')).toBeNull()
+    place.moveChoice('a', 'keep')
+    expect(place.moveNotice('a')).toBeNull()
+    // The CLI login hits its limit: the kept chat moves after all, so the notice is back, without Keep.
+    k.store.saveMeta<RateLimit[]>('limits', [{ type: 'five_hour', status: 'rejected', provider: 'claude', resetsAt: Math.round(Date.now() / 1000) + 3600 }])
+    expect(place.moveNotice('a')).toEqual({ ...move, keep: false })
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('refuses a move choice or a switch move it does not know, and saves or switches nothing', async () => {
+    const { k, chat, turn } = await setUp()
+    const h = k.handlers()
+    chat('a', { lastTurn: turn() })
+    for (const choice of ['move', '', undefined, null, 'KEEP']) {
+      await expect(h['chats.moveChoice']({ chatId: 'a', choice: choice as never })).rejects.toThrow('A long chat moves by summarize, continue or keep')
+    }
+    expect(k.store.chat('a')?.moveChoice).toBeUndefined()
+    const switched: PushEvent[] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'accountSwitched') switched.push(e) })
+    for (const move of ['some', '', null, 'ALL']) {
+      await expect(h['accounts.switch']({ provider: 'claude', accountId: 'side', move: move as never })).rejects.toThrow('A switch moves chats by keep or all')
+    }
+    expect(k.providers.active('claude')).toBeUndefined()
+    expect(switched).toEqual([])
+    expect(k.store.chat('a')?.ranOn).toBe('cli')
+    await k.stop({ budgetMs: 0 })
+  })
+
   it('learns a shared cache per provider, and reads a Codex login that changed underneath as another account', async () => {
     const { k, file, chat, turn, place } = await setUp()
     // A Codex move whose first call read most of the chat from the cache proves that pair, and no Claude pair.
@@ -2167,6 +2218,27 @@ describe('long chats that move accounts, on Codex, and the guards against using 
     await ran('twice', 'next twice')
     expect((await log()).slice(4)).toEqual(['work: compact', 'side: next twice'])
     expect(notes('twice').filter((n) => n.startsWith('Moved'))).toEqual(['Moved to Side'])
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it.each([
+    ['a long chat is summarized on the account it moves to', 120_000, ['personal: compact', `personal: ${LIMIT_LIFTED}`]],
+    ['a short chat continues as it is', 10_000, [`personal: ${LIMIT_LIFTED}`]]
+  ])('carries a turn a limit cut off on Codex over to the next account as a nudge: %s', async (_, size, after) => {
+    const { k, ids, chat, ran, long, log, notes } = await setUp()
+    await k.config.setSettings({ accounts: { switchAtLimit: { codex: true } } })
+    process.env.FAKE_CODEX_USED = JSON.stringify({ [k.providers.codexHome(ids.Personal)!]: 20, [k.providers.codexHome(ids.Side)!]: 30 })
+    chat('a')
+    await ran('a', 'start')
+    long('a', size)
+    // Work fills mid-turn: Codex says so, and the turn ends cut off.
+    const limit = JSON.stringify([{ limit: true }])
+    await k.sessions.send('a', [{ type: 'text', text: limit }])
+    await until(async () => (await log()).length === 2 + after.length && !k.sessions.isRunning('a'))
+    expect(k.providers.active('codex')).toBe(ids.Personal)
+    expect((await log()).slice(1)).toEqual([`work: ${limit}`, ...after])
+    expect(k.store.chat('a')?.ranOn).toBe(ids.Personal)
+    expect(notes('a').filter((n) => n.startsWith('Moved'))).toEqual([expect.stringMatching(/^Moved to Personal.* \(Work hit its 5-hour limit\)$/)])
     await k.stop({ budgetMs: 0 })
   })
 
