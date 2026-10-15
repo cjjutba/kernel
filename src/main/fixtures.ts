@@ -90,6 +90,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'rooms.list': async () => f.rooms,
     'rooms.add': async ({ path, name }) => f.rooms.find((r) => r.path === path) ?? { id: 'fixture-room', name: name ?? path.split('/').pop() ?? path, path, defaultBranch: 'main', paused: false, createdAt: Date.now() },
     'rooms.create': async ({ name, desc, source, from }) => ({ id: 'fixture-room', name, desc, kind: source, path: from, defaultBranch: 'main', paused: false, createdAt: Date.now() }),
+    'rooms.retrySetup': async () => ok,
     'rooms.update': async ({ roomId, patch }) => ({ ...room(roomId), ...patch }),
     'rooms.setIcon': async ({ roomId, icon }) => {
       const { icon: _old, ...r } = room(roomId)
