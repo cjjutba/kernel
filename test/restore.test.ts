@@ -8,7 +8,7 @@ import { setUp, tempRepo, trustRoom, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { hookToken } from '../src/main/services/hookToken'
 import { Store } from '../src/main/db'
-import { CRASH_NOTE, LIMIT_LIFTED, QUIT_BUDGET_MS, QUIT_NOTE, RELAUNCH_NUDGE, TOOL_STOPPED } from '../src/main/services/sessions'
+import { CRASH_NOTE, CRASH_WAIT_NOTE, LIMIT_LIFTED, QUIT_BUDGET_MS, QUIT_NOTE, QUIT_WAIT_NOTE, RELAUNCH_NUDGE, TOOL_STOPPED } from '../src/main/services/sessions'
 
 // A scripted SDK: each query() records its options and yields what the test feeds it. An interrupt ends the turn with
 // error_during_execution, as the real one does, and an abort ends the stream.
@@ -95,6 +95,10 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
   const callIn = (cwd: string, after = 0) => sdk.calls.slice(after).find((c) => c.options.cwd === cwd)!
   const users = (k: Kernel, chat: Chat) => k.store.items(chat.id).flatMap((i: ChatItem) => (i.kind === 'user' ? [(i.parts[0] as { text: string }).text] : []))
   const notes = (k: Kernel, chat: Chat) => k.store.items(chat.id).flatMap((i: ChatItem) => (i.kind === 'note' ? [i.text] : []))
+  async function until<T>(read: () => T | undefined | false): Promise<T> {
+    for (let i = 0; i < 200; i++) { const v = read(); if (v) return v; await flush() }
+    throw new Error('timed out')
+  }
 
   /** Kernel planning and Kai building, both mid-turn, with a message queued for Kai and Kai's Bash call still running. */
   async function working() {
@@ -189,6 +193,38 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
       expect(notes(k2, kai)).toEqual([CRASH_NOTE])
       expect(k2.sessions.isRunning(kai.id)).toBe(true)
     } finally { sdk.onQuery = undefined }
+  }, 30000)
+
+  it('says the agent waited for an answer when a permission or a question was up at the quit, and still carries it on', async () => {
+    const { k, where, ws, kai } = await working()
+    const call = callIn(ws.path)
+    void call.options.canUseTool('AskUserQuestion', { questions: [{ question: 'Which table?', header: 'Table', options: [{ label: 'Invoices', description: '' }, { label: 'Refunds', description: '' }], multiSelect: false }] }, { signal: call.options.abortController.signal, toolUseID: 't2', suggestions: [] })
+    const asked = await until(() => k.store.approvals({}).find((a) => a.chatId === kai.id))
+    await k.stop()
+    const { k: k2 } = await relaunch(where)
+    expect(k2.store.approval(asked.id)?.status).toBe('expired')
+    expect(notes(k2, kai)).toEqual([QUIT_WAIT_NOTE])
+    expect(k2.sessions.isRunning(kai.id)).toBe(true)
+    expect(users(k2, kai).at(-1)).toBe('Then add a test')
+    expect(k2.sessions.queued(kai.id).map((q) => (q.parts[0] as { text: string }).text)).toEqual([RELAUNCH_NUDGE])
+  }, 30000)
+
+  it('says the same after a crash, where only the launch finds the question still pending', async () => {
+    const { k, where, ws, kai } = await working()
+    const call = callIn(ws.path)
+    void call.options.canUseTool('AskUserQuestion', { questions: [{ question: 'Which table?', header: 'Table', options: [{ label: 'Invoices', description: '' }, { label: 'Refunds', description: '' }], multiSelect: false }] }, { signal: call.options.abortController.signal, toolUseID: 't2', suggestions: [] })
+    const asked = await until(() => k.store.approvals({}).find((a) => a.chatId === kai.id))
+    await k.stop()
+    // What a kill leaves: no clean exit marker, nothing written down at a quit, and the question saved as pending.
+    const store = new Store(join(where.dataDir, 'kernel.db'))
+    store.saveMeta('cleanExit', false)
+    store.saveMeta('waitedOnUser', [])
+    store.saveApproval({ ...store.approval(asked.id)!, status: 'pending' })
+    store.db.close()
+    const { k: k2 } = await relaunch(where)
+    expect(k2.store.approval(asked.id)?.status).toBe('expired')
+    expect(notes(k2, kai)).toEqual([CRASH_WAIT_NOTE])
+    expect(k2.sessions.isRunning(kai.id)).toBe(true)
   }, 30000)
 
   it('carries on once the launch check finishes, and lets go of every room even when the check throws', async () => {
