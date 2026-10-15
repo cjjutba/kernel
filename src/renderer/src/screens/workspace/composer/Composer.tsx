@@ -4,7 +4,7 @@ import type { LeadMode } from '@shared/types'
 import { chatProvider } from '@shared/providers'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
-import { effortsOf, modelLabelOf, useCodexInUse, useProviderModels } from './providerModels'
+import { modelLabelOf, useCodexInUse, useProviderModels } from './providerModels'
 import { call, cleanError } from '../../../api'
 import { bypassConfirmed } from '../../../bypassConfirm'
 import { FileIcon } from '../../../components/FileIcon'
@@ -45,7 +45,7 @@ const EMPTY_WS: Workspace[] = []
  */
 let appliedPrefill = 0
 
-type MenuName = 'model' | 'effort' | 'context' | 'mode' | PlusPanel
+type MenuName = 'model' | 'context' | 'mode' | PlusPanel
 
 /**
  * The message box under the transcript. The message is a list of parts: typed text and chips (pasted text, images,
@@ -85,7 +85,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   if (wasHolding !== holding) { setWasHolding(holding); if (!holding) { setSwap((x) => (x === 'a' ? 'b' : 'a')); setSwapFrom(lastShown.current) } }
   // Fixtures open the model picker and the mode menu the same way, through the app's menu, for a shot (WorkspaceModelPicker, KERNEL-406).
   // In a chat with Kernel the mode menu is Hand off and Build here (KERNEL-780).
-  const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : getState().ui.menu === 'model' ? 'model' : getState().ui.menu === 'effort' ? 'effort' : getState().ui.menu === 'mode' ? 'mode' : null)
+  const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : getState().ui.menu === 'model' ? 'model' : getState().ui.menu === 'mode' ? 'mode' : null)
   const [skills, setSkills] = useState<Skill[]>([])
   const [commands, setCommands] = useState<BuiltinCommand[]>([])
   const [files, setFiles] = useState<FileEntry[]>([])
@@ -228,8 +228,13 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     setMode(nextMode(shown.picked, (m) => !offLine(m, provider, availability)), (m) => cyclePatch(before, m))
   }
   const providerModels = useProviderModels(provider)
-  const efforts = effortsOf(chat.model, providerModels)
-  const setEffort = (effort: Effort) => { rememberEffort(chat.model, effort); void configure({ effort }) }
+  // The button reads the new effort at once, so ⌘⇧/ pressed again steps on from it. A change main refuses puts the old one back.
+  const setEffort = (effort: Effort) => {
+    const was = chat.effort
+    rememberEffort(chat.model, effort)
+    actions.chats.upsert({ ...chat, effort })
+    void configure({ effort }).then((ok) => { if (!ok) actions.chats.upsert({ ...chat, effort: was }) })
+  }
   const fallback = useDefaultEffort(agent?.effort)
   // Claude's guess at the next message (KERNEL-530) stands in for the placeholder of an empty box, and Tab or → takes it. Only a key does: Enter on an empty box sends nothing.
   const suggested = provider === 'claude' && !d.parts.length && !running && !chat.plan && !plan && !holding && !blocked && !queue.length && queueWhy !== 'setup' && !acOpen ? chat.suggestion : undefined
@@ -391,10 +396,9 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
         lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), onPick: pickLeadMode } : undefined}
         agent={!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
         model={{ label: model, provider, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: setEffort } }}
-        effort={{ value: chat.effort, open: menu === 'effort', onOpen: (o) => setMenu(o ? 'effort' : null), onPick: setEffort }}
         mode={{ provider, availability, shown, from: swapFrom?.shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
         context={chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
-        plus={{ panel: menu === 'model' || menu === 'effort' || menu === 'context' || menu === 'mode' || menu === 'runIn' || menu === 'branch' ? null : menu, onPanel: setMenu, roomId, workspaceId: chat.workspaceId, onMode: () => setMenu('mode'), onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
+        plus={{ panel: menu === 'model' || menu === 'context' || menu === 'mode' || menu === 'runIn' || menu === 'branch' ? null : menu, onPanel: setMenu, roomId, workspaceId: chat.workspaceId, onMode: () => setMenu('mode'), onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
         send={{ label: plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send', ready: hasDraft && !blocked && !d.pending, disabled: blocked, busy: d.pending > 0, busyLabel: 'Attaching', stop: running, stopping: stopping !== null, onSend: () => void send(), onStop: stop }} />}
       hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
     />

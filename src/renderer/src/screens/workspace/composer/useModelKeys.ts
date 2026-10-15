@@ -4,7 +4,7 @@ import { effortFor } from '@shared/effort'
 import { getState } from '../../../store'
 import { nextEffort, useEffortMemory } from './modelPrefs'
 import { effortsOf, fitEffort, useProviderModels } from './providerModels'
-import { shortcutModel } from './modelShortcuts'
+import { isCycleEffortKey, shortcutModel } from './modelShortcuts'
 
 /**
  * The model and effort keys, for a chat's composer and New chat's alike, with the picker open or closed: ^⌘1 to 9 pick the Nth current model of the
@@ -26,7 +26,7 @@ export function useModelKeys({ provider, model, effort, fallback, onModel, onEff
         if (!m) return
         e.preventDefault()
         onModel(m.id, m.id === model ? effort : fitEffort(effortFor(m.id, memory, fallback), m.id, models))
-      } else if (e.metaKey && e.shiftKey && !e.ctrlKey && (e.key === '/' || e.key === '?')) {
+      } else if (isCycleEffortKey(e)) {
         e.preventDefault()
         onEffort(nextEffort(effort, effortsOf(model, models)))
       }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ProviderModel } from '@shared/types'
-import { SHORTCUT_MAX, shortcutModel, shortcutModels, shortcutNumber } from '../src/renderer/src/screens/workspace/composer/modelShortcuts'
+import { nextEffort } from '../src/renderer/src/screens/workspace/composer/modelPrefs'
+import { SHORTCUT_MAX, isCycleEffortKey, shortcutModel, shortcutModels, shortcutNumber } from '../src/renderer/src/screens/workspace/composer/modelShortcuts'
 
 const m = (provider: ProviderModel['provider'], id: string, legacy = false): ProviderModel => ({ provider, id, label: id, legacy, efforts: ['medium'], defaultEffort: 'medium' })
 const claude = [m('claude', 'fable'), m('claude', 'opus'), m('claude', 'sonnet'), m('claude', 'haiku'), m('claude', 'old-opus', true)]
@@ -48,5 +49,30 @@ describe('model shortcuts', () => {
         if (n) expect(shortcutModel(String(n), list)?.id).toBe(row.id)
       }
     }
+  })
+})
+
+describe('cycle effort', () => {
+  const key = (o: Partial<Parameters<typeof isCycleEffortKey>[0]>) => ({ key: '?', code: 'Slash', metaKey: true, shiftKey: true, ctrlKey: false, altKey: false, ...o })
+
+  it('answers Cmd+Shift+/ however the layout names the key', () => {
+    expect(isCycleEffortKey(key({}))).toBe(true)
+    expect(isCycleEffortKey(key({ key: '/' }))).toBe(true)
+    expect(isCycleEffortKey(key({ key: '-', code: 'Slash' }))).toBe(true)
+  })
+
+  it('leaves other chords alone', () => {
+    expect(isCycleEffortKey(key({ shiftKey: false }))).toBe(false)
+    expect(isCycleEffortKey(key({ metaKey: false }))).toBe(false)
+    expect(isCycleEffortKey(key({ ctrlKey: true }))).toBe(false)
+    expect(isCycleEffortKey(key({ altKey: true }))).toBe(false)
+    expect(isCycleEffortKey(key({ key: 'a', code: 'KeyA' }))).toBe(false)
+  })
+
+  it("steps through a model's levels and wraps to the first", () => {
+    expect(nextEffort('low')).toBe('medium')
+    expect(nextEffort('xhigh')).toBe('low')
+    expect(nextEffort('xhigh', ['low', 'medium', 'high', 'xhigh', 'max'])).toBe('max')
+    expect(nextEffort('max', ['low', 'medium', 'high', 'xhigh', 'max'])).toBe('low')
   })
 })

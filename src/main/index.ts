@@ -225,6 +225,13 @@ function createWindow() {
   win.webContents.on('before-input-event', (e, input) => {
     const zoom = zoomStepOf(input)
     if (zoom && win) { e.preventDefault(); void handZoom(win.webContents, zoom); return }
+    // Cmd+Shift+/ is also macOS's own key for searching the Help menu, which the app menu has, so the menu takes it and the page never hears it.
+    // The page is handed the key here instead, from the focused element so an open picker sees it too.
+    if (input.type === 'keyDown' && input.meta && input.shift && !input.alt && !input.control && (input.code === 'Slash' || input.key === '/' || input.key === '?')) {
+      e.preventDefault()
+      void win?.webContents.executeJavaScript(`(document.activeElement ?? window).dispatchEvent(new KeyboardEvent('keydown', { key: '?', code: 'Slash', metaKey: true, shiftKey: true, bubbles: true, cancelable: true }))`)
+      return
+    }
     if (input.type !== 'keyDown' || !input.meta || input.shift || input.alt || input.control) return
     const event = { w: 'kernel:close-tab', r: 'kernel:run-script' }[input.key.toLowerCase()]
     if (!event) return

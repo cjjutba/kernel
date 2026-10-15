@@ -628,7 +628,7 @@ const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft:
  * Kernel's chat picked Bypass permissions on the current branch while Only in worktrees is on, so it runs as Accept edits (KERNEL-456).
  * The label says Accept edits, and the menu keeps its check on Bypass permissions and says why.
  */
-const bypassPicked = (f: Fixture, menu?: 'mode' | 'effort') => ({
+const bypassPicked = (f: Fixture, menu?: 'mode') => ({
   workspaces: withWorkspace(f, ids.lead, { mode: 'current' }),
   chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false, effort: 'xhigh' as const, mode: 'bypassPermissions' as const } : c)),
   ui: { route: { name: 'workspace' as const, workspaceId: ids.lead }, ...(menu ? { menu } : {}) }
@@ -2808,8 +2808,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   NewChatPlus: scene((f) => noPlan(leadNoChats(f))),
   NewChatLinkIssue: scene((f) => noPlan(leadNoChats(f))), // the + menu's Link issue picker over the room's Linear issues
   // KERNEL-805: New chat has the Hand off | Build here switch. NewChat is Hand off at rest and NewChatBuildHere has Build here picked on it (scripts/shots.ts).
-  // New chat with the effort menu and the permission menu open, each from its own button (scripts/shots.ts).
-  NewChatEffortMenu: scene((f) => noPlan(leadNoChats(f))),
+  // New chat with the permission menu open from its own button (scripts/shots.ts).
   NewChatPermissionMenu: scene((f) => noPlan(leadNoChats(f))),
   NewChatNarrow: scene((f) => noPlan(leadNoChats(f))),
   NewChatSwitchNarrow: scene((f) => noPlan(leadNoChats(f))), // the chat column at 460px (scripts/shots.ts): the switch keeps its icons and drops its labels
@@ -3026,6 +3025,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: { ...open, menu: 'model' }
     }
   }),
+  // The picker with the Effort row's levels open to its right. The shot hovers the row.
+  WorkspaceModelPickerEffort: scene((f) => ({
+    settings: codexRoleSettings(),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+    models: { codex: codexModels },
+    ui: { ...open, menu: 'model' }
+  })),
   // The picker with the cursor moved up one row by the arrow key.
   WorkspaceModelPickerKeys: scene((f) => ({
     settings: codexRoleSettings(),
@@ -3067,8 +3073,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ComposerModes: scene((f) => bypassPicked(f)),
   ComposerModesNarrow: scene((f) => bypassPicked(f)),
   ComposerModeMenu: scene((f) => bypassPicked(f, 'mode')),
-  // The effort menu of an open chat, opened from its own button (the composer redesign, part 1).
-  ComposerEffortMenu: scene((f) => bypassPicked(f, 'effort')),
   // KERNEL-751: a modal opened while the mode menu was open closes it, so nothing sits above the backdrop.
   ComposerModeMenuUnderModal: scene((f) => ({ ...bypassPicked(f, 'mode'), ui: { ...bypassPicked(f).ui, modal: { name: 'search' } } })),
   WorkspaceQueued: scene((f) => ({
