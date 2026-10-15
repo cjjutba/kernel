@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { modelLabelOf, useCodexInUse, useProviderModels } from './composer/providerModels'
 import type { ChatPart, IssueTakenFinding, LeadMode, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { bypassConfirmed } from '../../bypassConfirm'
@@ -13,6 +13,8 @@ import { briefParts, pickedLines } from '../new-workspace/brief'
 import { startChat } from '../new-workspace/start'
 import { takenFindings } from '../new-workspace/taken'
 import { issueTracker } from './issueKey'
+import { OpenIssue } from './composer/Chip'
+import { useProjectTracker } from '../issues/useProjectTracker'
 import { onComposerFocusAsked, takeComposerFocus } from './composer/bus'
 import { readBranches, useBaseBranch, useBranches } from './composer/BranchPicker'
 import { useDraft } from './composer/draft'
@@ -222,12 +224,15 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
 
   const hasDraft = !d.empty
   const project = allProjects.find((r) => r.id === projectId)
+  const { read: trackerRead } = useProjectTracker(projectId)
   // A project that was archived or removed under the page, or none at all: the title asks without one, and nothing sends until one is picked.
   const usable = !!project && !project.archived
   const projectPicker = (variant: 'title' | 'button') => (
     <ProjectPicker variant={variant} projects={projects} project={usable ? project : undefined} open={menu === 'project'} disabled={busy} onToggle={() => setMenu(menu === 'project' ? null : 'project')} onClose={() => setMenu((m) => (m === 'project' ? null : m))} onPick={pickProject} onNewProject={() => actions.ui.openModal({ name: 'newProject' })} />
   )
+  const issueCtx = useMemo(() => ({ project, tracker: trackerRead.kind === 'ready' ? trackerRead.tracker : undefined }), [project, trackerRead])
   return (
+    <OpenIssue.Provider value={issueCtx}>
     <div className="lead-new">
       <div ref={topRef} className="lead-top">
         <div ref={titleRef} className="lead-title" style={{ visibility: fits ? undefined : 'hidden' }} aria-hidden={fits ? undefined : true}>
@@ -252,6 +257,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
         hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
       />
     </div>
+    </OpenIssue.Provider>
   )
 }
 

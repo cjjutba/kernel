@@ -15,7 +15,7 @@ import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, CopyOverlay, MessageActions, useCopy, type MessageAction } from './MessageActions'
-import { ChipIcon, HoverPreview, ImageButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
+import { ChipIcon, HoverPreview, ImageButton, IssueButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
 import { foldHeader, settle, wantOpen, windowEntries, WAITING, WINDOW } from './fold'
 import { buildThread, countsLabel, fmtDuration, messageLabel, runLabel, turnFiles, type Entry, type Run, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
@@ -116,6 +116,7 @@ export function PartChip({ part }: { part: ChatPart }) {
   const body = <>{part.type === 'skill' ? <span aria-hidden="true" className="muted">/</span> : <ChipIcon part={part} />}{part.name}</>
   if (part.type === 'image' && part.dataUrl) return <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="msg-chip" data-kind="image">{body}</ImageButton>
   if (isPastedText(part)) return <TextButton paste={part} className="msg-chip" data-kind="file">{body}</TextButton>
+  if (part.type === 'issue') return <IssueButton issue={part} className="msg-chip" data-kind="issue">{body}</IssueButton>
   return <span className="msg-chip" data-kind={part.type}>{body}</span>
 }
 
@@ -984,8 +985,18 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         show(distFromEnd(el) > PIN_PX)
       }
       put()
-      // Rows far above are measured a frame after they first show, so their heights move the spot once.
-      again = requestAnimationFrame(() => { if (!byHand.current) put() })
+      // Rows are measured a frame or two after they first show, and each one that grows moves the spot, so it is put back until the height holds still for a few frames or the reader takes over.
+      let height = el.scrollHeight
+      let still = 0
+      let frames = 0
+      const settle = () => {
+        if (byHand.current) return
+        put()
+        still = el.scrollHeight === height ? still + 1 : 0
+        height = el.scrollHeight
+        if (still < 4 && ++frames < 40) again = requestAnimationFrame(settle)
+      }
+      again = requestAnimationFrame(settle)
     }
     return () => {
       cancelAnimationFrame(frame.current)
