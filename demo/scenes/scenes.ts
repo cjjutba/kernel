@@ -238,7 +238,7 @@ function accounts(): Scene {
   // Two accounts to start, one on each provider, so each one added shows.
   f.accounts = list.filter((a) => a.id === 'cli')
   f.usage = ((f.usage ?? []) as RateLimit[]).filter((l) => !l.accountId)
-  f.ui = { ...f.ui, route: { name: 'home' } }
+  f.ui = { ...f.ui, route: { name: 'leadNew', projectId: ((f.projects ?? [])[0] as { id: string } | undefined)?.id ?? '' } }
   const set = (next: AccountProfile[]) => {
     f.accounts = next
     push({ type: 'accounts', accounts: next })

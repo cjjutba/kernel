@@ -91,7 +91,7 @@ export const f: Fixture = {
   diffs: {},
   prs: {},
   push: [],
-  ui: { route: { name: 'leadNew', projectId: PROJECT }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', toolsOpen: false } }
+  ui: { route: { name: 'leadNew', projectId: PROJECT }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run' } }
 }
 
 const handlers = fixtureHandlers(f) as unknown as Record<string, (req: unknown) => Promise<unknown>>
@@ -236,7 +236,7 @@ let leadChatId = ''
 let threadId = ''
 let planId = ''
 
-function brief(projectId: string, prompt: string, plan: boolean): Chat {
+function brief(projectId: string, prompt: string, plan: boolean, clientId?: string): Chat {
   if (leadChatId) throw new Error('This demo runs one chat at a time. Use Start over under the demo to begin again.')
   threadId = 't-demo'
   leadWs = 'ws-demo-lead'
@@ -248,7 +248,7 @@ function brief(projectId: string, prompt: string, plan: boolean): Chat {
   f.items[leadChatId] = []
   reach('quiet')
   later(50, () => {
-    item(leadChatId, user('d-brief', prompt))
+    item(leadChatId, user(clientId ?? 'd-brief', prompt))
     if (plan) proposePlan()
     else firstReply(prompt)
   })
@@ -488,12 +488,13 @@ function decide(id: string, d: Decision): Approval {
 }
 
 /** A message in any chat. In the story's chat it moves the story on; anywhere else it gets one honest reply. */
-function send(chat: string, parts: ChatPart[]) {
+function send(chat: string, parts: ChatPart[], clientId?: string): ChatItem {
   const text = parts.map((p) => (p.type === 'text' ? p.text : '')).join(' ').trim()
   const id = `m-${now()}`
-  item(chat, { kind: 'user', id: `${id}-u`, ts: now(), parts })
+  const row: ChatItem = { kind: 'user', id: clientId ?? `${id}-u`, ts: now(), parts }
+  item(chat, row)
   const c = f.chats.find((x) => x.id === chat)
-  if (chat === leadChatId && c?.plan && !planId) return proposePlan()
+  if (chat === leadChatId && c?.plan && !planId) { proposePlan(); return row }
   running(chat, true)
   later(1100, () => {
     const reply = chat !== leadChatId
@@ -506,6 +507,7 @@ function send(chat: string, parts: ChatPart[]) {
     item(chat, say(`${id}-r`, reply))
     running(chat, false)
   })
+  return row
 }
 
 async function configure(req: { chatId: string; model?: string; effort?: Chat['effort']; plan?: boolean; mode?: Chat['mode'] }) {
@@ -532,8 +534,8 @@ const unavailable = (what: string) => async () => { throw new Error(`${what} wor
 
 /** The bridge answers from these first, then from the fixture. */
 export const storyHandlers: Record<string, (req: never) => Promise<unknown>> = {
-  'lead.start': async ({ projectId, prompt, plan }: { projectId: string; prompt: string; plan?: boolean }) => brief(projectId, prompt, !!plan),
-  'chats.send': async ({ chatId: id, parts }: { chatId: string; parts: ChatPart[] }) => { send(id, parts); return { queued: false } },
+  'lead.start': async ({ projectId, prompt, plan, clientId }: { projectId: string; prompt: string; plan?: boolean; clientId?: string }) => brief(projectId, prompt, !!plan, clientId),
+  'chats.send': async ({ chatId: id, parts, clientId }: { chatId: string; parts: ChatPart[]; clientId?: string }) => ({ queued: false, item: send(id, parts, clientId) }),
   'chats.configure': async (req: Parameters<typeof configure>[0]) => configure(req),
   'approvals.decide': async ({ id, decision }: { id: string; decision: Decision }) => decide(id, decision),
   'pr.merge': async ({ workspaceId }: { workspaceId: string }) => merge(workspaceId),
