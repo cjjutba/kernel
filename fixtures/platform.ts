@@ -188,6 +188,20 @@ const kernelFiles: ProjectSettings = {
   references: [],
   sources: { 'scripts.setup': 'shared', 'scripts.run': 'override', 'files.copy': 'shared', 'workspace.baseRef': 'override', 'pr.createInstructions': 'override' }
 }
+const fiscSetup = [
+  'export PATH="/opt/homebrew/opt/node@20/bin:$PATH"',
+  'pnpm install --frozen-lockfile',
+  'cp "$KERNEL_ROOT_PATH/.env" .env',
+  'cp "$KERNEL_ROOT_PATH/src/backend/.env" src/backend/.env',
+  'cp "$KERNEL_ROOT_PATH/src/frontend/.env" src/frontend/.env',
+  '# Best-effort: make the copied .env self-consistent with this workspace\'s ports. The run',
+  '# scripts inject the ports at run time regardless, so skip quietly if the (committed) script',
+  '# is absent on this branch instead of failing setup.',
+  '[ -f scripts/setup-worktree-env.sh ] && bash scripts/setup-worktree-env.sh || true',
+  'pnpm --filter @fiscplus/realtime build',
+  'pnpm --filter backend exec prisma generate',
+  ''
+].join('\n')
 const clientA = (extra: Partial<ProjectSettings> = {}) => ({ projectSettings: { [ids.projectA]: { ...kernelFiles, ...extra } } })
 /**
  * Client A's push check (KERNEL-460): both rows pass, gh can push but git isn't using its login, or origin is out of reach.
@@ -230,6 +244,7 @@ const autoMode = (): AppSettings => { const d = DEFAULT_SETTINGS('/Users/you'); 
 /** Client A's Permissions page: the commands and tools saved with Always allow in this project, over an app that runs Auto. */
 const projectPermissions = (f: Fixture): Partial<Fixture> => ({
   ...clientA(),
+  agents: { ...f.agents, [ids.projectA]: sixAgents },
   settings: autoMode(),
   projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, allow: projectRules, allowTools: projectToolRules } : r))
 })
@@ -393,6 +408,18 @@ function leadSetup(f: Fixture, lines: Omit<ScriptLine, 'kind'>[], code?: number)
 
 const projectGitToast: Fixture = (() => { const f = projectPage('git', { ...clientA({}), branches: ['origin/main'], ...pushCheck('ok') }); return { ...f, ui: { ...f.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } } })()
 
+/** The Scripts page of Client A (KERNEL-914): a twelve-line setup script that overrides settings.toml, an empty archive script and three run scripts. */
+const scriptsPage = projectPage('setup', clientA({
+    scripts: { ...kernelFiles.scripts, setup: fiscSetup, archive: '' },
+    runScripts: [
+      { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
+      { name: 'frontend', command: 'pnpm --filter web dev --port $KERNEL_PORT' },
+      { name: 'backend', command: 'pnpm --filter api dev --port $((KERNEL_PORT + 1))' }
+    ],
+    preview: { urls: [{ name: 'Web app', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API docs', url: 'http://localhost:$((KERNEL_PORT + 1))/docs' }] },
+    sources: { ...kernelFiles.sources, 'scripts.setup': 'override', 'runScripts.run': 'override', 'runScripts.frontend': 'local', 'runScripts.backend': 'local', 'preview.urls': 'shared' }
+  }))
+
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
   WhatsNewCurrent: whatsNewCurrent,
@@ -555,16 +582,20 @@ export const platformFixtures: Record<string, Fixture> = {
     branches: ['origin/main', 'origin/dev', 'main'],
     ...pushCheck('unreachable')
   }),
-  // KERNEL-249: run is overridden here, and frontend and backend are personal scripts, as the canvas draws them.
-  // KERNEL-250: the two preview URLs come from settings.toml. The list is one value, so its source shows on the first row.
-  SettingsProjectSetup: projectPage('setup', clientA({
-    runScripts: [
-      { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
-      { name: 'frontend', command: 'pnpm --filter web dev --port $KERNEL_PORT' },
-      { name: 'backend', command: 'pnpm --filter api dev --port $((KERNEL_PORT + 1))' }
-    ],
-    preview: { urls: [{ name: 'Web app', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API docs', url: 'http://localhost:$((KERNEL_PORT + 1))/docs' }] },
-    sources: { ...kernelFiles.sources, 'runScripts.run': 'override', 'runScripts.frontend': 'local', 'runScripts.backend': 'local', 'preview.urls': 'shared' }
+  // KERNEL-914: the Scripts page as Conductor draws it. A twelve-line setup script that overrides settings.toml, an empty archive script, and run scripts as rows. The list is one value, so the preview URLs' source shows on the first row.
+  SettingsProjectScripts: scriptsPage,
+  // KERNEL-914: the same page scrolled to the archive script, the run scripts as rows, Run mode and Ports.
+  SettingsProjectScriptsRuns: scriptsPage,
+  // KERNEL-914: a fresh project: both scripts empty, no run scripts, and nothing from settings.toml.
+  SettingsProjectScriptsEmpty: projectPage('setup', clientA({
+    scripts: { ...kernelFiles.scripts, setup: '', archive: '', run: '' },
+    runScripts: [],
+    sources: {}
+  })),
+  // KERNEL-914: Add run script over the Scripts page, with the name and the command empty.
+  SettingsRunScriptAdd: scene(() => ({
+    ...clientA({ scripts: { ...kernelFiles.scripts, setup: '', archive: '', run: '' }, runScripts: [], sources: {} }),
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'setup' } }
   })),
   // KERNEL-684: Setup is empty, and Kernel found a script in the repo's Conductor file. Archive has a value, so it offers nothing.
   SettingsProjectScriptsSuggestion: scene((f) => ({
@@ -574,11 +605,20 @@ export const platformFixtures: Record<string, Fixture> = {
   })),
   // KERNEL-254: names only, since a value only ever comes from env.reveal. Client A's list is its personal file, and one of the two files isn't there.
   SettingsEnvironment: settingsPage('env', { env: { app: ['GH_TOKEN', 'NPM_TOKEN', 'NODE_OPTIONS'] } }),
-  SettingsProjectEnvironment: projectPage('environment', envProjectA),
+  // KERNEL-914: Files to copy sits under the env files, with the files it matches in the checkout.
+  SettingsProjectEnvironment: scene((f) => ({
+    ...envProjectA,
+    ...clientA({ env: { files: envFiles }, files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false }, sources: { ...kernelFiles.sources, 'env.files': 'local', 'files.copy': 'shared' } }),
+    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
+    localFiles: { [ids.projectA]: ['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem'].map((path, i) => ({ path, size: 96 + i * 31 })) },
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' } }
+  })),
   SettingsEnvironmentAdd: scene(() => ({ ...envProjectA, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' }, modal: { name: 'envVar', projectId: ids.projectA } } })),
-  SettingsProjectPermissions: scene((f) => ({ ...projectPermissions(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'permissions' } } })),
+  // KERNEL-914: the Agents page with Permissions, Skills and MCP servers under the agents.
+  SettingsProjectAgents: scene((f) => ({ ...projectPermissions(f), skills: ['setup', 'plan', 'feature'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
+  SettingsProjectPermissions: scene((f) => ({ ...projectPermissions(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
   // KERNEL-455: the project's mode menu is open, over Use app default.
-  SettingsProjectPermissionsMode: scene((f) => ({ ...projectPermissions(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'permissions' }, menu: 'projectMode' } })),
+  SettingsProjectPermissionsMode: scene((f) => ({ ...projectPermissions(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, menu: 'projectMode' } })),
   // KERNEL-726: Client A changes the merge method, so the app page says so under the row and links to the project.
   SettingsPRs: settingsPage('prs', { settings: prSettings, ...clientA({ pr: { ...kernelFiles.pr, mergeMethod: 'rebase' }, sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' } }) }),
   // KERNEL-727: a search for "size limit" landed here: the row is highlighted and its field has focus.
@@ -593,7 +633,7 @@ export const platformFixtures: Record<string, Fixture> = {
     ...clientA({ files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false } }),
     projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
     localFiles: { [ids.projectA]: [...['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem', 'certs/staging.pem', 'certs/wildcard.pem', '.DS_Store', 'certs/README.txt', 'dist/index.js'].map((path, i) => ({ path, size: 96 + i * 31 }))] },
-    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'setup' } }
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' } }
   })),
   // KERNEL-449: two of those files look like production, so the warning sits above the list, by file and variable name.
   SettingsProjectSetupProduction: scene((f) => ({
@@ -601,7 +641,7 @@ export const platformFixtures: Record<string, Fixture> = {
     projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
     localFiles: { [ids.projectA]: [...['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem', 'certs/staging.pem', 'certs/wildcard.pem', '.DS_Store', 'certs/README.txt', 'dist/index.js'].map((path, i) => ({ path, size: 96 + i * 31 }))] },
     production: { [ids.projectA]: [{ path: '.env', name: 'DATABASE_URL', why: 'remote-database' }, { path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }] },
-    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'setup' } }
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' } }
   })),
   // KERNEL-727: a search for "hook server port" lands inside the folded Advanced section, which opens first.
   SettingsHooksLanded: scene(() => ({ hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') }, ui: { route: { name: 'settings', page: 'hooks', row: 'hook-port' } } })),
@@ -686,12 +726,12 @@ export const platformFixtures: Record<string, Fixture> = {
     agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
     ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
   })),
-  SettingsSkills: projectPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts }),
+  SettingsSkills: projectPage('agents', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts }),
   // KERNEL-893: the skills read is slow, so three skeleton rows stand in, and it fails, so the page says so and offers Try again.
-  SettingsSkillsLoading: projectPage('skills', { ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, lag: { 'skills.list': 60000 } }),
-  SettingsSkillsFailed: projectPage('skills', { ...clientA(), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, fails: { 'skills.list': 'Could not read the skills folder.' } }),
+  SettingsSkillsLoading: projectPage('agents', { ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, lag: { 'skills.list': 60000 } }),
+  SettingsSkillsFailed: projectPage('agents', { ...clientA(), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, fails: { 'skills.list': 'Could not read the skills folder.' } }),
   // KERNEL-661: twenty-seven servers as switches in a project, each with one word of status and the link to the global page.
-  SettingsSkillsMany: projectPage('skills', { ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpAcrossServers, mcpAccounts: manyServers() }),
+  SettingsSkillsMany: projectPage('agents', { ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpAcrossServers, mcpAccounts: manyServers() }),
   // KERNEL-661: Settings, MCP servers opens on the active account, Work, with every server ready and folded into one line per group.
   SettingsMcpServersReady: mcpPage({}, {}),
   // KERNEL-661: the notice or Providers opens the page on Personal: sign-ins, a failure, connectors not set up and one ignored.

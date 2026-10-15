@@ -58,7 +58,7 @@ export function Git({ s }: { s: AppSettings }) {
         <Row id="baseline" setting="workspace.baselineCurrentBranch" label="Treat existing changes as the baseline" desc="They stay out of the diff, and agents never commit them."><Toggle label="Treat existing changes as the baseline" checked={w.baselineCurrentBranch} onChange={(v) => set({ baselineCurrentBranch: v })} /></Row>
         <Row id="one-current-branch" setting="workspace.oneCurrentBranchPerProject" label="One current-branch workspace per project"><Toggle label="One current-branch workspace per project" checked={w.oneCurrentBranchPerProject} onChange={(v) => set({ oneCurrentBranchPerProject: v })} /></Row>
       </Section>
-      <Section title="Setup and archive" note="The scripts live on each project’s Setup and scripts page.">
+      <Section title="Setup and archive" note="The scripts live on each project’s Scripts page.">
         <Row id="run-setup" setting="scripts.setupOnCreate" label="Run setup when a workspace is created"><Toggle label="Run setup when a workspace is created" checked={a.setupOnCreate} onChange={(v) => setScripts({ setupOnCreate: v })} /></Row>
         <Row id="wait-for-setup" setting="workspace.leadWaitForSetup" child label="Wait for setup before the first message" desc="The first message holds until setup passes."><Toggle label="Wait for setup before the first message" checked={w.leadWaitForSetup} onChange={(v) => set({ leadWaitForSetup: v })} /></Row>
         <Row id="run-after-setup" setting="scripts.runAfterSetup" label="Start the run script after setup"><Toggle label="Start the run script after setup" checked={a.runAfterSetup} onChange={(v) => setScripts({ runAfterSetup: v })} /></Row>
