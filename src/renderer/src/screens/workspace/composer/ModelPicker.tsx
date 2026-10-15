@@ -5,6 +5,7 @@ import { Icon, ProviderMark } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, useEffortMemory } from './modelPrefs'
+import { useFavoriteModels, toggleFavoriteModel } from './favoriteModels'
 import { effortsOf, fitEffort, providerLabel, useProviderModels } from './providerModels'
 
 export { EFFORTS }
@@ -26,36 +27,55 @@ function EffortMenu({ efforts, effort, at, onAt, onPick, onClose }: { efforts: E
 }
 
 /** A row of the picker: a model on a provider, and `n` for Claude's ^⌘ shortcut. */
-interface Row { provider: Provider; id: string; label: string; n?: number }
+interface Row { provider: Provider; id: string; label: string; legacy: boolean; n?: number }
+type Item = { kind: 'model'; row: Row } | { kind: 'legacy'; count: number }
+type Tab = 'favorites' | Provider
 
 /**
- * Model and effort, as in Conductor (D-093). Type to search, arrow keys move, Enter picks. Each model shows the effort
- * you last used with it and comes back at that effort, else at `fallback`, the default effort, never the open chat's (D-130).
- * The caller remembers a picked effort. The Effort row opens the levels to its right (Enter or ArrowRight).
- * Ctrl+Cmd+1 to 4 pick a Claude model and Cmd+Shift+/ cycles the effort; the workspace composer also takes them while it is closed.
+ * Model and effort, as in Conductor (D-093) with t3's rail. The rail switches between Favorites and the providers, and the list shows
+ * only that tab's models, the older ones folded under one Legacy models row. Type to search (legacy models included), arrow keys
+ * move, Enter picks. Each model shows the effort you last used with it and comes back at that effort, else at `fallback`, the default
+ * effort, never the open chat's (D-130). The caller remembers a picked effort. The Effort row opens the levels to its right (Enter or ArrowRight).
+ * Ctrl+Cmd+1 to 4 pick a Claude model, Cmd+D stars the model under the cursor and Cmd+Shift+/ cycles the effort; the workspace composer
+ * also takes the first and last while it is closed.
  *
- * With `grouped` the models come under their provider (WorkspaceModelPicker.png, KERNEL-406). A model on the other provider
- * can't take over a started chat, so it says New chat and `onNewChat` opens a tab on it.
+ * The picker opens on the current model's provider. Both providers show when Codex is in use (`grouped`). A model on the other provider
+ * can't take over a chat that has started, so that provider's rail icon is dimmed and says to start a new chat (KERNEL-406).
  */
-export function ModelPicker({ provider = 'claude', grouped = false, started = false, model, effort, fallback, onModel, onEffort, onNewChat, onClose, anchorRef }: {
+export function ModelPicker({ provider = 'claude', grouped = false, started = false, model, effort, fallback, onModel, onEffort, onClose, anchorRef }: {
   anchorRef: React.RefObject<HTMLElement | null>; provider?: Provider; grouped?: boolean; started?: boolean; model: string; effort: Effort; fallback: Effort
-  onModel: (m: string, effort: Effort) => void; onEffort: (e: Effort) => void; onNewChat?: (provider: Provider, m: string, effort: Effort) => void; onClose: () => void
+  onModel: (m: string, effort: Effort) => void; onEffort: (e: Effort) => void; onClose: () => void
 }) {
   const codex = useProviderModels('codex')
   const claude = useProviderModels('claude')
   const listOf = (p: Provider) => (p === 'codex' ? codex : claude)
   const own = listOf(provider)
   const efforts = effortsOf(model, own)
+  const favorites = useFavoriteModels()
+  const providers: Provider[] = grouped || provider === 'codex' ? ['claude', 'codex'] : ['claude']
+  /** The other provider can't take over a chat that has started. */
+  const locked = (p: Provider) => started && p !== provider
   const [q, setQ] = useState('')
+  const [tab, setTab] = useState<Tab>(provider)
   const all: Row[] = useMemo(() => [
-    ...MODELS.map((m, i) => ({ provider: 'claude' as const, id: m.id, label: m.label, ...(m.legacy ? {} : { n: i + 1 }) })),
-    ...(grouped || provider === 'codex' ? codex.map((m) => ({ provider: 'codex' as const, id: m.id, label: m.label })) : [])
+    ...MODELS.map((m, i) => ({ provider: 'claude' as const, id: m.id, label: m.label, legacy: !!m.legacy, ...(m.legacy ? {} : { n: i + 1 }) })),
+    ...(providers.includes('codex') ? codex.map((m) => ({ provider: 'codex' as const, id: m.id, label: m.label, legacy: !!m.legacy })) : [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [codex, grouped, provider])
-  const rows = useMemo(() => {
-    const needle = q.trim().toLowerCase()
-    return all.filter((m) => !needle || m.label.toLowerCase().includes(needle))
-  }, [q, all])
-  const [at, setAt] = useState(() => Math.max(0, all.findIndex((m) => m.id === model)))
+  const current = all.find((m) => m.id === model)
+  // A chat on a legacy model opens with the legacy models showing, so its row is in sight.
+  const [legacyOpen, setLegacyOpen] = useState(() => !!current?.legacy && current.provider === provider)
+  const needle = q.trim().toLowerCase()
+  const items: Item[] = useMemo(() => {
+    const pool = tab === 'favorites' ? all.filter((m) => favorites.includes(m.id) && !locked(m.provider)) : all.filter((m) => m.provider === tab)
+    const hits = needle ? pool.filter((m) => m.label.toLowerCase().includes(needle)) : pool
+    const model = (row: Row): Item => ({ kind: 'model', row })
+    if (tab === 'favorites' || needle) return hits.map(model)
+    const old = hits.filter((m) => m.legacy)
+    return [...hits.filter((m) => !m.legacy).map(model), ...(old.length ? [{ kind: 'legacy' as const, count: old.length }] : []), ...(legacyOpen ? old.map(model) : [])]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, tab, favorites, needle, legacyOpen, started, provider])
+  const [at, setAt] = useState(() => Math.max(0, items.findIndex((i) => i.kind === 'model' && i.row.id === model)))
   const [sub, setSub] = useState(false)
   const [subAt, setSubAt] = useState(() => Math.max(0, efforts.indexOf(effort)))
   const memory = useEffortMemory()
@@ -70,20 +90,25 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
     window.addEventListener('resize', fit)
     return () => window.removeEventListener('resize', fit)
   }, [])
-  useEffect(() => { ref.current?.querySelector('.pick-list [data-active="true"]')?.scrollIntoView({ block: 'nearest' }) }, [at, rows])
+  useEffect(() => { ref.current?.querySelector('.pick-list [data-active="true"]')?.scrollIntoView({ block: 'nearest' }) }, [at, items])
 
-  const effortRow = rows.length
+  const effortRow = items.length
   const rowEffort = (m: Row) => (m.id === model ? effort : fitEffort(effortFor(m.id, memory, fallback), m.id, listOf(m.provider)))
-  /** The other provider's model can't take over a chat that has started: it opens a new chat on it. */
-  const elsewhere = (m: Row) => m.provider !== provider && started
-
-  const pickModel = (m: Row) => (elsewhere(m) ? onNewChat?.(m.provider, m.id, rowEffort(m)) : onModel(m.id, rowEffort(m)))
+  const pickModel = (m: Row) => { if (!locked(m.provider)) onModel(m.id, rowEffort(m)) }
   const pickEffort = (e: Effort) => { onEffort(e); setSub(false) }
   const openSub = () => { setSubAt(Math.max(0, efforts.indexOf(effort))); setSub(true) }
+  const goTab = (t: Tab) => { if (t !== 'favorites' && locked(t)) return; setTab(t); setAt(0); setSub(false) }
+  const press = (i: Item | undefined) => { if (i?.kind === 'legacy') setLegacyOpen((v) => !v); else if (i) pickModel(i.row) }
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.ctrlKey && e.metaKey && /^[1-4]$/.test(e.key)) { e.preventDefault(); const m = all.find((r) => r.n === Number(e.key)); if (m) pickModel(m); return }
     if (e.metaKey && e.shiftKey && (e.key === '/' || e.key === '?')) { e.preventDefault(); pickEffort(nextEffort(effort, efforts)); return }
+    if (e.metaKey && !e.shiftKey && !e.ctrlKey && e.key.toLowerCase() === 'd') {
+      e.preventDefault()
+      const it = items[at]
+      if (!sub && it?.kind === 'model') toggleFavoriteModel(it.row.id)
+      return
+    }
     if (sub) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setSubAt((i) => Math.min(efforts.length - 1, i + 1)) }
       else if (e.key === 'ArrowUp') { e.preventDefault(); setSubAt((i) => Math.max(0, i - 1)) }
@@ -94,8 +119,11 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
     if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => Math.min(effortRow, i + 1)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setAt((i) => Math.max(0, i - 1)) }
     else if (e.key === 'ArrowRight' && at === effortRow) { e.preventDefault(); openSub() }
-    else if (e.key === 'Enter') { e.preventDefault(); if (at === effortRow) openSub(); else if (rows[at]) pickModel(rows[at]) }
+    else if (e.key === 'Enter') { e.preventDefault(); if (at === effortRow) openSub(); else press(items[at]) }
   }
+
+  const tabs: { id: Tab; label: string }[] = [{ id: 'favorites', label: 'Favorites' }, ...providers.map((p) => ({ id: p as Tab, label: providerLabel(p) }))]
+  const empty = needle ? `No model matches "${q.trim()}".` : tab === 'favorites' ? 'Star a model to keep it here.' : 'No models to show.'
 
   return (
     <div ref={ref} className="menu cmp-pop model-pop" role="dialog" aria-label="Model and effort" onKeyDown={onKey} style={{ maxHeight }}>
@@ -104,27 +132,51 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
         <input aria-label="Search models" placeholder="Search models" autoComplete="off" spellCheck={false} value={q} onChange={(e) => { setQ(e.target.value); setAt(0); setSub(false) }} />
       </label>
       <div className="pick-body">
-        <div role="listbox" aria-label="Models" className="pick-list">
-          {rows.map((m, i) => (
-            <div key={`${m.provider}:${m.id}`} role="presentation">
-              {grouped && (i === 0 || rows[i - 1].provider !== m.provider) && <p className="pick-group" role="presentation"><ProviderMark provider={m.provider} size={12} />{providerLabel(m.provider)}</p>}
-              <button type="button" role="option" aria-selected={m.id === model} tabIndex={-1} className="menu-item pick-row" data-active={!sub && i === at}
-                onMouseEnter={() => { setAt(i); setSub(false) }} onMouseDown={(e) => e.preventDefault()} onClick={() => pickModel(m)}>
-                {!grouped && <span className="pick-glyph"><ProviderMark provider={m.provider} size={14} /></span>}
-                <span className="pick-name">{m.label}</span>
-                {!elsewhere(m) && <span className="pick-effort">{effortLabel(rowEffort(m))}</span>}
+        <div className="pick-split">
+          <div className="pick-rail" role="tablist" aria-orientation="vertical" aria-label="Providers">
+            {tabs.map((t) => {
+              const off = t.id !== 'favorites' && locked(t.id)
+              return (
+                <button key={t.id} type="button" role="tab" className="pick-tab" aria-selected={tab === t.id} aria-label={t.label} aria-disabled={off || undefined}
+                  data-tip={off ? `${t.label} is unavailable in this chat. Start a new chat to switch providers.` : t.label} data-tip-align="start"
+                  onMouseDown={(e) => e.preventDefault()} onClick={() => goTab(t.id)}>
+                  {t.id === 'favorites' ? <Icon name="star" size={16} /> : <ProviderMark provider={t.id} size={16} />}
+                </button>
+              )
+            })}
+          </div>
+          <div role="listbox" aria-label="Models" className="pick-list">
+            {items.map((it, i) => it.kind === 'legacy' ? (
+              <button key="legacy" type="button" className="menu-item pick-row pick-legacy" aria-expanded={legacyOpen} data-active={!sub && i === at}
+                onMouseEnter={() => { setAt(i); setSub(false) }} onMouseDown={(e) => e.preventDefault()} onClick={() => setLegacyOpen((v) => !v)}>
+                <span className="pick-text"><span className="pick-name">Legacy models</span><span className="pick-sub">{it.count} {it.count === 1 ? 'model' : 'models'}</span></span>
                 <span className="grow" />
-                {m.id === model ? <span className="pick-check"><Icon name="check" size={14} /></span>
-                  : elsewhere(m) ? <span className="pick-kbd">New chat</span>
-                  : m.n ? <span className="pick-kbd">^⌘{m.n}</span> : null}
+                <span className="pick-chev" data-open={legacyOpen}><Icon name="chevron" size={14} /></span>
               </button>
-            </div>
-          ))}
-          {!rows.length && <p className="pick-empty">No model matches "{q.trim()}".</p>}
+            ) : (
+              <div key={`${it.row.provider}:${it.row.id}`} className="pick-item" role="presentation" data-active={!sub && i === at} data-legacy={it.row.legacy && tab !== 'favorites' && !needle}
+                onMouseEnter={() => { setAt(i); setSub(false) }}>
+                <button type="button" role="option" aria-selected={it.row.id === model} tabIndex={-1} className="menu-item pick-row"
+                  onMouseDown={(e) => e.preventDefault()} onClick={() => pickModel(it.row)}>
+                  <span className="pick-text">
+                    <span className="pick-name">{it.row.label}</span>
+                    <span className="pick-sub">{providerLabel(it.row.provider)} · {effortLabel(rowEffort(it.row))}</span>
+                  </span>
+                  <span className="grow" />
+                  {it.row.id === model ? <span className="pick-check"><Icon name="check" size={14} /></span> : it.row.n ? <span className="pick-kbd">^⌘{it.row.n}</span> : null}
+                </button>
+                <button type="button" tabIndex={-1} className="pick-star" aria-pressed={favorites.includes(it.row.id)} aria-label={`${favorites.includes(it.row.id) ? 'Remove' : 'Add'} ${it.row.label} ${favorites.includes(it.row.id) ? 'from' : 'to'} favorites`}
+                  data-tip-kbd="⌘D" onMouseDown={(e) => e.preventDefault()} onClick={() => toggleFavoriteModel(it.row.id)}>
+                  <Icon name="star" size={14} />
+                </button>
+              </div>
+            ))}
+            {!items.length && <p className="pick-empty">{empty}</p>}
+          </div>
         </div>
         <div className="menu-sep" />
         <div className="pick-effort-row">
-          <button type="button" tabIndex={-1} className="menu-item pick-row" aria-haspopup="menu" aria-expanded={sub} data-active={sub || at === effortRow}
+          <button type="button" tabIndex={-1} className="menu-item pick-row pick-effort-btn" aria-haspopup="menu" aria-expanded={sub} data-active={sub || at === effortRow}
             onMouseEnter={() => { setAt(effortRow); openSub() }} onMouseDown={(e) => e.preventDefault()} onClick={() => (sub ? setSub(false) : openSub())}>
             <span className="grow">Effort</span>
             <span className="pick-effort">{effortLabel(effort)}</span>
