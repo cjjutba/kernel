@@ -203,6 +203,38 @@ KERNEL-891 changed sending: a sent message appears at the end and the view follo
 | Rail jump | `AuditRailJumpMotion` | One smooth glide in one direction. |
 | Send during a rail jump | `AuditRailJumpSendMotion` | The send goes to the end at once, no glide. |
 
+## One-frame sends after KERNEL-894 and KERNEL-895
+
+Walked on the merged build (main at `71f9beb24`), in a hidden Electron window. Every animation frame (about 8ms) after the action was sampled: the rects of the transcript rows and the composer column, scroll metrics, the placeholder, button names and the Working line. Pass means the first frame after the action already has the final layout and nothing moves after it except new content.
+
+| Path | Fixture | Result |
+| --- | --- | --- |
+| Composer send, short and long text, empty text | `WorkspaceSendShortMotion`, `WorkspaceSendLongMotion`, `WorkspaceSendEmptyMotion` | Pass. In a long chat the visible rows move 1px in the frame after Send (see 4 below). |
+| Placeholder and Send/Stop switch | same | Pass. |
+| Starter suggestions | `WorkspaceSuggestionMotion` | Pass. |
+| Ask to fix | `WorkspaceAskFixMotion` | Pass. |
+| Send now | `WorkspaceSendNowMotion` | One frame of the turn-ended state in 2 of 3 runs (see 2 below). |
+| A queued message posting | `WorkspaceQueuePostsMotion` | Two frames, 3 of 3 runs (see 1 below). |
+| New chat start | `WorkspaceNewChatSendMotion` | Pass. The page shows "Sending" until main answers, then the chat opens. By design, the chat id comes from main. |
+| Plan change request with images | `WorkspacePlanChangesImageMotion` | Pass. |
+| Plan approve | `WorkspacePlanApprove` | Pass. The rows no longer shift about 40px. |
+| Retry | `WorkspaceRetryMotion` | Pass. |
+| Stop | `WorkspaceStop` | Pass, with the 2px settle in 3 below. |
+| Failed send | `WorkspaceSendFailsMotion` (new) | Pass. The bubble and Working line go and the text is back in the box with a "Could not send" toast. |
+| Two quick sends | `WorkspaceSendShortMotion`, sent twice | Pass. The second waits in the tray while the first runs, then posts as a bubble, in order. |
+| Placeholder after a plan strip closed | `WorkspacePlaceholderMotion` | Pass. The normal placeholder shows on every frame, with no stacked plan placeholder and no flicker. |
+
+Open, for Kernel to decide on:
+
+1. **A queued message posting splits into two frames.** An 11 to 15ms gap shows the turn-ended state with no bubble before the bubble arrives. Possibly the `setTimeout(0)` burst in `applyTogether` in `store.ts`.
+2. **Send now flashes the turn-ended state for one frame (8 to 9ms)** when main answers. Probably the same cause as 1.
+3. **Existing rows settle 2px about 190 to 230ms after Send now, Stop and a queued post.** The group header goes from 28px to 26px.
+4. **Send in a long chat shifts the visible rows 1px** in the frame after the action, as offscreen rows re-measure and the scroll height grows 4px.
+
+Fixture notes: `WorkspaceQueuePostsMotion` shows "NaNs" because the pushed row has no `ts`, and `WorkspacePlanApprove` pushes no running event, so Working replacing Waiting for you is not exercised there.
+
+An earlier pass of these walks loaded the renderer from a running dev server instead of the build. The paths above were all measured again on a clean build, but the round 1 walks in this audit were not repeated.
+
 ## Fixtures added
 
 In `fixtures/workspace.ts`: `AuditItemsLoading`, `AuditLongOutput`, `AuditTenImages`, `AuditScrollToBottomMotion`, `AuditQuestionPicked`, `AuditQuestionAnswerMotion`, `AuditRailJumpMotion`. `scripts/shots.ts` has an interaction entry for each of the last four and `AuditScrollToBottomMotion`. The other surfaces used fixtures that were already on main.

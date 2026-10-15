@@ -12,8 +12,8 @@ Counts at the first audit: blocker 0, major 6, minor 2, polish 2.
 
 Rechecked on `a9e880daf`, after KERNEL-859 to 871 merged. Every fixture named here was shot again and set beside its before shot on the sheet shared in the PR. The keyboard and focus paths were driven in a hidden Electron window (`KERNEL_HEADLESS=1`, Playwright), not read from code. Each finding below carries a **Status** line. "Fixed (code)" means the fix is in the source and no fixture can draw it, so it was read, not run.
 
-Final check (KERNEL-885): 10 findings fixed (M5 by code only), 1 still open (m2, one extra Escape on the usage-data question), and 1 new minor finding (n1, below).
-One thing could not be proved: **focus return after a modal closes.** The fixtures open `ConfirmArchive` and `TelemetryAsk` directly, with no trigger, so there is nothing to return to. Tab trapping and Escape were walked live on `ConfirmArchive` (Tab cycles Archive anyway, Cancel, Push and archive and the input, Escape closes). The `TelemetryAsk` dialog stayed open after Escape in the fixture, probably because the fixture bypasses the answered flag. The sidebar's Archive button archives with no dialog. Focus after the command palette closes was a miss in this audit and is fixed, see the team audit (n1). The final check walked it live: Escape returns focus to the Search button.
+Final check (KERNEL-885): 11 findings fixed (M5 by code only) and 1 new minor finding (n1), also fixed. Nothing is open. m2 and n1 were fixed in KERNEL-896 and walked again on the merged build.
+One thing could not be proved: **focus return after a modal closes.** The fixtures open `ConfirmArchive` and `TelemetryAsk` directly, with no trigger, so there is nothing to return to. Tab trapping and Escape were walked live on `ConfirmArchive` (Tab cycles Archive anyway, Cancel, Push and archive and the input, Escape closes). `TelemetryAsk` needed two Escapes in the first final check and closes on the first since KERNEL-896. The sidebar's Archive button archives with no dialog. Focus after the command palette closes was a miss in this audit and is fixed, see the team audit (n1). The final check walked it live: Escape returns focus to the Search button.
 
 ## Major
 
@@ -41,7 +41,7 @@ One thing could not be proved: **focus return after a modal closes.** The fixtur
 
 **Status: fixed.** Walked live: with three toasts stacked, Escape dismissed the newest (3 to 2), and ⌘⌥Z pressed Undo on the next (2 to 1). The stack holds three. After: `AuditToastsStacked`.
 
-Final check of the Escape order (KERNEL-878), walked live. A turn running with a toast up (`AuditEscapeTurnToast`, composer focused): the first Escape stops the turn and the toast stays, the second dismisses the toast. A text field in Settings (`AuditEscapeSettingsFieldToast`): Escape stays with the field, three presses change nothing. Settings with the toast up (`AuditEscapeSettingsToast`): the first Escape leaves Settings. The toast stays after further presses, see n1 below.
+Final check of the Escape order (KERNEL-878), walked live. A turn running with a toast up (`AuditEscapeTurnToast`, composer focused): the first Escape stops the turn and the toast stays, the second dismisses the toast. A text field in Settings (`AuditEscapeSettingsFieldToast`): Escape stays with the field, three presses change nothing. Settings with the toast up (`AuditEscapeSettingsToast`): the first Escape leaves Settings and lands on New chat, the second clears the toast (it takes about half a second to fade out). See n1 below.
 
 ## Minor
 
@@ -51,9 +51,11 @@ Final check of the Escape order (KERNEL-878), walked live. A turn running with a
 
 **m2. Escape on the usage-data question is a permanent "Don't share".** Fixture `TelemetryAsk`. `onCancel` saves `off`, so pressing Escape by habit answers for good. Initial focus is on "See what's sent", not the primary. Fails 1, 3. Direction: let Escape close without saving, and ask again next launch.
 
-**Status: still open (minor).** Escape no longer answers "Don't share" for good, and it closes the dialog. Walked live on `TelemetryAsk` with focus on "Share usage data": the first Escape leaves the dialog open and the second closes it. `ConfirmArchive` closes on the first Escape, so this is not the shell. Shot: `TelemetryAsk`. Reported to Kernel for KERNEL-858.
+**Status: fixed (KERNEL-896).** Escape does not answer "Don't share" for good. Walked live on `TelemetryAsk` with focus on "Share usage data": the first Escape closes the dialog, and it stays closed after a second. Shot: `TelemetryAsk`.
 
-**n1. A toast cannot be dismissed with Escape on a New chat that has nowhere to go back to.** New finding in the final check. Shot: `AuditEscapeSettingsToast`. After Settings closes the fixture lands on New chat. New chat takes Escape to go back, finds no earlier screen and stays put, but it still takes the key, so the toast behind it never gets Escape. Fails 3. Direction: let New chat pass Escape on when there is nothing to go back to. Status: still open, reported to Kernel for KERNEL-858.
+**n1. A toast cannot be dismissed with Escape on a New chat that has nowhere to go back to.** New finding in the final check. Shot: `AuditEscapeSettingsToast`. After Settings closes the fixture lands on New chat. New chat takes Escape to go back, finds no earlier screen and stays put, but it still takes the key, so the toast behind it never gets Escape. Fails 3. Direction: let New chat pass Escape on when there is nothing to go back to.
+
+**Status: fixed (KERNEL-896).** Walked live on `AuditEscapeSettingsToast`: the first Escape leaves Settings for New chat, the second clears the toast.
 
 ## Polish
 
