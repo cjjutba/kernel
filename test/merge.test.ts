@@ -608,7 +608,7 @@ describe('a local merge through the PR feature', () => {
     await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('archived'), { timeout: 10_000, interval: 20 })
   })
 
-  it('asks the agent to rebase a branch that fell behind its base, and only then (KERNEL-478)', async () => {
+  it('asks the agent to merge the base into a branch that fell behind it, and only then (KERNEL-478, KERNEL-886)', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -633,9 +633,18 @@ describe('a local merge through the PR feature', () => {
     await commit(repo, { 'b.txt': 'two\n' }, 'fix: b')
     await commit(repo, { 'c.txt': 'three\n' }, 'fix: c')
     await k.prs.updateBranch(ws.id)
-    expect(sent).toEqual([[{ type: 'text', text: "main has 2 new commits that this branch doesn't have. Commit your work, rebase onto main, resolve any conflicts and re-run the tests. Then say what you changed." }]])
+    expect(sent).toEqual([[{ type: 'text', text: "main has 2 new commits that this branch doesn't have. Commit your work, run git merge main, resolve any conflicts and re-run the tests. Then say what you changed." }]])
     // The state stays ready: the band reads Behind from the read, and nothing claims the agent is resolving.
     expect(k.store.workspace(ws.id)?.prState).not.toBe('resolving')
+
+    // Once the branch is on the remote, a rebase would need the force push the guard denies, so the merge is pushed as usual.
+    const bare = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
+    await run('git', ['init', '-q', '--bare', bare])
+    await run('git', ['-C', repo, 'remote', 'add', 'origin', bare])
+    await run('git', ['-C', ws.path, 'push', '-q', '-u', 'origin', 'HEAD'])
+    sent.length = 0
+    await k.prs.updateBranch(ws.id)
+    expect(sent).toEqual([[{ type: 'text', text: "main has 2 new commits that this branch doesn't have. Commit your work, run git merge main, resolve any conflicts, re-run the tests and push as usual. The branch is on origin, so merge rather than rebase. Then say what you changed." }]])
   })
 })
 

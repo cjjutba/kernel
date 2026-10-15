@@ -103,6 +103,17 @@ describe('the message', () => {
       + 'At a stopping point, commit your work, rebase onto origin/main, resolve the conflicts and re-run the tests. Then carry on with your task.')
     expect(baseMessage('origin/dev', 1, ['a.ts'])).toContain('origin/dev moved 1 commit since')
   })
+
+  it('asks a branch the remote has to merge the base in, since its rebase would need a force push (KERNEL-886)', () => {
+    expect(baseMessage('origin/main', 1, ['a.ts'], 'origin')).toBe(
+      'origin/main moved 1 commit since your branch started, and merging it now would conflict in a.ts. '
+      + 'At a stopping point, commit your work, merge origin/main into your branch, resolve the conflicts and re-run the tests. '
+      + 'Your branch is on origin, so merge rather than rebase. Then carry on with your task.')
+    expect(catchUpMessage('origin/main', 2, 'origin')).toBe(
+      "Kernel couldn't fetch when your workspace started, so your branch began from origin/main as last fetched. The fetch works now, and origin/main has 2 commits your branch doesn't. "
+      + 'At a stopping point, commit your work, merge origin/main into your branch and re-run the tests. Your branch is on origin, so merge rather than rebase. Then carry on with your task.')
+    expect(catchUpMessage('origin/main', 2)).toContain('commit your work, rebase onto origin/main and re-run the tests. Then carry on')
+  })
 })
 
 describe('git helpers', () => {
@@ -402,6 +413,19 @@ describe('what starts a check', () => {
   })
 })
 
+describe('a branch already on the remote (KERNEL-886)', () => {
+  it('is asked to merge the base in, not to rebase, and the log says so', async () => {
+    const s = await setUp()
+    await commit(s.kai.path, { 'src/a.ts': SAME_LINE('kai') }, 'kai')
+    await run('git', ['-C', s.kai.path, 'push', '-q', '-u', 'origin', 'HEAD'])
+    await landOnMain(s.repo, { 'src/a.ts': SAME_LINE('main') })
+    await s.check()
+    expect(s.posts).toEqual([{ chatId: s.chat.id, text: baseMessage('origin/main', 1, ['src/a.ts'], 'origin') }])
+    expect(s.posts[0].text).not.toContain('rebase onto')
+    expect(s.notes()[0].text).toMatch(/^told \w+ to merge origin\/main in, since origin\/main moved 1 commit and would conflict in$/)
+  })
+})
+
 describe('catching up a workspace that started when the fetch failed (KERNEL-653)', () => {
   /** A Kai workspace made while origin was unreachable, with origin back afterwards. */
   async function staleWorkspace(s: Awaited<ReturnType<typeof setUp>>) {
@@ -436,6 +460,18 @@ describe('catching up a workspace that started when the fetch failed (KERNEL-653
     expect(s.k.store.workspace(ws.id)!.fetchFailed).toBeUndefined()
     await s.check({ fetch: true })
     expect(s.posts).toHaveLength(1)
+    expect(s.notes()[0].text).toMatch(/^told \w+ to rebase onto origin\/main, since its workspace started from it as last fetched$/)
+  })
+
+  it('asks one already on the remote to merge the base in instead (KERNEL-886)', async () => {
+    const s = await setUp()
+    const { ws, chat } = await staleWorkspace(s)
+    await commit(ws.path, { 'src/b.ts': 'alpha\nbeta kai\ngamma\n' }, 'kai')
+    await run('git', ['-C', ws.path, 'push', '-q', '-u', 'origin', 'HEAD'])
+    await landOnMain(s.repo, { 'README.md': '# moved\n' })
+    await s.check({ fetch: true })
+    expect(s.posts).toEqual([{ chatId: chat.id, text: catchUpMessage('origin/main', 1, 'origin') }])
+    expect(s.notes()[0].text).toMatch(/^told \w+ to merge origin\/main in, since its workspace started from it as last fetched$/)
   })
 
   it('never moves a busy one mid-turn, and catches it up at its turn end with a fetch of its own', async () => {

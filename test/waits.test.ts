@@ -148,6 +148,10 @@ const idle = (k: Kernel, ws: Workspace) => vi.waitFor(() => expect(k.sessions.is
 const released = (k: Kernel, ws: Workspace) => vi.waitFor(() => { expect(k.store.workspace(ws.id)?.waitsFor).toBeUndefined() }, SLOW)
 /** What the teammate does with Kernel's rebase message, before its turn ends (KERNEL-691). */
 const rebase = (ws: Workspace) => run('git', ['-C', ws.path, 'rebase', '-q', 'origin/main'])
+/** What a teammate whose branch is on origin does instead, since a rebase would need a force push (KERNEL-886). */
+const mergeBase = (ws: Workspace) => run('git', ['-C', ws.path, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'merge', '-q', '--no-edit', 'origin/main'])
+/** The teammate pushed its branch, so origin has it. */
+const push = (ws: Workspace) => run('git', ['-C', ws.path, 'push', '-q', '-u', 'origin', 'HEAD'])
 /** What the renderer was last told each chat's queue waits for (KERNEL-361). `done` stops listening. */
 function reasonsPushed() {
   const why = new Map<string, string | undefined>()
@@ -353,6 +357,24 @@ describe('a hand-off that waits for a merge', () => {
     await k.stop()
   })
 
+  it('on Send now of a pushed branch, asks for a merge of the base instead, and the merge ends the wait (KERNEL-886)', async () => {
+    const { k, room, lead, target, mergeOnGitHub } = await setup()
+    const noor = await target(k, 164)
+    const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    await push(w)
+    const chat = chatOf(k, w)
+    await k.chats['sendNow'](chat.id, k.sessions.queued(chat.id)[0].id)
+    expect(notes(k, chat)).toContain('Started without waiting for PR #164 by Noor. Kernel asks Kai to merge it in once it merges.')
+    callsIn(w)[0].feed(result('r1'))
+    await idle(k, w)
+    await mergeOnGitHub(k, noor)
+    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, merge origin/main into your branch and re-run the tests. Your branch is on origin, so merge rather than rebase. Then carry on with your task.', 'kernel']), SLOW)
+    await mergeBase(w)
+    callsIn(w)[0].feed(result('r2'))
+    await released(k, w)
+    await k.stop()
+  })
+
   it('on Send now, starts from what merged already and keeps waiting for the rest (KERNEL-689)', async () => {
     const { k, room, lead, target, mergeOnGitHub } = await setup()
     const a = await target(k, 164)
@@ -413,6 +435,20 @@ describe('a hand-off that waits for a merge', () => {
     expect(await head(w.path)).toBe(base)
     expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ['PR #164 by Noor merged after your branch started. Rebase onto origin/main before you build on it.', 'kernel']])
     expect(queue(k, chatOf(k, w))).toEqual([])
+    await k.stop()
+  })
+
+  it("asks a branch origin has for a merge instead when origin can't be fetched (KERNEL-886)", async () => {
+    const { k, room, lead, target, repo, gh } = await setup()
+    const noor = await target(k, 164)
+    const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    await push(w)
+    await run('git', ['-C', repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'no-such-origin.git')])
+    gh.prs.set(noor.branch, { ...gh.prs.get(noor.branch)!, state: 'merged' })
+    await k.refreshPr(noor.id)
+    await released(k, w)
+    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ['PR #164 by Noor merged after your branch started. Merge origin/main into your branch before you build on it. Your branch is on origin, so merge rather than rebase.', 'kernel']])
+    expect(notes(k, chatOf(k, w))).toContain("PR #164 by Noor merged. Kernel couldn't move your branch onto it, so a message with the brief asks for a merge.")
     await k.stop()
   })
 
@@ -587,6 +623,34 @@ describe('a teammate that already started', () => {
     // The Lead asks again, and the teammate rebases this time.
     expect((await k.lead['messageWorkspace'](room.id, w.id, 'Rebase onto origin/main, please.', lead.id)).sent).toBe(true)
     await rebase(w)
+    callsIn(w)[0].feed(result('r3'))
+    await released(k, w)
+    await k.stop()
+  })
+
+  it('asks a pushed branch to merge the base in, and a merge in a later turn ends the wait kept for it (KERNEL-886)', async () => {
+    const { k, room, lead, target, mergeOnGitHub } = await setup()
+    const noor = await target(k, 164)
+    const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id })
+    callsIn(w)[0].feed(result('r1'))
+    await idle(k, w)
+    await writeFile(join(w.path, 'rows.ts'), 'export const rows = []\n')
+    await run('git', ['-C', w.path, 'add', '-A'])
+    await run('git', ['-C', w.path, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-m', 'feat: rows'])
+    await push(w)
+    await k.setWait(w.id, [noor.id])
+    const chat = chatOf(k, w)
+    expect(notes(k, chat)).toContain('Waiting for PR #164 by Noor to merge. Kernel asks Kai to merge it in then.')
+    await mergeOnGitHub(k, noor)
+    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, merge origin/main into your branch and re-run the tests. Your branch is on origin, so merge rather than rebase. Then carry on with your task.', 'kernel']), SLOW)
+    // The turn ends without the merge, so the wait is kept.
+    callsIn(w)[0].feed(result('r2'))
+    await vi.waitFor(() => expect(pending(k).filter((e) => e.kind === 'wait.rebase_missing' && e.workspaceId === w.id)).toHaveLength(1), SLOW)
+    expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ on: [noor.id], tip: expect.any(String) })
+    // A merge commit, not a rebase: the branch contains the base by ancestry, which is what the kept wait checks.
+    expect((await k.lead['messageWorkspace'](room.id, w.id, 'Merge origin/main in, please.', lead.id)).sent).toBe(true)
+    await mergeBase(w)
+    expect((await run('git', ['-C', w.path, 'rev-list', '--parents', '-n', '1', 'HEAD'])).trim().split(' ')).toHaveLength(3)
     callsIn(w)[0].feed(result('r3'))
     await released(k, w)
     await k.stop()

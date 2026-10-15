@@ -1,13 +1,16 @@
 import type { ChatPart, NoteRef, PrState, WaitsFor, Workspace } from '@shared/types'
 import { waitersOf } from '@shared/waits'
 import type { TeammateToolDeps } from '../services/teammateMcp'
-import { fastForward, fetchOrigin, isAncestor, revParse, stripRemote } from '../services/worktrees'
+import { fastForward, fetchOrigin, isAncestor, isPushed, revParse, stripRemote } from '../services/worktrees'
 import { issueTracker } from '../services/trackers'
 import { buildsIssue, isMerged, joinLabels, mergedReading, waitLabel, waitMet, waitRefusal } from '../services/waits'
 import { head } from './shared'
 import { Feature } from './feature'
 
 const withReading = (text: string, reading: string) => (reading ? `${text} ${reading}` : text)
+
+/** A branch the remote has takes the base by a merge: a rebase would need the force push the guard denies (KERNEL-886). */
+const mergeWhy = (remote: string, pushed: boolean) => (pushed ? ` Your branch is on ${remote}, so merge rather than rebase.` : '')
 
 /**
  * A wait kept because the turn Kernel started to rebase ended without the merge in the branch (KERNEL-691). Its targets
@@ -113,7 +116,7 @@ export class Waits extends Feature {
       if (merged.length) {
         const rest = wait.on.filter((t) => !merged.includes(t))
         const skipped = { ...ws, waitsFor: { ...wait, on: rest } }
-        if (rest.length) this.note(id, this.earlyNote(skipped, left), undefined, this.waitRefsOf(skipped))
+        if (rest.length) this.note(id, this.earlyNote(skipped, left, await this.pushed(ws)), undefined, this.waitRefsOf(skipped))
         wait = this.updateWs(id, { waitsFor: { ...wait, on: merged } }).waitsFor!
         now = false
       }
@@ -141,17 +144,19 @@ export class Waits extends Feature {
       forwarded = fetched && await fastForward(ws.path, `${remote}/${base}`) && await this.hasMerges(ws, wait.on, remote)
     }
     const after = await head(ws.path)
+    const pushed = await this.pushed(ws)
     // Archived, started or changed while git ran.
     const current = this.mustWs(id)
     if (current.status !== 'ready' || !current.waitsFor?.held) return
     if (!now && !waitMet(current.waitsFor, this.store.workspaces(current.roomId))) return
-    if (now) this.note(id, this.earlyNote(current, left), undefined, refs)
+    if (now) this.note(id, this.earlyNote(current, left, pushed), undefined, refs)
     else {
       // The brief was written before the merge, so the teammate hears what merged and how to read it (KERNEL-695).
       const reading = this.readingOf(current, before ? `${before}..${remote}/${base}` : undefined)
-      if (!forwarded && chat) this.sessions.hold(chat.id, [{ type: 'text', text: withReading(`${label} merged after your branch started. Rebase onto ${remote}/${base} before you build on it.`, reading) }], { from: 'kernel' })
+      const take = pushed ? `Merge ${remote}/${base} into your branch` : `Rebase onto ${remote}/${base}`
+      if (!forwarded && chat) this.sessions.hold(chat.id, [{ type: 'text', text: withReading(`${label} merged after your branch started. ${take} before you build on it.${mergeWhy(remote, pushed)}`, reading) }], { from: 'kernel' })
       const it = refs.length > 1 ? 'them' : 'it'
-      this.note(id, withReading(forwarded ? `${label} merged. Your branch now starts from ${it}.` : `${label} merged. Kernel couldn't move your branch onto ${it}, so a message with the brief asks for a rebase.`, reading), undefined, refs)
+      this.note(id, withReading(forwarded ? `${label} merged. Your branch now starts from ${it}.` : `${label} merged. Kernel couldn't move your branch onto ${it}, so a message with the brief asks for a ${pushed ? 'merge' : 'rebase'}.`, reading), undefined, refs)
       this.leadUpdates.waits(current, 'wait.released', { on: wait.on, label, held: true })
     }
     // Setup runs again only when the files under it changed.
@@ -177,11 +182,17 @@ export class Waits extends Feature {
     return mergedReading((ws.waitsFor?.on ?? []).map((t) => all.find((w) => w.id === t)).filter((t): t is Workspace => !!t), log)
   }
 
-  /** "Started without waiting for PR #170 by Noor.", and who Kernel asks to rebase when the brief went with the wait kept. */
-  private earlyNote(skipped: Workspace, left: string[]) {
+  /** "Started without waiting for PR #170 by Noor.", and who Kernel asks to take the base when the brief went with the wait kept. */
+  private earlyNote(skipped: Workspace, left: string[], pushed: boolean) {
     const label = this.waitLabelOf(skipped)
     if (!left.length) return `Started without waiting for ${label}.`
-    return `Started without waiting for ${label}. Kernel asks ${this.nameOf(skipped)} to rebase once ${left.length > 1 ? 'they merge' : 'it merges'}.`
+    const many = left.length > 1
+    return `Started without waiting for ${label}. Kernel asks ${this.nameOf(skipped)} to ${pushed ? `merge ${many ? 'them' : 'it'} in` : 'rebase'} once ${many ? 'they merge' : 'it merges'}.`
+  }
+
+  /** The workspace's branch is on its room's remote, so it takes a base by a merge (KERNEL-886). */
+  private async pushed(ws: Workspace) {
+    return isPushed(ws.path, ws.branch, await this.k.config.remoteOfWs(ws))
   }
 
   /** The Lead or the user ends a wait before its merge: a held brief goes now, with whatever merged already under it. */
@@ -218,8 +229,12 @@ export class Waits extends Feature {
     if (!chat) return
     if (tip !== ws.waitsFor.tip) this.updateWs(id, { waitsFor: { ...ws.waitsFor, tip } })
     const base = stripRemote(ws.baseRef, remote)
+    const pushed = await isPushed(ws.path, ws.branch, remote)
     // Not rebased yet, so HEAD is where the teammate's branch is (KERNEL-695).
-    const text = withReading(`${this.waitLabelOf(ws)} merged into ${base}. Fetch ${remote}, rebase onto ${remote}/${base}, re-run the tests, then carry on with your task.`, this.readingOf(ws, `HEAD..${remote}/${base}`))
+    const steps = pushed
+      ? `Fetch ${remote}, merge ${remote}/${base} into your branch and re-run the tests.${mergeWhy(remote, true)} Then carry on with your task.`
+      : `Fetch ${remote}, rebase onto ${remote}/${base}, re-run the tests, then carry on with your task.`
+    const text = withReading(`${this.waitLabelOf(ws)} merged into ${base}. ${steps}`, this.readingOf(ws, `HEAD..${remote}/${base}`))
     const parts: ChatPart[] = [{ type: 'text', text }]
     const busy = this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 || !!this.store.room(ws.roomId)?.paused || this.sessions.heldFor().length > 0
     this.releaseSent.add(id)
@@ -229,7 +244,7 @@ export class Waits extends Feature {
 
   /**
    * A turn Kernel started ended, with nothing of Kernel's left in the queue: the teammate took the rebase message. The wait
-   * ends once the branch contains the base Kernel asked it to rebase onto. The branch, not HEAD: a rebase stopped on a
+   * ends once the branch contains the base Kernel asked it to rebase onto or merge in, which ancestry tells for both (KERNEL-886). The branch, not HEAD: a rebase stopped on a
    * conflict leaves HEAD on the base. Without it, the wait stays with nothing being released, and the Lead hears
    * (KERNEL-691). A wait saved before that has no tip and ends as it did.
    */
@@ -275,7 +290,7 @@ export class Waits extends Feature {
     this.releaseSent.delete(id)
     const next = this.updateWs(id, { waitsFor: { on: left, held, ...(was?.base ? { base: was.base } : {}) } })
     const label = this.waitLabelOf(next)
-    if (next.status === 'ready') this.note(id, held ? `Waiting for ${label} to merge. Kernel sends this brief then. Send now starts it sooner.` : `Waiting for ${label} to merge. Kernel asks ${this.nameOf(next)} to rebase onto it then.`, undefined, this.waitRefsOf(next))
+    if (next.status === 'ready') this.note(id, held ? `Waiting for ${label} to merge. Kernel sends this brief then. Send now starts it sooner.` : `Waiting for ${label} to merge. Kernel asks ${this.nameOf(next)} to ${await this.pushed(next) ? 'merge it in' : 'rebase onto it'} then.`, undefined, this.waitRefsOf(next))
     // The Lead set it, and reads what happened in the tool's result. A teammate's own wait is news for the Lead (KERNEL-262).
     this.leadUpdates.waits(next, 'wait.started', { on: left, label, held, ...(o.told === false ? {} : { told: true }), ...(o.why ? { why: o.why } : {}) })
     return next
