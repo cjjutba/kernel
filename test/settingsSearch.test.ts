@@ -12,7 +12,7 @@ const APP_FILES: Record<string, string[]> = {
   permissions: ['Permissions'], git: ['Git'], prs: ['PRs'], bigterm: ['BigTerminal'], integrations: ['Integrations'], hooks: ['Hooks'], privacy: ['Privacy'], about: ['About']
 }
 const PROJECT_FILES: Record<string, string[]> = {
-  general: ['Project', 'ProjectIconRow', 'ProjectTrackerRow'], git: ['ProjectGit'], setup: ['ProjectSetup', 'RunScripts', 'PreviewUrls'], agents: ['Team'], prs: ['ProjectPrs'], permissions: ['ProjectPermissions']
+  general: ['Project', 'ProjectIconRow', 'ProjectTrackerRow'], git: ['ProjectGit'], setup: ['ProjectSetup', 'RunScripts', 'PreviewUrls'], environment: ['Environment', 'FilesToCopy'], agents: ['Team', 'TeamPermissions'], prs: ['ProjectPrs']
 }
 
 /** Does a Row or Section in these files have this id: written out, or as a template that starts the way the id does (`review-${id}`)? */
@@ -39,6 +39,14 @@ describe('Settings search (KERNEL-727)', () => {
     expect(rows('size limit')).toEqual(['prs/size-limit'])
     expect(rows('quiet hours')).toEqual(['notifications/quiet-hours'])
     expect(rows('protected branches')).toEqual(['permissions/protected-branches'])
+  })
+
+  it('lists six project pages, and Mode, Files to copy and Setup script land on the right row (KERNEL-914)', () => {
+    expect(PROJECT_PAGES.map((p) => p.section)).toEqual(['general', 'git', 'setup', 'environment', 'agents', 'prs'])
+    const land = (q: string) => PROJECT_PAGES.flatMap((p) => keywordHits(q, p.keywords).map((k) => `${p.section}/${k.rowId}`))
+    expect(land('Mode')).toContain('agents/mode')
+    expect(land('Files to copy')).toEqual(['environment/copy-files'])
+    expect(land('Setup script')).toEqual(['setup/script-setup'])
   })
 
   it('names no row twice on a page', () => {

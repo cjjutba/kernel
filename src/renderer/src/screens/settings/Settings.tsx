@@ -27,11 +27,9 @@ import { PRs } from './pages/PRs'
 import { Privacy } from './pages/Privacy'
 import { Project } from './pages/Project'
 import { ProjectGit } from './pages/ProjectGit'
-import { ProjectPermissions } from './pages/ProjectPermissions'
 import { ProjectPrs } from './pages/ProjectPrs'
 import { ProjectSetup } from './pages/ProjectSetup'
 import { Shortcuts } from './pages/Shortcuts'
-import { Skills } from './pages/Skills'
 import { Team } from './pages/Team'
 
 export { SettingsNav } from './SettingsNav'
@@ -93,10 +91,8 @@ function ProjectBody({ projectId, section = 'general', agentId, s }: { projectId
   switch (section) {
     case 'git': return <ProjectGit projectId={projectId} s={s} />
     case 'setup': return <ProjectSetup projectId={projectId} />
-    case 'permissions': return <ProjectPermissions projectId={projectId} />
     case 'agents': return agentId && projectId ? <AgentEdit key={`${projectId}/${agentId}`} projectId={projectId} agentId={agentId} /> : <Team projectId={projectId} s={s} />
     case 'prs': return <ProjectPrs projectId={projectId} s={s} />
-    case 'skills': return <Skills projectId={projectId} />
     case 'environment': return <Environment projectId={projectId} />
     default: return <Project projectId={projectId} />
   }
