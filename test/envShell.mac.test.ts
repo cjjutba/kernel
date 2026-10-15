@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync } from 'node:fs'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, trustProject, freePort } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import type { Cipher } from '../src/main/services/env'
@@ -19,7 +19,7 @@ const until = async (ok: () => boolean, ms = 8000) => { const t = Date.now(); wh
 // Mac only (vitest.config.ts leaves `*.mac.test.ts` out anywhere else): the terminal is forced to /bin/zsh, which macOS ships
 // and ubuntu-latest doesn't, and the check is zsh's ZDOTDIR and .zshenv.
 describe('Kernel env in a shell', () => {
-  it('runs nothing from a repo\'s env files until the project is trusted, in a shell or a big terminal', async () => {
+  it('reads a repo\'s env files with no trust step, in a shell or a big terminal (KERNEL-913)', async () => {
     // ZDOTDIR makes `zsh -l` run the repo's own .zshenv, the way BASH_ENV does for `bash -c`.
     const repo = await tempRepo({
       'README.md': '# shell\n',
@@ -41,12 +41,10 @@ describe('Kernel env in a shell', () => {
       const project = await k.addProject(repo)
       await h['env.set']({ projectId: project.id, name: 'MINE', value: 'set-by-me' })
       const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Shell' })
-      expect(ws.status).toBe('trust')
-      expect((await h['projects.scriptTrust']({ projectId: project.id }))?.envFiles).toEqual(['.env.shell'])
-      // The user's own variables still apply. The repo's file doesn't.
-      expect(k.envFor(ws)).toMatchObject({ MINE: 'set-by-me' })
-      expect(k.envFor(ws).FROM_REPO).toBeUndefined()
-      expect(k.envFor(ws, { script: true }).FROM_REPO).toBeUndefined()
+      expect(ws.status).toBe('ready')
+      // The user's own variables and the repo's file both apply, and the shell runs the repo's .zshenv.
+      expect(k.envFor(ws)).toMatchObject({ MINE: 'set-by-me', FROM_REPO: 'yes' })
+      expect(k.envFor(ws, { script: true }).FROM_REPO).toBe('yes')
 
       let out = ''
       const on = (e: { type: string; chatId?: string; data?: string }) => { if (e.type === 'terminal.data') out += e.data }
@@ -55,11 +53,8 @@ describe('Kernel env in a shell', () => {
       await h['terminal.resize']({ chatId: plain, cols: 100, rows: 30 })
       await h['terminal.write']({ chatId: plain, data: 'echo "plain-$((40+2))"\r' })
       await until(() => out.includes('plain-42'))
-      expect(existsSync(join(ws.path, 'zshenv-ran'))).toBe(false)
-
-      // Once trusted, the same file is read, and the shell runs the repo's .zshenv. That shows the check above is real.
-      await trustProject(k, project.id)
-      expect(k.envFor(ws).FROM_REPO).toBe('yes')
+      expect(existsSync(join(ws.path, 'zshenv-ran'))).toBe(true)
+      await rm(join(ws.path, 'zshenv-ran'))
       const start = k.ptys.start.bind(k.ptys)
       k.ptys.start = (id, o) => start(id, { ...o, command: undefined })
       const term = await h['chats.create']({ workspaceId: ws.id, kind: 'terminal' })

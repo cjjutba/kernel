@@ -35,7 +35,6 @@ import { Integrations } from './features/integrations'
 import { Team } from './features/team'
 import { Projects } from './features/projects'
 import { Setup } from './features/setup'
-import { Trust } from './features/trust'
 import { Env } from './features/env'
 import { Workspaces } from './features/workspaces'
 import { Archive } from './features/archive'
@@ -98,7 +97,6 @@ export class Kernel {
   readonly agentChanges = new AgentChanges(this)
   readonly projects = new Projects(this)
   readonly setup = new Setup(this)
-  readonly trust = new Trust(this)
   readonly env = new Env(this)
   readonly workspaces = new Workspaces(this)
   readonly archive = new Archive(this)
@@ -193,8 +191,6 @@ export class Kernel {
     // Chats that carry on below need their agent's prompt, and a Lead chat its Kernel tools, which read the agents.
     await Promise.all(this.store.projects().filter((r) => !r.archived).map((r) => this.team.agents(r.id).catch(() => undefined)))
     await this.lead.backfill()
-    // Before any session restarts, so a trusted project's env files reach it (KERNEL-247).
-    await Promise.all(this.store.projects().map((r) => this.trust.untrusted(r).catch(() => null)))
     // A project paused before the app quit is still paused: its agents wait and its sends are held. The saved limits decide
     // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on. So do the
     // chats that were working when Kernel quit or closed, after what was queued for them (KERNEL-215).
@@ -218,7 +214,7 @@ export class Kernel {
     }
     const held = this.store.meta<Record<string, QueuedMessage[]>>('held') ?? {}
     this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], cutOff, held, { clean })
-    this.trust.recoverTrust(held)
+    this.setup.recoverHeld(held)
     this.setup.recoverSetups()
     this.autoArchive.start()
     // After the waits, which read each project's team first, so the Lead's workspace is known.
@@ -278,7 +274,7 @@ export class Kernel {
   handlers(): Handlers {
     return channels(this.app.handlers(), this.inbox.handlers(), this.checkpoints.handlers(), this.config.handlers(),
       this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.projects.handlers(),
-      this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
+      this.setup.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
       this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers(),
       this.permissions.handlers(), this.mcp.handlers(), this.reviews.handlers(), this.openItems.handlers(),
       this.placement.handlers(), this.moves.handlers())

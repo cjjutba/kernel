@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
-import { tempRepo, trustProject, freePort } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { exec, MAX_OUTPUT, run } from '../src/main/services/exec'
 import { runScript, scriptEndOf, timeoutText } from '../src/main/services/scripts'
@@ -74,7 +74,6 @@ describe('setup and archive scripts', () => {
     // Below the setting's one minute floor, so the test doesn't wait one.
     k.settings.scripts.timeoutMinutes = minutes
     const project = await k.addProject(repo)
-    await trustProject(k, project.id)
     return { k, project }
   }
 

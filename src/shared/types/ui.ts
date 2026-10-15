@@ -81,8 +81,6 @@ export type Modal =
   /** History > Delete: archived workspaces, with their branches, checkpoints and transcripts (KERNEL-333). */
   | { name: 'confirm'; kind: 'deleteHistory'; workspaceIds: string[] }
   | { name: 'confirm'; kind: 'retire'; projectId: string; agentId: string }
-  /** Run this repo's scripts? The project's scripts and files.copy list waiting in `scriptTrust` (KERNEL-218). */
-  | { name: 'confirm'; kind: 'trust'; projectId: string }
   /** Archiving a Lead chat that would stop something: its row's Archive, or closing its last tab (KERNEL-405). */
   | { name: 'confirm'; kind: 'archiveChat'; threadId: string }
   /** Closing chats that are still running: the X on a chat tab, Close tab, Close other tabs or Cmd+W. */
@@ -117,7 +115,7 @@ export type MenuId =
   | 'projectTracker' | 'help'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
-export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry' | 'trust'
+export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry'
 
 export interface Banner {
   kind: BannerKind

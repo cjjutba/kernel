@@ -1,4 +1,6 @@
-import type { Chat, ChatPart, Project, ScriptSuggestion, WaitsFor, Workspace } from '@shared/types'
+import { rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import type { Chat, ChatPart, Project, QueuedMessage, ScriptSuggestion, WaitsFor, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { loadRepoSettings, type RepoSettings } from '../services/settings'
 import { copyLocalFiles, replayScripts, resizeScript, runScript, scriptNote, scriptTimeout, stopRuns, stopScript, timeoutText, type ScriptEnd } from '../services/scripts'
@@ -56,7 +58,7 @@ export class Setup extends Feature {
     if (start0) bus.push({ type: 'checkpoint', checkpoint: start0 })
     // Only a skipped setup leaves a line above the brief. A passed one is silent (KERNEL-430, KERNEL-533).
     if (o.note) this.note(ws.id, o.note)
-    if (this.settings.scripts.runAfterSetup && repo.scripts.run && !(await this.k.trust.untrusted(project, repo))) this.startRun(done, project, repo)
+    if (this.settings.scripts.runAfterSetup && repo.scripts.run) this.startRun(done, project, repo)
     await start()
     // Linked once the brief is a message in the chat, so the transcript can revert to before it (KERNEL-764).
     if (start0) this.k.checkpoints.linkStart(chat.id, start0.id)
@@ -99,8 +101,6 @@ export class Setup extends Feature {
     const ws = this.mustWs(workspaceId)
     const project = this.mustProject(ws.projectId)
     const repo = await loadRepoSettings(project.path)
-    // The script changed since it failed, and nobody trusted the new text yet (KERNEL-209).
-    if (await this.k.trust.untrusted(project, repo)) return this.k.trust.holdForTrust(ws.id)
     if (repo.scripts.setup) {
       const code = await this.setupScript(ws, repo.scripts.setup)
       if (!this.setupPassed(ws, code)) {
@@ -169,9 +169,6 @@ export class Setup extends Feature {
   async startBrief(ws: Workspace, project: Project, chat: Chat | undefined, o: { setup?: boolean; released?: WaitsFor; left?: string[]; note?: string } = {}): Promise<Workspace> {
     const repo = o.setup && this.settings.scripts.setupOnCreate ? await loadRepoSettings(project.path) : undefined
     const script = repo?.scripts.setup
-    // The setup text changed while the brief waited and nobody trusted it yet: the brief keeps waiting, for trust now,
-    // and trusting runs setup and sends it (KERNEL-209).
-    if (script && await this.k.trust.untrusted(project, repo)) return this.k.trust.holdForTrust(ws.id)
     if (script) {
       const code = await this.setupScript(ws, script)
       if (!this.setupPassed(ws, code)) {
@@ -211,9 +208,9 @@ export class Setup extends Feature {
     return { ...this.k.env.envFor(ws, { script: true }), KERNEL_ENV: resetSetupEnv(this.o.dataDir, ws.id) }
   }
 
-  /** Copy the local files into a new worktree, then run setup. Only for text the user trusted (KERNEL-209). */
+  /** Copy the local files into a new worktree, then run setup. */
   async prepare(ws: Workspace, project: Project, repo: RepoSettings): Promise<boolean> {
-    // An archive can land while the trust check or the copy waits: then nothing starts in the removed folder, and the
+    // An archive can land while the copy waits: then nothing starts in the removed folder, and the
     // caller sees the workspace archived.
     const archived = () => this.mustWs(ws.id).status === 'archived'
     if (ws.mode === 'worktree' && !archived()) await this.copyFiles(ws, project, repo)
@@ -227,19 +224,18 @@ export class Setup extends Feature {
     for (const f of refused) scriptNote(ws.id, 'setup', `Did not copy ${f}: files.copy can only copy files inside the repo.`)
   }
 
-  /** A workspace held for trust: copy, set up and send the brief, or fail the way a new workspace's setup fails. */
-  async releaseTrust(workspaceId: string): Promise<void> {
+  /**
+   * A workspace an older Kernel held for script trust, moved to `setup` by `recoverHeld`: copy, set up and send the brief, or
+   * fail the way a new workspace's setup fails (KERNEL-913).
+   */
+  private async setUpHeld(workspaceId: string): Promise<void> {
     if (this.settingUp.has(workspaceId)) return
     this.settingUp.add(workspaceId)
     try {
       const ws = this.mustWs(workspaceId)
-      if (ws.status !== 'trust') return
+      if (ws.status !== 'setup') return
       const project = this.mustProject(ws.projectId)
       const repo = await loadRepoSettings(project.path)
-      // The text changed again between trusting and now: it waits for another yes.
-      if (await this.k.trust.untrusted(project, repo)) { await this.k.trust.askTrust(project.id); return }
-      // Archived while the settings were read: nothing runs in it.
-      if (this.updateWs(workspaceId, { status: 'setup' }).status !== 'setup') return
       const chat = this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
       const ready = await this.prepare(ws, project, repo)
       if (this.mustWs(ws.id).status === 'archived') return
@@ -250,20 +246,21 @@ export class Setup extends Feature {
         return
       }
       // A workspace that also waits for a PR keeps waiting, ready, until it merges. Otherwise its brief goes now, and
-      // a wait that merged meanwhile ends with it (KERNEL-259).
+      // a wait that merged meanwhile ends with it (KERNEL-259). The Lead heard the teammate hadn't started, so it hears this.
       const wait = this.mustWs(ws.id).waitsFor
-      // The Lead heard in create_workspace's result that the teammate waits for trust, so it hears the release too, the
-      // way it hears setup passing on Run again (KERNEL-261).
       if (wait?.held && wait.on.length && chat && !waitMet(wait, this.store.workspaces(ws.projectId))) {
         const base = await head(ws.path)
         const held = this.updateWs(ws.id, { status: 'ready', waitsFor: { ...wait, ...(base ? { base } : {}) } })
-        if (held.status === 'ready') this.leadUpdates.setup(held, true, { trusted: true, wait: { on: wait.on, label: this.k.waits.waitLabelOf(held), held: true } })
+        if (held.status === 'ready') this.leadUpdates.setup(held, true, { wait: { on: wait.on, label: this.k.waits.waitLabelOf(held), held: true } })
         void this.k.waits.settleWait(ws.id).catch(() => undefined)
         return
       }
       const started = await this.startBrief(this.mustWs(ws.id), project, chat, { released: wait?.held ? wait : undefined })
-      if (started.status === 'ready') this.leadUpdates.setup(started, true, { trusted: true })
-    } finally { this.settingUp.delete(workspaceId) }
+      if (started.status === 'ready') this.leadUpdates.setup(started, true)
+    } finally {
+      this.settingUp.delete(workspaceId)
+      this.fresh.delete(workspaceId)
+    }
   }
 
   private async runSetup(ws: Workspace, project: Project, script?: string): Promise<boolean> {
@@ -298,6 +295,36 @@ export class Setup extends Feature {
   }
 
   saveSetups() { this.store.saveMeta('setups', Object.fromEntries(this.setups)) }
+
+  /**
+   * The upgrade from the script trust gate (KERNEL-913), at start before `recoverSetups`. Sessions brings back only the
+   * queues of workspaces whose setup failed, so a workspace an older Kernel saved as `trust` gets its brief, and the Lead's
+   * messages after it, held here. It moves to `setup` and sets up as a new workspace does. A workspace in `setup` with no
+   * `setups` hold, which a quit left partway through setting up after the user trusted it, gets its queue held too, and
+   * `recoverSetups` fails it with its note, so Run again sends the queue. Each Install step that waited for trust runs once,
+   * and the trusted text in `trust.json` goes.
+   */
+  recoverHeld(held: Record<string, QueuedMessage[]>) {
+    const setups = this.store.meta<Record<string, SetupHold>>('setups') ?? {}
+    const wasTrust = (ws: Workspace) => (ws.status as string) === 'trust'
+    for (const [chatId, queue] of Object.entries(held)) {
+      const ws = this.store.chat(chatId) && this.store.workspace(this.store.chat(chatId)!.workspaceId)
+      const waiting = !!ws && (wasTrust(ws) || (ws.status === 'setup' && !setups[ws.id]))
+      // A setup that started in this run, as a moved chat's (KERNEL-405), already holds its queue.
+      if (!waiting || !Array.isArray(queue) || this.fresh.has(ws.id)) continue
+      // A forked workspace's chat waits with nothing in its queue (KERNEL-346).
+      if (!queue.length) this.sessions.hold(chatId)
+      for (const m of queue) this.sessions.hold(chatId, m.parts, { ...(m.from ? { from: m.from } : {}), ...(m.update ? { update: m.update } : {}) })
+    }
+    for (const ws of this.store.workspaces().filter(wasTrust)) {
+      // Fresh, so `recoverSetups` leaves the setup that starts now alone.
+      this.fresh.add(ws.id)
+      this.updateWs(ws.id, { status: 'setup' })
+      void this.setUpHeld(ws.id).catch(() => undefined)
+    }
+    void this.k.projects.installHeld().catch(() => undefined)
+    void rm(join(this.o.dataDir, 'trust.json'), { force: true }).catch(() => undefined)
+  }
 
   /**
    * A workspace still in setup when Kernel quit has no script running any more (KERNEL-128). It counts as failed, with a
@@ -338,12 +365,7 @@ export class Setup extends Feature {
         const project = this.mustProject(ws.projectId); const repo = await loadRepoSettings(project.path)
         const script = kind === 'run' ? undefined : repo.scripts[kind]
         if (kind !== 'run' && !script) throw new Error(`No ${kind} script in .kernel/settings.toml`)
-        // Run again checks trust itself, and holds the workspace for it when the text changed.
         if (kind === 'setup' && ws.status === 'failed') { void this.retrySetup(workspaceId).catch(() => undefined); return { ok: true } }
-        // Every kind waits for trust, a named run script included (KERNEL-209, KERNEL-244).
-        if (await this.k.trust.untrusted(project, repo)) { await this.k.trust.askTrust(project.id); throw new Error("Trust this project's scripts before running them.") }
-        // Trusted since it was held: it sets up the way trusting releases it, brief and all.
-        if (ws.status === 'trust') { void this.releaseTrust(workspaceId).catch(() => undefined); return { ok: true } }
         if (kind === 'run') { this.startRun(ws, project, repo, name); return { ok: true } }
         // Setup run by hand writes `$KERNEL_ENV` again, and the agents get what it wrote once it passes (KERNEL-405).
         if (kind === 'setup') { void this.setupScript(ws, script!).then((code) => { if (code === 0) this.sayLoaded(this.mustWs(workspaceId)) }); return { ok: true } }

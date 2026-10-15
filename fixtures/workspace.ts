@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { ChatPart, AccountProfile, MoveNotice, MovePreview, MovePreviewChat, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { ChatPart, AccountProfile, MoveNotice, MovePreview, MovePreviewChat, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
@@ -1804,15 +1804,6 @@ const groupedTurn = (id: string, ago: number, ask: string, thought: string, tool
   { ...userMsg(id, ask), ts: Date.now() - ago * 1000 }, { kind: 'thinking', id: `${id}-th`, ts: at(10, 28), text: thought }, ...tools, ...(reply ? [{ kind: 'text' as const, id: `${id}-tx`, ts: at(10, 29), text: reply }] : [])
 ]
 
-/** What a freshly cloned repo's settings.toml and package.json ask the user to trust (KERNEL-209, KERNEL-218, KERNEL-260). */
-export const scriptTrust: ScriptTrust = {
-  projectId: ids.projectA, hash: 'a41f0c9e', workspaceIds: [ids.table],
-  scripts: { setup: 'pnpm install --frozen-lockfile\ncp ../../.env.local .env.local', run: 'pnpm dev --port $KERNEL_PORT', archive: 'pnpm clean' },
-  runScripts: [{ name: 'storybook', command: 'pnpm storybook --port $KERNEL_PORT' }],
-  copy: ['.env.local', 'certs/*.pem'],
-  installScripts: [{ name: 'postinstall', command: 'node scripts/postinstall.js' }, { name: 'prepare', command: 'husky install' }]
-}
-
 /** Wren's tools line, naming each MCP server in `servers` the way an agent file does (`mcp__figma__*`). */
 const hireTools = (servers: string[]) => ['tools: Read, Grep, Glob, Bash(pnpm screenshot:*),', `  ${servers.map((n) => `mcp__${n}__*`).join(', ')}`]
 
@@ -1925,17 +1916,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
     workspaces: withWorkspace(f, ids.table, { branch: 'feat/kernel-24-invoice-table', source: { kind: 'issue', id: 'KERNEL-24', title: 'Invoice table', url: 'https://linear.app/cj-jutba/issue/KERNEL-24' } }),
     ui: open
   })),
-  // KERNEL-218: KERNEL-209 holds the workspace until the project's scripts are trusted. The brief waits in the queue.
-  WorkspaceTrustHeld: scene((f) => {
-    const queue = [{ id: 'q-trust', chatId: ids.tableChat, parts: [{ type: 'text' as const, text: 'Build the invoice table.' }], ts: at(10, 2) }]
-    return {
-      workspaces: withWorkspace(f, ids.table, { status: 'trust' }),
-      items: { [ids.tableChat]: [] },
-      queue: { [ids.tableChat]: queue },
-      push: [...f.push, { type: 'project.trust', projectId: ids.projectA, trust: scriptTrust }, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'setup' }],
-      ui: open
-    }
-  }),
   WorkspaceLoading: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'setup' }),
     items: { [ids.tableChat]: [] },

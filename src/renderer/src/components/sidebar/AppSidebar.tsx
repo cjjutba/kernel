@@ -16,7 +16,7 @@ import { archiveByHand } from '../../screens/workspace/byHand'
 import { HistoryButtons } from '../PanelToggles'
 import { AccountButton } from './AccountMenu'
 import { isPlanApproval } from '../../screens/workspace/cards/steps'
-import { chatTrusts, chatWaits } from './chatWaits'
+import { chatWaits } from './chatWaits'
 import { ChatCard, LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { ProjectMenu } from './ProjectMenu'
 import { ProjectsMenu } from './ProjectsMenu'
@@ -125,7 +125,7 @@ function LeadItem({ projectId, slot }: { projectId: string; slot?: RowKey }) {
 
 /**
  * One of the Lead's open chats, however many tabs it holds (KERNEL-338). Its icon is the one a tab would show, for the whole chat: something that
- * needs you in any tab wins, then its own workspace's setup, trust, failed setup or missing folder (KERNEL-405), then a running turn in any tab, else
+ * needs you in any tab wins, then its own workspace's setup, failed setup or missing folder (KERNEL-405), then a running turn in any tab, else
  * the chat icon. They read the same approvals and `running` flags as the tabs. It opens the chat's own workspace on the tab last shown in it. A chat
  * that handed off workspaces folds like a project: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the icon also shows what a
  * hidden workspace needs from you, so nothing waits out of sight. Hover shows Archive, like a workspace row's (KERNEL-405). A running turn swaps
@@ -143,14 +143,12 @@ function ChatItemRow({ projectId, thread, ws, tabs, owned, folded, slot, leaving
     return r.name === 'workspace' && (ws ? r.workspaceId === ws.id : r.workspaceId === tabs[0]?.workspaceId && currentThread(s, r.workspaceId) === thread.id)
   })
   const arrive = useArriving(current && !leaving)
-  // A folded chat stands in for the workspaces it hides, so one held for script trust shows here too.
-  const trust = folded && chatTrusts(owned).length > 0
   // Plan mode tints the icon `plan` blue, like the composer: a tab that plans, or a plan waiting for approval. The shape still says the state (no-amber-icons).
   const planning = tabs.some((c) => c.plan) || waiting.some(isPlanApproval)
-  const g = chatGlyph({ ws, waiting, running, trust })
+  const g = chatGlyph({ ws, waiting, running })
   // The loader takes the icon only when nothing waits on you: a wait, on a tab or on a hidden workspace, keeps its icon until it is answered.
   const busy = g.icon === 'spin'
-  const shown = restIcon(g, chatGlyph({ ws, waiting, running: false, trust }), 'chat')
+  const shown = restIcon(g, chatGlyph({ ws, waiting, running: false }), 'chat')
   // A new reply in any tab, or in a hidden workspace while folded, bolds the title. The icon keeps its own state (KERNEL-508).
   const unread = useStore((s) => chatUnread({ tabs, owned, chats: s.chats, folded, current }))
   const [archiving, run] = useBusy()
@@ -374,16 +372,16 @@ function readExpanded(): Record<string, boolean> {
 }
 
 /**
- * What the Inbox badge counts. It reads these four slices, plus the workspaces held for script trust, and nothing else, so terminal chunks, script lines
+ * What the Inbox badge counts. It reads these four slices and nothing else, so terminal chunks, script lines
  * and chat items leave it alone. The count is worked out again only when one of them is a new object.
  */
 let inboxFrom: unknown[] = []
 let inboxCountNow = 0
 function inboxCount(s: State): number {
-  const from = [s.notifications, s.approvals, s.projects, s.overlaps, s.workspaces]
+  const from = [s.notifications, s.approvals, s.projects, s.overlaps]
   if (from.every((x, i) => x === inboxFrom[i])) return inboxCountNow
   inboxFrom = from
-  inboxCountNow = inboxItems(s.notifications, s.approvals, s.projects, allOverlaps(s.overlaps), s.workspaces).filter(needsYou).length
+  inboxCountNow = inboxItems(s.notifications, s.approvals, s.projects, allOverlaps(s.overlaps)).filter(needsYou).length
   return inboxCountNow
 }
 

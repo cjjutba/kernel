@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, trustProject, freePort } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
@@ -27,7 +27,7 @@ async function boot(dataDir: string, home: string) {
   return k
 }
 
-/** A project whose archive script is `script`, trusted, with one workspace whose branch is pushed nowhere. */
+/** A project whose archive script is `script`, with one workspace whose branch is pushed nowhere. */
 async function setup(script?: string, app: object = {}) {
   const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': KAI, ...(script ? { '.kernel/settings.toml': `[scripts]\narchive = ${JSON.stringify(script)}\n` } : {}) })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -35,7 +35,6 @@ async function setup(script?: string, app: object = {}) {
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
   const k = await boot(dataDir, home)
   const project = await k.addProject(repo)
-  await trustProject(k, project.id)
   const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
   return { k, repo, project, ws, dataDir, home }
 }

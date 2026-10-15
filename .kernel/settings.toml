@@ -21,7 +21,7 @@ paths = [
   "src/main/services/bashGuard.ts",
   "src/main/services/permissions.ts",
   "src/main/features/permissions.ts",
-  "src/main/features/trust.ts",
+  "src/main/services/filesToCopy.ts",
   "src/main/windowGuard.ts",
   "src/main/services/hookServer.ts",
   "src/main/services/hooksInstaller.ts",

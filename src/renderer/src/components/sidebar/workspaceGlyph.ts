@@ -33,9 +33,6 @@ const waitingGlyph = (waiting: Approval[]): WorkspaceGlyph =>
 /** A worktree deleted outside Kernel (KERNEL-291). It waits on you to archive it. */
 const FOLDER_GONE: WorkspaceGlyph = { icon: 'warning', tone: 'del', label: 'Folder missing' }
 
-/** A workspace held in `trust` waits on you as much as an approval does, until you trust the project's scripts (KERNEL-209, KERNEL-342). */
-const TRUST_GLYPH: WorkspaceGlyph = { icon: 'question', tone: 'needs', label: 'Trust scripts' }
-
 const PR_OPEN: WorkspaceGlyph = { icon: 'pr', tone: 'add', label: 'PR open' }
 
 /**
@@ -48,7 +45,7 @@ const roundsRanOut = (ws: Workspace): boolean => {
 }
 
 /**
- * The icon in front of a workspace in the sidebar: what waits on you first (a plan to review, something that needs you, or scripts to trust), then what is running, then the pull request.
+ * The icon in front of a workspace in the sidebar: what waits on you first (a plan to review, or something that needs you), then what is running, then the pull request.
  * Every input is a real signal: a pending approval, the workspace's status, a running chat, the PR state from GitHub.
  */
 const TONE: Record<PrTone, GlyphTone> = { idle: 'muted', ready: 'add', fail: 'del', merged: 'merged' }
@@ -62,7 +59,6 @@ export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running:
   if (o.waiting.length) return waitingGlyph(o.waiting)
   // Nothing can run in a worktree deleted outside Kernel (KERNEL-291).
   if (ws.folderGone) return FOLDER_GONE
-  if (ws.status === 'trust') return TRUST_GLYPH
   if (ws.status === 'failed') return { icon: 'warning', tone: 'del', label: 'Setup failed' }
   if (ws.status === 'setup') return spin('Setting up')
   if (o.running) return spin('Working')
@@ -113,14 +109,12 @@ export function leadGlyph(status: AgentStatus, waiting: Approval[]): WorkspaceGl
 
 /**
  * The icon in front of a chat's tab: what waits on the user first (a plan to review, or something that needs you), then a running turn, then the plain chat icon.
- * It reads the same signals as `workspaceGlyph`, per chat instead of per workspace, so a tab and its sidebar row agree. `trust` is set when a workspace
- * the chat started is held for script trust and the row stands in for it, as an approval on that workspace would.
+ * It reads the same signals as `workspaceGlyph`, per chat instead of per workspace, so a tab and its sidebar row agree.
  */
-export function chatGlyph(o: { ws?: Workspace; waiting: Approval[]; running: boolean; trust?: boolean }): WorkspaceGlyph {
+export function chatGlyph(o: { ws?: Workspace; waiting: Approval[]; running: boolean }): WorkspaceGlyph {
   if (o.waiting.length) return waitingGlyph(o.waiting)
   // The chat's own workspace sets up like a teammate's, and its row says so with the same icons (KERNEL-405).
   if (o.ws?.folderGone) return FOLDER_GONE
-  if (o.ws?.status === 'trust' || o.trust) return TRUST_GLYPH
   if (o.ws?.status === 'failed') return { icon: 'warning', tone: 'del', label: 'Setup failed' }
   if (o.ws?.status === 'setup') return spin('Setting up')
   if (o.running) return spin('Working')

@@ -64,7 +64,7 @@ export async function probeNetwork(host = 'api.anthropic.com', timeoutMs = 4000)
  *
  * A turn that reached Claude's API (`reached`) is the real answer, and beats the probe (KERNEL-231). Behind a proxy, DNS for the
  * API can fail while every request goes through, so once the API answers while the probe fails, or the probe fails within
- * `trustMs` of the API answering, failed probes stop counting until one passes again.
+ * `graceMs` of the API answering, failed probes stop counting until one passes again.
  */
 export class NetworkMonitor {
   online = true
@@ -77,7 +77,7 @@ export class NetworkMonitor {
   private probeFailed = false
   /** The API answered while the probe failed, so a failed probe says nothing about this network. */
   private probeBlind = false
-  constructor(private o: { probe: () => Promise<boolean>; onChange: (online: boolean) => void; everyMs?: number; offlineMs?: number; trustMs?: number; now?: () => number }) {}
+  constructor(private o: { probe: () => Promise<boolean>; onChange: (online: boolean) => void; everyMs?: number; offlineMs?: number; graceMs?: number; now?: () => number }) {}
 
   start() { void this.check() }
   stop() { clearTimeout(this.timer); this.timer = undefined; this.stopped = true }
@@ -90,7 +90,7 @@ export class NetworkMonitor {
       this.running = undefined
       this.probeFailed = !passed
       if (passed) this.probeBlind = false
-      else if (this.now() - this.reachedAt < (this.o.trustMs ?? 120_000)) this.probeBlind = true
+      else if (this.now() - this.reachedAt < (this.o.graceMs ?? 120_000)) this.probeBlind = true
       this.set(passed || this.probeBlind)
       this.schedule()
       return this.online

@@ -6,7 +6,7 @@ import { spinnerPatterns } from './dotPatterns'
 const kinds = Object.keys(bannerIcon) as BannerKind[]
 const bannerCopy: Record<BannerKind, string> = {
   limit: 'Session limit reached', context: 'Context is nearly full', offline: 'You are offline', auth: 'Sign in to Claude again',
-  setup: 'Setup failed', hooks: 'Hooks are not connected', retry: 'Retrying the request', trust: 'Waiting for you to trust scripts'
+  setup: 'Setup failed', hooks: 'Hooks are not connected', retry: 'Retrying the request'
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

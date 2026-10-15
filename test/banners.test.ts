@@ -135,7 +135,6 @@ describe('workspace banners', () => {
           input({ usage: [{ type: 'seven_day_opus', status: 'rejected', model: 'claude-sonnet-5-5', resetsAt: S(monday) }] }),
           input({ account: { signedIn: false } }),
           input({ online: false }),
-          input({ ws: { ...ws, status: 'trust' } }),
           input({ ws: { ...ws, status: 'failed' } }),
           input({ retry: { attempt: 1, of: 5, nextAt: now + 5000 } }),
           input({ chat: { ...chat, context: 95 } }),
@@ -199,7 +198,6 @@ describe('workspace banners', () => {
       const usage = [near('five_hour', 0.95, at340)]
       expect(bannerFor(input({ usage, account: { signedIn: false } }))?.id).toBe('signedOut')
       expect(bannerFor(input({ usage, online: false }))?.id).toBe('offline')
-      expect(bannerFor(input({ usage, ws: { ...ws, status: 'trust' } }))?.id).toBe('trust')
       expect(bannerFor(input({ usage, ws: { ...ws, status: 'failed' } }))?.id).toBe('setup')
       // A limit that already rejected is the stronger line, whichever window it is.
       expect(bannerFor(input({ usage: [near('five_hour', 0.95, at340), { type: 'seven_day', status: 'rejected', resetsAt: S(monday) }] }))?.id).toBe('weekly')
@@ -229,7 +227,6 @@ describe('workspace banners', () => {
     expect(bannerFor(input({ ...kernel, ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))).toMatchObject({
       id: 'setup', sub: 'pnpm install exited with code 1. Kernel keeps answering without it.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
     })
-    expect(bannerFor(input({ ...kernel, ws: { ...ws, status: 'trust' } }))).toMatchObject({ id: 'trust', sub: 'Setup has not run yet. Kernel keeps answering without it.', blocks: false })
   })
 
   it('shows the hook server going down last', () => {

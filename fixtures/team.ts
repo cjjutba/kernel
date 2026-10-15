@@ -401,32 +401,6 @@ const sidebarChatGroups = (f: Fixture): Partial<Fixture> => {
   }
 }
 
-/**
- * SidebarTrustHeld (no PNG, KERNEL-342): Client A on Inbox with no approvals. invoice-table is held in `trust` and invoice-schema is idle beside it,
- * and a folded chat hides org-invites, which is held too, so the chat row shows the same icon. invoice-table's row reads its task title and
- * invoice-schema has none, so its row falls back to the slug (KERNEL-587).
- */
-const sidebarTrustHeld = (f: Fixture): Partial<Fixture> => {
-  const home = homeScene(f)
-  const owner = 'chat-lead-invites'
-  const held = new Set<string>([ids.table, ids.invites])
-  return {
-    ...home,
-    chats: [...f.chats.filter((c) => c.workspaceId !== ids.lead), leadChatRow(owner, 'Org invites and roles', 5), leadChatRow('chat-lead-spare', 'Client portal login', 6)],
-    workspaces: home.workspaces!.map((w) => ({
-      ...w,
-      ...(held.has(w.id) ? { status: 'trust' as const } : {}),
-      ...(w.id === ids.invites ? { leadChatId: owner } : {}),
-      ...(w.id === ids.table ? { title: 'Build the invoice table' } : {}),
-      ...(w.id === ids.schema || w.id === ids.table ? { prState: 'none' as const } : {})
-    })),
-    approvals: [],
-    notifications: [],
-    push: [],
-    ui: { route: { name: 'inbox' }, foldedChats: [owner] }
-  }
-}
-
 // ---------- Issues (KERNEL-160)
 
 const KERNEL = { id: 'team-kernel', key: 'KERNEL', name: 'Kernel' }
@@ -756,11 +730,6 @@ export const teamFixtures: Record<string, Fixture> = {
     }],
     ui: { route: { name: 'inbox' } }
   })),
-  // No PNG (KERNEL-395): invoice-table is held for script trust beside the approvals, as the newest row, so the detail pane opens on it.
-  InboxTrustHeld: scene((f) => {
-    const home = homeScene(f)
-    return { ...home, workspaces: home.workspaces!.map((w) => (w.id === ids.table ? { ...w, status: 'trust' as const, createdAt: Date.now() } : w)), ui: { route: { name: 'inbox' } } }
-  }),
   Projects: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'projects' } } })),
   ProjectsRowFocused: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'projects' } } })),
   // Audit: no project added yet, and the Projects page on its own.
@@ -903,7 +872,6 @@ export const teamFixtures: Record<string, Fixture> = {
   SidebarLeadChats: scene(sidebarLeadChats),
   SidebarChatFolded: scene(sidebarChatFolded),
   SidebarChatGroups: scene(sidebarChatGroups),
-  SidebarTrustHeld: scene(sidebarTrustHeld),
   SidebarProjectMenu: withMenu(`project:${ids.projectA}`, { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }),
   // The project's menu now ends its first group with Archived, which opens History for that project.
   SidebarProjectMenuArchived: withMenu(`project:${ids.projectA}`, { name: 'inbox' }),

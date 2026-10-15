@@ -1,12 +1,11 @@
-import type { AgentDef, AgentStatus, Approval, Project, Workspace } from '@shared/types'
+import type { AgentDef, AgentStatus, Approval, Project } from '@shared/types'
 
 export type ProjectState = 'you' | 'working' | 'idle' | 'archived'
 
-/** "Needs you" when something waits on the user, a pending approval or a workspace held for script trust (KERNEL-395). "Working" when any agent is busy. Real events only, no timers (CLAUDE.md). */
-export function projectState(project: Project, approvals: Approval[], status: Record<string, AgentStatus> | undefined, workspaces: Workspace[] = []): ProjectState {
+/** "Needs you" when something waits on the user, a pending approval (KERNEL-395). "Working" when any agent is busy. Real events only, no timers (CLAUDE.md). */
+export function projectState(project: Project, approvals: Approval[], status: Record<string, AgentStatus> | undefined): ProjectState {
   if (project.archived) return 'archived'
   if (approvals.some((a) => a.projectId === project.id && a.status === 'pending')) return 'you'
-  if (workspaces.some((w) => w.projectId === project.id && w.status === 'trust')) return 'you'
   const busy: AgentStatus[] = ['working', 'planning', 'walking']
   return Object.values(status ?? {}).some((s) => busy.includes(s)) ? 'working' : 'idle'
 }

@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Chat, ChatItem, Workspace } from '@shared/types'
-import { setUp, tempRepo, trustProject, freePort } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { hookToken } from '../src/main/services/hookToken'
 import { Store } from '../src/main/db'
@@ -325,7 +325,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
 
 describe('restoring a workspace sets it up again (KERNEL-77)', () => {
   const text = (t: string) => [{ type: 'text' as const, text: t }]
-  /** A trusted project whose setup logs each run and fails while `fail.txt` was copied in, with Kai's workspace set up once. */
+  /** A project whose setup logs each run and fails while `fail.txt` was copied in, with Kai's workspace set up once. */
   async function restorable(mode: 'worktree' | 'current' = 'worktree') {
     const log = join(await mkdtemp(join(tmpdir(), 'kernel-log-')), 'setup.txt')
     const repo = await tempRepo({
@@ -344,7 +344,6 @@ describe('restoring a workspace sets it up again (KERNEL-77)', () => {
     await k.start()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
     const project = await k.addProject(repo)
-    await trustProject(k, project.id)
     const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', mode })
     const chat = k.store.chats(ws.id)[0]
     const runs = async () => (await readFile(log, 'utf8')).trim().split('\n').length
@@ -384,19 +383,6 @@ describe('restoring a workspace sets it up again (KERNEL-77)', () => {
     expect((await k.retrySetup(ws.id)).status).toBe('ready')
     expect(await runs()).toBe(3)
     await vi.waitFor(() => expect(sdk.calls.length).toBe(before + 1))
-  }, 30000)
-
-  it('waits for trust when the scripts changed while it was archived', async () => {
-    const { k, repo, project, ws, chat } = await restorable()
-    await k.archiveWorkspace(ws.id, false)
-    await k.archive.cleanedUp(ws.id)
-    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo changed"\n')
-    await k.restoreWorkspace(ws.id)
-    await setUp(k, ws.id, 'trust')
-    expect(k.sessions.isHeld(chat.id)).toBe(true)
-    await trustProject(k, project.id)
-    await setUp(k, ws.id)
-    expect(k.sessions.isHeld(chat.id)).toBe(false)
   }, 30000)
 
   it('brings a current-branch workspace back ready, with no setup', async () => {

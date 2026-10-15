@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PrInfo, PrState } from '@shared/types'
-import { tempRepo, trustProject, setUp, freePort } from './helpers'
+import { tempRepo, setUp, freePort } from './helpers'
 import { run } from '../src/main/services/exec'
 import { unpushedCommits } from '../src/main/services/archive'
 import { Kernel } from '../src/main/kernel'
@@ -35,7 +35,6 @@ async function setup(o: { files?: Record<string, string>; settings?: object } = 
     reopen: async () => undefined
   }
   const project = await k.addProject(repo)
-  await trustProject(k, project.id)
   return { k, project, gh }
 }
 

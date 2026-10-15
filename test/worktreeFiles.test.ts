@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { tempRepo, trustProject, setUp, freePort } from './helpers'
+import { tempRepo, setUp, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { saveRepoSettings } from '../src/main/services/settings'
 import { copyLocalFiles } from '../src/main/services/scripts'
@@ -34,8 +34,6 @@ async function setup(o: { link: boolean; modules?: boolean; copy?: string[]; loc
   await k.start()
   k.sessions.send = async () => ({ queued: false })
   const project = await k.addProject(repo)
-  // A copy list from settings.toml is the repo's text, which the user trusts before it copies (KERNEL-209).
-  await trustProject(k, project.id)
   const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
   return { k, repo, ws }
 }
@@ -164,7 +162,7 @@ describe('files.copy stays inside the repo (KERNEL-209)', () => {
     await k.start()
     k.sessions.send = async () => ({ queued: false })
     const project = await k.addProject(repo)
-    // Saved in Settings, so trusted: confinement still applies to trusted text.
+    // Saved in Settings: confinement still applies to the user's own text.
     await k.handlers()['settings.setProject']({ projectId: project.id, patch: { files: { copy: ['../../.ssh/id_rsa'] } }, shared: true })
     const lines: string[] = []
     const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'setup') lines.push(...e.lines.map((l) => l.line)) }

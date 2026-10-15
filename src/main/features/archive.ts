@@ -215,15 +215,11 @@ export class Archive extends Feature {
   }
 
   /**
-   * The project's archive script, in the workspace's folder. It never holds the cleanup: untrusted text is skipped (KERNEL-209),
-   * a hung script is stopped at the script timeout (KERNEL-216), and one that fails or times out leaves a warning note (KERNEL-702).
+   * The project's archive script, in the workspace's folder. It never holds the cleanup: a hung script is stopped at the script
+   * timeout (KERNEL-216), and one that fails or times out leaves a warning note (KERNEL-702).
    */
   private async archiveScript(ws: Workspace, project: Project, repo: RepoSettings) {
     const id = ws.id
-    if (await this.k.trust.untrusted(project, repo)) {
-      bus.push({ type: 'script.output', workspaceId: id, kind: 'archive', lines: [{ line: "Skipped the archive script: this project's scripts aren't trusted yet.", stream: 'stderr' }] })
-      return
-    }
     const end = await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive!, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) })
     if (this.stopped || end === 0) return
     const warn = (text: string) => bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text, object: ws.name, warn: true })
@@ -275,9 +271,8 @@ export class Archive extends Feature {
 
   /**
    * Brings an archived workspace back: recreates the worktree from its branch and reopens its chats, which Kernel kept. A
-   * worktree then sets up like a new one, files.copy and setup, with its chats held and the trust prompt, a failed state and
-   * Run again, but no start checkpoint (KERNEL-77). It returns once the record says `setup`. A Lead chat whose branch was
-   * deleted gets a new one from the latest base (KERNEL-405). A current-branch workspace comes back ready, as before.
+   * worktree then sets up like a new one, files.copy and setup, with its chats held, a failed state and Run again,
+   * but no start checkpoint (KERNEL-77). It returns once the record says `setup`. A Lead chat whose branch was deleted gets a new one from the latest base (KERNEL-405). A current-branch workspace comes back ready, as before.
    */
   async restoreWorkspace(id: string): Promise<Workspace> {
     // A cleanup still running would remove the folder and the branch restore brings back (KERNEL-702).

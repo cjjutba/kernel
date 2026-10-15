@@ -92,7 +92,7 @@ export function editedFields(cur: AgentDef, patch: AgentEdit): AgentEdit {
 
 /**
  * Each project's changes for me, by agent id, in `agent-overrides.json` in Kernel's data folder (KERNEL-466). One write at a time,
- * each with the whole map as it is then, like `ScriptTrustStore`.
+ * each with the whole map as it is then, like the other stores in the data folder.
  */
 export class AgentOverrides {
   private projects?: Record<string, Record<string, AgentOverride>>

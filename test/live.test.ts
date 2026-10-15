@@ -15,7 +15,7 @@ import { Approvals } from '../src/main/services/approvals'
 import { QUIT_NOTE, RELAUNCH_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { probeClaudeMcp, sessionEnv } from '../src/main/services/providers/claude'
-import { trustProject, freePort } from './helpers'
+import { freePort } from './helpers'
 
 // The KERNEL-6 round trip against real Claude Code. It spends a few short Sonnet turns on the Claude plan, so it
 // only runs when asked:
@@ -69,10 +69,8 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live round trip', () => {
       expect(agents.length).toBeGreaterThan(0)
       const agent = agents.find((a) => a.id === 'implementer') ?? agents[0]
 
-      // The project's committed scripts and files.copy list wait for the user's trust (KERNEL-209). The trusted hash lives in
-      // dataDir, so the side project is not changed. The local override above replaces only `setup`: the run script never
-      // starts (runAfterSetup is off), and files.copy copies the project's .env files into the temp worktree.
-      await trustProject(k, project.id)
+      // The local override above replaces only `setup`: the run script never starts (runAfterSetup is off), and files.copy
+      // copies the project's .env files into the temp worktree.
 
       // AC2: worktree, branch, setup and the first prompt
       const ws = await h['workspaces.create']({ projectId: project.id, agentId: agent.id, prompt: 'Check the working tree. First think it through: which is larger, 2^10 or 10^3, and by how much? Then run exactly `git status --short` with the Bash tool and reply in two short sentences. Run nothing else.' })
@@ -268,8 +266,6 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live relaunch', () => {
         const project = await h['projects.add']({ path: repo })
         const agents = await h['agents.list']({ projectId: project.id })
         const agent = agents.find((a) => a.id === 'implementer') ?? agents.find((a) => !a.lead) ?? agents[0]
-        // Trust the committed scripts, or the workspace waits and the brief never goes out (KERNEL-209). Setup is off above.
-        await trustProject(k, project.id)
         const ws = await h['workspaces.create']({ projectId: project.id, agentId: agent.id, prompt: 'Remember the word kumquat for later. Run exactly `sleep 20` with the Bash tool, then say done. Run nothing else.' })
         wsId = ws.id
         const chat = (await h['chats.list']({ workspaceId: ws.id }))[0]
@@ -466,7 +462,6 @@ describe.skipIf(!liveCodex)('live codex teammate', () => {
     let wsId: string | undefined
     try {
       const project = await k.handlers()['projects.add']({ path: repo })
-      await trustProject(k, project.id)
       const agents = await k.handlers()['agents.list']({ projectId: project.id })
       const agent = agents.find((a) => !a.lead && !a.builtIn) ?? agents[0]
       const ws = await k.handlers()['workspaces.create']({ projectId: project.id, agentId: agent.id, prompt: 'Think briefly about which is larger, 2^10 or 10^3. Then run exactly `touch kernel-ask-check` in the shell, and reply in one short sentence.' })
@@ -540,7 +535,6 @@ describe.skipIf(!liveCodex)('live codex lead', () => {
     const evidence: Record<string, unknown> = { repo, model: codexModel }
     try {
       const project = await k.handlers()['projects.add']({ path: repo })
-      await trustProject(k, project.id)
       const agents = await k.handlers()['agents.list']({ projectId: project.id })
       const teammate = agents.find((a) => !a.lead && !a.builtIn) ?? agents.find((a) => !a.lead)!
       const chat = await k.handlers()['lead.start']({ projectId: project.id, prompt: `Plan one small task for ${teammate.name}: add the line "Hello from Kernel" to the end of README.md. One task, a short plan. Don't read any files.` })

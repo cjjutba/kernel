@@ -120,7 +120,7 @@ class Reader {
       }
       this.addWord(cur, this.word())
     }
-    // A substitution that never closed, or text that gave up on its depth, can't be trusted.
+    // A substitution that never closed, or text that gave up on its depth, can't be relied on.
     if (inner || this.broken) cur.unknown = true
     this.broken = false
     flush()

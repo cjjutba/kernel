@@ -2,7 +2,7 @@ import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile, MovePreview, Provider, SwitchMove,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
   ForcedUi, GitHubStatus, HookStatus, LeadMode, MenuId, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, RateLimit, Project, ProjectSettings,
-  ProjectSettingsSection, ProjectSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, ToolCalls, UiState, UsageView, Workspace, WorkspaceTabs, WorkspaceView
+  ProjectSettingsSection, ProjectSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, ToolCalls, UiState, UsageView, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
 import { PROVIDERS } from '@shared/types'
@@ -28,8 +28,6 @@ export interface State {
   projects: Project[]
   /** By project id. Progress of a project being set up (ProjectSetup.png). */
   projectSetup: Record<string, ProjectSetupStep[]>
-  /** By project id. The scripts and files.copy list a project waits on the user to trust. A project with nothing to trust has no entry (KERNEL-218). */
-  scriptTrust: Record<string, ScriptTrust>
   /** By project id. */
   overlaps: Record<string, Overlap[]>
   // agents
@@ -210,7 +208,7 @@ function dropLastTabs(gone: (threadId: string) => boolean) {
 const folded = new Set<keyof typeof HIDDEN>()
 
 let state: State = {
-  projects: [], projectSetup: {}, scriptTrust: {}, overlaps: {},
+  projects: [], projectSetup: {}, overlaps: {},
   agents: {}, status: {}, globalAgents: null,
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, scriptData: {}, scriptReplays: {}, checkpoints: {},
   chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, itemsLoaded: {}, itemsFailed: {}, running: {}, assumed: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
@@ -582,10 +580,6 @@ export const actions = {
       ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => s.workspaces.find((w) => w.id === id)?.projectId === projectId) }
     })),
     setSetup: (projectId: string, steps: ProjectSetupStep[]) => setState((s) => ({ projectSetup: { ...s.projectSetup, [projectId]: steps } })),
-    setTrust: (projectId: string, trust: ScriptTrust | null) => setState((s) => {
-      const { [projectId]: _, ...rest } = s.scriptTrust
-      return { scriptTrust: trust ? { ...rest, [projectId]: trust } : rest }
-    }),
     setOverlaps: (projectId: string, list: Overlap[]) => setState((s) => ({ overlaps: { ...s.overlaps, [projectId]: list } })),
     upsertOverlap: (o: Overlap) => setState((s) => ({ overlaps: { ...s.overlaps, [o.projectId]: upsert(s.overlaps[o.projectId] ?? [], o) } }))
   },
@@ -861,7 +855,6 @@ export function apply(e: PushEvent) {
     case 'approval': return actions.approvals.upsert(e.approval)
     case 'project': return actions.projects.upsert(e.project)
     case 'project.setup': return actions.projects.setSetup(e.projectId, e.steps)
-    case 'project.trust': return actions.projects.setTrust(e.projectId, e.trust)
     case 'overlap': return actions.projects.upsertOverlap(e.overlap)
     case 'agents': return actions.agents.set(e.projectId, e.agents)
     case 'globalAgents': return actions.agents.setGlobal(e.agents)
@@ -1028,8 +1021,6 @@ export async function loadProject(projectId: string) {
   setState((s) => ({ agents: { ...s.agents, [projectId]: agents }, status: { ...s.status, [projectId]: { ...status, ...(s.status[projectId] ?? {}) } } }))
   // The Inbox lists open overlaps (D-104). Pushes keep them current after this; a failed check only leaves them out.
   void call('projects.overlaps', { projectId }).then((list) => actions.projects.setOverlaps(projectId, list)).catch(() => undefined)
-  // A workspace held in `trust` before this launch has no push to learn it from. Null isn't applied: a push may have landed first, and `project.trust` clears it (KERNEL-218).
-  void call('projects.scriptTrust', { projectId }).then((trust) => { if (trust) actions.projects.setTrust(projectId, trust) }).catch(() => undefined)
 }
 
 /**

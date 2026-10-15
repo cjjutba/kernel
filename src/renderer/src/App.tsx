@@ -28,7 +28,6 @@ import { Loading } from './screens/onboarding/Loading'
 import { Permissions } from './screens/onboarding/Permissions'
 import { Welcome } from './screens/onboarding/Welcome'
 import { ConfirmRemoveProject } from './screens/projects/ConfirmRemoveProject'
-import { TrustScripts } from './screens/projects/TrustScripts'
 import { ConfirmDeleteHistory } from './screens/history/ConfirmDeleteHistory'
 import { ConnectRepo } from './screens/projects/ConnectRepo'
 import { NewProject } from './screens/projects/NewProject'
@@ -117,7 +116,6 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
       if (modal.kind === 'discard') return <ConfirmDiscard workspaceId={modal.workspaceId} />
       if (modal.kind === 'revert') return <ConfirmRevert workspaceId={modal.workspaceId} checkpointId={modal.checkpointId} start={modal.start} />
       if (modal.kind === 'removeProject') return <ConfirmRemoveProject projectId={modal.projectId} />
-      if (modal.kind === 'trust') return <TrustScripts projectId={modal.projectId} />
       if (modal.kind === 'deleteHistory') return <ConfirmDeleteHistory workspaceIds={modal.workspaceIds} />
       if (modal.kind === 'closeChats') return <ConfirmCloseChats workspaceId={modal.workspaceId} chatIds={modal.chatIds} />
       if (modal.kind === 'archiveChat') return <ConfirmArchiveChat threadId={modal.threadId} />

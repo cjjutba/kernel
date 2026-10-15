@@ -17,9 +17,8 @@ function ProjectRow({ project, nav }: { project: Project; nav: ReturnType<typeof
   const agents = teamOf(useStore((s) => s.agents[project.id]))
   const status = useStore((s) => s.status[project.id])
   const approvals = useStore((s) => s.approvals)
-  const workspaces = useStore((s) => s.workspaces)
   const lastActive = useStore((s) => s.activity.find((e) => e.projectId === project.id)?.ts)
-  const state = projectState(project, approvals, status, workspaces)
+  const state = projectState(project, approvals, status)
   const open = () => void openProject(project.id)
   const show = () => void call('projects.update', { projectId: project.id, patch: { hidden: false } }).then((r) => actions.projects.upsert(r))
   return (

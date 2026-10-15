@@ -2,7 +2,6 @@ import { copyFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/pro
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { FolderInfo, RepoSummary } from '@shared/types'
-import { parse, unwrap } from './bashGuard'
 import { exec, git, gitSlow, run } from './exec'
 import { ghError } from './github'
 import { removeTree } from './removeTree'
@@ -214,12 +213,9 @@ export async function ensureRepoSettings(repoPath: string): Promise<boolean> {
 
 /**
  * One stack's install. `file` in the checkout's root says the repo uses it, and `leaves` is the folder the install leaves
- * in the checkout, when it leaves one there. `runsRepoCode` marks an install that runs the repo's own code (KERNEL-444): a
- * Gemfile and mix.exs are code, Composer runs composer.json's scripts, uv, Poetry and pip build the project, and rustup
- * reads rust-toolchain.toml, which can name a toolchain inside the repo. `go mod download` runs nothing from the repo, and
- * a JS install runs only package.json's install scripts, which `installScripts` reads (KERNEL-260).
+ * in the checkout, when it leaves one there.
  */
-export type Stack = { file: string; install: string; run: string; leaves?: string; runsRepoCode?: true }
+export type Stack = { file: string; install: string; run: string; leaves?: string }
 
 const js = (file: string, install: string, run: string): Stack => ({ file, install, run, leaves: 'node_modules' })
 
@@ -229,15 +225,15 @@ const js = (file: string, install: string, run: string): Stack => ({ file, insta
  */
 const STACKS: Stack[][] = [
   [
-    { file: 'uv.lock', install: 'uv sync', run: 'uv run uvicorn main:app --port $KERNEL_PORT', leaves: '.venv', runsRepoCode: true },
-    { file: 'poetry.lock', install: 'poetry install', run: 'poetry run uvicorn main:app --port $KERNEL_PORT', runsRepoCode: true },
+    { file: 'uv.lock', install: 'uv sync', run: 'uv run uvicorn main:app --port $KERNEL_PORT', leaves: '.venv' },
+    { file: 'poetry.lock', install: 'poetry install', run: 'poetry run uvicorn main:app --port $KERNEL_PORT' },
     // pip installs into whichever Python comes first, and Homebrew's refuses, so each checkout gets its own .venv.
-    { file: 'requirements.txt', install: 'python3 -m venv .venv && .venv/bin/pip install -r requirements.txt', run: '.venv/bin/python -m uvicorn main:app --port $KERNEL_PORT', leaves: '.venv', runsRepoCode: true }
+    { file: 'requirements.txt', install: 'python3 -m venv .venv && .venv/bin/pip install -r requirements.txt', run: '.venv/bin/python -m uvicorn main:app --port $KERNEL_PORT', leaves: '.venv' }
   ],
-  [{ file: 'Gemfile', install: 'bundle install', run: 'bin/rails server --port $KERNEL_PORT', runsRepoCode: true }],
-  [{ file: 'mix.exs', install: 'mix deps.get', run: 'PORT=$KERNEL_PORT mix phx.server', leaves: 'deps', runsRepoCode: true }],
-  [{ file: 'composer.json', install: 'composer install', run: 'php -S localhost:$KERNEL_PORT -t public', leaves: 'vendor', runsRepoCode: true }],
-  [{ file: 'Cargo.toml', install: 'cargo fetch', run: 'PORT=$KERNEL_PORT cargo run', runsRepoCode: true }],
+  [{ file: 'Gemfile', install: 'bundle install', run: 'bin/rails server --port $KERNEL_PORT' }],
+  [{ file: 'mix.exs', install: 'mix deps.get', run: 'PORT=$KERNEL_PORT mix phx.server', leaves: 'deps' }],
+  [{ file: 'composer.json', install: 'composer install', run: 'php -S localhost:$KERNEL_PORT -t public', leaves: 'vendor' }],
+  [{ file: 'Cargo.toml', install: 'cargo fetch', run: 'PORT=$KERNEL_PORT cargo run' }],
   [{ file: 'go.mod', install: 'go mod download', run: 'PORT=$KERNEL_PORT go run .' }],
   [
     js('pnpm-lock.yaml', 'pnpm install', 'pnpm dev --port $KERNEL_PORT'),
@@ -265,51 +261,15 @@ export async function lockfileInstall(repoPath: string): Promise<string | undefi
   return installOf(await stacksOf(repoPath))
 }
 
-/** The scripts a package install runs from the root `package.json` itself, in the order it runs them. */
-const INSTALL_HOOKS = ['preinstall', 'install', 'postinstall', 'preprepare', 'prepare', 'postprepare'] as const
-
 /**
- * The install scripts in the repo's root `package.json`, when a lockfile install applies (`lockfileInstall`). A package
- * install runs these as the repo's own code, so they wait for the user to trust them like a setup script does (KERNEL-260).
- * The scripts of the packages it installs aren't listed: pnpm 10 skips them by default, and npm and yarn run them.
- */
-export async function installScripts(repoPath: string): Promise<{ name: string; command: string }[]> {
-  if (!(await lockfileInstall(repoPath))) return []
-  try {
-    const scripts = (JSON.parse(await readFile(join(repoPath, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> } | null)?.scripts
-    return INSTALL_HOOKS.flatMap((name) => (typeof scripts?.[name] === 'string' && scripts[name].trim() ? [{ name, command: scripts[name] }] : []))
-  } catch { return [] }
-}
-
-const PACKAGE_MANAGERS = new Set(['npm', 'pnpm', 'yarn', 'bun'])
-const INSTALL_VERBS = new Set(['install', 'i', 'ci', 'add', 'update', 'upgrade', 'up', 'rebuild', 'rb', 'install-test', 'it', 'link', 'ln', 'dedupe'])
-
-/**
- * Whether a setup script installs packages: it has the lockfile's own command (`lock`), or a package manager called with an
- * install verb anywhere in it, through wrappers too (`npm ci`, `pnpm --filter app i`, `yarn`). Over-reading only makes the
- * project ask for trust it may not need, and only when the repo has install scripts.
- */
-export function runsPackageInstall(script: string, lock?: string): boolean {
-  if (lock && script.includes(lock)) return true
-  return parse(script).flatMap((s) => unwrap(s)).some((s) => {
-    const at = s.words.findIndex((w) => PACKAGE_MANAGERS.has(w.slice(w.lastIndexOf('/') + 1)))
-    if (at < 0) return false
-    const rest = s.words.slice(at + 1)
-    // Bare `yarn`, with or without flags, installs.
-    return rest.some((w) => INSTALL_VERBS.has(w)) || (s.words[at].endsWith('yarn') && rest.every((w) => w.startsWith('-')))
-  })
-}
-
-/**
- * What project setup's Install step runs in a checkout: the install of each stack whose folder isn't there yet, and whether
- * one of them runs the repo's own code. An install that leaves nothing in the checkout runs every time, which changes
+ * What project setup's Install step runs in a checkout: the install of each stack whose folder isn't there yet. An install that leaves nothing in the checkout runs every time, which changes
  * nothing once it has run. No command when the checkout has no package manager, or every install already left its folder.
  */
-export async function installCommand(repoPath: string): Promise<{ command?: string; reason?: string; runsRepoCode?: boolean }> {
+export async function installCommand(repoPath: string): Promise<{ command?: string; reason?: string }> {
   const found = await stacksOf(repoPath)
   if (!found.length) return { reason: 'Nothing to install' }
   const left: Stack[] = []
   for (const stack of found) if (!stack.leaves || !(await exists(join(repoPath, stack.leaves)))) left.push(stack)
   if (!left.length) return { reason: 'Already installed' }
-  return { command: installOf(left), ...(left.some((s) => s.runsRepoCode) ? { runsRepoCode: true } : {}) }
+  return { command: installOf(left) }
 }

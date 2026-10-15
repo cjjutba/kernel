@@ -38,31 +38,6 @@ describe('glyphs for pending approvals', () => {
   })
 })
 
-describe('glyphs for a workspace held for script trust (KERNEL-342)', () => {
-  const held = (status: Workspace['status']): Workspace =>
-    ({ id: 'w', projectId: 'r', name: 'w', branch: 'feat/w', baseRef: 'main', path: '/w', mode: 'worktree', agentId: 'kai', port: 1, status, prState: 'none', createdAt: 1 })
-  const idle = { waiting: [], running: false }
-
-  it('reads as waiting on you, like an approval', () => {
-    expect(workspaceGlyph(held('trust'), idle)).toEqual({ icon: 'question', tone: 'needs', label: 'Trust scripts' })
-  })
-
-  it('clears when the status moves on, to setup, then ready', () => {
-    expect(workspaceGlyph(held('setup'), idle)).toMatchObject({ icon: 'spin', label: 'Setting up' })
-    expect(workspaceGlyph(held('ready'), idle)).toMatchObject({ icon: 'branch', tone: 'muted' })
-  })
-
-  it('lets a pending approval name the wait when both are there', () => {
-    expect(workspaceGlyph(held('trust'), { waiting: [plan], running: false })).toMatchObject({ icon: 'plan', label: 'Plan to review' })
-  })
-
-  it('shows on a folded chat row only while a workspace it hides is held', () => {
-    expect(chatGlyph({ ...idle, trust: true })).toEqual({ icon: 'question', tone: 'needs', label: 'Trust scripts' })
-    expect(chatGlyph({ ...idle, trust: false })).toMatchObject({ icon: 'chat', tone: 'muted' })
-    expect(chatGlyph({ waiting: [bash], running: true, trust: true })).toMatchObject({ label: 'Needs you' })
-  })
-})
-
 describe('a ready PR GitHub blocks (KERNEL-401)', () => {
   it('reads open, as the header does, not ready to merge', () => {
     const ws = (o: Partial<Workspace>) => ({ id: 'w', status: 'ready', prState: 'ready', ...o }) as Workspace

@@ -690,16 +690,6 @@ describe("a teammate's setup (KERNEL-126)", () => {
     await wait()
     expect(s.posts).toEqual([])
   })
-
-  it("lets a release by trusting the project's scripts ride along, and says the user trusted them (KERNEL-261)", async () => {
-    const { u, s, w1, pr } = await setup()
-    u.setup(w1, true, { trusted: true })
-    await wait()
-    expect(s.posts).toEqual([])
-    pr('w1', 'cifail')
-    await wait()
-    expect(parts(s.posts.pop()!).body).toEqual([NOOR, "- The user trusted this project's scripts and setup passed, and Noor's brief was released.", OPENED_54, '- Checks failed on PR #54.'])
-  })
 })
 
 describe('a teammate that waits for another PR (KERNEL-259)', () => {

@@ -119,7 +119,7 @@ const inside = (root: string, file: string) => {
 
 /**
  * The env file's real path when Kernel may read it, else null. It must sit inside `dir` once links are followed, so an
- * absolute path, `..` or a link out of the folder is refused: a project's settings can come from a repo nobody trusted yet,
+ * absolute path, `..` or a link out of the folder is refused: a project's settings can come from any commit to the repo,
  * and they mustn't read the rest of the Mac into a session (KERNEL-209). A link that stays inside is fine.
  */
 function envFilePath(dir: string, path: string): string | null {

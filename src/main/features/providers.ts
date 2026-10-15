@@ -72,7 +72,7 @@ const OWN_LOGIN: Record<Provider, string> = { claude: 'Claude Code’s own login
 /** How long a sign-in in the browser may take before Kernel gives up on it. */
 const SIGN_IN_MS = 15 * 60_000
 
-/** How long `readUsage` trusts an account's last read. Claude Code answers the usage call from a snapshot under a minute old. */
+/** How long `readUsage` reuses an account's last read. Claude Code answers the usage call from a snapshot under a minute old. */
 const USAGE_FRESH_MS = 60_000
 
 /**

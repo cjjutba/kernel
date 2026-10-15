@@ -102,14 +102,7 @@ function Detail({ item }: { item: InboxItem }) {
         </>
       )}
       {a && pending && !isTool(a) && <div className="ib-card"><ApprovalCard approval={a} /></div>}
-      {n.kind === 'trust' && n.projectId && n.workspaceId && (
-        <div className="ib-acts">
-          <button type="button" className="ib-link" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>Open workspace</button>
-          <span className="grow" />
-          <Button variant="primary" onClick={() => actions.ui.openModal({ name: 'confirm', kind: 'trust', projectId: n.projectId! })}>Review scripts</Button>
-        </div>
-      )}
-      {!a && pending && n.kind !== 'trust' && n.workspaceId && (
+      {!a && pending && n.workspaceId && (
         <div className="ib-acts">
           <Button variant="primary" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>{n.kind === 'merge' ? 'Open PR' : 'Open workspace'}</Button>
         </div>
@@ -130,7 +123,6 @@ export function Inbox() {
   const approvals = useStore((s) => s.approvals)
   const projects = useStore((s) => s.projects)
   const overlaps = useStore((s) => s.overlaps)
-  const workspaces = useStore((s) => s.workspaces)
   const agents = useStore((s) => s.agents)
   const firstProject = useStore((s) => s.projects.find((r) => !r.archived)?.id)
   const lead = useStore((s) => (firstProject ? s.agents[firstProject]?.find((a) => a.lead) : undefined))
@@ -138,7 +130,7 @@ export function Inbox() {
   const [tab, setTab] = useRemembered<InboxTab>('kernel.inboxTab', oneOf<InboxTab>(['all', 'needs', 'updates'], 'all'))
   const [sel, setSel] = useState<string | null>(null)
   const detail = useRef<HTMLDivElement>(null)
-  const all = useMemo(() => inboxItems(notifications, approvals, projects, allOverlaps(overlaps), workspaces), [notifications, approvals, projects, overlaps, workspaces])
+  const all = useMemo(() => inboxItems(notifications, approvals, projects, allOverlaps(overlaps)), [notifications, approvals, projects, overlaps])
   const list = all.filter((i) => inTab(i, tab))
   const shownRows = useHeldRows(list, (i) => i.n.id, (i) => i.approval?.id)
   const cur = list.find((i) => i.n.id === sel) ?? list[0]

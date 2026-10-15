@@ -11,10 +11,10 @@ export { clock, resetPhrase }
 export type BannerAction =
   | 'queue' | 'notify' | 'usage' | 'wait' | 'switch'
   | 'newChat' | 'compact' | 'switchModel' | 'retryNow' | 'tryAgain'
-  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review' | 'archive' | 'switchAccount' | 'providers'
+  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'archive' | 'switchAccount' | 'providers'
   | 'switchBack' | 'models' | 'signInAccount'
 
-export type BannerId = 'folder' | 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'accountNearLimit' | 'nearLimit' | 'weeklyWarn' | 'switchWarning' | 'overloaded' | 'context' | 'hooks'
+export type BannerId = 'folder' | 'signedOut' | 'offline' | 'setup' | 'weekly' | 'session' | 'model' | 'accountNearLimit' | 'nearLimit' | 'weeklyWarn' | 'switchWarning' | 'overloaded' | 'context' | 'hooks'
 
 export interface BannerView {
   id: BannerId
@@ -155,14 +155,8 @@ export function bannerFor(i: BannerInput): BannerView | null {
     actions: [{ id: 'tryAgain', label: 'Try again' }], blocks: false
   }
 
-  // A Lead chat that isn't held keeps answering while setup waits or after it failed (KERNEL-490).
+  // A Lead chat that isn't held keeps answering after setup failed (KERNEL-490).
   const without = `${name} keeps answering without it.`
-
-  // KERNEL-209 holds the workspace until the user trusts the project's scripts. Its brief waits in the queue, so the composer stays open.
-  if (ws.status === 'trust') return {
-    id: 'trust', kind: 'trust', title: "Waiting for you to trust this repo's scripts", sub: `Setup has not run yet. ${i.skipsSetup ? without : `${name} starts once you trust them.`}`,
-    actions: [{ id: 'review', label: 'Review', primary: true }], blocks: false
-  }
 
   if (ws.status === 'failed') {
     const cmd = setupCommand(i.scripts)

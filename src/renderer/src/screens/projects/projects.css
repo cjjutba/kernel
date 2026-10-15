@@ -116,13 +116,6 @@
   .rm-head > :nth-child(3), .rm-row > :nth-child(3) { display: none; }
 }
 
-/* TrustScripts: the scripts a project waits on (KERNEL-218) */
-/* Bleeds past .confirm-body's 20px the same way as .cr-list (KERNEL-602): 20px less the 6px thumb. */
-.ts-list { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; scrollbar-gutter: stable; margin-right: -20px; padding-right: 14px; }
-.ts-item { display: flex; flex-direction: column; gap: 6px; }
-.ts-label { margin: 0; font-size: 12px; font-weight: 500; color: var(--ink-2); }
-.ts-error { margin: 0; font-size: 13px; color: var(--ink-2); }
-
 /* Project setup's team review, for a repo that brought its own agents (ProjectSetupTeam.png, KERNEL-397). */
 .ob-page.rs-review { padding-top: 48px; padding-bottom: 32px; overflow-y: auto; }
 .rs-team { margin-top: 20px; border: 1px solid var(--panel-line); border-radius: var(--r-lg); background: var(--panel); }

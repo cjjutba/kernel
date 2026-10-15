@@ -9,7 +9,7 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { git, run } from '../src/main/services/exec'
 import { projectWorktreeRoot } from '../src/main/services/worktrees'
-import { setUp, tempRepo, trustProject, freePort } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 
 // KERNEL-542: lead.start answers once the chat, its tab and its workspace are saved. The fetch, the worktree and setup run
 // after, and the first message waits in the tab's queue until the worktree exists.
@@ -78,12 +78,11 @@ async function boot(where: { dataDir: string; home: string }) {
   return k
 }
 
-/** A started Kernel on a trusted project made from `files`, with `origin`, and `workspace` in its settings. */
+/** A started Kernel on a project made from `files`, with `origin`, and `workspace` in its settings. */
 async function project(files: Record<string, string> = {}, workspace: Record<string, unknown> = {}) {
   const where = await dirs(workspace)
   const k = await boot(where)
   const r = await k.addProject(await withOrigin(files))
-  await trustProject(k, r.id)
   sdk.calls.length = 0
   return { k, project: r, where }
 }
