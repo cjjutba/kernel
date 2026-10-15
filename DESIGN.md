@@ -174,6 +174,39 @@ A button that waits on the main process shows it is working until the call retur
 - In code, `useBusy()` tracks which button started the work, and `Button` and `IconButton` take `busy` and `busyLabel`. `ConfirmDialog` passes the same two to its confirm button and takes `disabled` for "can't confirm yet". The sidebar's archive button is the one exception. It stays a plain icon with no spinner or word, and still ignores a second click. Approvals are the other exception (KERNEL-789, KERNEL-834): Approve, Deny, Allow once, Always allow, Approve and hand off, Approve and build, and the plan strip's Approve act at once, with no spinner and no "Approving", "Allowing" or "Denying" label. The approval shows its result in place, so a spinner adds nothing. A second press, or a press on another button of the same approval, does nothing (a ref guards it, not `useBusy`). A failed call brings the approval back with its error toast. The plan strip closes over --plan-dur; every other approval folds away as an archived row does (Motion, Approvals).
 - No spinner for navigation, menus, opening a dialog, toggles and selects that save in place, links that open the browser or the editor, copying, or sending a chat message, which shows up in the thread.
 
+## State kinds (KERNEL-859)
+
+Every screen draws a state with one of these components from `ui`, never its own markup. Gallery: `pnpm shots DevUiStates`.
+
+| State | Component | Copy |
+| --- | --- | --- |
+| Loading | `LoadingRow what="issues"` | The `arrow-down` loader and "Loading issues". Plural noun, no trailing dots. |
+| Empty | `EmptyList icon title` (an `EmptyState` centered in its area) | An icon, a title and one muted line. Add one `action` only when the person can fix it from here. |
+| Failed | `FailedState title onRetry` | The neutral offline banner: what failed as the title, the reason under it, Try again on the right. Try again uses `useBusy`, spins as "Trying again" and can't be pressed twice. Never red text, never an empty list. |
+| Not connected | `NotConnectedState page label` | An empty state whose one button opens the Settings page that fixes it ("Open Integrations"). |
+
+- A list that loads shows `LoadingRow`, then one of the other three. A blank area is never a state.
+- Failed beats empty: a call that errored is not "No issues".
+- Not connected means nothing is set up yet. Failed means it was set up and the call broke.
+
+## Motion tokens (KERNEL-859)
+
+`tokens.css` holds the shared timings. New motion uses them, and a screen moves onto them when its own issue touches it.
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `--dur-fast` | 120ms | Fades and exits: modal and scrim leaving, the archive fade, the selected fill. |
+| `--dur-base` | 160ms | Reveals: the scrim in, the queue row leaving, a toast's gap, Send changes color. |
+| `--dur-glide` | 180ms | Folds: a group collapsing, the nearest thing to a glide with no distance. |
+| `--ease-out` | `ease-out` | Everything that appears or leaves. |
+| `--ease-glide` | `cubic-bezier(0.45, 0, 0.05, 1)` | Every scroll Kernel makes itself. `GLIDE_EASING` in `Transcript.tsx` is the same curve. |
+
+The three kinds of motion:
+
+- Place is instant. Opening a chat, a new chat's first message and anything under reduced motion put the view where it belongs with no motion.
+- Glide is one curve, `--ease-glide`, for every scroll Kernel makes itself: the send glide, the lift, Approve, the rail jump. Its duration comes from the distance (120 to 700ms), not a token.
+- Reveal is one duration for folds, chips and the queue, so they read as one family and are tuned together.
+
 ## Motion
 
 - Check an animation with `pnpm shots <Screen> --motion` before it ships: a still can look right while the motion jolts. Give the fixture a `motion` action and share the contact sheet and GIF in the PR.

@@ -138,7 +138,7 @@ function currentRoom(): string | undefined {
 }
 
 /** Dev builds only: `#/dev/ui` and `#/dev/ui/<page>` open the component gallery. Production has no way to reach it except a fixture forcing the route. */
-const devUiPages: DevUiPage[] = ['components', 'display', 'overlays', 'dialogs']
+const devUiPages: DevUiPage[] = ['components', 'display', 'states', 'overlays', 'dialogs']
 function useDevUiHash() {
   useEffect(() => {
     if (!import.meta.env.DEV) return

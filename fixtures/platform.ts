@@ -726,6 +726,7 @@ export const platformFixtures: Record<string, Fixture> = {
   }),
   DevUi: gallery('components'),
   DevUiDisplay: gallery('display'),
+  DevUiStates: gallery('states'),
   DevUiOverlays: gallery('overlays'),
   DevUiDialogs: gallery('dialogs'),
   Welcome: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'welcome' } } })),
