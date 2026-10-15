@@ -20,6 +20,10 @@
 .is-state { flex-direction: column; gap: 8px; text-align: center; }
 .is-state h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
 .is-state p { margin: 0 0 10px; max-width: 340px; color: var(--muted); line-height: 1.5; }
+.is-notice { padding: 8px 12px 0; }
+.is-notice .banner { padding: 10px 10px 10px 14px; gap: 12px; border-radius: var(--r-md); }
+.is-notice .banner-title { font-size: 13px; }
+.is-cap { margin: 8px 0 4px; padding: 0 10px; font-size: 12px; line-height: 1.5; }
 .is-fail { width: 100%; max-width: 560px; padding-bottom: 60px; }
 .is-fail .banner { padding: 10px 10px 10px 14px; gap: 12px; border-radius: var(--r-md); }
 .is-fail .banner-title { font-size: 13px; }

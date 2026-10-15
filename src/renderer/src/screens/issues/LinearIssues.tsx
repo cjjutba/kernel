@@ -3,10 +3,10 @@ import type { LinearIssue, LinearScope } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { getState, go, useStore } from '../../store'
 import { readSaved as readStored, writeSaved } from '../../remember'
-import { Banner, Button, Icon, IconButton, Pill, Spinner } from '../../ui'
+import { Button, FailedState, Icon, IconButton, NotConnectedState, Pill, Spinner } from '../../ui'
 import { IssuePriority, IssueState } from '../../icons'
 import { IssueDetail } from './IssueDetail'
-import { FilterChip, IssuesHeader, typing, type RoomHead } from './parts'
+import { CapNote, FilterChip, IssuesHeader, RefreshNotice, typing, type RoomHead } from './parts'
 import {
   clearedFilter, cyclesFor, cycleLabel, describeFilter, fitFilter, FILTER_KEY, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces,
   parseFilter, projectsFor, rowStatus, serializeFilter, stateShape, workspaceSlug, type SavedFilter
@@ -14,14 +14,14 @@ import {
 import './issues.css'
 
 /** Where the failure came from decides the words: a rejected token needs reconnecting, anything else is worth trying again. */
-type View = { kind: 'loading' } | { kind: 'connect' } | { kind: 'error'; title: string; sub: string } | { kind: 'ready' }
+type View = { kind: 'loading' } | { kind: 'connect' } | { kind: 'rejected' } | { kind: 'error'; title: string; sub: string } | { kind: 'ready' }
 
 const UNREACHABLE: View = { kind: 'error', title: "Can't reach Linear", sub: 'Check your connection, then try again.' }
 
 function failure(e: unknown): View {
   const message = cleanError(e)
   if (/^Connect Linear/i.test(message)) return { kind: 'connect' }
-  if (/rejected the token/i.test(message)) return { kind: 'error', title: 'Linear rejected the token', sub: 'Reconnect it in Settings, Integrations, then try again.' }
+  if (/rejected the token/i.test(message)) return { kind: 'rejected' }
   if (/could not reach/i.test(message)) return UNREACHABLE
   return { kind: 'error', title: "Can't load issues", sub: message }
 }
@@ -44,6 +44,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
   const chats = useStore((s) => s.chats)
   const running = useStore((s) => s.running)
   const [view, setView] = useState<View>({ kind: 'loading' })
+  const [problem, setProblem] = useState<View | null>(null)
   const [scope, setScope] = useState<LinearScope | null>(null)
   const [filter, setFilter] = useState<SavedFilter>(readSaved)
   const [query, setQuery] = useState('')
@@ -58,6 +59,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
   const seq = useRef(0)
   const scopeRef = useRef<LinearScope | null>(null)
   const loadedKey = useRef('')
+  const hasLists = useRef(false)
   const now = useRef({ filter, query })
   now.current = { filter, query }
 
@@ -70,7 +72,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
       if (full || !sc) {
         const rows = await call('integrations.list', undefined)
         if (stale()) return
-        if (!rows.find((r) => r.id === 'linear')?.connected) return setView({ kind: 'connect' })
+        if (!rows.find((r) => r.id === 'linear')?.connected) { hasLists.current = false; return setView({ kind: 'connect' }) }
         sc = await call('linear.scope', undefined)
         if (stale()) return
         scopeRef.current = sc
@@ -85,10 +87,15 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
       loadedKey.current = `${serializeFilter(f)}|${now.current.query}`
       const name = workspaceSlug((all[0] ?? mine[0])?.url)
       if (name) { knownSlug = name; setSlug(name) }
+      hasLists.current = true
       setLists({ mine, all })
+      setProblem(null)
       setView({ kind: 'ready' })
     } catch (e) {
-      if (!stale()) setView(failure(e))
+      if (stale()) return
+      const v = failure(e)
+      if (hasLists.current && v.kind !== 'connect') setProblem(v)
+      else setView(v)
     }
   }, [])
 
@@ -154,14 +161,16 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
     }
   }
 
-  const shown: View = !online && (view.kind === 'ready' || view.kind === 'error') ? UNREACHABLE : view
+  const failed: View | null = view.kind === 'ready' ? (!online ? UNREACHABLE : problem) : null
+  const shown: View = !online && (view.kind === 'rejected' || view.kind === 'error') ? UNREACHABLE : view
   const ready = shown.kind === 'ready' && scope
+  const openIntegrations = () => go({ name: 'settings', page: 'integrations' })
   const set = (patch: Partial<SavedFilter>) => setFilter((f) => (scope ? fitFilter({ ...f, ...patch }, scope) : { ...f, ...patch }))
   const count = (n: number | undefined) => (n === undefined ? '' : n >= 100 ? '100+' : String(n))
 
   return (
     <div className="panel">
-      <IssuesHeader head={head} where={shown.kind === 'ready' || shown.kind === 'error' ? `Linear${slug ? ` · ${slug}` : ''}` : undefined} />
+      <IssuesHeader head={head} where={shown.kind === 'ready' || shown.kind === 'rejected' || shown.kind === 'error' ? `Linear${slug ? ` · ${slug}` : ''}` : undefined} />
 
       {ready && scope && (
         <div className="is-bar">
@@ -193,12 +202,17 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
         </div>
       )}
 
-      {shown.kind === 'error' && (
-        <div className="is-center">
-          <div className="is-fail">
-            <Banner kind={shown.title.includes('rejected') ? 'auth' : 'offline'} title={shown.title} actions={<Button size="md" busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{shown.sub}</Banner>
-          </div>
-        </div>
+      {shown.kind === 'rejected' && (
+        <NotConnectedState icon="key" title="Linear rejected the token" page="integrations" label="Open Settings, Integrations">Reconnect Linear to see your issues again.</NotConnectedState>
+      )}
+
+      {shown.kind === 'error' && <FailedState title={shown.title} onRetry={() => load(true)}>{shown.sub}</FailedState>}
+
+      {ready && failed && failed.kind === 'rejected' && (
+        <RefreshNotice kind="auth" title="Linear rejected the token" action={<Button size="md" onClick={openIntegrations}>Open Settings, Integrations</Button>}>Reconnect Linear to refresh these issues.</RefreshNotice>
+      )}
+      {ready && failed && failed.kind === 'error' && (
+        <RefreshNotice kind="offline" title={failed.title} action={<Button size="md" busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{failed.sub} The issues below are from the last time it loaded.</RefreshNotice>
       )}
 
       {ready && scope && flat.length === 0 && (() => {
@@ -245,6 +259,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
                 </ul>
               </section>
             ))}
+            {list.length >= 100 && <CapNote>Showing the 100 issues updated most recently. Narrow by project, cycle or search to find the rest.</CapNote>}
           </div>
           <div className="is-pane" ref={detail}>
             {selId && <IssueDetail id={selId} summary={cur} tick={tick} onPlanned={() => { setTick((t) => t + 1); void load(true) }} />}
