@@ -67,7 +67,28 @@ export type HookProblem =
 export interface GitHubStatus {
   pausedUntil?: number
   slowDown?: boolean
+  /** Each room's PR status reads from GitHub, by room id, for the Pull requests page (KERNEL-861). Local rooms have none. */
+  reads?: Record<string, PrReads>
 }
+
+/** How fresh a room's PR status is. `at` is the last read GitHub answered, kept when a later one fails; `failed` says why the last read failed. */
+export interface PrReads {
+  at?: number
+  failed?: GitHubErrorKind
+}
+
+/**
+ * Why a GitHub read failed (KERNEL-861): gh isn't signed in or GitHub rejected its token, the repo is gone or the account
+ * can't see it, a rate limit is used up, GitHub can't be reached, or anything else. A failed call carries it in its error,
+ * which `githubErrorKind` in `@shared/githubError` reads back.
+ */
+export type GitHubErrorKind = 'signed-out' | 'not-found' | 'rate-limited' | 'offline' | 'other'
+
+/**
+ * Where the GitHub CLI stands. `missing` is no gh, `offline` means gh has an account but couldn't reach GitHub to check its
+ * token. `source` is gh's `tokenSource`: "keyring", "GH_TOKEN", "GITHUB_TOKEN" or the path of gh's config file (KERNEL-448).
+ */
+export interface GitHubAuth { state: 'missing' | 'signed-out' | 'offline' | 'ok'; login?: string; source?: string }
 
 /** Auto-update (UpdateReady.png, WhatsNew.png). KERNEL-30. */
 export interface AppUpdate {
