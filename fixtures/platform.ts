@@ -724,7 +724,7 @@ export const platformFixtures: Record<string, Fixture> = {
     const rs = room.roomSettings![ids.roomA]
     return { ...room, roomSettings: { [ids.roomA]: { ...rs, references: ['/Users/you/Projects/client-a-api', '/Users/you/Projects/design-system'], missingReferences: ['/Users/you/Projects/design-system'] } } }
   }),
-  DevUi: gallery('components'),
+  DevUi: { ...gallery('components'), motion: { action: { hold: 'Deny' }, ms: 400, area: '.devui-row' } },
   DevUiDisplay: gallery('display'),
   DevUiStates: gallery('states'),
   DevUiOverlays: gallery('overlays'),

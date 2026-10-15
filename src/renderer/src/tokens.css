@@ -303,22 +303,31 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .hv:hover .more, .hv:has(:focus-visible) .more { opacity: 1; }
 
 /* controls */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: transparent; color: var(--ink-2); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
-.btn:hover { background: var(--surface-3); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: transparent; color: var(--ink-2); font-size: 12.5px; font-weight: 500; white-space: nowrap; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .btn.primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
-.btn.primary:hover { background: var(--ink-hover); }
 .btn.ghost { border-color: transparent; color: var(--ink-2); }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: var(--on-solid); }
 .btn.merged { background: var(--merged-solid); border-color: var(--merged-solid); color: var(--on-solid); }
+/* Hover and press (KERNEL-879). :where() keeps these at the specificity of the variant they sit on, so a screen's own .btn rule still wins. */
+.btn:where(:not(.primary, .danger, .merged, :disabled):hover) { background: var(--surface-3); border-color: var(--line-4); }
+.btn:where(:not(.primary, .danger, .merged, :disabled):active) { background: var(--hover); }
+.btn.ghost:where(:not(:disabled):hover) { color: var(--ink); }
+.btn.primary:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--ink) 88%, var(--on-ink)); }
+.btn.primary:where(:not(:disabled):active) { background: color-mix(in srgb, var(--ink) 76%, var(--on-ink)); }
+.btn.danger:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--danger) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--danger) 88%, var(--on-solid)); }
+.btn.danger:where(:not(:disabled):active) { background: color-mix(in srgb, var(--danger) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--danger) 76%, var(--on-solid)); }
+.btn.merged:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--merged-solid) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--merged-solid) 88%, var(--on-solid)); }
+.btn.merged:where(:not(:disabled):active) { background: color-mix(in srgb, var(--merged-solid) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--merged-solid) 76%, var(--on-solid)); }
 .btn.lg { height: 32px; font-size: 13px; padding: 0 14px; border-radius: var(--r); }
 .btn:disabled { opacity: 0.55; cursor: default; }
 /* Busy: the work the button started is running (DESIGN.md). Every variant takes the canvas's Creating PR look. */
 .btn[aria-busy='true']:disabled { opacity: 1; background: var(--surface-3); border: 1px solid var(--line-3); color: var(--ink-3); }
-.icon-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); }
+.icon-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); transition: color var(--dur-fast) var(--ease-out); }
 /* Hover brightens the icon with no fill behind it. A fill means on or open (`aria-pressed`, `aria-expanded`), never hover (DESIGN.md). */
 .icon-btn:hover { color: var(--ink); }
 .icon-btn:disabled { color: var(--faint); cursor: default; }
-.pill { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: var(--r-pill); border: 1px solid var(--pill-line); background: transparent; color: var(--muted); font-weight: 500; }
+.pill { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: var(--r-pill); border: 1px solid var(--pill-line); background: transparent; color: var(--muted); font-weight: 500; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+.pill:where(:not(:disabled, [aria-pressed='true'], [aria-current='page']):hover) { border-color: var(--line-3); color: var(--ink); }
 .pill[aria-pressed='true'], .pill[aria-current='page'] { border-color: var(--line-3); background: var(--surface-3); color: var(--ink); }
 .prov-title { display: inline-flex; align-items: center; gap: 6px; }
 .tab { height: 28px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-weight: 500; }
