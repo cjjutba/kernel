@@ -3,6 +3,10 @@
 // Each clip opens one scene (demo/scenes) at 1440x900 and 2x, moves a drawn cursor to what it clicks, and captures every
 // frame Chrome paints over CDP. ffmpeg crops the frames to the part of the window the clip is about and writes an MP4
 // and a poster to site/public/clips. Needs ffmpeg on PATH.
+//
+// A clip can also move a camera, the way a product video zooms in on each step. The page itself never moves: the driver
+// only notes where the camera goes and when, and after recording each output frame is drawn from the 2x capture through
+// that moving window, with sub-pixel precision. Up to 1.8x on a 1600 wide clip, the zoomed frames stay sharp.
 import { chromium, type Locator, type Page } from 'playwright-core'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -30,6 +34,12 @@ type Clip = {
   poster?: number
 }
 
+/** Where the camera heads at `t` seconds into the recording: `s` times, centered on (x, y) in window pixels. */
+type Shot = { t: number; ms: number; s: number; x: number; y: number }
+type View = { s: number; x: number; y: number }
+const W = 1440
+const H = 900
+
 class Driver {
   readonly page: Page
   constructor(page: Page) {
@@ -40,12 +50,11 @@ class Driver {
   async show(x = 720, y = 520) {
     await this.page.evaluate(([cx, cy]) => (window as unknown as { __cursor: { show(p: object): void } }).__cursor.show({ x: cx, y: cy }), [x, y])
   }
-  /** Screen coordinates to the layout coordinates the cursor lives in, while the camera is zoomed. */
-  private layout = (x: number, y: number) =>
-    this.page.evaluate(([sx, sy]) => (window as unknown as { __camera: { toLayout(x: number, y: number): { x: number; y: number } } }).__camera.toLayout(sx!, sy!), [x, y])
+  /** When recording started, in seconds, and the camera moves made since. */
+  start = 0
+  readonly shots: Shot[] = []
   private glide = async (x: number, y: number, ms: number) => {
-    const at = await this.layout(x, y)
-    await this.page.evaluate(([cx, cy, t]) => (window as unknown as { __cursor: { move(x: number, y: number, ms: number): Promise<void> } }).__cursor.move(cx!, cy!, t!), [at.x, at.y, ms])
+    await this.page.evaluate(([cx, cy, t]) => (window as unknown as { __cursor: { move(x: number, y: number, ms: number): Promise<void> } }).__cursor.move(cx!, cy!, t!), [x, y, ms])
     await this.page.mouse.move(x, y)
   }
   /** Glides the cursor to the middle of `target` and hovers it there. */
@@ -59,32 +68,34 @@ class Driver {
   }
   async click(target: Locator, ms?: number) {
     const { x, y } = await this.to(target, ms)
-    await this.wait(180)
+    await this.wait(150)
     await this.page.evaluate(() => (window as unknown as { __cursor: { press(): void } }).__cursor.press())
     await this.page.mouse.click(x, y)
   }
   /** Glides to a point on screen and clicks there. */
   async clickAt(x: number, y: number, ms = 750) {
     await this.glide(x, y, ms)
-    await this.wait(180)
+    await this.wait(150)
     await this.page.evaluate(() => (window as unknown as { __cursor: { press(): void } }).__cursor.press())
     await this.page.mouse.click(x, y)
   }
-  /** Zooms the camera to `s` times on the middle of `target`, or on a point in layout coordinates, and waits for it. */
-  async zoom(target: Locator | { x: number; y: number }, s: number, ms = 900) {
+  /**
+   * Moves the camera to `s` times on the middle of `target`, or on a point, over `ms`. The move plays in the video while
+   * the script goes on: `hold` is how much of it to wait for before the next step.
+   */
+  async zoom(target: Locator | { x: number; y: number }, s: number, ms = 1200, hold = 0.6) {
     let point: { x: number; y: number }
     if ('x' in target) point = target
     else {
       await target.waitFor({ state: 'visible', timeout: 20_000 })
       const box = (await target.boundingBox())!
-      point = await this.layout(box.x + box.width / 2, box.y + box.height / 2)
+      point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
     }
-    await this.page.evaluate(([x, y, z, t]) => (window as unknown as { __camera: { zoom(x: number, y: number, s: number, ms: number): void } }).__camera.zoom(x!, y!, z!, t!), [point.x, point.y, s, ms])
-    await this.wait(ms + 60)
+    this.shots.push({ t: Date.now() / 1000 - this.start, ms, s, ...point })
+    await this.wait(ms * hold)
   }
-  async unzoom(ms = 900) {
-    await this.page.evaluate((t) => (window as unknown as { __camera: { reset(ms: number): void } }).__camera.reset(t), ms)
-    await this.wait(ms + 60)
+  unzoom(ms = 1200, hold = 0.6) {
+    return this.zoom({ x: W / 2, y: H / 2 }, 1, ms, hold)
   }
   type = (text: string, delay = 38) => this.page.keyboard.type(text, { delay })
 }
@@ -168,85 +179,85 @@ const CLIPS: Record<string, Clip> = {
     scene: 'accounts',
     crop: full,
     width: 1600,
-    poster: 21,
+    poster: 23,
     play: async (d) => {
       const p = d.page
       await d.show(760, 520)
-      await d.wait(700)
+      await d.wait(500)
       const menu = p.getByRole('button', { name: /^Account menu/ })
-      await d.zoom(menu, 2.1)
-      await d.click(menu, 900)
-      await d.wait(500)
-      await d.click(p.getByRole('menuitem', { name: /^Settings/ }).first(), 700)
-      await d.wait(700)
-      await d.zoom(p.getByText('Accounts', { exact: true }).first(), 2)
-      await d.click(p.getByText('Accounts', { exact: true }).first(), 700)
-      await d.wait(600)
-      await d.zoom({ x: 860, y: 260 }, 1.55, 1000)
+      await d.zoom(menu, 1.8, 1300, 0.45)
+      await d.click(menu, 750)
+      await d.wait(400)
+      await d.click(p.getByRole('menuitem', { name: /^Settings/ }).first(), 600)
+      await d.wait(450)
+      const accounts = p.getByText('Accounts', { exact: true }).first()
+      await d.zoom(accounts, 1.8, 1200, 0.35)
+      await d.click(accounts, 650)
+      await d.wait(400)
+      await d.zoom({ x: 860, y: 260 }, 1.45, 1300, 0.45)
       const add = p.getByRole('button', { name: 'Add account' })
-      await d.click(add, 900)
-      await d.wait(500)
-      await d.click(p.getByRole('menuitem', { name: /API key/ }).first(), 700)
-      await d.zoom(p.getByRole('dialog'), 1.75, 900)
-      await d.click(p.locator('#acct-label'), 700)
-      await d.type('Team key', 55)
-      await d.click(p.locator('#acct-key'), 600)
-      await d.type('sk-ant-api03-kernel-demo-key', 28)
-      await d.wait(300)
-      await d.click(p.getByRole('button', { name: 'Add key' }), 700)
-      await d.wait(1700)
-      await d.zoom({ x: 860, y: 300 }, 1.55, 1000)
+      await d.click(add, 750)
+      await d.wait(400)
+      await d.click(p.getByRole('menuitem', { name: /API key/ }).first(), 600)
+      await d.zoom(p.getByRole('dialog'), 1.7, 1100, 0.45)
+      await d.click(p.locator('#acct-label'), 600)
+      await d.type('Team key', 45)
+      await d.click(p.locator('#acct-key'), 500)
+      await d.type('sk-ant-api03-kernel-demo-key', 22)
+      await d.wait(250)
+      await d.click(p.getByRole('button', { name: 'Add key' }), 600)
+      await d.wait(1400)
+      await d.zoom({ x: 860, y: 300 }, 1.45, 1200, 0.5)
+      await d.wait(800)
+      await d.click(add, 750)
+      await d.wait(400)
+      await d.click(p.getByRole('menuitem', { name: /Subscription/ }).last(), 600)
+      await d.zoom(p.getByRole('dialog'), 1.7, 1100, 0.45)
+      await d.click(p.getByRole('button', { name: /^Sign in with ChatGPT/ }), 600)
+      await d.wait(2300)
+      await d.zoom({ x: 860, y: 380 }, 1.45, 1200, 0.5)
       await d.wait(1300)
-      await d.click(add, 900)
-      await d.wait(500)
-      await d.click(p.getByRole('menuitem', { name: /Subscription/ }).last(), 700)
-      await d.zoom(p.getByRole('dialog'), 1.75, 900)
-      await d.click(p.getByRole('button', { name: /^Sign in with ChatGPT/ }), 700)
-      await d.wait(2600)
-      await d.zoom({ x: 860, y: 380 }, 1.55, 1000)
-      await d.wait(1600)
-      await d.unzoom(1100)
-      await d.wait(2000)
+      await d.unzoom(1500, 0.7)
+      await d.wait(1500)
     }
   },
   sharing: {
     scene: 'sharing',
     crop: full,
     width: 1600,
-    poster: 9,
+    poster: 6,
     play: async (d) => {
       const p = d.page
-      const zoom = 1.45
       await d.show(760, 640)
-      await d.wait(700)
-      await d.zoom({ x: 634, y: 430 }, zoom, 1000)
-      await d.click(p.getByRole('button', { name: 'Comment', exact: true }), 800)
-      await p.locator('.cm-layer').waitFor()
       await d.wait(500)
-      // The Start free trial button, measured from the comment layer over the page as scripts/shots.ts does, at the zoom.
+      await d.zoom({ x: 634, y: 430 }, 1.45, 1300, 0.45)
+      await d.click(p.getByRole('button', { name: 'Comment', exact: true }), 750)
+      await p.locator('.cm-layer').waitFor()
+      await d.wait(400)
+      // The Start free trial button, measured from the comment layer over the page as scripts/shots.ts does.
       const layer = (await p.locator('.cm-layer').boundingBox())!
-      await d.clickAt(Math.round(layer.x + 159 * zoom), Math.round(layer.y + 162 * zoom), 850)
+      await d.clickAt(Math.round(layer.x + 159), Math.round(layer.y + 162), 750)
       const box = p.getByRole('textbox', { name: 'Comment' })
       await box.waitFor()
-      await d.zoom(box, 1.9, 800)
-      await d.type('Make this button the same blue as the header.', 34)
+      await d.zoom(box, 1.75, 1100, 0.45)
+      await d.type('Make this button the same blue as the header.', 30)
+      await d.wait(300)
+      await d.click(p.locator('button', { hasText: /^Send$/ }).last(), 600)
       await d.wait(400)
-      await d.click(p.locator('button', { hasText: /^Send$/ }).last(), 700)
-      await d.wait(500)
-      await d.unzoom(900)
-      await d.click(p.getByText('PDF renderer', { exact: true }).first(), 800)
-      await d.zoom({ x: 634, y: 560 }, 1.5, 1000)
-      await d.wait(3800)
-      await d.unzoom(800)
-      await d.click(p.getByText('Pricing page draft', { exact: true }).first(), 800)
-      await d.wait(900)
+      await d.unzoom(1300, 0.5)
+      await d.click(p.getByText('PDF renderer', { exact: true }).first(), 750)
+      await d.zoom({ x: 634, y: 560 }, 1.5, 1300, 0.4)
+      await d.wait(3000)
+      await d.unzoom(1200, 0.4)
+      await d.click(p.getByText('Pricing page draft', { exact: true }).first(), 750)
+      await d.wait(700)
       const versions = p.getByRole('button', { name: 'Versions' }).first()
-      await d.zoom(versions, 1.9, 900)
-      await d.click(versions, 700)
-      await d.wait(2600)
+      await d.zoom(versions, 1.75, 1200, 0.45)
+      await d.click(versions, 600)
+      await d.wait(2200)
       await p.keyboard.press('Escape')
-      await d.unzoom(900)
-      await d.wait(900)
+      await d.unzoom(1400, 0.7)
+      await d.wait(800)
     }
   },
   issues: {
@@ -271,6 +282,89 @@ const CLIPS: Record<string, Clip> = {
       await d.wait(4500)
     }
   }
+}
+
+// ---------- The camera, after recording
+
+/** Slow out of rest and slow into it, with no jolt at either end. */
+const ease = (p: number) => p * p * p * (p * (p * 6 - 15) + 10)
+
+/** A view kept inside the window: at `s` times, its center can't come closer to an edge than half the view. */
+function inside(v: View): View {
+  const hw = W / (2 * v.s)
+  const hh = H / (2 * v.s)
+  return { s: v.s, x: Math.min(W - hw, Math.max(hw, v.x)), y: Math.min(H - hh, Math.max(hh, v.y)) }
+}
+
+/**
+ * The view part way through a move. The zoom changes at a steady rate (it eases in log scale), and the view's edges
+ * travel in step with its size, so a zoom into a point holds that point still on screen instead of sliding past it.
+ */
+function between(from: View, to: View, p: number): View {
+  const e = ease(Math.min(1, Math.max(0, p)))
+  const s = Math.exp(Math.log(from.s) + (Math.log(to.s) - Math.log(from.s)) * e)
+  const u = Math.abs(to.s - from.s) < 1e-6 ? e : (1 / from.s - 1 / s) / (1 / from.s - 1 / to.s)
+  return { s, x: from.x + (to.x - from.x) * u, y: from.y + (to.y - from.y) * u }
+}
+
+/** Where the camera is `t` seconds into the recording. A move that starts before the last one ends starts from mid-way. */
+function cameraAt(shots: Shot[], t: number): View {
+  type Move = { from: View; to: View; t: number; d: number }
+  let move: Move | null = null
+  const at = (m: Move, time: number): View => between(m.from, m.to, (time - m.t) / m.d)
+  for (const shot of shots) {
+    if (shot.t > t) break
+    const from: View = move ? at(move, shot.t) : { s: 1, x: W / 2, y: H / 2 }
+    move = { from, to: inside({ s: shot.s, x: shot.x, y: shot.y }), t: shot.t, d: shot.ms / 1000 }
+  }
+  return move ? at(move, t) : { s: 1, x: W / 2, y: H / 2 }
+}
+
+/**
+ * Draws each output frame at 30 fps: the capture frame on screen at that moment, through the camera's view, scaled to
+ * `width` in a canvas with high quality smoothing. Writes numbered JPEGs into `into`.
+ */
+async function renderCamera(frames: { file: string; t: number }[], start: number, length: number, shots: Shot[], width: number, into: string) {
+  mkdirSync(into, { recursive: true })
+  const height = Math.round((width * H) / W / 2) * 2
+  const browser = await chromium.launch()
+  const page = await browser.newPage()
+  await page.route('http://frames.local/**', (route) => route.fulfill({ body: readFileSync(decodeURIComponent(new URL(route.request().url()).pathname)), contentType: 'image/jpeg' }))
+  await page.goto('http://frames.local/' + encodeURIComponent(frames[0]!.file))
+  await page.evaluate(([w, h]) => {
+    const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h })
+    const g = canvas.getContext('2d')!
+    g.imageSmoothingEnabled = true
+    g.imageSmoothingQuality = 'high'
+    const cache = new Map<string, HTMLImageElement>()
+    ;(window as unknown as { draw: unknown }).draw = async (file: string, sx: number, sy: number, sw: number, sh: number) => {
+      let img = cache.get(file)
+      if (!img) {
+        img = new Image()
+        img.src = 'http://frames.local/' + encodeURIComponent(file)
+        await img.decode()
+        cache.clear()
+        cache.set(file, img)
+      }
+      g.drawImage(img, sx, sy, sw, sh, 0, 0, w!, h!)
+      return canvas.toDataURL('image/jpeg', 0.95).slice('data:image/jpeg;base64,'.length)
+    }
+  }, [width, height])
+  const count = Math.round(length * 30)
+  let f = 0
+  for (let i = 0; i < count; i++) {
+    const t = i / 30
+    while (f + 1 < frames.length && frames[f + 1]!.t - start <= t) f++
+    const v = cameraAt(shots, t)
+    const sw = (W / v.s) * SCALE
+    const sh = (H / v.s) * SCALE
+    const data = await page.evaluate(
+      ([file, x, y, w, h]) => (window as unknown as { draw(f: string, x: number, y: number, w: number, h: number): Promise<string> }).draw(file as string, x as number, y as number, w as number, h as number),
+      [frames[f]!.file, (v.x - W / (2 * v.s)) * SCALE, (v.y - H / (2 * v.s)) * SCALE, sw, sh] as const
+    )
+    writeFileSync(join(into, `${String(i).padStart(5, '0')}.jpg`), Buffer.from(data, 'base64'))
+  }
+  await browser.close()
 }
 
 async function record(name: string, clip: Clip) {
@@ -304,36 +398,38 @@ async function record(name: string, clip: Clip) {
   })
   await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 94, maxWidth: 1440 * SCALE, maxHeight: 900 * SCALE, everyNthFrame: 1 })
   const start = Date.now() / 1000
+  d.start = start
   await clip.play(d)
   const end = Date.now() / 1000
   await cdp.send('Page.stopScreencast')
   await browser.close()
   if (!frames.length) throw new Error(`${name}: no frames`)
 
-  // A concat list with each frame held until the next one, from the start of the recording to its end.
-  const lines: string[] = []
-  frames.forEach((fr, i) => {
-    const from = i === 0 ? start : fr.t
-    const to = frames[i + 1]?.t ?? end
-    lines.push(`file '${fr.file}'`, `duration ${Math.max(0.001, to - from).toFixed(4)}`)
-  })
-  lines.push(`file '${frames.at(-1)!.file}'`)
-  writeFileSync(join(dir, 'list.txt'), lines.join('\n'))
-
   const length = end - start
   const c = clip.crop
   const width = clip.width ?? c.width * SCALE
-  const filters = [
-    `crop=${c.width * SCALE}:${c.height * SCALE}:${c.x * SCALE}:${c.y * SCALE}`,
-    `scale=${width}:-2:flags=lanczos`,
-    'fps=30',
-    'fade=t=in:st=0:d=0.35',
-    `fade=t=out:st=${(length - 0.45).toFixed(2)}:d=0.45`,
-    'format=yuv420p'
-  ].join(',')
+  const fades = ['fade=t=in:st=0:d=0.35', `fade=t=out:st=${(length - 0.45).toFixed(2)}:d=0.45`, 'format=yuv420p']
+  const encode = ['-c:v', 'libx264', '-preset', 'slow', '-crf', '24', '-tune', 'animation', '-movflags', '+faststart', '-an']
   mkdirSync(outDir, { recursive: true })
   const mp4 = join(outDir, `${name}.mp4`)
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', join(dir, 'list.txt'), '-vf', filters, '-c:v', 'libx264', '-preset', 'slow', '-crf', '24', '-tune', 'animation', '-movflags', '+faststart', '-an', mp4])
+  if (d.shots.length) {
+    if (c !== full) throw new Error(`${name}: a camera clip records the full window`)
+    const drawn = join(dir, 'camera')
+    await renderCamera(frames, start, length, d.shots, width, drawn)
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '30', '-i', join(drawn, '%05d.jpg'), '-vf', fades.join(','), ...encode, mp4])
+  } else {
+    // A concat list with each frame held until the next one, from the start of the recording to its end.
+    const lines: string[] = []
+    frames.forEach((fr, i) => {
+      const from = i === 0 ? start : fr.t
+      const to = frames[i + 1]?.t ?? end
+      lines.push(`file '${fr.file}'`, `duration ${Math.max(0.001, to - from).toFixed(4)}`)
+    })
+    lines.push(`file '${frames.at(-1)!.file}'`)
+    writeFileSync(join(dir, 'list.txt'), lines.join('\n'))
+    const filters = [`crop=${c.width * SCALE}:${c.height * SCALE}:${c.x * SCALE}:${c.y * SCALE}`, `scale=${width}:-2:flags=lanczos`, 'fps=30', ...fades].join(',')
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', join(dir, 'list.txt'), '-vf', filters, ...encode, mp4])
+  }
   const at = Math.min(clip.poster ?? length - 0.6, length - 0.6)
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', at.toFixed(2), '-i', mp4, '-frames:v', '1', '-q:v', '3', join(outDir, `${name}.jpg`)])
   const kb = (p: string) => Math.round(readFileSync(p).length / 1024)
