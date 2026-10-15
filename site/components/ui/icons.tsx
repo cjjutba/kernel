@@ -83,3 +83,35 @@ export function CheckIcon({ size = 13, className }: IconProps) {
     </svg>
   )
 }
+
+function strokeIcon(d: string, strokeWidth = 1.4) {
+  return function Icon({ size = 15, className }: IconProps) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" {...stroke} strokeWidth={strokeWidth} className={className}>
+        <path d={d} />
+      </svg>
+    )
+  }
+}
+
+/** The plan document, as plan mode's bar shows it. */
+export const PlanDocIcon = strokeIcon('M9.5 1.8H4.2a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.6a1 1 0 0 0 1-1V5.1ZM9.5 1.8v3.3h3.3M5.6 8.3h4.8M5.6 10.8h3.2')
+export const CopyIcon = strokeIcon('M5.5 5.5h7v7.5h-7ZM3 10.5V3h7', 1.5)
+/** Plan mode's label in the composer footer. */
+export const PlanModeIcon = strokeIcon('M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01', 1.5)
+export const MergeIcon = strokeIcon('M4.5 5.3v7M6 3.8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM13 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM4.5 5.3c0 2.6 2 4.2 5.5 4.2', 1.5)
+export const PulseIcon = strokeIcon('M1.5 8h3l1.8-4.5 3.4 9 1.8-4.5h3')
+export const TerminalIcon = strokeIcon('M2.5 3.5h11v9h-11ZM5 7l2 1.5L5 10M8.5 10.5h2.5')
+export const FileIcon = strokeIcon('M9 1.8H4.2a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.6a1 1 0 0 0 1-1V5.6ZM9 1.8v3.8h3.8M5.6 8.5h4.8M5.6 11h3.2')
+export const PauseIcon = strokeIcon('M5.5 3.5v9M10.5 3.5v9', 1.6)
+export const PlayIcon = strokeIcon('M5 3.3v9.4l7.5-4.7Z', 1.5)
+export const BellIcon = strokeIcon('M4 11.5V7.2a4 4 0 0 1 8 0v4.3l1 1H3ZM6.6 14h2.8')
+export const ReplayIcon = strokeIcon('M2.8 8a5.2 5.2 0 1 0 1.5-3.7M2.8 3v2.6h2.6', 1.5)
+export const CommentIcon = strokeIcon('M2.8 3.5h10.4v7H8.6L5.5 13v-2.5H2.8Z')
+export const SwapIcon = strokeIcon('M3 5.5h9.5M10 3l2.5 2.5L10 8M13 10.5H3.5M6 8l-2.5 2.5L6 13', 1.5)
+export const IssueIcon = strokeIcon('M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 6.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6Z')
+/** A key: a ring and a shaft with two teeth. */
+export const KeyIcon = strokeIcon('M5.2 7.4a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8ZM7.6 8.4l6-6M11.6 4.4l1.8 1.8M9.8 6.2l1.6 1.6', 1.5)
+/** A laptop: a screen over a wide base. */
+export const LaptopIcon = strokeIcon('M3.5 3.8h9v6.7h-9ZM1.5 12.5h13')
+export const ShieldIcon = strokeIcon('M8 1.8 13 3.6v4.1c0 3-2.1 5.3-5 6.5-2.9-1.2-5-3.5-5-6.5V3.6ZM5.8 8l1.6 1.6L10.4 6.4')

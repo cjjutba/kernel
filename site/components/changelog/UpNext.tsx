@@ -19,7 +19,7 @@ export function UpNext({ data }: { data: UpNextData }) {
         {data.title}
       </h2>
       <p className="mt-6 text-intro text-ink-3">{data.intro}</p>
-      <ChangeList items={data.items} />
+      <ChangeList items={data.items} fold={false} />
     </EntryShell>
   )
 }
