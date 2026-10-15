@@ -160,9 +160,6 @@ export class ClaudeRunner implements Runner {
         handoff: agent?.lead ? { atStop: () => host.handoffAtStop() } : undefined
       }),
       includeHookEvents: true,
-      // One guess at the user's next message after each turn, read after `result` (KERNEL-530). The user's own Claude Code
-      // settings can turn it off, and the SDK skips it on the first turn, in plan mode and near a usage limit.
-      promptSuggestions: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: this.abort,
       env: sessionEnv(o.env, o.credential ?? {}, { agentTeams: host.settings().models?.agentTeams, compact: o.compact }),
@@ -425,11 +422,6 @@ export class ClaudeRunner implements Runner {
         if (msg.subtype !== 'success' && this.resume && msg.errors?.includes(`${SESSION_GONE}${this.resume}`) && host.sessionGone()) return
         if (msg.usage) host.turnUsage({ ...counts(msg.usage), ...(calls.first ? { first: counts(calls.first) } : {}), ...(calls.last ? { context: contextOf(calls.last) } : {}) })
         host.turnEnded({ id: msg.uuid, ok, durationMs: msg.duration_ms, error: ok ? undefined : msg.subtype, ...(msg.terminal_reason === 'prompt_too_long' ? { tooLong: true as const } : {}) })
-        return
-      }
-      // Comes after the turn's result, so the stream is still read once the turn ends.
-      case 'prompt_suggestion': {
-        host.suggested(msg.suggestion)
         return
       }
       case 'rate_limit_event': {
