@@ -21,7 +21,8 @@ export const SHORTCUTS: { title: string; rows: [string, string[]][] }[] = [
   ] },
   { title: 'App', rows: [
     ['Command palette', ['⌘', 'K']], ['Settings', ['⌘', ',']], ['Toggle sidebar', ['⌘', 'B']], ['Toggle right panel', ['⌘', '⌥', 'B']], ['Toggle right panel', ['⌘', '⇧', 'B']], ['Toggle bottom panel', ['⌘', 'J']], ['Focus mode', ['⌘', '\\']],
-    ['New chat', ['⌘', '⇧', 'N']], ['Back', ['⌘', '[']], ['Forward', ['⌘', ']']]
+    ['New chat', ['⌘', '⇧', 'N']], ['Back', ['⌘', '[']], ['Forward', ['⌘', ']']],
+    ['Press the newest toast’s button, like Undo', ['⌘', '⌥', 'Z']], ['Dismiss the newest toast', ['Esc']]
   ] }
 ]
 

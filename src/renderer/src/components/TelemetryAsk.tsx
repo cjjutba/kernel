@@ -8,7 +8,7 @@ let asked = false
 
 /**
  * The one question about usage data (TelemetryAsk.png, KERNEL-397). Kernel asks once, after the first room, and only in a
- * build that can send. Nothing goes out until the answer is yes. Closing it is no.
+ * build that can send. Nothing goes out until the answer is yes. Don’t share is no. Escape closes without an answer, so it asks again next launch.
  */
 export function TelemetryAsk() {
   const [busy, run] = useBusy()
@@ -23,7 +23,7 @@ export function TelemetryAsk() {
       body="Kernel can send anonymous usage data: errors, and counts of what goes wrong, like a task it couldn’t hand off. It never sends code, prompts, file paths or names. You can change this in Settings, Privacy."
       confirmLabel="Share usage data" cancelLabel="Don’t share" busy={busy === 'on'} busyLabel="Saving" disabled={busy !== null}
       extra={<Button variant="ghost" size="lg" disabled={busy !== null} onClick={see}>See what’s sent</Button>}
-      onConfirm={() => void answer('on')} onCancel={() => void answer('off')}
+      focusConfirm onConfirm={() => void answer('on')} onCancel={() => void answer('off')} onDismiss={() => actions.ui.closeModal()}
     />
   )
 }

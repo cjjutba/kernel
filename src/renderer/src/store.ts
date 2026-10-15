@@ -425,6 +425,8 @@ function omit<T>(record: Record<string, T>, keys: string[]): Record<string, T> {
 }
 const setUi = (patch: Partial<UiState>) => setState((s) => ({ ui: { ...s.ui, ...patch } }))
 let toastSeq = 0
+/** The stack holds this many toasts. A newer one pushes the oldest out (DESIGN.md). */
+const MAX_TOASTS = 3
 
 async function performSwitch(provider: Provider, accountId: string, reason?: 'banner', move?: SwitchMove, done?: () => void) {
   actions.accounts.set(await call('accounts.switch', { provider, accountId, ...(reason ? { reason } : {}), ...(move ? { move } : {}) }))
@@ -480,7 +482,7 @@ export const actions = {
      */
     toast: (t: Omit<Toast, 'id'>, ms?: number) => {
       const toast = { ...t, id: `toast-${++toastSeq}` }
-      setState((s) => ({ ui: { ...s.ui, toasts: [...s.ui.toasts, toast] } }))
+      setState((s) => ({ ui: { ...s.ui, toasts: [...s.ui.toasts, toast].slice(-MAX_TOASTS) } }))
       if (ms && ms > 0) setTimeout(() => actions.ui.dismissToast(toast.id), ms)
       return toast.id
     },
