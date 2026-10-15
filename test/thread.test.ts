@@ -440,6 +440,13 @@ describe('a fold shows its steps while the turn works and folds them when it end
     expect(finished.turn).toMatchObject({ live: false, timer: true, durationMs: 134_000, short: false })
   })
 
+  it('keeps clocks and "Worked for" out of a fold summary, running or done', () => {
+    const running = group(buildThread([ask(), read('a'), bash('x', 'running')], true))
+    expect(running.summary.text).toMatch(/running/i)
+    const finished = group(buildThread([ask(), read('a'), bash('x'), say('Done.'), ok(134_000)], false))
+    for (const text of [running.summary.text, finished.summary.text]) expect(text).not.toMatch(/Worked for|Working ·|\d+m \d+s|\d+s\b/)
+  })
+
   it('puts the duration on the first fold only, across stretches split by an approval', () => {
     const blocks = buildThread([ask(), read('a'), bash('x'), approval, bash('y'), bash('z'), say('Done.'), ok(90_000)], false)
     expect(group(blocks, 0).turn.timer).toBe(true)

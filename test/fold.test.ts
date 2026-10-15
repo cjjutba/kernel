@@ -1,40 +1,36 @@
 import { describe, expect, it } from 'vitest'
 import type { Entry, FoldTurn } from '../src/renderer/src/screens/workspace/thread'
-import { foldHeader, headerText, settle, wantOpen, windowEntries, WINDOW } from '../src/renderer/src/screens/workspace/fold'
+import { foldHeader, settle, wantOpen, windowEntries, WAITING, WINDOW } from '../src/renderer/src/screens/workspace/fold'
 
 const turn = (p: Partial<FoldTurn> = {}): FoldTurn => ({ live: false, timer: true, short: false, ...p })
 const sum = (text: string, bad = '') => ({ text, bad })
 const entries = (n: number): Entry[] => Array.from({ length: n }, (_, i) => ({ kind: 'item', item: { kind: 'text', id: `t${i}`, ts: 0, text: `s${i}` } }))
 
-describe('the fold header changes tense', () => {
-  it('reads "Working · 43s · running a command" while the turn runs', () => {
+describe('the fold header is the summary alone', () => {
+  it('has no clock and no "Working" while the turn runs', () => {
     const t = turn({ live: true, startedAt: 1000 })
-    expect(headerText(t, sum('Running a command'), 44_000)).toBe('Working · 43s · running a command')
-    expect(headerText(t, sum('Working'), 44_000)).toBe('Working · 43s')
+    expect(foldHeader(t, sum('Read 2 files, ran 2 commands, running 1 more'))).toBe('Read 2 files, ran 2 commands, running 1 more')
+    expect(foldHeader(t, sum('Running a command'))).toBe('Running a command')
   })
-  it('reads "Worked for 2m 14s · ran 5 commands, read 3 files" when it ends', () => {
-    expect(headerText(turn({ durationMs: 134_000 }), sum('Ran 5 commands, read 3 files'))).toBe('Worked for 2m 14s · ran 5 commands, read 3 files')
-    expect(headerText(turn({ durationMs: 12_000 }), sum('Working'))).toBe('Worked for 12s')
-    expect(headerText(turn(), sum('Ran 2 commands'))).toBe('Worked · ran 2 commands')
+  it('keeps a plain "Working" for a fold of only messages or thinking', () => {
+    expect(foldHeader(turn({ live: true }), sum('Working'))).toBe('Working')
+    expect(foldHeader(turn(), sum('Working'))).toBe('Worked')
   })
-  it('shows only the summary on a later stretch', () => {
-    expect(headerText(turn({ timer: false, durationMs: 134_000 }), sum('Ran 2 commands'))).toBe('Ran 2 commands')
-    expect(foldHeader(turn({ timer: false, live: true }), sum('Running a command')).clock).toBe(false)
-    expect(headerText(turn({ timer: false }), sum('Working'))).toBe('Worked')
+  it('has no "Worked for" when the turn ends', () => {
+    const text = foldHeader(turn({ durationMs: 134_000 }), sum('Ran 5 commands, read 3 files'))
+    expect(text).toBe('Ran 5 commands, read 3 files')
+    expect(text).not.toMatch(/Worked for|\d+m|\d+s/)
+  })
+  it('reads the same on a later stretch', () => {
+    expect(foldHeader(turn({ timer: false, durationMs: 134_000 }), sum('Ran 2 commands'))).toBe('Ran 2 commands')
   })
 })
 
-describe('a fold while a plan waits for approval', () => {
-  it('shows no clock and no "Working", and keeps the summary', () => {
-    const t = turn({ live: true, startedAt: 1000 })
-    const text = headerText(t, sum('Read 1 file, finishing the plan'), 301_000, true)
-    expect(text).toBe('Waiting for you · read 1 file, finishing the plan')
-    expect(text).not.toMatch(/Working|\d+m|\d+s/)
-    expect(foldHeader(t, sum('Read a file'), true).clock).toBe(false)
-    expect(headerText(turn({ live: true, timer: false }), sum('Working'), 0, true)).toBe('Waiting for you')
-  })
-  it('does not change a finished fold', () => {
-    expect(headerText(turn({ durationMs: 12_000 }), sum('Ran 2 commands'), 0, true)).toBe('Worked for 12s · ran 2 commands')
+describe('the line at the end of a running turn', () => {
+  it('says "Waiting for you" in place of the clock', () => expect(WAITING).toBe('Waiting for you'))
+  it('is never part of a fold header, even while a request waits', () => {
+    expect(foldHeader(turn({ live: true, startedAt: 1000 }), sum('Read a file'))).not.toContain(WAITING)
+    expect(foldHeader(turn({ live: true, timer: false }), sum('Working'))).toBe('Working')
   })
 })
 

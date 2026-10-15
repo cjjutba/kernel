@@ -207,9 +207,9 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .step-bad { color: var(--del); }
 /* Steps in a fold keep their icons, joined by a thin rail in line-2 through the icons' centres. Each item draws the stretch from under its
    own icon to the top of the next one's, so the rail never crosses an icon and runs down the side of an opened card. */
-.run-list, .group-list { display: flex; flex-direction: column; }
+.run-list, .group-list { display: flex; flex-direction: column; min-width: 0; }
 /* A fold opens and closes by its height. Its list leaves the page once the close has played (ToolGroup). */
-.group-collapse { display: grid; grid-template-rows: 1fr; }
+.group-collapse { display: grid; grid-template-rows: 1fr; grid-template-columns: minmax(0, 1fr); }
 .group-collapse > .group-list { min-height: 0; }
 .group-collapse[data-open='false'] { grid-template-rows: 0fr; }
 .group-collapse[data-open='false'] > .group-list { overflow: hidden; }
@@ -220,7 +220,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 @keyframes group-clip { from, to { overflow: hidden; } }
 .group-earlier { align-self: flex-start; height: 26px; margin: 4px 0 0 21px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
 .group-earlier:hover { color: var(--ink-2); }
-.group-item { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 8px 0; }
+.group-item { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px 0; }
 .group-item:not(:last-child)::after { content: ''; position: absolute; left: 7px; top: 29px; bottom: -7px; width: 1px; background: var(--line-2); pointer-events: none; }
 .step-glyph { display: inline-flex; flex-shrink: 0; }
 /* The service's mark in the icon slot, in ink at the row's muted tone, so a row says where it went without a color. */
