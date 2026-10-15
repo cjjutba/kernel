@@ -99,9 +99,8 @@ button.ws-issue:hover { background: var(--surface-3); }
 .msg-chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; margin-right: 4px; padding: 0 7px; vertical-align: middle; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: 11.5px var(--mono); color: var(--ink-2); }
 .msg-chip svg { color: var(--muted); }
 .msg-chip .chip-meta { color: var(--muted); }
-.msg-chip .chip-note { color: var(--ink); font: 12px var(--font); }
-.msg-chip[data-note] { border-style: dashed; }
-.msg-chip[data-note='gone'] > :not(.chip-note) { opacity: 0.6; }
+.msg-chip[data-state='unreadable'] { opacity: 0.6; }
+.msg-chip[data-state='gone'] .chip-name { color: var(--muted); text-decoration: line-through; }
 .msg-chip[data-kind='image'] svg { color: var(--add); }
 button.msg-chip:hover { border-color: var(--line-4); }
 .msg-reply { gap: 6px; }

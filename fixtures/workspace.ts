@@ -3125,6 +3125,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ],
     draft: ''
   }),
+  /** KERNEL-909: hover the chip for the full name, the type, the pages and the size. */
+  ComposerFileTip: composing({
+    parts: [
+      { type: 'text', text: 'Does the contract match the invoice terms? ' },
+      { type: 'file', name: 'Client-contract-2026.pdf', src: '/Users/cj/Documents/Client-contract-2026.pdf', size: 3_040_000, pages: 14 }
+    ],
+    draft: ''
+  }),
   /** KERNEL-909: an image, a PDF and a zip in one message. */
   ComposerFileMixed: composing({
     parts: [
