@@ -118,17 +118,13 @@ export class Config extends Feature {
   }
 
   /**
-   * Saves a patch to the project's `.kernel/settings.local.toml`, or to `settings.toml` with `shared`, then settles trust for
-   * what changed. Settings and the Lead's set_project_scripts both save here (KERNEL-683).
+   * Saves a patch to the project's `.kernel/settings.local.toml`, or to `settings.toml` with `shared`. Settings and the Lead's
+   * set_project_scripts both save here (KERNEL-683).
    */
   async setProject(projectId: string, patch: ProjectSettingsPatch, shared?: boolean): Promise<RepoSettings> {
     const project = this.mustProject(projectId)
-    const before = await this.k.trust.trustState(project)
     const next = this.wrote(projectId, await saveRepoSettings(project.path, patch, shared))
     this.projectRemotes.set(project.path, next.workspace.remote)
-    await this.k.trust.trustSaved(project, before, patch, !!shared, next)
-    // A saved env files list counts once the check agrees, trusted or the user's own (KERNEL-247).
-    await this.k.trust.untrusted(project, next)
     return next
   }
 

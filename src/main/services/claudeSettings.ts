@@ -13,7 +13,7 @@ export interface ClaudePolicy { auto?: PolicyBlock; bypass?: PolicyBlock }
 /**
  * The settings a session in `cwd` loads, read the way the CLI merges them: managed policy from every source (MDM, remote and
  * file), then the user's, the project's and the local file. Without `cwd`, only managed policy and the user's. Kernel acts on
- * them only after `filterEscalatingDefaultMode`, the trust filter the CLI applies, so a repo's committed files can't widen
+ * them only after `filterEscalatingDefaultMode`, the filter the CLI applies, so a repo's committed files can't widen
  * a mode. Turning a mode off is a restriction, so it counts from every source.
  */
 export async function claudePolicy(cwd?: string): Promise<ClaudePolicy> {

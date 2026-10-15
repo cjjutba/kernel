@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, trustProject, freePort } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { git } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
@@ -40,8 +40,6 @@ async function kernelOn(files: Record<string, string>, app: object = {}) {
   kernels.push(k)
   k.sessions.send = async () => ({ queued: false })
   const project = await k.addProject(repo)
-  // The repo brings its run scripts, which the user trusts before they run (KERNEL-209).
-  await trustProject(k, project.id)
   return { k, h: k.handlers(), project, repo }
 }
 

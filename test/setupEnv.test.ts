@@ -11,7 +11,7 @@ import { parse as parseToml } from 'smol-toml'
 import { readSetupEnv, setupEnvPath } from '../src/main/services/env'
 import { defaultRepoSettings } from '../src/main/services/projects'
 import { workspaceSlug } from '../src/shared/kernelVars'
-import { setUp, tempRepo, trustProject, freePort } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 
 // KERNEL-405: setup hands variables to the workspace through $KERNEL_ENV, like GitHub Actions' $GITHUB_ENV.
 
@@ -55,7 +55,6 @@ async function projectWith(setup: string) {
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))
   const r = await k.addProject(repo)
-  await trustProject(k, r.id)
   return { k, project: r, repo, dataDir }
 }
 
@@ -105,7 +104,6 @@ describe('$KERNEL_ENV (KERNEL-405)', () => {
     expect(ws.status).toBe('failed')
     expect(k.env.envFor(ws)).not.toHaveProperty('A')
     await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = 'echo C=3 >> "$KERNEL_ENV"'\n`)
-    await trustProject(k, project.id)
     expect((await k.retrySetup(ws.id)).status).toBe('ready')
     const env = k.env.envFor(k.store.workspace(ws.id)!)
     expect(env).toMatchObject({ C: '3' })

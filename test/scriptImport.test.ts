@@ -263,8 +263,6 @@ describe('scripts.suggest in a project (KERNEL-682)', () => {
     const saved = await h['settings.setProject']({ projectId: project.id, patch: found.patch })
     expect(saved.scripts.setup).toBe(found.patch.scripts!.setup)
     expect(saved.sources['scripts.setup']).toBe('local')
-    // The user's own file, so the script runs without a trust prompt.
-    expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
     const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
     expect(ws.status).toBe('ready')
     expect(await readFile(join(ws.path, 'name.txt'), 'utf8')).toBe(`${ws.name}\n`)

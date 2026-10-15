@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Project, type ScriptTrust, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
+import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Project, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { newId } from '../db'
 import { bus } from '../bus'
@@ -167,7 +167,7 @@ export class Workspaces extends Feature {
           })
         }
         const made = await this.newBranchWorktree(project, wanted, baseRef, remote)
-        // Local files are copied later, once the project's text is trusted (KERNEL-209).
+        // Local files are copied with setup, in `prepare`.
         if (repo.files.symlinkNodeModules) await linkNodeModules(project.path, made.path)
         return save(made.path, made.branch)
       }
@@ -290,12 +290,12 @@ export class Workspaces extends Feature {
   }
 
   /**
-   * A new workspace's setup: trust first, then files.copy and setup, then ready, the start checkpoint and the run script.
+   * A new workspace's setup: files.copy and setup, then ready, the start checkpoint and the run script.
    *
    * With a `brief` (a hand-off or New workspace), the brief waits in the chat's queue until setup passes, then goes out with the
    * Lead's messages that came while it ran (KERNEL-118). A hand-off awaits it all, so create_workspace reports a failed setup
    * (KERNEL-122). With none (a fork, a Lead chat, a restore), the caller already holds the chat, and what waits in its tabs
-   * goes out when setup passes, or after Run again or trusting the project. `checkpoint: false` takes no start checkpoint, for a
+   * goes out when setup passes, or after Run again. `checkpoint: false` takes no start checkpoint, for a
    * restore (KERNEL-77).
    */
   async setUpWorkspace(ws: Workspace, project: Project, repo: RepoSettings, chat: Chat, o: { brief?: ChatPart[]; prompt?: string; from?: 'lead'; leadChatId?: string; checkpoint?: boolean } = {}): Promise<Workspace> {
@@ -312,15 +312,6 @@ export class Workspaces extends Feature {
     const after = async (send: (m: ChatPart[]) => Promise<unknown> | void) => {
       for (let held = this.k.setup.setups.get(ws.id); held?.later.length; held = this.k.setup.setups.get(ws.id)) { const m = held.later.shift()!; this.k.setup.saveSetups(); await send(m) }
       this.k.setup.setSetup(ws.id, undefined)
-    }
-    // Nothing from the repo's settings runs or copies until the user trusts that text for the project (KERNEL-209). The
-    // brief waits in the chat's queue, the way it does for a failed setup, and `projects.trust` sends it.
-    let pending: ScriptTrust | null
-    try { pending = await this.k.trust.untrusted(project, repo) } catch (e) { this.k.setup.setSetup(ws.id, undefined); throw e }
-    if (pending) {
-      this.sessions.hold(chat.id, parts, { from })
-      await after((m) => this.sessions.hold(chat.id, m, { from: 'lead' }))
-      return this.k.trust.holdForTrust(ws.id)
     }
     let ready: boolean
     try { ready = await this.k.setup.prepare(ws, project, repo) } catch (e) { this.k.setup.setSetup(ws.id, undefined); throw e }
@@ -371,11 +362,9 @@ export class Workspaces extends Feature {
 
   /** `setUpWorkspace` for a workspace whose chats are already held: a fork, a Lead chat, or a restore. */
   private async setUpHeld(ws: Workspace, project: Project, repo: RepoSettings, chat: Chat, checkpoint?: boolean): Promise<Workspace> {
-    const untrusted = !!(await this.k.trust.untrusted(project, repo))
-    const ready = !untrusted && await this.k.setup.prepare(ws, project, repo)
+    const ready = await this.k.setup.prepare(ws, project, repo)
     for (const m of this.k.setup.setups.get(ws.id)?.later ?? []) this.sessions.hold(chat.id, m, { from: 'lead' })
     if (this.k.setup.setups.has(ws.id)) this.k.setup.setSetup(ws.id, undefined)
-    if (untrusted) return this.k.trust.holdForTrust(ws.id)
     if (this.mustWs(ws.id).status === 'archived') return this.mustWs(ws.id)
     if (!ready) {
       const failed = this.updateWs(ws.id, { status: 'failed' })
@@ -411,7 +400,7 @@ export class Workspaces extends Feature {
     let ws!: Workspace
     const fork = await this.k.chats.forkChat(chatId, itemId, async () => (ws = await this.forkTree(src, project, repo, from, files)).id)
     this.k.setup.setSetup(ws.id, { chatId: fork.id, later: this.k.setup.setups.get(ws.id)?.later ?? [] })
-    // Nothing goes out before setup passes, a message typed while the project waits for trust included.
+    // Nothing goes out before setup passes.
     this.sessions.hold(fork.id)
     this.note(ws.id, `Forked from ${src.name}, with its files as they were at ${clock(Date.now())}.`)
     void this.setUpWorkspace(ws, project, repo, fork).catch((e) => {

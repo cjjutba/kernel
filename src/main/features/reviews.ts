@@ -466,11 +466,10 @@ export class Reviews extends Feature {
     const s = kindStates(ws)
     const { verdicts, current } = reviewVerdicts(ws)
     const reviews = this.store.workspaces(ws.projectId).filter((r) => r.reviewOf === ws.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)
-    // A review runs while its setup runs or waits for the user to trust the project's scripts (KERNEL-261), or while its chat
-    // works on it or has messages waiting and hasn't sent a verdict on the head commit. A review whose setup failed isn't
+    // A review runs while its setup runs (KERNEL-261), or while its chat works on it or has messages waiting and hasn't sent a verdict on the head commit. A review whose setup failed isn't
     // running: it waits for the user. A chat from before review kinds runs the code review. One whose turn waits for usage
     // to drop is held, not running (KERNEL-552).
-    const busy = (r: Workspace, c: Chat) => r.status === 'setup' || r.status === 'trust' || (r.status === 'ready' && (this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0))
+    const busy = (r: Workspace, c: Chat) => r.status === 'setup' || (r.status === 'ready' && (this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0))
     const reviewing = new Set<ReviewKind>()
     const held = new Set<ReviewKind>()
     for (const r of reviews) {

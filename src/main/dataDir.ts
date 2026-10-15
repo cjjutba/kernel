@@ -18,7 +18,7 @@ export const RUNS_FOLDER = 'Kernel Dev Runs'
  * `hook-token`: each build has its own, so both can run at once (KERNEL-675).
  */
 // `room-icons` keeps its name from before rooms were renamed projects (KERNEL-880).
-export const MOVED = ['settings.json', 'trust.json', 'integrations.json', 'env.json', 'room-icons', 'shared', 'Local Storage']
+export const MOVED = ['settings.json', 'integrations.json', 'env.json', 'room-icons', 'shared', 'Local Storage']
 
 export interface DataDirs { own: string; other: string; name: string; otherName: string; run?: true }
 

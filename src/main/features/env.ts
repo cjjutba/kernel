@@ -26,8 +26,8 @@ export class Env extends Feature {
     const settings = project ? loadRepoSettingsSync(project.path) : undefined
     // Each Lead chat has its own worktree with files.copy done, so it reads its own copies like a teammate (KERNEL-405).
     const files = project && settings ? this.envFiles(project, ws, settings).map(keep) : []
-    // Setup's variables count once it passed, in a project whose scripts are trusted, the way setup itself only ran then.
-    const setup = project && ws.status === 'ready' && this.k.trust.projectTrusted.get(project.id) ? keep(readSetupEnv(setupEnvPath(this.o.dataDir, ws.id)).vars) : {}
+    // Setup's variables count once it passed.
+    const setup = project && ws.status === 'ready' ? keep(readSetupEnv(setupEnvPath(this.o.dataDir, ws.id)).vars) : {}
     // The build that started it, which the hook command sends, so the other build's hook server leaves it alone (KERNEL-675).
     const kernel: Record<string, string> = { ...kernelVars(ws, project), [BUILD_ENV]: this.o.build ?? 'app', ...(o.script ? { PORT: String(ws.port) } : {}) }
     // Each worktree is its own Compose project, so two workspaces' containers and volumes never meet. A current-branch
@@ -37,22 +37,17 @@ export class Env extends Feature {
   }
 
   /**
-   * The env files' variables, in order. A project that sets `[env] files` reads that list from the workspace folder. A repo's
-   * env file can set ZDOTDIR or BASH_ENV and run its code in every shell, so the list must be one the last trust check
-   * allowed, and a list changed since then waits for the next check, which this starts (KERNEL-247). A project that sets
-   * none reads `.env.kernel` from its checkout, when it is the user's own (KERNEL-449).
+   * The env files' variables, in order. A project that sets `[env] files` reads that list from the workspace folder
+   * (KERNEL-247). A project that sets none reads `.env.kernel` from its checkout, when it is the user's own (KERNEL-449).
    */
   private envFiles(project: Project, ws: Workspace, settings: RepoSettings): Record<string, string>[] {
     if (!settings.sources['env.files']) return this.ownEnvKernel(project) ? readEnvFiles(project.path, [ENV_KERNEL]).map((f) => f.vars) : []
-    const list = settings.env.files
-    const allowed = this.k.trust.envFilesOk.get(project.id) === JSON.stringify(list)
-    if (list.length && !allowed) void this.k.trust.untrusted(project).catch(() => null)
-    return allowed ? readEnvFiles(ws.path, list).map((f) => f.vars) : []
+    return readEnvFiles(ws.path, settings.env.files).map((f) => f.vars)
   }
 
   /**
    * Whether the project's checkout has a `.env.kernel` that is the user's own: git doesn't track it, so no commit wrote it
-   * (KERNEL-449). A tracked one is the repo's, which runs nothing without trust, so it counts only when `[env] files` lists
+   * (KERNEL-449). A tracked one is the repo's, so it counts only when `[env] files` lists
    * it. git is asked only when the file changed since the last look.
    */
   ownEnvKernel(project: Project): boolean {

@@ -14,7 +14,7 @@ import type { AppSettings } from '../src/main/services/settings'
 import { blockingLimit, failureOf, fallbackModel, limitedModels, NetworkMonitor, terminalScript } from '../src/main/services/health'
 import { discardChanges, gitStatus, pushBranch } from '../src/main/services/archive'
 import { run } from '../src/main/services/exec'
-import { tempRepo, trustProject, setUp, freePort } from './helpers'
+import { tempRepo, setUp, freePort } from './helpers'
 
 // A scripted SDK, as in sessionRunner.test.ts. `context` is the percentage getContextUsage reports, `contextReply` a full
 // answer that replaces it (null: percentage only), `usage` what the usage call answers (null: unsupported).
@@ -165,14 +165,14 @@ describe('failure signals', () => {
   it('keeps a failing probe from holding sends right after a turn reached the API (KERNEL-231)', async () => {
     let now = 1_000_000
     const seen: boolean[] = []
-    const m = new NetworkMonitor({ probe: async () => false, onChange: (o) => seen.push(o), everyMs: 60_000, offlineMs: 60_000, trustMs: 120_000, now: () => now })
+    const m = new NetworkMonitor({ probe: async () => false, onChange: (o) => seen.push(o), everyMs: 60_000, offlineMs: 60_000, graceMs: 120_000, now: () => now })
     m.reached()
     now += 30_000
     expect(await m.check()).toBe(true)
     expect(seen).toEqual([])
     m.stop()
     // Long after the last reply, with nothing reached since, a failing probe still means offline.
-    const idle = new NetworkMonitor({ probe: async () => false, onChange: (o) => seen.push(o), everyMs: 60_000, offlineMs: 60_000, trustMs: 120_000, now: () => now })
+    const idle = new NetworkMonitor({ probe: async () => false, onChange: (o) => seen.push(o), everyMs: 60_000, offlineMs: 60_000, graceMs: 120_000, now: () => now })
     idle.reached()
     now += 600_000
     expect(await idle.check()).toBe(false)
@@ -408,7 +408,6 @@ async function kernel(files: Record<string, string> = {}, o: { settings?: object
   const k = new Kernel({ dataDir, home, ...o.options })
   await k.start()
   const project = await k.addProject(repo)
-  await trustProject(k, project.id)
   return { k, project, repo }
 }
 
@@ -422,7 +421,6 @@ describe('kernel recovery paths', () => {
     const k = new Kernel({ dataDir, home })
     await k.start()
     const project = await k.addProject(repo)
-    await trustProject(k, project.id)
     // A start with work to carry on checks the sign-in (KERNEL-215). The real one runs `claude auth status`.
     const again = async () => { const next = new Kernel({ dataDir, home }); next.signedInReader = async () => true; await next.start(); return next }
     return { k, project, again }

@@ -1,11 +1,10 @@
-import { createHash } from 'node:crypto'
 import { readFileSync, statSync } from 'node:fs'
 import { appendFile, lstat, readFile, realpath, rm, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
+import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { LEAD_MODES } from '@shared/leadMode'
 import { terminalSettingsOf } from './terminalPresets'
@@ -452,7 +451,7 @@ export function referencesInProject(repo: string): { present: string[]; missing:
   return { present, missing: all.filter((p) => !present.includes(p)) }
 }
 
-/** What files.copy is when neither settings file sets it. Kernel's own list, so it never needs trusting (KERNEL-209). */
+/** What files.copy is when neither settings file sets it. */
 const DEFAULT_COPY = ['.env', '.env.local']
 
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
@@ -522,8 +521,8 @@ function projectValues(doc: Record<string, any>): Record<Group, Record<string, u
   const aliases = aliasesOf(isTable(doc.mcp) ? doc.mcp.aliases : undefined)
   const allow = allowOf(doc.agents)
   return {
-    // Text for a script and a list of text for files.copy, or nothing: what Kernel hashes for trust is exactly what it
-    // runs and copies, and a value of another type can't hide the other file's (KERNEL-209).
+    // Text for a script and a list of text for files.copy, or nothing: what Kernel reads is exactly what it runs and
+    // copies, and a value of another type can't hide the other file's (KERNEL-209).
     scripts: { ...picked(doc.scripts, ['setup', 'run', 'archive'], isString), ...picked(doc.scripts, ['runMode']) },
     files: { ...Object.fromEntries(Object.entries(picked(doc.files, ['copy', 'exclude'], Array.isArray)).map(([k, v]) => [k, strings(v)])), ...picked(doc.files, ['symlinkNodeModules']) },
     workspace: workspaceKeys(doc.workspace) as Record<string, unknown>,
@@ -858,36 +857,9 @@ export async function saveTeamSettings(repo: string, patch: TeamPatch): Promise<
   return loadRepoSettings(repo)
 }
 
-/** The text a project runs or copies on its own: the scripts, the files.copy list, the env files list and the repo's install scripts, as the project reads them (KERNEL-260). */
-export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'runScripts' | 'copy' | 'envFiles' | 'installScripts' | 'install'>
-
 /**
- * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209): each script, the
- * files.copy list and the env files list (KERNEL-247) the project uses, where the value comes from the repo's text. That is `settings.toml`, and a personal
- * file the repo committed. A value from the user's own personal file (`localIsOwn`: git doesn't track it) is their
- * text, like a Settings save, and needs no trusting. Neither does Kernel's default copy list. A value the other file
- * hides never runs, so it isn't in here. Undefined when there is nothing to trust.
- */
-export function scriptsToTrust(repo: RepoSettings, o: { localIsOwn?: boolean } = {}): TrustSubject | undefined {
-  const fromRepo = (key: string) => {
-    const source = repo.sources?.[key]
-    return !!source && (source === 'shared' || !o.localIsOwn)
-  }
-  const scripts: TrustSubject['scripts'] = {}
-  for (const k of ['setup', 'run', 'archive'] as const) if (repo.scripts[k]?.trim() && fromRepo(`scripts.${k}`)) scripts[k] = repo.scripts[k]
-  const isDefault = repo.files.copy.length === DEFAULT_COPY.length && repo.files.copy.every((f, i) => f === DEFAULT_COPY[i])
-  const copy = fromRepo('files.copy') && !isDefault ? repo.files.copy : []
-  // Named run scripts from `[run_scripts]` (KERNEL-244). `run` is `scripts.run`, already above.
-  const runScripts = (repo.runScripts ?? []).filter((r) => r.name !== 'run' && fromRepo(`runScripts.${r.name}`))
-  // An env file can set ZDOTDIR or BASH_ENV, which makes every shell Kernel starts run repo code (KERNEL-247).
-  const envFiles = fromRepo('env.files') ? repo.env.files : []
-  if (!Object.keys(scripts).length && !runScripts.length && !copy.length && !envFiles.length) return undefined
-  return { scripts, ...(runScripts.length ? { runScripts } : {}), copy, ...(envFiles.length ? { envFiles } : {}) }
-}
-
-/**
- * Is the project's personal settings file the user's own, so its text runs without asking (KERNEL-209)? Only when every
- * check below passes. Anything else, a git error included, means no, and its text needs trusting like the repo's.
+ * Is the project's personal settings file the user's own, rather than one a commit brought? Only when every check below
+ * passes. Anything else, a git error included, means no.
  * - No link on the way: `.kernel` and the file are not symlinks, and the file's real path is this path.
  * - `.kernel` belongs to the project's own repo: git run inside it names the project as its top level, so a submodule or a
  *   repo nested there fails.
@@ -935,65 +907,6 @@ export async function localSettingsOwn(repo: string): Promise<boolean> {
   // Recursive, so `.kernel` as a gitlink, file or link is listed under its own path, and so is a gitlink below it.
   const tree = await exec('git', ['-C', repo, 'ls-tree', '-r', '-z', 'HEAD', '--', ...dirs.map((e) => e.path)])
   return tree.code === 0 && !entries(tree.stdout).some((e) => foreign(e.mode, e.path))
-}
-
-/** sha256 of the subject, in a fixed order, so the same text always gives the same hash. */
-export function trustHash(s: TrustSubject): string {
-  const runs = s.runScripts?.length ? [s.runScripts.map((r) => [r.name, r.command])] : []
-  // Tagged and only when set, so a project without repo env files keeps the hash the user already trusted (KERNEL-247).
-  const env = s.envFiles?.length ? [['env.files', s.envFiles]] : []
-  // The same for the repo's install scripts (KERNEL-260), so a project whose package.json has none keeps its hash.
-  const installs = s.installScripts?.length ? [['install.scripts', s.installScripts.map((i) => [i.name, i.command])]] : []
-  // And for the Install step's own command (KERNEL-682).
-  const install = s.install ? [['install.command', s.install]] : []
-  return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy, ...runs, ...env, ...installs, ...install])).digest('hex')
-}
-
-/** How many trusted versions a project keeps. Going back to an older version doesn't ask again while it is in the list. */
-const TRUSTED_PER_PROJECT = 20
-
-/**
- * The hashes the user trusted, per project, in Kernel's data folder (`trust.json`), never in the repo, so a commit can't
- * trust itself (KERNEL-209).
- */
-export class ScriptTrustStore {
-  private projects?: Record<string, string[]>
-  private writing = Promise.resolve()
-
-  constructor(private file: string) {}
-
-  private async load(): Promise<Record<string, string[]>> {
-    if (this.projects) return this.projects
-    let saved: unknown
-    try { saved = JSON.parse(await readFile(this.file, 'utf8')) } catch { saved = {} }
-    const projects: Record<string, string[]> = {}
-    for (const [id, list] of Object.entries(saved && typeof saved === 'object' ? saved : {})) projects[id] = strings(list)
-    return (this.projects ??= projects)
-  }
-
-  async has(projectId: string, hash: string): Promise<boolean> { return (await this.load())[projectId]?.includes(hash) ?? false }
-
-  async add(projectId: string, hash: string): Promise<void> {
-    const projects = await this.load()
-    projects[projectId] = [hash, ...(projects[projectId] ?? []).filter((h) => h !== hash)].slice(0, TRUSTED_PER_PROJECT)
-    await this.save()
-  }
-
-  async forget(projectId: string): Promise<void> {
-    const projects = await this.load()
-    if (!(projectId in projects)) return
-    delete projects[projectId]
-    await this.save()
-  }
-
-  /** One write at a time, each with the whole map as it is then. */
-  private save() {
-    this.writing = this.writing.catch(() => undefined).then(async () => {
-      await mkdir(dirname(this.file), { recursive: true })
-      await writeFile(this.file, JSON.stringify(this.projects ?? {}, null, 2))
-    })
-    return this.writing
-  }
 }
 
 /**

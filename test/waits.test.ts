@@ -14,7 +14,7 @@ import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp
 import { mergedReading, resolveTarget, waitBroken, waitLabel, waitMet, waitRefusal } from '../src/main/services/waits'
 import { saveLinearToken } from '../src/main/services/integrations'
 import { saveRepoSettings } from '../src/main/services/settings'
-import { tempRepo, trustProject, freePort } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 /** The tag of an issue saved while Jira was a tracker, which the database still holds. */
 const OLD_JIRA = 'jira' as string as TrackerKind
@@ -95,7 +95,6 @@ async function setup(files: Record<string, string> = {}, o: { fetch?: typeof fet
   const k = fake(new Kernel({ dataDir, home, fetch: o.fetch }))
   await k.start()
   const project = await k.addProject(repo)
-  await trustProject(k, project.id)
   const lead = await k.leadChat(project.id)
   const again = async () => { const next = fake(new Kernel({ dataDir, home, fetch: o.fetch })); await next.start(); return next }
   /** A teammate's workspace with an open PR, the work others wait for. */
@@ -1063,7 +1062,6 @@ describe('a wait on work in another project', () => {
   async function otherProject(k: Kernel, gh: { prs: Map<string, PrInfo> }, number: number) {
     const repo = await tempRepo({ 'README.md': '# api\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/ivy.md': AGENT('ivy') })
     const api = await k.projects.addProject(repo)
-    await trustProject(k, api.id)
     const ivy = await k.workspaces.createWorkspace(api.id, { prompt: 'Add the invoices endpoint', agentId: 'ivy', title: `Invoices endpoint ${number}` })
     gh.prs.set(ivy.branch, prInfo('open', number))
     return k.prs.refreshPr(ivy.id)

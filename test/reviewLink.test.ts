@@ -150,8 +150,8 @@ describe('the review link (KERNEL-130)', () => {
     k.store.saveWorkspace({ ...k.store.workspace(review.id)!, status: 'failed' })
     expect(state()).toMatchObject({ inProgress: false, open: { workspaceId: review.id, failed: true } })
     k.sessions.isRunning = running
-    // One waiting for the user to trust the project's scripts is still under way, as one setting up is (KERNEL-261).
-    k.store.saveWorkspace({ ...k.store.workspace(review.id)!, status: 'trust' })
+    // One setting up is still under way (KERNEL-261).
+    k.store.saveWorkspace({ ...k.store.workspace(review.id)!, status: 'setup' })
     expect(state()).toMatchObject({ inProgress: true, open: { workspaceId: review.id } })
     expect(state().open?.failed).toBeUndefined()
   })

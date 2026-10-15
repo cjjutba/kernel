@@ -10,7 +10,7 @@ import { agentPrompt } from '../src/main/services/sessions'
 import { projectWorktreeRoot, slugify } from '../src/main/services/worktrees'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
-import { setUp, tempRepo, trustProject, freePort } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 
 // KERNEL-405: each chat with Kernel is its own workspace, with its own worktree, branch, ports and setup. It replaces KERNEL-355's
 // one Lead worktree per project, and KERNEL-181's sync now runs per chat.
@@ -142,7 +142,6 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
     await writeFile(join(repo, '.env.local'), 'SECRET=1\n')
     const k = await boot(await dirs({ leadWaitForSetup: true }))
     const project = await k.addProject(repo)
-    await trustProject(k, project.id)
     sdk.calls.length = 0
     const chat = await k.lead.startLeadChat(project.id, { prompt: 'Plan it' })
     const ws = await setUp(k, chat.id, 'failed')
@@ -158,19 +157,6 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
     await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(2))
     expect(k.sessions.queued(chat.id)).toEqual([])
     expect(k.sessions.queued(tab.id)).toEqual([])
-  })
-
-  it("waits for the project's scripts to be trusted with Wait for setup on, then sets up and sends", async () => {
-    const repo = await tempRepo({ ...REPO, '.kernel/settings.toml': '[scripts]\nsetup = "echo set up"\n' })
-    const k = await boot(await dirs({ leadWaitForSetup: true }))
-    const project = await k.addProject(repo)
-    sdk.calls.length = 0
-    const chat = await k.lead.startLeadChat(project.id, { prompt: 'Plan it' })
-    const ws = await setUp(k, chat.id, 'trust')
-    expect(queuedText(k, chat.id)).toEqual(['Plan it'])
-    await trustProject(k, project.id)
-    await setUp(k, ws.id)
-    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
   })
 
   // Naming the branch and folder from the chat's title: leadNaming.test.ts (KERNEL-424).
@@ -218,7 +204,6 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
     await writeFile(join(repo, '.env.local'), 'FROM_COPY=1\n')
     const k = await boot(await dirs())
     const project = await k.addProject(repo)
-    await trustProject(k, project.id)
     const ws = await setUp(k, (await k.lead.leadChat(project.id)).id)
     expect(await readFile(join(ws.path, '.env.local'), 'utf8')).toBe('FROM_COPY=1\n')
     expect(k.env.envFor(ws)).toMatchObject({ FROM_COPY: '1', KERNEL_WORKSPACE: ws.path, KERNEL_ROOT_PATH: repo })
@@ -240,12 +225,11 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
 describe('what waits for setup (KERNEL-490)', () => {
   const SETUP = { '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' }
 
-  /** A started Kernel on a trusted project made of `files`, with `workspace` in its settings. */
+  /** A started Kernel on a project made of `files`, with `workspace` in its settings. */
   async function project(files: Record<string, string>, workspace: Record<string, unknown> = {}) {
     const repo = await tempRepo({ ...REPO, ...files })
     const k = await boot(await dirs(workspace))
     const r = await k.addProject(repo)
-    await trustProject(k, r.id)
     sdk.calls.length = 0
     return { k, project: r }
   }
@@ -359,7 +343,7 @@ async function legacy(mode: 'current' | 'worktree') {
   store.saveMeta('queues', { 'plan-1': [{ id: 'q1', chatId: 'plan-1', parts: [{ type: 'text', text: 'Carry on' }], ts: 1 }] })
   store.saveMeta('leadChatsMoved', false)
   store.db.close()
-  // The user's own setup, which needs no trusting, and takes long enough to see the chats held while it runs.
+  // The user's own setup, which takes long enough to see the chats held while it runs.
   await mkdir(join(repo, '.kernel'), { recursive: true })
   await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[scripts]\nsetup = "sleep 1"\n')
   await mkdir(join(path, '.kernel', 'plans'), { recursive: true })

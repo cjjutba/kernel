@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, trustProject, freePort } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
 import type { Chat, ChatItem, ChatPart } from '../src/shared/types'
@@ -36,7 +36,6 @@ async function setup(files: Record<string, string> = {}) {
   const deletedSessions: string[] = []
   k.deleteSession = (async (id: string) => { deletedSessions.push(id) }) as typeof k.deleteSession
   const project = await k.addProject(repo)
-  if (files['.kernel/settings.toml']) await trustProject(k, project.id)
   const src = await k.createWorkspace(project.id, { prompt: 'Build the home screen', agentId: 'kai', title: 'Home screen' })
   const chat = k.store.saveChat({ ...k.store.chats(src.id)[0], title: 'Home screen', sessionId: 'src-session' })
   const items: ChatItem[] = [
@@ -108,26 +107,6 @@ describe('fork into new workspace (KERNEL-346)', () => {
     await until(() => k.store.workspace(ws.id)?.status === 'ready')
     expect(k.sessions.waitsFor(fork.id)).toBeUndefined()
   })
-
-  it('waits for trust like any new workspace, and what was typed meanwhile goes out once setup passes', async () => {
-    const { k, repo, project, chat, dispatched } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "echo ran > ran.txt"\n', '.gitignore': 'ran.txt\n' })
-    // The setup text changes after the source started, so nobody has trusted it yet.
-    await writeFile(join(repo, '.kernel/settings.toml'), '[scripts]\nsetup = "echo again > ran.txt"\n')
-    const ws = await k.workspaces.forkWorkspace(chat.id)
-    await until(() => k.store.workspace(ws.id)?.status === 'trust')
-    expect(existsSync(join(ws.path, 'ran.txt'))).toBe(false)
-    // The composer stays open while the project waits for trust. A message waits instead of starting the agent.
-    delete (k.sessions as unknown as { send?: unknown }).send
-    const fork = k.store.chats(ws.id)[0]
-    expect(await k.sessions.send(fork.id, [{ type: 'text', text: 'Try the other layout' }])).toMatchObject({ queued: true, why: 'setup' })
-    expect(dispatched).toEqual([])
-
-    await trustProject(k, project.id)
-    await until(() => k.store.workspace(ws.id)?.status === 'ready', 15000)
-    expect(await readFile(join(ws.path, 'ran.txt'), 'utf8')).toBe('again\n')
-    await until(() => dispatched.includes(fork.id))
-    expect(dispatched).toEqual([fork.id])
-  }, 30000)
 
   it("refuses a big terminal, the Lead's workspace and an archived workspace", async () => {
     const { k, project, src } = await setup()

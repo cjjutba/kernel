@@ -485,7 +485,7 @@ export class Lead extends Feature {
   /**
    * A new tab in a Lead chat (KERNEL-337), the one its workspace hosts (KERNEL-405). The old shared Lead workspace hosts
    * none, so there `threadId` names the chat, or the tab starts one. A tab opened while the chat's first message waits for
-   * setup or trust waits with it. Saved, not pushed, like `newChat`.
+   * setup waits with it. Saved, not pushed, like `newChat`.
    */
   leadTab(ws: Workspace, title: string, o: { provider?: Provider; model: string; effort: Effort; plan: boolean }, threadId?: string): Chat {
     const id = ws.threadId ?? threadId
@@ -768,7 +768,7 @@ export class Lead extends Feature {
       },
       // For the new agent card and create_agent's result (KERNEL-476).
       reach: (agent, o) => this.k.mcp.reach(projectId, agent, o),
-      // The same save as Settings, trust steps included, once the user presses Save on the card (KERNEL-683).
+      // The same save as Settings, once the user presses Save on the card (KERNEL-683).
       saveProjectScripts: (patch) => this.k.config.setProject(projectId, patch)
     }
   }
@@ -823,7 +823,6 @@ export class Lead extends Feature {
     if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : kind && kinds.length > 1 ? `Sent to the ${kind} review.` : 'Sent.', ...who }
     const note = why === 'running' ? `${name} is mid-turn, so the message goes out when that turn ends.`
       : why === 'merge' ? `${name} waits for ${this.k.waits.waitLabelOf(this.mustWs(ws.id))} to merge, so this goes out with the brief. To start ${name} now, call wait_for_merge with an empty list.`
-      : why === 'setup' && ws.status === 'trust' ? `${name}'s workspace waits for the user to trust this project's scripts, so the message goes out with the brief.`
       : why === 'setup' ? (this.k.setup.settingUp.has(ws.id) ? `${name}'s workspace is setting up again, so the message goes out with the brief.` : `Setup failed in ${name}'s workspace, so the message waits until the user clicks Run again.`)
       // The same words as create_workspace's brief (KERNEL-272).
       : queuedNote(why, { name }) ?? 'The message waits in the queue.'

@@ -303,6 +303,7 @@ export class Store {
   // engine state that outlives a restart, one JSON value per key (usage limits, chats a limit stopped)
   meta<T>(key: string): T | undefined { return this.one('select data from meta where key = ?', key) }
   saveMeta<T>(key: string, value: T) { this.db.prepare('insert or replace into meta (key, data) values (?, ?)').run(key, JSON.stringify(value)); return value }
+  deleteMeta(key: string) { this.db.prepare('delete from meta where key = ?').run(key) }
 
   /** A row whose JSON doesn't parse is skipped and logged, so one bad row doesn't empty its list. */
   private all<T>(sql: string, ...args: unknown[]): T[] {

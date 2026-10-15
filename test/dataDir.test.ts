@@ -101,7 +101,7 @@ describe('moveToDev', () => {
     expect(readFileSync(join(to, 'room-icons', 'r1.png'), 'utf8')).toBe('png')
     expect(readFileSync(join(to, 'shared', 'w1', 'plan.html'), 'utf8')).toBe('<p>plan</p>')
     expect(readFileSync(join(to, 'Local Storage', 'leveldb', '000003.log'), 'utf8')).toBe('drafts')
-    expect(readdirSync(to).sort()).toEqual(['Local Storage', 'env.json', 'integrations.json', 'kernel.db', 'room-icons', 'settings.json', 'shared', 'trust.json'])
+    expect(readdirSync(to).sort()).toEqual(['Local Storage', 'env.json', 'integrations.json', 'kernel.db', 'room-icons', 'settings.json', 'shared'])
     expect(existsSync(`${to}.partial`)).toBe(false)
   })
 

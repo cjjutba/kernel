@@ -12,7 +12,7 @@ import { loadRepoSettings, saveRepoSettings } from '../src/main/services/setting
 import { sharesFile } from '../src/main/services/providers/codex/runner'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
-import { setUp, tempRepo, trustProject, freePort } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 
 // Hand off and Build here: the two ways a chat with Kernel works (KERNEL-770).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -34,7 +34,6 @@ async function setup(o: { app?: Record<string, unknown>; files?: Record<string, 
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
   const project = await k.addProject(repo)
-  await trustProject(k, project.id)
   const chat = async () => {
     const c = await k.lead.newLeadChat(project.id, { prompt: '' })
     await setUp(k, c.id, 'settled')

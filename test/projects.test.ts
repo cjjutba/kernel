@@ -9,9 +9,9 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
 import { ago, agoShort, projectState, teamOf } from '../src/renderer/src/screens/projects/projectInfo'
-import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installScripts, lockfileInstall, recentFolders, runsPackageInstall, seatStarterTeam } from '../src/main/services/projects'
+import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, lockfileInstall, recentFolders, seatStarterTeam } from '../src/main/services/projects'
 import { loadRepoSettings } from '../src/main/services/settings'
-import { tempRepo, trustProject, freePort } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 const starter = join(__dirname, '..', 'docs', 'starter-agents')
 
@@ -115,12 +115,12 @@ describe('projects service', () => {
     }
   })
 
-  it("installs only what a checkout lacks, and says when an install runs the repo's own code (KERNEL-444)", async () => {
+  it('installs only what a checkout lacks (KERNEL-444)', async () => {
     const repo = await tempRepo({ 'composer.json': '{}', 'go.mod': 'module demo\n', 'package.json': '{}' })
-    expect(await installCommand(repo)).toEqual({ command: 'composer install && go mod download && npm install', runsRepoCode: true })
+    expect(await installCommand(repo)).toEqual({ command: 'composer install && go mod download && npm install' })
     await mkdir(join(repo, 'vendor'))
     await mkdir(join(repo, 'node_modules'))
-    // go mod download leaves nothing in the checkout, so it runs every time, and it runs nothing from the repo.
+    // go mod download leaves nothing in the checkout, so it runs every time.
     expect(await installCommand(repo)).toEqual({ command: 'go mod download' })
     const js = await tempRepo({ 'package.json': '{}', 'pnpm-lock.yaml': '' })
     await mkdir(join(js, 'node_modules'))
@@ -468,7 +468,7 @@ describe('Kernel projects', () => {
   })
 })
 
-describe("a repo's install scripts wait for trust (KERNEL-260)", () => {
+describe("the project's Install step (KERNEL-260, KERNEL-913)", () => {
   const pkg = (postinstall: string, more: Record<string, string> = {}) => JSON.stringify({ name: 'demo', version: '1.0.0', scripts: { postinstall, ...more } })
 
   /**
@@ -494,143 +494,48 @@ describe("a repo's install scripts wait for trust (KERNEL-260)", () => {
     return { k, repo, project, steps, h: k.handlers() }
   }
 
-  it('reads the install scripts of the root package.json, when a package install applies', async () => {
-    const some = await tempRepo({ 'package.json': pkg('node setup.js', { prepare: 'husky', build: 'tsc', install: '', preinstall: 7 as unknown as string }) })
-    expect(await installScripts(some)).toEqual([{ name: 'postinstall', command: 'node setup.js' }, { name: 'prepare', command: 'husky' }])
-    expect(await installScripts(await tempRepo({ 'package.json': JSON.stringify({ scripts: { build: 'tsc' } }) }))).toEqual([])
-    expect(await installScripts(await tempRepo({ 'package.json': 'not json' }))).toEqual([])
-    // No package.json, so no package manager to run them.
-    expect(await installScripts(await tempRepo())).toEqual([])
-  })
-
-  it('reads a setup script that installs packages, whatever the package manager or wrapper', () => {
-    for (const s of ['pnpm install', 'npm ci', 'npm i --silent', 'yarn', 'yarn --frozen-lockfile', 'bun install', 'pnpm --filter app install', 'corepack pnpm install', 'cd app && npm install', 'FOO=1 sudo npm ci', 'bash -c "pnpm i"', 'make deps && yarn add left-pad']) expect(runsPackageInstall(s), s).toBe(true)
-    for (const s of ['make setup', 'pnpm dev', 'npm run build', 'npm test', 'yarn build', 'yarn workspace app test', 'echo done', 'cp .env.example .env']) expect(runsPackageInstall(s), s).toBe(false)
-    expect(runsPackageInstall('./bin/bootstrap', './bin/bootstrap')).toBe(true)
-  })
-
-  it('skips the install until the user trusts, holds the first workspace, then runs the install', async () => {
+  it('runs the install scripts with the Install step, and the first workspace starts at once (KERNEL-913)', async () => {
     await withFakeNpm(async () => {
-      const { k, repo, project, steps, h } = await start({ 'package.json': pkg('touch ran.txt') })
-      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: "Skipped until you trust this repo's install scripts" })
-      // The settings.toml Kernel wrote sets no script (KERNEL-682). The Install step still has those install scripts to run, so the project asks.
-      expect((await loadRepoSettings(repo)).scripts.setup).toBeUndefined()
-      const trust = await h['projects.scriptTrust']({ projectId: project.id })
-      expect(trust).toMatchObject({ scripts: {}, installScripts: [{ name: 'postinstall', command: 'touch ran.txt' }] })
-      expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
-
-      // The first workspace waits in `trust`.
-      const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'First' })
-      expect(ws.status).toBe('trust')
-      expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
-
-      // Trusting releases the workspace and runs the install project setup skipped, in the background. The project has no setup
-      // script, so the workspace itself installs nothing.
-      await h['projects.trust']({ projectId: project.id, hash: trust!.hash })
-      await vi.waitFor(() => expect(existsSync(join(repo, 'ran.txt'))).toBe(true), { timeout: 15000 })
-      await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
-      expect(existsSync(join(ws.path, 'ran.txt'))).toBe(false)
-      expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
-      // It runs once: a second release of the same project installs nothing more.
-      await rm(join(repo, 'ran.txt'))
-      await h['projects.trust']({ projectId: project.id, hash: trust!.hash })
-      await new Promise((r) => setTimeout(r, 300))
-      expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
-
-      // A changed script asks again, and the new text is what the user reads.
-      await writeFile(join(repo, 'package.json'), pkg('touch ran-2.txt'))
-      expect(await h['projects.scriptTrust']({ projectId: project.id })).toMatchObject({ installScripts: [{ name: 'postinstall', command: 'touch ran-2.txt' }] })
-      await k.stop()
-    })
-  }, 90000)
-
-  it("doesn't ask again once the install has run, when the setup script isn't an install", async () => {
-    await withFakeNpm(async () => {
-      const { k, repo, project, steps, h } = await start({ 'package.json': pkg('touch ran.txt'), '.kernel/settings.toml': '[scripts]\nsetup = "make setup"\n' })
-      expect(steps.find((s) => s.id === 'install')).toMatchObject({ detail: "Skipped until you trust this repo's install scripts" })
-      const trust = await h['projects.scriptTrust']({ projectId: project.id })
-      expect(trust).toMatchObject({ scripts: { setup: 'make setup' }, installScripts: [{ name: 'postinstall' }] })
-      await h['projects.trust']({ projectId: project.id, hash: trust!.hash })
-      await vi.waitFor(() => expect(existsSync(join(repo, 'ran.txt'))).toBe(true), { timeout: 15000 })
-      // node_modules now exists, so the project has no install left to run, and the same text counts as trusted.
-      await mkdir(join(repo, 'node_modules'))
-      expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
-      await k.stop()
-    })
-  }, 90000)
-
-  it('keeps today\'s flow and hash for a repo with no install scripts', async () => {
-    await withFakeNpm(async () => {
-      const { k, repo, project, steps, h } = await start({ 'package.json': JSON.stringify({ name: 'demo', scripts: { build: 'tsc' } }) })
-      // Nothing to hold: the install step ran the install, and Kernel's own settings.toml is trusted as before.
-      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok' })
-      expect(steps.find((s) => s.id === 'install')?.detail).not.toContain('Skipped')
-      expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
-      const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'First' })
-      expect(ws.status).not.toBe('trust')
-      expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('setup = "npm install"')
-      await k.stop()
-    })
-  }, 90000)
-
-  // Stands in for bundle install running the Gemfile, which is Ruby from the repo.
-  const bundle = { bundle: '#!/bin/sh\ntouch ran.txt\n' }
-
-  it("holds an install that runs the repo's own code until the user trusts it, then runs it (KERNEL-444)", async () => {
-    await withFakeNpm(async () => {
-      const { k, repo, project, steps, h } = await start({ Gemfile: 'source "https://rubygems.org"\n' })
-      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: "Skipped until you trust this repo's scripts" })
-      // The settings.toml Kernel wrote sets no script (KERNEL-682). The project asks about the Install step's command itself.
-      expect((await loadRepoSettings(repo)).scripts.setup).toBeUndefined()
-      const trust = await h['projects.scriptTrust']({ projectId: project.id })
-      expect(trust).toMatchObject({ scripts: {}, install: 'bundle install' })
-      expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
-      const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'First' })
-      expect(ws.status).toBe('trust')
-
-      await h['projects.trust']({ projectId: project.id, hash: trust!.hash })
-      await vi.waitFor(() => expect(existsSync(join(repo, 'ran.txt'))).toBe(true), { timeout: 15000 })
-      await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).not.toBe('trust'), { timeout: 15000 })
-      // The install ran once, so nothing is left to ask about.
-      expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
-      await k.stop()
-    }, bundle)
-  }, 90000)
-
-  it("asks for that install too when the repo's own settings have nothing to trust (KERNEL-682)", async () => {
-    await withFakeNpm(async () => {
-      const { k, repo, project, steps, h } = await start({ Gemfile: '', '.kernel/settings.toml': '# Nothing to run.\n' })
-      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: "Skipped until you trust this repo's scripts" })
-      const trust = await h['projects.scriptTrust']({ projectId: project.id })
-      expect(trust).toMatchObject({ scripts: {}, copy: [], install: 'bundle install' })
-      await h['projects.trust']({ projectId: project.id, hash: trust!.hash })
-      await vi.waitFor(() => expect(existsSync(join(repo, 'ran.txt'))).toBe(true), { timeout: 15000 })
-      await k.stop()
-    }, bundle)
-  }, 90000)
-
-  it('runs go mod download without asking, since it runs nothing from the repo (KERNEL-444)', async () => {
-    await withFakeNpm(async () => {
-      const { k, repo, project, steps, h } = await start({ 'go.mod': 'module demo\n' })
-      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok' })
-      expect(steps.find((s) => s.id === 'install')?.detail).not.toContain('Skipped')
+      const { k, repo, project, steps } = await start({ 'package.json': pkg('touch ran.txt') })
+      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: 'npm install' })
       expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
-      expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
+      const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'First' })
+      expect(ws.status).toBe('ready')
+      await k.stop()
+    })
+  }, 90000)
+
+  it("runs an install that runs the repo's own code with the Install step (KERNEL-913)", async () => {
+    await withFakeNpm(async () => {
+      const { k, repo, steps } = await start({ Gemfile: 'source "https://rubygems.org"\n' })
+      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: 'bundle install' })
+      expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
+      await k.stop()
+    }, { bundle: '#!/bin/sh\ntouch ran.txt\n' })
+  }, 90000)
+
+  it('runs each Install step an older Kernel held for trust once, then forgets the list (KERNEL-913)', async () => {
+    await withFakeNpm(async () => {
+      const { k, repo, project } = await start({ Gemfile: '' })
+      await rm(join(repo, 'ran.txt'))
+      k.store.saveMeta('heldInstalls', [project.id, project.id, 'gone'])
+      await k.projects.installHeld()
+      expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
+      expect(k.store.meta('heldInstalls')).toBeUndefined()
+      await rm(join(repo, 'ran.txt'))
+      await k.projects.installHeld()
+      expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
+      await k.stop()
+    }, { bundle: '#!/bin/sh\ntouch ran.txt\n' })
+  }, 90000)
+
+  it('runs go mod download with the Install step (KERNEL-444)', async () => {
+    await withFakeNpm(async () => {
+      const { k, repo, steps } = await start({ 'go.mod': 'module demo\n' })
+      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: 'go mod download' })
+      expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
       await k.stop()
     }, { go: '#!/bin/sh\ntouch ran.txt\n' })
-  }, 90000)
-
-  it("doesn't ask about package.json again once node_modules exists, though bundle install runs every time (KERNEL-444)", async () => {
-    await withFakeNpm(async () => {
-      const { k, repo, project, h } = await start({ 'package.json': pkg('touch ran.txt'), Gemfile: '', '.kernel/settings.toml': '[scripts]\nsetup = "make setup"\n' })
-      await trustProject(k, project.id)
-      await vi.waitFor(() => expect(existsSync(join(repo, 'ran.txt'))).toBe(true), { timeout: 15000 })
-      await mkdir(join(repo, 'node_modules'))
-      // Only a JS install runs package.json's install scripts, and none is left to run, so a changed one asks nothing.
-      await writeFile(join(repo, 'package.json'), pkg('touch ran-2.txt'))
-      expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
-      await k.stop()
-    }, { bundle: '#!/bin/sh\nexit 0\n' })
   }, 90000)
 })
 

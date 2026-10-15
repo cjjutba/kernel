@@ -64,24 +64,18 @@ export async function fakeGh(o: { list?: unknown; view?: unknown; prs?: unknown;
   return { calls: async () => (await readFile(log, 'utf8').catch(() => '')).split('\n').filter(Boolean) }
 }
 
-/** The user trusts the project's scripts, as they would when Kernel asks (KERNEL-209). For tests whose repo brings a script. */
-export async function trustProject(k: Kernel, projectId: string) {
-  const pending = await k.handlers()['projects.scriptTrust']({ projectId })
-  if (pending) await k.handlers()['projects.trust']({ projectId, hash: pending.hash })
-}
-
 /**
  * Waits until a workspace has finished setting up: a new chat with Kernel, a restore or a fork sets up in the background
  * (KERNEL-405). Takes the workspace's id or one of its chats. Returns the workspace as it is then.
  */
-export async function setUp(k: Kernel, id: string, status: 'ready' | 'failed' | 'trust' | 'settled' = 'ready') {
+export async function setUp(k: Kernel, id: string, status: 'ready' | 'failed' | 'settled' = 'ready') {
   const wsId = k.store.chat(id)?.workspaceId ?? id
   // What the setup script printed, for a failure to show.
   const log: string[] = []
   const on = (e: PushEvent) => { if (e.type === 'script.output' && e.workspaceId === wsId) log.push(...e.lines.map((l) => l.line)) }
   bus.on('push', on)
   try {
-    // `settled` is whatever setup ended in: ready, failed, or waiting for trust.
+    // `settled` is whatever setup ended in: ready or failed.
     if (status === 'settled') await vi.waitFor(() => expect(k.store.workspace(wsId)?.status).not.toBe('setup'), { timeout: 10_000, interval: 10 })
     else await vi.waitFor(() => expect(k.store.workspace(wsId)?.status).toBe(status), { timeout: 10_000, interval: 10 })
   } catch (e) {

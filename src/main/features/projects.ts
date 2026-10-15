@@ -58,7 +58,6 @@ export class Projects extends Feature {
     const project: Project = { id, name: name ?? basename(path), path, repo: await remoteRepo(path, remote), defaultBranch: await defaultBranch(path, remote).catch(() => 'main'), paused: false, worktreeDir: id, createdAt: Date.now() }
     this.store.saveProject(project)
     await this.k.team.agents(project.id)
-    await this.k.trust.untrusted(project).catch(() => null)
     return project
   }
 
@@ -238,17 +237,11 @@ export class Projects extends Feature {
 
     await step('worktrees', async () => {
       await mkdir(worktrees, { recursive: true })
-      // The file Kernel writes sets no script, so there is nothing of Kernel's to trust (KERNEL-682). The check still runs,
-      // so the project knows where it stands on what the repo brought (KERNEL-209).
       await ensureRepoSettings(project.path)
-      await this.k.trust.untrusted(this.mustProject(project.id))
     })
     await step('install', async () => {
-      const { command, reason, runsRepoCode } = await installCommand(project.path)
+      const { command, reason } = await installCommand(project.path)
       if (!command) return { detail: reason ?? 'Nothing to install' }
-      // The install would run the repo's install scripts, or its own code. Then the command waits for trust, and trusting it
-      // runs it (KERNEL-260, KERNEL-444, KERNEL-682).
-      if (await this.k.trust.holdInstall(project, runsRepoCode)) return { detail: runsRepoCode ? "Skipped until you trust this repo's scripts" : "Skipped until you trust this repo's install scripts" }
       update('install', { detail: command })
       const r = await exec('sh', ['-c', command], { cwd: project.path, timeoutMs: 600_000 })
       if (r.code !== 0) throw new Error((r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join('\n') || `${command} failed`)
@@ -326,6 +319,27 @@ export class Projects extends Feature {
     })()
     this.checking.set(projectId, running)
     return running
+  }
+
+  /**
+   * The upgrade from the script trust gate (KERNEL-913): each project whose Install step an older Kernel held until the user
+   * trusted its scripts installs once now, in the background, and the list goes. `installCommand` leaves out a stack whose
+   * folder exists, such as node_modules, so an install that happened meanwhile isn't run twice. The project's log says how it went.
+   */
+  async installHeld() {
+    const ids = this.store.meta<string[]>('heldInstalls')
+    if (!ids) return
+    this.store.deleteMeta('heldInstalls')
+    for (const id of new Set(ids)) {
+      const project = this.store.project(id)
+      if (!project || project.archived) continue
+      const { command } = await installCommand(project.path)
+      if (!command) continue
+      const r = await exec('sh', ['-c', command], { cwd: project.path, timeoutMs: 600_000 })
+      if (this.stopped) return
+      if (r.code === 0) bus.activity({ kind: 'note', projectId: id, actor: 'kernel', text: 'installed dependencies in', object: project.name })
+      else bus.activity({ kind: 'note', projectId: id, actor: 'kernel', text: `could not install dependencies in ${project.name}:`, object: (r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join(' ') || `${command} failed`, warn: true })
+    }
   }
 
   /**
@@ -462,10 +476,8 @@ export class Projects extends Feature {
     const shared = this.store.sharedFiles({ projectId }).map((f) => f.id)
     this.store.deleteProject(projectId)
     this.k.envStore.dropProject(projectId)
-    this.k.trust.envFilesOk.delete(projectId)
     await this.k.projectIcons.remove(project.icon)
     await this.k.shared.remove(shared)
-    await this.k.trust.forgetProject(projectId)
     this.k.team.forgetProject(projectId)
     this.pushChecks.delete(projectId)
     this.restore()

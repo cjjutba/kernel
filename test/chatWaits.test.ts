@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chatTrusts, chatWaits } from '../src/renderer/src/components/sidebar/chatWaits'
+import { chatWaits } from '../src/renderer/src/components/sidebar/chatWaits'
 import type { Approval, Chat, Workspace } from '../src/shared/types'
 
 const tab = (id: string, title: string): Chat => ({ id, workspaceId: 'lead', title, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1 })
@@ -24,14 +24,5 @@ describe('chat waits (KERNEL-339)', () => {
     const approvals = [ask('a', { kind: 'tool', toolName: 'Bash', workspaceId: 'invoice-table' })]
     expect(chatWaits({ tabs, owned: [], approvals })).toEqual([])
     expect(chatWaits({ tabs, owned, approvals })).toHaveLength(1)
-  })
-})
-
-describe('workspaces held for script trust (KERNEL-342)', () => {
-  it('finds the held ones among a chat\'s workspaces, and none once the status moves on', () => {
-    const list = [ws('a', { status: 'trust' }), ws('b'), ws('c', { status: 'setup' })]
-    expect(chatTrusts(list).map((w) => w.id)).toEqual(['a'])
-    expect(chatTrusts(list.map((w) => ({ ...w, status: 'ready' as const })))).toEqual([])
-    expect(chatTrusts([])).toEqual([])
   })
 })

@@ -10,7 +10,7 @@ import { Nudges } from '../src/main/services/nudges'
 import { approvalNotificationId } from '../src/main/services/notifications'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { setUp, tempRepo, trustProject, freePort } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 import { run as git } from '../src/main/services/exec'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
@@ -68,7 +68,6 @@ async function build(files: Record<string, string> = {}) {
   const answer: { queued: boolean; why?: QueueReason } = { queued: false }
   k.sessions.send = async (chatId: string, parts: ChatPart[], o?: { from?: string }) => { sent.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), from: o?.from }); return { ...answer } }
   const project = await k.addProject(repo)
-  await trustProject(k, project.id)
   // Each chat with Kernel has its own workspace (KERNEL-405). Both are set up before the test talks to them.
   const named = async (title: string) => {
     const c = await k.lead.newLeadChat(project.id, { prompt: '' })
@@ -504,24 +503,18 @@ describe("a teammate's shared image passed on to another teammate (KERNEL-659)",
   })
 })
 
-describe("create_workspace when the project's scripts wait for trust (KERNEL-261)", () => {
-  it("says Kai hasn't started after the Created prefix, and the Lead hears once that trusting sent the brief", async () => {
-    const { k, project, first, call, byTitle, sent } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "true"\n' })
-    // A pull changed the script after the project was trusted, so the next workspace waits for another yes.
-    await writeFile(join(project.path, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo changed"\n')
-    const told = vi.spyOn(k.leadUpdates, 'setup')
+describe("create_workspace in a repo that commits its scripts (KERNEL-913)", () => {
+  it('runs a multi-line setup script with no prompt, then sends the brief', async () => {
+    const setupScript = '[scripts]\nsetup = """\necho one > one.txt\necho two > two.txt\n"""\n'
+    const { k, first, call, byTitle, sent } = await setup({ '.kernel/settings.toml': setupScript, '.gitignore': 'one.txt\ntwo.txt\n' })
     const said = await call(first, 'create_workspace', { agent: 'kai', title: 'Invoice table', brief: 'Build T-14' })
     const ws = byTitle('Invoice table')
-    expect(said).toBe(`Created ${ws.id} on ${ws.branch} for kai. Kai's workspace waits for the user to trust this project's scripts, so Kai hasn't started. The brief goes out once they do.`)
-    expect(ws.status).toBe('trust')
-    expect(sent.some((s) => s.text === 'Build T-14')).toBe(false)
-
-    await trustProject(k, project.id)
+    expect(said).toMatch(new RegExp(`^Created ${ws.id} on ${ws.branch} for kai\\.`))
+    expect(said).not.toContain('trust')
     await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
-    // Nothing else holds Kai, so the release reaches the Lead as one setup.passed, the way Run again does.
-    const passed = told.mock.calls.filter(([w, ok]) => w.id === ws.id && ok)
-    expect(passed.map(([, , o]) => o)).toEqual([{ trusted: true }])
-    expect(told.mock.calls.filter(([w, ok]) => w.id === ws.id && !ok)).toEqual([])
+    expect(await readFile(join(ws.path, 'one.txt'), 'utf8')).toBe('one\n')
+    expect(await readFile(join(ws.path, 'two.txt'), 'utf8')).toBe('two\n')
+    await vi.waitFor(() => expect(sent.some((m) => m.text === 'Build T-14')).toBe(true))
   }, 30000)
 })
 

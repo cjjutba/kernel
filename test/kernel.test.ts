@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, writeFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { setUp, tempRepo, trustProject, freePort } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { PORT_BLOCK, type ActivityEvent, type ChatPart } from '../src/shared/types'
@@ -36,7 +36,6 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     k.sessions.send = async (_chatId, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
 
     const project = await k.addProject(repo)
-    await trustProject(k, project.id)
     const agents = await k.agents(project.id)
     expect(agents.map((a) => [a.id, a.lead])).toEqual([['kernel-lead', true], ['kai', false]])
     // The preview reads the project's saved list, or the patterns the user is typing (KERNEL-245).

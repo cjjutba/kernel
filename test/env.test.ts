@@ -4,13 +4,12 @@ import { execFileSync } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
-import { tempRepo, trustProject, freePort } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { buildEnv, envFileReadable, EnvStore, kernelVars, MAX_ENV_FILE, productionHints, productionWhy, readEnvFiles, withoutClaudeNames, type Cipher } from '../src/main/services/env'
 import { isClaudeVar, workspaceSlug } from '../src/shared/kernelVars'
 import { sessionEnv } from '../src/main/services/sessions'
-import { loadRepoSettings, scriptsToTrust } from '../src/main/services/settings'
 import { run } from '../src/main/services/exec'
 
 /** Stands in for safeStorage, which doesn't work under ELECTRON_RUN_AS_NODE. Its output never holds the text it was given. */
@@ -75,18 +74,6 @@ describe('readEnvFiles', () => {
     expect(read.filter((f) => f.missing).every((f) => !Object.keys(f.vars).length)).toBe(true)
     // env.get's check agrees, and reads nothing.
     for (const [path, missing] of Object.entries(paths)) expect(envFileReadable(dir, path), path).toBe(!missing)
-  })
-})
-
-describe('scriptsToTrust', () => {
-  it('asks to trust an env files list from the repo, and not the user\'s own', async () => {
-    const shared = await tempRepo({ 'README.md': '#\n', '.kernel/settings.toml': '[env]\nfiles = [".env"]\n' })
-    expect(scriptsToTrust(await loadRepoSettings(shared), { localIsOwn: true })).toEqual({ scripts: {}, copy: [], envFiles: ['.env'] })
-    const own = await tempRepo({ 'README.md': '#\n' })
-    await mkdir(join(own, '.kernel'))
-    await writeFile(join(own, '.kernel', 'settings.local.toml'), '[env]\nfiles = [".env"]\n')
-    expect(scriptsToTrust(await loadRepoSettings(own), { localIsOwn: true })).toBeUndefined()
-    expect(scriptsToTrust(await loadRepoSettings(own), { localIsOwn: false })?.envFiles).toEqual(['.env'])
   })
 })
 
@@ -215,7 +202,6 @@ describe('Kernel env', () => {
     k.sessions.send = async () => ({ queued: false })
     const h = k.handlers()
     const project = await k.addProject(repo)
-    await trustProject(k, project.id)
 
     await h['env.set']({ name: 'APP_ONLY', value: 'app-value-77' })
     await h['env.set']({ name: 'ANTHROPIC_API_KEY', value: 'sk-user-key' })
@@ -334,7 +320,7 @@ describe('Kernel env', () => {
     await k.stop()
   })
 
-  it('asks again when a commit adds an env file, and reads none of the list until then', async () => {
+  it('reads the repo\'s env files list, and a file a commit adds, with no trust step (KERNEL-913)', async () => {
     const repo = await tempRepo({
       'README.md': '# env\n',
       '.env.a': 'A=1\n',
@@ -348,21 +334,12 @@ describe('Kernel env', () => {
     const k = new Kernel({ dataDir, home, cipher: fakeCipher })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
-    const h = k.handlers()
     const project = await k.addProject(repo)
-    await trustProject(k, project.id)
     const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Env' })
     expect(ws.status).toBe('ready')
     expect(k.envFor(ws)).toMatchObject({ A: '1' })
 
     await writeFile(join(repo, '.kernel/settings.toml'), '[env]\nfiles = [".env.a", ".env.b"]\n')
-    expect(k.envFor(ws).A).toBeUndefined()
-    expect(k.envFor(ws).B).toBeUndefined()
-    const trust = await h['projects.scriptTrust']({ projectId: project.id })
-    expect(trust?.envFiles).toEqual(['.env.a', '.env.b'])
-    expect(k.envFor(ws).A).toBeUndefined()
-
-    await h['projects.trust']({ projectId: project.id, hash: trust!.hash })
     expect(k.envFor(ws)).toMatchObject({ A: '1', B: '1' })
     await k.stop()
   })
@@ -481,7 +458,6 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
     await k.start()
     k.sessions.send = async () => ({ queued: false })
     const r = await k.addProject(repo)
-    await trustProject(k, r.id)
     return { k, repo, project: r, h: k.handlers() }
   }
 
@@ -521,7 +497,7 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
     await k.stop()
   })
 
-  it('leaves a .env.kernel the repo commits alone until [env] files lists it and the project is trusted', async () => {
+  it('leaves a .env.kernel the repo commits alone until [env] files lists it', async () => {
     const { k, repo, project: r, h } = await project({ '.env.kernel': 'FROM_REPO=1\nBASH_ENV=./evil.sh\n' })
     const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'One' })
     expect(k.env.envFor(ws).FROM_REPO).toBeUndefined()
@@ -530,10 +506,6 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
 
     await mkdir(join(repo, '.kernel'), { recursive: true })
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[env]\nfiles = [".env.kernel"]\n')
-    const trust = await h['projects.scriptTrust']({ projectId: r.id })
-    expect(trust?.envFiles).toEqual(['.env.kernel'])
-    expect(k.env.envFor(ws).FROM_REPO).toBeUndefined()
-    await h['projects.trust']({ projectId: r.id, hash: trust!.hash })
     expect(k.env.envFor(ws).FROM_REPO).toBe('1')
     await k.stop()
   })

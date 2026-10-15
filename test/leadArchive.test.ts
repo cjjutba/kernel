@@ -9,7 +9,7 @@ import { bus } from '../src/main/bus'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
-import { setUp, tempRepo, trustProject, freePort } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -367,7 +367,6 @@ describe('archiving a chat with Kernel (KERNEL-405)', () => {
     onTestFinished(() => k.stop({ budgetMs: 0 }))
     k.sessions.send = async () => ({ queued: false })
     const project = await k.addProject(repo)
-    await trustProject(k, project.id)
     // No first message, so nothing runs in it once setup passes.
     const chat = await k.lead.newLeadChat(project.id, { prompt: '' })
     const own = await setUp(k, chat.id)

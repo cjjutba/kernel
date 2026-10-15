@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, trustProject, freePort } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { bus } from '../src/main/bus'
 import { run } from '../src/main/services/exec'
 import { Kernel } from '../src/main/kernel'
@@ -83,7 +83,6 @@ describe('removing a project', () => {
   it('waits for every cleanup, one from an earlier archive included, before it forgets the project (KERNEL-702)', async () => {
     const log = join(await mkdtemp(join(tmpdir(), 'kernel-log-')), 'archived.txt')
     const { k, project, done, busy } = await setup({ '.kernel/settings.toml': `[scripts]\narchive = "sleep 0.3; echo $KERNEL_WORKSPACE_NAME >> ${log}"\n` })
-    await trustProject(k, project.id)
     await k.archiveWorkspace(done.id)
     // The archive returned while its script still runs.
     expect(existsSync(done.path)).toBe(true)

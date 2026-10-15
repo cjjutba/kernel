@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, trustProject, freePort } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import type { PushEvent } from '../src/shared/ipc'
@@ -32,7 +32,6 @@ async function kernelWith(...tomls: string[]) {
   const projects = []
   for (const toml of tomls) {
     const project = await k.addProject(await tempRepo({ ...kai, '.kernel/settings.toml': toml }))
-    await trustProject(k, project.id)
     projects.push(project)
   }
   return { k, h: k.handlers(), projects, dataDir }
