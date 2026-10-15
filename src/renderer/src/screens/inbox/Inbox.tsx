@@ -209,7 +209,7 @@ export function Inbox() {
         <div className="ib-pane" ref={detail}>
           {cur ? <Detail key={cur.n.id} item={cur} /> : !projects.some((r) => !r.archived) ? (
             <EmptyList icon="branch" title="Add your first project" action={<div className="ib-first"><Button variant="primary" onClick={() => actions.ui.openModal({ name: 'connectRepo' })}>Connect a repo</Button><Button onClick={() => actions.ui.openModal({ name: 'openFolder' })}>Open a folder</Button></div>}>
-              A project is one project with its own team of agents. Nothing needs you until you add one.
+              A project is one repo with its own team of agents. Nothing needs you until you add one.
             </EmptyList>
           ) : (
             <div className="ib-empty">

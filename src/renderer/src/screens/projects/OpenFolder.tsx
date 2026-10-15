@@ -53,7 +53,7 @@ export function OpenFolder() {
         </>
       }
     >
-      <p className="rm-sub">Point a project at a project that already lives on your Mac.</p>
+      <p className="rm-sub">Use a folder that already lives on your Mac.</p>
       <div className="rm-pad" style={{ gap: 14 }}>
         <div className="of-drop">
           <Icon name="folder" size={20} />

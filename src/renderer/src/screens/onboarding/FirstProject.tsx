@@ -13,7 +13,7 @@ export function FirstProject() {
     <div className="panel" style={{ background: 'transparent', border: 0 }}>
       <main className="ob-center">
         <h1 className="ob-h1" style={{ fontSize: 26, letterSpacing: '-0.6px' }}>Create your first project</h1>
-        <p className="ob-sub" style={{ fontSize: 14 }}>A project is one project with its own team of agents.</p>
+        <p className="ob-sub" style={{ fontSize: 14 }}>A project is one repo with its own team of agents.</p>
         <div className="ob-cards" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', width: 420 }}>
           {CARDS.map((c) => (
             <button key={c.name} type="button" className="ob-card" onClick={c.open}>

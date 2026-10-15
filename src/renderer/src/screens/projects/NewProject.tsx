@@ -8,7 +8,7 @@ import './projects.css'
 
 const SOURCES: { id: ProjectKind; icon: IconName; title: string; sub: string }[] = [
   { id: 'repo', icon: 'branch', title: 'GitHub repo', sub: 'Clone it and work on branches' },
-  { id: 'folder', icon: 'folder', title: 'Local folder', sub: 'Use a project already on your Mac' },
+  { id: 'folder', icon: 'folder', title: 'Local folder', sub: 'Use a folder already on your Mac' },
   { id: 'scratch', icon: 'burst', title: 'From scratch', sub: 'Start from your starter kit' }
 ]
 
