@@ -31,8 +31,17 @@ import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
 import { keptAnchor, opensAtEnd, placeTop, readPlace, savePlace, peekJustSent, takeJustSent, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
+import { createGlider, type Glider } from './scrollGlide'
+import { TranscriptGlide } from './glideContext'
+import { PLAN_APPROVE_EVENT, PLAN_SETTLE_EVENT } from './cards/plan'
 
 const EMPTY: ChatItem[] = []
+/** A plan revealing itself within this long of the chat opening is placed, not glided. */
+const OPEN_MS = 600
+/** Approve holds the thread still for at most this long if its strip never reports closing. */
+const APPROVE_HOLD_MS = 3000
+/** How long a card takes to fold, from `--archive-fold` (archiveMotion.css). */
+const foldMs = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--archive-fold')) || 200
 /** The reader counts as following the chat while the end is this close. */
 const PIN_PX = 80
 
@@ -51,19 +60,8 @@ export const ANCHOR_GAP = 24
 /** Whether rows are scrolled off the top, which is when the top edge fades. At the very top nothing is above, so nothing fades. */
 export const scrolledOff = (scrollTop: number) => scrollTop > 0
 
-/** Frames the anchored message must sit at its gap before the aim ends, and the most frames it keeps aiming (KERNEL-825). */
-const AIM_CALM = 12
-const AIM_FRAMES = 150
-/** A smooth aim retakes its goal at once when it moves by this much, else once the view is still. */
-const AIM_RETAKE = 48
-
-/**
- * How long the browser's smooth scroll takes for `distance` pixels, and its curve, fitted to Chromium's own (about 420ms for 600px, 165ms for 110px). A message that an
- * anchor moves by layout, not by scroll (a short thread is bottom-aligned and the padding under it lifts it), is animated with these, so New chat, a short chat, a long chat
- * and Approve all look the same (KERNEL-803).
- */
-export const glideMs = (distance: number) => Math.round(Math.min(700, Math.max(120, Math.sqrt(Math.abs(distance)) * 17)))
-export const GLIDE_EASING = 'cubic-bezier(0.45, 0, 0.05, 1)'
+/** The space under the rows that keeps the view at `scrollTop` once the anchored row is gone: what the view still needs below the end of the rows, never less than 0. */
+export const heldPadding = (scrollTop: number, clientHeight: number, rowsEnd: number) => Math.max(0, Math.round(scrollTop + clientHeight - rowsEnd))
 
 /** Whether the aim for message `id` is over: another message took the anchor, the reader scrolled, or the view follows its end again (Scroll to bottom, a jump from the chat rail). */
 export const aimOver = (anchoredId: string | null, id: string, byHand: boolean, pinned: boolean) => anchoredId !== id || byHand || pinned
@@ -124,23 +122,6 @@ export function followsAfterScroll(pinned: boolean, view: ScrollView, before: Sc
  * at its end, since a jump there cuts the native rubber-band bounce short. Following resumes once the scroll lands.
  */
 export const movesToEnd = (view: ScrollView, byHand: boolean) => !byHand && distFromEnd(view) >= 1
-
-/** A glide to the end first jumps to one screen above it when the end is more than this many screens away (KERNEL-833). */
-export const GLIDE_FAR = 1.5
-
-/** The glide takes this share of the way left each frame, at least a pixel, and gives up after this many frames. It lands once the end has held still for GLIDE_CALM. */
-const GLIDE_EASE = 0.16
-const GLIDE_CALM = 12
-const GLIDE_FRAMES = 300
-
-/** Where one frame of a glide puts the view: a share of what is left to the end, never less than a pixel, and the end itself once it is within one. */
-export const glideStep = (scrollTop: number, goal: number) => {
-  const left = goal - scrollTop
-  return Math.abs(left) <= 1 ? goal : scrollTop + Math.sign(left) * Math.max(1, Math.abs(left) * GLIDE_EASE)
-}
-
-/** Where a glide to the end starts: the view itself, or one screen above the end when it is further off than GLIDE_FAR screens. */
-export const glideStart = (scrollTop: number, goal: number, clientHeight: number) => (goal - scrollTop > GLIDE_FAR * clientHeight ? goal - clientHeight : scrollTop)
 
 /** How long the reader's input counts as scrolling with no scroll event after it. A pull past the end moves nothing and never fires scrollend. */
 const HAND_MS = 200
@@ -951,12 +932,10 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   // A glide to the end (the button's, Approve's) must not be cut short by following. It ends when it lands, or when the reader takes over.
   // The button's glide passes through "away" on its way down, which never unpins since it only moves toward the end.
   const gliding = useRef(false)
-  // The glide to the end is ours, one scroll position a frame, so it keeps aiming at an end that moves under it: the composer shrinking, the reply, the Lead's first message (KERNEL-833).
-  // The browser's smooth scroll fixes its target when it starts and, with following held off until it lands, stopped short of an end that had moved.
-  const glideId = useRef(0)
-  const gliderOn = useRef(0)
-  const glideFrame = useRef(0)
-  const release = () => { gliding.current = false; gliderOn.current = 0; glideId.current++; cancelAnimationFrame(glideFrame.current) }
+  // Every scroll Kernel makes on its own goes through this one glider (KERNEL-862): a send's aim, Scroll to bottom, the chat rail's jump, Approve, a plan revealing itself.
+  const glider = useRef<Glider>(undefined as unknown as Glider)
+  glider.current ??= createGlider(() => scroller.current)
+  const release = () => { gliding.current = false; glider.current.cancel() }
   // The reader's own scrolling ends the aim and holds the message where they left it, but never takes the space under it away: it stays until the next send, so scrolling through it moves nothing.
   const take = () => { release(); byHand.current = true; letGo.current?.(); handSince.current = true; takeJustSent(chat.id) }
   const press = (e: KeyboardEvent) => {
@@ -964,57 +943,53 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     else release()
   }
   const frame = useRef(0)
+  // Set from the press of Approve until its strip has closed and the card has folded: the thread holds still, and the answer's one glide runs after (KERNEL-862).
+  const approving = useRef(false)
+  const afterApprove = useRef<string | null>(null)
   // Rows far above the end are measured a frame after they first show, so the end moves once. Following again next frame lands on it.
   const follow = () => {
-    if (gliding.current) return 0
+    if (gliding.current || approving.current) return 0
     const move = () => { const el = scroller.current; if (!el || movesToEnd(flat(el), byHand.current)) end.current?.scrollIntoView({ block: 'end' }) }
     move()
-    return requestAnimationFrame(() => { if (pinned.current && !gliding.current) move() })
+    return requestAnimationFrame(() => { if (pinned.current && !gliding.current && !approving.current) move() })
   }
   const followNow = () => { cancelAnimationFrame(frame.current); frame.current = follow() }
   const landed = () => {
     // The glide's own scrolls end in between its frames, which doesn't mean it landed.
-    if (gliderOn.current) return
+    if (glider.current.live()) return
     release()
     byHand.current = false
     if (pinned.current) followNow()
   }
   const toEnd = () => {
-    cancelAnimationFrame(aiming.current)
     release()
     byHand.current = false
     pin(true)
     const el = scroller.current
     if (!el) return
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { end.current?.scrollIntoView({ block: 'end', behavior: 'auto' }); return }
     const goalOf = () => Math.max(0, rangeOf(flat(el)))
     // Already at the end, nothing would run.
     if (goalOf() - el.scrollTop <= 0) return
-    const mine = ++glideId.current
     gliding.current = true
-    gliderOn.current = mine
-    el.scrollTop = glideStart(el.scrollTop, goalOf(), el.clientHeight)
-    let calm = 0
-    let frames = 0
-    const step = () => {
-      if (glideId.current !== mine) return
-      const goal = goalOf()
-      const next = glideStep(el.scrollTop, goal)
-      if (next !== el.scrollTop) el.scrollTop = next
-      calm = Math.abs(goal - el.scrollTop) < 1 ? calm + 1 : 0
-      if (calm >= GLIDE_CALM || ++frames >= GLIDE_FRAMES) {
-        el.scrollTop = goalOf()
-        release()
-        pin(true)
-        followNow()
-        return
-      }
-      glideFrame.current = requestAnimationFrame(step)
-    }
-    glideFrame.current = requestAnimationFrame(step)
+    glider.current.start({
+      goal: goalOf,
+      far: true,
+      done: (landed) => { gliding.current = false; if (!landed) return; pin(true); followNow() }
+    })
   }
   // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
-  const jumping = useCallback((on: boolean) => { if (on) { cancelAnimationFrame(aiming.current); cancelAnimationFrame(glideFrame.current); gliderOn.current = 0; glideId.current++ } gliding.current = on; if (on) { byHand.current = true; letGo.current?.(); handSince.current = true } }, [])
+  const glideFor = useCallback((goal: () => number, done: (landed: boolean) => void) => {
+    glider.current.start({
+      goal,
+      done: (landed) => { gliding.current = false; done(landed) }
+    })
+    gliding.current = glider.current.live()
+    byHand.current = true
+    letGo.current?.()
+    handSince.current = true
+  }, [])
+  const stopGlide = useCallback(() => { gliding.current = false; glider.current.cancel() }, [])
+  const railGlide = useMemo(() => ({ glide: glideFor, stop: stopGlide }), [glideFor, stopGlide])
   // The rows on screen with where they sit in the scroller, which is how a spot is saved and found again.
   const rowBoxes = (): RowBox[] => {
     const el = scroller.current
@@ -1090,96 +1065,71 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const el = scroller.current
     const box = thread.current
     const mark = anchored.current && box?.querySelector(`[data-jump="${CSS.escape(anchored.current)}"]`)
-    const next = el && mark && end.current ? anchorPad(el.clientHeight, mark.getBoundingClientRect().top, end.current.getBoundingClientRect().bottom) : 0
+    const next = el && mark && end.current ? anchorPad(el.clientHeight, mark.getBoundingClientRect().top, end.current.getBoundingClientRect().bottom) : anchored.current ? 0 : heldPad.current
     if (!box || next === padNow.current) return
     padNow.current = next
     box.style.paddingBottom = next ? `${next}px` : ''
   }
+  // The anchored message's row can be dropped (a failed answer takes its optimistic row out). The anchor is released and the view stays where it was: the space under the rows
+  // grows to hold the position, which the clamp would otherwise cut, and stays until the next send like the anchor's own space.
+  const heldPad = useRef(0)
+  const letGoAnchor = () => {
+    const el = scroller.current
+    const box = thread.current
+    const top = seen.current.scrollTop
+    anchored.current = null
+    handSince.current = false
+    release()
+    if (!el || !box || !end.current) return
+    heldPad.current = heldPadding(top, el.clientHeight, end.current.getBoundingClientRect().bottom - el.getBoundingClientRect().top + el.scrollTop)
+    padReply()
+    el.scrollTop = top
+    remember(el)
+  }
   // Rows far above the message are measured a frame after the glide passes them, so the message moves while the scroll runs and a target taken once lands short.
-  // Aim again whenever the target moves, until the message has sat at the gap for a few frames. The reader's own scrolling ends it.
-  // A message the padding lifts by layout is animated from where it was. The thread carries the transform, so the aim measures without it.
-  const lifting = useRef<Animation | null>(null)
-  const liftY = () => {
-    const t = thread.current
-    if (!lifting.current || !t) return 0
-    const m = getComputedStyle(t).transform
-    return m && m !== 'none' ? new DOMMatrixReadOnly(m).m42 : 0
+  // The glider asks for the goal again every frame, so it follows the message to its gap without restarting, until the message has held it for a moment. The reader's own scrolling ends it.
+  const aim = (id: string, instant: boolean) => {
+    const markOf = () => thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
+    gliding.current = !instant && !matchMedia('(prefers-reduced-motion: reduce)').matches
+    glider.current.start({
+      instant,
+      far: true,
+      goal: () => {
+        const el = scroller.current
+        const mark = markOf()
+        if (!el || !mark) return el?.scrollTop ?? 0
+        padReply()
+        fade()
+        return anchorGoal(el.scrollTop, mark.getBoundingClientRect().top, el.getBoundingClientRect().top)
+      },
+      over: () => !markOf() || aimOver(anchored.current, id, byHand.current || handSince.current, pinned.current),
+      done: (landed) => { gliding.current = false; if (landed) takeJustSent(chat.id) }
+    })
   }
-  const lift = (distance: number) => {
-    const t = thread.current
-    if (!t || typeof t.animate !== 'function') return
-    lifting.current?.cancel()
-    const a = t.animate([{ transform: `translateY(${distance}px)` }, { transform: 'translateY(0px)' }], { duration: glideMs(distance), easing: GLIDE_EASING })
-    lifting.current = a
-    const done = () => { if (lifting.current === a) lifting.current = null }
-    a.onfinish = done
-    a.oncancel = done
-  }
-  useEffect(() => () => lifting.current?.cancel(), [])
-  const aiming = useRef(0)
-  const aimLive = useRef(false)
-  const aim = (id: string, smooth: boolean) => {
-    cancelAnimationFrame(aiming.current)
-    aimLive.current = true
-    let aimed = NaN
-    let calm = 0
-    let frames = 0
-    let was = NaN
-    const step = () => {
-      const el = scroller.current
-      const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
-      if (!el || !mark || aimOver(anchored.current, id, byHand.current || handSince.current, pinned.current)) { aimLive.current = false; release(); return }
-      padReply()
-      fade()
-      const lifted = liftY()
-      let goal = anchorGoal(el.scrollTop, mark.getBoundingClientRect().top - lifted, el.getBoundingClientRect().top)
-      // The lift stretches the scroll range for as long as it runs, which the settled thread doesn't have.
-      if (lifted) goal = Math.max(0, Math.min(goal, rangeOf(el) - Math.max(0, lifted)))
-      // A glide under way keeps its course when the goal only moves a little (the composer or the plan bar closing, a row measured): it is retaken once the view is still, not restarted every frame.
-      const moving = Math.abs(el.scrollTop - was) >= 0.5
-      was = el.scrollTop
-      if (goal !== aimed && !(smooth && moving && !Number.isNaN(aimed) && Math.abs(goal - aimed) < AIM_RETAKE)) {
-        aimed = goal
-        if (Math.abs(goal - el.scrollTop) >= 1) el.scrollTo({ top: goal, behavior: smooth ? 'smooth' : 'auto' })
-      }
-      calm = Math.abs(goal - el.scrollTop) < 1 ? calm + 1 : 0
-      if (calm >= AIM_CALM || ++frames >= AIM_FRAMES) { if (calm < AIM_CALM) el.scrollTo({ top: goal, behavior: 'auto' }); aimLive.current = false; release(); takeJustSent(chat.id); return }
-      aiming.current = requestAnimationFrame(step)
-    }
-    step()
-  }
-  useEffect(() => () => { cancelAnimationFrame(aiming.current); cancelAnimationFrame(glideFrame.current) }, [])
+  useEffect(() => () => glider.current.cancel(), [])
   // Content under the message changing size (the Working line leaving when the turn ends) can clamp the view before the padding is recomputed. Until the reader scrolls, the message stays at its gap.
   const hold = () => {
     const el = scroller.current
     const id = anchored.current
-    if (!el || !id || aimLive.current || handSince.current || byHand.current) return
+    if (!el || !id || glider.current.live() || approving.current || handSince.current || byHand.current) return
     const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
     if (!mark) return
-    const goal = anchorGoal(el.scrollTop, mark.getBoundingClientRect().top - liftY(), el.getBoundingClientRect().top)
-    if (Math.abs(goal - el.scrollTop) >= 1 && !lifting.current) { el.scrollTop = goal; fade() }
+    const goal = anchorGoal(el.scrollTop, mark.getBoundingClientRect().top, el.getBoundingClientRect().top)
+    if (Math.abs(goal - el.scrollTop) >= 1) { el.scrollTop = goal; fade() }
   }
   // A send puts the message at the top of the view and lets the reply fill in under it (KERNEL-803). Nothing follows the reply from here; the Scroll to bottom button shows once it passes the bottom edge.
-  // `still` places the message with no motion: no lift, no smooth scroll.
+  // `still` places the message with no motion.
   const anchorSend = (id: string, still = false) => {
     release()
     byHand.current = false
     handSince.current = false
+    heldPad.current = 0
     anchored.current = id
     pinned.current = false
-    const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
-    const was = mark?.getBoundingClientRect().top
     padReply()
-    if (!scroller.current || !mark) return
-    const smooth = !still && !matchMedia('(prefers-reduced-motion: reduce)').matches
-    // The padding can move the message by layout, where a scroll has nothing to glide: a short thread is bottom-aligned and the padding lifts it.
-    if (smooth && was !== undefined) {
-      const moved = was - mark.getBoundingClientRect().top
-      if (moved >= 1) lift(moved)
-    }
-    gliding.current = smooth
+    if (!scroller.current || !thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)) return
     show(false)
-    aim(id, smooth)
+    aim(id, still)
   }
   // The thread grows without gaining a row: a reply streaming text into the one it has, a step opening, a turn folding into its summary. Follow its size, not its row count.
   const height = useRef(0)
@@ -1207,6 +1157,46 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     watch.observe(el)
     return () => watch.disconnect()
   }, [])
+  const openedAt = useRef(Date.now())
+  const reveal = useCallback((el: HTMLElement, holdMs: number) => {
+    const box = scroller.current
+    if (!box || approving.current || byHand.current || handSince.current) return
+    const goal = () => {
+      const view = box.getBoundingClientRect()
+      const at = el.getBoundingClientRect()
+      return Math.round(el.offsetHeight > box.clientHeight ? box.scrollTop + at.top - view.top - 8 : box.scrollTop + at.bottom - view.bottom + 14)
+    }
+    gliding.current = true
+    glider.current.start({ goal, instant: Date.now() - openedAt.current < OPEN_MS, holdMs, over: () => approving.current || byHand.current, done: () => { gliding.current = false } })
+  }, [])
+  // Approve in sequence (KERNEL-862): the strip and plan bar close, the card folds, then the answer is glided into place once. Nothing scrolls before that, and a failed approval lets go at once.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const mine = (e: Event) => { const id = (e as CustomEvent<{ chatId?: string }>).detail?.chatId; return !id || id === chat.id }
+    const open = () => {
+      clearTimeout(timer)
+      approving.current = false
+      const id = afterApprove.current
+      afterApprove.current = null
+      if (id && itemsNow.current.some((i) => i.id === id)) anchorSend(id)
+    }
+    const press = (e: Event) => {
+      if (!mine(e)) return
+      release()
+      approving.current = true
+      clearTimeout(timer)
+      timer = setTimeout(open, APPROVE_HOLD_MS)
+    }
+    const settle = (e: Event) => {
+      if (!mine(e) || !approving.current) return
+      clearTimeout(timer)
+      timer = setTimeout(open, (e as CustomEvent<{ failed?: boolean }>).detail?.failed ? 0 : foldMs())
+    }
+    window.addEventListener(PLAN_APPROVE_EVENT, press)
+    window.addEventListener(PLAN_SETTLE_EVENT, settle)
+    return () => { clearTimeout(timer); approving.current = false; window.removeEventListener(PLAN_APPROVE_EVENT, press); window.removeEventListener(PLAN_SETTLE_EVENT, settle) }
+  }, [])
+  useLayoutEffect(() => { if (anchored.current && !items.some((i) => i.id === anchored.current)) letGoAnchor() }, [items])
   // Sending a message anchors it at the top of the view even from further up, since the reader just asked for something.
   const last = items[items.length - 1]
   const arrived = useRef(false)
@@ -1219,7 +1209,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     // The first run is the chat opening, which the effect above has placed already.
     const away = postedFromQueue(queuedAt.current, Date.now()) && handSince.current
     const step = sendAnchor(last, sentId.current, arrived.current || fresh.current, away)
-    if (step === 'anchor' && last) anchorSend(last.id, fresh.current)
+    if (step === 'anchor' && last && approving.current) afterApprove.current = last.id
+    else if (step === 'anchor' && last) anchorSend(last.id, fresh.current)
     else if (followsSend(last) && last!.id !== sentId.current && scroller.current) show(distFromEnd(flat(scroller.current)) > PIN_PX)
     if (followsSend(last)) sentId.current = last!.id
     arrived.current = true
@@ -1278,7 +1269,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
 
   return (
     <div className="ws-chat" data-rail={rail.current.length >= RAIL_MIN || undefined}>
-      <ChatRail key={chat.id} entries={rail.current} scroller={scroller} onGlide={jumping} />
+      <ChatRail key={chat.id} entries={rail.current} scroller={scroller} glide={railGlide} />
       <div ref={scroller} aria-busy={loading || undefined} className="ws-scroll selectable" onScroll={onScroll} onScrollEnd={landed} onClick={opened} onWheel={take} onTouchStart={take} onPointerDown={(e) => (e.target === e.currentTarget ? take() : release())} onKeyDown={press}>
         {failed && (
           <EmptyState icon="warning" title="Could not load this chat">
@@ -1289,6 +1280,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
           <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
             onPick={(text) => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))} />
         )}
+        <TranscriptGlide.Provider value={reveal}>
         <TranscriptWorkspace.Provider value={workspaceId}>
         <TranscriptChat.Provider value={chatId}>
         <TranscriptAway.Provider value={away}>
@@ -1305,6 +1297,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         </TranscriptAway.Provider>
         </TranscriptChat.Provider>
         </TranscriptWorkspace.Provider>
+        </TranscriptGlide.Provider>
       </div>
       {away && !empty && <IconButton icon="arrowDown" label="Scroll to bottom" className="ws-jump" onClick={toEnd} />}
     </div>
