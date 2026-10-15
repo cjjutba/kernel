@@ -190,7 +190,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
           <span className="is-sep" aria-hidden="true" />
           {scope.teams.length > 1 && <FilterChip label="Team" value={filter.teamId ?? ''} options={[{ value: '', label: 'All' }, ...scope.teams.map((t) => ({ value: t.id, label: t.key }))]} onChange={(v) => set({ teamId: v || undefined })} />}
           {scope.teams.length === 1 && <FilterChip label="Team" value={scope.teams[0].id} options={[{ value: scope.teams[0].id, label: scope.teams[0].key }]} onChange={() => undefined} />}
-          <FilterChip label="Project" value={filter.projectId ?? ''} options={[{ value: '', label: 'All' }, ...projectsFor(scope, filter.teamId).map((p) => ({ value: p.id, label: p.name }))]} onChange={(v) => set({ projectId: v || undefined })} />
+          <FilterChip label="Linear project" value={filter.projectId ?? ''} options={[{ value: '', label: 'All' }, ...projectsFor(scope, filter.teamId).map((p) => ({ value: p.id, label: p.name }))]} onChange={(v) => set({ projectId: v || undefined })} />
           <FilterChip label="Cycle" value={filter.cycleId ?? ''} options={[{ value: '', label: 'All' }, ...cyclesFor(scope, filter.teamId).map((c) => ({ value: c.id, label: cycleLabel(c, scope, filter.teamId) }))]} onChange={(v) => set({ cycleId: v || undefined })} />
           <span className="grow" />
           <span className="is-search">
@@ -261,7 +261,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
                             <span className="is-sub">
                               <IssuePriority priority={i.priority} size={14} />
                               <span className="mono">{i.id}</span>
-                              {i.project && <span className="ellipsis">{i.project.name}</span>}
+                              {i.project && <span className="ellipsis" title={`Linear project: ${i.project.name}`}>{i.project.name}</span>}
                             </span>
                           </span>
                           <span className="is-right">
@@ -276,7 +276,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
               </section>
               )
             })}
-            {list.length >= 100 && <CapNote>Showing the 100 issues updated most recently. Narrow by project, cycle or search to find the rest.</CapNote>}
+            {list.length >= 100 && <CapNote>Showing the 100 issues updated most recently. Narrow by Linear project, cycle or search to find the rest.</CapNote>}
           </div>
           <div className="is-pane" ref={detail}>
             {selId && <IssueDetail id={selId} summary={cur} tick={tick} onPlanned={() => { setTick((t) => t + 1); void load(true) }} />}

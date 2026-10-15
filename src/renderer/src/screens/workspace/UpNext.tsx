@@ -63,7 +63,7 @@ export function UpNext({ projectId, lead, onPlan }: { projectId: string; lead: s
               {ranked && <IssuePriority priority={i.priority ?? 0} size={14} />}
               <span className="mono up-next-key">{i.id}</span>
               <span className="up-next-title ellipsis">{i.title}</span>
-              <span className="up-next-project ellipsis">{i.project}</span>
+              <span className="up-next-project ellipsis" title={i.project ? `Linear project: ${i.project}` : undefined}>{i.project}</span>
               <span className="up-next-plan" aria-hidden="true">Plan</span>
             </button>
           </li>

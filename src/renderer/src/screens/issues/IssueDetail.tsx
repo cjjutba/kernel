@@ -102,8 +102,8 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
           <dl className="is-facts">
             <dt>Status</dt>
             <dd><IssueState shape={stateShape(issue.state.type)} />{issue.state.name}</dd>
-            <dt>Project</dt>
-            <dd>{issue.project?.name ?? <span className="muted">No project</span>}</dd>
+            <dt>Linear project</dt>
+            <dd>{issue.project?.name ?? <span className="muted">No Linear project</span>}</dd>
             <dt>Priority</dt>
             <dd><IssuePriority priority={issue.priority} label />{PRIORITIES[issue.priority] ?? PRIORITIES[0]}</dd>
             <dt>Cycle</dt>
