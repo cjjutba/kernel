@@ -985,8 +985,18 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         show(distFromEnd(el) > PIN_PX)
       }
       put()
-      // Rows far above are measured a frame after they first show, so their heights move the spot once.
-      again = requestAnimationFrame(() => { if (!byHand.current) put() })
+      // Rows are measured a frame or two after they first show, and each one that grows moves the spot, so it is put back until the height holds still for a few frames or the reader takes over.
+      let height = el.scrollHeight
+      let still = 0
+      let frames = 0
+      const settle = () => {
+        if (byHand.current) return
+        put()
+        still = el.scrollHeight === height ? still + 1 : 0
+        height = el.scrollHeight
+        if (still < 4 && ++frames < 40) again = requestAnimationFrame(settle)
+      }
+      again = requestAnimationFrame(settle)
     }
     return () => {
       cancelAnimationFrame(frame.current)
