@@ -530,7 +530,7 @@ export const platformFixtures: Record<string, Fixture> = {
     { event: { name: 'app.started' }, at: at(10, 40), sent: false }
   ] } }),
   // KERNEL-397: the one question about usage data, over Home, in a build that can send.
-  TelemetryAsk: scene(() => ({ telemetry: { canSend: true }, ui: { route: { name: 'inbox' }, modal: { name: 'telemetryAsk' } } })),
+  TelemetryAsk: { ...scene(() => ({ telemetry: { canSend: true }, ui: { route: { name: 'inbox' }, modal: { name: 'telemetryAsk' } } })), motion: { action: { press: ['Escape'] }, ms: 600 } },
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
   // KERNEL-371: Archive on merge is off in the personal file over settings.toml, and Delete branch on archive follows the app.
   // KERNEL-401: the optional checks come from settings.toml.
@@ -911,7 +911,7 @@ export const platformFixtures: Record<string, Fixture> = {
   // A turn running and a toast up, and Settings with a toast up: Escape goes to the open thing first, the screen next, the toast last (KERNEL-878).
   AuditEscapeTurnToast: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } },
   AuditEscapeSettingsFieldToast: projectGitToast,
-  AuditEscapeSettingsToast: { ...settingsPage('general'), ui: { ...settingsPage('general').ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } },
+  AuditEscapeSettingsToast: { ...settingsPage('general'), ui: { ...settingsPage('general').ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] }, motion: { action: { press: ['Escape', 'Escape'] }, ms: 800 } },
   // First launch: no project, no chat, no workspace, on Home and in the checks that hang.
   AuditFirstLaunchHome: scene(() => ({ ...empty, ui: { route: { name: 'inbox' } } })),
   AuditSetupChecksWaiting: { ...setup([]), hold: ['preflight.run'] },
