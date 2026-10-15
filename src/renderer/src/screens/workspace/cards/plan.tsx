@@ -2,7 +2,7 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentDef, Approval, PlanStep } from '@shared/types'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
-import { Button, Icon, IconButton } from '../../../ui'
+import { Button, Icon, IconButton, useScreenEscape } from '../../../ui'
 import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt, useCopy } from '../MessageActions'
@@ -218,17 +218,13 @@ export function PlanBar({ a, closing, hasText, onApprove, onSendChanges, onBack,
   }, [])
   // The question takes the focus (on Send changes, the choice that loses nothing), and Escape backs out of it from anywhere.
   useEffect(() => {
-    if (!asking) return
-    group.current?.querySelector<HTMLElement>('[data-ask-first]')?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return
-      e.preventDefault()
-      setAsked(false)
-      onBack()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    if (asking) group.current?.querySelector<HTMLElement>('[data-ask-first]')?.focus()
   }, [asking])
+  useScreenEscape(() => {
+    setAsked(false)
+    onBack()
+    return true
+  }, asking)
   // No close animation runs in a window nobody sees, or with reduced motion, so the strip goes at once. Elsewhere it goes when its animation ends or is cancelled.
   useEffect(() => {
     if (!closing) return
