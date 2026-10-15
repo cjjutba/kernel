@@ -342,3 +342,13 @@ describe('a place remembers the anchored message while a turn runs (KERNEL-837)'
     expect(readPlace(rows, 0, false, 'u1').anchoredId).toBeUndefined()
   })
 })
+
+describe('the chat top fade', () => {
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ scrolledOff: (scrollTop: number) => boolean }>
+
+  it('shows only once the view has left the top', async () => {
+    const { scrolledOff } = await load()
+    expect(scrolledOff(0)).toBe(false)
+    expect(scrolledOff(1)).toBe(true)
+  })
+})

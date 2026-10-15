@@ -2011,19 +2011,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
-  /** A long chat right after a send (KERNEL-825): the message travelled more than a screen and sits 16px from the top with the Working line under it. scripts/shots.ts delivers the send after the chat opens at its end. */
+  /** A long chat right after a send (KERNEL-825): the message travelled more than a screen and sits 24px from the top with the Working line under it. scripts/shots.ts delivers the send after the chat opens at its end. */
   WorkspaceJustSentLong: scene((f) => ({
     items: { [ids.tableChat]: longChat },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
-  /** A short reply that has finished (KERNEL-837): the message still sits 16px from the top with its reply under it and blank view below, and the end of the turn moved nothing. scripts/shots.ts delivers the send, the reply and the end of the turn after the chat opens. */
+  /** A short reply that has finished (KERNEL-837): the message still sits 24px from the top with its reply under it and blank view below, and the end of the turn moved nothing. scripts/shots.ts delivers the send, the reply and the end of the turn after the chat opens. */
   WorkspaceJustSentDone: scene((f) => ({
     items: { [ids.tableChat]: tableItems.slice(0, 1) },
     push: f.push,
     ui: open
   })),
-  /** The first message sent from New chat (KERNEL-825): the chat opens with it 16px from the top and the Working line under it. The fixture starts on New chat, and scripts/shots.ts types the message and sends it. */
+  /** The first message sent from New chat (KERNEL-825): the chat opens with it 24px from the top and the Working line under it. The fixture starts on New chat, and scripts/shots.ts types the message and sends it. */
   WorkspaceNewChatJustSent: scene((f) => {
     const base = noPlan(leadNoChats(f))
     return {
@@ -2198,6 +2198,28 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
   })),
+  /** A running turn with a command in flight: one summary line and the clock, and nothing from inside the fold (the fold-of-everything change). */
+  WorkspaceRunningFold: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
+    items: { [ids.tableChat]: runningItems() },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+  })),
+  /** The same turn stepped through two more calls after Send: the summary grows, the command text never shows. */
+  WorkspaceRunningFoldSteps: { ...scene((f) => ({
+    ...withDraft({
+      workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+      chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
+      items: { [ids.tableChat]: runningItems() },
+      push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+      ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+    }, 'Keep going.'),
+    afterSend: [
+      { afterMs: 250, events: [{ type: 'chat.item', chatId: ids.tableChat, item: tool('rt4', 'Run the new tests', 'pnpm vitest run tests/invoice-pdf.spec.ts', { status: 'done', durationMs: 4100, input: { command: 'pnpm vitest run tests/invoice-pdf.spec.ts' } }) }, { type: 'chat.item', chatId: ids.tableChat, item: tool('rt5', 'Lint the tests', 'pnpm lint tests', { status: 'running', durationMs: undefined, input: { command: 'pnpm lint tests' } }) }] },
+      { afterMs: 500, events: [{ type: 'chat.item', chatId: ids.tableChat, item: tool('rt5', 'Lint the tests', 'pnpm lint tests', { status: 'done', durationMs: 900, input: { command: 'pnpm lint tests' } }) }, { type: 'chat.item', chatId: ids.tableChat, item: tool('rt6', 'Typecheck', 'pnpm typecheck', { status: 'running', durationMs: undefined, input: { command: 'pnpm typecheck' } }) }] }
+    ]
+  })), motion: { action: { click: 'Queue message' }, ms: 900, area: '.ws-main' } },
   /** A long command in flight: the step stays one row and the clock sits on its own row under it (KERNEL-823). */
   WorkspaceRunningLongCommand: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),

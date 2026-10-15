@@ -140,6 +140,8 @@ export interface Fixture {
   ui: ForcedUi
   /** `pnpm shots <Screen> --motion` runs `action` and captures frames for `ms`. `area` is a selector to crop to, else the whole window (KERNEL-831). */
   motion?: { action: MotionAction; ms: number; area?: string }
+  /** Events `chats.send` pushes after the given delays, so a `motion` that clicks Send can step a running turn through more calls. */
+  afterSend?: { afterMs: number; events: PushEvent[] }[]
   /**
    * Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). A run
    * script that prints a local URL here gets its `script.url` too, as in the engine (KERNEL-246).

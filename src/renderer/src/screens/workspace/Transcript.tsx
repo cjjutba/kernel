@@ -44,8 +44,11 @@ export const followsSend = (item: ChatItem | undefined) => item?.kind === 'user'
 /** The numbers a scroll position is read from, so the rule below runs without a layout engine. */
 export interface ScrollView { scrollTop: number; scrollHeight: number; clientHeight: number }
 
-/** The gap between the top of the view and the message a send anchors there (KERNEL-803). */
-export const ANCHOR_GAP = 16
+/** The gap between the top of the view and the message a send anchors there (KERNEL-803). It is the height of the fade over the top edge, so the message sits right below it. */
+export const ANCHOR_GAP = 24
+
+/** Whether rows are scrolled off the top, which is when the top edge fades. At the very top nothing is above, so nothing fades. */
+export const scrolledOff = (scrollTop: number) => scrollTop > 0
 
 /** Frames the anchored message must sit at its gap before the aim ends, and the most frames it keeps aiming (KERNEL-825). */
 const AIM_CALM = 12
@@ -593,7 +596,7 @@ const agentNamed = (workspaceId: unknown) => (s: ReturnType<typeof getState>) =>
   return ws && s.agents[ws.roomId]?.find((a) => a.id === ws.agentId)?.name
 }
 
-/** How a tool call looks as a step: its label, mark and object, the same in a fold, open in the thread and on the live line. */
+/** How a tool call looks as a step: its label, mark and object, the same in a fold and open in the thread. */
 function useToolLook(item: Tool) {
   const workspaceId = useContext(TranscriptWorkspace)
   const root = useStore((s) => s.workspaces.find((w) => w.id === workspaceId)?.path)
@@ -693,28 +696,6 @@ function Elapsed({ since }: { since: number }) {
   return <span className="running"><Spinner label="Working" pattern="spiral" />{fmtDuration(now - since)}</span>
 }
 
-/** The step in flight, under a running turn's folds: drawn like any other step, with the turn's clock on its own row under it. */
-function LiveLine({ item, since }: { item: Extract<ThreadBlock, { kind: 'live' }>['item']; since: number }) {
-  return (
-    <>
-      {item.kind === 'tool' ? <LiveTool item={item} /> : <div className="trow live-row"><StepLine icon={item.kind === 'text' ? 'chat' : 'bulb'} label={item.kind === 'text' ? messageLabel(item.text) : 'Thinking'} /></div>}
-      <Elapsed since={since} />
-    </>
-  )
-}
-
-function LiveTool({ item }: { item: Tool }) {
-  const { view, mark } = useToolLook(item)
-  if (view.hidden) return <div className="trow live-row"><StepLine icon="term" label="Working" /></div>
-  const preview = (view.object || view.dir) && (
-    <>
-      {view.object && <span className={view.mono ? 'step-cmd mono' : 'step-obj'}>{view.object}</span>}
-      {view.dir && <span className="step-dir">{view.dir}</span>}
-    </>
-  )
-  return <div className="trow live-row"><StepLine icon="term" glyph={mark} label={view.verb} preview={preview} keep /></div>
-}
-
 /** One line across the thread where the chat switched between Hand off and Build here, so the transcript shows which turns could edit (KERNEL-780). */
 function LeadModeDivider({ mode }: { mode: LeadMode }) {
   return <div className="mode-divider" role="separator" aria-label={leadModeSwitched(mode)}><Icon name={LEAD_MODE_ICON[mode]} size={14} /><span>{leadModeSwitched(mode)}</span></div>
@@ -753,8 +734,6 @@ function sameBlock(a: ThreadBlock, b: ThreadBlock): boolean {
   switch (a.kind) {
     case 'item': return b.kind === 'item' && a.item === b.item && a.actions === b.actions
     case 'group': return b.kind === 'group' && a.id === b.id && sameList(a.items, b.items)
-    case 'run': return b.kind === 'run' && a.id === b.id && sameList(a.run.items, b.run.items)
-    case 'live': return b.kind === 'live' && a.item === b.item
     case 'files': return b.kind === 'files' && a.id === b.id && sameList(a.files, b.files)
     case 'meta': return b.kind === 'meta' && a.id === b.id && a.text === b.text && a.actions?.copy === b.actions?.copy && a.actions?.files === b.actions?.files && a.actions?.checkpointId === b.actions?.checkpointId && !a.actions === !b.actions
     case 'reply': return b.kind === 'reply' && a.item === b.item && a.meta === b.meta && a.checkpointId === b.checkpointId && sameList(a.files ?? [], b.files ?? [])
@@ -768,7 +747,7 @@ interface BlockProps { block: ThreadBlock; chatId: string; workspaceId: string; 
 /** Only a tool group reads the changed files, so a new list redraws the groups and nothing else. */
 const sameProps = (a: BlockProps, b: BlockProps) =>
   sameBlock(a.block, b.block) && a.chatId === b.chatId && a.workspaceId === b.workspaceId && a.inWorkspace === b.inWorkspace && a.agentName === b.agentName && a.onEdit === b.onEdit && a.onOpenDiff === b.onOpenDiff && a.onFork === b.onFork && a.onForkWorkspace === b.onForkWorkspace && a.onTerminal === b.onTerminal
-  && ((a.block.kind !== 'group' && a.block.kind !== 'run') || a.changes === b.changes)
+  && (a.block.kind !== 'group' || a.changes === b.changes)
 
 const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorkspace, agentName, onEdit, onOpenDiff, onFork, onForkWorkspace, onTerminal }: BlockProps) {
   if (block.kind === 'error') {
@@ -779,8 +758,6 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorks
     )
   }
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
-  if (block.kind === 'run') return <RunRow run={block.run} changes={changes} />
-  if (block.kind === 'live') return block.item.kind === 'tool' ? <ToolRow item={block.item} /> : block.item.kind === 'text' ? <MessageRow item={block.item} /> : <ThinkingRow item={block.item} />
   if (block.kind === 'relaunch') return <KernelNote item={block.message} lead={block.note.text} />
   if (block.kind === 'meta') return block.actions ? <TurnEnd block={block} chatId={chatId} workspaceId={workspaceId} onFork={onFork} onForkWorkspace={onForkWorkspace} /> : <span className="meta">{block.text}</span>
   if (block.kind === 'files') return <TurnFilesCard rowId={block.id} files={block.files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />
@@ -879,9 +856,18 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const letGo = useRef<ReturnType<typeof lapse> | undefined>(undefined)
   letGo.current ??= lapse(HAND_MS, () => { byHand.current = false })
   useEffect(() => () => letGo.current?.cancel(), [])
+  // The top fade shows only with rows above. The attribute is set on the element and only when it flips, so scrolling never renders the transcript.
+  const fade = () => {
+    const el = scroller.current
+    if (!el) return
+    const on = scrolledOff(el.scrollTop)
+    if (el.hasAttribute('data-scrolled') !== on) el.toggleAttribute('data-scrolled', on)
+  }
+  useLayoutEffect(fade)
   const onScroll = () => {
     const el = scroller.current
     if (!el) return
+    fade()
     if (byHand.current) letGo.current?.()
     const view = flat(el)
     const next = followsAfterScroll(pinned.current, view, seen.current, byHand.current)
@@ -1053,6 +1039,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
       const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
       if (!el || !mark || aimOver(anchored.current, id, byHand.current, pinned.current)) { aimLive.current = false; release(); return }
       padReply()
+      fade()
       const goal = anchorGoal(el.scrollTop, mark.getBoundingClientRect().top, el.getBoundingClientRect().top)
       if (goal !== aimed) {
         aimed = goal
@@ -1073,7 +1060,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
     if (!mark) return
     const goal = anchorGoal(el.scrollTop, mark.getBoundingClientRect().top, el.getBoundingClientRect().top)
-    if (Math.abs(goal - el.scrollTop) >= 1) el.scrollTop = goal
+    if (Math.abs(goal - el.scrollTop) >= 1) { el.scrollTop = goal; fade() }
   }
   // A send puts the message at the top of the view and lets the reply fill in under it (KERNEL-803). Nothing follows the reply from here; the Scroll to bottom button shows once it passes the bottom edge.
   const anchorSend = (id: string) => {
@@ -1193,11 +1180,11 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         <TranscriptChat.Provider value={chatId}>
         <ShownInError.Provider value={inError}>
         <div ref={thread} className="thread" style={empty ? { display: 'none' } : undefined}>
-          {blocks.map((b, i) => b.kind === 'live' && i === blocks.length - 1 && !planWaits && !loose.length ? <LiveLine key={b.id} item={b.item} since={since} /> : <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} workspaceId={workspaceId} changes={changes} inWorkspace={i === latestFiles && changes.length > 0 && changes.length !== ((b.kind === 'reply' || b.kind === 'files') && b.files ? b.files.length : 0) ? changes.length : undefined} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
+          {blocks.map((b, i) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} workspaceId={workspaceId} changes={changes} inWorkspace={i === latestFiles && changes.length > 0 && changes.length !== ((b.kind === 'reply' || b.kind === 'files') && b.files ? b.files.length : 0) ? changes.length : undefined} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
           {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
           {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
           {ws && <LocalMergeRow ws={ws} />}
-          {running && !planWaits && (blocks[blocks.length - 1]?.kind !== 'live' || loose.length > 0) && <Elapsed since={since} />}
+          {running && !planWaits && <Elapsed since={since} />}
           <div ref={end} />
         </div>
         </ShownInError.Provider>
