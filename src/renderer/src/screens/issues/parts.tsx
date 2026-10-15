@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { BannerKind, GitHubErrorKind, Room } from '@shared/types'
 import { go } from '../../store'
-import { Banner, Button, Select, useBusy } from '../../ui'
+import { Banner, Button, EmptyList, Select, Skeleton, useBusy } from '../../ui'
 
 type Option = { value: string; label: string }
 
@@ -19,10 +19,27 @@ export const chooseTracker = (roomId: string) => go({ name: 'settings', page: 'r
 /** A room with no tracker says so and points at where to choose one (IssuesNoTracker.png). */
 export function NoTracker({ room }: { room: Room }) {
   return (
-    <div className="is-center is-state">
-      <h2>{room.name} has no issue tracker</h2>
-      <p>Choose Linear or GitHub Issues in this room's settings and its issues show here. Chats work without one.</p>
-      <Button variant="primary" size="lg" onClick={() => chooseTracker(room.id)}>Choose a tracker</Button>
+    <EmptyList icon="plug" title={`${room.name} has no tracker yet`} action={<Button variant="primary" size="lg" onClick={() => chooseTracker(room.id)}>Choose a tracker</Button>}>
+      Connect Linear or GitHub Issues in the room's settings, and its issues show up here. Chats work without one.
+    </EmptyList>
+  )
+}
+
+/** Rows the shape of the list's own while it loads, one group header and a few issues. */
+export function IssueSkeleton({ what = 'issues' }: { what?: string }) {
+  return (
+    <div className="is-body">
+      <div className="is-list is-skeleton" role="status" aria-label={`Loading ${what}`}>
+        {[0, 1].map((g) => (
+          <div key={g} className="col">
+            <div className="is-sk-group"><Skeleton width={90} height={10} /></div>
+            {Array.from({ length: g === 0 ? 3 : 2 }, (_, i) => (
+              <div key={i} className="is-sk-row"><Skeleton width={16} height={16} /><span className="col grow"><Skeleton width={`${70 - i * 12}%`} height={11} /><Skeleton width="34%" height={9} /></span></div>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="is-pane" />
     </div>
   )
 }

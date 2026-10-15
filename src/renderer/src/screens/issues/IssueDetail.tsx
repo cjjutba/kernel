@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { LinearIssue, LinearIssueDetail, Workspace } from '@shared/types'
+import type { LinearIssue, LinearIssueDetail } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, lastRoom, useStore } from '../../store'
 import { Button, FailedState, Icon, Select, Skeleton, useBusy } from '../../ui'
@@ -8,24 +8,8 @@ import { openLeadChat, openNewChat } from '../../lead'
 import { RoomIcon } from '../../components/RoomIcon'
 import { Markdown } from '../workspace/markdown'
 import { DescriptionFailed } from './parts'
-import { initials, issueAge, linkedWorkspaces, stateShape, workspaceState } from './model'
-
-/** One workspace working on the issue, with its agent and what it is doing. */
-export function Linked({ ws }: { ws: Workspace }) {
-  const agent = useStore((s) => s.agents[ws.roomId]?.find((a) => a.id === ws.agentId))
-  const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
-  return (
-    <li className="is-ws">
-      <span className="is-av is-av-lg" aria-hidden="true">{(agent?.name ?? ws.name)[0].toUpperCase()}</span>
-      <span className="col grow">
-        <span className="ellipsis"><span className="is-ws-name">{ws.name}</span>{agent && <span className="muted is-ws-agent">{agent.name}</span>}</span>
-        <span className="mono muted ellipsis is-ws-branch">{ws.branch}</span>
-      </span>
-      <span className="is-ws-state">{workspaceState(ws, running, true)}</span>
-      <Button aria-label={`Open ${ws.name}`} onClick={() => go({ name: 'workspace', workspaceId: ws.id })}>Open</Button>
-    </li>
-  )
-}
+import { initials, issueAge, linkedWorkspaces, stateShape } from './model'
+import { WorkCard } from './WorkCard'
 
 /** The selected issue: what Linear says about it, the workspaces already working on it, and the buttons that start work. */
 export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summary?: LinearIssue; tick: number; onPlanned: () => void }) {
@@ -68,6 +52,8 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
   const room = choices.find((r) => r.id === (picked?.issue === id ? picked.room : undefined)) ?? linkedRoom ?? choices.find((r) => r.id === lastRoomId) ?? choices[0]
   const lead = (room && agents[room.id]?.find((a) => a.lead)?.name) || 'Kernel'
   const linked = linkedWorkspaces(id, workspaces)
+  // The one furthest along, which the footer's main button opens.
+  const work = linked[0]
   const unlinked = !!issue && settled && !linkedRoom && !!room
 
   const plan = () => room && run('plan', async () => {
@@ -102,7 +88,10 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
       <div className="is-scroll">
         <div className="is-inner">
           <div className="col" style={{ gap: 6 }}>
-            <span className="mono muted is-key">{issue.id}</span>
+            <span className="is-keyline">
+              <span className="mono muted is-key">{issue.id}</span>
+              <a className="is-ext" href={issue.url} target="_blank" rel="noreferrer" aria-label={`Open ${issue.id} in Linear`}><Icon name="ext" size={14} /></a>
+            </span>
             <h2>{issue.title}</h2>
           </div>
 
@@ -121,12 +110,7 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
             <dd>{issue.labels.length ? issue.labels.map((l) => <span key={l} className="is-label">{l}</span>) : <span className="muted">None</span>}</dd>
           </dl>
 
-          {linked.length > 0 && (
-            <section aria-label="Linked workspaces" className="is-sec">
-              <h3>Linked workspaces</h3>
-              <ul className="is-linked">{linked.map((w) => <Linked key={w.id} ws={w} />)}</ul>
-            </section>
-          )}
+          <WorkCard linked={linked} />
 
           {detail ? (
             <>
@@ -170,9 +154,9 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
               />
             )}
             <span className="grow" />
-            <a className="btn lg" href={issue.url} target="_blank" rel="noreferrer">Open in Linear<Icon name="ext" size={12} /></a>
             <Button size="lg" disabled={!room} onClick={newChat}>New chat</Button>
-            <Button size="lg" variant="primary" busy={busy === 'plan'} busyPattern="arrow-right" busyLabel="Sending" disabled={!room || busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
+            <Button size="lg" variant={work ? 'secondary' : 'primary'} busy={busy === 'plan'} busyPattern="arrow-right" busyLabel="Sending" disabled={!room || busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
+            {work && <Button size="lg" variant="primary" onClick={() => go({ name: 'workspace', workspaceId: work.id })}>Open workspace</Button>}
           </div>
         </div>
       </div>

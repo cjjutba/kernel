@@ -3,15 +3,16 @@ import type { LinearIssue, LinearScope } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { getState, go, useStore } from '../../store'
 import { readSaved as readStored, writeSaved } from '../../remember'
-import { Button, FailedState, Icon, NotConnectedState, Pill, Spinner, useListKeys } from '../../ui'
+import { Button, EmptyList, FailedState, Icon, NotConnectedState, Pill, useListKeys } from '../../ui'
 import { IssuePriority, IssueState } from '../../icons'
 import { IssueDetail } from './IssueDetail'
-import { CapNote, FilterChip, RefreshNotice, type RoomHead } from './parts'
+import { CapNote, FilterChip, IssueSkeleton, RefreshNotice, type RoomHead } from './parts'
+import { RowStatus, useReadPrs } from './WorkCard'
 import { WorkHeader } from '../work/WorkHeader'
 import { useOpenPrCount } from '../prs/model'
 import {
   clearedFilter, cyclesFor, cycleLabel, describeFilter, fitFilter, FILTER_KEY, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces,
-  parseFilter, projectsFor, rowStatus, serializeFilter, stateShape, workspaceSlug, type SavedFilter
+  parseFilter, projectsFor, rowState, serializeFilter, stateShape, workspaceSlug, type SavedFilter
 } from './model'
 import './issues.css'
 
@@ -46,6 +47,9 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
   const agents = useStore((s) => s.agents)
   const chats = useStore((s) => s.chats)
   const running = useStore((s) => s.running)
+  const prs = useStore((s) => s.prs)
+  // Groups folded up by the person, by group key. A fold lasts while the screen is open.
+  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
   const [view, setView] = useState<View>({ kind: 'loading' })
   const [problem, setProblem] = useState<View | null>(null)
   const [scope, setScope] = useState<LinearScope | null>(null)
@@ -134,16 +138,23 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
   const list = lists?.[filter.mine ? 'mine' : 'all'] ?? []
   const groups = useMemo(() => groupIssues(list), [list])
   const flat = useMemo(() => flatIssues(groups), [groups])
-  const selId = sel ?? flat[0]?.id
+  const groupKey = (g: { type: string; name: string }) => `${g.type}:${g.name}`
+  // The rows a key can reach: those in a group that is open.
+  const visible = useMemo(() => flatIssues(groups.filter((g) => !folded.has(groupKey(g)))), [groups, folded])
+  const selId = sel ?? visible[0]?.id ?? flat[0]?.id
   const cur = flat.find((i) => i.id === selId)
+  const fold = (key: string) => setFolded((f) => { const n = new Set(f); if (!n.delete(key)) n.add(key); return n })
 
+  // The PRs behind the rows are read once, so a failing PR can say how many checks fail.
+  const rowLinked = useMemo(() => flat.flatMap((i) => linkedWorkspaces(i.id, workspaces)), [flat, workspaces])
+  useReadPrs(rowLinked)
   const status = useMemo(() => {
     const runningOf = (w: { id: string }) => (chats[w.id] ?? []).some((c) => running[c.id])
-    return new Map(flat.map((i) => [i.id, rowStatus(linkedWorkspaces(i.id, workspaces), agents, runningOf)]))
-  }, [flat, workspaces, agents, chats, running])
+    return new Map(flat.map((i) => [i.id, rowState(linkedWorkspaces(i.id, workspaces), agents, runningOf, prs)]))
+  }, [flat, workspaces, agents, chats, running, prs])
 
   const keys = useListKeys({
-    ids: useMemo(() => flat.map((i) => i.id), [flat]),
+    ids: useMemo(() => visible.map((i) => i.id), [visible]),
     rowId: (id) => `is-${id}`,
     current: selId,
     onCurrent: setSel,
@@ -184,14 +195,10 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
         </div>
       )}
 
-      {shown.kind === 'loading' && <div className="is-center is-loading" role="status"><Spinner label={null} pattern="arrow-down" />Loading issues</div>}
+      {shown.kind === 'loading' && <IssueSkeleton />}
 
       {shown.kind === 'connect' && (
-        <div className="is-center is-state">
-          <h2>Connect Linear</h2>
-          <p>See the issues assigned to you, plan them with Kernel and start a chat from any of them.</p>
-          <Button variant="primary" size="lg" onClick={() => go({ name: 'settings', page: 'integrations' })}>Open Settings, Integrations</Button>
-        </div>
+        <NotConnectedState icon="plug" title="Connect Linear" page="integrations" label="Open Settings, Integrations">See the issues assigned to you, plan them with Kernel and start a chat from any of them.</NotConnectedState>
       )}
 
       {shown.kind === 'rejected' && (
@@ -210,22 +217,34 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
       {ready && scope && flat.length === 0 && (() => {
         const d = describeFilter({ ...filter, query }, scope)
         const none = d.fits.length === 0
+        // Mine is what narrows most often, so the way out names it: All shows every open issue the other filters leave.
+        const showAll = filter.mine && !query.trim() && !filter.projectId && !filter.cycleId && (lists?.all.length ?? 0) > 0
         return (
-          <div className="is-center is-state">
-            <h2>{none ? 'No open issues' : 'No issues match'}</h2>
-            <p>{none ? `Nothing is open in ${d.where}.` : `Nothing in ${d.where} fits ${joinFits(d.fits)}. ${filter.mine ? 'Try All instead of Mine, or clear the filters.' : 'Try clearing the filters.'}`}</p>
-            {!none && <Button size="lg" onClick={() => { setQuery(''); setFilter(clearedFilter(scope)) }}>Clear filters</Button>}
-          </div>
+          <EmptyList
+            icon="search"
+            title={none ? 'No open issues' : 'No issues match'}
+            action={showAll ? <Button size="lg" onClick={() => set({ mine: false })}>Show all issues</Button> : !none ? <Button size="lg" onClick={() => { setQuery(''); setFilter(clearedFilter(scope)) }}>Clear filters</Button> : undefined}
+          >
+            {none ? `Nothing is open in ${d.where}.` : `Nothing in ${d.where} fits ${joinFits(d.fits)}. ${filter.mine ? 'Try All instead of Mine, or clear the filters.' : 'Try clearing the filters.'}`}
+          </EmptyList>
         )
       })()}
 
       {ready && flat.length > 0 && (
         <div className="is-body">
           <div className="is-list" aria-label="Issues" onKeyDown={keys.onKeyDown}>
-            {groups.map((g) => (
-              <section key={`${g.type}:${g.name}`} aria-label={g.name}>
-                <h3 className="is-group"><span className="is-slot"><IssueState shape={stateShape(g.type)} /></span><span>{g.name}</span><span className="muted">{g.issues.length}</span></h3>
-                <ul>
+            {groups.map((g) => {
+              const key = groupKey(g)
+              const open = !folded.has(key)
+              return (
+              <section key={key} aria-label={g.name}>
+                <h3 className="is-group">
+                  <button type="button" className="is-fold" aria-expanded={open} aria-label={`${g.name}, ${g.issues.length}`} onClick={() => fold(key)}>
+                    <span className="is-chev" data-open={open}><Icon name="chevron" size={12} /></span>
+                    <span className="is-slot"><IssueState shape={stateShape(g.type)} /></span><span>{g.name}</span><span className="muted">{g.issues.length}</span>
+                  </button>
+                </h3>
+                {open && <ul>
                   {g.issues.map((i) => {
                     const live = status.get(i.id)
                     return (
@@ -240,17 +259,18 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
                               {i.project && <span className="ellipsis">{i.project.name}</span>}
                             </span>
                           </span>
-                          <span className="is-right" data-live={live ? 'true' : undefined}>
-                            {live ?? issueAge(i.updatedAt)}
+                          <span className="is-right">
+                            {live ? <RowStatus who={live.who} state={live} /> : issueAge(i.updatedAt)}
                             {!filter.mine && i.assignee && <span className="is-av" role="img" aria-label={`Assigned to ${i.assignee.name}`}>{initials(i.assignee.name)}</span>}
                           </span>
                         </button>
                       </li>
                     )
                   })}
-                </ul>
+                </ul>}
               </section>
-            ))}
+              )
+            })}
             {list.length >= 100 && <CapNote>Showing the 100 issues updated most recently. Narrow by project, cycle or search to find the rest.</CapNote>}
           </div>
           <div className="is-pane" ref={detail}>

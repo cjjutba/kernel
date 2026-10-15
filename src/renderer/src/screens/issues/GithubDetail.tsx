@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { GithubIssue, GithubIssueDetail, Room } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions, useStore } from '../../store'
+import { actions, go, useStore } from '../../store'
 import { Button, FailedState, Icon, Skeleton, useBusy } from '../../ui'
 import { IssueState } from '../../icons'
 import { openLeadChat, openNewChat } from '../../lead'
 import { Markdown } from '../workspace/markdown'
-import { Linked } from './IssueDetail'
+import { WorkCard } from './WorkCard'
 import { DescriptionFailed } from './parts'
 import { markJustSent } from '../workspace/chatPlace'
 import { githubPlanParts, issueAge, linkedWorkspaces, loginInitials } from './model'
@@ -78,12 +78,7 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
             <dd className="is-wide">{issue.labels.length ? issue.labels.map((l) => <span key={l} className="is-label">{l}</span>) : <span className="muted">None</span>}</dd>
           </dl>
 
-          {linked.length > 0 && (
-            <section aria-label="Linked workspaces" className="is-sec">
-              <h3>Linked workspaces</h3>
-              <ul className="is-linked">{linked.map((w) => <Linked key={w.id} ws={w} />)}</ul>
-            </section>
-          )}
+          <WorkCard linked={linked} />
 
           {detail ? (
             <>
@@ -116,7 +111,8 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
             <span className="grow" />
             {issue.url && <a className="btn lg" href={issue.url} target="_blank" rel="noreferrer">Open on GitHub<Icon name="ext" size={12} /></a>}
             <Button size="lg" onClick={newChat}>New chat</Button>
-            <Button size="lg" variant="primary" busy={busy === 'plan'} busyPattern="arrow-right" busyLabel="Sending" disabled={busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
+            <Button size="lg" variant={linked[0] ? 'secondary' : 'primary'} busy={busy === 'plan'} busyPattern="arrow-right" busyLabel="Sending" disabled={busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
+            {linked[0] && <Button size="lg" variant="primary" onClick={() => go({ name: 'workspace', workspaceId: linked[0].id })}>Open workspace</Button>}
           </div>
         </div>
       </div>
