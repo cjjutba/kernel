@@ -284,7 +284,8 @@ export interface SessionDeps {
 export interface UsageRead { provider: Provider; accountId?: string; read?: (merge: (p: LimitPatch[]) => void) => Promise<void> }
 
 /** Who sent a message the user didn't type, the Team update card it carries (KERNEL-116), and the plan approval it answers. */
-export interface Sender { from?: MessageFrom; update?: TeamUpdate; approvalId?: string }
+/** `clientId` is the id the window drew the message under (KERNEL-894), which its queued message and its row take. */
+export interface Sender { from?: MessageFrom; update?: TeamUpdate; approvalId?: string; clientId?: string }
 
 /** Who started a turn. */
 export type TurnBy = MessageFrom | 'user'
@@ -305,6 +306,10 @@ export type { QueueReason }
 
 /** The sender fields to store on a chat item or queue entry, leaving out the ones that aren't set. */
 const sender = (o: Sender): Sender => ({ ...(o.from ? { from: o.from } : {}), ...(o.update ? { update: o.update } : {}), ...(o.approvalId ? { approvalId: o.approvalId } : {}) })
+
+/** A message as it waits in a chat's queue: under the window's id when it gave one, so the row it becomes keeps it. */
+const queuedOf = (chatId: string, parts: ChatPart[], o: Sender): QueuedMessage =>
+  ({ id: o.clientId ?? randomUUID(), chatId, parts, ts: Date.now(), ...sender(o), ...(o.clientId ? { clientId: o.clientId } : {}) })
 
 /** Setup passed and the brief waits for PRs to merge (KERNEL-259). A chat held while its setup runs or failed waits for setup. */
 const heldForMerge = (ws?: Workspace) => ws?.status === 'ready' && !!ws.waitsFor?.held
@@ -545,7 +550,7 @@ export class Sessions {
    */
   hold(chatId: string, parts?: ChatPart[], o: Sender = {}) {
     this.waiting.add(chatId)
-    this.setQueue(chatId, parts ? [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }] : this.queued(chatId))
+    this.setQueue(chatId, parts && !this.known(chatId, o.clientId) ? [...this.queued(chatId), queuedOf(chatId, parts, o)] : this.queued(chatId))
   }
 
   /** The chat is held for its workspace's setup or a merge (`hold`), whatever its queue holds. */
@@ -779,23 +784,37 @@ export class Sessions {
    * (edit or remove it until it goes) and is sent, in order, when the turn ends. `why` says what it waits for.
    * `from` marks a message the user didn't type, and it stays on the message while it waits (KERNEL-116).
    */
-  async send(chatId: string, parts: ChatPart[], o: Sender = {}): Promise<{ queued: boolean; why?: QueueReason }> {
+  async send(chatId: string, parts: ChatPart[], o: Sender = {}): Promise<{ queued: boolean; why?: QueueReason; item?: ChatItem }> {
     const chat = this.mustChat(chatId)
     this.mustHaveFolder(chat)
+    // A double send: the window's id is already in the chat, so the message stays as it is (KERNEL-894).
+    const known = this.known(chatId, o.clientId)
+    if (known) return known
     // The user is redirecting the Lead, even when the message waits in the queue, so no hand-off reminder follows.
     if (o.from !== 'kernel') { this.handoffs.done(chatId); this.d.openItems?.userSent(chatId) }
     // Kernel is quitting, as when an interrupted Lead turn messages a teammate: the message is saved and goes at the next launch.
     if (this.closing) {
-      this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }])
+      this.setQueue(chatId, [...this.queued(chatId), queuedOf(chatId, parts, o)])
       return { queued: true }
     }
     const why = this.waitsFor(chat.id)
     if (why) {
-      this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }])
+      this.setQueue(chatId, [...this.queued(chatId), queuedOf(chatId, parts, o)])
       return { queued: true, why }
     }
-    this.dispatch(chat, parts, o)
-    return { queued: false }
+    const item = this.dispatch(chat, parts, o)
+    return { queued: false, ...(item ? { item } : {}) }
+  }
+
+  /**
+   * What the chat already holds under the window's id `clientId`: its row, or its queued message while it waits (KERNEL-894).
+   * Nothing for a new id, or no id.
+   */
+  private known(chatId: string, clientId?: string): { queued: boolean; why?: QueueReason; item?: ChatItem } | undefined {
+    if (!clientId) return undefined
+    if (this.queued(chatId).some((q) => q.id === clientId)) return { queued: true, why: this.waitsFor(chatId) }
+    const item = this.d.store.items(chatId).find((i) => i.id === clientId)
+    return item ? { queued: false, item } : undefined
   }
 
   /**
@@ -808,7 +827,7 @@ export class Sessions {
     // One message with nothing ahead of it is an ordinary send.
     if (messages.length === 1 && !this.queued(chatId).length) return this.send(chatId, messages[0].parts, sender(messages[0]))
     if (messages.some((m) => m.from !== 'kernel')) { this.handoffs.done(chatId); this.d.openItems?.userSent(chatId) }
-    this.setQueue(chatId, [...this.queued(chatId), ...messages.map((m) => ({ id: randomUUID(), chatId, parts: m.parts, ts: Date.now(), ...sender(m) }))])
+    this.setQueue(chatId, [...this.queued(chatId), ...messages.filter((m) => !this.known(chatId, m.clientId)).map((m) => queuedOf(chatId, m.parts, m))])
     if (this.closing) return { queued: true }
     const why = this.waitsFor(chatId)
     if (why) return { queued: true, why }
@@ -900,9 +919,11 @@ export class Sessions {
    * held only by the agent limit, or by a usage window close to its limit, sends it at once. `pastPause` sends it from an idle
    * chat even though its project is paused, which Kernel asks for when a limit paused it.
    */
-  async sendNow(chatId: string, id: string, o: { pastPause?: boolean } = {}): Promise<QueuedMessage[]> {
-    const pick = this.queued(chatId).find((q) => q.id === id)
-    if (!pick) return this.queued(chatId)
+  async sendNow(chatId: string, id: string, o: { pastPause?: boolean; clientId?: string } = {}): Promise<QueuedMessage[]> {
+    const found = this.queued(chatId).find((q) => q.id === id)
+    if (!found) return this.queued(chatId)
+    // The row goes under the window's id (KERNEL-894), unless the chat already has it.
+    const pick = o.clientId && o.clientId !== id && !this.known(chatId, o.clientId) ? { ...found, id: o.clientId, clientId: o.clientId } : found
     const rest = this.queued(chatId).filter((q) => q.id !== id)
     this.setQueue(chatId, [pick, ...rest])
     const live = this.live.get(chatId)
@@ -920,7 +941,7 @@ export class Sessions {
    * turn's result). It keeps its sender, so a Kernel update sent again is still Kernel's and leaves a pending hand-off
    * reminder alone. Returns the copy when it waits in the queue, so Retry now can send it first.
    */
-  async retry(chatId: string, itemId: string): Promise<QueuedMessage | undefined> {
+  async retry(chatId: string, itemId: string, clientId?: string): Promise<QueuedMessage | undefined> {
     const items = this.d.store.items(chatId)
     const at = items.findIndex((i) => i.id === itemId)
     if (at < 0) throw new Error('That message is no longer in this chat.')
@@ -928,8 +949,8 @@ export class Sessions {
     if (!user) throw new Error('There is no message to send again.')
     // An update from before KERNEL-116 carries no marker, only its header.
     const from = user.from ?? (isKernelUpdate(user) ? 'kernel' : undefined)
-    const { queued } = await this.send(chatId, user.parts, { from, update: user.update })
-    return queued ? this.queued(chatId).at(-1) : undefined
+    const { queued } = await this.send(chatId, user.parts, { from, update: user.update, clientId })
+    return queued ? this.queued(chatId).find((q) => q.id === clientId) ?? this.queued(chatId).at(-1) : undefined
   }
 
   /**
@@ -937,9 +958,9 @@ export class Sessions {
    * and sender, right after the first, and Claude Code reads them all as one message, in order. The turn's row and sender
    * stay the first message's.
    */
-  private dispatch(chat: Chat, parts: ChatPart[], o: Sender = {}, more: QueuedMessage[] = []) {
+  private dispatch(chat: Chat, parts: ChatPart[], o: Sender = {}, more: QueuedMessage[] = []): (ChatItem & { kind: 'user' }) | undefined {
     const ws = this.mustWorkspace(chat.workspaceId)
-    if (this.moveFirst(chat, ws, parts, o, more)) return
+    if (this.moveFirst(chat, ws, parts, o, more)) return undefined
     // The move's decision can have used up the chat's choice (KERNEL-844).
     chat = this.unsuggest(this.d.store.chat(chat.id) ?? chat)
     // A held message going out counts as the user taking over too. Kernel's own updates don't.
@@ -959,9 +980,10 @@ export class Sessions {
     // Read before the chat's account moves, which `coldSize` compares against (KERNEL-844).
     const cold = this.d.coldSize?.(chat) !== undefined
     chat = this.noteAccount(chat)
-    const row: ChatItem & { kind: 'user' } = { kind: 'user', id: randomUUID(), ts: Date.now(), parts, ...sender(o) }
+    // A message the window drew keeps its id, so this row replaces the window's (KERNEL-894).
+    const row: ChatItem & { kind: 'user' } = { kind: 'user', id: o.clientId ?? randomUUID(), ts: Date.now(), parts, ...sender(o) }
     this.item(chat, row)
-    for (const m of more) this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts: m.parts, ...sender(m) })
+    for (const m of more) this.item(chat, { kind: 'user', id: m.clientId ?? randomUUID(), ts: Date.now(), parts: m.parts, ...sender(m) })
     const live = this.live.get(chat.id) ?? this.start(chat, ws)
     live.sentItem = row
     live.cold = cold
@@ -975,6 +997,7 @@ export class Sessions {
     live.sent = [...(note ? [{ type: 'text' as const, text: note }] : []), ...this.withMentions(chat, ws, [...parts, ...more.flatMap((m) => m.parts)])]
     this.push(chat.id, ws, live)
     this.setRunning(chat, ws, live, true)
+    return row
   }
 
   /**
@@ -993,7 +1016,7 @@ export class Sessions {
     if (!from || from === to || done === to) return false
     const plan = this.d.movePlan(chat, to)
     if (!plan || plan.do === 'continue') return false
-    this.setQueue(chat.id, [{ id: randomUUID(), chatId: chat.id, parts, ts: Date.now(), ...sender(o) }, ...more, ...this.queued(chat.id)])
+    this.setQueue(chat.id, [queuedOf(chat.id, parts, o), ...more, ...this.queued(chat.id)])
     if (plan.do === 'ask') {
       this.moveHolds.set(chat.id, to)
       this.d.onMoveHold?.(chat, true)

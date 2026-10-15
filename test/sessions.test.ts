@@ -719,6 +719,115 @@ describe("the user's answer to a card is their message, never the agent's prompt
   })
 })
 
+describe("a message keeps the id the window gave it (KERNEL-894)", () => {
+  afterEach(() => { bus.removeAllListeners('push') })
+
+  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const flush = () => new Promise((r) => setTimeout(r, 10))
+  const text = (t: string) => [{ type: 'text' as const, text: t }]
+
+  async function setup() {
+    const dir = await mkdtemp(join(tmpdir(), 'kernel-ids-'))
+    const store = new Store(join(dir, 'kernel.db'))
+    store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: dir, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
+    const approvals = new Approvals(store)
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
+    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
+    const users = () => store.items('chat').filter((i) => i.kind === 'user')
+    const calls = sdk.calls.length
+    /** The sessions this test started, so a turn can be ended. */
+    const started = () => sdk.calls.slice(calls)
+    const init = async () => { started().at(-1)!.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' }); await flush() }
+    const endTurn = async () => { started().at(-1)!.feed({ type: 'result', subtype: 'success', uuid: `r${sdk.calls.length}-${users().length}`, duration_ms: 5 }); await flush() }
+    return { store, sessions, users, started, init, endTurn }
+  }
+
+  it('gives a message sent without one a new id, as before, and its queued copy another', async () => {
+    const t = await setup()
+    const sent = await t.sessions.send('chat', text('Add a pdf_url column'))
+    expect(sent.queued).toBe(false)
+    expect(sent.item).toEqual(t.users()[0])
+    await t.init()
+    await t.sessions.send('chat', text('Then the index'))
+    const [queued] = t.sessions.queued('chat')
+    expect(queued).not.toHaveProperty('clientId')
+    await t.endTurn()
+    expect(t.users()).toHaveLength(2)
+    expect(t.users()[1].id).not.toBe(queued.id)
+  })
+
+  it('saves the row under its id, with its images and skill as sent, and returns it', async () => {
+    const t = await setup()
+    const image = { type: 'image' as const, name: 'mock.png', dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' }
+    const parts = [{ type: 'skill' as const, name: 'review' }, ...text('Look at this'), image]
+    const sent = await t.sessions.send('chat', parts, { clientId: 'c-1' })
+    expect(sent).toMatchObject({ queued: false, item: { kind: 'user', id: 'c-1', parts } })
+    // The image is saved to a file for the agent, and the row still holds the one the window drew.
+    await vi.waitFor(() => expect(t.started().at(-1)!.sent.length).toBeGreaterThan(0))
+    expect(t.users()).toEqual([expect.objectContaining({ id: 'c-1', parts })])
+  })
+
+  it('ignores a double send: one row, one turn, and the same row back', async () => {
+    const t = await setup()
+    const first = await t.sessions.send('chat', text('Add a pdf_url column'), { clientId: 'c-1' })
+    const again = await t.sessions.send('chat', text('Add a pdf_url column'), { clientId: 'c-1' })
+    expect(again).toEqual({ queued: false, item: first.item })
+    expect(t.users()).toHaveLength(1)
+    expect(t.started()).toHaveLength(1)
+    expect(t.sessions.queued('chat')).toEqual([])
+  })
+
+  it('queues a message behind a running turn under its id, ignores it again, and posts it under the same id', async () => {
+    const t = await setup()
+    await t.sessions.send('chat', text('Add a pdf_url column'))
+    await t.init()
+    expect(await t.sessions.send('chat', text('Then the index'), { clientId: 'c-2' })).toEqual({ queued: true, why: 'running' })
+    expect(await t.sessions.send('chat', text('Then the index'), { clientId: 'c-2' })).toEqual({ queued: true, why: 'running' })
+    expect(t.sessions.queued('chat')).toEqual([expect.objectContaining({ id: 'c-2', clientId: 'c-2', parts: text('Then the index') })])
+    await t.endTurn()
+    expect(t.sessions.queued('chat')).toEqual([])
+    expect(t.users().map((i) => i.id).at(-1)).toBe('c-2')
+    expect(t.users()).toHaveLength(2)
+  })
+
+  it('holds a message for setup under its id and posts it under the same id when setup passes', async () => {
+    const t = await setup()
+    t.sessions.hold('chat', text('Plan it'), { clientId: 'c-3' })
+    t.sessions.hold('chat', text('Plan it'), { clientId: 'c-3' })
+    expect(t.sessions.queued('chat').map((q) => q.id)).toEqual(['c-3'])
+    t.sessions.release('chat')
+    expect(t.users()).toEqual([expect.objectContaining({ id: 'c-3', parts: text('Plan it') })])
+  })
+
+  it('sends a queued message now under the id Send now gives it', async () => {
+    const t = await setup()
+    await t.sessions.send('chat', text('Add a pdf_url column'))
+    await t.init()
+    await t.sessions.send('chat', text('Use the staging bucket'))
+    const queue = await t.sessions.sendNow('chat', t.sessions.queued('chat')[0].id, { clientId: 'c-4' })
+    expect(queue).toEqual([expect.objectContaining({ id: 'c-4', clientId: 'c-4' })])
+    await t.endTurn()
+    expect(t.users().at(-1)).toMatchObject({ id: 'c-4', parts: text('Use the staging bucket') })
+  })
+
+  it('sends Retry under its id, and Retry while a turn runs waits under it', async () => {
+    const t = await setup()
+    const { item } = await t.sessions.send('chat', text('Add a pdf_url column'))
+    await t.init()
+    await t.endTurn()
+    await t.sessions.retry('chat', item!.id, 'c-5')
+    expect(t.users().map((i) => i.id)).toEqual([item!.id, 'c-5'])
+    await t.init()
+    expect(await t.sessions.retry('chat', item!.id, 'c-6')).toMatchObject({ id: 'c-6', clientId: 'c-6' })
+    // The same Retry again is a double send.
+    expect(await t.sessions.retry('chat', item!.id, 'c-6')).toMatchObject({ id: 'c-6' })
+    expect(t.sessions.queued('chat')).toHaveLength(1)
+    await t.endTurn()
+    expect(t.users().map((i) => i.id)).toEqual([item!.id, 'c-5', 'c-6'])
+  })
+})
+
 describe('switching accounts while a chat waits on the user, on Claude (KERNEL-618)', () => {
   afterEach(() => { bus.removeAllListeners('push') })
 
@@ -1244,7 +1353,7 @@ describe('cold re-reads start two at a time (KERNEL-844)', () => {
     const started = () => sdk.calls.map((c) => c.options.cwd)
     const end = async (id: string) => { sdk.calls.find((c) => c.options.cwd === `/tmp/${id}`)!.feed({ type: 'result', subtype: 'success', uuid: `r-${id}`, duration_ms: 5 }); await flush() }
     for (const id of ['big', 'mid', 'small', 'tiny']) await sessions.send(id, [{ type: 'text', text: 'Go on' }])
-    expect(await sessions.send('lead', [{ type: 'text', text: 'Go on' }])).toEqual({ queued: false })
+    expect(await sessions.send('lead', [{ type: 'text', text: 'Go on' }])).toMatchObject({ queued: false })
     await flush()
     expect(started()).toEqual(['/tmp/big', '/tmp/mid', '/tmp/lead'])
     expect([sessions.queueReason('small'), sessions.queueReason('tiny')]).toEqual(['capacity', 'capacity'])

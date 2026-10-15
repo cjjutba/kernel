@@ -31,7 +31,7 @@ export class Chats extends Feature {
    * Send now in a project a limit paused sends the message anyway. If the limit is real, Claude Code answers with it and
    * the project stays paused; if it lifted, the answer's rate_limit_event lifts it in Kernel too.
    */
-  private async sendNow(chatId: string, id: string) {
+  private async sendNow(chatId: string, id: string, clientId?: string) {
     const ws = this.mustWs(this.mustChat(chatId).workspaceId)
     // A brief held for a merge goes now, without waiting (KERNEL-259), and the teammate still hears when it merges (KERNEL-689).
     // One held because setup failed still waits for Run again.
@@ -41,7 +41,7 @@ export class Chats extends Feature {
       return this.sessions.queued(chatId)
     }
     const project = this.store.project(ws.projectId)
-    return this.sessions.sendNow(chatId, id, { pastPause: project?.pausedBy === 'limit' })
+    return this.sessions.sendNow(chatId, id, { pastPause: project?.pausedBy === 'limit', clientId })
   }
 
   /**
@@ -398,18 +398,18 @@ export class Chats extends Feature {
       'chats.runMode': async ({ chatId }) => this.sessions.runMode(chatId),
       'chats.live': async () => ({ running: this.sessions.runningIds(), retry: this.sessions.retries() }),
       'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
-      'chats.sendNow': async ({ chatId, id }) => this.sendNow(chatId, id),
-      'chats.retry': async ({ chatId, itemId, now }) => {
+      'chats.sendNow': async ({ chatId, id, clientId }) => this.sendNow(chatId, id, clientId),
+      'chats.retry': async ({ chatId, itemId, now, clientId }) => {
         // Sending their own message again is the user stepping in; a Kernel update sent again isn't.
         const items = this.store.items(chatId)
         const sent = items.slice(0, items.findIndex((i) => i.id === itemId) + 1).reverse().find(isSentItem)
         if (sent && !sent.from && !isKernelUpdate(sent)) this.k.lead.userSpoke(chatId)
-        const copy = await this.sessions.retry(chatId, itemId)
+        const copy = await this.sessions.retry(chatId, itemId, clientId)
         // Retry now: the copy goes first and the running turn stops, past a limit's pause as Send now does.
         if (now && copy) await this.sendNow(chatId, copy.id)
         return { ok: true }
       },
-      'chats.send': async ({ chatId, parts }) => { this.k.lead.userSpoke(chatId); return this.sessions.send(chatId, parts) },
+      'chats.send': async ({ chatId, parts, clientId }) => { this.k.lead.userSpoke(chatId); return this.sessions.send(chatId, parts, { clientId }) },
       'chats.interrupt': async ({ chatId }) => { await this.sessions.interrupt(chatId); return { ok: true } },
       'chats.configure': async ({ chatId, ...patch }) => {
         const chat = this.mustChat(chatId)

@@ -1256,7 +1256,7 @@ describe('who sent a message (KERNEL-116)', () => {
     s.sessions.dropHeld('ws')
     expect(s.sessions.queued('held')).toEqual([])
     // Restored, the chat no longer waits for a setup that will never run again.
-    expect(await s.sessions.send('held', [{ type: 'text', text: 'Back again' }])).toEqual({ queued: false })
+    expect(await s.sessions.send('held', [{ type: 'text', text: 'Back again' }])).toMatchObject({ queued: false })
   })
 
   it('reports a session that ended on its own, mid-turn or idle, and not one that was stopped', async () => {
@@ -2010,7 +2010,7 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
     expect(s.sessions.queueReason('chat')).toBe('limit')
     expect(s.sessions.isRunning('chat')).toBe(false)
     // The Lead's chats are never held, so Kernel can still answer the user.
-    expect(await s.sessions.send('leadChat', text('Plan it'))).toEqual({ queued: false })
+    expect(await s.sessions.send('leadChat', text('Plan it'))).toMatchObject({ queued: false })
     expect(s.sessions.isRunning('leadChat')).toBe(true)
     expect(sdk.calls).toHaveLength(before + 1)
     await flush()
@@ -2529,7 +2529,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     expect(next.sessions.isRunning('third')).toBe(true)
     expect(next.sessions.isRunning('chat')).toBe(false)
     expect(next.sessions.queued('chat').map((q) => q.parts[0].type === 'text' && q.parts[0].text)).toEqual(['Then add a test', RELAUNCH_NUDGE])
-    expect(await next.sessions.send('other', [{ type: 'text', text: 'Export it' }])).toEqual({ queued: false })
+    expect(await next.sessions.send('other', [{ type: 'text', text: 'Export it' }])).toMatchObject({ queued: false })
     expect(next.sessions.isRunning('other')).toBe(true)
     // A turn ending elsewhere drains queues, but not the chat that waits for the check.
     next.started().find((c) => c.options.cwd === '/tmp/ws2')!.feed(result('r-other'))
