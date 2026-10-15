@@ -611,6 +611,18 @@ const roomSetupTeam = (f: Fixture, team?: TeamConfig): Partial<Fixture> => {
   }
 }
 
+/** Audit states (docs/audits/ux-team.md): a Linear list far past a screenful, with titles that wrap. */
+const manyIssues = (): LinearIssueDetail[] => {
+  const base = linearIssues()
+  return Array.from({ length: 120 }, (_, i) => {
+    const b = base[i % base.length]
+    return { ...b, id: `KERNEL-${200 + i}`, identifier: `KERNEL-${200 + i}`, title: i % 7 === 0 ? `${b.title}, including every edge case the billing team listed in the long planning thread from last quarter` : b.title }
+  })
+}
+
+/** Setup that stopped on its install step. */
+const failedSteps: RoomSetupStep[] = setupSteps.map((s) => (s.id === 'install' ? { ...s, state: 'fail' as const, meta: '38s', error: 'pnpm install exited with code 1' } : s.id === 'clone' || s.id === 'worktrees' ? s : { ...s, state: 'wait' as const }))
+
 export const teamFixtures: Record<string, Fixture> = {
   // KERNEL-253: Client B has its GitHub avatar, in grayscale, in the sidebar and on its card in the Rooms list.
   SidebarRoomIcon: scene((f) => {
@@ -630,6 +642,8 @@ export const teamFixtures: Record<string, Fixture> = {
   // No PNG: Lead chat 3, then Settings and back, then another workspace and back (KERNEL-199). The test opens it in Electron.
   NavMemory: scene(navMemory),
   History: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history' } } })),
+  // Audit (docs/audits/ux-team.md): nothing archived yet.
+  HistoryEmpty: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'history' } } })),
   // Archived in a room's menu: History for Client A alone.
   HistoryRoom: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history', roomId: ids.roomA } } })),
   // Search with "archived" typed: the archived workspaces, which a pick restores and opens.
@@ -674,6 +688,8 @@ export const teamFixtures: Record<string, Fixture> = {
     return { ...home, approvals: [ap, ...home.approvals!], notifications: [n, ...home.notifications!], ui: { route: { name: 'inbox' } } }
   }),
   InboxEmpty: scene((f) => ({ ...homeScene(f), approvals: [], notifications: [], ui: { route: { name: 'inbox' } } })),
+  // Audit: 80 notifications, to see the list scroll and the detail pane keep its place.
+  InboxMany: scene((f) => { const h = homeScene(f); return { ...h, notifications: Array.from({ length: 80 }, (_, i) => ({ ...h.notifications![i % h.notifications!.length], id: `n-many-${i}`, createdAt: ago((i + 1) * 20 * MIN) })), ui: { route: { name: 'inbox' } } } }),
   // No PNG: Settings, Appearance, Density set to Compact, which tightens the inbox rows too (KERNEL-538).
   InboxCompact: scene((f) => ({ ...homeScene(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), appearance: { ...DEFAULT_SETTINGS('/Users/you').appearance, density: 'compact' } }, ui: { route: { name: 'inbox' } } })),
   // No PNG: two agents in the same file. The newest row, so the detail pane opens on it.
@@ -691,11 +707,19 @@ export const teamFixtures: Record<string, Fixture> = {
     return { ...home, workspaces: home.workspaces!.map((w) => (w.id === ids.table ? { ...w, status: 'trust' as const, createdAt: Date.now() } : w)), ui: { route: { name: 'inbox' } } }
   }),
   Rooms: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'rooms' } } })),
+  // Audit: no room added yet, and the Rooms page on its own.
+  RoomsEmpty: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'rooms' } } })),
   NewRoom: scene((f) => ({
     ...roomsScene(f),
     ui: { route: { name: 'rooms' }, modal: { name: 'newRoom', prefill: { source: 'repo', name: 'Client C', desc: 'Booking dashboard for a dental clinic', from: 'samrivera/client-c', baseBranch: 'main' } } }
   })),
   ConnectRepo: scene((f) => ({ ...roomsScene(f), repos, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
+  // Audit: the repo list never answers, and the signed-in account has no repos.
+  ConnectRepoLoading: scene((f) => ({ ...roomsScene(f), hold: ['github.repos'], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
+  ConnectRepoEmpty: scene((f) => ({ ...roomsScene(f), repos: [], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
+  // Audit: the recent folders never answer, and there are none.
+  OpenFolderLoading: scene((f) => ({ ...roomsScene(f), hold: ['rooms.recentFolders'], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
+  OpenFolderEmpty: scene((f) => ({ ...roomsScene(f), folders: [], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   OpenFolder: scene((f) => ({
     ...roomsScene(f),
     folders: [
@@ -716,6 +740,13 @@ export const teamFixtures: Record<string, Fixture> = {
     ...roomsScene(f),
     rooms: [...f.rooms, clientC],
     push: [{ type: 'room.setup', roomId: clientC.id, steps: warnSteps }],
+    ui: { route: { name: 'onboarding', step: 'room', roomId: clientC.id } }
+  })),
+  // Audit: the install step failed and the later steps never ran.
+  RoomSetupFailed: scene((f) => ({
+    ...roomsScene(f),
+    rooms: [...f.rooms, clientC],
+    push: [{ type: 'room.setup', roomId: clientC.id, steps: failedSteps }],
     ui: { route: { name: 'onboarding', step: 'room', roomId: clientC.id } }
   })),
   RoomSetupGitHub: scene((f) => ({
@@ -743,6 +774,13 @@ export const teamFixtures: Record<string, Fixture> = {
   PullRequestsNoMerged: scene((f) => prsScene(f, { filter: 'merged', none: 'merged' })),
   // KERNEL-759: the tracker read never answers, so the page shows Loading issues with the load loader.
   IssuesLoading: scene((f) => ({ ...issuesScene(f), hold: ['issues.tracker'] })),
+  // Audit: the list is there and the opened issue never answers; 120 issues with long titles; and the same two for GitHub.
+  IssuesDetailLoading: scene((f) => ({ ...issuesScene(f), hold: ['linear.issue'] })),
+  IssuesMany: scene((f) => issuesScene(f, { issueId: 'KERNEL-200', issues: manyIssues() })),
+  IssuesGitHubLoading: scene((f) => ({ ...issuesTrackerScene(f, { roomId: ids.roomB }), hold: ['github.issueList'] })),
+  IssuesGitHubEmpty: scene((f) => ({ ...issuesTrackerScene(f, { roomId: ids.roomB }), githubIssues: { [ids.roomB]: [] } })),
+  IssuesGitHubOffline: scene((f) => ({ ...issuesTrackerScene(f, { roomId: ids.roomB }), push: [{ type: 'online', online: false }] })),
+  IssuesGitHubDetailLoading: scene((f) => ({ ...issuesTrackerScene(f, { issueId: '#31', roomId: ids.roomB }), hold: ['github.issue'] })),
   IssuesWorking: scene((f) => issuesScene(f, { issueId: 'KERNEL-24', working: true })),
   IssuesNoRoom: scene((f) => issuesScene(f, { linkedRoom: false })),
   // Nothing assigned to CJ, so the default Mine filter finds nothing.
