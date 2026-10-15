@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { Channel, KernelApi, PushEvent } from '@shared/ipc'
 import type { AppSettings } from '@shared/types'
 
@@ -16,7 +16,11 @@ const api = {
     ipcRenderer.on('kernel:event', wrapped)
     return () => ipcRenderer.removeListener('kernel:event', wrapped)
   },
-  appearance
+  appearance,
+  /** A dropped or picked file's absolute path on the Mac, for an attached file's `src`. Empty for one made in the page (KERNEL-907). */
+  pathOf(file: File): string {
+    return webUtils.getPathForFile(file)
+  }
 }
 
 contextBridge.exposeInMainWorld('kernel', api)

@@ -8,6 +8,8 @@ declare global {
       on(listener: (event: PushEvent) => void): () => void
       /** Settings, Appearance as main read it when it made the window, so the first frame matches it (KERNEL-708). */
       appearance?: AppSettings['appearance']
+      /** A dropped or picked file's absolute path on the Mac, for an attached file's `src`. Empty for one made in the page (KERNEL-907). */
+      pathOf(file: File): string
     }
   }
 }

@@ -283,14 +283,29 @@ export interface SharedAnchor {
 /** A comment on one version of a shared file. `chatId` is the chat it went to, `itemId` its message there, empty when the message was queued. */
 export interface SharedComment { id: string; sharedId: string; version: number; at: number; note: string; anchor: SharedAnchor; chatId: string; itemId: string }
 
+/** What an attached file is, from its first bytes rather than its name (KERNEL-907). */
+export type FileKind = 'pdf' | 'doc' | 'sheet' | 'slides' | 'archive' | 'audio' | 'video' | 'image' | 'text' | 'binary'
+
+/** The caps on attached files (KERNEL-907). The composer checks them as files are added, and main again before it copies any. */
+export const ATTACH_FILE_MAX = 50 * 1024 * 1024
+export const ATTACH_MESSAGE_MAX = 200 * 1024 * 1024
+export const ATTACH_FILES_MAX = 20
+/** A text file up to this size goes inline in the message, as pasted text does. A larger one is saved as a file. */
+export const INLINE_TEXT_MAX = 1024 * 1024
+
 /**
  * Composer parts. Pasted long text becomes a file part carrying its text; images carry a data URL. An image's `path` is
  * where Kernel saved it in the workspace for the agent to Read, relative to the workspace folder (KERNEL-545).
  */
 export type ChatPart =
   | { type: 'text'; text: string }
-  /** `dir` marks a folder from the @ menu: `path` ends in `/` and the agent gets the path, not the files in it. */
-  | { type: 'file'; name: string; path?: string; lines?: number; text?: string; dir?: boolean }
+  /**
+   * `dir` marks a folder from the @ menu: `path` ends in `/` and the agent gets the path, not the files in it.
+   * An attached file has `src`, its absolute path on the Mac (`window.kernel.pathOf`). Sending copies it to the workspace's
+   * `.kernel/attachments/` and sets `path`, `size`, `kind`, `readable` (false when the agent has no way to open it) and, for
+   * a PDF, `pages`. A text file up to `INLINE_TEXT_MAX` gets `text` instead (KERNEL-907).
+   */
+  | { type: 'file'; name: string; path?: string; lines?: number; text?: string; dir?: boolean; src?: string; size?: number; kind?: FileKind; readable?: boolean; pages?: number }
   | { type: 'image'; name: string; dataUrl?: string; width?: number; height?: number; path?: string }
   | { type: 'skill'; name: string }
   /** + > Link issue. `name` is the key, "KERNEL-83" or "#41". */
