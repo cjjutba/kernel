@@ -84,6 +84,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (method === 'turn/start') {
     const turnId = `turn-${++turns}`
+    // Which home ran the turn, for a test of where a chat runs (KERNEL-844).
+    log({ turnOn: home ?? null, text: params.input?.[0]?.text ?? '' })
     let script
     // Text that isn't a script gets one reply, FAKE_CODEX_REPLY or "Done.".
     try { script = JSON.parse(params.input?.[0]?.text ?? '') } catch { script = [{ notify: 'item/completed', params: { item: { type: 'agentMessage', id: `msg-${turnId}`, text: process.env.FAKE_CODEX_REPLY ?? 'Done.', phase: 'final_answer' } } }] }
@@ -146,7 +148,21 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (method === 'account/logout') { if (home) rmSync(join(home, 'auth.json'), { force: true }); return send({ id, result: {} }) }
   // Codex's models, the ids in FAKE_CODEX_MODELS (KERNEL-624).
   if (method === 'model/list') return send({ id, result: { data: JSON.parse(process.env.FAKE_CODEX_MODELS ?? '[]').map((m) => ({ id: m, model: m, displayName: m, description: '', hidden: false, isDefault: false, supportedReasoningEfforts: [], defaultReasoningEffort: 'medium' })), nextCursor: null } })
-  if (method === 'thread/compact/start') return send({ id, result: {} })
+  // Compacting runs as a turn of its own, as Codex 0.153.4 does it, and leaves the thread at FAKE_CODEX_COMPACTED tokens (KERNEL-844).
+  if (method === 'thread/compact/start') {
+    send({ id, result: {} })
+    log({ compactedOn: home ?? null })
+    const turnId = `turn-${++turns}`
+    const compaction = { type: 'contextCompaction', id: `compact-${process.pid}-${turnId}` }
+    const size = Number(process.env.FAKE_CODEX_COMPACTED ?? 2000)
+    const last = { totalTokens: size, inputTokens: size, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0 }
+    send({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: turnId } } })
+    send({ method: 'item/started', params: { item: compaction } })
+    send({ method: 'item/completed', params: { item: compaction } })
+    send({ method: 'thread/tokenUsage/updated', params: { threadId: params.threadId, turnId, tokenUsage: { total: last, last, modelContextWindow: 272000 } } })
+    send(completed(params.threadId, turnId, 'completed'))
+    return
+  }
   // Each home's MCP servers for `mcpServerStatus/list`, a JSON table by CODEX_HOME ('' for none) in FAKE_CODEX_MCP_STATUS (KERNEL-626).
   if (method === 'mcpServerStatus/list') return send({ id, result: { data: JSON.parse(process.env.FAKE_CODEX_MCP_STATUS ?? '{}')[home ?? ''] ?? [], nextCursor: null } })
   // Codex's MCP OAuth (KERNEL-646): the page at once, then the login completes. A server named in FAKE_MCP_FAIL fails with

@@ -1,4 +1,4 @@
-import { MODELS, PROVIDERS, type ClaudeAccount, type Provider, type RateLimit } from '@shared/types'
+import { MODELS, PROVIDERS, type ClaudeAccount, type Provider, type RateLimit, type SwitchReason } from '@shared/types'
 import { nearLimit, resetPhrase, WEEKLY_WARN } from '@shared/usage'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
@@ -26,6 +26,12 @@ const KEYCHAIN = 'keychain'
  * reset across the provider's accounts in seconds, for the Lead (KERNEL-777).
  */
 interface Move { at?: number; state: 'reading' | 'waiting' | 'done'; to?: string; switched?: boolean; why?: 'full' | 'signIn'; until?: number; told?: string }
+
+/**
+ * An account Kernel switched to by itself that fills within this long stops Kernel switching by itself, so a run of full
+ * accounts doesn't use up every one (KERNEL-844).
+ */
+const CHAIN_MS = 30 * 60_000
 
 /** How often every account's usage is read while any agent works (KERNEL-567). */
 const USAGE_EVERY_MS = 10 * 60_000
@@ -62,6 +68,12 @@ export class Account extends Feature {
   private usageTimer?: NodeJS.Timeout
   /** Providers whose account in use is near or at a limit, so only crossing into it reads the other accounts. */
   private tight = new Set<Provider>()
+  /** Kernel's last switch of each provider by itself, at a limit or ahead of one, until the user switches (KERNEL-844). */
+  private selfSwitched = new Map<Provider, { from: string; to: string; at: number }>()
+  /** Providers Kernel no longer switches by itself, since an account it switched to filled too soon, until the user switches. */
+  private noSelfSwitch = new Set<Provider>()
+  /** The move-threshold crossing Kernel last acted on, per provider, so each crossing switches once (KERNEL-844). */
+  private aheadOf = new Map<Provider, string>()
 
   start() {
     if (this.o.probeNetwork) {
@@ -234,6 +246,7 @@ export class Account extends Feature {
     this.warnWeekly(limits, now)
     // Before `readOthersWhenTight`, whose read a move off a limit makes itself.
     this.switchAtLimit(limits, now)
+    this.switchAhead(limits, now)
     this.readOthersWhenTight(limits, now)
     // Utilization of a window that holds teammates stays fresh while it holds, so a drop sends what waited.
     const watching = limits.some((l) => l.status === 'rejected') || (holding && !!nearLimit(limits, now))
@@ -260,7 +273,9 @@ export class Account extends Feature {
    * left behind, since it is in use again. `hit` is the window the account it left had hit, when the limit banner or Kernel
    * moved it off a limit, and its reset sends one notification.
    */
-  switched(provider: Provider, to: string | undefined, hit?: RateLimit) {
+  switched(provider: Provider, to: string | undefined, hit?: RateLimit, reason?: SwitchReason) {
+    // The user switching lets Kernel switch by itself again (KERNEL-844).
+    if (reason !== 'limit') { this.selfSwitched.delete(provider); this.noSelfSwitch.delete(provider) }
     for (const [key, w] of this.notifyReset) if (w.left && limitProvider(w.limit) === provider && w.limit.accountId === to) this.notifyReset.delete(key)
     if (hit) this.notifyReset.set(limitKey(hit), { limit: hit, left: true })
   }
@@ -277,7 +292,7 @@ export class Account extends Feature {
       if (!this.settings?.accounts?.switchAtLimit?.[p]) continue
       const from = this.k.providers.active(p)
       const hit = blockingLimit(limits.filter((l) => limitProvider(l) === p && l.accountId === from), now)
-      if (!hit) continue
+      if (!hit || this.chained(p, from, now)) continue
       const key = limitKey(hit)
       const seen = this.moving.get(key)
       if (seen && Math.abs((seen.at ?? 0) - (hit.resetsAt ?? 0)) <= 60) {
@@ -316,8 +331,63 @@ export class Account extends Feature {
       move.state = 'done'
       move.to = to
       // A switch that fails, as on an account that needs a sign-in, leaves the provider where it was (KERNEL-777).
-      void this.k.providers.switchTo(p, to, { reason: 'limit' }).then(() => { move.switched = true }, () => { if (this.moving.get(key) === move) this.moveWaits(p, move, limits, 'signIn') })
+      // Kept before the switch, whose own reading of the limits may already find `to` full (KERNEL-844).
+      const self = this.selfSwitch(p, from, to)
+      void this.k.moves.switchBySelf(p, to, 'limit').then(() => { move.switched = true }, () => { self.undo(); if (this.moving.get(key) === move) this.moveWaits(p, move, limits, 'signIn') })
     })
+  }
+
+  /**
+   * An account Kernel switched `p` to by itself (`selfSwitched`) filled within CHAIN_MS of the switch: Kernel stops switching
+   * `p` by itself, so the rooms wait for the limit as with the switch off, and one Inbox item says why (KERNEL-844). The user
+   * can still switch, which lets Kernel switch by itself again. True while Kernel doesn't switch `p`.
+   */
+  private chained(p: Provider, account: string | undefined, now: number): boolean {
+    if (this.noSelfSwitch.has(p)) return true
+    const last = this.selfSwitched.get(p)
+    if (!last || last.to !== (account ?? 'cli') || now - last.at >= CHAIN_MS) return false
+    this.noSelfSwitch.add(p)
+    const name = this.k.providers.label(p, account)
+    const minutes = Math.max(1, Math.round((now - last.at) / 60_000))
+    const title = `${name} filled within ${minutes} minute${minutes === 1 ? '' : 's'} of the switch, so Kernel stopped moving between accounts`
+    this.notifications.notice({
+      id: `n-switch-chain-${p}-${last.at}`, title, heading: title, sub: 'You can still switch accounts in Settings, Providers.',
+      body: `Kernel switched to ${name} when ${this.k.providers.label(p, last.from)} reached its limit, and ${name} reached its own ${minutes} minute${minutes === 1 ? '' : 's'} later. So that the agents don't use up every account, Kernel won't switch by itself again until you switch accounts yourself. Agents wait for the limit to reset meanwhile.`
+    })
+    return true
+  }
+
+  /** Kernel is about to switch `p` from `from` to `to` by itself. `undo` forgets it when the switch fails. */
+  private selfSwitch(p: Provider, from: string | undefined, to: string) {
+    const was = this.selfSwitched.get(p)
+    const now = { from: from ?? 'cli', to, at: Date.now() }
+    this.selfSwitched.set(p, now)
+    return { undo: () => { if (this.selfSwitched.get(p) !== now) return; if (was) this.selfSwitched.set(p, was); else this.selfSwitched.delete(p) } }
+  }
+
+  /**
+   * Ahead of the limit (KERNEL-844): with "switch at a limit" on and chats kept on their account, the account in use crossing
+   * the move threshold (5 hour 90%, weekly 95%) switches the provider to the account `spareFor` picks, so new chats start
+   * there. Chats on the old account move at their next turn (`Placement.accountFor`), and its idle long chats are summarized
+   * there first while their cache is warm (`Moves.compactAhead`). Once per crossing.
+   */
+  private switchAhead(limits: RateLimit[], now: number) {
+    for (const { id: p } of PROVIDERS) {
+      const from = this.k.providers.active(p)
+      const mine = limits.filter((l) => limitProvider(l) === p && l.accountId === from)
+      const near = this.settings?.accounts?.switchAtLimit?.[p] && this.k.placement.keeps() && !blockingLimit(mine, now) ? nearLimit(mine, now) : undefined
+      if (!near) { this.aheadOf.delete(p); continue }
+      const crossing = `${from ?? 'cli'}:${limitKey(near)}:${Math.round((near.resetsAt ?? 0) / 60)}`
+      if (this.aheadOf.get(p) === crossing) continue
+      this.aheadOf.set(p, crossing)
+      if (this.chained(p, from, now)) continue
+      void this.k.providers.spareFor(p, limits, now).catch(() => undefined).then(async (to) => {
+        if (!to || this.stopped || this.k.providers.active(p) !== from || !this.settings?.accounts?.switchAtLimit?.[p]) return
+        const self = this.selfSwitch(p, from, to)
+        try { await this.k.moves.switchBySelf(p, to, 'near') } catch { self.undo(); return }
+        await this.k.moves.compactAhead(p, from ?? 'cli')
+      }).catch(() => undefined)
+    }
   }
 
   /**

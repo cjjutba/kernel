@@ -83,6 +83,10 @@ interface Live {
   /** The message that started the running turn, and its row, which a fresh session sends again when the resumed one is gone. */
   sent?: ChatPart[]
   sentItem?: ChatItem & { kind: 'user' }
+  /** A compaction runs on the process in place of a turn (`compactOn`), and this hears how it ended (KERNEL-844). */
+  compacting?: (ok: boolean) => void
+  /** The running turn re-reads the chat's history cold, on another account or model, so it takes one of COLD_AT_ONCE (KERNEL-844). */
+  cold?: boolean
 }
 
 /** A process as started: the binary, and its first argument (a script path when the SDK runs node or bun). */
@@ -112,6 +116,27 @@ interface Turns {
 
 /** How many chats a usage limit cut off restart at once when it lifts. Each next one starts when one ends its turn (KERNEL-220). */
 export const RESUME_AT_ONCE = 2
+
+/**
+ * How many chats re-read their history cold at once, as after a switch: the rest wait, smallest first, so a switch doesn't
+ * spend a window on every chat's history in the same minutes. The Lead's chats never wait (KERNEL-844).
+ */
+export const COLD_AT_ONCE = 2
+
+/**
+ * What Claude's /compact keeps when Kernel summarizes a chat before it moves to another account (KERNEL-844). Codex compacts
+ * its thread with no instructions.
+ */
+export const COMPACT_INSTRUCTIONS = 'Keep the task and what is left of it, every file you read or changed, the decisions made and why, and the open questions, so you can carry on from this summary alone.'
+
+/** The note when a turn found the chat too long for its model's context window, so Kernel summarizes it and tries once more (KERNEL-844). */
+export const TOO_LONG_NOTE = 'This chat was too long for the model, so Kernel summarized it and is sending the message again.'
+
+/**
+ * What a chat's next turn does about running on another account than its last one (KERNEL-844): run as it is (`continue`),
+ * wait for the user to choose (`ask`), or `summarize` first on account `on` (`cli` for the CLI's own login), with a note.
+ */
+export type MovePlan = { do: 'continue' } | { do: 'ask' } | { do: 'summarize'; on: string; note?: string }
 
 /** How long a chat with nothing to do keeps its Claude Code process before Kernel stops it. The next message resumes it (KERNEL-183). */
 export const IDLE_STOP_MS = 10 * 60_000
@@ -183,6 +208,18 @@ export interface SessionDeps {
    * (KERNEL-568, KERNEL-842). Without it the chat says nothing.
    */
   moveNote?: (chat: Chat, from: string) => string | undefined
+  /**
+   * What the chat's next turn does about moving from its last account to `to`, by Settings, Account and the chat's own
+   * choice (`Moves.plan`, KERNEL-844). Without it every move just runs.
+   */
+  movePlan?: (chat: Chat, to: string) => MovePlan | undefined
+  /** A long chat started or stopped waiting for the user to choose how it moves (`ask`), for the room's Inbox item (KERNEL-844). */
+  onMoveHold?: (chat: Chat, held: boolean) => void
+  /**
+   * The chat's size in tokens when its next turn re-reads its history cold, on another account or model, else undefined
+   * (`Placement.coldSize`, KERNEL-844). Without it nothing is staggered.
+   */
+  coldSize?: (chat: Chat) => number | undefined
   /** The email of a provider's account as Kernel last read it, undefined `accountId` for the CLI's own login (KERNEL-842). */
   emailOf?: (provider: Provider, accountId: string | undefined) => string | undefined
   /**
@@ -254,10 +291,11 @@ export type TurnBy = MessageFrom | 'user'
 
 /**
  * Why `post` refuses Kernel's message now (KERNEL-637): the chat runs a turn (`busy`), has messages queued, its session died
- * mid-turn, it waits for setup or a launch check, its room is paused, it is offline or signed out, it is held near a usage
- * limit or over the agent limit, or Kernel is closing.
+ * mid-turn, it waits for setup or a launch check, its room is paused, it is offline or signed out, it waits for the user to
+ * choose how it moves to another account, it is held near a usage limit, over the agent limit or behind cold re-reads, or
+ * Kernel is closing.
  */
-export type PostHold = 'busy' | 'queued' | 'crashed' | 'setup' | 'launching' | 'paused' | 'offline' | 'limit' | 'capacity' | 'closing'
+export type PostHold = 'busy' | 'queued' | 'crashed' | 'setup' | 'launching' | 'paused' | 'offline' | 'move' | 'limit' | 'capacity' | 'closing'
 
 /** What stopped a chat mid-turn that carries on by itself: a usage limit, or Kernel quitting or closing (KERNEL-215). */
 export type CutOffReason = 'limit' | 'quit'
@@ -300,6 +338,15 @@ export class Sessions {
   private reasons = new Map<string, QueueReason | undefined>()
   /** Chats whose turn started on another account than their last turn's, by that account, until a turn ends there (KERNEL-842). */
   private moves = new Map<string, string>()
+  /** Long chats that wait for the user to choose how they move, by the account they would move to (KERNEL-844). */
+  private moveHolds = new Map<string, string>()
+  /**
+   * Chats summarized for a move, by the account they move to, until their next turn starts (KERNEL-844). A turn that starts
+   * with another target drops it and decides again, so two quick switches move a chat once.
+   */
+  private compacted = new Map<string, string>()
+  /** Chats whose turn was too long for the model and that Kernel summarized and sent again, until a turn ends well (KERNEL-844). */
+  private shrunk = new Set<string>()
   /** Chats whose queue or reason changed in the current step, sent together by `flushQueues`. */
   private unsent = new Set<string>()
   private managedIds = new Set<string>()
@@ -788,8 +835,9 @@ export class Sessions {
     if (this.unmade(chat)) return 'setup'
     if (this.holding(chatProvider(chat))) return 'offline'
     if (this.pausedChat(chat)) return 'paused'
+    if (this.moveHolds.has(chat.id)) return 'move'
     if (this.nearLimitHolds(chat.id)) return 'limit'
-    if (this.atCapacity(chat.id)) return 'capacity'
+    if (this.atCapacity(chat.id) || this.coldHolds(chat.id)) return 'capacity'
     return undefined
   }
 
@@ -818,8 +866,9 @@ export class Sessions {
     if (this.launching && this.cutOff.has(chatId)) return 'launching'
     if (this.holding(chatProvider(chat))) return 'offline'
     if (this.pausedChat(chat)) return 'paused'
+    if (this.moveHolds.has(chatId)) return 'move'
     if (this.nearLimitHolds(chatId)) return 'limit'
-    if (this.atCapacity(chatId)) return 'capacity'
+    if (this.atCapacity(chatId) || this.coldHolds(chatId)) return 'capacity'
     return undefined
   }
 
@@ -885,7 +934,9 @@ export class Sessions {
    */
   private dispatch(chat: Chat, parts: ChatPart[], o: Sender = {}, more: QueuedMessage[] = []) {
     const ws = this.mustWorkspace(chat.workspaceId)
-    chat = this.unsuggest(chat)
+    if (this.moveFirst(chat, ws, parts, o, more)) return
+    // The move's decision can have used up the chat's choice (KERNEL-844).
+    chat = this.unsuggest(this.d.store.chat(chat.id) ?? chat)
     // A held message going out counts as the user taking over too. Kernel's own updates don't.
     if ([o, ...more].some((m) => m.from !== 'kernel')) { this.handoffs.done(chat.id); this.d.openItems?.userSent(chat.id); this.crashed.delete(chat.id) }
     // The user writing instead of answering ends a Codex plan still waiting after its turn (KERNEL-563).
@@ -900,12 +951,15 @@ export class Sessions {
     // the account the chat runs on now, the one `carryOn` checked for a limit, and the note says so.
     const kept = this.live.get(chat.id)
     if (kept && !kept.running && kept.account !== this.d.accountFor?.(chatProvider(chat), chat)) this.end(chat.id, kept)
+    // Read before the chat's account moves, which `coldSize` compares against (KERNEL-844).
+    const cold = this.d.coldSize?.(chat) !== undefined
     chat = this.noteAccount(chat)
     const row: ChatItem & { kind: 'user' } = { kind: 'user', id: randomUUID(), ts: Date.now(), parts, ...sender(o) }
     this.item(chat, row)
     for (const m of more) this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts: m.parts, ...sender(m) })
     const live = this.live.get(chat.id) ?? this.start(chat, ws)
     live.sentItem = row
+    live.cold = cold
     live.carrying = carrying
     live.failed = undefined
     const turns = this.turnsOf(chat.id)
@@ -916,6 +970,153 @@ export class Sessions {
     live.sent = [...(note ? [{ type: 'text' as const, text: note }] : []), ...this.withMentions(chat, ws, [...parts, ...more.flatMap((m) => m.parts)])]
     this.push(chat.id, ws, live)
     this.setRunning(chat, ws, live, true)
+  }
+
+  /**
+   * A chat about to run its next turn on another account than its last one (KERNEL-844). Decided here, as the turn starts, so
+   * two quick switches move it once. `movePlan` says what Settings, Account and the chat's own choice ask for: run as it is,
+   * wait for the user to choose (the queue waits with `move`), or summarize first on the old or the new account. A chat
+   * summarized for this target already goes. Returns true when the turn waits: its messages go back to the front of the queue
+   * and go out once the user chose or the summary is done. A cut-off chat that waits on a summary carries on through it.
+   */
+  private moveFirst(chat: Chat, ws: Workspace, parts: ChatPart[], o: Sender, more: QueuedMessage[]): boolean {
+    if (!this.d.movePlan || this.closing) return false
+    const from = chat.ranOn
+    const to = this.d.accountFor?.(chatProvider(chat), chat) ?? 'cli'
+    const done = this.compacted.get(chat.id)
+    this.compacted.delete(chat.id)
+    if (!from || from === to || done === to) return false
+    const plan = this.d.movePlan(chat, to)
+    if (!plan || plan.do === 'continue') return false
+    this.setQueue(chat.id, [{ id: randomUUID(), chatId: chat.id, parts, ts: Date.now(), ...sender(o) }, ...more, ...this.queued(chat.id)])
+    if (plan.do === 'ask') {
+      this.moveHolds.set(chat.id, to)
+      this.d.onMoveHold?.(chat, true)
+      this.pushReasons()
+      return true
+    }
+    this.compacted.set(chat.id, to)
+    this.setCutOff(chat.id, false)
+    void this.compactThen(chat, ws, plan.on, plan.note)
+    return true
+  }
+
+  /**
+   * The user chose how a chat held for a move goes (`chats.moveChoice`, KERNEL-844): it no longer waits, and its next turn
+   * decides again with the choice on the chat. A chat a limit cut off carries on.
+   */
+  releaseMove(chatId: string) {
+    if (!this.moveHolds.delete(chatId)) return
+    const chat = this.d.store.chat(chatId)
+    if (chat) this.d.onMoveHold?.(chat, false)
+    if (this.cutOff.has(chatId)) this.carryOn()
+    else if (!this.live.get(chatId)?.running) this.drain(chatId)
+    this.pushReasons()
+  }
+
+  /** The chat waits for the user to choose how it moves to another account (KERNEL-844). */
+  heldForMove(chatId: string): boolean { return this.moveHolds.has(chatId) }
+
+  /**
+   * Holds whose chat no longer moves where it waited to: a switch since put its account back, or another one, or the chat
+   * closed. Each lets go, and the drain that follows decides again (KERNEL-844).
+   */
+  private recheckMoves() {
+    for (const [id, to] of [...this.moveHolds]) {
+      const chat = this.d.store.chat(id)
+      if (chat && this.open(id) && (this.d.accountFor?.(chatProvider(chat), chat) ?? 'cli') === to) continue
+      this.moveHolds.delete(id)
+      if (chat) this.d.onMoveHold?.(chat, false)
+    }
+  }
+
+  /**
+   * Summarizes an idle chat on account `on` now (`cli` for the CLI's own login), as before a move ahead of a limit
+   * (KERNEL-844). Never during a turn: a chat that runs, has messages waiting or anything holding it is left alone. Resolves
+   * true once the summary is done.
+   */
+  async compactIdle(chatId: string, on: string): Promise<boolean> {
+    const chat = this.d.store.chat(chatId)
+    if (!chat || this.closing || !this.open(chatId) || this.queued(chatId).length || this.cutOff.has(chatId) || this.crashed.has(chatId) || this.waitsFor(chatId)) return false
+    return this.compactThen(chat, this.mustWorkspace(chat.workspaceId), on)
+  }
+
+  /** `compactOn`, then the chat's turn is over: what waits for it goes out, and the slot it took frees (KERNEL-844). */
+  private async compactThen(chat: Chat, ws: Workspace, on: string, note?: string): Promise<boolean> {
+    if (note) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: note })
+    const r = await this.compactOn(chat, ws, on)
+    if (r && this.live.get(chat.id) === r.live) this.setRunning(this.mustChat(chat.id), ws, r.live, false)
+    if (!this.live.get(chat.id)?.running) this.drain(chat.id)
+    this.drainWaiting()
+    return !!r?.ok
+  }
+
+  /**
+   * Summarizes the chat on account `on` (`cli` for the CLI's own login) and resolves once that is done, with its process, or
+   * undefined when it couldn't start (KERNEL-844). Claude runs /compact with COMPACT_INSTRUCTIONS. Codex compacts its thread,
+   * which takes no instructions. The chat shows as working meanwhile, so what is sent waits. On another account than the
+   * chat's last, the summary is the chat's move: it reads the whole chat there, and the note after it says so. `inTurn`
+   * compacts in the running turn's process, which stays running.
+   */
+  private async compactOn(chat: Chat, ws: Workspace, on: string, o: { inTurn?: boolean } = {}): Promise<{ live: Live; ok: boolean } | undefined> {
+    const account = on === 'cli' ? undefined : on
+    let live = this.live.get(chat.id)
+    if (live?.running && !o.inTurn) return undefined
+    if (live && live.account !== account && !o.inTurn) { this.end(chat.id, live); live = undefined }
+    if (!live) live = this.start(chat, ws, { account })
+    const cold = !o.inTurn && this.d.coldSize?.(chat) !== undefined && (chat.ranOn ?? 'cli') !== on
+    if (chat.ranOn && chat.ranOn !== on) chat = this.noteAccount(chat)
+    if (!o.inTurn) {
+      live.sent = undefined
+      live.sentItem = undefined
+      this.setRunning(chat, ws, live, true)
+      live.cold = cold
+    }
+    const current = live
+    const ok = await new Promise<boolean>((resolve) => {
+      current.compacting = resolve
+      if (current.runner instanceof CodexRunner) void current.runner.compact().then(() => this.compactEnded(chat.id, current, true), () => this.compactEnded(chat.id, current, false))
+      else current.runner.push([{ type: 'text', text: `/compact ${COMPACT_INSTRUCTIONS}` }])
+    })
+    return { live: current, ok }
+  }
+
+  /** The compaction on `live` ended, or its process did (`ok` false). Its numbers are the chat's last turn, and a move says what it read. */
+  private compactEnded(chatId: string, live: Live, ok: boolean) {
+    const done = live.compacting
+    if (!done) return
+    live.compacting = undefined
+    live.interrupted = false
+    live.sendNext = false
+    const chat = ok ? this.d.store.chat(chatId) : undefined
+    if (chat) this.noteMove(this.recordTurn(chat, live))
+    else live.usage = undefined
+    done(ok)
+  }
+
+  /** After a turn on another account than the chat's last, the note saying where it moved and what that read (KERNEL-842). */
+  private noteMove(chat: Chat) {
+    const from = this.moves.get(chat.id)
+    this.moves.delete(chat.id)
+    const moved = from !== undefined && from !== chat.ranOn ? this.d.moveNote?.(chat, from) : undefined
+    if (moved) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: moved })
+  }
+
+  /**
+   * The running turn found the chat too long for its model (KERNEL-844). Kernel summarizes it in the same process and sends
+   * the turn's message again, once: a second refusal ends the turn as it came. A summary that fails ends it the same way.
+   */
+  private async retryShorter(chatId: string, ws: Workspace, live: Live, t: Parameters<RunnerHost['turnEnded']>[0]) {
+    this.shrunk.add(chatId)
+    const sent = live.sent!
+    live.usage = undefined
+    live.limited = false
+    this.item(this.mustChat(chatId), { kind: 'note', id: randomUUID(), ts: Date.now(), text: TOO_LONG_NOTE })
+    const r = await this.compactOn(this.mustChat(chatId), ws, live.account ?? 'cli', { inTurn: true })
+    if (this.live.get(chatId) !== live || live.runner.closed || this.closing) return
+    if (!r?.ok) { this.turnEnded(chatId, ws, live, t); return }
+    live.sent = sent
+    live.runner.push(sent)
   }
 
   /**
@@ -942,6 +1143,8 @@ export class Sessions {
     const provider = chatProvider(chat)
     const on = (live ? live.account : this.d.accountFor?.(provider, chat)) ?? 'cli'
     this.d.startedOn?.(chat)
+    // Read again: what a turn starting ends, such as a choice for a move, is gone from the saved chat (KERNEL-844).
+    chat = this.d.store.chat(chat.id) ?? chat
     if (chat.ranOn === on) return chat
     if (chat.ranOn && !this.moves.has(chat.id)) this.moves.set(chat.id, chat.ranOn)
     const next = { ...chat, ranOn: on }
@@ -989,7 +1192,7 @@ export class Sessions {
     const queue = this.queued(chatId)
     const [next] = queue
     const chat = this.d.store.chat(chatId)
-    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.unmade(chat) || this.pausedChat(chat) || this.nearLimitHolds(chatId) || this.atCapacity(chatId)) return
+    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.unmade(chat) || this.pausedChat(chat) || this.moveHolds.has(chatId) || this.nearLimitHolds(chatId) || this.atCapacity(chatId) || this.coldHolds(chatId)) return
     const batch = queue.length > 1 && !this.d.store.items(chatId).some((i) => i.kind === 'user') ? firstTurn(queue) : [next]
     this.setQueue(chatId, queue.slice(batch.length))
     this.dispatch(chat, next.parts, next, batch.slice(1))
@@ -1022,6 +1225,27 @@ export class Sessions {
     return running >= max
   }
 
+  /**
+   * The chat's next turn re-reads its history cold (`coldSize`) while COLD_AT_ONCE others do (KERNEL-844). It waits for one
+   * to end, and the smallest waiting goes first (`coldLast`). The Lead's chats neither wait nor take a turn, as with the agent
+   * limit, so the Lead can always answer the user.
+   */
+  private coldHolds(chatId: string): boolean {
+    const chat = this.d.coldSize && !this.isLeadChat(chatId) ? this.d.store.chat(chatId) : undefined
+    if (!chat || this.d.coldSize!(chat) === undefined) return false
+    let cold = 0
+    for (const [id, l] of this.live) if (l.running && l.cold && id !== chatId && !this.isLeadChat(id)) cold++
+    return cold >= COLD_AT_ONCE
+  }
+
+  /** `ids` with the chats whose next turn re-reads cold last, smallest first, in the order they otherwise keep (KERNEL-844). */
+  private coldLast(ids: string[]): string[] {
+    if (!this.d.coldSize) return ids
+    const sizes = new Map(ids.map((id) => { const c = this.d.store.chat(id); return [id, c ? this.d.coldSize!(c) : undefined] as const }))
+    const warm = ids.filter((id) => sizes.get(id) === undefined)
+    return [...warm, ...ids.filter((id) => sizes.get(id) !== undefined).sort((a, b) => sizes.get(a)! - sizes.get(b)!)]
+  }
+
   private isLeadChat(chatId: string): boolean {
     const chat = this.d.store.chat(chatId)
     const ws = chat && this.d.store.workspace(chat.workspaceId)
@@ -1041,7 +1265,8 @@ export class Sessions {
 
   /** A slot opened (a turn ended or the limit went up): start held messages of idle chats, oldest queue first, while there is room. */
   drainWaiting() {
-    for (const id of [...this.queues.keys()]) if (!this.live.get(id)?.running && !this.cutOff.has(id)) this.drain(id)
+    this.recheckMoves()
+    for (const id of this.coldLast([...this.queues.keys()])) if (!this.live.get(id)?.running && !this.cutOff.has(id)) this.drain(id)
     this.carryOn()
     // A lower limit in Settings, Models holds queues that waited for nothing a moment ago.
     this.pushReasons()
@@ -1058,10 +1283,12 @@ export class Sessions {
     if (this.closing || this.launching) return
     // A chat that stopped running has finished the turn it was restarted for, so the next one may go.
     for (const id of this.resuming) if (!this.live.get(id)?.running) this.resuming.delete(id)
-    for (const [id, reason] of [...this.cutOff]) {
+    for (const id of this.coldLast([...this.cutOff.keys()])) {
+      const reason = this.cutOff.get(id)
+      if (!reason) continue
       const chat = this.d.store.chat(id)
       if (!chat || !this.open(id)) { this.setCutOff(id, false); continue }
-      if (this.live.get(id)?.running || this.pausedChat(chat) || this.atCapacity(id) || this.limitHolds(chat) || this.nearLimitHolds(id)) continue
+      if (this.live.get(id)?.running || this.pausedChat(chat) || this.moveHolds.has(id) || this.atCapacity(id) || this.coldHolds(id) || this.limitHolds(chat) || this.nearLimitHolds(id)) continue
       // A lifted limit restarts the chats it cut off two at a time. The next starts when one ends its turn, where `drainWaiting` comes back here (KERNEL-220).
       if (reason === 'limit') {
         if (this.resuming.size >= RESUME_AT_ONCE) continue
@@ -1224,6 +1451,8 @@ export class Sessions {
     if (live) this.end(chatId, live)
     if (live && o.tree) void endAll([...live.groups].map((pid) => -pid))
     if (this.queued(chatId).length) this.setQueue(chatId, [])
+    this.compacted.delete(chatId)
+    if (this.moveHolds.delete(chatId)) { const chat = this.d.store.chat(chatId); if (chat) this.d.onMoveHold?.(chat, false) }
     const ws = shown ? this.d.store.workspace(this.mustChat(chatId).workspaceId) : undefined
     if (ws) this.setStatus(ws, this.d.agentFor(ws), 'idle')
   }
@@ -1234,6 +1463,7 @@ export class Sessions {
     this.stale.delete(chatId)
     live.runner.close()
     this.live.delete(chatId)
+    this.compactEnded(chatId, live, false)
     // Nobody can answer what the process asked once it is gone (KERNEL-563).
     this.expireCards(live.cards)
     // A chat whose Bypass permissions waited for this process runs in it from the next message.
@@ -1415,10 +1645,11 @@ export class Sessions {
     return role && this.d.settings().models?.compact?.[role]
   }
 
-  private start(chat: Chat, ws: Workspace): Live {
+  /** Starts the chat's process on the account its next turn runs on, or on `o.account`, undefined for the CLI's own login. */
+  private start(chat: Chat, ws: Workspace, o: { account?: string } = {}): Live {
     const agent = this.d.agentFor(ws, chat)
     const root = this.d.store.room(ws.roomId)?.path
-    const account = this.d.accountFor?.(chatProvider(chat), chat)
+    const account = 'account' in o ? o.account : this.d.accountFor?.(chatProvider(chat), chat)
     const { mode, bypass } = this.modes(chat, ws)
     const live = { running: false, interrupted: false, tasks: new Set<string>(), cards: new Set<string>(), groups: new Set<number>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey', mode } as Live
     const host = this.hostFor(chat.id, ws, agent, live)
@@ -1538,8 +1769,10 @@ export class Sessions {
     if (error && ended !== null) this.item(this.mustChat(chatId), { kind: 'note', id: randomUUID(), ts: Date.now(), text: `Session stopped: ${ended}` })
     if (this.closing && live.runner.closed) return
     const replaced = this.replaced(chatId, live)
-    const midTurn = live.running
+    // A compaction isn't the agent's work, so its process going away stops nothing halfway (KERNEL-844).
+    const midTurn = live.running && !live.compacting
     if (this.live.get(chatId) === live) { this.live.delete(chatId); this.stopIdle(chatId); this.pushModes([chatId]) }
+    this.compactEnded(chatId, live, false)
     // Nobody can answer what the process asked, and a crash ends a Codex plan waiting on the chat too. A newer session's
     // cards are its own (KERNEL-563).
     this.expireCards(live.cards)
@@ -1611,15 +1844,15 @@ export class Sessions {
   }
 
   /** The running turn ended. Its result row, then what waits for the chat goes out, or Stop drops it. */
-  private turnEnded(chatId: string, ws: Workspace, live: Live, t: { id: string; ok: boolean; durationMs?: number; error?: string }) {
+  private turnEnded(chatId: string, ws: Workspace, live: Live, t: Parameters<RunnerHost['turnEnded']>[0]) {
+    // Claude's /compact for a move ends as a turn, which isn't the agent's (KERNEL-844).
+    if (live.compacting) { this.compactEnded(chatId, live, t.ok); return }
+    if (t.tooLong && live.sent && !live.interrupted && !this.shrunk.has(chatId) && !this.closing) { void this.retryShorter(chatId, ws, live, t); return }
     const chat = this.recordTurn(this.mustChat(chatId), live)
     const ok = t.ok
     // An interrupted turn ends with error_during_execution; the interrupted row already says what happened.
     if ((ok || !live.interrupted) && !live.cleared) this.item(chat, { kind: 'result', id: t.id, ts: Date.now(), durationMs: t.durationMs ?? 0, ok, error: ok ? undefined : t.error })
-    const from = this.moves.get(chatId)
-    this.moves.delete(chatId)
-    const moved = from !== undefined && from !== chat.ranOn ? this.d.moveNote?.(chat, from) : undefined
-    if (moved) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: moved })
+    this.noteMove(chat)
     this.clearRetry(chatId, live)
     void live.runner.context()
     const stopped = live.interrupted && !live.sendNext
@@ -1641,7 +1874,7 @@ export class Sessions {
     const turns = this.turnsOf(chatId)
     if (ok && turns.blocked !== 'PreToolUse') turns.blocked = undefined
     // A session that just finished a turn isn't broken, whoever sent it, as after Retry on a Kernel update (KERNEL-124).
-    if (ok) { this.crashed.delete(chatId); this.renewed.delete(chatId) }
+    if (ok) { this.crashed.delete(chatId); this.renewed.delete(chatId); this.shrunk.delete(chatId) }
     live.limited = false
     live.cleared = false
     this.setRunning(chat, ws, live, false)
@@ -1705,6 +1938,7 @@ export class Sessions {
     live.running = running
     // Each turn gets its own Bypass note.
     if (running) live.bypassNote = undefined
+    else live.cold = false
     if (!running) { live.whenIdle?.(); live.whenIdle = undefined }
     // The journal is written at every turn start and end, so a crash leaves the right list. A quit freezes it.
     if (!this.closing && this.working.has(chat.id) !== running) {

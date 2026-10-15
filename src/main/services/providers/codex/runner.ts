@@ -183,6 +183,11 @@ export class CodexRunner implements Runner {
   /** The running turn's first and last model calls, from `thread/tokenUsage/updated`, for the turn's facts (KERNEL-842). */
   private calls: { first?: TokenUsageBreakdown; last?: TokenUsageBreakdown } = {}
   /**
+   * A compaction under way (`compact`): Codex runs it as a turn of its own, whose id `turn/started` gives. Its end resolves
+   * `compact` and isn't one of Kernel's turns (KERNEL-844).
+   */
+  private compaction?: { turnId?: string; done: () => void }
+  /**
    * Aborts when the running turn stops (Stop, Send now), ends or loses its process. Every card the turn put up waits on
    * it, Kernel's tools' too, so a stopped turn's card ends as expired (KERNEL-563).
    */
@@ -252,10 +257,33 @@ export class CodexRunner implements Runner {
   /** Codex sends the context window use with every model call (`thread/tokenUsage/updated`), so there is nothing to ask. */
   async context() {}
 
-  /** `/compact`: Codex summarises the thread and frees context. */
+  /**
+   * `/compact`: Codex summarises the thread and frees context. Codex runs it as a turn, and this resolves when that turn
+   * ends, or the process does, so the next turn never starts on a thread still compacting (KERNEL-844). Its token counts
+   * are the chat's last turn's.
+   */
   async compact() {
     const threadId = await this.ready
-    if (threadId) await this.rpc?.request('thread/compact/start', { threadId }, { timeoutMs: 30_000 })
+    if (!threadId || !this.rpc || this.isClosed) return
+    const done = new Promise<void>((resolve) => { this.compaction = { done: resolve } })
+    try {
+      await this.rpc.request('thread/compact/start', { threadId }, { timeoutMs: 30_000 })
+    } catch (e) {
+      this.compaction = undefined
+      throw e
+    }
+    await done
+  }
+
+  /** The compaction's turn ended, or the process did. */
+  private compacted() {
+    const c = this.compaction
+    if (!c) return
+    this.compaction = undefined
+    const { first, last } = this.calls
+    this.calls = {}
+    if (last) this.host.turnUsage({ ...codexCounts(last), ...(first ? { first: codexCounts(first) } : {}), context: last.totalTokens })
+    c.done()
   }
 
   close() {
@@ -396,6 +424,7 @@ export class CodexRunner implements Runner {
     if (this.ended) return
     this.ended = true
     this.rpc?.close()
+    this.compacted()
     // Nothing the process asked can be answered now. A plan waiting after its turn ends too, unless Kernel closed the process.
     this.turnStop.abort()
     if (!this.isClosed) this.planStop.abort()
@@ -410,8 +439,15 @@ export class CodexRunner implements Runner {
     switch (method) {
       case 'item/started': return this.itemStarted(params.item as ThreadItem)
       case 'item/completed': return this.itemCompleted(params.item as ThreadItem)
-      case 'turn/started': this.turnId = params.turn?.id ?? this.turnId; return
-      case 'turn/completed': void this.turnCompleted(params.turn as Turn); return
+      case 'turn/started':
+        // A compaction's turn starts while Kernel runs none of its own.
+        if (this.compaction && !this.compaction.turnId && !this.turnId && !this.starting) { this.compaction.turnId = params.turn?.id; return }
+        this.turnId = params.turn?.id ?? this.turnId
+        return
+      case 'turn/completed':
+        if (this.compaction?.turnId && params.turn?.id === this.compaction.turnId) { this.compacted(); return }
+        void this.turnCompleted(params.turn as Turn)
+        return
       case 'thread/tokenUsage/updated': {
         const u = params.tokenUsage as ThreadTokenUsage
         if (u?.last) { this.calls.first ??= u.last; this.calls.last = u.last }
@@ -510,7 +546,7 @@ export class CodexRunner implements Runner {
     const { first, last } = this.calls
     this.calls = {}
     if (last) this.host.turnUsage({ ...codexCounts(last), ...(first ? { first: codexCounts(first) } : {}), context: last.totalTokens })
-    this.host.turnEnded({ id: `${turn.id}-result`, ok, durationMs: turn.durationMs ?? undefined, error: ok ? undefined : turn.status === 'interrupted' ? 'interrupted' : 'error_during_execution' })
+    this.host.turnEnded({ id: `${turn.id}-result`, ok, durationMs: turn.durationMs ?? undefined, error: ok ? undefined : turn.status === 'interrupted' ? 'interrupted' : 'error_during_execution', ...(info === 'contextWindowExceeded' ? { tooLong: true as const } : {}) })
     // A plan-mode turn that ended with a plan: the user approves it as Claude's ExitPlanMode would, and the agent goes on.
     if (plan?.trim()) { void this.planned(plan); return }
     // A Lead that ended a turn with an approved plan and nothing handed off gets one reminder, as Claude's Stop hook gives.

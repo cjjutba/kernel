@@ -65,25 +65,48 @@ export class Placement extends Feature {
    * The account the chat's next turn runs on, undefined for the CLI's own login, as Sessions' `accountFor` (KERNEL-843). With
    * `accounts.keepChatsOnAccount` on, a chat stays on the account it last ran on, or the one a Move all switch placed it on,
    * while that account is still in Kernel, signed in, has no rejected window or limit on the chat's model, and is below the
-   * move threshold (`nearLimit`: 5 hour 90%, weekly 95%). A new chat, a chat whose account fails one of those, and every
-   * chat with the setting off run on the provider's account in use.
+   * move threshold (`nearLimit`: 5 hour 90%, weekly 95%). A chat the user chose to keep where it is stays on the account it
+   * last ran on, past a Move all switch and the threshold, while that account can still run it (KERNEL-844). A new chat, a chat whose account fails one of those, and every chat with
+   * the setting off run on the provider's account in use.
    */
   accountFor(provider: Provider, chat?: Chat, limits?: RateLimit[], now = Date.now()): string | undefined {
     const active = this.k.providers.active(provider)
-    const home = chat && this.keeps() ? this.placed()[chat.id] ?? chat.ranOn : undefined
+    const kept = chat?.moveChoice?.choice === 'keep' && !!chat.ranOn
+    const home = chat && this.keeps() ? (kept ? chat.ranOn : this.placed()[chat.id] ?? chat.ranOn) : undefined
     if (!chat || !home || home === (active ?? CLI_ACCOUNT)) return active
-    return this.canHold(provider, home, chat.model, limits ?? this.store.meta<RateLimit[]>('limits') ?? [], now) ? (home === CLI_ACCOUNT ? undefined : home) : active
+    const windows = limits ?? this.store.meta<RateLimit[]>('limits') ?? []
+    return this.canHold(provider, home, chat.model, windows, now, { threshold: !kept }) ? (home === CLI_ACCOUNT ? undefined : home) : active
   }
 
   /** Chats keep the account that holds their cache: Settings, Account "Keep chats on their account", on by default. */
   keeps(): boolean { return this.settings?.accounts?.keepChatsOnAccount ?? true }
 
-  /** The account can still run a chat on `model`: in Kernel, signed in, no limit on it or the model, below the move threshold. */
-  private canHold(provider: Provider, account: string, model: string, limits: RateLimit[], now: number): boolean {
+  /**
+   * The account can still run a chat on `model`: in Kernel, signed in, no limit on it or the model, and below the move
+   * threshold unless `threshold` is false.
+   */
+  private canHold(provider: Provider, account: string, model: string, limits: RateLimit[], now: number, o: { threshold?: boolean } = {}): boolean {
     if (!this.k.providers.has(provider, account) || !this.k.providers.signedInNow(provider, account)) return false
     const id = account === CLI_ACCOUNT ? undefined : account
     const mine = limits.filter((l) => limitProvider(l) === provider && l.accountId === id)
-    return !blockingLimit(mine, now) && !(limitedModels(mine, now) as string[]).includes(model) && !nearLimit(mine, now)
+    return !blockingLimit(mine, now) && !(limitedModels(mine, now) as string[]).includes(model) && (o.threshold === false || !nearLimit(mine, now))
+  }
+
+  /** The account can still run a chat on `model` now, near its limit or not: what summarizing there before a move needs (KERNEL-844). */
+  canRun(provider: Provider, account: string, model: string, now = Date.now()): boolean {
+    return this.canHold(provider, account, model, this.store.meta<RateLimit[]>('limits') ?? [], now, { threshold: false })
+  }
+
+  /**
+   * The chat's size in tokens when its next turn re-reads its history cold because it runs on another account or model, else
+   * undefined: a chat that never ran, a warm one, and one only idle past the cache's lifetime, which would re-read wherever it
+   * ran (KERNEL-844). Sessions starts such turns two at a time.
+   */
+  coldSize(chat: Chat, now = Date.now()): number | undefined {
+    if (!chat.ranOn) return undefined
+    const to = this.accountFor(chatProvider(chat), chat, undefined, now) ?? CLI_ACCOUNT
+    const why = this.coldReason(chat, { account: to }, now)
+    return why === 'account' || why === 'model' ? this.size(chat).tokens : undefined
   }
 
   private placed(): Record<string, string> { return this.store.meta<Record<string, string>>(PLACED_KEY) ?? {} }
@@ -105,8 +128,14 @@ export class Placement extends Feature {
     this.store.saveMeta(PLACED_KEY, placed)
   }
 
-  /** A turn of the chat starts on some account, so a placement from a Move all switch has done its job (Sessions' `startedOn`). */
+  /**
+   * A turn of the chat starts on some account, so a placement from a Move all switch has done its job (Sessions' `startedOn`).
+   * So has a choice to summarize or continue: the move it was for either happened as the turn started or never came
+   * (KERNEL-844). Keep stays while the account can run the chat.
+   */
   startedOn(chatId: string) {
+    const chat = this.store.chat(chatId)
+    if (chat?.moveChoice && chat.moveChoice.choice !== 'keep') this.saveChat({ ...chat, moveChoice: undefined })
     const placed = this.placed()
     if (!(chatId in placed)) return
     delete placed[chatId]
@@ -264,15 +293,17 @@ export class Placement extends Feature {
     return { provider, from, to, chats: chats.sort((a, b) => b.tokens - a.tokens) }
   }
 
-  /** Keeps what the user picked for a long chat a switch would move. A later step acts on it (KERNEL-841). */
+  /**
+   * Keeps what the user picked for a long chat that moves to another account, which its next turn acts on (`Moves.plan`,
+   * KERNEL-844). Keep holds it where it is while that account can run it.
+   */
   moveChoice(chatId: string, choice: MoveChoice): Chat {
     return this.saveChat({ ...this.mustChat(chatId), moveChoice: { choice, at: Date.now() } })
   }
 
   handlers() {
     return {
-      'accounts.previewSwitch': async ({ provider, accountId }) => this.previewSwitch(provider, accountId),
-      'chats.moveChoice': async ({ chatId, choice }) => this.moveChoice(chatId, choice)
+      'accounts.previewSwitch': async ({ provider, accountId }) => this.previewSwitch(provider, accountId)
     } satisfies Partial<Handlers>
   }
 }
