@@ -1,5 +1,5 @@
 import { basename, join } from 'node:path'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readdir } from 'node:fs/promises'
 import type { KernelApi } from '@shared/ipc'
 import type { AgentOrigin, AgentStatus, NewProjectRequest, PushCheck, Project, ProjectSetupStep } from '@shared/types'
 import { newId } from '../db'
@@ -14,7 +14,8 @@ import { exec } from '../services/exec'
 import { checkPush, pushStepOf } from '../services/preflight'
 import { resolveFilesToCopy } from '../services/filesToCopy'
 import { AVATAR_FAILED, githubOwner, readImage } from '../services/projectIcons'
-import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/projects'
+import { removeTree } from '../services/removeTree'
+import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, exists, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/projects'
 import { Feature } from './feature'
 
 /** Where Project setup says a project's agents came from, when it asks for a roster (ProjectSetupRoster.png). */
@@ -24,10 +25,17 @@ const AGENT_PLACES: Record<AgentOrigin, string> = { project: '.claude/agents', p
 const STEP_ORDER: ProjectSetupStep['id'][] = ['clone', 'host', 'worktrees', 'install', 'copy', 'hooks', 'push', 'agents']
 
 /**
- * A project's setup while Kernel runs: the steps last published, the request that started it, the run going now, and
- * whether Kernel seated the starter team, so a retry still counts those agents as Kernel's rather than the repo's.
+ * A project's setup: the steps last published, the request that started it, the run going now, and whether Kernel seated
+ * the starter team, so a retry still counts those agents as Kernel's rather than the repo's. `made` says the checkout's
+ * folder wasn't there when setup started, so what a failed clone left in it is Kernel's to remove (KERNEL-883).
  */
-interface Setup { steps: ProjectSetupStep[]; publish: () => void; req: NewProjectRequest; running?: Promise<void>; seated?: boolean }
+interface Setup { steps: ProjectSetupStep[]; publish: () => void; req: NewProjectRequest; running?: Promise<void>; seated?: boolean; made?: boolean }
+
+/** What a setup that hasn't finished cleanly keeps under the meta key `projectSetups`, so Try again works after a restart (KERNEL-883). */
+type SavedSetup = Pick<Setup, 'steps' | 'req' | 'seated' | 'made'>
+
+/** A setup with a step that failed, or that hasn't finished yet. Only these are saved. */
+const unfinished = (steps: ProjectSetupStep[]) => steps.some((s) => s.state !== 'ok' && s.state !== 'warn')
 
 /** Adding, creating, pausing, changing and removing projects (KERNEL-326). */
 export class Projects extends Feature {
@@ -37,6 +45,8 @@ export class Projects extends Feature {
   private readonly checking = new Map<string, Promise<PushCheck | null>>()
   /** By project id, the project's setup, so Check again can update its step and Try again can run it again. */
   private readonly setups = new Map<string, Setup>()
+  /** Whether the setups saved before this launch are in `setups` yet. Read on first use, since features have no start of their own. */
+  private restored = false
 
   async addProject(path: string, name?: string): Promise<Project> {
     const existing = this.store.projects().find((r) => r.path === path)
@@ -73,6 +83,8 @@ export class Projects extends Feature {
       path = expandHome(req.cloneTo ?? join(this.home, 'Projects', slugify(req.source === 'repo' ? basename(req.from) : name)), this.home)
       await assertFreeFolder(path, this.home)
     }
+    // Recorded before anything runs: only a folder that wasn't there yet is Kernel's to clear for a retry (KERNEL-883).
+    const made = req.source !== 'folder' && !(await exists(path))
     const taken = this.store.projects().find((r) => r.path === path)
     if (taken) throw new Error(`${tildify(path, this.home)} is already the project ${taken.name}.`)
     const id = newId()
@@ -83,12 +95,13 @@ export class Projects extends Feature {
     this.store.saveProject(project)
     bus.push({ type: 'project', project })
     bus.track({ name: 'room.created', source: req.source })
-    this.startSetup(project, req)
+    this.startSetup(project, req, made)
     return project
   }
 
   /** Builds the steps of ProjectSetup.png and runs them all. */
-  private startSetup(project: Project, req: NewProjectRequest) {
+  private startSetup(project: Project, req: NewProjectRequest, made: boolean) {
+    this.restore()
     const worktrees = projectWorktreeRoot(this.settings.worktreeRoot, project)
     const steps: ProjectSetupStep[] = [
       { id: 'clone', title: req.source === 'repo' ? `Clone ${req.from}` : req.source === 'scratch' ? `Copy ${req.from}` : 'Use your folder', detail: tildify(project.path, this.home), state: 'wait' },
@@ -99,10 +112,45 @@ export class Projects extends Feature {
       { id: 'hooks', title: 'Install hooks', detail: `${KERNEL_HOOK_EVENTS.length} events to localhost:${this.settings.hookPort}`, state: 'wait' },
       { id: 'agents', title: 'Seat agents', detail: '', state: 'wait' }
     ]
-    const setup: Setup = { steps, req, publish: () => bus.push({ type: 'project.setup', projectId: project.id, steps: steps.map((s) => ({ ...s })) }) }
-    this.setups.set(project.id, setup)
+    const setup = this.track(project.id, { steps, req, made })
     setup.publish()
     this.run(project.id, setup, 'clone')
+  }
+
+  /** Keeps a setup by project id. Each publish pushes its steps and saves the setups that haven't finished cleanly (KERNEL-883). */
+  private track(projectId: string, saved: SavedSetup): Setup {
+    const setup: Setup = { ...saved, publish: () => { bus.push({ type: 'project.setup', projectId, steps: setup.steps.map((s) => ({ ...s })) }); this.saveSetups() } }
+    this.setups.set(projectId, setup)
+    return setup
+  }
+
+  private saveSetups() {
+    const kept: Record<string, SavedSetup> = {}
+    for (const [id, { steps, req, seated, made }] of this.setups) if (unfinished(steps)) kept[id] = { steps, req, seated, made }
+    this.store.saveMeta('projectSetups', kept)
+  }
+
+  /**
+   * Brings back the setups saved before this launch (KERNEL-883). Nothing of theirs runs any more, so a step that was running,
+   * or the next one due, fails as stopped by the quit, and Try again runs it.
+   */
+  private restore() {
+    if (this.restored) return
+    this.restored = true
+    const saved = this.store.meta<Record<string, SavedSetup>>('projectSetups') ?? {}
+    for (const [id, s] of Object.entries(saved)) {
+      if (!this.store.project(id) || this.setups.has(id)) continue
+      const stopped = s.steps.find((x) => x.state === 'run') ?? (s.steps.some((x) => x.state === 'fail') ? undefined : s.steps.find((x) => x.state === 'wait'))
+      if (stopped) Object.assign(stopped, { state: 'fail', meta: undefined, error: 'Setup stopped when Kernel quit.' })
+      this.track(id, s)
+    }
+    this.saveSetups()
+  }
+
+  /** A project's setup, saved before this launch or started in it. */
+  private setupOf(projectId: string) {
+    this.restore()
+    return this.setups.get(projectId)
   }
 
   /**
@@ -111,8 +159,8 @@ export class Projects extends Feature {
    */
   retrySetup(projectId: string) {
     const project = this.mustProject(projectId)
-    const setup = this.setups.get(projectId)
-    // The steps live only while Kernel runs, so a setup from before a restart can't be tried again.
+    const setup = this.setupOf(projectId)
+    // A project added from a folder, or one whose setup finished before this launch, has none.
     if (!setup) throw new Error(`${project.name} has no setup to try again.`)
     if (setup.running) throw new Error(`${project.name} is still being set up.`)
     const failed = setup.steps.find((s) => s.state === 'fail')
@@ -159,6 +207,7 @@ export class Projects extends Feature {
 
     const checkedOut = await step('clone', async () => {
       let inited = false
+      if (req.source !== 'folder') await this.clearFailedClone(project, setup)
       if (req.source === 'repo') await cloneRepo(req.from, project.path)
       else if (req.source === 'scratch') await copyTemplate(req.from, project.path)
       else if (req.initGit && !(await inspectFolder(project.path, this.home)).git) { await initGit(project.path, this.home); inited = true }
@@ -253,6 +302,16 @@ export class Projects extends Feature {
     })
   }
 
+  /**
+   * Before a clone runs again, the folder has to be empty for git. One Kernel made for this setup only holds what a failed
+   * clone left, so it goes. One that was there before is the user's and stays as it is (KERNEL-883).
+   */
+  private async clearFailedClone(project: Project, setup: Setup) {
+    if (!(await exists(project.path))) return
+    if (setup.made) { await removeTree(project.path); return }
+    if ((await readdir(project.path)).length) throw new Error(`${tildify(project.path, this.home)} is not empty, and Kernel didn't make it, so Kernel leaves it as it is. Empty it, then try again.`)
+  }
+
   /** Runs the project's push check, or waits for the one running, and keeps the result (KERNEL-460). A local project never asks gh (KERNEL-477). */
   private runPushCheck(projectId: string): Promise<PushCheck | null> {
     let running = this.checking.get(projectId)
@@ -277,7 +336,7 @@ export class Projects extends Feature {
     // No remote is asked again each time, since it costs one local git call and the project's section has no Check again.
     const last = this.pushChecks.get(projectId)
     if (!recheck && last && last.remote === await this.k.config.remoteFor(this.mustProject(projectId).path)) return last
-    const setup = recheck ? this.setups.get(projectId) : undefined
+    const setup = recheck ? this.setupOf(projectId) : undefined
     const shown = setup?.steps.find((s) => s.id === 'push')
     if (!setup || !shown) return this.runPushCheck(projectId)
     Object.assign(shown, { state: 'run', meta: 'running' })
@@ -409,12 +468,19 @@ export class Projects extends Feature {
     await this.k.trust.forgetProject(projectId)
     this.k.team.forgetProject(projectId)
     this.pushChecks.delete(projectId)
-    this.setups.delete(projectId)
+    this.restore()
+    if (this.setups.delete(projectId)) this.saveSetups()
   }
 
   handlers() {
     return {
-      'projects.list': async () => this.store.projects(),
+      // A window that loads asks for the projects once. The setups that haven't finished go out to it first, so Project setup
+      // shows a failed step and Try again after a restart or a reload, on the events it already reads (KERNEL-883).
+      'projects.list': async () => {
+        this.restore()
+        for (const s of this.setups.values()) if (unfinished(s.steps)) s.publish()
+        return this.store.projects()
+      },
       'projects.add': async ({ path, name }) => this.addProject(path, name),
       'projects.create': async (req) => this.createProject(req),
       'projects.retrySetup': async ({ projectId }) => { this.retrySetup(projectId); return { ok: true } },
