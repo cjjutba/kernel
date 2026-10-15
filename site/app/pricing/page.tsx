@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { Metadata } from 'next'
-import { Waitlist } from '@/components/landing/Waitlist'
+import { WaitlistReveal } from '@/components/landing/WaitlistReveal'
 import { SiteFooter } from '@/components/layout/SiteFooter'
 import { SiteNav } from '@/components/layout/SiteNav'
 import { Button } from '@/components/ui/Button'
@@ -110,6 +110,8 @@ export default function PricingPage() {
                   ))}
                 </ul>
               </div>
+              {/* Other platforms: the waitlist, closed until asked for. */}
+              <WaitlistReveal className="border-t border-line px-10 py-6 max-nav:px-6" />
             </div>
           </div>
         </section>
@@ -132,7 +134,7 @@ export default function PricingPage() {
           </ul>
         </section>
 
-        <section aria-labelledby="pricing-faq-title" className="mx-auto grid max-w-250 grid-faq items-start gap-16 px-6 pt-28 max-faq:grid-cols-1 max-faq:gap-8 max-nav:pt-20">
+        <section aria-labelledby="pricing-faq-title" className="mx-auto grid max-w-250 grid-faq items-start gap-16 px-6 pt-28 pb-32 max-faq:grid-cols-1 max-faq:gap-8 max-nav:pt-20 max-nav:pb-24">
           <h2 id="pricing-faq-title" className="text-h3">
             Questions
           </h2>
@@ -150,7 +152,6 @@ export default function PricingPage() {
           </div>
         </section>
 
-        <Waitlist className="pt-32 pb-32 max-nav:pt-24 max-nav:pb-24" />
       </main>
       <SiteFooter />
     </>

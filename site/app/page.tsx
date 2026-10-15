@@ -3,7 +3,6 @@ import { Features } from '@/components/landing/Features'
 import { FinalCta } from '@/components/landing/FinalCta'
 import { Hero } from '@/components/landing/Hero'
 import { Privacy } from '@/components/landing/Privacy'
-import { Waitlist } from '@/components/landing/Waitlist'
 import { SiteFooter } from '@/components/layout/SiteFooter'
 import { SiteNav } from '@/components/layout/SiteNav'
 import { latestRelease } from '@/content/changelog'
@@ -41,7 +40,6 @@ export default async function Home() {
         <Hero version={latestVersionLabel(latest.version)} />
         <Features />
         <Privacy />
-        <Waitlist className="pt-32 max-nav:pt-24" />
         <Faq />
         <FinalCta />
       </main>

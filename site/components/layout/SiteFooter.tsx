@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Wordmark } from '@/components/brand/Wordmark'
+import { Dither } from '@/components/ui/Dither'
 import { ArrowIcon, GitHubIcon } from '@/components/ui/icons'
 import { latestRelease } from '@/content/changelog'
 import { CONTRIBUTING_URL, DOWNLOAD_URL, ISSUES_URL, LICENSE_URL, RELEASES_URL, REPO_URL, SECURITY_URL } from '@/lib/links'
@@ -42,7 +43,9 @@ const linkClass = 'block w-fit text-ui text-muted transition-colors hover:text-i
 export async function SiteFooter() {
   const latest = await latestRelease()
   return (
-    <footer className="border-t border-line-faint pt-20 pb-10">
+    <footer className="relative isolate overflow-hidden border-t border-line-faint pt-20 pb-36 max-nav:pb-28">
+      {/* A low field of drifting noise along the page's bottom edge: the footer's own texture (globals.css, Dither fields). */}
+      <Dither shape="simplex" type="8x8" size={2} scale={0.55} speed={0.18} frame={1200} tone="edge" className="dither-footer absolute inset-x-0 bottom-0 -z-1 h-56 max-nav:h-40" />
       <div className="mx-auto grid max-w-312 grid-footer gap-x-12 gap-y-12 px-6">
         <div>
           <Link href="/" className="inline-flex">

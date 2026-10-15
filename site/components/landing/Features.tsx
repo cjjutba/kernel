@@ -1,5 +1,6 @@
 import { SectionHead } from '@/components/ui/SectionHead'
 import { Clip } from './Clip'
+import { SpotlightGrid } from './SpotlightGrid'
 
 // What surrounds the loop the hero shows, as a bento of clips recorded from the real app on sample data
 // (demo/clips.ts). Two wide tiles bracket two rows of pairs. Every clip is the full window, so all of them share an aspect.
@@ -66,7 +67,7 @@ const FEATURES: Feature[] = [
 
 function Tile({ f }: { f: Feature }) {
   return (
-    <article aria-labelledby={f.id} className={`flex flex-col rounded-frame border border-line bg-surface-1 ${f.wide ? 'col-span-full' : ''}`}>
+    <article aria-labelledby={f.id} className={`spot-card flex flex-col rounded-frame border border-line bg-surface-1 ${f.wide ? 'col-span-full' : ''}`}>
       {/* The text sits on a fixed floor, so a line more or less (fonts measure a little differently across systems) never moves the clip. */}
       <div className={`px-10 pt-10 pb-8 max-nav:px-5 max-nav:pt-7 max-nav:pb-6 ${f.wide ? '' : 'faq:min-h-44'}`}>
         <h3 id={f.id} className={`text-balance ${f.wide ? 'text-h3' : 'text-entry-title max-nav:text-h3'}`}>
@@ -75,8 +76,12 @@ function Tile({ f }: { f: Feature }) {
         {f.text ? <p className="mt-3 max-w-110 text-body text-muted">{f.text}</p> : null}
       </div>
       <div className="mt-auto px-10 pb-10 max-nav:px-3 max-nav:pb-3">
-        <div className="overflow-hidden rounded-lg border border-line-strong">
-          <Clip name={f.clip} width={f.width} height={f.height} label={f.label} />
+        {/* Each clip sits in a smaller version of the hero demo's bezel, with the same glow along its top edge. */}
+        <div className="demo-bezel bezel-sm">
+          <span aria-hidden="true" className="demo-edge" />
+          <div className="demo-screen relative overflow-hidden">
+            <Clip name={f.clip} width={f.width} height={f.height} label={f.label} />
+          </div>
         </div>
       </div>
     </article>
@@ -90,11 +95,11 @@ export function Features() {
         title="The whole team, in one window."
         titleId="features-title"
       />
-      <div className="mt-14 grid grid-cols-2 gap-4 max-faq:grid-cols-1 max-nav:mt-10 max-nav:gap-3">
+      <SpotlightGrid className="mt-14 grid grid-cols-2 gap-4 max-faq:grid-cols-1 max-nav:mt-10 max-nav:gap-3">
         {FEATURES.map((f) => (
           <Tile key={f.id} f={f} />
         ))}
-      </div>
+      </SpotlightGrid>
     </section>
   )
 }

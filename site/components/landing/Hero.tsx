@@ -1,20 +1,14 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
+import { Dither } from '@/components/ui/Dither'
 import { ArrowIcon, DownloadIcon } from '@/components/ui/icons'
 import { DOWNLOAD_URL } from '@/lib/links'
 import { HeroDemo } from './HeroDemo'
-import { ProviderTiles } from './ProviderTiles'
 
 /** `version` is the newest release's label, such as "0.1". */
 export function Hero({ version }: { version: string }) {
   return (
-    <section id="top" aria-labelledby="hero-title" className="relative pt-32 text-center max-nav:pt-20">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-245 bg-dots-hero" />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute top-150 left-1/2 h-140 w-full max-w-300 -translate-x-1/2 glow-hero"
-      />
-      <ProviderTiles />
+    <section id="top" aria-labelledby="hero-title" className="relative isolate pt-32 text-center max-nav:pt-20">
       <div className="relative px-6">
         <Link
           href="/changelog"
@@ -39,15 +33,21 @@ export function Hero({ version }: { version: string }) {
           </Button>
         </div>
         <p className="mt-4 text-small text-faint">
-          Free · For Macs with Apple silicon
+          For Macs with Apple silicon
+          {/* Only the link stands out: brighter, with an arrow, and underlined on hover. */}
           <span className="mt-1.5 block">
-            <a href="#waitlist" className="text-muted underline decoration-rule underline-offset-3 transition-colors hover:text-ink">
-              Not on one? Join the waitlist
+            Not on Apple silicon?{' '}
+            <a href="#waitlist" className="group inline-flex items-center gap-1 text-ink-2 transition-colors hover:text-ink">
+              <span className="decoration-rule underline-offset-3 group-hover:underline">Get notified</span>
+              <ArrowIcon className="text-muted transition-transform group-hover:translate-x-0.5" />
             </a>
           </span>
         </p>
       </div>
       <div className="relative mt-16 px-6 max-nav:mt-12">
+        {/* A rolling wave of dots that rises behind the demo and thins out along its sides, gone before the frame's
+            bottom, so it never reaches the next section (globals.css, Dither fields). */}
+        <Dither shape="wave" scale={1.15} speed={0.35} frame={4000} className="dither-hero absolute inset-x-0 -top-64 -z-1 h-200 max-nav:-top-40 max-nav:h-90" />
         <HeroDemo />
       </div>
     </section>

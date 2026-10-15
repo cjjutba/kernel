@@ -110,4 +110,8 @@ export const ReplayIcon = strokeIcon('M2.8 8a5.2 5.2 0 1 0 1.5-3.7M2.8 3v2.6h2.6
 export const CommentIcon = strokeIcon('M2.8 3.5h10.4v7H8.6L5.5 13v-2.5H2.8Z')
 export const SwapIcon = strokeIcon('M3 5.5h9.5M10 3l2.5 2.5L10 8M13 10.5H3.5M6 8l-2.5 2.5L6 13', 1.5)
 export const IssueIcon = strokeIcon('M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 6.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6Z')
+/** A key: a ring and a shaft with two teeth. */
+export const KeyIcon = strokeIcon('M5.2 7.4a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8ZM7.6 8.4l6-6M11.6 4.4l1.8 1.8M9.8 6.2l1.6 1.6', 1.5)
+/** A laptop: a screen over a wide base. */
+export const LaptopIcon = strokeIcon('M3.5 3.8h9v6.7h-9ZM1.5 12.5h13')
 export const ShieldIcon = strokeIcon('M8 1.8 13 3.6v4.1c0 3-2.1 5.3-5 6.5-2.9-1.2-5-3.5-5-6.5V3.6ZM5.8 8l1.6 1.6L10.4 6.4')

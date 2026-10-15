@@ -68,8 +68,10 @@ export function HeroDemo() {
   const showApp = wide && mounted
   return (
     <div className="mx-auto max-w-320">
-      <div className="frame-gradient">
-        <div ref={box} className="relative aspect-16/10 overflow-hidden rounded-frame-in bg-surface-2">
+      {/* The app sits in a bezel like a laptop's, with a glow along its top edge (globals.css, Demo bezel). */}
+      <div className="demo-bezel">
+        <span aria-hidden="true" className="demo-edge" />
+        <div ref={box} className="demo-screen relative aspect-16/10 overflow-hidden bg-surface-2">
           <Image
             src={leadPlan}
             alt="Kernel open on a new chat in the Kernel room, with past chats and other rooms in the sidebar"
@@ -91,20 +93,19 @@ export function HeroDemo() {
           )}
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-1 text-small text-faint max-nav:justify-center max-nav:text-center">
-        <p>
-          {wide
-            ? "This is the real app on sample data. Brief Kernel, switch to Plan, approve the plan and watch the team build."
-            : 'Try it live on a larger screen.'}
+      <div className="mt-4 flex items-center justify-between gap-3 px-2 text-small text-faint max-nav:justify-center">
+        <p className="flex items-center gap-2">
+          <span aria-hidden="true" className="size-1.5 rounded-pill bg-faint" />
+          {wide ? 'Live demo · Sample data' : 'Live demo on larger screens'}
         </p>
         {wide && (
           <button
             type="button"
             onClick={startOver}
             disabled={!mounted}
-            className="inline-flex h-8 items-center gap-2 rounded-md border border-edge bg-white/2 px-3 text-ui font-medium text-ink-2 transition-colors hover:border-edge-hover hover:bg-white/6 hover:text-white disabled:opacity-50"
+            className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-faint transition-colors hover:bg-white/4 hover:text-ink disabled:opacity-50"
           >
-            <ReplayIcon size={14} />
+            <ReplayIcon size={12} />
             Start over
           </button>
         )}

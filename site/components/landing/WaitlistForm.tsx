@@ -17,7 +17,8 @@ type State = { kind: 'idle' } | { kind: 'sending' } | { kind: 'sent'; email: str
 
 const ALL = ['windows', 'linux', 'intel-mac']
 
-export function WaitlistForm() {
+/** `className` sets the form's width and place. It defaults to a centered column. */
+export function WaitlistForm({ className = 'mx-auto max-w-140' }: { className?: string }) {
   const id = useId()
   const [email, setEmail] = useState('')
   const [platform, setPlatform] = useState('any')
@@ -46,13 +47,13 @@ export function WaitlistForm() {
 
   if (state.kind === 'sent') {
     return (
-      <div role="status" className="mx-auto flex max-w-140 flex-col items-center rounded-track border border-line-strong bg-surface-2 px-6 py-7 text-center">
+      <div role="status" className={`${className} flex flex-col items-center rounded-track border border-line-strong bg-surface-2 px-6 py-7 text-center`}>
         <span className="flex size-9 items-center justify-center rounded-pill border border-edge bg-surface-3 text-ink">
           <CheckIcon size={15} />
         </span>
         <p className="mt-4 text-item text-ink">Check your inbox</p>
         <p className="mt-1.5 text-body text-muted">
-          We sent a link to <span className="text-ink-2">{state.email}</span>. Confirm it to join the list.
+          Open the link we sent to <span className="text-ink-2">{state.email}</span> to confirm.
         </p>
         {state.link ? (
           <p className="mt-4 text-small text-muted">
@@ -78,7 +79,7 @@ export function WaitlistForm() {
 
   const sending = state.kind === 'sending'
   return (
-    <form onSubmit={submit} noValidate className="relative mx-auto max-w-140" aria-describedby={state.kind === 'error' ? `${id}-error` : undefined}>
+    <form onSubmit={submit} noValidate className={`relative ${className}`} aria-describedby={state.kind === 'error' ? `${id}-error` : undefined}>
       <div className="flex items-center gap-1 rounded-track border border-line-strong bg-canvas p-1.5 transition-colors focus-within:border-rule max-nav:flex-wrap">
         <label htmlFor={`${id}-email`} className="sr-only">
           Email address
@@ -122,7 +123,7 @@ export function WaitlistForm() {
           className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-chip bg-ink px-4 text-ui font-medium text-canvas transition-colors hover:bg-white disabled:opacity-70"
         >
           {sending ? <span aria-hidden="true" className="spinner" /> : null}
-          {sending ? 'Joining' : 'Join the waitlist'}
+          {sending ? 'Sending' : 'Notify me'}
         </button>
       </div>
       {/* People never see this field. Bots fill it in, and the server quietly drops their signup. */}
@@ -132,7 +133,7 @@ export function WaitlistForm() {
           <input tabIndex={-1} autoComplete="off" value={company} onChange={(e) => setCompany(e.target.value)} />
         </label>
       </div>
-      <p id={`${id}-error`} role={state.kind === 'error' ? 'alert' : undefined} className="mt-2.5 min-h-5 text-center text-small text-del">
+      <p id={`${id}-error`} role={state.kind === 'error' ? 'alert' : undefined} className="absolute inset-x-0 top-full mt-2.5 px-1 text-small text-del">
         {state.kind === 'error' ? state.message : ''}
       </p>
     </form>
