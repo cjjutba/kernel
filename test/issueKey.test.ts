@@ -21,7 +21,7 @@ describe('githubIssueUrl', () => {
 
 describe('issueTracker', () => {
   it('takes the tracker the source carries', () => {
-    expect(issueTracker({ ...issue('PROJ-7'), tracker: 'jira' })).toBe('jira')
+    expect(issueTracker({ ...issue('#12'), tracker: 'linear' })).toBe('linear')
     expect(issueTracker({ ...issue('#12'), tracker: 'github' })).toBe('github')
   })
   it('reads a source saved before the tag from its key: # is GitHub, anything else Linear', () => {

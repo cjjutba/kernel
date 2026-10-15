@@ -156,7 +156,7 @@ const paths = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is s
 
 /** What New chat starts from, as a saved route holds it, or nothing when it isn't one of the three kinds. */
 function soundSource(v: any): WorkspaceSource | undefined {
-  if (v?.kind === 'issue' && isText(v.id) && typeof v.title === 'string') return { kind: 'issue', id: v.id, title: v.title, ...(isText(v.url) ? { url: v.url } : {}), ...(['linear', 'github', 'jira'].includes(v.tracker) ? { tracker: v.tracker } : {}) }
+  if (v?.kind === 'issue' && isText(v.id) && typeof v.title === 'string') return { kind: 'issue', id: v.id, title: v.title, ...(isText(v.url) ? { url: v.url } : {}), ...(['linear', 'github'].includes(v.tracker) ? { tracker: v.tracker } : {}) }
   if (v?.kind === 'pr' && typeof v.number === 'number' && typeof v.title === 'string') return { kind: 'pr', number: v.number, title: v.title }
   if (v?.kind === 'branch' && isText(v.branch)) return { kind: 'branch', branch: v.branch }
   return undefined

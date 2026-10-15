@@ -178,8 +178,6 @@ export const ROOM_SETTING_TIMING: Record<RoomSettingPath, SettingTiming> = {
   'linear.team': 'now',
   // features/integrations.ts builds the tracker on each call.
   'tracker.kind': 'now',
-  'jira.project': 'now',
-  'jira.transition': 'now',
   'pr.createInstructions': 'now',
   'pr.resolveInstructions': 'now',
   'pr.fixChecksInstructions': 'now',

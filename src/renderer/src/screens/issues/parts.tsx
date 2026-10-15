@@ -53,20 +53,6 @@ export function IssuesHeader({ head, where }: { head: RoomHead; where?: ReactNod
 /** Settings, the room, General: where the room's tracker is chosen. */
 export const chooseTracker = (roomId: string) => go({ name: 'settings', page: 'room', roomId, section: 'general' })
 
-/** What Issues and Link issue say about a Jira room, which Kernel can't list yet (KERNEL-503). */
-export const JIRA_NOT_BROWSABLE = "Jira issues can't be browsed in Kernel yet"
-
-/** A Jira room says its issues can't be browsed here, in NoTracker's layout, and points at where to choose another tracker (KERNEL-503). */
-export function JiraNotBrowsable({ room }: { room: Room }) {
-  return (
-    <div className="is-center is-state">
-      <h2>{JIRA_NOT_BROWSABLE}</h2>
-      <p>{room.name} uses Jira. To list its issues here, choose Linear or GitHub Issues in this room's settings. Chats work as usual.</p>
-      <Button variant="primary" size="lg" onClick={() => chooseTracker(room.id)}>Choose a tracker</Button>
-    </div>
-  )
-}
-
 /** A room with no tracker says so and points at where to choose one (IssuesNoTracker.png). */
 export function NoTracker({ room }: { room: Room }) {
   return (

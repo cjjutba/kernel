@@ -465,8 +465,8 @@ export function kernelTools(d: KernelToolDeps) {
     const name = (t: Workspace) => team.find((a) => a.id === t.agentId)?.name ?? t.agentId
     const builders = [...new Set(on.map(name))]
     const prs = on.map((t) => (t.prNumber ? `PR #${t.prNumber}` : `${name(t)}'s PR`))
-    const tracker = ws.source?.kind === 'issue' ? ws.source.tracker : undefined
-    return ` ${tracker ? trackerName(tracker) : 'The issue tracker'} marks ${issue} as blocked by ${joinLabels(on.map((t) => key(t)!))}, which ${joinLabels(builders)} ${builders.length > 1 ? 'are' : 'is'} building. ${pick.name} starts ${queued ? 'once the brief goes out' : 'now'}, and Kernel messages ${pick.name} when ${joinLabels(prs)} ${prs.length > 1 ? 'merge' : 'merges'}. Pass wait_for to hold the brief instead.`
+    const tracker = trackerName(ws.source?.kind === 'issue' ? ws.source.tracker : undefined)
+    return ` ${tracker[0].toUpperCase()}${tracker.slice(1)} marks ${issue} as blocked by ${joinLabels(on.map((t) => key(t)!))}, which ${joinLabels(builders)} ${builders.length > 1 ? 'are' : 'is'} building. ${pick.name} starts ${queued ? 'once the brief goes out' : 'now'}, and Kernel messages ${pick.name} when ${joinLabels(prs)} ${prs.length > 1 ? 'merge' : 'merges'}. Pass wait_for to hold the brief instead.`
   }
   const build = d.leadMode === 'build'
   /** The uncommitted-changes line, when this chat's worktree has any (KERNEL-770). Never blocks: a check that fails says nothing. */

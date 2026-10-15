@@ -103,3 +103,11 @@ export function unshareHookToken(o: { own: string; other: string }): boolean {
   rmSync(join(o.own, 'hook-token'), { force: true })
   return true
 }
+
+/**
+ * Jira was a tracker until it was removed (remove-jira), and its account sat in `jira.json` in the data folder. Each launch
+ * deletes it, so no saved Jira token is left behind. A missing file is fine, and a file it can't delete waits for the next launch.
+ */
+export function removeJiraAccount(dir: string) {
+  try { rmSync(join(dir, 'jira.json'), { force: true }) } catch (err) { console.warn('[kernel] could not delete jira.json', err) }
+}

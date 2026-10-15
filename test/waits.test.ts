@@ -3,7 +3,7 @@ import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, Chat, PrInfo, PrState, Workspace } from '@shared/types'
+import type { AgentDef, Chat, PrInfo, PrState, TrackerKind, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
@@ -15,6 +15,9 @@ import { mergedReading, resolveTarget, waitBroken, waitLabel, waitMet, waitRefus
 import { saveLinearToken } from '../src/main/services/integrations'
 import { saveRepoSettings } from '../src/main/services/settings'
 import { tempRepo, trustRoom, freePort } from './helpers'
+
+/** The tag of an issue saved while Jira was a tracker, which the database still holds. */
+const OLD_JIRA = 'jira' as string as TrackerKind
 
 // KERNEL-259: a teammate waits for other workspaces' PRs to merge, and Kernel starts it, or tells it to rebase, when they do.
 
@@ -837,9 +840,9 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
   it("counts only work on the blocking tracker's issues, and an old record's by its key (KERNEL-470)", async () => {
     const l = linear({ 'KERNEL-198': ['KERNEL-197', 'KERNEL-199'] })
     const { k, room, lead, target } = await setup({}, { fetch: l.fetch, linearToken: 'k' })
-    // A Jira issue with the same key as Linear's blocker, and work saved before sources had a tracker.
+    // An issue saved on Jira, before Jira was removed, with the same key as Linear's blocker, and work saved before sources had a tracker.
     const jira = await target(k, 164, 'Jira rows')
-    k.store.saveWorkspace({ ...jira, source: { kind: 'issue', id: 'KERNEL-197', title: 'Jira rows', tracker: 'jira' } })
+    k.store.saveWorkspace({ ...jira, source: { kind: 'issue', id: 'KERNEL-197', title: 'Jira rows', tracker: OLD_JIRA } })
     const old = await target(k, 170, 'Old rows')
     k.store.saveWorkspace({ ...old, source: { kind: 'issue', id: 'KERNEL-199', title: 'Old rows' } })
     const { text: out, w } = await handOff(k, room, lead, { issue: 'KERNEL-198' })
@@ -942,7 +945,7 @@ describe('waits, the rules', () => {
     expect(resolveTarget([issue, linear, old], '#52')?.id).toBe('old')
     expect(resolveTarget([issue, linear, old], 'KERNEL-197')?.id).toBe('lin')
     // The tag decides, not the id's shape.
-    expect(resolveTarget([ws('j', { source: { kind: 'issue', id: '#41', title: 'Crash on save', tracker: 'jira' } })], '#41')).toBeUndefined()
+    expect(resolveTarget([ws('j', { source: { kind: 'issue', id: '#41', title: 'Crash on save', tracker: OLD_JIRA } })], '#41')).toBeUndefined()
   })
 
   it('refuses each target that can never release the wait', () => {

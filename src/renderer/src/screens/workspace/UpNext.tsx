@@ -8,13 +8,13 @@ import { readUpNext, storeUpNext } from './upNextCache'
 /** Up next shows this many issues. */
 const SHOWN = 3
 
-const NAMES: Record<TrackerKind, string> = { linear: 'Linear', github: 'GitHub', jira: 'Jira' }
+const NAMES: Record<TrackerKind, string> = { linear: 'Linear', github: 'GitHub' }
 
 /**
  * Up next, on New chat's composer: the room tracker's issues nobody has started, the most pressing first, as `issues.next` lists them,
  * less the ones a workspace in the room already started from. A Linear room lists its own team's only. Each row is one button: the
  * priority, the key, the title and the project, with Plan showing on hover and focus. Pressing it hands the issue to `onPlan` as a chip.
- * A room with no tracker, one on Jira, whose issues Kernel can't list yet, a Linear room with no team, or a tracker that doesn't answer shows nothing.
+ * A room with no tracker, a Linear room with no team, or a tracker that doesn't answer shows nothing.
  */
 export function UpNext({ roomId, lead, onPlan }: { roomId: string; lead: string; onPlan: (part: ChatPart) => void }) {
   const [view, setView] = useState(() => ({ roomId, entry: readUpNext(roomId), settled: false }))

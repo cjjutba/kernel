@@ -35,7 +35,6 @@ paths = [
   "src/main/services/env.ts",
   "src/main/features/env.ts",
   "src/main/services/integrations.ts",
-  "src/main/services/jiraAccount.ts",
   "src/main/services/github.ts",
   "src/main/services/kernelServer.ts",
   "src/main/services/kernelMcp.ts",
