@@ -1,28 +1,49 @@
 import type { AccountProfile, AgentDef, Approval, Chat, Provider, Project, Route, SettingsPage, SharedFile, Thread, Workspace } from '@shared/types'
 
+import type { IconName } from '../../icons'
 import { workspaceRowLabel } from '../../components/sidebar/workspaceRowLabel'
 import { PROVIDER_NAME } from '../../accountRows'
 import { isLeadWorkspace } from '../../lead'
 import { projectAgents } from '../../nav'
 import { archivedList, endedAt, historyName, whenLabel } from '../history/model'
-import { projectLetter } from '../projects/projectInfo'
 import { NAV_PAGES, PROJECT_PAGES } from '../settings/nav'
 import { hasChanges } from '../workspace/pr/model'
-import { kindLabel, latestOf, sinceShort } from '../workspace/shared/shared'
+import { kindFile, kindLabel, latestOf, sinceShort } from '../workspace/shared/shared'
 
-export type Section = 'Suggested' | 'Chats' | 'Shared' | 'Go to' | 'Projects' | 'Accounts' | 'Archived' | 'Results'
+export type Section = 'Recents' | 'Actions' | 'Chats' | 'Shared' | 'Pages' | 'Projects' | 'Accounts' | 'Archived' | 'Results'
+
+export type Scope = 'all' | 'chats' | 'shared' | 'pages' | 'projects'
+export const SCOPES: { id: Scope; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'chats', label: 'Chats' },
+  { id: 'shared', label: 'Shared' },
+  { id: 'pages', label: 'Pages' },
+  { id: 'projects', label: 'Projects' }
+]
+export const scopeLabel = (scope: Scope) => SCOPES.find((s) => s.id === scope)?.label ?? 'All'
+/** The next scope to the right or left, wrapping around. */
+export const stepScope = (scope: Scope, by: 1 | -1): Scope => SCOPES[(SCOPES.findIndex((s) => s.id === scope) + by + SCOPES.length) % SCOPES.length].id
+
+/** At most this many items open Recents. */
+const RECENTS = 5
 
 export interface PaletteItem {
   id: string
-  section: Exclude<Section, 'Results'>
+  section: Exclude<Section, 'Results' | 'Recents'>
   label: string
-  /** The small mark on the left: a glyph from the canvas, or a project's letter. */
-  glyph: string
-  /** Shortcut caps shown on the right, one string per key. */
+  /** The tab that lists this item. Actions, accounts and archived work are found under All. */
+  scope?: Exclude<Scope, 'all'>
+  /** The 16px mark on the left. A shared file draws `file` and a project draws `project` instead. */
+  icon: IconName
+  file?: string
+  project?: Project
+  /** When a chat last had a message or a shared file last changed. The newest few open Recents. */
+  at?: number
+  /** Shortcut caps, one string per key, drawn as one chip. */
   keys?: string[]
   /** Lowercase extra words the fuzzy search also matches, so "preferences" finds Settings. */
   also?: string
-  /** Muted text on the right, in place of shortcut caps: what a shared file is and who shared it, or how many tabs a chat holds. */
+  /** One muted fact on the right: when a chat last moved, or what a shared file is. */
   meta?: string
   /** The heading of the group this item opens, when it isn't the section's name: "Chats in Client A". */
   group?: string
@@ -116,16 +137,13 @@ export function projectInView(route: Route, projects: Project[], workspaces: Wor
   return projects.find((r) => r.id === id) ?? projects.find((r) => !r.hidden && !r.archived)
 }
 
-/** How many shared files the palette lists before you type. */
-const SHARED_DEFAULT = 5
-
 /** A workspace row of the sidebar. A Lead chat's own workspace is its chat, listed under Chats (KERNEL-405). */
 const live = (w: Workspace) => w.status !== 'archived' && !w.lead
 
 /** "Run pnpm drizzle-kit push" becomes "pnpm drizzle-kit push", for "Approve Noor: pnpm drizzle-kit push". */
 const approvalLabel = (a: Approval, who?: string) => `Approve ${who ? `${who}: ` : ''}${a.title.replace(/^Run (?:(?:pnpm|npm|yarn|npx) )?/, '')}`
 
-/** Everything the palette can run. Suggested depends on where you are; Go to and Projects are the same everywhere. */
+/** Everything the palette can run. Actions depend on where you are; Pages and Projects are the same everywhere. */
 export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: PaletteItem[] } {
   const { route, projects, workspaces, approvals, act } = i
   const project = projectInView(route, projects, workspaces)
@@ -140,40 +158,40 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
   const lead = leadAgent?.name || 'the Lead'
   // In the Lead's own chat there is nothing to open and no other workspace to go to, as in GroupedPalette (KERNEL-364).
   const inLead = !!(current && project && leadAgent && isLeadWorkspace(current, project.id, leadAgent.id))
-  const item = (id: string, section: PaletteItem['section'], glyph: string, label: string, run: () => void, extra: Partial<PaletteItem> = {}): PaletteItem => ({ id, section, glyph, label, run, ...extra })
+  const item = (id: string, section: PaletteItem['section'], icon: IconName, label: string, run: () => void, extra: Partial<PaletteItem> = {}): PaletteItem => ({ id, section, icon, label, run, ...extra })
 
-  const suggested: PaletteItem[] = [
-    item('new-ws', 'Suggested', '+', project ? `New chat in ${project.name}` : 'New chat', () => act.openNewChat(project?.id), { keys: ['⌘', 'N'] }),
-    ...(forPr ? [item('create-pr', 'Suggested', '↗', `Create PR for ${workspaceRowLabel(forPr)}`, () => act.go({ name: 'workspace', workspaceId: forPr.id }), { keys: ['⌘', '⇧', 'P'], also: `pull request ${forPr.name} ${forPr.branch}` })] : []),
-    ...(pending ? [item('approve', 'Suggested', '✓', approvalLabel(pending, nameOf(pending.projectId, pending.agentId)), () => act.approve(pending), { keys: ['⌘', '↵'], also: 'allow permission' })] : []),
-    ...(project && leadAgent && !inLead ? [item('lead-chat', 'Suggested', '›', `Open ${lead}'s chat`, () => act.openLead(project.id), { keys: ['⌘', '⇧', 'L'], also: 'lead chat workspace brief ask' })] : []),
+  const actionItems: PaletteItem[] = [
+    item('new-ws', 'Actions', 'chat', project ? `New chat in ${project.name}` : 'New chat', () => act.openNewChat(project?.id), { keys: ['⌘', 'N'] }),
+    ...(forPr ? [item('create-pr', 'Actions', 'ext', `Create PR for ${workspaceRowLabel(forPr)}`, () => act.go({ name: 'workspace', workspaceId: forPr.id }), { keys: ['⌘', '⇧', 'P'], also: `pull request ${forPr.name} ${forPr.branch}` })] : []),
+    ...(pending ? [item('approve', 'Actions', 'checkCircle', approvalLabel(pending, nameOf(pending.projectId, pending.agentId)), () => act.approve(pending), { keys: ['⌘', '↵'], also: 'allow permission' })] : []),
+    ...(project && leadAgent && !inLead ? [item('lead-chat', 'Actions', 'chat', `Open ${lead}'s chat`, () => act.openLead(project.id), { keys: ['⌘', '⇧', 'L'], also: 'lead chat workspace brief ask' })] : []),
     ...(current ? [
-      item('new-tab', 'Suggested', '+', 'New tab', () => act.newChat(current.id), { keys: ['⌘', 'T'] }),
+      item('new-tab', 'Actions', 'plus', 'New tab', () => act.newChat(current.id), { keys: ['⌘', 'T'] }),
       // Main refuses a terminal tab while the big terminal is off, so the palette leaves the entry out until the settings say it is on. A new tab runs the settings' preset.
-      ...(i.terminal?.enabled ? [item('terminal', 'Suggested', '>', i.terminal?.preset ? `Big terminal tab: ${i.terminal.preset}` : 'Big terminal tab', () => act.newChat(current.id, 'terminal'), { keys: ['⌘', '⇧', 'T'], also: 'shell terminal' })] : [])
+      ...(i.terminal?.enabled ? [item('terminal', 'Actions', 'computer', i.terminal?.preset ? `Big terminal tab: ${i.terminal.preset}` : 'Big terminal tab', () => act.newChat(current.id, 'terminal'), { keys: ['⌘', '⇧', 'T'], also: 'shell terminal' })] : [])
     ] : [])
   ]
 
   // The project's open chats, each with its tab count. Typing searches them with everything else.
   const chatItems: PaletteItem[] = project
-    ? (i.chats ?? []).map(({ thread, tabs, ws }) => item(`chat-${thread.id}`, 'Chats', '◇', thread.title, () => act.openChat(project.id, thread, tabs, ws), { meta: `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`, group: `Chats in ${project.name}`, also: 'chat tabs' }))
+    ? (i.chats ?? []).map(({ thread, tabs, ws }) => item(`chat-${thread.id}`, 'Chats', 'chat', thread.title, () => act.openChat(project.id, thread, tabs, ws), { scope: 'chats', at: thread.lastSentAt ?? thread.createdAt, meta: sinceShort(thread.lastSentAt ?? thread.createdAt), also: 'chat tabs' }))
     : []
 
   const shown = inLead ? undefined : current ?? workspaces.filter((w) => live(w) && (!project || w.projectId === project.id)).sort((a, b) => b.createdAt - a.createdAt)[0]
-  const goto = (id: string, label: string, route: Route, extra: Partial<PaletteItem> = {}) => item(id, 'Go to', '◇', label, () => act.go(route), extra)
+  const goto = (id: string, label: string, route: Route, extra: Partial<PaletteItem> = {}, icon: IconName = 'doc') => item(id, 'Pages', icon, label, () => act.go(route), { scope: 'pages', ...extra })
   const goDefault: PaletteItem[] = [
-    goto('go-inbox', 'Inbox', { name: 'inbox' }, { keys: ['G', 'I'] }),
-    goto('go-work', 'Work', { name: 'issues', ...(project ? { projectId: project.id } : {}) }, { also: 'issues linear github tickets pull requests prs merge merged checks review' }),
-    ...(shown ? [goto('go-ws', `${workspaceRowLabel(shown)} workspace`, { name: 'workspace', workspaceId: shown.id }, { also: `${shown.name} ${shown.branch}` })] : []),
-    goto('go-settings', 'Settings', { name: 'settings', page: 'general' }, { keys: ['⌘', ','], also: 'preferences' }),
-    ...(project ? [goto('go-agents', 'Agents', projectAgents(project.id), { also: 'team subagents' })] : []),
-    goto('go-history', 'History', { name: 'history' }, { also: 'archived restore old finished' }),
-    item('go-new', 'Go to', '◇', "What's new", act.whatsNew, { also: 'update release notes' })
+    goto('go-inbox', 'Inbox', { name: 'inbox' }, { keys: ['G', 'I'] }, 'inbox'),
+    goto('go-work', 'Work', { name: 'issues', ...(project ? { projectId: project.id } : {}) }, { also: 'issues linear github tickets pull requests prs merge merged checks review' }, 'issues'),
+    ...(shown ? [goto('go-ws', `${workspaceRowLabel(shown)} workspace`, { name: 'workspace', workspaceId: shown.id }, { also: `${shown.name} ${shown.branch}` }, 'layers')] : []),
+    goto('go-settings', 'Settings', { name: 'settings', page: 'general' }, { keys: ['⌘', ','], also: 'preferences' }, 'sliders'),
+    ...(project ? [goto('go-agents', 'Agents', projectAgents(project.id), { also: 'team subagents' }, 'team')] : []),
+    goto('go-history', 'History', { name: 'history' }, { also: 'archived restore old finished' }, 'history'),
+    item('go-new', 'Pages', 'star', "What's new", act.whatsNew, { scope: 'pages', also: 'update release notes' })
   ]
 
   const projectItems: PaletteItem[] = [
-    ...visible.map((r) => item(`project-${r.id}`, 'Projects', projectLetter(r.name), r.name, () => act.openProject(r.id))),
-    item('project-new', 'Projects', '+', 'New project', act.newProject, { also: 'add connect repo' })
+    ...visible.map((r) => item(`project-${r.id}`, 'Projects', 'projects', r.name, () => act.openProject(r.id), { scope: 'projects', project: r })),
+    item('project-new', 'Projects', 'plus', 'New project', act.newProject, { scope: 'projects', also: 'add connect repo' })
   ]
 
   // Where a shared file opens is worked out when it is picked, so a file is always listed: the sharing workspace if it is still open, else the
@@ -199,62 +217,89 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
       const latest = latestOf(f)
       const by = nameOf(f.projectId, f.agentId) ?? f.agentId
       const kind = kindLabel(f.kind, latest.mime)
-      const it = item(`shared-${f.id}`, 'Shared', '◇', f.title, () => openSharedFile(f), { also: `${kind} ${f.kind} ${f.source} ${by}`, meta: `${kind} · v${latest.n} · ${by} · ${sinceShort(f.updatedAt)}` })
+      const it = item(`shared-${f.id}`, 'Shared', 'doc', f.title, () => openSharedFile(f), { scope: 'shared', file: kindFile[f.kind], meta: kind, also: `${kind} ${f.kind} ${f.source} ${by}` })
       return [{ projectId: f.projectId, it }]
     })
-  // With nothing typed: the five newest in the project in view. Typing searches the rest as well.
-  const sharedNow = sharedItems.filter((x) => x.projectId === project?.id).slice(0, SHARED_DEFAULT).map((x) => x.it)
-  const sharedRest = sharedItems.map((x) => x.it).filter((x) => !sharedNow.includes(x))
+  // Every file is listed under Shared, newest first. Only the project in view's open Recents.
+  const sharedAll = sharedItems.map(({ projectId, it }) => (projectId === project?.id ? { ...it, at: i.shared.find((f) => `shared-${f.id}` === it.id)?.updatedAt } : it))
 
   // "Switch Claude Code to Personal". A search that finds only these keeps Claude Code before Codex, not the shorter label first.
   const accountItems: PaletteItem[] = (i.accounts ?? [])
     .filter((a) => a.signedIn && !a.active)
-    .map((a) => item(`acct-${a.provider}-${a.id}`, 'Accounts', '⇄', `Switch ${PROVIDER_NAME[a.provider]} to ${a.label}`, () => act.switchAccount?.(a.provider, a.id), { meta: a.auth === 'apiKey' ? 'API key' : a.plan, also: 'account login sign in' }))
+    .map((a) => item(`acct-${a.provider}-${a.id}`, 'Accounts', 'user', `Switch ${PROVIDER_NAME[a.provider]} to ${a.label}`, () => act.switchAccount?.(a.provider, a.id), { meta: a.auth === 'apiKey' ? 'API key' : a.plan, also: 'account login sign in' }))
 
   // Typing searches these too, so the default list stays short.
   const more: PaletteItem[] = [
     ...accountItems,
-    ...sharedRest,
     // Typing "archived" lists them all. Picking one restores it and opens it, the way Restore does in History.
     ...archivedList(workspaces).map((w) => {
       const name = historyName(w, i.threads ?? {})
-      return item(`archived-${w.id}`, 'Archived', '◇', name, () => act.restore?.(w, name), { meta: `Archived · ${projects.find((r) => r.id === w.projectId)?.name ?? ''} · ${whenLabel(endedAt(w))}`, also: `archived history restore ${w.branch}` })
+      return item(`archived-${w.id}`, 'Archived', 'history', name, () => act.restore?.(w, name), { meta: `Archived · ${projects.find((r) => r.id === w.projectId)?.name ?? ''} · ${whenLabel(endedAt(w))}`, also: `archived history restore ${w.branch}` })
     }),
-    goto('go-projects', 'All projects', { name: 'projects' }),
+    goto('go-projects', 'All projects', { name: 'projects' }, {}, 'projects'),
     ...visible.flatMap((r) => {
       const projectLead = i.agents[r.id]?.find((a) => a.lead)
       return [
-        goto(`go-agents-${r.id}`, `${r.name} agents`, projectAgents(r.id), { also: 'team subagents' }),
+        goto(`go-agents-${r.id}`, `${r.name} agents`, projectAgents(r.id), { also: 'team subagents' }, 'team'),
         // The project in view has "Open the Lead's chat" above, which "lead chat" finds first. These say whose chat, not "lead chat",
         // so a shorter project name can't outrank it.
-        ...(projectLead && r.id !== project?.id ? [item(`go-lead-${r.id}`, 'Go to', '◇', `${projectLead.name}'s chat in ${r.name}`, () => act.openLead(r.id), { also: 'lead workspace' })] : [])
+        ...(projectLead && r.id !== project?.id ? [item(`go-lead-${r.id}`, 'Pages', 'chat', `${projectLead.name}'s chat in ${r.name}`, () => act.openLead(r.id), { scope: 'pages', also: 'lead workspace' })] : [])
       ]
     }),
-    ...workspaces.filter(live).map((w) => goto(`go-ws-${w.id}`, `${workspaceRowLabel(w)} workspace`, { name: 'workspace', workspaceId: w.id }, { also: `${w.name} ${w.branch}` })),
-    ...settingsPages.map(([p, label]) => goto(`go-set-${p}`, `Settings: ${label}`, { name: 'settings', page: p }, { also: 'preferences' })),
+    ...workspaces.filter(live).map((w) => goto(`go-ws-${w.id}`, `${workspaceRowLabel(w)} workspace`, { name: 'workspace', workspaceId: w.id }, { also: `${w.name} ${w.branch}` }, 'layers')),
+    ...settingsPages.map(([p, label]) => goto(`go-set-${p}`, `Settings: ${label}`, { name: 'settings', page: p }, { also: 'preferences' }, 'sliders')),
     // Each project's own pages, named after the project: "Settings: Client A, Scripts".
-    ...settingsRows.map((k) => goto(`go-set-${k.page}-${k.rowId}`, `Settings: ${k.pageLabel}, ${k.label}`, { name: 'settings', page: k.page, row: k.rowId }, { also: 'preferences' })),
+    ...settingsRows.map((k) => goto(`go-set-${k.page}-${k.rowId}`, `Settings: ${k.pageLabel}, ${k.label}`, { name: 'settings', page: k.page, row: k.rowId }, { also: 'preferences' }, 'sliders')),
     ...visible.filter((r) => !r.hidden).flatMap((r) => PROJECT_PAGES.flatMap((p) => [
-      goto(`go-set-${r.id}-${p.section}`, `Settings: ${r.name}, ${p.label}`, { name: 'settings', page: 'project', projectId: r.id, section: p.section }, { also: 'preferences project' }),
-      ...p.keywords.map((k) => goto(`go-set-${r.id}-${p.section}-${k.rowId}`, `Settings: ${r.name}, ${p.label}, ${k.label}`, { name: 'settings', page: 'project', projectId: r.id, section: p.section, row: k.rowId }, { also: 'preferences project' }))
+      goto(`go-set-${r.id}-${p.section}`, `Settings: ${r.name}, ${p.label}`, { name: 'settings', page: 'project', projectId: r.id, section: p.section }, { also: 'preferences project' }, 'sliders'),
+      ...p.keywords.map((k) => goto(`go-set-${r.id}-${p.section}-${k.rowId}`, `Settings: ${r.name}, ${p.label}, ${k.label}`, { name: 'settings', page: 'project', projectId: r.id, section: p.section, row: k.rowId }, { also: 'preferences project' }, 'sliders'))
     ]))
   ]
 
-  return { items: [...suggested, ...chatItems, ...sharedNow, ...goDefault, ...projectItems], more }
+  return { items: [...actionItems, ...chatItems, ...sharedAll, ...goDefault, ...projectItems], more }
 }
 
-/** What the list shows for a query. No query: the three sections. A query: one ranked list over everything. */
-export function visibleItems(items: PaletteItem[], more: PaletteItem[], query: string): { section: Section; title: string; list: PaletteItem[] }[] {
+export interface Group { section: Section; title: string; list: PaletteItem[] }
+
+/** What the list shows. No query under All: Recents, then Actions. No query under a tab: all of that kind. A query: one ranked list. */
+export function visibleItems(items: PaletteItem[], more: PaletteItem[], query: string, scope: Scope = 'all'): Group[] {
+  const inScope = (x: PaletteItem) => scope === 'all' || x.scope === scope
   if (!query.trim()) {
-    return (['Suggested', 'Chats', 'Shared', 'Go to', 'Projects'] as const)
-      .map((section) => { const list = items.filter((x) => x.section === section); return { section, title: list[0]?.group ?? section, list } })
-      .filter((g) => g.list.length)
+    if (scope !== 'all') {
+      const list = items.filter(inScope)
+      return list.length ? [{ section: items.find(inScope)!.section, title: scopeLabel(scope), list }] : []
+    }
+    const recents = items.filter((x) => x.at !== undefined).sort((a, b) => b.at! - a.at!).slice(0, RECENTS)
+    const actions = items.filter((x) => x.section === 'Actions')
+    return ([{ section: 'Recents', title: 'Recents', list: recents }, { section: 'Actions', title: 'Actions', list: actions }] as Group[]).filter((g) => g.list.length)
   }
   const seen = new Set<string>()
   // Two chats or files can share a name, so those are told apart by id.
-  const all = [...items, ...more].filter((x) => { const key = x.section === 'Shared' || x.section === 'Chats' || x.section === 'Archived' ? x.id : x.label; return seen.has(key) ? false : (seen.add(key), true) })
+  const all = [...items, ...more].filter(inScope).filter((x) => { const key = x.section === 'Shared' || x.section === 'Chats' || x.section === 'Archived' ? x.id : x.label; return seen.has(key) ? false : (seen.add(key), true) })
   const ranked = rank(all, query)
-  const only = ranked.length > 0 && ranked.every((x) => x.section === 'Accounts')
+  const only = scope === 'all' && ranked.length > 0 && ranked.every((x) => x.section === 'Accounts')
   const list = only ? all.filter((x) => ranked.includes(x)) : ranked
-  return list.length ? [{ section: only ? 'Accounts' : 'Results', title: only ? 'Accounts' : 'Results', list }] : []
+  const title = only ? 'Accounts' : scope === 'all' ? 'Results' : scopeLabel(scope)
+  return list.length ? [{ section: only ? 'Accounts' : 'Results', title, list }] : []
+}
+
+/** The character ranges of `text` that `query` matched, for drawing them in full ink. A whole-text hit is one range, else each query character. */
+export function matchRanges(query: string, text: string): [number, number][] {
+  const q = query.trim().toLowerCase()
+  if (!q) return []
+  const t = text.toLowerCase()
+  const whole = t.indexOf(q)
+  if (whole >= 0) return [[whole, whole + q.length]]
+  const out: [number, number][] = []
+  let at = 0
+  for (const ch of q) {
+    if (ch === ' ') continue
+    const i = t.indexOf(ch, at)
+    if (i < 0) return []
+    const last = out[out.length - 1]
+    if (last && last[1] === i) last[1] = i + 1
+    else out.push([i, i + 1])
+    at = i + 1
+  }
+  return out
 }

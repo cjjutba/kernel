@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildItems, fuzzyScore, rank, visibleItems } from '../src/renderer/src/screens/search/model'
+import { buildItems, fuzzyScore, matchRanges, rank, stepScope, visibleItems } from '../src/renderer/src/screens/search/model'
 import { groupOf, inTab, matches, prLabel } from '../src/renderer/src/screens/history/model'
 import type { AgentDef, Chat, Project, SharedFile, Thread, Workspace } from '../src/shared/types'
 
@@ -22,7 +22,7 @@ describe('command palette', () => {
     const workspaces = [ws('invoice-table', { stat: { files: 4, added: 412, removed: 38 } })]
     const input = { projects, workspaces, approvals: [], shared: [], agents: {}, act }
     const home = buildItems({ ...input, route: { name: 'projects' } })
-    expect(home.items.filter((i) => i.section === 'Suggested').map((i) => i.label)).toEqual(['New chat in Client A', 'Create PR for invoice-table'])
+    expect(home.items.filter((i) => i.section === 'Actions').map((i) => i.label)).toEqual(['New chat in Client A', 'Create PR for invoice-table'])
     expect(home.items.filter((i) => i.section === 'Projects').map((i) => i.label)).toEqual(['Client A', 'Client B', 'New project'])
     const inWs = buildItems({ ...input, terminal: { enabled: true }, route: { name: 'workspace', workspaceId: 'invoice-table' } })
     expect(inWs.items.map((i) => i.label)).toContain('Big terminal tab')
@@ -67,7 +67,7 @@ describe('command palette', () => {
     const projects = [project('a', 'Client A'), project('b', 'Client B'), project('o', 'Own')]
     const input = { projects, workspaces: [], approvals: [], shared: [], agents: { a: [kernel], b: [{ ...kernel, name: 'Sol' }], o: [{ ...kernel, name: 'Oz' }] }, act: { ...act, openLead: (id: string) => { opened.push(id) } } }
     const home = buildItems({ ...input, route: { name: 'projects' } })
-    const suggested = home.items.filter((i) => i.section === 'Suggested')
+    const suggested = home.items.filter((i) => i.section === 'Actions')
     expect(suggested.map((i) => i.label)).toEqual(['New chat in Client A', "Open Kernel's chat"])
     expect(suggested[1].keys).toEqual(['⌘', '⇧', 'L'])
     suggested[1].run()
@@ -96,17 +96,39 @@ describe('command palette, shared files', () => {
   const shared = (list: SharedFile[], route: Parameters<typeof buildItems>[0]['route'] = { name: 'workspace', workspaceId: 'w1' }, extra: Partial<Parameters<typeof buildItems>[0]> = {}) => buildItems({ ...base, shared: list, route, ...extra })
   const ids = (list: { id: string }[]) => list.map((x) => x.id)
 
-  it('lists the five newest files in the project in view before you type, newest first', () => {
+  it('opens Recents with the five newest files in the project in view, and lists every file under Shared', () => {
     const list = ['1', '2', '3', '4', '5', '6', '7'].map((n) => file(n, { updatedAt: Number(n) }))
     const other = file('b1', { projectId: 'b', workspaceId: 'wb', updatedAt: 99 })
     const built = shared([...list, other])
-    expect(ids(built.items.filter((i) => i.section === 'Shared'))).toEqual(['shared-7', 'shared-6', 'shared-5', 'shared-4', 'shared-3'])
-    expect(visibleItems(built.items, built.more, '').map((g) => g.section)).toEqual(['Suggested', 'Shared', 'Go to', 'Projects'])
-    // Another project's files, and the two older ones, are only found by typing.
-    expect(ids(built.more.filter((i) => i.section === 'Shared')).sort()).toEqual(['shared-1', 'shared-2', 'shared-b1'])
-    // A project in view with nothing shared has no group.
+    const empty = visibleItems(built.items, built.more, '')
+    expect(empty.map((g) => g.title)).toEqual(['Recents', 'Actions'])
+    expect(ids(empty[0].list)).toEqual(['shared-7', 'shared-6', 'shared-5', 'shared-4', 'shared-3'])
+    // The Shared tab lists them all, newest first, another project's among them.
+    expect(ids(visibleItems(built.items, built.more, '', 'shared')[0].list)).toEqual(['shared-b1', 'shared-7', 'shared-6', 'shared-5', 'shared-4', 'shared-3', 'shared-2', 'shared-1'])
+    // A project in view with nothing shared has nothing in Recents.
     const bare = shared([file('1')], { name: 'project', projectId: 'b' } as never)
-    expect(bare.items.some((i) => i.section === 'Shared')).toBe(false)
+    expect(visibleItems(bare.items, bare.more, '').map((g) => g.title)).toEqual(['Actions'])
+  })
+
+  it('gives each kind its tab, and a tab searches only its kind', () => {
+    const b = shared([file('1', { title: 'Invoice layout' })], { name: 'workspace', workspaceId: 'w1' })
+    const titles = (scope: Parameters<typeof stepScope>[0], q = '') => visibleItems(b.items, b.more, q, scope).flatMap((g) => g.list.map((i) => i.label))
+    expect(titles('shared')).toEqual(['Invoice layout'])
+    expect(titles('projects')).toEqual(['Client A', 'Client B', 'New project'])
+    expect(titles('pages')).toContain('Inbox')
+    expect(titles('pages')).not.toContain('Client A')
+    expect(titles('shared', 'inbox')).toEqual([])
+    expect(titles('pages', 'zzzz')).toEqual([])
+    expect(titles('all', 'invoice')).toContain('Invoice layout')
+    expect(stepScope('projects', 1)).toBe('all')
+    expect(stepScope('all', -1)).toBe('projects')
+  })
+
+  it('marks the characters a search matched', () => {
+    expect(matchRanges('', 'Inbox')).toEqual([])
+    expect(matchRanges('box', 'Inbox')).toEqual([[2, 5]])
+    expect(matchRanges('ibx', 'Inbox')).toEqual([[0, 1], [2, 3], [4, 5]])
+    expect(matchRanges('xyz', 'Inbox')).toEqual([])
   })
 
   it('finds archived workspaces by typing, and restores the one picked', () => {
@@ -127,7 +149,7 @@ describe('command palette, shared files', () => {
     const f = file('1', { title: 'Invoice layout options', versions: [{ n: 1, at: 1, file: 'v1', mime: 'text/html', bytes: 1, sha256: 'a' }, { n: 2, at: 2, file: 'v2', mime: 'text/html', bytes: 1, sha256: 'b' }], updatedAt: Date.now() - 2 * 3_600_000 })
     const it = shared([f]).items.find((i) => i.section === 'Shared')!
     expect(it.label).toBe('Invoice layout options')
-    expect(it.meta).toBe('HTML · v2 · Noor · 2h')
+    expect(it.meta).toBe('HTML')
   })
 
   it('finds a file by title, type, source path or the agent that shared it, best match first', () => {
@@ -218,11 +240,13 @@ describe('command palette chats (KERNEL-339)', () => {
   ]
   const input = { projects, workspaces: [lead], approvals: [], shared: [], agents: { a: [kernel] }, chats, act }
 
-  it('lists the project\'s open chats under "Chats in Client A" with their tab counts, between Suggested and Go to', () => {
-    const { items } = buildItems({ ...input, route: { name: 'workspace', workspaceId: 'lead' } })
+  it('lists the project\'s open chats in Recents, newest first, each with when it last moved', () => {
+    const recent = chats.map((c, n) => ({ ...c, thread: { ...c.thread, lastSentAt: Date.now() - (n + 1) * 3_600_000 } }))
+    const { items } = buildItems({ ...input, chats: recent, route: { name: 'workspace', workspaceId: 'lead' } })
     const groups = visibleItems(items, [], '')
-    expect(groups.map((g) => g.title)).toEqual(['Suggested', 'Chats in Client A', 'Go to', 'Projects'])
-    expect(groups[1].list.map((i) => [i.label, i.meta])).toEqual([['Export invoices as PDF', '3 tabs'], ['Seed demo data', '1 tab']])
+    expect(groups.map((g) => g.title)).toEqual(['Recents', 'Actions'])
+    expect(groups[0].list.map((i) => [i.label, i.meta])).toEqual([['Export invoices as PDF', '1h'], ['Seed demo data', '2h']])
+    expect(visibleItems(items, [], '', 'chats')[0].list).toHaveLength(2)
   })
 
   it('opens the chat that was picked, with its tabs', () => {
@@ -240,7 +264,7 @@ describe('command palette chats (KERNEL-339)', () => {
 
   it('leaves the group out when the project has no open chat, and calls the tab item New tab', () => {
     const { items } = buildItems({ ...input, chats: [], route: { name: 'workspace', workspaceId: 'lead' } })
-    expect(visibleItems(items, [], '').map((g) => g.section)).not.toContain('Chats')
+    expect(visibleItems(items, [], '').flatMap((g) => g.list).map((i) => i.section)).not.toContain('Chats')
     const tabItem = items.find((i) => i.id === 'new-tab')!
     expect([tabItem.label, tabItem.keys]).toEqual(['New tab', ['⌘', 'T']])
     // ⌘N keeps starting a chat.
