@@ -1,7 +1,7 @@
 import type { SharedFile, SharedKind, SharedVersion } from '@shared/types'
 import { useStore } from '../../../store'
 import { FileIcon } from '../../../components/FileIcon'
-import { Button } from '../../../ui'
+import { Button, EmptyState } from '../../../ui'
 import { kindFile, kindLabel, useOpenShared, useSharer, useThumb, versionLine, versionOf } from '../shared/shared'
 import '../shared/shared.css'
 
@@ -27,7 +27,7 @@ const picture = (kind: SharedKind) => kind === 'html' || kind === 'image'
  */
 export function SharedCard({ sharedId, version }: { sharedId: string; version: number }) {
   const { file, v, thumb, by, open } = useCard(sharedId, version)
-  if (!file || !v) return null
+  if (!file || !v) return <div className="card shcard" data-layout="missing"><EmptyState icon="doc" title="A shared file">This file is no longer available</EmptyState></div>
   const meta = `${versionLine(file, v.n)} · ${by}`
   const button = <Button className="small shcard-open" aria-label={`Open ${file.title}`} onClick={open}>Open</Button>
   if (thumb && picture(file.kind)) {
