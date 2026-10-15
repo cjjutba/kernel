@@ -539,6 +539,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   ComposerAttaching: dropWhileReading,
   ConfirmOverrule: openOverrule,
   UsageFooterNarrow: narrowWindow,
+  AuditSidebarWide: async (page) => { const h = page.getByRole('separator', { name: 'Resize sidebar' }); await h.focus(); await page.keyboard.press('End'); await h.blur(); await page.waitForTimeout(300) },
   AccountSwitching: async (page) => { await page.locator('.ft-other').first().click(); await page.waitForTimeout(200) },
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   RoomSetupTeam: openReviewer,

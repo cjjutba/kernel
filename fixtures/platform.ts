@@ -880,5 +880,26 @@ export const platformFixtures: Record<string, Fixture> = {
   })),
   ConfirmDiscard: scene(() => ({ ui: { ...open, modal: { name: 'confirm', kind: 'discard', workspaceId: ids.table } } })),
   // KERNEL-455: the first switch into Bypass permissions, with Only in worktrees on.
-  ConfirmBypass: scene(() => ({ ui: { ...open, modal: { name: 'confirm', kind: 'bypass' } } }))
+  ConfirmBypass: scene(() => ({ ui: { ...open, modal: { name: 'confirm', kind: 'bypass' } } })),
+  // UX audit (app shell and platform): states the screens above leave out. See docs/audits/ux-platform.md.
+  AuditAboutChecking: settingsPage('about', { preflight: [], update: { status: 'checking', current: '0.1.0' } }),
+  AuditAboutDownloading: settingsPage('about', { preflight: [], update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 0.42 } }),
+  AuditAboutUpdateError: settingsPage('about', { preflight: [], update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } }),
+  AuditAboutUpdateBlocked: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.1.0', blocked: 'Kernel is running from outside Applications, so it does not check for updates.' } }),
+  // The home screen while an update downloads or fails: the footer and the stack say nothing.
+  AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 0.42 } },
+  AuditHomeUpdateError: { ...teamFixtures.UpdateReady, update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } },
+  // Toasts: three at once, and one with a long title and sub, over Home.
+  AuditToastsStacked: { ...teamFixtures.UpdateReady, ui: { ...teamFixtures.UpdateReady.ui, toasts: [
+    { id: 't1', title: 'Archived Invoice table', sub: 'Its branch was kept.', action: { label: 'Undo', route: { name: 'inbox' } } },
+    { id: 't2', title: 'Could not save the setting' },
+    { id: 't3', title: 'Switched Claude Code to Work', action: { label: 'Undo', switchAccount: { provider: 'claude', accountId: 'cli' } } }
+  ] } },
+  AuditToastLong: { ...teamFixtures.UpdateReady, ui: { ...teamFixtures.UpdateReady.ui, toasts: [
+    { id: 'long', title: 'Could not archive the Client portal login workspace because its worktree has uncommitted changes in 14 files', sub: 'Commit or discard them in the Changes tab, then try again. The folder is /Users/you/kernel/worktrees/client-portal/feat-login-with-a-very-long-branch-name-that-keeps-going', action: { label: 'Open workspace', route: { name: 'workspace', workspaceId: ids.table } } }
+  ] } },
+  // First launch: no room, no chat, no workspace, on Home and in the checks that hang.
+  AuditFirstLaunchHome: scene(() => ({ ...empty, ui: { route: { name: 'inbox' } } })),
+  AuditSetupChecksWaiting: { ...setup([]), hold: ['preflight.run'] },
+  AuditSidebarWide: teamFixtures.UpdateReady
 }
