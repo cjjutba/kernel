@@ -439,9 +439,9 @@ export function AppSidebar() {
 
   return (
     <>
-      {/* The strip lines up with the screen header (y 9 to 53), where the traffic lights sit. The toggle is at x 87, the spot the header's Show sidebar takes when hidden (KERNEL-431). */}
+      {/* The strip lines up with the screen header (y 9 to 53), where the traffic lights sit. The toggle sits over the slot at x 87, mounted once by App so it is the same element when the sidebar hides (KERNEL-431). */}
       <div className="drag" style={{ height: 53, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '9px 0 0 77px' }}>
-        <IconButton className="nodrag" icon="sidebar" size={16} label="Hide sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(false)} />
+        <span className="sidebar-toggle-slot" aria-hidden="true" />
         <span className="grow" />
         <HistoryButtons />
         <IconButton className="nodrag" icon="search" size={16} label="Search" data-tip-kbd="⌘K" onClick={() => actions.ui.openModal({ name: 'search' })} />

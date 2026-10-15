@@ -2250,6 +2250,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceFocus: scene(() => ({
     ui: { ...open, sidebar: false, rightPanel: false, workspace: { right: 'changes', bottom: 'run' } }
   })),
+  // The sidebar toggle as motion: one element at one spot while the sidebar hides, so the frames show the icon staying put.
+  WorkspaceSidebarToggle: { ...scene(() => ({
+    ui: { ...open, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run' } }
+  })), motion: { action: { click: 'Hide sidebar' }, ms: 600, area: '.app' } },
   // No PNG draws Back and Forward (KERNEL-643). The sidebar is open with Back lit and Forward disabled, and the hidden twin shows the pair after Show sidebar.
   WorkspaceHistoryButtons: scene(() => ({
     ui: { ...open, nav: { canBack: true, canForward: false }, workspace: { right: 'changes', bottom: 'run' } }

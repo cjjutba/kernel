@@ -4,7 +4,7 @@ import { actions, getState } from '../../store'
 import { Icon, IconButton } from '../../ui'
 import { useEscape } from '../../ui/hooks'
 import { RoomIcon } from '../../components/RoomIcon'
-import { SidebarToggle } from '../../components/PanelToggles'
+import { SidebarToggleSlot } from '../../components/PanelToggles'
 
 /** Back to where New chat was opened from, or New chat in the first room when there is nowhere to go. The draft stays in the room's box. */
 const leave = () => { if (!actions.ui.back()) actions.ui.go(landing(getState())) }
@@ -16,7 +16,7 @@ const leave = () => { if (!actions.ui.back()) actions.ui.go(landing(getState()))
 export function NewChatHeader({ room }: { room?: Room }) {
   return (
     <header className="header">
-      <SidebarToggle />
+      <SidebarToggleSlot />
       {room && !room.archived && <>
         <RoomIcon room={room} className="crumb-avatar" />
         <span className="crumb">{room.name}</span>

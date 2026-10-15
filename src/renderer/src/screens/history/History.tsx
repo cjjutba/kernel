@@ -7,7 +7,7 @@ import { archivedList, historyName, deleteAllLabel, endedAt, groupOf, inTab, mat
 import { restoreArchived } from './restore'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import './history.css'
-import { SidebarToggle } from '../../components/PanelToggles'
+import { SidebarToggleSlot } from '../../components/PanelToggles'
 
 const tabs: [HistoryTab, string][] = [['all', 'All'], ['merged', 'Merged'], ['notMerged', 'Not merged']]
 const groups: HistoryGroup[] = ['Today', 'This week', 'Earlier']
@@ -41,7 +41,7 @@ export function History() {
   return (
     <div className="panel">
       <header className="header" style={{ paddingRight: 12 }}>
-        <SidebarToggle />
+        <SidebarToggleSlot />
         <Icon name="history" />
         <h1>{only ? `History, ${rooms.find((r) => r.id === only)?.name ?? 'room'}` : 'History'}</h1>
         {only && <Button variant="ghost" onClick={() => go({ name: 'history' }, { history: 'replace' })}>All rooms</Button>}

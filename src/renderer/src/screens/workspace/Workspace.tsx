@@ -5,7 +5,7 @@ import { actions, getState, loadWorkspace, panelShownIn, useStore } from '../../
 import { Icon } from '../../ui'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
-import { PanelToggleSlot, RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
+import { PanelToggleSlot, RightPanelToggle, SidebarToggleSlot } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { isLeadWorkspace, leadOf, openRoom } from '../../lead'
 import { currentThread, tabOf, threadIdOf } from '../../nav'
@@ -253,7 +253,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   return (
     <div className="panel ws-panel">
       {newChatShown ? <NewChatHeader room={room} /> : <header className="header">
-        <SidebarToggle />
+        <SidebarToggleSlot />
         <RoomIcon room={room} className="crumb-avatar" />
         <button type="button" className="crumb" onClick={() => room && void openRoom(room.id)}>{room?.name}</button>
         <span className="muted"><Icon name="right" size={12} /></span>

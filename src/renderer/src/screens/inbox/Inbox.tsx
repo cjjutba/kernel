@@ -13,7 +13,7 @@ import { decideAtOnce, useFoldPhase, useHeldRows } from '../workspace/cards/deci
 import { openRoom } from '../../lead'
 import { age, agentOf, allOverlaps, fileName, inboxItems, inTab, names, needsYou, type InboxItem, type InboxTab } from './model'
 import './inbox.css'
-import { SidebarToggle } from '../../components/PanelToggles'
+import { SidebarToggleSlot } from '../../components/PanelToggles'
 
 const tabs: [InboxTab, string][] = [['all', 'All'], ['needs', 'Needs you'], ['updates', 'Updates']]
 
@@ -178,7 +178,7 @@ export function Inbox() {
   return (
     <div className="panel">
       <header className="header" style={{ paddingRight: 12 }}>
-        <SidebarToggle />
+        <SidebarToggleSlot />
         <Icon name="inbox" />
         <h1>Inbox</h1>
         <span className="grow" />
