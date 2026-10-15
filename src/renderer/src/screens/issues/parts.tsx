@@ -1,9 +1,7 @@
-import { useRef, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { BannerKind, GitHubErrorKind, Room } from '@shared/types'
 import { go } from '../../store'
-import { Banner, Button, Icon, Menu, Select, useBusy } from '../../ui'
-import { RoomIcon } from '../../components/RoomIcon'
-import { SidebarToggleSlot } from '../../components/PanelToggles'
+import { Banner, Button, Select, useBusy } from '../../ui'
 
 type Option = { value: string; label: string }
 
@@ -14,39 +12,6 @@ export function FilterChip({ label, value, options, onChange }: { label: string;
 
 /** The room the page lists and the rooms it can switch to. A page with no room at all has none. */
 export interface RoomHead { rooms: Room[]; room?: Room; onRoom: (id: string) => void }
-
-/**
- * The page's header: Issues, the room whose tracker it lists and, on the right, where the issues come from (IssuesGitHub.png).
- * The room menu is the way to another room's tracker, so every tracker's page has it (KERNEL-438).
- */
-export function IssuesHeader({ head, where }: { head: RoomHead; where?: ReactNode }) {
-  const [open, setOpen] = useState(false)
-  const anchor = useRef<HTMLSpanElement>(null)
-  const { rooms, room, onRoom } = head
-  return (
-    <header className="header is-head">
-      <SidebarToggleSlot />
-      <Icon name="issues" />
-      <h1>Issues</h1>
-      {room && (
-        <>
-          <span className="is-slash" aria-hidden="true">/</span>
-          <span ref={anchor} className="is-roommenu">
-            <Button variant="ghost" className="is-roompick" aria-label={`Room: ${room.name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-              <RoomIcon room={room} className="is-letter" fallback="?" />{room.name}<Icon name="chevron" size={12} />
-            </Button>
-            {open && (
-              <Menu label="Room" anchorRef={anchor} onClose={() => setOpen(false)} style={{ left: 0, top: 'calc(100% + 4px)' }}
-                items={rooms.map((r) => ({ id: r.id, label: r.name, checked: r.id === room.id, onSelect: () => onRoom(r.id) }))} />
-            )}
-          </span>
-        </>
-      )}
-      <span className="grow" />
-      {where && <span className="is-where muted">{where}</span>}
-    </header>
-  )
-}
 
 /** Settings, the room, General: where the room's tracker is chosen. */
 export const chooseTracker = (roomId: string) => go({ name: 'settings', page: 'room', roomId, section: 'general' })

@@ -4,14 +4,16 @@ import { githubErrorKind } from '@shared/githubError'
 import { call, cleanError } from '../../api'
 import { getState, useStore } from '../../store'
 import { readSavedJson, writeSavedJson } from '../../remember'
-import { Button, EmptyList, FailedState, Icon, IconButton, Pill, Spinner, useListKeys } from '../../ui'
+import { Button, EmptyList, FailedState, Icon, Pill, Spinner, useListKeys } from '../../ui'
 import { IssueState } from '../../icons'
 import { GithubDetail } from './GithubDetail'
 import {
   byUpdated, DEFAULT_GITHUB_FILTER, githubFilterKey, parseGithubFilter, describeGithub, issueAge, joinFits, labelsOf, linkedWorkspaces, loginInitials, milestonesOf, narrowGithub, rowLabels, rowStatus,
   type GithubFilter
 } from './model'
-import { CapNote, chooseTracker, FilterChip, githubProblem, IssuesHeader, RefreshNotice, type RoomHead } from './parts'
+import { CapNote, chooseTracker, FilterChip, githubProblem, RefreshNotice, type RoomHead } from './parts'
+import { WorkHeader } from '../work/WorkHeader'
+import { useOpenPrCount } from '../prs/model'
 import './issues.css'
 
 type Failure = { kind: 'error'; why: GitHubErrorKind; message: string }
@@ -28,6 +30,7 @@ const failure = (e: unknown): Failure => ({ kind: 'error', why: githubErrorKind(
  * mounts its own, so nothing here carries over from the room before.
  */
 export function GithubIssues({ room, where, issueId, head }: { room: Room; where?: string; issueId?: string; head: RoomHead }) {
+  const prCount = useOpenPrCount()
   const online = useStore((s) => s.system.online)
   const workspaces = useStore((s) => s.workspaces)
   const agents = useStore((s) => s.agents)
@@ -130,7 +133,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
 
   return (
     <div className="panel">
-      <IssuesHeader head={head} where={shown.kind === 'loading' ? undefined : `GitHub${where ? ` · ${where}` : ''}`} />
+      <WorkHeader tab="issues" head={head} counts={{ issues: ready ? count(narrowed.length) : undefined, prs: prCount }} onRefresh={refresh} refreshing={refreshing} where={shown.kind === 'loading' ? undefined : `GitHub${where ? ` · ${where}` : ''}`} />
 
       {ready && (
         <div className="is-bar">
@@ -146,7 +149,6 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
             <Icon name="search" size={14} />
             <input type="search" aria-label="Search issues" placeholder="Search issues" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} />
           </span>
-          <IconButton icon="refresh" size={16} label="Refresh issues" busy={refreshing} busyPattern="rotate" busyLabel="Refreshing issues" onClick={refresh} />
         </div>
       )}
 

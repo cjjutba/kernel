@@ -1,9 +1,9 @@
-import { useLayoutEffect } from 'react'
+import { useLayoutEffect, useMemo, useState } from 'react'
 import type { Workspace } from '@shared/types'
 import { go, useStore } from '../../store'
 import { Banner, Icon, Pill, Spinner, useListKeys } from '../../ui'
 import { oneOf, useRemembered } from '../../remember'
-import { SidebarToggleSlot } from '../../components/PanelToggles'
+import { WorkHeader, ALL_ROOMS } from '../work/WorkHeader'
 import { age } from '../inbox/model'
 import { MergeButton } from '../workspace/pr/MergeButton'
 import type { LeadPr } from '../workspace/pr/leadPrList'
@@ -71,7 +71,16 @@ function MergedRow({ ws, nav }: { ws: Workspace; nav: Nav }) {
 export function PullRequests({ filter: first }: { filter?: Filter }) {
   const [filter, setFilter] = useRemembered<Filter>('kernel.prsTab', oneOf<Filter>(['open', 'merged'], 'open'))
   useLayoutEffect(() => { if (first) setFilter(first) }, [first])
-  const { open, merged, mergedTotal, reading, reads } = usePullRequests()
+  const all = usePullRequests()
+  const { mergedTotal, reading, reads, refresh } = all
+  // The room the list is narrowed to, or none for every room. A room that was archived or hidden since reads as none.
+  const rooms = useStore((s) => s.rooms)
+  const choices = useMemo(() => rooms.filter((r) => !r.archived && !r.hidden), [rooms])
+  const [roomId, setRoomId] = useRemembered<string>('kernel.prsRoom', (raw) => raw ?? ALL_ROOMS)
+  const room = choices.find((r) => r.id === roomId)
+  const open = room ? all.open.filter((r) => r.ws.roomId === room.id) : all.open
+  const merged = room ? all.merged.filter((w) => w.roomId === room.id) : all.merged
+  const [refreshing, setRefreshing] = useState(false)
   const shown = filter === 'open' ? open.map((r) => r.ws) : merged
   const keys = useListKeys({ ids: shown.map((w) => w.id), rowId: (id) => `prs-${id}`, onOpen: (id) => { const ws = shown.find((w) => w.id === id); if (ws) openWorkspace(ws) } })
   const counts: Record<Filter, number> = { open: open.length, merged: merged.length }
@@ -80,11 +89,8 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   const readAgo = readAt === undefined ? undefined : age(readAt) === 'now' ? 'just now' : `${age(readAt)} ago`
   return (
     <div className="panel">
-      <header className="header" style={{ paddingRight: 12 }}>
-        <SidebarToggleSlot />
-        <Icon name="pr" />
-        <h1>Pull requests</h1>
-      </header>
+      <WorkHeader tab="prs" allRooms head={{ rooms: choices, room, onRoom: setRoomId }} counts={{ prs: open.length }} where="GitHub" refreshing={refreshing}
+        onRefresh={() => { setRefreshing(true); void refresh().finally(() => setRefreshing(false)) }} />
       <div className="prs-bar" role="group" aria-label="Filter pull requests">
         {filters.map(([id, label]) => <Pill key={id} pressed={filter === id} onClick={() => setFilter(id)}>{label}<span className="prs-n">{counts[id]}</span></Pill>)}
         <span className="prs-read" role="status">

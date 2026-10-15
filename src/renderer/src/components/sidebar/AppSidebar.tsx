@@ -26,6 +26,7 @@ import { useShown, type Fate, type Shown } from './leaving'
 import { chatUnread, roomUnread, workspaceRowUnread } from './unread'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import { workspaceRowLabel } from './workspaceRowLabel'
+import { useWorkTab } from '../../screens/work/tab'
 
 /** Routes hold only strings, so equal fields mean the same page. An unset field and a missing one are the same. */
 const same = (a: Route, b: Route) => {
@@ -75,8 +76,8 @@ const restIcon = (g: WorkspaceGlyph, rest: WorkspaceGlyph, fallback: IconName): 
 }
 
 function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen, leaving }: { route: Route; icon: IconName | ReactElement; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; slot?: RowKey; /** The row's name when it has something new: its title goes bold and its label ends in Unread (KERNEL-508). */ unread?: string; /** In place of going to `route`. */ onOpen?: () => void; /** The row's workspace was archived. It folds away, keeping the fill it had on the screen the archive left (`from`), or `held` waits for its chat to fold. */ leaving?: Gone }) {
-  // Issues opens on an issue too, so any issue is the Issues row's page. Pull requests opens on a filter, which is still its page.
-  const current = useStore((s) => { const r = leaving ? leaving.from ?? s.ui.route : s.ui.route; return same(r, route) || (route.name === 'issues' && r.name === 'issues') || (route.name === 'prs' && r.name === 'prs') })
+  // Work is the page of both tabs, and each opens on more than its bare route (an issue, a filter), so the route's name is what counts.
+  const current = useStore((s) => { const r = leaving ? leaving.from ?? s.ui.route : s.ui.route; return same(r, route) || ((route.name === 'issues' || route.name === 'prs') && (r.name === 'issues' || r.name === 'prs')) })
   const arrive = useArriving(current && !leaving)
   return (
     <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current && !leaving ? 'page' : undefined} data-was-current={current && leaving ? '' : undefined} data-arrive={arrive ? '' : undefined} aria-label={unread === undefined ? undefined : `${unread}, Unread`} data-unread={unread === undefined ? undefined : ''} aria-keyshortcuts={slot && `${slot.ctrl ? 'Control' : 'Meta'}+${slot.n}`} onClick={onOpen ?? (() => go(route))}>
@@ -392,6 +393,7 @@ function inboxCount(s: State): number {
 export function AppSidebar() {
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const inbox = useStore(inboxCount)
+  const [workTab] = useWorkTab()
   const route = useStore((s) => s.ui.route)
   const numberedRoom = useStore((s) => roomInView(s.ui.route, s.rooms, s.workspaces)?.id)
   const hints = useModHeld('Meta')
@@ -453,8 +455,7 @@ export function AppSidebar() {
       <div className="nav-list" style={{ marginTop: 10, flexShrink: 0 }}>
         <button className="nav-item" onClick={() => openNewChat(openRoom)}><Icon name="pen" /><span className="grow">New chat</span><span className="muted" style={{ fontSize: 11.5 }}>⌘N</span></button>
         <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="nav-count">{inbox}</span> : null} />
-        <NavItem route={{ name: 'issues' }} icon="issues" label="Issues" />
-        <NavItem route={{ name: 'prs' }} icon="pr" label="Pull requests" />
+        <NavItem route={{ name: workTab }} icon="issues" label="Work" />
       </div>
       <div className="sb-rule" role="separator" />
       <div ref={roomsAnchor} className="section-label hv" style={{ position: 'relative', marginTop: 8, flexShrink: 0 }}>

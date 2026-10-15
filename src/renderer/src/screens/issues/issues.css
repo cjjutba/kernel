@@ -1,6 +1,4 @@
 /* Issues and its states (KERNEL-160). Tokens only. */
-.is-head { padding-right: 12px; border-bottom: 0; }
-.is-where { font-size: 12.5px; }
 
 /* Filter bar */
 .is-bar { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid var(--line); }
@@ -98,11 +96,7 @@
   .is-search input { width: 160px; }
 }
 
-/* GitHub Issues (IssuesGitHub.png): the room menu in the header, label pills and an assignee circle in the rows */
-.is-slash { color: var(--faint); }
-.is-roommenu { position: relative; display: inline-flex; margin-left: -4px; }
-.is-roompick { gap: 8px; height: 28px; padding: 0 8px; border-radius: var(--r-sm); font-size: 13px; }
-.is-roompick > svg:last-child { color: var(--muted); }
+/* GitHub Issues (IssuesGitHub.png): label pills and an assignee circle in the rows */
 .is-pill-sm { display: inline-flex; align-items: center; height: 16px; box-sizing: border-box; padding: 0 7px; border-radius: var(--r-pill); border: 1px solid var(--line-2); font-size: 11px; line-height: 1; color: var(--muted); }
 .is-more { font-size: 11px; }
 .is-right .is-av-row { width: 20px; height: 20px; font-size: 9.5px; }
