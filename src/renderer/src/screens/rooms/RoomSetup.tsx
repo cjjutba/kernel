@@ -4,7 +4,7 @@ import { KERNEL_REVIEWER, NO_REVIEWER, reviewerChoice } from '@shared/team'
 import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { openRoom } from '../../lead'
-import { Button, CodeBlock, Icon, Spinner, useBusy } from '../../ui'
+import { Banner, Button, CodeBlock, Icon, Spinner, useBusy } from '../../ui'
 import { warningText } from '../agent/model'
 import { getDraft } from './draft'
 import { ReviewerPicker } from './ReviewerPicker'
@@ -40,6 +40,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   const teamConfig = useStore((s) => (roomId ? s.roomSettings[roomId]?.team : undefined))
   const finished = !!steps && steps.every((s) => s.state === 'ok' || s.state === 'warn' || s.state === 'fail')
   const failed = steps?.filter((s) => s.state === 'fail').length ?? 0
+  const stopped = failed > 0 && !steps?.some((s) => s.state === 'run')
   // A warning never stops the room opening, but it stops Brief Kernel right away, so the user sees it (KERNEL-437).
   const warned = steps?.filter((s) => s.state === 'warn').length ?? 0
   const seated = steps?.find((s) => s.id === 'agents')
@@ -80,7 +81,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
     if (!roomId) return
     try { await call('rooms.pushCheck', { roomId, recheck: true }) } catch (e) { actions.ui.toast({ title: 'Could not check push access', sub: cleanError(e) }) }
   })
-  const status = finished && failed ? `${failed} ${failed === 1 ? 'step' : 'steps'} did not finish. You can still open the room.`
+  const status = stopped ? `${failed} ${failed === 1 ? 'step' : 'steps'} did not finish.${finished ? ' You can still open the room.' : ''}`
     : finished && warned ? `${warned} ${warned === 1 ? 'thing needs' : 'things need'} your attention. Tell Kernel what to build.`
       : finished ? 'Done. Tell Kernel what to build.'
         : 'You can leave this screen. Kernel keeps going.'
@@ -93,8 +94,8 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
     <div className="panel" style={{ background: 'transparent', border: 0 }}>
       <div className={showTeam ? 'ob-page rs-review' : 'ob-page'}>
         <div className="ob-col">
-          <h1 className="ob-h1">Setting up {room?.name ?? 'your room'}</h1>
-          <p className="ob-sub">This takes a minute. Your team is ready when it finishes.</p>
+          <h1 className="ob-h1">{stopped ? `${room?.name ?? 'Your room'} did not finish setting up` : `Setting up ${room?.name ?? 'your room'}`}</h1>
+          <p className="ob-sub">{stopped ? 'A step stopped. Its error is below.' : 'This takes a minute. Your team is ready when it finishes.'}</p>
           <div className="ob-list" aria-busy={!finished}>
             {(steps ?? []).map((s) => (
               <div key={s.id} className="ob-check" data-state={s.state} data-ok={s.state !== 'fail'}>
@@ -108,7 +109,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                 <div className="ob-body">
                   <span className="ob-name" style={s.state === 'wait' ? { color: 'var(--muted)', fontWeight: 400 } : undefined}>{s.title}</span>
                   <span className="ob-detail">{s.detail}</span>
-                  {s.error && <span className="ob-detail rs-error" role="alert">{s.error}</span>}
+                  {s.error && <div className="rs-fail"><Banner kind="setup" title={`${s.title} did not finish`}>{s.error}</Banner></div>}
                   {s.output && <pre className="code boxed rs-out">{s.output}</pre>}
                   {s.fix?.command && <div className="ob-fix"><CodeBlock inline>{s.fix.command}</CodeBlock></div>}
                   {s.fix?.action === 'recheck' && (

@@ -717,8 +717,17 @@ export const teamFixtures: Record<string, Fixture> = {
   // Audit: the repo list never answers, and the signed-in account has no repos.
   ConnectRepoLoading: scene((f) => ({ ...roomsScene(f), hold: ['github.repos'], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
   ConnectRepoEmpty: scene((f) => ({ ...roomsScene(f), repos: [], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
+  // KERNEL-863: the repo list fails to load, and gh is signed out.
+  ConnectRepoFailed: scene((f) => ({ ...roomsScene(f), fails: { 'github.repos': 'GitHubError[offline]: Could not reach GitHub.' }, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
+  ConnectRepoSignedOut: scene((f) => ({
+    ...roomsScene(f),
+    preflight: f.preflight.map((c) => (c.id === 'gh' ? { ...c, ok: false, detail: 'Not signed in' } : c)),
+    fails: { 'github.repos': 'GitHubError[signed-out]: You are not signed in to GitHub.' },
+    ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } }
+  })),
   // Audit: the recent folders never answer, and there are none.
   OpenFolderLoading: scene((f) => ({ ...roomsScene(f), hold: ['rooms.recentFolders'], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
+  OpenFolderFailed: scene((f) => ({ ...roomsScene(f), fails: { 'rooms.recentFolders': 'Permission denied reading the folder list.' }, ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   OpenFolderEmpty: scene((f) => ({ ...roomsScene(f), folders: [], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   OpenFolder: scene((f) => ({
     ...roomsScene(f),
