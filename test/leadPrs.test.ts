@@ -83,11 +83,14 @@ describe('the three lists (KERNEL-757)', () => {
 
   it('says a ready row\'s review, since its list says it can merge, and what any other row waits on with the reason', () => {
     const [approved] = list([ws('a', { reviews: [verdict('approved')] })], { a: info('a') })
-    expect(rowState(approved)).toEqual({ text: 'Code approved', tone: 'idle' })
+    expect(rowState(approved)).toEqual({ text: 'Code approved', tone: 'good', icon: 'check' })
+    const [both] = list([ws('s', { reviews: [verdict('approved', { lens: 'code' }), verdict('approved', { lens: 'security' })] })], { s: info('s') })
+    expect(rowState(both)).toEqual({ text: 'Code and security approved', tone: 'good', icon: 'shieldCheck' })
     expect(rowState(list([ws('n')])[0])).toEqual({ text: 'Not reviewed', tone: 'idle' })
-    expect(rowState(list([ws('f', { prState: 'cifail' })])[0])).toEqual({ text: 'Checks failed', tone: 'fail' })
+    expect(rowState(list([ws('c', { prState: 'checks' })])[0])).toEqual({ text: 'Checks running', tone: 'idle', icon: 'spin' })
+    expect(rowState(list([ws('f', { prState: 'cifail' })])[0])).toEqual({ text: 'Checks failed', tone: 'fail', icon: 'xCircle' })
     const [waiting] = list([ws('w', { reviews: [verdict('approved', { sha: 'old' })] })], { w: info('w') })
-    expect(rowState(waiting)).toEqual({ text: 'Waiting for approval', tone: 'idle', why: expect.stringContaining("The code review hasn't approved") })
+    expect(rowState(waiting)).toEqual({ text: 'Waiting for approval', tone: 'idle', icon: 'clock', why: expect.stringContaining("The code review hasn't approved") })
   })
 })
 
@@ -107,7 +110,7 @@ describe('the review line', () => {
   it('says Not reviewed with no verdict', () => expect(reviewLine(ws('a'), undefined)).toEqual({ text: 'Not reviewed', tone: 'faint' }))
   it('names the kind of review that approved the head commit (KERNEL-549)', () => {
     // A verdict from before review kinds is the code review's.
-    expect(reviewLine(ws('a', { reviews: [verdict('approved')] }), undefined)).toEqual({ text: 'Code approved', tone: 'good' })
+    expect(reviewLine(ws('a', { reviews: [verdict('approved')] }), undefined)).toEqual({ text: 'Code approved', tone: 'good', approved: ['code'] })
     expect(reviewLine(ws('a', { reviews: [verdict('approved'), verdict('approved', { lens: 'security' })] }), undefined).text).toBe('Code and security approved')
   })
   it('counts the blockers on the head commit', () => {

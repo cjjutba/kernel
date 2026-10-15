@@ -210,7 +210,8 @@ export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: 
 }
 
 /** Where a PR's review stands, in the words of the PRs tab and the Team update card. `tone` is the color both draw it in. */
-export interface ReviewPhrase { text: string; tone: 'good' | 'bad' | 'faint' }
+/** `approved` names the kinds behind a good phrase, so a screen can tell full approval from code alone without reading `text` (KERNEL-897). */
+export interface ReviewPhrase { text: string; tone: 'good' | 'bad' | 'faint'; approved?: ReviewKind[] }
 
 /**
  * One wording for a PR's review wherever it shows (KERNEL-411), by kind of review (KERNEL-549): "Security found 2 blockers",
@@ -235,7 +236,7 @@ export function verdictPhrase(ws: ReviewFacts): ReviewPhrase {
   const s = kindStates(ws)
   if (!s.ran.length) return reviewPhrase({})
   if (s.blocking.length) return reviewPhrase({ blockers: { lenses: s.blocking, count: s.count } })
-  if (s.approved.length) return reviewPhrase({ approved: s.approved })
+  if (s.approved.length) return { ...reviewPhrase({ approved: s.approved }), approved: s.approved }
   if (s.overruled.length) return { text: 'Blockers overruled', tone: 'faint' }
   return reviewPhrase({ stale: true })
 }

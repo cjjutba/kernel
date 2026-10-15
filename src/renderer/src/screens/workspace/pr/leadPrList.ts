@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { AgentDef, PrInfo, Workspace } from '@shared/types'
-import { mergeBlock, mergeNeedsPr, mergeableState, verdictPhrase } from '@shared/merge'
+import { mergeBlock, mergeNeedsPr, mergeableState, verdictPhrase, type ReviewPhrase } from '@shared/merge'
 import { call } from '../../../api'
 import { isLeadWorkspace, leadOf } from '../../../lead'
 import { actions, useStore } from '../../../store'
@@ -27,7 +27,7 @@ export interface LeadPr {
   state?: PrStatus & { why?: string }
   /** Blockers on the latest commit are all that holds it back: who found them and how many. It offers Merge anyway, never Merge (KERNEL-501). */
   blockers?: { reviewer: string; count: number }
-  review: { text: string; tone: 'good' | 'bad' | 'faint' }
+  review: ReviewPhrase
   /** Which list it sits in. */
   group: PrGroup
 }
@@ -36,6 +36,9 @@ export interface LeadPr {
 const GROUPS: PrGroup[] = ['ready', 'attention', 'progress']
 
 const groupOf = (r: Omit<LeadPr, 'group'>): PrGroup => (r.ready ? 'ready' : !r.state?.spin && r.state?.tone === 'fail' ? 'attention' : 'progress')
+
+/** What a PR waits on when only the reviewer rule holds it back. */
+const WAITING = 'Waiting for approval'
 
 /** A workspace with a PR that is not merged or closed. Reviews, the Lead's own and archived workspaces never count. */
 export const listsPr = (ws: Workspace, leadId: string | undefined) =>
@@ -69,7 +72,7 @@ export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined
     if (blockers) return { ...base, ready: false, state: { ...BLOCKERS_STATUS, why }, blockers }
     // A PR GitHub calls open, held back by a rule. Held back by the reviewer rule alone, it waits for the reviewer's approval.
     const approval = mergeBlock(ws, pr, { ...o.rules, requireReviewer: false }, name) === undefined
-    const label = approval ? 'Waiting for approval' : workspaceGlyph(ws, { waiting: [], running: false }).label
+    const label = approval ? WAITING : workspaceGlyph(ws, { waiting: [], running: false }).label
     return { ...base, ready: false, state: { label, tone: 'idle', glyph: 'pr', spin: false, why } }
   }).map((r): LeadPr => ({ ...r, group: groupOf(r) }))
   return GROUPS.flatMap((g) => rows.filter((r) => r.group === g))
@@ -94,16 +97,31 @@ export function rowGlyph(row: LeadPr, pending?: PrAction): RowGlyph {
   return { icon: ws.prState === 'draft' ? 'prDraft' : 'pr', tone: 'muted', label }
 }
 
-/** What a row's second line says first (KERNEL-757). */
-export interface RowState { text: string; tone: 'idle' | 'fail'; why?: string }
+/** The icon in front of a row's state word (KERNEL-897). */
+export type RowStateIcon = 'shieldCheck' | 'check' | 'xCircle' | 'clock' | 'spin'
 
 /**
- * A ready row says its review, since its list already says it can merge. Any other row says what it waits on, in the words and
- * tone every place uses (KERNEL-417), with the rule's reason as its tooltip.
+ * What a row's second line says first (KERNEL-757). `good` is an approved review, `fail` something broken, and `idle` all the rest,
+ * which stay muted. `icon` is left out for a state with none.
+ */
+export interface RowState { text: string; tone: 'idle' | 'good' | 'fail'; icon?: RowStateIcon; why?: string }
+
+/**
+ * A ready row says its review, since its list already says it can merge: green with a shield when security approved too, green with a
+ * check for code alone. Any other row says what it waits on, in the words and tone every place uses (KERNEL-417), with the rule's
+ * reason as its tooltip. Only approved and failing rows take a color (KERNEL-897).
  */
 export function rowState(row: LeadPr): RowState {
-  if (row.ready || !row.state) return { text: row.review.text, tone: 'idle' }
-  return { text: row.state.label, tone: row.state.tone === 'fail' ? 'fail' : 'idle', ...(row.state.why ? { why: row.state.why } : {}) }
+  if (row.ready || !row.state) {
+    const { text, tone, approved } = row.review
+    if (tone !== 'good') return { text, tone: 'idle' }
+    return { text, tone: 'good', icon: approved?.includes('security') ? 'shieldCheck' : 'check' }
+  }
+  const { label, tone, spin, why } = row.state
+  const extra = why ? { why } : {}
+  if (spin) return { text: label, tone: 'idle', icon: 'spin', ...extra }
+  if (tone === 'fail') return { text: label, tone: 'fail', icon: 'xCircle', ...extra }
+  return { text: label, tone: 'idle', ...(label === WAITING ? { icon: 'clock' as const } : {}), ...extra }
 }
 
 const NO_AGENTS: AgentDef[] = []

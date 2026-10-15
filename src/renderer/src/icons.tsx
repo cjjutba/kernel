@@ -170,7 +170,7 @@ const K24 = {
 }
 
 /** The size scale (DESIGN.md, Icons): 12 carets, chips and inline meta; 14 rows, buttons and menu items; 16 headers and the sidebar; 20 empty states. */
-export type IconSize = 12 | 14 | 16 | 20
+export type IconSize = 12 | 13 | 14 | 16 | 20
 
 /** One stroke for every glyph: 1.4 in the old 16px grid, which Hugeicons' 24 grid draws as 2.1. */
 const STROKE = 1.4 * (24 / 16)
