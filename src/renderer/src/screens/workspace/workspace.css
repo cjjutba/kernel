@@ -219,6 +219,9 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .group-collapse[data-animate] { transition: grid-template-rows var(--dur-glide) var(--ease-out); }
 .group-collapse[data-animate][data-open='true'] { animation: group-open var(--dur-glide) var(--ease-out); }
 .group-collapse[data-animate][data-open='true'] > .group-list { animation: group-clip var(--dur-glide) var(--ease-out); }
+/* A chat opening settles in place: its steps lists don't play their open or fold motion while the view is being put back (KERNEL-912). */
+.ws-scroll[data-opening] .group-collapse[data-animate] { transition: none; animation: none; }
+.ws-scroll[data-opening] .group-collapse[data-animate][data-open] > .group-list { animation: none; }
 @keyframes group-open { from { grid-template-rows: 0fr; } to { grid-template-rows: 1fr; } }
 @keyframes group-clip { from, to { overflow: hidden; } }
 .group-earlier { align-self: flex-start; height: 26px; margin: 4px 0 0 21px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; }

@@ -2402,6 +2402,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
   })),
+  /** KERNEL-912: back to a working chat from another tab. The chat is long, its turn has a live steps list, and the motion clicks its tab. The view must be at the end from the first frame. */
+  WorkspaceChatSwitchWorkingMotion: { ...scene((f) => ({
+    chats: [...f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)), extraChat('chat-other', 'Empty state copy')],
+    items: { [ids.tableChat]: [...longChat, ...longRunningItems()], 'chat-other': [userMsg('o1', 'Shorten the empty state copy.')] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: tabsView('chat-other')
+  })), motion: { action: { click: 'Snapshot tests' }, ms: 1000, area: '.ws-main' } },
+  /** KERNEL-912: back to a chat left scrolled up in the middle of its thread. scripts/shots.ts scrolls it up and leaves it first, and the motion clicks its tab. The view must be on the same lines from the first frame. */
+  WorkspaceChatSwitchSavedSpotMotion: { ...scene((f) => ({
+    chats: [...f.chats, extraChat('chat-other', 'Empty state copy')],
+    items: { [ids.tableChat]: longChat, 'chat-other': [userMsg('o1', 'Shorten the empty state copy.')] },
+    push: f.push,
+    ui: tabsView(ids.tableChat)
+  })), motion: { action: { click: 'Invoice table' }, ms: 1000, area: '.ws-main' } },
   /** A running turn with an open fold of very long commands: they end in "…" at the column edge, and the thread doesn't shift sideways. */
   WorkspaceFoldLongCommands: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
@@ -2720,6 +2734,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   AuditGroupCollapseMotion: { ...scene(() => ({
     items: { [ids.tableChat]: foldedMessages },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
+  })), motion: { action: { press: ['Enter'] }, ms: 600, area: '.ws-main' } },
+  /** KERNEL-912: a folded group of steps opened by hand in a chat that has settled. It must still animate, so the opening rule does not leak past the first 600ms. The header is focused by scripts/shots.ts and Enter opens it. */
+  AuditGroupOpenMotion: { ...scene(() => ({
+    items: { [ids.tableChat]: foldedMessages },
+    ui: open
   })), motion: { action: { press: ['Enter'] }, ms: 600, area: '.ws-main' } },
   // Kernel's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
   WorkspaceLead: scene((f) => leadWaiting(f)),
