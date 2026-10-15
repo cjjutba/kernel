@@ -3,8 +3,8 @@ import { createContext, useCallback, useState } from 'react'
 /** A row the reader was looking at, and how far into it their view sat. */
 export interface Anchor { id: string; offset: number }
 
-/** Where a chat was left. `anchors` are the row the view started in and up to two rows above it, for when that row is gone. */
-export interface Place { pinned: boolean; anchors: Anchor[]; scrollTop: number; lastUserId?: string }
+/** Where a chat was left. `anchors` are the row the view started in and up to two rows above it, for when that row is gone. `heights` is each row's height by id, so a reopened chat draws its rows at the size they had (KERNEL-912). */
+export interface Place { pinned: boolean; anchors: Anchor[]; scrollTop: number; lastUserId?: string; heights?: Record<string, number> }
 
 export interface RowBox { id: string; top: number; height: number }
 
@@ -18,7 +18,7 @@ export const savePlace = (chatId: string, place: Place) => { places.set(chatId, 
 
 export const takePlace = (chatId: string): Place | undefined => places.get(chatId)
 
-/** Forgets the chat's spot and the rows it had open, for a chat that is closed or archived. */
+/** Forgets the chat's spot, with the row heights it holds, and the rows it had open, for a chat that is closed or archived. */
 export function dropPlace(chatId: string) {
   places.delete(chatId)
   opened.delete(chatId)
@@ -30,7 +30,7 @@ export function readPlace(rows: RowBox[], scrollTop: number, pinned: boolean, la
   if (at < 0) at = rows.length - 1
   const anchors: Anchor[] = []
   for (let i = at; i >= 0 && anchors.length < ANCHORS; i--) anchors.push({ id: rows[i].id, offset: scrollTop - rows[i].top })
-  return { pinned, anchors, scrollTop, lastUserId }
+  return { pinned, anchors, scrollTop, lastUserId, heights: Object.fromEntries(rows.map((r) => [r.id, r.height])) }
 }
 
 /** The scrollTop that puts the view back where it was: the first anchor whose row is still there, else the old scrollTop. Clamped to the scroll range. */

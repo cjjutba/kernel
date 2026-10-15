@@ -972,35 +972,52 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const place = takePlace(chat.id)
     const lastSent = [...itemsNow.current].reverse().find(followsSend)?.id
     let again = 0
+    const done = () => { cancelAnimationFrame(again); el?.removeAttribute('data-opening') }
+    // The view is put back every frame until the height holds still for a few frames, the opening time is up, or the reader takes over.
+    const hold = (put: () => void, stays: () => boolean) => {
+      if (!el) return
+      put()
+      let height = el.scrollHeight
+      let still = 0
+      const from = performance.now()
+      const step = () => {
+        if (byHand.current || !stays()) return done()
+        put()
+        still = el.scrollHeight === height ? still + 1 : 0
+        height = el.scrollHeight
+        if (still < 4 && performance.now() - from < OPEN_MS) again = requestAnimationFrame(step)
+        else done()
+      }
+      again = requestAnimationFrame(step)
+    }
+    if (el && place?.heights) {
+      const kids = thread.current?.children
+      drawn.current.forEach((id, i) => {
+        const h = place.heights![id]
+        const row = kids?.[i]
+        if (h && row instanceof HTMLElement) row.style.containIntrinsicBlockSize = `auto ${h}px`
+      })
+    }
+    el?.setAttribute('data-opening', '')
     if (!el || opensAtEnd(place, lastSent)) {
       pin(true)
-      followNow()
-      if (el) remember(el)
+      if (el) {
+        hold(() => { el.scrollTop = Math.max(0, rangeOf(el)); remember(el) }, () => pinned.current)
+        remember(el)
+      } else followNow()
     } else {
       pinned.current = false
-      const put = () => {
+      hold(() => {
         const boxes = new Map(rowBoxes().map((r) => [r.id, r.top]))
         el.scrollTop = placeTop(place!, (id) => boxes.get(id), rangeOf(el))
         remember(el)
         show(distFromEnd(el) > PIN_PX)
-      }
-      put()
-      // Rows are measured a frame or two after they first show, and each one that grows moves the spot, so it is put back until the height holds still for a few frames or the reader takes over.
-      let height = el.scrollHeight
-      let still = 0
-      let frames = 0
-      const settle = () => {
-        if (byHand.current) return
-        put()
-        still = el.scrollHeight === height ? still + 1 : 0
-        height = el.scrollHeight
-        if (still < 4 && ++frames < 40) again = requestAnimationFrame(settle)
-      }
-      again = requestAnimationFrame(settle)
+      }, () => true)
     }
     return () => {
       cancelAnimationFrame(frame.current)
       cancelAnimationFrame(again)
+      el?.removeAttribute('data-opening')
       const view = scroller.current
       // A chat that was just closed or archived has no spot to keep.
       if (!view || !getState().chats[workspaceId]?.some((c) => c.id === chat.id && !c.closed)) return
