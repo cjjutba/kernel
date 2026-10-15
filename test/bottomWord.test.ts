@@ -3,11 +3,11 @@ import { collapsedWord } from '../src/renderer/src/screens/workspace/bottomWord'
 
 // KERNEL-529: a collapsed bottom panel says what the scripts are doing, so you needn't open it to see whether the app is up.
 
-const idle = { setupRunning: false, setupFailed: false, running: [], scripts: 1, noRun: false, port: 4312 }
+const idle = { setupRunning: false, setupFailed: false, running: [], scripts: 1, noRun: false }
 
 describe('the collapsed bottom panel', () => {
-  it('says idle with the port, or that there is no run script', () => {
-    expect(collapsedWord(idle)).toBe('Idle, port 4312')
+  it('says nothing when idle, or that there is no run script', () => {
+    expect(collapsedWord(idle)).toBe('')
     expect(collapsedWord({ ...idle, scripts: 0, noRun: true })).toBe('No run script')
   })
 

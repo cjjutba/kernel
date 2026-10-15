@@ -513,6 +513,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         <Button icon="play" busy={busy === 'setup'} busyPattern="snake" busyLabel="Starting" disabled={setupBusy || busy !== null} onClick={() => void start('setup')}>Run setup</Button>
       </div>
     )
+  const word = collapsedWord({ setupRunning: setupBusy, setupFailed: ws.status === 'failed', running: runningNames, scripts: names.length, noRun })
   return (
     <div ref={panel} className="bottom-panel" data-collapsed={collapsed || undefined}>
       {!collapsed && <BottomResize panel={panel} />}
@@ -520,7 +521,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         <IconButton icon="chevron" size={14} label={collapsed ? 'Expand bottom panel' : 'Collapse bottom panel'} aria-expanded={!collapsed} data-tip-kbd="⌘J" onClick={() => actions.ui.setBottomCollapsed(kind, !collapsed)} />
         <TabStrip label="Scripts" value={collapsed ? '' : bottom} onChange={pick} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
         {/* Folded, the bar says what the scripts are doing, so you can tell the app is up without opening it (KERNEL-529). */}
-        {collapsed && <span className="bottom-word" role="status">{collapsedWord({ setupRunning: setupBusy, setupFailed: ws.status === 'failed', running: runningNames, scripts: names.length, noRun, port: ws.port })}</span>}
+        {collapsed && word && <span className="bottom-word" role="status">{word}</span>}
         {/* Running, setup can be stopped. Failed, the chat's card has Run again, so the tab doesn't repeat it (KERNEL-430). */}
         {!collapsed && bottom === 'setup' && setupBusy && <Button className="small" busy={busy === 'stopSetup'} busyPattern="snake" busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
         {!collapsed && bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && hasOutput && <Button className="small" busy={busy === 'setup'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
