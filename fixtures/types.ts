@@ -82,6 +82,8 @@ export interface Fixture {
   /** By room id, the open issues of a GitHub room, each with the description and comments the Issues pane reads (KERNEL-471). */
   githubIssues?: Record<string, GithubIssueDetail[]>
   settings?: AppSettings
+  /** When set, `preflight.fix` fails with this message, so a shot can show a fix that did not work (SetupPortBusyFixFailed, KERNEL-865). */
+  preflightFixError?: string
   /** Channels whose calls never answer, so a screenshot can show the wait (IssuesLoading, AccountSwitching, KERNEL-759). */
   hold?: string[]
   /**

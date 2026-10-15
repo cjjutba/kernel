@@ -750,6 +750,8 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-217: what a failing gh really looks like. A warning icon and Continue on. No PNG.
   SetupGhWarning: setup(failing({ id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'gh auth login' } })),
   SetupPortBusy: setup(failing({ id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } })),
+  // KERNEL-865: the fix fails with checks already on screen, so the status bar says why. The motion clicks the fix.
+  SetupPortBusyFixFailed: { ...setup(failing({ id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } })), preflightFixError: 'Port 7421 is also in use.', motion: { action: { click: 'Use 7421' }, ms: 600 } },
   // KERNEL-448: what Kernel read from the login shell, as the KERNEL-437 PNGs draw it.
   SetupGhIdentity: setup(passing({ ...ghOk, detail: 'Signed in as cjjutba, from the keyring', note: '`GH_TOKEN` is set in your shell. Kernel leaves it out, because gh would use it instead of this login.' })),
   SetupGhToken: setup(passing({ ...ghOk, detail: 'Signed in as cjjutba-bot, from `GH_TOKEN` in your shell', note: 'Kernel passes it on because gh has no stored login.' })),

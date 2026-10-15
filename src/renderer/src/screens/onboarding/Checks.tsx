@@ -137,7 +137,7 @@ export function Checks() {
             )}
           </div>
           <div className="ob-bar">
-            <span role="status">{error ? 'The checks did not run.' : (!checks ? '' : failing ? `${failing} ${failing === 1 ? 'thing needs' : 'things need'} your attention.` : 'Everything checks out.')}</span>
+            <span role="status">{error && checks ? error : error ? 'The checks did not run.' : (!checks ? '' : failing ? `${failing} ${failing === 1 ? 'thing needs' : 'things need'} your attention.` : 'Everything checks out.')}</span>
             <Button variant="primary" size="lg" disabled={!checks || blocked} onClick={() => void next()}>Continue</Button>
           </div>
         </div>
