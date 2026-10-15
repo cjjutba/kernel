@@ -11,7 +11,7 @@ export const PROVIDERS: { id: Provider; label: string }[] = [
 ]
 
 /** Claude's models. A Codex model id is whatever its `model/list` returns, so it is a plain string (`ProviderModel`). */
-export type ModelId = 'claude-fable-5-1' | 'claude-opus-5-5' | 'claude-sonnet-5-5' | 'claude-haiku-4-5-20251001'
+export type ModelId = 'claude-fable-5-1' | 'claude-opus-5-5' | 'claude-sonnet-5-5' | 'claude-haiku-5-5' | 'claude-haiku-4-5-20251001'
   | 'claude-fable-5' | 'claude-opus-5' | 'claude-opus-4-8' | 'claude-opus-4-7' | 'claude-opus-4-6' | 'claude-opus-4-5'
   | 'claude-sonnet-5' | 'claude-sonnet-4-6' | 'claude-sonnet-4-5'
 /** Claude offers the first four (EFFORTS). Codex models list their own, which can go up to `max` and `ultra` (KERNEL-406). */
@@ -26,7 +26,7 @@ export const MODELS: { id: ModelId; label: string; window: number; inputPrice: n
   { id: 'claude-fable-5-1', label: 'Fable 5.1', window: 1_000_000, inputPrice: 10 },
   { id: 'claude-opus-5-5', label: 'Opus 5.5', window: 1_000_000, inputPrice: 4 },
   { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', window: 1_000_000, inputPrice: 2 },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', window: 200_000, inputPrice: 1 },
+  { id: 'claude-haiku-5-5', label: 'Haiku 5.5', window: 1_000_000, inputPrice: 0.1 },
   { id: 'claude-fable-5', label: 'Fable 5', window: 1_000_000, inputPrice: 10, legacy: true },
   { id: 'claude-opus-5', label: 'Opus 5', window: 1_000_000, inputPrice: 5, legacy: true },
   { id: 'claude-opus-4-8', label: 'Opus 4.8', window: 1_000_000, inputPrice: 5, legacy: true },
@@ -35,7 +35,8 @@ export const MODELS: { id: ModelId; label: string; window: number; inputPrice: n
   { id: 'claude-opus-4-5', label: 'Opus 4.5', window: 200_000, inputPrice: 5, legacy: true },
   { id: 'claude-sonnet-5', label: 'Sonnet 5', window: 1_000_000, inputPrice: 2, legacy: true },
   { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', window: 1_000_000, inputPrice: 3, legacy: true },
-  { id: 'claude-sonnet-4-5', label: 'Sonnet 4.5', window: 200_000, inputPrice: 3, legacy: true }
+  { id: 'claude-sonnet-4-5', label: 'Sonnet 4.5', window: 200_000, inputPrice: 3, legacy: true },
+  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', window: 200_000, inputPrice: 1, legacy: true }
 ]
 
 export const EFFORTS: { id: Effort; label: string }[] = [
