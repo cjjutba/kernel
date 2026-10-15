@@ -794,9 +794,12 @@ export const teamFixtures: Record<string, Fixture> = {
   RoomSetupTeamNoReviewer: scene((f) => roomSetupTeam(f, { reviewer: 'none' })),
   Issues: scene((f) => issuesScene(f)),
   IssuesRowFocused: scene((f) => issuesScene(f)),
+  // KERNEL-874: the Work page's header over each tab.
+  WorkIssues: scene((f) => issuesScene(f)),
   // The Pull requests page: open PRs across the rooms, the merged ones, and each empty.
   PullRequests: scene((f) => prsScene(f, { filter: 'open' })),
   PullRequestsRowFocused: scene((f) => prsScene(f, { filter: 'open' })),
+  WorkPullRequests: scene((f) => prsScene(f, { filter: 'open' })),
   PullRequestsMerged: scene((f) => prsScene(f, { filter: 'merged' })),
   // No PNG (KERNEL-868): the last status read failed on a rate limit, with the read from before it kept. The cap note shows past 50 merged.
   PullRequestsReadFailed: scene((f) => prsScene(f, { filter: 'open', failed: true })),

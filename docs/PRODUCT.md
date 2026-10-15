@@ -29,6 +29,7 @@ Developers who already use Claude Code and want several agents working on one re
 - **Helper**: an agent the Lead hands no task, because its tools can't open a pull request or Settings, Agents says so.
 - **Approval**: anything waiting on you: a tool permission, a plan, or a question.
 - **Task**: one step of an approved plan, handed to one agent as a workspace.
+- **Work**: the sidebar page with two tabs, Issues and Pull requests: what is waiting to be done and what is open. It is not a Task, and it holds no tasks of its own.
 - **Checkpoint**: a snapshot of a workspace after each agent turn.
 
 ## Principles

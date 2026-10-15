@@ -3,12 +3,14 @@ import { go, lastRoom, useStore } from '../../store'
 import { Banner, Button, Spinner } from '../../ui'
 import { GithubIssues } from './GithubIssues'
 import { LinearIssues } from './LinearIssues'
-import { IssuesHeader, NoTracker, type RoomHead } from './parts'
+import { NoTracker, type RoomHead } from './parts'
+import { WorkHeader } from '../work/WorkHeader'
+import { useOpenPrCount } from '../prs/model'
 import { useRoomTracker } from './useRoomTracker'
 import './issues.css'
 
 /**
- * The Issues page for one room (KERNEL-471). The room's tracker decides what it lists: Linear's list (the account's, as it always
+ * The Issues tab of Work for one room (KERNEL-471). The room's tracker decides what it lists: Linear's list (the account's, as it always
  * was), the room's GitHub Issues, or a line saying the room has no tracker. The route's `roomId` picks the room, else the one used
  * last. The room menu in the header switches to another room's tracker.
  */
@@ -22,6 +24,7 @@ export function Issues({ issueId, roomId }: { issueId?: string; roomId?: string 
   const head: RoomHead = { rooms: choices, room, onRoom: (id) => go({ name: 'issues', roomId: id }) }
 
   const { read, retry } = useRoomTracker(room?.id)
+  const prCount = useOpenPrCount()
 
   // With no room there is no tracker to read, and Linear's list needs none.
   if (!room) return <LinearIssues issueId={issueId} head={head} />
@@ -30,7 +33,7 @@ export function Issues({ issueId, roomId }: { issueId?: string; roomId?: string 
 
   return (
     <div className="panel">
-      <IssuesHeader head={head} />
+      <WorkHeader tab="issues" head={head} counts={{ prs: prCount }} />
       {read.kind === 'loading' && <div className="is-center is-loading" role="status"><Spinner label={null} pattern="arrow-down" />Loading issues</div>}
       {read.kind === 'error' && (
         <div className="is-center">

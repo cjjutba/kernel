@@ -3,10 +3,12 @@ import type { LinearIssue, LinearScope } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { getState, go, useStore } from '../../store'
 import { readSaved as readStored, writeSaved } from '../../remember'
-import { Button, FailedState, Icon, IconButton, NotConnectedState, Pill, Spinner, useListKeys } from '../../ui'
+import { Button, FailedState, Icon, NotConnectedState, Pill, Spinner, useListKeys } from '../../ui'
 import { IssuePriority, IssueState } from '../../icons'
 import { IssueDetail } from './IssueDetail'
-import { CapNote, FilterChip, IssuesHeader, RefreshNotice, type RoomHead } from './parts'
+import { CapNote, FilterChip, RefreshNotice, type RoomHead } from './parts'
+import { WorkHeader } from '../work/WorkHeader'
+import { useOpenPrCount } from '../prs/model'
 import {
   clearedFilter, cyclesFor, cycleLabel, describeFilter, fitFilter, FILTER_KEY, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces,
   parseFilter, projectsFor, rowStatus, serializeFilter, stateShape, workspaceSlug, type SavedFilter
@@ -38,6 +40,7 @@ let knownSlug: string | undefined
  * that issue selected. Linear's list is the account's, so the room in the header only says which room's page this is (KERNEL-471).
  */
 export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHead }) {
+  const prCount = useOpenPrCount()
   const online = useStore((s) => s.system.online)
   const workspaces = useStore((s) => s.workspaces)
   const agents = useStore((s) => s.agents)
@@ -160,7 +163,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
 
   return (
     <div className="panel">
-      <IssuesHeader head={head} where={shown.kind === 'ready' || shown.kind === 'rejected' || shown.kind === 'error' ? `Linear${slug ? ` · ${slug}` : ''}` : undefined} />
+      <WorkHeader tab="issues" head={head} counts={{ issues: ready ? count(lists?.all.length) : undefined, prs: prCount }} onRefresh={refresh} refreshing={refreshing} where={shown.kind === 'ready' || shown.kind === 'rejected' || shown.kind === 'error' ? `Linear${slug ? ` · ${slug}` : ''}` : undefined} />
 
       {ready && scope && (
         <div className="is-bar">
@@ -178,7 +181,6 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
             <Icon name="search" size={14} />
             <input type="search" aria-label="Search issues" placeholder="Search issues" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} />
           </span>
-          <IconButton icon="refresh" size={16} label="Refresh issues" busy={refreshing} busyPattern="rotate" busyLabel="Refreshing issues" onClick={refresh} />
         </div>
       )}
 
