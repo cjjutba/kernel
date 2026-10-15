@@ -391,8 +391,8 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     // LEAD_RULE's length on main before KERNEL-678. The rule was rewritten, not added to. KERNEL-745 added its one sentence
     // about mentions, 80 characters past that, KERNEL-747 its sentence about proposed hand-offs, 61 more, and KERNEL-777 its
     // sentence about limit replies, 176 more, and feat-review-messages-reach-named its sentence about reporting a message's
-    // answer and the review kind to name, 118 more.
-    expect(LEAD_RULE.length).toBeLessThanOrEqual(5830)
+    // answer and the review kind to name, 118 more. KERNEL-880 renamed room to project, 9 more.
+    expect(LEAD_RULE.length).toBeLessThanOrEqual(5839)
   })
 
   // KERNEL-692: Kernel is the Lead, so its rule speaks to Kernel and never about Kernel in the third person.

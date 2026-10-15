@@ -7,6 +7,7 @@ import type { Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { kernelTools, SAVE_SCRIPTS_QUESTION, SET_PROJECT_SCRIPTS_DESCRIBE } from '../src/main/services/kernelMcp'
 import { askLeadPrompt } from '../src/main/features/setup'
+import { callTool } from '../src/main/services/providers/codex/tools'
 import { LEAD_RULE } from '../src/main/services/handoff'
 import { tempRepo, freePort } from './helpers'
 
@@ -43,7 +44,7 @@ async function boot(files: Record<string, string> = {}) {
     k.approvals.decide(card.id, { behavior: 'answer', text: answer })
     return { card, ...(await result) }
   }
-  return { k, repo, project, team, chat, ask, local }
+  return { k, repo, project, team, lead, chat, ask, local }
 }
 
 describe('set_project_scripts (KERNEL-683)', () => {
@@ -95,6 +96,22 @@ describe('set_project_scripts (KERNEL-683)', () => {
     expect((await ask({ run_scripts: { 'my app': 'pnpm dev' } })).text).toContain('"my app" can\'t name a run script.')
     expect(k.store.approvals({ projectId: project.id })).toHaveLength(0)
     expect(existsSync(local)).toBe(false)
+  })
+
+  // A resumed Codex thread keeps the tools it started with, so a Lead thread from before KERNEL-880 still calls the old name.
+  it('saves all the same when a Codex Lead calls it by its old name, set_room_scripts, which no list shows', async () => {
+    const { k, project, lead, chat } = await boot()
+    const tools = kernelTools(k.lead.leadToolDeps(project.id, lead, chat))
+    expect(tools.map((t) => t.name)).not.toContain('set_room_scripts')
+    const result = callTool(tools, 'kernel_set_room_scripts', { setup: 'pnpm install' })
+    const card = await vi.waitFor(() => {
+      const a = k.store.approvals({ projectId: project.id, pendingOnly: true }).find((x) => x.kind === 'question')
+      expect(a).toBeTruthy()
+      return a!
+    })
+    k.approvals.decide(card.id, { behavior: 'answer', text: 'Save' })
+    expect(await result).toMatchObject({ success: true, contentItems: [{ type: 'inputText', text: expect.stringContaining('Saved setup script') }] })
+    expect((await k.handlers()['settings.project']({ projectId: project.id })).scripts.setup).toBe('pnpm install')
   })
 
   it('is the Lead\'s alone: a teammate\'s tools have no set_project_scripts', async () => {

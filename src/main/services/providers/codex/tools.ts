@@ -16,9 +16,10 @@ const codexNames = (text: string) => text.replace(/mcp__kernel__/g, CODEX_TOOL_P
 
 /**
  * Kernel's tools under an old name. A resumed thread keeps the tools it started with, so a Lead thread from before the
- * rename still calls the old one, and its card has to show and save all the same (KERNEL-554).
+ * rename still calls the old one, and its card has to show and save all the same (KERNEL-554). set_room_scripts goes in the
+ * release after next (KERNEL-880).
  */
-const RENAMED: Record<string, string> = { hire_agent: 'create_agent' }
+const RENAMED: Record<string, string> = { hire_agent: 'create_agent', set_room_scripts: 'set_project_scripts' }
 
 /** The dynamic tool specs for Kernel's tools, their input as JSON Schema. */
 export function toolSpecs(tools: SdkMcpToolDefinition<any>[]): DynamicToolSpec[] {
