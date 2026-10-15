@@ -16,6 +16,9 @@ const kTokens = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(
 /** "A", "A and B", "A, B and C". */
 const joined = (items: string[]) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`)
 
+/** The choices `chats.moveChoice` takes. The renderer's value is checked as it arrives, before anything is saved. */
+const CHOICES: readonly MoveChoice[] = ['summarize', 'continue', 'keep']
+
 /**
  * What a long chat does when it has to run on another account (KERNEL-844): Settings, Account's "When a long chat moves to
  * another account" for its provider, the chat's own choice, and the overrides. Sessions asks as each turn starts
@@ -185,7 +188,10 @@ export class Moves extends Feature {
 
   handlers() {
     return {
-      'chats.moveChoice': async ({ chatId, choice }) => this.choose(chatId, choice)
+      'chats.moveChoice': async ({ chatId, choice }) => {
+        if (!CHOICES.includes(choice)) throw new Error(`A long chat moves by summarize, continue or keep, not ${JSON.stringify(choice)}.`)
+        return this.choose(chatId, choice)
+      }
     } satisfies Partial<Handlers>
   }
 }

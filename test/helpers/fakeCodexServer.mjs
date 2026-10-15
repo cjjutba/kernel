@@ -6,6 +6,9 @@
 //   { "request": method, "params": {...} }  a request to Kernel, waiting for its answer
 //   { "complete": "completed" | "failed" | "interrupted", "error": {...} }   the turn's end
 //   { "wait": "interrupt" }                 waits for turn/interrupt, then ends the turn as interrupted
+//   { "limit": true }                       the account hits its 5-hour limit: account/rateLimits/updated says the window is
+//                                           full, and the turn ends failed with usageLimitExceeded, as Codex 0.153.4 does. The
+//                                           home stays full for every later account/rateLimits/read, from any process
 //   { "complete": ..., "withStart": true }  as the first step: turn/start's answer, turn/started and turn/completed go out
 //                                           in one write, so Kernel reads them in one chunk (KERNEL-625)
 // FAKE_CODEX_START_MS holds turn/start's answer that long, as a slow Codex does, so Stop can come before the turn has an id.
@@ -34,6 +37,15 @@ let turns = 0
 let running
 const CLEARED = Symbol('cleared')
 
+/** A 5-hour window `used` percent full, resetting in an hour, and the snapshot Codex sends with it. */
+const full = (used = 100) => ({ usedPercent: used, windowDurationMins: 300, resetsAt: Math.round(Date.now() / 1000) + 3600 })
+const snapshot = (primary) => ({ limitId: 'codex', primary, secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: 1792320991 }, rateLimitReachedType: null })
+/** A `limit` step filled this home, in this process or another: the log says so. */
+const limitedHere = () => {
+  if (!process.env.FAKE_CODEX_LOG) return false
+  return readFileSync(process.env.FAKE_CODEX_LOG, 'utf8').split('\n').some((l) => l && JSON.parse(l).limited === (home ?? ''))
+}
+
 const ids = (v, turn, thread) => JSON.parse(JSON.stringify(v).replaceAll('$turn', turn).replaceAll('$thread', thread))
 
 async function play(threadId, turnId, script) {
@@ -48,6 +60,11 @@ async function play(threadId, turnId, script) {
       log({ answer: step.request, result: answer })
     }
     else if (step.wait === 'interrupt') { if (!turn.stopped) await new Promise((r) => { turn.wake = r }); break }
+    else if (step.limit) {
+      log({ limited: home ?? '' })
+      send({ method: 'account/rateLimits/updated', params: { rateLimits: { ...snapshot(full()), rateLimitReachedType: 'rate_limit_reached' } } })
+      return complete(threadId, turnId, 'failed', { message: "You've hit your usage limit.", codexErrorInfo: 'usageLimitExceeded', additionalDetails: null })
+    }
     else if (step.complete) return complete(threadId, turnId, step.complete, step.error)
   }
   complete(threadId, turnId, turn.stopped ? 'interrupted' : 'completed')
@@ -119,10 +136,11 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     return
   }
   if (method === 'account/rateLimits/read' && apiKey) return send({ id, error: { code: -32600, message: 'chatgpt authentication required to read rate limits' } })
-  // FAKE_CODEX_USED sets a home's 5-hour use, by CODEX_HOME and '' for none, with a reset an hour from now (KERNEL-568).
-  const used = JSON.parse(process.env.FAKE_CODEX_USED ?? '{}')[home ?? '']
-  const primary = used === undefined ? { usedPercent: 40, windowDurationMins: 300, resetsAt: 1791734191 } : { usedPercent: used, windowDurationMins: 300, resetsAt: Math.round(Date.now() / 1000) + 3600 }
-  if (method === 'account/rateLimits/read') return send({ id, result: { rateLimits: { limitId: 'codex', primary, secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: 1792320991 }, rateLimitReachedType: null } } })
+  // FAKE_CODEX_USED sets a home's 5-hour use, by CODEX_HOME and '' for none, with a reset an hour from now (KERNEL-568). A home
+  // a `limit` step filled reads full.
+  const used = JSON.parse(process.env.FAKE_CODEX_USED ?? '{}')[home ?? ''] ?? (limitedHere() ? 100 : undefined)
+  const primary = used === undefined ? { usedPercent: 40, windowDurationMins: 300, resetsAt: 1791734191 } : full(used)
+  if (method === 'account/rateLimits/read') return send({ id, result: { rateLimits: snapshot(primary) } })
   // Signed in when the home has an auth.json, as Codex reads it. Without CODEX_HOME the fake counts as signed in. A home's
   // ChatGPT login is the email its auth.json names, so each added account is its own (KERNEL-616).
   if (method === 'account/read' && apiKey) return send({ id, result: { account: { type: 'apiKey' }, requiresOpenaiAuth: true } })

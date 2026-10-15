@@ -88,6 +88,9 @@ const SHARE_EVERY_MS = 2_000
 /** Adding a login Kernel already has (KERNEL-616). */
 const ALREADY_IN = 'That account is already in Kernel.'
 
+/** What `accounts.switch` takes as `move`, besides none. */
+const MOVES: readonly SwitchMove[] = ['keep', 'all']
+
 /**
  * Whether two logins are one: the same email, ignoring case, and the same organization unless either is unknown, since one
  * email can have a personal plan and a Team seat. Codex says no organization, so its email decides. A login with no email
@@ -1515,7 +1518,11 @@ export class Providers extends Feature {
       'accounts.addKey': async (req) => this.addKey(req.provider, req),
       'accounts.code': async ({ provider, code }) => { this.sendCode(provider, code); return { ok: true as const } },
       'accounts.cancelAdd': async ({ provider }) => { this.cancelAdd(provider); return { ok: true as const } },
-      'accounts.switch': async ({ provider, accountId, reason, move }) => this.switchTo(provider, accountId, { reason, move }),
+      'accounts.switch': async ({ provider, accountId, reason, move }) => {
+        // `move` comes from the renderer: anything but keep, all or none is refused before anything switches.
+        if (move !== undefined && !MOVES.includes(move)) throw new Error(`A switch moves chats by keep or all, not ${JSON.stringify(move)}.`)
+        return this.switchTo(provider, accountId, { reason, move })
+      },
       'accounts.signOut': async ({ provider, accountId }) => this.signOut(provider, accountId),
       'accounts.remove': async ({ provider, accountId }) => this.remove(provider, accountId),
       'accounts.rename': async ({ provider, accountId, label }) => this.rename(provider, accountId, label),
