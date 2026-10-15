@@ -105,7 +105,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
       const v = failure(e)
       if (hasLists.current && v.kind !== 'connect') {
         setProblem(v)
-        if (loadedKey.current !== `${serializeFilter(now.current.filter)}|${now.current.query}`) { setLists(null); setUnread(true) }
+        if (loadedKey.current !== `${serializeFilter(now.current.filter)}|${now.current.query}`) { loadedKey.current = ''; setLists(null); setUnread(true) }
       }
       else setView(v)
     }
