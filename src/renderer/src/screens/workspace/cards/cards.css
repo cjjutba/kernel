@@ -94,8 +94,7 @@
 .plan-open { flex-shrink: 0; margin-left: 10px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
 /* Kernel's team update in the Lead's chat (cards/TeamUpdateCard.tsx, KERNEL-127): an outline with a small header, one
    row per teammate, the events as a line of text and the reply as plain text (KERNEL-274). */
-.tucard-wrap { align-self: stretch; width: 100%; gap: 4px; }
-.tucard-wrap .msg-acts { margin-left: 2px; }
+.tucard-wrap { align-self: stretch; width: 100%; }
 .tcard.tucard { gap: 0; padding: 0; margin: 0; background: transparent; border-color: var(--line-2); }
 .tucard-head { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 16px; border-bottom: 1px solid var(--line); font-size: 12px; }
 .tucard .tucard-title { display: block; margin: 0; color: var(--ink-3); font-size: inherit; font-weight: 500; }

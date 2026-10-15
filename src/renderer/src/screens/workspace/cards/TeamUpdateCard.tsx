@@ -5,11 +5,10 @@ import { call } from '../../../api'
 import { go, useStore } from '../../../store'
 import { Icon } from '../../../ui'
 import { KernelNote } from '../KernelNote'
-import { MessageActions } from '../MessageActions'
 import { SharedRow } from './SharedCard'
 import { MergeButton } from '../pr/MergeButton'
 import { inline } from '../markdown'
-import { cardData, eventTone, isStillBlocked, mergeTargetOf, mergedAutomatically, newestRows, openItems, sections, taskParts, textOf } from './teamUpdate'
+import { cardData, eventTone, isStillBlocked, mergeTargetOf, mergedAutomatically, newestRows, openItems, sections, taskParts } from './teamUpdate'
 import './cards.css'
 
 /** One workspace by id, so a row redraws only when its own workspace changes, not when any workspace does. */
@@ -51,7 +50,6 @@ export function TeamUpdateView({ item, workspaceOf, useNewest }: { item: Extract
         ))}
         {omitted && <div className="tucard-omitted">{omitted}</div>}
       </section>
-      <MessageActions label="Message actions" copy={textOf(item)} />
     </div>
   )
 }

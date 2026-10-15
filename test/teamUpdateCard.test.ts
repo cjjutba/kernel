@@ -107,7 +107,7 @@ describe('the Team update card', () => {
     expect(html).not.toContain('`')
   })
 
-  it('draws a card from Kernel with the teammate, its events, the reply and Copy, and no Edit', async () => {
+  it('draws a card from Kernel with the teammate, its events, the reply, and no Copy or Edit', async () => {
     const { TeamUpdateView } = await load()
     const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest: () => false, workspaceOf: (id) => (id === 'w1' ? { id: 'w1', status: 'ready' } : undefined) }))
     expect(html).toContain('aria-label="Team update"')
@@ -124,7 +124,7 @@ describe('the Team update card', () => {
     expect(html).toContain("Updates on 1 more workspace didn&#x27;t fit here")
     const many = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: { ...item, update: { ...item.update!, omitted: 3 } }, useNewest: () => false, workspaceOf: () => undefined }))
     expect(many).toContain("Updates on 3 more workspaces didn&#x27;t fit here")
-    expect(html).toContain('aria-label="Copy"')
+    expect(html).not.toContain('aria-label="Copy"')
     expect(html).not.toContain('aria-label="Edit"')
     expect(html).toMatch(/<button[^>]*aria-label="Open Kai&#x27;s workspace for Remove the Try section"[^>]*>Open<\/button>/)
   })
