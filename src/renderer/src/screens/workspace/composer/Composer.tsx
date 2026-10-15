@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import type { AgentDef, BuiltinCommand, Chat, ChatPart, Effort, FileEntry, ModelId, PermissionMode, QueuedMessage, Skill, Workspace } from '@shared/types'
+import type { AgentDef, BuiltinCommand, Chat, ChatPart, Decision, Effort, FileEntry, ModelId, PermissionMode, QueuedMessage, Skill, Workspace } from '@shared/types'
 import type { LeadMode } from '@shared/types'
 import { chatProvider } from '@shared/providers'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
@@ -14,6 +14,7 @@ import { useProjectSettings } from '../../settings/useSettings'
 import { Button, Icon, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { PlanStrip, usePlanStrip } from '../cards/plan'
+import { placeAnswerNow } from '../cards/optimisticAnswer'
 import { noteFromParts, waitingPlan } from '../cards/steps'
 import { baseName, dirName, filterAgents, mentionAt, mentionMenu, mentionPart, runsOnEnter, slashAt, slashMenu } from './autocomplete'
 import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued, takeComposerFocus } from './bus'
@@ -31,6 +32,7 @@ import { cyclePatch, cycleRun, leadDefaultLine, leadPlaceholder, modePatch, type
 import { ComposerShell } from './ComposerShell'
 import type { PlusPanel } from './PlusMenu'
 import { canSendNow, QueueList } from './QueueList'
+import { sendMessage, sendQueuedNow } from './sendMessage'
 import { sendsOn, useSendWith } from './sendKey'
 import { NoteText } from '../NoteText'
 import { UncommittedNote } from './UncommittedNote'
@@ -55,7 +57,11 @@ type MenuName = 'model' | 'context' | 'mode' | PlusPanel
  */
 export function Composer({ chat, agent, blocked, running, prefill, banner }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode; }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
-  const queue = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
+  const waiting = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
+  // The messages Stop took out of the tray leave it in the frame of the press, whatever main's queue events say while it takes them out one by one.
+  const [taken, setTaken] = useState<string[]>([])
+  const queue = useMemo(() => (taken.length ? waiting.filter((q) => !taken.includes(q.id)) : waiting), [waiting, taken])
+  useEffect(() => { if (taken.length && !waiting.some((q) => taken.includes(q.id))) setTaken([]) }, [waiting, taken])
   const queueWhy = useStore((s) => s.queueWhy[chat.id])
   // What this workspace waits for, and who waits for it, named live as PRs open and merge (KERNEL-259). Only those
   // workspaces are read, so a poll of the project's other PRs doesn't redraw the box.
@@ -69,20 +75,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   // A plan waiting on you here puts Copy and Approve on the box, and what you send goes back as changes to it.
   const plan = useStore((s) => waitingPlan(s.approvals, chat))
   const d = useDraft(forced, chat.id)
-  // The strip outlives its plan while it closes, and the box stays in plan mode with it, so the placeholder, the chip and the glow change when the strip is gone (KERNEL-833).
-  // After Approve the caret goes to the box, where the Approve button had the focus.
+  // Approve is a user action, so the strip, the placeholder, the chip and the glow all change in the frame it is pressed (KERNEL-895). After it the caret goes to the box, where the Approve button had the focus.
   const strip = usePlanStrip(plan, () => d.focus())
-  const holding = !!strip.shown
-  // Whether the chat itself was planning while the strip was last open, so the chip holds Plan only for a chat that showed it.
-  const [planWas, setPlanWas] = useState(chat.plan)
-  if (!strip.closing && planWas !== chat.plan) setPlanWas(chat.plan)
-  // The swap fades once the strip is gone. The two names let the same animation run again, with no timer to clear it.
-  // What the placeholder and the chip said until then stays under the new ones and fades out as they fade in, so neither goes empty (KERNEL-839).
-  const [swap, setSwap] = useState<'a' | 'b' | undefined>()
-  const [swapFrom, setSwapFrom] = useState<{ placeholder: string; shown: ReturnType<typeof shownMode> } | undefined>()
-  const lastShown = useRef<{ placeholder: string; shown: ReturnType<typeof shownMode> } | undefined>(undefined)
-  const [wasHolding, setWasHolding] = useState(holding)
-  if (wasHolding !== holding) { setWasHolding(holding); if (!holding) { setSwap((x) => (x === 'a' ? 'b' : 'a')); setSwapFrom(lastShown.current) } }
   // Fixtures open the model picker and the mode menu the same way, through the app's menu, for a shot (WorkspaceModelPicker, KERNEL-406).
   // In a chat with Kernel the mode menu is Hand off and Build here (KERNEL-780).
   const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : getState().ui.menu === 'model' ? 'model' : getState().ui.menu === 'mode' ? 'mode' : null)
@@ -185,21 +179,22 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     const id = chat.id
     const kept = d.snapshot()
     d.reset()
-    try {
-      if (plan && !picked) {
-        // Images go as files the agent reads, since a denial carries text only (D-134).
-        const images = parts.flatMap((p) => p.type === 'image' && p.dataUrl ? [{ name: p.name, dataUrl: p.dataUrl }] : [])
-        await call('approvals.decide', { id: plan.id, decision: { behavior: 'deny', message: noteFromParts(parts), ...(images.length ? { images } : {}) } })
-      }
-      else await call('chats.send', { chatId: chat.id, parts })
-      noteSent(id, chat.model)
-    }
-    catch (e) {
-      // Back into the chat it came from, ahead of anything typed there since.
+    // Back into the chat it came from, ahead of anything typed there since.
+    const restore = (e: unknown) => {
       const since = d.snapshot(id)
       d.reset(since.length ? [...kept, ...since] : kept, id)
       actions.ui.toast({ title: 'Could not send', sub: cleanError(e) })
     }
+    if (plan && !picked) {
+      // Images go as files the agent reads, since a denial carries text only (D-134).
+      const images = parts.flatMap((p) => p.type === 'image' && p.dataUrl ? [{ name: p.name, dataUrl: p.dataUrl }] : [])
+      const decision: Decision = { behavior: 'deny', message: noteFromParts(parts), ...(images.length ? { images } : {}) }
+      const undo = placeAnswerNow(plan, decision)
+      try { await call('approvals.decide', { id: plan.id, decision }); noteSent(id, chat.model) }
+      catch (e) { undo(); restore(e) }
+      return
+    }
+    if (await sendMessage(id, parts, { onFail: restore })) noteSent(id, chat.model)
   }
 
   noteOpened(chat.id, chat.model)
@@ -215,7 +210,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const projectMode = useStore((s) => s.projects.find((r) => r.id === projectId)?.permissionMode)
   const appMode = useStore((s) => s.settings?.permissions.mode)
   const availability = useModeAvailability()
-  const shown = shownMode(chat.plan || (holding && planWas), runMode, chat.mode ?? projectMode ?? appMode ?? 'default')
+  const shown = shownMode(chat.plan, runMode, chat.mode ?? projectMode ?? appMode ?? 'default')
   /** Plan sets `plan` and leaves the chat's `mode`. Every other mode sets `mode` and leaves plan. Bypass permissions asks once first, and what it saves is this chat's mode. */
   const setMode = (mode: ComposerMode, patch: (m: ComposerMode) => ReturnType<typeof modePatch> | ReturnType<typeof cyclePatch> = modePatch) => {
     if (mode === shown.picked) return
@@ -237,27 +232,31 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   }
   const fallback = useDefaultEffort(agent?.effort)
   // Claude's guess at the next message (KERNEL-530) stands in for the placeholder of an empty box, and Tab or → takes it. Only a key does: Enter on an empty box sends nothing.
-  const suggested = provider === 'claude' && !d.parts.length && !running && !chat.plan && !plan && !holding && !blocked && !queue.length && queueWhy !== 'setup' && !acOpen ? chat.suggestion : undefined
+  const suggested = provider === 'claude' && !d.parts.length && !running && !chat.plan && !plan && !blocked && !queue.length && queueWhy !== 'setup' && !acOpen ? chat.suggestion : undefined
   const sendWith = useSendWith()
   const [sendingNow, runNow] = useBusy<string>()
-  const sendNow = (q: QueuedMessage) => void runNow(q.id, () => attempt('Could not send now', async () => actions.chats.setQueue(chat.id, await call('chats.sendNow', { chatId: chat.id, id: q.id }))))
+  const sendNow = (q: QueuedMessage) => void runNow(q.id, () => attempt('Could not send now', () => sendQueuedNow(chat.id, q)))
   const [stopping, runStop] = useBusy<'stop'>()
   /**
-   * Stop clears the queue (D-030), so the messages it drops go back into the box, in order, after what was typed. They leave the queue first, so
-   * the turn can't send the next one as it ends, and they are put back even when the interrupt fails.
+   * Stop clears the queue (D-030), so the messages it drops go back into the box, in order, after what was typed. All of it happens in the frame of the press (KERNEL-895): the
+   * Working line leaves, Stop becomes Send, the tray empties and the text is in the box. The messages leave the queue first, so the turn can't send the next one as it ends,
+   * and they are put back even when the interrupt fails. A stop that fails brings the Working line back, unless main has already said the turn ended.
    */
   const stop = () => void runStop('stop', async () => {
     const id = chat.id
-    const dropped: QueuedMessage[] = []
+    const dropped = [...(getState().queue[id] ?? [])]
+    const wasRunning = !!getState().running[id]
+    setTaken(dropped.map((q) => q.id))
+    actions.chats.draw(id, { running: false })
+    if (dropped.length) { d.reset(queueBackInBox(d.snapshot(id), dropped), id); d.focus() }
     try {
-      for (const q of getState().queue[id] ?? []) {
-        actions.chats.setQueue(id, await call('chats.unqueue', { chatId: id, id: q.id }))
-        dropped.push(q)
-      }
+      for (const q of dropped) actions.chats.setQueue(id, await call('chats.unqueue', { chatId: id, id: q.id }))
       await call('chats.interrupt', { chatId: id })
     }
-    catch (e) { actions.ui.toast({ title: 'Could not stop', sub: cleanError(e) }) }
-    if (dropped.length) { d.reset(queueBackInBox(d.snapshot(id), dropped), id); d.focus() }
+    catch (e) {
+      actions.chats.undraw(id, { running: wasRunning })
+      actions.ui.toast({ title: 'Could not stop', sub: cleanError(e) })
+    }
   })
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.nativeEvent.isComposing) return
@@ -293,8 +292,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
 
   const model = modelLabelOf(chat.model, providerModels)
   const hasDraft = !d.empty
-  const placeholder = blocked ? 'Paused until this is resolved' : plan || holding ? 'Enter your plan adjustments here' : running || queueWhy === 'setup' ? 'Add a follow up' : suggested || (withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`)
-  useEffect(() => { lastShown.current = { placeholder, shown } })
+  const placeholder = blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'setup' ? 'Add a follow up' : suggested || (withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`)
 
   // ^⌘1 to 9 pick the Nth current model of the chat's provider and ⌘⇧/ cycles the effort, with the picker open or not (useModelKeys).
   useModelKeys({ provider, model: chat.model, effort: chat.effort, fallback, onModel: pickModel, onEffort: setEffort })
@@ -389,14 +387,14 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
           <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>{agent?.lead ? `No files or teammates match “${mention.query}”.` : `No files match “${mention.query}”.`}</p></div>
         )}
       </>}
-      box={{ 'data-plan': chat.plan || plan || holding ? 'true' : undefined, 'data-swap': swap, 'data-blocked': blocked || undefined, 'data-drop': d.over || undefined, style: { opacity: blocked ? 0.5 : 1 } }}
+      box={{ 'data-plan': chat.plan || plan ? 'true' : undefined, 'data-blocked': blocked || undefined, 'data-drop': d.over || undefined, style: { opacity: blocked ? 0.5 : 1 } }}
       top={<PlanStrip strip={strip} hasText={hasDraft} onSendChanges={() => void send()} onBack={d.focus} />}
-      input={<ComposerInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} data-from={swapFrom && swapFrom.placeholder !== placeholder ? swapFrom.placeholder : undefined} onInput={() => setDismissed('')} onKeyDown={onKey} />}
+      input={<ComposerInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
       foot={<ComposerToolbar
         lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(projectLeadMode, appLeadMode), onPick: pickLeadMode } : undefined}
         agent={!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
         model={{ label: model, provider, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: setEffort } }}
-        mode={{ provider, availability, shown, from: swapFrom?.shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
+        mode={{ provider, availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
         context={chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
         plus={{ panel: menu === 'model' || menu === 'context' || menu === 'mode' || menu === 'runIn' || menu === 'branch' ? null : menu, onPanel: setMenu, projectId, workspaceId: chat.workspaceId, onMode: () => setMenu('mode'), onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
         send={{ label: plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send', ready: hasDraft && !blocked && !d.pending, disabled: blocked, busy: d.pending > 0, busyLabel: 'Attaching', stop: running, stopping: stopping !== null, onSend: () => void send(), onStop: stop }} />}

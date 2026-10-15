@@ -28,7 +28,7 @@ import { appearanceOf, readAppearance, WindowAppearance } from './features/appea
 import { handZoom, zoomStepOf } from './windowZoom'
 import { attachImageMenu } from './imageMenu'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
-import type { Channel, KernelApi } from '@shared/ipc'
+import type { Channel, KernelApi, PushEvent } from '@shared/ipc'
 import type { TelemetryEvent } from '@shared/telemetry'
 import type { Toast } from '@shared/types'
 import { isWebUrl } from '@shared/previewUrl'
@@ -315,6 +315,7 @@ app.whenReady().then(async () => {
   }
   // `pnpm shots --motion` asks the app for what the fixture declares, since the script can't import the fixtures (KERNEL-831).
   ;(globalThis as { kernelFixtureMotion?: unknown }).kernelFixtureMotion = fixture?.motion
+  ;(globalThis as { kernelFixturePush?: unknown }).kernelFixturePush = (events: PushEvent[]) => events.forEach((e) => bus.push(e))
   // A fixture's theme wins, as `pnpm shots --theme light` asks. A real run opens on what settings.json says.
   const fixtureLook = fixture && appearanceOf({ theme: fixtureTheme().theme ?? fixture.ui.theme })
   appearance = new WindowAppearance({ nativeTheme, window: mainWindow, initial: fixtureLook || readAppearance(join(app.getPath('userData'), 'settings.json')) })

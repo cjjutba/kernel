@@ -696,7 +696,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
 // stepped by time with Animation.currentTime, so a frame doesn't depend on how fast the capture runs. A smooth scroll is the
 // compositor's, which can't be stepped: it runs in real time, and a frame in which a scroll offset moved is labelled "sampled".
 const FPS = 30
-type MotionAction = { click: string } | { press: string[] } | { hold: string }
+type MotionAction = { click: string } | { press: string[] } | { hold: string } | { push: unknown[] }
 type Motion = { action: MotionAction; ms: number; area?: string }
 interface Frame { n: number; ms: number; sampled: boolean; file: string }
 
@@ -770,8 +770,9 @@ async function stepTo(page: Page, t: number): Promise<boolean> {
   }, t)
 }
 
-async function runMotionAction(page: Page, action: MotionAction) {
-  if ('click' in action) await page.getByRole('button', { name: action.click, exact: true }).click()
+async function runMotionAction(page: Page, action: MotionAction, app: ElectronApplication) {
+  if ('push' in action) await app.evaluate((_, events) => (globalThis as { kernelFixturePush?: (e: unknown[]) => void }).kernelFixturePush?.(events), action.push)
+  else if ('click' in action) await page.getByRole('button', { name: action.click, exact: true }).click()
   else if ('hold' in action) { await page.getByRole('button', { name: action.hold, exact: true }).first().hover(); await page.mouse.down() }
   else for (const key of action.press) {
     if (key.startsWith('click:')) await page.getByRole('button', { name: key.slice(6), exact: true }).click()
@@ -809,7 +810,7 @@ async function captureMotion(page: Page, app: ElectronApplication, name: string,
   try {
     await freezeAnimations(page)
     // Frame 0 is the instant the action lands. Its async answers (a push from main, a render) arrive while animations are held.
-    await runMotionAction(page, motion.action)
+    await runMotionAction(page, motion.action, app)
     await page.waitForTimeout(150)
     const area = motion.area ? await page.locator(motion.area).first().boundingBox() : null
     const pad = 24

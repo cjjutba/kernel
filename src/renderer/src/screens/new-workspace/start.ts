@@ -3,6 +3,7 @@ import { call, cleanError } from '../../api'
 import { actions, getState, loadWorkspace } from '../../store'
 import { openLeadChat, openNewChat } from '../../lead'
 import { focusComposerWhenOpen } from '../workspace/composer/bus'
+import { drawStarted } from '../workspace/composer/sendMessage'
 import { clearDraft, loadPicks, newChatDraftOf } from '../workspace/composer/draftStore'
 import { briefParts, leadMessage } from './brief'
 import { startAnywayLine } from './taken'
@@ -28,14 +29,16 @@ export interface ChatStart {
  */
 export async function startChat(c: ChatStart): Promise<string | undefined> {
   let chat
+  const clientId = crypto.randomUUID()
   // The chat's own worktree starts from the target branch picked here, else the latest default branch (KERNEL-405).
-  try { chat = await call('lead.start', { projectId: c.projectId, ...leadMessage(c.parts), model: c.model, effort: c.effort, plan: c.plan, ...(c.mode ? { mode: c.mode } : {}), ...(c.baseRef ? { baseRef: c.baseRef } : {}), ...(c.leadMode ? { leadMode: c.leadMode } : {}) }) }
+  try { chat = await call('lead.start', { projectId: c.projectId, ...leadMessage(c.parts), clientId, model: c.model, effort: c.effort, plan: c.plan, ...(c.mode ? { mode: c.mode } : {}), ...(c.baseRef ? { baseRef: c.baseRef } : {}), ...(c.leadMode ? { leadMode: c.leadMode } : {}) }) }
   catch (e) { return cleanError(e) }
   clearDraft(newChatDraftOf(c.projectId))
   // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
   try { await loadWorkspace(chat.workspaceId) } catch { /* the push brings it */ }
   // The engine answered before the worktree exists and pushes the workspace, so the chat opens now and says what it waits for.
   actions.chats.upsert(chat)
+  drawStarted(chat.id, clientId, c.parts)
   actions.ui.holdPanel(chat.workspaceId)
   focusComposerWhenOpen(chat.id)
   // The workspace screen clears the tab when the workspace changes, so the tab is set after the navigation (lead.ts).

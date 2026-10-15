@@ -240,6 +240,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.live': async () => ({ running: [], retry: {} }),
     'chats.unqueue': async ({ chatId, id }) => {
       unqueued.add(id)
+      bus.push({ type: 'chat.queue', chatId, queue: queue(chatId) })
       return queue(chatId)
     },
     'chats.sendNow': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
@@ -488,15 +489,33 @@ export function fixtureHandlers(f: Fixture): Handlers {
   for (const channel of Object.keys(handlers) as (keyof Handlers)[]) {
     const fails = f.fails?.[channel]
     const lag = f.lag?.[channel]
-    if (fails === undefined && lag === undefined) continue
+    const after = f.after?.[channel]
+    if (fails === undefined && lag === undefined && !after) continue
     const inner = handlers[channel] as (req: unknown) => Promise<unknown>
     ;(handlers as Record<string, unknown>)[channel] = async (req: unknown) => {
       if (lag) await new Promise((r) => setTimeout(r, lag))
       if (fails !== undefined) throw new Error(fails)
-      return inner(req)
+      const res = await inner(req)
+      for (const step of after ?? []) setTimeout(() => step.events.forEach((e) => bus.push(filled(e, req as Record<string, unknown>, f))), step.afterMs)
+      return res
     }
   }
   return handlers
+}
+
+/** An event of `Fixture.after` with the call's message put in: `$id`, `$parts` and `$now`. A queued message's parts come from the fixture's queue for Send now. */
+function filled(e: PushEvent, req: Record<string, unknown>, f: Fixture): PushEvent {
+  const id = (req.clientId ?? req.id) as string | undefined
+  const parts = req.parts ?? Object.values(f.queue ?? {}).flat().find((q) => q.id === req.id)?.parts ?? []
+  const fill = (v: unknown): unknown => {
+    if (v === '$id') return id
+    if (v === '$parts') return parts
+    if (v === '$now') return Date.now()
+    if (Array.isArray(v)) return v.map(fill)
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fill(x)]))
+    return v
+  }
+  return fill(e) as PushEvent
 }
 
 /**
