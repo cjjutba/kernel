@@ -91,6 +91,23 @@ async function sendFromNewChat(page: Page) {
   await page.waitForTimeout(1500)
 }
 
+// WorkspaceLeaveAndReturn: a send and its short reply, then another tab and back. The message must sit where it did, and the padding is back before the view is (leaving and coming back).
+async function leaveAndReturn(page: Page, app: ElectronApplication) {
+  const push = (event: object) => app.evaluate(({ BrowserWindow }, e) => BrowserWindow.getAllWindows()[0]?.webContents.send('kernel:event', e), event)
+  await page.waitForTimeout(300)
+  await push({ type: 'chat.running', chatId: 'chat-invoice-table', running: true })
+  await push({ type: 'chat.item', chatId: 'chat-invoice-table', item: { kind: 'user', id: 'lr-u', ts: Date.now() - 2000, parts: [{ type: 'text', text: 'Now add a CSV export for the filtered rows.' }] } })
+  await page.waitForTimeout(1500)
+  await push({ type: 'chat.item', chatId: 'chat-invoice-table', item: { kind: 'text', id: 'lr-r', ts: Date.now(), text: 'Done. The filtered rows export as CSV from the table menu.' } })
+  await push({ type: 'chat.running', chatId: 'chat-invoice-table', running: false })
+  await page.waitForTimeout(800)
+  await page.getByRole('tab', { name: 'Empty state copy' }).click()
+  await page.waitForTimeout(500)
+  await page.getByRole('tab').first().click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(800)
+}
+
 async function scrollToSection(page: Page, title: string) {
   await page.locator('.set-scroll').evaluate((el, t) => {
     const h = [...el.querySelectorAll('h2, h3')].find((x) => x.textContent?.trim() === t)
@@ -575,6 +592,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceJustSentLong: sendMessage,
   WorkspaceJustSentDone: sendAndFinish,
   WorkspaceNewChatJustSent: sendFromNewChat,
+  WorkspaceLeaveAndReturn: leaveAndReturn,
   WorkspaceScrolledUp: scrollUp,
   ChatRestoredSpot: scrollUp,
   SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),

@@ -3,8 +3,8 @@ import { createContext, useCallback, useState } from 'react'
 /** A row the reader was looking at, and how far into it their view sat. */
 export interface Anchor { id: string; offset: number }
 
-/** Where a chat was left. `anchors` are the row the view started in and up to two rows above it, for when that row is gone. `anchoredId` is the sent message the view had at its top while a turn ran (KERNEL-837). */
-export interface Place { pinned: boolean; anchors: Anchor[]; scrollTop: number; lastUserId?: string; anchoredId?: string }
+/** Where a chat was left. `anchors` are the row the view started in and up to two rows above it, for when that row is gone. `anchoredId` is the chat's last sent message while the space under it still stands, and `anchoredTop` where it sat from the top of the view (KERNEL-837). */
+export interface Place { pinned: boolean; anchors: Anchor[]; scrollTop: number; lastUserId?: string; anchoredId?: string; anchoredTop?: number }
 
 export interface RowBox { id: string; top: number; height: number }
 
@@ -51,12 +51,20 @@ export function readPlace(rows: RowBox[], scrollTop: number, pinned: boolean, la
   if (at < 0) at = rows.length - 1
   const anchors: Anchor[] = []
   for (let i = at; i >= 0 && anchors.length < ANCHORS; i--) anchors.push({ id: rows[i].id, offset: scrollTop - rows[i].top })
-  return { pinned, anchors, scrollTop, lastUserId, ...(anchoredId && !pinned ? { anchoredId } : {}) }
+  const mark = anchoredId ? rows.find((r) => r.id === anchoredId) : undefined
+  return { pinned, anchors, scrollTop, lastUserId, ...(anchoredId ? { anchoredId, ...(mark ? { anchoredTop: mark.top - scrollTop } : {}) } : {}) }
 }
+
+/** The anchored message a chat gets back: the one it left with, while it is still the chat's last sent message, running or not. Anything sent since starts afresh. */
+export const keptAnchor = (place: Place | undefined, lastSentId: string | undefined): string | undefined =>
+  place?.anchoredId && place.anchoredId === lastSentId ? place.anchoredId : undefined
 
 /** The scrollTop that puts the view back where it was: the first anchor whose row is still there, else the old scrollTop. Clamped to the scroll range. */
 export function placeTop(place: Place, rowTop: (id: string) => number | undefined, range: number): number {
   const clamp = (n: number) => Math.max(0, Math.min(Math.max(0, range), n))
+  // The anchored message is a row of its own, so it puts the view back exactly, whatever was above it or below it when the chat was left.
+  const marked = place.anchoredId !== undefined && place.anchoredTop !== undefined ? rowTop(place.anchoredId) : undefined
+  if (marked !== undefined && place.anchoredTop !== undefined) return clamp(marked - place.anchoredTop)
   for (const a of place.anchors) {
     const top = rowTop(a.id)
     if (top !== undefined) return clamp(top + a.offset)
@@ -64,9 +72,9 @@ export function placeTop(place: Place, rowTop: (id: string) => number | undefine
   return clamp(place.scrollTop)
 }
 
-/** A chat opens at its end when it has no spot, when it was left at the end, or when the reader sent a message since. `lastSentId` is the latest message the reader sent. */
+/** A chat opens at its end when it has no spot, when it was left at the end, or when the reader sent a message since. `lastSentId` is the latest message the reader sent. A chat left with its sent message anchored keeps that spot, since the space under it is still there. */
 export const opensAtEnd = (place: Place | undefined, lastSentId: string | undefined) =>
-  !place || place.pinned || (lastSentId !== undefined && lastSentId !== place.lastUserId)
+  !place || (lastSentId !== undefined && lastSentId !== place.lastUserId) || (place.pinned && !keptAnchor(place, lastSentId))
 
 /** The chat a transcript shows, so a row can keep its open state without every prop passing it down. */
 export const TranscriptChat = createContext<string | null>(null)

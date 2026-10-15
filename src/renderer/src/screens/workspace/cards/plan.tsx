@@ -7,6 +7,7 @@ import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt, useCopy } from '../MessageActions'
 import { AnswerBubble } from './AnswerBubble'
+import { decideInChat } from './optimisticAnswer'
 import { planAnswer } from '@shared/approvalAnswer'
 import { outcome, planSteps, planText } from './steps'
 import './cards.css'
@@ -166,7 +167,7 @@ export function usePlanStrip(plan: Approval | undefined, onApproved?: () => void
     setPressed(true)
     window.dispatchEvent(new CustomEvent(PLAN_APPROVE_EVENT, { detail: { chatId: a.chatId } }))
     after?.()
-    void attempt('Could not approve the plan', () => call('approvals.decide', { id: a.id, decision: { behavior: 'allow' } })).then((ok) => {
+    void decideInChat(a, { behavior: 'allow' }, 'Could not approve the plan').then((ok) => {
       sent.current = false
       if (ok) setApproved(a.id)
       else { setPressed(false); setGone(undefined) }

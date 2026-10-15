@@ -2033,6 +2033,37 @@ export const workspaceFixtures: Record<string, Fixture> = {
       push: [...f.push, { type: 'chat.running', chatId: ids.leadChat, running: true }]
     }
   }),
+  /**
+   * The first message sent from New chat as motion: the draft is in the box and the chat that opens glides the message from the bottom of the empty chat to 24px from the top.
+   * It is the same glide as a typed send in a short chat and in a long one (WorkspaceSendShortMotion, WorkspaceSendLongMotion) and as Approve (WorkspacePlanApprove).
+   */
+  WorkspaceNewChatSendMotion: { ...scene((f) => {
+    const base = noPlan(leadNoChats(f))
+    return {
+      ...base,
+      leadStart: ids.leadChat,
+      items: { [ids.leadChat]: [{ kind: 'user' as const, id: 'nc-u1', ts: Date.now() - 2000, parts: [{ type: 'text' as const, text: 'hi this is a test prompt' }] }] },
+      push: [...f.push, { type: 'chat.running', chatId: ids.leadChat, running: true }],
+      ui: { ...base.ui!, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [], draft: 'hi this is a test prompt' } } }
+    }
+  }), motion: { action: { click: 'Send' }, ms: 1000, area: '.ws-main' } },
+  /** A typed send in a short chat as motion: the message arrives at the bottom and the padding under it lifts it to 24px from the top, by layout, so it is animated like a scroll. */
+  WorkspaceSendShortMotion: { ...scene(() => ({
+    ...withDraft({ items: { [ids.tableChat]: tableItems.slice(0, 1) }, ui: open }, 'Now add a CSV export for the filtered rows.'),
+    afterSend: [{ afterMs: 40, events: [{ type: 'chat.running', chatId: ids.tableChat, running: true }, { type: 'chat.item', chatId: ids.tableChat, item: { kind: 'user', id: 'sm-u', ts: Date.now(), parts: [{ type: 'text', text: 'Now add a CSV export for the filtered rows.' }] } }] }]
+  })), motion: { action: { click: 'Send' }, ms: 1000, area: '.ws-main' } },
+  /** A typed send in a long chat as motion: the message glides by scroll, which is what the two above are made to look like. */
+  WorkspaceSendLongMotion: { ...scene(() => ({
+    ...withDraft({ items: { [ids.tableChat]: longChat }, ui: open }, 'Now add a CSV export for the filtered rows.'),
+    afterSend: [{ afterMs: 40, events: [{ type: 'chat.running', chatId: ids.tableChat, running: true }, { type: 'chat.item', chatId: ids.tableChat, item: { kind: 'user', id: 'sl-u', ts: Date.now(), parts: [{ type: 'text', text: 'Now add a CSV export for the filtered rows.' }] } }] }]
+  })), motion: { action: { click: 'Send' }, ms: 1000, area: '.ws-main' } },
+  /** A chat left and come back to after its turn ended (leaving and coming back): the message sits where it was, with its space under it. scripts/shots.ts sends, finishes the turn, opens another tab and returns. */
+  WorkspaceLeaveAndReturn: scene((f) => ({
+    chats: [...f.chats, extraChat('chat-other', 'Empty state copy')],
+    items: { [ids.tableChat]: tableItems.slice(0, 1), 'chat-other': [userMsg('o1', 'Shorten the empty state copy.')] },
+    push: f.push,
+    ui: tabsView(ids.tableChat)
+  })),
   /** A long chat with shared image cards, read from higher up and shown again after leaving it, with the Scroll to bottom button over it (KERNEL-765). The scroll is the transcript's own, so scripts/shots.ts scrolls it up before the shot. */
   ChatRestoredSpot: scene(() => ({
     items: { [ids.tableChat]: [
@@ -2292,7 +2323,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     approvals: [pending('tool', 'noor', { toolName: 'mcp__claude_ai_Linear__save_issue', input: { title: 'Export invoices as PDF', team: 'Kernel' }, ...describeTool('mcp__claude_ai_Linear__save_issue', { title: 'Export invoices as PDF', team: 'Kernel' }) }), ...f.approvals]
   })),
   WorkspacePlan: scene(planWaiting),
-  WorkspacePlanApprove: { ...scene(planWaiting), motion: { action: { click: 'Approve' }, ms: 900, area: '.cmp' } },
+  WorkspacePlanApprove: { ...scene(planWaiting), motion: { action: { click: 'Approve' }, ms: 1000, area: '.ws-main' } },
   WorkspacePlanApproved: scene(planApproved), // an older chat: no answer row, so the plan card draws the bubble
   WorkspacePlanApprovedItem: scene(planApprovedItem),
   WorkspacePlanChanges: scene(planChanges),
