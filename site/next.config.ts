@@ -10,7 +10,11 @@ const config: NextConfig = {
   // Stops `next dev` from writing an AGENTS.md into site/ when it detects a coding agent.
   agentRules: false,
   // Screenshots are mostly small UI text, which blurs at the default quality of 75.
-  images: { formats: ['image/avif', 'image/webp'], qualities: [90] }
+  images: { formats: ['image/avif', 'image/webp'], qualities: [90] },
+  // Each docs page as Markdown, next to the page: /docs/install.md (app/docs/raw).
+  async rewrites() {
+    return [{ source: '/docs/:slug.md', destination: '/docs/raw/:slug' }]
+  }
 }
 
 export default config
