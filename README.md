@@ -56,7 +56,7 @@ Kernel runs on your own Claude or ChatGPT plan, using the sign-in you already ha
 Kernel itself makes these network calls and no others:
 
 - Claude Code and Codex, which talk to Anthropic and OpenAI as they always do
-- Anthropic or OpenAI, once, to check an API key when you add one in Settings, Providers
+- Anthropic or OpenAI, once, to check an API key when you add one in Settings, Accounts
 - `gh`, for pull requests and checks
 - git, to fetch and push branches on your repo's own remote, and your package manager when a new project installs dependencies
 - The update check, which reads this repo's GitHub Releases
