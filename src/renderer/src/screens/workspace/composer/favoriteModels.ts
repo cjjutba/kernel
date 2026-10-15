@@ -1,26 +1,18 @@
-import { useSyncExternalStore } from 'react'
+import { useMemo } from 'react'
+import { readSavedJson, useRemembered, writeSavedJson } from '../../../remember'
 
-// The models you starred in the picker. They stay on this Mac, like a picker's remembered tab, so they live in localStorage.
+// The models you starred in the picker. They stay on this Mac, as a remembered choice (DESIGN.md, Remembered choices).
 
 const KEY = 'kernel.favoriteModels'
-const listeners = new Set<() => void>()
-let cached: string[] | null = null
-
-function read(): string[] {
-  if (cached) return cached
-  try {
-    const v: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]')
-    cached = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
-  } catch { cached = [] }
-  return cached
-}
+const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 
 /** The ids of the starred models, in the order they were starred. */
-export const useFavoriteModels = (): readonly string[] => useSyncExternalStore((fn) => { listeners.add(fn); return () => listeners.delete(fn) }, read)
+export function useFavoriteModels(): readonly string[] {
+  const [raw] = useRemembered(KEY, (r) => r ?? '')
+  return useMemo(() => { try { return ids(JSON.parse(raw || 'null')) } catch { return [] } }, [raw])
+}
 
 export function toggleFavoriteModel(id: string) {
-  const now = read()
-  cached = now.includes(id) ? now.filter((x) => x !== id) : [...now, id]
-  try { localStorage.setItem(KEY, JSON.stringify(cached)) } catch { /* private window: the star holds until the app closes */ }
-  listeners.forEach((fn) => fn())
+  const now = readSavedJson(KEY, ids)
+  writeSavedJson(KEY, now.includes(id) ? now.filter((x) => x !== id) : [...now, id])
 }
