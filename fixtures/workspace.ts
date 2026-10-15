@@ -1025,7 +1025,7 @@ interface OpenPr {
    * Theo's review: `approved` of the head commit, `stale` an approval of an earlier one, `blockers` two blockers on the head
    * commit, `planned` a code review round started on the head that hasn't reported (KERNEL-717). None is not reviewed.
    */
-  review?: 'approved' | 'stale' | 'blockers' | 'planned'
+  review?: 'approved' | 'secure' | 'stale' | 'blockers' | 'planned'
   overruled?: true
 }
 
@@ -1038,7 +1038,7 @@ const commitTitle = (title: string, key: string) => `feat(workspace): ${title.ch
 /** The fields of a workspace that has `p` open: the PR, the issue it builds, its changes and Theo's review. */
 const prFields = (p: OpenPr): Partial<Workspace> => {
   const verdict = (o: Partial<ReviewVerdict>): ReviewVerdict => ({ workspaceId: `${p.id}-review`, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha: `h${p.n}`, prNumber: p.n, ts: at(20, 12), ...o })
-  const reviews = p.review === 'approved' ? [verdict({})] : p.review === 'stale' ? [verdict({ sha: `h${p.n}-old` })] : p.review === 'blockers' ? [verdict({ verdict: 'blockers', blockers: [{ text: 'The download never retries.' }, { text: 'No test covers the failure toast.' }] })] : undefined
+  const reviews = p.review === 'approved' ? [verdict({})] : p.review === 'secure' ? [verdict({ lens: 'code' }), verdict({ lens: 'security', workspaceId: `${p.id}-security` })] : p.review === 'stale' ? [verdict({ sha: `h${p.n}-old` })] : p.review === 'blockers' ? [verdict({ verdict: 'blockers', blockers: [{ text: 'The download never retries.' }, { text: 'No test covers the failure toast.' }] })] : undefined
   return {
     title: p.title, prState: p.state, prNumber: p.n, prUrl: `https://github.com/samrivera/client-a/pull/${p.n}`, prTitle: commitTitle(p.title, p.key), prHead: `h${p.n}`, source: { kind: 'issue', id: p.key, title: p.title },
     stat: { files: 3, added: p.stat[0], removed: p.stat[1] }, reviews,
@@ -2685,6 +2685,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   LeadPrsReviewPlanned: scene((f) => leadPrsScene(f, [LEAD_PRS[0], { id: 'ws-705', agentId: 'kai', key: 'KERNEL-705', n: 170, title: 'Toasts rise from the bottom', state: 'ready', stat: [63, 42], review: 'planned' }, LEAD_PRS[3]], 'What can I merge?', "#162 from Kai is ready. #170 passed its checks and its code review is running, so it waits for that approval. #166 is still running checks.")),
   // A PR with blockers on its latest commit isn't ready: it sits under Needs attention, says Blockers found and offers Merge anyway (KERNEL-501, KERNEL-757).
   LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. Theo found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
+  // One row per state word (KERNEL-897): both approvals and code alone in green, a failure in red, a spinner, a clock, and two plain muted rows.
+  LeadPrsStateWords: scene((f) => leadPrsScene(f, [
+    { ...LEAD_PRS[0], review: 'secure' }, LEAD_PRS[1], { ...LEAD_PRS[0], id: 'ws-190', n: 190, key: 'KERNEL-190', title: 'Plain ready PR, not reviewed', review: undefined },
+    LEAD_PRS[2], LEAD_PRS[3], LEAD_PRS[4], LEAD_PRS[5], LEAD_PRS[7]
+  ], 'What can I merge?', LEAD_PRS_REPLY)),
   LeadPrsOverruled: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], OVERRULED_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Three PRs are ready. #162 from Kai and #161 from Noor have Theo's approval. You overruled Theo's 2 blockers on #167, so it can merge. #158 is waiting for his approval, and #166 is still running checks.")),
   // A PR merging keeps its row in Ready to merge and spins there, though this tab didn't start it (KERNEL-411, KERNEL-417).
   LeadPrsMerging: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'Merge #331.', 'Merging #331 now. #330 is ready too, and #333 is still running checks.')),

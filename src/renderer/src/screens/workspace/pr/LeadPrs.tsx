@@ -81,7 +81,10 @@ function Row({ row }: { row: LeadPr }) {
             : <span className="lp-chev" aria-hidden="true"><Icon name="right" size={14} /></span>}
         </div>
         <div className="lp-l2">
-          <span className="lp-state" data-tone={state.tone} data-tip={state.why}>{state.text}</span>
+          <span className="lp-state" data-tone={state.tone} data-tip={state.why}>
+            {state.icon && (state.icon === 'spin' ? <Spinner label={null} pattern="rotate" /> : <Icon name={state.icon} size={13} />)}
+            {state.text}
+          </span>
           <span className="lp-dot" aria-hidden="true">·</span>
           <span className="lp-name">{row.name}</span>
           {ws.prNumber

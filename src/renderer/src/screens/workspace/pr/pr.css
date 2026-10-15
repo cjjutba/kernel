@@ -103,7 +103,9 @@ section:first-child > .lp-sec { padding-top: 6px; }
 .lp-l2 { display: flex; align-items: baseline; gap: 5px; margin-top: 2px; overflow: hidden; font-size: 12px; line-height: 16px; white-space: nowrap; color: var(--muted); }
 .lp-l2 > * { flex-shrink: 0; }
 .lp-state { color: var(--ink-3); }
-.lp-state[data-tone='fail'] { color: var(--pr-fail-text); }
+.lp-state { display: inline-flex; align-items: center; gap: 4px; }
+.lp-state[data-tone='good'] { color: var(--add); }
+.lp-state[data-tone='fail'] { color: var(--del); }
 .lp-dot { color: var(--faint); }
 .lp-l2 > .lp-name { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
 .lp-num { display: inline-flex; align-items: center; gap: 2px; font: 11.5px var(--mono); color: var(--muted); text-decoration: none; }
