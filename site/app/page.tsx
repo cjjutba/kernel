@@ -2,9 +2,7 @@ import { Faq } from '@/components/landing/Faq'
 import { Features } from '@/components/landing/Features'
 import { FinalCta } from '@/components/landing/FinalCta'
 import { Hero } from '@/components/landing/Hero'
-import { HowItWorks } from '@/components/landing/HowItWorks'
 import { Privacy } from '@/components/landing/Privacy'
-import { Shipped } from '@/components/landing/Shipped'
 import { Waitlist } from '@/components/landing/Waitlist'
 import { SiteFooter } from '@/components/layout/SiteFooter'
 import { SiteNav } from '@/components/layout/SiteNav'
@@ -41,13 +39,11 @@ export default async function Home() {
       <SiteNav />
       <main id="content">
         <Hero version={latestVersionLabel(latest.version)} />
-        <HowItWorks />
         <Features />
         <Privacy />
-        <Shipped />
         <Waitlist className="pt-32" />
         <Faq />
-        <FinalCta version={latest.version} />
+        <FinalCta />
       </main>
       <SiteFooter />
     </>

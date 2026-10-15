@@ -1,7 +1,7 @@
 import { SectionHead } from '@/components/ui/SectionHead'
 import { Clip } from './Clip'
 
-// What surrounds the loop the hero and How it works show, as a bento of clips recorded from the real app on sample data
+// What surrounds the loop the hero shows, as a bento of clips recorded from the real app on sample data
 // (demo/clips.ts). Two wide tiles bracket two rows of pairs. Every clip is the full window, so all of them share an aspect.
 
 /** Wide tiles carry a title only. The pairs between them add one short line. */
@@ -89,7 +89,6 @@ export function Features() {
       <SectionHead
         title="The whole team, in one window."
         titleId="features-title"
-        lead="Recorded from the app on sample data: where agents work, how their work is checked, and what stays in your hands."
       />
       <div className="mt-14 grid grid-cols-2 gap-4 max-faq:grid-cols-1">
         {FEATURES.map((f) => (

@@ -1,8 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { ISSUES_URL } from '@/lib/links'
 
 const faqs = [
   {
@@ -46,22 +44,6 @@ export function Faq() {
           <br />
           answered.
         </h2>
-        <p className="mt-4 text-lead text-muted">
-          The{' '}
-          <Link href="/docs" className="text-ink underline decoration-rule underline-offset-3 hover:text-white">
-            docs
-          </Link>{' '}
-          go deeper. Something missing?{' '}
-          <a
-            href={ISSUES_URL}
-            target="_blank"
-            rel="noopener"
-            className="text-ink underline decoration-rule underline-offset-3 hover:text-white"
-          >
-            Ask on GitHub
-          </a>
-          .
-        </p>
       </div>
       <div>
         {faqs.map((f, i) => (

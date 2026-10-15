@@ -1,10 +1,9 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
-import { ArrowIcon, DownloadIcon, GitHubIcon } from '@/components/ui/icons'
-import { DOWNLOAD_URL, REPO_URL } from '@/lib/links'
+import { ArrowIcon, DownloadIcon } from '@/components/ui/icons'
+import { DOWNLOAD_URL } from '@/lib/links'
 import { HeroDemo } from './HeroDemo'
 import { ProviderTiles } from './ProviderTiles'
-import { WaitlistForm } from './WaitlistForm'
 
 /** `version` is the newest release's label, such as "0.1". */
 export function Hero({ version }: { version: string }) {
@@ -31,24 +30,23 @@ export function Hero({ version }: { version: string }) {
           working as a team.
         </h1>
         <p className="mx-auto mt-6 max-w-150 text-hero-lead text-balance text-muted">
-          Brief a lead, approve the plan, and watch agents build in parallel, each in its own workspace, until a pull
-          request is ready for you to merge.
+          Brief a lead, approve the plan, and merge what the team builds.
         </p>
         <div className="mt-10 flex flex-wrap justify-center gap-3">
           <Button href={DOWNLOAD_URL} size="lg" icon={<DownloadIcon />}>
             Download for macOS
           </Button>
-          <Button href={REPO_URL} variant="secondary" size="lg" external icon={<GitHubIcon />}>
-            View on GitHub
-          </Button>
         </div>
-        <p className="mt-4 text-small text-faint">Free · For Macs with Apple silicon</p>
-        <div className="mx-auto mt-10 max-w-115">
-          <p className="text-small text-balance text-muted">On Windows, Linux or an Intel Mac? Get one email when Kernel runs there.</p>
-          <div className="mt-3">
-            <WaitlistForm compact />
-          </div>
-        </div>
+        <p className="mt-4 text-small text-faint">
+          Free · For Macs with Apple silicon
+          <span className="max-nav:hidden"> · </span>
+          {/* On phones the link takes its own line rather than breaking in the middle. */}
+          <span className="max-nav:mt-1.5 max-nav:block">
+            <a href="#waitlist" className="text-muted underline decoration-rule underline-offset-3 transition-colors hover:text-ink">
+              Not on one? Join the waitlist
+            </a>
+          </span>
+        </p>
       </div>
       <div className="relative mt-16 px-6">
         <HeroDemo />
