@@ -21,7 +21,7 @@ import { claudeExecutable, resolveBinary } from '../services/providers/binary'
 import { accountEnv, claudeStatus, credentialsDir, credentialsItem, isConnector, linkClaudeHome, loginEnv, loginMcp, logoutClaude, removeClaudeHome, shareMcpSignIns, syncClaudeConfig, syncClaudePlugins, type ClaudeLogin } from '../services/providers/claudeHome'
 import { loginClaude } from '../services/providers/claudeToken'
 import { claudeModels, probeClaudeMcp, probeClaudeUsage, sessionEnv } from '../services/providers/claude'
-import { codexPlan, loginCodexMcp, readCodexAccount, readCodexMcp, readCodexModels, withCodex } from '../services/providers/codex/client'
+import { codexPlan, legacyCodexModels, loginCodexMcp, readCodexAccount, readCodexMcp, readCodexModels, withCodex } from '../services/providers/codex/client'
 import { codexLimits } from '../services/providers/codex/runner'
 import type { Rpc } from '../services/providers/codex/rpc'
 import type { AccountLoginCompletedNotification } from '../services/providers/codex/protocol/v2/AccountLoginCompletedNotification'
@@ -159,17 +159,19 @@ export class Providers extends Feature {
   // ---------- models
 
   /**
-   * A provider's models with the efforts each takes. Claude's are Kernel's own list. Codex's come from `model/list` on the
-   * active account, hidden ones left out.
+   * A provider's models with the efforts each takes, older ones marked legacy. Claude's are Kernel's own list. Codex's come
+   * from `model/list` on the active account, hidden ones left out.
    */
   models(provider: Provider): Promise<ProviderModel[]> {
-    if (provider === 'claude') return Promise.resolve(MODELS.map((m) => ({ provider, id: m.id, label: m.label, efforts: EFFORTS.map((e) => e.id), defaultEffort: 'high' as Effort })))
+    if (provider === 'claude') return Promise.resolve(MODELS.map((m) => ({ provider, id: m.id, label: m.label, legacy: !!m.legacy, efforts: EFFORTS.map((e) => e.id), defaultEffort: 'high' as Effort })))
     this.codexModels ??= (async () => {
       const bin = this.binary('codex').path
       if (!bin) throw new Error('Kernel could not find Codex.')
       const known = (e: string): e is Effort => e in EFFORT_LABELS
-      return (await readCodexModels(bin, this.codexHome(), this.apiKey('codex'))).map((m) => ({
-        provider: 'codex' as const, id: m.id, label: m.displayName, description: m.description, isDefault: m.isDefault,
+      const models = await readCodexModels(bin, this.codexHome(), this.apiKey('codex'))
+      const legacy = legacyCodexModels(models.map((m) => m.id))
+      return models.map((m) => ({
+        provider: 'codex' as const, id: m.id, label: m.displayName, description: m.description, isDefault: m.isDefault, legacy: legacy.has(m.id),
         efforts: m.supportedReasoningEfforts.map((e) => e.reasoningEffort).filter(known),
         defaultEffort: known(m.defaultReasoningEffort) ? m.defaultReasoningEffort : 'medium'
       }))

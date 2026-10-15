@@ -907,9 +907,9 @@ describe('Codex helpers (KERNEL-406)', () => {
   })
 
   it("reads Codex's windows by length, and marks the fuller one when Codex says a limit was reached", () => {
-    expect(codexLimits({ limitId: 'codex', limitName: null, primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: 10 }, secondary: { usedPercent: 30, windowDurationMins: 10080, resetsAt: 20 }, credits: null, individualLimit: null, spendControlReached: null, planType: 'plus', rateLimitReachedType: null }, 'acct'))
+    expect(codexLimits({ limitId: 'codex', limitName: null, normalModelSlug: null, primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: 10 }, secondary: { usedPercent: 30, windowDurationMins: 10080, resetsAt: 20 }, credits: null, individualLimit: null, spendControlReached: null, planType: 'plus', rateLimitReachedType: null }, 'acct'))
       .toEqual([{ type: 'five_hour', provider: 'codex', accountId: 'acct', utilization: 1, resetsAt: 10, status: 'rejected' }, { type: 'seven_day', provider: 'codex', accountId: 'acct', utilization: 0.3, resetsAt: 20 }])
-    expect(codexLimits({ limitId: 'codex', limitName: null, primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: 10 }, secondary: { usedPercent: 97, windowDurationMins: 10080, resetsAt: 20 }, credits: null, individualLimit: null, spendControlReached: null, planType: 'plus', rateLimitReachedType: 'rate_limit_reached' })[1].status).toBe('rejected')
+    expect(codexLimits({ limitId: 'codex', limitName: null, normalModelSlug: null, primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: 10 }, secondary: { usedPercent: 97, windowDurationMins: 10080, resetsAt: 20 }, credits: null, individualLimit: null, spendControlReached: null, planType: 'plus', rateLimitReachedType: 'rate_limit_reached' })[1].status).toBe('rejected')
     expect(codexLimits(null)).toEqual([])
   })
 

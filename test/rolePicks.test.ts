@@ -6,6 +6,7 @@ import type { AgentDef, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { agentFromFile, updateAgent } from '../src/main/services/agents'
 import { tempRepo } from './helpers'
+import { fakeCodex } from './helpers/fakeCodex'
 
 const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
 const IVY = '---\nname: ivy\nrole: QA\ndescription: Tests things.\n---\nYou are Ivy.'
@@ -104,12 +105,26 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
     await k.stop()
   })
 
-  it("lists Claude's models with their efforts", async () => {
+  it("lists Claude's models with their efforts, the current ones first and the older ones marked legacy", async () => {
     const { k } = await kernel()
     const models = await k.handlers()['models.list']({ provider: 'claude' })
-    expect(models.map((m) => m.id)).toEqual(['claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5-20251001'])
+    expect(models.filter((m) => !m.legacy).map((m) => m.id)).toEqual(['claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5-20251001'])
+    expect(models.slice(0, 4).every((m) => !m.legacy)).toBe(true)
+    expect(models.find((m) => m.id === 'claude-opus-4-8')).toMatchObject({ label: 'Opus 4.8', legacy: true })
     expect(models[0]).toMatchObject({ provider: 'claude', label: 'Fable 5.1', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'high' })
     await k.stop()
+  })
+
+  it("marks Codex's older models legacy: a lower major version, or the same name at a lower version", async () => {
+    const fake = await fakeCodex()
+    process.env.FAKE_CODEX_MODELS = JSON.stringify(['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-luna', 'codex-mini'])
+    try {
+      const { k } = await kernel()
+      await k.providers.setPath('codex', { path: fake.bin })
+      const models = await k.handlers()['models.list']({ provider: 'codex' })
+      expect(models.filter((m) => m.legacy).map((m) => m.id)).toEqual(['gpt-6-sol', 'gpt-5.6-sol', 'gpt-5.6-luna'])
+      await k.stop()
+    } finally { delete process.env.FAKE_CODEX_MODELS }
   })
 })
 

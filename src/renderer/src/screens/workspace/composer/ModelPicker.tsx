@@ -48,7 +48,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const efforts = effortsOf(model, own)
   const [q, setQ] = useState('')
   const all: Row[] = useMemo(() => [
-    ...MODELS.map((m, i) => ({ provider: 'claude' as const, id: m.id, label: m.label, n: i + 1 })),
+    ...MODELS.map((m, i) => ({ provider: 'claude' as const, id: m.id, label: m.label, ...(m.legacy ? {} : { n: i + 1 }) })),
     ...(grouped || provider === 'codex' ? codex.map((m) => ({ provider: 'codex' as const, id: m.id, label: m.label })) : [])
   ], [codex, grouped, provider])
   const rows = useMemo(() => {

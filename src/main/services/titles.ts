@@ -101,7 +101,7 @@ export async function askTitle(text: string, o: { cwd: string; current?: string;
 }
 
 /** The Codex model that names chats when Claude can't: Codex's small, fast one. An account without it uses its default. */
-export const CODEX_TITLE_MODEL = 'gpt-5.6-luna'
+export const CODEX_TITLE_MODEL = 'gpt-6-luna'
 
 /**
  * A name for a conversation from Codex, for when no Claude account can name it (KERNEL-624). `codex app-server` starts on
