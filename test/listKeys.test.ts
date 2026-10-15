@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { listKeyAction } from '../src/renderer/src/ui/listKeys'
+import { listKeyAction, listRowIndex } from '../src/renderer/src/ui/listKeys'
 
 const key = (k: string, mods: object = {}) => ({ key: k, ...mods })
 
@@ -39,5 +39,17 @@ describe('list keys (KERNEL-871)', () => {
     expect(listKeyAction(key('j', { metaKey: true }), 1, 5)).toBeNull()
     expect(listKeyAction(key('a'), 1, 5)).toBeNull()
     expect(listKeyAction(key('ArrowDown'), -1, 0)).toBeNull()
+  })
+
+  it('reads a key only on the row itself, not on a control inside it', () => {
+    const ids = ['a', 'b']
+    const rowId = (id: string) => `row-${id}`
+    const row = { id: 'row-b', closest: () => row }
+    const button = { id: '', closest: () => row }
+    const outside = { id: '', closest: () => null }
+    expect(listRowIndex(row, ids, rowId)).toBe(1)
+    expect(listRowIndex(button, ids, rowId)).toBe(-1)
+    expect(listRowIndex(outside, ids, rowId)).toBe(-1)
+    expect(listRowIndex({ id: 'row-z', closest() { return this } }, ids, rowId)).toBe(-1)
   })
 })

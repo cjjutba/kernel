@@ -25,6 +25,15 @@ export function listKeyAction(e: KeyLike, at: number, len: number, wrap = false)
 
 export const isTyping = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]')
 
+interface RowTarget { closest: (selector: string) => { id: string } | null }
+
+/** The index of the row a key was pressed on, or -1. A key pressed on a control inside a row (a button, a link) belongs to that control, so only the row's own element counts. */
+export function listRowIndex(target: unknown, ids: string[], rowId: (id: string) => string): number {
+  const row = (target as RowTarget | null)?.closest?.('[data-list-row]')
+  if (!row || row !== target) return -1
+  return ids.findIndex((id) => rowId(id) === row.id)
+}
+
 interface ListKeysOptions {
   ids: string[]
   rowId: (id: string) => string
@@ -48,8 +57,7 @@ export function useListKeys({ ids, rowId, onOpen, current, onCurrent, wrap, bloc
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     if (isTyping(e.target) || blocked?.()) return
-    const rowEl = (e.target as HTMLElement).closest('[data-list-row]')
-    const at = rowEl ? ids.findIndex((id) => rowId(id) === rowEl.id) : -1
+    const at = listRowIndex(e.target, ids, rowId)
     if (at < 0) return
     const action = listKeyAction(e, at, ids.length, wrap)
     if (!action) return
