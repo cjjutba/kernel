@@ -166,6 +166,50 @@ describe('Kernel rooms', () => {
     await k.stop()
   })
 
+  it('tries a failed setup again from the failed step, one try at a time, and refuses once the room is set up (KERNEL-876)', async () => {
+    const { k } = await kernel()
+    const room = await k.createRoom({ source: 'folder', name: 'Retry app', from: await tempRepo(), team: ['kai'], autostart: false })
+    expect((await setupDone(room.id)).find((s) => s.id === 'hooks')?.state).toBe('fail')
+    await k.handlers()['hooks.install']({ port: (await k.hooks.hooksStatus()).port })
+
+    const published: RoomSetupStep[][] = []
+    const on = (e: PushEvent) => { if (e.type === 'room.setup' && e.roomId === room.id) published.push(e.steps) }
+    bus.on('push', on)
+    const done = setupDone(room.id)
+    await k.handlers()['rooms.retrySetup']({ roomId: room.id })
+    await expect(k.handlers()['rooms.retrySetup']({ roomId: room.id })).rejects.toThrow('Retry app is still being set up.')
+    const steps = await done
+    bus.off('push', on)
+
+    // The failed step and the ones after it go back to waiting, and only they run again.
+    expect(published[0].map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['install', 'ok'], ['copy', 'ok'], ['hooks', 'wait'], ['agents', 'wait']])
+    expect([...new Set(published.flatMap((p) => p.filter((s) => s.state === 'run').map((s) => s.id)))]).toEqual(['hooks', 'agents'])
+    expect(steps.map((s) => s.state)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok'])
+    expect(steps.find((s) => s.id === 'hooks')?.error).toBeUndefined()
+    // The starter agents the first try seated are still Kernel's, not agents the repo brought.
+    expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Kai from .claude/agents, Kernel leads' })
+    expect(steps.find((s) => s.id === 'agents')?.brought).toBeUndefined()
+
+    await expect(k.handlers()['rooms.retrySetup']({ roomId: room.id })).rejects.toThrow('Retry app is already set up.')
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('keeps a step failed with the new reason when it fails again, and lets it be tried once more (KERNEL-876)', async () => {
+    const { k } = await kernel()
+    const room = await k.createRoom({ source: 'folder', name: 'Stuck app', from: await tempRepo(), team: [], autostart: false })
+    expect((await setupDone(room.id)).find((s) => s.id === 'hooks')?.error).toContain('Check hooks')
+    const status = vi.spyOn(k.hooks, 'hooksStatus').mockRejectedValueOnce(new Error('Claude settings could not be read.'))
+    const done = setupDone(room.id)
+    k.rooms.retrySetup(room.id)
+    expect((await done).find((s) => s.id === 'hooks')).toMatchObject({ state: 'fail', error: 'Claude settings could not be read.' })
+    status.mockRestore()
+    // Nothing finished, so Try again is still there.
+    const again = setupDone(room.id)
+    k.rooms.retrySetup(room.id)
+    expect((await again).find((s) => s.id === 'hooks')).toMatchObject({ state: 'fail', error: expect.stringContaining('Check hooks') })
+    await k.stop({ budgetMs: 0 })
+  })
+
   it('checks push access once the checkout has a remote, and Check again updates the step (KERNEL-460)', async () => {
     const { k } = await kernel()
     const repo = await tempRepo({ 'README.md': '# x\n' })
