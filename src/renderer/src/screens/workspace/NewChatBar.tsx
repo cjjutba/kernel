@@ -6,8 +6,15 @@ import { useScreenEscape } from '../../ui/hooks'
 import { ProjectIcon } from '../../components/ProjectIcon'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
 
-/** Back to where New chat was opened from, or New chat in the first project when there is nowhere to go. The draft stays in the project's box. */
-const leave = () => { if (!actions.ui.back()) actions.ui.go(landing(getState())) }
+/** Back to where New chat was opened from, or to the landing route when that is somewhere else. False when there is nowhere to go, so the key passes on. The draft stays in the project's box. */
+const leave = (): boolean => {
+  if (actions.ui.back()) return true
+  const s = getState()
+  const to = landing(s)
+  if (JSON.stringify(to) === JSON.stringify(s.ui.route)) return false
+  actions.ui.go(to)
+  return true
+}
 
 /**
  * New chat's header, the first row a chat has: the breadcrumb "project › New chat" and nothing on the right. No editor button, panel
@@ -35,8 +42,7 @@ export function NewChatHeader({ project }: { project?: Project }) {
 export function NewChatTab() {
   useScreenEscape((_e, inField) => {
     if (inField) return false
-    leave()
-    return true
+    return leave()
   })
   return (
     <div className="ws-tabs">

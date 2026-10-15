@@ -2,8 +2,14 @@
 import * as React from 'react'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { actions, getState, setState } from '../src/renderer/src/store'
+import { NewChatTab } from '../src/renderer/src/screens/workspace/NewChatBar'
+import { TelemetryAsk, askAboutTelemetry } from '../src/renderer/src/components/TelemetryAsk'
+import { landing } from '../src/renderer/src/nav'
 import { closeAllLayers, isOutsidePress, useLayer, useScreenEscape, useToastEscape } from '../src/renderer/src/ui/hooks'
+
+vi.mock('../src/renderer/src/api', () => ({ call: vi.fn(async () => ({ telemetry: true })) }))
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -151,6 +157,44 @@ describe('Escape order', () => {
     mount(log, { screen: false })
     escape(host.querySelector('#c')!)
     expect(log).toEqual(['screen', 'toast'])
+  })
+})
+
+describe('Escape with nothing to do (KERNEL-896)', () => {
+  let root: Root | null = null
+  let host: HTMLElement
+  afterEach(() => { act(() => root?.unmount()); root = null; host?.remove(); setState((s) => ({ ui: { ...s.ui, modal: null, toasts: [] } })) })
+  const press = () => {
+    const e = new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    act(() => { window.dispatchEvent(e) })
+    return e
+  }
+  const mountAll = (...els: React.ReactElement[]) => {
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    act(() => root!.render(React.createElement(React.Fragment, null, ...els)))
+  }
+
+  it('New chat with nowhere to go back to passes Escape to the toast', () => {
+    const toast: string[] = []
+    function Toast() { useToastEscape(() => { toast.push('toast'); return true }); return null }
+    setState((s) => ({ ui: { ...s.ui, route: landing(s) } }))
+    mountAll(React.createElement(NewChatTab), React.createElement(Toast))
+    const route = getState().ui.route
+    const e = press()
+    expect(toast).toEqual(['toast'])
+    expect(getState().ui.route).toEqual(route)
+    expect(e.defaultPrevented).toBe(true)
+  })
+  it('the usage question closes on the first Escape and does not ask again', async () => {
+    setState((s) => ({ settings: { ...s.settings, privacy: { ...s.settings?.privacy, telemetry: 'ask' } } as typeof s.settings, projects: [{ id: 'p' } as never], ui: { ...s.ui, route: { name: 'inbox' }, modal: { name: 'telemetryAsk' } } }))
+    window.matchMedia = ((q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia
+    mountAll(React.createElement(TelemetryAsk))
+    press()
+    expect(getState().ui.modal).toBeNull()
+    await askAboutTelemetry()
+    expect(getState().ui.modal).toBeNull()
   })
 })
 

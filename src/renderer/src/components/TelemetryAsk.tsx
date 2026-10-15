@@ -11,6 +11,7 @@ let asked = false
  * build that can send. Nothing goes out until the answer is yes. Don’t share is no. Escape closes without an answer, so it asks again next launch.
  */
 export function TelemetryAsk() {
+  asked = true
   const [busy, run] = useBusy()
   const answer = (telemetry: 'on' | 'off') => run(telemetry, async () => {
     await patchSettings({ privacy: { telemetry } })
