@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AccountProfile, MoveNotice, MovePreview, MovePreviewChat, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { ChatPart, AccountProfile, MoveNotice, MovePreview, MovePreviewChat, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
@@ -847,6 +847,19 @@ const planMode = (f: Fixture): Partial<Fixture> => {
 }
 
 /** A fixture with a draft in the box. */
+const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+const runningEvent = (chatId: string, running: boolean): PushEvent => ({ type: 'chat.running', chatId, running })
+/** The engine's row for a message the window drew: `$id`, `$now` and `$parts` are filled from the call (src/main/fixtures.ts). */
+const sentRow = (chatId: string, o: { id?: string; parts?: ChatPart[] } = {}): PushEvent =>
+  ({ type: 'chat.item', chatId, item: { kind: 'user', id: o.id ?? '$id', ts: '$now' as unknown as number, parts: o.parts ?? ('$parts' as unknown as ChatPart[]) } })
+/** What main pushes once it takes a message: the row under the window's id, then the running turn. */
+const sentAfter = (chatId: string, parts?: ChatPart[]): { afterMs: number; events: PushEvent[] }[] => [{ afterMs: 0, events: [sentRow(chatId, { parts }), runningEvent(chatId, true)] }]
+const errorItems: ChatItem[] = [
+  userMsg('e0', 'Run the full test suite before I open the PR.'),
+  tool('e-t1', 'Run unit tests', 'pnpm vitest run', { status: 'failed', durationMs: 19_800, output: 'FAIL tests/invoices.spec.ts > sorts by date\n  Expected: 2026-10-01  Received: 01/10/2026\nFAIL tests/invoices.spec.ts > empty state\n  Snapshot mismatch: 1 line changed' }),
+  { kind: 'result', id: 'e-res', ts: at(10, 30), durationMs: 184_000, ok: false, error: '2 tests failed' }
+]
+
 const withDraft = (p: Partial<Fixture>, draft: string): Partial<Fixture> =>
   ({ ...p, ui: { ...p.ui, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft } } } })
 
@@ -2084,29 +2097,89 @@ export const workspaceFixtures: Record<string, Fixture> = {
     }
   }),
   /**
-   * The first message sent from New chat as motion: the draft is in the box and the chat that opens shows the message at the top of the short thread at once. Nothing else moves.
-   * A typed send in a short and in a long chat (WorkspaceSendShortMotion, WorkspaceSendLongMotion) and Approve (WorkspacePlanApprove) behave the same way.
+   * One-frame sends (KERNEL-895), each a user action as motion. Main answers late (`lag`) and then pushes what the engine does, with the window's id on the row (`$id`), so the sheet shows
+   * the frame after the action already in its final layout and the engine's confirmation arriving in place. Frame 0 is 150ms after the action, before main has answered.
+   * The first message sent from New chat: the chat opens with the message and the Working line already drawn.
    */
   WorkspaceNewChatSendMotion: { ...scene((f) => {
     const base = noPlan(leadNoChats(f))
     return {
       ...base,
       leadStart: ids.leadChat,
-      items: { [ids.leadChat]: [{ kind: 'user' as const, id: 'nc-u1', ts: Date.now() - 2000, parts: [{ type: 'text' as const, text: 'hi this is a test prompt' }] }] },
-      push: [...f.push, { type: 'chat.running', chatId: ids.leadChat, running: true }],
+      items: { [ids.leadChat]: [] },
+      lag: { 'lead.start': 500 },
+      after: { 'lead.start': sentAfter(ids.leadChat) },
       ui: { ...base.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'hi this is a test prompt' } } }
     }
-  }), motion: { action: { click: 'Send' }, ms: 1000, area: '.ws-main' } },
-  /** A typed send in a short chat as motion: the message appears at the end at once and nothing moves besides the new row. */
+  }), motion: { action: { click: 'Send' }, ms: 1500, area: '.ws-main' } },
+  /** A typed send in a short chat: the message appears at the end at once and nothing moves besides the new row. */
   WorkspaceSendShortMotion: { ...scene(() => ({
     ...withDraft({ items: { [ids.tableChat]: tableItems.slice(0, 1) }, ui: open }, 'Now add a CSV export for the filtered rows.'),
-    afterSend: [{ afterMs: 40, events: [{ type: 'chat.running', chatId: ids.tableChat, running: true }, { type: 'chat.item', chatId: ids.tableChat, item: { kind: 'user', id: 'sm-u', ts: Date.now(), parts: [{ type: 'text', text: 'Now add a CSV export for the filtered rows.' }] } }] }]
-  })), motion: { action: { click: 'Send' }, ms: 1000, area: '.ws-main' } },
-  /** A typed send in a long chat as motion: the view is at its end, and the message appears there at once with no scroll. */
+    lag: { 'chats.send': 500 }, after: { 'chats.send': sentAfter(ids.tableChat) }
+  })), motion: { action: { click: 'Send' }, ms: 1500, area: '.ws-main' } },
+  /** A typed send in a long chat: the view is at its end, and the message appears there at once with no scroll. */
   WorkspaceSendLongMotion: { ...scene(() => ({
     ...withDraft({ items: { [ids.tableChat]: longChat }, ui: open }, 'Now add a CSV export for the filtered rows.'),
-    afterSend: [{ afterMs: 40, events: [{ type: 'chat.running', chatId: ids.tableChat, running: true }, { type: 'chat.item', chatId: ids.tableChat, item: { kind: 'user', id: 'sl-u', ts: Date.now(), parts: [{ type: 'text', text: 'Now add a CSV export for the filtered rows.' }] } }] }]
-  })), motion: { action: { click: 'Send' }, ms: 1000, area: '.ws-main' } },
+    lag: { 'chats.send': 500 }, after: { 'chats.send': sentAfter(ids.tableChat) }
+  })), motion: { action: { click: 'Send' }, ms: 1500, area: '.ws-main' } },
+  /** Composer send in an empty tab (CJ's GIF): three lines in the box. The welcome gives way to the thread, the box clears and the placeholder, Send and the Working line change in the frame of the click. */
+  WorkspaceSendEmptyMotion: { ...scene((f) => ({
+    chats: [...f.chats, extraChat('chat-new', 'New chat')],
+    items: { 'chat-new': [] },
+    lag: { 'chats.send': 500 }, after: { 'chats.send': sentAfter('chat-new') },
+    ui: { ...tabsView('chat-new'), workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'Add a CSV export for the filtered invoice rows.\nKeep the current column order.\nName the file invoices.csv.' } } }
+  })), motion: { action: { click: 'Send' }, ms: 1500, area: '.ws-main' } },
+  /** A starter suggestion in an empty tab: the welcome switches straight to the thread with the message. */
+  WorkspaceSuggestionMotion: { ...scene((f) => ({
+    chats: [...f.chats, extraChat('chat-new', 'New chat')],
+    items: { 'chat-new': [] },
+    lag: { 'chats.send': 500 }, after: { 'chats.send': sentAfter('chat-new') },
+    ui: tabsView('chat-new')
+  })), motion: { action: { click: 'Explain this branch' }, ms: 1500, area: '.ws-main' } },
+  /** Ask to fix on a failed turn: the message and the Working line appear together under the error. */
+  WorkspaceAskFixMotion: { ...scene(() => ({
+    items: { [ids.tableChat]: errorItems },
+    lag: { 'chats.send': 500 }, after: { 'chats.send': sentAfter(ids.tableChat) },
+    ui: open
+  })), motion: { action: { click: 'Ask Kai to fix' }, ms: 1500, area: '.ws-main' } },
+  /** Retry on a failed turn: the copy of the message and the Working line appear together. */
+  WorkspaceRetryMotion: { ...scene(() => ({
+    items: { [ids.tableChat]: errorItems },
+    lag: { 'chats.retry': 500 }, after: { 'chats.retry': sentAfter(ids.tableChat, [{ type: 'text', text: 'Run the full test suite before I open the PR.' }]) },
+    ui: open
+  })), motion: { action: { click: 'Retry' }, ms: 1500, area: '.ws-main' } },
+  /** Send now on a queued message: the row leaves the tray and the bubble appears in the same frame. */
+  WorkspaceSendNowMotion: { ...scene((f) => ({
+    items: { [ids.tableChat]: queuedItems() },
+    queue: { [ids.tableChat]: [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), clientId: 'q1', parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] }] },
+    lag: { 'chats.sendNow': 500 },
+    after: { 'chats.sendNow': [{ afterMs: 0, events: [runningEvent(ids.tableChat, false), { type: 'chat.queue', chatId: ids.tableChat, queue: [] }, sentRow(ids.tableChat), runningEvent(ids.tableChat, true)] }] },
+    push: [...f.push, runningEvent(ids.tableChat, true)],
+    ui: open
+  })), motion: { action: { click: 'Send now' }, ms: 1500, area: '.ws-main' } },
+  /** A queued message posting when the turn ends: the row leaves the tray and the bubble and the Working line arrive in one frame. Nothing was pressed, main pushes the three events. */
+  WorkspaceQueuePostsMotion: { ...scene((f) => ({
+    items: { [ids.tableChat]: queuedItems() },
+    queue: { [ids.tableChat]: [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), clientId: 'q1', parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] }] },
+    push: [...f.push, runningEvent(ids.tableChat, true)],
+    ui: open
+  })), motion: { action: { push: [runningEvent(ids.tableChat, false), { type: 'chat.queue', chatId: ids.tableChat, queue: [] }, sentRow(ids.tableChat, { id: 'q1', parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] }), runningEvent(ids.tableChat, true)] }, ms: 1000, area: '.ws-main' } },
+  /** A plan's change request with an image: the answer row, image included, is drawn in the frame of the click, and the strip leaves with it. */
+  WorkspacePlanChangesImageMotion: { ...scene((f) => {
+    const s = planWaiting(f)
+    const id = s.approvals?.[0]?.id ?? ''
+    const image = { type: 'image' as const, name: 'sketch.png', dataUrl: PIXEL, width: 160, height: 100 }
+    return {
+      ...withDraft(s, 'Split step 2 into its own PR, after step 1 merges.'),
+      ui: { ...s.ui, workspace: { right: 'changes', bottom: 'run', composer: { parts: [image], draft: 'Split step 2 into its own PR, after step 1 merges.' } } },
+      lag: { 'approvals.decide': 500 },
+      after: { 'approvals.decide': [{ afterMs: 0, events: [{ type: 'chat.item', chatId: ids.leadChat, item: { kind: 'user', id: `answer-${id}`, ts: Date.now(), approvalId: id, parts: [{ type: 'text', text: 'Split step 2 into its own PR, after step 1 merges.' }, image] } }] }] }
+    }
+  }), motion: { action: { click: 'Send plan adjustments' }, ms: 1500, area: '.ws-main' } },
+  /**
+   * After a plan strip has closed, typing a letter and deleting it shows the normal placeholder on every frame (KERNEL-895). The plan placeholder never shows over it.
+   */
+  WorkspacePlaceholderMotion: { ...scene(planWaiting), motion: { action: { press: ['click:Approve', 'a', 'Backspace'] }, ms: 900, area: '.cmp' } },
   /** A chat left and come back to after its turn ended (KERNEL-765): it opens at its end, where it was left. scripts/shots.ts sends, finishes the turn, opens another tab and returns. */
   WorkspaceLeaveAndReturn: scene((f) => ({
     chats: [...f.chats, extraChat('chat-other', 'Empty state copy')],

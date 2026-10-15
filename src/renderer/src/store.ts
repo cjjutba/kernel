@@ -846,11 +846,11 @@ let burst: PushEvent[] | undefined
 
 /**
  * A queued message that posts is three events sent together: the tray loses it (`chat.queue`), its row arrives (`chat.item`) and the chat runs (`chat.running`). Each
- * is its own message from main, so each could draw in a frame of its own. A `chat.queue` opens a burst that takes what follows, in order, and draws it as one (KERNEL-895).
+ * is its own message from main, so each could draw in a frame of its own. A `chat.queue` or a turn ending (`chat.running` false, which Send now follows with the next message) opens a burst that takes what follows, in order, and draws it as one (KERNEL-895).
  */
 function applyTogether(e: PushEvent) {
   if (burst) { burst.push(e); return }
-  if (e.type !== 'chat.queue') return apply(e)
+  if (e.type !== 'chat.queue' && !(e.type === 'chat.running' && !e.running)) return apply(e)
   const mine = (burst = [e])
   setTimeout(() => {
     if (burst === mine) burst = undefined

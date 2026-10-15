@@ -1,7 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
 import type { ChatPart, QueuedMessage, QueueReason } from '@shared/types'
 import { Button, Icon } from '../../../ui'
-import { cssMs } from '../archiveMotion'
 import { NoteText } from '../NoteText'
 import type { WaitLine } from '../waitLines'
 
@@ -32,27 +30,6 @@ const WAITING: Partial<Record<QueueReason, string>> = {
 /** Send now can't help while the Mac is offline or setup hasn't passed. It does start a brief held for a merge (KERNEL-259). */
 export const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'setup'
 
-/** The queue plus the rows that are fading out, so a message that sends leaves the tray the way it came in. */
-function useLeaving(queue: QueuedMessage[]): { rows: { q: QueuedMessage; leaving: boolean }[] } {
-  const [rows, setRows] = useState(() => queue.map((q) => ({ q, leaving: false })))
-  const prev = useRef(queue)
-  useEffect(() => {
-    const was = prev.current
-    prev.current = queue
-    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
-    const gone = was.filter((w) => !queue.some((q) => q.id === w.id))
-    if (!gone.length || reduced) { setRows(queue.map((q) => ({ q, leaving: false }))); return }
-    // Gone rows stay where they were, marked leaving, and are dropped once their fade ends.
-    const merged: { q: QueuedMessage; leaving: boolean }[] = []
-    const all = [...was, ...queue.filter((q) => !was.some((w) => w.id === q.id))]
-    for (const q of all) merged.push({ q: queue.find((x) => x.id === q.id) ?? q, leaving: !queue.some((x) => x.id === q.id) })
-    setRows(merged)
-    const t = setTimeout(() => setRows((r) => r.filter((x) => !x.leaving)), cssMs('--dur-base'))
-    return () => clearTimeout(t)
-  }, [queue])
-  return { rows }
-}
-
 /**
  * Messages typed while the agent works, or held for another reason (`why`), docked to the top of the composer. They go out in
  * order once nothing holds them. Edit one to pull it back into the box.
@@ -71,9 +48,8 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
   onNow: (q: QueuedMessage) => void
   onRemove: (q: QueuedMessage) => void
 }) {
-  const { rows } = useLeaving(queue)
   // Messages waiting for setup are bubbles in the chat, with their own Edit and Cancel (SetupWait, KERNEL-430).
-  if (!rows.length || why === 'setup') return null
+  if (!queue.length || why === 'setup') return null
   const waiting = why ? WAITING[why] : undefined
   const named = why === 'merge' ? held : undefined
   const stops = !!running && !why
@@ -87,11 +63,11 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
         </div>
       )}
       <ul className="queue" aria-label="Queued messages">
-        {rows.map(({ q, leaving }) => {
+        {queue.map((q) => {
           const text = lineOf(q.parts)
           const more = extras(q.parts)
           return (
-            <li key={q.id} className={leaving ? 'queue-row leaving' : 'queue-row'} inert={leaving || undefined}>
+            <li key={q.id} className="queue-row">
               <div className="queue-row-in">
                 <span className="queue-icon" aria-hidden="true"><Icon name="clock" size={12} /></span>
                 <button type="button" className="queue-text" data-tip="Edit this message" onClick={() => onEdit(q)}>
