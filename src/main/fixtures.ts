@@ -78,6 +78,11 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'hooks.turnOn': async () => ({ ...hooks, problem: undefined }),
     'hooks.status': async () => hooks,
     'github.status': async () => f.github ?? {},
+    'github.auth': async () => {
+      const gh = f.preflight.find((c) => c.id === 'gh')
+      const login = /as ([^\s,]+)/.exec(gh?.detail ?? '')?.[1]
+      return gh?.ok ? { state: 'ok', ...(login ? { login } : {}) } : { state: 'signed-out' }
+    },
     'hooks.test': async () => hooks,
     'hooks.restart': async () => hooks,
     'rooms.list': async () => f.rooms,

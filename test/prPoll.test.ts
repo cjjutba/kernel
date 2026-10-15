@@ -8,7 +8,7 @@ import { bus } from '../src/main/bus'
 import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { NetworkMonitor } from '../src/main/services/health'
-import { GhReadError, type RateLimit } from '../src/main/services/github'
+import { GhReadError, readFailure, type RateLimit } from '../src/main/services/github'
 import { git } from '../src/main/services/exec'
 
 // KERNEL-216: the PR poll runs one at a time, reads nothing offline, backs off a PR whose reads fail, and reads a PR
@@ -319,6 +319,36 @@ describe('the batch read (KERNEL-388)', () => {
     } finally { bus.off('push', on) }
   })
 
+  it('records when PR status was last read, keeps that time when a read fails, and says how it failed (KERNEL-861)', async () => {
+    const { k, ws, prs } = await setup()
+    const id = ws[0].id
+    const roomId = ws[0].roomId
+    const c = clock(k)
+    const pushed: PushEvent[] = []
+    const on = (e: PushEvent) => { if (e.type === 'github') pushed.push(e) }
+    bus.on('push', on)
+    try {
+      prs[id] = info(id, 'checks', { number: 42 })
+      await k.prs.refreshPr(id)
+      const readAt = c.at()
+      expect(k.prs['githubStatus']().reads?.[roomId]).toEqual({ at: readAt })
+      c.jump(60_000)
+      const offline = readFailure({ code: 1, stdout: '', stderr: 'error connecting to api.github.com\ncheck your internet connection or https://githubstatus.com\n' })
+      k.github = { ...k.github, info: async () => { throw offline } }
+      await k.prs.refreshPr(id)
+      expect(k.prs['githubStatus']().reads?.[roomId]).toEqual({ at: readAt, failed: 'offline' })
+      expect(k.store.workspace(id)?.prState).toBe('checks')
+      c.jump(60_000)
+      k.github = { ...k.github, info: async () => prs[id] ?? null }
+      await k.prs.refreshPr(id)
+      expect(k.prs['githubStatus']().reads?.[roomId]).toEqual({ at: c.at() })
+      // The window heard the failure start and end through the event the footer already reads, and the poll's end tells it the time.
+      expect(pushed.map((e) => e.type === 'github' && e.status.reads?.[roomId])).toEqual([{ at: readAt, failed: 'offline' }, { at: c.at() }])
+      await c.tick()
+      expect(pushed.at(-1)).toMatchObject({ status: { reads: { [roomId]: { at: c.at() } } } })
+    } finally { bus.off('push', on) }
+  })
+
   it('stops reading near the rate limit until it resets, while opening a PR still reads it', async () => {
     const { k, ws, prs } = await setup()
     const id = ws[0].id
@@ -440,23 +470,26 @@ describe("the GitHub pause and GitHub's merge block, as main pushes them (KERNEL
     const { rate } = batched(k, prs)
     await k.prs.refreshPr(id)
     const pushed = listen()
+    // The same event carries each room's read times (KERNEL-861). This test is about the pause, so it leaves them out.
+    const pauses = () => pushed.flatMap((e) => { if (e.type !== 'github') return []; const { reads: _, ...pause } = e.status; return [pause] })
+      .filter((p, i, all) => i === 0 || JSON.stringify(p) !== JSON.stringify(all[i - 1]))
     const resetAt = Date.now() + 300
     rate.value = { remaining: 100, limit: 5000, resetAt }
     await k.prs.pollPrs()
-    expect(pushed).toEqual([{ type: 'github', status: { pausedUntil: resetAt } }])
-    expect(await k.handlers()['github.status']()).toEqual({ pausedUntil: resetAt })
+    expect(pauses()).toEqual([{}, { pausedUntil: resetAt }])
+    expect(await k.handlers()['github.status']()).toMatchObject({ pausedUntil: resetAt })
     // GitHub's slow-down limit refuses a read past that: the pause moves, and says which limit.
     k.prs.cadence.c = { ...k.prs.cadence.c, backoffMs: 10_000 }
     k.prs['cadence'].limited({ secondary: true })
     k.prs['syncGitHub']()
-    expect(pushed.at(-1)).toMatchObject({ type: 'github', status: { slowDown: true } })
+    expect(pauses().at(-1)).toMatchObject({ slowDown: true })
     // Once it has passed, and GitHub has points to spare again, the next poll says so.
     rate.value = { remaining: 4900, limit: 5000, resetAt }
     k.prs.cadence.started()
     await k.prs.pollPrs()
-    expect(pushed.at(-1)).toEqual({ type: 'github', status: {} })
+    expect(pauses().at(-1)).toEqual({})
     await k.prs.pollPrs()
-    expect(pushed.filter((e) => e.type === 'github')).toHaveLength(3)
+    expect(pauses()).toHaveLength(4)
   })
 
   it('pushes pr.blocked when GitHub starts or stops blocking a PR that stays ready, and not when it becomes ready blocked', async () => {

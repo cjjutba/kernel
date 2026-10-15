@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { exec, ExecResult } from '../src/main/services/exec'
+import type { GitHubError } from '../src/main/services/github'
 import { listGithubIssues, parseIssue, parseIssues, readGithubIssue } from '../src/main/services/trackers/githubIssues'
 
 /** A gh that answers every call with `answer`, and keeps each call's arguments and folder. */
@@ -75,5 +76,20 @@ describe('GitHub issues for the Issues screen (KERNEL-471)', () => {
   it('rejects with what gh said when it fails, and when it is not installed', async () => {
     await expect(listGithubIssues('/repo', undefined, null, gh({ code: 1, stderr: 'HTTP 404: Not Found\nmore' }).cmd)).rejects.toThrow('Could not read GitHub issues: HTTP 404: Not Found')
     await expect(listGithubIssues('/repo', undefined, null, gh({ code: 127 }).cmd)).rejects.toThrow('Install the GitHub CLI')
+  })
+
+  it("fails with the kind gh's failure was, for the list and for one issue (KERNEL-861)", async () => {
+    const kindOf = (p: Promise<unknown>) => p.then(() => 'read', (e: GitHubError) => e.kind)
+    const said = {
+      'signed-out': { code: 4, stderr: 'To get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.\n' },
+      'not-found': { code: 1, stderr: "GraphQL: Could not resolve to a Repository with the name 'acme/gone'. (repository)\n" },
+      'rate-limited': { code: 1, stderr: 'GraphQL: API rate limit already exceeded for user ID 1234567.\n' },
+      offline: { code: 1, stderr: 'error connecting to api.github.com\ncheck your internet connection or https://githubstatus.com\n' },
+      other: { code: 1, stderr: 'HTTP 502: Server Error (https://api.github.com/graphql)\n' }
+    }
+    for (const [kind, r] of Object.entries(said)) {
+      expect(await kindOf(listGithubIssues('/repo', undefined, null, gh(r).cmd))).toBe(kind)
+      expect(await kindOf(readGithubIssue('/repo', '#31', null, gh(r).cmd))).toBe(kind)
+    }
   })
 })
