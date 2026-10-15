@@ -191,6 +191,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
       {ready && flat.length > 0 && (
         <div className="is-body">
           <div className="is-list" aria-label="Issues" onKeyDown={keys.onKeyDown}>
+            {issues.length >= 100 && <CapNote>Showing the 100 newest issues. Search or filter to find the rest.</CapNote>}
             <section aria-label="Open">
               <h3 className="is-group"><span className="is-slot"><IssueState shape="todo" /></span><span>Open</span><span className="muted">{flat.length}</span></h3>
               <ul>
@@ -222,7 +223,6 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
                 })}
               </ul>
             </section>
-            {issues.length >= 100 && <CapNote>Showing the 100 newest issues. Search or filter to find the rest.</CapNote>}
           </div>
           <div className="is-pane" ref={detail}>
             {selId && <GithubDetail room={room} id={selId} summary={cur} tick={tick} />}

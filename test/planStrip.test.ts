@@ -213,6 +213,19 @@ describe('the plan strip', () => {
       expect(call).not.toHaveBeenCalled()
     })
 
+    it('keeps Escape for a text field being edited, and the question stays', async () => {
+      await mount(plan, true)
+      click(button('Approve'))
+      const field = document.createElement('input')
+      host.append(field)
+      field.focus()
+      const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      act(() => { field.dispatchEvent(e) })
+      expect(host.textContent).toContain('Approve without your changes?')
+      expect(calls.back).toBe(0)
+      expect(e.defaultPrevented).toBe(false)
+    })
+
     it('drops the question when the text is cleared', async () => {
       await mount(plan, true)
       click(button('Approve'))

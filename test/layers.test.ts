@@ -202,4 +202,11 @@ describe('focus return', () => {
     t.render(false)
     expect(document.activeElement).toBe(t.other)
   })
+  it('survives a StrictMode double mount, as pnpm dev runs it', () => {
+    const t = setup(true)
+    act(() => root!.render(React.createElement(React.StrictMode, null, React.createElement(Overlay, { open: true, inputFocus: true }))))
+    expect(document.activeElement?.id).toBe('in')
+    act(() => root!.render(React.createElement(React.StrictMode, null, React.createElement(Overlay, { open: false }))))
+    expect(document.activeElement).toBe(t.btn)
+  })
 })

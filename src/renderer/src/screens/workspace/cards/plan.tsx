@@ -220,7 +220,8 @@ export function PlanBar({ a, closing, hasText, onApprove, onSendChanges, onBack,
   useEffect(() => {
     if (asking) group.current?.querySelector<HTMLElement>('[data-ask-first]')?.focus()
   }, [asking])
-  useScreenEscape(() => {
+  useScreenEscape((_, inField) => {
+    if (inField) return false
     setAsked(false)
     onBack()
     return true
