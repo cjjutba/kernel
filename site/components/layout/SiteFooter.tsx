@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { KernelMark } from '@/components/brand/KernelMark'
 import { Wordmark } from '@/components/brand/Wordmark'
 import { ArrowIcon, GitHubIcon } from '@/components/ui/icons'
 import { latestRelease } from '@/content/changelog'
@@ -39,14 +38,11 @@ const columns: { title: string; links: FooterLink[] }[] = [
 
 const linkClass = 'block w-fit text-ui text-muted transition-colors hover:text-ink'
 
-// One footer per page, so a fixed id is safe.
-const FADE_ID = 'kernel-wordmark-fade'
-
-/** The site's footer: the brand with the newest release, three columns of links, and the large wordmark. */
+/** The site's footer: the brand with the newest release, three columns of links, and the copyright row. */
 export async function SiteFooter() {
   const latest = await latestRelease()
   return (
-    <footer className="overflow-hidden border-t border-line-faint pt-20">
+    <footer className="border-t border-line-faint pt-20 pb-10">
       <div className="mx-auto grid max-w-312 grid-footer gap-x-12 gap-y-12 px-6">
         <div>
           <Link href="/" className="inline-flex">
@@ -88,19 +84,6 @@ export async function SiteFooter() {
         <a href={REPO_URL} target="_blank" rel="noopener" aria-label="Kernel on GitHub" className="inline-flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/4 hover:text-ink">
           <GitHubIcon size={16} />
         </a>
-      </div>
-      <div aria-hidden="true" className="mt-14 flex justify-center text-wordmark select-none wordmark-crop">
-        <span className="inline-flex items-baseline">
-          <KernelMark className="wordmark-k" fill={`url(#${FADE_ID})`}>
-            <defs>
-              <linearGradient id={FADE_ID} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" className="stop-wordmark-top" />
-                <stop offset="1" className="stop-wordmark-bottom" />
-              </linearGradient>
-            </defs>
-          </KernelMark>
-          <span className="text-wordmark-fade">ernel</span>
-        </span>
       </div>
     </footer>
   )

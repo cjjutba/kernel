@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { ClaudeLogo, GrokLogo, OpenAILogo, PerplexityLogo } from '@/components/brand/logos'
 import { CheckIcon, CopyIcon } from '@/components/ui/icons'
 
 // Copy page, beside a docs page's title: copies the page as Markdown, and its menu opens the Markdown or hands the page
@@ -12,10 +13,10 @@ type Props = { markdown: string; mdUrl: string; mdAbsolute: string; title: strin
 const prompt = (mdUrl: string, title: string) => `Read ${mdUrl}, the Kernel docs page "${title}", so I can ask questions about it.`
 
 const AI = [
-  { name: 'ChatGPT', url: (q: string) => `https://chatgpt.com/?hints=search&q=${encodeURIComponent(q)}` },
-  { name: 'Claude', url: (q: string) => `https://claude.ai/new?q=${encodeURIComponent(q)}` },
-  { name: 'Grok', url: (q: string) => `https://grok.com/?q=${encodeURIComponent(q)}` },
-  { name: 'Perplexity', url: (q: string) => `https://www.perplexity.ai/search?q=${encodeURIComponent(q)}` }
+  { name: 'ChatGPT', logo: <OpenAILogo size={15} />, url: (q: string) => `https://chatgpt.com/?hints=search&q=${encodeURIComponent(q)}` },
+  { name: 'Claude', logo: <ClaudeLogo size={15} className="text-claude" />, url: (q: string) => `https://claude.ai/new?q=${encodeURIComponent(q)}` },
+  { name: 'Grok', logo: <GrokLogo size={14} />, url: (q: string) => `https://grok.com/?q=${encodeURIComponent(q)}` },
+  { name: 'Perplexity', logo: <PerplexityLogo size={15} />, url: (q: string) => `https://www.perplexity.ai/search?q=${encodeURIComponent(q)}` }
 ]
 
 function Chevron() {
@@ -38,14 +39,6 @@ function Doc() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 1.8H4.2a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.6a1 1 0 0 0 1-1V5.6ZM9 1.8v3.8h3.8M5.6 9.5l1.2 1.4 1.2-1.4M6.8 7v3.9M9.6 9h1.5" />
-    </svg>
-  )
-}
-
-function Chat() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2.8 3.5h10.4v7H8.6L5.5 13v-2.5H2.8Z" />
     </svg>
   )
 }
@@ -92,7 +85,7 @@ export function CopyPage({ markdown, mdUrl, mdAbsolute, title }: Props) {
     }
   }
 
-  const row = 'flex w-full items-start gap-3 rounded-md px-3 py-2 text-left outline-none transition-colors hover:bg-white/6 focus-visible:bg-white/6'
+  const row = 'flex h-9 w-full items-center gap-3 rounded-md px-2.5 text-left text-ui text-ink-2 outline-none transition-colors hover:bg-white/6 hover:text-ink focus-visible:bg-white/6 focus-visible:text-ink'
   const q = prompt(mdAbsolute, title)
 
   return (
@@ -114,7 +107,7 @@ export function CopyPage({ markdown, mdUrl, mdAbsolute, title }: Props) {
         </button>
       </div>
       {open ? (
-        <div role="menu" aria-label="Use this page" onKeyDown={onMenuKey} className="absolute top-10 right-0 z-10 w-72 rounded-lg border border-line-strong bg-surface-2 p-1.5">
+        <div role="menu" aria-label="Use this page" onKeyDown={onMenuKey} className="absolute top-10 right-0 z-10 w-60 rounded-lg border border-line-strong bg-surface-2 p-1.5">
           <button
             ref={(el) => {
               items.current[0] = el
@@ -127,13 +120,10 @@ export function CopyPage({ markdown, mdUrl, mdAbsolute, title }: Props) {
             }}
             className={row}
           >
-            <span className="mt-0.5 text-muted">
+            <span className="flex size-4 items-center justify-center text-muted">
               <CopyIcon size={14} />
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-ui text-ink">Copy page</span>
-              <span className="block text-small text-muted">Copy as Markdown for an AI chat</span>
-            </span>
+            <span className="flex-1">Copy as Markdown</span>
           </button>
           <a
             ref={(el) => {
@@ -146,16 +136,14 @@ export function CopyPage({ markdown, mdUrl, mdAbsolute, title }: Props) {
             onClick={() => setOpen(false)}
             className={row}
           >
-            <span className="mt-0.5 text-muted">
+            <span className="flex size-4 items-center justify-center text-muted">
               <Doc />
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-ui text-ink">View as Markdown</span>
-              <span className="block text-small text-muted">Open this page as plain text</span>
-            </span>
+            <span className="flex-1">View as Markdown</span>
             <Out />
           </a>
           <div className="my-1.5 border-t border-line" />
+          <p className="px-2.5 pt-1 pb-1.5 text-small text-faint">Ask about this page in</p>
           {AI.map((ai, i) => (
             <a
               key={ai.name}
@@ -166,16 +154,12 @@ export function CopyPage({ markdown, mdUrl, mdAbsolute, title }: Props) {
               href={ai.url(q)}
               target="_blank"
               rel="noopener"
+              aria-label={`Ask about this page in ${ai.name}`}
               onClick={() => setOpen(false)}
               className={row}
             >
-              <span className="mt-0.5 text-muted">
-                <Chat />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-ui text-ink">Open in {ai.name}</span>
-                <span className="block text-small text-muted">Ask questions about this page</span>
-              </span>
+              <span className="flex size-4 items-center justify-center text-ink">{ai.logo}</span>
+              <span className="flex-1">{ai.name}</span>
               <Out />
             </a>
           ))}

@@ -43,7 +43,6 @@
   --color-merged-edge: #4b3d86;
   --color-merged-fill: #7c5ce0;
 
-  --color-wordmark-top: #1b1c1f;
 
   /* Claude's own orange, for its mark in the hero only (the app's --claude). */
   --color-claude: #d97757;
@@ -97,10 +96,6 @@
   --text-brand--line-height: 1;
   --text-brand--letter-spacing: -0.02em;
   --text-brand--font-weight: 600;
-  --text-wordmark: clamp(120px, 16vw, 232px);
-  --text-wordmark--line-height: 0.78;
-  --text-wordmark--letter-spacing: -0.043em;
-  --text-wordmark--font-weight: 600;
   --text-hero-lead: 19px;
   --text-hero-lead--line-height: 1.55;
   --text-lead: 17px;
@@ -284,15 +279,6 @@
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
 }
 
-/* The closing panel: the ask beside the getting started steps, stacked on smaller screens. */
-@utility grid-cta {
-  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-
-  @media (width < 960px) {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 /* The footer: the brand, then a column per group of links. Two columns of links on phones. */
 @utility grid-footer {
   grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
@@ -390,12 +376,6 @@
   );
 }
 
-@utility text-wordmark-fade {
-  background: linear-gradient(180deg, var(--color-wordmark-top) 0%, var(--color-surface-1) 85%);
-  background-clip: text;
-  color: transparent;
-}
-
 /* A soft band of light that crosses the hero pill every few seconds. The pill clips it. */
 @utility shimmer-pill {
   position: relative;
@@ -431,14 +411,6 @@
   }
 }
 
-@utility stop-wordmark-top {
-  stop-color: var(--color-wordmark-top);
-}
-
-@utility stop-wordmark-bottom {
-  stop-color: var(--color-track);
-}
-
 /* The wordmark K stands in for the K: Inter's cap height (1490 of 2048 units), sitting on the baseline. */
 @utility wordmark-k {
   height: 0.7275em;
@@ -451,12 +423,6 @@
    sr-only would not do: an absolute box counts as a block, which puts a space or a line break after the K. */
 @utility wordmark-k-text {
   font-size: 0;
-}
-
-/* The large footer wordmark is cropped by the page edge. */
-@utility wordmark-crop {
-  height: 0.72em;
-  overflow: hidden;
 }
 
 /* The FAQ plus turns into a minus when its row is open. */

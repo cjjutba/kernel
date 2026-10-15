@@ -17,11 +17,10 @@ for (const path of ['/', '/changelog', '/pricing', '/docs', '/docs/permissions']
     }
   })
 
-  test(`${path}: footer shows the wordmark and the large wordmark`, async ({ page }) => {
+  test(`${path}: footer shows the wordmark`, async ({ page }) => {
     await page.goto(path)
     const footer = page.getByRole('contentinfo')
     await expect(footer.getByRole('link', { name: 'Kernel', exact: true })).toHaveText('Kernel')
-    await expect(footer.locator('[aria-hidden="true"]').filter({ hasText: 'ernel' }).last()).toBeVisible()
   })
 
   test(`${path}: no horizontal scroll`, async ({ page }, testInfo) => {
