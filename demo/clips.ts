@@ -40,14 +40,21 @@ class Driver {
   async show(x = 720, y = 520) {
     await this.page.evaluate(([cx, cy]) => (window as unknown as { __cursor: { show(p: object): void } }).__cursor.show({ x: cx, y: cy }), [x, y])
   }
+  /** Screen coordinates to the layout coordinates the cursor lives in, while the camera is zoomed. */
+  private layout = (x: number, y: number) =>
+    this.page.evaluate(([sx, sy]) => (window as unknown as { __camera: { toLayout(x: number, y: number): { x: number; y: number } } }).__camera.toLayout(sx!, sy!), [x, y])
+  private glide = async (x: number, y: number, ms: number) => {
+    const at = await this.layout(x, y)
+    await this.page.evaluate(([cx, cy, t]) => (window as unknown as { __cursor: { move(x: number, y: number, ms: number): Promise<void> } }).__cursor.move(cx!, cy!, t!), [at.x, at.y, ms])
+    await this.page.mouse.move(x, y)
+  }
   /** Glides the cursor to the middle of `target` and hovers it there. */
   async to(target: Locator, ms = 750) {
     await target.waitFor({ state: 'visible', timeout: 20_000 })
     const box = (await target.boundingBox())!
     const x = Math.round(box.x + box.width / 2)
     const y = Math.round(box.y + box.height / 2)
-    await this.page.evaluate(([cx, cy, t]) => (window as unknown as { __cursor: { move(x: number, y: number, ms: number): Promise<void> } }).__cursor.move(cx!, cy!, t!), [x, y, ms])
-    await this.page.mouse.move(x, y)
+    await this.glide(x, y, ms)
     return { x, y }
   }
   async click(target: Locator, ms?: number) {
@@ -56,13 +63,28 @@ class Driver {
     await this.page.evaluate(() => (window as unknown as { __cursor: { press(): void } }).__cursor.press())
     await this.page.mouse.click(x, y)
   }
-  /** Glides to a point in the window and clicks there. */
+  /** Glides to a point on screen and clicks there. */
   async clickAt(x: number, y: number, ms = 750) {
-    await this.page.evaluate(([cx, cy, t]) => (window as unknown as { __cursor: { move(x: number, y: number, ms: number): Promise<void> } }).__cursor.move(cx!, cy!, t!), [x, y, ms])
-    await this.page.mouse.move(x, y)
+    await this.glide(x, y, ms)
     await this.wait(180)
     await this.page.evaluate(() => (window as unknown as { __cursor: { press(): void } }).__cursor.press())
     await this.page.mouse.click(x, y)
+  }
+  /** Zooms the camera to `s` times on the middle of `target`, or on a point in layout coordinates, and waits for it. */
+  async zoom(target: Locator | { x: number; y: number }, s: number, ms = 900) {
+    let point: { x: number; y: number }
+    if ('x' in target) point = target
+    else {
+      await target.waitFor({ state: 'visible', timeout: 20_000 })
+      const box = (await target.boundingBox())!
+      point = await this.layout(box.x + box.width / 2, box.y + box.height / 2)
+    }
+    await this.page.evaluate(([x, y, z, t]) => (window as unknown as { __camera: { zoom(x: number, y: number, s: number, ms: number): void } }).__camera.zoom(x!, y!, z!, t!), [point.x, point.y, s, ms])
+    await this.wait(ms + 60)
+  }
+  async unzoom(ms = 900) {
+    await this.page.evaluate((t) => (window as unknown as { __camera: { reset(ms: number): void } }).__camera.reset(t), ms)
+    await this.wait(ms + 60)
   }
   type = (text: string, delay = 38) => this.page.keyboard.type(text, { delay })
 }
@@ -141,52 +163,90 @@ const CLIPS: Record<string, Clip> = {
       await d.wait(8800)
     }
   },
+  // A product-video take: the camera follows the cursor in to each control and back out to show what changed.
   accounts: {
     scene: 'accounts',
-    crop: { x: 432, y: 40, width: 800, height: 720 },
-    poster: 7,
+    crop: full,
+    width: 1600,
+    poster: 21,
     play: async (d) => {
-      await d.show(900, 420)
+      const p = d.page
+      await d.show(760, 520)
+      await d.wait(700)
+      const menu = p.getByRole('button', { name: /^Account menu/ })
+      await d.zoom(menu, 2.1)
+      await d.click(menu, 900)
       await d.wait(500)
-      await d.click(d.page.getByRole('switch', { name: /Switch accounts at a limit/ }).first(), 900)
-      await d.wait(800)
-      await d.step('climb')
-      await d.to(d.page.getByText('Work', { exact: true }).first(), 1200)
-      await d.wait(5200)
-      await d.click(d.page.getByRole('button', { name: /Add account/ }).first(), 900)
-      await d.wait(2800)
-      await d.page.keyboard.press('Escape')
-      await d.wait(1400)
+      await d.click(p.getByRole('menuitem', { name: /^Settings/ }).first(), 700)
+      await d.wait(700)
+      await d.zoom(p.getByText('Accounts', { exact: true }).first(), 2)
+      await d.click(p.getByText('Accounts', { exact: true }).first(), 700)
+      await d.wait(600)
+      await d.zoom({ x: 860, y: 260 }, 1.55, 1000)
+      const add = p.getByRole('button', { name: 'Add account' })
+      await d.click(add, 900)
+      await d.wait(500)
+      await d.click(p.getByRole('menuitem', { name: /API key/ }).first(), 700)
+      await d.zoom(p.getByRole('dialog'), 1.75, 900)
+      await d.click(p.locator('#acct-label'), 700)
+      await d.type('Team key', 55)
+      await d.click(p.locator('#acct-key'), 600)
+      await d.type('sk-ant-api03-kernel-demo-key', 28)
+      await d.wait(300)
+      await d.click(p.getByRole('button', { name: 'Add key' }), 700)
+      await d.wait(1700)
+      await d.zoom({ x: 860, y: 300 }, 1.55, 1000)
+      await d.wait(1300)
+      await d.click(add, 900)
+      await d.wait(500)
+      await d.click(p.getByRole('menuitem', { name: /Subscription/ }).last(), 700)
+      await d.zoom(p.getByRole('dialog'), 1.75, 900)
+      await d.click(p.getByRole('button', { name: /^Sign in with ChatGPT/ }), 700)
+      await d.wait(2600)
+      await d.zoom({ x: 860, y: 380 }, 1.55, 1000)
+      await d.wait(1600)
+      await d.unzoom(1100)
+      await d.wait(2000)
     }
   },
   sharing: {
     scene: 'sharing',
-    crop: column(40, 720),
-    poster: 4.6,
+    crop: full,
+    width: 1600,
+    poster: 9,
     play: async (d) => {
+      const p = d.page
+      const zoom = 1.45
       await d.show(760, 640)
-      await d.wait(400)
-      await d.click(d.page.getByRole('button', { name: 'Comment', exact: true }), 800)
-      await d.page.locator('.cm-layer').waitFor()
+      await d.wait(700)
+      await d.zoom({ x: 634, y: 430 }, zoom, 1000)
+      await d.click(p.getByRole('button', { name: 'Comment', exact: true }), 800)
+      await p.locator('.cm-layer').waitFor()
       await d.wait(500)
-      // The Start free trial button, measured from the comment layer over the page, as scripts/shots.ts does.
-      const layer = (await d.page.locator('.cm-layer').boundingBox())!
-      await d.clickAt(Math.round(layer.x + 159), Math.round(layer.y + 162), 850)
-      const box = d.page.getByRole('textbox', { name: 'Comment' })
+      // The Start free trial button, measured from the comment layer over the page as scripts/shots.ts does, at the zoom.
+      const layer = (await p.locator('.cm-layer').boundingBox())!
+      await d.clickAt(Math.round(layer.x + 159 * zoom), Math.round(layer.y + 162 * zoom), 850)
+      const box = p.getByRole('textbox', { name: 'Comment' })
       await box.waitFor()
-      await d.wait(300)
+      await d.zoom(box, 1.9, 800)
       await d.type('Make this button the same blue as the header.', 34)
       await d.wait(400)
-      await d.click(d.page.locator('button', { hasText: /^Send$/ }).last(), 700)
-      await d.wait(1300)
-      await d.click(d.page.getByText('PDF renderer', { exact: true }).first(), 800)
-      await d.wait(4600)
-      await d.click(d.page.getByText('Pricing page draft', { exact: true }).first(), 800)
-      await d.wait(1200)
-      await d.click(d.page.getByRole('button', { name: 'Versions' }).first(), 800)
+      await d.click(p.locator('button', { hasText: /^Send$/ }).last(), 700)
+      await d.wait(500)
+      await d.unzoom(900)
+      await d.click(p.getByText('PDF renderer', { exact: true }).first(), 800)
+      await d.zoom({ x: 634, y: 560 }, 1.5, 1000)
+      await d.wait(3800)
+      await d.unzoom(800)
+      await d.click(p.getByText('Pricing page draft', { exact: true }).first(), 800)
+      await d.wait(900)
+      const versions = p.getByRole('button', { name: 'Versions' }).first()
+      await d.zoom(versions, 1.9, 900)
+      await d.click(versions, 700)
       await d.wait(2600)
-      await d.page.keyboard.press('Escape')
-      await d.wait(1000)
+      await p.keyboard.press('Escape')
+      await d.unzoom(900)
+      await d.wait(900)
     }
   },
   issues: {

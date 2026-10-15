@@ -50,3 +50,35 @@ const place = () => { el.style.transform = `translate(${x - 4}px, ${y - 2.5}px)`
   }
 }
 export {}
+
+// The camera: zooms the whole window toward a point and back, the way a product video does. It scales and pans
+// <body>, so the app, its menus and dialogs, and the cursor all move together. The recorder keeps the cursor in layout
+// coordinates and clicks in screen coordinates; toLayout converts between them.
+const camera = { s: 1, tx: 0, ty: 0 }
+const applyCamera = (ms: number) => {
+  const body = document.body
+  document.documentElement.style.overflow = 'hidden'
+  body.style.transformOrigin = '0 0'
+  body.style.transition = ms ? `transform ${ms}ms cubic-bezier(0.65, 0, 0.35, 1)` : 'none'
+  body.style.transform = `translate(${camera.tx}px, ${camera.ty}px) scale(${camera.s})`
+}
+
+;(window as unknown as { __camera: unknown }).__camera = {
+  /** Centers layout point (x, y) at `s` times, without showing past the window's edges. */
+  zoom(x: number, y: number, s: number, ms: number) {
+    const w = innerWidth, h = innerHeight
+    camera.s = s
+    camera.tx = Math.min(0, Math.max(w - w * s, w / 2 - x * s))
+    camera.ty = Math.min(0, Math.max(h - h * s, h / 2 - y * s))
+    applyCamera(ms)
+  },
+  reset(ms: number) {
+    camera.s = 1
+    camera.tx = 0
+    camera.ty = 0
+    applyCamera(ms)
+  },
+  toLayout(x: number, y: number) {
+    return { x: (x - camera.tx) / camera.s, y: (y - camera.ty) / camera.s }
+  }
+}

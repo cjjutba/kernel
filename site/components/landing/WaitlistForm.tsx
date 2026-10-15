@@ -3,10 +3,11 @@
 import { useId, useState, type FormEvent } from 'react'
 import { CheckIcon } from '@/components/ui/icons'
 
-// The waitlist form: platforms, an email and Join. It posts to /api/waitlist, which sends the confirm email. The
-// platform list matches lib/waitlist.ts, which can't be imported here because it's server only.
+// The waitlist form: an email, a platform and Join, on one row. It posts to /api/waitlist, which sends the confirm
+// email. The platform ids match lib/waitlist.ts, which can't be imported here because it's server only.
 
 const PLATFORMS = [
+  { id: 'any', label: 'Any platform' },
   { id: 'windows', label: 'Windows' },
   { id: 'linux', label: 'Linux' },
   { id: 'intel-mac', label: 'Intel Mac' }
@@ -14,22 +15,20 @@ const PLATFORMS = [
 
 type State = { kind: 'idle' } | { kind: 'sending' } | { kind: 'sent'; email: string; link?: string } | { kind: 'error'; message: string }
 
-const ALL = PLATFORMS.map((p) => p.id as string)
+const ALL = ['windows', 'linux', 'intel-mac']
 
 /** `compact` is the hero's one-line form: an email and a button, signing up for every platform. */
 export function WaitlistForm({ compact = false }: { compact?: boolean }) {
   const id = useId()
   const [email, setEmail] = useState('')
-  const [picked, setPicked] = useState<string[]>(compact ? ALL : [])
+  const [platform, setPlatform] = useState('any')
   const [company, setCompany] = useState('')
   const [state, setState] = useState<State>({ kind: 'idle' })
-
-  const toggle = (p: string) => setPicked((all) => (all.includes(p) ? all.filter((x) => x !== p) : [...all, p]))
+  const picked = compact || platform === 'any' ? ALL : [platform]
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (state.kind === 'sending') return
-    if (!picked.length) return setState({ kind: 'error', message: 'Pick at least one platform.' })
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setState({ kind: 'error', message: 'Enter a valid email address.' })
     setState({ kind: 'sending' })
     try {
@@ -62,16 +61,16 @@ export function WaitlistForm({ compact = false }: { compact?: boolean }) {
 
   if (state.kind === 'sent') {
     return (
-      <div role="status" className="rounded-lg border border-line-strong bg-surface-2 p-6">
-        <p className="flex items-center gap-2 text-item text-ink">
-          <CheckIcon size={15} className="shrink-0" />
-          Check your inbox
-        </p>
-        <p className="mt-2 text-body text-muted">
-          We sent a link to <span className="text-ink-2">{state.email}</span>. Open it and confirm to join the list.
+      <div role="status" className="mx-auto flex max-w-140 flex-col items-center rounded-track border border-line-strong bg-surface-2 px-6 py-7 text-center">
+        <span className="flex size-9 items-center justify-center rounded-pill border border-edge bg-surface-3 text-ink">
+          <CheckIcon size={15} />
+        </span>
+        <p className="mt-4 text-item text-ink">Check your inbox</p>
+        <p className="mt-1.5 text-body text-muted">
+          We sent a link to <span className="text-ink-2">{state.email}</span>. Confirm it to join the list.
         </p>
         {state.link ? (
-          <p className="mt-4 rounded-md border border-dashed border-edge p-3 text-small text-muted">
+          <p className="mt-4 text-small text-muted">
             Development: no email was sent.{' '}
             <a href={state.link} className="text-ink underline decoration-rule underline-offset-3 hover:text-white">
               Open the confirm link
@@ -134,30 +133,8 @@ export function WaitlistForm({ compact = false }: { compact?: boolean }) {
     )
   }
   return (
-    <form onSubmit={submit} noValidate className="relative" aria-describedby={state.kind === 'error' ? `${id}-error` : undefined}>
-      <fieldset>
-        <legend className="text-small font-medium text-ink-2">Which platform?</legend>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {PLATFORMS.map((p) => {
-            const on = picked.includes(p.id)
-            return (
-              <button
-                key={p.id}
-                type="button"
-                aria-pressed={on}
-                onClick={() => toggle(p.id)}
-                className={`inline-flex h-9 items-center gap-2 rounded-md border px-3.5 text-ui font-medium transition-colors ${
-                  on ? 'border-ink bg-ink text-canvas' : 'border-line-strong bg-surface-2 text-ink-2 hover:border-edge-hover hover:text-ink'
-                }`}
-              >
-                {on ? <CheckIcon size={12} /> : null}
-                {p.label}
-              </button>
-            )
-          })}
-        </div>
-      </fieldset>
-      <div className="mt-5 flex gap-2 max-nav:flex-col">
+    <form onSubmit={submit} noValidate className="relative mx-auto max-w-140" aria-describedby={state.kind === 'error' ? `${id}-error` : undefined}>
+      <div className="flex items-center gap-1 rounded-track border border-line-strong bg-canvas p-1.5 transition-colors focus-within:border-rule max-nav:flex-wrap">
         <label htmlFor={`${id}-email`} className="sr-only">
           Email address
         </label>
@@ -170,13 +147,34 @@ export function WaitlistForm({ compact = false }: { compact?: boolean }) {
           placeholder="you@example.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="h-11 min-w-0 flex-1 rounded-lg border border-line-strong bg-canvas px-4 text-body text-ink outline-none transition-colors placeholder:text-faint focus:border-rule"
+          className="h-10 min-w-0 flex-1 bg-transparent px-3 text-body text-ink outline-none placeholder:text-faint max-nav:basis-full"
         />
+        <span aria-hidden="true" className="h-5 w-px bg-line-strong max-nav:hidden" />
+        <label htmlFor={`${id}-platform`} className="sr-only">
+          Platform
+        </label>
+        <span className="relative flex shrink-0 items-center max-nav:flex-1">
+          <select
+            id={`${id}-platform`}
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value)}
+            className="h-10 w-full cursor-pointer appearance-none rounded-chip bg-transparent pr-8 pl-3 text-ui text-ink-2 outline-none transition-colors hover:bg-white/4 hover:text-ink focus-visible:bg-white/6"
+          >
+            {PLATFORMS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="pointer-events-none absolute right-2.5 text-muted">
+            <path d="m4 6 4 4 4-4" />
+          </svg>
+        </span>
         <button
           type="submit"
           disabled={sending}
           aria-busy={sending}
-          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-ink px-5 text-body font-medium text-canvas transition-colors hover:bg-white disabled:opacity-70"
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-chip bg-ink px-4 text-ui font-medium text-canvas transition-colors hover:bg-white disabled:opacity-70"
         >
           {sending ? <span aria-hidden="true" className="spinner" /> : null}
           {sending ? 'Joining' : 'Join the waitlist'}
@@ -189,7 +187,7 @@ export function WaitlistForm({ compact = false }: { compact?: boolean }) {
           <input tabIndex={-1} autoComplete="off" value={company} onChange={(e) => setCompany(e.target.value)} />
         </label>
       </div>
-      <p id={`${id}-error`} role={state.kind === 'error' ? 'alert' : undefined} className="mt-3 min-h-5 text-small text-del">
+      <p id={`${id}-error`} role={state.kind === 'error' ? 'alert' : undefined} className="mt-2.5 min-h-5 text-center text-small text-del">
         {state.kind === 'error' ? state.message : ''}
       </p>
     </form>

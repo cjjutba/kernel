@@ -23,6 +23,7 @@ function sample(name: string): Fixture {
     .replaceAll('CJ Jutba', 'Sam Rivera')
     .replaceAll('cj-jutba', 'acme')
     .replaceAll('cj@example.com', 'sam@example.com')
+    .replaceAll('cj@jutba.example', 'sam@rivera.example')
   return JSON.parse(json) as Fixture
 }
 
@@ -227,30 +228,45 @@ function reviews(): Scene {
   }
 }
 
-/** Work's 5-hour window fills up, and with switching on Kernel moves Claude Code to Personal. */
+/**
+ * Adding accounts, from Home: the account menu opens Settings, Accounts. A Claude API key is added and checked, then a
+ * Codex subscription signs in through the browser. Both arrive the way the engine reports them.
+ */
 function accounts(): Scene {
   const f = sample('SettingsAccounts')
-  const usage = (f.usage ?? []) as RateLimit[]
-  const isWork5h = (l: RateLimit) => l.type === 'five_hour' && !l.accountId && l.provider !== 'codex'
-  const climb = (pct: number) => {
-    f.usage = usage.map((l) => (isWork5h(l) ? { ...l, utilization: pct / 100, ...(pct >= 100 ? { status: 'rejected' as const } : {}) } : l))
-    push({ type: 'usage', limits: f.usage as RateLimit[] })
+  const list = (f.accounts ?? []) as AccountProfile[]
+  // Two accounts to start, one on each provider, so each one added shows.
+  f.accounts = list.filter((a) => a.id === 'cli')
+  f.usage = ((f.usage ?? []) as RateLimit[]).filter((l) => !l.accountId)
+  f.ui = { ...f.ui, route: { name: 'home' } }
+  const set = (next: AccountProfile[]) => {
+    f.accounts = next
+    push({ type: 'accounts', accounts: next })
   }
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+  const resets = (h: number) => Math.round((now() + h * 3_600_000) / 1000)
+  const limit = (provider: 'claude' | 'codex', accountId: string, type: RateLimit['type'], pct: number, h: number): RateLimit =>
+    ({ type, status: 'allowed', utilization: pct / 100, resetsAt: resets(h), ...(provider === 'codex' ? { provider } : {}), accountId })
   return {
     fixture: f,
-    steps: {
-      climb: () => {
-        const steps = [66, 71, 76, 81, 86, 90, 94, 97, 100]
-        steps.forEach((pct, i) => later(i * 420, () => climb(pct)))
-        later(steps.length * 420 + 900, () => {
-          const list = (f.accounts ?? []) as AccountProfile[]
-          const from = list.find((a) => a.provider === 'claude' && a.active)?.id ?? 'cli'
-          const to = list.find((a) => a.provider === 'claude' && !a.active && a.auth === 'subscription')?.id ?? 'personal'
-          f.accounts = list.map((a) => (a.provider === 'claude' ? { ...a, active: a.id === to } : a))
-          push({ type: 'accounts', accounts: f.accounts })
-          push({ type: 'accountSwitched', provider: 'claude', from, to, reason: 'limit', limit: 'five_hour' })
-        })
-      }
+    handlers: {
+      'accounts.addKey': (async ({ provider, label }: { provider: 'claude' | 'codex'; label: string }) => {
+        // Kernel checks a key with one request to the provider before it keeps it.
+        await sleep(1300)
+        const acct: AccountProfile = { id: 'teamkey', provider, label, cli: false, auth: 'apiKey', active: false, signedIn: true }
+        set([...(f.accounts as AccountProfile[]), acct])
+        return acct
+      }) as Handler,
+      'accounts.add': (async ({ provider }: { provider: 'claude' | 'codex' }) => {
+        push({ type: 'account.add', add: { provider, step: 'browser', url: 'https://auth.openai.com/oauth/authorize' } })
+        await sleep(2100)
+        const acct: AccountProfile = { id: 'work', provider, label: 'Work', email: 'work@example.com', plan: 'ChatGPT Pro', cli: false, auth: 'subscription', active: false, signedIn: true }
+        f.usage = [...((f.usage ?? []) as RateLimit[]), limit(provider, 'work', 'five_hour', 12, 3), limit(provider, 'work', 'seven_day', 31, 90)]
+        push({ type: 'usage', limits: f.usage as RateLimit[] })
+        set([...(f.accounts as AccountProfile[]), acct])
+        push({ type: 'account.add', add: { provider, step: 'done', account: acct } })
+        return acct
+      }) as Handler
     }
   }
 }

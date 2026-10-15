@@ -45,7 +45,7 @@ export function Clip({ name, width, height, label }: Props) {
   }
 
   return (
-    <div className="relative">
+    <div className="group relative">
       <video
         ref={ref}
         poster={`/clips/${name}.jpg`}
@@ -64,7 +64,9 @@ export function Clip({ name, width, height, label }: Props) {
         type="button"
         onClick={toggle}
         aria-label={playing ? `Pause: ${label}` : `Play: ${label}`}
-        className="absolute right-3 bottom-3 inline-flex size-8 items-center justify-center rounded-full border border-edge bg-canvas/80 text-ink-2 backdrop-blur-nav transition-colors hover:border-edge-hover hover:text-ink"
+        className={`absolute right-3 bottom-3 inline-flex size-8 items-center justify-center rounded-full border border-edge bg-canvas/80 text-ink-2 backdrop-blur-nav transition hover:border-edge-hover hover:text-ink focus-visible:opacity-100 ${
+          playing ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'
+        }`}
       >
         {playing ? <PauseIcon size={13} /> : <PlayIcon size={13} />}
       </button>

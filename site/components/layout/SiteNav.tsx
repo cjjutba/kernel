@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { DownloadIcon } from '@/components/ui/icons'
 import { StarButton } from '@/components/ui/StarButton'
 import { DOWNLOAD_URL } from '@/lib/links'
+import { NavFrame } from './NavFrame'
 
 export const NAV_LINKS = [
   { href: '/docs', label: 'Docs' },
@@ -18,7 +19,7 @@ const linkClass = 'inline-flex h-8 items-center rounded-md px-3 text-ui transiti
 /** `current` marks the section the page belongs to, so a docs page marks Docs. */
 export function SiteNav({ current }: { current?: NavPath }) {
   return (
-    <header className="sticky top-0 z-5 border-b border-white/6 bg-canvas/72 backdrop-blur-nav">
+    <NavFrame>
       <div className="mx-auto flex h-16 max-w-312 items-center gap-2 px-6">
         <Link href="/" className="inline-flex items-center">
           <Wordmark />
@@ -65,6 +66,6 @@ export function SiteNav({ current }: { current?: NavPath }) {
           </nav>
         </details>
       </div>
-    </header>
+    </NavFrame>
   )
 }

@@ -4,14 +4,14 @@ import { Clip } from './Clip'
 // What surrounds the loop the hero and How it works show, as a bento of clips recorded from the real app on sample data
 // (demo/clips.ts). Two wide tiles bracket two rows of pairs. The pairs share a height, since their clips share an aspect.
 
-type Feature = { id: string; title: string; text: string; clip: string; width: number; height: number; label: string; wide?: boolean }
+/** Wide tiles carry a title only. The pairs between them add one short line. */
+type Feature = { id: string; title: string; text?: string; clip: string; width: number; height: number; label: string; wide?: boolean }
 
 const FEATURES: Feature[] = [
   {
     id: 'f-workspaces',
     wide: true,
     title: 'A workspace for every task.',
-    text: "Approve the plan and each agent gets its own git worktree, branch and port, so the team builds side by side without touching each other's files.",
     clip: 'workspaces',
     width: 2400,
     height: 1500,
@@ -20,7 +20,7 @@ const FEATURES: Feature[] = [
   {
     id: 'f-reviews',
     title: 'Reviews that run themselves.',
-    text: 'Theo reviews each pull request once its checks pass. Blockers hold the merge, and approved work can merge on its own.',
+    text: "Theo reviews every pull request. Blockers hold the merge.",
     clip: 'reviews',
     width: 1592,
     height: 1560,
@@ -29,7 +29,7 @@ const FEATURES: Feature[] = [
   {
     id: 'f-permissions',
     title: 'You decide what runs.',
-    text: 'Every request says why it asks. Allow it once, allow it in this workspace, or deny it.',
+    text: "Every request says why it asks. You choose what runs.",
     clip: 'permissions',
     width: 1592,
     height: 1560,
@@ -38,26 +38,25 @@ const FEATURES: Feature[] = [
   {
     id: 'f-sharing',
     title: 'Agents show you their work.',
-    text: 'Pin a comment to any spot on a page an agent shared, and it goes straight back to that agent.',
+    text: "Pin a comment on a page an agent shared. It goes straight back.",
     clip: 'sharing',
-    width: 1592,
-    height: 1440,
+    width: 1600,
+    height: 1000,
     label: 'A comment pinned to a button on a shared pricing page goes to Noor, who changes the button and shares the page again; the version menu then lists v3'
   },
   {
     id: 'f-accounts',
     title: 'Claude Code and Codex, side by side.',
-    text: "Every account's usage stays in view. At a limit, Kernel moves the work to an account with room.",
+    text: "Every account's usage in view, and a switch at the limit.",
     clip: 'accounts',
     width: 1600,
-    height: 1440,
-    label: 'With switching on, the Work account reaches its 5-hour limit and Kernel moves Claude Code to Personal'
+    height: 1000,
+    label: 'From Home, the account menu opens Settings, Accounts: a Claude API key is added and checked, then a Codex subscription signs in, and both show with their usage'
   },
   {
     id: 'f-issues',
     wide: true,
     title: 'From issue to plan to team.',
-    text: 'Plan a Linear, GitHub or Jira issue with Kernel. It reads the issue and its comments first, and every workspace it starts links back to the issue.',
     clip: 'issues',
     width: 2400,
     height: 1500,
@@ -67,16 +66,16 @@ const FEATURES: Feature[] = [
 
 function Tile({ f }: { f: Feature }) {
   return (
-    <article aria-labelledby={f.id} className={`flex flex-col overflow-hidden rounded-frame border border-line bg-surface-1 ${f.wide ? 'col-span-full' : ''}`}>
-      {/* A fixed floor for the text, so a line more or less (fonts measure a little differently across systems) never moves the clip or anything below. */}
-      <div className={`px-8 pt-8 pb-7 max-nav:px-5 max-nav:pt-6 ${f.wide ? 'grid grid-cols-2 items-end gap-x-12 gap-y-3 faq:min-h-38 max-faq:grid-cols-1' : 'faq:min-h-58'}`}>
+    <article aria-labelledby={f.id} className={`flex flex-col rounded-frame border border-line bg-surface-1 ${f.wide ? 'col-span-full' : ''}`}>
+      {/* The text sits on a fixed floor, so a line more or less (fonts measure a little differently across systems) never moves the clip. */}
+      <div className={`px-10 pt-10 pb-8 max-nav:px-5 max-nav:pt-7 max-nav:pb-6 ${f.wide ? '' : 'faq:min-h-44'}`}>
         <h3 id={f.id} className={`text-balance ${f.wide ? 'text-h3' : 'text-entry-title max-nav:text-h3'}`}>
           {f.title}
         </h3>
-        <p className={`text-body text-muted ${f.wide ? 'max-w-120' : 'mt-3 max-w-110'}`}>{f.text}</p>
+        {f.text ? <p className="mt-3 max-w-110 text-body text-muted">{f.text}</p> : null}
       </div>
-      <div className="mt-auto px-8 max-nav:px-3">
-        <div className="overflow-hidden rounded-t-lg border border-b-0 border-line-strong">
+      <div className="mt-auto px-10 pb-10 max-nav:px-3 max-nav:pb-3">
+        <div className="overflow-hidden rounded-lg border border-line-strong">
           <Clip name={f.clip} width={f.width} height={f.height} label={f.label} />
         </div>
       </div>

@@ -566,6 +566,11 @@
   border-top-color: var(--color-rule);
 }
 
+/* The waitlist card's soft light from above. */
+@utility waitlist-glow {
+  background-image: radial-gradient(60% 55% at 50% 0%, color-mix(in oklab, var(--color-ink) 6%, transparent) 0%, transparent 100%);
+}
+
 @utility float-a {
   animation: tile-float 7s ease-in-out infinite;
 }
