@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { isRunName, type AppSettings, type DeepPartial, type RoomSettings, type RoomSettingsPatch } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
@@ -54,14 +54,26 @@ export async function patchSettings(patch: DeepPartial<AppSettings>): Promise<Ap
   }
 }
 
+/** A room's settings from its .kernel files. Null until the first read, and `failed` when that read did not come back. */
+export function useRoomSettingsLoad(roomId?: string): { rs: RoomSettings | null; failed: boolean; retry: () => Promise<void> } {
+  const rs = useStore((s) => (roomId ? s.roomSettings[roomId] ?? null : null))
+  const [failed, setFailed] = useState(false)
+  const load = useCallback(async () => {
+    if (!roomId) return
+    try {
+      actions.settings.setRoom(roomId, await call('settings.room', { roomId }))
+      setFailed(false)
+    } catch {
+      setFailed(true)
+    }
+  }, [roomId])
+  useEffect(() => { setFailed(false); void load() }, [load])
+  return { rs, failed: failed && !rs, retry: load }
+}
+
 /** A room's settings from its .kernel files. Null until the first read. */
 export function useRoomSettings(roomId?: string): RoomSettings | null {
-  const rs = useStore((s) => (roomId ? s.roomSettings[roomId] ?? null : null))
-  useEffect(() => {
-    if (!roomId) return
-    void call('settings.room', { roomId }).then((r) => actions.settings.setRoom(roomId, r)).catch(() => undefined)
-  }, [roomId])
-  return rs
+  return useRoomSettingsLoad(roomId).rs
 }
 
 /**

@@ -148,7 +148,7 @@ export function Modal({ title, onClose, children, footer, width, top, bare, role
   }, [closing])
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null
-    const first = ref.current?.querySelector<HTMLElement>('[autofocus], input, textarea, select, button:not([data-close])')
+    const first = ref.current?.querySelector<HTMLElement>('[data-autofocus]') ?? ref.current?.querySelector<HTMLElement>('[autofocus], input, textarea, select, button:not([data-close])')
     ;(first ?? ref.current)?.focus({ preventScroll: true })
     return () => before?.focus?.()
   }, [])
@@ -186,12 +186,12 @@ export function Modal({ title, onClose, children, footer, width, top, bare, role
 }
 
 /** Archive, discard, remove, retire. Red appears only on the final confirm button. */
-export function ConfirmDialog({ title, body, children, extra, confirmLabel, cancelLabel = 'Cancel', danger, busy, busyLabel, busyPattern, disabled, onConfirm, onCancel }: { title: string; body: ReactNode; /** Extra content under the body, such as a path box or a checkbox. */ children?: ReactNode; /** A second way out, on the left of the footer, such as "Archive anyway" (ConfirmArchive.png). */ extra?: ReactNode; confirmLabel: string; cancelLabel?: string; danger?: boolean; /** The confirm action is running: its button spins and says `busyLabel`, such as "Archiving". */ busy?: boolean; busyLabel?: string; busyPattern?: SpinnerPattern; /** The confirm button can't be pressed yet, such as while the dialog reads the branch. */ disabled?: boolean; onConfirm: () => void; onCancel: () => void }) {
+export function ConfirmDialog({ title, body, children, extra, confirmLabel, cancelLabel = 'Cancel', danger, busy, busyLabel, busyPattern, disabled, focusConfirm, onConfirm, onCancel, onDismiss }: { title: string; body: ReactNode; /** Extra content under the body, such as a path box or a checkbox. */ children?: ReactNode; /** A second way out, on the left of the footer, such as "Archive anyway" (ConfirmArchive.png). */ extra?: ReactNode; confirmLabel: string; cancelLabel?: string; danger?: boolean; /** The confirm action is running: its button spins and says `busyLabel`, such as "Archiving". */ busy?: boolean; busyLabel?: string; busyPattern?: SpinnerPattern; /** The confirm button can't be pressed yet, such as while the dialog reads the branch. */ disabled?: boolean; onConfirm: () => void; onCancel: () => void; /** Escape and a press on the scrim call this, and the cancel button calls `onCancel`, when closing without answering is not the same as cancelling. */ onDismiss?: () => void; /** Focus starts on the confirm button. */ focusConfirm?: boolean }) {
   const id = useId()
   return (
     <Modal
-      title={title} onClose={onCancel} width={460} top={220} bare role="alertdialog" labelledBy={`${id}t`} describedBy={`${id}b`}
-      footer={<>{extra}<span className="grow" /><Button variant="ghost" size="lg" data-dismiss>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" busy={busy} busyLabel={busyLabel} busyPattern={busyPattern} disabled={disabled} onClick={onConfirm}>{confirmLabel}</Button></>}
+      title={title} onClose={onDismiss ?? onCancel} width={460} top={220} bare role="alertdialog" labelledBy={`${id}t`} describedBy={`${id}b`}
+      footer={<>{extra}<span className="grow" /><Button variant="ghost" size="lg" {...(onDismiss ? { disabled, onClick: onCancel } : { 'data-dismiss': true })}>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" data-autofocus={focusConfirm || undefined} busy={busy} busyLabel={busyLabel} busyPattern={busyPattern} disabled={disabled} onClick={onConfirm}>{confirmLabel}</Button></>}
     >
       <div className="confirm-body">
         <h2 id={`${id}t`}>{title}</h2>
@@ -215,7 +215,12 @@ const LOCK_PX = 6
 /** A trackpad swipe has ended once its wheel events, momentum included, stop for this long. */
 const WHEEL_END_MS = 120
 
-export interface ToastProps { title: string; sub?: string; action?: { label: string; href?: string; onClick?: () => void; /** A bordered button, for an action that opens something in the app, not a link. */ boxed?: boolean }; onDismiss?: () => void }
+export interface ToastProps { title: string; sub?: string; action?: { label: string; href?: string; onClick?: () => void; /** A bordered button, for an action that opens something in the app, not a link. */ boxed?: boolean; /** The shortcut that presses it, shown in its tooltip. */ kbd?: string }; /** Leave now, the way a timeout does. */ closing?: boolean; onDismiss?: () => void }
+
+/** A sub that is a path breaks at its slashes, not in the middle of a name. */
+function breakAtSlashes(text: string): ReactNode[] {
+  return text.split(/(?<=\/)/).flatMap((part, i) => (i ? [<wbr key={i} />, part] : [part]))
+}
 
 /** `sink` is the timeout and the action: down and faded. A swipe leaves the way it went. */
 type Leave = 'sink' | 'right' | 'down'
@@ -229,7 +234,7 @@ type Swipe = { from?: { x: number; y: number }; rx: number; ry: number; axis?: '
  * two-finger swipe right or down on a trackpad, or pressing its action dismisses it sooner. A swipe leaves in its own direction.
  * A toast without `onDismiss` stays put.
  */
-export function Toast({ title, sub, action, onDismiss }: ToastProps) {
+export function Toast({ title, sub, action, closing, onDismiss }: ToastProps) {
   const [held, setHeld] = useState(false)
   const [leaving, setLeaving] = useState<Leave | null>(null)
   const box = useRef<HTMLDivElement>(null)
@@ -243,6 +248,9 @@ export function Toast({ title, sub, action, onDismiss }: ToastProps) {
     const t = setTimeout(() => setLeaving('sink'), TOAST_MS)
     return () => clearTimeout(t)
   }, [held, timed, leaving])
+  useEffect(() => {
+    if (closing && timed) setLeaving((l) => l ?? 'sink')
+  }, [closing, timed])
   useEffect(() => {
     if (!leaving) return
     const t = setTimeout(() => dismiss.current?.(), LEAVE_MS)
@@ -312,11 +320,11 @@ export function Toast({ title, sub, action, onDismiss }: ToastProps) {
         ref={box} className="toast" onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onWheel={wheel}
       >
-        <span className="grow toast-text"><span className="toast-title">{title}</span>{sub && <span className="toast-sub">{sub}</span>}</span>
+        <span className="grow toast-text"><span className="toast-title">{title}</span>{sub && <span className="toast-sub">{breakAtSlashes(sub)}</span>}</span>
         {action && (action.href
           // A plain click would navigate the app window away (KERNEL-294), so a web link opens in the browser.
-          ? <a className="toast-action" href={action.href} onClick={(e) => { e.preventDefault(); if (isWebUrl(action.href!)) void call('system.openExternal', { url: action.href! }); act() }}>{action.label}</a>
-          : <button type="button" className="toast-action" data-boxed={action.boxed || undefined} onClick={act}>{action.label}</button>)}
+          ? <a className="toast-action" href={action.href} data-tip={action.kbd ? action.label : undefined} data-tip-kbd={action.kbd} onClick={(e) => { e.preventDefault(); if (isWebUrl(action.href!)) void call('system.openExternal', { url: action.href! }); act() }}>{action.label}</a>
+          : <button type="button" className="toast-action" data-boxed={action.boxed || undefined} data-tip={action.kbd ? action.label : undefined} data-tip-kbd={action.kbd} onClick={act}>{action.label}</button>)}
       </div>
     </div>
   )
