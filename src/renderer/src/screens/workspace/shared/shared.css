@@ -130,3 +130,4 @@
 .shpanel-icon { display: inline-flex; flex-shrink: 0; color: var(--muted); }
 .shpanel-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .shpanel-meta { font-size: 12px; color: var(--muted); }
+.shcard[data-layout='missing'] .empty { padding: 6px 0; }
