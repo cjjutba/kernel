@@ -25,6 +25,12 @@ Run one file with `pnpm test test/kernel.test.ts`. Plain `pnpm exec vitest` fail
 
 If you change a screen, run `pnpm shots <Screen>` and attach the shot in `shots/<Screen>.png` to the PR.
 
+## Contributor agreement
+
+Before your first pull request can merge, you sign the [contributor agreement](CLA.md). You keep the copyright on your work. The agreement gives the maintainer a license to use it, including the right to relicense it, so Kernel can later offer commercial licenses or a hosted version.
+
+A bot comments on your first pull request. Reply with the sentence it gives you, and the CLA check turns green. You sign once, and it covers your later pull requests.
+
 ## Pull requests
 
 1. Branch from `main`.
