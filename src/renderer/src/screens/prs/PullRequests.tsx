@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useLayoutEffect } from 'react'
 import type { Workspace } from '@shared/types'
 import { go, useStore } from '../../store'
-import { Icon, Pill, Spinner } from '../../ui'
+import { Banner, Icon, Pill, Spinner } from '../../ui'
+import { oneOf, useRemembered } from '../../remember'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
 import { age } from '../inbox/model'
 import { MergeButton } from '../workspace/pr/MergeButton'
 import type { LeadPr } from '../workspace/pr/leadPrList'
-import { checksCell, conflictsCell, reviewCell, usePullRequests, type Cell } from './model'
+import { MERGED_LIMIT, checksCell, conflictsCell, oldestRead, readFailure, reviewCell, usePullRequests, type Cell } from './model'
 import './prs.css'
 
 type Filter = 'open' | 'merged'
@@ -66,9 +67,13 @@ function MergedRow({ ws }: { ws: Workspace }) {
  * or the recently merged ones. A row opens the PR's workspace.
  */
 export function PullRequests({ filter: first }: { filter?: Filter }) {
-  const [filter, setFilter] = useState<Filter>(first ?? 'open')
-  const { open, merged } = usePullRequests()
+  const [filter, setFilter] = useRemembered<Filter>('kernel.prsTab', oneOf<Filter>(['open', 'merged'], 'open'))
+  useLayoutEffect(() => { if (first) setFilter(first) }, [first])
+  const { open, merged, mergedTotal, reading, reads } = usePullRequests()
   const counts: Record<Filter, number> = { open: open.length, merged: merged.length }
+  const readAt = oldestRead(reads)
+  const failed = reads.find((r) => r.failed)
+  const readAgo = readAt === undefined ? undefined : age(readAt) === 'now' ? 'just now' : `${age(readAt)} ago`
   return (
     <div className="panel">
       <header className="header" style={{ paddingRight: 12 }}>
@@ -78,7 +83,15 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
       </header>
       <div className="prs-bar" role="group" aria-label="Filter pull requests">
         {filters.map(([id, label]) => <Pill key={id} pressed={filter === id} onClick={() => setFilter(id)}>{label}<span className="prs-n">{counts[id]}</span></Pill>)}
+        <span className="prs-read" role="status">
+          {reading ? <><Spinner label={null} pattern="checker" />Reading status from GitHub</> : readAgo ? `Status read ${readAgo}` : null}
+        </span>
       </div>
+      {failed?.failed && (
+        <div className="prs-banner">
+          <Banner kind="warn" title="Couldn't read pull request status from GitHub">{readFailure(failed.failed)} {readAgo ? `Showing what was read ${readAgo}.` : 'Nothing has been read yet, so the lists may be missing pull requests.'}</Banner>
+        </div>
+      )}
       {filter === 'open' ? (
         open.length ? (
           <div className="prs-scroll">
@@ -89,7 +102,10 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
           <div className="prs-empty"><h2>No open pull requests</h2><p>When an agent opens a pull request in any room, it shows up here with its checks and review.</p></div>
         )
       ) : merged.length ? (
-        <div className="prs-scroll"><ul className="prs-list" aria-label="Merged pull requests">{merged.map((w) => <MergedRow key={w.id} ws={w} />)}</ul></div>
+        <div className="prs-scroll">
+          <ul className="prs-list" aria-label="Merged pull requests">{merged.map((w) => <MergedRow key={w.id} ws={w} />)}</ul>
+          {mergedTotal > MERGED_LIMIT && <p className="prs-cap">Showing the {MERGED_LIMIT} most recent of {mergedTotal} merged pull requests.</p>}
+        </div>
       ) : (
         <div className="prs-empty"><h2>Nothing merged yet</h2><p>Pull requests you merge show up here.</p></div>
       )}

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react'
-import type { PrInfo, Workspace } from '@shared/types'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { GitHubErrorKind, PrInfo, PrReads, Workspace } from '@shared/types'
 import { mergeNeedsPr, mergeableState } from '@shared/merge'
 import { call } from '../../api'
 import { leadOf } from '../../lead'
@@ -54,7 +54,7 @@ export const isMerged = (ws: Workspace) => ws.prState === 'merged' && !ws.review
  * on its way), and the merged ones, newest first. The merge rule may need a PR GitHub hasn't been asked about, so each such PR is read
  * once, as the Lead's tab does: until then it would count as blocked and never show Merge.
  */
-export function usePullRequests(): { open: LeadPr[]; merged: Workspace[] } {
+export function usePullRequests(): { open: LeadPr[]; merged: Workspace[]; mergedTotal: number; reading: boolean; reads: PrReads[] } {
   const rooms = useStore((s) => s.rooms)
   const workspaces = useStore((s) => s.workspaces)
   const prs = useStore((s) => s.prs)
@@ -65,17 +65,39 @@ export function usePullRequests(): { open: LeadPr[]; merged: Workspace[] } {
     () => visible.flatMap((r) => leadPrs(workspaces, { leadId: leadOf(agents, r.id)?.id, roomId: r.id, prs, rules, agents: agents[r.id] ?? [] })),
     [visible, workspaces, agents, prs, rules]
   )
-  const merged = useMemo(() => {
+  const allMerged = useMemo(() => {
     const ids = new Set(visible.map((r) => r.id))
-    return workspaces.filter((w) => ids.has(w.roomId) && isMerged(w)).sort((a, b) => (b.mergedAt ?? b.createdAt) - (a.mergedAt ?? a.createdAt)).slice(0, MERGED_LIMIT)
+    return workspaces.filter((w) => ids.has(w.roomId) && isMerged(w)).sort((a, b) => (b.mergedAt ?? b.createdAt) - (a.mergedAt ?? a.createdAt))
   }, [visible, workspaces])
+  const merged = useMemo(() => allMerged.slice(0, MERGED_LIMIT), [allMerged])
   const asked = useRef(new Set<string>())
+  const [pending, setPending] = useState(0)
   useEffect(() => {
     for (const { ws } of open) {
       if (prs[ws.id] || asked.current.has(ws.id) || !mergeableState(ws.prState) || !mergeNeedsPr(ws, rules)) continue
       asked.current.add(ws.id)
-      call('pr.get', { workspaceId: ws.id }).then((info) => { if (info) actions.prs.set(info) }).catch(() => undefined)
+      setPending((n) => n + 1)
+      call('pr.get', { workspaceId: ws.id }).then((info) => { if (info) actions.prs.set(info) }).catch(() => undefined).finally(() => setPending((n) => n - 1))
     }
   }, [open, prs, rules])
-  return { open, merged }
+  const readsByRoom = useStore((s) => s.system.github.reads)
+  const reads = useMemo(() => visible.flatMap((r) => readsByRoom?.[r.id] ?? []), [visible, readsByRoom])
+  return { open, merged, mergedTotal: allMerged.length, reading: pending > 0, reads }
+}
+
+/** The oldest good read among the rooms: the page is only as fresh as its stalest room. Undefined when none has been read. */
+export function oldestRead(reads: PrReads[]): number | undefined {
+  const times = reads.map((r) => r.at).filter((t): t is number => t !== undefined)
+  return times.length ? Math.min(...times) : undefined
+}
+
+/** What a failed read means for a person, by the kind the last failed read had. */
+export function readFailure(kind: GitHubErrorKind): string {
+  switch (kind) {
+    case 'signed-out': return 'The GitHub CLI is signed out.'
+    case 'not-found': return 'GitHub can no longer find a repository, or this account can\'t see it.'
+    case 'rate-limited': return 'GitHub\'s rate limit is used up.'
+    case 'offline': return 'GitHub can\'t be reached.'
+    case 'other': return 'GitHub answered with an error.'
+  }
 }

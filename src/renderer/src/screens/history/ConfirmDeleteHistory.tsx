@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { DeletePreview } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
-import { ConfirmDialog, useBusy } from '../../ui'
+import { Button, ConfirmDialog, useBusy } from '../../ui'
 import { sizeLabel } from './model'
 import './history.css'
 
@@ -19,11 +19,14 @@ export function ConfirmDeleteHistory({ workspaceIds }: { workspaceIds: string[] 
   const [unpushed, setUnpushed] = useState(false)
   const [busy, run] = useBusy()
   const [error, setError] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [tries, setTries] = useState(0)
   useEffect(() => {
     let live = true
-    void call('workspaces.deletePreview', { workspaceIds }).then((p) => { if (live) setPreview(p) }, (e) => { if (live) setError(cleanError(e)) })
+    void call('workspaces.deletePreview', { workspaceIds }).then((p) => { if (live) setPreview(p) }, (e) => { if (live) setPreviewError(cleanError(e)) })
     return () => { live = false }
-  }, [workspaceIds])
+  }, [workspaceIds, tries])
+  const retry = () => { setPreviewError(null); setTries((n) => n + 1) }
 
   const count = preview?.workspaces ?? workspaceIds.length
   const one = count === 1
@@ -51,7 +54,9 @@ export function ConfirmDeleteHistory({ workspaceIds }: { workspaceIds: string[] 
   })
 
   const what = one ? 'it' : 'them'
-  const body = !preview
+  const body = previewError
+    ? `Kernel couldn't count what Delete would remove, so Delete stays off. ${previewError}`
+    : !preview
     ? 'Counting'
     : `Kernel forgets ${what} for good, with ${one ? 'its' : 'their'} chats, checkpoints and Claude Code transcripts${preview.transcriptBytes > 0 ? ` (${sizeLabel(preview.transcriptBytes)})` : ''}. Restore can't bring ${what} back. ${one ? 'A branch that is merged or pushed is' : 'Branches that are merged or pushed are'} deleted.`
 
@@ -59,6 +64,7 @@ export function ConfirmDeleteHistory({ workspaceIds }: { workspaceIds: string[] 
     <ConfirmDialog
       title={workspaceIds.length === 1 ? `Delete ${first?.name ?? 'workspace'}?` : `Delete ${plural(count, 'workspace')}?`} danger busy={!!busy} busyPattern="scatter" busyLabel="Deleting"
       confirmLabel={one ? 'Delete workspace' : 'Delete workspaces'} disabled={!preview || preview.workspaces === 0}
+      extra={previewError ? <Button variant="ghost" size="lg" onClick={retry}>Try again</Button> : undefined}
       onConfirm={() => void remove()} onCancel={actions.ui.closeModal} body={body}
     >
       {preview && preview.unpushedBranches > 0 && (

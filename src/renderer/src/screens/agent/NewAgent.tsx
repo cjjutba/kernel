@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AgentDraft, NewAgentPrefill } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
@@ -34,9 +34,11 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
   const [text, setText] = useState(prefill?.draft?.text ?? '')
   const [busy, run] = useBusy<'draft' | 'create' | 'refine'>()
   const [error, setError] = useState<string | null>(null)
-  const close = actions.ui.closeModal
+  const gone = useRef(false)
+  useEffect(() => { gone.current = false; return () => { gone.current = true } }, [])
+  const close = () => { gone.current = true; actions.ui.closeModal() }
   // Done with no room goes back to Settings, Agents, where the new agent shows under Yours.
-  const finish = () => { close(); if (!roomId) actions.ui.go({ name: 'settings', page: 'agents' }) }
+  const finish = () => { actions.ui.closeModal(); if (!roomId) actions.ui.go({ name: 'settings', page: 'agents' }) }
   const lead = agents?.find((a) => a.lead)
   const to = (next: Step, p: NewAgentPrefill = { name, description, model, draft }) => actions.ui.openModal({ name: 'newAgent', roomId, step: next, prefill: p })
 
@@ -44,6 +46,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
     setError(null)
     try {
       const d = await call('agents.draft', { ...(roomId ? { roomId } : {}), description: description.trim(), name: name.trim() || undefined, model })
+      if (gone.current) return
       setDraft(d); setText(d.text)
       to('draft', { name, description, model, draft: d })
     } catch (e) { setError(cleanError(e)) }
@@ -55,6 +58,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
       const def = await call('agents.create', roomId ? { roomId, draft: { ...draft, text } } : { draft: { ...draft, text }, scope: 'me' })
       if (roomId) actions.agents.set(roomId, [...(getState().agents[roomId] ?? []).filter((a) => a.id !== def.id), def])
       const done = { ...draft, id: def.id, name: def.name, file: def.file.includes('.claude/') ? `.claude/${def.file.split('.claude/')[1]}` : draft.file, text }
+      if (gone.current) return
       setDraft(done)
       to('done', { name, description, model, draft: done })
     } catch (e) { setError(cleanError(e)) }

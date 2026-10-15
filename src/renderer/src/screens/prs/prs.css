@@ -37,3 +37,7 @@
   .prs-merged { grid-template-columns: minmax(0, 1fr) 100px; }
   .prs-merged .prs-stat { display: none; }
 }
+
+.prs-read { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.prs-banner { padding: 10px 12px 0; flex-shrink: 0; }
+.prs-cap { margin: 0; padding: 14px 16px; font-size: 12px; color: var(--muted); }

@@ -92,7 +92,7 @@ export function CommandPalette() {
       <div className="cp-input">
         <Icon name="search" size={16} />
         <input
-          autoFocus role="combobox" aria-expanded="true" aria-controls="cp-list" aria-activedescendant={flat[cur] ? `cp-${flat[cur].id}` : undefined} aria-label="Type a command or search"
+          autoFocus role="combobox" aria-expanded={flat.length > 0} aria-controls="cp-list" aria-activedescendant={flat[cur] ? `cp-${flat[cur].id}` : undefined} aria-label="Type a command or search"
           placeholder="Type a command or search" value={q} onChange={(e) => { setQ(e.target.value); setAt(0) }} onKeyDown={onKey}
         />
         <Kbd>esc</Kbd>
