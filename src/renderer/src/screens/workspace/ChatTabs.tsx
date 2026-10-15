@@ -13,7 +13,7 @@ import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { kindFile, sharedTab } from './shared/shared'
 import { attempt } from './MessageActions'
 import { focusComposerIn, focusComposerWhenOpen } from './composer/bus'
-import { newChatTab, tabStop } from './leadNoChat'
+import { newChatTab, tabAfterKey, tabStop } from './leadNoChat'
 
 export const fileTab = (path: string) => `file:${path}`
 /** An empty path is the diff of every changed file. */
@@ -121,13 +121,11 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
 
   // Arrow keys move between tabs, like Tabs in ui/controls.tsx. Only the selected tab is in the tab order.
   const arrow = (e: React.KeyboardEvent<HTMLButtonElement>, id: string) => {
-    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
-    if (!step) return
+    const next = tabAfterKey(tabs.map((t) => t.id), id, e.key)
+    if (!next) return
     e.preventDefault()
-    const i = tabs.findIndex((t) => t.id === id)
-    const next = tabs[(i + step + tabs.length) % tabs.length]
-    onSelect(next.id)
-    requestAnimationFrame(() => document.getElementById(`ws-tab-${next.id}`)?.focus())
+    onSelect(next)
+    requestAnimationFrame(() => document.getElementById(`ws-tab-${next}`)?.focus())
   }
   const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'diff' | 'shared' | 'image' | 'text' | 'terminal'; path?: string; icon?: IconName; file?: string; unread?: boolean }[] = [
     ...chats.map((c) => ({ id: c.id, title: c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const, unread: c.kind === 'chat' && isUnread(c) })),

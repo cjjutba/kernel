@@ -2825,6 +2825,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),
+  WorkspaceSharedMissing: scene((f) => ({ ...renderer(f), shared: sharedFiles(2).filter((x) => x.workspaceId === ids.table && x.id !== 'sh-html'), ui: { ...open, workspace: { right: 'changes', bottom: 'run' } } })), // the chat's HTML card with its file gone from the store (KERNEL-870)
   WorkspaceSharedHtml: sharedTab('sh-html'),
   WorkspaceSharedPhone: sharedTab('sh-html'),
   WorkspaceSharedImage: sharedTab('sh-image'),
