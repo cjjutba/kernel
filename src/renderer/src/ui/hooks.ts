@@ -105,6 +105,7 @@ export function useLayer(opts: { onEscape?: () => void; onOutside?: () => void; 
     seen.current = true
     opener.current = typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null
   }
+  if (!active) { seen.current = false; opener.current = null }
   useEffect(() => {
     if (!active) return
     install()
@@ -115,6 +116,7 @@ export function useLayer(opts: { onEscape?: () => void; onOutside?: () => void; 
       get ref() { return latest.current.ref },
       get anchorRef() { return latest.current.anchorRef }
     }
+    const from = opener.current
     const below = [...stack]
     stack.push(layer)
     if (layer.blocking) closeLayers(below)
@@ -122,10 +124,7 @@ export function useLayer(opts: { onEscape?: () => void; onOutside?: () => void; 
       const i = stack.indexOf(layer)
       if (i >= 0) stack.splice(i, 1)
       const restores = !!(latest.current.onOutside || latest.current.blocking)
-      const from = opener.current
       const el = layer.ref?.current
-      seen.current = false
-      opener.current = null
       if (restores) returnFocus(from, el)
     }
   }, [active])
