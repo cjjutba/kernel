@@ -632,6 +632,8 @@ export const actions = {
     upsert: (chat: Chat) => setState((s) => ({ chats: { ...s.chats, [chat.workspaceId]: upsert(s.chats[chat.workspaceId] ?? [], chat) } })),
     setItems: (chatId: string, list: ChatItem[]) => setState((s) => ({ items: { ...s.items, [chatId]: list } })),
     upsertItem: (chatId: string, item: ChatItem) => setState((s) => ({ items: { ...s.items, [chatId]: upsert(s.items[chatId] ?? [], item) } })),
+    /** Takes an item out when it is still `item` itself: a row the engine has since replaced by id stays. For an optimistic row whose call failed. */
+    dropItem: (chatId: string, item: ChatItem) => setState((s) => (s.items[chatId]?.includes(item) ? { items: { ...s.items, [chatId]: s.items[chatId].filter((i) => i !== item) } } : s)),
     setRunning: (chatId: string, running: boolean) => setState((s) => ({ running: { ...s.running, [chatId]: running } })),
     /** A `chat.queue` event passes its reason, or null when nothing holds the queue. A list handed back by a call passes none (undefined), so the last reason stays until the next event. An empty queue has none. */
     setQueue: (chatId: string, list: QueuedMessage[], why?: QueueReason | null) => setState((s) => {
