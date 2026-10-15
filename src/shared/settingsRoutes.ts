@@ -9,7 +9,7 @@ const PAGES: Record<string, { page: string; section?: string }> = {
   providers: { page: 'accounts' },
   scripts: { page: 'git' }
 }
-const SECTIONS: Record<string, string> = { scripts: 'setup', files: 'setup', instructions: 'prs', reviews: 'prs' }
+const SECTIONS: Record<string, string> = { scripts: 'setup', files: 'environment', permissions: 'agents', skills: 'agents', instructions: 'prs', reviews: 'prs' }
 
 /** The route as it is today: an old Settings page or project section becomes the one that holds it. Other routes come back as they were. */
 export function currentRoute<R extends Route>(route: R): R {
