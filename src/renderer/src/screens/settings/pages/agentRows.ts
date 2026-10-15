@@ -2,12 +2,6 @@ import type { AgentDef, AgentOrigin } from '@shared/types'
 
 export type AgentGroup = 'repo' | 'personal' | 'plugin'
 
-export const AGENT_GROUPS: { key: AgentGroup; title: string }[] = [
-  { key: 'repo', title: 'In this repo' },
-  { key: 'personal', title: 'Yours' },
-  { key: 'plugin', title: 'From plugins' }
-]
-
 export function agentGroup(a: { builtIn?: AgentDef['builtIn']; origin?: AgentOrigin }): AgentGroup {
   if (a.builtIn) return 'repo'
   return a.origin === 'personal' ? 'personal' : a.origin === 'plugin' ? 'plugin' : 'repo'

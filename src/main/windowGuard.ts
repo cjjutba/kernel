@@ -27,7 +27,7 @@ export function isAppUrl(url: string | undefined, appUrl: string): boolean {
   return b !== null && b === base(appUrl)
 }
 
-/** True when `path` is absolute and sits in one of `roots` (a room's checkout or a workspace's worktree). */
+/** True when `path` is absolute and sits in one of `roots` (a project's checkout or a workspace's worktree). */
 export function insideRoots(path: string, roots: string[]): boolean {
   if (!isAbsolute(path)) return false
   const p = resolve(path)

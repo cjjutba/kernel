@@ -41,23 +41,23 @@ async function boot(o: { models?: object } = {}) {
   }))
   const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json'), starterDir: join(__dirname, '..', 'docs', 'starter-agents') })
   await k.start()
-  const room = await k.addRoom(repo)
+  const project = await k.addProject(repo)
   const done = async () => {
     for (const w of k.store.workspaces()) if (w.mode === 'worktree') await k.archiveWorkspace(w.id, true).catch(() => undefined)
     await k.stop()
     for (const dir of [home, dataDir, repo]) await rm(dir, { recursive: true, force: true })
   }
-  return { k, room, repo, done }
+  return { k, project, repo, done }
 }
 
 describe.skipIf(!process.env.KERNEL_LIVE)('live agent files', () => {
   it('a read-only agent is refused a write and carries on', { timeout: 600_000 }, async () => {
-    const { k, room, done } = await boot()
+    const { k, project, done } = await boot()
     const tracked: TelemetryEvent[] = []
     const onTrack = (e: TelemetryEvent) => tracked.push(e)
     bus.on('track', onTrack)
     try {
-      const ws = await k.createWorkspace(room.id, { agentId: 'checker', title: 'Write test', prompt: 'Use the Write tool to create hello.txt containing "hi". If you cannot, say why in one sentence.' })
+      const ws = await k.createWorkspace(project.id, { agentId: 'checker', title: 'Write test', prompt: 'Use the Write tool to create hello.txt containing "hi". If you cannot, say why in one sentence.' })
       const chat = k.chatTabs(ws.id)[0]
       await waitFor('the turn to end', () => k.store.items(chat.id).some((i) => i.kind === 'result') && !k.sessions.isRunning(chat.id))
       const tools = k.store.items(chat.id).flatMap((i) => (i.kind === 'tool' ? [`${i.name}:${i.status}`] : []))
@@ -71,10 +71,10 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live agent files', () => {
     }
   })
 
-  it("Kernel's Kernel leads a room whose agents have no Lead", { timeout: 600_000 }, async () => {
-    const { k, room, done } = await boot()
+  it("Kernel's Kernel leads a project whose agents have no Lead", { timeout: 600_000 }, async () => {
+    const { k, project, done } = await boot()
     try {
-      const chat = await k.startLeadChat(room.id, { prompt: 'Who is on this team, and who takes tasks? Call list_agents and answer in two sentences.', plan: false })
+      const chat = await k.startLeadChat(project.id, { prompt: 'Who is on this team, and who takes tasks? Call list_agents and answer in two sentences.', plan: false })
       await waitFor('the Lead to answer', () => k.store.items(chat.id).some((i) => i.kind === 'result') && !k.sessions.isRunning(chat.id))
       const said = k.store.items(chat.id).flatMap((i) => (i.kind === 'text' ? [i.text] : []))
       console.log(`[live] Kernel said ${JSON.stringify(said.slice(-1))}`)
@@ -87,7 +87,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live agent files', () => {
 })
 
 // KERNEL-473: a teammate reads its task's issue through Kernel's get_issue, with no tracker MCP server, on each provider. The
-// room's tracker is a stand-in Linear whose issue holds a codeword found nowhere else. Claude runs with KERNEL_LIVE=1. Codex
+// project's tracker is a stand-in Linear whose issue holds a codeword found nowhere else. Claude runs with KERNEL_LIVE=1. Codex
 // also needs KERNEL_LIVE_CODEX=1 and the ChatGPT sign-in, as in live.test.ts:
 //   KERNEL_LIVE=1 KERNEL_LIVE_CODEX=1 pnpm test test/live.tools.test.ts -t "reads its issue"
 const codexModel = process.env.KERNEL_LIVE_CODEX_MODEL ?? 'gpt-5.6-luna'
@@ -96,7 +96,7 @@ const codexRole = { provider: 'codex', model: codexModel, effort: 'low' }
 describe.skipIf(!process.env.KERNEL_LIVE)('live issue without a tracker MCP server', () => {
   for (const provider of ['claude', 'codex'] as const) {
     it.skipIf(provider === 'codex' && !process.env.KERNEL_LIVE_CODEX)(`a ${provider} teammate reads its issue with get_issue (KERNEL-473)`, { timeout: 600_000 }, async () => {
-      const { k, room, done } = await boot(provider === 'codex' ? { models: { roles: { lead: codexRole, engineers: codexRole, qa: codexRole, reviewer: codexRole }, leadPlanMode: false } } : {})
+      const { k, project, done } = await boot(provider === 'codex' ? { models: { roles: { lead: codexRole, engineers: codexRole, qa: codexRole, reviewer: codexRole }, leadPlanMode: false } } : {})
       const word = `fence-${randomUUID().slice(0, 8)}`
       const tracker: Tracker = {
         kind: 'linear', search: async () => [], start: async () => undefined,
@@ -104,7 +104,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live issue without a tracker MCP serv
       }
       k.integrations.trackerFor = async () => tracker
       try {
-        const ws = await k.workspaces.createWorkspace(room.id, {
+        const ws = await k.workspaces.createWorkspace(project.id, {
           agentId: 'web', title: 'Paint the fence', source: { kind: 'issue', id: 'DEMO-7', title: 'Paint the fence', tracker: 'linear' },
           prompt: "Read this workspace's issue with Kernel's get_issue tool, then reply with the codeword from its description in one sentence. Change no files."
         })

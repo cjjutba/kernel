@@ -10,7 +10,7 @@ export interface TaskStep {
 export interface Task {
   /** Short id the Lead assigns, for example "T-14" or "T-15b". */
   id: string
-  roomId: string
+  projectId: string
   title: string
   column: TaskColumn
   state: TaskState

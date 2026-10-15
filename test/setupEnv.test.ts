@@ -9,9 +9,9 @@ import { bus } from '../src/main/bus'
 import { sessionEnv } from '../src/main/services/sessions'
 import { parse as parseToml } from 'smol-toml'
 import { readSetupEnv, setupEnvPath } from '../src/main/services/env'
-import { defaultRepoSettings } from '../src/main/services/rooms'
+import { defaultRepoSettings } from '../src/main/services/projects'
 import { workspaceSlug } from '../src/shared/kernelVars'
-import { setUp, tempRepo, trustRoom, freePort } from './helpers'
+import { setUp, tempRepo, trustProject, freePort } from './helpers'
 
 // KERNEL-405: setup hands variables to the workspace through $KERNEL_ENV, like GitHub Actions' $GITHUB_ENV.
 
@@ -40,7 +40,7 @@ const SETUP = [
   'echo ANTHROPIC_BASE_URL=http://proxy.invalid >> "$KERNEL_ENV"'
 ].join(' && ')
 
-async function roomWith(setup: string) {
+async function projectWith(setup: string) {
   const repo = await tempRepo({
     'README.md': '# client\n',
     '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
@@ -54,20 +54,20 @@ async function roomWith(setup: string) {
   k.signedInReader = async () => true
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))
-  const r = await k.addRoom(repo)
-  await trustRoom(k, r.id)
-  return { k, room: r, repo, dataDir }
+  const r = await k.addProject(repo)
+  await trustProject(k, r.id)
+  return { k, project: r, repo, dataDir }
 }
 
 describe('$KERNEL_ENV (KERNEL-405)', () => {
   it("hands setup's variables to Kernel's session, a run script and a terminal, and Kernel's own names keep Kernel's values", async () => {
-    const { k, room, dataDir } = await roomWith(`sleep 1 && ${SETUP}`)
+    const { k, project, dataDir } = await projectWith(`sleep 1 && ${SETUP}`)
     const lines: string[] = []
     const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'setup') lines.push(...e.lines.map((l) => l.line)) }
     bus.on('push', on)
     onTestFinished(() => { bus.off('push', on) })
     sdk.calls.length = 0
-    const chat = await k.lead.startLeadChat(room.id, { prompt: 'Plan it' })
+    const chat = await k.lead.startLeadChat(project.id, { prompt: 'Plan it' })
     // Kernel's sessions, not the one-turn call that names the chat.
     const inWs = () => sdk.calls.filter((c) => c.options.cwd === k.store.workspace(chat.workspaceId)!.path && c.options.mcpServers)
     // Kernel's first message goes at once, before setup hands anything over (KERNEL-490).
@@ -93,19 +93,19 @@ describe('$KERNEL_ENV (KERNEL-405)', () => {
     // A run script.
     await k.handlers()['scripts.run']({ workspaceId: ws.id, kind: 'run' })
     await vi.waitFor(async () => expect(await readFile(join(ws.path, 'run.txt'), 'utf8')).toBe(`1 two words ${ws.port} ${ws.branch}\n`))
-    // Scripts get every layer whole, as with the room's variables (KERNEL-247). Sessions and terminals drop ANTHROPIC_* from it.
+    // Scripts get every layer whole, as with the project's variables (KERNEL-247). Sessions and terminals drop ANTHROPIC_* from it.
     expect(readSetupEnv(setupEnvPath(dataDir, ws.id))).toEqual({ vars: { A: '1', ANTHROPIC_BASE_URL: 'http://proxy.invalid', B: 'two words' }, dropped: ['1BAD', 'KERNEL_PORT'] })
     expect(sessionEnv(k.env.envFor(ws), {}).ANTHROPIC_BASE_URL).not.toBe('http://proxy.invalid')
   })
 
   it("passes nothing on until setup passed, or from a failed setup, and Run again writes the file over", async () => {
-    const { k, room, repo } = await roomWith('echo A=1 >> "$KERNEL_ENV" && test -f ok.txt')
+    const { k, project, repo } = await projectWith('echo A=1 >> "$KERNEL_ENV" && test -f ok.txt')
     k.sessions.send = async () => ({ queued: false })
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
     expect(ws.status).toBe('failed')
     expect(k.env.envFor(ws)).not.toHaveProperty('A')
     await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = 'echo C=3 >> "$KERNEL_ENV"'\n`)
-    await trustRoom(k, room.id)
+    await trustProject(k, project.id)
     expect((await k.retrySetup(ws.id)).status).toBe('ready')
     const env = k.env.envFor(k.store.workspace(ws.id)!)
     expect(env).toMatchObject({ C: '3' })
@@ -113,9 +113,9 @@ describe('$KERNEL_ENV (KERNEL-405)', () => {
   })
 
   it('keeps the file through an archive, and Delete removes it', async () => {
-    const { k, room, dataDir } = await roomWith('echo A=1 >> "$KERNEL_ENV"')
+    const { k, project, dataDir } = await projectWith('echo A=1 >> "$KERNEL_ENV"')
     k.sessions.send = async () => ({ queued: false })
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
     const file = setupEnvPath(dataDir, ws.id)
     expect(existsSync(file)).toBe(true)
     await k.archiveWorkspace(ws.id)
@@ -133,9 +133,9 @@ describe('One database per workspace (KERNEL-449)', () => {
     vi.stubEnv('COMPOSE_PROJECT_NAME', 'kernel_9d0ef99c6011')
     vi.stubEnv('DB', 'app_kernel_9d0ef99c6011')
     onTestFinished(() => { vi.unstubAllEnvs() })
-    const { k, room, dataDir } = await roomWith('echo "$KERNEL_WORKSPACE_SLUG|$COMPOSE_PROJECT_NAME" > names.txt && echo DB=app_\\${KERNEL_WORKSPACE_SLUG} >> "$KERNEL_ENV"')
+    const { k, project, dataDir } = await projectWith('echo "$KERNEL_WORKSPACE_SLUG|$COMPOSE_PROJECT_NAME" > names.txt && echo DB=app_\\${KERNEL_WORKSPACE_SLUG} >> "$KERNEL_ENV"')
     k.sessions.send = async () => ({ queued: false })
-    const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
     expect(ws.status).toBe('ready')
     const slug = workspaceSlug(ws)
     expect(await readFile(join(ws.path, 'names.txt'), 'utf8')).toBe(`${slug}|${slug}\n`)

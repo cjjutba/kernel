@@ -18,7 +18,7 @@ const FILES: Record<ReviewKind, string> = { code, security, ux }
 export const kindLabel = (kind: ReviewKind) => REVIEW_KINDS.find((k) => k.id === kind)?.label ?? kind
 
 /**
- * Kernel's own agent for a review kind: its `docs/lenses` file, run under `kernel-reviewer` so a verdict from it names no room
+ * Kernel's own agent for a review kind: its `docs/lenses` file, run under `kernel-reviewer` so a verdict from it names no project
  * agent. It pins no model, so its chat runs on the reviewer role's from Settings, Models.
  */
 export function lensAgent(kind: ReviewKind): AgentDef {

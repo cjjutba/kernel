@@ -17,8 +17,8 @@ async function kernel(files: Record<string, string> = { '.claude/agents/kai.md':
   await k.start()
   // No session starts: the chats are what's under test.
   k.sessions.send = async () => ({ queued: false })
-  const room = await k.addRoom(repo)
-  return { k, room, repo }
+  const project = await k.addProject(repo)
+  return { k, project, repo }
 }
 
 const agent = (o: Partial<AgentDef>): AgentDef => ({ id: 'kai', name: 'Kai', role: 'Frontend', description: '', lead: false, prompt: '', file: '', ...o })
@@ -35,8 +35,8 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
   })
 
   it("reads a review chat as the reviewer's, and a chat with no agent as the Lead's or an engineer's (feat-compact-window-per-role-with-plan)", async () => {
-    const { k, room } = await kernel()
-    const ws = (o: Partial<Workspace>): Workspace => ({ id: 'ws', roomId: room.id, name: 'w', branch: 'feat/w', baseRef: 'main', path: '/tmp/w', mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...o })
+    const { k, project } = await kernel()
+    const ws = (o: Partial<Workspace>): Workspace => ({ id: 'ws', projectId: project.id, name: 'w', branch: 'feat/w', baseRef: 'main', path: '/tmp/w', mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...o })
     expect(k.team.roleFor(ws({}), agent({}))).toBe('engineers')
     expect(k.team.roleFor(ws({}), agent({ role: 'QA' }))).toBe('qa')
     expect(k.team.roleFor(ws({ lead: true }), agent({ lead: true }))).toBe('lead')
@@ -64,22 +64,22 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
   })
 
   it('starts a hand-off on the role default, and on the agent alone when its file pins a model', async () => {
-    const { k, room } = await kernel({ '.claude/agents/kai.md': KAI, '.claude/agents/ivy.md': IVY.replace('role: QA', 'role: QA\nmodel: gpt-5.6-luna\nprovider: codex') })
+    const { k, project } = await kernel({ '.claude/agents/kai.md': KAI, '.claude/agents/ivy.md': IVY.replace('role: QA', 'role: QA\nmodel: gpt-5.6-luna\nprovider: codex') })
     await k.config.setSettings({ models: { roles: { engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'high' } } } })
-    const kai = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai' })
+    const kai = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai' })
     expect(k.store.chats(kai.id)[0]).toMatchObject({ provider: 'codex', model: 'gpt-6-astra', effort: 'high' })
-    const ivy = await k.createWorkspace(room.id, { prompt: 'Test it', agentId: 'ivy' })
+    const ivy = await k.createWorkspace(project.id, { prompt: 'Test it', agentId: 'ivy' })
     expect(k.store.chats(ivy.id)[0]).toMatchObject({ provider: 'codex', model: 'gpt-5.6-luna' })
     // A model picked in New workspace runs on its own provider.
-    const picked = await k.createWorkspace(room.id, { prompt: 'Again', agentId: 'kai', model: 'claude-opus-5-5', effort: 'low' })
+    const picked = await k.createWorkspace(project.id, { prompt: 'Again', agentId: 'kai', model: 'claude-opus-5-5', effort: 'low' })
     expect(k.store.chats(picked.id)[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'low' })
     expect(k.store.chats(picked.id)[0].provider).toBeUndefined()
     await k.stop()
   })
 
   it('leaves chats exactly as before while every role runs on Claude', async () => {
-    const { k, room } = await kernel()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai' })
+    const { k, project } = await kernel()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai' })
     const chat = k.store.chats(ws.id)[0]
     expect(chat).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'high' })
     expect(chat).not.toHaveProperty('provider')
@@ -87,8 +87,8 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
   })
 
   it('opens "New chat on Codex" on the agent\'s Codex pick, and keeps a started chat on its provider', async () => {
-    const { k, room } = await kernel()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai' })
+    const { k, project } = await kernel()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai' })
     const h = k.handlers()
     // No Codex role: the tab asks for Codex's models, which come from Codex itself, so the test names one.
     const tab = await h['chats.create']({ workspaceId: ws.id, provider: 'codex', model: 'gpt-5.6-terra', effort: 'medium' })

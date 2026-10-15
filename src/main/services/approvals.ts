@@ -37,7 +37,7 @@ export class Approvals {
     if (this.closed) return { approval: { ...approval, status: 'expired' }, decision: Promise.resolve(null) }
     this.store?.saveApproval(approval)
     bus.push({ type: 'approval', approval })
-    bus.activity({ kind: 'approval.requested', roomId: a.roomId, workspaceId: a.workspaceId, agentId: a.agentId, text: a.title, object: a.toolName })
+    bus.activity({ kind: 'approval.requested', projectId: a.projectId, workspaceId: a.workspaceId, agentId: a.agentId, text: a.title, object: a.toolName })
     const decision = new Promise<Decision | null>((resolve) => {
       const entry: Pending = { resolve, chatId: a.chatId, plan: a.kind === 'plan' }
       if (opts.timeoutMs) entry.timer = setTimeout(() => this.finish(approval.id, null, 'expired'), opts.timeoutMs)
@@ -86,8 +86,8 @@ export class Approvals {
   }
 
   /** The chat's plan cards still waiting, newest first, such as one a restart left up. */
-  waitingPlans(chatId: string, roomId: string): Approval[] {
-    return (this.store?.approvals({ roomId, pendingOnly: true }) ?? []).filter((a) => a.chatId === chatId && a.kind === 'plan')
+  waitingPlans(chatId: string, projectId: string): Approval[] {
+    return (this.store?.approvals({ projectId, pendingOnly: true }) ?? []).filter((a) => a.chatId === chatId && a.kind === 'plan')
   }
 
   /**
@@ -189,7 +189,7 @@ export class Approvals {
   private save(next: Approval, text: string): Approval {
     this.store?.saveApproval(next)
     bus.push({ type: 'approval', approval: next })
-    bus.activity({ kind: 'approval.decided', roomId: next.roomId, workspaceId: next.workspaceId, agentId: next.agentId, text, object: next.toolName })
+    bus.activity({ kind: 'approval.decided', projectId: next.projectId, workspaceId: next.workspaceId, agentId: next.agentId, text, object: next.toolName })
     return next
   }
 

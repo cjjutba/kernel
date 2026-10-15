@@ -3,7 +3,7 @@ import type { Workspace } from '../src/shared/types'
 import type { LeadPr } from '../src/renderer/src/screens/workspace/pr/leadPrList'
 import { groupOpen, issueKey } from '../src/renderer/src/screens/prs/model'
 
-const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, roomId: 'r', agentId: 'kai', prState: 'open', prNumber: 1, ...o }) as Workspace
+const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, projectId: 'r', agentId: 'kai', prState: 'open', prNumber: 1, ...o }) as Workspace
 const row = (id: string, o: { ready?: boolean; group?: LeadPr['group']; ws?: Partial<Workspace> } = {}): LeadPr =>
   ({ ws: ws(id, o.ws), name: 'Kai', ready: o.ready ?? false, review: { text: 'Not reviewed', tone: 'faint' }, group: o.group ?? 'progress' }) as LeadPr
 

@@ -31,8 +31,8 @@ async function setup() {
     ready: async (_cwd, ref) => { gh.asked.push(ref) },
     reopen: async (_cwd, ref) => { gh.asked.push(ref) }
   }
-  const room = await k.addRoom(repo)
-  return { k, room, gh }
+  const project = await k.addProject(repo)
+  return { k, project, gh }
 }
 
 const head = async (path: string) => (await run('git', ['-C', path, 'rev-parse', '--abbrev-ref', 'HEAD'])).trim()
@@ -45,22 +45,22 @@ async function commit(path: string, file: string) {
 
 describe('the Lead names the branch', () => {
   it('creates the workspace on the given branch, with a suffix when the name is taken', async () => {
-    const { k, room } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Symlink node_modules', branch: LINEAR })
+    const { k, project } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Symlink node_modules', branch: LINEAR })
     // Cut to 60 characters at a dash (KERNEL-275).
     const cut = 'cjjutbaofficial/kernel-53-symlink-node_modules-into-new'
     expect(ws.branch).toBe(cut)
     expect(await head(ws.path)).toBe(cut)
-    const again = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Again', branch: LINEAR })
+    const again = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Again', branch: LINEAR })
     expect(again.branch).toBe(`${cut}-2`)
-    await expect(k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Bad', branch: 'bad..name' })).rejects.toThrow('not a valid branch name')
+    await expect(k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Bad', branch: 'bad..name' })).rejects.toThrow('not a valid branch name')
     await k.stop()
   })
 
   it('passes branch from create_workspace through to the workspace', async () => {
     const asked: Parameters<KernelToolDeps['createWorkspace']>[0][] = []
     const deps: KernelToolDeps = {
-      roomId: 'room', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
+      projectId: 'project', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
       createWorkspace: async (o) => { asked.push(o); return { id: 'ws-1', branch: o.branch ?? 'feat/x', agentId: o.agentId } as never },
       messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
@@ -75,8 +75,8 @@ describe('the Lead names the branch', () => {
 
 describe('an agent switches branches in its worktree', () => {
   it('finds the PR, merges and archives on the branch the work is on', async () => {
-    const { k, room, gh } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Symlink node_modules' })
+    const { k, project, gh } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Symlink node_modules' })
     // What Noor did on KERNEL-53: a new branch in the same worktree, a commit, and a PR from it.
     await run('git', ['-C', ws.path, 'checkout', '-q', '-b', LINEAR])
     await commit(ws.path, 'link.ts')
@@ -84,28 +84,28 @@ describe('an agent switches branches in its worktree', () => {
     const seen = await k.refreshPr(ws.id)
     expect(seen).toMatchObject({ branch: LINEAR, prState: 'ready', prNumber: 54 })
     expect(gh.asked.at(-1)).toBe(LINEAR)
-    expect(k.store.activity(room.id).some((a) => a.kind === 'note' && a.object === LINEAR)).toBe(true)
+    expect(k.store.activity(project.id).some((a) => a.kind === 'note' && a.object === LINEAR)).toBe(true)
     expect((await k.mergePr(ws.id)).prState).toBe('merged')
     expect(gh.merged).toEqual([LINEAR])
     await k.stop()
   })
 
   it("archives the branch the workspace is on, and leaves the one it left", async () => {
-    const { k, room } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Moved' })
+    const { k, project } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Moved' })
     await run('git', ['-C', ws.path, 'checkout', '-q', '-b', 'moved-here'])
     await k.archiveWorkspace(ws.id, true)
     await k.archive.cleanedUp(ws.id)
     // Nothing unpushed on the new branch, so it goes as asked. The old one isn't the workspace's anymore.
-    expect(await branchList(room.path, 'moved-here')).toBe('')
-    expect(await branchList(room.path, ws.branch)).toContain(ws.branch)
+    expect(await branchList(project.path, 'moved-here')).toBe('')
+    expect(await branchList(project.path, ws.branch)).toContain(ws.branch)
     expect(k.store.workspace(ws.id)?.branch).toBe('moved-here')
     await k.stop()
   })
 
   it('restores on the branch the work was on', async () => {
-    const { k, room } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Come back' })
+    const { k, project } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Come back' })
     await run('git', ['-C', ws.path, 'checkout', '-q', '-b', 'kept-work'])
     await commit(ws.path, 'work.ts')
     await k.archiveWorkspace(ws.id, false)
@@ -117,8 +117,8 @@ describe('an agent switches branches in its worktree', () => {
   })
 
   it("drops the old branch's PR, and ignores a detached HEAD", async () => {
-    const { k, room, gh } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Two branches' })
+    const { k, project, gh } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Two branches' })
     gh.prs.set(ws.branch, prInfo('ready', 12))
     expect((await k.refreshPr(ws.id)).prNumber).toBe(12)
     await run('git', ['-C', ws.path, 'checkout', '-q', '--detach'])

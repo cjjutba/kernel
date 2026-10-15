@@ -9,7 +9,7 @@ export type WorkspaceMode = 'worktree' | 'current'
  * has Kernel make the change itself in the chat's own worktree. Read it through `leadModeOf`.
  */
 export type LeadMode = 'handoff' | 'build'
-/** `trust`: the room's scripts or files.copy list changed, or were never trusted, so the workspace waits for `rooms.trust` (KERNEL-209). */
+/** `trust`: the project's scripts or files.copy list changed, or were never trusted, so the workspace waits for `projects.trust` (KERNEL-209). */
 export type WorkspaceStatus = 'setup' | 'trust' | 'ready' | 'failed' | 'archived'
 /**
  * The PR header state. `creating`, `resolving` and `merging` are Kernel's own while the agent or gh works;
@@ -42,7 +42,7 @@ export interface DiffStat {
 
 export interface Workspace {
   id: string
-  roomId: string
+  projectId: string
   name: string
   /** The task title it was created from. */
   title?: string
@@ -60,7 +60,7 @@ export interface Workspace {
   lead?: true
   /**
    * On a Lead chat's workspace: how the chat works, Hand off or Build here (KERNEL-770). Unset is Hand off, as every chat
-   * was before. Set from the app's and room's default when the chat starts, then only by `lead.setMode`.
+   * was before. Set from the app's and project's default when the chat starts, then only by `lead.setMode`.
    */
   leadMode?: LeadMode
   port: number
@@ -130,7 +130,7 @@ export interface Workspace {
   stat?: DiffStat
   createdAt: number
   mergedAt?: number
-  /** How Kernel's last merge of this workspace's PR landed: the room's method, which can differ from the app's (KERNEL-468). */
+  /** How Kernel's last merge of this workspace's PR landed: the project's method, which can differ from the app's (KERNEL-468). */
   mergedWith?: MergeMethod
   /** The commit a local merge left on the base branch, for "Squashed into main as 4e1b9c2" (KERNEL-467). */
   mergeCommit?: string
@@ -238,7 +238,7 @@ export interface FileEntry {
   dir: boolean
   /** Change status when the file differs from the base. */
   status?: ChangedFile['status']
-  /** A row from one of the room's reference folders, by the folder's name. `path` is then absolute (KERNEL-748). */
+  /** A row from one of the project's reference folders, by the folder's name. `path` is then absolute (KERNEL-748). */
   reference?: string
 }
 
@@ -300,12 +300,12 @@ export interface CheckpointPreview {
 export type ScriptKind = 'setup' | 'run' | 'archive'
 
 /**
- * A room's scripts and files.copy list as Kernel would run them, after merging settings.toml and settings.local.toml,
+ * A project's scripts and files.copy list as Kernel would run them, after merging settings.toml and settings.local.toml,
  * waiting for the user to trust that exact text (KERNEL-209).
  */
 export interface ScriptTrust {
-  roomId: string
-  /** What `rooms.trust` takes back. Text that changes after the user read it gets a new hash and asks again. */
+  projectId: string
+  /** What `projects.trust` takes back. Text that changes after the user read it gets a new hash and asks again. */
   hash: string
   scripts: { setup?: string; run?: string; archive?: string }
   /** Named run scripts from `[run_scripts]` other than `run`, which is `scripts.run` (KERNEL-244). Left out when there are none. */
@@ -318,16 +318,16 @@ export interface ScriptTrust {
   envFiles?: string[]
   /**
    * The lifecycle scripts in the repo's root `package.json` that a package install runs (`preinstall`, `install`, `postinstall`
-   * and the prepare ones). The room's Install step and its setup script run that install, so the list waits for trust like a
+   * and the prepare ones). The project's Install step and its setup script run that install, so the list waits for trust like a
    * script (KERNEL-260). Left out when the repo has none.
    */
   installScripts?: { name: string; command: string }[]
   /**
-   * The command the room's one-time Install step waits to run in the main checkout, when it runs the repo's own code, as
+   * The command the project's one-time Install step waits to run in the main checkout, when it runs the repo's own code, as
    * `bundle install` does (KERNEL-444). Set only while that step waits for trust (KERNEL-682).
    */
   install?: string
-  /** Open workspaces held in `trust` until the room is trusted. */
+  /** Open workspaces held in `trust` until the project is trusted. */
   workspaceIds: string[]
 }
 

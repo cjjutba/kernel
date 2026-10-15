@@ -244,7 +244,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
    Chromium can't transition a scrollbar part, so the colour is a registered <color> custom property on the scroller, which it can, and the thumb reads it.
    It has to inherit, since a scrollbar part takes its style from its scroller the way a child does, and one that doesn't inherit reads as its initial
    value there. Every element declares its own, so a scroller never takes its parent's. ::-webkit-scrollbar only: scrollbar-width or scrollbar-color would
-   switch these rules off. Areas that hide theirs (.tab-strip, .bd-filter) say scrollbar-width: none. The transition sits at no specificity, so an element's own `transition` replaces it: one that scrolls
+   switch these rules off. Areas that hide theirs (.tab-strip) say scrollbar-width: none. The transition sits at no specificity, so an element's own `transition` replaces it: one that scrolls
    and declares its own must list --scroll-thumb too. */
 @property --scroll-thumb { syntax: '<color>'; inherits: true; initial-value: transparent; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -330,7 +330,6 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .pill:where(:not(:disabled, [aria-pressed='true'], [aria-current='page']):hover) { border-color: var(--line-3); color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { .btn, .icon-btn, .pill { transition: none; } }
 .pill[aria-pressed='true'], .pill[aria-current='page'] { border-color: var(--line-3); background: var(--surface-3); color: var(--ink); }
-.prov-title { display: inline-flex; align-items: center; gap: 6px; }
 .tab { height: 28px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-weight: 500; }
 .tab[aria-selected='true'] { background: var(--surface-3); color: var(--ink); }
 /* Underline tabs (Settings, Providers): text tabs on a hairline, the selected one ink with a 2px bar under it. */

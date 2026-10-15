@@ -74,8 +74,8 @@ describe('the files a turn changed (KERNEL-584)', () => {
   it('a Claude turn lists what it added, edited and deleted under its reply, and keeps them after a restart', async () => {
     const where = await dirs()
     const { k, pushed } = await kernel(where)
-    const room = await k.addRoom(await tempRepo(REPO))
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const project = await k.addProject(await tempRepo(REPO))
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     const chat = k.store.chats(ws.id)[0]
     await vi.waitFor(() => expect(sdk.calls.find((c) => c.options.cwd === ws.path)).toBeDefined())
     const call = sdk.calls.find((c) => c.options.cwd === ws.path)!
@@ -146,8 +146,8 @@ describe('the files a turn changed (KERNEL-584)', () => {
       onTestFinished(() => k.stop({ budgetMs: 0 }))
       await k.providers.setPath('codex', { path: fake.bin })
       const repo = await tempRepo(REPO)
-      const room = await k.addRoom(repo)
-      const ws: Workspace = { id: 'ws-codex', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+      const project = await k.addProject(repo)
+      const ws: Workspace = { id: 'ws-codex', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
       k.store.saveWorkspace(ws)
       const chat: Chat = { id: 'codex', workspaceId: ws.id, title: 'x', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'low', plan: false, createdAt: 1 }
       k.store.saveChat(chat)

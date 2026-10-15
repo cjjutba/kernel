@@ -2,7 +2,7 @@ import type { ReviewConfig, ReviewKind, ReviewPatch } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, getState } from '../../../store'
 
-/** `[review]` before the room's file says anything: the code review on and required, the others off, two rounds (main's `reviewOf`). */
+/** `[review]` before the project's file says anything: the code review on and required, the others off, two rounds (main's `reviewOf`). */
 export const NO_REVIEW: ReviewConfig = {
   rounds: 2,
   kinds: {
@@ -31,17 +31,17 @@ export function applyReviewPatch(review: ReviewConfig, patch: ReviewPatch): Revi
 }
 
 /**
- * Save a change to a room's `[review]`, in the shared settings.toml. The screen updates at once and main's answer replaces it.
+ * Save a change to a project's `[review]`, in the shared settings.toml. The screen updates at once and main's answer replaces it.
  * A failure puts the old settings back and says why, so a control never shows a value that wasn't saved.
  */
-export async function patchReview(roomId: string, patch: ReviewPatch) {
-  const before = getState().roomSettings[roomId]
-  if (before) actions.settings.setRoom(roomId, { ...before, review: applyReviewPatch(before.review ?? NO_REVIEW, patch) })
+export async function patchReview(projectId: string, patch: ReviewPatch) {
+  const before = getState().projectSettings[projectId]
+  if (before) actions.settings.setProject(projectId, { ...before, review: applyReviewPatch(before.review ?? NO_REVIEW, patch) })
   try {
-    actions.settings.setRoom(roomId, await call('settings.setReview', { roomId, review: patch }))
+    actions.settings.setProject(projectId, await call('settings.setReview', { projectId, review: patch }))
     return true
   } catch (e) {
-    if (before) actions.settings.setRoom(roomId, before)
+    if (before) actions.settings.setProject(projectId, before)
     actions.ui.toast({ title: 'Could not save the review settings', sub: cleanError(e) })
     return undefined
   }
@@ -54,15 +54,15 @@ const cleanPaths = (paths: string[]) => [...new Set(paths.map((p) => p.trim()).f
  * Save the repo's always-review paths, `[merge] always_review` in the shared settings.toml (KERNEL-594). The screen updates at once
  * and main's answer replaces it. A failure puts the old list back and says why.
  */
-export async function patchAlwaysReview(roomId: string, paths: string[]) {
-  const before = getState().roomSettings[roomId]
-  if (before) actions.settings.setRoom(roomId, { ...before, merge: { alwaysReview: cleanPaths(paths) } })
+export async function patchAlwaysReview(projectId: string, paths: string[]) {
+  const before = getState().projectSettings[projectId]
+  if (before) actions.settings.setProject(projectId, { ...before, merge: { alwaysReview: cleanPaths(paths) } })
   try {
-    const saved = await call('settings.setAlwaysReview', { roomId, paths })
-    actions.settings.setRoom(roomId, saved)
+    const saved = await call('settings.setAlwaysReview', { projectId, paths })
+    actions.settings.setProject(projectId, saved)
     return saved
   } catch (e) {
-    if (before) actions.settings.setRoom(roomId, before)
+    if (before) actions.settings.setProject(projectId, before)
     actions.ui.toast({ title: 'Could not save the always-review paths', sub: cleanError(e) })
     return undefined
   }

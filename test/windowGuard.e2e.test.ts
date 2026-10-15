@@ -40,7 +40,7 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('the w
     await page.evaluate((url) => { location.href = url }, pathToFileURL(dropped).href)
     await page.waitForTimeout(500)
     expect(page.url()).toBe(before)
-    expect(await invoke('rooms.list')).toBe('ok')
+    expect(await invoke('projects.list')).toBe('ok')
   })
 
   it('hands only http and https links to the browser', async () => {
@@ -55,17 +55,17 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('the w
     expect(app.windows()).toHaveLength(1)
   })
 
-  it('refuses to open a file outside every room and workspace in the editor', async () => {
-    expect(await invoke('system.openInEditor', { path: '/System/Applications/Calculator.app' })).toContain('inside a room or workspace')
-    expect(await invoke('system.openInEditor', { path: 'relative/run.command' })).toContain('inside a room or workspace')
+  it('refuses to open a file outside every project and workspace in the editor', async () => {
+    expect(await invoke('system.openInEditor', { path: '/System/Applications/Calculator.app' })).toContain('inside a project or workspace')
+    expect(await invoke('system.openInEditor', { path: 'relative/run.command' })).toContain('inside a project or workspace')
   })
 
   it('refuses every call from a page that is not the app', async () => {
     // A load started from the main process skips will-navigate, which is how a page that got in some other way looks.
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.loadURL('data:text/html,<p>not Kernel</p>'))
-    expect(await invoke('rooms.list')).toContain('refused rooms.list')
+    expect(await invoke('projects.list')).toContain('refused projects.list')
     expect(await invoke('system.pickFolder')).toContain('refused system.pickFolder')
     expect(await invoke('system.pickImage')).toContain('refused system.pickImage')
-    expect(await invoke('rooms.setIcon', { roomId: 'r', icon: { kind: 'image', path: '/etc/hosts' } })).toContain('refused rooms.setIcon')
+    expect(await invoke('projects.setIcon', { projectId: 'r', icon: { kind: 'image', path: '/etc/hosts' } })).toContain('refused projects.setIcon')
   })
 })

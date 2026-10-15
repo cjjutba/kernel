@@ -7,20 +7,20 @@ import { buildEnv, withoutClaudeNames } from '../services/env'
 import { CONNECT_URL, discoverMcp, toolServerName, withMissing, withStatus, type McpReport } from '../services/mcp'
 import { claudeExecutable } from '../services/providers/binary'
 import { mcpReports, probeClaudeMcp, sessionEnv } from '../services/providers/claude'
-import { aliasesInRoom, disabledInRoom } from '../services/settings'
+import { aliasesInProject, disabledInProject } from '../services/settings'
 import { Feature } from './feature'
 
 /**
- * The MCP servers each room's agents can reach, and how each is doing (KERNEL-464). Kernel finds them in the files Claude
- * Code and Codex read, and hears their status from a probe of the room and from every session. Nothing is saved: a status
+ * The MCP servers each project's agents can reach, and how each is doing (KERNEL-464). Kernel finds them in the files Claude
+ * Code and Codex read, and hears their status from a probe of the project and from every session. Nothing is saved: a status
  * is as good as the last report, and the next probe or session brings a new one.
  */
 export class Mcp extends Feature {
-  /** The last report on each server, by room, then provider, then the server's name. */
+  /** The last report on each server, by project, then provider, then the server's name. */
   private readonly reports = new Map<string, Map<Provider, Map<string, McpReport>>>()
-  /** Rooms a probe has listed Claude's servers for, so a server it didn't list is missing. */
+  /** Projects a probe has listed Claude's servers for, so a server it didn't list is missing. */
   private readonly probed = new Set<string>()
-  /** Rooms the first `mcp.list` started a probe for, so a probe that fails isn't started again by every list. */
+  /** Projects the first `mcp.list` started a probe for, so a probe that fails isn't started again by every list. */
   private readonly asked = new Set<string>()
   private readonly probes = new Map<string, Promise<void>>()
   /** What `mcp.accounts` last found on each account, by `provider:id` (KERNEL-626). */
@@ -38,90 +38,90 @@ export class Mcp extends Feature {
   /** When a Codex server last signed in from Kernel, by name. Codex shares the token, so it is ready on every Codex account checked before (KERNEL-646). */
   private readonly codexSignedIn = new Map<string, number>()
 
-  /** The room's servers for one provider, with the last status each had. */
-  async servers(roomId: string, provider: Provider = 'claude'): Promise<McpServer[]> {
-    const { path } = this.mustRoom(roomId)
-    const off = disabledInRoom(path).mcp
-    return withStatus(await this.discover(path, off), this.known(roomId, provider), off, provider)
+  /** The project's servers for one provider, with the last status each had. */
+  async servers(projectId: string, provider: Provider = 'claude'): Promise<McpServer[]> {
+    const { path } = this.mustProject(projectId)
+    const off = disabledInProject(path).mcp
+    return withStatus(await this.discover(path, off), this.known(projectId, provider), off, provider)
   }
 
-  /** Every report the room holds for one provider. */
-  known(roomId: string, provider: Provider): McpReport[] { return [...(this.reports.get(roomId)?.get(provider)?.values() ?? [])] }
+  /** Every report the project holds for one provider. */
+  known(projectId: string, provider: Provider): McpReport[] { return [...(this.reports.get(projectId)?.get(provider)?.values() ?? [])] }
 
   /**
-   * A session's report. It adds to what the room knows and never takes a server away, since a session may not list one
-   * yet (claude.ai's connectors join late) or at all (one the room switched off). Returns what the room holds now.
+   * A session's report. It adds to what the project knows and never takes a server away, since a session may not list one
+   * yet (claude.ai's connectors join late) or at all (one the project switched off). Returns what the project holds now.
    */
-  reported(roomId: string, provider: Provider, list: McpReport[]): McpReport[] {
-    this.merge(roomId, provider, list, false)
-    return this.known(roomId, provider)
+  reported(projectId: string, provider: Provider, list: McpReport[]): McpReport[] {
+    this.merge(projectId, provider, list, false)
+    return this.known(projectId, provider)
   }
 
   /**
-   * Checks the room's Claude servers now: Claude Code starts in the room's folder with what a session there gets from the
-   * room's settings, lists the servers with their status and stops (`probeClaudeMcp`). The list replaces what the room
-   * knew of Claude's servers, so one taken out of a file goes. One probe runs per room at a time.
+   * Checks the project's Claude servers now: Claude Code starts in the project's folder with what a session there gets from the
+   * project's settings, lists the servers with their status and stops (`probeClaudeMcp`). The list replaces what the project
+   * knew of Claude's servers, so one taken out of a file goes. One probe runs per project at a time.
    */
-  probe(roomId: string): Promise<void> {
-    const running = this.probes.get(roomId)
+  probe(projectId: string): Promise<void> {
+    const running = this.probes.get(projectId)
     if (running) return running
     const p = (async () => {
-      const { path } = this.mustRoom(roomId)
-      const base = buildEnv({ base: process.env, app: withoutClaudeNames(this.envStore.values()), room: withoutClaudeNames(this.envStore.values(roomId)), kernel: {} })
-      const list = await probeClaudeMcp(path, { env: sessionEnv(base, this.k.providers.claudeEnv()), executable: claudeExecutable(this.settings.providers?.claude), denied: disabledInRoom(path).mcp })
-      this.probed.add(roomId)
-      this.merge(roomId, 'claude', mcpReports(list), true)
-    })().finally(() => this.probes.delete(roomId))
-    this.probes.set(roomId, p)
+      const { path } = this.mustProject(projectId)
+      const base = buildEnv({ base: process.env, app: withoutClaudeNames(this.envStore.values()), project: withoutClaudeNames(this.envStore.values(projectId)), kernel: {} })
+      const list = await probeClaudeMcp(path, { env: sessionEnv(base, this.k.providers.claudeEnv()), executable: claudeExecutable(this.settings.providers?.claude), denied: disabledInProject(path).mcp })
+      this.probed.add(projectId)
+      this.merge(projectId, 'claude', mcpReports(list), true)
+    })().finally(() => this.probes.delete(projectId))
+    this.probes.set(projectId, p)
     return p
   }
 
   /**
-   * What an agent's tools line needs from the room's servers, on the provider it runs on, as Team warnings. Codex's list
+   * What an agent's tools line needs from the project's servers, on the provider it runs on, as Team warnings. Codex's list
    * is its config. Claude's is only whole once a probe listed it, since claude.ai's connectors are in no file.
    */
-  async warnings(roomId: string, agent: AgentDef): Promise<AgentWarning[]> {
-    const { servers, aliases, complete } = await this.forAgent(roomId, agent)
+  async warnings(projectId: string, agent: AgentDef): Promise<AgentWarning[]> {
+    const { servers, aliases, complete } = await this.forAgent(projectId, agent)
     return mcpWarnings(agent.tools, servers, { aliases, complete })
   }
 
   /**
-   * The servers an agent can reach in the room and the ones its tools line names that it can't use, for the new agent card
-   * and create_agent's result (KERNEL-476). For a Claude agent in a room no probe has listed yet, it starts one, so a server no
+   * The servers an agent can reach in the project and the ones its tools line names that it can't use, for the new agent card
+   * and create_agent's result (KERNEL-476). For a Claude agent in a project no probe has listed yet, it starts one, so a server no
    * file names can be told apart from a claude.ai connector. `wait` waits for that probe, and without it the answer is
-   * what the room knows now.
+   * what the project knows now.
    */
-  async reach(roomId: string, agent: AgentDef, o: { wait?: boolean } = {}): Promise<AgentReach> {
-    if (this.k.team.pickFor(agent).provider === 'claude' && !this.probed.has(roomId)) {
-      const checked = this.probe(roomId).catch(() => undefined)
+  async reach(projectId: string, agent: AgentDef, o: { wait?: boolean } = {}): Promise<AgentReach> {
+    if (this.k.team.pickFor(agent).provider === 'claude' && !this.probed.has(projectId)) {
+      const checked = this.probe(projectId).catch(() => undefined)
       if (o.wait) await checked
     }
-    const { servers, aliases, complete } = await this.forAgent(roomId, agent)
+    const { servers, aliases, complete } = await this.forAgent(projectId, agent)
     return serverReach(agent.tools, servers, { disallowed: agent.disallowedTools, aliases, complete })
   }
 
-  /** The room's servers on the provider an agent runs on, with the room's aliases and whether the list is whole. */
-  private async forAgent(roomId: string, agent: AgentDef) {
+  /** The project's servers on the provider an agent runs on, with the project's aliases and whether the list is whole. */
+  private async forAgent(projectId: string, agent: AgentDef) {
     const provider = this.k.team.pickFor(agent).provider
-    const servers = await this.servers(roomId, provider)
-    return { servers, aliases: aliasesInRoom(this.mustRoom(roomId).path), complete: provider === 'codex' || this.probed.has(roomId) }
+    const servers = await this.servers(projectId, provider)
+    return { servers, aliases: aliasesInProject(this.mustProject(projectId).path), complete: provider === 'codex' || this.probed.has(projectId) }
   }
 
   private discover(root: string, off: string[]) {
     return discoverMcp(root, this.home, off, { codexHome: this.k.providers.codexHome() })
   }
 
-  /** Takes in a report, and tells the renderer when the room's servers for that provider changed. */
-  private merge(roomId: string, provider: Provider, list: McpReport[], replace: boolean) {
-    const room = this.reports.get(roomId) ?? new Map<Provider, Map<string, McpReport>>()
-    const before = room.get(provider) ?? new Map<string, McpReport>()
+  /** Takes in a report, and tells the renderer when the project's servers for that provider changed. */
+  private merge(projectId: string, provider: Provider, list: McpReport[], replace: boolean) {
+    const project = this.reports.get(projectId) ?? new Map<Provider, Map<string, McpReport>>()
+    const before = project.get(provider) ?? new Map<string, McpReport>()
     const next = new Map(replace ? [] : before)
     for (const r of list) next.set(r.name, r)
-    room.set(provider, next)
-    this.reports.set(roomId, room)
+    project.set(provider, next)
+    this.reports.set(projectId, project)
     const shape = (m: Map<string, McpReport>) => JSON.stringify([...m.values()].sort((a, b) => a.name.localeCompare(b.name)))
     if (shape(before) === shape(next)) return
-    void this.servers(roomId, provider).then((servers) => bus.push({ type: 'mcp', roomId, provider, servers })).catch(() => undefined)
+    void this.servers(projectId, provider).then((servers) => bus.push({ type: 'mcp', projectId, provider, servers })).catch(() => undefined)
   }
 
   // ---------- every account's servers (KERNEL-626)
@@ -181,12 +181,12 @@ export class Mcp extends Feature {
    * What Kernel knows of each account in `rows`, in their order, with every server of its provider (`withMissing`). A Claude
    * server that needed a sign-in and is off the account's `mcpSignIns` since got one, here or shared from another login, so
    * it is ready, and so is a Codex server signed in from Kernel since the account's check (KERNEL-646). Then the quiet ones:
-   * a server ignored on the account reads `ignored`, and one switched off in every room carries `roomOff`. Last the counts,
+   * a server ignored on the account reads `ignored`, and one switched off in every project carries `projectOff`. Last the counts,
    * and the Codex accounts whose servers read the same (`sharedWith`, KERNEL-660).
    */
   private view(rows: AccountProfile[]): McpAccount[] {
     const ready = (s: McpAccountServer): McpAccountServer => ({ name: s.name, kind: s.kind, connector: s.connector, state: 'ready' })
-    const roomOff = this.roomOff()
+    const projectOff = this.projectOff()
     const out = withMissing(rows.map((a): Omit<McpAccount, 'needsYou' | 'ready'> => {
       const base = { provider: a.provider, accountId: a.id, label: a.label, ...(a.email ? { email: a.email } : {}) }
       const had = this.onAccounts.get(`${a.provider}:${a.id}`)
@@ -198,7 +198,7 @@ export class Mcp extends Feature {
     })).map((a) => {
       const ignored = new Set(this.k.providers.mcpIgnored(a.provider, a.accountId))
       const servers = a.servers.map((s): McpAccountServer => {
-        const off = roomOff(s.name) ? { roomOff: true } : {}
+        const off = projectOff(s.name) ? { projectOff: true } : {}
         return ignored.has(s.name) ? { name: s.name, kind: s.kind, connector: s.connector, state: 'ignored', ...off } : { ...s, ...off }
       })
       return { ...a, servers, ...mcpCounts(servers) }
@@ -207,13 +207,13 @@ export class Mcp extends Feature {
   }
 
   /**
-   * Whether a server is switched off in every room Kernel has open, by its name or the name its tools carry (KERNEL-646). Such
-   * a server never runs, so it doesn't warn. With no room open, none is.
+   * Whether a server is switched off in every project Kernel has open, by its name or the name its tools carry (KERNEL-646). Such
+   * a server never runs, so it doesn't warn. With no project open, none is.
    */
-  roomOff(): (server: string) => boolean {
-    const rooms = this.store.rooms().filter((r) => !r.archived)
-    if (!rooms.length) return () => false
-    const lists = rooms.map((r) => { try { return new Set(disabledInRoom(r.path).mcp.map(toolServerName)) } catch { return new Set<string>() } })
+  projectOff(): (server: string) => boolean {
+    const projects = this.store.projects().filter((r) => !r.archived)
+    if (!projects.length) return () => false
+    const lists = projects.map((r) => { try { return new Set(disabledInProject(r.path).mcp.map(toolServerName)) } catch { return new Set<string>() } })
     return (server) => lists.every((off) => off.has(toolServerName(server)))
   }
 
@@ -251,7 +251,7 @@ export class Mcp extends Feature {
 
   /**
    * An account was just added (`Providers.add`): its first check, then one `account.mcpNeeded` push when servers need a
-   * sign-in there, the ignored ones and ones switched off in every room left out. Only Claude: Codex shares its servers and
+   * sign-in there, the ignored ones and ones switched off in every project left out. Only Claude: Codex shares its servers and
    * their sign-ins with every Codex account, so a new one needs nothing the others don't (KERNEL-626.md). The app turns it
    * on (`checkMcpOnAdd`).
    */
@@ -271,8 +271,8 @@ export class Mcp extends Feature {
   }
 
   /**
-   * Sign in to all (`accounts.mcpSignInAll`): every server that needs a sign-in on an account, one after another, through
-   * `Providers.mcpSignIn`, the ignored ones and ones switched off in every room left out. Codex since KERNEL-646.
+   * Sign in to all: every server that needs a sign-in on an account, one after another, through `Providers.mcpSignIn`, the
+   * ignored ones and ones switched off in every project left out. Codex since KERNEL-646.
    */
   signInAll(provider: Provider, accountId: string): Promise<McpSignInAll> {
     return this.queue(provider, accountId, async (a) => ({ steps: waiting(a).map((server) => ({ server })) }))
@@ -368,19 +368,18 @@ export class Mcp extends Feature {
 
   handlers() {
     return {
-      'mcp.list': async ({ roomId, provider = 'claude', probe }) => {
-        if (!roomId) return (await this.discover(this.home, [])).filter((s) => (s.provider ?? 'claude') === provider)
-        this.mustRoom(roomId)
-        // The first list for a room checks it, and the answer comes as an `mcp` push. `probe` waits for a fresh one.
-        if (provider === 'claude' && (probe || !this.asked.has(roomId))) {
-          this.asked.add(roomId)
-          const checked = this.probe(roomId).catch(() => undefined)
+      'mcp.list': async ({ projectId, provider = 'claude', probe }) => {
+        if (!projectId) return (await this.discover(this.home, [])).filter((s) => (s.provider ?? 'claude') === provider)
+        this.mustProject(projectId)
+        // The first list for a project checks it, and the answer comes as an `mcp` push. `probe` waits for a fresh one.
+        if (provider === 'claude' && (probe || !this.asked.has(projectId))) {
+          this.asked.add(projectId)
+          const checked = this.probe(projectId).catch(() => undefined)
           if (probe) await checked
         }
-        return this.servers(roomId, provider)
+        return this.servers(projectId, provider)
       },
       'mcp.accounts': async (req) => this.accounts(req ?? {}),
-      'accounts.mcpSignInAll': async ({ provider, accountId }) => this.signInAll(provider, accountId),
       'accounts.mcpIgnore': async ({ provider, accountId, server, ignored }) => this.ignore(provider, accountId, server, ignored),
       'accounts.mcpSetUp': async ({ provider, accountId, include }) => this.setUp(provider, accountId, include),
       'mcp.recheck': async () => this.recheck()
@@ -388,8 +387,8 @@ export class Mcp extends Feature {
   }
 }
 
-/** The servers on an account that need a sign-in and warn: not ignored, which `view` already made `ignored`, and not off in every room. */
-const waiting = (a: McpAccount) => a.servers.filter((s) => s.state === 'needs-sign-in' && !s.roomOff).map((s) => s.name)
+/** The servers on an account that need a sign-in and warn: not ignored, which `view` already made `ignored`, and not off in every project. */
+const waiting = (a: McpAccount) => a.servers.filter((s) => s.state === 'needs-sign-in' && !s.projectOff).map((s) => s.name)
 
 /** How often `mcp.recheck` checks at most (KERNEL-660). */
 const RECHECK_MS = 10_000

@@ -94,7 +94,7 @@ describe('the pick lasts while its workspace is on screen', () => {
     setCompare('ws-a', { branch: 'origin/develop' })
     store.setState((s) => ({ ui: { ...s.ui, toasts: [] } }))
     expect(compareOf('ws-a')).toEqual({ branch: 'origin/develop' })
-    store.setState((s) => ({ ui: { ...s.ui, route: { name: 'rooms' } } }))
+    store.setState((s) => ({ ui: { ...s.ui, route: { name: 'projects' } } }))
     expect(compareOf('ws-a')).toBe(ALL)
   })
 

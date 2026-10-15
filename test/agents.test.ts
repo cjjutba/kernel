@@ -230,7 +230,7 @@ describe('agents', () => {
     await restoreAgent(repo, 'reviewer')
     expect((await loadAgents(repo)).map((a) => [a.id, a.model])).toEqual([['reviewer', 'opus']])
   })
-  it("never replaces an agent the room has, or takes the name of Kernel's own", async () => {
+  it("never replaces an agent the project has, or takes the name of Kernel's own", async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
     await saveAgent(repo, { id: 'kai', description: 'Frontend engineer.', prompt: 'You are Kai.' })
     await expect(saveAgent(repo, { id: 'kai', description: 'Another Kai.', prompt: 'x' })).rejects.toThrow(/already on the team/)

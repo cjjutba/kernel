@@ -6,7 +6,7 @@ import { oneOf, useRemembered } from '../../../remember'
 import { Button, Icon, Tabs } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 import { chooseTracker } from '../../issues/parts'
-import { useRoomTracker } from '../../issues/useRoomTracker'
+import { useProjectTracker } from '../../issues/useProjectTracker'
 
 // + > Link issue, Link pull request and Link workspaces (D-093, KERNEL-786). Each adds chips the agent reads as a line of context.
 
@@ -35,17 +35,17 @@ function Panel({ label, query, onQuery, placeholder, onKey, anchorRef, onClose, 
 }
 
 /**
- * The room's issues: its tracker's (Linear with the token in Settings, Integrations, or GitHub Issues through gh). A Linear room can
- * also link one of its repo's GitHub issues, so it keeps the second tab. A room with no tracker says so. The stored tab only ever
- * applies to a Linear room. Enter links the active one.
+ * The project's issues: its tracker's (Linear with the token in Settings, Integrations, or GitHub Issues through gh). A Linear project can
+ * also link one of its repo's GitHub issues, so it keeps the second tab. A project with no tracker says so. The stored tab only ever
+ * applies to a Linear project. Enter links the active one.
  */
-export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roomId: string; anchorRef: React.RefObject<HTMLElement | null>; onPick: (part: ChatPart) => void; onClose: () => void; style?: CSSProperties }) {
-  const { read } = useRoomTracker(roomId)
+export function IssuePicker({ projectId, anchorRef, onPick, onClose, style }: { projectId: string; anchorRef: React.RefObject<HTMLElement | null>; onPick: (part: ChatPart) => void; onClose: () => void; style?: CSSProperties }) {
+  const { read } = useProjectTracker(projectId)
   const kind = read.kind === 'ready' ? read.tracker.kind : undefined
-  const roomName = useStore((s) => s.rooms.find((r) => r.id === roomId)?.name)
+  const projectName = useStore((s) => s.projects.find((r) => r.id === projectId)?.name)
   const [tab, setTab] = useRemembered<Source>(TAB_KEY, oneOf<Source>(['linear', 'github'], 'linear'))
-  // A GitHub room has the one source and only a Linear room chooses between the two. A room with no tracker lists nothing, so
-  // a tab stored from another room never lists that tracker's issues here.
+  // A GitHub project has the one source and only a Linear project chooses between the two. A project with no tracker lists nothing, so
+  // a tab stored from another project never lists that tracker's issues here.
   const source: Source | undefined = kind === 'github' ? 'github' : kind === 'linear' ? tab : undefined
   const [q, setQ] = useState('')
   const [at, setAt] = useState(0)
@@ -60,11 +60,11 @@ export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roo
     setLoad({ state: 'loading' })
     const t = setTimeout(() => {
       const query = q.trim() || undefined
-      const req = source === 'linear' ? call('issues.list', { roomId, query }) : call('github.issues', { roomId, query })
+      const req = source === 'linear' ? call('issues.list', { projectId, query }) : call('github.issues', { projectId, query })
       req.then((rows) => { if (!stale) setLoad({ state: 'ready', rows }) }, (e) => { if (!stale) setLoad({ state: 'error', message: cleanError(e) }) })
     }, q ? 200 : 0)
     return () => { stale = true; clearTimeout(t) }
-  }, [source, q, roomId, kind, read])
+  }, [source, q, projectId, kind, read])
   useEffect(() => { setAt(0) }, [source, q])
 
   const rows = load.state === 'ready' ? load.rows : []
@@ -91,8 +91,8 @@ export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roo
         {load.state === 'error' && <p role="alert" className="link-note">{load.message}</p>}
         {none && (
           <div className="link-none">
-            <p className="link-note">{roomName ?? 'This room'} has no issue tracker. Choose Linear or GitHub Issues in this room's settings.</p>
-            <Button onClick={() => { onClose(); chooseTracker(roomId) }}>Choose a tracker</Button>
+            <p className="link-note">{projectName ?? 'This project'} has no issue tracker. Choose Linear or GitHub Issues in this project's settings.</p>
+            <Button onClick={() => { onClose(); chooseTracker(projectId) }}>Choose a tracker</Button>
           </div>
         )}
         {load.state === 'ready' && source && !rows.length && <p className="link-note">{q.trim() ? 'No open issues match.' : 'No open issues.'}</p>}
@@ -101,8 +101,8 @@ export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roo
   )
 }
 
-/** The room's open pull requests, from gh. Enter links the active one, as in the issue picker. */
-export function PrPicker({ roomId, anchorRef, onPick, onClose, style }: { roomId: string; anchorRef: React.RefObject<HTMLElement | null>; onPick: (part: ChatPart) => void; onClose: () => void; style?: CSSProperties }) {
+/** The project's open pull requests, from gh. Enter links the active one, as in the issue picker. */
+export function PrPicker({ projectId, anchorRef, onPick, onClose, style }: { projectId: string; anchorRef: React.RefObject<HTMLElement | null>; onPick: (part: ChatPart) => void; onClose: () => void; style?: CSSProperties }) {
   const [q, setQ] = useState('')
   const [at, setAt] = useState(0)
   const [load, setLoad] = useState<{ state: 'loading' } | { state: 'ready'; rows: PrSummary[] } | { state: 'error'; message: string }>({ state: 'loading' })
@@ -110,10 +110,10 @@ export function PrPicker({ roomId, anchorRef, onPick, onClose, style }: { roomId
     let stale = false
     setLoad({ state: 'loading' })
     const t = setTimeout(() => {
-      call('github.prs', { roomId, query: q.trim() || undefined }).then((rows) => { if (!stale) setLoad({ state: 'ready', rows }) }, (e) => { if (!stale) setLoad({ state: 'error', message: cleanError(e) }) })
+      call('github.prs', { projectId, query: q.trim() || undefined }).then((rows) => { if (!stale) setLoad({ state: 'ready', rows }) }, (e) => { if (!stale) setLoad({ state: 'error', message: cleanError(e) }) })
     }, q ? 200 : 0)
     return () => { stale = true; clearTimeout(t) }
-  }, [q, roomId])
+  }, [q, projectId])
   useEffect(() => { setAt(0) }, [q])
 
   const rows = load.state === 'ready' ? load.rows : []
@@ -144,19 +144,19 @@ export function PrPicker({ roomId, anchorRef, onPick, onClose, style }: { roomId
 const workspacePart = (w: Workspace): ChatPart => ({ type: 'workspace', name: w.name, workspaceId: w.id, branch: w.branch, path: w.path, prNumber: w.prNumber, prUrl: w.prUrl })
 
 /**
- * The room's other open workspaces. Space or a click checks one, Enter links the checked ones (or the active one when none
+ * The project's other open workspaces. Space or a click checks one, Enter links the checked ones (or the active one when none
  * is checked), and so does the Link button.
  */
-export function WorkspacePicker({ roomId, exclude, anchorRef, onPick, onClose, style }: { roomId: string; exclude?: string; anchorRef: React.RefObject<HTMLElement | null>; onPick: (parts: ChatPart[]) => void; onClose: () => void; style?: CSSProperties }) {
+export function WorkspacePicker({ projectId, exclude, anchorRef, onPick, onClose, style }: { projectId: string; exclude?: string; anchorRef: React.RefObject<HTMLElement | null>; onPick: (parts: ChatPart[]) => void; onClose: () => void; style?: CSSProperties }) {
   const all = useStore((s) => s.workspaces)
   const [q, setQ] = useState('')
   const [at, setAt] = useState(0)
   const [picked, setPicked] = useState<string[]>([])
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    // The Lead's own workspace isn't one of the room's workspaces, as in the sidebar.
-    return all.filter((w) => w.roomId === roomId && w.id !== exclude && w.status !== 'archived' && !w.lead && (!needle || `${w.name} ${w.branch}`.toLowerCase().includes(needle)))
-  }, [all, roomId, exclude, q])
+    // The Lead's own workspace isn't one of the project's workspaces, as in the sidebar.
+    return all.filter((w) => w.projectId === projectId && w.id !== exclude && w.status !== 'archived' && !w.lead && (!needle || `${w.name} ${w.branch}`.toLowerCase().includes(needle)))
+  }, [all, projectId, exclude, q])
   useEffect(() => { setAt(0) }, [q])
 
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
@@ -186,7 +186,7 @@ export function WorkspacePicker({ roomId, exclude, anchorRef, onPick, onClose, s
             </button>
           )
         })}
-        {!rows.length && <p className="link-note">{q.trim() ? 'No workspaces match.' : 'No other open workspaces in this room.'}</p>}
+        {!rows.length && <p className="link-note">{q.trim() ? 'No workspaces match.' : 'No other open workspaces in this project.'}</p>}
       </div>
       <div className="link-foot">
         <span className="link-hint">{picked.length ? `${picked.length} selected` : q ? 'Click to select' : 'Space or click to select'}</span>

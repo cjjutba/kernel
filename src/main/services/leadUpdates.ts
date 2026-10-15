@@ -15,7 +15,7 @@ import { resetPhrase } from '@shared/usage'
  * review's blockers on, and nobody tells the user a PR is ready. Events are collected per Lead chat, the one that handed the
  * workspace off (KERNEL-105), and sent as one message once things go quiet, only to a Lead chat that already exists and
  * is idle. A busy, queued or paused chat gets them later, and doesn't hold up the others. Nothing is dropped except when
- * the room has no open Lead chat at all, because then there is nobody to tell.
+ * the project has no open Lead chat at all, because then there is nobody to tell.
  *
  * Events are typed (KERNEL-117). At send time each workspace's events collapse into one block, a PR state the PR has
  * already left is dropped, and the message carries the Team update card's data next to the text the Lead reads.
@@ -30,14 +30,14 @@ export interface LeadUpdateDeps {
    * The open Lead tab that hears about workspaces handed off in the tab `owner`, or about workspaces no Lead tab handed off
    * when `owner` is unset. `from` names where the work came from when the owner is closed and its updates go elsewhere:
    * the closed tab, with `tab`, when another tab of its chat takes them, else the closed Lead chat (KERNEL-337). Undefined
-   * when the room has no open Lead tab. Never creates one.
+   * when the project has no open Lead tab. Never creates one.
    */
-  target: (roomId: string, owner?: string) => { chat: Chat; from?: From } | undefined
+  target: (projectId: string, owner?: string) => { chat: Chat; from?: From } | undefined
   /**
    * Opens a Lead tab for an update that needs the Lead when `target` finds none (KERNEL-365), and returns where it goes as
-   * `target` would. Called only when the update goes out now, so a room with no open Lead tab gets no tab it won't use.
+   * `target` would. Called only when the update goes out now, so a project with no open Lead tab gets no tab it won't use.
    */
-  open?: (roomId: string, owner?: string) => { chat: Chat; from?: From } | 'opening' | undefined
+  open?: (projectId: string, owner?: string) => { chat: Chat; from?: From } | 'opening' | undefined
   /** Whether the workspace is the Lead's own. Its events are never reported back to it, except its PR's in Build here (`ownChat`). */
   isLead: (ws: Workspace) => boolean
   /**
@@ -45,19 +45,19 @@ export interface LeadUpdateDeps {
    * that chat as a Team update, the way a teammate's go to the chat that handed the work off. Left out, none.
    */
   ownChat?: (ws: Workspace) => string | undefined
-  agentName: (roomId: string, agentId: string) => string | undefined
+  agentName: (projectId: string, agentId: string) => string | undefined
   /** Sends Kernel's message into the Lead chat, with the card's data. False when the Lead can't take it now (`Sessions.post`). */
   post: (chatId: string, text: string, update: TeamUpdate) => boolean
   /** Why `post` refused the chat, for the delivery log (`Sessions.postHold`, KERNEL-637). */
   holdOf?: (chatId: string) => string | undefined
-  /** Called after a delivered update, for the room log. */
-  delivered?: (roomId: string, chat: Chat, update: TeamUpdate) => void
+  /** Called after a delivered update, for the project log. */
+  delivered?: (projectId: string, chat: Chat, update: TeamUpdate) => void
   /** Called after a delivered update with each workspace's events as it told them, for what the Lead now owes (KERNEL-749). */
   opened?: (chat: Chat, rows: { ws: Workspace; name: string; events: TeamEvent[] }[]) => void
   /** What Kernel knows about reviews of the workspace's PR. Unknown until reviews are linked (KERNEL-130). */
   reviewState?: (ws: Workspace) => ReviewState | undefined
   /** The team's reviewer, the first agent with a review role that isn't the Lead. */
-  reviewer?: (roomId: string) => AgentDef | undefined
+  reviewer?: (projectId: string) => AgentDef | undefined
   /** Whether Kernel starts reviews of a PR that passed checks by itself (`pr.autoReview`, KERNEL-115, KERNEL-549). On when unset. */
   autoReview?: () => boolean
   /**
@@ -93,7 +93,7 @@ export interface TeamEvent {
   code?: number | null | 'timeout'
   /** A failed setup the Lead already heard about in create_workspace's result. It doesn't wake the Lead again. */
   told?: boolean
-  /** A setup that passed once the user trusted the room's scripts, rather than on Run again (KERNEL-261). */
+  /** A setup that passed once the user trusted the project's scripts, rather than on Run again (KERNEL-261). */
   trusted?: boolean
   /**
    * A review: the verdict, its kind (KERNEL-549), and the work it is about, with its author's name and PR number (KERNEL-130).
@@ -126,8 +126,8 @@ export interface TeamEvent {
  * A usage limit that cut a teammate off, as `Account.limitNews` reads it (KERNEL-777). `window` names it as the limit banner
  * does ("5-hour limit"), `model` the model on a limit of that model alone, and `account` the account that ran out, or on
  * `limit.lifted` the one the teammate runs on now. `resetsAt` is in seconds (KERNEL-50), the earliest across accounts when
- * none has room. `switching`: Kernel is moving the provider to another account, `to` once it picked one. `stuck`: nothing
- * carries the teammate on before the reset. `full`: no account has room, and one that is signed out or waits on a Keychain
+ * none has headroom. `switching`: Kernel is moving the provider to another account, `to` once it picked one. `stuck`: nothing
+ * carries the teammate on before the reset. `full`: no account has headroom, and one that is signed out or waits on a Keychain
  * prompt counts as having none. `off`: the switch is off or was undone. `signIn`: the switch failed. `model`: the limit is on
  * its model alone. `carried`: the `limit.lifted` that followed in the same update, by its account (`foldLimits`).
  */
@@ -154,8 +154,8 @@ export interface AutoMerged { why: string; card: string }
  */
 export interface WaitNews { on: string[]; label: string; held?: boolean; target?: string; gone?: 'closed' | 'archived'; told?: boolean; why?: string; onto?: string; pushed?: boolean }
 
-/** Events waiting for one Lead chat, or for a room's first Lead chat when `owner` is unset. */
-interface Pending { roomId: string; owner?: string; events: TeamEvent[] }
+/** Events waiting for one Lead chat, or for a project's first Lead chat when `owner` is unset. */
+interface Pending { projectId: string; owner?: string; events: TeamEvent[] }
 
 /**
  * What waits for the Lead, saved under the meta key `leadUpdates` so a quit doesn't lose it (KERNEL-123). `toldBlocked` is
@@ -238,7 +238,7 @@ function pausedTodo(name: string, l?: LimitNews): string {
   const why = l?.stuck === 'full' ? ' because every account is at its limit'
     : l?.stuck === 'model' ? ` because ${l.model ?? 'its model'} is at its limit${l.account ? ` on ${l.account}` : ''}`
     : ` by ${limitName(l)}${l?.account ? ` on ${l.account}` : ''}`
-  // Kernel counts an account that is signed out or waits on a Keychain prompt as one without room, so the user may free one.
+  // Kernel counts an account that is signed out or waits on a Keychain prompt as one without headroom, so the user may free one.
   const signIn = l?.stuck === 'full' || l?.stuck === 'signIn' ? ` If an account is signed out or waits for Keychain access, tell the user to sign in or allow it, and Kernel moves ${name} there.` : ''
   return `${name} is paused${when}${why}.${signIn} Kernel carries ${name} on by itself ${when ? 'then' : 'once the limit resets'}, and any message you sent waits in its chat, so don't send it again.`
 }
@@ -289,11 +289,11 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'error': return 'Stopped with an error. Open the workspace to see it.'
     case 'crash':
       // Kernel itself quit or closed (KERNEL-215). Nothing went wrong in the session, and it may still wait for a hold to lift.
-      if (relaunched(e)) return `${e.reason} while ${name} was partway through a turn. ${name} carries on by itself once nothing holds it, such as a paused room or the agent limit.`
+      if (relaunched(e)) return `${e.reason} while ${name} was partway through a turn. ${name} carries on by itself once nothing holds it, such as a paused project or the agent limit.`
       return `${name}'s session ended unexpectedly${e.reason ? ` (${e.reason})` : ''}, partway through a turn. ${e.resumed ? `A message waiting for ${name} started a new session, so ${name} is working again.` : 'The worktree and chat are saved; the user can restart it from the workspace.'}`
     case 'setup.failed': return `Setup failed${e.code === null ? ' (it was stopped)' : e.code === 'timeout' ? " (it didn't finish in time)" : e.code !== undefined ? ` with exit code ${e.code}` : ''}, so ${name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.`
     case 'setup.passed': {
-      const how = e.trusted ? "The user trusted this room's scripts and setup passed" : 'Setup passed on Run again'
+      const how = e.trusted ? "The user trusted this project's scripts and setup passed" : 'Setup passed on Run again'
       return e.wait ? `${how}. ${name} still waits for ${e.wait.label} to merge, and Kernel sends the brief then.` : `${how}, and ${name}'s brief was released.`
     }
     case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'} to merge.${e.wait?.why ? ` ${name} says: ${e.wait.why}` : ''} Kernel ${e.wait?.held === false ? `tells ${name} to bring its branch up to date with it` : `sends ${name} the brief`} when it does.`
@@ -480,7 +480,7 @@ export interface ReviewState {
    */
   stillBlocked?: { rounds: number; kinds: ReviewKind[] }
   /**
-   * Automatic review is off, and it alone kept Kernel from starting a review of the head: the room's `[review]` asks for
+   * Automatic review is off, and it alone kept Kernel from starting a review of the head: the project's `[review]` asks for
    * one and nobody asked for one meanwhile (feat-automatic-review-off-by-default).
    */
   notStarted?: boolean
@@ -555,7 +555,7 @@ function reviewCard(review: ReviewState | undefined): string[] {
 const SETTLING: PrState[] = ['creating', 'checks', 'resolving', 'merging']
 
 export class LeadUpdates {
-  /** Keyed by the owning Lead chat's id, or `room:<id>` for workspaces no Lead chat handed off. */
+  /** Keyed by the owning Lead chat's id, or `project:<id>` for workspaces no Lead chat handed off. */
   private pending = new Map<string, Pending>()
   private timers = new Map<string, NodeJS.Timeout>()
   /** When the first event of the batch a timer waits on came, per key. The batch goes five seconds after it at the latest. */
@@ -563,7 +563,7 @@ export class LeadUpdates {
   /** When each key's events were due to go, and why they waited since, for the delivery log (KERNEL-637). */
   private ready = new Map<string, number>()
   private heldBy = new Map<string, string>()
-  /** Flushes asked for once the current step is done, by room, or `*` for every room (`flushSoon`). */
+  /** Flushes asked for once the current step is done, by project, or `*` for every project (`flushSoon`). */
   private soon = new Map<string, NodeJS.Timeout>()
   /** The last PR state seen per workspace, to tell "opened" from a later change. */
   private prev = new Map<string, PrState>()
@@ -660,7 +660,7 @@ export class LeadUpdates {
     if (t.lead || this.d.isLead(ws)) {
       if (t.interrupted) { this.stopped.add(chat.id); this.save(); return }
       if (this.stopped.delete(chat.id)) this.save()
-      this.flush(ws.roomId)
+      this.flush(ws.projectId)
       return
     }
     this.waitTurns.delete(ws.id)
@@ -731,11 +731,11 @@ export class LeadUpdates {
     const ws = this.d.store.workspace(workspaceId)
     if (ws) this.rearm(ws)
     // A verdict about the PR waited for the read too (KERNEL-556).
-    for (const [key, p] of this.pending) if (p.events.some((e) => e.review?.of === workspaceId)) this.arm(key, p.roomId)
+    for (const [key, p] of this.pending) if (p.events.some((e) => e.review?.of === workspaceId)) this.arm(key, p.projectId)
   }
 
   /**
-   * A teammate's workspace setup failed, or passed on Run again (KERNEL-126) or once the user trusted the room's scripts
+   * A teammate's workspace setup failed, or passed on Run again (KERNEL-126) or once the user trusted the project's scripts
    * (`trusted`, KERNEL-261). `told` marks a failure the Lead already read in create_workspace's result, which rides along
    * instead of waking it again.
    */
@@ -797,7 +797,7 @@ export class LeadUpdates {
     this.add(reviewer, { kind: 'review', review: {
       verdict: v.verdict, ...(v.lens ? { lens: v.lens } : {}), summary: capText(v.summary, REPLY_KEPT),
       ...(v.blockers?.length ? { blockers: v.blockers.slice(0, MAX_BLOCKERS).map((b) => ({ ...b, text: capText(b.text, BLOCKER_MAX) })), total: v.blockers.length } : {}),
-      of: of.id, ofName: this.d.agentName(of.roomId, of.agentId) ?? of.agentId, ...(of.prNumber ? { ofPr: of.prNumber } : {}),
+      of: of.id, ofName: this.d.agentName(of.projectId, of.agentId) ?? of.agentId, ...(of.prNumber ? { ofPr: of.prNumber } : {}),
       ...(v.sha ? { sha: v.sha } : {}), current: !v.sha || !of.prHead || v.sha === of.prHead, ...(o.asked ? { asked: true } : {})
     } })
   }
@@ -823,7 +823,7 @@ export class LeadUpdates {
   }
 
   /**
-   * Kernel's move of `provider` off a limit waits: no account has room, or the one that does needs a sign-in or Keychain
+   * Kernel's move of `provider` off a limit waits: no account has headroom, or the one that does needs a sign-in or Keychain
    * access, or the switch failed (KERNEL-777). Limits held back while it moved now wake the Lead with the paused line.
    */
   /**
@@ -849,7 +849,7 @@ export class LeadUpdates {
       })
       if (!changed) continue
       this.save()
-      this.arm(key, p.roomId)
+      this.arm(key, p.projectId)
     }
   }
 
@@ -897,12 +897,12 @@ export class LeadUpdates {
   /** The Lead's own workspace, whose news never reaches a chat. A Build here chat's PR does (KERNEL-778). */
   private silent(ws: Workspace) { return this.d.isLead(ws) && !this.d.ownChat?.(ws) }
 
-  private keyOf(ws: Workspace) { return this.ownerOf(ws) ?? `room:${ws.roomId}` }
+  private keyOf(ws: Workspace) { return this.ownerOf(ws) ?? `project:${ws.projectId}` }
 
   private add(ws: Workspace, e: Omit<TeamEvent, 'n' | 'workspaceId' | 'pr' | 'prTitle'>) {
     if (!this.d.enabled()) return
     const key = this.keyOf(ws)
-    const p = this.pending.get(key) ?? { roomId: ws.roomId, owner: this.ownerOf(ws), events: [] }
+    const p = this.pending.get(key) ?? { projectId: ws.projectId, owner: this.ownerOf(ws), events: [] }
     p.events.push({ ...e, n: this.seq++, at: Date.now(), workspaceId: ws.id, ...(ws.prNumber ? { pr: ws.prNumber } : {}), ...(ws.prTitle ? { prTitle: ws.prTitle } : {}) })
     // Events that wait for something to wake the Lead can wait a long time. Only what could still be sent is kept, so a
     // workspace holds a handful of events however long it waits (KERNEL-121).
@@ -912,14 +912,14 @@ export class LeadUpdates {
     this.pending.set(key, p)
     this.save()
     if (!this.since.has(key)) this.since.set(key, Date.now())
-    this.arm(key, ws.roomId)
+    this.arm(key, ws.projectId)
   }
 
   /**
    * Waits for the batch to go quiet: `delayMs` after now, but no later than `maxDelayMs` after the batch's first event, so
    * events that keep coming can't hold it back for good (KERNEL-637). A wait on purpose, as for a PR read, holds it apart.
    */
-  private arm(key: string, roomId: string) {
+  private arm(key: string, projectId: string) {
     const old = this.timers.get(key)
     if (old) clearTimeout(old)
     const now = Date.now()
@@ -930,47 +930,47 @@ export class LeadUpdates {
       this.timers.delete(key)
       this.since.delete(key)
       if (!this.ready.has(key)) this.ready.set(key, Date.now())
-      this.flush(roomId)
+      this.flush(projectId)
     }, Math.max(0, due - now)))
   }
 
   /** Waits again for a workspace with events still pending. */
   private rearm(ws: Workspace) {
     const key = this.keyOf(ws)
-    if (this.pending.get(key)?.events.some((e) => e.workspaceId === ws.id)) this.arm(key, ws.roomId)
+    if (this.pending.get(key)?.events.some((e) => e.workspaceId === ws.id)) this.arm(key, ws.projectId)
   }
 
   /**
-   * Sends what's waiting in the room to each Lead chat that can take it now, one message per chat. A chat waits until
+   * Sends what's waiting in the project to each Lead chat that can take it now, one message per chat. A chat waits until
    * every batch headed for it has gone quiet, so a closed chat's updates ride along with its own. Kernel also calls this
    * on its PR poll, so a pause or a busy Lead chat only delays its own updates.
    */
-  flush(roomId: string) {
-    const waiting = [...this.pending].filter(([, p]) => p.roomId === roomId && p.events.length)
+  flush(projectId: string) {
+    const waiting = [...this.pending].filter(([, p]) => p.projectId === projectId && p.events.length)
     if (!waiting.length) return
     const changed = { any: false }
-    try { this.deliver(roomId, waiting, changed) } catch (e) { this.warn(`could not deliver the updates waiting in room ${roomId}`, e) } finally { if (changed.any) this.save() }
+    try { this.deliver(projectId, waiting, changed) } catch (e) { this.warn(`could not deliver the updates waiting in project ${projectId}`, e) } finally { if (changed.any) this.save() }
   }
 
   /**
-   * Flushes the room, or every room, once the current step is done (KERNEL-637). Kernel calls it when a chat stops running or
+   * Flushes the project, or every project, once the current step is done (KERNEL-637). Kernel calls it when a chat stops running or
    * its queue empties, and when a pause or another hold lifts, so an update `post` refused goes the moment the Lead can take
    * it rather than at the PR poll. After the step, so a Stop or a crash has marked the chat by then.
    */
-  flushSoon(roomId?: string) {
-    const at = roomId ?? '*'
+  flushSoon(projectId?: string) {
+    const at = projectId ?? '*'
     if (this.detached || this.soon.has(at) || this.soon.has('*')) return
-    if (![...this.pending.values()].some((p) => (!roomId || p.roomId === roomId) && p.events.length)) return
+    if (![...this.pending.values()].some((p) => (!projectId || p.projectId === projectId) && p.events.length)) return
     this.soon.set(at, setTimeout(() => {
       this.soon.delete(at)
       if (this.detached) return
-      if (roomId) this.flush(roomId)
+      if (projectId) this.flush(projectId)
       else this.flushAll()
     }, 0))
   }
 
   /**
-   * A chat stopped running, or its queue emptied, so a Lead chat may take its update now, or a slot freed for one. Every room
+   * A chat stopped running, or its queue emptied, so a Lead chat may take its update now, or a slot freed for one. Every project
    * with updates waiting tries, on the next step. It reads no database here: it runs inside the push, which must never throw.
    */
   chatFreed() { this.flushSoon() }
@@ -983,7 +983,7 @@ export class LeadUpdates {
     else console.info(line)
   }
 
-  private deliver(roomId: string, waiting: [string, Pending][], changed: { any: boolean }) {
+  private deliver(projectId: string, waiting: [string, Pending][], changed: { any: boolean }) {
     const drop = (key: string) => { this.ready.delete(key); this.heldBy.delete(key); if (this.pending.delete(key)) changed.any = true }
     const hold = (keys: string[], why: string) => { for (const key of keys) if (this.ready.has(key)) this.heldBy.set(key, why) }
     if (!this.d.enabled()) { for (const [key] of waiting) if (!this.timers.has(key)) drop(key); return }
@@ -995,14 +995,14 @@ export class LeadUpdates {
       const quiet = !this.timers.has(key) && !reading && !waitTurn
       if (reading) hold([key], 'reading')
       else if (waitTurn) hold([key], 'waitTurn')
-      let t = this.d.target(roomId, p.owner)
+      let t = this.d.target(projectId, p.owner)
       if (!t && this.d.open) {
         // No Lead tab is open. Once quiet, an update that needs the Lead opens one (KERNEL-365). The rest wait for the next
         // update that does, as they would with a tab open, and one with nothing left to say goes.
         if (!quiet) continue
-        const alone = this.compose(roomId, [{ events: p.events, owner: p.owner }])
+        const alone = this.compose(projectId, [{ events: p.events, owner: p.owner }])
         if (alone && !alone.wakes) continue
-        const opened = alone && this.d.open(roomId, p.owner)
+        const opened = alone && this.d.open(projectId, p.owner)
         // Kernel is starting a Lead chat for it (KERNEL-405). The update waits for it, and goes once its setup passed.
         if (opened === 'opening') continue
         t = opened
@@ -1017,7 +1017,7 @@ export class LeadUpdates {
     for (const g of byChat.values()) {
       if (!g.quiet) continue
       if (this.stopped.has(g.chat.id)) { hold(g.keys, 'stopped'); continue }
-      const message = this.compose(roomId, g.sources)
+      const message = this.compose(projectId, g.sources)
       // Everything that waited was overtaken, as a failed check fixed since. There is nothing left to say.
       if (!message) { for (const key of g.keys) drop(key); continue }
       // Nothing needs the Lead yet. It all waits for the next update that does (KERNEL-121).
@@ -1040,7 +1040,7 @@ export class LeadUpdates {
         changed.any = true
       }
       // Timings only, never the message or anything from it.
-      this.write('info', `[lead-updates] delivered ${JSON.stringify({ roomId, chatId: g.chat.id, workspaces: message.update.rows.length, ageMs: at.length ? now - Math.min(...at) : null, heldMs: now - due, heldBy: why, carried, leftOut: message.update.omitted ?? 0 })}`)
+      this.write('info', `[lead-updates] delivered ${JSON.stringify({ projectId, chatId: g.chat.id, workspaces: message.update.rows.length, ageMs: at.length ? now - Math.min(...at) : null, heldMs: now - due, heldBy: why, carried, leftOut: message.update.omitted ?? 0 })}`)
       for (const row of message.update.rows) {
         const w = this.d.store.workspace(row.workspaceId)
         if (w?.prHead && row.events.some((e) => e.kind === 'pr.ready')) this.toldReady.set(row.workspaceId, w.prHead)
@@ -1058,18 +1058,18 @@ export class LeadUpdates {
           else if (e.kind === 'limit' && message.update.rows[i]?.events.some((x) => x.kind === 'limit' && x.actionable)) { this.toldLimit.add(t.ws.id); changed.any = true }
         }
       })
-      this.d.delivered?.(roomId, g.chat, message.update)
+      this.d.delivered?.(projectId, g.chat, message.update)
       this.d.opened?.(g.chat, message.told)
     }
   }
 
-  flushAll() { for (const roomId of new Set([...this.pending.values()].map((p) => p.roomId))) this.flush(roomId) }
+  flushAll() { for (const projectId of new Set([...this.pending.values()].map((p) => p.projectId))) this.flush(projectId) }
 
   /**
    * The text the Lead reads and the card's data, or nothing when no workspace has anything left to say. `wakes` is
    * whether any of it needs the Lead now.
    */
-  private compose(roomId: string, sources: Source[]): { text: string; update: TeamUpdate; wakes: boolean; sent: Set<TeamEvent>; told: { ws: Workspace; name: string; events: TeamEvent[] }[] } | undefined {
+  private compose(projectId: string, sources: Source[]): { text: string; update: TeamUpdate; wakes: boolean; sent: Set<TeamEvent>; told: { ws: Workspace; name: string; events: TeamEvent[] }[] } | undefined {
     const blocks: Block[] = []
     // Events the message carries, or that have nothing left to say. The rest wait for the next update (KERNEL-637).
     const sent = new Set<TeamEvent>()
@@ -1092,9 +1092,9 @@ export class LeadUpdates {
         if (!kept.length) { for (const e of events) sent.add(e); continue }
         const turn = kept.find((e) => e.kind === 'turn')
         const verdicts = kept.flatMap((e) => (e.kind === 'review' && e.review ? [e.review] : []))
-        const name = this.d.agentName(roomId, ws.agentId) ?? ws.agentId
+        const name = this.d.agentName(projectId, ws.agentId) ?? ws.agentId
         const review = kept.some((e) => e.kind === 'pr.ready' || e.kind === 'pr.unblocked') ? this.d.reviewState?.(ws) : undefined
-        const reviewer = this.d.reviewer?.(ws.roomId)
+        const reviewer = this.d.reviewer?.(ws.projectId)
         const block: Block = {
           ws, name, raw: events, events: kept.filter((e) => e.kind !== 'shared'), shares: kept.filter((e) => e.kind === 'shared'), reply: verdicts.length ? summaries(verdicts) : turn?.reply, summary: verdicts.length > 0, status: reviewStatus(review), card: reviewCard(review), held: reviewHolds(review),
           latest: Math.max(...events.map((e) => e.n)), from: source.from, owner: source.owner, wake: new Set(), todo: []
@@ -1102,7 +1102,7 @@ export class LeadUpdates {
         if (source.owner) {
           // Work from a closed tab of this chat is this chat's own, so its last merge reads like any other.
           const decided = decide({ ws, name, events: block.events, fromChat: source.from?.tab ? undefined : source.from?.title }, {
-            review, reviewer, autoReview: this.d.autoReview?.() ?? true, allMerged: () => this.allMerged(ws.roomId, source.owner!), workspace: (id) => this.d.store.workspace(id),
+            review, reviewer, autoReview: this.d.autoReview?.() ?? true, allMerged: () => this.allMerged(ws.projectId, source.owner!), workspace: (id) => this.d.store.workspace(id),
             stateOf: (id) => { const of = this.d.store.workspace(id); return of && this.d.reviewState?.(of) },
             refused: (id) => this.refused.get(id), toldLimit: this.toldLimit.has(ws.id),
             self: (id) => { const w = this.d.store.workspace(id); return !!w && this.d.isLead(w) && !!this.d.ownChat?.(w) }
@@ -1164,10 +1164,10 @@ export class LeadUpdates {
    * without merging, and the reviewer's own workspaces that never opened a PR, which before the review link (KERNEL-130)
    * are reviews nothing marks as such.
    */
-  private allMerged(roomId: string, owner: string): boolean {
-    const reviewer = this.d.reviewer?.(roomId)?.id
+  private allMerged(projectId: string, owner: string): boolean {
+    const reviewer = this.d.reviewer?.(projectId)?.id
     const tabs = new Set(this.d.store.threadTabs(owner).map((c) => c.id).concat(owner))
-    const handed = this.d.store.workspaces(roomId).filter((w) => !!w.leadChatId && tabs.has(w.leadChatId) && !w.reviewOf && !this.d.isLead(w)
+    const handed = this.d.store.workspaces(projectId).filter((w) => !!w.leadChatId && tabs.has(w.leadChatId) && !w.reviewOf && !this.d.isLead(w)
       && (w.status !== 'archived' || !!w.mergedAt) && !(w.agentId === reviewer && !w.prNumber))
     return handed.length > 0 && handed.every((w) => w.prState === 'merged' || !!w.mergedAt)
   }
@@ -1404,7 +1404,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (ws.prBlocked === 'behind' && blocked) { wake(blocked); break }
         if (allApproved(review)) { wake(blocked || readyToMerge(pr, review?.approved ?? [], review?.skipped, c.refused?.(ws.id), review?.overruled)); break }
         if (review?.open?.failed) { wake(`${upper(pr)} needs a review, and setup failed in its review workspace. Tell the user to fix it and click Run again there (workspace ${review.open.workspaceId}).`); break }
-        // No review looked at this PR: auto review is off (KERNEL-115), or none of the room's reviews covers what it changes.
+        // No review looked at this PR: auto review is off (KERNEL-115), or none of the project's reviews covers what it changes.
         if (!review?.open && !review?.stale) {
           bus.track({ name: 'pr.ready_unreviewed', hasReviewer: !!c.reviewer })
           wake(blocked || (c.autoReview === false ? `${upper(pr)} passed checks and has no conflicts. Tell the user it is ready to merge${review?.notStarted ? `, and tell them: "${NO_AUTO_REVIEW}"` : '.'}` : `${upper(pr)} passed checks and has no conflicts. No review runs on it, so tell the user it is ready for them to review and merge.`))

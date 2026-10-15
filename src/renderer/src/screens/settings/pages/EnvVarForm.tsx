@@ -22,9 +22,9 @@ export function nameProblem(name: string, taken: string[], editing: boolean): st
  * Add a variable, or edit one with its name fixed (SettingsEnvironmentAdd.png). The value is typed here and goes nowhere but `env.set`.
  * Edit opens with the value empty. Show asks main for the saved one only when pressed, and it stays in this component's state.
  */
-export function EnvVarForm({ roomId, editName }: { roomId?: string; editName?: string }) {
-  const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
-  const { env } = useEnv(roomId)
+export function EnvVarForm({ projectId, editName }: { projectId?: string; editName?: string }) {
+  const project = useStore((s) => s.projects.find((r) => r.id === projectId))
+  const { env } = useEnv(projectId)
   const id = useId()
   const [name, setName] = useState(editName ?? '')
   const [value, setValue] = useState('')
@@ -38,7 +38,7 @@ export function EnvVarForm({ roomId, editName }: { roomId?: string; editName?: s
   // Show asks for the saved value, and a second press hides it again. A value that can't be read (no Keychain) says why under the field.
   const reveal = () => run('show', async () => {
     setError(null)
-    try { setSaved(await call('env.reveal', { roomId, name })) } catch (e) { setError(cleanError(e)) }
+    try { setSaved(await call('env.reveal', { projectId, name })) } catch (e) { setError(cleanError(e)) }
   })
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -47,7 +47,7 @@ export function EnvVarForm({ roomId, editName }: { roomId?: string; editName?: s
     if (problem || valueProblem) return
     void run('save', async () => {
       try {
-        await call('env.set', { roomId, name, value })
+        await call('env.set', { projectId, name, value })
         void envChanged()
         actions.ui.closeModal()
       } catch (err) {
@@ -55,9 +55,9 @@ export function EnvVarForm({ roomId, editName }: { roomId?: string; editName?: s
       }
     })
   }
-  const intro = room
-    ? <>For {room.name}. It wins over the same name in <span onClickCapture={actions.ui.closeModal}><SettingsLink to={{ page: 'env' }}>Settings, Environment</SettingsLink></span>.</>
-    : 'For every room. A room\'s variable with the same name wins.'
+  const intro = project
+    ? <>For {project.name}. It wins over the same name in <span onClickCapture={actions.ui.closeModal}><SettingsLink to={{ page: 'env' }}>Settings, Environment</SettingsLink></span>.</>
+    : 'For every project. A project\'s variable with the same name wins.'
   return (
     <Modal
       title={editing ? `Edit ${editName}` : 'Add variable'}

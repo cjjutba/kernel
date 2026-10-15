@@ -24,7 +24,7 @@ Kernel follows Claude Code through its hooks, a small set of entries Kernel adds
 
 - **Your main checkout stays yours.** Agents work in worktrees, and each chat with Kernel has its own too.
 - **One task, one branch.** A workspace is a git worktree on its own branch, with its own block of ports, so two agents never collide.
-- **Plain files.** Agents, room settings and scripts are files in the repo or on your Mac, so the setup works outside Kernel too.
+- **Plain files.** Agents, project settings and scripts are files in the repo or on your Mac, so the setup works outside Kernel too.
 
 ## Who decides
 

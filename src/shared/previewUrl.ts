@@ -9,7 +9,7 @@ export function isWebUrl(url: string): boolean {
 }
 
 /**
- * A room's preview URL with the workspace's port filled in. Takes `$KERNEL_PORT`, `${KERNEL_PORT}`, `$PORT` and
+ * A project's preview URL with the workspace's port filled in. Takes `$KERNEL_PORT`, `${KERNEL_PORT}`, `$PORT` and
  * `$((KERNEL_PORT + n))` for a port in the workspace's block (n from 0 to 9). Null when a port form is left over,
  * like `$((KERNEL_PORT + 12))`, or the result isn't an http or https URL.
  */

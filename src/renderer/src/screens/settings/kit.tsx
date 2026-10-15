@@ -1,16 +1,16 @@
 import './settings.css'
 import { createContext, useContext, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import type { Room, RoomSettings, RoomSettingsSection, SettingsPage } from '@shared/types'
-import { APP_SETTING_TIMING, ROOM_SETTING_TIMING, type SettingTiming } from '@shared/settingsTiming'
+import type { Project, ProjectSettings, ProjectSettingsSection, SettingsPage } from '@shared/types'
+import { APP_SETTING_TIMING, PROJECT_SETTING_TIMING, type SettingTiming } from '@shared/settingsTiming'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, EmptyState, Icon, Kbd, Menu, Spinner, useBusy, type IconName } from '../../ui'
-import { openNewRoom } from '../rooms/draft'
-import { useRoomSettings } from './useSettings'
+import { openNewProject } from '../projects/draft'
+import { useProjectSettings } from './useSettings'
 
 /**
  * One settings page: the title, one muted line saying changes save as you make them (KERNEL-721), and its sections. `action` sits at the right of the title, and
- * `back` is the link above it to the page it opened from. `crumb` puts a link before the title, the room on a room's page.
+ * `back` is the link above it to the page it opened from. `crumb` puts a link before the title, the project on a project's page.
  */
 export function Page({ title, crumb, action, back, saved, note, children }: { title: string; crumb?: ReactNode; action?: ReactNode; back?: ReactNode; saved?: Scope; note?: ReactNode; children: ReactNode }) {
   return (
@@ -72,25 +72,25 @@ export function clampText(asked: number, saved: number): string | undefined {
   return `Set to ${saved}, the ${saved < asked ? 'most' : 'least'} allowed`
 }
 
-/** The room whose page is showing, so a row looks its setting up in the room's table and a save checks that room's chats. */
-const RoomScope = createContext<string | undefined>(undefined)
+/** The project whose page is showing, so a row looks its setting up in the project's table and a save checks that project's chats. */
+const ProjectScope = createContext<string | undefined>(undefined)
 
-/** What the row around a field says about its setting: when a change reaches agents, and the room it is a value of. */
-const RowTiming = createContext<{ timing?: SettingTiming; roomId?: string; shared?: boolean }>({})
+/** What the row around a field says about its setting: when a change reaches agents, and the project it is a value of. */
+const RowTiming = createContext<{ timing?: SettingTiming; projectId?: string; shared?: boolean }>({})
 
 const TERMINAL_TAB_SETTINGS = new Set(['terminal.preset', 'terminal.onlyInWorktrees'])
 
 const APPLIES: Partial<Record<SettingTiming, string>> = {
   newChats: 'Applies to new chats',
   newWorkspaces: 'Applies to new workspaces',
-  newRooms: 'Applies to new rooms',
+  newProjects: 'Applies to new projects',
   restart: 'Applies the next time Kernel opens'
 }
 
 /** The timing of a setting by dotted path. An entry covers every key under it, as in `APP_SETTING_TIMING`. */
-export function timingOf(path: string, roomId?: string): SettingTiming | undefined {
+export function timingOf(path: string, projectId?: string): SettingTiming | undefined {
   const parts = path.split('.')
-  for (const table of roomId ? [ROOM_SETTING_TIMING, APP_SETTING_TIMING] : [APP_SETTING_TIMING]) {
+  for (const table of projectId ? [PROJECT_SETTING_TIMING, APP_SETTING_TIMING] : [APP_SETTING_TIMING]) {
     const map: Record<string, SettingTiming> = table
     for (let n = parts.length; n > 0; n--) { const t = map[parts.slice(0, n).join('.')]; if (t) return t }
   }
@@ -98,23 +98,23 @@ export function timingOf(path: string, roomId?: string): SettingTiming | undefin
 }
 
 /** The muted line for a setting whose change doesn't reach running agents, or undefined when it does. */
-export function appliesTo(path: string, roomId?: string): string | undefined {
+export function appliesTo(path: string, projectId?: string): string | undefined {
   if (TERMINAL_TAB_SETTINGS.has(path)) return 'Applies to new terminal tabs'
-  const timing = timingOf(path, roomId)
+  const timing = timingOf(path, projectId)
   return timing && APPLIES[timing]
 }
 
-/** Is any chat running in the room, or in any room when `roomId` is unset? Read from the store's running chats, never a timer. */
-function useChatsRunning(roomId?: string): boolean {
-  return useStore((s) => s.workspaces.some((w) => (!roomId || w.roomId === roomId) && (s.chats[w.id] ?? []).some((c) => s.running[c.id])))
+/** Is any chat running in the project, or in any project when `projectId` is unset? Read from the store's running chats, never a timer. */
+function useChatsRunning(projectId?: string): boolean {
+  return useStore((s) => s.workspaces.some((w) => (!projectId || w.projectId === projectId) && (s.chats[w.id] ?? []).some((c) => s.running[c.id])))
 }
 
 export const SHARED_SAVED = 'Saved to settings.toml. Commit it so your team gets it.'
 
 /** `shared` is for a note outside a row whose value lives in the tracked settings.toml. A row says so with its own `shared`. */
 export function SaveNote({ state, shared }: { state: SaveState; shared?: boolean }) {
-  const { timing, roomId, shared: rowShared } = useContext(RowTiming)
-  const running = useChatsRunning(roomId)
+  const { timing, projectId, shared: rowShared } = useContext(RowTiming)
+  const running = useChatsRunning(projectId)
   if (state.kind === 'idle') return null
   const kept = timing === 'newChats' && running
   const text = state.kind === 'saving' ? 'Saving' : state.kind === 'clamped' ? state.text : shared || rowShared ? SHARED_SAVED : kept ? 'Saved. Running chats keep the old value.' : 'Saved'
@@ -196,7 +196,7 @@ export function Section({ id, holds, title, count, scope, note, action, footnote
  * A label and optional description on the left, the control on the right. `full` puts the control on its own line.
  * `id` is the row's name in search: a result opens the page, scrolls to the row, highlights it and focuses its control (KERNEL-727).
  * `setting` is the setting's dotted path (`models.leadPlanMode`): a row whose change doesn't reach running agents says so under its description (KERNEL-725),
- * and a Saved note in the row says when running chats keep the old value. On a room page `inherited` says the value is the app's and links to the page it comes from, `changed` says the room sets it, and `onReset` adds Reset, which sends `null` for the key. `shared` is a row saved to the tracked settings.toml, so its Saved note says to commit it.
+ * and a Saved note in the row says when running chats keep the old value. On a project page `inherited` says the value is the app's and links to the page it comes from, `changed` says the project sets it, and `onReset` adds Reset, which sends `null` for the key. `shared` is a row saved to the tracked settings.toml, so its Saved note says to commit it.
  * `child` is a row that only matters because of the one above it: it is indented on a guide line. `lead` is a picture before the label
  * (an avatar or a logo). `hover` holds the buttons that show while the pointer is on the row.
  */
@@ -204,8 +204,8 @@ export function Row({ id, label, shared, inherited, changed, changedIn, desc, se
   id?: string; label: ReactNode; shared?: boolean; inherited?: { to: SettingsTarget; label: string }; changed?: boolean; changedIn?: { id: string; name: string; to: SettingsTarget }[]; desc?: ReactNode; setting?: string; onReset?: () => void; children?: ReactNode; full?: ReactNode; className?: string
   child?: boolean; lead?: ReactNode; hover?: ReactNode; labelId?: string
 }) {
-  const roomId = useContext(RoomScope)
-  const note = setting ? appliesTo(setting, roomId) : undefined
+  const projectId = useContext(ProjectScope)
+  const note = setting ? appliesTo(setting, projectId) : undefined
   const ref = useRef<HTMLDivElement>(null)
   // Reset takes itself away, so focus moves to the row's own control and stays on the row.
   const reset = () => {
@@ -213,14 +213,14 @@ export function Row({ id, label, shared, inherited, changed, changedIn, desc, se
     setTimeout(() => ref.current?.querySelector<HTMLElement>('input:not([disabled]), button:not(.set-reset):not([disabled]), [role="switch"], [role="radio"]')?.focus(), 0)
   }
   return (
-    <RowTiming.Provider value={{ timing: setting ? timingOf(setting, roomId) : undefined, roomId, shared }}>
+    <RowTiming.Provider value={{ timing: setting ? timingOf(setting, projectId) : undefined, projectId, shared }}>
     <div ref={ref} data-row={id} className={['set-row', child && 'set-child', hover && 'set-hoverable', className].filter(Boolean).join(' ')}>
       {child && <span className="set-guide" aria-hidden="true" />}
       {lead && <span className="set-lead">{lead}</span>}
       <div className="set-text">
         <span className="set-label" id={labelId}>{label}</span>
         {inherited && <span className="set-desc set-from"><SettingsLink to={inherited.to}>Default, from {inherited.label}</SettingsLink></span>}
-        {changed && <span className="set-desc set-from">Changed for this room</span>}
+        {changed && <span className="set-desc set-from">Changed for this project</span>}
         {changedIn && changedIn.length > 0 && <span className="set-desc set-from">Changed in {changedIn.map((r, i) => <span key={r.id}>{i > 0 && ', '}<SettingsLink to={r.to}>{r.name}</SettingsLink></span>)}</span>}
         {desc && <span className="set-desc">{desc}</span>}
         {note && <span className="set-desc set-applies">{note}</span>}
@@ -234,7 +234,7 @@ export function Row({ id, label, shared, inherited, changed, changedIn, desc, se
   )
 }
 
-/** A status at the top of a page or section: an icon, what is true now, a line under it and one action (Hooks, a room's push access). */
+/** A status at the top of a page or section: an icon, what is true now, a line under it and one action (Hooks, a project's push access). */
 export function StatusLine({ icon, title, sub, action, tone }: { icon: IconName; title: ReactNode; sub?: ReactNode; action?: ReactNode; tone?: 'ok' | 'warn' }) {
   return (
     <div className="set-status" role="status" data-tone={tone}>
@@ -316,8 +316,8 @@ export function TagList({ label, value, onChange, locked = [], addLabel = 'Add',
   )
 }
 
-/** Where a Settings link goes: an app page, or a room's page with its section. */
-export type SettingsTarget = { page: SettingsPage; roomId?: string; section?: RoomSettingsSection; agentId?: string; row?: string }
+/** Where a Settings link goes: an app page, or a project's page with its section. */
+export type SettingsTarget = { page: SettingsPage; projectId?: string; section?: ProjectSettingsSection; agentId?: string; row?: string }
 
 /** "Settings, Models and effort" you can click: a cross-reference to another Settings page (KERNEL-680). */
 export function SettingsLink({ to, children }: { to: SettingsTarget; children: ReactNode }) {
@@ -328,95 +328,42 @@ export function Keys({ keys }: { keys: string[] }) {
   return <span className="set-keys">{keys.map((k, i) => <Kbd key={i}>{k}</Kbd>)}</span>
 }
 
-/** A list with one entry per line (Always ask before, Never allow). Saved when the field loses focus. */
-export function LinesField({ label, value, onSave }: { label: string; value: string[]; onSave: (lines: string[]) => SaveResult }) {
-  const [text, setText] = useState(value.join('\n'))
-  const ref = useRef<HTMLTextAreaElement>(null)
-  const note = useSaveNote()
-  useEffect(() => { setText(value.join('\n')) }, [value.join('\n')])
-  useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px` } }, [text])
-  const save = useBlurSave({
-    text, setText, saved: value.join('\n'),
-    commit: (t) => { const next = t.split('\n').map((l) => l.trim()).filter(Boolean); if (next.join('\n') !== value.join('\n')) void note.track(onSave(next)) }
-  })
-  return (
-    <div className="set-field">
-      <textarea ref={ref} className="set-lines" aria-label={label} rows={Math.max(2, value.length)} spellCheck={false} value={text} onChange={(e) => { note.reset(); setText(e.target.value) }} {...save} />
-      <SaveNote state={note.state} />
-    </div>
-  )
-}
-
-/** A short list on one line, comma separated (Protected branches). */
-export function ListField({ label, value, onSave }: { label: string; value: string[]; onSave: (items: string[]) => SaveResult }) {
-  const [text, setText] = useState(value.join(', '))
-  const note = useSaveNote()
-  useEffect(() => { setText(value.join(', ')) }, [value.join(',')])
-  const save = useBlurSave({
-    text, setText, saved: value.join(', '),
-    commit: (t) => { const next = t.split(',').map((l) => l.trim()).filter(Boolean); if (next.join(',') !== value.join(',')) void note.track(onSave(next)) }
-  })
-  return (
-    <span className="set-field-inline">
-      <SaveNote state={note.state} />
-      <input className="set-inline" aria-label={label} spellCheck={false} value={text} onChange={(e) => { note.reset(); setText(e.target.value) }} {...save}
-        onKeyDown={(e) => { save.onKeyDown(e); if (e.key === 'Enter') e.currentTarget.blur() }} />
-    </span>
-  )
-}
-
-/** Free text, kept as typed (blank lines and all): instructions and scripts. Saved when the field loses focus. */
-export function TextField({ label, value, onSave, placeholder }: { label: string; value: string; onSave: (text: string) => SaveResult; placeholder?: string }) {
-  const [text, setText] = useState(value)
-  const ref = useRef<HTMLTextAreaElement>(null)
-  const note = useSaveNote()
-  useEffect(() => { setText(value) }, [value])
-  useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px` } }, [text])
-  const save = useBlurSave({ text, setText, saved: value, commit: (t) => void note.track(onSave(t)) })
-  return (
-    <div className="set-field">
-      <textarea ref={ref} className="set-lines" aria-label={label} placeholder={placeholder} rows={Math.max(1, text.split('\n').length)} spellCheck={false} value={text} onChange={(e) => { note.reset(); setText(e.target.value) }} {...save} />
-      <SaveNote state={note.state} />
-    </div>
-  )
-}
-
 /** A page for a repo's settings when there is no repo to read them from yet. */
-export function NoRoom() {
+export function NoProject() {
   return (
-    <Page title="No room yet">
-      <EmptyState icon="rooms" title="These settings belong to a repo" action={<Button variant="primary" icon="plus" onClick={() => openNewRoom()}>New room</Button>}>Add a room and its settings show up here.</EmptyState>
+    <Page title="No project yet">
+      <EmptyState icon="projects" title="These settings belong to a repo" action={<Button variant="primary" icon="plus" onClick={() => openNewProject()}>New project</Button>}>Add a project and its settings show up here.</EmptyState>
     </Page>
   )
 }
 
-/** Does this room set the value itself (in its personal file, with or without settings.toml)? Those are the values Reset can drop. */
-export const isOverride = (rs: RoomSettings | null, path: string) => rs?.sources?.[path] === 'local' || rs?.sources?.[path] === 'override'
+/** Does this project set the value itself (in its personal file, with or without settings.toml)? Those are the values Reset can drop. */
+export const isOverride = (rs: ProjectSettings | null, path: string) => rs?.sources?.[path] === 'local' || rs?.sources?.[path] === 'override'
 
 /**
- * The row props that say where a room's value comes from, the same on every room page: a value the room sets, in its personal file or in the repo's
- * settings.toml, says "Changed for this room". Reset only shows when the personal file sets it, since it can't remove a value from settings.toml.
- * A room that sets nothing shows the app's value with a link to where it is set (`from`). A value with no app default passes no `from`.
+ * The row props that say where a project's value comes from, the same on every project page: a value the project sets, in its personal file or in the repo's
+ * settings.toml, says "Changed for this project". Reset only shows when the personal file sets it, since it can't remove a value from settings.toml.
+ * A project that sets nothing shows the app's value with a link to where it is set (`from`). A value with no app default passes no `from`.
  */
-export function roomValue(rs: RoomSettings | null, path: string, reset: () => void, from?: { to: SettingsTarget; label: string }) {
+export function projectValue(rs: ProjectSettings | null, path: string, reset: () => void, from?: { to: SettingsTarget; label: string }) {
   if (isOverride(rs, path)) return { changed: true, onReset: reset }
   if (rs?.sources?.[path] === 'shared') return { changed: true }
   return from ? { inherited: from } : {}
 }
 
-/** The room a room page shows, with its settings. `room` is undefined when the route's room is gone. */
-export function useRoomPage(roomId?: string): { room: Room | undefined; rs: RoomSettings | null } {
-  const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
-  return { room, rs: useRoomSettings(roomId) }
+/** The project a project page shows, with its settings. `project` is undefined when the route's project is gone. */
+export function useProjectPage(projectId?: string): { project: Project | undefined; rs: ProjectSettings | null } {
+  const project = useStore((s) => s.projects.find((r) => r.id === projectId))
+  return { project, rs: useProjectSettings(projectId) }
 }
 
 /**
- * The button at the top right of a room page: it opens settings.local.toml, and its menu opens settings.toml.
+ * The button at the top right of a project page: it opens settings.local.toml, and its menu opens settings.toml.
  * Only a file that exists is offered, and `sources` says which do: a value from settings.toml means that file is there.
  * `shared` is a page whose values only settings.toml holds (Reviews, KERNEL-557): it opens that file first, and offers it even when no
  * value in `sources` came from it, since `[review]` isn't one of them.
  */
-function OpenSettingsFiles({ room, rs, shared }: { room: Room; rs: RoomSettings | null; shared?: boolean }) {
+function OpenSettingsFiles({ project, rs, shared }: { project: Project; rs: ProjectSettings | null; shared?: boolean }) {
   const open = useStore((s) => s.ui.menu === 'settingsFiles')
   const [busy, run] = useBusy()
   const anchor = useRef<HTMLDivElement>(null)
@@ -430,7 +377,7 @@ function OpenSettingsFiles({ room, rs, shared }: { room: Room; rs: RoomSettings 
   if (!files.length) return null
   const [first, ...more] = files
   const edit = (file: string) => run('open', async () => {
-    try { await call('system.openInEditor', { path: `${room.path}/.kernel/${file}` }) } catch (e) { actions.ui.toast({ title: `Could not open ${file}`, sub: cleanError(e) }) }
+    try { await call('system.openInEditor', { path: `${project.path}/.kernel/${file}` }) } catch (e) { actions.ui.toast({ title: `Could not open ${file}`, sub: cleanError(e) }) }
   })
   return (
     <div className="set-files" ref={anchor}>
@@ -446,10 +393,10 @@ function OpenSettingsFiles({ room, rs, shared }: { room: Room; rs: RoomSettings 
 }
 
 /**
- * A room page: the room and the page's name as a breadcrumb, the settings files button, and the sections. The room's name goes back to
+ * A project page: the project and the page's name as a breadcrumb, the settings files button, and the sections. The project's name goes back to
  * its General page. `shared` is a page the team shares, so its file button opens settings.toml first.
  */
-export function RoomPage({ room, rs, title, shared, note, children }: { room: Room; rs: RoomSettings | null; title: string; shared?: boolean; note?: ReactNode; children: ReactNode }) {
-  const crumb = <button type="button" className="set-crumb" aria-label={`${room.name} settings`} onClick={() => go({ name: 'settings', page: 'room', roomId: room.id })}>{room.name}</button>
-  return <RoomScope.Provider value={room.id}><Page title={title} crumb={crumb} saved={shared ? 'repo' : 'mac'} note={note} action={<OpenSettingsFiles room={room} rs={rs} shared={shared} />}>{children}</Page></RoomScope.Provider>
+export function ProjectPage({ project, rs, title, shared, note, children }: { project: Project; rs: ProjectSettings | null; title: string; shared?: boolean; note?: ReactNode; children: ReactNode }) {
+  const crumb = <button type="button" className="set-crumb" aria-label={`${project.name} settings`} onClick={() => go({ name: 'settings', page: 'project', projectId: project.id })}>{project.name}</button>
+  return <ProjectScope.Provider value={project.id}><Page title={title} crumb={crumb} saved={shared ? 'repo' : 'mac'} note={note} action={<OpenSettingsFiles project={project} rs={rs} shared={shared} />}>{children}</Page></ProjectScope.Provider>
 }

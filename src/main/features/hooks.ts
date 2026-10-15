@@ -8,7 +8,7 @@ import { startHookServer } from '../services/hookServer'
 import { hookToken } from '../services/hookToken'
 import { HooksFileError, hookStatus, installedEvents, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, RUN_HOOKS_OFF, turnHooksOn, uninstallHooks, withKernelHooks, type HookWriteProblem } from '../services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from '../services/preflight'
-import { tildify } from '../services/rooms'
+import { tildify } from '../services/projects'
 import { Feature } from './feature'
 
 /** How a hook from an outside session sets its agent's status in Team and the sidebar. */
@@ -67,13 +67,13 @@ export class Hooks extends Feature {
   }
 
   /** A hook from a session Kernel did not start. The listener on the bus calls it. */
-  onHook(e: { hook_event_name: string }, ctx?: { roomId?: string; agentId?: string }) {
+  onHook(e: { hook_event_name: string }, ctx?: { projectId?: string; agentId?: string }) {
     this.hookSeen.set(e.hook_event_name, Date.now())
     // Only sessions Kernel did not start reach here (the big terminal, or Claude Code run by hand), so Kernel learns their status from the hooks.
     const status = HOOK_STATUS[e.hook_event_name]
-    if (!status || !ctx?.roomId || !ctx.agentId) return
-    if (this.k.team.statuses.get(ctx.roomId)?.[ctx.agentId] === 'paused') return
-    bus.push({ type: 'agent.status', roomId: ctx.roomId, agentId: ctx.agentId, status })
+    if (!status || !ctx?.projectId || !ctx.agentId) return
+    if (this.k.team.statuses.get(ctx.projectId)?.[ctx.agentId] === 'paused') return
+    bus.push({ type: 'agent.status', projectId: ctx.projectId, agentId: ctx.agentId, status })
   }
 
   /** Starts the hook server on `port`. A taken port is not fatal: preflight reports it and offers the next one. */
@@ -167,15 +167,15 @@ export class Hooks extends Feature {
 
   private resolveCwd(cwd: string) {
     const ws = this.store.workspaces().filter((w) => w.status !== 'archived').sort((a, b) => b.path.length - a.path.length).find((w) => cwd === w.path || cwd.startsWith(w.path + '/'))
-    if (ws) return { roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId }
-    const room = this.store.rooms().find((r) => cwd === r.path || cwd.startsWith(r.path + '/'))
-    return room ? { roomId: room.id } : {}
+    if (ws) return { projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId }
+    const project = this.store.projects().find((r) => cwd === r.path || cwd.startsWith(r.path + '/'))
+    return project ? { projectId: project.id } : {}
   }
 
   private async preflight() {
     const shell = (await this.o.refreshPath?.()) ?? undefined
     const codex = Object.values(this.settings.models.roles).some((r) => r.provider === 'codex') ? { bin: this.k.providers.binary('codex').path } : undefined
-    // gh only while a room's PRs go to GitHub, so a Mac with only local rooms sees no gh warning (KERNEL-477).
+    // gh only while a project's PRs go to GitHub, so a Mac with only local projects sees no gh warning (KERNEL-477).
     return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, codex, shell, gh: this.k.codeHost.usesGitHub() })
   }
 

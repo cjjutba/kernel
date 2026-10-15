@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
 import type { McpAccount, McpAccountServer, McpServer, McpServerKind, McpStatus, Provider } from '@shared/types'
 
-// Which MCP servers a room's agents can reach, and whether each is working (KERNEL-464). Kernel only reads the files.
+// Which MCP servers a project's agents can reach, and whether each is working (KERNEL-464). Kernel only reads the files.
 
 /** A server's name as its tools carry it, made the way Claude Code 2.1.292 makes it: `claude.ai Linear` is `claude_ai_Linear`. */
 export function toolServerName(name: string): string {
@@ -40,7 +40,7 @@ const keysOf = (v: unknown): string[] => (v && typeof v === 'object' && !Array.i
 
 /**
  * The user's own servers for the repo in `~/.claude.json`, `projects[<path>].mcpServers`, which `claude mcp add` writes by
- * default. Claude Code keys a project by its folder, so the room's path is tried as given and with its links resolved.
+ * default. Claude Code keys a project by its folder, so the project's path is tried as given and with its links resolved.
  */
 async function localServers(json: any, root: string): Promise<string[]> {
   const projects = json?.projects
@@ -51,10 +51,10 @@ async function localServers(json: any, root: string): Promise<string[]> {
 }
 
 /**
- * MCP servers a session in the room would load (KERNEL-464). For Claude Code: the user's entries for this repo in
+ * MCP servers a session in the project would load (KERNEL-464). For Claude Code: the user's entries for this repo in
  * `~/.claude.json`, the repo's `.mcp.json`, then the user's own list, the first one to name a server winning, as in Claude
  * Code. For Codex: `[mcp_servers]` in `config.toml` in `codexHome` (`~/.codex` unless Kernel runs an account's own home),
- * where `enabled = false` is a server Codex leaves off. Off ones come from the room's settings. A file that is missing or
+ * where `enabled = false` is a server Codex leaves off. Off ones come from the project's settings. A file that is missing or
  * doesn't parse adds nothing. Claude.ai connectors and plugin servers are in no file, so only a status report finds them.
  */
 export async function discoverMcp(root: string, home: string, disabled: string[], o: { codexHome?: string } = {}): Promise<McpServer[]> {
@@ -83,7 +83,7 @@ function reportedSource(source: string | undefined): McpServer['source'] | undef
 }
 
 /**
- * The room's servers for one provider with what it last reported (KERNEL-464). A report matches a server by name, or by
+ * The project's servers for one provider with what it last reported (KERNEL-464). A report matches a server by name, or by
  * the name its tools carry. Codex's `enabled = false` stays `disabled` until Codex says otherwise. A server only a report
  * names joins the list where its source is one a user can see: claude.ai's connectors, a plugin's servers, managed ones,
  * and any Codex reports.

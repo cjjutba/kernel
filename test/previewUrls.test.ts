@@ -191,7 +191,7 @@ describe('the URL a run script prints (KERNEL-246)', () => {
   })
 })
 
-describe('[preview] urls in a room\'s settings (KERNEL-246)', () => {
+describe('[preview] urls in a project\'s settings (KERNEL-246)', () => {
   it('reads [[preview.urls]] in order and drops entries with no address', async () => {
     const repo = await tempRepo({
       '.kernel/settings.toml': '[[preview.urls]]\nname = "Web"\nurl = "http://localhost:$KERNEL_PORT"\n\n[[preview.urls]]\nname = "Broken"\n\n[[preview.urls]]\nname = "API"\nurl = "http://localhost:$((KERNEL_PORT + 1))/docs"\n'
@@ -202,7 +202,7 @@ describe('[preview] urls in a room\'s settings (KERNEL-246)', () => {
     expect((await loadRepoSettings(await tempRepo())).preview).toEqual({ urls: [] })
   })
 
-  it('round trips through settings.setRoom: the patch replaces the list, sources follow, null removes it', async () => {
+  it('round trips through settings.setProject: the patch replaces the list, sources follow, null removes it', async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', '.kernel/settings.toml': '[[preview.urls]]\nname = "Web"\nurl = "http://localhost:$KERNEL_PORT"\n' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort() }))
@@ -210,16 +210,16 @@ describe('[preview] urls in a room\'s settings (KERNEL-246)', () => {
     await k.start()
     try {
       const h = k.handlers()
-      const room = await k.addRoom(repo)
-      expect((await h['settings.room']({ roomId: room.id })).sources).toEqual({ 'preview.urls': 'shared' })
+      const project = await k.addProject(repo)
+      expect((await h['settings.project']({ projectId: project.id })).sources).toEqual({ 'preview.urls': 'shared' })
       const mine = [{ name: 'Storybook', url: 'http://localhost:$((KERNEL_PORT + 2))' }, { name: 'App', url: 'http://localhost:$KERNEL_PORT/app' }]
-      const rs = await h['settings.setRoom']({ roomId: room.id, patch: { preview: { urls: mine } } })
+      const rs = await h['settings.setProject']({ projectId: project.id, patch: { preview: { urls: mine } } })
       expect(rs.preview.urls).toEqual(mine)
       expect(rs.sources['preview.urls']).toBe('override')
       expect(await readFile(join(repo, '.kernel/settings.local.toml'), 'utf8')).toContain('[[preview.urls]]\nname = "Storybook"')
       // A shorter list replaces the whole one, rather than merging by position.
-      expect((await h['settings.setRoom']({ roomId: room.id, patch: { preview: { urls: [mine[1]] } } })).preview.urls).toEqual([mine[1]])
-      const back = await h['settings.setRoom']({ roomId: room.id, patch: { preview: { urls: null } } })
+      expect((await h['settings.setProject']({ projectId: project.id, patch: { preview: { urls: [mine[1]] } } })).preview.urls).toEqual([mine[1]])
+      const back = await h['settings.setProject']({ projectId: project.id, patch: { preview: { urls: null } } })
       expect(back.preview.urls).toEqual([{ name: 'Web', url: 'http://localhost:$KERNEL_PORT' }])
       expect(back.sources['preview.urls']).toBe('shared')
     } finally { await k.stop() }
@@ -243,7 +243,7 @@ describe('[preview] urls in a room\'s settings (KERNEL-246)', () => {
       // Nothing else was in the personal file, so it is gone rather than left empty.
       await expect(readFile(join(repo, '.kernel/settings.local.toml'), 'utf8')).rejects.toThrow()
     }
-    // In the shared file it removes the key too, and the room has no URLs.
+    // In the shared file it removes the key too, and the project has no URLs.
     const rs = await saveRepoSettings(repo, { preview: { urls: [] } }, true)
     expect(rs.preview.urls).toEqual([])
     expect(rs.sources['preview.urls']).toBeUndefined()

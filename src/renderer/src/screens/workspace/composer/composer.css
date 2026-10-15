@@ -95,7 +95,7 @@
 .cmp-pop { left: 0; bottom: calc(100% + 8px); }
 /* Model and effort (D-093), drawn after Conductor's picker. The link pickers share the search field. */
 .model-pop { display: flex; flex-direction: column; width: 380px; padding: 0; background: var(--surface-2); }
-/* Taller than the room above the composer, the model list scrolls and the search, Effort and footer stay. */
+/* Taller than the project above the composer, the model list scrolls and the search, Effort and footer stay. */
 .model-pop > .pick-search, .model-pop > .pick-foot { flex-shrink: 0; }
 .model-pop > .pick-body { min-height: 0; }
 .model-pop .pick-split { flex: 1 1 auto; min-height: 0; }
@@ -127,7 +127,6 @@
 .pick-row:hover { background: transparent; }
 .pick-row[data-active='true'] { background: var(--hover); }
 .pick-item[data-active='true'] > .pick-row { background: var(--hover); }
-.pick-glyph { display: inline-flex; }
 .pick-name { flex-shrink: 0; font-weight: 400; color: var(--ink); }
 .pick-effort { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--muted); }
 .pick-kbd { font: 11.5px var(--mono); letter-spacing: 0.02em; color: var(--muted); }
@@ -329,15 +328,12 @@
 .ctx-foot p { margin: 0; flex: 1; min-width: 0; }
 .ctx-foot .btn { flex-shrink: 0; }
 
-/* KERNEL-406: the picker's provider headings */
-.pick-group { display: flex; align-items: center; gap: 6px; margin: 0; padding: 10px 8px 4px; font-size: 12px; color: var(--muted); }
-.pick-list > div:first-child .pick-group { padding-top: 4px; }
 
 /* New chat's Run in and Branch menus (KERNEL-786). They open upward from the + button, lined up with its right edge, and may cover the box (KERNEL-805). */
 .where-pop { left: -8px; bottom: calc(100% + 8px); display: flex; flex-direction: column; max-height: min(420px, calc(100vh - 220px)); padding: 4px; background: var(--surface-2); z-index: 60; }
 .where-pop[data-align='end'] { left: auto; right: 0; }
 .where-pop > * { flex-shrink: 0; }
-/* New chat's room menu hangs centred under the title, the one where-row menu above the box. */
+/* New chat's project menu hangs centred under the title, the one where-row menu above the box. */
 .where-pop[data-drop='down'] { left: 50%; bottom: auto; top: calc(100% + 10px); transform: translateX(-50%); font-size: 13px; font-weight: 400; letter-spacing: normal; line-height: normal; text-align: left; }
 .where-search { height: 34px; margin: 0 0 4px; padding: 0 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
 .where-list { display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto; }

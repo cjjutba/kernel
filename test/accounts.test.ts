@@ -159,8 +159,8 @@ describe('Codex accounts (KERNEL-406)', () => {
     const { k } = await kernel()
     const added = await k.handlers()['accounts.add']({ provider: 'codex' })
     const repo = await tempRepo()
-    const room = await k.addRoom(repo)
-    const ws: Workspace = { id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const project = await k.addProject(repo)
+    const ws: Workspace = { id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     k.store.saveWorkspace(ws)
     const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'c', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'low', plan: false, createdAt: 1 }
     k.store.saveChat(chat)
@@ -412,10 +412,10 @@ describe('Claude accounts (KERNEL-567)', () => {
     await k.stop({ budgetMs: 0 })
   })
 
-  /** A Claude chat in a room on a temp repo, whose turns `turnDone` finishes on `account` (KERNEL-673). */
+  /** A Claude chat in a project on a temp repo, whose turns `turnDone` finishes on `account` (KERNEL-673). */
   async function claudeChat(k: Kernel) {
-    const room = await k.addRoom(await tempRepo())
-    const ws: Workspace = { id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: room.path, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const project = await k.addProject(await tempRepo())
+    const ws: Workspace = { id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: project.path, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     k.store.saveWorkspace(ws)
     const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'c', kind: 'chat', provider: 'claude', model: 'opus', effort: 'low', plan: false, createdAt: 1 }
     k.store.saveChat(chat)
@@ -585,13 +585,13 @@ describe('holds and limits per provider (KERNEL-406)', () => {
   async function twoChats() {
     const { k } = await kernel()
     const repo = await tempRepo({ '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
-    const room = await k.addRoom(repo)
-    await k.team.agents(room.id)
-    const ws: Workspace = { id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const project = await k.addProject(repo)
+    await k.team.agents(project.id)
+    const ws: Workspace = { id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     k.store.saveWorkspace(ws)
     k.store.saveChat({ id: 'claude', workspaceId: 'ws', title: 'c', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     k.store.saveChat({ id: 'codex', workspaceId: 'ws', title: 'x', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'low', plan: false, createdAt: 2 })
-    return { k, room }
+    return { k, project }
   }
 
   it("holds only Claude's chats while Claude is signed out", async () => {
@@ -611,24 +611,24 @@ describe('holds and limits per provider (KERNEL-406)', () => {
     await k.stop({ budgetMs: 0 })
   })
 
-  it('pauses a room for a limit only when every provider its agents run on is limited', async () => {
-    const { k, room } = await twoChats()
+  it('pauses a project for a limit only when every provider its agents run on is limited', async () => {
+    const { k, project } = await twoChats()
     const at = Math.round(Date.now() / 1000) + 3600
     const claude: RateLimit = { type: 'five_hour', status: 'rejected', resetsAt: at }
     const codex: RateLimit = { type: 'five_hour', provider: 'codex', status: 'rejected', resetsAt: at }
-    // Every role on Claude: a Claude limit pauses the room, as it always did, and a Codex one doesn't.
+    // Every role on Claude: a Claude limit pauses the project, as it always did, and a Codex one doesn't.
     k.account.applyLimits([codex])
-    expect(k.store.room(room.id)?.paused).toBeFalsy()
+    expect(k.store.project(project.id)?.paused).toBeFalsy()
     k.account.applyLimits([claude])
-    expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
+    expect(k.store.project(project.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     k.account.applyLimits([])
-    expect(k.store.room(room.id)?.paused).toBeFalsy()
-    // Kai on Codex and the Lead on Claude: the room pauses only when both are limited.
+    expect(k.store.project(project.id)?.paused).toBeFalsy()
+    // Kai on Codex and the Lead on Claude: the project pauses only when both are limited.
     await k.config.setSettings({ models: { roles: { engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'low' } } } })
     k.account.applyLimits([claude])
-    expect(k.store.room(room.id)?.paused).toBeFalsy()
+    expect(k.store.project(project.id)?.paused).toBeFalsy()
     k.account.applyLimits([claude, codex])
-    expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
+    expect(k.store.project(project.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     await k.stop({ budgetMs: 0 })
   })
 
@@ -657,7 +657,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
   })
 
   /**
-   * A Kernel with a fake Claude whose own login is renamed Work, Claude accounts added under `names`, and a room whose
+   * A Kernel with a fake Claude whose own login is renamed Work, Claude accounts added under `names`, and a project whose
    * agents all run on Claude, with a workspace and a chat in it that last ran on Work.
    */
   async function setUp(names: string[] = [], o: Partial<KernelOptions> = {}) {
@@ -678,15 +678,15 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     // Adding reads each account in the background.
     if (names.length) await until(() => new Set(sdk.probes.map((p) => p.dir)).size === names.length + 1)
     const repo = await tempRepo()
-    const room = await t.k.addRoom(repo)
-    t.k.store.saveWorkspace({ id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    const project = await t.k.addProject(repo)
+    t.k.store.saveWorkspace({ id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     t.k.store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'c', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, ranOn: 'cli', createdAt: 1 })
     const folder = (name: string) => t.k.providers.claudeHome(ids[name])
-    // `switchTo` makes the account the one in use before it saves and resumes the rooms, so a test that checks what the
+    // `switchTo` makes the account the one in use before it saves and resumes the projects, so a test that checks what the
     // switch did waits for the switch itself, not for `active` (KERNEL-667).
     const switching = vi.spyOn(t.k.providers, 'switchTo')
     const switched = async () => { await until(() => switching.mock.results.length); await Promise.all(switching.mock.results.map((r) => r.value)) }
-    return { ...t, h, ids, room, repo, folder, switched }
+    return { ...t, h, ids, project, repo, folder, switched }
   }
 
   /** A rejection of the 5-hour window, as a session reports it: on Claude's CLI login unless `l` says otherwise. */
@@ -695,7 +695,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
   const notes = (k: Kernel, chatId = 'chat') => k.store.items(chatId).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
 
   it('moves Claude to the signed-in account with the lowest 5-hour use, notes it in the chat, and stays there when the old account resets', async () => {
-    const { k, ids, room, folder, switched } = await setUp(['Side', 'Personal'])
+    const { k, ids, project, folder, switched } = await setUp(['Side', 'Personal'])
     sdk.usage = { '': 100, [folder('Side')]: 60, [folder('Personal')]: 20 }
     await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
     await quiet(); sdk.probes = []
@@ -704,7 +704,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     expect(k.providers.active('claude')).toBe(ids.Personal)
     // Every account was read before Kernel picked, so it went by fresh numbers.
     expect(new Set(sdk.probes.map((p) => p.dir))).toEqual(new Set(['', folder('Side'), folder('Personal')]))
-    expect(k.store.room(room.id)?.paused).toBeFalsy()
+    expect(k.store.project(project.id)?.paused).toBeFalsy()
     await k.sessions.send('chat', [{ type: 'text', text: 'Go on' }])
     expect(k.store.chat('chat')?.ranOn).toBe(ids.Personal)
     // The note comes once the turn ends, which this fake Claude never does, so it is asked for here (KERNEL-842).
@@ -756,12 +756,12 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await again.stop({ budgetMs: 0 })
   })
 
-  it('changes nothing with the switch off: the limit pauses the room and Kernel stays on the account', async () => {
-    const { k, room, folder } = await setUp(['Personal'])
+  it('changes nothing with the switch off: the limit pauses the project and Kernel stays on the account', async () => {
+    const { k, project, folder } = await setUp(['Personal'])
     sdk.usage = { '': 100, [folder('Personal')]: 10 }
     await quiet(); sdk.probes = []
     reject(k)
-    expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
+    expect(k.store.project(project.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     await new Promise((r) => setTimeout(r, 100))
     expect(k.providers.active('claude')).toBeUndefined()
     expect(moving(k)).toEqual([])
@@ -769,8 +769,8 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await k.stop({ budgetMs: 0 })
   })
 
-  it('never moves to an API key account, keeps the rooms paused while every other account is at its limit, and moves once one has room', async () => {
-    const { k, ids, room, folder } = await setUp(['Personal'])
+  it('never moves to an API key account, keeps the projects paused while every other account is at its limit, and moves once one has headroom', async () => {
+    const { k, ids, project, folder } = await setUp(['Personal'])
     const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; label: string; auth?: 'apiKey'; createdAt: number }[] } }; save: () => Promise<void> }
     p.load().claude.accounts.push({ id: 'key', label: 'Key', auth: 'apiKey', createdAt: 1 })
     await p.save()
@@ -780,7 +780,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     reject(k)
     await until(() => moving(k).includes('waiting'))
     expect(k.providers.active('claude')).toBeUndefined()
-    expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
+    expect(k.store.project(project.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     // The same rejection read again, its reset a second off, reads nothing new.
     await quiet(); sdk.probes = []
     const limits = k.store.meta<RateLimit[]>('limits') ?? []
@@ -790,7 +790,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     // Personal's window resets while Work's still stands: Kernel moves there, not to the key.
     k.sessions.resetLimit(`claude:${ids.Personal}:five_hour`)
     await until(() => k.providers.active('claude') === ids.Personal)
-    await until(() => !k.store.room(room.id)?.paused)
+    await until(() => !k.store.project(project.id)?.paused)
     expect(moving(k)).toEqual(['done'])
     await k.stop({ budgetMs: 0 })
   })
@@ -806,7 +806,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
     k.account.applyLimits(k.store.meta<RateLimit[]>('limits') ?? [])
     await until(() => moving(k).includes('waiting'))
-    // No account has room: the Lead hears it once, with the reset that comes first across them.
+    // No account has headroom: the Lead hears it once, with the reset that comes first across them.
     const sooner = Math.min(...(k.store.meta<RateLimit[]>('limits') ?? []).filter((l) => l.type === 'five_hour' && l.status === 'rejected').map((l) => l.resetsAt!))
     expect(stuck.mock.calls).toEqual([['claude', { stuck: 'full', resetsAt: sooner }]])
     expect(k.account.limitNews('claude', undefined, 'claude-sonnet-5-5')).toMatchObject({ account: 'Work', stuck: 'full', resetsAt: sooner })
@@ -908,25 +908,25 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await k.stop({ budgetMs: 0 })
   })
 
-  it("prefers an account that offers the models agents start on, and moves to one that doesn't only when no other has room (KERNEL-616)", async () => {
+  it("prefers an account that offers the models agents start on, and moves to one that doesn't only when no other has headroom (KERNEL-616)", async () => {
     // Every account is on Max, so the Lead stays on Opus 5.5 wherever it runs.
     const plan = process.env.FAKE_PLAN
     process.env.FAKE_PLAN = 'max'
     try {
-      const { k, ids, room, folder } = await setUp(['Side', 'Personal'], { checkPins: true, starterDir: STARTERS })
-      await k.team.agents(room.id)
-      const lead = k.team.agentsSync(room.id).filter((a) => k.team.pickFor(a).model === 'claude-opus-5-5').map((a) => a.name)
+      const { k, ids, project, folder } = await setUp(['Side', 'Personal'], { checkPins: true, starterDir: STARTERS })
+      await k.team.agents(project.id)
+      const lead = k.team.agentsSync(project.id).filter((a) => k.team.pickFor(a).model === 'claude-opus-5-5').map((a) => a.name)
       expect(lead.length).toBeGreaterThan(0)
       const read: string[] = []
       k.providers.readModels = async (_p, id) => { read.push(id); return id === ids.Side ? ['claude-sonnet-5-5', 'claude-haiku-4-5-20251001'] : ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5-20251001'] }
-      // Side has the most room, but no Opus.
+      // Side has the most headroom, but no Opus.
       sdk.usage = { '': 100, [folder('Side')]: 10, [folder('Personal')]: 50 }
       await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
       reject(k)
       await until(() => k.providers.active('claude') === ids.Personal)
       expect(read).toEqual([ids.Side, ids.Personal])
       expect(k.store.notifications().filter((n) => n.id.startsWith('n-models-'))).toEqual([])
-      // Personal hits its limit too, and only Side has room: Kernel moves there and says who can't run. The switch to Personal
+      // Personal hits its limit too, and only Side has headroom: Kernel moves there and says who can't run. The switch to Personal
       // was over 30 minutes ago, so Kernel still switches by itself (KERNEL-844).
       ;(k.account as unknown as { selfSwitched: Map<string, { at: number }> }).selfSwitched.get('claude')!.at -= 31 * 60_000
       sdk.usage[folder('Personal')] = 100
@@ -1086,11 +1086,11 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     // Kai's file pins Opus.
     await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
     await writeFile(join(repo, '.claude', 'agents', 'kai.md'), '---\nname: kai\ndescription: Engineer. Builds the engine.\nmodel: opus\n---\nYou are Kai.')
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     // The user put the Lead on Opus 5.5 themselves, so a Pro plan's defaults don't move it.
     await k.config.setSettings({ models: { roles: { lead: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' } } } })
-    await k.team.agents(room.id)
-    const lead = k.team.agentsSync(room.id).filter((a) => k.team.pickFor(a).model === 'claude-opus-5-5').map((a) => a.name).sort()
+    await k.team.agents(project.id)
+    const lead = k.team.agentsSync(project.id).filter((a) => k.team.pickFor(a).model === 'claude-opus-5-5').map((a) => a.name).sort()
     expect(lead).toEqual(['Kai', 'Kernel'])
     const side = await h['accounts.add']({ provider: 'claude' })
     k.providers.readModels = async (_p, id) => (id === side.id ? ['claude-sonnet-5-5', 'claude-haiku-4-5-20251001'] : ['claude-opus-5-5', 'claude-sonnet-5-5'])
@@ -1249,7 +1249,7 @@ describe('MCP servers added on an account, Keychain prompts and shared organizat
     await k.stop({ budgetMs: 0 })
   })
 
-  it('names the accounts in one organization on each row, and moves at a limit to one of them only once its own windows say it has room', async () => {
+  it('names the accounts in one organization on each row, and moves at a limit to one of them only once its own windows say it has headroom', async () => {
     const { k, claude, h, side, folder, row } = await setUp()
     // The CLI login is a Team seat, and a second seat in the same organization is added.
     await claude.setLogin('cli', { email: 'cj@example.com', plan: 'team', org: 'org-team' })
@@ -1273,7 +1273,7 @@ describe('MCP servers added on an account, Keychain prompts and shared organizat
     const moving = () => [...(k.account as unknown as { moving: Map<string, { state: string }> }).moving.values()].map((m) => m.state)
     await until(() => moving().includes('waiting'))
     expect(k.providers.active('claude')).toBeUndefined()
-    // A reading of the seat's own windows shows room, and Kernel moves there.
+    // A reading of the seat's own windows shows project, and Kernel moves there.
     merge({ status: 'allowed', utilization: 0.1, accountId: seat.id })
     await until(() => k.providers.active('claude') === seat.id)
     await k.stop({ budgetMs: 0 })
@@ -1362,7 +1362,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     bus.on('push', (e: PushEvent) => { if (e.type === 'account.mcpSignInAll' && e.run.done.includes('linear')) sdk.mcp[folder] = sdk.mcp[folder].map((s) => (s.name === 'linear' ? { ...s, status: 'connected' } : s)) })
     const logs = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m))
     // Nothing checked the account yet, so Sign in to all checks it first.
-    const run = await h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })
+    const run = await k.mcp.signInAll('claude', side.id)
     expect(run).toEqual({ accountId: side.id, servers: ['claude.ai Google Drive', 'figma', 'linear'], done: ['claude.ai Google Drive', 'linear'], failed: [{ server: 'figma', error: 'Claude Code said: Couldn\'t complete authentication for "figma": access denied' }], finished: true })
     expect(await logins()).toEqual(['claude.ai Google Drive', 'figma', 'linear'])
     // Each push says which server is next.
@@ -1386,17 +1386,17 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     sdk.mcp = { [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }] }
     await h['mcp.accounts'](undefined)
     process.env.FAKE_LOGIN_WAIT = '1'
-    const running = h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })
+    const running = k.mcp.signInAll('claude', side.id)
     await until(async () => (await logins()).includes('figma'))
     diag.push(['SEEN', Date.now() % 100000, await claude.calls()])
-    await expect(h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })).rejects.toThrow('Sign in to all is already running.')
+    await expect(k.mcp.signInAll('claude', side.id)).rejects.toThrow('Sign in to all is already running.')
     await h['accounts.cancelAdd']({ provider: 'claude' })
     expect(await running).toEqual({ accountId: side.id, servers: ['figma', 'linear'], done: [], failed: [], finished: true, canceled: true })
     diag.push(['AFTER', Date.now() % 100000, await claude.calls()])
     expect(await logins(), JSON.stringify(diag)).toEqual(['figma'])
     // It can run again once it ended.
     delete process.env.FAKE_LOGIN_WAIT
-    expect((await h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })).done).toEqual(['figma', 'linear'])
+    expect((await k.mcp.signInAll('claude', side.id)).done).toEqual(['figma', 'linear'])
     await k.stop({ budgetMs: 0 })
   })
 
@@ -1521,7 +1521,7 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
     for (const id of ['cli', work.id]) expect(on(after, 'codex', id)?.servers.find((s) => s.name === 'supabase')?.state).toBe('ready')
     // Sign in to all skips what is ready, and a failure carries Codex's reason.
     process.env.FAKE_MCP_FAIL = 'linear'
-    const run = await h['accounts.mcpSignInAll']({ provider: 'codex', accountId: 'cli' })
+    const run = await k.mcp.signInAll('codex', 'cli')
     expect(run).toEqual({ provider: 'codex', accountId: 'cli', servers: ['linear', 'mobbin'], done: ['mobbin'], failed: [{ server: 'linear', error: 'Codex said: access denied' }], finished: true })
     expect(runs.at(-1)).toEqual(run)
     // A server Codex can't sign in to says why, and Cancel stops a sign-in waiting in the browser.
@@ -1559,27 +1559,27 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
     await k.stop({ budgetMs: 0 })
   })
 
-  it('keeps an ignored server across a restart and leaves it, and one off in every room, out of every warning', async () => {
+  it('keeps an ignored server across a restart and leaves it, and one off in every project, out of every warning', async () => {
     const { k, h, home, needed, logins } = await (async () => {
       const t = await setUp({ checkMcpOnAdd: true })
       return { ...t, logins: async () => (await t.claude.calls()).filter((c) => c.args.startsWith('mcp login')).map((c) => c.args.slice('mcp login '.length)) }
     })()
     sdk.mcp = { '*': [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }, { name: 'neon', status: 'needs-auth', scope: 'user' }] }
     const repo = await tempRepo()
-    await k.addRoom(repo)
+    await k.addProject(repo)
     await mkdir(join(repo, '.kernel'), { recursive: true })
     await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[disabled]\nmcp = ["neon"]\n')
     const side = await h['accounts.add']({ provider: 'claude' })
-    // The notice after adding leaves out neon, which the only room switches off.
+    // The notice after adding leaves out neon, which the only project switches off.
     await until(() => needed.length)
     expect(needed[0].servers).toEqual(['figma', 'linear'])
     const out = await h['accounts.mcpIgnore']({ provider: 'claude', accountId: side.id, server: 'figma', ignored: true })
-    const servers = (list: McpAccount[]) => list.find((a) => a.accountId === side.id)?.servers.map((s) => [s.name, s.state, ...(s.roomOff ? ['roomOff'] : [])])
-    expect(servers(out)).toEqual([['figma', 'ignored'], ['linear', 'needs-sign-in'], ['neon', 'needs-sign-in', 'roomOff']])
+    const servers = (list: McpAccount[]) => list.find((a) => a.accountId === side.id)?.servers.map((s) => [s.name, s.state, ...(s.projectOff ? ['projectOff'] : [])])
+    expect(servers(out)).toEqual([['figma', 'ignored'], ['linear', 'needs-sign-in'], ['neon', 'needs-sign-in', 'projectOff']])
     // The row's warning counts only linear.
     expect((await h['accounts.list'](undefined)).find((a) => a.id === side.id)?.mcpSignIns).toEqual([{ server: 'linear', connector: false }])
     // Sign in to all signs in linear alone.
-    const run = await h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })
+    const run = await k.mcp.signInAll('claude', side.id)
     expect(run.servers).toEqual(['linear'])
     expect(await logins()).toEqual(['linear'])
     // Ignore is kept in accounts.json, so a new Kernel on the same data folder still ignores it.
@@ -1642,7 +1642,7 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
     // Needs you: supabase's sign-in and broken's failure. Not the four off, nor the ignored one.
     expect([codex?.needsYou, codex?.ready]).toEqual([2, 1])
     process.env.FAKE_MCP_FAIL = 'supabase'
-    expect((await h['accounts.mcpSignInAll']({ provider: 'codex', accountId: 'cli' })).servers).toEqual(['supabase'])
+    expect((await k.mcp.signInAll('codex', 'cli')).servers).toEqual(['supabase'])
     await k.stop({ budgetMs: 0 })
   })
 
@@ -1832,7 +1832,7 @@ describe('One login, one row (KERNEL-701)', () => {
     await runLogin('side@example.com', 'org-team')
     const at = Math.round(Date.now() / 1000) + 3600
     const window = (accountId: string | undefined, status: 'rejected' | 'allowed', utilization: number, provider?: 'codex'): RateLimit => ({ type: 'five_hour', status, utilization, resetsAt: at, ...(accountId ? { accountId } : {}), ...(provider ? { provider } : {}) } as RateLimit)
-    // The twin has the most room by its own windows, and is still never picked.
+    // The twin has the most headroom by its own windows, and is still never picked.
     const limits = [window(undefined, 'rejected', 1), window(side.id, 'allowed', 0.1), window(other.id, 'allowed', 0.5)]
     expect(k.providers.spareAccount('claude', limits)).toBe(other.id)
     // On the twin itself, the CLI's own login isn't picked either.
@@ -1890,7 +1890,7 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
     file.claude.cli = { email: 'cj@example.com' }
     file.claude.accounts.push({ id: 'side', label: 'Side', email: 'side@example.com', createdAt: 1 }, { id: 'key', label: 'Key', auth: 'apiKey', createdAt: 1 })
     file.codex.accounts.push({ id: 'cx', label: 'Personal', email: 'p@example.com', createdAt: 1 })
-    t.k.store.saveWorkspace({ id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'b', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    t.k.store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'b', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     const chat = (id: string, o: Partial<Chat> = {}) => t.k.store.saveChat({ id, workspaceId: 'ws', title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'low', plan: false, ranOn: 'cli', createdAt: 1, ...o })
     const turn = (o: Partial<LastTurn> = {}): LastTurn => ({ at: Date.now(), account: 'cli', email: 'cj@example.com', model: 'claude-opus-5-5', context: 200_000, input: 10, cacheRead: 199_000, cacheWrite: 990, ...o })
     return { ...t, file, chat, turn, place: t.k.placement }
@@ -2109,7 +2109,7 @@ describe('long chats that move accounts, on Codex, and the guards against using 
   const MIN = 60_000
 
   /**
-   * A Kernel whose Codex has its own login, Work, and Personal and Side added, with Work in use, and a room whose agents run
+   * A Kernel whose Codex has its own login, Work, and Personal and Side added, with Work in use, and a project whose agents run
    * on Claude. `ran` runs a turn of a Codex chat and waits for it to end. `long` gives a chat a last turn on the account it
    * ran on, of `context` tokens, `ago` before now. `log` is where each turn ran and where each summary ran, by home: null for
    * Work, `personal` or `side`.
@@ -2126,8 +2126,8 @@ describe('long chats that move accounts, on Codex, and the guards against using 
     await h['accounts.rename']({ provider: 'codex', accountId: 'cli', label: 'Work' })
     await quiet()
     const repo = await tempRepo()
-    const room = await t.k.addRoom(repo)
-    t.k.store.saveWorkspace({ id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    const project = await t.k.addProject(repo)
+    t.k.store.saveWorkspace({ id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     const homes = new Map<string | null, string>([[null, 'work'], ...Object.entries(ids).map(([name, id]) => [t.k.providers.codexHome(id)!, name.toLowerCase()] as [string, string])])
     const chat = (id: string) => t.k.store.saveChat({ id, workspaceId: 'ws', title: id, kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'low', plan: false, createdAt: 2 })
     const idle = (id: string) => until(() => !t.k.sessions.isRunning(id) && !t.k.sessions.queued(id).length)
@@ -2141,11 +2141,11 @@ describe('long chats that move accounts, on Codex, and the guards against using 
     const notes = (id: string) => t.k.store.items(id).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
     /** A window of Codex's on `accountId`, as a session reports it: Work's unless it says otherwise. */
     const window = (l: Partial<RateLimit> = {}) => (t.k.sessions as unknown as { mergeLimits: (l: Partial<RateLimit>[]) => void }).mergeLimits([{ type: 'five_hour', provider: 'codex', status: 'rejected', utilization: 1, resetsAt: S(Date.now() + 3600_000), ...l }])
-    return { ...t, h, ids, room, chat, ran, idle, long, log, moveAll, notes, window }
+    return { ...t, h, ids, project, chat, ran, idle, long, log, moveAll, notes, window }
   }
 
   it('summarizes on the old account while its cache is warm, on the new one once it is cold, and continues or asks as Settings, Account says', async () => {
-    const { k, h, ids, room, chat, ran, idle, long, log, moveAll, notes } = await setUp()
+    const { k, h, ids, project, chat, ran, idle, long, log, moveAll, notes } = await setUp()
     for (const id of ['warm', 'cold', 'on', 'asked']) { chat(id); await ran(id, `start ${id}`) }
     long('warm', 120_000)
     // Codex keeps a cache 5 minutes.
@@ -2163,12 +2163,12 @@ describe('long chats that move accounts, on Codex, and the guards against using 
     await k.config.setSettings({ accounts: { longChatMove: { codex: 'ask' } } })
     await k.sessions.send('asked', [{ type: 'text', text: 'next asked' }])
     expect(await k.sessions.send('asked', [{ type: 'text', text: 'and this' }])).toEqual({ queued: true, why: 'move' })
-    expect(k.store.notification(`n-move-ask-${room.id}`)).toMatchObject({ needsYou: true, title: 'asked waits to move to another account' })
+    expect(k.store.notification(`n-move-ask-${project.id}`)).toMatchObject({ needsYou: true, title: 'asked waits to move to another account' })
     expect((await log()).slice(9)).toEqual([])
     await h['chats.moveChoice']({ chatId: 'asked', choice: 'continue' })
     await idle('asked')
     expect((await log()).slice(9)).toEqual(['personal: next asked', 'personal: and this'])
-    expect(k.store.notification(`n-move-ask-${room.id}`)?.needsYou).toBe(false)
+    expect(k.store.notification(`n-move-ask-${project.id}`)?.needsYou).toBe(false)
     await k.stop({ budgetMs: 0 })
   })
 

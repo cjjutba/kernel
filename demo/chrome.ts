@@ -1,4 +1,4 @@
-// On a Mac, the window's traffic lights are drawn by macOS, not by the app, so the renderer only leaves room for them at
+// On a Mac, the window's traffic lights are drawn by macOS, not by the app, so the renderer only leaves space for them at
 // the top of the sidebar. The demo draws them there, so the frame reads as the Mac app it is. They are decoration.
 const lights = document.createElement('div')
 lights.setAttribute('aria-hidden', 'true')

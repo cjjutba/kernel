@@ -98,7 +98,7 @@ describe('Linear queries', () => {
     expect(l.calls[1].variables.filter).toEqual({ and: [OPEN, { or: [{ title: { containsIgnoreCase: 'KERNEL-83' } }, { number: { eq: 83 } }] }] })
   })
 
-  it("lists the room team's Todo issues for Up next, urgent first and no priority last, keeping the order within a priority", async () => {
+  it("lists the project team's Todo issues for Up next, urgent first and no priority last, keeping the order within a priority", async () => {
     const n = (identifier: string, priority: number) => ({ identifier, title: identifier, url: `https://linear.app/cj/issue/${identifier}`, priority, project: identifier === 'K-3' ? { name: 'Kernel v1' } : null })
     const l = linear(() => ({ issues: { nodes: [n('K-1', 0), n('K-2', 3), n('K-3', 1), n('K-4', 3), n('K-5', 4)] } }))
     const out = await nextIssues('k', 'K', l.fetch)
@@ -108,7 +108,7 @@ describe('Linear queries', () => {
     expect(out[1]).not.toHaveProperty('project')
   })
 
-  it("lists nothing for Up next in a room with no Linear team, rather than another team's issues", async () => {
+  it("lists nothing for Up next in a project with no Linear team, rather than another team's issues", async () => {
     const l = linear(() => ({ issues: { nodes: [{ identifier: 'BYTE-45', title: 'Submit', priority: 1 }] } }))
     expect(await nextIssues('k', undefined, l.fetch)).toEqual([])
     expect(l.calls).toHaveLength(0)
@@ -298,7 +298,7 @@ describe('Linear in the kernel', () => {
 
   /**
    * A Kernel on a temp repo with Kernel and Noor, whose Linear calls go to `answer`. Sessions only record what they are sent.
-   * `plain` saves the token the way Kernel did before KERNEL-445; `cipher` is the Kernel's Keychain. The room names its
+   * `plain` saves the token the way Kernel did before KERNEL-445; `cipher` is the Kernel's Keychain. The project names its
    * Linear team, so with a token its tracker is Linear (KERNEL-462).
    */
   async function kernel(answer: (c: Call) => unknown, o: { token?: string; plain?: boolean; cipher?: Cipher } = { token: 'lin_stored' }) {
@@ -314,8 +314,8 @@ describe('Linear in the kernel', () => {
     await k.start()
     const sent: { chatId: string; parts: ChatPart[] }[] = []
     k.sessions.send = async (chatId, parts) => { sent.push({ chatId, parts }); return { queued: false } }
-    const room = await k.addRoom(repo)
-    return { k, room, calls: l.calls, sent, dataDir }
+    const project = await k.addProject(repo)
+    return { k, project, calls: l.calls, sent, dataDir }
   }
 
   const scope = () => ({ teams: { nodes: [] }, projects: { nodes: [] }, cycles: { nodes: [] }, issues: { nodes: [] } })
@@ -342,13 +342,13 @@ describe('Linear in the kernel', () => {
   })
 
   /** The Lead's create_workspace, run against the kernel as Kernel's chat would. */
-  async function createWorkspace(k: Kernel, roomId: string, args: Record<string, string>) {
-    const lead = (await k.agents(roomId)).find((a) => a.lead) as AgentDef
-    const chat = await k.leadChat(roomId)
-    const deps = k.lead.leadToolDeps(roomId, lead, chat)
+  async function createWorkspace(k: Kernel, projectId: string, args: Record<string, string>) {
+    const lead = (await k.agents(projectId)).find((a) => a.lead) as AgentDef
+    const chat = await k.leadChat(projectId)
+    const deps = k.lead.leadToolDeps(projectId, lead, chat)
     const tool = kernelTools(deps).find((t) => t.name === 'create_workspace')!
     const out = await tool.handler({ agent: 'noor', title: 'Build the screen', brief: 'Goal, files, acceptance criteria', ...args } as never, {})
-    return { text: (out.content[0] as { text: string }).text, ws: k.store.workspaces(roomId).find((w) => w.agentId === 'noor')! }
+    return { text: (out.content[0] as { text: string }).text, ws: k.store.workspaces(projectId).find((w) => w.agentId === 'noor')! }
   }
 
   const until = async (ok: () => boolean) => { for (let i = 0; i < 100 && !ok(); i++) await new Promise((r) => setTimeout(r, 20)) }
@@ -359,12 +359,12 @@ describe('Linear in the kernel', () => {
     : { issue: detail }
 
   it('reads the saved token first, then LINEAR_API_KEY, for every Linear channel', async () => {
-    const { k, room, calls } = await kernel(() => ({ teams: { nodes: [] }, projects: { nodes: [] }, cycles: { nodes: [] }, issues: { nodes: [] }, issue: detail }))
+    const { k, project, calls } = await kernel(() => ({ teams: { nodes: [] }, projects: { nodes: [] }, cycles: { nodes: [] }, issues: { nodes: [] }, issue: detail }))
     const h = k.handlers()
     await h['linear.scope']()
     await h['linear.issues']({ filter: { mine: false } })
     await h['linear.issue']({ id: 'KERNEL-83' })
-    await h['issues.list']({ roomId: room.id, query: '' })
+    await h['issues.list']({ projectId: project.id, query: '' })
     expect(calls.map((c) => c.auth)).toEqual(['lin_stored', 'lin_stored', 'lin_stored', 'lin_stored'])
     const env = await kernel(() => ({ teams: { nodes: [] }, projects: { nodes: [] }, cycles: { nodes: [] } }), {})
     vi.stubEnv('LINEAR_API_KEY', 'lin_env')
@@ -375,8 +375,8 @@ describe('Linear in the kernel', () => {
   })
 
   it('create_workspace with issue links the workspace, names the branch from the key and moves the issue to In Progress', async () => {
-    const { k, room, calls } = await kernel(answer)
-    const { text, ws } = await createWorkspace(k, room.id, { issue: 'KERNEL-83' })
+    const { k, project, calls } = await kernel(answer)
+    const { text, ws } = await createWorkspace(k, project.id, { issue: 'KERNEL-83' })
     expect(ws.source).toEqual({ kind: 'issue', id: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/cj/issue/KERNEL-83', tracker: 'linear' })
     // The Bug label makes it a fix, and Linear's own cj/kernel-83-issues-screen is not used (KERNEL-275).
     expect(ws.branch).toBe('fix/kernel-83-issues-screen')
@@ -386,39 +386,39 @@ describe('Linear in the kernel', () => {
   })
 
   it('starts an issue with no Bug label on feat (KERNEL-275)', async () => {
-    const { k, room } = await kernel((c) => c.query.includes('IssueDetail') ? { issue: { ...detail, labels: { nodes: [{ name: 'Engine' }] } } } : answer(c))
-    const { ws } = await createWorkspace(k, room.id, { issue: 'KERNEL-83' })
+    const { k, project } = await kernel((c) => c.query.includes('IssueDetail') ? { issue: { ...detail, labels: { nodes: [{ name: 'Engine' }] } } } : answer(c))
+    const { ws } = await createWorkspace(k, project.id, { issue: 'KERNEL-83' })
     expect(ws.branch).toBe('feat/kernel-83-issues-screen')
   })
 
   it('cuts a 90-character branch from the Lead to 60 and starts the workspace (KERNEL-275)', async () => {
-    const { k, room } = await kernel(answer)
+    const { k, project } = await kernel(answer)
     const branch = 'cjjutbaofficial/kernel-83-the-issues-screen-lists-open-issues-and-filters-them-by-the-team'
     expect(branch).toHaveLength(90)
-    const { text, ws } = await createWorkspace(k, room.id, { issue: 'KERNEL-83', branch })
+    const { text, ws } = await createWorkspace(k, project.id, { issue: 'KERNEL-83', branch })
     expect(ws.branch).toBe('cjjutbaofficial/kernel-83-the-issues-screen-lists-open')
     expect(text).toBe(`Created ${ws.id} on ${ws.branch} for noor.`)
     expect(ws.status).toBe('ready')
   })
 
   it('names a branch from the New workspace modal after the issue\'s labels (KERNEL-275)', async () => {
-    const { k, room } = await kernel(answer)
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build it', source: { kind: 'issue', id: 'KERNEL-83', title: 'Issues screen' } })
+    const { k, project } = await kernel(answer)
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', source: { kind: 'issue', id: 'KERNEL-83', title: 'Issues screen' } })
     expect(ws.branch).toBe('fix/kernel-83-issues-screen')
   })
 
   it('starts on feat when Linear takes over 5 seconds to send the labels (KERNEL-275)', async () => {
     // The detail's body never finishes arriving.
-    const { k, room } = await kernel((c) => c.query.includes('IssueDetail') ? new Response(new ReadableStream()) : answer(c))
+    const { k, project } = await kernel((c) => c.query.includes('IssueDetail') ? new Response(new ReadableStream()) : answer(c))
     const started = Date.now()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build it', source: { kind: 'issue', id: 'KERNEL-83', title: 'Issues screen' } })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', source: { kind: 'issue', id: 'KERNEL-83', title: 'Issues screen' } })
     expect(ws.branch).toBe('feat/kernel-83-issues-screen')
     expect(Date.now() - started).toBeGreaterThanOrEqual(4900)
   }, 15000)
 
   it('an explicit branch wins over Linear\'s', async () => {
-    const { k, room } = await kernel(answer)
-    const { ws } = await createWorkspace(k, room.id, { issue: 'KERNEL-83', branch: 'feat/my-own-name' })
+    const { k, project } = await kernel(answer)
+    const { ws } = await createWorkspace(k, project.id, { issue: 'KERNEL-83', branch: 'feat/my-own-name' })
     expect(ws.branch).toBe('feat/my-own-name')
     expect(ws.source).toMatchObject({ kind: 'issue', id: 'KERNEL-83', title: 'Issues screen' })
   })
@@ -428,8 +428,8 @@ describe('Linear in the kernel', () => {
     const listen = (e: ActivityEvent) => { if (e.kind === 'note' && e.text.includes('In Progress')) notes.push(e) }
     bus.on('activity', listen)
     try {
-      const { k, room } = await kernel(() => new Response('{}', { status: 500 }))
-      const { ws } = await createWorkspace(k, room.id, { issue: 'KERNEL-83' })
+      const { k, project } = await kernel(() => new Response('{}', { status: 500 }))
+      const { ws } = await createWorkspace(k, project.id, { issue: 'KERNEL-83' })
       expect(ws.source).toEqual({ kind: 'issue', id: 'KERNEL-83', title: 'Build the screen', tracker: 'linear' })
       expect(ws.branch).toBe('feat/kernel-83-build-screen')
       expect(ws.status).toBe('ready')
@@ -442,11 +442,11 @@ describe('Linear in the kernel', () => {
 
   it('leaves a GitHub issue, and Linear without a token, alone', async () => {
     const github = await kernel(answer)
-    const { ws } = await createWorkspace(github.k, github.room.id, { issue: '#41' })
+    const { ws } = await createWorkspace(github.k, github.project.id, { issue: '#41' })
     expect(ws.source).toEqual({ kind: 'issue', id: '#41', title: 'Build the screen', tracker: 'github' })
     expect(ws.branch).toBe('feat/41-build-screen')
     const none = await kernel(answer, {})
-    const made = await createWorkspace(none.k, none.room.id, { issue: 'KERNEL-83' })
+    const made = await createWorkspace(none.k, none.project.id, { issue: 'KERNEL-83' })
     expect(made.ws.source).toMatchObject({ id: 'KERNEL-83', title: 'Build the screen' })
     await new Promise((r) => setTimeout(r, 50))
     expect(github.calls).toEqual([])
@@ -454,9 +454,9 @@ describe('Linear in the kernel', () => {
   })
 
   it('Plan with Kernel starts a fresh Lead chat in plan mode, briefed with the issue', async () => {
-    const { k, room, sent } = await kernel(answer)
-    const before = await k.leadChat(room.id)
-    const out = await k.handlers()['linear.plan']({ id: 'KERNEL-83', roomId: room.id })
+    const { k, project, sent } = await kernel(answer)
+    const before = await k.leadChat(project.id)
+    const out = await k.handlers()['linear.plan']({ id: 'KERNEL-83', projectId: project.id })
     const chat = k.store.chat(out.chatId)!
     expect(out.chatId).not.toBe(before.id)
     // A chat of its own has a workspace of its own (KERNEL-405), and its brief waits only for the chat's worktree (KERNEL-490, KERNEL-542).

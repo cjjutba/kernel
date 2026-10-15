@@ -69,7 +69,7 @@ export function McpServers() {
     const connect = s.state === 'not-set-up' && s.kind === 'connector' && !!s.connectUrl
     const asked = asking === s.name
     const detail = asked && account.email ? `Sign in to claude.ai as ${account.email} first`
-      : s.state === 'failed' ? s.error : s.state === 'off' || mcpIsOff(s) ? s.note ?? 'Off in every room' : s.state === 'not-set-up' && s.kind !== 'connector' ? s.note : s.note
+      : s.state === 'failed' ? s.error : s.state === 'off' || mcpIsOff(s) ? s.note ?? 'Off in every project' : s.state === 'not-set-up' && s.kind !== 'connector' ? s.note : s.note
     return (
       <div key={s.name} className="set-row ag-server">
         <span className="ag-server-name">

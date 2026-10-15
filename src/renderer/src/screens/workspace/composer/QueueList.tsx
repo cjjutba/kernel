@@ -23,7 +23,7 @@ function extras(parts: ChatPart[]): string {
 const WAITING: Partial<Record<QueueReason, string>> = {
   offline: 'Queued. Sends when you are back online.',
   capacity: 'Queued. Sends when an agent slot frees up. Change the limit in Settings, Models and effort.',
-  paused: 'Queued. Sends when you resume the room.',
+  paused: 'Queued. Sends when you resume the project.',
   merge: 'Queued. Sends when the work it waits for merges.',
   move: 'Queued. Sends when you choose how this chat moves to another account.',
   limit: 'Close to your usage limit. Sends when it resets or usage drops.'

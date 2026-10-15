@@ -15,16 +15,16 @@ const LIFTED_UNDER = 0.95
 const DROPPED_BY = 0.05
 
 /**
- * A patch without a status keeps the stored one, unless that window has since reset or the reading shows clear room again.
+ * A patch without a status keeps the stored one, unless that window has since reset or the reading shows clear project again.
  * A new window resets at least a minute later: reset times read back from ISO strings can be a second off.
  * Within one window usage only goes up, unless it drops clearly: Claude Code answers from a snapshot up to a minute old, one
  * per session, so an older reading can land after a newer one (KERNEL-700). The status still follows the patch's own reading.
  */
 export function mergeLimit(prev: RateLimit | undefined, patch: LimitPatch, now: number): RateLimit {
   const reset = prev?.resetsAt !== undefined && (prev.resetsAt * 1000 <= now || (patch.resetsAt !== undefined && patch.resetsAt > prev.resetsAt + 60))
-  const room = prev?.status === 'rejected' && patch.status === undefined && patch.utilization !== undefined && patch.utilization < Math.min(prev.utilization ?? 1, LIFTED_UNDER)
+  const project = prev?.status === 'rejected' && patch.status === undefined && patch.utilization !== undefined && patch.utilization < Math.min(prev.utilization ?? 1, LIFTED_UNDER)
   const stale = !reset && prev?.utilization !== undefined && patch.utilization !== undefined && patch.utilization < prev.utilization && prev.utilization - patch.utilization <= DROPPED_BY
-  return { ...prev, status: reset || room || !prev ? 'allowed' : prev.status, ...defined(patch), ...(stale ? { utilization: prev.utilization } : {}) }
+  return { ...prev, status: reset || project || !prev ? 'allowed' : prev.status, ...defined(patch), ...(stale ? { utilization: prev.utilization } : {}) }
 }
 
 /**

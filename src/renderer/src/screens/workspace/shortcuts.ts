@@ -19,7 +19,7 @@ export function typingIn(el: Element | null): boolean {
   return el.isContentEditable && (el.textContent ?? '').length > 0
 }
 
-/** Which run script ⌘R acts on: the first that is running, which it stops, else the room's first, which it starts. */
+/** Which run script ⌘R acts on: the first that is running, which it stops, else the project's first, which it starts. */
 export function runTarget(running: string[], listed: string[]): { name: string; stop: boolean } {
   return running.length ? { name: running[0], stop: true } : { name: listed[0] ?? 'run', stop: false }
 }
@@ -49,7 +49,7 @@ export function useWorkspaceShortcuts(o: { workspaceId: string; chatId?: string;
       const { workspaceId } = latest.current
       const ws = s.workspaces.find((w) => w.id === workspaceId)
       if (!ws || s.ui.modal) return
-      const listed = (s.roomSettings[ws.roomId]?.runScripts ?? []).map((r) => r.name)
+      const listed = (s.projectSettings[ws.projectId]?.runScripts ?? []).map((r) => r.name)
       const t = runTarget(runningRuns(s, workspaceId), listed)
       actions.ui.setRightPanel(true)
       actions.ui.setWorkspaceView({ bottom: 'run' })

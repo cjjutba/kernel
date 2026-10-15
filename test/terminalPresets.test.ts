@@ -32,7 +32,7 @@ async function kernel(settings: object = {}) {
   k.sessions.send = async () => ({ queued: false })
   const started = new Map<string, string | undefined>()
   k.ptys.start = (id, o) => { started.set(id, o.command) }
-  const room = await k.addRoom(repo)
+  const project = await k.addProject(repo)
   const h = k.handlers()
   /** Opens a terminal tab with `preset` and returns what its pty types in. */
   const run = async (workspaceId: string, preset?: string) => {
@@ -40,7 +40,7 @@ async function kernel(settings: object = {}) {
     await h['terminal.resize']({ chatId: chat.id, cols: 100, rows: 30 })
     return { chat, command: started.get(chat.id) }
   }
-  return { k, h, room, dataDir, run, started }
+  return { k, h, project, dataDir, run, started }
 }
 
 describe('terminal presets', () => {
@@ -64,8 +64,8 @@ describe('terminal presets', () => {
   })
 
   it('starts each built-in, a found CLI and a custom preset with its own command, titled after the preset', async () => {
-    const { k, room, run } = await kernel({ terminal: { custom: [{ id: 'logs', name: 'Dev server logs', command: 'tail -f logs/dev.log' }] } })
-    const ws = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Presets' })
+    const { k, project, run } = await kernel({ terminal: { custom: [{ id: 'logs', name: 'Dev server logs', command: 'tail -f logs/dev.log' }] } })
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Presets' })
     expect(ws.mode).toBe('worktree')
     process.env.PATH = await binDir()
 
@@ -86,8 +86,8 @@ describe('terminal presets', () => {
   })
 
   it('opens the settings\' preset when none is picked, Claude when that one is gone, and refuses an unknown one', async () => {
-    const { k, h, room, run } = await kernel({ terminal: { preset: 'codex' } })
-    const ws = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Default' })
+    const { k, h, project, run } = await kernel({ terminal: { preset: 'codex' } })
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Default' })
     process.env.PATH = await binDir()
     expect((await run(ws.id)).command).toBe('codex')
     process.env.PATH = ''
@@ -97,9 +97,9 @@ describe('terminal presets', () => {
   })
 
   it('drops the skip flag on a current-branch workspace with Only in worktrees on, and keeps it in a worktree or with the switch off', async () => {
-    const { k, h, room, run } = await kernel({ terminal: { custom: [{ id: 'yolo', name: 'Yolo', command: 'claude --dangerously-skip-permissions --verbose' }] } })
-    const current = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Here', mode: 'current' })
-    const tree = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'There' })
+    const { k, h, project, run } = await kernel({ terminal: { custom: [{ id: 'yolo', name: 'Yolo', command: 'claude --dangerously-skip-permissions --verbose' }] } })
+    const current = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Here', mode: 'current' })
+    const tree = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'There' })
     expect(current.mode).toBe('current')
 
     const dropped = await run(current.id, 'claude-skip')
@@ -134,8 +134,8 @@ describe('terminal presets', () => {
       ['claude `--dangerously-skip-permissions`', 'claude ``']
     ]
     const custom = rows.map(([command], i) => ({ id: `c${i}`, name: `C${i}`, command }))
-    const { k, h, room, run } = await kernel({ terminal: { custom: [...custom, { id: 'other', name: 'Other', command: 'claude --dangerously-skip-permissions-x' }] } })
-    const current = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Here', mode: 'current' })
+    const { k, h, project, run } = await kernel({ terminal: { custom: [...custom, { id: 'other', name: 'Other', command: 'claude --dangerously-skip-permissions-x' }] } })
+    const current = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Here', mode: 'current' })
     const list = await h['terminal.presets']()
     for (const [i, [command, stripped]] of rows.entries()) {
       expect(list.find((p) => p.id === `c${i}`)?.skipsPermissions, command).toBe(true)
@@ -148,8 +148,8 @@ describe('terminal presets', () => {
   })
 
   it('restarts a terminal chat from before presets with claude', async () => {
-    const { k, h, room, started } = await kernel()
-    const ws = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Old' })
+    const { k, h, project, started } = await kernel()
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Old' })
     const first = k.store.chats(ws.id)[0]
     const old = k.store.saveChat({ ...first, id: 'old-terminal', kind: 'terminal', title: 'Terminal (claude)', sessionId: undefined, autoTitle: undefined })
     expect(old.terminal).toBeUndefined()
@@ -159,8 +159,8 @@ describe('terminal presets', () => {
   })
 
   it('refuses a new terminal tab while big terminal tabs are off', async () => {
-    const { k, h, room } = await kernel({ terminal: { enabled: false } })
-    const ws = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Off' })
+    const { k, h, project } = await kernel({ terminal: { enabled: false } })
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Off' })
     await expect(h['chats.create']({ workspaceId: ws.id, kind: 'terminal' })).rejects.toThrow('Big terminal tabs are off')
     expect((await h['chats.create']({ workspaceId: ws.id })).kind).toBe('chat')
     await k.stop()

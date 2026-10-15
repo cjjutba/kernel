@@ -844,7 +844,7 @@
   & h3 {
     color: var(--color-ink);
     font-weight: 600;
-    /* The page's scroll padding already clears the sticky nav. This is the breathing room under it. */
+    /* The page's scroll padding already clears the sticky nav. This is the breathing space under it. */
     scroll-margin-top: calc(var(--spacing) * 6);
   }
 

@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
-import { tempRepo, trustRoom, freePort } from './helpers'
+import { tempRepo, trustProject, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { buildEnv, envFileReadable, EnvStore, kernelVars, MAX_ENV_FILE, productionHints, productionWhy, readEnvFiles, withoutClaudeNames, type Cipher } from '../src/main/services/env'
@@ -22,15 +22,15 @@ const fakeCipher: Cipher = {
 const until = async (ok: () => boolean, ms = 8000) => { const t = Date.now(); while (!ok()) { if (Date.now() - t > ms) throw new Error('timed out'); await new Promise((r) => setTimeout(r, 25)) } }
 
 describe('buildEnv', () => {
-  it('layers the Mac, the app, the env files in order, the room, then Kernel, the later winning', () => {
+  it('layers the Mac, the app, the env files in order, the project, then Kernel, the later winning', () => {
     const env = buildEnv({
       base: { A: 'mac', B: 'mac', C: 'mac', D: 'mac', E: 'mac', F: 'mac', GONE: undefined },
       app: { B: 'app', C: 'app', D: 'app', E: 'app', F: 'app' },
       files: [{ C: 'file1', D: 'file1', E: 'file1', F: 'file1' }, { D: 'file2', E: 'file2', F: 'file2' }],
-      room: { E: 'room', F: 'room' },
+      project: { E: 'project', F: 'project' },
       kernel: { F: 'kernel' }
     })
-    expect(env).toEqual({ A: 'mac', B: 'app', C: 'file1', D: 'file2', E: 'room', F: 'kernel' })
+    expect(env).toEqual({ A: 'mac', B: 'app', C: 'file1', D: 'file2', E: 'project', F: 'kernel' })
   })
 })
 
@@ -44,7 +44,7 @@ describe('withoutClaudeNames', () => {
 })
 
 describe('readEnvFiles', () => {
-  it('reads regular files inside the folder only, so a room\'s settings can\'t pull in the rest of the Mac or stall it', async () => {
+  it('reads regular files inside the folder only, so a project\'s settings can\'t pull in the rest of the Mac or stall it', async () => {
     const outside = await mkdtemp(join(tmpdir(), 'kernel-outside-'))
     await writeFile(join(outside, 'secrets.env'), 'STOLEN=1\n')
     const dir = await mkdtemp(join(tmpdir(), 'kernel-ws-'))
@@ -95,7 +95,7 @@ describe('EnvStore', () => {
     const file = join(await mkdtemp(join(tmpdir(), 'kernel-env-')), 'env.json')
     const store = new EnvStore({ file, cipher: fakeCipher })
     store.set(undefined, 'API_TOKEN', 'tok-app-123')
-    store.set('room-1', 'DATABASE_URL', 'postgres://secret-host/db')
+    store.set('project-1', 'DATABASE_URL', 'postgres://secret-host/db')
     const text = readFileSync(file, 'utf8')
     expect(text).toContain('API_TOKEN')
     expect(text).not.toContain('tok-app-123')
@@ -103,10 +103,10 @@ describe('EnvStore', () => {
 
     const again = new EnvStore({ file, cipher: fakeCipher })
     expect(again.names()).toEqual(['API_TOKEN'])
-    expect(again.names('room-1')).toEqual(['DATABASE_URL'])
-    expect(again.reveal('room-1', 'DATABASE_URL')).toBe('postgres://secret-host/db')
+    expect(again.names('project-1')).toEqual(['DATABASE_URL'])
+    expect(again.reveal('project-1', 'DATABASE_URL')).toBe('postgres://secret-host/db')
     expect(again.values()).toEqual({ API_TOKEN: 'tok-app-123' })
-    expect(() => again.reveal('room-1', 'API_TOKEN')).toThrow('no variable named API_TOKEN')
+    expect(() => again.reveal('project-1', 'API_TOKEN')).toThrow('no variable named API_TOKEN')
     expect(() => again.reveal(undefined, 'toString')).toThrow('no variable named toString')
 
     // A value this Mac can't decrypt keeps its name, stays out of the environment, and can't be shown.
@@ -116,10 +116,10 @@ describe('EnvStore', () => {
     expect(() => broken.reveal(undefined, 'API_TOKEN')).toThrow('can\'t decrypt API_TOKEN')
     expect(() => new EnvStore({ file }).reveal(undefined, 'API_TOKEN')).toThrow('Keychain isn\'t available')
 
-    again.set('room-1', 'DATABASE_URL', null)
-    expect(again.names('room-1')).toEqual([])
+    again.set('project-1', 'DATABASE_URL', null)
+    expect(again.names('project-1')).toEqual([])
     expect(JSON.parse(readFileSync(file, 'utf8')).rooms).toEqual({})
-    again.dropRoom('room-1')
+    again.dropProject('project-1')
   })
 
   it('rejects bad names and Kernel\'s own, and saves nothing without a cipher', async () => {
@@ -188,7 +188,7 @@ describe('EnvStore', () => {
 })
 
 describe('Kernel env', () => {
-  it('gives scripts, big terminals and sessions the room\'s variables and env files, and keeps values out of logs', async () => {
+  it('gives scripts, big terminals and sessions the project\'s variables and env files, and keeps values out of logs', async () => {
     const repo = await tempRepo({
       'README.md': '# env\n',
       '.env.shared': 'FROM_FILE=one\nOVERRIDDEN=file\nANTHROPIC_BASE_URL=https://proxy.example\nCLAUDE_CODE_USE_BEDROCK=1\nCLAUDE_CODE_AUTO_COMPACT_WINDOW=50000\n',
@@ -196,10 +196,10 @@ describe('Kernel env', () => {
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
       '.kernel/settings.toml': [
         '[scripts]',
-        'setup = "echo \\"$ROOM_SECRET|$APP_ONLY|$FROM_FILE|$OVERRIDDEN|$KERNEL_WORKSPACE_ID|$PORT|$FORCE_COLOR\\" > seen.txt"',
-        'archive = "echo \\"archive=$ROOM_SECRET\\" > \\"$KERNEL_ROOT_PATH/archive.txt\\""',
+        'setup = "echo \\"$PROJECT_SECRET|$APP_ONLY|$FROM_FILE|$OVERRIDDEN|$KERNEL_WORKSPACE_ID|$PORT|$FORCE_COLOR\\" > seen.txt"',
+        'archive = "echo \\"archive=$PROJECT_SECRET\\" > \\"$KERNEL_ROOT_PATH/archive.txt\\""',
         '[run_scripts]',
-        'web = "echo \\"web=$ROOM_SECRET|$ANTHROPIC_BASE_URL\\" > run.txt"',
+        'web = "echo \\"web=$PROJECT_SECRET|$ANTHROPIC_BASE_URL\\" > run.txt"',
         '[env]',
         'files = [".env.shared", ".env.missing", ".env.later", "../outside.env"]',
         ''
@@ -214,32 +214,32 @@ describe('Kernel env', () => {
     await k.start()
     k.sessions.send = async () => ({ queued: false })
     const h = k.handlers()
-    const room = await k.addRoom(repo)
-    await trustRoom(k, room.id)
+    const project = await k.addProject(repo)
+    await trustProject(k, project.id)
 
     await h['env.set']({ name: 'APP_ONLY', value: 'app-value-77' })
     await h['env.set']({ name: 'ANTHROPIC_API_KEY', value: 'sk-user-key' })
-    await h['env.set']({ roomId: room.id, name: 'ROOM_SECRET', value: 'room-secret-42' })
-    await h['env.set']({ roomId: room.id, name: 'OVERRIDDEN', value: 'room' })
-    await h['env.set']({ roomId: room.id, name: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'other-account' })
-    await h['env.set']({ roomId: room.id, name: 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', value: '0' })
-    await expect(h['env.set']({ roomId: room.id, name: 'KERNEL_PORT', value: '1' })).rejects.toThrow('Kernel\'s own')
-    expect(await h['env.get']({ roomId: room.id })).toEqual({
-      names: ['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', 'CLAUDE_CODE_OAUTH_TOKEN', 'OVERRIDDEN', 'ROOM_SECRET'],
+    await h['env.set']({ projectId: project.id, name: 'PROJECT_SECRET', value: 'project-secret-42' })
+    await h['env.set']({ projectId: project.id, name: 'OVERRIDDEN', value: 'project' })
+    await h['env.set']({ projectId: project.id, name: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'other-account' })
+    await h['env.set']({ projectId: project.id, name: 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', value: '0' })
+    await expect(h['env.set']({ projectId: project.id, name: 'KERNEL_PORT', value: '1' })).rejects.toThrow('Kernel\'s own')
+    expect(await h['env.get']({ projectId: project.id })).toEqual({
+      names: ['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', 'CLAUDE_CODE_OAUTH_TOKEN', 'OVERRIDDEN', 'PROJECT_SECRET'],
       files: [{ path: '.env.shared', missing: false }, { path: '.env.missing', missing: true }, { path: '.env.later', missing: false }, { path: '../outside.env', missing: true }]
     })
     expect(await h['env.get']({})).toEqual({ names: ['ANTHROPIC_API_KEY', 'APP_ONLY'], files: [] })
-    expect(await h['env.reveal']({ roomId: room.id, name: 'ROOM_SECRET' })).toBe('room-secret-42')
-    expect((await h['settings.room']({ roomId: room.id })).env).toEqual({ files: ['.env.shared', '.env.missing', '.env.later', '../outside.env'] })
+    expect(await h['env.reveal']({ projectId: project.id, name: 'PROJECT_SECRET' })).toBe('project-secret-42')
+    expect((await h['settings.project']({ projectId: project.id })).env).toEqual({ files: ['.env.shared', '.env.missing', '.env.later', '../outside.env'] })
 
-    // The setup script writes what it saw. The room's variable wins over both files, and the missing file is skipped.
-    const ws = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Env' })
+    // The setup script writes what it saw. The project's variable wins over both files, and the missing file is skipped.
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Env' })
     expect(ws.status).toBe('ready')
-    expect((await readFile(join(ws.path, 'seen.txt'), 'utf8')).trim()).toBe(`room-secret-42|app-value-77|one|room|${ws.id}|${ws.port}|${process.env.FORCE_COLOR ?? ''}`)
+    expect((await readFile(join(ws.path, 'seen.txt'), 'utf8')).trim()).toBe(`project-secret-42|app-value-77|one|project|${ws.id}|${ws.port}|${process.env.FORCE_COLOR ?? ''}`)
 
     // Sessions get the same set as scripts, less the API key and the script-only variables.
     const session = sessionEnv(k.envFor(ws), {})
-    expect(session).toMatchObject({ ROOM_SECRET: 'room-secret-42', KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE: ws.path, KERNEL_ROOT_PATH: room.path })
+    expect(session).toMatchObject({ PROJECT_SECRET: 'project-secret-42', KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE: ws.path, KERNEL_ROOT_PATH: project.path })
     expect(session.ANTHROPIC_API_KEY).toBeUndefined()
     expect(session.FORCE_COLOR).toBe(process.env.FORCE_COLOR)
     expect(k.envFor(ws, { script: true }).ANTHROPIC_API_KEY).toBe('sk-user-key')
@@ -275,36 +275,36 @@ describe('Kernel env', () => {
       }
     }
 
-    // A named run script gets the room's variable, and the env file's proxy, since scripts get every layer.
+    // A named run script gets the project's variable, and the env file's proxy, since scripts get every layer.
     let ran = false
     const onExit = (e: { type: string; workspaceId?: string; name?: string }) => { if (e.type === 'script.exit' && e.workspaceId === ws.id && e.name === 'web') ran = true }
     bus.on('push', onExit)
     await h['scripts.run']({ workspaceId: ws.id, kind: 'run', name: 'web' })
     await until(() => ran)
     bus.off('push', onExit)
-    expect((await readFile(join(ws.path, 'run.txt'), 'utf8')).trim()).toBe('web=room-secret-42|https://proxy.example')
+    expect((await readFile(join(ws.path, 'run.txt'), 'utf8')).trim()).toBe('web=project-secret-42|https://proxy.example')
 
-    // A big terminal's shell sees the room's variable. `claude` isn't typed in, so the test reads a plain prompt.
+    // A big terminal's shell sees the project's variable. `claude` isn't typed in, so the test reads a plain prompt.
     const start = k.ptys.start.bind(k.ptys)
     k.ptys.start = (id, o) => start(id, { ...o, command: undefined })
     const term = await h['chats.create']({ workspaceId: ws.id, kind: 'terminal' })
     let out = ''
     const on = (e: { type: string; chatId?: string; data?: string }) => { if (e.type === 'terminal.data' && e.chatId === term.id) out += e.data }
     bus.on('push', on)
-    await h['terminal.write']({ chatId: term.id, data: 'echo "seen=$ROOM_SECRET key=${ANTHROPIC_API_KEY:-none}"\r' })
-    await until(() => out.includes('seen=room-secret-42 key=none'))
+    await h['terminal.write']({ chatId: term.id, data: 'echo "seen=$PROJECT_SECRET key=${ANTHROPIC_API_KEY:-none}"\r' })
+    await until(() => out.includes('seen=project-secret-42 key=none'))
     await h['terminal.write']({ chatId: term.id, data: 'echo "oauth=${CLAUDE_CODE_OAUTH_TOKEN:-none} bedrock=${CLAUDE_CODE_USE_BEDROCK:-none}"\r' })
     await until(() => out.includes('oauth=none bedrock=none'))
     bus.off('push', on)
     await h['chats.close']({ chatId: term.id })
 
-    // The archive script gets the room's variable too. The worktree goes, so it writes to the main checkout.
+    // The archive script gets the project's variable too. The worktree goes, so it writes to the main checkout.
     await k.archiveWorkspace(ws.id, true)
     await k.archive.cleanedUp(ws.id)
-    expect((await readFile(join(room.path, 'archive.txt'), 'utf8')).trim()).toBe('archive=room-secret-42')
+    expect((await readFile(join(project.path, 'archive.txt'), 'utf8')).trim()).toBe('archive=project-secret-42')
 
     // No value reaches the data folder in plain text, the activity log, its export, or the console.
-    const values = ['app-value-77', 'sk-user-key', 'room-secret-42', 'other-account']
+    const values = ['app-value-77', 'sk-user-key', 'project-secret-42', 'other-account']
     const exported = await readFile((await h['app.exportLogs']()).path, 'utf8')
     const activity = JSON.stringify(k.store.activity(undefined, 5000))
     await k.stop()
@@ -349,31 +349,31 @@ describe('Kernel env', () => {
     await k.start()
     k.sessions.send = async () => ({ queued: false })
     const h = k.handlers()
-    const room = await k.addRoom(repo)
-    await trustRoom(k, room.id)
-    const ws = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Env' })
+    const project = await k.addProject(repo)
+    await trustProject(k, project.id)
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Env' })
     expect(ws.status).toBe('ready')
     expect(k.envFor(ws)).toMatchObject({ A: '1' })
 
     await writeFile(join(repo, '.kernel/settings.toml'), '[env]\nfiles = [".env.a", ".env.b"]\n')
     expect(k.envFor(ws).A).toBeUndefined()
     expect(k.envFor(ws).B).toBeUndefined()
-    const trust = await h['rooms.scriptTrust']({ roomId: room.id })
+    const trust = await h['projects.scriptTrust']({ projectId: project.id })
     expect(trust?.envFiles).toEqual(['.env.a', '.env.b'])
     expect(k.envFor(ws).A).toBeUndefined()
 
-    await h['rooms.trust']({ roomId: room.id, hash: trust!.hash })
+    await h['projects.trust']({ projectId: project.id, hash: trust!.hash })
     expect(k.envFor(ws)).toMatchObject({ A: '1', B: '1' })
     await k.stop()
   })
 
-  it('removing a room removes its variables', async () => {
+  it('removing a project removes its variables', async () => {
     const repo = await tempRepo()
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')), cipher: fakeCipher })
-    const room = await k.addRoom(repo)
-    await k.handlers()['env.set']({ roomId: room.id, name: 'GONE_SOON', value: 'v' })
-    await k.removeRoom(room.id, false)
+    const project = await k.addProject(repo)
+    await k.handlers()['env.set']({ projectId: project.id, name: 'GONE_SOON', value: 'v' })
+    await k.removeProject(project.id, false)
     expect(JSON.parse(readFileSync(join(dataDir, 'env.json'), 'utf8')).rooms).toEqual({})
     await k.stop()
   })
@@ -386,7 +386,7 @@ describe('Kernel variables in values (KERNEL-449)', () => {
       base: { MAC: '${KERNEL_PORT}' },
       app: { WEB: 'http://localhost:${KERNEL_PORT}/' },
       files: [{ DATABASE_URL: 'postgres://localhost:5432/app_${KERNEL_WORKSPACE_SLUG}', BARE: '$KERNEL_PORT', OTHER: '${HOME}', NOPE: '${KERNEL_NOPE}', SETUP_ONLY: '${KERNEL_ENV}', CMD: '$(whoami) `id`' }],
-      room: { BOTH: '${KERNEL_WORKSPACE_ID}-${KERNEL_PORT}' },
+      project: { BOTH: '${KERNEL_WORKSPACE_ID}-${KERNEL_PORT}' },
       setup: { FROM_SETUP: 'db_${KERNEL_WORKSPACE_SLUG}' },
       kernel
     })
@@ -472,7 +472,7 @@ describe('Production values (KERNEL-449)', () => {
 })
 
 describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
-  async function room(files: Record<string, string>) {
+  async function project(files: Record<string, string>) {
     const repo = await tempRepo({ 'README.md': '# env\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.', ...files })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -480,13 +480,13 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
     const k = new Kernel({ dataDir, home, cipher: fakeCipher })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
-    const r = await k.addRoom(repo)
-    await trustRoom(k, r.id)
-    return { k, repo, room: r, h: k.handlers() }
+    const r = await k.addProject(repo)
+    await trustProject(k, r.id)
+    return { k, repo, project: r, h: k.handlers() }
   }
 
   it("gives each worktree its own Compose project and database, from the user's own .env.kernel", async () => {
-    const { k, repo, room: r, h } = await room({ '.gitignore': '.env.kernel\n' })
+    const { k, repo, project: r, h } = await project({ '.gitignore': '.env.kernel\n' })
     await writeFile(join(repo, '.env.kernel'), 'DATABASE_URL=postgres://localhost:5432/app_${KERNEL_WORKSPACE_SLUG}\nWEB=http://localhost:${KERNEL_PORT}\n')
     const a = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'One' })
     const b = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'Two' })
@@ -498,7 +498,7 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
     expect(envB.COMPOSE_PROJECT_NAME).not.toBe(envA.COMPOSE_PROJECT_NAME)
     // Scripts get the same, and the Environment page lists the file it read.
     expect(k.env.envFor(a, { script: true }).DATABASE_URL).toBe(envA.DATABASE_URL)
-    expect((await h['env.get']({ roomId: r.id })).files).toEqual([{ path: '.env.kernel', missing: false }])
+    expect((await h['env.get']({ projectId: r.id })).files).toEqual([{ path: '.env.kernel', missing: false }])
 
     // A rename and a folder move, as a chat with Kernel makes after setup, keep the names setup made the database with.
     const moved = k.store.saveWorkspace({ ...a, name: 'renamed', branch: 'lead/renamed', path: join(dirname(a.path), 'lead-renamed') })
@@ -508,7 +508,7 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
     await writeFile(join(repo, '.env.kernel'), 'DATABASE_URL=postgres://localhost:5432/other\nCOMPOSE_PROJECT_NAME=mine\n')
     expect(k.env.envFor(a)).toMatchObject({ DATABASE_URL: 'postgres://localhost:5432/other', COMPOSE_PROJECT_NAME: 'mine' })
 
-    // A current-branch workspace is the room's own checkout and keeps the project the user's terminal gets there.
+    // A current-branch workspace is the project's own checkout and keeps the project the user's terminal gets there.
     await rm(join(repo, '.env.kernel'))
     const here = k.store.saveWorkspace({ ...a, id: 'here', mode: 'current', path: repo, branch: 'main' })
     vi.stubEnv('COMPOSE_PROJECT_NAME', 'terminal')
@@ -517,29 +517,29 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
       expect(k.env.envFor(here).COMPOSE_PROJECT_NAME).toBe('terminal')
       expect(k.env.envFor(a).DATABASE_URL).toBe('postgres://localhost:5432/mac')
     } finally { vi.unstubAllEnvs() }
-    expect((await h['env.get']({ roomId: r.id })).files).toEqual([])
+    expect((await h['env.get']({ projectId: r.id })).files).toEqual([])
     await k.stop()
   })
 
-  it('leaves a .env.kernel the repo commits alone until [env] files lists it and the room is trusted', async () => {
-    const { k, repo, room: r, h } = await room({ '.env.kernel': 'FROM_REPO=1\nBASH_ENV=./evil.sh\n' })
+  it('leaves a .env.kernel the repo commits alone until [env] files lists it and the project is trusted', async () => {
+    const { k, repo, project: r, h } = await project({ '.env.kernel': 'FROM_REPO=1\nBASH_ENV=./evil.sh\n' })
     const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'One' })
     expect(k.env.envFor(ws).FROM_REPO).toBeUndefined()
     expect(k.env.envFor(ws).BASH_ENV).toBe(process.env.BASH_ENV)
-    expect((await h['env.get']({ roomId: r.id })).files).toEqual([])
+    expect((await h['env.get']({ projectId: r.id })).files).toEqual([])
 
     await mkdir(join(repo, '.kernel'), { recursive: true })
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[env]\nfiles = [".env.kernel"]\n')
-    const trust = await h['rooms.scriptTrust']({ roomId: r.id })
+    const trust = await h['projects.scriptTrust']({ projectId: r.id })
     expect(trust?.envFiles).toEqual(['.env.kernel'])
     expect(k.env.envFor(ws).FROM_REPO).toBeUndefined()
-    await h['rooms.trust']({ roomId: r.id, hash: trust!.hash })
+    await h['projects.trust']({ projectId: r.id, hash: trust!.hash })
     expect(k.env.envFor(ws).FROM_REPO).toBe('1')
     await k.stop()
   })
 
   it("stops reading .env.kernel once the user's commit tracks it", async () => {
-    const { k, repo, room: r } = await room({})
+    const { k, repo, project: r } = await project({})
     await writeFile(join(repo, '.env.kernel'), 'MINE=1\n')
     const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'One' })
     expect(k.env.envFor(ws).MINE).toBe('1')

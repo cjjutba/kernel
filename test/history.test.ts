@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { actions, canBack, canForward, getState, go, resetHistory, setState } from '../src/renderer/src/store'
 import { tabOf } from '../src/renderer/src/nav'
-import type { AgentDef, Chat, Room, Route, Workspace } from '../src/shared/types'
+import type { AgentDef, Chat, Project, Route, Workspace } from '../src/shared/types'
 
 // KERNEL-200: Back and Forward over the places you visited. The rules are in docs/decisions/KERNEL-200.md.
 
-const room = (id: string): Room => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1 }) as Room
-const ws = (id: string, roomId: string, over: Partial<Workspace> = {}): Workspace =>
-  ({ id, roomId, name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', ...over }) as Workspace
+const project = (id: string): Project => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1 }) as Project
+const ws = (id: string, projectId: string, over: Partial<Workspace> = {}): Workspace =>
+  ({ id, projectId, name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', ...over }) as Workspace
 const chat = (id: string, workspaceId: string, over: Partial<Chat> = {}): Chat => ({ id, workspaceId, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: 1, ...over }) as Chat
 const lead = { id: 'kernel', lead: true } as AgentDef
 
@@ -19,12 +19,12 @@ const forward = () => actions.ui.forward()
 
 beforeEach(() => {
   setState({
-    rooms: [room('r1'), room('r2')],
+    projects: [project('r1'), project('r2')],
     agents: { r1: [lead] },
     workspaces: [ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', lead: true, threadId: 'r2t' })],
     chats: { lead: [chat('c1', 'lead'), chat('c2', 'lead'), chat('c3', 'lead')], other: [chat('o1', 'other')], r2lead: [chat('x1', 'r2lead')] }
   })
-  setState((s) => ({ ui: { ...s.ui, route: { name: 'rooms' }, tabs: {}, modal: null } }))
+  setState((s) => ({ ui: { ...s.ui, route: { name: 'projects' }, tabs: {}, modal: null } }))
   resetHistory()
 })
 
@@ -36,7 +36,7 @@ describe('what is recorded', () => {
     back()
     expect(route()).toEqual({ name: 'inbox' })
     back()
-    expect(route()).toEqual({ name: 'rooms' })
+    expect(route()).toEqual({ name: 'projects' })
     expect(canBack()).toBe(false)
   })
   it('records nothing for the place you are already on', () => {
@@ -44,7 +44,7 @@ describe('what is recorded', () => {
     go({ name: 'inbox' })
     go({ name: 'inbox' })
     back()
-    expect(route()).toEqual({ name: 'rooms' })
+    expect(route()).toEqual({ name: 'projects' })
     expect(canBack()).toBe(false)
   })
   it('replaces for history: replace, so Back right after launch does nothing', () => {
@@ -56,7 +56,7 @@ describe('what is recorded', () => {
   it('does not record a move to onboarding or devUi, or a move away from onboarding', () => {
     go({ name: 'onboarding', step: 'welcome' })
     go({ name: 'onboarding', step: 'checks' })
-    go({ name: 'rooms' })
+    go({ name: 'projects' })
     expect(canBack()).toBe(false)
     go({ name: 'devUi', page: 'components' })
     expect(canBack()).toBe(false)
@@ -97,13 +97,13 @@ describe('chat tabs', () => {
     actions.ui.openTab('lead', 'text:1')
     expect(canBack()).toBe(before)
     back()
-    expect(route()).toEqual({ name: 'rooms' })
+    expect(route()).toEqual({ name: 'projects' })
   })
   it('does not record a tab opened in a workspace that is not on screen', () => {
     actions.ui.openTab('other', 'o1')
     expect(getState().ui.tabs.other?.tab).toBe('o1')
     back()
-    expect(route()).toEqual({ name: 'rooms' })
+    expect(route()).toEqual({ name: 'projects' })
   })
   it('never makes a file or diff tab a step: leaving one counts as leaving the chat you were last on', () => {
     actions.ui.openTab('lead', 'c2')
@@ -137,7 +137,7 @@ describe('chat tabs', () => {
     expect(tab()).toBe('c3')
     // The entry for c1 now opens c3, where you already are, so it is skipped.
     back()
-    expect(route()).toEqual({ name: 'rooms' })
+    expect(route()).toEqual({ name: 'projects' })
   })
   it('does not record the fallback chat when the open chat is closed', () => {
     actions.ui.openTab('lead', 'c3')
@@ -176,7 +176,7 @@ describe('back and forward', () => {
     go(at('other'))
     back()
     back()
-    expect(route()).toEqual({ name: 'rooms' })
+    expect(route()).toEqual({ name: 'projects' })
     forward()
     forward()
     expect(route()).toEqual(at('other'))
@@ -235,14 +235,14 @@ describe('back and forward', () => {
     expect(getState().ui.modal).toBeNull()
   })
   it('keeps 50 entries and drops the oldest', () => {
-    const rooms = Array.from({ length: 60 }, (_, i) => `rm${i}`)
-    setState({ rooms: rooms.map(room) })
-    for (const r of rooms) go({ name: 'leadNew', roomId: r })
+    const projects = Array.from({ length: 60 }, (_, i) => `rm${i}`)
+    setState({ projects: projects.map(project) })
+    for (const r of projects) go({ name: 'leadNew', projectId: r })
     let steps = 0
     while (back()) steps++
     expect(steps).toBe(50)
     // Home and rm0 to rm8 fell off, so the oldest place left is rm9.
-    expect(route()).toEqual({ name: 'leadNew', roomId: 'rm9' })
+    expect(route()).toEqual({ name: 'leadNew', projectId: 'rm9' })
   })
 })
 
@@ -308,10 +308,10 @@ describe('the saved place', () => {
     go({ name: 'inbox' })
     back()
     expect(saved()).toMatchObject({ route: at('lead'), tabs: { lead: { tab: 'c2' } } })
-    go({ name: 'rooms' })
+    go({ name: 'projects' })
     go({ name: 'inbox' })
     back()
-    expect(saved().route).toEqual({ name: 'rooms' })
+    expect(saved().route).toEqual({ name: 'projects' })
     forward()
     expect(saved().route).toEqual({ name: 'inbox' })
   })
@@ -324,12 +324,12 @@ describe('the saved place', () => {
     actions.ui.setTabs('lead', { diffs: [] })
     expect(saved().tabs.lead.diffs).toEqual([])
   })
-  it('saves the tabs left when a workspace is archived or its room removed', () => {
+  it('saves the tabs left when a workspace is archived or its project removed', () => {
     for (const id of ['lead', 'other', 'r2lead']) actions.ui.openTab(id, `file:${id}.ts`)
     go(at('lead'))
     actions.workspaces.upsert(ws('other', 'r1', { status: 'archived' }))
     expect(Object.keys(saved().tabs).sort()).toEqual(['lead', 'r2lead'])
-    actions.rooms.remove('r2')
+    actions.projects.remove('r2')
     expect(Object.keys(saved().tabs)).toEqual(['lead'])
   })
   it('saves the place Settings was opened from, never Settings', () => {
@@ -342,11 +342,11 @@ describe('the saved place', () => {
     actions.ui.openTab('lead', 'file:a.ts')
     expect(saved().route).toEqual(at('lead'))
   })
-  it('saves the place a room Settings page was opened from, and keeps it across its sections', () => {
+  it('saves the place a project Settings page was opened from, and keeps it across its sections', () => {
     go(at('lead'))
-    go({ name: 'settings', page: 'room', roomId: 'r1', section: 'git' })
+    go({ name: 'settings', page: 'project', projectId: 'r1', section: 'git' })
     expect(saved().route).toEqual(at('lead'))
-    go({ name: 'settings', page: 'room', roomId: 'r1', section: 'setup' })
+    go({ name: 'settings', page: 'project', projectId: 'r1', section: 'setup' })
     expect(saved().route).toEqual(at('lead'))
     actions.ui.leaveSettings()
     expect(saved().route).toEqual(at('lead'))

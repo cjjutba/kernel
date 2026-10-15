@@ -136,7 +136,7 @@ describe('agent tools', () => {
       { server: 'fal-ai', entry: 'mcp__fal-ai', status: 'disabled', name: 'fal-ai' },
       { server: 'figma', entry: 'mcp__figma__get_code', status: 'off', name: 'figma' }
     ])
-    // A later report on the same server wins, so the room's switched-off list overrides a session that had it.
+    // A later report on the same server wins, so the project's switched-off list overrides a session that had it.
     expect(missingServers(['mcp__linear'], [{ name: 'linear', status: 'failed' }, { name: 'linear', status: 'connected' }])).toEqual([])
     // A failed server is never offered in place of a missing one.
     expect(missingServers(['mcp__linear'], [{ name: 'claude.ai Linear', status: 'needs-auth' }])).toEqual([{ server: 'linear', entry: 'mcp__linear' }])
@@ -147,7 +147,7 @@ describe('agent tools', () => {
   })
 
   // KERNEL-464: a confirmed `[mcp.aliases]` entry lets a file written for one Mac's server name reach this Mac's.
-  it('reads a tools line through the room\'s aliases, adding the server each name stands for', () => {
+  it('reads a tools line through the project\'s aliases, adding the server each name stands for', () => {
     const aliases = { linear: 'claude.ai Linear', sentry: 'claude_ai_Sentry', kernel: 'linear', github: 'kernel', figma: '*' }
     const p = toolPolicy(['Read', 'mcp__linear', 'mcp__sentry__get_issue', 'mcp__figma'], { aliases, disallowed: ['mcp__linear__delete_issue'] })!
     for (const t of ['mcp__linear__get_issue', 'mcp__claude_ai_Linear__get_issue', 'mcp__claude_ai_Sentry__get_issue', 'mcp__sentry__get_issue']) expect(p.allows(t), t).toBe(true)
@@ -199,7 +199,7 @@ describe('agent tools', () => {
     expect(serverReach(['mcp__linear'], [{ name: 'claude.ai Linear', status: 'connected' }], { aliases: { linear: 'claude.ai Linear' }, complete: true })).toEqual({ reach: ['claude.ai Linear'], blocked: [] })
   })
 
-  it('lets an agent use the MCP servers its room allows it, unless disallowedTools takes them (KERNEL-537)', () => {
+  it('lets an agent use the MCP servers its project allows it, unless disallowedTools takes them (KERNEL-537)', () => {
     const p = toolPolicy(['Read', 'mcp__linear'], { allow: ['figma'] })!
     expect(p.allows('mcp__figma__get_file')).toBe(true)
     expect(p.server('figma')).toEqual({ on: true })

@@ -31,7 +31,7 @@ export class Waits extends Feature {
   /** The open workspaces that wait for `id`. */
   waitersOn(id: string) { return waitersOf(id, this.store.workspaces()) }
 
-  nameOf(ws: Workspace) { return this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.name ?? ws.agentId }
+  nameOf(ws: Workspace) { return this.agentsSync(ws.projectId).find((a) => a.id === ws.agentId)?.name ?? ws.agentId }
 
   /** "PR #164 by Noor and PR #170 by Ivy": what the workspace waits for. */
   waitLabelOf(ws: Workspace) {
@@ -67,15 +67,15 @@ export class Waits extends Feature {
   async settleWait(id: string) {
     const ws = this.store.workspace(id)
     // Every poll and start comes here, and a kept wait would send the rebase message again each time.
-    if (ws?.waitsFor && !keptForRebase(ws.waitsFor) && ws.status !== 'archived' && waitMet(ws.waitsFor, this.store.workspaces(ws.roomId))) await this.releaseWait(id)
+    if (ws?.waitsFor && !keptForRebase(ws.waitsFor) && ws.status !== 'archived' && waitMet(ws.waitsFor, this.store.workspaces(ws.projectId))) await this.releaseWait(id)
   }
 
   /**
-   * At start, once each room's team is read: a merge saved just before a quit never emits again, so its waiters go now,
+   * At start, once each project's team is read: a merge saved just before a quit never emits again, so its waiters go now,
    * and rebase messages a quit lost go again. A merge made while Kernel was closed reaches them through the first poll.
    */
   async sweepWaits() {
-    for (const r of this.store.rooms()) { if (this.stopped) return; await this.k.team.agents(r.id).catch(() => undefined) }
+    for (const r of this.store.projects()) { if (this.stopped) return; await this.k.team.agents(r.id).catch(() => undefined) }
     if (!this.stopped) await this.retryWaits()
   }
 
@@ -110,7 +110,7 @@ export class Waits extends Feature {
     // What a teammate started early still waits for: it hears when that merges.
     let left: string[] = []
     if (now) {
-      const all = this.store.workspaces(ws.roomId)
+      const all = this.store.workspaces(ws.projectId)
       const merged = wait.on.filter((t) => isMerged(all.find((w) => w.id === t)))
       if (o.keep && wait.held) left = wait.on.filter((t) => !merged.includes(t))
       if (merged.length) {
@@ -130,17 +130,17 @@ export class Waits extends Feature {
       await this.deliverRelease(id)
       return
     }
-    const room = this.mustRoom(ws.roomId)
+    const project = this.mustProject(ws.projectId)
     const chat = this.store.chats(id).find((c) => c.kind !== 'terminal' && this.sessions.queued(c.id).length > 0) ?? this.prChat(id)
     const before = await head(ws.path)
     // Onto the remote's copy of the base, even when the workspace started from the local branch, which a merge on
     // GitHub doesn't move. Only a fast-forward on a clean tree: anything else is the agent's to rebase.
-    const remote = await this.k.config.remoteFor(room.path)
+    const remote = await this.k.config.remoteFor(project.path)
     const base = stripRemote(ws.baseRef, remote)
     let forwarded = true
     if (!now && ws.mode === 'worktree') {
       // A failed fetch leaves the remote's copy where it was, and a fast-forward to it would claim a merge it doesn't have.
-      const fetched = (await fetchOrigin(room.path, remote, { fresh: true })).ok
+      const fetched = (await fetchOrigin(project.path, remote, { fresh: true })).ok
       forwarded = fetched && await fastForward(ws.path, `${remote}/${base}`) && await this.hasMerges(ws, wait.on, remote)
     }
     const after = await head(ws.path)
@@ -148,7 +148,7 @@ export class Waits extends Feature {
     // Archived, started or changed while git ran.
     const current = this.mustWs(id)
     if (current.status !== 'ready' || !current.waitsFor?.held) return
-    if (!now && !waitMet(current.waitsFor, this.store.workspaces(current.roomId))) return
+    if (!now && !waitMet(current.waitsFor, this.store.workspaces(current.projectId))) return
     if (now) this.note(id, this.earlyNote(current, left, pushed), undefined, refs)
     else {
       // The brief was written before the merge, so the teammate hears what merged and how to read it (KERNEL-695).
@@ -160,7 +160,7 @@ export class Waits extends Feature {
       this.leadUpdates.waits(current, 'wait.released', { on: wait.on, label, held: true })
     }
     // Setup runs again only when the files under it changed.
-    await this.k.setup.startBrief(current, room, chat, { setup: !!after && after !== (wait.base ?? before), released: current.waitsFor, ...(left.length ? { left } : {}) })
+    await this.k.setup.startBrief(current, project, chat, { setup: !!after && after !== (wait.base ?? before), released: current.waitsFor, ...(left.length ? { left } : {}) })
   }
 
   /**
@@ -168,7 +168,7 @@ export class Waits extends Feature {
    * wait set across bases before Kernel refused one would otherwise claim a merge the branch never got (KERNEL-693).
    */
   private async hasMerges(ws: Workspace, on: string[], remote: string) {
-    const all = this.store.workspaces(ws.roomId)
+    const all = this.store.workspaces(ws.projectId)
     for (const id of on) {
       const t = all.find((w) => w.id === id)
       if (t && await isAncestor(ws.path, `${remote}/${stripRemote(t.baseRef, remote)}`, 'HEAD') !== true) return false
@@ -178,7 +178,7 @@ export class Waits extends Feature {
 
   /** What merged for `ws`'s wait and how to read it. Text only, from what Kernel already has. */
   private readingOf(ws: Workspace, log?: string) {
-    const all = this.store.workspaces(ws.roomId)
+    const all = this.store.workspaces(ws.projectId)
     return mergedReading((ws.waitsFor?.on ?? []).map((t) => all.find((w) => w.id === t)).filter((t): t is Workspace => !!t), log)
   }
 
@@ -220,8 +220,8 @@ export class Waits extends Feature {
     if (this.releaseSent.has(id)) return
     const remote = await this.k.config.remoteOfWs(was)
     // The base it rebases onto, as the fetch leaves it. The turn's end checks the branch has it (KERNEL-691).
-    const room = this.store.room(was.roomId)
-    const tip = room && (await fetchOrigin(room.path, remote, { fresh: true })).ok ? await revParse(room.path, `${remote}/${stripRemote(was.baseRef, remote)}`) : undefined
+    const project = this.store.project(was.projectId)
+    const tip = project && (await fetchOrigin(project.path, remote, { fresh: true })).ok ? await revParse(project.path, `${remote}/${stripRemote(was.baseRef, remote)}`) : undefined
     // Read after the awaits, and marked before the send, so the poll and a merge can't both send it.
     const ws = this.store.workspace(id)
     if (!ws?.waitsFor?.releasing || ws.status === 'archived' || this.releaseSent.has(id)) return
@@ -236,7 +236,7 @@ export class Waits extends Feature {
       : `Fetch ${remote}, rebase onto ${remote}/${base}, re-run the tests, then carry on with your task.`
     const text = withReading(`${this.waitLabelOf(ws)} merged into ${base}. ${steps}`, this.readingOf(ws, `HEAD..${remote}/${base}`))
     const parts: ChatPart[] = [{ type: 'text', text }]
-    const busy = this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 || !!this.store.room(ws.roomId)?.paused || this.sessions.heldFor().length > 0
+    const busy = this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 || !!this.store.project(ws.projectId)?.paused || this.sessions.heldFor().length > 0
     this.releaseSent.add(id)
     if (busy) await this.sessions.send(chat.id, parts, { from: 'kernel' })
     else if (!this.sessions.post(chat.id, parts)) this.releaseSent.delete(id)
@@ -282,7 +282,7 @@ export class Waits extends Feature {
   async setWait(id: string, on: string[], o: { told?: boolean; why?: string } = {}): Promise<Workspace> {
     const ws = this.mustWs(id)
     if (ws.status === 'archived') throw new Error(`${ws.name} is archived.`)
-    const all = this.store.workspaces(ws.roomId)
+    const all = this.store.workspaces(ws.projectId)
     const left = [...new Set(on)].filter((t) => !isMerged(all.find((w) => w.id === t)))
     if (!left.length) { await this.dropWait(id); return this.mustWs(id) }
     if (ws.mode === 'current' || ws.reviewOf) throw new Error(`${ws.name} can't wait for a PR.`)
@@ -301,12 +301,12 @@ export class Waits extends Feature {
   teammateToolDeps(id: string): TeammateToolDeps {
     return {
       workspace: () => this.mustWs(id),
-      workspaces: () => this.store.workspaces(this.mustWs(id).roomId),
+      workspaces: () => this.store.workspaces(this.mustWs(id).projectId),
       isLead: (w) => this.isLeadWorkspace(w),
       nameOf: (w) => this.nameOf(w),
       setWait: (on, why) => this.setWait(id, on, { told: false, why }),
       remote: () => this.k.config.remoteOfWs(this.mustWs(id)),
-      team: () => this.agentsSync(this.mustWs(id).roomId),
+      team: () => this.agentsSync(this.mustWs(id).projectId),
       ask: (question, options) => this.leadUpdates.asked(this.mustWs(id), question, options),
       propose: (p) => this.leadUpdates.proposed(this.mustWs(id), p)
     }
@@ -320,12 +320,12 @@ export class Waits extends Feature {
   async waitOnBlockers(ws: Workspace, blockedBy: string[]): Promise<Workspace | undefined> {
     const now = this.mustWs(ws.id)
     if (now.status !== 'ready' || now.waitsFor || now.source?.kind !== 'issue') return undefined
-    // The blockers are keys in the room's tracker, which read them with the workspace's own issue and tagged it, so only
+    // The blockers are keys in the project's tracker, which read them with the workspace's own issue and tagged it, so only
     // work on that tracker's issues counts (KERNEL-470).
     const tracker = issueTracker(now.source)
-    const all = this.store.workspaces(ws.roomId)
+    const all = this.store.workspaces(ws.projectId)
     const remote = await this.k.config.remoteOfWs(now)
-    const isLead = (w: Workspace) => !!this.agentsSync(ws.roomId).find((a) => a.id === w.agentId)?.lead
+    const isLead = (w: Workspace) => !!this.agentsSync(ws.projectId).find((a) => a.id === w.agentId)?.lead
     const on = all
       .filter((w) => w.status !== 'archived' && !w.reviewOf && !isMerged(w) && blockedBy.some((key) => buildsIssue(w, key, tracker)))
       .filter((w) => !waitRefusal({ workspaces: all, refs: [w.id], waiter: now, isLead, remote }))

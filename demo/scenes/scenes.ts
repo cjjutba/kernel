@@ -55,9 +55,9 @@ function tools(f: Fixture) {
     push({ type: 'chat', chat: c })
   }
   const running = (chatId: string, on: boolean) => push({ type: 'chat.running', chatId, running: on })
-  const status = (roomId: string, agentId: string, s: 'idle' | 'working' | 'needs' | 'planning') => {
-    ;((f.status[roomId] ??= {}) as Record<string, string>)[agentId] = s
-    push({ type: 'agent.status', roomId, agentId, status: s })
+  const status = (projectId: string, agentId: string, s: 'idle' | 'working' | 'needs' | 'planning') => {
+    ;((f.status[projectId] ??= {}) as Record<string, string>)[agentId] = s
+    push({ type: 'agent.status', projectId, agentId, status: s })
   }
   return { item, approval, workspace, patch, chat, running, status }
 }
@@ -113,12 +113,12 @@ function permissions(): Scene {
     const a: Approval = { ...asked, id, title: `Run ${command}`, detail, input: { command }, status: 'pending', createdAt: now() }
     t.approval(a)
     t.item(chatId, { kind: 'approval', id: `approval-${id}`, ts: now(), approvalId: id })
-    t.status(ids.roomA, 'noor', 'needs')
+    t.status(ids.projectA, 'noor', 'needs')
   }
   const finish = () => {
     t.item(chatId, result('pm-res', start))
     t.running(chatId, false)
-    t.status(ids.roomA, 'noor', 'idle')
+    t.status(ids.projectA, 'noor', 'idle')
   }
   return {
     fixture: f,
@@ -126,7 +126,7 @@ function permissions(): Scene {
       ask: () => {
         start = now()
         t.running(chatId, true)
-        t.status(ids.roomA, 'noor', 'working')
+        t.status(ids.projectA, 'noor', 'working')
         play(t.item, chatId, [
           think('pm-th', 'The renderer is in. A few sample PDFs will show whether the fonts embed.'),
           { run: tool('pm-t1', 'Render a sample invoice', 'pnpm pdf:render --sample', { name: 'Bash' }), ms: 800 },
@@ -141,7 +141,7 @@ function permissions(): Scene {
         const a = f.approvals.find((x) => x.id === id)!
         const next: Approval = { ...a, status: decision.behavior === 'allow' ? 'allowed' : 'denied' }
         t.approval(next)
-        t.status(ids.roomA, 'noor', 'working')
+        t.status(ids.projectA, 'noor', 'working')
         if (id === asked.id) {
           play(t.item, chatId, [
             { run: tool('pm-t2', 'Run pnpm pdf:export --out ~/Documents/invoices', 'pnpm pdf:export --out ~/Documents/invoices', { name: 'Bash' }), ms: 1200, output: 'INV-0412.pdf\nINV-0413.pdf\nINV-0414.pdf' },
@@ -205,7 +205,7 @@ function reviews(): Scene {
         push({ type: 'pr.info', info: ready })
       }
       const row = { ...rows[1]!, events: [{ kind: 'pr.review' as const, text: 'Fixed both blockers', actionable: false }, { kind: 'pr.ready' as const, text: 'Checks passed', actionable: false }, { kind: 'pr.review' as const, text: 'Security and code approved', actionable: true }],
-        reply: 'The route checks the room before it reads the issue, and dedupe() has a test for the retry.' }
+        reply: 'The route checks the project before it reads the issue, and dedupe() has a test for the retry.' }
       t.item(chatId, { ...card, id: 'tur-2', ts: now(), update: { rows: [row] } })
       later(800, () => t.item(chatId, say('tur-k2', 'PR #158 is ready to merge: both blockers are fixed and Theo approved the new commit.')))
     })
@@ -279,7 +279,7 @@ function issues(): Scene {
   return {
     fixture: f,
     handlers: {
-      'linear.plan': (async ({ id, roomId }: { id: string; roomId: string }) => {
+      'linear.plan': (async ({ id, projectId }: { id: string; projectId: string }) => {
         const chatId = 'chat-issue-plan'
         const lw = f.workspaces.find((w) => w.id === ids.lead)!
         t.chat({ id: chatId, workspaceId: lw.id, title: 'Export invoices as PDF', kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: true, createdAt: now() })
@@ -287,7 +287,7 @@ function issues(): Scene {
         later(100, () => {
           t.item(chatId, { kind: 'user', id: 'is-u', ts: now(), parts: [{ type: 'text', text: `Plan ${id}: Export invoices as PDF. Read the issue and its comments first.` }] })
           t.running(chatId, true)
-          t.status(roomId, lead, 'planning')
+          t.status(projectId, lead, 'planning')
           const start = now()
           play(t.item, chatId, [
             think('is-th', 'The issue and both comments agree: one page per invoice, the on-screen layout, no custom templates.'),
@@ -296,14 +296,14 @@ function issues(): Scene {
             () => {
               const ap = `ap-plan-issue-${now()}`
               t.approval({
-                id: ap, kind: 'plan', source: 'sdk', roomId, workspaceId: lw.id, chatId, agentId: lead, title: 'Export invoices as PDF', status: 'pending', createdAt: now(),
+                id: ap, kind: 'plan', source: 'sdk', projectId, workspaceId: lw.id, chatId, agentId: lead, title: 'Export invoices as PDF', status: 'pending', createdAt: now(),
                 detail: '# Export invoices as PDF\n\nOne page per invoice, laid out like the invoice on screen, with a Download PDF action in each row. No custom templates yet, as Maya asked.\n\nThree tasks, run in parallel. Theo reviews each pull request as it lands.',
                 steps: [{ title: 'PDF renderer with embedded fonts', taskId: id, agentId: 'noor' }, { title: 'Download PDF in the row menu', taskId: id, agentId: 'kai' }, { title: 'Snapshot tests for each state', taskId: id, agentId: 'ivy' }]
               })
               t.item(chatId, { kind: 'approval', id: `approval-${ap}`, ts: now(), approvalId: ap })
               t.item(chatId, result('is-res', start))
               t.running(chatId, false)
-              t.status(roomId, lead, 'needs')
+              t.status(projectId, lead, 'needs')
             }
           ], 700)
         })
@@ -312,7 +312,7 @@ function issues(): Scene {
       'approvals.decide': (async ({ id }: { id: string }) => {
         const a = f.approvals.find((x) => x.id === id)!
         const chatId = a.chatId!
-        const roomId = a.roomId ?? ids.roomA
+        const projectId = a.projectId ?? ids.projectA
         const tasks = [
           { agent: 'noor', name: 'kernel-31-pdf-renderer', title: 'PDF renderer with embedded fonts' },
           { agent: 'kai', name: 'kernel-31-download-pdf', title: 'Download PDF in the row menu' },
@@ -323,19 +323,19 @@ function issues(): Scene {
         const c = f.chats.find((x) => x.id === chatId)!
         t.chat({ ...c, plan: false })
         t.running(chatId, true)
-        t.status(roomId, lead, 'working')
+        t.status(projectId, lead, 'working')
         play(t.item, chatId, [
           { run: tool('is-t4', 'kernel · start_tasks', 'Noor, Kai and Ivy, one workspace each, linked to KERNEL-31', { name: 'mcp__kernel__start_tasks' }), ms: 800 },
           say('is-go', 'Handed off. Noor has the renderer, Kai has the download action and Ivy has the tests. Each workspace links back to KERNEL-31, and Theo reviews each pull request as it lands.')
-        ], 700, () => { t.running(chatId, false); t.status(roomId, lead, 'idle') })
+        ], 700, () => { t.running(chatId, false); t.status(projectId, lead, 'idle') })
         tasks.forEach((task, i) => later(900 + i * 650, () => {
           const wsId = `ws-k31-${i}`
           const cid = `chat-k31-${i}`
-          t.workspace({ id: wsId, roomId: roomId, name: task.name, title: task.title, branch: `feat/${task.name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${task.name}`, mode: 'worktree', agentId: task.agent, port: 4371 + i, status: 'ready', prState: 'none', createdAt: now(), leadChatId: chatId, source: { kind: 'issue', id: 'KERNEL-31', title: 'Export invoices as PDF', url: 'https://linear.app/acme/issue/KERNEL-31' } })
+          t.workspace({ id: wsId, projectId: projectId, name: task.name, title: task.title, branch: `feat/${task.name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${task.name}`, mode: 'worktree', agentId: task.agent, port: 4371 + i, status: 'ready', prState: 'none', createdAt: now(), leadChatId: chatId, source: { kind: 'issue', id: 'KERNEL-31', title: 'Export invoices as PDF', url: 'https://linear.app/acme/issue/KERNEL-31' } })
           t.chat({ id: cid, workspaceId: wsId, title: task.title, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: now() })
           f.items[cid] = [{ kind: 'user', id: `${cid}-u`, ts: now(), from: 'lead', parts: [{ type: 'text', text: `KERNEL-31: ${task.title}. Build it from the approved plan.` }] }]
           t.running(cid, true)
-          t.status(roomId, task.agent, 'working')
+          t.status(projectId, task.agent, 'working')
         }))
         return next
       }) as Handler
@@ -357,7 +357,7 @@ function sharing(): Scene {
         push({ type: 'shared.comment', comment: c })
         t.item(chatId, { kind: 'user', id: 'cm-new-item', ts: now(), parts: [{ type: 'text', text: `Comment on "Pricing page draft" v${version}.\n> ${note}` }] })
         t.running(chatId, true)
-        t.status(ids.roomA, 'noor', 'working')
+        t.status(ids.projectA, 'noor', 'working')
         const start = now()
         play(t.item, chatId, [
           think('cm-th', 'The header is the brand blue. The button should use the same token.'),
@@ -372,7 +372,7 @@ function sharing(): Scene {
           f.shared = f.shared!.map((x) => (x.id === sharedId ? next : x))
           push({ type: 'shared', file: next })
           t.running(chatId, false)
-          t.status(ids.roomA, 'noor', 'idle')
+          t.status(ids.projectA, 'noor', 'idle')
         })
         return { chatId, workspaceId: ids.table, queued: false }
       }) as Handler

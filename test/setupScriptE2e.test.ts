@@ -3,7 +3,7 @@ import { mkdtemp, readFile, symlink, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Kernel } from '../src/main/kernel'
-import { ensureRepoSettings } from '../src/main/services/rooms'
+import { ensureRepoSettings } from '../src/main/services/projects'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { tempRepo, freePort } from './helpers'
 
@@ -19,59 +19,59 @@ async function boot(files: Record<string, string> = {}) {
   onTestFinished(() => k.stop())
   await k.start()
   k.sessions.send = async () => ({ queued: false })
-  const room = await k.rooms.addRoom(repo)
+  const project = await k.projects.addProject(repo)
   const h = k.handlers()
-  const lead = (await k.team.agents(room.id)).find((a) => a.lead)!
-  const chat = await k.lead.leadChat(room.id)
-  const tool = kernelTools(k.lead.leadToolDeps(room.id, lead, chat)).find((t) => t.name === 'set_room_scripts')!
+  const lead = (await k.team.agents(project.id)).find((a) => a.lead)!
+  const chat = await k.lead.leadChat(project.id)
+  const tool = kernelTools(k.lead.leadToolDeps(project.id, lead, chat)).find((t) => t.name === 'set_project_scripts')!
   const ask = async (args: object, answer: string) => {
     const result = tool.handler(args as never, {}).then((r) => (r.content[0] as { text: string }).text)
     const card = await vi.waitFor(() => {
-      const a = k.store.approvals({ roomId: room.id, pendingOnly: true }).find((x) => x.kind === 'question')
+      const a = k.store.approvals({ projectId: project.id, pendingOnly: true }).find((x) => x.kind === 'question')
       expect(a).toBeTruthy()
       return a!
     })
     k.approvals.decide(card.id, { behavior: 'answer', text: answer })
     return { card, text: await result }
   }
-  return { k, h, repo, room, ask, local: join(repo, '.kernel', 'settings.local.toml') }
+  return { k, h, repo, project, ask, local: join(repo, '.kernel', 'settings.local.toml') }
 }
 
-// KERNEL-682 to 685, run end to end: each case is a fresh temp repo added as a room, driven through the channels.
+// KERNEL-682 to 685, run end to end: each case is a fresh temp repo added as a project, driven through the channels.
 describe('setup script feature end to end', () => {
   it('case 1: Conductor TOML, Use, new workspace runs setup', async () => {
     const toml = `[scripts]\nsetup = "echo p=$CONDUCTOR_PORT > setup.txt"\narchive = "echo bye"\n[scripts.run.web]\ncommand = "pnpm dev --port $CONDUCTOR_PORT"\ndefault = true\n[scripts.run.docs]\ncommand = "pnpm docs -p $CONDUCTOR_PORT"\n`
-    const { k, h, repo, room } = await boot({ '.conductor/settings.toml': toml })
-    const s = await h['scripts.suggest']({ roomId: room.id })
+    const { k, h, repo, project } = await boot({ '.conductor/settings.toml': toml })
+    const s = await h['scripts.suggest']({ projectId: project.id })
     expect(s[0].source).toBe('conductor')
     expect(s[0].patch.scripts?.setup).toContain('$KERNEL_PORT')
     expect(s[0].patch.scripts?.archive).toBe('echo bye')
     expect(s[0].patch.scripts?.run).toContain('--port $KERNEL_PORT')
     expect(s[0].patch.runScripts).toEqual({ docs: 'pnpm docs -p $KERNEL_PORT' })
-    await h['settings.setRoom']({ roomId: room.id, patch: s[0].patch })
+    await h['settings.setProject']({ projectId: project.id, patch: s[0].patch })
     const local = await readFile(join(repo, '.kernel', 'settings.local.toml'), 'utf8')
     expect(local).not.toContain('CONDUCTOR')
-    const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'x', agentId: 'kai', title: 'x' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'x', agentId: 'kai', title: 'x' })
     expect(ws.status).toBe('ready')
     expect(await readFile(join(ws.path, 'setup.txt'), 'utf8')).toBe(`p=${ws.port}\n`)
   })
 
   it('case 2: Superset config', async () => {
     const cfg = JSON.stringify({ setup: ['echo a > a.txt', 'echo b > b.txt'], teardown: ['echo down'], run: ['echo run $SUPERSET_WORKSPACE_NAME'] })
-    const { k, h, room } = await boot({ '.superset/config.json': cfg })
-    const s = await h['scripts.suggest']({ roomId: room.id })
+    const { k, h, project } = await boot({ '.superset/config.json': cfg })
+    const s = await h['scripts.suggest']({ projectId: project.id })
     expect(s[0].source).toBe('superset')
     expect(s[0].patch.scripts?.setup).toBe('echo a > a.txt && echo b > b.txt')
     expect(s[0].patch.scripts?.archive).toBe('echo down')
     expect(s[0].patch.scripts?.run).toBe('echo run $KERNEL_WORKSPACE_NAME')
-    await h['settings.setRoom']({ roomId: room.id, patch: s[0].patch })
-    const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'x', agentId: 'kai', title: 'x' })
+    await h['settings.setProject']({ projectId: project.id, patch: s[0].patch })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'x', agentId: 'kai', title: 'x' })
     expect(await readFile(join(ws.path, 'b.txt'), 'utf8')).toBe('b\n')
   })
 
   it('case 3: lockfile only', async () => {
-    const { h, room } = await boot({ 'package.json': '{"name":"a"}', 'pnpm-lock.yaml': 'lockfileVersion: 9\n' })
-    const s = await h['scripts.suggest']({ roomId: room.id })
+    const { h, project } = await boot({ 'package.json': '{"name":"a"}', 'pnpm-lock.yaml': 'lockfileVersion: 9\n' })
+    const s = await h['scripts.suggest']({ projectId: project.id })
     expect(s).toHaveLength(1)
     expect(s[0].source).toBe('detected')
     expect(s[0].file).toBe('pnpm-lock.yaml')
@@ -81,8 +81,8 @@ describe('setup script feature end to end', () => {
   })
 
   it('case 4: nothing, then Cancel and Save', async () => {
-    const { h, room, ask, local, repo } = await boot()
-    expect(await h['scripts.suggest']({ roomId: room.id })).toEqual([])
+    const { h, project, ask, local, repo } = await boot()
+    expect(await h['scripts.suggest']({ projectId: project.id })).toEqual([])
     await ensureRepoSettings(repo)
     const settings = await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')
     expect(settings).not.toMatch(/^\s*(setup|archive|run)\s*=/m)
@@ -114,50 +114,50 @@ describe('setup script feature end to end', () => {
     const a = await boot()
     await mkdir(join(a.repo, '.conductor'), { recursive: true })
     await symlink(join(outside, 's.toml'), join(a.repo, '.conductor', 'settings.toml'))
-    expect(await a.h['scripts.suggest']({ roomId: a.room.id })).toEqual([])
+    expect(await a.h['scripts.suggest']({ projectId: a.project.id })).toEqual([])
     const b = await boot({ '.conductor/settings.toml': '[scripts\nsetup = = =' })
-    expect(await b.h['scripts.suggest']({ roomId: b.room.id })).toEqual([])
+    expect(await b.h['scripts.suggest']({ projectId: b.project.id })).toEqual([])
   })
 
-  it('case 7: room with setup does not get that suggestion', async () => {
-    const { h, room } = await boot({ '.conductor/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
-    const s = await h['scripts.suggest']({ roomId: room.id })
-    await h['settings.setRoom']({ roomId: room.id, patch: s[0].patch })
-    expect(await h['scripts.suggest']({ roomId: room.id })).toEqual([])
+  it('case 7: project with setup does not get that suggestion', async () => {
+    const { h, project } = await boot({ '.conductor/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
+    const s = await h['scripts.suggest']({ projectId: project.id })
+    await h['settings.setProject']({ projectId: project.id, patch: s[0].patch })
+    expect(await h['scripts.suggest']({ projectId: project.id })).toEqual([])
   })
 })
 
-describe('Use from the Setup tab on a room that already has run and archive scripts', () => {
-  // The suggestion leaves out every script the room has, so Use saves only what is missing (KERNEL-707).
-  it('keeps the run and archive the room already has', async () => {
+describe('Use from the Setup tab on a project that already has run and archive scripts', () => {
+  // The suggestion leaves out every script the project has, so Use saves only what is missing (KERNEL-707).
+  it('keeps the run and archive the project already has', async () => {
     const toml = `[scripts]\nsetup = "pnpm install"\narchive = "echo conductor-archive"\nrun = "conductor run"\n`
-    const { h, room } = await boot({ '.conductor/settings.toml': toml })
-    await h['settings.setRoom']({ roomId: room.id, patch: { scripts: { run: 'my own run', archive: 'my own archive' } } })
-    const s = await h['scripts.suggest']({ roomId: room.id })
-    await h['settings.setRoom']({ roomId: room.id, patch: s[0].patch })
-    const after = await h['settings.room']({ roomId: room.id })
+    const { h, project } = await boot({ '.conductor/settings.toml': toml })
+    await h['settings.setProject']({ projectId: project.id, patch: { scripts: { run: 'my own run', archive: 'my own archive' } } })
+    const s = await h['scripts.suggest']({ projectId: project.id })
+    await h['settings.setProject']({ projectId: project.id, patch: s[0].patch })
+    const after = await h['settings.project']({ projectId: project.id })
     expect(after.scripts.run).toBe('my own run')
     expect(after.scripts.archive).toBe('my own archive')
     expect(after.scripts.setup).toBe('pnpm install')
   })
 
-  it('offers a room with only a run script just the setup, archive and named run scripts it lacks', async () => {
+  it('offers a project with only a run script just the setup, archive and named run scripts it lacks', async () => {
     const toml = `[scripts]\nsetup = "pnpm install"\narchive = "echo bye"\nrun_mode = "nonconcurrent"\n[scripts.run.web]\ncommand = "pnpm dev"\ndefault = true\n[scripts.run.docs]\ncommand = "pnpm docs"\n[scripts.run.site]\ncommand = "pnpm site"\n`
-    const { h, room } = await boot({ '.conductor/settings.toml': toml })
-    await h['settings.setRoom']({ roomId: room.id, patch: { scripts: { run: 'my own run', runMode: 'concurrent' }, runScripts: { site: 'my own site' } } })
-    const [s] = await h['scripts.suggest']({ roomId: room.id })
+    const { h, project } = await boot({ '.conductor/settings.toml': toml })
+    await h['settings.setProject']({ projectId: project.id, patch: { scripts: { run: 'my own run', runMode: 'concurrent' }, runScripts: { site: 'my own site' } } })
+    const [s] = await h['scripts.suggest']({ projectId: project.id })
     expect(s.patch).toEqual({ scripts: { setup: 'pnpm install', archive: 'echo bye' }, runScripts: { docs: 'pnpm docs' } })
-    await h['settings.setRoom']({ roomId: room.id, patch: s.patch })
-    const after = await h['settings.room']({ roomId: room.id })
+    await h['settings.setProject']({ projectId: project.id, patch: s.patch })
+    const after = await h['settings.project']({ projectId: project.id })
     expect(after.scripts).toMatchObject({ run: 'my own run', runMode: 'concurrent', setup: 'pnpm install', archive: 'echo bye' })
     expect(after.runScripts.find((r) => r.name === 'site')?.command).toBe('my own site')
-    expect(await h['scripts.suggest']({ roomId: room.id })).toEqual([])
+    expect(await h['scripts.suggest']({ projectId: project.id })).toEqual([])
   })
 
-  it('offers only setup to a room with a run script, from a repo with setup and run', async () => {
-    const { h, room } = await boot({ '.conductor/settings.toml': '[scripts]\nsetup = "pnpm install"\nrun = "conductor run"\n' })
-    await h['settings.setRoom']({ roomId: room.id, patch: { scripts: { run: 'my own run' } } })
-    const s = await h['scripts.suggest']({ roomId: room.id })
+  it('offers only setup to a project with a run script, from a repo with setup and run', async () => {
+    const { h, project } = await boot({ '.conductor/settings.toml': '[scripts]\nsetup = "pnpm install"\nrun = "conductor run"\n' })
+    await h['settings.setProject']({ projectId: project.id, patch: { scripts: { run: 'my own run' } } })
+    const s = await h['scripts.suggest']({ projectId: project.id })
     expect(s.map((x) => x.patch)).toEqual([{ scripts: { setup: 'pnpm install' } }])
   })
 })

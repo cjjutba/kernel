@@ -9,30 +9,30 @@ import { briefParts, leadMessage } from './brief'
 import { startAnywayLine } from './taken'
 
 export interface ChatStart {
-  roomId: string
+  projectId: string
   parts: ChatPart[]
   model: string
   effort: Effort
   plan: boolean
-  /** The permission mode the box picked, left out while it follows the room or Settings. */
+  /** The permission mode the box picked, left out while it follows the project or Settings. */
   mode?: PermissionMode
-  /** The target branch picked, empty for the room's default. */
+  /** The target branch picked, empty for the project's default. */
   baseRef: string
-  /** Hand off or Build here, left out while it follows the room or Settings. */
+  /** Hand off or Build here, left out while it follows the project or Settings. */
   leadMode?: LeadMode
 }
 
 /**
- * Starts a chat with the room's Lead, sends the brief there and lands on it as soon as the engine answers, before its worktree
- * exists (KERNEL-542). Resolves with why it couldn't send, and nothing once it has. The room's box keeps its draft until a send
+ * Starts a chat with the project's Lead, sends the brief there and lands on it as soon as the engine answers, before its worktree
+ * exists (KERNEL-542). Resolves with why it couldn't send, and nothing once it has. The project's box keeps its draft until a send
  * succeeds. The new chat opens with its right panel closed, whatever the global setting says, until the toggle is pressed there (KERNEL-788).
  */
 export async function startChat(c: ChatStart): Promise<string | undefined> {
   let chat
   // The chat's own worktree starts from the target branch picked here, else the latest default branch (KERNEL-405).
-  try { chat = await call('lead.start', { roomId: c.roomId, ...leadMessage(c.parts), model: c.model, effort: c.effort, plan: c.plan, ...(c.mode ? { mode: c.mode } : {}), ...(c.baseRef ? { baseRef: c.baseRef } : {}), ...(c.leadMode ? { leadMode: c.leadMode } : {}) }) }
+  try { chat = await call('lead.start', { projectId: c.projectId, ...leadMessage(c.parts), model: c.model, effort: c.effort, plan: c.plan, ...(c.mode ? { mode: c.mode } : {}), ...(c.baseRef ? { baseRef: c.baseRef } : {}), ...(c.leadMode ? { leadMode: c.leadMode } : {}) }) }
   catch (e) { return cleanError(e) }
-  clearDraft(newChatDraftOf(c.roomId))
+  clearDraft(newChatDraftOf(c.projectId))
   // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
   try { await loadWorkspace(chat.workspaceId) } catch { /* the push brings it */ }
   // The engine answered before the worktree exists and pushes the workspace, so the chat opens now and says what it waits for.
@@ -41,7 +41,7 @@ export async function startChat(c: ChatStart): Promise<string | undefined> {
   actions.ui.holdPanel(chat.workspaceId)
   focusComposerWhenOpen(chat.id)
   // The workspace screen clears the tab when the workspace changes, so the tab is set after the navigation (lead.ts).
-  await openLeadChat(c.roomId, chat.id)
+  await openLeadChat(c.projectId, chat.id)
 }
 
 /**
@@ -50,8 +50,8 @@ export async function startChat(c: ChatStart): Promise<string | undefined> {
  */
 export function backToNewChat(h: HeldChat) {
   const { route } = getState().ui
-  if (route.name === 'leadNew' && route.roomId === h.roomId) actions.ui.closeModal()
-  else openNewChat(h.roomId, { source: h.source, picks: h.picks })
+  if (route.name === 'leadNew' && route.projectId === h.projectId) actions.ui.closeModal()
+  else openNewChat(h.projectId, { source: h.source, picks: h.picks })
 }
 
 /**
@@ -61,8 +61,8 @@ export function backToNewChat(h: HeldChat) {
 export async function startHeld(h: HeldChat): Promise<void> {
   const { model, effort, plan, baseRef, leadMode } = h.picks
   const issue = h.source.kind === 'issue' ? h.source.id : ''
-  const mode = loadPicks(newChatDraftOf(h.roomId))?.mode
-  const failed = await startChat({ roomId: h.roomId, parts: issue ? briefParts(h.parts, null, [startAnywayLine(issue)]) : h.parts, model, effort, plan, mode, baseRef, leadMode })
+  const mode = loadPicks(newChatDraftOf(h.projectId))?.mode
+  const failed = await startChat({ projectId: h.projectId, parts: issue ? briefParts(h.parts, null, [startAnywayLine(issue)]) : h.parts, model, effort, plan, mode, baseRef, leadMode })
   if (!failed) return
   backToNewChat(h)
   actions.ui.toast({ title: failed })

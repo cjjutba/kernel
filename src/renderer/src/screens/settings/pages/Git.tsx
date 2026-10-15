@@ -15,20 +15,20 @@ const home = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')
 /** How long a setup or archive script may run, in minutes. Main takes 1 to 240 (KERNEL-216). */
 const TIMEOUTS = [5, 10, 15, 30]
 
-/** Settings > Git and worktrees (MorePage git, KERNEL-680): the defaults for every room, then setup and archive scripts and cleanup. */
+/** Settings > Git and worktrees (MorePage git, KERNEL-680): the defaults for every project, then setup and archive scripts and cleanup. */
 export function Git({ s }: { s: AppSettings }) {
   const w = s.workspace
   const a = s.scripts
   const [busy, run] = useBusy()
-  // The defaults belong to no room, so the branches and remotes to pick from are every room's.
-  const roomIds = useStore((x) => x.rooms.filter((r) => !r.hidden && !r.archived).map((r) => r.id).join(','))
+  // The defaults belong to no project, so the branches and remotes to pick from are every project's.
+  const projectIds = useStore((x) => x.projects.filter((r) => !r.hidden && !r.archived).map((r) => r.id).join(','))
   const [branches, setBranches] = useState<string[]>([])
   useEffect(() => {
     let live = true
-    void Promise.all(roomIds.split(',').filter(Boolean).map((roomId) => call('git.branches', { roomId }).catch(() => [] as string[])))
+    void Promise.all(projectIds.split(',').filter(Boolean).map((projectId) => call('git.branches', { projectId }).catch(() => [] as string[])))
       .then((lists) => live && setBranches([...new Set(lists.flat())]))
     return () => { live = false }
-  }, [roomIds])
+  }, [projectIds])
   const remotes = [...new Set(branches.filter((b) => b.includes('/')).map((b) => b.split('/')[0]))]
   const reveal = () => run('reveal', async () => {
     try { await call('system.openInEditor', { path: s.worktreeRoot }) } catch (e) { actions.ui.toast({ title: 'Could not open the folder', sub: cleanError(e) }) }
@@ -56,9 +56,9 @@ export function Git({ s }: { s: AppSettings }) {
       </Section>
       <Section title="Current branch">
         <Row id="baseline" setting="workspace.baselineCurrentBranch" label="Treat existing changes as the baseline" desc="They stay out of the diff, and agents never commit them."><Toggle label="Treat existing changes as the baseline" checked={w.baselineCurrentBranch} onChange={(v) => set({ baselineCurrentBranch: v })} /></Row>
-        <Row id="one-current-branch" setting="workspace.oneCurrentBranchPerRoom" label="One current-branch workspace per room"><Toggle label="One current-branch workspace per room" checked={w.oneCurrentBranchPerRoom} onChange={(v) => set({ oneCurrentBranchPerRoom: v })} /></Row>
+        <Row id="one-current-branch" setting="workspace.oneCurrentBranchPerProject" label="One current-branch workspace per project"><Toggle label="One current-branch workspace per project" checked={w.oneCurrentBranchPerProject} onChange={(v) => set({ oneCurrentBranchPerProject: v })} /></Row>
       </Section>
-      <Section title="Setup and archive" note="The scripts live on each room’s Setup and scripts page.">
+      <Section title="Setup and archive" note="The scripts live on each project’s Setup and scripts page.">
         <Row id="run-setup" setting="scripts.setupOnCreate" label="Run setup when a workspace is created"><Toggle label="Run setup when a workspace is created" checked={a.setupOnCreate} onChange={(v) => setScripts({ setupOnCreate: v })} /></Row>
         <Row id="wait-for-setup" setting="workspace.leadWaitForSetup" child label="Wait for setup before the first message" desc="The first message holds until setup passes."><Toggle label="Wait for setup before the first message" checked={w.leadWaitForSetup} onChange={(v) => set({ leadWaitForSetup: v })} /></Row>
         <Row id="run-after-setup" setting="scripts.runAfterSetup" label="Start the run script after setup"><Toggle label="Start the run script after setup" checked={a.runAfterSetup} onChange={(v) => setScripts({ runAfterSetup: v })} /></Row>
@@ -83,7 +83,7 @@ export function BranchPattern({ value, field = 'branchPattern', label = 'Branch 
   const commit = () => {
     const next = text.trim()
     if (next === value) return
-    // Empty goes back to the default where there is one to go back to, as on a room's page.
+    // Empty goes back to the default where there is one to go back to, as on a project's page.
     if (!next && placeholder) { save(null); return }
     if (!next.includes('{slug}')) { setText(value); return }
     save(next)

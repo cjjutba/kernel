@@ -22,7 +22,7 @@ const KEYCHAIN = 'keychain'
 
 /**
  * A rejection Kernel moves a provider off, and how far it got (`Account.moving`, KERNEL-568). `to` is the account it picked
- * and `switched` that the switch went through. A move that waits says why and until when nothing has room, the earliest
+ * and `switched` that the switch went through. A move that waits says why and until when nothing has headroom, the earliest
  * reset across the provider's accounts in seconds, for the Lead (KERNEL-777).
  */
 interface Move { at?: number; state: 'reading' | 'waiting' | 'done'; to?: string; switched?: boolean; why?: 'full' | 'signIn'; until?: number; told?: string }
@@ -36,7 +36,7 @@ const CHAIN_MS = 30 * 60_000
 /** How often every account's usage is read while any agent works (KERNEL-567). */
 const USAGE_EVERY_MS = 10 * 60_000
 
-/** The Claude account, the connection, and the usage limits that pause the rooms (KERNEL-325). */
+/** The Claude account, the connection, and the usage limits that pause the projects (KERNEL-325). */
 export class Account extends Feature {
   network?: NetworkMonitor
   /**
@@ -54,7 +54,7 @@ export class Account extends Feature {
   /**
    * Rejections Kernel moves a provider off, by `limitKey`, with the reset time that tells one rejection from the next, so each
    * moves it once (KERNEL-568). A reading can put the reset a second off, so times a minute apart count as the same. `reading`
-   * while every account of the provider is read, `waiting` when none had room, which each new reading looks at again, and
+   * while every account of the provider is read, `waiting` when none had headroom, which each new reading looks at again, and
    * `done` once it switched.
    */
   private moving = new Map<string, Move>()
@@ -97,7 +97,7 @@ export class Account extends Feature {
 
   // ---------- failures (KERNEL-28)
 
-  /** Main's view of the network. Offline holds every room like a pause; back online sends what queued. */
+  /** Main's view of the network. Offline holds every project like a pause; back online sends what queued. */
   private setOnline(online: boolean) {
     bus.push({ type: 'online', online })
     if (online) this.sessions.releaseAll('offline')
@@ -204,7 +204,7 @@ export class Account extends Feature {
   }
 
   /**
-   * A 5-hour or weekly rejection pauses every room by `limit` (FloorLimit.png); its end resumes them, and the chats it
+   * A 5-hour or weekly rejection pauses every project by `limit` (FloorLimit.png); its end resumes them, and the chats it
    * stopped mid-turn carry on (`Sessions.carryOn`). The limits are saved, so a restart keeps the pause. Each rejected
    * window, and each one close to its limit while teammates are held, gets a timer at its reset time, which marks it allowed
    * again and sends what it held. While any such window stands, `checkLimits` also runs every LIMIT_RECHECK_MS. A window
@@ -215,15 +215,15 @@ export class Account extends Feature {
   applyLimits(limits: RateLimit[]) {
     const now = Date.now()
     this.store.saveMeta('limits', limits)
-    const rooms = this.store.rooms().filter((r) => !r.archived)
-    // A provider is stopped when its active account has a 5-hour or weekly rejection. A room pauses only when every provider
+    const projects = this.store.projects().filter((r) => !r.archived)
+    // A provider is stopped when its active account has a 5-hour or weekly rejection. A project pauses only when every provider
     // its agents run on is stopped, so Codex agents keep working through a Claude limit (KERNEL-406).
     const stopped = (p: Provider) => !!blockingLimit(limits.filter((l) => limitProvider(l) === p && l.accountId === this.k.providers.active(p)), now)
-    for (const r of rooms) {
+    for (const r of projects) {
       const uses = this.k.providers.usedIn(r.id)
       const pause = uses.length > 0 && uses.every(stopped)
-      if (pause && !r.paused) this.k.rooms.pauseRoom(r.id, 'limit')
-      else if (!pause && r.paused && r.pausedBy === 'limit') this.k.rooms.resumeRoom(r.id, 'limit')
+      if (pause && !r.paused) this.k.projects.pauseProject(r.id, 'limit')
+      else if (!pause && r.paused && r.pausedBy === 'limit') this.k.projects.resumeProject(r.id, 'limit')
     }
     const holding = this.holdsTeammates()
     for (const l of limits) {
@@ -284,7 +284,7 @@ export class Account extends Feature {
    * "Switch at a limit" for each provider that has it on (KERNEL-568). A 5-hour or weekly rejection on the account in use
    * reads every account of the provider, then moves to the one `spareAccount` picks, where the chats the limit held or cut
    * off carry on (`switchTo`, `Sessions.drainWaiting`). Once per rejection, and never back when the old account resets. With
-   * no account to move to the rooms stay paused, and a later reading that finds one moves then.
+   * no account to move to the projects stay paused, and a later reading that finds one moves then.
    */
   private switchAtLimit(limits: RateLimit[], now: number) {
     for (const key of this.moving.keys()) if (!limits.some((l) => l.status === 'rejected' && limitKey(l) === key)) this.moving.delete(key)
@@ -312,7 +312,7 @@ export class Account extends Feature {
   }
 
   /**
-   * Moves `p` off the rejection on `from` to the account `spareFor` picks: the most room, among the accounts that offer the
+   * Moves `p` off the rejection on `from` to the account `spareFor` picks: the most headroom, among the accounts that offer the
    * models its agents start on when one does (KERNEL-616). Reading those models can take a moment, so the move reads as
    * `reading` meanwhile, and nothing happens when the rejection went, the user moved it or turned the switch off.
    */
@@ -339,7 +339,7 @@ export class Account extends Feature {
 
   /**
    * An account Kernel switched `p` to by itself (`selfSwitched`) filled within CHAIN_MS of the switch: Kernel stops switching
-   * `p` by itself, so the rooms wait for the limit as with the switch off, and one Inbox item says why (KERNEL-844). The user
+   * `p` by itself, so the projects wait for the limit as with the switch off, and one Inbox item says why (KERNEL-844). The user
    * can still switch, which lets Kernel switch by itself again. True while Kernel doesn't switch `p`.
    */
   private chained(p: Provider, account: string | undefined, now: number): boolean {
@@ -391,10 +391,10 @@ export class Account extends Feature {
   }
 
   /**
-   * Nothing moves `p` off the limit for now: no account has room, which counts accounts that need a sign-in or wait on a
+   * Nothing moves `p` off the limit for now: no account has headroom, which counts accounts that need a sign-in or wait on a
    * Keychain prompt (`spareFor`), or the switch failed.
    * The Lead hears it once, with the earliest reset across the provider's accounts, for the teammates the limit cut off
-   * (KERNEL-777). A later reading that finds room still moves it.
+   * (KERNEL-777). A later reading that finds headroom still moves it.
    */
   private moveWaits(p: Provider, move: Move, limits: RateLimit[], why: 'full' | 'signIn') {
     const mine = limits.filter((l) => limitProvider(l) === p)
@@ -413,7 +413,7 @@ export class Account extends Feature {
    * What Kernel does about the usage limit that cut off a chat of `provider` running `model` on `account`, undefined for the
    * CLI's own login, for the Lead's Team update (KERNEL-777). A switch is under way while "switch at a limit" is on and the
    * move reads accounts or switches, or once the provider runs on another account. Otherwise the chat waits for the reset:
-   * the earliest across accounts when none has room, else the account's own.
+   * the earliest across accounts when none has headroom, else the account's own.
    */
   limitNews(provider: Provider, account: string | undefined, model?: string): LimitNews {
     const now = Date.now()
@@ -491,13 +491,13 @@ export class Account extends Feature {
   /**
    * A rejected window can lift without Kernel hearing: its timer fires late after the Mac slept, or the limit is reset
    * on claude.ai. Lift what the clock says has reset, then ask Claude Code for the real numbers. While a limit pauses
-   * the rooms and no session is live, a short session asks. Runs every LIMIT_RECHECK_MS while a window is rejected, and when the Mac wakes.
+   * the projects and no session is live, a short session asks. Runs every LIMIT_RECHECK_MS while a window is rejected, and when the Mac wakes.
    */
   checkLimits(): Promise<void> {
     this.limitChecking ??= (async () => {
       for (const [key, t] of [...this.limitTimers]) if (t.at <= Date.now()) this.limitReset(key)
-      // The accounts in use. Claude's gets a short session of its own while a limit pauses the rooms and none is live.
-      const paused = this.store.rooms().some((r) => r.pausedBy === 'limit')
+      // The accounts in use. Claude's gets a short session of its own while a limit pauses the projects and none is live.
+      const paused = this.store.projects().some((r) => r.pausedBy === 'limit')
       await this.sessions.usage([...this.k.providers.usageReads({ active: true, provider: 'claude', probe: paused }), ...this.k.providers.usageReads({ active: true, provider: 'codex' })])
     })().catch(() => undefined).finally(() => { this.limitChecking = undefined })
     return this.limitChecking

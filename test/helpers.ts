@@ -64,10 +64,10 @@ export async function fakeGh(o: { list?: unknown; view?: unknown; prs?: unknown;
   return { calls: async () => (await readFile(log, 'utf8').catch(() => '')).split('\n').filter(Boolean) }
 }
 
-/** The user trusts the room's scripts, as they would when Kernel asks (KERNEL-209). For tests whose repo brings a script. */
-export async function trustRoom(k: Kernel, roomId: string) {
-  const pending = await k.handlers()['rooms.scriptTrust']({ roomId })
-  if (pending) await k.handlers()['rooms.trust']({ roomId, hash: pending.hash })
+/** The user trusts the project's scripts, as they would when Kernel asks (KERNEL-209). For tests whose repo brings a script. */
+export async function trustProject(k: Kernel, projectId: string) {
+  const pending = await k.handlers()['projects.scriptTrust']({ projectId })
+  if (pending) await k.handlers()['projects.trust']({ projectId, hash: pending.hash })
 }
 
 /**

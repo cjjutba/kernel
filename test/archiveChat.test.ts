@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentDef, Chat, ChatArchivePreview, Room, Thread, Workspace } from '../src/shared/types'
+import type { AgentDef, Chat, ChatArchivePreview, Project, Thread, Workspace } from '../src/shared/types'
 
 // The chat row's Archive and closing a chat's last tab (KERNEL-405): one click when nothing would be lost, else the confirm.
 let preview: ChatArchivePreview | null = null
@@ -24,11 +24,11 @@ const { archiveChatFromSidebar, stopsSomething } = await import('../src/renderer
 const { followArchives } = await import('../src/renderer/src/screens/workspace/archiveLanding')
 const { archivedList, historyName } = await import('../src/renderer/src/screens/history/model')
 
-const room: Room = { id: 'r1', name: 'Client A', path: '/r/r1', defaultBranch: 'main', paused: false, createdAt: 1 }
+const project: Project = { id: 'r1', name: 'Client A', path: '/r/r1', defaultBranch: 'main', paused: false, createdAt: 1 }
 const kernel = { id: 'kernel', lead: true } as AgentDef
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace =>
-  ({ id, roomId: 'r1', name: id, branch: `kernel/${id}`, baseRef: 'origin/main', path: `/w/${id}`, mode: 'worktree', agentId: 'kernel', lead: true, port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
-const thread = (id: string, at: number): Thread => ({ id, roomId: 'r1', title: `Chat ${id}`, createdAt: at })
+  ({ id, projectId: 'r1', name: id, branch: `kernel/${id}`, baseRef: 'origin/main', path: `/w/${id}`, mode: 'worktree', agentId: 'kernel', lead: true, port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
+const thread = (id: string, at: number): Thread => ({ id, projectId: 'r1', title: `Chat ${id}`, createdAt: at })
 const tab = (id: string, workspaceId: string, threadId: string): Chat => ({ id, workspaceId, threadId, title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1 })
 const clean = (id: string): ChatArchivePreview['workspaces'][number] => ({ id, name: id, own: true, running: false, dirty: 0, unpushed: 0 })
 
@@ -37,7 +37,7 @@ beforeEach(() => {
   stop = followArchives()
   calls.length = 0
   setState({
-    rooms: [room], agents: { r1: [kernel] },
+    projects: [project], agents: { r1: [kernel] },
     workspaces: [ws('a', { threadId: 't1' }), ws('b', { threadId: 't2' })],
     threads: { t1: thread('t1', 1), t2: thread('t2', 2) },
     chats: { a: [tab('a1', 'a', 't1')], b: [tab('b1', 'b', 't2')] }
@@ -48,13 +48,13 @@ beforeEach(() => {
 afterEach(() => stop())
 
 describe('archiving a chat with Kernel from the sidebar (KERNEL-405)', () => {
-  it("archives in one click when nothing would be lost, adds no toast, and goes to the room's front door (KERNEL-596)", async () => {
+  it("archives in one click when nothing would be lost, adds no toast, and goes to the project's front door (KERNEL-596)", async () => {
     preview = { threadId: 't2', title: 'Chat t2', workspaces: [clean('b')] }
     await archiveChatFromSidebar(getState().threads.t2)
     expect(calls.map((c) => c.channel)).toEqual(['threads.archivePreview', 'threads.archive'])
     expect(getState().ui.toasts).toEqual([])
     expect(getState().ui.modal).toBeNull()
-    expect(getState().ui.route).toEqual({ name: 'leadNew', roomId: 'r1' })
+    expect(getState().ui.route).toEqual({ name: 'leadNew', projectId: 'r1' })
   })
 
   it('asks first when it would stop a running agent, an open PR, uncommitted changes or unpushed commits, or when it cannot tell', async () => {

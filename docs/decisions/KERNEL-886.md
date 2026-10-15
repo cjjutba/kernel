@@ -3,7 +3,7 @@
 Where it applies:
 
 - Update branch always asks for a merge.
-- The base watch's conflict and catch-up messages, and the "told X to …" lines in the room's log.
+- The base watch's conflict and catch-up messages, and the "told X to …" lines in the project's log.
 - The wait messages: the release message, the one held with a brief, the "Kernel asks X to …" notes, the teammate's own `wait_for_merge` reply for work that already merged, and the Lead's To do line when a turn ends without the base (the event carries `pushed`).
 - The Lead's To do lines for a PR behind its base or in conflict, for a teammate and for a Build here chat. A PR's branch is always pushed, so they ask for a merge and never mention a force push.
 - The default Resolve conflicts text asks for a merge, for the same reason. The default Create a pull request text rebases only before the first push, and no longer mentions `--force-with-lease`. Only the defaults changed. Settings save a default as unset, so installs that never edited a text get the new one, and edited text stays as written.

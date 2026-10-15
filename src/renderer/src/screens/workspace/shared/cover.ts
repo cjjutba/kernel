@@ -18,7 +18,7 @@ export interface Probe { closest(selector: string): unknown; getBoundingClientRe
 export interface Scope { querySelectorAll(selector: string): Iterable<Probe> }
 type Style = { display: string; visibility: string; opacity: string }
 
-/** The boxes of the overlays on screen: outside the stage, taking up room, and not hidden by display, visibility or opacity. */
+/** The boxes of the overlays on screen: outside the stage, taking up project, and not hidden by display, visibility or opacity. */
 export function overlayBoxes(scope: Scope = document, styleOf: (el: Probe) => Style = (el) => getComputedStyle(el as unknown as Element)): Box[] {
   const boxes: Box[] = []
   for (const el of scope.querySelectorAll(COVER_SELECTOR)) {

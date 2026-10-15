@@ -239,7 +239,7 @@ export function Accounts({ s }: { s: AppSettings }) {
         )
       })}
       <Section title="Limits">
-        <Row id="switch-at-limit" label="Switch accounts at a limit" desc="Move agents to the subscription with the most room.">
+        <Row id="switch-at-limit" label="Switch accounts at a limit" desc="Move agents to the subscription with the most headroom.">
           <Toggle label="Switch accounts at a limit" disabled={!canSwitch} checked={canSwitch && switching} onChange={(v) => void patchSettings({ accounts: { switchAtLimit: { claude: v, codex: v } } })} />
         </Row>
         <Row

@@ -25,8 +25,8 @@ describe('the text the Lead reads for a message with mentions (KERNEL-745)', () 
   it("adds a line for a teammate who doesn't take tasks, and for one no longer on the team", () => {
     expect(mentionNote([at(mira), at({ ...noor, id: 'ivo', name: 'Ivo' })], team)).toBe([
       'The user addressed this to Mira and Ivo.',
-      "Mira doesn't take tasks in this room, so tell the user or ask with mcp__kernel__ask_user who should take it.",
-      "Ivo isn't on this room's team now, so tell the user or ask with mcp__kernel__ask_user who should take it."
+      "Mira doesn't take tasks in this project, so tell the user or ask with mcp__kernel__ask_user who should take it.",
+      "Ivo isn't on this project's team now, so tell the user or ask with mcp__kernel__ask_user who should take it."
     ].join('\n'))
   })
 
@@ -52,7 +52,7 @@ describe("the Lead's tools close mentions (KERNEL-745)", () => {
     const acted = vi.fn()
     const ws = { id: 'ws-kai', name: 'kai-ws', branch: 'feat/x', agentId: 'kai', status: 'ready', prState: 'none' } as Workspace
     const deps = {
-      roomId: 'room', lead: kernel, agents: async () => team, workspaces: () => [ws],
+      projectId: 'project', lead: kernel, agents: async () => team, workspaces: () => [ws],
       createWorkspace: async () => ({ id: 'ws-noor', branch: 'feat/y', agentId: 'noor' }) as Workspace,
       messageWorkspace: async (id: string) => (id === ws.id ? { ok: true, sent: true, note: 'Sent.' } : { ok: false, sent: false, note: 'Not sent.' }),
       askUser: async () => ({ behavior: 'answer', text: 'Give it to Noor' }), hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false,

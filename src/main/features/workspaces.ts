@@ -1,12 +1,12 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Room, type ScriptTrust, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
+import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Project, type ScriptTrust, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { newId } from '../db'
 import { bus } from '../bus'
-import { DEFAULT_BASE_REF, loadRepoSettings, referencesInRoom, type RepoSettings } from '../services/settings'
+import { DEFAULT_BASE_REF, loadRepoSettings, referencesInProject, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
-import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
+import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, projectWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
 import { linkNodeModules, NoFreePortBlock, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
 import { listTree, readImage, readWorkspaceFile, searchFiles } from '../services/files'
@@ -29,7 +29,7 @@ export interface CutWorkspace {
   provider?: Provider; model?: string; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string; linkReviewOf?: string
   labels?: string[]; waitFor?: string[]; lead?: { threadId: string }
   /**
-   * The agent itself, for one that isn't on the room's team: Kernel's own reviewer, which runs the reviews Kernel starts with
+   * The agent itself, for one that isn't on the project's team: Kernel's own reviewer, which runs the reviews Kernel starts with
    * its own prompts (KERNEL-549). Without it, an `agentId` the team doesn't have falls back to the Lead.
    */
   agent?: AgentDef
@@ -56,15 +56,15 @@ function gitSaid(e: unknown): string {
 export class Workspaces extends Feature {
   /** Ports handed out to workspaces not saved yet, so two hand-offs in one turn never share a block (KERNEL-244). */
   readonly reservedPorts = new Set<number>()
-  /** Per room, the last branch pick and the step that makes the branch, so two at once never pick the same free name (KERNEL-231). */
+  /** Per project, the last branch pick and the step that makes the branch, so two at once never pick the same free name (KERNEL-231). */
   private branchLocks = new Map<string, Promise<unknown>>()
 
-  /** A workspace for the room's work: `cutWorkspace` makes it, then `setUpWorkspace` copies files, runs setup and sends the brief. */
-  async createWorkspace(roomId: string, o: Omit<CutWorkspace, 'lead'>): Promise<Workspace> {
-    // An issue picked in New workspace comes without its tracker, which the room's tells (KERNEL-462).
-    const { ws, room, repo, chat } = await this.cutWorkspace(roomId, { ...o, source: await this.k.integrations.trackedSource(roomId, o.source) })
+  /** A workspace for the project's work: `cutWorkspace` makes it, then `setUpWorkspace` copies files, runs setup and sends the brief. */
+  async createWorkspace(projectId: string, o: Omit<CutWorkspace, 'lead'>): Promise<Workspace> {
+    // An issue picked in New workspace comes without its tracker, which the project's tells (KERNEL-462).
+    const { ws, project, repo, chat } = await this.cutWorkspace(projectId, { ...o, source: await this.k.integrations.trackedSource(projectId, o.source) })
     // A brief from the Lead's hand-off is the Lead's message in the teammate's chat, not the user's (KERNEL-116).
-    return this.setUpWorkspace(ws, room, repo, chat, { brief: messageOf(o.prompt, o.parts), prompt: o.prompt, from: o.leadChatId ? 'lead' : undefined, leadChatId: o.leadChatId })
+    return this.setUpWorkspace(ws, project, repo, chat, { brief: messageOf(o.prompt, o.parts), prompt: o.prompt, from: o.leadChatId ? 'lead' : undefined, leadChatId: o.leadChatId })
   }
 
   /** The base Settings or the repo set for teammates' workspaces, or nothing for the repo's default branch. */
@@ -72,64 +72,64 @@ export class Workspaces extends Feature {
     return repo.workspace.baseRef ?? (this.settings.workspace.baseRef === DEFAULT_BASE_REF ? undefined : this.settings.workspace.baseRef)
   }
 
-  /** The base a teammate's workspace from a hand-off starts from, as `cutWorkspace` picks it, and the room's remote (KERNEL-693). */
-  async handoffBase(roomId: string, baseRef?: string): Promise<{ remote: string; base: string }> {
-    const room = this.mustRoom(roomId)
-    const repo = await loadRepoSettings(room.path)
-    const remote = await this.k.config.remoteFor(room.path, repo)
-    return { remote, base: baseRef ?? this.configuredBase(repo) ?? `${remote}/${await defaultBranch(room.path, remote).catch(() => 'main')}` }
+  /** The base a teammate's workspace from a hand-off starts from, as `cutWorkspace` picks it, and the project's remote (KERNEL-693). */
+  async handoffBase(projectId: string, baseRef?: string): Promise<{ remote: string; base: string }> {
+    const project = this.mustProject(projectId)
+    const repo = await loadRepoSettings(project.path)
+    const remote = await this.k.config.remoteFor(project.path, repo)
+    return { remote, base: baseRef ?? this.configuredBase(repo) ?? `${remote}/${await defaultBranch(project.path, remote).catch(() => 'main')}` }
   }
 
   /**
    * Makes a workspace and its first chat, in `setup`: the ports, the fetch, the worktree on a new branch, and the record. A Lead
    * chat (`lead`) gets one too (KERNEL-405), always a worktree whatever "Default workspace type" says, on a branch named by
-   * the Lead branch pattern, from `<remote>/<default>` or the target branch picked in New chat. A room with no commit keeps the Lead
+   * the Lead branch pattern, from `<remote>/<default>` or the target branch picked in New chat. A project with no commit keeps the Lead
    * on the checkout. Nothing from the repo's settings runs here. With `worktreeLater` only the checks that need no network run
    * before the record is saved, and `makeWorktree` does the rest (KERNEL-542).
    */
-  async cutWorkspace(roomId: string, o: CutWorkspace): Promise<{ ws: Workspace; room: Room; repo: RepoSettings; chat: Chat }> {
-    const room = this.mustRoom(roomId)
-    const repo = await loadRepoSettings(room.path)
+  async cutWorkspace(projectId: string, o: CutWorkspace): Promise<{ ws: Workspace; project: Project; repo: RepoSettings; chat: Chat }> {
+    const project = this.mustProject(projectId)
+    const repo = await loadRepoSettings(project.path)
     const s = this.settings
-    const agents = await this.k.team.agents(roomId)
+    const agents = await this.k.team.agents(projectId)
     const lead = o.lead ? agents.find((a) => a.lead) : undefined
     if (o.lead && !lead) throw new Error("Kernel can't lead in this build: its starter file is missing.")
     const agent = lead ?? o.agent ?? agents.find((a) => a.id === o.agentId) ?? agents.find((a) => a.lead) ?? agents[0]
-    if (!agent) throw new Error('This room has no agents. Add one to .claude/agents first.')
+    if (!agent) throw new Error('This project has no agents. Add one to .claude/agents first.')
     // A review gets its own worktree started from the work it reviews (KERNEL-130).
     // The branch the author is on now, which may not be the one the workspace started on (KERNEL-68).
     const reviewed = o.reviewOf && this.store.workspace(o.reviewOf) ? await this.k.prs.syncBranch(o.reviewOf) : undefined
-    if (o.reviewOf && (!reviewed || reviewed.roomId !== roomId || reviewed.status === 'archived')) throw new Error('The workspace to review is not open in this room.')
-    const remote = await this.k.config.remoteFor(room.path, repo)
-    const main = o.lead ? await leadBase(room.path, remote) : undefined
+    if (o.reviewOf && (!reviewed || reviewed.projectId !== projectId || reviewed.status === 'archived')) throw new Error('The workspace to review is not open in this project.')
+    const remote = await this.k.config.remoteFor(project.path, repo)
+    const main = o.lead ? await leadBase(project.path, remote) : undefined
     const mode = reviewed ? 'worktree' : o.lead ? (main ? 'worktree' : 'current') : o.mode ?? repo.workspace.mode ?? s.workspace.mode
-    // A room Kernel ran git init in waits for the user's first commit (KERNEL-231). Without one, a worktree has nothing to start from.
-    // The Lead's base was found above, so its room has one.
-    if (mode === 'worktree' && !o.lead && !(await hasCommit(room.path))) throw new Error(`${room.name} has no commit yet, so a new workspace has nothing to branch from. Make the first commit in ${room.path}, then try again.`)
+    // A project Kernel ran git init in waits for the user's first commit (KERNEL-231). Without one, a worktree has nothing to start from.
+    // The Lead's base was found above, so its project has one.
+    if (mode === 'worktree' && !o.lead && !(await hasCommit(project.path))) throw new Error(`${project.name} has no commit yet, so a new workspace has nothing to branch from. Make the first commit in ${project.path}, then try again.`)
     const later = !!o.worktreeLater && mode === 'worktree' && !reviewed
     if (o.waitFor?.length && (mode === 'current' || reviewed)) throw new Error(reviewed ? 'A review never waits for another PR.' : "A workspace on the main checkout can't wait for a PR. Pass mode worktree.")
     const title = o.title ?? o.prompt.split(/\s+/).slice(0, 6).join(' ')
     // A base nobody set is the repo's default branch, the one PRs go into (KERNEL-400). The Lead starts from it or the branch picked
     // in New chat, never the workspace base from Settings (KERNEL-405).
     const set = o.baseRef ?? (o.lead ? undefined : this.configuredBase(repo))
-    // `origin/` in a base from Settings, the Lead or a PR means the room's remote. A branch picked from the list is a real ref.
+    // `origin/` in a base from Settings, the Lead or a PR means the project's remote. A branch picked from the list is a real ref.
     // The Lead's base already named the default branch.
-    const wanted = set ?? `${remote}/${main ? stripRemote(main, remote) : await defaultBranch(room.path, remote).catch(() => 'main')}`
+    const wanted = set ?? `${remote}/${main ? stripRemote(main, remote) : await defaultBranch(project.path, remote).catch(() => 'main')}`
     const picked = o.source?.kind === 'branch' || (!!o.lead && !!o.baseRef)
     const want = picked ? wanted : onRemote(wanted, remote)
     // A failed fetch still starts the workspace, from the remote as last fetched, and says so (KERNEL-179). A folder
     // without that remote has nothing to fetch, so it says nothing. One whose worktree waits for `makeWorktree` fetches there.
-    const fetched = !reviewed && !o.noFetch && !later && mode === 'worktree' && want.startsWith(`${remote}/`) && (await exec('git', ['-C', room.path, 'remote', 'get-url', remote])).code === 0
-      ? await fetchOrigin(room.path, remote, { check: stripRemote(want, remote) }) : undefined
-    // The fetch may have moved the base under the room's other workspaces (KERNEL-180), and catches up one that started
+    const fetched = !reviewed && !o.noFetch && !later && mode === 'worktree' && want.startsWith(`${remote}/`) && (await exec('git', ['-C', project.path, 'remote', 'get-url', remote])).code === 0
+      ? await fetchOrigin(project.path, remote, { check: stripRemote(want, remote) }) : undefined
+    // The fetch may have moved the base under the project's other workspaces (KERNEL-180), and catches up one that started
     // when a fetch failed (KERNEL-653).
-    if (fetched?.ok) void this.k.baseWatch.check(roomId, { fetch: false, fetched: true }).catch(() => undefined)
+    if (fetched?.ok) void this.k.baseWatch.check(projectId, { fetch: false, fetched: true }).catch(() => undefined)
     // A base on the remote waits for the fetch, which may bring it, and `makeWorktree` reads it then. Any other must be here
     // now, so New chat still says when it isn't (KERNEL-542).
-    const baseRef = reviewed ? await this.k.reviews.reviewBase(room.path, reviewed.branch, remote)
-      : mode === 'current' && o.lead ? room.defaultBranch
+    const baseRef = reviewed ? await this.k.reviews.reviewBase(project.path, reviewed.branch, remote)
+      : mode === 'current' && o.lead ? project.defaultBranch
       : later && want.startsWith(`${remote}/`) ? want
-      : await resolveBaseRef(room.path, want, { strict: o.source?.kind === 'pr' || picked, remote })
+      : await resolveBaseRef(project.path, want, { strict: o.source?.kind === 'pr' || picked, remote })
     const stale = this.staleBase(fetched, baseRef, remote)
     // The ports come first, so running out of them leaves no worktree or branch behind (KERNEL-244).
     const ws: Workspace = await this.withPort(async (port) => {
@@ -139,7 +139,7 @@ export class Workspaces extends Feature {
       const reviewOf = reviewed?.id ?? (mode === 'worktree' ? o.linkReviewOf : undefined)
       const threadId = o.lead?.threadId ?? (o.leadChatId ? this.store.chat(o.leadChatId)?.threadId : undefined)
       const save = (path: string, branch: string, baselineRef?: string) => {
-        const w: Workspace = { id: newId(), roomId, name: slugify(title || 'chat'), branch, baseRef, ...(stale ? { fetchFailed: stale.text } : {}), path, mode, agentId: agent.id, ...(o.lead ? { lead: true as const } : {}), port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(threadId ? { threadId } : {}), ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), ...(later ? { worktreePending: {} } : {}), prState: 'none', createdAt: Date.now() }
+        const w: Workspace = { id: newId(), projectId, name: slugify(title || 'chat'), branch, baseRef, ...(stale ? { fetchFailed: stale.text } : {}), path, mode, agentId: agent.id, ...(o.lead ? { lead: true as const } : {}), port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(threadId ? { threadId } : {}), ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), ...(later ? { worktreePending: {} } : {}), prState: 'none', createdAt: Date.now() }
         this.store.saveWorkspace(w)
         return w
       }
@@ -148,41 +148,41 @@ export class Workspaces extends Feature {
         // 60 characters (KERNEL-275), for a review too (KERNEL-265). A taken name gets a suffix. A Lead chat's follows
         // the Lead branch pattern, `kernel/<a few words>` (KERNEL-405).
         const asked = o.branch ? capBranch(o.branch) : undefined
-        if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
+        if (asked && !(await validBranchName(project.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
         const issue = o.source?.kind === 'issue' ? o.source : undefined
-        const labels = o.labels ?? (issue && !asked && !reviewed && !o.lead ? await this.k.integrations.issueLabels(roomId, issue) : [])
+        const labels = o.labels ?? (issue && !asked && !reviewed && !o.lead ? await this.k.integrations.issueLabels(projectId, issue) : [])
         const wanted = asked || (reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
           : o.lead ? branchName(repo.workspace.leadBranchPattern || s.workspace.leadBranchPattern, { slug: shortSlug(title || 'chat'), lead: agent.name })
           : taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
         if (later) {
           // git makes this one after, so a pattern git won't take is caught now, while New chat can still say so (KERNEL-542).
-          if (!asked && !(await validBranchName(room.path, wanted))) throw new Error(`${wanted} is not a valid branch name. Change the branch names for chats with Kernel in Settings, Git.`)
-          // The record is saved inside the room's lock, so the next pick sees its branch and folder taken before git makes them.
-          return this.withBranchLock(room.id, async () => {
-            const taken = this.pendingNames(roomId)
-            const branch = await freeBranch(room.path, wanted, remote, taken.branches)
-            const root = roomWorktreeRoot(s.worktreeRoot, room)
+          if (!asked && !(await validBranchName(project.path, wanted))) throw new Error(`${wanted} is not a valid branch name. Change the branch names for chats with Kernel in Settings, Git.`)
+          // The record is saved inside the project's lock, so the next pick sees its branch and folder taken before git makes them.
+          return this.withBranchLock(project.id, async () => {
+            const taken = this.pendingNames(projectId)
+            const branch = await freeBranch(project.path, wanted, remote, taken.branches)
+            const root = projectWorktreeRoot(s.worktreeRoot, project)
             await mkdir(root, { recursive: true })
-            return save(await freeWorktreePath(room.path, root, branch, taken.paths), branch)
+            return save(await freeWorktreePath(project.path, root, branch, taken.paths), branch)
           })
         }
-        const made = await this.newBranchWorktree(room, wanted, baseRef, remote)
-        // Local files are copied later, once the room's text is trusted (KERNEL-209).
-        if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, made.path)
+        const made = await this.newBranchWorktree(project, wanted, baseRef, remote)
+        // Local files are copied later, once the project's text is trusted (KERNEL-209).
+        if (repo.files.symlinkNodeModules) await linkNodeModules(project.path, made.path)
         return save(made.path, made.branch)
       }
-      // A room with no commit to start from keeps the Lead on the checkout, with no baseline, as before KERNEL-355.
-      if (o.lead) return save(room.path, await currentBranch(room.path).catch(() => room.defaultBranch))
-      if (s.workspace.oneCurrentBranchPerRoom && this.store.workspaces(roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
-        throw new Error('Another workspace is already working on the current branch in this room.')
-      return save(room.path, await currentBranch(room.path), s.workspace.baselineCurrentBranch ? (await snapshotBaseline(room.path)).ref : undefined)
+      // A project with no commit to start from keeps the Lead on the checkout, with no baseline, as before KERNEL-355.
+      if (o.lead) return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch))
+      if (s.workspace.oneCurrentBranchPerProject && this.store.workspaces(projectId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
+        throw new Error('Another workspace is already working on the current branch in this project.')
+      return save(project.path, await currentBranch(project.path), s.workspace.baselineCurrentBranch ? (await snapshotBaseline(project.path)).ref : undefined)
     })
     // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118). Nobody messages the Lead's own workspace.
     if (!o.lead) this.k.setup.setSetup(ws.id, { later: [] })
     bus.push({ type: 'workspace', workspace: ws })
-    bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
+    bus.activity({ kind: 'workspace.created', projectId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
     if (!o.lead) bus.track({ name: 'workspace.created', by: o.leadChatId ? 'lead' : 'user', review: !!(o.reviewOf ?? o.linkReviewOf) })
-    // The issue goes to In Progress in the room's tracker, when it came from there.
+    // The issue goes to In Progress in the project's tracker, when it came from there.
     if (!o.lead && o.source?.kind === 'issue' && o.source.id) void this.k.integrations.startIssue(ws, o.source)
     // The Lead's hand-off: the task this workspace builds moves to Building now, not when the turn ends.
     const taskId = o.taskFor?.(ws)
@@ -194,7 +194,7 @@ export class Workspaces extends Feature {
     // A Lead chat's first tab is auto-named, and the chat takes its name (KERNEL-337).
     const chat = o.lead ? this.newChat(ws.id, NEW_TAB, { ...pick, threadId: o.lead.threadId }) : this.newChat(ws.id, title, pick)
     if (stale) this.sayStale(ws, remote, stale)
-    return { ws, room, repo, chat }
+    return { ws, project, repo, chat }
   }
 
   /**
@@ -209,13 +209,13 @@ export class Workspaces extends Feature {
 
   /** The feed and the chat say the workspace started from the remote as last fetched (KERNEL-179). */
   private sayStale(ws: Workspace, remote: string, stale: { error: string; when?: string }) {
-    bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `started ${ws.name} from ${ws.baseRef} as last fetched${stale.when ? ` ${stale.when}` : ''}, because fetching ${remote} failed:`, object: stale.error, warn: true })
+    bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `started ${ws.name} from ${ws.baseRef} as last fetched${stale.when ? ` ${stale.when}` : ''}, because fetching ${remote} failed:`, object: stale.error, warn: true })
     this.note(ws.id, `Couldn't fetch ${remote} (${stale.error}), so this workspace started from ${ws.baseRef} as of ${stale.when ?? 'its last fetch'}. It may be missing recent merges.`)
   }
 
   /** The branches and folders that Lead chats hold before git makes them, so no other pick takes them (KERNEL-542). */
-  pendingNames(roomId: string, except?: string): { branches: Set<string>; paths: Set<string> } {
-    const held = this.store.workspaces(roomId).filter((w) => w.worktreePending && w.status !== 'archived' && w.id !== except)
+  pendingNames(projectId: string, except?: string): { branches: Set<string>; paths: Set<string> } {
+    const held = this.store.workspaces(projectId).filter((w) => w.worktreePending && w.status !== 'archived' && w.id !== except)
     return { branches: new Set(held.map((w) => w.branch)), paths: new Set(held.map((w) => w.path)) }
   }
 
@@ -244,36 +244,36 @@ export class Workspaces extends Feature {
     const ws = this.mustWs(id)
     if (!ws.worktreePending || ws.status === 'archived') return ws
     if (ws.worktreePending.error) this.updateWs(id, { status: 'setup', worktreePending: {} })
-    const room = this.mustRoom(ws.roomId)
+    const project = this.mustProject(ws.projectId)
     try {
-      const repo = await loadRepoSettings(room.path)
-      const remote = await this.k.config.remoteFor(room.path, repo)
-      const fetched = ws.baseRef.startsWith(`${remote}/`) && (await exec('git', ['-C', room.path, 'remote', 'get-url', remote])).code === 0
-        ? await fetchOrigin(room.path, remote, { check: stripRemote(ws.baseRef, remote) }) : undefined
+      const repo = await loadRepoSettings(project.path)
+      const remote = await this.k.config.remoteFor(project.path, repo)
+      const fetched = ws.baseRef.startsWith(`${remote}/`) && (await exec('git', ['-C', project.path, 'remote', 'get-url', remote])).code === 0
+        ? await fetchOrigin(project.path, remote, { check: stripRemote(ws.baseRef, remote) }) : undefined
       // A Kernel that stopped meanwhile has closed its database. The next launch finds the workspace in setup and fails it.
       if (this.stopped) return ws
-      if (fetched?.ok) void this.k.baseWatch.check(room.id, { fetch: false, fetched: true }).catch(() => undefined)
+      if (fetched?.ok) void this.k.baseWatch.check(project.id, { fetch: false, fetched: true }).catch(() => undefined)
       // A base other than the default branch was picked in New chat, and a picked base never falls back to another (KERNEL-405).
-      const main = `${remote}/${await defaultBranch(room.path, remote).catch(() => 'main')}`
-      const baseRef = await resolveBaseRef(room.path, ws.baseRef, { strict: ws.baseRef !== main, remote })
-      const made = await this.withBranchLock(room.id, async () => {
+      const main = `${remote}/${await defaultBranch(project.path, remote).catch(() => 'main')}`
+      const baseRef = await resolveBaseRef(project.path, ws.baseRef, { strict: ws.baseRef !== main, remote })
+      const made = await this.withBranchLock(project.id, async () => {
         const now = this.mustWs(id)
         if (this.stopped || now.status === 'archived') return undefined
-        if (await isWorktreeOf(room.path, now.path) && await currentBranch(now.path).catch(() => undefined) === now.branch) return { branch: now.branch, path: now.path }
-        const taken = this.pendingNames(room.id, id)
-        const branch = await freeBranch(room.path, now.branch, remote, taken.branches)
+        if (await isWorktreeOf(project.path, now.path) && await currentBranch(now.path).catch(() => undefined) === now.branch) return { branch: now.branch, path: now.path }
+        const taken = this.pendingNames(project.id, id)
+        const branch = await freeBranch(project.path, now.branch, remote, taken.branches)
         const root = dirname(now.path)
         await mkdir(root, { recursive: true })
-        const path = branch === now.branch && !taken.paths.has(now.path) && await folderGone(now.path) ? now.path : await freeWorktreePath(room.path, root, branch, taken.paths)
-        await createWorktree({ repo: room.path, root, branch, baseRef, path })
+        const path = branch === now.branch && !taken.paths.has(now.path) && await folderGone(now.path) ? now.path : await freeWorktreePath(project.path, root, branch, taken.paths)
+        await createWorktree({ repo: project.path, root, branch, baseRef, path })
         return { branch, path }
       })
       if (this.stopped) return ws
       if (!made) return this.mustWs(id)
       try {
-        if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, made.path)
+        if (repo.files.symlinkNodeModules) await linkNodeModules(project.path, made.path)
       } catch (e) {
-        await removeWorktree(room.path, made.path, { deleteBranch: made.branch, force: true }).catch(() => undefined)
+        await removeWorktree(project.path, made.path, { deleteBranch: made.branch, force: true }).catch(() => undefined)
         throw e
       }
       if (this.stopped) return ws
@@ -295,14 +295,14 @@ export class Workspaces extends Feature {
    * With a `brief` (a hand-off or New workspace), the brief waits in the chat's queue until setup passes, then goes out with the
    * Lead's messages that came while it ran (KERNEL-118). A hand-off awaits it all, so create_workspace reports a failed setup
    * (KERNEL-122). With none (a fork, a Lead chat, a restore), the caller already holds the chat, and what waits in its tabs
-   * goes out when setup passes, or after Run again or trusting the room. `checkpoint: false` takes no start checkpoint, for a
+   * goes out when setup passes, or after Run again or trusting the project. `checkpoint: false` takes no start checkpoint, for a
    * restore (KERNEL-77).
    */
-  async setUpWorkspace(ws: Workspace, room: Room, repo: RepoSettings, chat: Chat, o: { brief?: ChatPart[]; prompt?: string; from?: 'lead'; leadChatId?: string; checkpoint?: boolean } = {}): Promise<Workspace> {
+  async setUpWorkspace(ws: Workspace, project: Project, repo: RepoSettings, chat: Chat, o: { brief?: ChatPart[]; prompt?: string; from?: 'lead'; leadChatId?: string; checkpoint?: boolean } = {}): Promise<Workspace> {
     if (!o.brief) {
       // `recoverSetups` leaves it alone, should it run while this setup does, as for a chat that moves at startup.
       this.k.setup.fresh.add(ws.id)
-      try { return await this.setUpHeld(ws, room, repo, chat, o.checkpoint) } finally { this.k.setup.fresh.delete(ws.id) }
+      try { return await this.setUpHeld(ws, project, repo, chat, o.checkpoint) } finally { this.k.setup.fresh.delete(ws.id) }
     }
     const parts = o.brief
     const from = o.from
@@ -313,17 +313,17 @@ export class Workspaces extends Feature {
       for (let held = this.k.setup.setups.get(ws.id); held?.later.length; held = this.k.setup.setups.get(ws.id)) { const m = held.later.shift()!; this.k.setup.saveSetups(); await send(m) }
       this.k.setup.setSetup(ws.id, undefined)
     }
-    // Nothing from the repo's settings runs or copies until the user trusts that text for the room (KERNEL-209). The
-    // brief waits in the chat's queue, the way it does for a failed setup, and `rooms.trust` sends it.
+    // Nothing from the repo's settings runs or copies until the user trusts that text for the project (KERNEL-209). The
+    // brief waits in the chat's queue, the way it does for a failed setup, and `projects.trust` sends it.
     let pending: ScriptTrust | null
-    try { pending = await this.k.trust.untrusted(room, repo) } catch (e) { this.k.setup.setSetup(ws.id, undefined); throw e }
+    try { pending = await this.k.trust.untrusted(project, repo) } catch (e) { this.k.setup.setSetup(ws.id, undefined); throw e }
     if (pending) {
       this.sessions.hold(chat.id, parts, { from })
       await after((m) => this.sessions.hold(chat.id, m, { from: 'lead' }))
       return this.k.trust.holdForTrust(ws.id)
     }
     let ready: boolean
-    try { ready = await this.k.setup.prepare(ws, room, repo) } catch (e) { this.k.setup.setSetup(ws.id, undefined); throw e }
+    try { ready = await this.k.setup.prepare(ws, project, repo) } catch (e) { this.k.setup.setSetup(ws.id, undefined); throw e }
     // Archived while setup ran: archive stopped the script, and the workspace stays archived.
     if (this.mustWs(ws.id).status === 'archived') { this.k.setup.setSetup(ws.id, undefined); return this.mustWs(ws.id) }
     // The first prompt waits in the chat's queue until setup passes (WorkspaceSetupFailed.png, "Run again").
@@ -356,7 +356,7 @@ export class Workspaces extends Feature {
       void this.k.waits.settleWait(ws.id).catch(() => undefined)
       return held
     }
-    return this.k.setup.setupDone(ws, room, chat, o.prompt ?? chat.title, async () => {
+    return this.k.setup.setupDone(ws, project, chat, o.prompt ?? chat.title, async () => {
       // A wait set while the brief was on its way is now a started teammate's (KERNEL-259).
       const late = this.mustWs(ws.id).waitsFor
       if (late?.held) this.updateWs(ws.id, { waitsFor: { ...late, held: false } })
@@ -370,9 +370,9 @@ export class Workspaces extends Feature {
   }
 
   /** `setUpWorkspace` for a workspace whose chats are already held: a fork, a Lead chat, or a restore. */
-  private async setUpHeld(ws: Workspace, room: Room, repo: RepoSettings, chat: Chat, checkpoint?: boolean): Promise<Workspace> {
-    const untrusted = !!(await this.k.trust.untrusted(room, repo))
-    const ready = !untrusted && await this.k.setup.prepare(ws, room, repo)
+  private async setUpHeld(ws: Workspace, project: Project, repo: RepoSettings, chat: Chat, checkpoint?: boolean): Promise<Workspace> {
+    const untrusted = !!(await this.k.trust.untrusted(project, repo))
+    const ready = !untrusted && await this.k.setup.prepare(ws, project, repo)
     for (const m of this.k.setup.setups.get(ws.id)?.later ?? []) this.sessions.hold(chat.id, m, { from: 'lead' })
     if (this.k.setup.setups.has(ws.id)) this.k.setup.setSetup(ws.id, undefined)
     if (untrusted) return this.k.trust.holdForTrust(ws.id)
@@ -384,7 +384,7 @@ export class Workspaces extends Feature {
       if (code !== null && failed.status !== 'archived' && !failed.lead) this.k.leadUpdates.setup(failed, false, { code })
       return failed
     }
-    return this.k.setup.setupDone(ws, room, chat, chat.title, async () => this.k.setup.releaseTabs(ws.id, chat.id), { checkpoint })
+    return this.k.setup.setupDone(ws, project, chat, chat.title, async () => this.k.setup.releaseTabs(ws.id, chat.id), { checkpoint })
   }
 
   /**
@@ -402,19 +402,19 @@ export class Workspaces extends Feature {
     // A Lead chat plans and hands off. Its work isn't a task to fork (KERNEL-355, KERNEL-405).
     if (this.isLeadWorkspace(src)) throw new Error("A chat with Kernel can't fork into a new workspace. Fork into a new chat instead.")
     if (src.status === 'archived') throw new Error('Restore the workspace from History to fork it.')
-    const room = this.mustRoom(src.roomId)
-    const repo = await loadRepoSettings(room.path)
+    const project = this.mustProject(src.projectId)
+    const repo = await loadRepoSettings(project.path)
     const from = await head(src.path)
     if (!from) throw new Error(`${src.name} has no commit to fork from.`)
     // Read before anything else changes, so the files are the ones the source had when Fork was pressed.
     const files = await worktreeTree(src.path)
     let ws!: Workspace
-    const fork = await this.k.chats.forkChat(chatId, itemId, async () => (ws = await this.forkTree(src, room, repo, from, files)).id)
+    const fork = await this.k.chats.forkChat(chatId, itemId, async () => (ws = await this.forkTree(src, project, repo, from, files)).id)
     this.k.setup.setSetup(ws.id, { chatId: fork.id, later: this.k.setup.setups.get(ws.id)?.later ?? [] })
-    // Nothing goes out before setup passes, a message typed while the room waits for trust included.
+    // Nothing goes out before setup passes, a message typed while the project waits for trust included.
     this.sessions.hold(fork.id)
     this.note(ws.id, `Forked from ${src.name}, with its files as they were at ${clock(Date.now())}.`)
-    void this.setUpWorkspace(ws, room, repo, fork).catch((e) => {
+    void this.setUpWorkspace(ws, project, repo, fork).catch((e) => {
       // A Kernel that stopped meanwhile has closed its database. The next launch finds the workspace in setup and fails it.
       if (this.stopped) return
       console.warn(`[fork] setting up ${ws.name} failed`, e)
@@ -424,51 +424,51 @@ export class Workspaces extends Feature {
   }
 
   /** The fork's worktree and record: a branch at `from` whose files are made to match `files`, and the workspace in setup. */
-  private async forkTree(src: Workspace, room: Room, repo: RepoSettings, from: string, files: string): Promise<Workspace> {
-    const remote = await this.k.config.remoteFor(room.path, repo)
+  private async forkTree(src: Workspace, project: Project, repo: RepoSettings, from: string, files: string): Promise<Workspace> {
+    const remote = await this.k.config.remoteFor(project.path, repo)
     const ws = await this.withPort(async (port) => {
-      const { branch, path } = await this.newBranchWorktree(room, `${capBranch(src.branch, 55)}-fork`, from, remote)
+      const { branch, path } = await this.newBranchWorktree(project, `${capBranch(src.branch, 55)}-fork`, from, remote)
       try {
         await writeTree(path, `${from}^{tree}`, files)
-        if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
+        if (repo.files.symlinkNodeModules) await linkNodeModules(project.path, path)
       } catch (e) {
-        await removeWorktree(room.path, path, { deleteBranch: branch, force: true }).catch(() => undefined)
+        await removeWorktree(project.path, path, { deleteBranch: branch, force: true }).catch(() => undefined)
         throw e
       }
       // The sidebar shows the name, so the fork's says what it is and takes the branch's number: kernel-155-home-fork-2.
       const name = `${slugify(src.name, 40)}-fork${/-fork(-\d+)$/.exec(branch)?.[1] ?? ''}`
-      const w: Workspace = { id: newId(), roomId: room.id, name, title: src.title ?? src.name, branch, baseRef: src.baseRef, path, mode: 'worktree', agentId: src.agentId, port, status: 'setup', prState: 'none', createdAt: Date.now() }
+      const w: Workspace = { id: newId(), projectId: project.id, name, title: src.title ?? src.name, branch, baseRef: src.baseRef, path, mode: 'worktree', agentId: src.agentId, port, status: 'setup', prState: 'none', createdAt: Date.now() }
       this.store.saveWorkspace(w)
       return w
     })
     // The Lead's messages that arrive during setup wait here, as for a hand-off's workspace (KERNEL-118).
     this.k.setup.setSetup(ws.id, { later: [] })
     bus.push({ type: 'workspace', workspace: ws })
-    bus.activity({ kind: 'workspace.created', actor: 'you', roomId: room.id, workspaceId: ws.id, agentId: ws.agentId, text: `forked ${src.name} into`, object: ws.name })
+    bus.activity({ kind: 'workspace.created', actor: 'you', projectId: project.id, workspaceId: ws.id, agentId: ws.agentId, text: `forked ${src.name} into`, object: ws.name })
     return ws
   }
 
   /**
-   * Runs `pick`, which picks a free branch with `freeBranch` and makes it, one at a time per room. A branch is free until git
+   * Runs `pick`, which picks a free branch with `freeBranch` and makes it, one at a time per project. A branch is free until git
    * makes it, so a second pick at once would choose the same name (KERNEL-231). New workspaces, forks, restores and Continue use it.
    */
-  async withBranchLock<T>(roomId: string, pick: () => Promise<T>): Promise<T> {
-    const run = (this.branchLocks.get(roomId) ?? Promise.resolve()).catch(() => undefined).then(pick)
-    this.branchLocks.set(roomId, run)
-    try { return await run } finally { if (this.branchLocks.get(roomId) === run) this.branchLocks.delete(roomId) }
+  async withBranchLock<T>(projectId: string, pick: () => Promise<T>): Promise<T> {
+    const run = (this.branchLocks.get(projectId) ?? Promise.resolve()).catch(() => undefined).then(pick)
+    this.branchLocks.set(projectId, run)
+    try { return await run } finally { if (this.branchLocks.get(projectId) === run) this.branchLocks.delete(projectId) }
   }
 
   /**
-   * A worktree on a new branch: `wanted`, or the first free name after it, here and on `remote` (KERNEL-479), in the room's
+   * A worktree on a new branch: `wanted`, or the first free name after it, here and on `remote` (KERNEL-479), in the project's
    * worktree folder. Names a Lead chat holds before git makes them are taken (KERNEL-542).
    */
-  private newBranchWorktree(room: Room, wanted: string, baseRef: string, remote: string): Promise<{ branch: string; path: string }> {
-    return this.withBranchLock(room.id, async () => {
-      const taken = this.pendingNames(room.id)
-      const branch = await freeBranch(room.path, wanted, remote, taken.branches)
-      const root = roomWorktreeRoot(this.settings.worktreeRoot, room)
+  private newBranchWorktree(project: Project, wanted: string, baseRef: string, remote: string): Promise<{ branch: string; path: string }> {
+    return this.withBranchLock(project.id, async () => {
+      const taken = this.pendingNames(project.id)
+      const branch = await freeBranch(project.path, wanted, remote, taken.branches)
+      const root = projectWorktreeRoot(this.settings.worktreeRoot, project)
       await mkdir(root, { recursive: true })
-      return { branch, path: await createWorktree({ repo: room.path, root, branch, baseRef, path: await freeWorktreePath(room.path, root, branch, taken.paths) }) }
+      return { branch, path: await createWorktree({ repo: project.path, root, branch, baseRef, path: await freeWorktreePath(project.path, root, branch, taken.paths) }) }
     })
   }
 
@@ -485,14 +485,14 @@ export class Workspaces extends Feature {
     const port = await portBlock(() => this.openPorts(), this.reservedPorts).catch((e) => {
       if (!(e instanceof NoFreePortBlock)) throw e
       const open = this.openPorts().length
-      throw new Error(`Kernel is out of ports for new workspaces. ${open} ${open === 1 ? 'workspace is' : 'workspaces are'} open across your rooms, and each holds ${PORT_BLOCK} ports. Archive the workspaces you've finished to free their ports.`)
+      throw new Error(`Kernel is out of ports for new workspaces. ${open} ${open === 1 ? 'workspace is' : 'workspaces are'} open across your projects, and each holds ${PORT_BLOCK} ports. Archive the workspaces you've finished to free their ports.`)
     })
     try { return await use(port) } finally { this.reservedPorts.delete(port) }
   }
 
   /**
    * Whether a worktree workspace's folder was deleted outside Kernel (KERNEL-291). The flag is set or cleared to match, and pushed
-   * when it changes. A current-branch workspace is the room's own checkout, so it is never flagged. An archived one has no folder,
+   * when it changes. A current-branch workspace is the project's own checkout, so it is never flagged. An archived one has no folder,
    * and neither has a Lead chat whose worktree isn't made yet (KERNEL-542).
    */
   async checkFolder(id: string): Promise<boolean> {
@@ -554,10 +554,10 @@ export class Workspaces extends Feature {
     return branchCommits(ws.path, ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : ws.baseRef)
   }
 
-  /** The branches to compare with: the base, then `<remote>/<default>`, then the room's others, newest first (KERNEL-516). */
+  /** The branches to compare with: the base, then `<remote>/<default>`, then the project's others, newest first (KERNEL-516). */
   private async compareBranches(id: string) {
     const ws = this.mustWs(id)
-    const { path } = this.mustRoom(ws.roomId)
+    const { path } = this.mustProject(ws.projectId)
     const remote = await this.k.config.remoteOfWs(ws)
     const all = await listBranches(path, remote)
     const main = `${remote}/${await defaultBranch(path, remote).catch(() => 'main')}`
@@ -583,9 +583,9 @@ export class Workspaces extends Feature {
 
   handlers() {
     return {
-      'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
+      'workspaces.list': async ({ projectId }) => this.store.workspaces(projectId),
       // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
-      'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
+      'workspaces.create': async ({ projectId, ...o }) => this.createWorkspace(projectId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
       'workspaces.fork': async ({ chatId, itemId }) => this.forkWorkspace(chatId, itemId),
       // A Lead chat whose worktree isn't made yet reads as empty, and refuses what would change its files (KERNEL-542).
       'workspaces.changes': async ({ workspaceId, target }) => this.unmade(workspaceId) ? [] : target && target.kind !== 'base' ? this.compareFiles(workspaceId, target) : this.changes(workspaceId),
@@ -604,9 +604,9 @@ export class Workspaces extends Feature {
       'workspaces.files': async ({ workspaceId, query, limit }) => {
         if (this.unmade(workspaceId)) return []
         const ws = this.mustWs(workspaceId)
-        // The room's reference folders too, those that are there now (KERNEL-748).
-        const room = this.k.store.room(ws.roomId)
-        return searchFiles(ws.path, query, limit, room ? referencesInRoom(room.path).present : [])
+        // The project's reference folders too, those that are there now (KERNEL-748).
+        const project = this.k.store.project(ws.projectId)
+        return searchFiles(ws.path, query, limit, project ? referencesInProject(project.path).present : [])
       },
       'workspaces.hunks': async ({ workspaceId, path }) => this.unmade(workspaceId) ? [] : this.hunks(workspaceId, path),
       'workspaces.commit': async ({ workspaceId, hunkIds, message }) => {

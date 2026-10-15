@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PushEvent } from '../src/shared/ipc'
-import type { AgentDef, Room, Route, Thread, Workspace } from '../src/shared/types'
+import type { AgentDef, Project, Route, Thread, Workspace } from '../src/shared/types'
 
-// KERNEL-596: one rule decides where an archive takes you. The chat or workspace on screen goes to the room's front door, in the step that
+// KERNEL-596: one rule decides where an archive takes you. The chat or workspace on screen goes to the project's front door, in the step that
 // stores its archived status. Anything else leaves you where you are. Never History, never another chat.
 let fail: Error | undefined
 vi.mock('../src/renderer/src/api', () => ({
@@ -12,15 +12,15 @@ vi.mock('../src/renderer/src/api', () => ({
 }))
 
 const { apply, getState, setState, subscribe } = await import('../src/renderer/src/store')
-const { archiveDestination, frontDoor, roomHome } = await import('../src/renderer/src/nav')
+const { archiveDestination, frontDoor, projectHome } = await import('../src/renderer/src/nav')
 const { followArchives } = await import('../src/renderer/src/screens/workspace/archiveLanding')
 const { archiveByHand, restoredFromHistory } = await import('../src/renderer/src/screens/workspace/byHand')
 
-const room = (id: string): Room => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1 }) as Room
+const project = (id: string): Project => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1 }) as Project
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace =>
-  ({ id, roomId: 'r1', name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
+  ({ id, projectId: 'r1', name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
 const chat = (id: string, threadId: string, over: Partial<Workspace> = {}) => ws(id, { lead: true, threadId, agentId: 'kernel', ...over })
-const thread = (id: string, over: Partial<Thread> = {}): Thread => ({ id, roomId: 'r1', title: id, createdAt: 1, ...over }) as Thread
+const thread = (id: string, over: Partial<Thread> = {}): Thread => ({ id, projectId: 'r1', title: id, createdAt: 1, ...over }) as Thread
 const kernel = { id: 'kernel', lead: true } as AgentDef
 const kai = { id: 'kai', name: 'Kai' } as AgentDef
 const theo = { id: 'theo', name: 'Theo' } as AgentDef
@@ -32,27 +32,27 @@ const world = () => [
   ws('review', { agentId: 'theo', reviewOf: 'merged' })
 ]
 const at = (workspaceId: string): Route => ({ name: 'workspace', workspaceId })
-const door: Route = { name: 'leadNew', roomId: 'r1' }
+const door: Route = { name: 'leadNew', projectId: 'r1' }
 const archived = (id: string): PushEvent => ({ type: 'workspace', workspace: { ...getState().workspaces.find((w) => w.id === id)!, status: 'archived', archivedAt: 9 } })
 
 beforeEach(() => {
   fail = undefined
   setState({
-    rooms: [room('r1')], agents: { r1: [kernel, kai, theo] }, workspaces: world(),
+    projects: [project('r1')], agents: { r1: [kernel, kai, theo] }, workspaces: world(),
     threads: { t1: thread('t1', { createdAt: 1 }), t2: thread('t2', { createdAt: 2 }) }, chats: {}
   })
   setState((s) => ({ ui: { ...s.ui, route: { name: 'inbox' }, modal: null, toasts: [] } }))
 })
 
-describe("the room's front door (KERNEL-596)", () => {
-  it('is New chat with Kernel whatever chats are open, where roomHome would pick the top chat', () => {
-    expect(roomHome('r1', getState())).toEqual(at('newer'))
+describe("the project's front door (KERNEL-596)", () => {
+  it('is New chat with Kernel whatever chats are open, where projectHome would pick the top chat', () => {
+    expect(projectHome('r1', getState())).toEqual(at('newer'))
     expect(frontDoor('r1', getState())).toEqual(door)
   })
 
-  it('is the Agents page of a room with no Lead, and reads a Lead from its workspaces before agents load', () => {
+  it('is the Agents page of a project with no Lead, and reads a Lead from its workspaces before agents load', () => {
     setState({ agents: { r1: [kai] } })
-    expect(frontDoor('r1', getState())).toEqual({ name: 'settings', page: 'room', roomId: 'r1', section: 'agents' })
+    expect(frontDoor('r1', getState())).toEqual({ name: 'settings', page: 'project', projectId: 'r1', section: 'agents' })
     setState({ agents: {} })
     expect(frontDoor('r1', getState())).toEqual(door)
   })
@@ -65,14 +65,14 @@ describe('where an archive takes you', () => {
     expect(archiveDestination(at(id), getState(), stored(id))).toEqual(door)
   })
 
-  it('goes to the room of the archived workspace, not to the room you were last in', () => {
-    setState((s) => ({ rooms: [...s.rooms, room('r2')], workspaces: [...s.workspaces, ws('far', { roomId: 'r2' })] }))
-    expect(archiveDestination(at('far'), getState(), stored('far'))).toEqual({ name: 'settings', page: 'room', roomId: 'r2', section: 'agents' })
+  it('goes to the project of the archived workspace, not to the project you were last in', () => {
+    setState((s) => ({ projects: [...s.projects, project('r2')], workspaces: [...s.workspaces, ws('far', { projectId: 'r2' })] }))
+    expect(archiveDestination(at('far'), getState(), stored('far'))).toEqual({ name: 'settings', page: 'project', projectId: 'r2', section: 'agents' })
   })
 
   it('stays where you are for anything not on screen', () => {
     expect(archiveDestination(at('older'), getState(), stored('newer'))).toBeUndefined()
-    for (const route of [{ name: 'history' }, { name: 'inbox' }, { name: 'inbox' }, door, { name: 'settings', page: 'room', roomId: 'r1', section: 'agents' }, { name: 'settings', page: 'general' }] as Route[]) {
+    for (const route of [{ name: 'history' }, { name: 'inbox' }, { name: 'inbox' }, door, { name: 'settings', page: 'project', projectId: 'r1', section: 'agents' }, { name: 'settings', page: 'general' }] as Route[]) {
       expect(archiveDestination(route, getState(), stored('newer', 'handed', 'plain'))).toBeUndefined()
     }
   })
@@ -129,7 +129,7 @@ describe('the route follows the archived status (KERNEL-596)', () => {
   })
 
   it('does not move for a different screen, or for another chat or workspace being archived', () => {
-    for (const route of [{ name: 'history' }, { name: 'inbox' }, { name: 'settings', page: 'room', roomId: 'r1', section: 'agents' }, { name: 'settings', page: 'general' }, at('older')] as Route[]) {
+    for (const route of [{ name: 'history' }, { name: 'inbox' }, { name: 'settings', page: 'project', projectId: 'r1', section: 'agents' }, { name: 'settings', page: 'general' }, at('older')] as Route[]) {
       setState((s) => ({ ui: { ...s.ui, route } }))
       routes = []
       deliver(archived('newer'))

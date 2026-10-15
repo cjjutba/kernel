@@ -88,7 +88,7 @@ export interface AccountProfile {
   legacyToken?: boolean
   /**
    * Claude only: the MCP servers that need a sign-in on this account, as `accounts.checkMcp` last found them, an empty list
-   * when none do. Undefined until checked (KERNEL-616). Servers ignored on the account, or switched off in every room, are
+   * when none do. Undefined until checked (KERNEL-616). Servers ignored on the account, or switched off in every project, are
    * left out, so they don't warn (KERNEL-646).
    */
   mcpSignIns?: McpSignIn[]
@@ -100,7 +100,7 @@ export interface AccountProfile {
   missingModels?: MissingModel[]
   /**
    * Claude only: the provider's other accounts signed in to the same claude.ai organization, by id (KERNEL-618). Seats in one
-   * Team or Enterprise organization can share limits, so Kernel counts such an account as having room only when its own
+   * Team or Enterprise organization can share limits, so Kernel counts such an account as having headroom only when its own
    * windows say so (`switchChoices`). Settings, Providers says "Same organization as Work". Undefined when it shares none.
    */
   sameOrg?: string[]
@@ -193,8 +193,8 @@ export interface McpAccountServer {
    * add it. The account's `email` says who to be signed in to claude.ai as. A re-check picks it up once added.
    */
   connectUrl?: string
-  /** Switched off in every room, so it never warns: not on the account's row, the notice after adding, or Sign in to all. */
-  roomOff?: boolean
+  /** Switched off in every project, so it never warns: not on the account's row, the notice after adding, or Sign in to all. */
+  projectOff?: boolean
 }
 
 /** One signed-in subscription account's MCP servers (`mcp.accounts`, KERNEL-626). */
@@ -211,7 +211,7 @@ export interface McpAccount {
   servers: McpAccountServer[]
   /**
    * The servers that need the user here (`mcpNeedsYou`): needing a sign-in, failed or not set up, and not ignored, `off` or
-   * switched off in every room. Every surface shows this number (KERNEL-660).
+   * switched off in every project. Every surface shows this number (KERNEL-660).
    */
   needsYou: number
   /** The servers `ready` here (KERNEL-660). */

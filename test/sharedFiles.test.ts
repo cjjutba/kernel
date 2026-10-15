@@ -49,13 +49,13 @@ async function setup(o: { sharing?: boolean; opened?: string[]; capture?: (f: Sh
   }
   let k = await make()
   onTestFinished(() => k.stop())
-  const room = await k.addRoom(repo)
-  const lead = await k.leadChat(room.id)
+  const project = await k.addProject(repo)
+  const lead = await k.leadChat(project.id)
   const leadWs = k.store.workspace(lead.workspaceId)!
-  const kai = await k.createWorkspace(room.id, { prompt: 'Build the checkout', agentId: 'kai', title: 'Checkout', leadChatId: lead.id })
+  const kai = await k.createWorkspace(project.id, { prompt: 'Build the checkout', agentId: 'kai', title: 'Checkout', leadChatId: lead.id })
   await git(kai.path, 'commit', '--allow-empty', '-qm', 'start')
-  const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review checkout', leadChatId: lead.id, reviewOf: kai.id })
-  const agents = await k.agents(room.id)
+  const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review checkout', leadChatId: lead.id, reviewOf: kai.id })
+  const agents = await k.agents(project.id)
   const agent = (id: string) => agents.find((a) => a.id === id) as AgentDef
   const chatOf = (ws: Workspace) => (ws.id === leadWs.id ? lead : k.store.chats(ws.id).find((c) => c.kind !== 'terminal')!)
   const put = async (ws: Workspace, rel: string, data: string | Buffer) => { await mkdir(dirname(join(ws.path, rel)), { recursive: true }); await writeFile(join(ws.path, rel), data); return rel }
@@ -66,7 +66,7 @@ async function setup(o: { sharing?: boolean; opened?: string[]; capture?: (f: Sh
     return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
   }
   const restart = async () => { await k.stop(); k = await make(); return k }
-  return { k: () => k, repo, dataDir, room, lead, leadWs, kai, review, agent, chatOf, put, share, restart, revealed }
+  return { k: () => k, repo, dataDir, project, lead, leadWs, kai, review, agent, chatOf, put, share, restart, revealed }
 }
 
 const onlyFile = (k: Kernel) => { const [f] = k.store.sharedFiles(); return f }
@@ -138,7 +138,7 @@ describe('share_file (KERNEL-302)', () => {
     await put(kai, '.kernel/shared/checkout.html', HTML)
     expect(await share(kai, { path: '.kernel/shared/checkout.html', note: 'First pass' })).toEqual({ isError: false, text: `Shared "Checkout mockup" as v1 (HTML, ${HTML.length} bytes). The user sees a card for it in this chat and can open it in a tab. Share the same path again after changes to add a version.` })
     const f = onlyFile(k())
-    expect(f).toMatchObject({ roomId: kai.roomId, workspaceId: kai.id, agentId: 'kai', source: '.kernel/shared/checkout.html', title: 'Checkout mockup', kind: 'html' })
+    expect(f).toMatchObject({ projectId: kai.projectId, workspaceId: kai.id, agentId: 'kai', source: '.kernel/shared/checkout.html', title: 'Checkout mockup', kind: 'html' })
     expect(f.versions).toEqual([expect.objectContaining({ n: 1, file: 'checkout.html', mime: 'text/html', bytes: HTML.length, chatId: chatOf(kai).id, note: 'First pass' })])
     expect(f.versions[0]).not.toHaveProperty('outside')
     expect(await readFile(join(dataDir, 'shared', f.id, 'v1', 'checkout.html'), 'utf8')).toBe(HTML)
@@ -231,8 +231,8 @@ describe('share_file (KERNEL-302)', () => {
   })
 
   it('shares from the Lead, in its own worktree, and from a reviewer, into their own chats', async () => {
-    const { k, leadWs, review, put, share, lead, chatOf, room } = await setup()
-    expect(leadWs.path).not.toBe(room.path)
+    const { k, leadWs, review, put, share, lead, chatOf, project } = await setup()
+    expect(leadWs.path).not.toBe(project.path)
     await put(leadWs, '.kernel/shared/plan.md', '# The plan\n')
     expect((await share(leadWs, { path: '.kernel/shared/plan.md' })).text).toMatch(/^Shared "The plan" as v1 \(Markdown, /)
     await put(review, 'diagram.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>')
@@ -240,8 +240,8 @@ describe('share_file (KERNEL-302)', () => {
     expect(k().store.items(lead.id).filter((i) => i.kind === 'shared')).toHaveLength(1)
     expect(k().store.items(chatOf(review).id).filter((i) => i.kind === 'shared')).toHaveLength(1)
     expect(k().store.sharedFiles({ workspaceId: leadWs.id }).map((f) => f.title)).toEqual(['The plan'])
-    expect(k().store.sharedFiles({ roomId: room.id }).map((f) => f.title)).toEqual(['diagram.svg', 'The plan'])
-    expect(await k().handlers()['shared.list']({ roomId: room.id, limit: 1 })).toHaveLength(1)
+    expect(k().store.sharedFiles({ projectId: project.id }).map((f) => f.title)).toEqual(['diagram.svg', 'The plan'])
+    expect(await k().handlers()['shared.list']({ projectId: project.id, limit: 1 })).toHaveLength(1)
   })
 
   it("adds a teammate's share to the Lead's next Team update and nothing for the Lead's own", async () => {
@@ -301,8 +301,8 @@ describe('share_file (KERNEL-302)', () => {
     expect(await plain.k().handlers()['shared.thumb']({ sharedId: onlyFile(plain.k()).id, version: 1 })).toBeNull()
   })
 
-  it('keeps the copies when the workspace is archived and after a restart, and deletes them with the room', async () => {
-    const { k, kai, put, share, dataDir, restart, room } = await setup()
+  it('keeps the copies when the workspace is archived and after a restart, and deletes them with the project', async () => {
+    const { k, kai, put, share, dataDir, restart, project } = await setup()
     await put(kai, 'x.html', HTML)
     await share(kai, { path: 'x.html' })
     const f = onlyFile(k())
@@ -313,17 +313,17 @@ describe('share_file (KERNEL-302)', () => {
     await restart()
     expect(await k().handlers()['shared.list']({ workspaceId: kai.id })).toEqual([f])
     expect((await k().handlers()['shared.read']({ sharedId: f.id, version: 1 })).text).toBe(HTML)
-    await k().removeRoom(room.id, false)
+    await k().removeProject(project.id, false)
     expect(k().store.sharedFiles()).toEqual([])
     expect(existsSync(join(dataDir, 'shared', f.id))).toBe(false)
   })
 })
 
 describe('who gets share_file (KERNEL-302)', () => {
-  it("keeps Kernel's own server, share_file included, when the room switches off MCP servers named kernel (KERNEL-226)", async () => {
+  it("keeps Kernel's own server, share_file included, when the project switches off MCP servers named kernel (KERNEL-226)", async () => {
     const s = await setup()
-    await mkdir(join(s.room.path, '.kernel'), { recursive: true })
-    await writeFile(join(s.room.path, '.kernel', 'settings.local.toml'), '[disabled]\nmcp = ["kernel", "chrome-devtools"]\n')
+    await mkdir(join(s.project.path, '.kernel'), { recursive: true })
+    await writeFile(join(s.project.path, '.kernel', 'settings.local.toml'), '[disabled]\nmcp = ["kernel", "chrome-devtools"]\n')
     for (const [ws, id] of [[s.leadWs, 'kernel-lead'], [s.review, 'theo'], [s.kai, 'kai']] as const) {
       const c = await started(s, ws)
       const tools = s.k().toolsFor(ws, s.agent(id), s.chatOf(ws)).map((t) => t.name)

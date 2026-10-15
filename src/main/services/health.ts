@@ -22,7 +22,7 @@ export function failureOf(error: string | undefined, status?: number | null): Fa
   return undefined
 }
 
-/** Windows that stop every session on the account. A rejection pauses every room until it resets. */
+/** Windows that stop every session on the account. A rejection pauses every project until it resets. */
 export const ACCOUNT_WINDOWS: RateLimit['type'][] = ['five_hour', 'seven_day']
 
 /**

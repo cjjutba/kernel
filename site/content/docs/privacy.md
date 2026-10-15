@@ -3,7 +3,7 @@ title: Privacy and data
 description: What stays on your Mac, every network call Kernel makes, and what the website's waitlist keeps.
 ---
 
-Kernel runs on your own plan, with the logins you already have. There is no Kernel account and no Kernel server. Your rooms, chats, settings and history stay in a local database on your Mac.
+Kernel runs on your own plan, with the logins you already have. There is no Kernel account and no Kernel server. Your projects, chats, settings and history stay in a local database on your Mac.
 
 ## Network calls
 
@@ -11,7 +11,7 @@ Kernel itself makes these network calls and no others:
 
 - **Claude Code and Codex**, which talk to Anthropic and OpenAI as they always do
 - **`gh`**, for pull requests and checks
-- **git**, to fetch and push branches on your repo's own remote, and your package manager when a room installs dependencies
+- **git**, to fetch and push branches on your repo's own remote, and your package manager when a project installs dependencies
 - **The update check**, which reads Kernel's GitHub Releases
 - **An offline check**, a DNS lookup of `api.anthropic.com`
 - **Linear or Jira**, only if you connect them in Settings, Integrations

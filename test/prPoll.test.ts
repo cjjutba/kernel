@@ -36,8 +36,8 @@ async function setup(n = 1) {
   kernels.push(k)
   await k.start()
   k.sessions.send = async () => ({ queued: false })
-  const room = await k.addRoom(repo)
-  const first = await k.workspaces.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+  const project = await k.addProject(repo)
+  const first = await k.workspaces.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
   const ws: Workspace[] = [first]
   for (let i = 1; i < n; i++) {
     const copy: Workspace = { ...first, id: `${first.id}-${i}`, name: `${first.name}-${i}` }
@@ -278,7 +278,7 @@ function batched(k: Kernel, prs: Record<string, PrInfo | null>) {
 }
 
 describe('the batch read (KERNEL-388)', () => {
-  it("reads a room's open PRs in one batch, and in full only the PR that changed", async () => {
+  it("reads a project's open PRs in one batch, and in full only the PR that changed", async () => {
     const { k, ws, prs } = await setup(3)
     const [a, b, c] = ws.map((w) => w.id)
     prs[a] = info(a, 'checks', { number: 41, checks: [{ name: 'Test', state: 'running' }] })
@@ -322,7 +322,7 @@ describe('the batch read (KERNEL-388)', () => {
   it('records when PR status was last read, keeps that time when a read fails, and says how it failed (KERNEL-861)', async () => {
     const { k, ws, prs } = await setup()
     const id = ws[0].id
-    const roomId = ws[0].roomId
+    const projectId = ws[0].projectId
     const c = clock(k)
     const pushed: PushEvent[] = []
     const on = (e: PushEvent) => { if (e.type === 'github') pushed.push(e) }
@@ -331,21 +331,21 @@ describe('the batch read (KERNEL-388)', () => {
       prs[id] = info(id, 'checks', { number: 42 })
       await k.prs.refreshPr(id)
       const readAt = c.at()
-      expect(k.prs['githubStatus']().reads?.[roomId]).toEqual({ at: readAt })
+      expect(k.prs['githubStatus']().reads?.[projectId]).toEqual({ at: readAt })
       c.jump(60_000)
       const offline = readFailure({ code: 1, stdout: '', stderr: 'error connecting to api.github.com\ncheck your internet connection or https://githubstatus.com\n' })
       k.github = { ...k.github, info: async () => { throw offline } }
       await k.prs.refreshPr(id)
-      expect(k.prs['githubStatus']().reads?.[roomId]).toEqual({ at: readAt, failed: 'offline' })
+      expect(k.prs['githubStatus']().reads?.[projectId]).toEqual({ at: readAt, failed: 'offline' })
       expect(k.store.workspace(id)?.prState).toBe('checks')
       c.jump(60_000)
       k.github = { ...k.github, info: async () => prs[id] ?? null }
       await k.prs.refreshPr(id)
-      expect(k.prs['githubStatus']().reads?.[roomId]).toEqual({ at: c.at() })
+      expect(k.prs['githubStatus']().reads?.[projectId]).toEqual({ at: c.at() })
       // The window heard the failure start and end through the event the footer already reads, and the poll's end tells it the time.
-      expect(pushed.map((e) => e.type === 'github' && e.status.reads?.[roomId])).toEqual([{ at: readAt, failed: 'offline' }, { at: c.at() }])
+      expect(pushed.map((e) => e.type === 'github' && e.status.reads?.[projectId])).toEqual([{ at: readAt, failed: 'offline' }, { at: c.at() }])
       await c.tick()
-      expect(pushed.at(-1)).toMatchObject({ status: { reads: { [roomId]: { at: c.at() } } } })
+      expect(pushed.at(-1)).toMatchObject({ status: { reads: { [projectId]: { at: c.at() } } } })
     } finally { bus.off('push', on) }
   })
 
@@ -382,12 +382,12 @@ describe('the batch read (KERNEL-388)', () => {
     expect(k.store.workspace(id)?.prState).toBe('checks')
   })
 
-  it("passes the room's optional_checks to both reads", async () => {
+  it("passes the project's optional_checks to both reads", async () => {
     const { k, ws, prs } = await setup()
     const id = ws[0].id
-    const room = k.store.room(ws[0].roomId)!
-    await mkdir(join(room.path, '.kernel'), { recursive: true })
-    await writeFile(join(room.path, '.kernel', 'settings.toml'), '[pr]\noptional_checks = ["Vercel*"]\n')
+    const project = k.store.project(ws[0].projectId)!
+    await mkdir(join(project.path, '.kernel'), { recursive: true })
+    await writeFile(join(project.path, '.kernel', 'settings.toml'), '[pr]\noptional_checks = ["Vercel*"]\n')
     prs[id] = info(id, 'checks', { number: 42 })
     const { calls } = batched(k, prs)
     await k.prs.refreshPr(id)
@@ -470,7 +470,7 @@ describe("the GitHub pause and GitHub's merge block, as main pushes them (KERNEL
     const { rate } = batched(k, prs)
     await k.prs.refreshPr(id)
     const pushed = listen()
-    // The same event carries each room's read times (KERNEL-861). This test is about the pause, so it leaves them out.
+    // The same event carries each project's read times (KERNEL-861). This test is about the pause, so it leaves them out.
     const pauses = () => pushed.flatMap((e) => { if (e.type !== 'github') return []; const { reads: _, ...pause } = e.status; return [pause] })
       .filter((p, i, all) => i === 0 || JSON.stringify(p) !== JSON.stringify(all[i - 1]))
     const resetAt = Date.now() + 300

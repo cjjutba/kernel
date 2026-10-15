@@ -6,9 +6,9 @@ import type { Decision, PermissionMode } from '@shared/types'
 import { DEFAULT_SETTINGS, type AppSettings } from '../src/main/services/settings'
 import { ALWAYS_ASK, chatMode, decide, effectiveMode, guardVerdict, hookVerdict, matchesToolRule, NETWORK_OFF, neverAllowed, pushOwnBranch, rulesOf, saveAlwaysAllow, stricter, toolRule, type ChatAvailability, type Rules, type RunMode, type Step } from '../src/main/services/permissions'
 
-function rules(o: { mode?: RunMode; network?: boolean; roomAllow?: string[]; roomTools?: string[]; branches?: string[] } = {}): Rules & { reads: number; toolReads: number } {
+function rules(o: { mode?: RunMode; network?: boolean; projectAllow?: string[]; projectTools?: string[]; branches?: string[] } = {}): Rules & { reads: number; toolReads: number } {
   const permissions = { mode: 'acceptEdits' as const, bypassOnlyInWorktrees: true, network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: ['rm -rf /'], protectedBranches: o.branches ?? ['main'], approvalTimeoutSec: 300 }
-  const r = { permissions, mode: o.mode ?? 'acceptEdits', branch: 'feat/invoice-schema', reads: 0, toolReads: 0, roomAllow: () => { r.reads++; return o.roomAllow ?? [] }, roomTools: () => { r.toolReads++; return o.roomTools ?? [] } }
+  const r = { permissions, mode: o.mode ?? 'acceptEdits', branch: 'feat/invoice-schema', reads: 0, toolReads: 0, projectAllow: () => { r.reads++; return o.projectAllow ?? [] }, projectTools: () => { r.toolReads++; return o.projectTools ?? [] } }
   return r
 }
 
@@ -16,9 +16,9 @@ function rules(o: { mode?: RunMode; network?: boolean; roomAllow?: string[]; roo
 const toMain = ['git', 'push', 'origin', 'main'].join(' ')
 
 describe('guardVerdict', () => {
-  it('denies Never allow and protected-branch pushes, allows a room rule and asks for Always ask', () => {
-    const r = rules({ roomAllow: ['pnpm test'] })
-    expect(guardVerdict('rm -rf /', r)).toEqual({ behavior: 'deny', message: 'Kernel blocks "rm -rf /" in every room.' })
+  it('denies Never allow and protected-branch pushes, allows a project rule and asks for Always ask', () => {
+    const r = rules({ projectAllow: ['pnpm test'] })
+    expect(guardVerdict('rm -rf /', r)).toEqual({ behavior: 'deny', message: 'Kernel blocks "rm -rf /" in every project.' })
     expect(guardVerdict(toMain, r)).toEqual({ behavior: 'deny', message: neverAllowed(toMain) })
     expect(guardVerdict('pnpm test', r)).toEqual({ behavior: 'allow' })
     expect(guardVerdict('pnpm drizzle-kit push', r)).toEqual({ behavior: 'ask', reason: ALWAYS_ASK })
@@ -29,8 +29,8 @@ describe('guardVerdict', () => {
     expect(guardVerdict('curl https://example.com', rules({ network: false }))).toEqual({ behavior: 'deny', message: neverAllowed('curl https://example.com') })
   })
 
-  it('in Bypass permissions keeps only the denials, with no opinion on Always ask or a room rule (KERNEL-447)', () => {
-    const bypass = rules({ mode: 'bypassPermissions', roomAllow: ['pnpm test'] })
+  it('in Bypass permissions keeps only the denials, with no opinion on Always ask or a project rule (KERNEL-447)', () => {
+    const bypass = rules({ mode: 'bypassPermissions', projectAllow: ['pnpm test'] })
     expect(guardVerdict('rm -rf /', bypass)).toEqual({ behavior: 'deny', message: neverAllowed('rm -rf /') })
     expect(guardVerdict('curl https://example.com', rules({ mode: 'bypassPermissions', network: false }))).toEqual({ behavior: 'deny', message: neverAllowed('curl https://example.com') })
     expect(guardVerdict('pnpm drizzle-kit push', bypass)).toBeUndefined()
@@ -39,7 +39,7 @@ describe('guardVerdict', () => {
   })
 
   it('in Bypass permissions denies a push that might reach a protected branch, and tells the agent to push its own (KERNEL-447)', () => {
-    const bypass = rules({ mode: 'bypassPermissions', roomAllow: ['git push:*'] })
+    const bypass = rules({ mode: 'bypassPermissions', projectAllow: ['git push:*'] })
     const own = { behavior: 'deny', message: pushOwnBranch(['main'], 'feat/invoice-schema') }
     for (const push of [toMain, 'git push', 'git push origin', 'git push -u origin HEAD', 'git push origin "$BRANCH"', 'git push origin "feat/*"']) expect(guardVerdict(push, bypass), push).toEqual(own)
     expect(guardVerdict('git push -u origin feat/invoice-schema', bypass)).toBeUndefined()
@@ -52,7 +52,7 @@ describe('guardVerdict', () => {
   })
 
   it("keeps Bypass permissions' push denials on top of a stricter mode's asks while Claude Code may still run in bypass", () => {
-    const leaving = { ...rules({ roomAllow: ['git push:*'] }), mayBypass: true }
+    const leaving = { ...rules({ projectAllow: ['git push:*'] }), mayBypass: true }
     const own = { behavior: 'deny', message: pushOwnBranch(['main'], 'feat/invoice-schema') }
     for (const push of ['git push', 'git push -u origin HEAD', 'git push origin "$BRANCH"', toMain]) expect(guardVerdict(push, leaving), push).toEqual(own)
     // The stricter mode's asks and denials still hold.
@@ -96,7 +96,7 @@ describe('effectiveMode (KERNEL-447)', () => {
   const current = { mode: 'current' as const }
   const chat = (o: { plan?: boolean; mode?: PermissionMode } = {}) => ({ plan: o.plan ?? false, mode: o.mode })
 
-  it('takes plan first, then the chat, then the room, then the app', () => {
+  it('takes plan first, then the chat, then the project, then the app', () => {
     expect(effectiveMode(chat({ plan: true, mode: 'bypassPermissions' }), worktree, { permissionMode: 'auto' }, settings('default'), all)).toBe('plan')
     expect(effectiveMode(chat({ mode: 'bypassPermissions' }), worktree, { permissionMode: 'auto' }, settings('default'), all)).toBe('bypassPermissions')
     expect(effectiveMode(chat(), worktree, { permissionMode: 'auto' }, settings('default'), all)).toBe('auto')
@@ -153,9 +153,9 @@ describe('chatMode (KERNEL-572)', () => {
   const current = { mode: 'current' as const }
   const chat = (o: { plan?: boolean; mode?: PermissionMode } = {}) => ({ plan: o.plan ?? false, mode: o.mode })
 
-  it('says where the mode was picked: the chat, else the room, else the app', () => {
+  it('says where the mode was picked: the chat, else the project, else the app', () => {
     expect(chatMode(chat({ mode: 'acceptEdits' }), worktree, { permissionMode: 'auto' }, settings('default'), all)).toEqual({ mode: 'acceptEdits', picked: 'acceptEdits', pickedIn: 'chat' })
-    expect(chatMode(chat(), worktree, { permissionMode: 'auto' }, settings('default'), all)).toEqual({ mode: 'auto', picked: 'auto', pickedIn: 'room' })
+    expect(chatMode(chat(), worktree, { permissionMode: 'auto' }, settings('default'), all)).toEqual({ mode: 'auto', picked: 'auto', pickedIn: 'project' })
     expect(chatMode(chat(), worktree, undefined, settings('default'), all)).toEqual({ mode: 'default', picked: 'default', pickedIn: 'app' })
     // A mode Kernel doesn't know is no pick, and an unknown app mode is Manual.
     expect(chatMode({ plan: false, mode: 'ask' as never }, worktree, { permissionMode: 'ask' as never }, settings('ask' as never), all)).toEqual({ mode: 'default', picked: 'default', pickedIn: 'app' })
@@ -166,7 +166,7 @@ describe('chatMode (KERNEL-572)', () => {
     expect(chatMode(chat({ mode: 'bypassPermissions' }), worktree, undefined, settings('default'), all, { permissionMode: 'acceptEdits' })).toEqual({ mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'chat', why: 'agentFile' })
     expect(chatMode(chat(), worktree, undefined, settings('auto'), { auto: false, bypass: true })).toEqual({ mode: 'acceptEdits', picked: 'auto', pickedIn: 'app', why: 'noAuto' })
     expect(chatMode(chat({ mode: 'bypassPermissions' }), worktree, undefined, settings('default'), { auto: true, bypass: false })).toEqual({ mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'chat', why: 'noBypass' })
-    expect(chatMode(chat(), current, { permissionMode: 'bypassPermissions' }, settings('default', true), all)).toEqual({ mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'room', why: 'worktreesOnly' })
+    expect(chatMode(chat(), current, { permissionMode: 'bypassPermissions' }, settings('default', true), all)).toEqual({ mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'project', why: 'worktreesOnly' })
   })
 
   it('names the first step that moved the chat off its pick', () => {
@@ -204,13 +204,13 @@ describe('decide', () => {
   })
 
   it('lets the lists decide a command before the mode', () => {
-    const edits = rules({ roomAllow: ['pnpm test'] })
+    const edits = rules({ projectAllow: ['pnpm test'] })
     expect(decide({ tool: 'Bash', command: 'rm -rf /', sandbox: 'inside' }, edits)).toEqual({ behavior: 'deny', message: neverAllowed('rm -rf /') })
     expect(decide({ tool: 'Bash', command: 'pnpm drizzle-kit push', sandbox: 'inside' }, edits)).toEqual({ behavior: 'ask', reason: ALWAYS_ASK })
-    expect(decide({ tool: 'Bash', command: 'pnpm test', sandbox: 'outside' }, rules({ mode: 'default', roomAllow: ['pnpm test'] }))).toEqual({ behavior: 'allow' })
+    expect(decide({ tool: 'Bash', command: 'pnpm test', sandbox: 'outside' }, rules({ mode: 'default', projectAllow: ['pnpm test'] }))).toEqual({ behavior: 'allow' })
   })
 
-  it('reads the room rules only for a command', () => {
+  it('reads the project rules only for a command', () => {
     const r = rules()
     decide({ tool: 'Edit' }, r)
     decide({ tool: 'Bash', command: '' }, r)
@@ -264,16 +264,16 @@ describe('rulesOf', () => {
   it('reads the lists from Settings, Permissions, the mode from the chat unless the runner names one, and the branch from the workspace', () => {
     const permissions = { mode: 'acceptEdits', bypassOnlyInWorktrees: true, network: false, alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }
     let reads = 0
-    const host = { settings: () => ({ permissions }) as unknown as AppSettings, mode: () => 'bypassPermissions' as const, roomAllow: () => { reads++; return ['ls'] }, roomTools: () => { reads++; return ['WebSearch'] }, workspace: { mode: 'worktree', branch: 'feat/x' } as never }
+    const host = { settings: () => ({ permissions }) as unknown as AppSettings, mode: () => 'bypassPermissions' as const, projectAllow: () => { reads++; return ['ls'] }, projectTools: () => { reads++; return ['WebSearch'] }, workspace: { mode: 'worktree', branch: 'feat/x' } as never }
     expect(rulesOf(host)).toMatchObject({ permissions, mode: 'bypassPermissions', branch: 'feat/x' })
     expect(rulesOf(host, 'default').mode).toBe('default')
     expect(reads).toBe(0)
-    expect(rulesOf(host).roomAllow()).toEqual(['ls'])
-    expect(rulesOf(host).roomTools()).toEqual(['WebSearch'])
+    expect(rulesOf(host).projectAllow()).toEqual(['ls'])
+    expect(rulesOf(host).projectTools()).toEqual(['WebSearch'])
   })
 })
 
-describe("a room's tool rules (KERNEL-454)", () => {
+describe("a project's tool rules (KERNEL-454)", () => {
   it('match an MCP tool by its name or its server, and a fetch by its host', () => {
     expect(matchesToolRule('mcp__linear__get_issue', {}, ['mcp__linear__get_issue'])).toBe(true)
     expect(matchesToolRule('mcp__linear__get_issue', {}, ['mcp__linear'])).toBe(true)
@@ -301,12 +301,12 @@ describe("a room's tool rules (KERNEL-454)", () => {
 
   it("let canUseTool allow a covered tool before it asks, in every mode but Bypass permissions, and after Network off", () => {
     const linear = { tool: 'mcp__linear__get_issue', input: {} }
-    for (const mode of ['plan', 'default', 'acceptEdits', 'auto'] as const) expect(decide(linear, rules({ mode, roomTools: ['mcp__linear'] })), mode).toEqual({ behavior: 'allow' })
-    expect(decide(linear, rules({ mode: 'bypassPermissions', roomTools: ['mcp__linear'] }))).toBeUndefined()
-    expect(decide(linear, rules({ roomTools: ['mcp__github'] }))).toBeUndefined()
+    for (const mode of ['plan', 'default', 'acceptEdits', 'auto'] as const) expect(decide(linear, rules({ mode, projectTools: ['mcp__linear'] })), mode).toEqual({ behavior: 'allow' })
+    expect(decide(linear, rules({ mode: 'bypassPermissions', projectTools: ['mcp__linear'] }))).toBeUndefined()
+    expect(decide(linear, rules({ projectTools: ['mcp__github'] }))).toBeUndefined()
     const fetch = { tool: 'WebFetch', input: { url: 'https://docs.example.com' } }
-    expect(decide(fetch, rules({ roomTools: ['WebFetch(domain:docs.example.com)'] }))).toEqual({ behavior: 'allow' })
-    expect(decide(fetch, rules({ network: false, roomTools: ['WebFetch(domain:docs.example.com)'] }))).toEqual({ behavior: 'deny', message: NETWORK_OFF })
+    expect(decide(fetch, rules({ projectTools: ['WebFetch(domain:docs.example.com)'] }))).toEqual({ behavior: 'allow' })
+    expect(decide(fetch, rules({ network: false, projectTools: ['WebFetch(domain:docs.example.com)'] }))).toEqual({ behavior: 'deny', message: NETWORK_OFF })
   })
 
   it('are read only for a step they could cover', () => {
@@ -321,26 +321,26 @@ describe("a room's tool rules (KERNEL-454)", () => {
 })
 
 describe('hookVerdict (KERNEL-454)', () => {
-  it("allows a room rule from the hook in Manual, Accept edits and Auto, so Auto mode's classifier can't refuse it", () => {
+  it("allows a project rule from the hook in Manual, Accept edits and Auto, so Auto mode's classifier can't refuse it", () => {
     for (const mode of ['default', 'acceptEdits', 'auto'] as const) {
-      expect(hookVerdict({ tool: 'Bash', command: 'cd web && pnpm test' }, rules({ mode, roomAllow: ['pnpm test'] })), mode).toEqual({ behavior: 'allow' })
-      expect(hookVerdict({ tool: 'mcp__linear__get_issue' }, rules({ mode, roomTools: ['mcp__linear__get_issue'] })), mode).toEqual({ behavior: 'allow' })
+      expect(hookVerdict({ tool: 'Bash', command: 'cd web && pnpm test' }, rules({ mode, projectAllow: ['pnpm test'] })), mode).toEqual({ behavior: 'allow' })
+      expect(hookVerdict({ tool: 'mcp__linear__get_issue' }, rules({ mode, projectTools: ['mcp__linear__get_issue'] })), mode).toEqual({ behavior: 'allow' })
     }
   })
 
-  it('leaves a room rule to canUseTool in plan mode, and reads none in Bypass permissions', () => {
+  it('leaves a project rule to canUseTool in plan mode, and reads none in Bypass permissions', () => {
     for (const mode of ['plan', 'bypassPermissions'] as const) {
-      expect(hookVerdict({ tool: 'Bash', command: 'pnpm test' }, rules({ mode, roomAllow: ['pnpm test'] })), mode).toBeUndefined()
-      expect(hookVerdict({ tool: 'mcp__linear__get_issue' }, rules({ mode, roomTools: ['mcp__linear__get_issue'] })), mode).toBeUndefined()
+      expect(hookVerdict({ tool: 'Bash', command: 'pnpm test' }, rules({ mode, projectAllow: ['pnpm test'] })), mode).toBeUndefined()
+      expect(hookVerdict({ tool: 'mcp__linear__get_issue' }, rules({ mode, projectTools: ['mcp__linear__get_issue'] })), mode).toBeUndefined()
     }
   })
 
-  it('still denies Never allow, protected pushes and Network off over any room rule, and asks for Always ask', () => {
-    const r = rules({ mode: 'auto', roomAllow: ['rm:*', 'git push:*', 'curl:*'], roomTools: ['WebSearch'] })
+  it('still denies Never allow, protected pushes and Network off over any project rule, and asks for Always ask', () => {
+    const r = rules({ mode: 'auto', projectAllow: ['rm:*', 'git push:*', 'curl:*'], projectTools: ['WebSearch'] })
     expect(hookVerdict({ tool: 'Bash', command: 'cd / && rm -rf /' }, r)).toEqual({ behavior: 'deny', message: neverAllowed('cd / && rm -rf /') })
     expect(hookVerdict({ tool: 'Bash', command: toMain }, r)).toEqual({ behavior: 'deny', message: neverAllowed(toMain) })
     expect(hookVerdict({ tool: 'Bash', command: 'pnpm drizzle-kit push' }, r)).toEqual({ behavior: 'ask', reason: ALWAYS_ASK })
-    const off = rules({ mode: 'auto', network: false, roomAllow: ['curl:*'], roomTools: ['WebSearch'] })
+    const off = rules({ mode: 'auto', network: false, projectAllow: ['curl:*'], projectTools: ['WebSearch'] })
     expect(hookVerdict({ tool: 'Bash', command: 'curl https://example.com' }, off)).toEqual({ behavior: 'deny', message: neverAllowed('curl https://example.com') })
     expect(hookVerdict({ tool: 'WebSearch', input: { query: 'zod' } }, off)).toEqual({ behavior: 'deny', message: NETWORK_OFF })
   })
@@ -349,7 +349,7 @@ describe('hookVerdict (KERNEL-454)', () => {
 describe('saveAlwaysAllow', () => {
   const save = (step: Step, decision: Decision | undefined, o?: Parameters<typeof saveAlwaysAllow>[3]) => {
     const saved: string[] = []
-    saveAlwaysAllow({ allowInRoom: (rule) => { saved.push(rule) }, allowToolInRoom: (rule) => { saved.push(`tool:${rule}`) } }, step, decision, o)
+    saveAlwaysAllow({ allowInProject: (rule) => { saved.push(rule) }, allowToolInProject: (rule) => { saved.push(`tool:${rule}`) } }, step, decision, o)
     return saved
   }
 
@@ -367,7 +367,7 @@ describe('saveAlwaysAllow', () => {
     expect(save({ tool: 'mcp__linear__get_issue' }, { behavior: 'allow' })).toEqual([])
   })
 
-  it('saves a tool rule on the room for an MCP or web tool, unless Claude Code says the ask may not offer one (KERNEL-454)', () => {
+  it('saves a tool rule on the project for an MCP or web tool, unless Claude Code says the ask may not offer one (KERNEL-454)', () => {
     expect(save({ tool: 'mcp__linear__get_issue', input: { id: 'KERNEL-1' } }, { behavior: 'allow', always: true })).toEqual(['tool:mcp__linear__get_issue'])
     expect(save({ tool: 'WebFetch', input: { url: 'https://docs.example.com/a' } }, { behavior: 'allow', always: true })).toEqual(['tool:WebFetch(domain:docs.example.com)'])
     expect(save({ tool: 'mcp__linear__get_issue', input: {} }, { behavior: 'allow', always: true }, { suppressAlwaysAllowRule: true })).toEqual([])

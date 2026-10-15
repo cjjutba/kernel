@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { resolvePreviewUrl } from '@shared/previewUrl'
-import { PORT_BLOCK, type RoomSettings } from '@shared/types'
+import { PORT_BLOCK, type ProjectSettings } from '@shared/types'
 import { Button, Modal, useBusy } from '../../../ui'
 import { DataTable, Section } from '../kit'
-import { patchRoomSettings } from '../useSettings'
+import { patchProjectSettings } from '../useSettings'
 
-type Urls = RoomSettings['preview']['urls']
+type Urls = ProjectSettings['preview']['urls']
 
 /** The rows worth saving: one with no address is dropped, since the file keeps none (KERNEL-246). */
 export const savedUrls = (list: Urls): Urls => list.filter((u) => u.url.trim()).map((u) => ({ name: u.name.trim(), url: u.url.trim() }))
@@ -18,13 +18,13 @@ export function addressProblem(address: string): string | undefined {
   return undefined
 }
 
-/** Preview URLs, a table on Settings > a room > Setup and scripts (MorePage roomSetup, KERNEL-680). The list is saved whole in the personal file, so Remove works on rows settings.toml set too. */
-export function PreviewUrls({ roomId, rs }: { roomId: string; rs: RoomSettings | null }) {
+/** Preview URLs, a table on Settings > a project > Setup and scripts (MorePage projectSetup, KERNEL-680). The list is saved whole in the personal file, so Remove works on rows settings.toml set too. */
+export function PreviewUrls({ projectId, rs }: { projectId: string; rs: ProjectSettings | null }) {
   // `index` is the row being edited, or the list's length for a new one.
   const [editing, setEditing] = useState<number | null>(null)
   const urls = rs?.preview?.urls ?? []
   const path = 'preview.urls'
-  const save = (next: Urls) => patchRoomSettings(roomId, { preview: { urls: savedUrls(next) } })
+  const save = (next: Urls) => patchProjectSettings(projectId, { preview: { urls: savedUrls(next) } })
   return (
     <>
       <Section id="preview-urls" title="Preview URLs" plain action={<Button onClick={() => setEditing(urls.length)}>Add preview URL</Button>}>
@@ -38,7 +38,7 @@ export function PreviewUrls({ roomId, rs }: { roomId: string; rs: RoomSettings |
               // The list is one value, so Reset sits on the first row.
               actions: (
                 <>
-                  {i === 0 && rs?.sources?.[path] === 'override' && <Button variant="ghost" aria-label="Reset preview URLs" onClick={() => void patchRoomSettings(roomId, { preview: { urls: null } })}>Reset</Button>}
+                  {i === 0 && rs?.sources?.[path] === 'override' && <Button variant="ghost" aria-label="Reset preview URLs" onClick={() => void patchProjectSettings(projectId, { preview: { urls: null } })}>Reset</Button>}
                   <Button variant="ghost" aria-label={`Edit ${label}`} onClick={() => setEditing(i)}>Edit</Button>
                   <Button variant="ghost" aria-label={`Remove ${label}`} onClick={() => void save(urls.filter((_, j) => j !== i))}>Remove</Button>
                 </>

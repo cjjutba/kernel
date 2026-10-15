@@ -36,7 +36,7 @@ export const planExists = (root: string, file: string) => exists(join(root, file
 /**
  * Where a new plan-mode plan in a chat is saved, from ExitPlanMode or the Lead's request_plan_approval (D-092, KERNEL-373).
  * After "Request changes" the revision overwrites the last plan's file. Once a plan there was approved, the next one gets a
- * file of its own. `approvals` are the room's, newest first, read before the new plan's approval is added.
+ * file of its own. `approvals` are the project's, newest first, read before the new plan's approval is added.
  */
 export function revisedPlanFile(approvals: Approval[], chatId: string): string | undefined {
   const last = approvals.find((a) => a.chatId === chatId && a.kind === 'plan')

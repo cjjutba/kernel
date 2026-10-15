@@ -209,7 +209,7 @@ describe('Kernel on quit', () => {
       bus.push({ type: 'chat.running', chatId: id, running: true })
     }
     const wait = (chatId: string, kind: 'plan' | 'tool' | 'question') =>
-      k.approvals.request({ kind, source: 'sdk', roomId: 'r', workspaceId: `ws${chatId[0].toUpperCase()}`, chatId, title: kind })
+      k.approvals.request({ kind, source: 'sdk', projectId: 'r', workspaceId: `ws${chatId[0].toUpperCase()}`, chatId, title: kind })
     const done = async () => { for (const id of ids) bus.push({ type: 'chat.running', chatId: id, running: false }); await k.stop({ budgetMs: 0 }) }
     return { k, wait, done }
   }

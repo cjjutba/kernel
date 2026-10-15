@@ -30,7 +30,7 @@ Kernel asks an agent to update a branch that fell behind, tells a teammate to re
 
 ## Checks
 
-A failing check the repository doesn't require doesn't mark a pull request as failed. A room's Pull requests page can list **Optional checks** that never do, for repositories whose branch rules require none.
+A failing check the repository doesn't require doesn't mark a pull request as failed. A project's Pull requests page can list **Optional checks** that never do, for repositories whose branch rules require none.
 
 ## Merging without asking
 
@@ -43,8 +43,8 @@ A pull request that merged this way says so in the Team update.
 
 ## Repos without GitHub
 
-In a repo with no GitHub remote, Kernel merges a workspace into its base branch on your Mac, with the room's merge method. The workspace panel shows whether the branch can merge: ready, behind main with an Update branch button, conflicts, merging, merged, or blocked by uncommitted changes in your main folder.
+In a repo with no GitHub remote, Kernel merges a workspace into its base branch on your Mac, with the project's merge method. The workspace panel shows whether the branch can merge: ready, behind main with an Update branch button, conflicts, merging, merged, or blocked by uncommitted changes in your main folder.
 
 ## Instructions
 
-Settings, Pull requests, and each room's Pull requests page, hold the instructions agents follow to create a pull request, resolve conflicts, fix checks and address review. Edit them to match how your team works.
+Settings, Pull requests, and each project's Pull requests page, hold the instructions agents follow to create a pull request, resolve conflicts, fix checks and address review. Edit them to match how your team works.

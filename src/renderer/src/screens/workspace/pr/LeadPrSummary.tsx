@@ -16,8 +16,8 @@ export function summaryText(ready: number, open: number): string {
  * while something can merge; in the chat header (`capsule`) it sits in a capsule of the same tone, like `PrHeader`. `toggle` is the panel toggle, beside the button and never inside it (KERNEL-799). Open PRs
  * that can't merge yet are counted as such, never as "No open PRs" (KERNEL-411).
  */
-export function LeadPrSummary({ roomId, spread, capsule, quiet, toggle }: { roomId: string; spread?: boolean; capsule?: boolean; quiet?: boolean; toggle?: ReactNode }) {
-  const rows = useLeadPrs(roomId)
+export function LeadPrSummary({ projectId, spread, capsule, quiet, toggle }: { projectId: string; spread?: boolean; capsule?: boolean; quiet?: boolean; toggle?: ReactNode }) {
+  const rows = useLeadPrs(projectId)
   const ready = rows.filter((r) => r.ready).length
   const text = summaryText(ready, rows.length)
   const tone = ready ? 'ready' : 'idle'

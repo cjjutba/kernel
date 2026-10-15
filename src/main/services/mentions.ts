@@ -11,7 +11,7 @@ type Mentioned = Extract<ChatPart, { type: 'agent' }>
 /** "Noor", "Noor and Kai", "Noor, Kai and Mira". */
 export const namesText = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`)
 
-/** The agents a message mentions, once each, without the Lead itself. `team` is the room's, when Kernel has read it. */
+/** The agents a message mentions, once each, without the Lead itself. `team` is the project's, when Kernel has read it. */
 export function mentionsOf(parts: ChatPart[], team?: AgentDef[]): Mentioned[] {
   const seen = new Set<string>()
   return parts.filter((p): p is Mentioned => {
@@ -31,8 +31,8 @@ export function mentionNote(parts: ChatPart[], team?: AgentDef[]): string | unde
   const lines = [`The user addressed this to ${namesText(mentioned.map((m) => m.name))}.`]
   for (const m of mentioned) {
     const agent = team?.find((a) => a.id === m.agentId)
-    if (team && !agent) lines.push(`${m.name} isn't on this room's team now, so tell the user or ask with mcp__kernel__ask_user who should take it.`)
-    else if (agent && !takesTasks(agent)) lines.push(`${m.name} doesn't take tasks in this room, so tell the user or ask with mcp__kernel__ask_user who should take it.`)
+    if (team && !agent) lines.push(`${m.name} isn't on this project's team now, so tell the user or ask with mcp__kernel__ask_user who should take it.`)
+    else if (agent && !takesTasks(agent)) lines.push(`${m.name} doesn't take tasks in this project, so tell the user or ask with mcp__kernel__ask_user who should take it.`)
   }
   return lines.join('\n')
 }

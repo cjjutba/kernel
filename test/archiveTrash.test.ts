@@ -18,8 +18,8 @@ async function setup() {
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = await boot(dataDir, home)
-  const room = await k.addRoom(repo)
-  return { repo, dataDir, home, k, room }
+  const project = await k.addProject(repo)
+  return { repo, dataDir, home, k, project }
 }
 
 async function boot(dataDir: string, home: string) {
@@ -49,8 +49,8 @@ const trash = (k: Kernel) => k.store.meta<string[]>('trash') ?? []
 
 describe('archive moves the worktree aside and deletes it later (KERNEL-284)', () => {
   it('resolves before the folder is deleted, and the folder goes once the queue drains', async () => {
-    const { repo, k, room } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const { repo, k, project } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     await fill(ws.path)
     // Hold the delete queue: archive resolving anyway shows it doesn't wait for the delete.
     const release = hold(k)
@@ -73,10 +73,10 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
   }, 30000)
 
   it('deletes the link to a symlinked node_modules and leaves the folder it points to', async () => {
-    const { repo, k, room } = await setup()
+    const { repo, k, project } = await setup()
     await mkdir(join(repo, 'node_modules', 'left-pad'), { recursive: true })
     await writeFile(join(repo, 'node_modules', 'left-pad', 'index.js'), 'module.exports = 1\n')
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     expect(await linkNodeModules(repo, ws.path)).toBe(true)
     await k.archiveWorkspace(ws.id, true)
     await k.archive.cleanedUp(ws.id)
@@ -122,8 +122,8 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
   }, 30000)
 
   it('leaves nothing in .trash for a worktree with Electron in its node_modules (KERNEL-810)', async () => {
-    const { k, room } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const { k, project } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     // Under Electron, Kernel's own fs reads this file as a folder. test/removeTree.mac.test.ts runs the delete there. The
     // Linux Electron has no such file, so the test uses a stand-in there.
     const res = join(ws.path, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'Resources')
@@ -137,8 +137,8 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
   }, 30000)
 
   it('restores right after archive, while the old folder is still being deleted', async () => {
-    const { k, room } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const { k, project } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     await fill(ws.path)
     const release = hold(k)
     await k.archiveWorkspace(ws.id, false)
@@ -153,11 +153,11 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
     expect(await readdir(join(dirname(ws.path), '.trash'))).toEqual([])
   }, 30000)
 
-  it('moves aside and deletes the worktrees of a removed room when asked to delete them', async () => {
-    const { repo, k, room } = await setup()
-    const a = await k.createWorkspace(room.id, { prompt: 'One', agentId: 'kai', title: 'One' })
-    const b = await k.createWorkspace(room.id, { prompt: 'Two', agentId: 'kai', title: 'Two' })
-    await k.removeRoom(room.id, true)
+  it('moves aside and deletes the worktrees of a removed project when asked to delete them', async () => {
+    const { repo, k, project } = await setup()
+    const a = await k.createWorkspace(project.id, { prompt: 'One', agentId: 'kai', title: 'One' })
+    const b = await k.createWorkspace(project.id, { prompt: 'Two', agentId: 'kai', title: 'Two' })
+    await k.removeProject(project.id, true)
     for (const ws of [a, b]) await expect(stat(ws.path)).rejects.toThrow(/ENOENT/)
     expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toMatch(new RegExp(`${basename(a.path)}|${basename(b.path)}`))
     await k.trashEmptied()
@@ -165,14 +165,14 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
   }, 30000)
 
   it('archives, leaves the folder alone and warns when the worktree cannot be read (KERNEL-702)', async () => {
-    const { k, room } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const { k, project } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     await chmod(dirname(ws.path), 0o000)
     onTestFinished(() => chmod(dirname(ws.path), 0o755))
     await k.archiveWorkspace(ws.id, false)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
     await k.archive.cleanedUp(ws.id)
-    const note = k.store.activity(room.id).find((a) => a.kind === 'note' && a.workspaceId === ws.id && a.warn)
+    const note = k.store.activity(project.id).find((a) => a.kind === 'note' && a.workspaceId === ws.id && a.warn)
     expect(note).toMatchObject({ text: "couldn't finish cleaning up after archiving", object: ws.name, quote: expect.stringMatching(/EACCES/) })
     expect(trash(k)).toEqual([])
     await chmod(dirname(ws.path), 0o755)

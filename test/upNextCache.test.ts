@@ -7,7 +7,7 @@ const issue = (id: string): IssueSummary => ({ id, title: `Title ${id}`, url: `h
 describe('Up next cache', () => {
   beforeEach(() => clearUpNext())
 
-  it('is empty until a refresh succeeds, per room', () => {
+  it('is empty until a refresh succeeds, per project', () => {
     expect(readUpNext('a')).toBeUndefined()
     storeUpNext('a', { kind: 'linear', rows: [issue('K-1')] })
     expect(readUpNext('a')?.rows).toHaveLength(1)

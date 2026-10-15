@@ -451,7 +451,7 @@ app.whenReady().then(async () => {
     images.picked(r.filePaths)
     return r.canceled ? null : r.filePaths[0]
   })
-  // Only web pages: a URL a run script printed or a room's settings name must not open a file or another app (KERNEL-246).
+  // Only web pages: a URL a run script printed or a project's settings name must not open a file or another app (KERNEL-246).
   handle('system.openExternal' satisfies Channel, async (_e, { url }: KernelApi['system.openExternal']['req']) => {
     if (typeof url !== 'string' || !isWebUrl(url)) throw new Error('Kernel only opens http and https links')
     await shell.openExternal(url)

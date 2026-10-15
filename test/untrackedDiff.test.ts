@@ -81,8 +81,8 @@ describe('workspaces.readImage (KERNEL-409)', () => {
     await k.start()
     onTestFinished(() => k.stop())
     k.sessions.send = async () => ({ queued: false })
-    const room = await k.rooms.addRoom(repo)
-    const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Swap the logo', agentId: 'kai' })
+    const project = await k.projects.addProject(repo)
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Swap the logo', agentId: 'kai' })
     // The agent commits a new logo, then adds a page it hasn't committed yet.
     await writeFile(join(ws.path, 'logo.png'), png(2))
     await git(ws.path, 'commit', '-qam', 'new logo')

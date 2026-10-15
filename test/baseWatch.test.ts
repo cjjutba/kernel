@@ -42,7 +42,7 @@ const commit = async (cwd: string, files: Record<string, string>, message = 'cha
   await run('git', ['-C', cwd, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-m', message])
 }
 
-/** Main moves: a commit in the room's checkout, pushed, so `origin/main` is ahead there without a fetch. */
+/** Main moves: a commit in the project's checkout, pushed, so `origin/main` is ahead there without a fetch. */
 const landOnMain = async (repo: string, files: Record<string, string>) => {
   await commit(repo, files, 'on main')
   await run('git', ['-C', repo, 'push', '-q', 'origin', 'main'])
@@ -50,7 +50,7 @@ const landOnMain = async (repo: string, files: Record<string, string>) => {
 
 const SAME_LINE = (side: string) => `one\ntwo ${side}\nthree\n`
 
-/** A room with an `origin`, and a Kai workspace started from origin/main. Messages to Kai are recorded, not run. */
+/** A project with an `origin`, and a Kai workspace started from origin/main. Messages to Kai are recorded, not run. */
 async function setUp() {
   const repo = await tempRepo(REPO)
   const bare = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
@@ -63,8 +63,8 @@ async function setUp() {
   k.sessions.send = async () => ({ queued: false })
   const gh = { pr: null as PrInfo | null }
   k.github = { info: async (_cwd, _ref, workspaceId) => (gh.pr ? { ...gh.pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
-  const room = await k.addRoom(repo)
-  const kai = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+  const project = await k.addProject(repo)
+  const kai = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
   expect(kai).toMatchObject({ status: 'ready', mode: 'worktree', baseRef: 'origin/main', prState: 'none' })
   const chat = k.store.chats(kai.id)[0]
   const posts: { chatId: string; text: string }[] = []
@@ -74,11 +74,11 @@ async function setUp() {
     posts.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join('') })
     return true
   }
-  await k.baseWatch.check(room.id, { fetch: false })
-  const check = (o: { fetch?: boolean; only?: string } = {}) => k.baseWatch.check(room.id, { fetch: o.fetch ?? false, ...(o.only ? { only: o.only } : {}) })
-  const notes = () => k.store.activity(room.id, 500).filter((a) => a.actor === 'kernel' && a.text.startsWith('told ')).reverse()
+  await k.baseWatch.check(project.id, { fetch: false })
+  const check = (o: { fetch?: boolean; only?: string } = {}) => k.baseWatch.check(project.id, { fetch: o.fetch ?? false, ...(o.only ? { only: o.only } : {}) })
+  const notes = () => k.store.activity(project.id, 500).filter((a) => a.actor === 'kernel' && a.text.startsWith('told ')).reverse()
   const saved = () => k.store.meta<Record<string, { sha: string; behind: number; conflicts: string[]; told?: string }>>('baseWatch') ?? {}
-  return { k, repo, bare, room, kai, chat, posts, state, check, notes, saved, gh }
+  return { k, repo, bare, project, kai, chat, posts, state, check, notes, saved, gh }
 }
 
 /** Kai committed a change to src/a.ts, and main changed the same line. */
@@ -244,7 +244,7 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     s.state.busy = false
     const check = vi.spyOn(s.k.baseWatch, 'check')
     sessionDeps(s.k).onTurnDone!(s.k.store.workspace(s.kai.id)!, s.chat, { ok: true, interrupted: false, by: 'user' })
-    expect(check).toHaveBeenCalledWith(s.room.id, { fetch: false, only: s.kai.id })
+    expect(check).toHaveBeenCalledWith(s.project.id, { fetch: false, only: s.kai.id })
     await check.mock.results[0].value
     expect(s.posts).toHaveLength(1)
     expect(s.notes()).toHaveLength(1)
@@ -252,7 +252,7 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
 
   it("doesn't check the Lead's turn ends", async () => {
     const s = await setUp()
-    const leadChat = await s.k.lead.leadChat(s.room.id)
+    const leadChat = await s.k.lead.leadChat(s.project.id)
     const lead = s.k.store.workspace(leadChat.workspaceId)!
     const check = vi.spyOn(s.k.baseWatch, 'check')
     sessionDeps(s.k).onTurnDone!(lead, leadChat, { ok: true, interrupted: false, by: 'user' })
@@ -285,7 +285,7 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
 
   it("never messages the Lead, even when its worktree would conflict, and doesn't wake it", async () => {
     const s = await setUp()
-    const leadChat = await s.k.lead.leadChat(s.room.id)
+    const leadChat = await s.k.lead.leadChat(s.project.id)
     await s.k.workspaces.worktreeMade(leadChat.workspaceId)
     const lead = s.k.store.workspace(leadChat.workspaceId)!
     await writeFile(join(lead.path, 'src/a.ts'), SAME_LINE('lead, not committed'))
@@ -299,7 +299,7 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
 
   it('tells a chat in Build here, as it tells a teammate, and checks at its turn ends (KERNEL-778)', async () => {
     const s = await setUp()
-    const leadChat = await s.k.lead.leadChat(s.room.id)
+    const leadChat = await s.k.lead.leadChat(s.project.id)
     // Only a workspace whose setup finished is watched, and a slow machine is still setting it up once the worktree exists.
     await vi.waitFor(() => expect(s.k.store.workspace(leadChat.workspaceId)?.status).toBe('ready'), { timeout: 10_000, interval: 10 })
     s.k.lead.setMode(leadChat.workspaceId, 'build')
@@ -310,7 +310,7 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     expect(s.posts).toEqual([{ chatId: leadChat.id, text: baseMessage('origin/main', 1, ['src/a.ts']) }])
     const check = vi.spyOn(s.k.baseWatch, 'check')
     sessionDeps(s.k).onTurnDone!(s.k.store.workspace(lead.id)!, leadChat, { ok: true, interrupted: false, by: 'user' })
-    expect(check).toHaveBeenCalledWith(s.room.id, { fetch: false, only: lead.id })
+    expect(check).toHaveBeenCalledWith(s.project.id, { fetch: false, only: lead.id })
   })
 
   it('stops quietly when the fetch fails, and checks again once it works', async () => {
@@ -385,7 +385,7 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
 })
 
 describe('what starts a check', () => {
-  it("runs after a PR in the room merges, with a fetch", async () => {
+  it("runs after a PR in the project merges, with a fetch", async () => {
     const s = await setUp()
     const check = vi.spyOn(s.k.baseWatch, 'check').mockResolvedValue(undefined)
     const pr = (state: PrInfo['state']): PrInfo => ({ workspaceId: s.kai.id, number: 7, url: 'https://github.com/o/r/pull/7', title: 'feat: build', state, baseRef: 'main', checks: [], comments: [], conflicts: [] })
@@ -394,21 +394,21 @@ describe('what starts a check', () => {
     expect(check).not.toHaveBeenCalled()
     s.gh.pr = pr('merged')
     await s.k.refreshPr(s.kai.id)
-    expect(check).toHaveBeenCalledWith(s.room.id, { fetch: true })
+    expect(check).toHaveBeenCalledWith(s.project.id, { fetch: true })
   })
 
   it('runs after a new workspace fetched, and not when the fetch failed', async () => {
     const s = await setUp()
     const check = vi.spyOn(s.k.baseWatch, 'check').mockResolvedValue(undefined)
-    await s.k.createWorkspace(s.room.id, { prompt: 'More', agentId: 'kai', title: 'More' })
-    expect(check).toHaveBeenCalledWith(s.room.id, { fetch: false, fetched: true })
+    await s.k.createWorkspace(s.project.id, { prompt: 'More', agentId: 'kai', title: 'More' })
+    expect(check).toHaveBeenCalledWith(s.project.id, { fetch: false, fetched: true })
     check.mockClear()
     await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote')])
     // Past the minute a fetch that passed is reused for (KERNEL-542).
     vi.useFakeTimers({ toFake: ['Date'] })
     onTestFinished(() => { vi.useRealTimers() })
     vi.setSystemTime(Date.now() + FETCH_REUSE_MS + 1)
-    await s.k.createWorkspace(s.room.id, { prompt: 'Again', agentId: 'kai', title: 'Again' })
+    await s.k.createWorkspace(s.project.id, { prompt: 'Again', agentId: 'kai', title: 'Again' })
     expect(check).not.toHaveBeenCalled()
   })
 })
@@ -430,7 +430,7 @@ describe('catching up a workspace that started when the fetch failed (KERNEL-653
   /** A Kai workspace made while origin was unreachable, with origin back afterwards. */
   async function staleWorkspace(s: Awaited<ReturnType<typeof setUp>>) {
     await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote')])
-    const ws = await s.k.createWorkspace(s.room.id, { prompt: 'Stale', agentId: 'kai', title: 'Stale' })
+    const ws = await s.k.createWorkspace(s.project.id, { prompt: 'Stale', agentId: 'kai', title: 'Stale' })
     expect(ws.fetchFailed).toMatch(/^Fetching origin failed/)
     await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', s.bare])
     return { ws, chat: s.k.store.chats(ws.id)[0] }
@@ -487,7 +487,7 @@ describe('catching up a workspace that started when the fetch failed (KERNEL-653
     running.mockReturnValue(false)
     const check = vi.spyOn(s.k.baseWatch, 'check')
     sessionDeps(s.k).onTurnDone!(s.k.store.workspace(ws.id)!, chat, { ok: true, interrupted: false, by: 'user' })
-    expect(check).toHaveBeenCalledWith(s.room.id, { fetch: false, only: ws.id })
+    expect(check).toHaveBeenCalledWith(s.project.id, { fetch: false, only: ws.id })
     await check.mock.results[0].value
     expect(await sha(ws.path, 'HEAD')).toBe(await sha(s.repo, 'origin/main'))
     expect(s.k.store.workspace(ws.id)!.fetchFailed).toBeUndefined()

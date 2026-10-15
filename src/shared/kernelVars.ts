@@ -6,12 +6,12 @@ export const KERNEL_VARS = {
   KERNEL_PORT: 'The first of the workspace\'s ten ports. Start a dev server on it.',
   KERNEL_WORKSPACE_ID: 'The workspace\'s id in Kernel.',
   KERNEL_WORKSPACE: 'The workspace\'s folder.',
-  KERNEL_ROOT_PATH: 'The room\'s main checkout.',
+  KERNEL_ROOT_PATH: 'The project\'s main checkout.',
   KERNEL_WORKSPACE_NAME: 'The workspace\'s name, as the sidebar shows it.',
   KERNEL_WORKSPACE_SLUG: 'kernel_ and the start of the workspace\'s id. Name a database or a Docker Compose project after it to give each workspace its own.',
   KERNEL_BRANCH: 'The branch the workspace started on.',
   KERNEL_BASE_REF: 'The ref the workspace started from, like origin/main.',
-  KERNEL_DEFAULT_BRANCH: 'The room\'s default branch.'
+  KERNEL_DEFAULT_BRANCH: 'The project\'s default branch.'
 } as const
 
 export type KernelVar = keyof typeof KERNEL_VARS
@@ -43,7 +43,7 @@ export const SETUP_VARS = {
 export const isKernelVar = (name: string): boolean => Object.hasOwn(KERNEL_VARS, name) || Object.hasOwn(SETUP_VARS, name)
 
 /**
- * A name Kernel drops from app and room variables for chats and terminals, because it picks Claude Code's endpoint, account or
+ * A name Kernel drops from app and project variables for chats and terminals, because it picks Claude Code's endpoint, account or
  * billing (KERNEL-247). Scripts still get it. The engine strips these names with this rule too, so the Environment page and what agents get agree.
  */
 export const isClaudeVar = (name: string) => /^(ANTHROPIC_|CLAUDE_CODE_)/.test(name)

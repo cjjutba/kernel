@@ -24,11 +24,11 @@ export abstract class Feature {
   protected get overlaps() { return this.k.overlaps }
   protected get nudges() { return this.k.nudges }
   protected get ptys() { return this.k.ptys }
-  protected get roomIcons() { return this.k.roomIcons }
+  protected get projectIcons() { return this.k.projectIcons }
   protected get shared() { return this.k.shared }
   protected get envStore() { return this.k.envStore }
 
-  protected mustRoom(id: string) { return records.mustRoom(this.k.store, id) }
+  protected mustProject(id: string) { return records.mustProject(this.k.store, id) }
   protected mustWs(id: string) { return records.mustWs(this.k.store, id) }
   protected mustChat(chatId: string) { return records.mustChat(this.k.store, chatId) }
   protected chatTabs(workspaceId: string) { return records.chatTabs(this.k.store, workspaceId) }
@@ -40,6 +40,6 @@ export abstract class Feature {
   protected note(workspaceId: string, text: string, pr?: 'merged' | 'closed' | 'cifail', refs?: NoteRef[]) { return records.note(this.k.store, workspaceId, text, pr, refs) }
 
   // The team's, so code that moves out of kernel.ts keeps calling them as it did (KERNEL-326).
-  protected agentsSync(roomId: string) { return this.k.team.agentsSync(roomId) }
+  protected agentsSync(projectId: string) { return this.k.team.agentsSync(projectId) }
   protected isLeadWorkspace(ws: Workspace) { return this.k.team.isLeadWorkspace(ws) }
 }

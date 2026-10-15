@@ -40,11 +40,11 @@ async function setup() {
   k.sessions.send = async () => ({ queued: false })
   const gh = { pr: null as PrInfo | null }
   k.github = { info: async (_cwd, _ref, workspaceId) => (gh.pr ? { ...gh.pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
-  const room = await k.addRoom(repo)
-  const lead = await k.leadChat(room.id)
-  const kernel = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
-  const author = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
-  const create = kernelTools(k.lead['leadToolDeps'](room.id, kernel, lead)).find((t) => t.name === 'create_workspace')!
+  const project = await k.addProject(repo)
+  const lead = await k.leadChat(project.id)
+  const kernel = (await k.agents(project.id)).find((a) => a.lead) as AgentDef
+  const author = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+  const create = kernelTools(k.lead['leadToolDeps'](project.id, kernel, lead)).find((t) => t.name === 'create_workspace')!
   /** create_workspace as the Lead calls it; the id of the new workspace, or the refusal. */
   const handOff = async (args: Record<string, string>) => {
     const out = await create.handler(args as never, {})
@@ -57,7 +57,7 @@ async function setup() {
   bus.on('activity', onActivity)
   onTestFinished(() => { bus.off('activity', onActivity) })
   const status = (w: Workspace) => k.store.workspace(w.id)!.status
-  return { k, gh, room, lead, author, handOff, notes, status, where: k.o }
+  return { k, gh, project, lead, author, handOff, notes, status, where: k.o }
 }
 
 describe('create_workspace with a reviewer on another workspace\'s branch (KERNEL-299)', () => {
@@ -74,13 +74,13 @@ describe('create_workspace with a reviewer on another workspace\'s branch (KERNE
   })
 
   it('keeps an origin/ base and a short branch name, on a long reviewed branch', async () => {
-    const { k, gh, room, lead, handOff, status } = await setup()
+    const { k, gh, project, lead, handOff, status } = await setup()
     const remote = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
     await run('git', ['init', '-q', '--bare', remote])
-    await run('git', ['-C', room.path, 'remote', 'add', 'origin', remote])
-    await run('git', ['-C', room.path, 'push', '-q', 'origin', 'main'])
+    await run('git', ['-C', project.path, 'remote', 'add', 'origin', remote])
+    await run('git', ['-C', project.path, 'push', '-q', 'origin', 'main'])
     // The branch review_of can't start a review from yet (KERNEL-265), pushed with a commit on it.
-    const author = await k.createWorkspace(room.id, { prompt: 'Fix it', agentId: 'kai', title: 'MCP servers', leadChatId: lead.id, branch: 'cjjutbaofficial/kernel-295-agents-in-the-kernel-repo-start-three-mcp-servers-they-never' })
+    const author = await k.createWorkspace(project.id, { prompt: 'Fix it', agentId: 'kai', title: 'MCP servers', leadChatId: lead.id, branch: 'cjjutbaofficial/kernel-295-agents-in-the-kernel-repo-start-three-mcp-servers-they-never' })
     await writeFile(join(author.path, 'mcp.ts'), 'export {}\n')
     await run('git', ['-C', author.path, 'add', '-A'])
     await run('git', ['-C', author.path, 'commit', '-q', '-m', 'mcp'])
@@ -125,19 +125,19 @@ describe('create_workspace with a reviewer on another workspace\'s branch (KERNE
 
 describe('at start, reviews made with base_ref (KERNEL-299)', () => {
   it('links and archives reviews of work that merged or closed, keeps one with unsaved work, and leaves tasks and open work alone', async () => {
-    const { k, gh, room, lead, author, status, notes, where } = await setup()
+    const { k, gh, project, lead, author, status, notes, where } = await setup()
     // What the Lead did before: a reviewer started from the reviewed branch, with no review_of.
     const stale = async (agentId: string, of: Workspace, title: string) => {
-      const w = await k.createWorkspace(room.id, { prompt: title, agentId, title, leadChatId: lead.id })
+      const w = await k.createWorkspace(project.id, { prompt: title, agentId, title, leadChatId: lead.id })
       return k.store.saveWorkspace({ ...w, baseRef: `origin/${of.branch}` })
     }
     const merged = await stale('theo', author, 'Review PR #42')
     const dirty = await stale('theo', author, 'Second look at PR #42')
     await writeFile(join(dirty.path, 'scratch.md'), 'notes\n')
     const task = await stale('kai', author, 'Invoice export')
-    const other = await k.createWorkspace(room.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export UI', leadChatId: lead.id })
+    const other = await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export UI', leadChatId: lead.id })
     const openReview = await stale('theo', other, 'Review the export')
-    const closed = await k.createWorkspace(room.id, { prompt: 'Try a chart', agentId: 'kai', title: 'Invoice chart', leadChatId: lead.id })
+    const closed = await k.createWorkspace(project.id, { prompt: 'Try a chart', agentId: 'kai', title: 'Invoice chart', leadChatId: lead.id })
     const closedReview = await stale('theo', closed, 'Review the chart')
     // The PRs merge and close while nothing links the reviews, so nothing archives them.
     gh.pr = info('ready')

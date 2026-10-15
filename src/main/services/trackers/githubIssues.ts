@@ -2,7 +2,7 @@ import type { GithubIssue, GithubIssueDetail } from '@shared/types'
 import { exec } from '../exec'
 import { ghFailed, githubKey } from './github'
 
-// The fields the Issues screen shows for a room on GitHub Issues, through gh, which already holds the user's auth (KERNEL-471).
+// The fields the Issues screen shows for a project on GitHub Issues, through gh, which already holds the user's auth (KERNEL-471).
 
 const LIST_FIELDS = 'number,title,url,labels,assignees,milestone,author,updatedAt'
 const VIEW_FIELDS = `${LIST_FIELDS},body,comments`

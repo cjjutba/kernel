@@ -11,11 +11,11 @@ import { agentRole, cleanDescription, pluginOf, shownRole } from './agentRows'
 
 const matches = (a: AgentDef, q: string) => !q || `${a.name} ${agentRole(a)} ${cleanDescription(a.description)}`.toLowerCase().includes(q)
 
-/** Settings > Agents (AgentsPage.dc.html, KERNEL-641, KERNEL-680): the agents that join every room, with no room needed. A change on disk reaches this list as a push. */
+/** Settings > Agents (AgentsPage.dc.html, KERNEL-641, KERNEL-680): the agents that join every project, with no project needed. A change on disk reaches this list as a push. */
 export function Agents() {
   const s = useSettings()
   const list = useStore((st) => st.globalAgents)
-  const roomId = useStore((st) => st.rooms.find((r) => !r.hidden && !r.archived)?.id)
+  const projectId = useStore((st) => st.projects.find((r) => !r.hidden && !r.archived)?.id)
   const [query, setQuery] = useState('')
   const [closed, setClosed] = useState<string[]>([])
   useEffect(() => {
@@ -24,8 +24,8 @@ export function Agents() {
   }, [])
   const q = query.trim().toLowerCase()
   const edit = (a: AgentDef) => go({ name: 'settings', page: 'agents', agentId: a.id })
-  // With a room the draft is made through it. With none, the agent is personal: it lands in ~/.claude/agents and joins every room added later.
-  const hire = () => actions.ui.openModal({ name: 'newAgent', roomId, step: 'describe' })
+  // With a project the draft is made through it. With none, the agent is personal: it lands in ~/.claude/agents and joins every project added later.
+  const hire = () => actions.ui.openModal({ name: 'newAgent', projectId, step: 'describe' })
   const openFile = (a: AgentDef) => call('system.openInEditor', { path: a.file }).catch((e) => actions.ui.toast({ title: 'Could not open the file', sub: cleanError(e) }))
   const copyPath = (a: AgentDef) => navigator.clipboard.writeText(a.file).catch(() => actions.ui.toast({ title: 'Could not copy', sub: 'Select the path and copy it by hand.' }))
 
@@ -76,15 +76,15 @@ export function Agents() {
                   {g.plugin && <span className="set-badge">Plugin</span>}
                   <Icon name="right" size={12} />
                 </button>
-                {open && <div className="set-card">{g.shown.length ? g.shown.map((a) => row(a, g.plugin ? 'View' : 'Edit')) : <Row label="No personal agents" desc="Files in ~/.claude/agents join every room." />}</div>}
+                {open && <div className="set-card">{g.shown.length ? g.shown.map((a) => row(a, g.plugin ? 'View' : 'Edit')) : <Row label="No personal agents" desc="Files in ~/.claude/agents join every project." />}</div>}
               </section>
             )
           })}
           {q && groups.length === 0 && <p className="ag-empty">No agents match “{query}”</p>}
         </>
       )}
-      {s && <Section title="New rooms">
-        <Row id="new-rooms-team" setting="team.defaultTemplate" label="New rooms start with"><SegmentedControl label="New rooms start with" value={s.team.defaultTemplate} onChange={(v) => void patchSettings({ team: { defaultTemplate: v as AppSettings['team']['defaultTemplate'] } })} options={[{ value: 'starter', label: 'Starter team' }, { value: 'pair', label: 'Pair' }]} /></Row>
+      {s && <Section title="New projects">
+        <Row id="new-projects-team" setting="team.defaultTemplate" label="New projects start with"><SegmentedControl label="New projects start with" value={s.team.defaultTemplate} onChange={(v) => void patchSettings({ team: { defaultTemplate: v as AppSettings['team']['defaultTemplate'] } })} options={[{ value: 'starter', label: 'Starter team' }, { value: 'pair', label: 'Pair' }]} /></Row>
       </Section>}
     </Page>
   )

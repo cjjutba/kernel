@@ -7,13 +7,13 @@ An agent is a teammate with a name, a role, tools and instructions. Agents are p
 
 ## Where agents come from
 
-A room's team is made of:
+A project's team is made of:
 
 - the repo's agents, in `.claude/agents/`
 - your personal agents, in `~/.claude/agents/`
 - agents from your Claude Code plugins
 
-A repo with no agents can start from Kernel's starter agents: **Kai** for frontend, **Noor** for the engine, **Ivy** for QA and **Theo** for reviews. Add them from Settings, Agents, or when a plan has nobody who fits a task. An empty room can also copy another room's agents with **Copy from another room**.
+A repo with no agents can start from Kernel's starter agents: **Kai** for frontend, **Noor** for the engine, **Ivy** for QA and **Theo** for reviews. Add them from Settings, Agents, or when a plan has nobody who fits a task. An empty project can also copy another project's agents with **Copy from another project**.
 
 ## An agent file
 
@@ -35,15 +35,15 @@ Build to the screenshot or mock in the brief. Run the tests your change touches.
 
 ## Lead, reviewer and helpers
 
-- **Lead.** Kernel leads every room. Only an agent marked `lead: true`, or with `role: Lead`, can take its place.
-- **Reviewer.** The agent that reviews pull requests: the one picked in the room's Agents page, an agent whose role says review, or Kernel's own code review.
+- **Lead.** Kernel leads every project. Only an agent marked `lead: true`, or with `role: Lead`, can take its place.
+- **Reviewer.** The agent that reviews pull requests: the one picked in the project's Agents page, an agent whose role says review, or Kernel's own code review.
 - **Helpers.** An agent whose tools can't open a pull request, or that you mark so, gets no tasks of its own. Agents written as subagents with no pull request workflow start as helpers.
 
 ## Changing the team
 
 Settings, Agents lists every agent and opens each one's editor. Hiring, editing or retiring an agent is either just for you on this Mac, or for the team as a pull request. A change kept on your Mac never leaves uncommitted files in the repo.
 
-A room's Agents page picks its lead and reviewer, which agents take tasks, and how many workspaces Kernel keeps open in that room. The choice is saved in the repo's Kernel settings, so everyone on the repo gets it. A roster there can limit the team to some of the repo's agents.
+A project's Agents page picks its lead and reviewer, which agents take tasks, and how many workspaces Kernel keeps open in that project. The choice is saved in the repo's Kernel settings, so everyone on the repo gets it. A roster there can limit the team to some of the repo's agents.
 
 ## Claude Code or Codex
 

@@ -248,8 +248,8 @@ describe('reviews Kernel planned for the head commit (KERNEL-717)', () => {
   })
 
   it('lists the PR as waiting for approval, not ready', () => {
-    const w = { ...ws({ reviewRound: round(), roomId: 'room', agentId: 'kai', status: 'ready' }) } as Workspace
-    const [row] = leadPrs([w], { leadId: undefined, roomId: 'room', prs: { w: info() }, rules: both, agents: [] })
+    const w = { ...ws({ reviewRound: round(), projectId: 'project', agentId: 'kai', status: 'ready' }) } as Workspace
+    const [row] = leadPrs([w], { leadId: undefined, projectId: 'project', prs: { w: info() }, rules: both, agents: [] })
     expect(row).toMatchObject({ ready: false, state: { label: 'Waiting for approval' } })
     expect(row.blockers).toBeUndefined()
     // Merge reads the same rule, so it offers no Merge, nor Merge anyway.
@@ -381,7 +381,7 @@ describe('an overrule of the blockers on the head commit (KERNEL-732)', () => {
   })
 })
 
-// KERNEL-467: a room with no GitHub merges its branches on the Mac, with git plumbing and a compare-and-swap on the base.
+// KERNEL-467: a project with no GitHub merges its branches on the Mac, with git plumbing and a compare-and-swap on the base.
 
 const git = (dir: string, ...args: string[]) => run('git', ['-C', dir, ...args])
 const sha = async (dir: string, ref: string) => (await git(dir, 'rev-parse', ref)).trim()
@@ -573,7 +573,7 @@ describe('a local merge through the PR feature', () => {
   const kernels: Kernel[] = []
   afterEach(async () => { for (const k of kernels.splice(0)) await k.stop() })
 
-  it("reads the branch as ready, merges it with the room's method, and marks the workspace merged", async () => {
+  it("reads the branch as ready, merges it with the project's method, and marks the workspace merged", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
@@ -582,10 +582,10 @@ describe('a local merge through the PR feature', () => {
     await k.start()
     k.sessions.send = async () => ({ queued: false })
     const repo = await tempRepo({ 'README.md': '# shop\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.', '.kernel/settings.toml': '[pr]\nmerge_method = "merge"\n' })
-    const room = await k.addRoom(repo)
-    k.store.saveRoom({ ...room, host: 'local' })
-    const ws = await setUp(k, (await k.workspaces.createWorkspace(room.id, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
-    await expect(k.prs.createPr(ws.id)).rejects.toThrow('This room merges on this Mac')
+    const project = await k.addProject(repo)
+    k.store.saveProject({ ...project, host: 'local' })
+    const ws = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
+    await expect(k.prs.createPr(ws.id)).rejects.toThrow('This project merges on this Mac')
     await commit(ws.path, { 'cart.ts': 'export const cart = []\n' }, 'feat: cart')
 
     const ready = await k.prs.refreshPr(ws.id)
@@ -618,15 +618,15 @@ describe('a local merge through the PR feature', () => {
     const sent: unknown[] = []
     k.sessions.send = async (_chat, parts) => { sent.push(parts); return { queued: false } }
     const repo = await tempRepo({ 'README.md': '# shop\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
-    const room = await k.addRoom(repo)
-    const ws = await setUp(k, (await k.workspaces.createWorkspace(room.id, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
+    const project = await k.addProject(repo)
+    const ws = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
     await commit(ws.path, { 'cart.ts': 'export const cart = []\n' }, 'feat: cart')
     // The brief the workspace started with went through the same stand-in.
     sent.length = 0
 
-    // A room on GitHub has its own Update branch.
+    // A project on GitHub has its own Update branch.
     await expect(k.prs.updateBranch(ws.id)).rejects.toThrow('Only a branch that merges on this Mac')
-    k.store.saveRoom({ ...room, host: 'local' })
+    k.store.saveProject({ ...project, host: 'local' })
     await expect(k.prs.updateBranch(ws.id)).rejects.toThrow('This branch is up to date with main.')
     expect(sent).toEqual([])
 
@@ -648,7 +648,7 @@ describe('a local merge through the PR feature', () => {
   })
 })
 
-describe("the room's merge method (KERNEL-468)", () => {
+describe("the project's merge method (KERNEL-468)", () => {
   const kernels: Kernel[] = []
   afterEach(async () => { for (const k of kernels.splice(0)) await k.stop() })
 
@@ -663,9 +663,9 @@ describe("the room's merge method (KERNEL-468)", () => {
     return k
   }
 
-  /** A room whose repo has `files`, with a workspace per title, each with a PR that reads ready. */
-  async function room(k: Kernel, titles: string[], files: Record<string, string> = {}) {
-    const r = await k.addRoom(await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nYou are Kai.', ...files }))
+  /** A project whose repo has `files`, with a workspace per title, each with a PR that reads ready. */
+  async function project(k: Kernel, titles: string[], files: Record<string, string> = {}) {
+    const r = await k.addProject(await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nYou are Kai.', ...files }))
     const out: Workspace[] = []
     for (const title of titles) {
       const ws = await k.workspaces.createWorkspace(r.id, { prompt: title, agentId: 'kai', title })
@@ -702,7 +702,7 @@ describe("the room's merge method (KERNEL-468)", () => {
   it('merges with a method the repo allows, asks the host once, and keeps the method for the toast', async () => {
     const k = await kernel()
     const gh = stub(k, ['merge', 'rebase'])
-    const [a, b, c] = await room(k, ['Invoice table', 'Invoice filters', 'Invoice export'])
+    const [a, b, c] = await project(k, ['Invoice table', 'Invoice filters', 'Invoice export'])
     await k.prs.mergePr(a.id)
     await k.prs.mergePr(b.id)
     expect(gh.merges).toEqual([`${a.branch} merge`, `${b.branch} merge`])
@@ -714,17 +714,17 @@ describe("the room's merge method (KERNEL-468)", () => {
     expect(gh.asked).toBe(2)
   })
 
-  it("merges with the room's [pr] merge_method over the app's, without asking the host", async () => {
+  it("merges with the project's [pr] merge_method over the app's, without asking the host", async () => {
     const k = await kernel()
     const gh = stub(k, ['squash', 'merge', 'rebase'])
-    const [ws] = await room(k, ['Invoice table'], { '.kernel/settings.toml': '[pr]\nmerge_method = "rebase"\n' })
+    const [ws] = await project(k, ['Invoice table'], { '.kernel/settings.toml': '[pr]\nmerge_method = "rebase"\n' })
     await k.prs.mergePr(ws.id)
     expect(gh.merges).toEqual([`${ws.branch} rebase`])
     expect(gh.asked).toBe(0)
     expect(k.store.workspace(ws.id)?.mergedWith).toBe('rebase')
   })
 
-  it("gives a local room its [pr] merge_method, else the app's, without asking GitHub (KERNEL-467)", async () => {
+  it("gives a local project its [pr] merge_method, else the app's, without asking GitHub (KERNEL-467)", async () => {
     const k = await kernel()
     const gh = stub(k, ['merge'])
     const plain = await tempRepo()
@@ -739,7 +739,7 @@ describe("the room's merge method (KERNEL-468)", () => {
   it("uses the app's method when the host can't say, and asks again after a merge fails", async () => {
     const k = await kernel()
     const unread = stub(k, new Error('gh: Could not resolve to a Repository'))
-    const [a, b] = await room(k, ['Invoice table', 'Invoice filters'])
+    const [a, b] = await project(k, ['Invoice table', 'Invoice filters'])
     await k.prs.mergePr(a.id)
     expect(unread.merges).toEqual([`${a.branch} squash`])
 
@@ -769,7 +769,7 @@ describe("the room's merge method (KERNEL-468)", () => {
     it("holds a person's Merge to the head GitHub read just before", async () => {
       const k = await kernel()
       const gh = host(k, async (_o, gh) => { gh.merged = true })
-      const [ws] = await room(k, ['Invoice table'])
+      const [ws] = await project(k, ['Invoice table'])
       expect((await k.prs.mergePr(ws.id)).prState).toBe('merged')
       expect(gh.heads).toEqual([A])
     })
@@ -777,14 +777,14 @@ describe("the room's merge method (KERNEL-468)", () => {
     it('shows the Merge button no error when gh timed out after GitHub merged', async () => {
       const k = await kernel()
       host(k, async (_o, gh) => { gh.merged = true; throw new Error("gh pr merge --squash didn't finish in 60 seconds") })
-      const [ws] = await room(k, ['Invoice table'])
+      const [ws] = await project(k, ['Invoice table'])
       expect(await k.prs.mergePr(ws.id)).toMatchObject({ prState: 'merged', mergedWith: 'squash' })
     })
 
     it('still fails a merge that failed when GitHub has not merged it', async () => {
       const k = await kernel()
       host(k, async () => { throw new Error("gh pr merge --squash didn't finish in 60 seconds") })
-      const [ws] = await room(k, ['Invoice table'])
+      const [ws] = await project(k, ['Invoice table'])
       await expect(k.prs.mergePr(ws.id)).rejects.toThrow("didn't finish")
       expect(k.store.workspace(ws.id)?.prState).toBe('ready')
     })

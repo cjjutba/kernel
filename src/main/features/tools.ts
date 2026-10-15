@@ -18,10 +18,10 @@ export class Tools extends Feature {
    * (KERNEL-473), and share_file while sharing is on.
    */
   toolsFor(ws: Workspace, agent: AgentDef | undefined, chat: Chat) {
-    const own = agent?.lead ? kernelTools(this.k.lead.leadToolDeps(ws.roomId, agent, chat))
+    const own = agent?.lead ? kernelTools(this.k.lead.leadToolDeps(ws.projectId, agent, chat))
       : ws.reviewOf ? reviewTools({ submit: (review) => this.k.reviews.submitReview(ws.id, review, chat.id) })
       : teammateTools(this.k.waits.teammateToolDeps(ws.id))
-    const issue = issueTools({ issueKey: () => this.issueKey(ws.id), tracker: () => this.k.integrations.trackerFor(ws.roomId) })
+    const issue = issueTools({ issueKey: () => this.issueKey(ws.id), tracker: () => this.k.integrations.trackerFor(ws.projectId) })
     return [...own, ...issue, ...(this.sharing ? sharedTools({ share: (o) => this.k.sharing.shareFile(ws.id, chat.id, o) }) : [])]
   }
 

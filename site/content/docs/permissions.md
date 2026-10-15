@@ -3,7 +3,7 @@ title: Permissions
 description: Choose how much agents do without asking, and what always holds.
 ---
 
-Every chat runs in a permission mode that decides which steps ask you first. Settings, Permissions sets the default, each room can override it, and each chat can pick its own from the mode menu in its message box.
+Every chat runs in a permission mode that decides which steps ask you first. Settings, Permissions sets the default, each project can override it, and each chat can pick its own from the mode menu in its message box.
 
 ## Modes
 
@@ -33,10 +33,10 @@ In Bypass permissions, Claude agents run their commands in a sandbox that limits
 A request says what the agent wants to run and why Kernel is asking, in one line under the command. Answer it in the chat, on Home or in the Inbox:
 
 - **Allow once** runs it this time.
-- **Always allow here** allows it in this room from now on. A chained command counts when every part of it is allowed.
+- **Always allow here** allows it in this project from now on. A chained command counts when every part of it is allowed.
 - **Deny** refuses it. ⌘↵ approves and ⌘⌫ denies.
 
-A room's Permissions page lists the commands and tools saved with Always allow, and removes them.
+A project's Permissions page lists the commands and tools saved with Always allow, and removes them.
 
 ## Settings, Permissions
 

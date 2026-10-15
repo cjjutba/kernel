@@ -31,7 +31,7 @@ function leadTools(answer: Decision | null, plan = { on: true }) {
   const askUser = vi.fn(async () => answer)
   const ws = { id: 'ws-1', branch: 'kernel/symlink-node-modules', agentId: 'noor' } as Workspace
   const deps: KernelToolDeps = {
-    roomId: 'room', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
+    projectId: 'project', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
     createWorkspace: async () => ws, messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser, hireAgent: async () => '',
     archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false,
     planMode: () => plan.on, planApproved, handedOff
@@ -47,7 +47,7 @@ function leadTools(answer: Decision | null, plan = { on: true }) {
 
 const PLAN = '# Symlink node_modules\n\nWorktrees reinstall every package. Link them to the main checkout instead.\n\n## Checks\n\n- pnpm test'
 
-/** request_plan_approval in a real Kernel's Lead chat, and the room's plan approvals. */
+/** request_plan_approval in a real Kernel's Lead chat, and the project's plan approvals. */
 async function realLead() {
   const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.', '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor. Open a PR for each task.' })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -56,20 +56,20 @@ async function realLead() {
   const k = new Kernel({ dataDir, home })
   onTestFinished(() => k.stop())
   await k.start()
-  const room = await k.addRoom(repo)
-  const chat = await k.leadChat(room.id)
+  const project = await k.addProject(repo)
+  const chat = await k.leadChat(project.id)
   // The plan file goes in the chat's worktree, which Kernel makes after the chat starts (KERNEL-542).
   await k.workspaces.worktreeMade(chat.workspaceId)
-  const lead = (await k.agents(room.id)).find((a) => a.lead)!
-  const deps = k.lead.leadToolDeps(room.id, lead, chat)
+  const lead = (await k.agents(project.id)).find((a) => a.lead)!
+  const deps = k.lead.leadToolDeps(project.id, lead, chat)
   const tool = kernelTools(deps).find((x) => x.name === 'request_plan_approval')!
-  const plans = () => k.store.approvals({ roomId: room.id }).filter((a) => a.kind === 'plan')
+  const plans = () => k.store.approvals({ projectId: project.id }).filter((a) => a.kind === 'plan')
   // The plan file is written after the card shows, so a test waits for it before `k.stop()` closes the store (KERNEL-383).
   const planSaved = async () => {
     for (let i = 0; i < 100 && !plans()[0]?.planFile; i++) await new Promise((r) => setTimeout(r, 20))
     return plans()[0]?.planFile
   }
-  return { k, room, chat, tool, plans, planSaved }
+  return { k, project, chat, tool, plans, planSaved }
 }
 
 describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
@@ -92,19 +92,19 @@ describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
   })
 })
 
-describe("create_workspace stops at the room's open teammate workspaces (KERNEL-220)", () => {
+describe("create_workspace stops at the project's open teammate workspaces (KERNEL-220)", () => {
   const ws = (n: number, extra: Partial<Workspace> = {}) => Array.from({ length: n }, (_, i) => ({ id: `w${i}-${extra.status ?? extra.prState ?? extra.reviewOf ?? 'open'}`, name: `w${i}`, branch: `feat/w${i}`, agentId: 'noor', status: 'ready', prState: 'none', ...extra }) as Workspace)
   const kernel = { id: 'kernel', name: 'Kernel', role: 'Lead', lead: true } as AgentDef
   const noor = { id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef
   const args = { agent: 'noor', title: 'Next task', brief: 'Goal, files, acceptance criteria' }
-  const APP = "Archive one, or the user can raise Agents working at once in Settings, Models and effort, or set this room's own limit in Settings, app, Agents."
-  const ROOM = 'Archive one, or the user can change it in Settings, app, Agents.'
-  /** create_workspace with `cap` from Settings, Models, or from the room's own limit when `own`. */
+  const APP = "Archive one, or the user can raise Agents working at once in Settings, Models and effort, or set this project's own limit in Settings, app, Agents."
+  const PROJECT = 'Archive one, or the user can change it in Settings, app, Agents.'
+  /** create_workspace with `cap` from Settings, Models, or from the project's own limit when `own`. */
   function tools(workspaces: Workspace[], cap?: number, own = false) {
     const createWorkspace = vi.fn(async () => ({ id: 'new', branch: 'feat/next-task', agentId: 'noor' }) as Workspace)
     const deps = {
-      roomId: 'room', lead: kernel, agents: async () => [kernel, noor], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }),
-      askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, ...(cap === undefined ? {} : { agentCap: async () => ({ cap, own, room: 'app' }) })
+      projectId: 'project', lead: kernel, agents: async () => [kernel, noor], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }),
+      askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, ...(cap === undefined ? {} : { agentCap: async () => ({ cap, own, project: 'app' }) })
     } as unknown as KernelToolDeps
     const create = kernelTools(deps).find((t) => t.name === 'create_workspace')!
     return { createWorkspace, run: async (a: object = args) => { const r = await create.handler(a as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } } }
@@ -112,14 +112,14 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
 
   it('refuses at the limit and names the setting that gave it (KERNEL-492)', async () => {
     const t = tools(ws(3), 3)
-    expect(await t.run()).toEqual({ isError: true, text: `Not created: 3 teammate workspaces are open in this room, the limit. ${APP}` })
+    expect(await t.run()).toEqual({ isError: true, text: `Not created: 3 teammate workspaces are open in this project, the limit. ${APP}` })
     expect(t.createWorkspace).not.toHaveBeenCalled()
-    expect(await tools(ws(2), 2, true).run()).toEqual({ isError: true, text: `Not created: 2 teammate workspaces are open in this room, the limit. ${ROOM}` })
-    expect(capRefusal(1, { cap: 1, own: false, room: 'app' })).toContain('1 teammate workspace is open in this room, the limit.')
-    expect(capRefusal(5, { cap: 3, own: true, room: 'app' })).toBe(`5 teammate workspaces are open in this room, over the limit of 3. ${ROOM}`)
+    expect(await tools(ws(2), 2, true).run()).toEqual({ isError: true, text: `Not created: 2 teammate workspaces are open in this project, the limit. ${PROJECT}` })
+    expect(capRefusal(1, { cap: 1, own: false, project: 'app' })).toContain('1 teammate workspace is open in this project, the limit.')
+    expect(capRefusal(5, { cap: 3, own: true, project: 'app' })).toBe(`5 teammate workspaces are open in this project, over the limit of 3. ${PROJECT}`)
   })
 
-  it('has no cap at 0, from the room or the app, with no hidden default (KERNEL-492)', async () => {
+  it('has no cap at 0, from the project or the app, with no hidden default (KERNEL-492)', async () => {
     expect((await tools(ws(9), 0).run()).isError).toBe(false)
     expect((await tools(ws(9), 0, true).run()).isError).toBe(false)
   })
@@ -144,7 +144,7 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
   })
 
   it('has no cap when the deps give none', async () => {
-    expect((await tools(ws(4), 3).run()).text).toContain('4 teammate workspaces are open in this room, over the limit of 3.')
+    expect((await tools(ws(4), 3).run()).text).toContain('4 teammate workspaces are open in this project, over the limit of 3.')
     expect((await tools(ws(9)).run()).isError).toBe(false)
   })
 
@@ -152,7 +152,7 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
     const reviewer = { id: 'theo', name: 'Theo', role: 'Reviewer', lead: false } as AgentDef
     const workspaces = ws(3)
     const createWorkspace = vi.fn(async () => ({ id: 'rv', branch: 'review/w0', agentId: 'theo' }) as Workspace)
-    const deps = { roomId: 'room', lead: kernel, agents: async () => [kernel, noor, reviewer], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }), askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, agentCap: async () => ({ cap: 3, own: false, room: 'app' }) } as unknown as KernelToolDeps
+    const deps = { projectId: 'project', lead: kernel, agents: async () => [kernel, noor, reviewer], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }), askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, agentCap: async () => ({ cap: 3, own: false, project: 'app' }) } as unknown as KernelToolDeps
     const create = kernelTools(deps).find((t) => t.name === 'create_workspace')!
     const r = await create.handler({ agent: 'theo', title: 'Review w0', brief: 'Review it', review_of: workspaces[0].id } as never, {})
     expect((r as { isError?: boolean }).isError).toBeFalsy()
@@ -160,7 +160,7 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
   })
 
   it('tells the Lead to set user_asked only when the user asked for more', () => {
-    expect(LEAD_RULE).toContain('create_workspace refuses once the room has as many teammate workspaces open as its limit allows.')
+    expect(LEAD_RULE).toContain('create_workspace refuses once the project has as many teammate workspaces open as its limit allows.')
     expect(LEAD_RULE).toContain('Pass user_asked true only when the user explicitly asked for more teammate workspaces than the limit allows.')
   })
 
@@ -169,29 +169,29 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
     expect(`${LEAD_RULE}\n${LEAD_SHARING_RULE}`).not.toMatch(/[\u2013\u2014]/)
   })
 
-  it("reads the room's own limit, then Settings, Models', in a real Kernel (KERNEL-492)", { timeout: 60_000 }, async () => {
-    const { k, room, chat } = await realLead()
+  it("reads the project's own limit, then Settings, Models', in a real Kernel (KERNEL-492)", { timeout: 60_000 }, async () => {
+    const { k, project, chat } = await realLead()
     k.sessions.send = async () => ({ queued: false })
-    const lead = (await k.agents(room.id)).find((a) => a.lead)!
-    const create = kernelTools(k.lead.leadToolDeps(room.id, lead, chat)).find((t) => t.name === 'create_workspace')!
+    const lead = (await k.agents(project.id)).find((a) => a.lead)!
+    const create = kernelTools(k.lead.leadToolDeps(project.id, lead, chat)).find((t) => t.name === 'create_workspace')!
     const make = async (title: string, more: object = {}) => { const r = await create.handler({ agent: 'noor', title, brief: 'Build it', ...more } as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } }
-    const roomCap = (openWorkspaces: number | null) => k.handlers()['settings.setRoom']({ roomId: room.id, patch: { agents: { openWorkspaces } } })
+    const projectCap = (openWorkspaces: number | null) => k.handlers()['settings.setProject']({ projectId: project.id, patch: { agents: { openWorkspaces } } })
     const appCap = (agentLimit: number) => k.handlers()['settings.set']({ patch: { models: { agentLimit } } })
-    const open = () => k.store.workspaces(room.id).filter((w) => !w.lead).length
-    // The room's 2 wins over the app's No limit.
-    await roomCap(2)
+    const open = () => k.store.workspaces(project.id).filter((w) => !w.lead).length
+    // The project's 2 wins over the app's No limit.
+    await projectCap(2)
     for (const title of ['One', 'Two']) expect((await make(title)).isError, title).toBe(false)
-    expect(await make('Three')).toEqual({ isError: true, text: `Not created: 2 teammate workspaces are open in this room, the limit. Archive one, or the user can change it in Settings, ${room.name}, Agents.` })
-    // The room's No limit wins over the app's 3. A workspace the user opens from New workspace counts like a hand-off.
-    await roomCap(0)
+    expect(await make('Three')).toEqual({ isError: true, text: `Not created: 2 teammate workspaces are open in this project, the limit. Archive one, or the user can change it in Settings, ${project.name}, Agents.` })
+    // The project's No limit wins over the app's 3. A workspace the user opens from New workspace counts like a hand-off.
+    await projectCap(0)
     await appCap(3)
-    await k.handlers()['workspaces.create']({ roomId: room.id, agentId: 'noor', prompt: 'Mine' })
+    await k.handlers()['workspaces.create']({ projectId: project.id, agentId: 'noor', prompt: 'Mine' })
     expect((await make('Four')).isError).toBe(false)
     expect(open()).toBe(4)
-    // With the room on Same as, the app's 4 applies, and the user's workspace is one of the four.
-    await roomCap(null)
+    // With the project on Same as, the app's 4 applies, and the user's workspace is one of the four.
+    await projectCap(null)
     await appCap(4)
-    expect(await make('Five')).toEqual({ isError: true, text: `Not created: 4 teammate workspaces are open in this room, the limit. Archive one, or the user can raise Agents working at once in Settings, Models and effort, or set this room's own limit in Settings, ${room.name}, Agents.` })
+    expect(await make('Five')).toEqual({ isError: true, text: `Not created: 4 teammate workspaces are open in this project, the limit. Archive one, or the user can raise Agents working at once in Settings, Models and effort, or set this project's own limit in Settings, ${project.name}, Agents.` })
     expect((await make('Five, as asked', { user_asked: true })).isError).toBe(false)
     // Neither sets a limit: No limit is no cap, not three.
     await appCap(0)
@@ -301,18 +301,18 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
   /** A real Kernel's Lead chat with plan mode off, whose user last wrote `said`, and its create_workspace. */
   async function offLead(said?: string) {
     const r = await realLead()
-    const { k, room, chat } = r
+    const { k, project, chat } = r
     k.sessions.send = async () => ({ queued: false })
     await k.sessions.configure(chat.id, { plan: false })
     if (said) k.store.saveItem(chat.id, { kind: 'user', id: 'said', ts: Date.now(), parts: [{ type: 'text', text: said }] })
-    const lead = (await k.agents(room.id)).find((a) => a.lead)!
-    const tools = kernelTools(k.lead.leadToolDeps(room.id, lead, chat))
+    const lead = (await k.agents(project.id)).find((a) => a.lead)!
+    const tools = kernelTools(k.lead.leadToolDeps(project.id, lead, chat))
     const run = async (name: string, args: object) => {
       const out = await tools.find((t) => t.name === name)!.handler(args as never, {})
       return { text: (out.content[0] as { text: string }).text, isError: !!(out as { isError?: boolean }).isError }
     }
     const handOff = (more: object = {}) => run('create_workspace', { agent: 'noor', title: 'Symlink node_modules', brief: 'Build it', ...more })
-    const teammates = () => k.store.workspaces(room.id).filter((w) => !w.lead)
+    const teammates = () => k.store.workspaces(project.id).filter((w) => !w.lead)
     return { ...r, run, handOff, teammates }
   }
 
@@ -391,8 +391,8 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     // LEAD_RULE's length on main before KERNEL-678. The rule was rewritten, not added to. KERNEL-745 added its one sentence
     // about mentions, 80 characters past that, KERNEL-747 its sentence about proposed hand-offs, 61 more, and KERNEL-777 its
     // sentence about limit replies, 176 more, and feat-review-messages-reach-named its sentence about reporting a message's
-    // answer and the review kind to name, 118 more.
-    expect(LEAD_RULE.length).toBeLessThanOrEqual(5830)
+    // answer and the review kind to name, 118 more. KERNEL-880 renamed room to project, 9 more.
+    expect(LEAD_RULE.length).toBeLessThanOrEqual(5839)
   })
 
   // KERNEL-692: Kernel is the Lead, so its rule speaks to Kernel and never about Kernel in the third person.
@@ -487,7 +487,7 @@ describe('create_workspace with issue (KERNEL-163)', () => {
   it('passes the issue key through, and the rule tells the Lead to', async () => {
     const asked: Parameters<KernelToolDeps['createWorkspace']>[0][] = []
     const deps: KernelToolDeps = {
-      roomId: 'room', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
+      projectId: 'project', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
       createWorkspace: async (o) => { asked.push(o); return { id: 'ws-1', branch: 'cj/kernel-83-issues', agentId: 'noor' } as Workspace },
       messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
@@ -497,7 +497,7 @@ describe('create_workspace with issue (KERNEL-163)', () => {
     await tool.handler({ agent: 'noor', title: 'Other', brief: 'Goal' } as never, {})
     expect(asked[0]).toMatchObject({ agentId: 'noor', title: 'Issues screen', issue: 'KERNEL-83' })
     expect(asked[1]).not.toHaveProperty('issue')
-    expect(LEAD_RULE).toContain("When a task builds an issue from the room's tracker, pass its key as issue to create_workspace. The issue goes into the teammate's brief, and mcp__kernel__get_issue reads any issue.")
+    expect(LEAD_RULE).toContain("When a task builds an issue from the project's tracker, pass its key as issue to create_workspace. The issue goes into the teammate's brief, and mcp__kernel__get_issue reads any issue.")
   })
 })
 
@@ -549,9 +549,9 @@ describe('get_issue and the issue in the brief (KERNEL-473)', () => {
   it('says plainly when there is no issue, no tracker, a GitHub key in another tracker, or the tracker fails', async () => {
     expect(await getIssue().run()).toEqual({ isError: true, text: "Not read: this workspace isn't linked to an issue. Pass key to read one." })
     const none = getIssue({ kind: 'none', key: 'PROJ-7' })
-    expect(await none.run()).toEqual({ isError: true, text: "Not read: this room has no issue tracker, so Kernel can't read PROJ-7." })
+    expect(await none.run()).toEqual({ isError: true, text: "Not read: this project has no issue tracker, so Kernel can't read PROJ-7." })
     expect(none.asked).toEqual([])
-    expect(await getIssue({ key: '#41' }).run()).toEqual({ isError: true, text: "Not read: #41 is a GitHub issue, and this room's tracker is Linear." })
+    expect(await getIssue({ key: '#41' }).run()).toEqual({ isError: true, text: "Not read: #41 is a GitHub issue, and this project's tracker is Linear." })
     expect((await getIssue({ kind: 'github', key: '#41' }).run()).isError).toBe(false)
     expect(await getIssue({ key: 'PROJ-7', fails: LINEAR_SIGNED_OUT }).run()).toEqual({ isError: true, text: `Not read: ${LINEAR_SIGNED_OUT}` })
   })
@@ -590,9 +590,9 @@ describe('get_issue and the issue in the brief (KERNEL-473)', () => {
     }
   })
 
-  it('names no tracker in what any agent reads before the room is known', () => {
+  it('names no tracker in what any agent reads before the project is known', () => {
     const lead = kernelTools({
-      roomId: 'room', lead: undefined, agents: async () => [], workspaces: () => [], createWorkspace: async () => ({}) as Workspace,
+      projectId: 'project', lead: undefined, agents: async () => [], workspaces: () => [], createWorkspace: async () => ({}) as Workspace,
       messageWorkspace: async () => ({ ok: true, note: '' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
     })
@@ -639,7 +639,7 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
   function tools(made: Partial<Workspace & { setupFailed: string; queued: QueueReason }> = {}) {
     const asked: string[] = []
     const deps: KernelToolDeps = {
-      roomId: 'room', lead: team[0], agents: async () => team, workspaces: () => [],
+      projectId: 'project', lead: team[0], agents: async () => team, workspaces: () => [],
       createWorkspace: async (o) => { asked.push(o.agentId); return { id: 'ws-1', branch: 'feat/x', agentId: o.agentId, ...made } as Workspace },
       messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
@@ -682,7 +682,7 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
   it('says when the brief waits for a slot, a pause or the connection, so the teammate has not started (KERNEL-272)', async () => {
     const said: [QueueReason | undefined, string][] = [
       ['capacity', "Created ws-1 on feat/x for kai. Every agent slot in Settings, Models is in use, so Kai hasn't started. The brief goes out when a slot frees up."],
-      ['paused', "Created ws-1 on feat/x for kai. The room is paused, so Kai hasn't started. The brief goes out when the user resumes it."],
+      ['paused', "Created ws-1 on feat/x for kai. The project is paused, so Kai hasn't started. The brief goes out when the user resumes it."],
       ['offline', "Created ws-1 on feat/x for kai. Kernel is offline or signed out, so Kai hasn't started. The brief goes out once it is back."],
       // The brief went out: a message the Lead sent during setup waiting behind it is not the teammate waiting.
       ['running', 'Created ws-1 on feat/x for kai.'],
@@ -708,7 +708,7 @@ describe('create_workspace with review_of (KERNEL-130)', () => {
   function tools(list: Workspace[]) {
     const made: { reviewOf?: string }[] = []
     const deps: KernelToolDeps = {
-      roomId: 'room', lead: team[0], agents: async () => team, workspaces: () => list,
+      projectId: 'project', lead: team[0], agents: async () => team, workspaces: () => list,
       createWorkspace: async (o) => { made.push(o); return { id: 'rv', branch: 'feat/x-review', agentId: o.agentId } as Workspace },
       messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
@@ -729,7 +729,7 @@ describe('create_workspace with review_of (KERNEL-130)', () => {
 
   it('refuses unknown or archived work, the Lead\'s own, a review of a review, and a second open review by the same reviewer', async () => {
     const t = tools([ws('gone', { status: 'archived' }), ws('lead', { agentId: 'kernel', mode: 'current' }), ws('w1'), ws('rv1', { agentId: 'theo', reviewOf: 'w1' }), ws('main', { mode: 'current' }), ws('done', { prState: 'merged' })])
-    expect(await t.review('nope')).toEqual({ isError: true, text: 'Not created: there is no workspace nope in this room to review. Call list_workspaces for the ids.' })
+    expect(await t.review('nope')).toEqual({ isError: true, text: 'Not created: there is no workspace nope in this project to review. Call list_workspaces for the ids.' })
     expect(await t.review('gone')).toEqual({ isError: true, text: 'Not created: gone is archived. Ask the user to restore it from History first.' })
     expect(await t.review('lead')).toEqual({ isError: true, text: 'Not created: that is your own workspace.' })
     expect(await t.review('rv1')).toEqual({ isError: true, text: 'Not created: rv1 is itself a review. Review the work it reviews instead (workspace w1).' })
@@ -746,7 +746,7 @@ describe('reviews block only on real problems (KERNEL-377)', () => {
   it('gives the reviewer, submit_review and both Theo files the same blocker list', async () => {
     const [submit] = reviewTools({ submit: async () => '' })
     const theos = await Promise.all([join('docs', 'starter-agents', 'theo.md'), join('.claude', 'agents', 'theo.md')].map((f) => readFile(join(__dirname, '..', f), 'utf8')))
-    // Kernel's own code review too, which runs when a room has no reviewer (KERNEL-549).
+    // Kernel's own code review too, which runs when a project has no reviewer (KERNEL-549).
     const code = await readFile(join(__dirname, '..', 'docs', 'lenses', 'code.md'), 'utf8')
     for (const text of [rule, submit.description, ...theos, code]) expect(text).toContain(BLOCKER_RULE)
     for (const theo of theos) expect(theo).not.toMatch(/nits|file, line, fix/)

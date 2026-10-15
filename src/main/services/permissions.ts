@@ -1,12 +1,12 @@
 import { realpathSync } from 'node:fs'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, Chat, ChatRunMode, Decision, ModeReason, ModeScope, PermissionMode, Room, RunMode, Workspace } from '@shared/types'
+import type { AgentDef, Chat, ChatRunMode, Decision, ModeReason, ModeScope, PermissionMode, Project, RunMode, Workspace } from '@shared/types'
 import { PERMISSION_MODES } from '@shared/types'
 import type { AppSettings } from './settings'
 import type { RunnerHost } from './providers/types'
 import { needsUser } from './approvals'
-import { bashVerdict, pushMightReach, roomRule, usesNetwork } from './bashGuard'
+import { bashVerdict, pushMightReach, projectRule, usesNetwork } from './bashGuard'
 import { checkedOutBranch } from './worktrees'
 
 // The permission rules both runners apply (KERNEL-434). A runner describes the step, asks `decide`, and turns the answer
@@ -37,7 +37,7 @@ export interface ChatAvailability { auto: boolean; bypass: boolean }
 export const bypassFits = (ws: Pick<Workspace, 'mode'>, settings: Pick<AppSettings, 'permissions'>) => ws.mode === 'worktree' || settings.permissions.bypassOnlyInWorktrees === false
 
 /**
- * The mode a chat runs in (KERNEL-447). Plan comes first, then the chat's own mode, the room's and the app's. An agent file's
+ * The mode a chat runs in (KERNEL-447). Plan comes first, then the chat's own mode, the project's and the app's. An agent file's
  * `permissionMode` only tightens it: its `plan` and `dontAsk` count as Manual, the strictest mode that still builds, since
  * Kernel's own plan step owns plan mode. Auto falls back to Accept edits where the chat can't run it, and so does Bypass
  * permissions where policy turns it off or the workspace doesn't fit it. A mode Kernel doesn't know counts as Manual.
@@ -49,10 +49,10 @@ export function effectiveMode(...args: Parameters<typeof chatMode>): RunMode { r
  * first step that moves it off the pick names the reason, so a Bypass pick that an agent file turns into Auto, which the
  * chat can't run, reads as the agent file's doing.
  */
-export function chatMode(chat: Pick<Chat, 'plan' | 'mode'>, ws: Pick<Workspace, 'mode'>, room: Pick<Room, 'permissionMode'> | undefined, settings: Pick<AppSettings, 'permissions'>, avail: ChatAvailability, agent?: Pick<AgentDef, 'permissionMode'>): ChatRunMode {
+export function chatMode(chat: Pick<Chat, 'plan' | 'mode'>, ws: Pick<Workspace, 'mode'>, project: Pick<Project, 'permissionMode'> | undefined, settings: Pick<AppSettings, 'permissions'>, avail: ChatAvailability, agent?: Pick<AgentDef, 'permissionMode'>): ChatRunMode {
   const own = known(chat.mode)
-  const roomMode = known(room?.permissionMode)
-  const [picked, pickedIn]: [PermissionMode, ModeScope] = own ? [own, 'chat'] : roomMode ? [roomMode, 'room'] : [known(settings.permissions.mode) ?? 'default', 'app']
+  const projectMode = known(project?.permissionMode)
+  const [picked, pickedIn]: [PermissionMode, ModeScope] = own ? [own, 'chat'] : projectMode ? [projectMode, 'project'] : [known(settings.permissions.mode) ?? 'default', 'app']
   const runs = (mode: RunMode, why?: ModeReason): ChatRunMode => ({ mode, picked, pickedIn, ...(why ? { why } : {}) })
   if (chat.plan) return runs('plan', 'plan')
   const file = agent?.permissionMode
@@ -71,7 +71,7 @@ const known = (mode: string | undefined): PermissionMode | undefined => (PERMISS
 export const NETWORK_OFF = 'Network access is off in Kernel (Settings, Permissions).'
 
 /** What a command on Never allow, or a push to a protected branch, gets. */
-export const neverAllowed = (command: string) => `Kernel blocks "${command}" in every room.`
+export const neverAllowed = (command: string) => `Kernel blocks "${command}" in every project.`
 
 /** What a push that might reach a protected branch gets in Bypass permissions, with the push that works instead. */
 export function pushOwnBranch(branches: string[], branch?: string): string {
@@ -92,7 +92,7 @@ export interface Step {
   tool: string
   /** A Bash step's command as the agent meant it, without Codex's shell wrapper. */
   command?: string
-  /** The tool's input, which a room's tool rule may read: a WebFetch's `url`. */
+  /** The tool's input, which a project's tool rule may read: a WebFetch's `url`. */
   input?: unknown
   /** The step asks for network access itself, apart from what its command does (Codex's network approval). */
   network?: boolean
@@ -115,25 +115,25 @@ export interface Rules {
    * it may be pending or refused, and a subagent may run in it. Bypass's denials hold then too, on top of `mode`'s asks.
    */
   mayBypass?: boolean
-  /** The room's Always allow rules, read only when a command needs them. */
-  roomAllow: () => string[]
-  /** The room's Always allow rules for MCP and web tools (`Room.allowTools`), read only when such a step needs them. */
-  roomTools: () => string[]
+  /** The project's Always allow rules, read only when a command needs them. */
+  projectAllow: () => string[]
+  /** The project's Always allow rules for MCP and web tools (`Project.allowTools`), read only when such a step needs them. */
+  projectTools: () => string[]
   /** The workspace's branch, which the refusal of a push in Bypass permissions names as the one to push. */
   branch?: string
-  /** The room's reference folders, which a file edit may not touch (KERNEL-748). */
+  /** The project's reference folders, which a file edit may not touch (KERNEL-748). */
   references?: string[]
 }
 
-/** The rules for a runner's next step: Settings, Permissions and the room as they stand now, in `mode`, else the chat's mode now. */
-export function rulesOf(host: Pick<RunnerHost, 'settings' | 'roomAllow' | 'roomTools' | 'workspace' | 'mode'>, mode: RunMode = host.mode()): Rules {
-  return { permissions: host.settings().permissions, mode, roomAllow: () => host.roomAllow(), roomTools: () => host.roomTools(), branch: host.workspace.branch }
+/** The rules for a runner's next step: Settings, Permissions and the project as they stand now, in `mode`, else the chat's mode now. */
+export function rulesOf(host: Pick<RunnerHost, 'settings' | 'projectAllow' | 'projectTools' | 'workspace' | 'mode'>, mode: RunMode = host.mode()): Rules {
+  return { permissions: host.settings().permissions, mode, projectAllow: () => host.projectAllow(), projectTools: () => host.projectTools(), branch: host.workspace.branch }
 }
 
 const ALLOW: Verdict = { behavior: 'allow' }
 
 /**
- * Kernel's lists on one command: Never allow and protected-branch pushes deny, a room's Always allow rule allows, Always ask
+ * Kernel's lists on one command: Never allow and protected-branch pushes deny, a project's Always allow rule allows, Always ask
  * asks. In Bypass permissions only the denials hold, and a push that might reach a protected branch is one of them. That
  * denial also holds wherever Claude Code may still run in bypass (`mayBypass`), since nothing would ask there (KERNEL-447).
  * A push of `HEAD` from `cwd` goes through when the branch checked out there now is not protected (KERNEL-687).
@@ -143,7 +143,7 @@ export function guardVerdict(command: string, rules: Rules, cwd?: string): Verdi
   const branches = rules.permissions.protectedBranches ?? []
   const head = cwd ? () => checkedOutBranch(cwd) : undefined
   if ((bypass || rules.mayBypass) && pushMightReach(command, branches, head)) return { behavior: 'deny', message: pushOwnBranch(branches, rules.branch) }
-  const v = bashVerdict(command, rules.permissions, rules.roomAllow())
+  const v = bashVerdict(command, rules.permissions, rules.projectAllow())
   if (bypass) return v === 'deny' ? { behavior: 'deny', message: neverAllowed(command) } : undefined
   if (v === 'deny') return { behavior: 'deny', message: neverAllowed(command) }
   if (v === 'allow') return ALLOW
@@ -152,7 +152,7 @@ export function guardVerdict(command: string, rules: Rules, cwd?: string): Verdi
 }
 
 /**
- * A step as Kernel decides it, in order: Kernel's own tools allow, Network off denies, then the Bash lists or the room's tool
+ * A step as Kernel decides it, in order: Kernel's own tools allow, Network off denies, then the Bash lists or the project's tool
  * rules, then the mode. Undefined leaves it to the user, since a runner only asks about a step its CLI would ask the user about.
  */
 export function decide(step: Step, rules: Rules): Verdict {
@@ -160,12 +160,12 @@ export function decide(step: Step, rules: Rules): Verdict {
   const reference = referenceWrite(step, rules.references)
   if (reference) return reference
   if (networkOff(step, rules)) return { behavior: 'deny', message: NETWORK_OFF }
-  return (step.command ? guardVerdict(step.command, rules, step.cwd) : roomTool(step, rules)) ?? byMode(step, rules)
+  return (step.command ? guardVerdict(step.command, rules, step.cwd) : projectTool(step, rules)) ?? byMode(step, rules)
 }
 
 const WEB_TOOLS = new Set(['WebFetch', 'WebSearch'])
 
-/** What a file edit under one of the room's reference folders gets (KERNEL-748). */
+/** What a file edit under one of the project's reference folders gets (KERNEL-748). */
 export const REFERENCE_READ_ONLY = 'Reference folders are read-only.'
 
 /** The tools that change a file, by the input key that names it. */
@@ -182,7 +182,7 @@ function realish(path: string): string {
 const inside = (path: string, folder: string) => path === folder || path.startsWith(folder.endsWith(sep) ? folder : folder + sep)
 
 /**
- * Denies Edit, Write, MultiEdit and NotebookEdit on a file under one of the room's reference folders (KERNEL-748), in every
+ * Denies Edit, Write, MultiEdit and NotebookEdit on a file under one of the project's reference folders (KERNEL-748), in every
  * mode, symlinks resolved on both sides. A relative path counts from the step's `cwd`. Reading them stays open.
  */
 export function referenceWrite(step: Pick<Step, 'tool' | 'input' | 'cwd'>, references: string[] | undefined): Verdict {
@@ -198,28 +198,28 @@ export function referenceWrite(step: Pick<Step, 'tool' | 'input' | 'cwd'>, refer
 
 const networkOff = (step: Step, rules: Rules) => rules.permissions.network === false && (WEB_TOOLS.has(step.tool) || !!step.network || (!!step.command && usesNetwork(step.command)))
 
-/** The modes in which a room rule answers in Claude's PreToolUse hook. */
+/** The modes in which a project rule answers in Claude's PreToolUse hook. */
 const HOOK_ALLOWS = new Set<RunMode>(['default', 'acceptEdits', 'auto'])
 
 /**
- * Kernel's answer about a Claude step in its PreToolUse hook: the Bash lists for a command, else the room's tool rules
- * (KERNEL-454). A room rule allows there, so Auto mode's classifier can't refuse a step the user allowed, in Manual, Accept
+ * Kernel's answer about a Claude step in its PreToolUse hook: the Bash lists for a command, else the project's tool rules
+ * (KERNEL-454). A project rule allows there, so Auto mode's classifier can't refuse a step the user allowed, in Manual, Accept
  * edits and Auto. In plan mode it gives no opinion, since a hook's allow would run a step plan mode holds back, and canUseTool
- * still allows it if Claude Code asks. Bypass permissions reads no room rule. Network off denies before any rule.
+ * still allows it if Claude Code asks. Bypass permissions reads no project rule. Network off denies before any rule.
  */
 export function hookVerdict(step: Step, rules: Rules): Verdict {
   const v = step.command ? guardVerdict(step.command, rules, step.cwd)
-    : networkOff(step, rules) ? { behavior: 'deny' as const, message: NETWORK_OFF } : roomTool(step, rules)
+    : networkOff(step, rules) ? { behavior: 'deny' as const, message: NETWORK_OFF } : projectTool(step, rules)
   return v?.behavior === 'allow' && !HOOK_ALLOWS.has(rules.mode) ? undefined : v
 }
 
-/** The tools a room's tool rule can cover: MCP tools and the web tools. Never a file tool, so a rule can't loosen the mode. */
+/** The tools a project's tool rule can cover: MCP tools and the web tools. Never a file tool, so a rule can't loosen the mode. */
 const takesToolRule = (tool: string) => tool.startsWith('mcp__') || WEB_TOOLS.has(tool)
 
-/** A room's Always allow rule for a step that isn't a command (KERNEL-454). Bypass permissions reads no room rule (KERNEL-447). */
-function roomTool(step: Step, rules: Rules): Verdict {
+/** A project's Always allow rule for a step that isn't a command (KERNEL-454). Bypass permissions reads no project rule (KERNEL-447). */
+function projectTool(step: Step, rules: Rules): Verdict {
   if (rules.mode === 'bypassPermissions' || !takesToolRule(step.tool)) return undefined
-  return matchesToolRule(step.tool, step.input, rules.roomTools()) ? ALLOW : undefined
+  return matchesToolRule(step.tool, step.input, rules.projectTools()) ? ALLOW : undefined
 }
 
 /** The host a WebFetch step fetches from, lowercase, or undefined when its input has no URL. */
@@ -230,8 +230,8 @@ function hostOf(input: unknown): string | undefined {
 }
 
 /**
- * The rule Always allow saves on the room for a tool that isn't Bash, as Claude Code writes one (KERNEL-454): the MCP tool's
- * name, `WebSearch`, or `WebFetch(domain:<host>)`. Undefined for a tool no room rule covers, such as Edit.
+ * The rule Always allow saves on the project for a tool that isn't Bash, as Claude Code writes one (KERNEL-454): the MCP tool's
+ * name, `WebSearch`, or `WebFetch(domain:<host>)`. Undefined for a tool no project rule covers, such as Edit.
  */
 export function toolRule(tool: string, input: unknown): string | undefined {
   if (tool === 'WebFetch') { const host = hostOf(input); return host ? `WebFetch(domain:${host})` : undefined }
@@ -242,7 +242,7 @@ export function toolRule(tool: string, input: unknown): string | undefined {
 const SERVER_RULE = /^mcp__((?:[^_]|_(?!_))+)(?:__\*)?$/
 
 /**
- * Whether one of the room's tool rules covers a step, as Claude Code reads the rule (KERNEL-454): the tool's own name,
+ * Whether one of the project's tool rules covers a step, as Claude Code reads the rule (KERNEL-454): the tool's own name,
  * `mcp__<server>` or `mcp__<server>__*` for every tool of that server, and `WebFetch(domain:<host>)` for a fetch from that
  * host. Only MCP and web tools: a rule naming any other tool covers nothing.
  */
@@ -276,15 +276,15 @@ function byMode(step: Step, rules: Rules): Verdict {
 }
 
 /**
- * Always allow saves a rule for the room. On a command it is Claude Code's suggestion when that is one Bash rule that may be
- * saved, else the command itself. On an MCP or web tool it is `toolRule`'s, in `Room.allowTools`, unless Claude Code says the
+ * Always allow saves a rule for the project. On a command it is Claude Code's suggestion when that is one Bash rule that may be
+ * saved, else the command itself. On an MCP or web tool it is `toolRule`'s, in `Project.allowTools`, unless Claude Code says the
  * ask mustn't offer one (KERNEL-454). True when it saved a rule, so canUseTool doesn't also hand Claude Code's suggestions
  * back, which would land in the worktree's own settings and go with it.
  */
-export function saveAlwaysAllow(host: Pick<RunnerHost, 'allowInRoom' | 'allowToolInRoom'>, step: Step, decision: Decision | undefined, o: { suggestions?: PermissionUpdate[]; suppressAlwaysAllowRule?: boolean } = {}): boolean {
+export function saveAlwaysAllow(host: Pick<RunnerHost, 'allowInProject' | 'allowToolInProject'>, step: Step, decision: Decision | undefined, o: { suggestions?: PermissionUpdate[]; suppressAlwaysAllowRule?: boolean } = {}): boolean {
   if (decision?.behavior !== 'allow' || !decision.always) return false
-  if (step.command) { host.allowInRoom(roomRule(step.command, o.suggestions, o.suppressAlwaysAllowRule)); return true }
+  if (step.command) { host.allowInProject(projectRule(step.command, o.suggestions, o.suppressAlwaysAllowRule)); return true }
   const rule = o.suppressAlwaysAllowRule ? undefined : toolRule(step.tool, step.input)
-  if (rule) host.allowToolInRoom(rule)
+  if (rule) host.allowToolInProject(rule)
   return !!rule
 }

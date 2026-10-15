@@ -194,10 +194,10 @@ export function scrollJs(o: { dx?: number; dy?: number; y?: number }) {
  * 1200x800 about its center, then moved inside the view. Never larger than the view.
  */
 export function cropRect(r: Rect, view: { width: number; height: number }): Rect {
-  const fit = (start: number, size: number, min: number, max: number, room: number) => {
-    const want = Math.min(Math.max(size + CROP.pad * 2, min), max, room)
+  const fit = (start: number, size: number, min: number, max: number, project: number) => {
+    const want = Math.min(Math.max(size + CROP.pad * 2, min), max, project)
     const at = Math.round(start + size / 2 - want / 2)
-    return [Math.max(0, Math.min(at, room - Math.round(want))), Math.round(want)]
+    return [Math.max(0, Math.min(at, project - Math.round(want))), Math.round(want)]
   }
   const [x, width] = fit(r.x, r.width, CROP.min.width, CROP.max.width, Math.max(0, Math.round(view.width)))
   const [y, height] = fit(r.y, r.height, CROP.min.height, CROP.max.height, Math.max(0, Math.round(view.height)))
@@ -264,7 +264,7 @@ export function copiesIn(dir: string): PreviewHostOptions['file'] {
     const claim = name ? claimOf(name) : undefined
     if (!name || !claim) return undefined
     const version: SharedVersion = { n, at: 0, file: name, mime: claim.mime, bytes: 0, sha256: '' }
-    const file: SharedFile = { id, roomId: '', workspaceId: '', agentId: '', source: name, title: name, kind: claim.kind, versions: [version], createdAt: 0, updatedAt: 0 }
+    const file: SharedFile = { id, projectId: '', workspaceId: '', agentId: '', source: name, title: name, kind: claim.kind, versions: [version], createdAt: 0, updatedAt: 0 }
     return { file, version, path: join(folder, name) }
   }
 }

@@ -1,6 +1,6 @@
 // The landing page demo: the whole loop from a blank chat, told with real renderer screens and sample data.
 //
-// 1. You brief Kernel in a new chat in the Kernel room. Kernel reads the repo and says this demo plans one sample change,
+// 1. You brief Kernel in a new chat in the Kernel project. Kernel reads the repo and says this demo plans one sample change,
 //    and to switch to plan mode.
 // 2. In plan mode you ask for the plan. Kernel proposes it (Why, Behavior, Files, Checks, Tracker and three tasks).
 // 3. You approve. Kernel hands the tasks to Noor, Kai and Ivy, whose workspaces appear under the chat and build on their own.
@@ -15,23 +15,23 @@ import type { Fixture } from '../fixtures'
 import type { AccountProfile, AgentStatus, Approval, Chat, ChatItem, ChatPart, ChatRunMode, Decision, PlanStep, PrInfo, Provider, RateLimit, SwitchReason, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 
-export const ROOM = 'room-a'
+export const PROJECT = 'project-a'
 const LEAD = 'kernel-lead'
-const ROOM_PATH = '/Users/you/code/kernel'
+const PROJECT_PATH = '/Users/you/code/kernel'
 const REPO = 'you/kernel'
 
-// ---------- The starting fixture: three rooms, the Kernel room open on a new chat
+// ---------- The starting fixture: three projects, the Kernel project open on a new chat
 
 const t0 = Date.now()
 const ago = (min: number) => t0 - min * 60_000
 
-const leadWorkspace = (id: string, roomId: string, name: string, threadId: string, port: number, minAgo: number, over: Partial<Workspace> = {}): Workspace => ({
-  id, roomId, name, branch: `kernel/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/${roomId}/kernel-${name}`, mode: 'worktree',
+const leadWorkspace = (id: string, projectId: string, name: string, threadId: string, port: number, minAgo: number, over: Partial<Workspace> = {}): Workspace => ({
+  id, projectId, name, branch: `kernel/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/${projectId}/kernel-${name}`, mode: 'worktree',
   agentId: LEAD, lead: true, threadId, port, status: 'ready', prState: 'none', createdAt: ago(minAgo), ...over
 })
 const leadChat = (id: string, workspaceId: string, title: string, threadId: string, minAgo: number, over: Partial<Chat> = {}): Chat =>
   ({ id, workspaceId, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, mode: 'acceptEdits', threadId, createdAt: ago(minAgo), ...over })
-const thread = (id: string, roomId: string, title: string, minAgo: number): Thread => ({ id, roomId, title, createdAt: ago(minAgo), lastSentAt: ago(minAgo) })
+const thread = (id: string, projectId: string, title: string, minAgo: number): Thread => ({ id, projectId, title, createdAt: ago(minAgo), lastSentAt: ago(minAgo) })
 const said = (id: string, minAgo: number, text: string, from?: 'user'): ChatItem =>
   from ? { kind: 'user', id, ts: ago(minAgo), parts: [{ type: 'text', text }] } : { kind: 'text', id, ts: ago(minAgo), text }
 
@@ -58,20 +58,20 @@ const usage: RateLimit[] = [
 const settings = seed.settings ?? DEFAULT_SETTINGS('/Users/you')
 export const f: Fixture = {
   ...seed,
-  // A new chat starts in the room's usual mode, not plan mode, so switching to Plan is a step the visitor takes.
+  // A new chat starts in the project's usual mode, not plan mode, so switching to Plan is a step the visitor takes.
   settings: { ...settings, models: { ...settings.models, leadPlanMode: false } },
-  rooms: [
-    { ...seed.rooms.find((r) => r.id === ROOM)!, name: 'Kernel', path: ROOM_PATH, repo: REPO },
-    ...seed.rooms.filter((r) => r.id === 'room-own' || r.id === 'room-portfolio')
+  projects: [
+    { ...seed.projects.find((r) => r.id === PROJECT)!, name: 'Kernel', path: PROJECT_PATH, repo: REPO },
+    ...seed.projects.filter((r) => r.id === 'project-own' || r.id === 'project-portfolio')
   ],
-  status: { [ROOM]: { [LEAD]: 'idle', kai: 'idle', noor: 'idle', ivy: 'idle', theo: 'idle' } },
+  status: { [PROJECT]: { [LEAD]: 'idle', kai: 'idle', noor: 'idle', ivy: 'idle', theo: 'idle' } },
   threads: [
-    thread('t-seed', 'room-own', 'Seed realistic demo data', 300),
-    thread('t-case', 'room-portfolio', 'Case study page for Kernel', 600)
+    thread('t-seed', 'project-own', 'Seed realistic demo data', 300),
+    thread('t-case', 'project-portfolio', 'Case study page for Kernel', 600)
   ],
   workspaces: [
-    leadWorkspace('ws-seed', 'room-own', 'seed-realistic-demo-data', 't-seed', 4320, 300),
-    leadWorkspace('ws-case', 'room-portfolio', 'case-study-page-for-kernel', 't-case', 4330, 600)
+    leadWorkspace('ws-seed', 'project-own', 'seed-realistic-demo-data', 't-seed', 4320, 300),
+    leadWorkspace('ws-case', 'project-portfolio', 'case-study-page-for-kernel', 't-case', 4330, 600)
   ],
   chats: [
     leadChat('chat-seed', 'ws-seed', 'Seed realistic demo data', 't-seed', 300),
@@ -91,7 +91,7 @@ export const f: Fixture = {
   diffs: {},
   prs: {},
   push: [],
-  ui: { route: { name: 'leadNew', roomId: ROOM }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', toolsOpen: false } }
+  ui: { route: { name: 'leadNew', projectId: PROJECT }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', toolsOpen: false } }
 }
 
 const handlers = fixtureHandlers(f) as unknown as Record<string, (req: unknown) => Promise<unknown>>
@@ -149,8 +149,8 @@ function setPr(info: PrInfo) {
 }
 const running = (chatId: string, on: boolean) => push({ type: 'chat.running', chatId, running: on })
 function status(agentId: string, s: AgentStatus) {
-  ;(f.status[ROOM] ??= {})[agentId] = s
-  push({ type: 'agent.status', roomId: ROOM, agentId, status: s })
+  ;(f.status[PROJECT] ??= {})[agentId] = s
+  push({ type: 'agent.status', projectId: PROJECT, agentId, status: s })
 }
 async function runMode(chatId: string) {
   const mode = (await handlers['chats.runMode']!({ chatId })) as ChatRunMode
@@ -236,13 +236,13 @@ let leadChatId = ''
 let threadId = ''
 let planId = ''
 
-function brief(roomId: string, prompt: string, plan: boolean): Chat {
+function brief(projectId: string, prompt: string, plan: boolean): Chat {
   if (leadChatId) throw new Error('This demo runs one chat at a time. Use Start over under the demo to begin again.')
   threadId = 't-demo'
   leadWs = 'ws-demo-lead'
   leadChatId = 'chat-demo-lead'
-  upsertThread({ id: threadId, roomId, title: 'New tab', createdAt: now(), lastSentAt: now() })
-  upsertWorkspace(leadWorkspace(leadWs, roomId, 'new-chat', threadId, 4340, 0, { createdAt: now() }))
+  upsertThread({ id: threadId, projectId, title: 'New tab', createdAt: now(), lastSentAt: now() })
+  upsertWorkspace(leadWorkspace(leadWs, projectId, 'new-chat', threadId, 4340, 0, { createdAt: now() }))
   const chat = leadChat(leadChatId, leadWs, 'New tab', threadId, 0, { plan, createdAt: now() })
   upsertChat(chat)
   f.items[leadChatId] = []
@@ -297,7 +297,7 @@ function proposePlan() {
     () => {
       planId = `ap-plan-demo-${now()}`
       const steps: PlanStep[] = TASKS.map((t) => ({ title: t.title, taskId: t.issue, agentId: t.agent }))
-      upsertApproval({ id: planId, kind: 'plan', source: 'sdk', roomId: ROOM, workspaceId: leadWs, chatId: c, agentId: LEAD, title: PLAN_TITLE, detail: PLAN, steps, status: 'pending', createdAt: now() })
+      upsertApproval({ id: planId, kind: 'plan', source: 'sdk', projectId: PROJECT, workspaceId: leadWs, chatId: c, agentId: LEAD, title: PLAN_TITLE, detail: PLAN, steps, status: 'pending', createdAt: now() })
       item(c, { kind: 'approval', id: `approval-${planId}`, ts: now(), approvalId: planId })
       item(c, result('d-res2', start))
       running(c, false)
@@ -327,7 +327,7 @@ function approvePlan(a: Approval): Approval {
 
 function startTask(t: Task, i: number) {
   upsertWorkspace({
-    id: wsId(t), roomId: ROOM, name: t.name, title: t.title, branch: `feat/${t.name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/room-a/${t.name}`, mode: 'worktree',
+    id: wsId(t), projectId: PROJECT, name: t.name, title: t.title, branch: `feat/${t.name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/project-a/${t.name}`, mode: 'worktree',
     agentId: t.agent, port: 4341 + i, status: 'ready', prState: 'none', threadId, leadChatId, createdAt: now(), source: { kind: 'issue', id: t.issue, title: t.title }
   })
   upsertChat({ id: chatId(t), workspaceId: wsId(t), title: t.title, kind: 'chat', model: t.agent === 'noor' ? 'claude-opus-5-5' : 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: now() })
@@ -412,7 +412,7 @@ function review(t: Task, head: string) {
   const id = `ws-review-${t.pr}`
   const c = `chat-review-${t.pr}`
   upsertWorkspace({
-    id, roomId: ROOM, name: `review-pr-${t.pr}`, title: `Review PR #${t.pr}`, branch: `feat/${t.name}-review`, baseRef: `feat/${t.name}`, path: `/Users/you/kernel/worktrees/room-a/review-pr-${t.pr}`,
+    id, projectId: PROJECT, name: `review-pr-${t.pr}`, title: `Review PR #${t.pr}`, branch: `feat/${t.name}-review`, baseRef: `feat/${t.name}`, path: `/Users/you/kernel/worktrees/project-a/review-pr-${t.pr}`,
     mode: 'worktree', agentId: 'theo', port: 4350 + (t.pr % 10), status: 'ready', prState: 'none', reviewOf: wsId(t), threadId, leadChatId, createdAt: now()
   })
   upsertChat({ id: c, workspaceId: id, title: `Review PR #${t.pr}`, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, lens: { kind: 'code' }, createdAt: now() })
@@ -532,7 +532,7 @@ const unavailable = (what: string) => async () => { throw new Error(`${what} wor
 
 /** The bridge answers from these first, then from the fixture. */
 export const storyHandlers: Record<string, (req: never) => Promise<unknown>> = {
-  'lead.start': async ({ roomId, prompt, plan }: { roomId: string; prompt: string; plan?: boolean }) => brief(roomId, prompt, !!plan),
+  'lead.start': async ({ projectId, prompt, plan }: { projectId: string; prompt: string; plan?: boolean }) => brief(projectId, prompt, !!plan),
   'chats.send': async ({ chatId: id, parts }: { chatId: string; parts: ChatPart[] }) => { send(id, parts); return { queued: false } },
   'chats.configure': async (req: Parameters<typeof configure>[0]) => configure(req),
   'approvals.decide': async ({ id, decision }: { id: string; decision: Decision }) => decide(id, decision),
@@ -541,7 +541,7 @@ export const storyHandlers: Record<string, (req: never) => Promise<unknown>> = {
   'accounts.switch': async ({ provider, accountId, reason }: { provider: Provider; accountId: string; reason?: Exclude<SwitchReason, 'limit'> }) => switchAccount(provider, accountId, reason ?? 'user'),
   'chats.create': unavailable('Another tab'),
   'workspaces.create': unavailable('A new workspace'),
-  'rooms.add': unavailable('Adding a repo'),
-  'rooms.create': unavailable('A new room'),
+  'projects.add': unavailable('Adding a repo'),
+  'projects.create': unavailable('A new project'),
   'pr.create': unavailable('Opening a pull request by hand')
 }

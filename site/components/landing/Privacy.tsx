@@ -40,7 +40,7 @@ const OPTIONAL: Node[] = [
 const LEFT = { nodes: [16.67, 50, 83.33], ports: [40, 50, 60] }
 const RIGHT = { nodes: [25, 75], ports: [44, 56] }
 
-/** On the map every node is the same height, room for two lines, so each one's middle sits where its line meets it. */
+/** On the map every node is the same height, space for two lines, so each one's middle sits where its line meets it. */
 function NodeCard({ node, optional }: { node: Node; optional?: boolean }) {
   return (
     <div className={`spot-card map-node-card flex items-center gap-3 rounded-lg border px-3 py-2.5 faq:min-h-19 ${optional ? 'border-dashed border-edge bg-surface-1/60' : 'border-line-strong bg-surface-1'}`}>

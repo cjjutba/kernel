@@ -121,7 +121,7 @@ describe('Open in (KERNEL-427)', () => {
     const fake = mac(apps, { stdout: '' }, o.launches)
     k.app.system = fake.sys
     const h = k.handlers()
-    await h['rooms.add']({ path: repo })
+    await h['projects.add']({ path: repo })
     return { k, h, repo, dataDir, revealed, ...fake }
   }
 
@@ -140,11 +140,11 @@ describe('Open in (KERNEL-427)', () => {
     expect((await (await boot([at.finder, at.cursor, at.terminal], { openIn: 'terminal' })).h['app.openApps']()).defaultId).toBe('terminal')
   })
 
-  it('refuses a path outside every room and workspace, and an app it does not know or cannot find', async () => {
+  it('refuses a path outside every project and workspace, and an app it does not know or cannot find', async () => {
     const { h, repo, opens } = await boot([at.finder, at.vscode])
-    await expect(h['app.openIn']({ path: '/System/Applications/Calculator.app' })).rejects.toThrow('inside a room or workspace')
-    await expect(h['app.openIn']({ path: 'relative/run.command', app: 'vscode' })).rejects.toThrow('inside a room or workspace')
-    await expect(h['app.openIn']({ path: `${repo}/../elsewhere`, app: 'vscode' })).rejects.toThrow('inside a room or workspace')
+    await expect(h['app.openIn']({ path: '/System/Applications/Calculator.app' })).rejects.toThrow('inside a project or workspace')
+    await expect(h['app.openIn']({ path: 'relative/run.command', app: 'vscode' })).rejects.toThrow('inside a project or workspace')
+    await expect(h['app.openIn']({ path: `${repo}/../elsewhere`, app: 'vscode' })).rejects.toThrow('inside a project or workspace')
     await expect(h['app.openIn']({ path: repo, app: '/Applications/Calculator.app' })).rejects.toThrow("can't open files in")
     await expect(h['app.openIn']({ path: repo, app: 'zed' })).rejects.toThrow("Zed isn't installed")
     expect(opens()).toEqual([])
@@ -186,13 +186,13 @@ describe('Open in (KERNEL-427)', () => {
     expect(noEditor.opens()).toEqual([['-a', at.finder, join(noEditor.repo, 'src')]])
   })
 
-  it('opens a file in a workspace as well as in a room', async () => {
+  it('opens a file in a workspace as well as in a project', async () => {
     const { k, h, opens } = await boot([at.finder, at.zed])
-    const room = (await h['rooms.list']())[0]
+    const project = (await h['projects.list']())[0]
     const wt = join(k.settings.worktreeRoot, 'demo', 'ws1')
     await mkdir(wt, { recursive: true })
-    await expect(h['app.openIn']({ path: wt, app: 'zed' })).rejects.toThrow('inside a room or workspace')
-    const ws: Workspace = { id: 'ws1', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: wt, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    await expect(h['app.openIn']({ path: wt, app: 'zed' })).rejects.toThrow('inside a project or workspace')
+    const ws: Workspace = { id: 'ws1', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: wt, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     k.store.saveWorkspace(ws)
     await h['app.openIn']({ path: wt, app: 'zed' })
     expect(opens()).toEqual([['-a', at.zed, wt]])
