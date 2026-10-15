@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { LinearIssue, LinearIssueDetail } from '@shared/types'
 import { call, cleanError } from '../../api'
+import { useDetailLoad } from './useDetailLoad'
 import { actions, go, lastProject, useStore } from '../../store'
 import { Button, FailedState, Icon, Select, Skeleton, useBusy } from '../../ui'
 import { IssuePriority, IssueState, PRIORITIES } from '../../icons'
@@ -13,11 +14,8 @@ import { WorkCard } from './WorkCard'
 
 /** The selected issue: what Linear says about it, the workspaces already working on it, and the buttons that start work. */
 export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summary?: LinearIssue; tick: number; onPlanned: () => void }) {
-  const [loaded, setLoaded] = useState<LinearIssueDetail | null>(null)
-  const [failure, setFailure] = useState<{ id: string; message: string } | null>(null)
+  const { loaded, failure, retry } = useDetailLoad<LinearIssueDetail>(id, () => call('linear.issue', { id }), [tick])
   const failed = failure?.id === id ? failure.message : null
-  const waiting = useRef<(() => void)[]>([])
-  const [attempt, setAttempt] = useState(0)
   const [busy, run] = useBusy<'plan' | 'link'>()
   const [picked, setPicked] = useState<{ issue: string; project: string } | null>(null)
   const [settled, setSettled] = useState(false)
@@ -29,15 +27,6 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
   const [lastProjectId] = useState(lastProject)
 
   // The description and comments come from `linear.issue`. The list already has the rest, so the header shows at once.
-  useEffect(() => {
-    let live = true
-    call('linear.issue', { id }).then((d) => { if (live) { setLoaded(d); setFailure(null) } }).catch((e: Error) => { if (live) setFailure({ id, message: cleanError(e) }) }).finally(() => waiting.current.splice(0).forEach((done) => done()))
-    return () => { live = false }
-  }, [id, tick, attempt])
-  const retry = () => {
-    setAttempt((a) => a + 1)
-    return new Promise<void>((done) => waiting.current.push(done))
-  }
   const issue: LinearIssue | undefined = loaded?.id === id ? loaded : summary
   const detail = loaded?.id === id ? loaded : null
 

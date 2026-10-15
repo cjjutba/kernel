@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import type { GithubIssue, GithubIssueDetail, Project } from '@shared/types'
 import { call, cleanError } from '../../api'
+import { useDetailLoad } from './useDetailLoad'
 import { actions, go, useStore } from '../../store'
 import { Button, FailedState, Icon, Skeleton, useBusy } from '../../ui'
 import { IssueState } from '../../icons'
@@ -13,25 +14,13 @@ import { githubPlanParts, issueAge, linkedWorkspaces, loginInitials } from './mo
 
 /** The selected GitHub issue: what GitHub says about it, the workspaces already working on it, and the buttons that start work (IssuesGitHub.png). */
 export function GithubDetail({ project, id, summary, tick }: { project: Project; id: string; summary?: GithubIssue; tick: number }) {
-  const [loaded, setLoaded] = useState<GithubIssueDetail | null>(null)
-  const [failure, setFailure] = useState<{ id: string; message: string } | null>(null)
+  const { loaded, failure, retry } = useDetailLoad<GithubIssueDetail>(id, () => call('github.issue', { projectId: project.id, id }), [project.id, tick])
   const failed = failure?.id === id ? failure.message : null
-  const waiting = useRef<(() => void)[]>([])
-  const [attempt, setAttempt] = useState(0)
   const [busy, run] = useBusy<'plan'>()
   const workspaces = useStore((s) => s.workspaces)
   const lead = useStore((s) => s.agents[project.id]?.find((a) => a.lead)?.name) || 'Kernel'
 
   // The description and comments come from `github.issue`. The list already has the rest, so the header shows at once.
-  useEffect(() => {
-    let live = true
-    call('github.issue', { projectId: project.id, id }).then((d) => { if (live) { setLoaded(d); setFailure(null) } }).catch((e: Error) => { if (live) setFailure({ id, message: cleanError(e) }) }).finally(() => waiting.current.splice(0).forEach((done) => done()))
-    return () => { live = false }
-  }, [project.id, id, tick, attempt])
-  const retry = () => {
-    setAttempt((a) => a + 1)
-    return new Promise<void>((done) => waiting.current.push(done))
-  }
   const detail = loaded?.id === id ? loaded : null
   const issue: GithubIssue | undefined = detail ?? summary
   const linked = useMemo(() => linkedWorkspaces(id, workspaces.filter((w) => w.projectId === project.id)), [id, workspaces, project.id])
