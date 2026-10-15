@@ -1,15 +1,15 @@
 // Records the landing page's feature clips from the scene build: `pnpm demo:clips [name...]`.
 //
 // Each clip opens one scene (demo/scenes) at 1440x900 and 2x, moves a drawn cursor to what it clicks, and captures every
-// frame Chrome paints over CDP. ffmpeg crops the frames to the part of the window the clip is about and writes an MP4
-// and a poster to site/public/clips. Needs ffmpeg on PATH.
+// frame Chrome paints over CDP. ffmpeg writes an MP4 and a poster to site/public/clips. Needs ffmpeg on PATH.
+// `pnpm demo:clips reviews` records one clip; `node demo/clips.ts --encode` re-encodes from the last recording's frames.
 //
-// A clip can also move a camera, the way a product video zooms in on each step. The page itself never moves: the driver
+// Every clip moves a camera, the way a product video zooms in on each step. The page itself never moves: the driver
 // only notes where the camera goes and when, and after recording each output frame is drawn from the 2x capture through
 // that moving window, with sub-pixel precision. Up to 1.8x on a 1600 wide clip, the zoomed frames stay sharp.
 import { chromium, type Locator, type Page } from 'playwright-core'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { extname, join, resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '..')
@@ -20,13 +20,10 @@ const ORIGIN = 'http://scenes.local'
 const SCALE = 2
 const MIME: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' }
 
-/** A region of the 1440x900 window, in CSS pixels. */
-type Rect = { x: number; y: number; width: number; height: number }
 type Clip = {
   scene: string
-  crop: Rect
-  /** The width of the encoded video, in pixels. Defaults to the crop at 2x. */
-  width?: number
+  /** The width of the encoded video, in pixels. Up to 1600, a 1.8x zoom stays sharp. */
+  width: number
   /** Runs before recording starts, so the clip opens on the moment it is about. */
   setup?: (d: Driver) => Promise<void>
   play: (d: Driver) => Promise<void>
@@ -102,12 +99,10 @@ class Driver {
   type = (text: string, delay = 38) => this.page.keyboard.type(text, { delay })
 }
 
-const full: Rect = { x: 0, y: 0, width: 1440, height: 900 }
 
 const CLIPS: Record<string, Clip> = {
   workspaces: {
     scene: 'team',
-    crop: full,
     width: 2400,
     poster: 2.1,
     setup: async (d) => {
@@ -157,7 +152,6 @@ const CLIPS: Record<string, Clip> = {
   },
   reviews: {
     scene: 'reviews',
-    crop: full,
     width: 1600,
     poster: 5,
     play: async (d) => {
@@ -183,7 +177,6 @@ const CLIPS: Record<string, Clip> = {
   },
   permissions: {
     scene: 'permissions',
-    crop: full,
     width: 1600,
     poster: 6.7,
     play: async (d) => {
@@ -212,7 +205,6 @@ const CLIPS: Record<string, Clip> = {
   // A product-video take: the camera follows the cursor in to each control and back out to show what changed.
   accounts: {
     scene: 'accounts',
-    crop: full,
     width: 1600,
     poster: 23,
     play: async (d) => {
@@ -258,7 +250,6 @@ const CLIPS: Record<string, Clip> = {
   },
   sharing: {
     scene: 'sharing',
-    crop: full,
     width: 1600,
     poster: 6,
     play: async (d) => {
@@ -297,7 +288,6 @@ const CLIPS: Record<string, Clip> = {
   },
   issues: {
     scene: 'issues',
-    crop: full,
     width: 2400,
     poster: 3,
     // Open the issue, plan it with Kernel, approve the plan, and back in Issues its three workspaces are linked to it.
@@ -454,40 +444,33 @@ async function record(name: string, clip: Clip) {
   await browser.close()
   if (!frames.length) throw new Error(`${name}: no frames`)
 
-  const length = end - start
-  const c = clip.crop
-  const width = clip.width ?? c.width * SCALE
-  const fades = ['fade=t=in:st=0:d=0.35', `fade=t=out:st=${(length - 0.45).toFixed(2)}:d=0.45`, 'format=yuv420p']
-  const encode = ['-c:v', 'libx264', '-preset', 'slow', '-crf', '24', '-tune', 'animation', '-movflags', '+faststart', '-an']
+  if (!d.shots.length) throw new Error(`${name}: a clip moves the camera at least once`)
+  await renderCamera(frames, start, end - start, d.shots, clip.width, join(dir, 'camera'))
+  encode(name, clip)
+}
+
+/** Encodes a clip's drawn frames into its MP4 and poster. CRF 30 on the slowest preset: text reads the same as at 24, at about half the size. */
+function encode(name: string, clip: Clip) {
+  const drawn = join(work, name, 'camera')
+  if (!existsSync(drawn)) throw new Error(`${name}: no drawn frames. Record it first: pnpm demo:clips ${name}`)
+  const length = readdirSync(drawn).filter((f) => f.endsWith('.jpg')).length / 30
+  const fades = ['fade=t=in:st=0:d=0.35', `fade=t=out:st=${(length - 0.45).toFixed(2)}:d=0.45`, 'format=yuv420p'].join(',')
   mkdirSync(outDir, { recursive: true })
   const mp4 = join(outDir, `${name}.mp4`)
-  if (d.shots.length) {
-    if (c !== full) throw new Error(`${name}: a camera clip records the full window`)
-    const drawn = join(dir, 'camera')
-    await renderCamera(frames, start, length, d.shots, width, drawn)
-    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '30', '-i', join(drawn, '%05d.jpg'), '-vf', fades.join(','), ...encode, mp4])
-  } else {
-    // A concat list with each frame held until the next one, from the start of the recording to its end.
-    const lines: string[] = []
-    frames.forEach((fr, i) => {
-      const from = i === 0 ? start : fr.t
-      const to = frames[i + 1]?.t ?? end
-      lines.push(`file '${fr.file}'`, `duration ${Math.max(0.001, to - from).toFixed(4)}`)
-    })
-    lines.push(`file '${frames.at(-1)!.file}'`)
-    writeFileSync(join(dir, 'list.txt'), lines.join('\n'))
-    const filters = [`crop=${c.width * SCALE}:${c.height * SCALE}:${c.x * SCALE}:${c.y * SCALE}`, `scale=${width}:-2:flags=lanczos`, 'fps=30', ...fades].join(',')
-    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', join(dir, 'list.txt'), '-vf', filters, ...encode, mp4])
-  }
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '30', '-i', join(drawn, '%05d.jpg'), '-vf', fades, '-c:v', 'libx264', '-preset', 'veryslow', '-crf', '30', '-tune', 'animation', '-movflags', '+faststart', '-an', mp4])
   const at = Math.min(clip.poster ?? length - 0.6, length - 0.6)
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', at.toFixed(2), '-i', mp4, '-frames:v', '1', '-q:v', '3', join(outDir, `${name}.jpg`)])
   const kb = (p: string) => Math.round(readFileSync(p).length / 1024)
-  console.log(`${name}: ${length.toFixed(1)}s, ${frames.length} frames, ${kb(mp4)} kB, poster ${kb(join(outDir, `${name}.jpg`))} kB`)
+  console.log(`${name}: ${length.toFixed(1)}s, ${kb(mp4)} kB, poster ${kb(join(outDir, `${name}.jpg`))} kB`)
 }
 
-const wanted = process.argv.slice(2)
+// `--encode` re-encodes from the frames the last recording drew, without recording again.
+const args = process.argv.slice(2)
+const encodeOnly = args.includes('--encode')
+const wanted = args.filter((a) => a !== '--encode')
 for (const name of wanted.length ? wanted : Object.keys(CLIPS)) {
   const clip = CLIPS[name]
   if (!clip) throw new Error(`No clip named ${name}. Clips: ${Object.keys(CLIPS).join(', ')}`)
-  await record(name, clip)
+  if (encodeOnly) encode(name, clip)
+  else await record(name, clip)
 }
