@@ -1875,6 +1875,7 @@ describe('One login, one row (KERNEL-701)', () => {
 
 describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => {
   const MIN = 60_000
+  afterEach(() => { vi.unstubAllEnvs() })
   /**
    * A Kernel whose Claude CLI login is cj@example.com, with Side, a subscription login, and Key, an API key account, added,
    * and a Codex account. `chat` saves a chat in one workspace, `turn` a last turn on the CLI login that read the chat from the cache.
@@ -1984,6 +1985,72 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
     expect(k.store.chat('big')?.moveChoice?.choice).toBe('keep')
     await k.stop({ budgetMs: 0 })
   })
+
+  it("tells a long chat what its next turn re-reads before it runs: a move, another model or the cache gone by, and nothing once it's answered", async () => {
+    const { k, chat, turn, place } = await setUp()
+    const h = k.handlers()
+    // A switch reads the CLI's login again. A fake Claude signed in as the turns' email keeps that read off the machine's own login.
+    vi.stubEnv('FAKE_EMAIL', 'cj@example.com')
+    await k.providers.setPath('claude', { path: (await fakeClaude()).bin })
+    const notice = (id: string) => h['chats.moveNotice']({ chatId: id })
+    chat('a', { lastTurn: turn() })
+    expect(await notice('a')).toBeNull()
+    // A switch with Move all sends it to Side, which reads the whole chat once. Side's price is nothing, a key's is the cache write.
+    await h['accounts.switch']({ provider: 'claude', accountId: 'side', move: 'all' })
+    expect(await notice('a')).toEqual({ kind: 'move', reason: 'account', from: 'cli', to: 'side', tokens: 200_000, keep: true })
+    await h['accounts.switch']({ provider: 'claude', accountId: 'key', move: 'all' })
+    expect(await notice('a')).toMatchObject({ kind: 'move', to: 'key', price: 1, keep: true })
+    // Summarize and Continue answer the move, and Keep holds the chat where it is.
+    await h['chats.moveChoice']({ chatId: 'a', choice: 'summarize' })
+    expect(await notice('a')).toBeNull()
+    await h['chats.moveChoice']({ chatId: 'a', choice: 'keep' })
+    expect(await notice('a')).toBeNull()
+    k.store.saveChat({ ...k.store.chat('a')!, moveChoice: undefined })
+    // Under the Long chat size nothing is said, and a chat that never ran has nothing to read.
+    chat('small', { lastTurn: turn({ context: 10_000 }) })
+    expect(await notice('small')).toBeNull()
+    expect(await notice('nope')).toBeNull()
+    // A pair proven to share a cache reads warm, so the warning doesn't come back for it.
+    await h['accounts.switch']({ provider: 'claude', accountId: 'side', move: 'all' })
+    expect(await notice('a')).not.toBeNull()
+    const warm = chat('w', { ranOn: 'side', lastTurn: turn({ account: 'side', first: { input: 10, cacheRead: 199_000, cacheWrite: 990 } }) })
+    place.moved(warm, 'cli')
+    expect(await notice('a')).toBeNull()
+
+    // Another model reads it again on the same account, and says which.
+    await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
+    chat('m', { model: 'claude-sonnet-5-5', lastTurn: turn({ model: 'claude-opus-5-5' }) })
+    expect(await notice('m')).toEqual({ kind: 'move', reason: 'model', from: 'cli', to: 'cli', model: 'Sonnet 5.5', tokens: 200_000, keep: false })
+    // An hour idle on a Claude plan, 5 minutes on a key or Codex: only an idle hint, since it re-reads wherever it runs.
+    chat('i', { lastTurn: turn({ at: Date.now() - 61 * MIN }) })
+    expect(await notice('i')).toEqual({ kind: 'idle', reason: 'idle', from: 'cli', to: 'cli', tokens: 200_000, keep: false })
+    chat('c', { provider: 'codex', model: 'gpt-6-astra', lastTurn: turn({ model: 'gpt-6-astra', email: undefined, at: Date.now() - 6 * MIN }) })
+    expect(await notice('c')).toMatchObject({ kind: 'idle', reason: 'idle' })
+    chat('c2', { provider: 'codex', model: 'gpt-6-astra', lastTurn: turn({ model: 'gpt-6-astra', email: undefined, at: Date.now() - 2 * MIN }) })
+    expect(await notice('c2')).toBeNull()
+    // The size is a guess for a chat from before, and says so.
+    chat('old')
+    k.store.saveItem('old', { kind: 'text', id: 't1', ts: Date.now(), text: 'y'.repeat(240_000) })
+    await k.config.setSettings({ accounts: { longChatTokens: 20_000 } })
+    await h['accounts.switch']({ provider: 'claude', accountId: 'key', move: 'all' })
+    expect(await notice('old')).toMatchObject({ kind: 'move', tokens: 60_000, estimated: true })
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('learns a shared cache per provider, and reads a Codex login that changed underneath as another account', async () => {
+    const { k, file, chat, turn, place } = await setUp()
+    // A Codex move whose first call read most of the chat from the cache proves that pair, and no Claude pair.
+    const warm = chat('w', { provider: 'codex', model: 'gpt-6-astra', ranOn: 'cx', lastTurn: turn({ account: 'cx', email: 'p@example.com', model: 'gpt-6-astra', first: { input: 10, cacheRead: 199_000, cacheWrite: 990 } }) })
+    expect(place.moved(warm, 'cli')).toBe('Moved to Personal and read this chat from the cache')
+    expect(place.shares('codex', 'cli', 'cx')).toBe(true)
+    expect(place.shares('claude', 'cli', 'cx')).toBe(false)
+    const c = chat('c', { provider: 'codex', model: 'gpt-6-astra', ranOn: 'cx', lastTurn: turn({ account: 'cx', email: 'p@example.com', model: 'gpt-6-astra' }) })
+    expect(place.coldReason(c, { account: 'cx' })).toBeUndefined()
+    // Signed in to another ChatGPT account behind Kernel's back.
+    file.codex.accounts[0].email = 'other@example.com'
+    expect(place.coldReason(c, { account: 'cx' })).toBe('account')
+    await k.stop({ budgetMs: 0 })
+  })
 })
 
 describe('long chats that move accounts, on Codex, and the guards against using up every account (KERNEL-844)', () => {
@@ -2077,6 +2144,29 @@ describe('long chats that move accounts, on Codex, and the guards against using 
     expect(switchedBySelf().map((n) => n.title)).toEqual(['Kernel switched Codex to Personal'])
     await h['accounts.switch']({ provider: 'codex', accountId: ids.Side })
     expect(k.providers.active('codex')).toBe(ids.Side)
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('moves a chat whose account hit a limit after a Keep switch at its next turn, and one switched twice before it only once', async () => {
+    const { k, h, ids, chat, ran, long, log, moveAll, notes, window } = await setUp()
+    for (const id of ['late', 'twice']) { chat(id); await ran(id, `start ${id}`) }
+    // Keep: both stay on Work, which then fills. The limit arrives after the switch, and the chat moves by itself.
+    await h['accounts.switch']({ provider: 'codex', accountId: ids.Personal })
+    await ran('late', 'next late')
+    expect((await log()).slice(2)).toEqual(['work: next late'])
+    window()
+    await ran('late', 'again late')
+    expect((await log()).slice(3)).toEqual(['personal: again late'])
+    expect(notes('late').at(-1)).toMatch(/^Moved to Personal/)
+    // Three Move all switches before the next turn: one summary on Work, where the cache is warm, and one move to where it ends.
+    await h['accounts.switch']({ provider: 'codex', accountId: 'cli' })
+    long('twice', 120_000)
+    await moveAll(ids.Side)
+    await moveAll(ids.Personal)
+    await moveAll(ids.Side)
+    await ran('twice', 'next twice')
+    expect((await log()).slice(4)).toEqual(['work: compact', 'side: next twice'])
+    expect(notes('twice').filter((n) => n.startsWith('Moved'))).toEqual(['Moved to Side'])
     await k.stop({ budgetMs: 0 })
   })
 
