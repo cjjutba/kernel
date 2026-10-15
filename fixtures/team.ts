@@ -6,7 +6,7 @@ import { describeTool } from '../src/main/services/approvals'
 import { agent, at, ids, invaderIcon, scene, team, withWorkspace } from './base'
 import { grouped, sharedFiles, sharedStills } from './workspace'
 
-// Team lane: Home and Inbox (KERNEL-17), rooms and the sidebar menus (KERNEL-20), Team and agents (KERNEL-19).
+// Team lane: Inbox (KERNEL-17), rooms and the sidebar menus (KERNEL-20), Team and agents (KERNEL-19).
 
 const empty = { rooms: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [] }
 
@@ -86,10 +86,10 @@ const repos = [
   ['client-c', true, 2 * HOUR], ['personal-site', false, DAY], ['habit-tracker', true, 3 * DAY], ['recipe-box', true, 7 * DAY], ['starter-kit', true, 14 * DAY], ['starter-kit-mobile', true, 21 * DAY]
 ].map(([name, priv, age]) => ({ fullName: `samrivera/${name}`, name: name as string, private: priv as boolean, updatedAt: ago(age as number) }))
 
-/** Local time today or yesterday, so Home groups rows under Today and Yesterday whatever day the shots run. */
+/** Local time today or yesterday, so lists group rows under Today and Yesterday whatever day the shots run. */
 const clock = (daysAgo: number, h: number, m: number) => { const d = new Date(); d.setDate(d.getDate() - daysAgo); d.setHours(h, m, 0, 0); return d.getTime() }
 
-/** The three things waiting on the user in Client A (Inbox.png, Home.png): two approvals and a PR ready to merge. */
+/** The three things waiting on the user in Client A (Inbox.png): two approvals and a PR ready to merge. */
 const homeApprovals: Approval[] = [
   { id: 'ap-push', kind: 'tool', source: 'sdk', roomId: ids.roomA, workspaceId: ids.schema, agentId: 'noor', toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'T-12 adds the invoices table. Kai is waiting on it to finish T-14.', status: 'pending', createdAt: ago(2 * MIN) },
   { id: 'ap-plan15', kind: 'plan', source: 'sdk', roomId: ids.roomA, agentId: 'kernel-lead', title: 'Plan for T-15', detail: '1. T-15a PDF renderer · Noor\n2. T-15b Export button · Kai', status: 'pending', createdAt: ago(6 * MIN) }
@@ -104,14 +104,7 @@ const homeNotifications: Notification[] = [
   note({ id: 'n6', kind: 'standup', agentId: 'kernel-lead', title: 'Daily standup', sub: 'Summary · Client A', heading: 'Daily standup', body: 'T-11 passed, T-12 and T-14 are in progress, T-09 waits on your merge.', read: true, createdAt: ago(9 * HOUR) }),
   note({ id: 'n7', title: 'Hooks reconnected', sub: 'System', roomId: undefined, heading: 'Hooks reconnected', body: 'Kernel is listening on localhost:7420 again.', read: true, createdAt: ago(11 * HOUR) })
 ]
-/** More blocked things waiting on the user, for a Home with more than five rows. */
-const moreNeeds: Notification[] = [
-  note({ id: 'n8', kind: 'blocked', agentId: 'kai', title: 'T-16 was blocked by a hook', sub: 'Check failed · Client A', heading: 'T-16 was blocked by a hook', body: 'The lint hook stopped Kai.', needsYou: true, createdAt: ago(20 * MIN) }),
-  note({ id: 'n9', kind: 'blocked', agentId: 'theo', title: 'T-17 was blocked by a hook', sub: 'Check failed · Client A', heading: 'T-17 was blocked by a hook', body: 'The type check hook stopped Theo.', needsYou: true, createdAt: ago(25 * MIN) }),
-  note({ id: 'n10', kind: 'blocked', agentId: 'ivy', title: 'T-18 was blocked by a hook', sub: 'Check failed · Client A', heading: 'T-18 was blocked by a hook', body: 'The test hook stopped Ivy.', needsYou: true, createdAt: ago(30 * MIN) })
-]
-
-/** Home.png: four rooms (A needs you), five merged PRs, three things waiting. */
+/** Four rooms (A needs you), five merged PRs, three things waiting. */
 const homeScene = (f: Fixture): Partial<Fixture> => {
   const merged = (id: string, roomId: string, agentId: string, title: string, added: number, removed: number, at: number) =>
     ({ id, roomId, name: id, title, prTitle: title, branch: `feat/${id}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/${id}`, mode: 'worktree' as const, agentId, port: 4400, status: 'archived' as const, prState: 'merged' as const, prNumber: 30, stat: { files: 3, added, removed }, createdAt: at - HOUR, mergedAt: at })
@@ -253,7 +246,7 @@ const wrenDraft: AgentDraft = {
 }
 const wrenPrefill = { name: 'Wren', description: 'A designer who checks every screen against DESIGN.md before review.', model: 'sonnet' }
 
-const home = { route: { name: 'home' } } as const
+const home = { route: { name: 'inbox' } } as const
 
 /** The Lead's workspace with three chats, on the first, and invoice-table as the second workspace (KERNEL-199). The test walks through Settings and back. */
 const navMemory = (f: Fixture): Partial<Fixture> => {
@@ -299,7 +292,7 @@ const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
 }
 
 /**
- * SidebarChatFolded.png (KERNEL-207): Client A on Home, with three Lead chats, the way `grouped` builds them. The first waits on a plan, the second is running and
+ * SidebarChatFolded.png (KERNEL-207): Client A on Inbox, with three Lead chats, the way `grouped` builds them. The first waits on a plan, the second is running and
  * folded over two workspaces, one of which asks to run a command, so its row shows the needs-you icon and its spinner. org-invites has no chat, and its row
  * reads its task title (KERNEL-587).
  */
@@ -313,12 +306,12 @@ const sidebarChatFolded = (f: Fixture): Partial<Fixture> => {
   return {
     ...home,
     threads: g.threads, chats: g.chats,
-    // The export chat started nothing here. The merged workspaces stay for Home's Shipped recently.
+    // The export chat started nothing here. The merged workspaces stay.
     workspaces: [...g.workspaces!.filter((w) => !w.id.startsWith('ws-pdf')), ...home.workspaces!.filter((w) => w.id.startsWith('ws-m'))].map((w) => (w.id === ids.invites ? { ...w, title: 'Invite people to an org' } : w)),
     prs: {},
     approvals: home.approvals!.map((a) => (a.id === 'ap-plan15' ? { ...a, workspaceId: ids.lead, chatId: ids.leadChat } : a)),
     push: [{ type: 'chat.running', chatId: 'chat-table', running: true }],
-    ui: { route: { name: 'home' }, foldedChats: ['t-table'] }
+    ui: { route: { name: 'inbox' }, foldedChats: ['t-table'] }
   }
 }
 
@@ -409,7 +402,7 @@ const sidebarChatGroups = (f: Fixture): Partial<Fixture> => {
 }
 
 /**
- * SidebarTrustHeld (no PNG, KERNEL-342): Client A on Home with no approvals. invoice-table is held in `trust` and invoice-schema is idle beside it,
+ * SidebarTrustHeld (no PNG, KERNEL-342): Client A on Inbox with no approvals. invoice-table is held in `trust` and invoice-schema is idle beside it,
  * and a folded chat hides org-invites, which is held too, so the chat row shows the same icon. invoice-table's row reads its task title and
  * invoice-schema has none, so its row falls back to the slug (KERNEL-587).
  */
@@ -430,7 +423,7 @@ const sidebarTrustHeld = (f: Fixture): Partial<Fixture> => {
     approvals: [],
     notifications: [],
     push: [],
-    ui: { route: { name: 'home' }, foldedChats: [owner] }
+    ui: { route: { name: 'inbox' }, foldedChats: [owner] }
   }
 }
 
@@ -582,17 +575,14 @@ const roomSetupTeam = (f: Fixture, team?: TeamConfig): Partial<Fixture> => {
 }
 
 export const teamFixtures: Record<string, Fixture> = {
-  Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
-  // KERNEL-839: six things need you, so the top five fill and the sixth waits behind them while the first folds away.
-  HomeApprovalFold: { ...scene((f) => ({ ...homeScene(f), notifications: [...homeNotifications, ...moreNeeds], ui: { route: { name: 'home' } } })), motion: { action: { click: 'Approve: Run pnpm drizzle-kit push' }, ms: 700, area: '.hm-cols' } },
   // KERNEL-253: Client B has its GitHub avatar, in grayscale, in the sidebar and on its card in the Rooms list.
-  HomeRoomIcon: scene((f) => {
+  SidebarRoomIcon: scene((f) => {
     const home = homeScene(f)
     return {
       ...home,
       rooms: home.rooms!.map((r) => (r.id === ids.roomB ? { ...r, icon: { kind: 'github' as const, file: `${ids.roomB}-1.png`, at: at(9, 0) } } : r)),
       roomIcons: { [ids.roomB]: invaderIcon },
-      ui: { route: { name: 'home' } }
+      ui: { route: { name: 'inbox' } }
     }
   }),
   CommandPalette: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
@@ -603,6 +593,10 @@ export const teamFixtures: Record<string, Fixture> = {
   // No PNG: Lead chat 3, then Settings and back, then another workspace and back (KERNEL-199). The test opens it in Electron.
   NavMemory: scene(navMemory),
   History: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history' } } })),
+  // Archived in a room's menu: History for Client A alone.
+  HistoryRoom: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history', roomId: ids.roomA } } })),
+  // Search with "archived" typed: the archived workspaces, which a pick restores and opens.
+  SearchArchived: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'inbox' }, modal: { name: 'search' } } })),
   // No PNG: Delete in History (KERNEL-333). The bulk confirm over every archived row, two branches with unpushed commits among them.
   HistoryConfirmDelete: scene((f) => {
     const h = historyScene(f)
@@ -630,7 +624,6 @@ export const teamFixtures: Record<string, Fixture> = {
   UpdateReady: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: home })),
   // The update pill stays in the footer while the sidebar is hidden (KERNEL-588).
   UpdateReadyNoSidebar: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: { ...home, sidebar: false } })),
-  HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
   InboxApprovalFold: { ...scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })), motion: { action: { click: 'Approve' }, ms: 700, area: '.ib-body-wrap' } },
   // KERNEL-785: an MCP call's approval is titled as the chat's row says it, the newest row, so the detail pane opens on it.
@@ -665,7 +658,7 @@ export const teamFixtures: Record<string, Fixture> = {
     ...roomsScene(f),
     ui: { route: { name: 'rooms' }, modal: { name: 'newRoom', prefill: { source: 'repo', name: 'Client C', desc: 'Booking dashboard for a dental clinic', from: 'samrivera/client-c', baseBranch: 'main' } } }
   })),
-  ConnectRepo: scene((f) => ({ ...roomsScene(f), repos, ui: { route: { name: 'home' }, modal: { name: 'connectRepo' } } })),
+  ConnectRepo: scene((f) => ({ ...roomsScene(f), repos, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
   OpenFolder: scene((f) => ({
     ...roomsScene(f),
     folders: [
@@ -674,7 +667,7 @@ export const teamFixtures: Record<string, Fixture> = {
       { path: '/Users/you/Projects/personal-site', git: true, branch: 'main', dirty: 0 },
       { path: '/Users/you/Desktop/sandbox', git: false }
     ],
-    ui: { route: { name: 'home' }, modal: { name: 'openFolder' } }
+    ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } }
   })),
   RoomSetup: scene((f) => ({
     ...roomsScene(f),
@@ -722,11 +715,13 @@ export const teamFixtures: Record<string, Fixture> = {
   // A room whose `[tracker] kind` is jira says its issues can't be browsed in Kernel yet (KERNEL-503).
   IssuesJira: scene((f) => issuesTrackerScene(f, { roomId: ids.roomOwn }, ids.roomOwn)),
   // The From popover's Issues tab for each: the room's GitHub issues with their assignees, and the line for a room with none.
-  SidebarRoomsMenu: withMenu('rooms', { name: 'home' }),
+  SidebarRoomsMenu: withMenu('rooms', { name: 'inbox' }),
   SidebarLeadChats: scene(sidebarLeadChats),
   SidebarChatFolded: scene(sidebarChatFolded),
   SidebarChatGroups: scene(sidebarChatGroups),
   SidebarTrustHeld: scene(sidebarTrustHeld),
   SidebarRoomMenu: withMenu(`room:${ids.roomA}`, { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }),
+  // The room's menu now ends its first group with Archived, which opens History for that room.
+  SidebarRoomMenuArchived: withMenu(`room:${ids.roomA}`, { name: 'inbox' }),
   ConfirmRemoveRoom: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'confirm', kind: 'removeRoom', roomId: ids.roomA } } }))
 }

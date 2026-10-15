@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react'
 import type { Workspace } from '@shared/types'
-import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { oneOf, useRemembered } from '../../remember'
 import { Button, EmptyState, Icon, IconButton, Pill, useBusy } from '../../ui'
 import { archivedList, historyName, deleteAllLabel, endedAt, groupOf, inTab, matches, prGlyph, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
-import { restoredFromHistory } from '../workspace/byHand'
+import { restoreArchived } from './restore'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import './history.css'
 import { SidebarToggle } from '../../components/PanelToggles'
@@ -18,6 +17,7 @@ const groups: HistoryGroup[] = ['Today', 'This week', 'Earlier']
  * Delete is the way out (KERNEL-333): one row, or every row in view.
  */
 export function History() {
+  const only = useStore((s) => (s.ui.route.name === 'history' ? s.ui.route.roomId : undefined))
   const workspaces = useStore((s) => s.workspaces)
   const rooms = useStore((s) => s.rooms)
   const agents = useStore((s) => s.agents)
@@ -29,22 +29,12 @@ export function History() {
   const threads = useStore((s) => s.threads)
   const nameOf = (w: Workspace) => historyName(w, threads)
 
-  const all = useMemo(() => archivedList(workspaces), [workspaces])
+  const all = useMemo(() => archivedList(workspaces).filter((w) => !only || w.roomId === only), [workspaces, only])
   const found = all.filter((w) => matches({ ...w, name: nameOf(w) }, q, roomName(w), agentName(w)))
   const rows = found.filter((w) => inTab(w, tab))
   const count = (t: HistoryTab) => found.filter((w) => inTab(w, t)).length
 
-  const restore = (w: Workspace) => run(w.id, async () => {
-    try {
-      const back = await call('workspaces.restore', { workspaceId: w.id })
-      restoredFromHistory(w.id)
-      actions.workspaces.upsert(back)
-      // A worktree sets up again before its agent goes on, and the workspace shows it (KERNEL-77).
-      go({ name: 'workspace', workspaceId: w.id })
-    } catch (e) {
-      actions.ui.toast({ title: `Could not restore ${nameOf(w)}`, sub: cleanError(e) })
-    }
-  })
+  const restore = (w: Workspace) => run(w.id, () => restoreArchived(w, nameOf(w)))
 
   const confirmDelete = (workspaceIds: string[]) => actions.ui.openModal({ name: 'confirm', kind: 'deleteHistory', workspaceIds })
 
@@ -53,7 +43,8 @@ export function History() {
       <header className="header" style={{ paddingRight: 12 }}>
         <SidebarToggle />
         <Icon name="history" />
-        <h1>History</h1>
+        <h1>{only ? `History, ${rooms.find((r) => r.id === only)?.name ?? 'room'}` : 'History'}</h1>
+        {only && <Button variant="ghost" onClick={() => go({ name: 'history' }, { history: 'replace' })}>All rooms</Button>}
         <span className="grow" />
         <input type="search" className="input hs-search" placeholder="Search workspaces" aria-label="Search workspaces" value={q} onChange={(e) => setQ(e.target.value)} />
       </header>

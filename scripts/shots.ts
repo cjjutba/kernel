@@ -449,6 +449,13 @@ async function typeSwitch(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// SearchArchived is the palette with "archived" typed, which lists the archived workspaces.
+async function typeArchived(page: Page) {
+  await page.getByRole('combobox', { name: 'Type a command or search' }).fill('archived')
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 // RoomSetupTeam is drawn with the Reviewer picker open. Its open state is local to the picker, so click it open.
 async function openReviewer(page: Page) {
   await page.getByRole('button', { name: 'Reviewer' }).click()
@@ -544,6 +551,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsAccountsMenu: (page) => personalMenu(page),
   SettingsAccountsRemove: (page) => personalMenu(page, 'Remove'),
   SearchSwitchAccount: typeSwitch,
+  SearchArchived: typeArchived,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
   TurnFilesHover: hoverAndFocusRows,

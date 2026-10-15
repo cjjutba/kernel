@@ -41,6 +41,7 @@ export function RoomMenu({ room, anchorRef }: { room: Room; anchorRef: RefObject
           { id: 'ws', label: 'New chat', icon: 'plus', onSelect: () => openNewChat(room.id) },
           { id: 'from', label: 'New chat from...', icon: 'link', onSelect: () => openNewChat(room.id) },
           { id: 'agents', label: 'Agents', icon: 'team', onSelect: () => go(roomAgents(room.id)) },
+          { id: 'archived', label: 'Archived', icon: 'history', onSelect: () => go({ name: 'history', roomId: room.id }) },
           { id: 'pause', label: room.paused ? 'Resume room' : 'Pause room', icon: room.paused ? 'play' : 'pause', onSelect: () => void togglePause() },
           { id: 'settings', label: 'Room settings', icon: 'sliders', onSelect: () => go({ name: 'settings', page: 'room', roomId: room.id }) },
           { id: 'hide', label: 'Hide room', icon: 'eyeoff', onSelect: () => void hide() },

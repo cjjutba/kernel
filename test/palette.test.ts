@@ -21,7 +21,7 @@ describe('command palette', () => {
     const rooms = [room('a', 'Client A'), room('b', 'Client B')]
     const workspaces = [ws('invoice-table', { stat: { files: 4, added: 412, removed: 38 } })]
     const input = { rooms, workspaces, approvals: [], shared: [], agents: {}, act }
-    const home = buildItems({ ...input, route: { name: 'home' } })
+    const home = buildItems({ ...input, route: { name: 'rooms' } })
     expect(home.items.filter((i) => i.section === 'Suggested').map((i) => i.label)).toEqual(['New chat in Client A', 'Create PR for invoice-table'])
     expect(home.items.filter((i) => i.section === 'Rooms').map((i) => i.label)).toEqual(['Client A', 'Client B', 'New room'])
     const inWs = buildItems({ ...input, terminal: { enabled: true }, route: { name: 'workspace', workspaceId: 'invoice-table' } })
@@ -55,7 +55,7 @@ describe('command palette', () => {
     const stat = (files: number) => ({ files, added: files, removed: 0 })
     const here = { name: 'workspace', workspaceId: 'a1' } as const
     expect(labels([ws('a1')], here)).toEqual([])
-    expect(labels([ws('a1', { stat: stat(0) })], { name: 'home' })).toEqual([])
+    expect(labels([ws('a1', { stat: stat(0) })], { name: 'rooms' })).toEqual([])
     expect(labels([ws('a1', { stat: stat(2) })], here)).toEqual(['Create PR for a1'])
     // The current workspace is empty, so the suggestion falls back to the newest one in the room that has changes.
     expect(labels([ws('a1', { stat: stat(0) }), ws('a2', { stat: stat(3), createdAt: 2 }), ws('a3', { createdAt: 3 })], here)).toEqual(['Create PR for a2'])
@@ -66,7 +66,7 @@ describe('command palette', () => {
     // A short room name used to outrank the room in view.
     const rooms = [room('a', 'Client A'), room('b', 'Client B'), room('o', 'Own')]
     const input = { rooms, workspaces: [], approvals: [], shared: [], agents: { a: [kernel], b: [{ ...kernel, name: 'Sol' }], o: [{ ...kernel, name: 'Oz' }] }, act: { ...act, openLead: (id: string) => { opened.push(id) } } }
-    const home = buildItems({ ...input, route: { name: 'home' } })
+    const home = buildItems({ ...input, route: { name: 'rooms' } })
     const suggested = home.items.filter((i) => i.section === 'Suggested')
     expect(suggested.map((i) => i.label)).toEqual(['New chat in Client A', "Open Kernel's chat"])
     expect(suggested[1].keys).toEqual(['⌘', '⇧', 'L'])
@@ -79,7 +79,7 @@ describe('command palette', () => {
     found[0].run()
     expect(opened).toEqual(['a', 'b'])
     // A room with no Lead has nothing to open.
-    expect(buildItems({ ...input, agents: {}, route: { name: 'home' } }).items.map((i) => i.id)).not.toContain('lead-chat')
+    expect(buildItems({ ...input, agents: {}, route: { name: 'rooms' } }).items.map((i) => i.id)).not.toContain('lead-chat')
   })
 })
 
@@ -107,6 +107,20 @@ describe('command palette, shared files', () => {
     // A room in view with nothing shared has no group.
     const bare = shared([file('1')], { name: 'room', roomId: 'b' } as never)
     expect(bare.items.some((i) => i.section === 'Shared')).toBe(false)
+  })
+
+  it('finds archived workspaces by typing, and restores the one picked', () => {
+    const restored: string[] = []
+    const rooms = [room('a', 'Client A')]
+    const old = ws('old-export', { status: 'archived', archivedAt: 5 })
+    const b = buildItems({ route: { name: 'rooms' }, rooms, workspaces: [old, ws('live')], approvals: [], shared: [], agents: {}, act: { ...act, restore: (w: Workspace) => { restored.push(w.id) } } })
+    // Not in the default list, and no command leads to Home.
+    expect(visibleItems(b.items, b.more, '').flatMap((g) => g.list).some((i) => i.section === 'Archived' || i.label === 'Home')).toBe(false)
+    expect(b.more.some((i) => i.label === 'Home')).toBe(false)
+    const hit = visibleItems(b.items, b.more, 'archived')[0].list.find((i) => i.section === 'Archived')
+    expect(hit?.label).toBe('old-export')
+    hit?.run()
+    expect(restored).toEqual(['old-export'])
   })
 
   it('says what a file is and who shared it', () => {
@@ -152,7 +166,7 @@ describe('command palette, shared files', () => {
     const archived = workspaces.map((w) => (w.id === 'w1' ? { ...w, status: 'archived' as const } : w))
     open(file('s'), { name: 'workspace', workspaceId: 'w2' }, archived)
     // Not on a workspace: the Lead's.
-    open(file('s'), { name: 'home' }, archived)
+    open(file('s'), { name: 'rooms' }, archived)
     expect(opened).toEqual(['w1:s', 'w2:s', 'lead:s'])
   })
 
@@ -160,7 +174,7 @@ describe('command palette, shared files', () => {
     const calls: string[] = []
     const act2 = { ...act, openShared: (w: string, s: string) => { calls.push(`open ${w}:${s}`) }, openSharedInLead: (r: string, s: string) => { calls.push(`lead ${r}:${s}`) }, toast: (t: string) => { calls.push(`toast ${t}`) } }
     const pick = (f: SharedFile, o: Partial<Parameters<typeof buildItems>[0]>) => {
-      const b = buildItems({ ...base, shared: [f], route: { name: 'home' }, act: act2, ...o })
+      const b = buildItems({ ...base, shared: [f], route: { name: 'rooms' }, act: act2, ...o })
       const hit = visibleItems(b.items, b.more, f.title)[0].list.find((i) => i.section === 'Shared')
       expect(hit?.label).toBe(f.title)
       hit?.run()
@@ -213,14 +227,14 @@ describe('command palette chats (KERNEL-339)', () => {
 
   it('opens the chat that was picked, with its tabs', () => {
     const opened: unknown[] = []
-    const { items } = buildItems({ ...input, route: { name: 'home' }, act: { ...act, openChat: (roomId, t, tabs) => opened.push([roomId, t.id, tabs.length]) } })
+    const { items } = buildItems({ ...input, route: { name: 'rooms' }, act: { ...act, openChat: (roomId, t, tabs) => opened.push([roomId, t.id, tabs.length]) } })
     items.find((i) => i.id === 'chat-t1')!.run()
     expect(opened).toEqual([['a', 't1', 3]])
   })
 
   it('finds a chat by typing, even when two chats share a name', () => {
     const twin = [...chats, { thread: thread('t3', 'Seed demo data'), tabs: [tab('c5', 't3')] }]
-    const { items, more } = buildItems({ ...input, chats: twin, route: { name: 'home' } })
+    const { items, more } = buildItems({ ...input, chats: twin, route: { name: 'rooms' } })
     expect(visibleItems(items, more, 'seed')[0].list.filter((i) => i.section === 'Chats').map((i) => i.id)).toEqual(['chat-t2', 'chat-t3'])
   })
 

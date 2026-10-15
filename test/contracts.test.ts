@@ -68,7 +68,7 @@ describe('IPC contract', () => {
     expect(await h['rooms.icon']({ roomId: 'room-b' })).toBeNull()
     expect((await h['rooms.setIcon']({ roomId: 'room-b', icon: { kind: 'github' } })).icon?.kind).toBe('github')
     expect((await h['rooms.setIcon']({ roomId: 'room-a', icon: { kind: 'letter' } })).icon).toBeUndefined()
-    expect(await fixtureHandlers(fixtures.HomeRoomIcon)['rooms.icon']({ roomId: 'room-b' })).toMatch(/^data:image\/png;base64,/)
+    expect(await fixtureHandlers(fixtures.SidebarRoomIcon)['rooms.icon']({ roomId: 'room-b' })).toMatch(/^data:image\/png;base64,/)
     // The other screens draw letters, so no base fixture room carries an icon.
     expect(await fixtureHandlers(fixtures.Workspace)['rooms.icon']({ roomId: 'room-portfolio' })).toBeNull()
   })

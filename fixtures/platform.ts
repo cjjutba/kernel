@@ -43,7 +43,7 @@ const hookEvents: HookStatus['events'] = [
 const hooksProblem = (problem: HookProblem, installed = false) => scene((f) => ({
   ...sixRunning(f),
   hooks: { port: 7420, listening: true, installed, events: hookEvents.map((e) => ({ name: e.name, installed })), problem },
-  ui: { route: { name: 'home' }, modal: { name: 'checkHooks' } }
+  ui: { route: { name: 'inbox' }, modal: { name: 'checkHooks' } }
 }))
 
 /** `resetsAt` is epoch seconds, as rate_limit_event sends it. */
@@ -396,12 +396,11 @@ export const platformFixtures: Record<string, Fixture> = {
   WhatsNewCurrent: whatsNewCurrent,
   // The update card in the light theme (KERNEL-164). UpdateReady shows it in dark; no PNG draws it.
   UpdateReadyLight: light(teamFixtures.UpdateReady),
-  HomeLight: light(teamFixtures.Home),
   WorkspaceLight: light(workspaceFixtures.Workspace),
   // The VS Code file icons and git colors in the light theme (KERNEL-399).
   WorkspaceFilesTreeLight: light(workspaceFixtures.WorkspaceFilesTree),
   // Open at login is off by default since KERNEL-57; the canvas draws it on.
-  Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openTo: 'home', openAtLogin: true } } }),
+  Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openTo: 'lastPlace', openAtLogin: true } } }),
   SettingsAppearance: settingsPage('appearance'),
   SettingsNotifications: settingsPage('notifications'),
   SettingsShortcuts: settingsPage('shortcuts'),
@@ -486,7 +485,7 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-619: Personal's login is already in Kernel, so Add account says so and keeps its Sign in button.
   SettingsAddAccountDuplicate: providersPage('claude', { push: [{ type: 'account.add', add: { provider: 'claude', step: 'failed', error: 'That account is already in Kernel.' } }] }),
   // KERNEL-561: the menu lists every account of both providers with its plan and usage, and Cmd+K switches to any that isn't in use.
-  AccountMenu: { ...teamFixtures.Home, accounts: richAccounts, usage: providerUsage(), ui: { route: { name: 'home' }, menu: 'account' } },
+  AccountMenu: { ...teamFixtures.Inbox, accounts: richAccounts, usage: providerUsage(), ui: { route: { name: 'inbox' }, menu: 'account' } },
   // KERNEL-674: usage is in the footer all the time. Detailed gives the active account of each provider its name and both windows, and Compact gives it one number.
   UsageFooter: usageHome(),
   UsageFooterCompact: usageHome({}, { usageView: 'compact' }),
@@ -529,7 +528,7 @@ export const platformFixtures: Record<string, Fixture> = {
     { event: { name: 'app.started' }, at: at(10, 40), sent: false }
   ] } }),
   // KERNEL-397: the one question about usage data, over Home, in a build that can send.
-  TelemetryAsk: scene(() => ({ telemetry: { canSend: true }, ui: { route: { name: 'home' }, modal: { name: 'telemetryAsk' } } })),
+  TelemetryAsk: scene(() => ({ telemetry: { canSend: true }, ui: { route: { name: 'inbox' }, modal: { name: 'telemetryAsk' } } })),
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
   // KERNEL-371: Archive on merge is off in the personal file over settings.toml, and Delete branch on archive follows the app.
   // KERNEL-401: the optional checks come from settings.toml.
@@ -736,7 +735,7 @@ export const platformFixtures: Record<string, Fixture> = {
   CheckHooks: scene((f) => ({
     ...sixRunning(f),
     hooks: { port: 7420, listening: true, installed: true, events: hookEvents },
-    ui: { route: { name: 'home' }, modal: { name: 'checkHooks' } }
+    ui: { route: { name: 'inbox' }, modal: { name: 'checkHooks' } }
   })),
   CheckHooksNotWritable: hooksProblem({ kind: 'not-writable', code: 'EACCES', file: '~/.claude/settings.json', dir: '~/.claude', fix: 'sudo chown -R "$USER" ~/.claude' }),
   CheckHooksReadOnly: hooksProblem({ kind: 'read-only', code: 'EROFS', dir: '~/.claude', disk: 'Work', fix: 'sudo mount -uw /Volumes/Work' }),

@@ -13,9 +13,9 @@ Developers who already use Claude Code and want several agents working on one re
 1. You brief Kernel in Kernel's chat or the new workspace modal.
 2. Kernel plans (plan mode) and asks for approval.
 3. You approve. Kernel creates one workspace per task and hands each to an agent.
-4. Agents build. Anything risky comes to you as an approval in the Inbox, on Home, or inline in the chat.
+4. Agents build. Anything risky comes to you as an approval in the Inbox or inline in the chat.
 5. You review diffs, the agent opens a PR, checks run, you merge.
-6. The workspace is archived and lives in History.
+6. The workspace is archived and is kept under Archived: search for it with ⌘K, or open Archived from its room's menu in the sidebar.
 
 ## Glossary
 
