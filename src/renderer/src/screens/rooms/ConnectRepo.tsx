@@ -27,7 +27,6 @@ const account = (auth: GitHubAuth | null): { name: string; sub: string } => {
 /** ConnectRepo.png: pick one of your GitHub repos. New room does the cloning. */
 export function ConnectRepo() {
   const [auth, setAuth] = useState<GitHubAuth | null>(null)
-  const [tries, setTries] = useState(0)
   const [busy, run] = useBusy<'retry'>()
   const [repos, setRepos] = useState<RepoSummary[] | null>(null)
   const [query, setQuery] = useState('')
@@ -36,21 +35,22 @@ export function ConnectRepo() {
   const [cloneTo, setCloneTo] = useState(getDraft().cloneTo)
   const seq = useRef(0)
 
-  useEffect(() => {
+  const loadRepos = (q: string) => {
     const mine = ++seq.current
-    const t = setTimeout(() => {
-      call('github.repos', { query: query.trim() || undefined })
-        .then((r) => { if (mine === seq.current) { setRepos(r); setError(null); setPicked((p) => p || (query ? '' : r[0]?.fullName ?? '')) } })
-        .catch((e: unknown) => { if (mine === seq.current) { setRepos([]); setError({ kind: githubErrorKind(e) ?? 'other', message: cleanError(e) }) } })
-    }, query ? 200 : 0)
+    return call('github.repos', { query: q || undefined })
+      .then((r) => { if (mine === seq.current) { setRepos(r); setError(null); setPicked((p) => p || (q ? '' : r[0]?.fullName ?? '')) } })
+      .catch((e: unknown) => { if (mine === seq.current) { setRepos([]); setError({ kind: githubErrorKind(e) ?? 'other', message: cleanError(e) }) } })
+  }
+  const loadAuth = () => call('github.auth', undefined).then(setAuth, () => setAuth({ state: 'offline' }))
+  useEffect(() => {
+    const t = setTimeout(() => void loadRepos(query.trim()), query ? 200 : 0)
     return () => clearTimeout(t)
-  }, [query, tries])
-  useEffect(() => { void call('github.auth', undefined).then(setAuth, () => setAuth({ state: 'offline' })) }, [tries])
+  }, [query]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void loadAuth() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const retry = () => run('retry', async () => {
     setRepos(null)
     setError(null)
-    setTries((n) => n + 1)
-    await new Promise<void>((done) => setTimeout(done, 400))
+    await Promise.all([loadRepos(query.trim()), loadAuth()])
   })
   const switchAccount = () => actions.ui.toast({ title: 'Run gh auth switch in a terminal', sub: 'Then try again.' })
 
@@ -118,7 +118,7 @@ export function ConnectRepo() {
           )}
           {repos && !repos.length && !error && (query.trim()
             ? <p className="muted" role="status" style={{ margin: 0, padding: '10px 12px' }}>No repositories match.</p>
-            : <EmptyList icon="branch" title="This account has no repositories">Create or fork one on GitHub, then try again.</EmptyList>)}
+            : <EmptyList icon="branch" title="This account has no repositories" action={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void retry()}>Try again</Button>}>Create or fork one on GitHub, then try again.</EmptyList>)}
         </div>
       </div>
     </Modal>
