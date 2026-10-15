@@ -64,7 +64,7 @@ export function githubProblem(kind: GitHubErrorKind, message: string, where: str
 }
 
 /** The description and comments of an issue that did not load, with the way to ask again. The header and buttons stay. */
-export function DescriptionFailed({ children, onRetry }: { children: ReactNode; onRetry: () => void }) {
+export function DescriptionFailed({ children, onRetry }: { children: ReactNode; onRetry: () => Promise<unknown> | void }) {
   const [busy, run] = useBusy<'retry'>()
   return (
     <Banner kind="offline" title="Could not load the description" actions={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void run('retry', async () => onRetry())}>Try again</Button>}>{children}</Banner>

@@ -222,7 +222,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
                 })}
               </ul>
             </section>
-            {issues.length >= 100 && <CapNote>Showing the 100 issues updated most recently. Search or filter to find the rest.</CapNote>}
+            {issues.length >= 100 && <CapNote>Showing the 100 newest issues. Search or filter to find the rest.</CapNote>}
           </div>
           <div className="is-pane" ref={detail}>
             {selId && <GithubDetail room={room} id={selId} summary={cur} tick={tick} />}

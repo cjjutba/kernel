@@ -52,6 +52,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
   const [view, setView] = useState<View>({ kind: 'loading' })
   const [problem, setProblem] = useState<View | null>(null)
+  const [unread, setUnread] = useState(false)
   const [scope, setScope] = useState<LinearScope | null>(null)
   const [filter, setFilter] = useState<SavedFilter>(readSaved)
   const [query, setQuery] = useState('')
@@ -97,11 +98,15 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
       hasLists.current = true
       setLists({ mine, all })
       setProblem(null)
+      setUnread(false)
       setView({ kind: 'ready' })
     } catch (e) {
       if (stale()) return
       const v = failure(e)
-      if (hasLists.current && v.kind !== 'connect') setProblem(v)
+      if (hasLists.current && v.kind !== 'connect') {
+        setProblem(v)
+        if (loadedKey.current !== `${serializeFilter(now.current.filter)}|${now.current.query}`) { setLists(null); setUnread(true) }
+      }
       else setView(v)
     }
   }, [])
@@ -211,10 +216,10 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
         <RefreshNotice kind="auth" title="Linear rejected the token" action={<Button size="md" onClick={openIntegrations}>Open Settings, Integrations</Button>}>Reconnect Linear to refresh these issues.</RefreshNotice>
       )}
       {ready && failed && failed.kind === 'error' && (
-        <RefreshNotice kind="offline" title={failed.title} action={<Button size="md" busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{failed.sub} The issues below are from the last time it loaded.</RefreshNotice>
+        <RefreshNotice kind="offline" title={failed.title} action={<Button size="md" busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{failed.sub} {unread ? 'No issues are shown for this filter.' : 'The issues below are from the last time it loaded.'}</RefreshNotice>
       )}
 
-      {ready && scope && flat.length === 0 && (() => {
+      {ready && scope && !unread && flat.length === 0 && (() => {
         const d = describeFilter({ ...filter, query }, scope)
         const none = d.fits.length === 0
         // Mine is what narrows most often, so the way out names it: All shows every open issue the other filters leave.
