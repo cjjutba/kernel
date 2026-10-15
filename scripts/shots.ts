@@ -363,6 +363,13 @@ async function driveWhereByKeyboard(page: Page) {
 async function openLeadModeMenu(page: Page) {
   await openWhere(page, /^How Kernel works:/, /Build here/)
 }
+// NewChatEffortMenu and NewChatPermissionMenu are New chat with the effort or the permission menu open.
+async function openEffortMenu(page: Page) {
+  await openWhere(page, /^Effort:/, /High/)
+}
+async function openPermissionMenu(page: Page) {
+  await openWhere(page, /^Permission mode:/, /Accept edits/)
+}
 async function pickBuildHere(page: Page) {
   await page.getByRole('button', { name: /^How Kernel works:/ }).click()
   await page.getByRole('menuitemradio', { name: /Build here/ }).click()
@@ -485,6 +492,12 @@ async function narrowWindow(page: Page, app: ElectronApplication) {
   await page.waitForTimeout(400)
 }
 
+// NewChatNarrow and ComposerModesNarrow are the box with the window at 600px: the chat column is about 600px, where the permission name and the Hand off label give way to their icons.
+const windowAt = (w: number) => async (page: Page, app: ElectronApplication) => {
+  await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w, h: HEIGHT })
+  await page.waitForTimeout(400)
+}
+
 // SettingsPRsSaving, Saved and Clamped are Size limit typed and left (KERNEL-721). The note is local to the field. Saving holds main's answer back.
 async function leaveSizeLimit(page: Page, text: string) {
   const field = page.getByRole('textbox', { name: 'Size limit' })
@@ -538,6 +551,10 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   NewChatLocal: hoverLocalBranch,
   NewChatPlus: (page) => openWhere(page, 'Add context'),
   NewChatLeadModeMenu: openLeadModeMenu,
+  NewChatEffortMenu: openEffortMenu,
+  NewChatNarrow: windowAt(600),
+  ComposerModesNarrow: windowAt(600),
+  NewChatPermissionMenu: openPermissionMenu,
   NewChatBuildHere: pickBuildHere,
   PanelFilter: filterChanges,
   SettingsAddAccountApiKey: typeApiKey,

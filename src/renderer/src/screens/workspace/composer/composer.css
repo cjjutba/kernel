@@ -14,7 +14,23 @@
 .cmp-field[data-hint] .cmp-input[data-empty]::before { max-width: calc(100% - 96px); }
 .cmp-input[data-empty]::before { content: attr(data-placeholder); position: absolute; color: var(--muted); pointer-events: none; }
 .cmp-input[contenteditable='false'] { cursor: default; }
-.cmp-foot { gap: 12px; }
+.cmp-foot { gap: 8px; }
+/* The run settings are one group: the model, its effort and the permission mode, split by hairlines (the redesign's v3 mock). The model name never shrinks. */
+.cmp-run { display: flex; align-items: center; min-width: 0; }
+.cmp-run > span { display: inline-flex; flex-shrink: 0; }
+.cmp-sep { width: 1px; height: 16px; margin: 0 2px; background: var(--line-3); flex-shrink: 0; }
+.cmp-foot .cmp-model { margin-left: 0; color: var(--muted); font-weight: 500; }
+.cmp-foot .cmp-model:hover, .cmp-foot .cmp-model[aria-expanded='true'] { color: var(--ink); }
+.cmp-foot .cmp-model-name { color: var(--ink-2); flex-shrink: 0; }
+.cmp-foot .cmp-model-name > span { white-space: nowrap; }
+/* Hand off and Build here keep their pill. */
+.cmp-foot .cmp-lead { padding: 0 9px 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-pill); color: var(--ink-2); }
+.cmp-foot .cmp-lead:hover { background: var(--surface-3); }
+.eff-pop { width: 232px; background: var(--surface-2); }
+.eff-row { height: 32px; gap: 10px; padding: 0 10px; font-size: 13px; }
+.eff-row + .eff-row { margin-top: 1px; }
+.eff-row > svg:last-child { color: var(--ink); }
+.eff-tag { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border: 1px solid var(--line-3); border-radius: var(--r-xs); font-size: 11px; line-height: 1; font-weight: 400; color: var(--muted); }
 /* The agent is its name and role in a pill, with no letter tile and no divider after it. The role stays muted: faint is about 3.4:1 on the box. */
 .cmp-agent { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 22px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-pill); font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
 .cmp-name, .cmp-role { overflow: hidden; text-overflow: ellipsis; }
@@ -170,12 +186,13 @@
 .hunk-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface); cursor: pointer; }
 .hunk-row input { margin-top: 3px; accent-color: var(--ink); }
 
-/* A narrow chat column: the composer pulls in, and the agent's role, then its whole pill, give way to the model and send (D-080). The mode keeps its icon and loses its name last. */
-@container chat (max-width: 520px) {
-  .composer-wrap { padding: 4px 12px 12px; }
-  .cmp-role { display: none; }
-}
-@container chat (max-width: 420px) { .cmp-agent, .cmp-mode-name { display: none; } }
+/* A narrow chat column: the composer pulls in, and labels give way to icons. The permission name goes first, then the Hand off label, then the carets. The model name stays whole (D-080).
+   The agent's role, then its whole pill, give way too. The widths are the mock's composer widths plus the 48px of padding. */
+@container chat (max-width: 720px) { .cmp-foot .cmp-mode .cmp-mode-name { display: none; } .cmp-foot .cmp-mode { padding: 0 6px; } }
+@container chat (max-width: 620px) { .cmp-lead-name { display: none; } .cmp-foot .cmp-lead { padding: 0 8px; } }
+@container chat (max-width: 520px) { .composer-wrap { padding: 4px 12px 12px; } .cmp-role { display: none; } }
+@container chat (max-width: 470px) { .cmp-foot { gap: 4px; } .cmp-foot .cmp-model { padding: 0 5px; gap: 5px; } .cmp-run .cmp-mode > svg:last-child, .cmp-lead > svg:last-child { display: none; } }
+@container chat (max-width: 420px) { .cmp-agent { display: none; } }
 
 /* Plan mode is a blue box with no chip or label (D-093, KERNEL-274): a `--plan` border, a soft glow rising from the bottom
    edge, a blue caret and a blue send. A waiting plan (D-092) keeps the blue and puts Copy and Approve in a blue strip on
@@ -295,7 +312,6 @@
 .cmp-where-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 28px; }
 .cmp-where-item > svg { flex-shrink: 0; }
 .cmp-where-branch { font-size: 12px; }
-.cmp-where .room-icon { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: 9px; font-weight: 600; color: var(--ink-2); }
 .cmp-where .cmp-model { margin-left: -8px; color: var(--muted); font-size: 12.5px; }
 
 /* The where row's menus (KERNEL-786). They open upward from their own button and may cover the box (KERNEL-805). */

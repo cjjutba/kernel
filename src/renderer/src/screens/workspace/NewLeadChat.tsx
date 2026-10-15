@@ -21,7 +21,7 @@ import { ComposerShell } from './composer/ComposerShell'
 import { loadPicks, moveDraft, newChatDraftOf, onPicksChange, savePicks, type DraftPicks } from './composer/draftStore'
 import { ComposerToolbar } from './composer/ComposerToolbar'
 import { cyclePatch, cycleRun, leadDefaultLine, leadPlaceholder, modePatch, nextMode, offLine, shownMode, type ComposerMode, type CycleRun } from './composer/modes'
-import { effortLabel, useLeadBox } from './composer/modelPrefs'
+import { useLeadBox } from './composer/modelPrefs'
 import type { PlusPanel } from './composer/PlusMenu'
 import { sendsOn, useSendWith } from './composer/sendKey'
 import { WhereLocalBranch, WhereRow } from './composer/WhereRow'
@@ -51,7 +51,7 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
   const draftKey = newChatDraftOf(roomId)
   // Model, effort and plan mode are the Lead's until picked here, and a pick stays with the room's draft (KERNEL-544).
   const { model, effort, plan, mode, fallback, pickModel, pickEffort, savePick } = useLeadBox(draftKey, lead, picks && { model: picks.model, effort: picks.effort, plan: picks.plan })
-  const [menu, setMenu] = useState<'model' | 'branch' | 'mode' | 'leadMode' | 'room' | 'place' | PlusPanel>(null)
+  const [menu, setMenu] = useState<'model' | 'effort' | 'branch' | 'mode' | 'leadMode' | 'room' | 'place' | PlusPanel>(null)
   const plusPanel: PlusPanel = menu === 'plus' || menu === 'linkIssue' || menu === 'linkPr' || menu === 'linkWorkspaces' ? menu : null
   // The rooms the title's menu offers: the active ones, and a hidden room only while it is the one on show.
   const allRooms = useStore((s) => s.rooms)
@@ -236,12 +236,14 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
         box={{ 'data-plan': plan ? 'true' : undefined, 'data-drop': d.over || undefined }}
         foot={<ComposerToolbar disabled={busy}
           lead={{ mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), open: menu === 'leadMode', onOpen: (o) => setMenu(o ? 'leadMode' : null), onPick: (m) => { setMenu(null); pickLeadMode(m); d.focus() } }}
-          model={{ label: modelLabelOf(model, codexModels), effort: effortLabel(effort), open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider: providerOf(model), grouped: codexInUse, model, effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: pickEffort } }}
+          model={{ label: modelLabelOf(model, codexModels), provider: providerOf(model), open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider: providerOf(model), grouped: codexInUse, model, effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: pickEffort } }}
+          effort={{ value: effort, open: menu === 'effort', onOpen: (o) => setMenu(o ? 'effort' : null), onPick: pickEffort }}
           mode={{ provider: providerOf(model), availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
           plus={{ panel: plusPanel, onPanel: setMenu, roomId, onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
+          onAttach={() => filePick.current?.click()}
           send={{ label: 'Send', ready: hasDraft && usable, busy: busy || d.pending > 0, busyLabel: d.pending > 0 ? 'Attaching' : checking ? 'Checking' : 'Sending', onSend: start }} />}
         hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
-        where={<WhereRow room={room} mode={place} roomPicker={null}
+        where={<WhereRow mode={place}
           modePicker={<ModePicker mode={place} open={menu === 'place'} disabled={busy} onToggle={() => setMenu(menu === 'place' ? null : 'place')} onClose={() => setMenu((m) => (m === 'place' ? null : m))} onPick={pickPlace} />}
           branch={!usable ? null : place === 'current'
             ? <WhereLocalBranch branch={stripRemote(base.fallback, base.remote)} />

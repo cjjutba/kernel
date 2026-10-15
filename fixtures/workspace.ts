@@ -622,7 +622,7 @@ const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft:
  * Kernel's chat picked Bypass permissions on the current branch while Only in worktrees is on, so it runs as Accept edits (KERNEL-456).
  * The label says Accept edits, and the menu keeps its check on Bypass permissions and says why.
  */
-const bypassPicked = (f: Fixture, menu?: 'mode') => ({
+const bypassPicked = (f: Fixture, menu?: 'mode' | 'effort') => ({
   workspaces: withWorkspace(f, ids.lead, { mode: 'current' }),
   chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false, effort: 'xhigh' as const, mode: 'bypassPermissions' as const } : c)),
   ui: { route: { name: 'workspace' as const, workspaceId: ids.lead }, ...(menu ? { menu } : {}) }
@@ -2759,6 +2759,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
   NewChatPlus: scene((f) => noPlan(leadNoChats(f))),
   // KERNEL-805: New chat has the chat's mode chip. NewChat is Hand off at rest. NewChatLeadModeMenu has the chip's menu open and NewChatBuildHere has Build here picked from it (scripts/shots.ts).
   NewChatLeadModeMenu: scene((f) => noPlan(leadNoChats(f))),
+  // New chat with the effort menu and the permission menu open, each from its own button (scripts/shots.ts).
+  NewChatEffortMenu: scene((f) => noPlan(leadNoChats(f))),
+  NewChatPermissionMenu: scene((f) => noPlan(leadNoChats(f))),
+  NewChatNarrow: scene((f) => noPlan(leadNoChats(f))),
   NewChatBuildHere: scene((f) => noPlan(leadNoChats(f))),
   // KERNEL-788: NewChat is the page at rest, with the header a chat has and one New chat tab. NewChatAfterSend is the chat right after the send: the box stays at the same y, the
   // breadcrumb and tab take the chat's title, and the panel setting is on but held closed. ChatPanelOpened is that chat after the toggle was pressed.
@@ -2983,7 +2987,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ComposerMentionFolders: composing({ parts: [], draft: '@src' }, { tree: { [ids.table]: mentionFolderTree } }),
   ComposerMentionReference: composing({ parts: [], draft: '@invoice' }, { tree: { [ids.table]: mentionReferenceTree } }),
   ComposerModes: scene((f) => bypassPicked(f)),
+  ComposerModesNarrow: scene((f) => bypassPicked(f)),
   ComposerModeMenu: scene((f) => bypassPicked(f, 'mode')),
+  // The effort menu of an open chat, opened from its own button (the composer redesign, part 1).
+  ComposerEffortMenu: scene((f) => bypassPicked(f, 'effort')),
   // KERNEL-751: a modal opened while the mode menu was open closes it, so nothing sits above the backdrop.
   ComposerModeMenuUnderModal: scene((f) => ({ ...bypassPicked(f, 'mode'), ui: { ...bypassPicked(f).ui, modal: { name: 'search' } } })),
   WorkspaceQueued: scene((f) => ({

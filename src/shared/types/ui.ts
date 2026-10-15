@@ -114,7 +114,7 @@ export type Modal =
 export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan'
   | 'pr' | 'tab' | 'newTab' | `reply:${string}`
-  | 'plus' | 'model' | 'mode' | 'mention' | 'slash' | 'linkIssue' | 'linkPr' | 'linkWorkspaces'
+  | 'plus' | 'model' | 'effort' | 'mode' | 'mention' | 'slash' | 'linkIssue' | 'linkPr' | 'linkWorkspaces'
   | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'roomMode' | 'preview'
   | 'roomTracker' | 'help'
 

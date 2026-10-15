@@ -1,22 +1,16 @@
 import type { ReactNode } from 'react'
-import type { Chat, Room, WorkspaceMode } from '@shared/types'
-import { chatProvider } from '@shared/providers'
-import { RoomIcon } from '../../../components/RoomIcon'
-import { useStore } from '../../../store'
+import type { WorkspaceMode } from '@shared/types'
 import { Icon } from '../../../ui'
 
 /**
- * Where the chat works, in a quiet row under the box: the room, Worktree or Local, and the branch. A chat shows its branch as text. New chat
- * passes `branch` as a picker, `modePicker` for Worktree or Local, and `roomPicker={null}`, since its title names and picks the room. Every
- * item is as tall as that picker's button, so the row is the same height in both.
+ * Where the chat works, in a quiet row under the box: Worktree or Local, and the branch. A chat shows both as text. New chat passes `modePicker`
+ * for Worktree or Local and `branch` as a picker. Every item is as tall as that picker's button, so the row is the same height in both.
  */
-export function WhereRow({ room, mode, branch, account, roomPicker, modePicker }: { account?: ReactNode; room: Pick<Room, 'id' | 'name' | 'icon'> | undefined; mode: WorkspaceMode; branch: ReactNode; roomPicker?: ReactNode | null; modePicker?: ReactNode }) {
+export function WhereRow({ mode, branch, modePicker }: { mode: WorkspaceMode; branch: ReactNode; modePicker?: ReactNode }) {
   return (
     <div className="cmp-where" role="group" aria-label="Where this chat works">
-      {roomPicker !== undefined ? roomPicker : <span className="cmp-where-item"><RoomIcon room={room} size={16} /><span className="ellipsis">{room?.name}</span></span>}
       {modePicker ?? <span className="cmp-where-item"><Icon name={mode === 'current' ? 'computer' : 'fork'} size={14} />{mode === 'current' ? 'Local' : 'Worktree'}</span>}
       {branch}
-      {account}
     </div>
   )
 }
@@ -37,18 +31,4 @@ export function WhereLocalBranch({ branch }: { branch: string }) {
       <span id="where-local-tip" role="tooltip" className="where-tip">Local works on your checkout's current branch</span>
     </span>
   )
-}
-
-/**
- * The account the chat's next turn runs on, read only, next to the room and branch (KERNEL-841). Shown once its provider has
- * more than one account, since with one there is nothing to tell apart.
- */
-export function WhereAccount({ chat }: { chat: Chat }) {
-  const provider = chatProvider(chat)
-  const accounts = useStore((s) => s.accounts)
-  const mine = accounts.filter((a) => a.provider === provider)
-  const id = chat.ranOn ?? chat.lastTurn?.account ?? mine.find((a) => a.active)?.id
-  const label = mine.find((a) => a.id === id)?.label
-  if (mine.length < 2 || !label) return null
-  return <span className="cmp-where-item" title="The account this chat runs on"><Icon name="key" size={14} /><span className="ellipsis">{label}</span></span>
 }
