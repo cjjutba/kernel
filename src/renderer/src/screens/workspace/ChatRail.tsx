@@ -3,8 +3,6 @@ import { atEnd, entryInView, JUMP_OFFSET, markFit, railKey, type RailEntry } fro
 
 /** The jumped-to message keeps its ring this long. The last 400ms fade it (`jump-ring` in workspace.css). */
 const RING_MS = 1200
-/** A smooth scroll that reports no end still lands, and rings, after this long. */
-const GLIDE_MS = 1000
 /** The list's padding, which a row scrolled into view keeps clear of the edge. */
 const LIST_PAD = 6
 
@@ -57,7 +55,10 @@ const placeOf = (box: HTMLElement, el: HTMLElement) => box.scrollTop + el.getBou
  * to one. It is hidden below two entries. Hover or keyboard focus opens the list; the keys move through it while focus stays on
  * the rail, so the rows are options named by `aria-activedescendant`.
  */
-export function ChatRail({ entries, scroller, onGlide }: { entries: RailEntry[]; scroller: RefObject<HTMLElement | null>; onGlide?: (on: boolean) => void }) {
+/** The transcript's glider, which every scroll Kernel makes itself goes through (KERNEL-862). `glide` runs one toward a goal asked again each frame, `stop` ends it. */
+export interface RailGlide { glide: (goal: () => number, done: (landed: boolean) => void) => void; stop: () => void }
+
+export function ChatRail({ entries, scroller, glide: glider }: { entries: RailEntry[]; scroller: RefObject<HTMLElement | null>; glide?: RailGlide }) {
   const id = useId()
   const count = entries.length
   const [current, setCurrent] = useState(count - 1)
@@ -74,8 +75,8 @@ export function ChatRail({ entries, scroller, onGlide }: { entries: RailEntry[];
   const entriesNow = useRef(entries)
   entriesNow.current = entries
   // Tells the transcript a jump is scrolling its view, so it counts as the reader's own scroll and the chat doesn't follow its end back over it (KERNEL-605).
-  const glideNow = useRef(onGlide)
-  glideNow.current = onGlide
+  const glideNow = useRef(glider)
+  glideNow.current = glider
   // A jump holds the entry it went to as the one in view until the reader scrolls by hand, since a message near the end can't reach the top.
   const forced = useRef<string | undefined>(undefined)
   const glide = useRef<(() => void) | undefined>(undefined)
@@ -149,7 +150,7 @@ export function ChatRail({ entries, scroller, onGlide }: { entries: RailEntry[];
   }
   useEffect(() => () => { glide.current?.(); clearRing() }, [])
 
-  /** Scrolls the message's top to JUMP_OFFSET under the view's top, smoothly unless motion is reduced, then rings it. */
+  /** Glides the message's top to JUMP_OFFSET under the view's top, then rings it. */
   const jump = (i: number) => {
     const box = scroller.current
     const entry = entriesNow.current[i]
@@ -159,31 +160,17 @@ export function ChatRail({ entries, scroller, onGlide }: { entries: RailEntry[];
     clearRing()
     forced.current = entry.id
     setCurrent(i)
-    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
-    // A message near the end can't reach the top, so the view stops at the end. A jump that moves nothing lands at once.
-    const to = Math.max(0, Math.min(placeOf(box, el), box.scrollHeight - box.clientHeight))
-    let done = false
-    let timer = 0
-    const stop = () => {
-      done = true
-      window.clearTimeout(timer)
-      box.removeEventListener('scrollend', land)
-      if (glide.current === stop) glide.current = undefined
-      glideNow.current?.(false)
-    }
-    const land = () => {
-      if (done) return
-      stop()
-      // Rows far from the view measure a frame after they show, so the top can have moved while the scroll ran. One more go at where it is now.
-      if (Math.abs(placeOf(box, el) - box.scrollTop) > 1) box.scrollTo({ top: placeOf(box, el), behavior: 'auto' })
-      light(el)
-    }
+    // A message near the end can't reach the top, so the view stops at the end. Rows far from the view measure a frame after they show, so the goal is read again every frame.
+    const goal = () => Math.max(0, Math.min(placeOf(box, el), box.scrollHeight - box.clientHeight))
+    const stop = () => { if (glide.current === stop) glide.current = undefined; glideNow.current?.stop() }
     glide.current = stop
-    if (Math.abs(to - box.scrollTop) < 1) { land(); return }
-    glideNow.current?.(true)
-    box.scrollTo({ top: to, behavior: smooth ? 'smooth' : 'auto' })
-    if (smooth) { box.addEventListener('scrollend', land); timer = window.setTimeout(land, GLIDE_MS) }
-    else requestAnimationFrame(() => requestAnimationFrame(land))
+    if (Math.abs(goal() - box.scrollTop) < 1) { glide.current = undefined; light(el); return }
+    const run = glideNow.current
+    if (!run) { box.scrollTop = goal(); glide.current = undefined; light(el); return }
+    run.glide(goal, (landed) => {
+      if (glide.current === stop) glide.current = undefined
+      if (landed) light(el)
+    })
   }
 
   const key = (e: KeyboardEvent) => {
