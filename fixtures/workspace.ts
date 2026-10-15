@@ -2735,6 +2735,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: foldedMessages },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })), motion: { action: { press: ['Enter'] }, ms: 600, area: '.ws-main' } },
+  /** KERNEL-912: a folded group of steps opened by hand in a chat that has settled. It must still animate, so the opening rule does not leak past the first 600ms. The header is focused by scripts/shots.ts and Enter opens it. */
+  AuditGroupOpenMotion: { ...scene(() => ({
+    items: { [ids.tableChat]: foldedMessages },
+    ui: open
+  })), motion: { action: { press: ['Enter'] }, ms: 600, area: '.ws-main' } },
   // Kernel's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
   WorkspaceLead: scene((f) => leadWaiting(f)),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'kernel-lead' })),

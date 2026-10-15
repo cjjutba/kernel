@@ -648,6 +648,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   AuditRailJumpMotion: async (page) => { await page.getByRole('button', { name: 'Jump to message' }).focus() },
   AuditRailJumpSendMotion: async (page) => { await page.getByRole('button', { name: 'Jump to message' }).focus() },
   AuditGroupCollapseMotion: async (page) => { await page.locator('.group-btn').first().focus() },
+  AuditGroupOpenMotion: async (page) => { await page.waitForTimeout(800); await page.locator('.group-btn').first().focus() },
   WorkspacePlanApproveDraft: askApprove,
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
@@ -818,7 +819,7 @@ async function captureMotion(page: Page, app: ElectronApplication, name: string,
       const t0 = performance.now()
       const tick = () => {
         const v = document.querySelector('.ws-scroll')
-        const row = v ? `${Math.round(v.scrollTop)}/${Math.round(v.scrollHeight - v.clientHeight)}` : 'none'
+        const row = v ? `${Math.round(v.scrollTop)}/${Math.round(v.scrollHeight - v.clientHeight)}${v.hasAttribute('data-opening') ? ' opening' : ''} anim${document.getAnimations().length}` : 'none'
         if (w.__live[w.__live.length - 1]?.split('@')[0] !== row) w.__live.push(`${row}@${Math.round(performance.now() - t0)}`)
         if (performance.now() - t0 < 900) requestAnimationFrame(tick)
       }
