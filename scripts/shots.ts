@@ -310,15 +310,21 @@ async function openCompare(page: Page) {
 }
 
 
-// NewChatRoomPicker, NewChatMode, NewChatBranch and NewChatPlus are New chat with one of the where row's menus, or the + menu, open (KERNEL-786).
-// NewChatLocal rests the pointer on the branch text, which shows its tooltip.
+// NewChatRoomPicker, NewChatMode, NewChatBranch and NewChatPlus are New chat with the room menu, the + menu or one of its Run in and Branch pickers open (KERNEL-786).
+// NewChatLocal has Local picked, which shows the chip beside +. NewChatBranchChip picks a branch from the + menu and shows its chip.
 async function openWhere(page: Page, name: string | RegExp, item?: string | RegExp) {
   await page.getByRole('button', { name }).click()
   if (item) await page.getByRole('menuitemradio', { name: item }).first().waitFor()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
-// NewChatKeyboard drives the where row with the keyboard only and throws when a step does not do what it should: a picker opens on Enter,
+// Opens the + menu and one of its rows, Run in or Branch, then waits for that picker's rows.
+async function openPlusPicker(page: Page, row: RegExp, ready: RegExp) {
+  await page.getByRole('button', { name: 'Add context' }).click()
+  await page.getByRole('menuitem', { name: row }).click()
+  await page.getByRole('menuitemradio', { name: ready }).first().waitFor()
+}
+// NewChatKeyboard drives the room picker and the + menu's Run in row with the keyboard only and throws when a step does not do what it should: a picker opens on Enter,
 // Escape closes it and gives the focus back to its button, Enter on a row picks it, and the room pick moves the breadcrumb and the route.
 async function driveWhereByKeyboard(page: Page) {
   const key = (k: string) => page.keyboard.press(k)
@@ -343,13 +349,22 @@ async function driveWhereByKeyboard(page: Page) {
   await must((await room().getAttribute('aria-label')) !== before, 'Enter did not pick the room')
   await must((await crumb()).includes('Client B'), 'the breadcrumb did not follow the room pick')
 
-  const mode = page.getByRole('button', { name: /^Work as:/ })
-  await mode.focus(); await key('Enter')
-  await page.getByRole('menuitemradio', { name: /Local/ }).first().waitFor()
-  for (let i = 0; i < 4 && !(await page.getByRole('menuitemradio', { name: /Local/ }).first().evaluate((el) => el === document.activeElement)); i++) await key('ArrowDown')
+  // The + button opens its menu on Enter, ArrowDown walks to Run in, Enter opens the picker and Enter on Local picks it. Focus comes back to +, and the chip says Local.
+  const plus = page.getByRole('button', { name: 'Add context' })
+  const focused = (loc: ReturnType<Page['getByRole']>) => loc.evaluate((el) => el === document.activeElement)
+  await plus.focus(); await key('Enter')
+  const runIn = page.getByRole('menuitem', { name: /^Run in/ })
+  await runIn.waitFor()
+  for (let i = 0; i < 8 && !(await focused(runIn)); i++) await key('ArrowDown')
+  await must(await focused(runIn), 'ArrowDown did not reach Run in')
+  await key('Enter')
+  const local = page.getByRole('menuitemradio', { name: /Local/ }).first()
+  await local.waitFor()
+  for (let i = 0; i < 4 && !(await focused(local)); i++) await key('ArrowDown')
   await key('Enter')
   await page.waitForTimeout(200)
-  await must(/Local/.test((await mode.getAttribute('aria-label')) ?? ''), 'Enter did not pick Local')
+  await must(await page.getByRole('button', { name: /^Run in Local/ }).count() === 1, 'Enter did not pick Local, so there is no chip')
+  await must(await focused(plus), 'the + button did not get the focus back')
 
   await page.getByRole('textbox').first().click()
   await page.keyboard.type('Check the invoice export')
@@ -359,10 +374,7 @@ async function driveWhereByKeyboard(page: Page) {
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
-// NewChatLeadModeMenu is New chat with the Hand off and Build here menu open. NewChatBuildHere has Build here picked from it (KERNEL-805).
-async function openLeadModeMenu(page: Page) {
-  await openWhere(page, /^How Kernel works:/, /Build here/)
-}
+// NewChatBuildHere is New chat with Build here picked on the Hand off | Build here switch (KERNEL-805).
 // NewChatEffortMenu and NewChatPermissionMenu are New chat with the effort or the permission menu open.
 async function openEffortMenu(page: Page) {
   await openWhere(page, /^Effort:/, /High/)
@@ -371,29 +383,27 @@ async function openPermissionMenu(page: Page) {
   await openWhere(page, /^Permission mode:/, /Accept edits/)
 }
 async function pickBuildHere(page: Page) {
-  await page.getByRole('button', { name: /^How Kernel works:/ }).click()
-  await page.getByRole('menuitemradio', { name: /Build here/ }).click()
+  await page.getByRole('button', { name: 'Build here' }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 async function openBranchMenu(page: Page) {
-  await page.getByRole('button', { name: 'New branch from main' }).click()
-  await page.getByRole('menuitemradio', { name: /invoice-table/ }).waitFor()
+  await openPlusPicker(page, /^Branch/, /invoice-table/)
   // The row with a workspace shows Open workspace while it is the active one, as on hover or focus.
   await page.getByRole('menuitemradio', { name: /t-12-invoice-schema/ }).focus()
   await page.waitForTimeout(300)
 }
-async function hoverLocalBranch(page: Page) {
-  await page.locator('.cmp-where-local').hover()
-  await page.locator('.where-tip').waitFor({ state: 'visible' })
-  await page.waitForTimeout(200)
+async function pickBranchChip(page: Page) {
+  await openPlusPicker(page, /^Branch/, /invoice-table/)
+  await page.getByRole('menuitemradio', { name: /t-14-invoice-table/ }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
 }
 
-// LeadNoChatsBranch is New chat with Kernel with New branch from main open. The menu is the composer's own, so press the button and wait for the
+// LeadNoChatsBranch is New chat with Kernel with the + menu's Branch picker open, main checked. The menu is the composer's own, so open it and wait for the
 // remote's branches, which the menu reads when it opens.
 async function openBaseBranch(page: Page) {
-  await page.getByRole('button', { name: 'New branch from main' }).click()
-  await page.getByRole('menuitemradio', { name: /invoice-table/ }).waitFor()
+  await openPlusPicker(page, /^Branch/, /invoice-table/)
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
@@ -492,6 +502,7 @@ async function narrowWindow(page: Page, app: ElectronApplication) {
   await page.waitForTimeout(400)
 }
 
+// NewChatSwitchNarrow pins the chat column to 460px, which the window's minimum width never reaches on its own, to show the Hand off | Build here switch as two icons.
 // NewChatNarrow and ComposerModesNarrow are the box with the window at 600px: the chat column is about 600px, where the permission name and the Hand off label give way to their icons.
 const windowAt = (w: number) => async (page: Page, app: ElectronApplication) => {
   await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w, h: HEIGHT })
@@ -571,15 +582,15 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   PanelCompare: openCompare,
   LeadNoChatsBranch: openBaseBranch,
   NewChatRoomPicker: (page) => openWhere(page, /^Room:/, /Client B/),
-  NewChatMode: (page) => openWhere(page, /^Work as:/, /Local/),
+  NewChatMode: (page) => openPlusPicker(page, /^Run in/, /Local/).then(() => page.mouse.move(0, 0)).then(() => page.waitForTimeout(300)),
   NewChatKeyboard: driveWhereByKeyboard,
   NewChatBranch: openBranchMenu,
-  NewChatLocal: hoverLocalBranch,
+  NewChatBranchChip: pickBranchChip,
   NewChatPlus: (page) => openWhere(page, 'Add context'),
   NewChatLinkIssue: async (page) => { await page.getByRole('button', { name: 'Add context' }).click(); await page.getByRole('menuitem', { name: /Link issue/ }).click(); await page.getByRole('listbox').waitFor(); await page.mouse.move(0, 0); await page.waitForTimeout(400) },
-  NewChatLeadModeMenu: openLeadModeMenu,
   NewChatEffortMenu: openEffortMenu,
   NewChatNarrow: windowAt(600),
+  NewChatSwitchNarrow: async (page) => { await page.locator('.ws-main').evaluate((el) => { el.style.width = '460px'; el.style.justifySelf = 'start' }); await page.waitForTimeout(400) },
   ComposerModesNarrow: windowAt(600),
   NewChatPermissionMenu: openPermissionMenu,
   NewChatBuildHere: pickBuildHere,

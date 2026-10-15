@@ -1,0 +1,5 @@
+# KERNEL-860: A new chat's first message is placed with no motion
+
+**A chat a send just created places its first message ANCHOR_GAP below the top, with its padding, before the first frame is drawn.** New chat, New agent and an issue's Start all mark the chat with `markJustSent`. The transcript's mount layout effect places that message with no glide and no lift. A second mount while the chat opens places it again, since the mark stays until the anchor has settled. This replaces the glide for a new chat's first message in KERNEL-803. Sends in an existing chat, reopening a chat where it was left and Scroll to bottom are unchanged. The scroll engine is reworked separately in KERNEL-862.
+
+**An existing chat whose items have not arrived shows nothing, never the welcome.** The store keeps `itemsLoaded` by chat id, set by `loadWorkspace` once the chat's items arrive, and `itemsFailed` when that load fails. A chat created in this session has none to load. While unloaded the thread is blank, and a failed load shows "Could not load this chat" with Try again.

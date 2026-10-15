@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { EFFORT_LABELS, EFFORTS, MODELS, type Effort, type Provider } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, type Effort, type Provider } from '@shared/types'
 import { actions } from '../../../store'
 import { Icon, ProviderMark } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
@@ -7,6 +7,7 @@ import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, useEffortMemory } from './modelPrefs'
 import { useFavoriteModels, toggleFavoriteModel } from './favoriteModels'
 import { effortsOf, fitEffort, providerLabel, useProviderModels } from './providerModels'
+import { shortcutNumber } from './modelShortcuts'
 
 export { EFFORTS }
 
@@ -26,7 +27,7 @@ function EffortMenu({ efforts, effort, at, onAt, onPick, onClose }: { efforts: E
   )
 }
 
-/** A row of the picker: a model on a provider, and `n` for Claude's ^⌘ shortcut. */
+/** A row of the picker: a model on a provider, and `n` for its ^⌘ shortcut. */
 interface Row { provider: Provider; id: string; label: string; legacy: boolean; n?: number }
 type Item = { kind: 'model'; row: Row } | { kind: 'legacy'; count: number }
 type Tab = 'favorites' | Provider
@@ -36,8 +37,8 @@ type Tab = 'favorites' | Provider
  * only that tab's models, the older ones folded under one Legacy models row. Type to search (legacy models included), arrow keys
  * move, Enter picks. Each model shows the effort you last used with it and comes back at that effort, else at `fallback`, the default
  * effort, never the open chat's (D-130). The caller remembers a picked effort. The Effort row opens the levels to its right (Enter or ArrowRight).
- * Ctrl+Cmd+1 to 4 pick a Claude model, Cmd+D stars the model under the cursor and Cmd+Shift+/ cycles the effort; the workspace composer
- * also takes the first and last while it is closed.
+ * Ctrl+Cmd+1 to 9 pick the Nth current model of the chat's provider, Claude or Codex, and the rows show the key they answer to. Cmd+D stars the
+ * model under the cursor and Cmd+Shift+/ cycles the effort. Both composers take the model and effort keys while the picker is closed (useModelKeys).
  *
  * The picker opens on the current model's provider. Both providers show when Codex is in use (`grouped`). A model on the other provider
  * can't take over a chat that has started, so that provider's rail icon is dimmed and says to start a new chat (KERNEL-406).
@@ -57,11 +58,12 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const locked = (p: Provider) => started && p !== provider
   const [q, setQ] = useState('')
   const [tab, setTab] = useState<Tab>(provider)
-  const all: Row[] = useMemo(() => [
-    ...MODELS.map((m, i) => ({ provider: 'claude' as const, id: m.id, label: m.label, legacy: !!m.legacy, ...(m.legacy ? {} : { n: i + 1 }) })),
-    ...(providers.includes('codex') ? codex.map((m) => ({ provider: 'codex' as const, id: m.id, label: m.label, legacy: !!m.legacy })) : [])
+  // A row shows ^⌘N only when that key works: it picks the Nth current model of the chat's own provider (useModelKeys).
+  const all: Row[] = useMemo(() => {
+    const row = (p: Provider, m: { id: string; label: string; legacy?: boolean }): Row => ({ provider: p, id: m.id, label: m.label, legacy: !!m.legacy, n: shortcutNumber({ id: m.id, provider: p }, provider, own) })
+    return [...claude.map((m) => row('claude', m)), ...(providers.includes('codex') ? codex.map((m) => row('codex', m)) : [])]
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [codex, grouped, provider])
+  }, [claude, codex, grouped, provider])
   const current = all.find((m) => m.id === model)
   // A chat on a legacy model opens with the legacy models showing, so its row is in sight.
   const [legacyOpen, setLegacyOpen] = useState(() => !!current?.legacy && current.provider === provider)
@@ -101,7 +103,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const press = (i: Item | undefined) => { if (i?.kind === 'legacy') setLegacyOpen((v) => !v); else if (i) pickModel(i.row) }
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.ctrlKey && e.metaKey && /^[1-4]$/.test(e.key)) { e.preventDefault(); const m = all.find((r) => r.n === Number(e.key)); if (m) pickModel(m); return }
+    if (e.ctrlKey && e.metaKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); const m = all.find((r) => r.n === Number(e.key)); if (m) pickModel(m); return }
     if (e.metaKey && e.shiftKey && (e.key === '/' || e.key === '?')) { e.preventDefault(); pickEffort(nextEffort(effort, efforts)); return }
     if (e.metaKey && !e.shiftKey && !e.ctrlKey && e.key.toLowerCase() === 'd') {
       e.preventDefault()

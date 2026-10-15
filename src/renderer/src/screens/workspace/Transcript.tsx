@@ -4,7 +4,7 @@ import { leadModeName, leadModeOf, leadModeSwitched } from '@shared/leadMode'
 import { maskSecrets, stripAnsi, toolView } from '@shared/toolView'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
-import { Avatar, Button, Card, Icon, IconButton, Spinner, useBusy, type IconName } from '../../ui'
+import { Avatar, Button, Card, EmptyState, Icon, IconButton, Spinner, useBusy, type IconName } from '../../ui'
 import { ServiceMark } from '../../icons'
 import { actions, getState, go, loadWorkspace, setLeadMode, useStore } from '../../store'
 import { openRoom } from '../../lead'
@@ -1038,7 +1038,13 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const lastSent = [...itemsNow.current].reverse().find(followsSend)?.id
     const kept = keptAnchor(place, lastSent)
     let again = 0
-    if (!el || fresh.current || opensAtEnd(place, lastSent)) {
+    // A chat a send just created has its first message placed here, before the first frame, with no glide and no lift (KERNEL-860).
+    const first = el && fresh.current ? lastSent : undefined
+    if (el && first) {
+      anchorSend(first, true)
+      sentId.current = first
+      remember(el)
+    } else if (!el || fresh.current || opensAtEnd(place, lastSent)) {
       pin(true)
       followNow()
       if (el) remember(el)
@@ -1154,7 +1160,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     if (Math.abs(goal - el.scrollTop) >= 1 && !lifting.current) { el.scrollTop = goal; fade() }
   }
   // A send puts the message at the top of the view and lets the reply fill in under it (KERNEL-803). Nothing follows the reply from here; the Scroll to bottom button shows once it passes the bottom edge.
-  const anchorSend = (id: string) => {
+  // `still` places the message with no motion: no lift, no smooth scroll.
+  const anchorSend = (id: string, still = false) => {
     release()
     byHand.current = false
     handSince.current = false
@@ -1164,7 +1171,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const was = mark?.getBoundingClientRect().top
     padReply()
     if (!scroller.current || !mark) return
-    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
+    const smooth = !still && !matchMedia('(prefers-reduced-motion: reduce)').matches
     // The padding can move the message by layout, where a scroll has nothing to glide: a short thread is bottom-aligned and the padding lifts it.
     if (smooth && was !== undefined) {
       const moved = was - mark.getBoundingClientRect().top
@@ -1212,7 +1219,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     // The first run is the chat opening, which the effect above has placed already.
     const away = postedFromQueue(queuedAt.current, Date.now()) && handSince.current
     const step = sendAnchor(last, sentId.current, arrived.current || fresh.current, away)
-    if (step === 'anchor' && last) anchorSend(last.id)
+    if (step === 'anchor' && last) anchorSend(last.id, fresh.current)
     else if (followsSend(last) && last!.id !== sentId.current && scroller.current) show(distFromEnd(flat(scroller.current)) > PIN_PX)
     if (followsSend(last)) sentId.current = last!.id
     arrived.current = true
@@ -1226,7 +1233,12 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   useEffect(() => { if (unreadAt !== undefined) void call('chats.markRead', { chatId: chat.id }).catch(() => undefined) }, [chat.id, unreadAt])
 
   // An empty chat shows the centred welcome in place of the thread, which sits at the bottom of the scroll area.
-  const empty = !items.length && !loose.length && !running && !(ws?.prState === 'changes' && pr)
+  // A chat whose items have not arrived is not empty, whatever it holds: it shows nothing until they do, or Try again when the load failed (KERNEL-860).
+  const loaded = useStore((s) => !!s.itemsLoaded[chat.id])
+  const failed = useStore((s) => !!s.itemsFailed[chat.id]) && !loaded && !items.length
+  const loading = !loaded && !failed && !items.length
+  const empty = !loading && !failed && !items.length && !loose.length && !running && !(ws?.prState === 'changes' && pr)
+  const [retrying, retry] = useBusy()
   // The rows are memoized, so these keep one identity while the chat and workspace stay the same, whatever the parent passes.
   useEffect(() => {
     if (!getState().checkpoints[workspaceId]) void call('checkpoints.list', { workspaceId }).then((l) => actions.workspaces.setCheckpoints(workspaceId, l)).catch(() => undefined)
@@ -1267,7 +1279,12 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   return (
     <div className="ws-chat" data-rail={rail.current.length >= RAIL_MIN || undefined}>
       <ChatRail key={chat.id} entries={rail.current} scroller={scroller} onGlide={jumping} />
-      <div ref={scroller} className="ws-scroll selectable" onScroll={onScroll} onScrollEnd={landed} onClick={opened} onWheel={take} onTouchStart={take} onPointerDown={(e) => (e.target === e.currentTarget ? take() : release())} onKeyDown={press}>
+      <div ref={scroller} aria-busy={loading || undefined} className="ws-scroll selectable" onScroll={onScroll} onScrollEnd={landed} onClick={opened} onWheel={take} onTouchStart={take} onPointerDown={(e) => (e.target === e.currentTarget ? take() : release())} onKeyDown={press}>
+        {failed && (
+          <EmptyState icon="warning" title="Could not load this chat">
+            <Button busy={retrying !== null} busyLabel="Loading" onClick={() => void retry('load', () => loadWorkspace(workspaceId).catch(() => undefined))}>Try again</Button>
+          </EmptyState>
+        )}
         {empty && (
           <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
             onPick={(text) => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))} />
@@ -1276,7 +1293,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         <TranscriptChat.Provider value={chatId}>
         <TranscriptAway.Provider value={away}>
         <ShownInError.Provider value={inError}>
-        <div ref={thread} className="thread" style={empty ? { display: 'none' } : undefined}>
+        <div ref={thread} className="thread" style={empty || failed ? { display: 'none' } : undefined}>
           {blocks.map((b, i) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} workspaceId={workspaceId} changes={changes} inWorkspace={i === latestFiles && changes.length > 0 && changes.length !== ((b.kind === 'reply' || b.kind === 'files') && b.files ? b.files.length : 0) ? changes.length : undefined} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
           {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
           {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
