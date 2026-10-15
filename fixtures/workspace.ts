@@ -3150,7 +3150,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     workspaces: withWorkspace(f, ids.table, { status: 'archived' }),
     items: { [ids.tableChat]: [{ kind: 'user', id: 'gone-1', ts: at(10, 30), parts: [
       { type: 'text', text: 'Does the contract match the invoice terms?' },
-      { type: 'file', name: 'Client-contract-2026.pdf', path: '.kernel/attachments/Client-contract-2026.pdf', size: 3_040_000, kind: 'pdf', readable: true }
+      { type: 'file', name: 'Client-contract-2026.pdf', path: '.kernel/attachments/Client-contract-2026.pdf', size: 3_040_000, kind: 'pdf', readable: true, pages: 14 }
     ] }] },
     ui: open
   })),

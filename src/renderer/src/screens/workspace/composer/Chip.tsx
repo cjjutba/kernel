@@ -42,7 +42,7 @@ export function fileNote(p: ChatPart, gone?: boolean): { text: string; hint: str
 
 /** A short label after a chip's name: lines of a pasted text, the type and size of an attached file, the size of an image, or a linked issue's or pull request's title. */
 export function chipMeta(p: ChatPart): string {
-  if (p.type === 'file' && isAttachment(p)) return p.size !== undefined ? `${typeLabel(p)} · ${fileSize(p.size)}` : typeLabel(p)
+  if (p.type === 'file' && isAttachment(p)) return [typeLabel(p), ...(p.pages ? [`${p.pages} ${p.pages === 1 ? 'page' : 'pages'}`] : []), ...(p.size !== undefined ? [fileSize(p.size)] : [])].join(' · ')
   if (p.type === 'file' && p.lines && !p.path) return `${p.lines} lines`
   if (p.type === 'image' && p.width && p.height) return `${p.width}×${p.height}`
   if (p.type === 'issue' || p.type === 'pr') return p.title
