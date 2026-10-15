@@ -188,6 +188,8 @@ export interface UiState {
   toasts: Toast[]
   banner: Banner | null
   theme: Theme
+  /** Fixtures only: how long the setup checks wait for the preflight call before saying it is taking longer. */
+  preflightLimitMs?: number
   /** Nothing reads it since the briefing sequence went (KERNEL-606). store.ts's `setStage` still writes it, so it stays until that goes. */
   stage?: string
   workspace: WorkspaceView

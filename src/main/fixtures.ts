@@ -74,7 +74,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
 
   const handlers: Handlers = {
     'preflight.run': async () => f.preflight,
-    'preflight.fix': async () => f.preflight,
+    'preflight.fix': async () => { if (f.preflightFixError) throw new Error(f.preflightFixError); return f.preflight },
     'hooks.install': async () => ({ path: '(fixture)', events: [] }),
     'hooks.uninstall': async () => f.hooks ?? { port: 7420, listening: true, installed: false, events: [] },
     'hooks.turnOn': async () => ({ ...hooks, problem: undefined }),
