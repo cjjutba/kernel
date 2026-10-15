@@ -2,7 +2,7 @@ import { SectionHead } from '@/components/ui/SectionHead'
 import { Clip } from './Clip'
 
 // What surrounds the loop the hero and How it works show, as a bento of clips recorded from the real app on sample data
-// (demo/clips.ts). Two wide tiles bracket two rows of pairs. The pairs share a height, since their clips share an aspect.
+// (demo/clips.ts). Two wide tiles bracket two rows of pairs. Every clip is the full window, so all of them share an aspect.
 
 /** Wide tiles carry a title only. The pairs between them add one short line. */
 type Feature = { id: string; title: string; text?: string; clip: string; width: number; height: number; label: string; wide?: boolean }
@@ -22,8 +22,8 @@ const FEATURES: Feature[] = [
     title: 'Reviews that run themselves.',
     text: "Theo reviews every pull request. Blockers hold the merge.",
     clip: 'reviews',
-    width: 1592,
-    height: 1560,
+    width: 1600,
+    height: 1000,
     label: 'A team update arrives row by row: one pull request merged on its own, one held by blockers, one approved and merged; Noor then fixes both blockers and that pull request merges too'
   },
   {
@@ -31,8 +31,8 @@ const FEATURES: Feature[] = [
     title: 'You decide what runs.',
     text: "Every request says why it asks. You choose what runs.",
     clip: 'permissions',
-    width: 1592,
-    height: 1560,
+    width: 1600,
+    height: 1000,
     label: 'Noor asks to run a command that writes outside the workspace and gets Allow once, then a bigger export gets Always allow here, and a third export runs without asking'
   },
   {
@@ -47,7 +47,7 @@ const FEATURES: Feature[] = [
   {
     id: 'f-accounts',
     title: 'Claude Code and Codex, side by side.',
-    text: "Every account's usage in view, and a switch at the limit.",
+    text: 'Add Claude and Codex accounts, by subscription or API key.',
     clip: 'accounts',
     width: 1600,
     height: 1000,

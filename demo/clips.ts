@@ -57,9 +57,17 @@ class Driver {
     await this.page.evaluate(([cx, cy, t]) => (window as unknown as { __cursor: { move(x: number, y: number, ms: number): Promise<void> } }).__cursor.move(cx!, cy!, t!), [x, y, ms])
     await this.page.mouse.move(x, y)
   }
+  /** The middle of `target`, scrolled into view first. `x` keeps the camera on a column while it follows a row. */
+  async point(target: Locator, x?: number) {
+    await target.waitFor({ state: 'visible', timeout: 20_000 })
+    await target.scrollIntoViewIfNeeded()
+    const box = (await target.boundingBox())!
+    return { x: x ?? box.x + box.width / 2, y: box.y + box.height / 2 }
+  }
   /** Glides the cursor to the middle of `target` and hovers it there. */
   async to(target: Locator, ms = 750) {
     await target.waitFor({ state: 'visible', timeout: 20_000 })
+    await target.scrollIntoViewIfNeeded()
     const box = (await target.boundingBox())!
     const x = Math.round(box.x + box.width / 2)
     const y = Math.round(box.y + box.height / 2)
@@ -84,13 +92,7 @@ class Driver {
    * the script goes on: `hold` is how much of it to wait for before the next step.
    */
   async zoom(target: Locator | { x: number; y: number }, s: number, ms = 1200, hold = 0.6) {
-    let point: { x: number; y: number }
-    if ('x' in target) point = target
-    else {
-      await target.waitFor({ state: 'visible', timeout: 20_000 })
-      const box = (await target.boundingBox())!
-      point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
-    }
+    const point = 'x' in target ? target : await this.point(target)
     this.shots.push({ t: Date.now() / 1000 - this.start, ms, s, ...point })
     await this.wait(ms * hold)
   }
@@ -101,15 +103,13 @@ class Driver {
 }
 
 const full: Rect = { x: 0, y: 0, width: 1440, height: 900 }
-/** The middle column of a workspace: the chat or an open tab, without the sidebar and the right panel. */
-const column = (y: number, height: number): Rect => ({ x: 236, y, width: 796, height })
 
 const CLIPS: Record<string, Clip> = {
   workspaces: {
     scene: 'team',
     crop: full,
     width: 2400,
-    poster: 12,
+    poster: 2.1,
     setup: async (d) => {
       const box = d.page.locator('[role=textbox][aria-label^=Message]').first()
       await box.click()
@@ -124,54 +124,89 @@ const CLIPS: Record<string, Clip> = {
       await d.wait(600)
     },
     // Approve, watch the three workspaces start, look in on each agent, then back in Kernel's chat the team updates come
-    // in, Theo reviews the first pull request and it merges.
+    // in, Theo reviews the first pull request and it merges. The camera leans in on each step and eases back out.
     play: async (d) => {
+      const p = d.page
       await d.show(980, 640)
-      await d.wait(600)
-      await d.click(d.page.getByRole('button', { name: /^Approve/ }).first())
-      await d.wait(4600)
-      await d.click(d.page.getByText(/^Save new plans as plan\.md/).first(), 900)
-      await d.wait(6500)
-      await d.click(d.page.getByText(/^Show the saved plan file/).first(), 700)
-      await d.wait(4500)
-      await d.click(d.page.getByText(/^Cover plan naming/).first(), 700)
-      await d.wait(3800)
-      await d.click(d.page.getByText('Save plans as plan.md', { exact: true }).first(), 900)
-      const merge = d.page.getByRole('button', { name: /^Merge PR #70/ }).first()
+      await d.wait(500)
+      const approve = p.getByRole('button', { name: /^Approve/ }).first()
+      await d.zoom(approve, 1.4, 1300, 0.45)
+      await d.click(approve, 750)
+      await d.wait(500)
+      // The sidebar's new workspaces and the chat column, without the empty top of the window.
+      await d.zoom({ x: 554, y: 560 }, 1.3, 1300, 0.5)
+      await d.wait(2400)
+      await d.click(p.getByText(/^Save new plans as plan\.md/).first(), 750)
+      await d.wait(4200)
+      await d.click(p.getByText(/^Show the saved plan file/).first(), 650)
+      await d.wait(3600)
+      await d.click(p.getByText(/^Cover plan naming/).first(), 650)
+      await d.wait(3000)
+      await d.unzoom(1300, 0.4)
+      await d.click(p.getByText('Save plans as plan.md', { exact: true }).first(), 800)
+      const merge = p.getByRole('button', { name: /^Merge PR #70/ }).first()
       await merge.waitFor({ timeout: 45_000 })
+      await d.wait(800)
+      await d.zoom(await d.point(merge, 640), 1.3, 1300, 0.5)
+      await d.wait(900)
+      await d.click(merge, 750)
       await d.wait(2200)
-      await d.click(merge, 900)
-      await d.wait(3800)
+      await d.unzoom(1400, 0.6)
+      await d.wait(1200)
     }
   },
   reviews: {
     scene: 'reviews',
-    crop: column(90, 780),
-    poster: 6,
+    crop: full,
+    width: 1600,
+    poster: 5,
     play: async (d) => {
+      const p = d.page
       await d.show(760, 760)
-      await d.wait(400)
+      await d.wait(300)
+      await d.zoom({ x: 634, y: 520 }, 1.5, 1300, 0.6)
       await d.step('update')
-      await d.wait(4200)
-      await d.click(d.page.getByText('Merge #161', { exact: true }).first(), 900)
-      await d.wait(6200)
-      await d.click(d.page.getByText('Merge #158', { exact: true }).last(), 900)
-      await d.wait(4000)
+      await d.wait(3600)
+      const first = p.getByText('Merge #161', { exact: true }).first()
+      await d.zoom(await d.point(first, 634), 1.65, 1200, 0.4)
+      await d.click(first, 750)
+      await d.wait(900)
+      await d.zoom({ x: 634, y: 520 }, 1.5, 1300, 0.4)
+      await d.wait(3600)
+      const second = p.getByText('Merge #158', { exact: true }).last()
+      await d.zoom(await d.point(second, 634), 1.65, 1200, 0.4)
+      await d.click(second, 750)
+      await d.wait(1600)
+      await d.unzoom(1400, 0.6)
+      await d.wait(1200)
     }
   },
   permissions: {
     scene: 'permissions',
-    crop: column(90, 780),
-    poster: 5,
+    crop: full,
+    width: 1600,
+    poster: 6.7,
     play: async (d) => {
+      const p = d.page
       await d.show(800, 780)
-      await d.wait(400)
+      await d.wait(300)
+      await d.zoom({ x: 634, y: 360 }, 1.5, 1300, 0.6)
       await d.step('ask')
-      await d.wait(4700)
-      await d.click(d.page.getByRole('button', { name: /^Allow once/ }).last(), 900)
-      await d.wait(3600)
-      await d.click(d.page.getByRole('button', { name: /^Always allow here/ }).last(), 900)
-      await d.wait(8800)
+      await d.wait(2600)
+      const once = p.getByRole('button', { name: /^Allow once/ }).last()
+      await d.zoom(await d.point(once, 634), 1.65, 1200, 0.45)
+      await d.wait(700)
+      await d.click(once, 750)
+      await d.zoom({ x: 634, y: 360 }, 1.5, 1300, 0.4)
+      await d.wait(2000)
+      const always = p.getByRole('button', { name: /^Always allow here/ }).last()
+      await d.zoom(await d.point(always, 634), 1.65, 1200, 0.45)
+      await d.wait(700)
+      await d.click(always, 750)
+      await d.zoom({ x: 634, y: 360 }, 1.5, 1300, 0.4)
+      await d.wait(4200)
+      await d.unzoom(1400, 0.6)
+      await d.wait(1200)
     }
   },
   // A product-video take: the camera follows the cursor in to each control and back out to show what changed.
@@ -267,19 +302,33 @@ const CLIPS: Record<string, Clip> = {
     poster: 3,
     // Open the issue, plan it with Kernel, approve the plan, and back in Issues its three workspaces are linked to it.
     play: async (d) => {
+      const p = d.page
       await d.show(700, 300)
-      await d.wait(400)
-      await d.click(d.page.getByText('Export invoices as PDF', { exact: true }).first(), 800)
-      await d.wait(1800)
-      await d.click(d.page.getByRole('button', { name: /^Plan with/ }).first(), 900)
-      await d.wait(5200)
-      await d.click(d.page.getByRole('button', { name: /^Approve/ }).first(), 900)
-      await d.wait(4600)
-      await d.click(d.page.getByText('Issues', { exact: true }).first(), 900)
+      await d.wait(300)
+      const issue = p.getByText('Export invoices as PDF', { exact: true }).first()
+      await d.zoom(issue, 1.35, 1300, 0.45)
+      await d.click(issue, 750)
+      await d.wait(600)
+      await d.zoom({ x: 1000, y: 420 }, 1.3, 1300, 0.5)
+      await d.wait(900)
+      await d.zoom({ x: 1000, y: 620 }, 1.25, 1200, 0.4)
+      await d.click(p.getByRole('button', { name: /^Plan with/ }).first(), 750)
+      await d.unzoom(1200, 0.4)
+      await d.wait(3800)
+      const approve = p.getByRole('button', { name: /^Approve/ }).first()
+      await d.zoom(await d.point(approve, 640), 1.3, 1200, 0.45)
+      await d.click(approve, 750)
       await d.wait(1200)
-      await d.click(d.page.getByText('Export invoices as PDF', { exact: true }).first(), 900)
-      await d.page.getByRole('heading', { name: 'Export invoices as PDF' }).waitFor()
-      await d.wait(4500)
+      await d.unzoom(1300, 0.4)
+      await d.wait(800)
+      await d.click(p.getByText('Issues', { exact: true }).first(), 800)
+      await d.wait(900)
+      await d.click(p.getByText('Export invoices as PDF', { exact: true }).first(), 800)
+      await p.getByRole('heading', { name: 'Export invoices as PDF' }).waitFor()
+      await d.zoom({ x: 1000, y: 520 }, 1.3, 1300, 0.5)
+      await d.wait(2600)
+      await d.unzoom(1400, 0.6)
+      await d.wait(1000)
     }
   }
 }
