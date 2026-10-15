@@ -24,7 +24,7 @@ beforeEach(() => {
     workspaces: [ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', lead: true, threadId: 'r2t' })],
     chats: { lead: [chat('c1', 'lead'), chat('c2', 'lead'), chat('c3', 'lead')], other: [chat('o1', 'other')], r2lead: [chat('x1', 'r2lead')] }
   })
-  setState((s) => ({ ui: { ...s.ui, route: { name: 'home' }, tabs: {}, modal: null } }))
+  setState((s) => ({ ui: { ...s.ui, route: { name: 'rooms' }, tabs: {}, modal: null } }))
   resetHistory()
 })
 
@@ -36,7 +36,7 @@ describe('what is recorded', () => {
     back()
     expect(route()).toEqual({ name: 'inbox' })
     back()
-    expect(route()).toEqual({ name: 'home' })
+    expect(route()).toEqual({ name: 'rooms' })
     expect(canBack()).toBe(false)
   })
   it('records nothing for the place you are already on', () => {
@@ -44,7 +44,7 @@ describe('what is recorded', () => {
     go({ name: 'inbox' })
     go({ name: 'inbox' })
     back()
-    expect(route()).toEqual({ name: 'home' })
+    expect(route()).toEqual({ name: 'rooms' })
     expect(canBack()).toBe(false)
   })
   it('replaces for history: replace, so Back right after launch does nothing', () => {
@@ -56,7 +56,7 @@ describe('what is recorded', () => {
   it('does not record a move to onboarding or devUi, or a move away from onboarding', () => {
     go({ name: 'onboarding', step: 'welcome' })
     go({ name: 'onboarding', step: 'checks' })
-    go({ name: 'home' })
+    go({ name: 'rooms' })
     expect(canBack()).toBe(false)
     go({ name: 'devUi', page: 'components' })
     expect(canBack()).toBe(false)
@@ -97,13 +97,13 @@ describe('chat tabs', () => {
     actions.ui.openTab('lead', 'text:1')
     expect(canBack()).toBe(before)
     back()
-    expect(route()).toEqual({ name: 'home' })
+    expect(route()).toEqual({ name: 'rooms' })
   })
   it('does not record a tab opened in a workspace that is not on screen', () => {
     actions.ui.openTab('other', 'o1')
     expect(getState().ui.tabs.other?.tab).toBe('o1')
     back()
-    expect(route()).toEqual({ name: 'home' })
+    expect(route()).toEqual({ name: 'rooms' })
   })
   it('never makes a file or diff tab a step: leaving one counts as leaving the chat you were last on', () => {
     actions.ui.openTab('lead', 'c2')
@@ -137,7 +137,7 @@ describe('chat tabs', () => {
     expect(tab()).toBe('c3')
     // The entry for c1 now opens c3, where you already are, so it is skipped.
     back()
-    expect(route()).toEqual({ name: 'home' })
+    expect(route()).toEqual({ name: 'rooms' })
   })
   it('does not record the fallback chat when the open chat is closed', () => {
     actions.ui.openTab('lead', 'c3')
@@ -176,7 +176,7 @@ describe('back and forward', () => {
     go(at('other'))
     back()
     back()
-    expect(route()).toEqual({ name: 'home' })
+    expect(route()).toEqual({ name: 'rooms' })
     forward()
     forward()
     expect(route()).toEqual(at('other'))
@@ -309,11 +309,11 @@ describe('the saved place', () => {
     back()
     expect(saved()).toMatchObject({ route: at('lead'), tabs: { lead: { tab: 'c2' } } })
     go({ name: 'rooms' })
-    go({ name: 'home' })
+    go({ name: 'inbox' })
     back()
     expect(saved().route).toEqual({ name: 'rooms' })
     forward()
-    expect(saved().route).toEqual({ name: 'home' })
+    expect(saved().route).toEqual({ name: 'inbox' })
   })
   it('saves a closed file or diff tab, which is not a move', () => {
     go(at('lead'))

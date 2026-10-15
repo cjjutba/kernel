@@ -205,7 +205,7 @@ export function Inbox() {
             <div className="ib-empty">
               <h2>You're all caught up</h2>
               <p>Approvals, plans to review and finished work land here. Nothing needs you right now.</p>
-              <button type="button" className="ib-link" onClick={() => (firstRoom ? void openRoom(firstRoom) : go({ name: 'home' }))}>{!firstRoom ? 'Go home' : lead ? `Open ${lead.name}'s chat` : 'Open the team'}</button>
+              {firstRoom && <button type="button" className="ib-link" onClick={() => void openRoom(firstRoom)}>{lead ? `Open ${lead.name}'s chat` : 'Open the team'}</button>}
             </div>
           )}
         </div>

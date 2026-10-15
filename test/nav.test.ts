@@ -18,7 +18,7 @@ function seed() {
     workspaces: [ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', lead: true, threadId: 'r2t' })],
     chats: { lead: [chat('c1', 'lead'), chat('c2', 'lead'), chat('c3', 'lead')], other: [chat('o1', 'other')], r2lead: [chat('x1', 'r2lead')] }
   })
-  setState((s) => ({ ui: { ...s.ui, route: { name: 'home' }, tabs: {} } }))
+  setState((s) => ({ ui: { ...s.ui, route: { name: 'rooms' }, tabs: {} } }))
 }
 const route = () => getState().ui.route
 const at = (workspaceId: string): Route => ({ name: 'workspace', workspaceId })
@@ -210,18 +210,18 @@ describe('stillThere and nearest', () => {
     actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel', folderGone: true }))
     expect(roomHome('r1', getState())).toEqual({ name: 'leadNew', roomId: 'r1' })
   })
-  it('sends a removed room, and a hidden or archived one, Home', () => {
+  it('sends a removed room, and a hidden or archived one, to New chat in another room, or Welcome with none', () => {
     actions.rooms.upsert(room('r2', { archived: true }))
-    expect(nearest(at('r2lead'), getState())).toEqual({ name: 'home' })
+    expect(nearest(at('r2lead'), getState())).toEqual({ name: 'leadNew', roomId: 'r1' })
     actions.rooms.remove('r1')
-    expect(nearest(at('other'), getState())).toEqual({ name: 'home' })
-    expect(nearest({ name: 'settings', page: 'room', roomId: 'r1', section: 'agents' }, getState())).toEqual({ name: 'home' })
+    expect(nearest(at('other'), getState())).toEqual({ name: 'onboarding', step: 'welcome' })
+    expect(nearest({ name: 'settings', page: 'room', roomId: 'r1', section: 'agents' }, getState())).toEqual({ name: 'onboarding', step: 'welcome' })
   })
   it('treats a Settings room page as gone with its room, and other pages as always there', () => {
     expect(stillThere({ name: 'settings', page: 'room', roomId: 'r1' }, getState())).toBe(true)
     actions.rooms.remove('r1')
     expect(stillThere({ name: 'settings', page: 'room', roomId: 'r1' }, getState())).toBe(false)
-    expect(nearest({ name: 'settings', page: 'room', roomId: 'r1' }, getState())).toEqual({ name: 'home' })
+    expect(nearest({ name: 'settings', page: 'room', roomId: 'r1' }, getState())).toEqual({ name: 'leadNew', roomId: 'r2' })
     expect(stillThere({ name: 'settings', page: 'models' }, getState())).toBe(true)
   })
 })
@@ -292,7 +292,7 @@ describe('Settings remembers where you were', () => {
     actions.ui.openSettings()
     actions.rooms.remove('r2')
     actions.ui.leaveSettings()
-    expect(route()).toEqual({ name: 'home' })
+    expect(route()).toEqual({ name: 'leadNew', roomId: 'r1' })
   })
 })
 
@@ -310,10 +310,10 @@ describe('restorePlace', () => {
     const tabs = { ...lead3, other: { tab: 'o1', files: [], diffs: [] }, vanished: { tab: 'v1', files: [], diffs: [] } }
     expect(restorePlace(saved(at('other'), tabs), getState())).toEqual({ route: at('lead'), tabs: lead3 })
   })
-  it('opens Home when the room is gone', () => {
+  it('opens New chat in another room when the room is gone', () => {
     actions.rooms.remove('r2')
-    expect(restorePlace(saved(at('r2lead')), getState())?.route).toEqual({ name: 'home' })
-    expect(restorePlace(saved({ name: 'team', roomId: 'r2' }), getState())?.route).toEqual({ name: 'home' })
+    expect(restorePlace(saved(at('r2lead')), getState())?.route).toEqual({ name: 'leadNew', roomId: 'r1' })
+    expect(restorePlace(saved({ name: 'team', roomId: 'r2' }), getState())?.route).toEqual({ name: 'leadNew', roomId: 'r1' })
   })
   it('opens the room\'s Agents page in Settings for a team, agent, task, floor or board route', () => {
     for (const route of [{ name: 'team', roomId: 'r1' }, { name: 'agent', roomId: 'r1', agentId: 'kai' }, { name: 'task', roomId: 'r1', taskId: 't1' }, { name: 'floor', roomId: 'r1' }, { name: 'board', roomId: 'r1' }]) {
@@ -337,7 +337,7 @@ describe('restorePlace', () => {
     expect(restorePlace('null', getState())).toBeUndefined()
     expect(restorePlace(saved(at('lead'), {}, 2), getState())).toBeUndefined()
     expect(restorePlace(JSON.stringify({ route: at('lead'), tabs: {} }), getState())).toBeUndefined()
-    for (const route of [{ name: 'settings', page: 'general' }, { name: 'onboarding', step: 'welcome' }, { name: 'devUi', page: 'components' }, { name: 'nope' }, { name: 'workspace' }, { name: 'team' }, 'home', null]) {
+    for (const route of [{ name: 'settings', page: 'general' }, { name: 'onboarding', step: 'welcome' }, { name: 'devUi', page: 'components' }, { name: 'nope' }, { name: 'workspace' }, { name: 'team' }, { name: 'home' }, 'home', null]) {
       expect(restorePlace(saved(route), getState())).toBeUndefined()
     }
   })
@@ -370,7 +370,7 @@ describe('placeToSave', () => {
 describe('launchRoute, which Continue on the checks screen goes to', () => {
   const place = JSON.stringify({ v: 1, route: at('lead'), tabs: { lead: { tab: 'c3', lastChat: 'c3', files: [], diffs: ['src/a.ts'] } } })
   const continueFromChecks = () => actions.ui.go(launchRoute(), { history: 'replace' })
-  const openTo = (value: 'lastPlace' | 'home' | 'inbox') => setState({ settings: { ...DEFAULT_SETTINGS('/home/cj'), general: { ...DEFAULT_SETTINGS('/home/cj').general, openTo: value } } })
+  const openTo = (value: 'lastPlace' | 'inbox') => setState({ settings: { ...DEFAULT_SETTINGS('/home/cj'), general: { ...DEFAULT_SETTINGS('/home/cj').general, openTo: value } } })
 
   beforeEach(() => {
     vi.stubGlobal('localStorage', { getItem: (k: string) => (k === 'kernel.lastPlace' ? place : null), setItem: () => undefined, removeItem: () => undefined })
@@ -398,13 +398,10 @@ describe('launchRoute, which Continue on the checks screen goes to', () => {
     continueFromChecks()
     expect(route()).toEqual(at('lead2'))
   })
-  it('with Inbox opens Inbox, and with Home opens Home', () => {
+  it('with Inbox opens Inbox', () => {
     openTo('inbox')
     continueFromChecks()
     expect(route()).toEqual({ name: 'inbox' })
-    openTo('home')
-    continueFromChecks()
-    expect(route()).toEqual({ name: 'home' })
   })
   it('keeps a tab that is already open, so asking again after boot changes nothing', () => {
     openTo('lastPlace')
@@ -412,12 +409,12 @@ describe('launchRoute, which Continue on the checks screen goes to', () => {
     launchRoute()
     expect(getState().ui.tabs.lead.diffs).toEqual(['kept.ts'])
   })
-  it('without a saved place falls back to the last room, then Home', () => {
+  it('without a saved place falls back to the last room, then New chat in the first room', () => {
     vi.stubGlobal('localStorage', { getItem: (k: string) => (k === 'kernel.lastRoom' ? 'r1' : null), setItem: () => undefined, removeItem: () => undefined })
     openTo('lastPlace')
     expect(launchRoute()).toEqual(at('lead'))
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined, removeItem: () => undefined })
-    expect(launchRoute()).toEqual({ name: 'home' })
+    expect(launchRoute()).toEqual({ name: 'leadNew', roomId: 'r1' })
   })
 })
 

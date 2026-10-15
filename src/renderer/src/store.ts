@@ -11,7 +11,7 @@ import { currentRoute } from '@shared/settingsRoutes'
 import { call, cleanError, onPush } from './api'
 import { startupTheme } from './ui/theme'
 import { closeAllLayers } from './ui/hooks'
-import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
+import { hasTab, isChatTab, landing, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
 
@@ -212,7 +212,7 @@ let state: State = {
   prs: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
-  ui: { route: { name: 'home' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), panelHeld: [], bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()) }
+  ui: { route: { name: 'onboarding', step: 'loading' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), panelHeld: [], bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()) }
 }
 const listeners = new Set<() => void>()
 
@@ -298,7 +298,7 @@ const placeNow = (): Place => {
 /** Where Settings was opened from, the last Settings page, and where the app opened. Module level like `folded`: none of it outlasts a restart. */
 let returnTo: Place | undefined
 let lastSettings: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection } | undefined
-let launch: Route = { name: 'home' }
+let launch: Route = { name: 'onboarding', step: 'loading' }
 /**
  * The place a relaunch reopens (KERNEL-201), kept in localStorage like the other `kernel.*` keys, which may be missing or blocked.
  * Nothing is written before the first route is chosen (`system.booted`), so a restore never overwrites what it read, and none in fixture mode.
@@ -462,7 +462,7 @@ export const actions = {
       else {
         // A launch that opened on a room's Agents page would send Back to app to the page it is leaving.
         const there = nearest((returnTo ?? { route: launch }).route, state)
-        actions.ui.go(there.name === 'settings' ? { name: 'home' } : there, { history: 'replace' })
+        actions.ui.go(there.name === 'settings' ? landing(state) : there, { history: 'replace' })
       }
     },
     openModal: (modal: Exclude<Modal, null>) => setUi({ modal, menu: null }),
@@ -926,14 +926,14 @@ function applyPending(all: Record<string, PrPending> | null) {
 
 /**
  * Where the app opens once the checks pass: `boot` goes there, and so does Continue on the checks screen (call it with `go(..., { history: 'replace' })`),
- * so the two can't drift. Settings > General > Default home view picks it. Where I left off reopens the saved place and brings back the tabs
+ * so the two can't drift. Settings > General > Open to picks it. Where I left off reopens the saved place and brings back the tabs
  * of its workspaces that are still live (a tab already open wins, so asking twice changes nothing). Without a saved place (a first launch,
  * unreadable JSON, fixture mode) it opens the last room's Lead chat, found the way the sidebar does (the `lead` workspace on the main
  * checkout), since agents load after this. A room nobody has briefed opens its Agents page in Settings (D-104, KERNEL-642). Also the route Settings falls back to (`launch`).
  */
 export function launchRoute(): Route {
   const openTo = state.settings?.general.openTo
-  let route: Route = { name: 'home' }
+  let route: Route = landing(state, lastRoom() ?? undefined)
   if (openTo === 'inbox') route = { name: 'inbox' }
   else if (openTo === 'lastPlace') {
     const restored = fixtureMode ? undefined : restorePlace(savedPlace(), state)

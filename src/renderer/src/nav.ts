@@ -117,7 +117,13 @@ export function archiveDestination(route: Route, s: State, archived: (workspaceI
   return roomId ? frontDoor(roomId, s) : undefined
 }
 
-/** The route if it is still there, else its room's Lead workspace, then the room's Agents page, then Home. */
+/** Where the app lands when nothing better is known: New chat in the first visible room, or Welcome when there is no room. */
+export function landing(s: State, roomId?: string): Route {
+  const room = s.rooms.find((r) => r.id === roomId && roomVisible(s, r.id)) ?? s.rooms.find((r) => roomVisible(s, r.id))
+  return room ? frontDoor(room.id, s) : { name: 'onboarding', step: 'welcome' }
+}
+
+/** The route if it is still there, else its room's Lead workspace, then the room's Agents page, then New chat in the first room, then Welcome. */
 export function nearest(route: Route, s: State): Route {
   if (stillThere(route, s)) return route
   const roomId = roomOf(route, s)
@@ -125,7 +131,7 @@ export function nearest(route: Route, s: State): Route {
     const home = roomHome(roomId, s)
     if (stillThere(home, s)) return home
   }
-  return { name: 'home' }
+  return landing(s)
 }
 
 /** What `kernel.lastPlace` holds: the route and every workspace's tabs, enough to open the app where it was left. */
@@ -165,7 +171,8 @@ function soundPicks(v: any): NewChatPicks | undefined {
 /** A saved route made sound, or nothing. Missing ids would open a screen with no room or workspace, so they are rejected here. */
 function soundRoute(r: any): Route | undefined {
   switch (r?.name) {
-    case 'home': case 'inbox': case 'history': case 'rooms': return { name: r.name }
+    case 'inbox': case 'rooms': return { name: r.name }
+    case 'history': return { name: 'history', ...(isText(r.roomId) ? { roomId: r.roomId } : {}) }
     case 'issues': return { name: 'issues', ...(isText(r.issueId) ? { issueId: r.issueId } : {}), ...(isText(r.roomId) ? { roomId: r.roomId } : {}) }
     case 'workspace': return isText(r.workspaceId) ? { name: 'workspace', workspaceId: r.workspaceId } : undefined
     case 'leadNew': return isText(r.roomId) ? { name: 'leadNew', roomId: r.roomId, ...(soundSource(r.source) ? { source: soundSource(r.source) } : {}), ...(soundPicks(r.picks) ? { picks: soundPicks(r.picks) } : {}) } : undefined
@@ -177,7 +184,7 @@ function soundRoute(r: any): Route | undefined {
 
 /**
  * Reads `kernel.lastPlace` into where to open and the tabs to bring back. The tabs are only those of workspaces that are still live, and
- * the route is the nearest place that is still there (a closed workspace opens its room's Lead chat, a removed room opens Home). Nothing
+ * the route is the nearest place that is still there (a closed workspace opens its room's Lead chat, a removed room opens New chat in another room). Nothing
  * when there is nothing saved, it is not JSON, or it is a version this build doesn't know.
  */
 export function restorePlace(raw: string | null, s: State): { route: Route; tabs: UiState['tabs'] } | undefined {

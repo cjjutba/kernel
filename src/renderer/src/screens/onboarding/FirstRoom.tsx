@@ -22,7 +22,7 @@ export function FirstRoom() {
             </button>
           ))}
         </div>
-        <button type="button" className="ob-link" style={{ marginTop: 24, fontSize: 13 }} onClick={() => go({ name: 'home' })}>I'll do this later</button>
+        <button type="button" className="ob-link" style={{ marginTop: 24, fontSize: 13 }} onClick={() => go({ name: 'inbox' })}>I'll do this later</button>
       </main>
     </div>
   )

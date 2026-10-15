@@ -40,7 +40,7 @@ export interface AppSettings {
   planDefaulted?: string[]
   hookPort: number
   worktreeRoot: string
-  general: { openTo: 'lastPlace' | 'home' | 'inbox'; openAtLogin: boolean; sendWith: 'enter' | 'cmdEnter'
+  general: { openTo: 'lastPlace' | 'inbox'; openAtLogin: boolean; sendWith: 'enter' | 'cmdEnter'
     /** The Open in app last picked, by its catalog id (KERNEL-427). Unset until the first pick. */
     openIn?: string
   }

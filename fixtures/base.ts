@@ -158,7 +158,7 @@ export const base: Fixture = {
   },
   tree: { [ids.table]: tableTree },
   fileText: { [ids.table]: { 'src/app/invoices/table.tsx': tableSource } },
-  ui: { route: { name: 'home' } },
+  ui: { route: { name: 'inbox' } },
   push: [
     { type: 'script.output', workspaceId: ids.table, kind: 'run', lines: [{ line: '$ pnpm dev --port $KERNEL_PORT', stream: 'stdout' }] },
     { type: 'script.output', workspaceId: ids.table, kind: 'run', lines: [{ line: 'Next.js ready on http://localhost:4312', stream: 'stdout' }] },

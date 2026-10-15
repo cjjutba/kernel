@@ -41,7 +41,7 @@ beforeEach(() => {
     rooms: [room('r1')], agents: { r1: [kernel, kai, theo] }, workspaces: world(),
     threads: { t1: thread('t1', { createdAt: 1 }), t2: thread('t2', { createdAt: 2 }) }, chats: {}
   })
-  setState((s) => ({ ui: { ...s.ui, route: { name: 'home' }, modal: null, toasts: [] } }))
+  setState((s) => ({ ui: { ...s.ui, route: { name: 'inbox' }, modal: null, toasts: [] } }))
 })
 
 describe("the room's front door (KERNEL-596)", () => {
@@ -72,7 +72,7 @@ describe('where an archive takes you', () => {
 
   it('stays where you are for anything not on screen', () => {
     expect(archiveDestination(at('older'), getState(), stored('newer'))).toBeUndefined()
-    for (const route of [{ name: 'history' }, { name: 'home' }, { name: 'inbox' }, door, { name: 'settings', page: 'room', roomId: 'r1', section: 'agents' }, { name: 'settings', page: 'general' }] as Route[]) {
+    for (const route of [{ name: 'history' }, { name: 'inbox' }, { name: 'inbox' }, door, { name: 'settings', page: 'room', roomId: 'r1', section: 'agents' }, { name: 'settings', page: 'general' }] as Route[]) {
       expect(archiveDestination(route, getState(), stored('newer', 'handed', 'plain'))).toBeUndefined()
     }
   })
