@@ -2055,25 +2055,25 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: longChat },
     ui: open
   })),
-  /** A message just sent in a short chat (KERNEL-803): it sits at the top of the view with the Working line under it and an empty reply area below. The send is a chat.item event after the chat opens, which scripts/shots.ts delivers, since only a send anchors. */
+  /** A message just sent in a short chat (KERNEL-891): it appears under the earlier rows with the Working line under it, and the view stays at the end. The send is a chat.item event after the chat opens, which scripts/shots.ts delivers. */
   WorkspaceJustSent: scene((f) => ({
     items: { [ids.tableChat]: tableItems.slice(0, 1) },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
-  /** A long chat right after a send (KERNEL-825): the message travelled more than a screen and sits 24px from the top with the Working line under it. scripts/shots.ts delivers the send after the chat opens at its end. */
+  /** A long chat right after a send (KERNEL-891): the message is the last row at the end of the thread with the Working line under it. scripts/shots.ts delivers the send after the chat opens at its end. */
   WorkspaceJustSentLong: scene((f) => ({
     items: { [ids.tableChat]: longChat },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
-  /** A short reply that has finished (KERNEL-837): the message still sits 24px from the top with its reply under it and blank view below, and the end of the turn moved nothing. scripts/shots.ts delivers the send, the reply and the end of the turn after the chat opens. */
+  /** A short reply that has finished (KERNEL-891): the message and its reply are the last rows, and the end of the turn moved nothing. scripts/shots.ts delivers the send, the reply and the end of the turn after the chat opens. */
   WorkspaceJustSentDone: scene((f) => ({
     items: { [ids.tableChat]: tableItems.slice(0, 1) },
     push: f.push,
     ui: open
   })),
-  /** The first message sent from New chat (KERNEL-825): the chat opens with it 24px from the top and the Working line under it. The fixture starts on New chat, and scripts/shots.ts types the message and sends it. */
+  /** The first message sent from New chat (KERNEL-891): the chat opens with it at the top of the short, top-aligned thread and the Working line under it. The fixture starts on New chat, and scripts/shots.ts types the message and sends it. */
   WorkspaceNewChatJustSent: scene((f) => {
     const base = noPlan(leadNoChats(f))
     return {
@@ -2084,8 +2084,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     }
   }),
   /**
-   * The first message sent from New chat as motion: the draft is in the box and the chat that opens glides the message from the bottom of the empty chat to 24px from the top.
-   * It is the same glide as a typed send in a short chat and in a long one (WorkspaceSendShortMotion, WorkspaceSendLongMotion) and as Approve (WorkspacePlanApprove).
+   * The first message sent from New chat as motion: the draft is in the box and the chat that opens shows the message at the top of the short thread at once. Nothing else moves.
+   * A typed send in a short and in a long chat (WorkspaceSendShortMotion, WorkspaceSendLongMotion) and Approve (WorkspacePlanApprove) behave the same way.
    */
   WorkspaceNewChatSendMotion: { ...scene((f) => {
     const base = noPlan(leadNoChats(f))
@@ -2097,17 +2097,17 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: { ...base.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'hi this is a test prompt' } } }
     }
   }), motion: { action: { click: 'Send' }, ms: 1000, area: '.ws-main' } },
-  /** A typed send in a short chat as motion: the message arrives at the bottom and the padding under it lifts it to 24px from the top, by layout, so it is animated like a scroll. */
+  /** A typed send in a short chat as motion: the message appears at the end at once and nothing moves besides the new row. */
   WorkspaceSendShortMotion: { ...scene(() => ({
     ...withDraft({ items: { [ids.tableChat]: tableItems.slice(0, 1) }, ui: open }, 'Now add a CSV export for the filtered rows.'),
     afterSend: [{ afterMs: 40, events: [{ type: 'chat.running', chatId: ids.tableChat, running: true }, { type: 'chat.item', chatId: ids.tableChat, item: { kind: 'user', id: 'sm-u', ts: Date.now(), parts: [{ type: 'text', text: 'Now add a CSV export for the filtered rows.' }] } }] }]
   })), motion: { action: { click: 'Send' }, ms: 1000, area: '.ws-main' } },
-  /** A typed send in a long chat as motion: the message glides by scroll, which is what the two above are made to look like. */
+  /** A typed send in a long chat as motion: the view is at its end, and the message appears there at once with no scroll. */
   WorkspaceSendLongMotion: { ...scene(() => ({
     ...withDraft({ items: { [ids.tableChat]: longChat }, ui: open }, 'Now add a CSV export for the filtered rows.'),
     afterSend: [{ afterMs: 40, events: [{ type: 'chat.running', chatId: ids.tableChat, running: true }, { type: 'chat.item', chatId: ids.tableChat, item: { kind: 'user', id: 'sl-u', ts: Date.now(), parts: [{ type: 'text', text: 'Now add a CSV export for the filtered rows.' }] } }] }]
   })), motion: { action: { click: 'Send' }, ms: 1000, area: '.ws-main' } },
-  /** A chat left and come back to after its turn ended (leaving and coming back): the message sits where it was, with its space under it. scripts/shots.ts sends, finishes the turn, opens another tab and returns. */
+  /** A chat left and come back to after its turn ended (KERNEL-765): it opens at its end, where it was left. scripts/shots.ts sends, finishes the turn, opens another tab and returns. */
   WorkspaceLeaveAndReturn: scene((f) => ({
     chats: [...f.chats, extraChat('chat-other', 'Empty state copy')],
     items: { [ids.tableChat]: tableItems.slice(0, 1), 'chat-other': [userMsg('o1', 'Shorten the empty state copy.')] },

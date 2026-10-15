@@ -21,11 +21,6 @@ const EMPTY: AgentDef[] = []
 /** The Copy and Approve strip opens over --plan-dur, 0.5s (composer.css), so the chat above it settles a little after that. */
 const STRIP_OPENS_MS = 800
 
-/** Pressing Approve in this chat (or ⌘⇧↵) sends this on window, with the chat's id. The transcript holds still: nothing scrolls until the strip has closed (KERNEL-862). */
-export const PLAN_APPROVE_EVENT = 'kernel:plan-approve'
-/** The strip has closed, or Approve failed (`failed`). The transcript lets the card fold, then glides the answer into place once. */
-export const PLAN_SETTLE_EVENT = 'kernel:plan-settle'
-
 export const stepLine = (s: PlanStep, agents: AgentDef[]) => {
   const who = agents.find((x) => x.id === s.agentId)?.name
   return who ? `${s.title} · ${who}` : s.title
@@ -84,7 +79,7 @@ export function PlanInline({ a, agents, hasItem }: { a: Approval; agents: AgentD
   const [copied, copy] = useCopy(planCopyText(a, agents))
   const ref = useRef<HTMLDivElement>(null)
   // The transcript follows its end, which would open a long plan at its last line. One taller than the chat opens at its top. The Approve strip opens over a second and shortens
-  // the chat under it, which would leave a plan that fits with its end below the fold, so while it opens the end stays in view. The transcript's glide does both, and holds still once Approve is pressed.
+  // the chat under it, which would leave a plan that fits with its end below the fold, so while it opens the end stays in view. The transcript's glide does both.
   const glide = useContext(TranscriptGlide)
   useEffect(() => {
     if (a.status === 'pending' && ref.current) glide?.(ref.current, STRIP_OPENS_MS)
@@ -157,18 +152,16 @@ export function usePlanStrip(plan: Approval | undefined, onApproved?: () => void
     if (!a || out || sent.current) return
     sent.current = true
     setPressed(true)
-    window.dispatchEvent(new CustomEvent(PLAN_APPROVE_EVENT, { detail: { chatId: a.chatId } }))
     after?.()
     void decideInChat(a, { behavior: 'allow' }, 'Could not approve the plan').then((ok) => {
       sent.current = false
       if (ok) setApproved(a.id)
-      else { setPressed(false); setGone(undefined); window.dispatchEvent(new CustomEvent(PLAN_SETTLE_EVENT, { detail: { chatId: a.chatId, failed: true } })) }
+      else { setPressed(false); setGone(undefined) }
     })
   }
   const closed = () => {
     const { shown: a, plan: waiting } = now.current
     if (!a) return
-    window.dispatchEvent(new CustomEvent(PLAN_SETTLE_EVENT, { detail: { chatId: a.chatId } }))
     setPressed(false)
     // Still waiting: the strip is gone and stays gone until the call fails or another plan comes.
     if (waiting && waiting.id === a.id) setGone(a.id)

@@ -9,7 +9,6 @@ import { openLeadChat, openNewChat } from '../../lead'
 import { Markdown } from '../workspace/markdown'
 import { WorkCard } from './WorkCard'
 import { DescriptionFailed } from './parts'
-import { markJustSent } from '../workspace/chatPlace'
 import { githubPlanParts, issueAge, linkedWorkspaces, loginInitials } from './model'
 
 /** The selected GitHub issue: what GitHub says about it, the workspaces already working on it, and the buttons that start work (IssuesGitHub.png). */
@@ -29,7 +28,6 @@ export function GithubDetail({ project, id, summary, tick }: { project: Project;
     try {
       const d = detail ?? (await call('github.issue', { projectId: project.id, id }))
       const chat = await call('lead.start', { projectId: project.id, prompt: '', parts: githubPlanParts(d), plan: true })
-      markJustSent(chat.id)
       await openLeadChat(project.id, chat.id)
     } catch (e) { actions.ui.toast({ title: `Could not plan with ${lead}`, sub: cleanError(e) }) }
   })

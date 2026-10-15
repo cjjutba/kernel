@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bezier, createGlider, easingOf, glideStep, GLIDE_EASING, type GlideEnv, type GlideView } from '../src/renderer/src/screens/workspace/scrollGlide'
-import { heldPadding } from '../src/renderer/src/screens/workspace/Transcript'
+import { bezier, createGlider, glideMs, easingOf, glideStep, GLIDE_EASING, type GlideEnv, type GlideView } from '../src/renderer/src/screens/workspace/scrollGlide'
 
 const ease = easingOf(GLIDE_EASING)
 
@@ -122,12 +121,41 @@ describe('bezier', () => {
   })
 })
 
-describe('releasing an anchor whose row was dropped', () => {
-  it('holds the space the view needs under the rows, so the scroll position stays', () => {
-    expect(heldPadding(900, 600, 1200)).toBe(300)
+describe('one glide for Scroll to bottom and a rail jump (KERNEL-891)', () => {
+  const frames = [1000 / 60, 1000 / 120]
+  const atTime = (r: ReturnType<typeof run>, ms: number) => r.trace.reduce((best, p) => (Math.abs(p[0] - ms) < Math.abs(best[0] - ms) ? p : best))
+
+  it('takes longer for a longer jump, up to a cap', () => {
+    expect(glideMs(60)).toBeLessThan(glideMs(600))
+    expect(glideMs(600)).toBeLessThan(glideMs(3000))
+    expect(glideMs(100000)).toBe(700)
+    expect(glideMs(1)).toBe(120)
   })
 
-  it('holds nothing when the rows already reach past the view', () => {
-    expect(heldPadding(500, 600, 1400)).toBe(0)
+  it('lands on the end after the same time at 60Hz and 120Hz, for a short and a long distance', () => {
+    for (const goal of [90, 1500]) {
+      const [a, b] = frames.map((f) => run(f, () => goal, 1200))
+      expect(a.view.scrollTop).toBe(goal)
+      expect(b.view.scrollTop).toBe(goal)
+      for (const ms of [40, 80, 120]) expect(Math.abs(atTime(a, ms)[1] - atTime(b, atTime(a, ms)[0])[1])).toBeLessThan(0.01)
+    }
+  })
+
+  it('reaches the end of a target that keeps moving without going back or snapping, at either frame rate', () => {
+    for (const f of frames) {
+      const r = run(f, (t) => 800 + Math.min(t, 300), 1500)
+      const moves = r.trace.slice(1).map((p, i) => p[1] - r.trace[i][1])
+      expect(moves.every((m) => m >= 0)).toBe(true)
+      expect(r.view.scrollTop).toBe(1100)
+      const tail = moves.filter((m) => m > 0).slice(-3)
+      expect(Math.max(...tail)).toBeLessThan(8)
+    }
+  })
+
+  it('moves every frame of the glide and never by more than the distance left', () => {
+    const r = run(1000 / 60, () => 600, 700)
+    const moves = r.trace.slice(1).map((p, i) => p[1] - r.trace[i][1])
+    expect(moves.filter((m) => m > 0).length).toBeGreaterThan(10)
+    r.trace.forEach((p) => expect(p[1]).toBeLessThanOrEqual(600))
   })
 })
