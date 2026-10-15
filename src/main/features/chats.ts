@@ -369,7 +369,6 @@ export class Chats extends Feature {
   }
   handlers() {
     return {
-      'chats.restart': async ({ chatId }) => { await this.sessions.restart(chatId); return { ok: true } },
       'chats.compact': async ({ chatId }) => { await this.sessions.compact(chatId); return { ok: true } },
       'chats.list': async ({ workspaceId }) => this.chatTabs(workspaceId),
       'chats.rename': async ({ chatId, title }) => this.renameChat(chatId, title),

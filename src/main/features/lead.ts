@@ -565,7 +565,7 @@ export class Lead extends Feature {
   }
 
   /**
-   * Links a Build here chat's own work to a tracker issue (KERNEL-778), from the link_issue tool or `lead.linkIssue`. Before
+   * Links a Build here chat's own work to a tracker issue (KERNEL-778), from the link_issue tool. Before
    * the first push, and with no PR, its branch takes a teammate's name for the issue, `feat/kernel-760-retry-button`, and its
    * folder follows once the chat is idle. After that only the link changes. The PR body names the key, so the issue closes on
    * merge.
@@ -1062,7 +1062,6 @@ export class Lead extends Feature {
       'lead.start': async ({ projectId, ...o }) => this.newLeadChat(projectId, o),
       'lead.prefetch': async ({ projectId }) => { this.prefetch(projectId); return { ok: true } },
       'lead.setMode': async ({ workspaceId, mode }) => this.setMode(workspaceId, mode),
-      'lead.linkIssue': async ({ workspaceId, issue }) => this.linkIssue(workspaceId, issue),
       'threads.list': async ({ projectId }) => this.store.threads(projectId),
       'threads.rename': async ({ threadId, title }) => this.renameThread(threadId, title),
       'threads.archivePreview': async ({ threadId }) => this.archivePreview(threadId),

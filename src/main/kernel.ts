@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { Chat, Checkpoint, ClaudeAccount, ClaudePlan, Effort, Provider, QueuedMessage, RateLimit, Workspace } from '@shared/types'
-import { NotImplemented, type Channel, type KernelApi } from '@shared/ipc'
+import type { Channel, KernelApi } from '@shared/ipc'
 import { Store } from './db'
 import { bus } from './bus'
 import { Approvals } from './services/approvals'
@@ -59,26 +59,8 @@ import { OpenItems } from './features/openItems'
 import { Placement } from './features/placement'
 import { Moves } from './features/moves'
 
-export { fetchedAt } from './features/workspaces'
-
 type CoreChannel = Exclude<Channel, `system.${string}`>
 export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promise<KernelApi[C]['res']> }
-
-/**
- * Channels no lane has built yet, and the issue that builds each. They reject with NotImplemented.
- * A lane that builds one deletes its line here and adds the handler to its feature's `handlers()`.
- * Empty since KERNEL-30 built the last ones (update.*).
- */
-export const UNBUILT = {} as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
-
-type Unbuilt = keyof typeof UNBUILT
-
-/** Handlers for every unbuilt channel, each rejecting with the issue that builds it. */
-function unbuilt(): Pick<Handlers, Unbuilt> {
-  const out: Record<string, () => Promise<never>> = {}
-  for (const [channel, issue] of Object.entries(UNBUILT as Record<string, string>)) out[channel] = async () => { throw new NotImplemented(channel as Channel, issue) }
-  return out as unknown as Pick<Handlers, Unbuilt>
-}
 
 /**
  * Builds the services and the features, starts and stops them, and joins their IPC handler maps (KERNEL-324). Each
@@ -294,7 +276,7 @@ export class Kernel {
    * its own channels, and `channels` throws if two answer the same one (KERNEL-324).
    */
   handlers(): Handlers {
-    return channels(unbuilt(), this.app.handlers(), this.inbox.handlers(), this.checkpoints.handlers(), this.config.handlers(),
+    return channels(this.app.handlers(), this.inbox.handlers(), this.checkpoints.handlers(), this.config.handlers(),
       this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.projects.handlers(),
       this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
       this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers(),

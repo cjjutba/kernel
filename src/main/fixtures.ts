@@ -226,7 +226,6 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     'chats.retry': async () => ok,
     'chats.compact': async () => ok,
-    'chats.restart': async () => ok,
     'chats.queue': async ({ chatId }) => queue(chatId),
     'chats.queueReason': async () => null,
     'chats.moveNotice': async ({ chatId }) => f.moveNotices?.[chatId] ?? null,
@@ -291,12 +290,6 @@ export function fixtureHandlers(f: Fixture): Handlers {
       ws.leadMode = mode
       return ws
     },
-    'lead.linkIssue': async ({ workspaceId, issue }) => {
-      const ws = f.workspaces.find((w) => w.id === workspaceId)
-      if (!ws) throw new Error('This fixture has no such workspace.')
-      ws.source = { kind: 'issue', id: issue, title: ws.title ?? issue }
-      return ws
-    },
     'threads.list': async ({ projectId }) => (f.threads ?? []).filter((t) => !projectId || t.projectId === projectId),
     'threads.rename': async () => { throw new Error('Fixture mode does not rename chats.') },
     'threads.archivePreview': async ({ threadId }) => {
@@ -359,7 +352,6 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'accounts.remove': async () => f.accounts ?? [],
     'accounts.checkMcp': async () => f.accounts ?? [],
     'accounts.mcpSignIn': async () => f.accounts ?? [],
-    'accounts.mcpSignInAll': async ({ accountId }) => ({ accountId, servers: [], done: [], failed: [], finished: true }),
     'accounts.mcpIgnore': async () => f.mcpAccounts ?? [],
     'accounts.mcpSetUp': async ({ accountId }) => ({ accountId, servers: [], done: [], failed: [], finished: true }),
     'accounts.rename': async ({ accountId, label }) => (f.accounts ?? []).map((a) => (a.id === accountId ? { ...a, label: label.trim() || a.email || a.label } : a)),

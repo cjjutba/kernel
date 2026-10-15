@@ -12,10 +12,7 @@ type Ok = { ok: true }
 /** Claude is overloaded and the session is retrying: which attempt, out of how many, and when the next one goes. */
 export interface Retry { attempt: number; of: number; nextAt: number }
 
-/**
- * Request/response pairs for ipcRenderer.invoke. One place to see everything the UI can ask for, built or not.
- * Channels a lane hasn't built yet reject with NotImplemented naming the issue (see UNBUILT in src/main/kernel.ts).
- */
+/** Request/response pairs for ipcRenderer.invoke. One place to see everything the UI can ask for. */
 export interface KernelApi {
   // first run (KERNEL-27)
   'preflight.run': { req: void; res: PreflightCheck[] }
@@ -222,8 +219,6 @@ export interface KernelApi {
   /** Run the turn that produced `itemId` again. `now` sends it ahead of the queue and stops the running turn (Retry now). */
   'chats.retry': { req: { chatId: string; itemId: string; now?: boolean }; res: Ok }
   'chats.compact': { req: { chatId: string }; res: Ok }
-  /** Start a crashed session again (FloorOffline "Restart session"). */
-  'chats.restart': { req: { chatId: string }; res: Ok }
   'chats.queue': { req: { chatId: string }; res: QueuedMessage[] }
   /** What the chat's queue waits for, null when it is empty. `chat.queue` events carry each change (KERNEL-271). */
   'chats.queueReason': { req: { chatId: string }; res: QueueReason | null }
@@ -295,12 +290,6 @@ export interface KernelApi {
    * chat with Kernel.
    */
   'lead.setMode': { req: { workspaceId: string; mode: LeadMode }; res: Workspace }
-  /**
-   * Links a Build here chat to an issue, by its workspace and the issue's key (KERNEL-778). Before the branch is pushed Kernel
-   * renames it the way a teammate's branch for that issue is named. After a push it only links. The PR names the key, so the
-   * issue moves to Done when it merges. Refuses a workspace that isn't a chat with Kernel.
-   */
-  'lead.linkIssue': { req: { workspaceId: string; issue: string }; res: Workspace }
   /** The Lead chats, each holding one or more Lead tabs, in every project or in `projectId`, oldest first (KERNEL-337). */
   'threads.list': { req: { projectId?: string }; res: Thread[] }
   /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */
@@ -402,7 +391,7 @@ export interface KernelApi {
   'accounts.code': { req: { provider: Provider; code: string }; res: Ok }
   /**
    * Closes the Add account sheet: stops the sign-in that is running, an MCP server's (`accounts.mcpSignIn`) included, and
-   * the provider's Sign in to all (`accounts.mcpSignInAll`).
+   * the provider's Set up queue (`accounts.mcpSetUp`).
    */
   'accounts.cancelAdd': { req: { provider: Provider }; res: Ok }
   /**
@@ -449,14 +438,6 @@ export interface KernelApi {
    * pushes, and `accounts.cancelAdd` stops it. Resolves once the sign-in finishes.
    */
   'accounts.mcpSignIn': { req: { provider: Provider; accountId: string; server: string }; res: AccountProfile[] }
-  /**
-   * Sign in to all: signs in every MCP server that needs a sign-in on an account, one after another, through
-   * `accounts.mcpSignIn`. Servers ignored there or switched off in every project are skipped. It checks the account first when
-   * `mcp.accounts` hasn't. Progress arrives as `account.mcpSignInAll` pushes, with each server's own steps as
-   * `account.mcpSignIn`. A failed sign-in moves on to the next server. `accounts.cancelAdd` stops the queue. Resolves when it
-   * ends, with what was signed in and what failed (KERNEL-626, Codex since KERNEL-646).
-   */
-  'accounts.mcpSignInAll': { req: { provider: Provider; accountId: string }; res: McpSignInAll }
   /**
    * Ignore, or stop ignoring, one MCP server on one account, kept in `accounts.json` across restarts. An ignored server reads
    * `ignored` in `mcp.accounts` and doesn't count toward the account's row warning (`mcpSignIns`), the notice after adding an
@@ -634,15 +615,6 @@ export interface KernelApi {
   'system.preview.locate': { req: { viewId: string; selectors: string[] }; res: ({ x: number; y: number; width: number; height: number } | null)[] }
 }
 
-/**
- * Channels whose types are settled before anything answers them (KERNEL-432). The ticket that builds one moves it into
- * KernelApi with its handler, so no window can call it, and no NotImplemented stub is needed, until then.
- */
-export interface PlannedApi {
-  /** Whether each provider can run Auto and Bypass permissions now, for Settings, Permissions, the composer and onboarding. */
-  'permissions.availability': { req: void; res: Record<Provider, ModeAvailability> }
-}
-
 export type Channel = keyof KernelApi
 
 /** Pushed from main to renderer on 'kernel:event'. */
@@ -737,7 +709,7 @@ export type PushEvent =
   | { type: 'account.add'; add: AccountAddStep }
   /** Where a sign-in to an MCP server on an account is (`accounts.mcpSignIn`, KERNEL-616). */
   | { type: 'account.mcpSignIn'; signIn: McpSignInStep }
-  /** Where Sign in to all on an account is (`accounts.mcpSignInAll`, KERNEL-626). */
+  /** Where an account's queue of MCP sign-ins is (`accounts.mcpSetUp`, KERNEL-626). */
   | { type: 'account.mcpSignInAll'; run: McpSignInAll }
   /** MCP servers need a sign-in on an account just added, after its first check. Once per account (KERNEL-626). */
   | { type: 'account.mcpNeeded'; needed: McpNeeded }
@@ -762,16 +734,3 @@ export type PushEvent =
   | { type: 'shared.comment'; comment: SharedComment }
   /** A toast from main, for news no other event carries: the window reloaded after a crash, or diagnostics were copied (KERNEL-288). */
   | { type: 'toast'; toast: Omit<Toast, 'id'> }
-
-/** The message an unbuilt channel rejects with. Errors cross IPC as plain messages, so the renderer matches on the prefix. */
-export const NOT_IMPLEMENTED = 'Not built yet'
-
-/** Thrown by a channel no lane has built yet. Names the issue that builds it. */
-export class NotImplemented extends Error {
-  constructor(readonly channel: Channel, readonly issue: string) {
-    super(`${NOT_IMPLEMENTED}: ${channel} (${issue})`)
-    this.name = 'NotImplemented'
-  }
-}
-
-export const isNotImplemented = (err: unknown) => err instanceof Error && err.message.includes(`${NOT_IMPLEMENTED}: `)

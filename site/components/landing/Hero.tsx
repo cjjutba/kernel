@@ -1,19 +1,14 @@
 import Link from 'next/link'
-import leadPlan from '@/public/images/lead-plan.png'
 import { Button } from '@/components/ui/Button'
-import { ArrowIcon, DownloadIcon, GitHubIcon } from '@/components/ui/icons'
-import { Shot } from '@/components/ui/Shot'
-import { DOWNLOAD_URL, REPO_URL } from '@/lib/links'
+import { Dither } from '@/components/ui/Dither'
+import { ArrowIcon, DownloadIcon } from '@/components/ui/icons'
+import { DOWNLOAD_URL } from '@/lib/links'
+import { HeroDemo } from './HeroDemo'
 
 /** `version` is the newest release's label, such as "0.1". */
 export function Hero({ version }: { version: string }) {
   return (
-    <section id="top" aria-labelledby="hero-title" className="relative pt-32 text-center">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-245 bg-dots-hero" />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute top-150 left-1/2 h-140 w-full max-w-300 -translate-x-1/2 glow-hero"
-      />
+    <section id="top" aria-labelledby="hero-title" className="relative isolate pt-32 text-center max-nav:pt-20">
       <div className="relative px-6">
         <Link
           href="/changelog"
@@ -23,33 +18,37 @@ export function Hero({ version }: { version: string }) {
           Kernel {version} is here
           <ArrowIcon className="text-muted" />
         </Link>
-        <h1 id="hero-title" className="mt-8 text-display">
-          Your coding agents,
-          <br />
+        {/* Two set lines on wider screens. On phones the break goes and the heading balances instead of leaving "team." alone. */}
+        <h1 id="hero-title" className="mt-8 text-display text-balance max-nav:mt-6">
+          Your coding agents,{' '}
+          <br className="max-nav:hidden" />
           working as a team.
         </h1>
         <p className="mx-auto mt-6 max-w-150 text-hero-lead text-balance text-muted">
-          Brief a lead, approve the plan, and watch agents build in parallel, each in its own workspace, until a pull
-          request is ready for you to merge.
+          Brief a lead, approve the plan, and merge what the team builds.
         </p>
         <div className="mt-10 flex flex-wrap justify-center gap-3">
           <Button href={DOWNLOAD_URL} size="lg" icon={<DownloadIcon />}>
             Download for macOS
           </Button>
-          <Button href={REPO_URL} variant="secondary" size="lg" external icon={<GitHubIcon />}>
-            View on GitHub
-          </Button>
         </div>
-        <p className="mt-4 text-small text-faint">Free · For Macs with Apple silicon</p>
+        <p className="mt-4 text-small text-faint">
+          For Macs with Apple silicon
+          {/* Only the link stands out: brighter, with an arrow, and underlined on hover. */}
+          <span className="mt-1.5 block">
+            Not on Apple silicon?{' '}
+            <a href="#waitlist" className="group inline-flex items-center gap-1 text-ink-2 transition-colors hover:text-ink">
+              <span className="decoration-rule underline-offset-3 group-hover:underline">Get notified</span>
+              <ArrowIcon className="text-muted transition-transform group-hover:translate-x-0.5" />
+            </a>
+          </span>
+        </p>
       </div>
-      <div className="relative mt-16 px-6">
-        <Shot
-          src={leadPlan}
-          alt="Kernel: Kernel's plan for four tasks waits for review, with the project's team and workspaces in the sidebar"
-          sizes="(max-width: 1328px) calc(100vw - 48px), 1280px"
-          preload
-          className="mx-auto max-w-320"
-        />
+      <div className="relative mt-16 px-6 max-nav:mt-12">
+        {/* A rolling wave of dots that rises behind the demo and thins out along its sides, gone before the frame's
+            bottom, so it never reaches the next section (globals.css, Dither fields). */}
+        <Dither shape="wave" scale={1.15} speed={0.35} frame={4000} className="dither-hero absolute inset-x-0 -top-64 -z-1 h-200 max-nav:-top-40 max-nav:h-90" />
+        <HeroDemo />
       </div>
     </section>
   )

@@ -16,7 +16,9 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@paper-design/shaders-react": "0.0.81",
     "@radix-ui/react-tabs": "1.1.22",
+    "marked": "18.0.14",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",

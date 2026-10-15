@@ -10,7 +10,20 @@ const config: NextConfig = {
   // Stops `next dev` from writing an AGENTS.md into site/ when it detects a coding agent.
   agentRules: false,
   // Screenshots are mostly small UI text, which blurs at the default quality of 75.
-  images: { formats: ['image/avif', 'image/webp'], qualities: [90] }
+  images: { formats: ['image/avif', 'image/webp'], qualities: [90] },
+  // Each docs page as Markdown, next to the page: /docs/install.md (app/docs/raw).
+  async rewrites() {
+    return [{ source: '/docs/:slug.md', destination: '/docs/raw/:slug' }]
+  },
+  // Rooms were renamed projects (KERNEL-880), so links to the old pages still land.
+  async redirects() {
+    return [
+      { source: '/docs/rooms', destination: '/docs/projects', permanent: true },
+      { source: '/docs/room-settings', destination: '/docs/project-settings', permanent: true },
+      { source: '/docs/rooms.md', destination: '/docs/projects.md', permanent: true },
+      { source: '/docs/room-settings.md', destination: '/docs/project-settings.md', permanent: true }
+    ]
+  }
 }
 
 export default config

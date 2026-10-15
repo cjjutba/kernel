@@ -1,7 +1,7 @@
 import { DOWNLOAD_URL } from '@/lib/links'
 import { expect, isMobile, test } from './fixtures'
 
-for (const path of ['/', '/changelog']) {
+for (const path of ['/', '/changelog', '/pricing', '/docs', '/docs/permissions']) {
   test(`${path} loads`, async ({ page }) => {
     const res = await page.goto(path)
     expect(res?.status()).toBe(200)
@@ -17,11 +17,10 @@ for (const path of ['/', '/changelog']) {
     }
   })
 
-  test(`${path}: footer shows the wordmark and the large wordmark`, async ({ page }) => {
+  test(`${path}: footer shows the wordmark`, async ({ page }) => {
     await page.goto(path)
     const footer = page.getByRole('contentinfo')
     await expect(footer.getByRole('link', { name: 'Kernel', exact: true })).toHaveText('Kernel')
-    await expect(footer.locator('[aria-hidden="true"]').filter({ hasText: 'ernel' }).last()).toBeVisible()
   })
 
   test(`${path}: no horizontal scroll`, async ({ page }, testInfo) => {
@@ -43,9 +42,8 @@ for (const path of ['/', '/changelog']) {
   })
 }
 
-test('release notes, the hero pill and the nav go to /changelog', async ({ page }, testInfo) => {
+test('the hero pill, the footer and the nav go to /changelog', async ({ page }, testInfo) => {
   await page.goto('/')
-  await expect(page.getByRole('link', { name: 'Release notes' })).toHaveAttribute('href', '/changelog')
   const footerChangelog = page.getByRole('contentinfo').getByRole('link', { name: 'Changelog' })
   await expect(footerChangelog).toHaveAttribute('href', '/changelog')
   if (!isMobile(testInfo)) {
@@ -72,20 +70,19 @@ test('the final call to action has no icon above its heading', async ({ page }) 
   await expect(firstVisible).toHaveText('Put your agents to work.')
 })
 
-for (const from of ['/', '/changelog']) {
-  test(`nav anchors scroll to their sections from ${from}`, async ({ page }, testInfo) => {
-    test.skip(isMobile(testInfo), 'the nav links are hidden on narrow screens')
-    const nav = page.getByRole('navigation', { name: 'Main' })
-    for (const [label, id] of [
-      ['Features', 'features'],
-      ['How it works', 'how'],
-      ['Privacy', 'privacy'],
-      ['FAQ', 'faq']
-    ]) {
+for (const from of ['/', '/changelog', '/docs/install']) {
+  test(`the nav goes to Docs, Pricing and Changelog from ${from}`, async ({ page }, testInfo) => {
+    for (const [label, path] of [
+      ['Docs', '/docs'],
+      ['Pricing', '/pricing'],
+      ['Changelog', '/changelog']
+    ] as const) {
       await page.goto(from)
-      await nav.getByRole('link', { name: label }).click()
-      await expect(page).toHaveURL(`/#${id}`)
-      await expect(page.locator(`#${id}`)).toBeInViewport()
+      // On narrow screens the links sit in the menu.
+      if (isMobile(testInfo)) await page.locator('header summary[aria-label="Menu"]').click()
+      await page.getByRole('navigation', { name: 'Main' }).filter({ visible: true }).getByRole('link', { name: label }).click()
+      await expect(page).toHaveURL(path)
+      await expect(page.locator('h1')).toBeVisible()
     }
   })
 }

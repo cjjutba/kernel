@@ -271,8 +271,8 @@ export class Mcp extends Feature {
   }
 
   /**
-   * Sign in to all (`accounts.mcpSignInAll`): every server that needs a sign-in on an account, one after another, through
-   * `Providers.mcpSignIn`, the ignored ones and ones switched off in every project left out. Codex since KERNEL-646.
+   * Sign in to all: every server that needs a sign-in on an account, one after another, through `Providers.mcpSignIn`, the
+   * ignored ones and ones switched off in every project left out. Codex since KERNEL-646.
    */
   signInAll(provider: Provider, accountId: string): Promise<McpSignInAll> {
     return this.queue(provider, accountId, async (a) => ({ steps: waiting(a).map((server) => ({ server })) }))
@@ -380,7 +380,6 @@ export class Mcp extends Feature {
         return this.servers(projectId, provider)
       },
       'mcp.accounts': async (req) => this.accounts(req ?? {}),
-      'accounts.mcpSignInAll': async ({ provider, accountId }) => this.signInAll(provider, accountId),
       'accounts.mcpIgnore': async ({ provider, accountId, server, ignored }) => this.ignore(provider, accountId, server, ignored),
       'accounts.mcpSetUp': async ({ provider, accountId, include }) => this.setUp(provider, accountId, include),
       'mcp.recheck': async () => this.recheck()

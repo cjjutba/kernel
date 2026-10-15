@@ -12,3 +12,8 @@ site/next-env.d.ts
 site/test-results
 site/playwright-report
 site/*.tsbuildinfo
+
+
+# The site's local secrets, such as RESEND_API_KEY. site/.env.example lists them.
+site/.env*.local
+site/.env
