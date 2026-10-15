@@ -439,8 +439,9 @@ export function AppSidebar() {
 
   return (
     <>
-      {/* The strip lines up with the screen header (y 9 to 53), where the traffic lights sit. The toggle is at x 87, the spot the header's Show sidebar takes when hidden (KERNEL-431). */}
-      <div className="drag" style={{ height: 53, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '9px 0 0 77px' }}>
+      {/* The strip lines up with the screen header (y 9 to 53), where the traffic lights sit. The toggle is at x 87, the spot the header's Show sidebar takes when hidden (KERNEL-431).
+          The 1px bottom padding stands in for the header's bottom border, so both center the toggle at the same y and it doesn't shift half a pixel on a Retina screen. */}
+      <div className="drag" style={{ height: 53, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '9px 0 1px 77px' }}>
         <IconButton className="nodrag" icon="sidebar" size={16} label="Hide sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(false)} />
         <span className="grow" />
         <HistoryButtons />
