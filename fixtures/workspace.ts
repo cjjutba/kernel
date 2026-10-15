@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AccountProfile, MovePreview, MovePreviewChat, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AccountProfile, MoveNotice, MovePreview, MovePreviewChat, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
@@ -1238,6 +1238,14 @@ const switchConfirm = ({ key }: { key?: boolean } = {}) => scene(() => {
   return { accounts: moveAccounts(), movePreview: preview, ui: { ...open, modal: { name: 'confirm', kind: 'switchAccount', provider: 'claude', accountId: to, preview } } }
 })
 
+// KERNEL-841: the notice above the composer. The chat last ran on Main account and its next turn runs on the 3rd account.
+const moveNoticeScene = (notice: Partial<MoveNotice>, chat: Partial<Chat> = {}) => scene((f) => ({
+  accounts: moveAccounts(),
+  chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, ranOn: 'cli', ...chat } : c)),
+  moveNotices: { [ids.tableChat]: { kind: 'move', reason: 'account', from: 'cli', to: 'third', tokens: 310_000, keep: true, ...notice } },
+  ui: open
+}))
+
 const revertScene = (ui: Partial<Fixture['ui']>, prState?: Workspace['prState']) => scene((f) => ({
   ...(prState && { workspaces: withWorkspace(f, ids.table, { ...pr, prTitle, prState }) }),
   items: { [ids.tableChat]: revertItems },
@@ -2101,6 +2109,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // KERNEL-845: a switch that would make long chats read their history again. Keeping them is the primary button. The key variant adds what reading them once costs.
   SwitchAccountConfirm: switchConfirm(),
   SwitchAccountConfirmApiKey: switchConfirm({ key: true }),
+  // KERNEL-841: the chat's own notice before its next turn re-reads 310k tokens on another account. The key variant adds the price, the idle one is a hint with no buttons.
+  ChatMoveNotice: moveNoticeScene({}),
+  ChatMoveNoticeApiKey: moveNoticeScene({ to: 'key', price: 1.74 }),
+  ChatMoveNoticeIdle: moveNoticeScene({ kind: 'idle', reason: 'idle', to: 'cli', keep: false }),
   SettingsAccountsMoves: scene(() => ({ accounts: moveAccounts(), ui: { route: { name: 'settings', page: 'accounts' } } })),
   ConfirmRevert: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '3' } }),
   ConfirmRevertCommits: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }),

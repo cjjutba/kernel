@@ -24,6 +24,7 @@ const WAITING: Partial<Record<QueueReason, string>> = {
   capacity: 'Queued. Sends when an agent slot frees up. Change the limit in Settings, Models and effort.',
   paused: 'Queued. Sends when you resume the room.',
   merge: 'Queued. Sends when the work it waits for merges.',
+  move: 'Queued. Sends when you choose how this chat moves to another account.',
   limit: 'Close to your usage limit. Sends when it resets or usage drops.'
 }
 

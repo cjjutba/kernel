@@ -19,7 +19,7 @@ import { OpenIn } from './OpenIn'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
 import { Composer } from './composer/Composer'
 import { OpenItems } from './composer/OpenItems'
-import { WhereBranch, WhereRow } from './composer/WhereRow'
+import { WhereAccount, WhereBranch, WhereRow } from './composer/WhereRow'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
@@ -33,6 +33,7 @@ import { SetupWait } from './SetupWait'
 import { setupGate, skipsSetup } from './setupGate'
 import { Transcript } from './Transcript'
 import { useBanner, WorkspaceBanner } from './banners/Banners'
+import { ChatMoveNotice, useMoveNotice } from './banners/ChatMoveNotice'
 import { onRefreshChanges } from './changesBus'
 import { githubIssueUrl, issueTracker } from './issueKey'
 import { useWorkspaceShortcuts } from './shortcuts'
@@ -143,6 +144,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const heldForSetup = useStore((s) => (chat ? !!s.queue[chat.id]?.length && s.queueWhy[chat.id] === 'setup' : false))
   const skips = !!ws && skipsSetup(ws, heldForSetup)
   const found = useBanner(ws, chat, agent?.name ?? 'The agent', running, skips)
+  const moveNotice = useMoveNotice(chat)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
 
   // Images and pasted texts belong to the screen, not the store, so they start empty for each workspace. A tab of one left in the
@@ -289,7 +291,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                     ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} />
                     : <div className="grow" />}
           </div>
-          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} where={<WhereRow room={room} mode={ws.mode} branch={<WhereBranch branch={ws.branch} />} />} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />}</>} />}
+          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} where={<WhereRow room={room} mode={ws.mode} branch={<WhereBranch branch={ws.branch} />} account={<WhereAccount chat={chat} />} />} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner ? <WorkspaceBanner view={banner} ws={ws} chat={chat} /> : moveNotice && <ChatMoveNotice chat={chat} notice={moveNotice} />}</>} />}
         </section>
       </OpenText.Provider>
       </OpenImage.Provider>
