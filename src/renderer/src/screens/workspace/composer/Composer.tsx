@@ -21,6 +21,7 @@ import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued,
 import { useDraft } from './draft'
 import { escapeStops, queueBackInBox } from './stop'
 import { loadFailureLine, useComposerLoads } from './useComposerLoads'
+import { pathOnlyFiles, PLAN_SEND_BLOCKED } from './attach'
 import { ComposerInput } from './ComposerInput'
 import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
@@ -74,7 +75,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const contextForced = useStore((s) => s.ui.workspace.contextOpen)
   // A plan waiting on you here puts Copy and Approve on the box, and what you send goes back as changes to it.
   const plan = useStore((s) => waitingPlan(s.approvals, chat))
-  const d = useDraft(forced, chat.id)
+  const d = useDraft(forced, chat.id, { textOnly: !!plan })
   // Approve is a user action, so the strip, the placeholder, the chip and the glow all change in the frame it is pressed (KERNEL-895). After it the caret goes to the box, where the Approve button had the focus.
   const strip = usePlanStrip(plan, () => d.focus())
   // Fixtures open the model picker and the mode menu the same way, through the app's menu, for a shot (WorkspaceModelPicker, KERNEL-406).
@@ -176,6 +177,10 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const send = async (picked?: ChatPart[]) => {
     const parts = picked ?? d.message()
     if (!parts.length || blocked) return
+    if (plan && !picked && pathOnlyFiles(parts).length) {
+      actions.ui.toast({ title: 'Could not send', sub: PLAN_SEND_BLOCKED })
+      return
+    }
     const id = chat.id
     const kept = d.snapshot()
     d.reset()

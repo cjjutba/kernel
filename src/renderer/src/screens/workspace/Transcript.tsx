@@ -15,7 +15,7 @@ import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, CopyOverlay, MessageActions, useCopy, type MessageAction } from './MessageActions'
-import { ChipIcon, HoverPreview, ImageButton, IssueButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
+import { ChipIcon, fileView, HoverPreview, ImageButton, IssueButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
 import { foldHeader, settle, wantOpen, windowEntries, WAITING, WINDOW } from './fold'
 import { buildThread, countsLabel, fmtDuration, messageLabel, runLabel, turnFiles, type Entry, type Run, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
@@ -111,13 +111,14 @@ export function lapse(ms: number, fn: () => void) {
 
 const partsText = (parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ')
 
-export function PartChip({ part }: { part: ChatPart }) {
+export function PartChip({ part, gone }: { part: ChatPart; gone?: boolean }) {
   if (part.type === 'text') return null
-  const body = <>{part.type === 'skill' ? <span aria-hidden="true" className="muted">/</span> : <ChipIcon part={part} />}{part.name}</>
+  const view = fileView(part, gone)
+  const body = <>{part.type === 'skill' ? <span aria-hidden="true" className="muted">/</span> : <ChipIcon part={part} />}<span className="chip-name">{view ? view.label : part.name}</span>{view?.size && <span className="chip-meta">{view.size}</span>}</>
   if (part.type === 'image' && part.dataUrl) return <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="msg-chip" data-kind="image">{body}</ImageButton>
   if (isPastedText(part)) return <TextButton paste={part} className="msg-chip" data-kind="file">{body}</TextButton>
   if (part.type === 'issue') return <IssueButton issue={part} className="msg-chip" data-kind="issue">{body}</IssueButton>
-  return <span className="msg-chip" data-kind={part.type}>{body}</span>
+  return <span className="msg-chip" data-tip={view?.tip} data-tip-hint={view?.hint} data-state={view?.state} data-kind={part.type}>{body}</span>
 }
 
 /** True when a revert to this checkpoint would change something: it is linked and the worktree isn't already there. */
@@ -130,11 +131,12 @@ const revertAction = (workspaceId: string, checkpointId: string, label: string, 
 
 function UserMessage({ item, workspaceId, onEdit }: { item: Extract<ChatItem, { kind: 'user' }>; workspaceId: string; onEdit: (text: string) => void }) {
   const revertable = useRevertable(workspaceId, item.checkpointId)
+  const archived = useStore((s) => s.workspaces.find((w) => w.id === workspaceId)?.status === 'archived')
   const more: MessageAction[] = revertable && item.checkpointId ? [revertAction(workspaceId, item.checkpointId, 'Revert files to start of chat', true)] : []
   return (
     <div className="msg msg-user" data-jump={item.id}>
       <div className="bubble">
-        {item.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : <PartChip key={i} part={p} />))}
+        {item.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : <PartChip key={i} part={p} gone={archived && p.type === 'file' && !!p.path?.startsWith('.kernel/attachments/')} />))}
       </div>
       {/* An answer to a card (KERNEL-838) is not a prompt the reader can edit, so it keeps Copy only. */}
       <MessageActions align="end" label="Message actions" copy={partsText(item.parts)} items={item.approvalId ? [] : [{ icon: 'pen', label: 'Edit', onClick: () => onEdit(partsText(item.parts)) }]}

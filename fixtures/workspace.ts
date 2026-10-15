@@ -3117,6 +3117,53 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ComposerDragOver: composing({ parts: [], draft: 'Can you check the invoice table against ' }),
   /** KERNEL-815: three files dropped on the box while they read. scripts/shots.ts slows the read down so the placeholders show. */
   ComposerAttaching: composing({ parts: [], draft: 'Can you check the invoice table against ' }),
+  /** KERNEL-909: a PDF attached by path, with its type and size. */
+  ComposerFilePdf: composing({
+    parts: [
+      { type: 'text', text: 'Does the contract match the invoice terms? ' },
+      { type: 'file', name: 'Client-contract-2026.pdf', src: '/Users/cj/Documents/Client-contract-2026.pdf', size: 3_040_000 }
+    ],
+    draft: ''
+  }),
+  /** KERNEL-909: hover the chip for the full name, the type, the pages and the size. */
+  ComposerFileTip: composing({
+    parts: [
+      { type: 'text', text: 'Does the contract match the invoice terms? ' },
+      { type: 'file', name: 'Client-contract-2026.pdf', src: '/Users/cj/Documents/Client-contract-2026.pdf', size: 3_040_000, pages: 14 }
+    ],
+    draft: ''
+  }),
+  /** KERNEL-909: an image, a PDF and a zip in one message. */
+  ComposerFileMixed: composing({
+    parts: [
+      { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot },
+      { type: 'text', text: ' ' },
+      { type: 'file', name: 'Client-contract-2026.pdf', src: '/Users/cj/Documents/Client-contract-2026.pdf', size: 3_040_000 },
+      { type: 'text', text: ' ' },
+      { type: 'file', name: 'exports-october.zip', src: '/Users/cj/Downloads/exports-october.zip', size: 48_500_000 },
+      { type: 'text', text: ' Compare these with the table.' }
+    ],
+    draft: ''
+  }),
+  /** KERNEL-909: a file type the agent has no way to open. Hover the chip for the tooltip. */
+  ComposerFileUnreadable: composing({
+    parts: [
+      { type: 'text', text: 'Keep this next to the build ' },
+      { type: 'file', name: 'brand-motion.mov', src: '/Users/cj/Movies/brand-motion.mov', path: '.kernel/attachments/brand-motion.mov', size: 18_200_000, kind: 'video', readable: false }
+    ],
+    draft: ''
+  }),
+  /** KERNEL-909: an old message whose file went with the archived workspace. */
+  ComposerFileGone: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { status: 'archived' }),
+    items: { [ids.tableChat]: [{ kind: 'user', id: 'gone-1', ts: at(10, 30), parts: [
+      { type: 'text', text: 'Does the contract match the invoice terms?' },
+      { type: 'file', name: 'Client-contract-2026.pdf', path: '.kernel/attachments/Client-contract-2026.pdf', size: 3_040_000, kind: 'pdf', readable: true, pages: 14 }
+    ] }] },
+    ui: open
+  })),
+  /** KERNEL-909: a video over the 50 MB cap is refused at once. */
+  ComposerFileCap: scene(() => ({ ui: { ...open, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'Can you watch this and tell me what breaks? ' } }, toasts: [{ id: 'cap', title: 'File is too large', sub: 'walkthrough-recording.mov is 1024 MB. Each file can be up to 50 MB.' }] } })),
   WorkspaceContextRing: scene((f) => ({ chats: contextChat(f), ui: open })),
   WorkspaceContextPopover: scene((f) => ({ chats: contextChat(f), ui: { ...open, workspace: { right: 'changes', bottom: 'run', contextOpen: true } } })),
   /** KERNEL-334: the ring from 75% is amber. Not on the canvas, see docs/decisions/KERNEL-334.md. */
