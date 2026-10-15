@@ -993,6 +993,35 @@ describe('reviews (KERNEL-130)', () => {
     expect(s.updates.at(-1)?.rows[0].events.map((e) => e.text)).toEqual(['Code review found 1 blocker in PR #54', 'Security review found 1 blocker in PR #54'])
   })
 
+  it('wakes the Lead with the reply to its own message, even for an approval while another kind blocks (feat-review-messages-reach-named)', async () => {
+    const { u, s, rv, store, chat } = await reviewSetup()
+    const rvc = store.saveChat({ ...store.chat('rvc')!, lens: { kind: 'code' } })
+    chat('rvs', 'rv')
+    const of = { ...store.workspace('w1')!, prNumber: 54, prState: 'ready' as const, prHead: 'abc' }
+    store.saveWorkspace(of)
+    s.review = rs({ approved: ['code'], blocking: ['security'], blockers: true })
+    // A reply from an earlier turn isn't this turn's.
+    store.saveItem('rvc', { kind: 'text', id: 'old', ts: 1, text: 'Reviewed it.' })
+    store.saveItem('rvc', { kind: 'user', id: 'ask', ts: 2, parts: [{ type: 'text', text: 'Checks passed, review again.' }], from: 'lead' })
+    store.saveItem('rvc', { kind: 'text', id: 'said', ts: 3, text: 'Approved again. You asked the code review: the security review is the one that blocked.' })
+    u.reviewed(rv, of, verdict({ lens: 'code', sha: 'abc', prNumber: 54 }), 'rvc', { asked: true })
+    // The verdict waits for the turn, which brings the reply.
+    await wait()
+    expect(s.posts).toEqual([])
+    u.turnDone(rv, rvc, done)
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    const sent = parts(s.posts[0])
+    expect(sent.body.slice(-4)).toEqual(["- Theo's summary:", '  > The Try rows are gone. No blockers.', '  >', '  > Reply to your message: Approved again. You asked the code review: the security review is the one that blocked.'])
+    expect(s.posts[0]).not.toContain('Reviewed it.')
+    expect(sent.todo).toEqual(['- Theo, in the code review, answered your message and approved PR #54. Tell the user what it replied. PR #54 is still blocked by the security review.'])
+    // The same approval from a turn Kernel started stays quiet while the security review blocks.
+    u.reviewed(rv, of, verdict({ lens: 'code', sha: 'abc', prNumber: 54 }), 'rvc')
+    u.turnDone(rv, rvc, { ...done, by: 'kernel' })
+    await wait()
+    expect(s.posts).toHaveLength(1)
+  })
+
   it('keeps the last verdict of each kind, not only the last one (KERNEL-549)', () => {
     const at = (n: number, lens: 'code' | 'ux', verdict: 'approved' | 'blockers'): TeamEvent => ({ n, workspaceId: 'rv', kind: 'review', review: { verdict, lens, summary: '', of: 'w1', ofName: 'Noor', current: true } })
     const kept = collapse([at(1, 'code', 'blockers'), at(2, 'ux', 'approved'), at(3, 'code', 'approved')], undefined)

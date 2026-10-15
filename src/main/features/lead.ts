@@ -1,16 +1,17 @@
 import { existsSync } from 'node:fs'
 import { cp, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, LeadMode, PermissionMode, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, LeadMode, PermissionMode, Provider, QueuedMessage, ReviewKind, Room, Thread, Workspace } from '@shared/types'
 import { buildsHere, LEAD_MODES, leadModeOf, newChatLeadMode } from '@shared/leadMode'
 import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
 import { providerOf } from '@shared/providers'
 import { isSentItem } from '@shared/approvalAnswer'
+import { lensOf } from '@shared/merge'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { renderAgentFile } from '../services/agents'
 import { parsePlanSteps } from '../services/approvals'
-import { NUDGE_LIMIT } from '../services/nudges'
+import { NUDGE_LIMIT, nudgeKey } from '../services/nudges'
 import { attachedImages, PLANS_DIR, revisedPlanFile, savePlan } from '../services/plans'
 import { dropCheckpoints } from '../services/checkpoints'
 import { cleanupSwitch, loadRepoSettings } from '../services/settings'
@@ -696,7 +697,8 @@ export class Lead extends Feature {
         const own = room ? (await loadRepoSettings(room.path)).agents?.openWorkspaces : undefined
         return { cap: own ?? this.settings.models.agentLimit, own: own !== undefined, room: room?.name ?? 'this room' }
       },
-      messageWorkspace: (workspaceId, text, images) => this.messageWorkspace(roomId, workspaceId, text, chat.id, images),
+      messageWorkspace: (workspaceId, text, images, review) => this.messageWorkspace(roomId, workspaceId, text, chat.id, images, review),
+      reviewKinds: (workspaceId) => this.reviewKinds(workspaceId),
       // Only what the user attached in this chat's own workspace, read when the Lead calls (KERNEL-658).
       attachedImages: async (paths) => {
         const own = this.store.workspace(chat.workspaceId)
@@ -773,39 +775,73 @@ export class Lead extends Feature {
    * The Lead's `message_agent` (KERNEL-118). It sends only into an open workspace of this room that has its folder and
    * isn't the Lead's own, opening a chat there when none is open, and says what really happened: sent, waiting for the
    * teammate's turn, for setup, for a paused room, for the connection or for a free slot. A message sent while setup
-   * runs goes with the brief.
+   * runs goes with the brief. In a review workspace that runs more than one kind of review, `review` names the kind whose
+   * chat gets it, put back on the strip when the user closed it, and `agentId` is the agent that runs that chat. Kernel never
+   * opens a chat with no kind there (feat-review-messages-reach-named).
    */
-  private async messageWorkspace(roomId: string, workspaceId: string, text: string, leadChatId?: string, images: ChatPart[] = []): Promise<{ ok: boolean; sent: boolean; note: string }> {
+  private async messageWorkspace(roomId: string, workspaceId: string, text: string, leadChatId?: string, images: ChatPart[] = [], review?: string): Promise<{ ok: boolean; sent: boolean; note: string; agentId?: string }> {
     const refuse = (note: string) => ({ ok: false, sent: false, note })
     const ws = this.store.workspace(workspaceId)
     if (!ws || ws.roomId !== roomId) return refuse(`Not sent: there is no workspace ${workspaceId} in this room. Call list_workspaces for the ids.`)
     if (ws.status === 'archived') return refuse(`Not sent: ${ws.name} is archived. Ask the user to restore it from History, or hand the work out again with create_workspace.`)
-    const agent = (await this.k.team.agents(roomId)).find((a) => a.id === ws.agentId)
+    const agents = await this.k.team.agents(roomId)
+    const agent = agents.find((a) => a.id === ws.agentId)
     if (agent?.lead) return refuse('Not sent: that is your own workspace.')
     if (ws.mode === 'worktree' && await folderGone(ws.path).catch(() => false)) return refuse(`Not sent: ${ws.name}'s folder is gone. Ask the user to archive it, or hand the work out again with create_workspace.`)
-    const name = agent?.name ?? ws.agentId
+    // A review workspace Kernel started runs one chat per kind of review. The message goes to the kind the Lead names.
+    const kinds = ws.reviewOf ? this.k.reviews.kindsOf(ws) : []
+    const runs = kinds.map((k) => `"${k}"`).join(', ')
+    const asked = review?.trim().toLowerCase()
+    if (asked && kinds.length && !kinds.includes(asked as ReviewKind)) return refuse(`Not sent: this review workspace doesn't run a "${review}" review. It runs ${runs}. Pass one of those as review.`)
+    if (asked && !kinds.length && !(ws.reviewOf && asked === 'code')) return refuse(`Not sent: ${ws.name} runs no "${review}" review. Leave review out for this workspace.`)
+    if (!asked && kinds.length > 1) return refuse(`Not sent: this review workspace runs ${kinds.length} kinds of review, ${runs}, each in its own chat. Pass the one you mean as review.`)
+    const kind = kinds.length ? (asked as ReviewKind | undefined) ?? kinds[0] : undefined
+    const tab = kind ? this.k.reviews.kindChat(ws, kind) : undefined
+    const runner = tab ? this.k.reviews.agentForChat(ws, tab) : undefined
+    const name = runner?.name ?? agent?.name ?? ws.agentId
     // A request in a Lead turn Kernel started is automatic. After a few tries at one workspace, the user decides (KERNEL-125).
-    // The turn is keyed by the message that started it, so several messages in one turn are one try.
+    // The turn is keyed by the message that started it, so several messages in one turn are one try. Each kind of review
+    // counts on its own, so asking one doesn't use up the tries of another.
     const auto = !!leadChatId && this.sessions.kernelTurn(leadChatId)
+    const key = kind ? nudgeKey(ws.id, kind) : ws.id
     // A limit or restart nudge carries the turn on, so the turn is still the message before it.
     const turn = auto ? [...this.store.items(leadChatId!)].reverse().find((i) => isSentItem(i) && !(i.from === 'kernel' && isNudge(i.parts)))?.id : undefined
-    if (auto && this.nudges.spent(ws.id, turn)) return refuse(`Not sent: Kernel has passed ${NUDGE_LIMIT} automatic requests to ${name} on this workspace and it still needs help. Tell the user what keeps failing and ask how to go on.`)
-    if (auto) this.nudges.add(ws.id, turn)
+    if (auto && this.nudges.spent(key, turn)) return refuse(`Not sent: Kernel has passed ${NUDGE_LIMIT} automatic requests to ${name} on this ${kind ? `${kind} review` : 'workspace'} and it still needs help. Tell the user what keeps failing and ask how to go on.`)
+    if (auto) this.nudges.add(key, turn)
     const parts: ChatPart[] = [{ type: 'text', text }, ...images]
+    const who = runner ? { agentId: runner.id } : {}
     const held = this.k.setup.setups.get(ws.id)
-    if (held) { held.later.push(parts); this.k.setup.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message goes out with the brief.` } }
-    let chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
+    // Setup holds the brief of the review workspace's first chat only. A kind's own chat holds its message itself.
+    if (held && !tab) { held.later.push(parts); this.k.setup.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message goes out with the brief.` } }
+    let chat = tab ?? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     const opened = !chat
     if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { ...(agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers), plan: false }))
+    if (held) { this.sessions.hold(chat.id, parts, { from: 'lead' }); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message goes out once setup passes.`, ...who } }
     const { queued, why } = await this.sessions.send(chat.id, parts, { from: 'lead' })
-    if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : 'Sent.' }
+    if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : kind && kinds.length > 1 ? `Sent to the ${kind} review.` : 'Sent.', ...who }
     const note = why === 'running' ? `${name} is mid-turn, so the message goes out when that turn ends.`
       : why === 'merge' ? `${name} waits for ${this.k.waits.waitLabelOf(this.mustWs(ws.id))} to merge, so this goes out with the brief. To start ${name} now, call wait_for_merge with an empty list.`
       : why === 'setup' && ws.status === 'trust' ? `${name}'s workspace waits for the user to trust this room's scripts, so the message goes out with the brief.`
       : why === 'setup' ? (this.k.setup.settingUp.has(ws.id) ? `${name}'s workspace is setting up again, so the message goes out with the brief.` : `Setup failed in ${name}'s workspace, so the message waits until the user clicks Run again.`)
       // The same words as create_workspace's brief (KERNEL-272).
       : queuedNote(why, { name }) ?? 'The message waits in the queue.'
-    return { ok: true, sent: false, note: opened ? `Opened a new chat in ${name}'s workspace. ${note}` : note }
+    return { ok: true, sent: false, note: opened ? `Opened a new chat in ${name}'s workspace. ${note}` : note, ...who }
+  }
+
+  /**
+   * The kinds of review a review workspace runs, with the agent that runs each and its latest verdict on the PR, for
+   * list_workspaces (feat-review-messages-reach-named). Empty for any other workspace.
+   */
+  private reviewKinds(workspaceId: string): { kind: ReviewKind; agent: string; verdict?: 'approved' | 'blockers'; current?: boolean }[] {
+    const rws = this.store.workspace(workspaceId)
+    const of = rws?.reviewOf ? this.store.workspace(rws.reviewOf) : undefined
+    if (!rws || !of) return []
+    return this.k.reviews.kindsOf(rws).map((kind) => {
+      const chat = this.store.chats(rws.id).find((c) => c.lens?.kind === kind)!
+      const agent = this.k.reviews.agentForChat(rws, chat)
+      const v = [...(of.reviews ?? [])].reverse().find((x) => x.workspaceId === rws.id && lensOf(x) === kind)
+      return { kind, agent: agent?.name ?? chat.lens?.agent ?? rws.agentId, ...(v ? { verdict: v.verdict, current: !v.sha || !of.prHead || v.sha === of.prHead } : {}) }
+    })
   }
 
   /**

@@ -45,9 +45,16 @@ export interface KernelToolDeps {
   issueTaken?: (issue: string) => Promise<IssueTaken>
   /**
    * Sends the Lead's message into a teammate's workspace. `ok` is false when it was refused; `sent` is true when it went out
-   * now rather than waiting in a queue; `note` says what happened.
+   * now rather than waiting in a queue; `note` says what happened. `review` names the kind of review whose chat gets it in a
+   * review workspace, and `agentId` is the agent that runs the chat it went to, when that isn't the workspace's
+   * (feat-review-messages-reach-named).
    */
-  messageWorkspace: (workspaceId: string, text: string, images?: ChatPart[]) => Promise<{ ok: boolean; sent?: boolean; note: string }>
+  messageWorkspace: (workspaceId: string, text: string, images?: ChatPart[], review?: string) => Promise<{ ok: boolean; sent?: boolean; note: string; agentId?: string }>
+  /**
+   * The kinds of review a review workspace runs, with the name of the agent that runs each and its latest verdict, `current`
+   * when it is of the PR's latest commit. Empty for other workspaces. Left out, list_workspaces shows none.
+   */
+  reviewKinds?: (workspaceId: string) => { kind: string; agent: string; verdict?: 'approved' | 'blockers'; current?: boolean }[]
   /**
    * The images the user attached in the Lead's chat that the Lead named, by path, as chat parts scaled down for the model.
    * Rejects with the reason one can't go. Left out, create_workspace and message_agent refuse images (KERNEL-658).
@@ -431,6 +438,16 @@ export function kernelTools(d: KernelToolDeps) {
     if (!on.length) return ''
     return ` · waits for ${joinLabels(on.map((id) => { const t = all.find((x) => x.id === id); return t?.prNumber ? `PR #${t.prNumber}` : `workspace ${id}` }))}`
   }
+  /**
+   * What list_workspaces shows for a review workspace's kinds, each with its agent and latest verdict:
+   * " · reviews: code by Theo (approved), security by Kernel's reviewer (found blockers)" (feat-review-messages-reach-named).
+   */
+  const reviewKinds = (w: Workspace) => {
+    const kinds = d.reviewKinds?.(w.id) ?? []
+    if (!kinds.length) return ''
+    const state = (k: (typeof kinds)[number]) => (!k.verdict ? 'no verdict yet' : `${k.verdict === 'approved' ? 'approved' : 'found blockers'}${k.current ? '' : ', on an earlier commit'}`)
+    return ` · reviews: ${kinds.map((k) => `${k.kind} by ${k.agent} (${state(k)})`).join(', ')}`
+  }
   /** "PR #164 by Noor" for each target, joined. */
   const labels = (targets: Workspace[], team: AgentDef[]) => joinLabels(targets.map((t) => waitLabel(t, team.find((a) => a.id === t.agentId)?.name ?? t.agentId)))
   /**
@@ -464,7 +481,7 @@ export function kernelTools(d: KernelToolDeps) {
       const all = d.workspaces()
       const list = all.filter((w) => w.status !== 'archived')
       const marks = d.openMarks?.()
-      return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}${w.prBlocked ? ` (GitHub blocks the merge: ${blockedWhy[w.prBlocked]})` : ''}${waits(w, all)}${owner(w)}${marks?.get(w.id) ?? ''}`).join('\n') || 'No open workspaces.')
+      return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}${w.prBlocked ? ` (GitHub blocks the merge: ${blockedWhy[w.prBlocked]})` : ''}${reviewKinds(w)}${waits(w, all)}${owner(w)}${marks?.get(w.id) ?? ''}`).join('\n') || 'No open workspaces.')
     }),
     tool('request_plan_approval', 'Show a plan to the user and wait for approval. Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off. Put the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Returns "approved" with what to do next, or the requested changes.', {
       title: z.string().describe('Short plan title, for example "T-15 Export invoices as PDF"'),
@@ -643,19 +660,21 @@ export function kernelTools(d: KernelToolDeps) {
       const label = labels(left, team)
       return text(`${already}${after.waitsFor?.held ? `${name} waits for ${label} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${name}.` : `${name} waits for ${label} to merge, and Kernel tells ${name} to rebase onto it then. Tell the user that merging it moves ${name} on.`}`)
     }),
-    tool('message_agent', 'Send a follow-up message into an existing workspace chat.', {
+    tool('message_agent', 'Send a follow-up message into an existing workspace chat. In a review workspace that runs more than one kind of review, name the kind in review.', {
       workspace_id: z.string(), text: z.string(),
-      images: imagesArg.describe(IMAGES_DESCRIBE)
-    }, async ({ workspace_id, text: t, images }) => {
+      images: imagesArg.describe(IMAGES_DESCRIBE),
+      review: z.string().optional().describe('In a review workspace, the kind of review whose chat gets the message, as list_workspaces shows them: "code", "security" or "ux". Needed when it runs more than one')
+    }, async ({ workspace_id, text: t, images, review }) => {
       const attached = await loadImages(d, images)
       if ('refusal' in attached) return { ...text(`Not sent: ${attached.refusal}`), isError: true }
-      const r = await d.messageWorkspace(workspace_id, t, attached.parts.length ? attached.parts : undefined)
+      const r = await d.messageWorkspace(workspace_id, t, attached.parts.length ? attached.parts : undefined, review)
       // Nothing went out: say why, as an error, so the Lead doesn't report it as done (KERNEL-118).
       if (!r.ok) return { ...text(r.note), isError: true }
       const ws = d.workspaces().find((w) => w.id === workspace_id)
       if (ws) d.acted?.({ messaged: ws })
       // The log shows who the Lead messaged and its first line (KERNEL-24), once the message has gone out.
-      if (ws && d.lead && r.sent !== false) bus.activity({ kind: 'agent.talk', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
+      // A review kind's chat runs its own agent, which the log names (feat-review-messages-reach-named).
+      if (ws && d.lead && r.sent !== false) bus.activity({ kind: 'agent.talk', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: r.agentId ?? ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
       // Its updates still go to the chat that handed it off, so say so rather than leave this chat waiting (KERNEL-105).
       const from = ws?.leadChatId && d.chatId && !mine(ws) ? d.chatTitle?.(ws.leadChatId) : undefined
       return text(from ? `${r.note} This workspace was handed off in the Lead chat "${from}", so its updates go there, not here.` : r.note)

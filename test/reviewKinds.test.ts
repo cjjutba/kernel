@@ -11,6 +11,8 @@ import { loadRepoSettings, reviewOf, reviewPolicyOf, saveAlwaysReview, saveRevie
 import { inPaths, kindsFor, lensAgent } from '../src/main/services/lenses'
 import { toolPolicy } from '../src/main/services/agentTools'
 import { reviewRule } from '../src/main/services/handoff'
+import { kernelTools } from '../src/main/services/kernelMcp'
+import { NUDGE_LIMIT } from '../src/main/services/nudges'
 import { tempRepo, freePort } from './helpers'
 
 // KERNEL-549: kinds of review (code, security, UX) that Kernel starts itself when a PR passes checks.
@@ -283,6 +285,111 @@ describe('a review chat', () => {
     expect(now.reviews?.map((v) => [v.lens, v.verdict])).toEqual([['code', 'approved'], ['ux', 'approved']])
     expect(mergeBlock(now, info(now), rules)).toBeUndefined()
     expect(k.reviews.reviewState(now)).toMatchObject({ approved: ['code', 'ux'], blockers: false, waiting: [] })
+  })
+})
+
+// feat-review-messages-reach-named: the Lead's message reaches the kind of review it names, and a block while checks ran gets
+// one more look once they pass.
+describe('a message to a review workspace with several kinds', () => {
+  const SECURITY = '[review.security]\nagent = "wren"\n'
+  /** A PR with the code and security reviews, its review workspace set up, the Lead's tools, and Kernel's sends recorded. */
+  async function reviewed() {
+    const t = await setup({ settings: SECURITY })
+    const ws = await t.pr({ 'a.txt': 'a\n' })
+    await t.k.reviews.onReady(ws.id)
+    const [rws] = t.reviewsOf(ws.id)
+    await vi.waitFor(() => expect(t.k.store.workspace(rws.id)?.status).toBe('ready'), { timeout: 10_000, interval: 20 })
+    const sent: { chatId: string; text: string; from?: string }[] = []
+    t.k.sessions.send = async (chatId, parts, o) => { sent.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), from: o?.from }); return { queued: false } }
+    const chat = await t.k.leadChat(t.room.id)
+    const lead = (await t.k.agents(t.room.id)).find((a) => a.lead)!
+    const tool = (name: string) => kernelTools(t.k.lead.leadToolDeps(t.room.id, lead, chat)).find((x) => x.name === name)!
+    const call = async (name: string, args: Record<string, unknown>) => {
+      const r = await tool(name).handler(args as never, {})
+      return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
+    }
+    return { ...t, ws, rws, sent, chat, call }
+  }
+
+  it('reaches the kind the Lead names, puts back its closed tab, and opens no chat without a kind', async () => {
+    const { k, rws, sent, call, chatOf } = await reviewed()
+    const code = chatOf(rws, 'code')
+    const security = chatOf(rws, 'security')
+    const activity: { to?: string }[] = []
+    const onActivity = (a: { kind: string; data?: { to?: string } }) => { if (a.kind === 'agent.talk') activity.push({ to: a.data?.to }) }
+    bus.on('activity', onActivity)
+    onTestFinished(() => { bus.off('activity', onActivity) })
+    expect(await call('message_agent', { workspace_id: rws.id, text: 'Checks passed. Review again.', review: 'security' })).toEqual({ isError: false, text: 'Sent to the security review.' })
+    expect(sent.map((m) => [m.chatId, m.from])).toEqual([[security.id, 'lead']])
+    // The log names Wren, who runs the security review, not the workspace's agent.
+    expect(activity).toEqual([{ to: 'wren' }])
+    // Every tab closed: the security review's comes back, and no chat without a kind is opened.
+    for (const c of k.store.chats(rws.id)) k.store.saveChat({ ...c, closed: true })
+    const before = k.store.chats(rws.id).length
+    expect((await call('message_agent', { workspace_id: rws.id, text: 'Once more.', review: 'security' })).isError).toBe(false)
+    expect(sent.at(-1)?.chatId).toBe(security.id)
+    expect(k.store.chat(security.id)?.closed).toBeUndefined()
+    expect(k.store.chat(code.id)?.closed).toBe(true)
+    expect(k.store.chats(rws.id)).toHaveLength(before)
+    expect(k.store.chats(rws.id).every((c) => c.lens)).toBe(true)
+  })
+
+  it('sends nothing without a kind, or with one the workspace does not run, and says which it runs', async () => {
+    const { rws, sent, call } = await reviewed()
+    expect(await call('message_agent', { workspace_id: rws.id, text: 'Review again.' }))
+      .toEqual({ isError: true, text: 'Not sent: this review workspace runs 2 kinds of review, "code", "security", each in its own chat. Pass the one you mean as review.' })
+    expect(await call('message_agent', { workspace_id: rws.id, text: 'Review again.', review: 'ux' }))
+      .toEqual({ isError: true, text: 'Not sent: this review workspace doesn\'t run a "ux" review. It runs "code", "security". Pass one of those as review.' })
+    expect(sent).toEqual([])
+  })
+
+  it('counts the loop guard for each kind on its own', async () => {
+    const { k, rws, sent, chat, call, chatOf } = await reviewed()
+    // Each message comes from its own turn Kernel started.
+    k.sessions.kernelTurn = () => true
+    for (let i = 0; i < NUDGE_LIMIT; i++) {
+      k.store.saveItem(chat.id, { kind: 'user', id: `turn-${i}`, ts: Date.now(), parts: [{ type: 'text', text: 'Team update' }], from: 'kernel' })
+      expect((await call('message_agent', { workspace_id: rws.id, text: 'Again.', review: 'security' })).isError).toBe(false)
+    }
+    k.store.saveItem(chat.id, { kind: 'user', id: 'turn-last', ts: Date.now(), parts: [{ type: 'text', text: 'Team update' }], from: 'kernel' })
+    expect((await call('message_agent', { workspace_id: rws.id, text: 'Again.', review: 'security' })).text).toMatch(/^Not sent: Kernel has passed 3 automatic requests to Wren on this security review/)
+    expect(await call('message_agent', { workspace_id: rws.id, text: 'Again.', review: 'code' })).toEqual({ isError: false, text: 'Sent to the code review.' })
+    expect(sent.filter((m) => m.chatId === chatOf(rws, 'security').id)).toHaveLength(NUDGE_LIMIT)
+  })
+
+  it('lists each kind with its agent and latest verdict', async () => {
+    const { k, rws, call, chatOf } = await reviewed()
+    await k.reviews.submitReview(rws.id, { verdict: 'blockers', summary: 'A leak.', blockers: [{ text: 'The token is logged.' }] }, chatOf(rws, 'security').id)
+    const line = (await call('list_workspaces', {})).text.split('\n').find((l) => l.startsWith(rws.id))
+    expect(line).toContain(' · reviews: code by Code review (no verdict yet), security by Wren (found blockers)')
+  })
+
+  it('asks a kind that blocked while checks ran to review again once, when the same commit passes checks', async () => {
+    const { k, ws, rws, sent, chatOf } = await reviewed()
+    const security = chatOf(rws, 'security')
+    const code = chatOf(rws, 'code')
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prState: 'checks' })
+    await k.reviews.submitReview(rws.id, { verdict: 'blockers', summary: 'Checks still run.', blockers: [{ text: 'The test check is still running.' }] }, security.id)
+    await k.reviews.submitReview(rws.id, { verdict: 'approved', summary: 'Fine.' }, code.id)
+    expect(k.store.workspace(ws.id)!.reviews?.map((v) => [v.lens, v.checksRunning])).toEqual([['security', true], ['code', undefined]])
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prState: 'ready' })
+    await k.reviews.onReady(ws.id)
+    expect(sent.map((m) => [m.chatId, m.text])).toEqual([[security.id, `The checks on PR #${ws.prNumber} have finished. Review it again as your rule says, and call submit_review again.`]])
+    // It blocks again on the same commit, even with checks running once more: nobody asks it a second time.
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prState: 'checks' })
+    await k.reviews.submitReview(rws.id, { verdict: 'blockers', summary: 'Still.', blockers: [{ text: 'Still running.' }] }, security.id)
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prState: 'ready' })
+    await k.reviews.onReady(ws.id)
+    expect(sent).toHaveLength(1)
+    expect(k.store.workspace(ws.id)!.reviews?.find((v) => v.lens === 'security')).toMatchObject({ checksRetried: true })
+    expect(k.store.workspace(ws.id)!.reviews?.find((v) => v.lens === 'security')?.checksRunning).toBeUndefined()
+  })
+
+  it('asks nothing again for a block with no record of running checks', async () => {
+    const { k, ws, rws, sent, chatOf } = await reviewed()
+    await k.reviews.submitReview(rws.id, { verdict: 'blockers', summary: 'Checks still run.', blockers: [{ text: 'Running.' }] }, chatOf(rws, 'security').id)
+    await k.reviews.onReady(ws.id)
+    expect(sent).toEqual([])
   })
 })
 

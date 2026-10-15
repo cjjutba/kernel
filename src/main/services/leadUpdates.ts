@@ -95,8 +95,12 @@ export interface TeamEvent {
   told?: boolean
   /** A setup that passed once the user trusted the room's scripts, rather than on Run again (KERNEL-261). */
   trusted?: boolean
-  /** A review: the verdict, its kind (KERNEL-549), and the work it is about, with its author's name and PR number (KERNEL-130). */
-  review?: { verdict: ReviewVerdict['verdict']; lens?: ReviewKind; summary: string; blockers?: ReviewVerdict['blockers']; total?: number; of: string; ofName: string; ofPr?: number; sha?: string; current: boolean; stillBlocked?: number }
+  /**
+   * A review: the verdict, its kind (KERNEL-549), and the work it is about, with its author's name and PR number (KERNEL-130).
+   * `asked`: the Lead started the turn that sent it, with message_agent, and `reply` is what the reviewer wrote back in that
+   * turn (feat-review-messages-reach-named).
+   */
+  review?: { verdict: ReviewVerdict['verdict']; lens?: ReviewKind; summary: string; blockers?: ReviewVerdict['blockers']; total?: number; of: string; ofName: string; ofPr?: number; sha?: string; current: boolean; stillBlocked?: number; asked?: boolean; reply?: string }
   /** A wait on other PRs (KERNEL-259), and on a setup that passed while one stands. */
   wait?: WaitNews
   /** A file the teammate shared, at the version it shared (KERNEL-302). `source` is its path in the workspace. */
@@ -659,8 +663,10 @@ export class LeadUpdates {
       return
     }
     this.waitTurns.delete(ws.id)
-    // A reviewer's turn that sent its verdict has the verdict to speak for it, however the turn ends (KERNEL-130).
+    // A reviewer's turn that sent its verdict has the verdict to speak for it, however the turn ends (KERNEL-130). One the Lead
+    // started carries the reviewer's reply too, so the Lead hears the answer to its own message (feat-review-messages-reach-named).
     const verdictTurn = this.submitted.delete(chat.id) || this.submitted.delete(ws.id)
+    if (verdictTurn && t.by === 'lead') { this.askedReply(ws, chat, t.interrupted); return }
     if (t.interrupted || verdictTurn) return
     // A limit cut the turn off, and its reply is the limit's text. What Kernel does about it is the news (KERNEL-777). Messages
     // that wait in the chat wait for its carry-on.
@@ -669,6 +675,27 @@ export class LeadUpdates {
     if (!t.ok) { this.add(ws, { kind: 'error', by: t.by }); return }
     const reply = [...this.d.store.items(chat.id)].reverse().find((i) => i.kind === 'text')
     this.add(ws, { kind: 'turn', by: t.by, reply: reply?.kind === 'text' ? capText(reply.text, REPLY_KEPT) : undefined })
+  }
+
+  /**
+   * A reviewer's turn the Lead started ended after it sent its verdict. The verdict waited for the turn, and now takes the
+   * reviewer's last reply with it, unless the turn was stopped.
+   */
+  private askedReply(ws: Workspace, chat: Chat, interrupted: boolean) {
+    const kind = chat.lens?.kind ?? 'code'
+    // Only what the reviewer wrote after the Lead's message, never a reply from an earlier turn.
+    const items = [...this.d.store.items(chat.id)].reverse()
+    const since = items.findIndex((i) => i.kind === 'user')
+    const reply = interrupted ? undefined : items.slice(0, since < 0 ? undefined : since).find((i) => i.kind === 'text')
+    let changed = false
+    for (const p of this.pending.values()) {
+      for (const e of p.events) {
+        if (e.workspaceId !== ws.id || !e.review?.asked || (e.review.lens ?? 'code') !== kind || e.review.reply !== undefined) continue
+        if (reply?.kind === 'text') { e.review.reply = capText(reply.text, REPLY_KEPT); changed = true }
+      }
+    }
+    if (changed) this.save()
+    this.rearm(ws)
   }
 
   /** A teammate's chat stopped running. A wait it set mid-turn no longer holds its updates. */
@@ -756,16 +783,21 @@ export class LeadUpdates {
     this.add(ws, { kind: 'handoff.proposed', proposal: { ...p, task: capText(p.task.trim(), ASK_MAX), why: capText(p.why.trim(), ASK_MAX) } })
   }
 
-  /** A reviewer's submit_review from the chat `chatId` (KERNEL-130). It always wakes the Lead, on the reviewer's own workspace. */
-  reviewed(reviewer: Workspace, of: Workspace, v: ReviewVerdict, chatId?: string) {
+  /**
+   * A reviewer's submit_review from the chat `chatId` (KERNEL-130), on the reviewer's own workspace. `asked`: the Lead started
+   * the turn with message_agent. Then the verdict waits for the turn to end and takes the reviewer's reply with it, and it
+   * always wakes the Lead, which hears the answer to its own message (feat-review-messages-reach-named).
+   */
+  reviewed(reviewer: Workspace, of: Workspace, v: ReviewVerdict, chatId?: string, o: { asked?: boolean } = {}) {
     if (this.d.isLead(reviewer)) return
     // The turn that sent the verdict ends soon after; the verdict speaks for it.
     this.submitted.add(chatId ?? reviewer.id)
+    if (o.asked) this.waitTurns.add(reviewer.id)
     this.add(reviewer, { kind: 'review', review: {
       verdict: v.verdict, ...(v.lens ? { lens: v.lens } : {}), summary: capText(v.summary, REPLY_KEPT),
       ...(v.blockers?.length ? { blockers: v.blockers.slice(0, MAX_BLOCKERS).map((b) => ({ ...b, text: capText(b.text, BLOCKER_MAX) })), total: v.blockers.length } : {}),
       of: of.id, ofName: this.d.agentName(of.roomId, of.agentId) ?? of.agentId, ...(of.prNumber ? { ofPr: of.prNumber } : {}),
-      ...(v.sha ? { sha: v.sha } : {}), current: !v.sha || !of.prHead || v.sha === of.prHead
+      ...(v.sha ? { sha: v.sha } : {}), current: !v.sha || !of.prHead || v.sha === of.prHead, ...(o.asked ? { asked: true } : {})
     } })
   }
 
@@ -1220,8 +1252,10 @@ const selfRebase = (what: string, base: string) => `${what} in this chat's workt
  * says whose it is (KERNEL-549).
  */
 function summaries(verdicts: NonNullable<TeamEvent['review']>[]): string {
-  if (verdicts.length === 1) return verdicts[0].summary
-  return verdicts.map((v) => `${kindsText([v.lens ?? 'code'])} review: ${v.summary}`).join('\n\n')
+  // The reply to the Lead's own message follows the summary it sent (feat-review-messages-reach-named).
+  const one = (v: NonNullable<TeamEvent['review']>) => (v.reply ? `${v.summary}\n\nReply to your message: ${v.reply}` : v.summary)
+  if (verdicts.length === 1) return one(verdicts[0])
+  return verdicts.map((v) => `${kindsText([v.lens ?? 'code'])} review: ${one(v)}`).join('\n\n')
 }
 
 /** The To do line for a PR whose review was of another commit. The PR's own line says the same, so it shows once. */
@@ -1390,8 +1424,25 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         break
       default: break
     }
+    // The Lead asked this reviewer something, so it hears the answer, even when the verdict alone would wait, as a code
+    // approval while another kind still blocks (feat-review-messages-reach-named).
+    if (e.kind === 'review' && e.review?.asked && !out.wake.has(e)) wake(askedTodo(name, e.review, c.stateOf?.(e.review.of)), true)
   }
   return out
+}
+
+/** The To do line for a verdict from a turn the Lead started: read the reply, and what still holds the PR back. */
+function askedTodo(name: string, r: NonNullable<TeamEvent['review']>, state?: ReviewState): string {
+  const pr = r.ofPr ? `PR #${r.ofPr}` : `${r.ofName}'s work`
+  const by = r.lens ? `${name}, in ${reviewsText([r.lens]).replace(/^The/, 'the')},` : name
+  const what = r.verdict === 'approved' ? 'approved' : 'found blockers in'
+  const blocking = state?.blocking.filter((k) => k !== r.lens || r.verdict === 'blockers') ?? []
+  const running = state?.reviewing.filter((k) => k !== r.lens) ?? []
+  const still = [
+    ...(blocking.length ? [`${upper(pr)} is still blocked by ${reviewsText(blocking).replace(/^The/, 'the')}.`] : []),
+    ...(running.length ? [`${reviewsText(running)} ${running.length === 1 ? 'is' : 'are'} still running.`] : [])
+  ]
+  return `${by} answered your message and ${what} ${pr}. Tell the user what it replied.${still.length ? ` ${still.join(' ')}` : ''}`
 }
 
 /** A wait.broken event whose PR still can't merge, and that the workspace still waits for. Unknown targets count as broken. */

@@ -5,6 +5,9 @@ export const NUDGE_LIMIT = 3
 
 const SAVED = 'leadNudges'
 
+/** The loop guard's key for one kind of review in a review workspace, which counts on its own (feat-review-messages-reach-named). */
+export const nudgeKey = (workspaceId: string, kind: string) => `${workspaceId}:${kind}`
+
 interface Saved { v: 1; counts: Record<string, number>; turns: Record<string, string> }
 
 /**
@@ -39,10 +42,16 @@ export class Nudges {
     this.save()
   }
 
-  /** The user stepped in, or the work moved on (its PR became ready or merged). */
+  /** The user stepped in, or the work moved on (its PR became ready or merged). Clears each workspace's review kinds too. */
   reset(...workspaceIds: string[]) {
     let changed = false
-    for (const id of workspaceIds) if (id in this.counts || id in this.turns) { delete this.counts[id]; delete this.turns[id]; changed = true }
+    const keys = new Set([...Object.keys(this.counts), ...Object.keys(this.turns)])
+    for (const id of workspaceIds) {
+      for (const key of keys) {
+        if (key !== id && !key.startsWith(`${id}:`)) continue
+        delete this.counts[key]; delete this.turns[key]; changed = true
+      }
+    }
     if (changed) this.save()
   }
 
