@@ -687,6 +687,9 @@ export const platformFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
   })),
   SettingsSkills: projectPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts }),
+  // KERNEL-893: the skills read is slow, so three skeleton rows stand in, and it fails, so the page says so and offers Try again.
+  SettingsSkillsLoading: projectPage('skills', { ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, lag: { 'skills.list': 60000 } }),
+  SettingsSkillsFailed: projectPage('skills', { ...clientA(), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, fails: { 'skills.list': 'Could not read the skills folder.' } }),
   // KERNEL-661: twenty-seven servers as switches in a project, each with one word of status and the link to the global page.
   SettingsSkillsMany: projectPage('skills', { ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpAcrossServers, mcpAccounts: manyServers() }),
   // KERNEL-661: Settings, MCP servers opens on the active account, Work, with every server ready and folded into one line per group.
@@ -704,6 +707,8 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-661: it ended with Vercel failed, the connectors left for claude.ai and one server ignored.
   SettingsMcpSetUpDone: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal }, push: [{ type: 'account.mcpSignInAll', run: { ...setUpRun, current: undefined, done: ['Linear'], failed: [{ server: 'Vercel', error: 'The sign-in was not finished in the browser.' }], finished: true, connect: setUpConnect } }] }),
   SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
+  // KERNEL-893: the integrations read is slow, so each row shows its name and a skeleton, with no Connect.
+  SettingsIntegrationsLoading: settingsPage('integrations', { integrations: integrationRows, lag: { 'integrations.list': 60000 } }),
   SettingsProject: scene(settingsProject),
   // KERNEL-253: the project has its GitHub avatar and the Icon row's menu is open. The sidebar row for Client A shows it too.
   SettingsProjectIcon: scene((f) => {

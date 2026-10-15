@@ -3,6 +3,7 @@ import { isRunName, type AppSettings, type DeepPartial, type ProjectSettings, ty
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { remoteOf } from './remote'
+import { forgetTracker } from '../issues/cache'
 
 /** The app settings, read from the store. Null until the first load. */
 export function useSettings(): AppSettings | null {
@@ -161,6 +162,7 @@ export async function patchProjectSettings(projectId: string, patch: ProjectSett
   if (before) actions.settings.setProject(projectId, applyProjectPatch(before, patch))
   try {
     const saved = await call('settings.setProject', { projectId, patch })
+    forgetTracker(projectId)
     if (current()) actions.settings.setProject(projectId, saved)
     return saved
   } catch (e) {

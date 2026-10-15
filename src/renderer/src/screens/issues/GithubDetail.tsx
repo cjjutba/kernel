@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { GithubIssue, GithubIssueDetail, Project } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { useDetailLoad } from './useDetailLoad'
+import { detailKey } from './cache'
 import { actions, go, useStore } from '../../store'
 import { Button, FailedState, Icon, Skeleton, useBusy } from '../../ui'
 import { IssueState } from '../../icons'
@@ -13,7 +14,7 @@ import { githubPlanParts, issueAge, linkedWorkspaces, loginInitials } from './mo
 
 /** The selected GitHub issue: what GitHub says about it, the workspaces already working on it, and the buttons that start work (IssuesGitHub.png). */
 export function GithubDetail({ project, id, summary, tick }: { project: Project; id: string; summary?: GithubIssue; tick: number }) {
-  const { loaded, failure, retry } = useDetailLoad<GithubIssueDetail>(id, () => call('github.issue', { projectId: project.id, id }), [project.id, tick])
+  const { loaded, failure, retry } = useDetailLoad<GithubIssueDetail>(id, detailKey('github', project.id, id), () => call('github.issue', { projectId: project.id, id }), [project.id, tick])
   const failed = failure?.id === id ? failure.message : null
   const [busy, run] = useBusy<'plan'>()
   const workspaces = useStore((s) => s.workspaces)

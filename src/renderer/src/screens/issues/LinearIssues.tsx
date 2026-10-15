@@ -6,6 +6,7 @@ import { readSaved as readStored, writeSaved } from '../../remember'
 import { Button, EmptyList, FailedState, Icon, NotConnectedState, Pill, useListKeys } from '../../ui'
 import { IssuePriority, IssueState } from '../../icons'
 import { IssueDetail } from './IssueDetail'
+import { forgetLinear, generation, getLinearLists, getScope, getSelected, isFresh, setLinearLists, setScope, setSelected } from './cache'
 import { CapNote, FilterChip, IssueSkeleton, RefreshNotice, type ProjectHead } from './parts'
 import { RowStatus, useReadPrs } from './WorkCard'
 import { WorkHeader } from '../work/WorkHeader'
@@ -50,47 +51,59 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
   const prs = useStore((s) => s.prs)
   // Groups folded up by the person, by group key. A fold lasts while the screen is open.
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
-  const [view, setView] = useState<View>({ kind: 'loading' })
+  const [seed] = useState(() => {
+    const cachedScope = getScope()
+    const saved = readSaved()
+    const f = cachedScope ? fitFilter(saved, cachedScope.value) : saved
+    const hit = cachedScope ? getLinearLists(serializeFilter(f)) : undefined
+    const last = getSelected('linear')
+    const known = hit && last && hit.value.all.concat(hit.value.mine).some((i) => i.id === last)
+    return { scope: cachedScope?.value ?? null, filter: f, lists: hit?.value ?? null, fresh: !!cachedScope && !!hit && isFresh(Math.min(cachedScope.at, hit.at)), sel: known ? last : undefined }
+  })
+  const [view, setView] = useState<View>(seed.lists ? { kind: 'ready' } : { kind: 'loading' })
   const [problem, setProblem] = useState<View | null>(null)
   const [unread, setUnread] = useState(false)
-  const [scope, setScope] = useState<LinearScope | null>(null)
-  const [filter, setFilter] = useState<SavedFilter>(readSaved)
+  const [scope, setScope_] = useState<LinearScope | null>(seed.scope)
+  const [filter, setFilter] = useState<SavedFilter>(seed.filter)
   const [query, setQuery] = useState('')
-  const [lists, setLists] = useState<{ mine: LinearIssue[]; all: LinearIssue[] } | null>(null)
+  const [lists, setLists] = useState<{ mine: LinearIssue[]; all: LinearIssue[] } | null>(seed.lists)
   const [slug, setSlug] = useState(knownSlug)
-  const [sel, setSel] = useState<string | undefined>(issueId)
+  const [sel, setSel] = useState<string | undefined>(issueId ?? seed.sel)
   const [tick, setTick] = useState(0)
-  const [refreshing, setRefreshing] = useState(false)
+  const [refreshing, setRefreshing] = useState(!!seed.lists && !seed.fresh)
   const detail = useRef<HTMLDivElement>(null)
 
   // The newest load wins, so a slow answer for an old filter can't replace a newer list.
   const seq = useRef(0)
-  const scopeRef = useRef<LinearScope | null>(null)
-  const loadedKey = useRef('')
-  const hasLists = useRef(false)
+  const scopeRef = useRef<LinearScope | null>(seed.scope)
+  const loadedKey = useRef(seed.lists ? `${serializeFilter(seed.filter)}|` : '')
+  const hasLists = useRef(!!seed.lists)
   const now = useRef({ filter, query })
   now.current = { filter, query }
 
   const load = useCallback(async (full: boolean) => {
     const n = ++seq.current
     const stale = () => n !== seq.current
+    const gen = generation()
     try {
       let sc = scopeRef.current
       let f = now.current.filter
       if (full || !sc) {
         const rows = await call('integrations.list', undefined)
         if (stale()) return
-        if (!rows.find((r) => r.id === 'linear')?.connected) { hasLists.current = false; return setView({ kind: 'connect' }) }
+        if (!rows.find((r) => r.id === 'linear')?.connected) { forgetLinear(); hasLists.current = false; setLists(null); setProblem(null); return setView({ kind: 'connect' }) }
         sc = await call('linear.scope', undefined)
+        setScope(sc, gen)
         if (stale()) return
         scopeRef.current = sc
-        setScope(sc)
+        setScope_(sc)
         f = fitFilter(f, sc)
         if (serializeFilter(f) !== serializeFilter(now.current.filter)) setFilter(f)
       }
       const q = now.current.query.trim() || undefined
       const base = { teamId: f.teamId, projectId: f.projectId, cycleId: f.cycleId, query: q }
       const [mine, all] = await Promise.all([call('linear.issues', { filter: { ...base, mine: true } }), call('linear.issues', { filter: { ...base, mine: false } })])
+      if (!q) setLinearLists(serializeFilter(f), { mine, all }, gen)
       if (stale()) return
       loadedKey.current = `${serializeFilter(f)}|${now.current.query}`
       const name = workspaceSlug((all[0] ?? mine[0])?.url)
@@ -103,6 +116,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
     } catch (e) {
       if (stale()) return
       const v = failure(e)
+      if (v.kind === 'connect') { forgetLinear(); hasLists.current = false; setLists(null); setProblem(null) }
       if (hasLists.current && v.kind !== 'connect') {
         setProblem(v)
         if (loadedKey.current !== `${serializeFilter(now.current.filter)}|${now.current.query}`) { loadedKey.current = ''; setLists(null); setUnread(true) }
@@ -112,7 +126,11 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
   }, [])
 
   // Refreshed when the screen opens, when the window gets focus while it shows, when the connection comes back and on Refresh. No interval.
-  useEffect(() => { void load(true) }, [load])
+  useEffect(() => {
+    if (seed.lists && seed.fresh) return
+    if (seed.lists) void load(true).finally(() => setRefreshing(false))
+    else void load(true)
+  }, [load])
   useEffect(() => {
     const focus = () => { setTick((t) => t + 1); void load(true) }
     window.addEventListener('focus', focus)
@@ -146,8 +164,14 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
   const groupKey = (g: { type: string; name: string }) => `${g.type}:${g.name}`
   // The rows a key can reach: those in a group that is open.
   const visible = useMemo(() => flatIssues(groups.filter((g) => !folded.has(groupKey(g)))), [groups, folded])
-  const selId = sel ?? visible[0]?.id ?? flat[0]?.id
+  const picked = sel !== undefined && (sel === issueId || flat.some((i) => i.id === sel))
+  const selId = picked ? sel : visible[0]?.id ?? flat[0]?.id
   const cur = flat.find((i) => i.id === selId)
+  useEffect(() => {
+    if (!selId || !lists) return
+    if (selId !== sel) setSel(selId)
+    setSelected('linear', selId)
+  }, [selId, sel, lists])
   const fold = (key: string) => setFolded((f) => { const n = new Set(f); if (!n.delete(key)) n.add(key); return n })
 
   // The PRs behind the rows are read once, so a failing PR can say how many checks fail.
