@@ -902,5 +902,7 @@ export const platformFixtures: Record<string, Fixture> = {
   // First launch: no room, no chat, no workspace, on Home and in the checks that hang.
   AuditFirstLaunchHome: scene(() => ({ ...empty, ui: { route: { name: 'inbox' } } })),
   AuditSetupChecksWaiting: { ...setup([]), hold: ['preflight.run'] },
+  // The same call past the time limit, drawn with the limit shortened so a shot can reach it.
+  AuditSetupChecksSlow: { ...setup([]), hold: ['preflight.run'], ui: { ...onboarding, preflightLimitMs: 300 } },
   AuditSidebarWide: teamFixtures.UpdateReady
 }

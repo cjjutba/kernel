@@ -5,7 +5,7 @@ import { call } from '../../api'
 import { FileLabel } from '../../components/FileIcon'
 import { actions, go, useStore } from '../../store'
 import { oneOf, useRemembered } from '../../remember'
-import { Button, Icon, Pill, useBusy } from '../../ui'
+import { Button, EmptyList, Icon, Pill, useBusy } from '../../ui'
 import { ApprovalCard } from '../workspace/cards/ApprovalCard'
 import { outcome } from '../workspace/cards/steps'
 import { attempt } from '../workspace/MessageActions'
@@ -201,7 +201,11 @@ export function Inbox() {
           ))}
         </div>
         <div className="ib-pane" ref={detail}>
-          {cur ? <Detail key={cur.n.id} item={cur} /> : (
+          {cur ? <Detail key={cur.n.id} item={cur} /> : !rooms.some((r) => !r.archived) ? (
+            <EmptyList icon="branch" title="Add your first room" action={<div className="ib-first"><Button variant="primary" onClick={() => actions.ui.openModal({ name: 'connectRepo' })}>Connect a repo</Button><Button onClick={() => actions.ui.openModal({ name: 'openFolder' })}>Open a folder</Button></div>}>
+              A room is one project with its own team of agents. Nothing needs you until you add one.
+            </EmptyList>
+          ) : (
             <div className="ib-empty">
               <h2>You're all caught up</h2>
               <p>Approvals, plans to review and finished work land here. Nothing needs you right now.</p>

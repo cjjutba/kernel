@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { HookStatus, PreflightCheck } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions, go, launchRoute, useStore } from '../../store'
-import { Button, CodeBlock, Icon, Spinner, useBusy } from '../../ui'
+import { actions, go, isFixture, launchRoute, useStore } from '../../store'
+import { Button, CodeBlock, Icon, Spinner } from '../../ui'
 import './onboarding.css'
+
+/** How long the preflight call may stay unanswered before the page says so and offers Check again. */
+const SLOW_AFTER_MS = 10_000
 
 /** The port the "use next port" fix will move to, read from the check's own sentence ("Kernel can listen on 7421"). */
 const nextPort = (c: PreflightCheck) => /listen on (\d+)/.exec(c.detail)?.[1]
@@ -52,15 +55,35 @@ export function Checks() {
   const checks = useStore((s) => s.system.preflight)
   const rooms = useStore((s) => s.rooms)
   // `recheck:<id>` or `fix:<id>` names the button that spins. The check on open has no button.
-  const [busy, track] = useBusy()
+  const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [slow, setSlow] = useState(false)
+  const latest = useRef(0)
+  const limit = useStore((s) => s.ui.preflightLimitMs)
 
-  const run = (key: string, fn: () => Promise<PreflightCheck[]>) => track(key, async () => {
+  // A newer call replaces one that never answered: only the latest call's answer is used. The page turns "slow" when the call
+  // itself has been pending past the limit, so it follows the call and not a status.
+  const run = async (key: string, fn: () => Promise<PreflightCheck[]>) => {
+    const id = ++latest.current
+    setBusy(key)
     setError(null)
-    try { actions.system.setPreflight(await fn()) } catch (e) { setError(cleanError(e)) }
-  })
+    setSlow(false)
+    try {
+      const next = await fn()
+      if (id === latest.current) actions.system.setPreflight(next)
+    } catch (e) {
+      if (id === latest.current) setError(cleanError(e))
+    } finally {
+      if (id === latest.current) { setBusy(null); setSlow(false) }
+    }
+  }
   const recheck = (key = 'open') => run(key, () => call('preflight.run', undefined))
   useEffect(() => { void recheck() }, [])
+  useEffect(() => {
+    if (busy === null) return
+    const t = window.setTimeout(() => setSlow(true), (isFixture() ? limit : undefined) ?? SLOW_AFTER_MS)
+    return () => window.clearTimeout(t)
+  }, [busy, limit])
 
   // Only a blocking failure keeps Continue off. A non-blocking one is a warning with its fix beside it (KERNEL-213).
   const failing = checks?.filter((c) => !c.ok).length ?? 0
@@ -92,10 +115,29 @@ export function Checks() {
                 {c.ok && c.meta && <span className="ob-meta">{c.meta}</span>}
               </div>
             ))}
-            {!checks && <div className="ob-check"><Spinner label="Checking" pattern="arrow-down" /><span className="muted">Checking</span></div>}
+            {!checks && error && (
+              <div className="ob-check" data-ok="false" data-blocking="true">
+                <span className="ob-ico"><Icon name="close" size={16} /></span>
+                <div className="ob-body">
+                  <span className="ob-name">The setup checks did not run</span>
+                  <span className="ob-detail">{error}</span>
+                  <div className="ob-acts"><Button variant="primary" disabled={busy !== null} busy={busy === 'retry'} busyLabel="Checking" busyPattern="rotate" onClick={() => void recheck('retry')}>Check again</Button></div>
+                </div>
+              </div>
+            )}
+            {!checks && !error && (
+              <div className="ob-check">
+                <Spinner label="Checking" pattern="arrow-down" />
+                <div className="ob-body">
+                  <span className="muted">{slow ? 'Still checking' : 'Checking'}</span>
+                  {slow && <span className="ob-detail">This is taking longer than usual. Kernel has not heard back from your Mac yet.</span>}
+                  {slow && <div className="ob-acts"><Button onClick={() => void recheck('retry')}>Check again</Button></div>}
+                </div>
+              </div>
+            )}
           </div>
           <div className="ob-bar">
-            <span role="status">{error ?? (!checks ? '' : failing ? `${failing} ${failing === 1 ? 'thing needs' : 'things need'} your attention.` : 'Everything checks out.')}</span>
+            <span role="status">{error ? 'The checks did not run.' : (!checks ? '' : failing ? `${failing} ${failing === 1 ? 'thing needs' : 'things need'} your attention.` : 'Everything checks out.')}</span>
             <Button variant="primary" size="lg" disabled={!checks || blocked} onClick={() => void next()}>Continue</Button>
           </div>
         </div>

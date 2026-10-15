@@ -36,3 +36,4 @@
 .ib-empty .ib-link { text-decoration: underline; color: var(--ink-2); }
 
 @container panel (max-width: 760px) { .ib-pane { padding: 20px 24px; } }
+.ib-first { display: flex; gap: 8px; margin-top: 4px; }
