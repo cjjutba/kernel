@@ -11,7 +11,11 @@ import { PauseIcon, PlayIcon } from '@/components/ui/icons'
 // - On phones, on a connection that asks to save data, and with reduced motion asked for, nothing plays by itself. Each
 //   clip shows its poster with a Play button and downloads when tapped.
 //
-// Pausing a clip keeps it paused until you press Play. Pressing Play on another clip moves playback there.
+// - With a mouse, resting the pointer on a card for a moment plays its clip there, picking up where it left off. Moving
+//   away doesn't stop it: it plays to the end of its loop, and then autoplay picks again.
+//
+// Pausing a clip keeps it paused until you press Play, and hovering doesn't restart it. Pressing Play on another clip
+// moves playback there.
 
 type Props = { name: string; width: number; height: number; label: string }
 
@@ -19,30 +23,38 @@ type Props = { name: string; width: number; height: number; label: string }
 const START = 0.4
 /** How much of a clip must be on screen to play by itself. */
 const IN_VIEW = 0.5
+/** How long the pointer rests on a card before its clip plays, so passing over cards doesn't flick them on. */
+const HOVER_MS = 150
 
 type Entry = {
   video: HTMLVideoElement
   ratio: number
   /** Paused by the visitor, so it never plays by itself. */
   held: boolean
-  activate(on: boolean): void
+  /** The pointer is on its card. */
+  over: boolean
+  /** `resume` continues from where the clip paused instead of starting over. */
+  activate(on: boolean, resume?: boolean): void
 }
 
 const entries: Entry[] = []
 let active: Entry | null = null
 /** A clip the visitor started. It keeps playing while any of it is on screen. */
 let chosen: Entry | null = null
+/** A clip the pointer rested on. It plays until its loop ends, or until it leaves the screen. */
+let hovered: Entry | null = null
 
 const AUTO_QUERY = '(prefers-reduced-motion: no-preference) and (min-width: 761px)'
 const saveData = () => Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData)
 const autoplay = () => matchMedia(AUTO_QUERY).matches && !saveData()
+const finePointer = () => matchMedia('(hover: hover) and (pointer: fine)').matches
 
-function setActive(next: Entry | null) {
+function setActive(next: Entry | null, resume = false) {
   if (next === active) return
   const before = active
   active = next
   before?.activate(false)
-  next?.activate(true)
+  next?.activate(true, resume)
 }
 
 /** Picks the clip that should play now. `after` hands over to the next clip in view once that one ends. */
@@ -50,6 +62,8 @@ function elect(after?: Entry) {
   if (chosen && chosen.ratio > 0) return setActive(chosen)
   chosen = null
   if (!autoplay()) return setActive(null)
+  if (hovered && hovered.ratio > 0 && !hovered.held) return setActive(hovered, true)
+  hovered = null
   const ready = entries.filter((e) => !e.held && e.ratio >= IN_VIEW)
   if (!ready.length) return setActive(null)
   if (after && ready.length > 1 && ready.includes(after)) return setActive(ready[(ready.indexOf(after) + 1) % ready.length]!)
@@ -86,10 +100,12 @@ export function Clip({ name, width, height, label }: Props) {
       video,
       ratio: 0,
       held: false,
-      activate(on) {
+      over: false,
+      activate(on, resume) {
         if (on) {
-          if (!video.getAttribute('src')) video.src = `/clips/${name}.mp4`
-          video.currentTime = START
+          const fresh = !video.getAttribute('src')
+          if (fresh) video.src = `/clips/${name}.mp4`
+          if (fresh || !resume || video.ended || video.currentTime < START) video.currentTime = START
           void video.play().catch(() => undefined)
         } else {
           video.pause()
@@ -110,19 +126,51 @@ export function Clip({ name, width, height, label }: Props) {
       { threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1] }
     )
     io.observe(video)
+    const again = () => {
+      video.currentTime = START
+      void video.play().catch(() => undefined)
+    }
     const onEnded = () => {
       if (active !== self) return
-      if (chosen === self || entries.filter((e) => !e.held && e.ratio >= IN_VIEW).length < 2) {
-        video.currentTime = START
-        void video.play().catch(() => undefined)
-      } else elect(self)
+      if (chosen === self) return again()
+      if (hovered === self) {
+        // Still under the pointer, it loops. Left alone, it hands back to autoplay.
+        if (self.over) return again()
+        hovered = null
+      }
+      if (entries.filter((e) => !e.held && e.ratio >= IN_VIEW).length < 2) again()
+      else elect(self)
     }
     video.addEventListener('ended', onEnded)
+
+    // The whole card answers the pointer, not only the clip.
+    const card = video.closest('article') ?? video
+    let rest = 0
+    const onEnter = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || !finePointer()) return
+      self.over = true
+      clearTimeout(rest)
+      rest = window.setTimeout(() => {
+        if (!self.over || self.held || !autoplay()) return
+        hovered = self
+        elect()
+      }, HOVER_MS)
+    }
+    const onLeave = () => {
+      self.over = false
+      clearTimeout(rest)
+    }
+    card.addEventListener('pointerenter', onEnter as EventListener)
+    card.addEventListener('pointerleave', onLeave)
     return () => {
       io.disconnect()
+      clearTimeout(rest)
       video.removeEventListener('ended', onEnded)
+      card.removeEventListener('pointerenter', onEnter as EventListener)
+      card.removeEventListener('pointerleave', onLeave)
       entries.splice(entries.indexOf(self), 1)
       if (chosen === self) chosen = null
+      if (hovered === self) hovered = null
       if (active === self) active = null
     }
   }, [name])
@@ -138,13 +186,14 @@ export function Clip({ name, width, height, label }: Props) {
     if (active === self && !self.video.paused) {
       self.held = true
       if (chosen === self) chosen = null
+      if (hovered === self) hovered = null
       self.video.pause()
       return
     }
     self.held = false
     chosen = self
     if (active === self) void self.video.play().catch(() => undefined)
-    else setActive(self)
+    else setActive(self, true)
   }
 
   const tapToPlay = !auto && !playing && covered
