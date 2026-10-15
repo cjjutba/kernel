@@ -9,7 +9,7 @@ import { Kernel } from '../src/main/kernel'
 import { Store } from '../src/main/db'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { HANDOFF_NOW, planApproval, planChanges } from '../src/main/services/handoff'
-import { QUIT_NOTE, CRASH_NOTE, RELAUNCH_NUDGE, TOOL_STOPPED } from '../src/main/services/sessions'
+import { RELAUNCH_NUDGE } from '../src/main/services/sessions'
 
 // A scripted SDK, as in restore.test.ts: each query() records its options and yields what the test feeds it. An interrupt
 // ends the turn with error_during_execution, as the real one does, and an abort ends the stream.
@@ -109,9 +109,10 @@ describe('plan cards outlive a restart', () => {
     // The card is back and the tool card ended as before (KERNEL-215).
     expect(k2.store.approval(card.id)?.status).toBe('pending')
     expect(k2.store.approval(tool.id)?.status).toBe('expired')
-    // The stuck row stopped and the quit note shows, but nothing carries the chat on: it waits for the card.
-    expect(k2.store.items(kai.id).find((i) => i.kind === 'tool')).toMatchObject({ status: 'failed', output: TOOL_STOPPED })
-    expect(notes(k2, kai)).toEqual([QUIT_NOTE])
+    // The agent wasn't working, so no quit note, even with a tool card up beside the plan, and the plan's row finished:
+    // the plan is in the card. Nothing carries the chat on: it waits for the card.
+    expect(k2.store.items(kai.id).find((i) => i.kind === 'tool')).toMatchObject({ name: 'ExitPlanMode', status: 'done' })
+    expect(notes(k2, kai)).toEqual([])
     expect(k2.sessions.isRunning(kai.id)).toBe(false)
     expect(k2.sessions.queued(kai.id)).toEqual([])
     expect(users(k2, kai)).not.toContain(RELAUNCH_NUDGE)
@@ -125,14 +126,14 @@ describe('plan cards outlive a restart', () => {
     expect(note).toBe('Plan approved. Build it from `.kernel/plans/plan.md`.\n\nKernel restarted while the plan waited, so check git status before you start.')
     expect(users(k2, kai).at(-1)).toBe(note)
     expect(k2.store.items(kai.id).filter((i) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel', approvalId: card.id })
-    // The user's answer is its own row after the card and the quit note, and Kernel's message, which the chat hides, follows it (KERNEL-836).
+    // The user's answer is its own row after the card, and Kernel's message, which the chat hides, follows it (KERNEL-836).
     expect(answers(k2, kai.id)).toEqual([expect.objectContaining({ item: expect.objectContaining({ id: `answer-${card.id}`, parts: text('Approved') }), after: expect.objectContaining({ from: 'kernel', approvalId: card.id }) })])
     const ids = k2.store.items(kai.id).map((i) => i.id)
     expect(ids.indexOf(`answer-${card.id}`)).toBeGreaterThan(ids.indexOf(`approval-${card.id}`))
     // One turn, in the same conversation, out of plan mode. The note is the message itself, so no other note is added.
     expect(k2.sessions.isRunning(kai.id)).toBe(true)
     expect(callIn(ws.path, before)?.options).toMatchObject({ resume: 'kai-session', permissionMode: expect.not.stringMatching(/^plan$/) })
-    expect(notes(k2, kai)).toEqual([QUIT_NOTE])
+    expect(notes(k2, kai)).toEqual([])
     // A second answer finds nothing waiting.
     await expect(k2.handlers()['approvals.decide']({ id: card.id, decision: { behavior: 'allow' } })).rejects.toThrow(/already/)
     expect(answers(k2, kai.id)).toHaveLength(1)
@@ -148,7 +149,7 @@ describe('plan cards outlive a restart', () => {
     store.db.close()
     const { k: k2 } = await relaunch(where)
     expect(k2.store.approval(card.id)?.status).toBe('pending')
-    expect(notes(k2, kai)).toEqual([CRASH_NOTE])
+    expect(notes(k2, kai)).toEqual([])
     expect(k2.sessions.isRunning(kai.id)).toBe(false)
     await k2.handlers()['approvals.decide']({ id: card.id, decision: { behavior: 'allow' } })
     expect(users(k2, kai).at(-1)).toBe(planApproval({ lead: false, planFile: card.planFile, restarted: true }).text)

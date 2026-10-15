@@ -443,14 +443,19 @@ export class Sessions {
     if (this.waiting.has(chatId) || !this.open(chatId)) return
     const chat = this.mustChat(chatId)
     const ws = this.mustWorkspace(chat.workspaceId)
+    // A chat that was waiting on its plan card wasn't working, so it gets no note, and the tool that put the card up
+    // finished: the plan is in the card.
+    const plan = this.d.approvals.waitingPlans(chatId, ws.roomId).length > 0
     for (const it of this.d.store.items(chatId)) {
-      if (it.kind === 'tool' && it.status === 'running') this.item(chat, { ...it, status: 'failed', output: TOOL_STOPPED })
+      if (it.kind !== 'tool' || it.status !== 'running') continue
+      this.item(chat, plan && isPlanTool(it.name) ? { ...it, status: 'done' } : { ...it, status: 'failed', output: TOOL_STOPPED })
     }
-    this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: clean ? QUIT_NOTE : CRASH_NOTE })
+    const note = this.d.approvals.waitedOnUser(chatId) ? (clean ? QUIT_WAIT_NOTE : CRASH_WAIT_NOTE) : clean ? QUIT_NOTE : CRASH_NOTE
+    if (!plan) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: note })
     const queue = this.queued(chatId)
     // A chat that was waiting on its plan card waits for the card again: no nudge, and nothing carries it on but what was
     // queued, which still goes first (plan-cards-survive-restart).
-    if (this.d.approvals.waitingPlans(chatId, ws.roomId).length) {
+    if (plan) {
       if (queue.length) this.cutOff.set(chatId, 'quit')
       return
     }
@@ -2145,6 +2150,12 @@ export const CRASH_REASON = 'Kernel closed unexpectedly'
 /** The note in a chat whose turn a quit cut off, and the one after a crash or a force quit. */
 export const QUIT_NOTE = 'Kernel quit while this agent was working.'
 export const CRASH_NOTE = 'Kernel closed unexpectedly while this agent was working.'
+/** The notes when the turn waited on a tool permission or a question, which ended with it. */
+export const QUIT_WAIT_NOTE = 'Kernel quit while this agent was waiting for your answer, so the request ended.'
+export const CRASH_WAIT_NOTE = 'Kernel closed unexpectedly while this agent was waiting for your answer, so the request ended.'
+
+/** The tools that put a plan card up: Claude's ExitPlanMode and the Lead's request_plan_approval. */
+const isPlanTool = (name: string) => name === 'ExitPlanMode' || name === 'mcp__kernel__request_plan_approval'
 
 /** The note in a chat whose session was gone, so Kernel started a new one. */
 export const SESSION_GONE_NOTE = "Kernel started a new session because the old one is gone. The agent doesn't remember earlier turns in this chat."

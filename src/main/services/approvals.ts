@@ -27,6 +27,8 @@ export class Approvals {
   private closed = false
   /** Kernel is quitting (`quitting`): a plan card whose waiter ends now stays pending for the next launch (plan-cards-survive-restart). */
   private keepPlans = false
+  /** Chats whose open turn waited on a tool permission or a question when Kernel last quit or closed (`waitedOnUser`). */
+  private waited = new Set<string>()
   constructor(private store?: Store) {}
 
   request(a: Omit<Approval, 'id' | 'status' | 'createdAt'>, opts: { timeoutMs?: number; signal?: AbortSignal } = {}): { approval: Approval; decision: Promise<Decision | null> } {
@@ -92,7 +94,19 @@ export class Approvals {
    * Kernel is quitting. Its sessions stop next, and a plan card whose waiter ends on the way keeps its row pending, so it
    * shows again at the next launch. Every other kind still ends as expired (KERNEL-215).
    */
-  quitting() { this.keepPlans = true }
+  quitting() {
+    this.keepPlans = true
+    // The turns stop next and end their waiters, so the chats that waited on the user are written down now for the
+    // next launch's note (`waitedOnUser`).
+    const waiting = [...this.pending.values()].flatMap((p) => (p.chatId && !p.plan ? [p.chatId] : []))
+    this.store?.saveMeta(WAITED, [...new Set(waiting)])
+  }
+
+  /**
+   * The chat's open turn waited on a tool permission or a question when Kernel last quit or closed, so the agent wasn't
+   * working: the user was. Known after `expireStale`, from what a quit wrote down or, after a crash, the rows it expired.
+   */
+  waitedOnUser(chatId: string): boolean { return this.waited.has(chatId) }
 
   /** Change a saved approval and tell every window, for example to link a plan step to the workspace it was handed to. */
   update(id: string, patch: Partial<Approval>): Approval | undefined {
@@ -111,7 +125,11 @@ export class Approvals {
    * `Notifications.attach()`, which then settles their rows.
    */
   expireStale(): Approval[] {
-    return (this.store?.approvals({ pendingOnly: true }) ?? []).filter((a) => !this.pending.has(a.id) && !this.outlivesQuit(a)).map((a) => this.expire(a, this.staleBy(a)))
+    const stale = (this.store?.approvals({ pendingOnly: true }) ?? []).filter((a) => !this.pending.has(a.id) && !this.outlivesQuit(a))
+    const crashed = stale.flatMap((a) => (a.chatId && !isPlan(a) ? [a.chatId] : []))
+    this.waited = new Set([...(this.store?.meta<string[]>(WAITED) ?? []), ...crashed])
+    this.store?.saveMeta(WAITED, [])
+    return stale.map((a) => this.expire(a, this.staleBy(a)))
   }
 
   /** Why a plan from an earlier run can't show again: its workspace was archived or its chat closed meanwhile. */
@@ -189,6 +207,9 @@ export class Approvals {
     return this.save({ ...prev, status, ...answerOf(prev, decision, o.typed), answers }, `${status} ${prev.title}`)
   }
 }
+
+/** The meta key `quitting` writes the chats that waited on the user to. */
+const WAITED = 'waitedOnUser'
 
 /** Only a plan card says why it expired. */
 const expiredBy = (a: Approval, by?: ExpiredBy): Pick<Approval, 'expiredBy'> => (by && isPlan(a) ? { expiredBy: by } : {})
