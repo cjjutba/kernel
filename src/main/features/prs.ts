@@ -1,4 +1,4 @@
-import type { AutoMerge, MergeMethod, PrInfo, PrPending, PrState, Room, Workspace } from '@shared/types'
+import type { AutoMerge, GitHubErrorKind, GitHubStatus, MergeMethod, PrInfo, PrReads, PrPending, PrState, Room, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { type AppSettings, autoMergeInRoom, loadRepoSettings, localSettingsOwn, prInstructions, sharedMergeOf } from '../services/settings'
 import { branchExists, currentBranch, fastForward, fetchOrigin, folderGone, freeBranch, isAncestor, stripRemote } from '../services/worktrees'
@@ -105,11 +105,35 @@ export class Prs extends Feature {
     const host = this.host(ws.roomId)
     try {
       const optional = await this.optionalOf(ws.roomId)
-      return await host.info(cwd, ref, ws.id, { ...o, ...(this.isLocal(ws) ? { base: ws.baseRef } : {}), ...(optional.length ? { optional } : {}) })
+      const info = await host.info(cwd, ref, ws.id, { ...o, ...(this.isLocal(ws) ? { base: ws.baseRef } : {}), ...(optional.length ? { optional } : {}) })
+      if (!this.isLocal(ws)) this.noteGitHub(ws.roomId)
+      return info
     } catch (e) {
       if (e instanceof GhReadError && e.rateLimited) await this.limited(e, host, cwd)
+      if (e instanceof GhReadError && !this.isLocal(ws)) this.noteGitHub(ws.roomId, e.kind)
       throw e
     }
+  }
+
+  /** Each GitHub room's PR status reads, by room id: the last one GitHub answered, and why the last one failed (KERNEL-861). */
+  private reads = new Map<string, PrReads>()
+
+  /**
+   * A PR status read of the room's GitHub went through, or failed with `failed`. A failure keeps the last good read's time.
+   * A read that starts or ends a failure tells the window now. A new time alone waits for the poll's end, which tells it
+   * once for all its reads, so the reads after every turn don't each push.
+   */
+  private noteGitHub(roomId: string, failed?: GitHubErrorKind) {
+    const was = this.reads.get(roomId)
+    this.reads.set(roomId, failed ? { ...(was?.at ? { at: was.at } : {}), failed } : { at: Date.now() })
+    if (was?.failed !== failed) this.syncGitHub()
+  }
+
+  /** The rate limit pause and each room's PR status reads, as the footer and the Pull requests page show them. */
+  private githubStatus(): GitHubStatus {
+    const status = this.cadence.status()
+    const reads = [...this.reads].filter(([roomId]) => this.store.room(roomId))
+    return reads.length ? { ...status, reads: Object.fromEntries(reads) } : status
   }
 
   /** Where the room's PRs live (KERNEL-453). */
@@ -129,11 +153,12 @@ export class Prs extends Feature {
   private pushedGitHub = '{}'
 
   /**
-   * Pushes the GitHub pause to the window when it starts, moves or ends, for the footer (KERNEL-401). The poll's own timer
-   * runs at the pause's end, so main says when it is over and the window never times it out itself.
+   * Pushes the GitHub pause to the window when it starts, moves or ends, for the footer (KERNEL-401), and each room's PR
+   * status reads when they change (KERNEL-861). The poll's own timer runs at the pause's end, so main says when it is over
+   * and the window never times it out itself.
    */
   private syncGitHub() {
-    const status = this.cadence.status()
+    const status = this.githubStatus()
     const key = JSON.stringify(status)
     if (key === this.pushedGitHub) return
     this.pushedGitHub = key
@@ -834,6 +859,8 @@ export class Prs extends Feature {
       void this.retryWaits()
       this.cadence.choresRan()
     }
+    // The reads this poll made reach the window together.
+    this.syncGitHub()
   }
 
   /** One PR's full read when it is due on its own schedule: its backoff, and the quiet rate of a PR that waits on someone (KERNEL-216). */
@@ -877,8 +904,10 @@ export class Prs extends Feature {
           probe = read.infos
           if (read.rate) { this.cadence.rated(read.rate); this.syncGitHub() }
           this.cadence.ok()
+          this.noteGitHub(roomId)
         } catch (e) {
           if (e instanceof GhReadError && e.rateLimited) await this.limited(e, host, room.path)
+          if (e instanceof GhReadError) this.noteGitHub(roomId, e.kind)
           // The room is read again on the next poll.
           continue
         }
@@ -1033,7 +1062,7 @@ export class Prs extends Feature {
       'pr.resolve': async ({ workspaceId }) => { await this.resolvePr(workspaceId); return { ok: true } },
       'pr.update': async ({ workspaceId }) => { await this.updateBranch(workspaceId); return { ok: true } },
       'pr.get': async ({ workspaceId }) => this.getPr(workspaceId),
-      'github.status': async () => this.cadence.status(),
+      'github.status': async () => this.githubStatus(),
       'pr.continue': async ({ workspaceId }) => this.continuePr(workspaceId),
       'pr.ready': async ({ workspaceId }) => this.readyPr(workspaceId),
       'pr.reopen': async ({ workspaceId }) => this.reopenPr(workspaceId),

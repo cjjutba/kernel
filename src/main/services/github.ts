@@ -1,6 +1,7 @@
 import { exec, run, SLOW_MS, type ExecResult } from './exec'
-import type { IssueSummary, MergeMethod, PrBlocked, PrCheck, PrInfo, PrInstructions, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
+import type { GitHubAuth, GitHubErrorKind, IssueSummary, MergeMethod, PrBlocked, PrCheck, PrInfo, PrInstructions, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
 import { gatingChecks, runningChecks } from '@shared/merge'
+import { githubErrorName } from '@shared/githubError'
 import { mergeTreeConflicts, stripRemote } from './worktrees'
 import type { OpenPr } from './issueTaken'
 
@@ -149,13 +150,53 @@ export function reviewsOf(pr: any): ReviewComment[] {
 }
 
 /**
- * A read GitHub couldn't do. `rateLimited` is GitHub's rate limit, `secondary` its "slow down" limit; anything else is a
- * network, auth or gh failure. A read that fails changes no PR's state (KERNEL-388).
+ * What gh prints for each kind of failure (KERNEL-861). Signed out: "To get started with GitHub CLI, please run: gh auth
+ * login" with no token, "HTTP 401: Bad credentials" with a revoked one. Not found: "Could not resolve to a Repository", or
+ * "HTTP 404: Not Found" from `gh api`, which is also what a private repo the account can't see says. No access: "Resource not
+ * accessible". Offline: "error connecting to api.github.com" and Go's network errors under it.
  */
-export class GhReadError extends Error {
-  constructor(message: string, readonly rateLimited = false, readonly secondary = false) {
+const RATE_LIMITED = /rate limit|RATE_LIMITED|abuse detection/i
+const SIGNED_OUT = /gh auth login|HTTP 401|Bad credentials|GH_TOKEN environment variable/i
+const OFFLINE = /error connecting to|check your internet connection|dial tcp|no such host|i\/o timeout|connection refused|connection reset|network is unreachable|TLS handshake timeout/i
+const NOT_FOUND = /HTTP 404|\bNot Found\b|Could not resolve to an? (Repository|issue)|Resource not accessible|none of the git remotes|no git remotes|not a git repository/i
+
+/** Which kind of failure a gh run that failed is, from what it printed. A run Kernel killed for taking too long is offline. */
+export function ghErrorKind(r: ExecResult): GitHubErrorKind {
+  if (r.code === 127) return 'other'
+  if (r.timedOut) return 'offline'
+  const text = `${r.stderr}\n${r.stdout}`
+  if (RATE_LIMITED.test(text)) return 'rate-limited'
+  if (SIGNED_OUT.test(text)) return 'signed-out'
+  if (OFFLINE.test(text)) return 'offline'
+  if (NOT_FOUND.test(text)) return 'not-found'
+  return 'other'
+}
+
+/** A GitHub call that failed, with its kind in the name, which is what survives IPC to the window (`@shared/githubError`). */
+export class GitHubError extends Error {
+  constructor(message: string, readonly kind: GitHubErrorKind) {
     super(message)
-    this.name = 'GhReadError'
+    this.name = githubErrorName(kind)
+  }
+}
+
+/** A failed gh run as a GitHubError: `fallback` says what Kernel was doing, and gh's first line follows it. */
+export function ghError(r: ExecResult, fallback: string): GitHubError {
+  const kind = ghErrorKind(r)
+  if (r.code === 127) return new GitHubError('Install the GitHub CLI (gh) to read GitHub.', kind)
+  if (r.timedOut) return new GitHubError('GitHub took too long to answer. Try again.', kind)
+  if (kind === 'signed-out') return new GitHubError("The GitHub CLI isn't signed in. Run gh auth login in a terminal.", kind)
+  const said = r.stderr.trim().split('\n')[0] || r.stdout.trim().split('\n')[0]
+  return new GitHubError(said ? `${fallback}: ${said}` : `${fallback}.`, kind)
+}
+
+/**
+ * A read GitHub couldn't do. `rateLimited` is GitHub's rate limit, `secondary` its "slow down" limit; anything else is a
+ * network, auth or gh failure, which `kind` tells apart. A read that fails changes no PR's state (KERNEL-388).
+ */
+export class GhReadError extends GitHubError {
+  constructor(message: string, readonly rateLimited = false, readonly secondary = false, kind: GitHubErrorKind = rateLimited ? 'rate-limited' : 'other') {
+    super(message, kind)
   }
 }
 
@@ -170,7 +211,7 @@ export function readFailure(r: ExecResult): 'none' | GhReadError {
   if (/rate limit|RATE_LIMITED/i.test(text)) return new GhReadError("GitHub's rate limit is used up.", true)
   if (NO_PR.test(text)) return 'none'
   const said = r.stderr.trim().split('\n')[0]
-  return new GhReadError(r.timedOut ? 'gh timed out.' : said || `gh exited with ${r.code}.`)
+  return new GhReadError(r.timedOut ? 'gh timed out.' : said || `gh exited with ${r.code}.`, false, false, ghErrorKind(r))
 }
 
 const parsed = (text: string): any => { try { return JSON.parse(text) } catch { return undefined } }
@@ -491,11 +532,8 @@ export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | '
   return undefined
 }
 
-/**
- * Where the GitHub CLI stands. `offline` means gh has an account but couldn't reach GitHub to check its token. `source` is
- * gh's `tokenSource`: "keyring", "GH_TOKEN", "GITHUB_TOKEN" or the path of gh's config file (KERNEL-448).
- */
-export interface GhAuth { state: 'missing' | 'signed-out' | 'offline' | 'ok'; login?: string; source?: string }
+/** Where the GitHub CLI stands (`GitHubAuth`, KERNEL-448). */
+export type GhAuth = GitHubAuth
 
 /** Reads `gh auth status --json hosts` for github.com's active account. Null when it isn't that JSON. */
 export function parseGhAuth(json: string): GhAuth | null {

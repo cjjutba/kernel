@@ -1,6 +1,6 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
-  ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
+  ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubAuth, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptSuggestion, ScriptTrust, ChatArchivePreview, MoveChoice, MoveNotice, MovePreview, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
@@ -25,6 +25,8 @@ export interface KernelApi {
   'hooks.status': { req: void; res: HookStatus }
   /** Whether a GitHub rate limit holds Kernel's PR reads off, and until when (the footer, KERNEL-401). */
   'github.status': { req: void; res: GitHubStatus }
+  /** gh's sign-in as `gh auth status` reports it, for Connect a repo's header (KERNEL-861). */
+  'github.auth': { req: void; res: GitHubAuth }
   /** Settings > Hooks "Send test event". */
   'hooks.test': { req: void; res: HookStatus }
   /** Restart the hook server, on the given port when set (SetupPortBusy "Use 7421", WorkspaceHooksDown "Reconnect"). */

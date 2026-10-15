@@ -1,6 +1,6 @@
 import type { Tracker, TrackerIssue } from '@shared/types'
 import { exec, type ExecResult } from '../exec'
-import { ghUser, parseIssueList } from '../github'
+import { ghErrorKind, GitHubError, ghUser, parseIssueList } from '../github'
 
 // GitHub Issues as a room's tracker, through the GitHub CLI, which already holds the user's auth (D-006, KERNEL-462).
 
@@ -10,12 +10,13 @@ export function githubKey(key: string): string | undefined {
   return n ? `#${n}` : undefined
 }
 
-/** What gh said when it failed, in a sentence the From popover can show. */
-export function ghFailed(r: ExecResult): Error {
-  if (r.code === 127) return new Error('Install the GitHub CLI (gh) to read GitHub issues.')
-  if (r.timedOut) return new Error('GitHub took too long to answer. Try again.')
+/** What gh said when it failed, in a sentence the From popover can show, with the kind of failure it was (KERNEL-861). */
+export function ghFailed(r: ExecResult): GitHubError {
+  const kind = ghErrorKind(r)
+  if (r.code === 127) return new GitHubError('Install the GitHub CLI (gh) to read GitHub issues.', kind)
+  if (r.timedOut) return new GitHubError('GitHub took too long to answer. Try again.', kind)
   const said = r.stderr.trim().split('\n')[0] || r.stdout.trim().split('\n')[0]
-  return new Error(said ? `Could not read GitHub issues: ${said}` : 'Could not read GitHub issues.')
+  return new GitHubError(said ? `Could not read GitHub issues: ${said}` : 'Could not read GitHub issues.', kind)
 }
 
 interface IssueView {
@@ -52,8 +53,8 @@ export const GH_SIGNED_OUT = "The GitHub CLI isn't signed in. The user can run g
 /** Why `gh issue view` failed: signed out and no such issue in plain words, anything else as ghFailed says it. */
 function viewFailed(r: ExecResult, key: string): Error {
   const said = `${r.stderr}\n${r.stdout}`
-  if (!r.timedOut && /gh auth login/.test(said)) return new Error(GH_SIGNED_OUT)
-  if (!r.timedOut && /could not resolve to an issue/i.test(said)) return new Error(`GitHub has no issue ${key} in this repo.`)
+  if (!r.timedOut && /gh auth login/.test(said)) return new GitHubError(GH_SIGNED_OUT, 'signed-out')
+  if (!r.timedOut && /could not resolve to an issue/i.test(said)) return new GitHubError(`GitHub has no issue ${key} in this repo.`, 'not-found')
   return ghFailed(r)
 }
 

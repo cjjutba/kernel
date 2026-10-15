@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path'
 import type { FolderInfo, RepoSummary } from '@shared/types'
 import { parse, unwrap } from './bashGuard'
 import { exec, git, gitSlow, run } from './exec'
+import { ghError } from './github'
 import { removeTree } from './removeTree'
 
 // Everything a new room needs from the outside world: reading folders, GitHub through `gh`, the starter team and settings.toml.
@@ -61,7 +62,7 @@ export async function recentFolders(roomPaths: string[], home = homedir(), limit
 /** The signed-in user's repos through `gh`, newest push first. `query` filters by name. */
 export async function listRepos(query?: string): Promise<RepoSummary[]> {
   const r = await exec('gh', ['repo', 'list', '--limit', '100', '--json', 'nameWithOwner,name,isPrivate,pushedAt'], { timeoutMs: 30000 })
-  if (r.code !== 0) throw new Error(r.stderr.trim() || 'Could not list your repositories. Run gh auth login and try again.')
+  if (r.code !== 0 || r.timedOut) throw ghError(r, 'Could not list your repositories')
   const q = query?.trim().toLowerCase()
   return (JSON.parse(r.stdout) as { nameWithOwner: string; name: string; isPrivate: boolean; pushedAt: string }[])
     .map((x) => ({ fullName: x.nameWithOwner, name: x.name, private: x.isPrivate, updatedAt: Date.parse(x.pushedAt) || 0 }))

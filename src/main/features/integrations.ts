@@ -1,7 +1,7 @@
 import type { IssueTaken, RoomTracker, Tracker, TrackerIssue, TrackerKind, Workspace, WorkspaceSource } from '@shared/types'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
-import { ghUser as ghUserName, openIssues, openPrs, prsNaming } from '../services/github'
+import { ghAuth, ghUser as ghUserName, openIssues, openPrs, prsNaming } from '../services/github'
 import { integrationRows, saveLinearToken, storedLinearToken } from '../services/integrations'
 import { issueTaken, TAKEN_TIMEOUT_MS } from '../services/issueTaken'
 import { loadRepoSettings, saveRepoSettings } from '../services/settings'
@@ -154,6 +154,7 @@ export class Integrations extends Feature {
 
   handlers() {
     return {
+      'github.auth': async () => ghAuth(),
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
       'github.issues': async ({ roomId, query }) => openIssues(this.mustRoom(roomId).path, query),
       'issues.list': async ({ roomId, query }) => (await this.trackerFor(roomId)).search(query),

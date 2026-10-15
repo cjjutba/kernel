@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { PrInfo } from '@shared/types'
 import {
-  batchQuery, blockedOf, checksOf, fingerprintOf, ghCanPush, infoOf, matchesCheck, parseBatch, prNote, prQuery, prStateOf, readFailure, resolveFile,
+  batchQuery, blockedOf, checksOf, fingerprintOf, ghCanPush, ghError, ghErrorKind, GitHubError, infoOf, matchesCheck, parseBatch, prNote, prQuery, prStateOf, readFailure, resolveFile,
   reviewsOf, type PrView, type RollupItem
 } from '../src/main/services/github'
 import { DEFAULT_SETTINGS, loadRepoSettings, prInstructions, saveRepoSettings } from '../src/main/services/settings'
 import type { Workspace } from '@shared/types'
 import type { ExecResult } from '../src/main/services/exec'
+import { GITHUB_ERROR_PREFIX, githubErrorKind } from '@shared/githubError'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tempRepo } from './helpers'
@@ -87,6 +88,63 @@ describe('a failed read', () => {
     expect(r('error connecting to api.github.com')).toMatchObject({ rateLimited: false, message: 'error connecting to api.github.com' })
     expect(r('To get started with GitHub CLI, please run:  gh auth login')).toMatchObject({ rateLimited: false })
     expect(r('', { timedOut: true })).toMatchObject({ message: 'gh timed out.' })
+  })
+})
+
+// KERNEL-861: what gh really prints for each kind of failure, so a screen can say what to do next.
+const GH_SAYS = {
+  signedOut: 'To get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.\n',
+  badToken: 'HTTP 401: Bad credentials (https://api.github.com/graphql)\nTry authenticating with:  gh auth login\n',
+  noRepo: "GraphQL: Could not resolve to a Repository with the name 'acme/gone'. (repository)\n",
+  notFound: 'gh: Not Found (HTTP 404)\n',
+  noAccess: 'HTTP 403: Resource not accessible by personal access token (https://api.github.com/repos/acme/app)\n',
+  rateLimit: 'GraphQL: API rate limit already exceeded for user ID 1234567.\n',
+  restRateLimit: 'HTTP 403: API rate limit exceeded for user ID 1234567. If you reach out to GitHub Support for help, please include the request ID 1:2:3.\n',
+  secondary: 'HTTP 403: You have exceeded a secondary rate limit. Please wait a few minutes before you try again.\n',
+  offline: 'error connecting to api.github.com\ncheck your internet connection or https://githubstatus.com\n',
+  noHost: 'Post "https://api.github.com/graphql": dial tcp: lookup api.github.com: no such host\n',
+  outage: 'HTTP 502: Server Error (https://api.github.com/graphql)\n'
+}
+
+describe('the kind of a GitHub failure (KERNEL-861)', () => {
+  const failed = (stderr: string, o: Partial<ExecResult> = {}): ExecResult => ({ code: 1, stdout: '', stderr, ...o })
+
+  it("reads each kind from what gh prints", () => {
+    expect(ghErrorKind(failed(GH_SAYS.signedOut, { code: 4 }))).toBe('signed-out')
+    expect(ghErrorKind(failed(GH_SAYS.badToken))).toBe('signed-out')
+    expect(ghErrorKind(failed(GH_SAYS.noRepo))).toBe('not-found')
+    expect(ghErrorKind(failed(GH_SAYS.notFound))).toBe('not-found')
+    expect(ghErrorKind(failed(GH_SAYS.noAccess))).toBe('not-found')
+    expect(ghErrorKind(failed(GH_SAYS.rateLimit))).toBe('rate-limited')
+    expect(ghErrorKind(failed(GH_SAYS.restRateLimit))).toBe('rate-limited')
+    expect(ghErrorKind(failed(GH_SAYS.secondary))).toBe('rate-limited')
+    expect(ghErrorKind(failed(GH_SAYS.offline))).toBe('offline')
+    expect(ghErrorKind(failed(GH_SAYS.noHost))).toBe('offline')
+    expect(ghErrorKind(failed('', { timedOut: true }))).toBe('offline')
+    expect(ghErrorKind(failed(GH_SAYS.outage))).toBe('other')
+    expect(ghErrorKind(failed('', { code: 127 }))).toBe('other')
+  })
+
+  it('gives a failed PR read its kind, rate limits included', () => {
+    const r = (stderr: string) => readFailure(failed(stderr))
+    expect(r(GH_SAYS.offline)).toMatchObject({ kind: 'offline', rateLimited: false })
+    expect(r(GH_SAYS.badToken)).toMatchObject({ kind: 'signed-out', rateLimited: false })
+    expect(r(GH_SAYS.rateLimit)).toMatchObject({ kind: 'rate-limited', rateLimited: true })
+    expect(r(GH_SAYS.secondary)).toMatchObject({ kind: 'rate-limited', secondary: true })
+    expect(r(GH_SAYS.outage)).toMatchObject({ kind: 'other' })
+  })
+
+  it('carries the kind across IPC in the error name, and the text a person reads leaves it out', () => {
+    const e = ghError(failed(GH_SAYS.signedOut, { code: 4 }), 'Could not list your repositories')
+    expect(e).toBeInstanceOf(GitHubError)
+    expect(e.kind).toBe('signed-out')
+    // Electron passes the error's string, and the window's error wraps it.
+    const got = new Error(`Error invoking remote method 'github.repos': ${String(e)}`)
+    expect(githubErrorKind(got)).toBe('signed-out')
+    expect(got.message.replace(/^Error invoking remote method '[^']+': /, '').replace(GITHUB_ERROR_PREFIX, '')).toBe("The GitHub CLI isn't signed in. Run gh auth login in a terminal.")
+    expect(githubErrorKind(new Error("Error invoking remote method 'github.repos': Error: no"))).toBeUndefined()
+    expect(ghError(failed(GH_SAYS.noRepo), 'Could not list your repositories').message).toBe("Could not list your repositories: GraphQL: Could not resolve to a Repository with the name 'acme/gone'. (repository)")
+    expect(ghError(failed('', { timedOut: true }), 'Could not list your repositories')).toMatchObject({ kind: 'offline', message: 'GitHub took too long to answer. Try again.' })
   })
 })
 
