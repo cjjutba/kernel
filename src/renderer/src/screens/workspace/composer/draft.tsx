@@ -296,7 +296,9 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
   }
   const attach = (files: File[]) => {
     const taken = [...read().flatMap((p) => (p.type === 'image' ? [p.name] : [])), ...pending.current.all()]
-    void attachFiles(files, { hold, settle, drop: release, taken })
+    const held = read().filter((p) => p.type === 'image' || (p.type === 'file' && p.src))
+    const bytes = held.reduce((n, p) => n + (p.type === 'file' ? p.size ?? 0 : p.type === 'image' && p.dataUrl ? Math.round(p.dataUrl.length * 0.75) : 0), 0)
+    void attachFiles(files, { hold, settle, drop: release, taken, used: { count: held.length + pending.current.size, bytes } })
   }
 
   /**
