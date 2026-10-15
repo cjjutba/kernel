@@ -315,6 +315,11 @@ export interface QueuedMessage {
   update?: TeamUpdate
   /** Carried to the chat item: the plan approval a Kernel message answers. */
   approvalId?: string
+  /**
+   * The id the window gave the message (KERNEL-894). It is this message's `id` too, and its row's id once it goes, so the row
+   * the engine saves replaces the window's in place. Unset for a message sent without one, whose row gets a new id.
+   */
+  clientId?: string
 }
 
 /**

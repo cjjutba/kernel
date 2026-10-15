@@ -200,7 +200,12 @@ export interface KernelApi {
   /** `provider` opens the tab on that provider, with `model` and `effort` when given ("New chat on Codex", KERNEL-406). */
   'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal'; preset?: string; threadId?: string; provider?: Provider; model?: string; effort?: Effort }; res: Chat }
   'chats.items': { req: { chatId: string }; res: ChatItem[] }
-  'chats.send': { req: { chatId: string; parts: ChatPart[] }; res: { queued: boolean } }
+  /**
+   * `clientId` is the id the window drew the message under (KERNEL-894): its row, or its queued message while it waits, takes
+   * that id. One already in the chat is a double send, which is ignored: nothing is saved or sent, and the answer describes
+   * the message as it stands. `item` is the message's row once it has one, the existing row for a double send.
+   */
+  'chats.send': { req: { chatId: string; parts: ChatPart[]; clientId?: string }; res: { queued: boolean; why?: QueueReason; item?: ChatItem } }
   'chats.interrupt': { req: { chatId: string }; res: Ok }
   /**
    * Model and effort move within the chat's provider. The other provider is a new chat (`chats.create` with `provider`).
@@ -216,8 +221,11 @@ export interface KernelApi {
   'chats.markRead': { req: { chatId: string }; res: Ok }
   /** New chat with the transcript up to `itemId` (the whole chat when unset). */
   'chats.fork': { req: { chatId: string; itemId?: string }; res: Chat }
-  /** Run the turn that produced `itemId` again. `now` sends it ahead of the queue and stops the running turn (Retry now). */
-  'chats.retry': { req: { chatId: string; itemId: string; now?: boolean }; res: Ok }
+  /**
+   * Run the turn that produced `itemId` again. `now` sends it ahead of the queue and stops the running turn (Retry now).
+   * `clientId` is the copy's id, as in `chats.send` (KERNEL-894).
+   */
+  'chats.retry': { req: { chatId: string; itemId: string; now?: boolean; clientId?: string }; res: Ok }
   'chats.compact': { req: { chatId: string }; res: Ok }
   'chats.queue': { req: { chatId: string }; res: QueuedMessage[] }
   /** What the chat's queue waits for, null when it is empty. `chat.queue` events carry each change (KERNEL-271). */
@@ -229,8 +237,11 @@ export interface KernelApi {
   /** The permission mode the chat runs in, the mode picked for it and why they differ. `chat.runMode` events carry each change (KERNEL-572). */
   'chats.runMode': { req: { chatId: string }; res: ChatRunMode }
   'chats.unqueue': { req: { chatId: string; id: string }; res: QueuedMessage[] }
-  /** Interrupt the running turn and send this queued message now. */
-  'chats.sendNow': { req: { chatId: string; id: string }; res: QueuedMessage[] }
+  /**
+   * Interrupt the running turn and send this queued message now. `clientId` is the id the window draws its row under
+   * (KERNEL-894): the queued message takes it until it goes, and its row after. Ignored when the chat already has it.
+   */
+  'chats.sendNow': { req: { chatId: string; id: string; clientId?: string }; res: QueuedMessage[] }
   /**
    * The chats with a turn running and the ones retrying, which `chat.running` and `retry` only report as they change. A window
    * that loads while agents work reads them here, or every working agent would look stopped (KERNEL-340).
@@ -276,9 +287,10 @@ export interface KernelApi {
    * The new workspace modal: the prompt goes to the Lead in a new chat, which takes its title from the first message (KERNEL-148). The
    * chat gets its own worktree, on a branch from `baseRef` or the latest default branch (KERNEL-405). It answers once the chat, its
    * tab and its workspace are saved, before the fetch and the worktree, which the workspace's `worktreePending` covers. The prompt
-   * waits in the tab's queue until the worktree exists, then for setup when Wait for setup says so (KERNEL-542).
+   * waits in the tab's queue until the worktree exists, then for setup when Wait for setup says so (KERNEL-542). `clientId` is
+   * the prompt's id while it waits and its row's once it goes, as in `chats.send` (KERNEL-894).
    */
-  'lead.start': { req: { projectId: string; prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; leadMode?: LeadMode }; res: Chat }
+  'lead.start': { req: { projectId: string; prompt: string; parts?: ChatPart[]; clientId?: string; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; leadMode?: LeadMode }; res: Chat }
   /**
    * Starts a fetch of the project's remote and answers without waiting for it, so the fetch Create needs is done or under way by
    * then. New chat calls it when it opens. A failed fetch says nothing (KERNEL-542).
