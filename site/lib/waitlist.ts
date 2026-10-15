@@ -1,6 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import { SITE_URL } from './site'
+import { WORDMARK_CID, WORDMARK_PNG_BASE64 } from './emailWordmark'
 import { confirmEmail } from './waitlistEmail'
 
 // The Windows, Linux and Intel Mac waitlist, on Resend. Double opt-in with no database: a signup gets an email with a
@@ -132,8 +133,10 @@ export async function sendConfirm(signup: Pick<Signup, 'email' | 'platforms'>, o
   if (!cfg.secret || (!cfg.apiKey && !cfg.dryRun)) throw new WaitlistError("The waitlist isn't open yet. Try again later.", 503)
   const link = confirmUrl(makeToken(signup, cfg.secret), origin)
   if (cfg.dryRun) return { link, sent: false }
-  const email = confirmEmail(link, signup.platforms.map((p) => PLATFORM_LABELS[p]))
-  const res = await resend(cfg.apiKey!, '/emails', { method: 'POST', body: { from: cfg.from, to: [signup.email], subject: email.subject, html: email.html, text: email.text } })
+  const email = confirmEmail(link, signup.platforms.map((p) => PLATFORM_LABELS[p]), origin ?? SITE_URL)
+  // The wordmark travels with the email as an inline image, so it shows without loading anything from the site.
+  const attachments = [{ filename: 'kernel.png', content: WORDMARK_PNG_BASE64, content_type: 'image/png', content_id: WORDMARK_CID }]
+  const res = await resend(cfg.apiKey!, '/emails', { method: 'POST', body: { from: cfg.from, to: [signup.email], subject: email.subject, html: email.html, text: email.text, attachments } })
   if (!res.ok) {
     console.error('waitlist: Resend refused the confirm email', res.status, res.data?.message ?? res.data?.name)
     throw new WaitlistError("We couldn't send the email. Try again in a minute.", 502)

@@ -514,6 +514,21 @@
   mask-image: radial-gradient(circle at 50% 50%, #000 45%, transparent 72%);
 }
 
+/* The waitlist confirm page: the stage fills the screen under the nav, so the card sits in its middle. Over its ripple,
+   a veil in the page's color hides the dots at the card and at the stage's edges, leaving a soft ring around the card. */
+@utility confirm-stage {
+  min-height: calc(100dvh - var(--spacing) * 16);
+}
+
+@utility ripple-veil {
+  background: radial-gradient(
+    ellipse 50% 58% at 50% 50%,
+    var(--color-canvas) 20%,
+    transparent 42%,
+    var(--color-canvas) 78%
+  );
+}
+
 /* The footer's noise: rises from the page's bottom edge and is gone by the footer's links. */
 @utility dither-footer {
   mask-image: linear-gradient(to top, #000, rgb(0 0 0 / 0.55) 35%, transparent);
@@ -624,8 +639,8 @@
   }
 }
 
-/* Spotlight cards (components/landing/SpotlightGrid.tsx): while the pointer is over the bento, each card's border
-   brightens around it, with only a small, faint wash of light on the card's surface. The border is a 1px ring masked to the
+/* Spotlight cards (components/landing/SpotlightGrid.tsx): while the pointer is over a group of cards, each card's
+   border brightens around it. Only the edge lights up; the card's surface stays as it is. The border is a 1px ring masked to the
    card's edge, so the light only shows on the edge itself. It fades in and out with the pointer entering and leaving
    the grid. */
 @utility spot-grid {
@@ -642,17 +657,13 @@
   position: relative;
   isolation: isolate;
 
-  &::before,
-  &::after {
+  &::before {
     content: '';
     position: absolute;
     border-radius: inherit;
     pointer-events: none;
     opacity: var(--spot, 0);
     transition: opacity 300ms ease-out;
-  }
-
-  &::before {
     inset: -1px;
     z-index: 1;
     padding: 1px;
@@ -660,12 +671,6 @@
     mask:
       linear-gradient(#000 0 0) content-box exclude,
       linear-gradient(#000 0 0);
-  }
-
-  &::after {
-    inset: 0;
-    z-index: -1;
-    background: radial-gradient(280px circle at var(--mx, -999px) var(--my, -999px), color-mix(in oklab, var(--color-ink) 2%, transparent), transparent 70%);
   }
 }
 
