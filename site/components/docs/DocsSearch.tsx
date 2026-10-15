@@ -80,9 +80,24 @@ function search(index: SearchEntry[], query: string): Result[] {
 }
 
 /** A search button. Any number can sit on the page: they all open the one dialog. */
-/** Opens search. `lg` is the docs home's wide field. */
-export function SearchButton({ size = 'md' }: { size?: 'md' | 'lg' }) {
+/** Opens search. `lg` is the docs home's wide field, `icon` the square button on the phone bar. */
+export function SearchButton({ size = 'md' }: { size?: 'md' | 'lg' | 'icon' }) {
   const lg = size === 'lg'
+  if (size === 'icon') {
+    return (
+      <button
+        type="button"
+        aria-label="Search docs"
+        onClick={() => window.dispatchEvent(new Event(OPEN))}
+        className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-line-strong bg-surface-1 text-muted transition-colors hover:border-edge-hover hover:text-ink"
+      >
+        <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+          <circle cx="7" cy="7" r="4.5" />
+          <path d="M10.5 10.5 14 14" />
+        </svg>
+      </button>
+    )
+  }
   return (
     <button
       type="button"

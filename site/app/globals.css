@@ -311,6 +311,13 @@
   overscroll-behavior: contain;
 }
 
+/* The page menu on the phone bar: as tall as the screen allows under the nav and the bar, scrolling on its own. */
+@utility docs-menu {
+  max-height: calc(100dvh - var(--spacing) * 36);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 /* The bar on the On this page rail slides to the section you're reading. */
 @utility toc-bar {
   top: 0;
