@@ -293,8 +293,11 @@ describe('open to (replaces the default home view)', () => {
       expect('homeView' in g).toBe(false)
     })
     it('keeps an openTo that was already chosen, even next to a leftover homeView', async () => {
-      expect((await load({ openTo: 'home' })).openTo).toBe('home')
-      expect((await load({ openTo: 'home', homeView: 'inbox' })).openTo).toBe('home')
+      expect((await load({ openTo: 'inbox' })).openTo).toBe('inbox')
+      expect((await load({ openTo: 'inbox', homeView: 'home' })).openTo).toBe('inbox')
+    })
+    it('opens where you left off for a saved Home, which is gone', async () => {
+      expect((await load({ openTo: 'home' })).openTo).toBe('lastPlace')
     })
     it('defaults a fresh install, with no file, to where you left off', async () => {
       expect((await load()).openTo).toBe('lastPlace')

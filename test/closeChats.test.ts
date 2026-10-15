@@ -27,7 +27,7 @@ const tab = (id: string, threadId: string, over: Partial<Chat> = {}): Chat =>
 function seed(chats = [tab('a1', 't1'), tab('a2', 't1'), tab('b1', 't2'), tab('c1', 't3')]) {
   server = chats
   setState({ rooms: [room], agents: { r1: [kernel] }, workspaces: [lead], chats: { lead: chats }, threads: {} })
-  setState((s) => ({ ui: { ...s.ui, route: { name: 'home' }, tabs: {}, foldedChats: [] } }))
+  setState((s) => ({ ui: { ...s.ui, route: { name: 'rooms' }, tabs: {}, foldedChats: [] } }))
   resetHistory()
 }
 const route = () => getState().ui.route

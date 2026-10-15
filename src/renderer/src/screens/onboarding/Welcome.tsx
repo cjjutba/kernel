@@ -17,7 +17,7 @@ export function Welcome() {
       </main>
       <footer className="ob-foot">
         <span>Kernel {short(version)}</span>
-        <button type="button" className="ob-link" onClick={() => go({ name: 'home' })}>Skip setup</button>
+        <button type="button" className="ob-link" onClick={() => go({ name: 'inbox' })}>Skip setup</button>
       </footer>
     </div>
   )

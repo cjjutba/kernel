@@ -4,6 +4,8 @@ import { actions, boot, getState } from '../src/renderer/src/store'
 import type { PreflightCheck, Room } from '../src/shared/types'
 
 const room = { id: 'r1', name: 'r1', path: '/r/r1', defaultBranch: 'main', paused: false, createdAt: 1 } as Room
+/** A launch with no saved place opens the room's front door, here its Agents page, since the fake room has no Lead. */
+const opened = { name: 'settings', page: 'room', roomId: 'r1', section: 'agents' }
 const portTaken: PreflightCheck = { id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another process is using it.' }
 
 /** Boots against a fake main process. The checks answer when `finishChecks` is called, like a slow Mac. */
@@ -31,7 +33,7 @@ async function bootWith(checks: PreflightCheck[]) {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 beforeEach(() => {
-  actions.ui.go({ name: 'home' })
+  actions.ui.go({ name: 'inbox' })
   actions.ui.closeModal()
   getState().ui.toasts.forEach((t) => actions.ui.dismissToast(t.id))
 })
@@ -40,7 +42,7 @@ describe('boot and a blocking check that fails late', () => {
   it('opens the app before the checks answer, then moves to Checks if nothing else is going on', async () => {
     const finishChecks = await bootWith([portTaken])
     expect(getState().system.booted).toBe(true)
-    expect(getState().ui.route).toEqual({ name: 'home' })
+    expect(getState().ui.route).toEqual(opened)
     finishChecks()
     await settle()
     expect(getState().ui.route).toEqual({ name: 'onboarding', step: 'checks' })
@@ -51,7 +53,7 @@ describe('boot and a blocking check that fails late', () => {
     actions.ui.openModal({ name: 'checkHooks' })
     finishChecks()
     await settle()
-    expect(getState().ui.route).toEqual({ name: 'home' })
+    expect(getState().ui.route).toEqual(opened)
     expect(getState().ui.modal).toEqual({ name: 'checkHooks' })
     expect(getState().ui.toasts.map((t) => t.title)).toEqual(['Port 7420 is taken'])
   })

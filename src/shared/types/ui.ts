@@ -16,7 +16,9 @@ export type DevUiPage = 'components' | 'display' | 'overlays' | 'dialogs'
 
 export type Route =
   | { name: 'onboarding'; step: OnboardingStep; roomId?: string }
-  | { name: 'home' } | { name: 'inbox' } | { name: 'history' } | { name: 'rooms' }
+  | { name: 'inbox' } |
+  /** Archived workspaces. `roomId` lists one room's, from the room's menu in the sidebar. */
+  { name: 'history'; roomId?: string } | { name: 'rooms' }
   | { name: 'workspace'; workspaceId: string }
   /**
    * New chat, the page every entry point opens (KERNEL-788). No workspace exists until the first message (KERNEL-405). `source` is what the

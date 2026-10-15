@@ -13,7 +13,7 @@ export function General({ s }: { s: AppSettings }) {
       <Section title="Startup">
         <Row id="open-at-login" label="Open at login"><Toggle label="Open at login" checked={g.openAtLogin} onChange={(v) => void patchSettings({ general: { openAtLogin: v } })} /></Row>
         <Row id="open-to" setting="general.openTo" label="Open to">
-          <Select label="Open to" value={g.openTo} onChange={(v) => void patchSettings({ general: { openTo: v as General['openTo'] } })} options={[{ value: 'lastPlace', label: 'Where I left off' }, { value: 'home', label: 'Home' }, { value: 'inbox', label: 'Inbox' }]} />
+          <Select label="Open to" value={g.openTo} onChange={(v) => void patchSettings({ general: { openTo: v as General['openTo'] } })} options={[{ value: 'lastPlace', label: 'Where I left off' }, { value: 'inbox', label: 'Inbox' }]} />
         </Row>
       </Section>
       <Section title="Composer">

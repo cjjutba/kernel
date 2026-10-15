@@ -218,6 +218,8 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   // openTo replaced homeView. Every launch saved homeView: 'home', so nobody really chose it: only Inbox carries over, the rest open where you left off (D-094).
   // Dropping homeView makes this run once.
   const general = group('general')
+  // Home is gone, so a saved Home opens where you left off.
+  if (general?.openTo === 'home') general.openTo = 'lastPlace'
   if (general && general.homeView !== undefined) {
     if (general.openTo === undefined) general.openTo = general.homeView === 'inbox' ? 'inbox' : 'lastPlace'
     delete general.homeView

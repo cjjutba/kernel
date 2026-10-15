@@ -1,12 +1,13 @@
 import type { Room } from '@shared/types'
-import { actions } from '../../store'
+import { landing } from '../../nav'
+import { actions, getState } from '../../store'
 import { Icon, IconButton } from '../../ui'
 import { useEscape } from '../../ui/hooks'
 import { RoomIcon } from '../../components/RoomIcon'
 import { SidebarToggle } from '../../components/PanelToggles'
 
-/** Back to where New chat was opened from, or Home when there is nowhere to go. The draft stays in the room's box. */
-const leave = () => { if (!actions.ui.back()) actions.ui.go({ name: 'home' }) }
+/** Back to where New chat was opened from, or New chat in the first room when there is nowhere to go. The draft stays in the room's box. */
+const leave = () => { if (!actions.ui.back()) actions.ui.go(landing(getState())) }
 
 /**
  * New chat's header, the first row a chat has: the breadcrumb "room › New chat" and nothing on the right. No editor button, panel

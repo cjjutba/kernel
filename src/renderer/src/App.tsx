@@ -17,7 +17,6 @@ import { openLead, openNewChat } from './lead'
 import './screens/workspace/composer/composer.css'
 import './screens/workspace/cards/cards.css'
 import { History } from './screens/history/History'
-import { Home } from './screens/home/Home'
 import { Inbox } from './screens/inbox/Inbox'
 import { ConfirmIssueTaken } from './screens/issues/ConfirmIssueTaken'
 import { backToNewChat, startHeld } from './screens/new-workspace/start'
@@ -87,7 +86,6 @@ function Screen({ route }: { route: Route }): ReactNode {
       if (route.step === 'room') return <RoomSetup roomId={route.roomId} />
       if (route.step === 'permissions') return <Permissions />
       return <Checks />
-    case 'home': return <Home />
     case 'inbox': return <Inbox />
     case 'issues': return <Issues issueId={route.issueId} roomId={route.roomId} />
     case 'history': return <History />
@@ -228,7 +226,7 @@ export function App() {
         if (s.ui.route.name === 'leadNew') actions.ui.back()
         else openNewChat(currentRoom())
       }
-      // The Lead's chat in the room in view, or the first room when none is (Home, Inbox).
+      // The Lead's chat in the room in view, or the first room when none is (Inbox, History).
       if (e.code === 'KeyL' && e.shiftKey && !e.altKey) {
         e.preventDefault()
         const s = getState()
