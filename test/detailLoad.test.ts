@@ -3,20 +3,21 @@ import * as React from 'react'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
+import { resetIssuesCache } from '../src/renderer/src/screens/issues/cache'
 import { useDetailLoad } from '../src/renderer/src/screens/issues/useDetailLoad'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('useDetailLoad', () => {
   let root: Root | null = null
-  afterEach(() => { act(() => root?.unmount()); root = null })
+  afterEach(() => { act(() => root?.unmount()); root = null; resetIssuesCache() })
 
   it('a retry waits for its own request, not for an older one that finishes first', async () => {
     const pending: { resolve: (v: string) => void }[] = []
     let retry!: () => Promise<void>
     let loaded: string | null = null
     function Probe() {
-      const r = useDetailLoad<string>('#1', () => new Promise<string>((resolve) => pending.push({ resolve })), [])
+      const r = useDetailLoad<string>('#1', 'linear||#1', () => new Promise<string>((resolve) => pending.push({ resolve })), [])
       retry = r.retry
       loaded = r.loaded
       return null
