@@ -400,8 +400,17 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .bottom-tabs > .icon-btn { width: 24px; height: 24px; border-radius: var(--r-sm); }
 .bottom-tabs > .icon-btn[aria-expanded='false'] svg { transform: rotate(180deg); }
 .bottom-tabs .tab-strip > [role='tablist'] { align-self: stretch; align-items: stretch; }
-.bottom-tabs .tab { height: auto; padding: 0 9px; border-radius: 0; border-bottom: 2px solid transparent; font-size: 12.5px; }
+.bottom-tabs .tab { display: inline-flex; align-items: center; gap: 6px; height: auto; padding: 0 9px; border-radius: 0; border-bottom: 2px solid transparent; font-size: 12.5px; }
 .bottom-tabs .tab[aria-selected='true'] { background: transparent; border-bottom-color: var(--ink); }
+.run-split { margin-left: auto; flex-shrink: 0; display: inline-flex; align-items: center; }
+.run-caret-anchor { position: relative; display: inline-flex; margin-left: -1px; }
+.run-main, .run-caret { display: inline-flex; align-items: center; justify-content: center; height: 26px; background: transparent; border: 1px solid var(--line-3); color: var(--ink); }
+.run-main { width: 32px; border-radius: var(--r-md) 0 0 var(--r-md); }
+.run-caret { width: 26px; border-radius: 0 var(--r-md) var(--r-md) 0; color: var(--ink-2); }
+.run-main svg path { fill: currentColor; }
+.run-main:hover:not(:disabled), .run-caret:hover, .run-caret[aria-expanded='true'] { background: var(--surface-3); }
+.run-main:disabled { color: var(--faint); cursor: default; }
+.script-actions { flex-shrink: 0; display: flex; justify-content: flex-end; padding: 8px 12px; }
 .script-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px 24px; color: var(--muted); font: 12px/1.5 var(--font); text-align: center; }
 .script-empty .btn { margin: 4px 0; }
 /* The Run button under the play icon has the 4px above it and nothing under it, as PanelSplit.png draws it (KERNEL-512). */

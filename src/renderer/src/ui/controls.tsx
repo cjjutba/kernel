@@ -42,7 +42,7 @@ export function Pill({ pressed, className, type = 'button', ...rest }: ButtonHTM
   return <button type={type} className={['pill', className].filter(Boolean).join(' ')} aria-pressed={pressed} {...rest} />
 }
 
-export interface TabItem { id: string; label: ReactNode }
+export interface TabItem { id: string; label: ReactNode; /** Draws the snake spinner before the label, for work that is running (the Setup tab). */ busy?: boolean }
 
 /** Arrow keys move between tabs; the selected tab is the only one in the tab order. `underline` draws text tabs on a hairline (Settings, Providers). */
 export function Tabs({ tabs, value, onChange, label, variant = 'pill' }: { tabs: TabItem[]; value: string; onChange: (id: string) => void; label: string; variant?: 'pill' | 'underline' }) {
@@ -58,7 +58,7 @@ export function Tabs({ tabs, value, onChange, label, variant = 'pill' }: { tabs:
   return (
     <div role="tablist" aria-label={label} className={variant === 'underline' ? 'row tabs-underline' : 'row'} style={variant === 'underline' ? undefined : { gap: 2 }}>
       {tabs.map((t, i) => (
-        <button key={t.id} ref={(el) => { refs.current[i] = el }} type="button" role="tab" className="tab" aria-selected={t.id === value} tabIndex={t.id === value ? 0 : -1} onClick={() => onChange(t.id)} onKeyDown={(e) => onKey(e, i)}>{t.label}</button>
+        <button key={t.id} ref={(el) => { refs.current[i] = el }} type="button" role="tab" className="tab" aria-selected={t.id === value} tabIndex={t.id === value ? 0 : -1} onClick={() => onChange(t.id)} onKeyDown={(e) => onKey(e, i)} aria-busy={t.busy || undefined}>{t.busy && <Spinner label={null} pattern="snake" />}{t.label}</button>
       ))}
     </div>
   )
