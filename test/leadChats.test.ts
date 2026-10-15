@@ -375,7 +375,7 @@ describe("the user's screenshots passed on to a teammate (KERNEL-658)", () => {
     expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Fix the login layout in the screenshot', images: [{ path: '.kernel/attachments/login.png' }] })).toMatch(/^Created /)
     const ws = byTitle('Login layout')
     const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
-    const file = join(ws.path, '.kernel/attachments/login.png')
+    const file = join(ws.path, '.kernel/attachments/1/login.png')
     await vi.waitFor(() => access(file), { timeout: 10_000 })
     expect(await readFile(file)).toEqual(PNG)
     expect((await git('git', ['-C', ws.path, 'status', '--porcelain', '--untracked-files=all'])).trim()).toBe('')
@@ -441,7 +441,7 @@ describe("a teammate's shared image passed on to another teammate (KERNEL-659)",
     const file = await share('login.png', png('first take'))
     expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Match the shot', images: [{ shared: file.id, version: 1 }] })).toMatch(/^Created /)
     const ws = byTitle('Login layout')
-    const saved = join(ws.path, '.kernel/attachments/login.png')
+    const saved = join(ws.path, '.kernel/attachments/1/login.png')
     await vi.waitFor(() => access(saved), { timeout: 10_000 })
     const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
     const said = k.store.items(brief.id).find((i) => i.kind === 'user')

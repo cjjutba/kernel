@@ -7,7 +7,7 @@ import { discoverSkills, searchFiles } from '../src/main/services/files'
 import { commitHunks, listHunks } from '../src/main/services/hunks'
 import { git } from '../src/main/services/exec'
 import { chatMode } from '../src/main/services/permissions'
-import { attachFiles, Held } from '../src/renderer/src/screens/workspace/composer/attach'
+import { attachFiles, Held, numberImages } from '../src/renderer/src/screens/workspace/composer/attach'
 import { mentionMenu, mentionPart } from '../src/renderer/src/screens/workspace/composer/autocomplete'
 import { noteFromParts } from '../src/renderer/src/screens/workspace/cards/steps'
 import { toUserMessage } from '../src/main/services/providers/claude'
@@ -269,6 +269,14 @@ describe('attaching files', () => {
     const log: string[] = []
     await attachFiles([file('a.png'), file('b.txt')], host(log), async (f) => { log.push(`read ${f.name}`); return { type: 'file', name: f.name, lines: 1, text: 'x' } })
     expect(log).toEqual(['hold a.png', 'hold b.txt', 'read a.png', 'settle id-a.png a.png', 'read b.txt', 'settle id-b.txt b.txt'])
+  })
+
+  it('names images by their place in the message, after the images already in it, and leaves other files alone', async () => {
+    const shot = (name: string, type: string) => new File(['x'], name, { type })
+    const named = numberImages([shot('3552ac34.png', 'image/png'), shot('notes.txt', 'text/plain'), shot('Photo.JPEG', 'image/jpeg')])
+    expect(named.map((f) => f.name)).toEqual(['image.png', 'notes.txt', 'image-2.jpg'])
+    expect(await named[0].text()).toBe('x')
+    expect(numberImages([shot('a.png', 'image/png')], ['image.png', 'image-3.webp', 'pasted_text_1.txt']).map((f) => f.name)).toEqual(['image-4.png'])
   })
 
   it('removes the place of a file that cannot be attached, toasts, and still attaches the rest', async () => {

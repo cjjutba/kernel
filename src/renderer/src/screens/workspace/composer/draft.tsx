@@ -294,7 +294,10 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     input.current?.querySelector(`[data-chip="${id}"]`)?.remove()
     sync()
   }
-  const attach = (files: File[]) => void attachFiles(files, { hold, settle, drop: release })
+  const attach = (files: File[]) => {
+    const taken = [...read().flatMap((p) => (p.type === 'image' ? [p.name] : [])), ...pending.current.all()]
+    void attachFiles(files, { hold, settle, drop: release, taken })
+  }
 
   /**
    * Everything in the box at once, with the caret at the end. `undo` makes it one Cmd+Z step; otherwise old chips are
