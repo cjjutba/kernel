@@ -4,7 +4,7 @@ import type { Integration } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions } from '../../../store'
 import { ServiceMark } from '../../../icons'
-import { Button, useBusy } from '../../../ui'
+import { Button, Skeleton, useBusy } from '../../../ui'
 import { Page, Row, Section, SettingsLink } from '../kit'
 import { forgetLinear, forgetTrackers } from '../../issues/cache'
 
@@ -15,16 +15,18 @@ const Mark = ({ name }: { name: 'github' | 'linear' }) => <span className="sys-l
  * the new workspace modal's Issues tab uses.
  */
 export function Integrations() {
-  const [rows, setRows] = useState<Integration[]>([])
+  const [rows, setRows] = useState<Integration[] | null>(null)
+  const [failed, setFailed] = useState(false)
   const [asking, setAsking] = useState(false)
   const [token, setToken] = useState('')
-  const [busy, run] = useBusy()
-  useEffect(() => { void call('integrations.list', undefined).then(setRows).catch(() => setRows([])) }, [])
-  const swap = (row: Integration) => setRows((list) => list.map((r) => (r.id === row.id ? row : r)))
+  const [busy, run] = useBusy<string>()
+  const load = () => call('integrations.list', undefined).then((l) => { setRows(l); setFailed(false) }).catch(() => setFailed(true))
+  useEffect(() => { void load() }, [])
+  const swap = (row: Integration) => setRows((list) => (list ?? []).map((r) => (r.id === row.id ? row : r)))
   const fail = (title: string, e: unknown) => actions.ui.toast({ title, sub: cleanError(e) })
   const close = () => { setAsking(false); setToken('') }
-  const github = rows.find((r) => r.id === 'github')
-  const linear = rows.find((r) => r.id === 'linear')
+  const github = rows?.find((r) => r.id === 'github')
+  const linear = rows?.find((r) => r.id === 'linear')
 
   const saveLinear = () => run('linear', async () => {
     try { swap(await call('integrations.connect', { id: 'linear', token })); forgetLinear(); forgetTrackers(); close() } catch (e) { fail('Could not connect Linear', e) }
@@ -45,6 +47,18 @@ export function Integrations() {
   return (
     <Page title="Integrations">
       <Section label="Services" footnote={<>claude.ai connectors are on <SettingsLink to={{ page: 'mcp' }}>MCP servers</SettingsLink>.</>}>
+        {!rows && failed && (
+          <Row label="Could not read integrations" desc="Try again in a moment.">
+            <Button busy={busy === 'retry'} busyLabel="Trying again" onClick={() => void run('retry', load)}>Try again</Button>
+          </Row>
+        )}
+        {!rows && !failed && (
+          <>
+            <Row id="github" lead={<Mark name="github" />} label="GitHub" desc={<Skeleton width={160} height={10} />}><Skeleton width={72} height={28} /></Row>
+            <Row id="linear" lead={<Mark name="linear" />} label="Linear" desc={<Skeleton width={120} height={10} />}><Skeleton width={72} height={28} /></Row>
+          </>
+        )}
+        {rows && <>
         <Row id="github" lead={<Mark name="github" />} label="GitHub" desc={github?.detail}>
           <Button busy={busy === 'github'} busyLabel="Opening" disabled={busy !== null} onClick={() => void manageGithub()}>Manage</Button>
         </Row>
@@ -53,6 +67,7 @@ export function Integrations() {
             ? <Button variant="ghost" busy={busy === 'linear'} busyPattern="scatter" busyLabel="Disconnecting" disabled={busy !== null} onClick={() => void disconnectLinear()}>Disconnect</Button>
             : !asking && <Button disabled={!linear || busy !== null} onClick={() => { close(); setAsking(true) }}>Connect</Button>}
         </Row>
+        </>}
       </Section>
     </Page>
   )

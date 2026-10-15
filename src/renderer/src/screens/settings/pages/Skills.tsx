@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Skill } from '@shared/types'
 import { call } from '../../../api'
-import { Toggle } from '../../../ui'
+import { Button, Skeleton, Toggle, useBusy } from '../../../ui'
 import { appliesTo, NoProject, Row, ProjectPage, Section, useProjectPage } from '../kit'
 import { patchProjectSettings } from '../useSettings'
 import { ProjectMcp } from './ProjectMcp'
@@ -12,11 +12,14 @@ import { ProjectMcp } from './ProjectMcp'
  */
 export function Skills({ projectId }: { projectId?: string }) {
   const { project, rs } = useProjectPage(projectId)
-  const [skills, setSkills] = useState<Skill[]>([])
+  const [skills, setSkills] = useState<Skill[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [busy, run] = useBusy<'retry'>()
   const off = rs?.disabled
+  const load = (id: string) => call('skills.list', { projectId: id }).then((l) => { setSkills(l); setFailed(false) }).catch(() => setFailed(true))
+  useEffect(() => { setSkills(null); setFailed(false) }, [projectId])
   useEffect(() => {
-    if (!projectId) return
-    void call('skills.list', { projectId }).then(setSkills).catch(() => setSkills([]))
+    if (projectId) void load(projectId)
   }, [projectId, off?.skills.join('\n')])
   if (!project || !projectId) return <NoProject />
   const flip = (kind: 'skills' | 'mcp', name: string, on: boolean) => {
@@ -26,9 +29,15 @@ export function Skills({ projectId }: { projectId?: string }) {
   const isOn = (kind: 'skills' | 'mcp', name: string) => !(off?.[kind] ?? []).includes(name)
   return (
     <ProjectPage project={project} rs={rs} title="Skills and MCP">
-      <Section title="Skills" count={skills.length || undefined} footnote={appliesTo('disabled.skills')}>
-        {skills.length === 0 && <p className="set-empty">No skills found in this repo or your user folders. Add one in <code>.claude/skills</code> and it shows up here.</p>}
-        {skills.map((k) => (
+      <Section title="Skills" count={skills?.length || undefined} footnote={appliesTo('disabled.skills')}>
+        {!skills && failed && (
+          <Row label="Could not list skills" desc="Try again in a moment.">
+            <Button busy={busy === 'retry'} busyLabel="Trying again" onClick={() => void run('retry', () => load(projectId))}>Try again</Button>
+          </Row>
+        )}
+        {!skills && !failed && [60, 45, 52].map((w, i) => <Row key={i} label={<Skeleton width={90} />} desc={<Skeleton width={`${w}%`} height={10} />} />)}
+        {skills?.length === 0 && <p className="set-empty">No skills found in this repo or your user folders. Add one in <code>.claude/skills</code> and it shows up here.</p>}
+        {skills?.map((k) => (
           <Row key={k.name} label={<span className="mono">/{k.name}</span>} desc={k.description || undefined}>
             <Toggle label={`/${k.name}`} checked={isOn('skills', k.name)} onChange={(v) => flip('skills', k.name, v)} />
           </Row>

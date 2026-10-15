@@ -7,7 +7,7 @@ import { isLeadWorkspace, leadOf, openLeadChat } from '../../lead'
 import { collapsedWord } from './bottomWord'
 import { actions, go, useStore, type State } from '../../store'
 import { useRemembered } from '../../remember'
-import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, Spinner, useBusy, type MenuEntry } from '../../ui'
+import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, Skeleton, Spinner, useBusy, type MenuEntry } from '../../ui'
 import { stripRemote } from '../settings/remote'
 import { patchProjectSettings, useRemote, useProjectSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
@@ -42,19 +42,27 @@ function Counts({ f }: { f?: ChangedFile }) {
 
 // ---------- All files
 
+const TREES_KEPT = 10
+const lastTrees = new Map<string, FileEntry[]>()
+function rememberTree(id: string, tree: FileEntry[]) {
+  lastTrees.delete(id)
+  lastTrees.set(id, tree)
+  if (lastTrees.size > TREES_KEPT) lastTrees.delete(lastTrees.keys().next().value as string)
+}
+
 function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; changes: ChangedFile[]; onOpenFile: (path: string) => void; activePath?: string }) {
-  const [tree, setTree] = useState<FileEntry[]>([])
+  const [tree, setTree] = useState<FileEntry[] | null>(() => lastTrees.get(ws.id) ?? null)
   const [open, setOpen] = useState<Set<string> | null>(null)
   const [failed, setFailed] = useState(false)
   const filter = usePanelFilter()
   useEffect(() => {
     let live = true
-    call('workspaces.tree', { workspaceId: ws.id }).then((t) => { if (live) { setTree(t); setFailed(false) } }).catch(() => { if (live) setFailed(true) })
+    call('workspaces.tree', { workspaceId: ws.id }).then((t) => { rememberTree(ws.id, t); if (live) { setTree(t); setFailed(false) } }).catch(() => { if (live) setFailed(true) })
     return () => { live = false }
   }, [ws.id, changes])
-  const initial = useMemo(() => openByDefault(tree), [tree])
+  const initial = useMemo(() => openByDefault(tree ?? []), [tree])
   // Filtering draws every folder with a match open, but the ones the reader closed since.
-  const found = useMemo(() => (filter.filtering ? filterEntries(tree, filter.query) : null), [tree, filter.filtering, filter.query])
+  const found = useMemo(() => (filter.filtering ? filterEntries(tree ?? [], filter.query) : null), [tree, filter.filtering, filter.query])
   const expanded = useMemo(() => (found ? new Set([...found.dirs].filter((d) => !filter.shut.has(d))) : open ?? initial), [found, filter.shut, open, initial])
   const toggle = (path: string) => {
     if (found) return filter.fold(path)
@@ -63,7 +71,7 @@ function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; cha
     setOpen(next)
   }
   const collapseAll = () => (found ? filter.foldAll(found.dirs) : setOpen(new Set()))
-  if (failed) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Could not list files</span><span>Try again in a moment.</span></div>
+  if (failed && !tree) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Could not list files</span><span>Try again in a moment.</span></div>
   return (
     <>
       <PanelTools>
@@ -71,7 +79,9 @@ function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; cha
         <ToolButton icon="collapse" label="Collapse all folders" onClick={collapseAll} />
       </PanelTools>
       <FilterField filter={filter} label="Filter files" />
-      {found && !found.entries.length
+      {!tree
+        ? <div className="panel-scroll" style={{ padding: '4px 12px' }} aria-busy="true">{[70, 50, 60, 40, 55, 45, 65, 50].map((w, i) => <div key={i} className="tree-row" style={{ paddingLeft: i % 3 === 1 ? 20 : 0 }}><Skeleton width={`${w}%`} height={10} /></div>)}</div>
+        : found && !found.entries.length
         ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No files match</span><span>Try another name or folder.</span></div>
         : (
           <div className="panel-scroll" style={{ padding: '0 8px 8px' }}>
