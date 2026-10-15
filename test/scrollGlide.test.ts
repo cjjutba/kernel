@@ -94,6 +94,22 @@ describe('the glide at 60Hz and 120Hz', () => {
     expect(calls).toEqual([false])
     expect(g.live()).toBe(false)
   })
+
+  it('runs the cleanup of a glide that another start replaces mid-run', () => {
+    const c = clock()
+    const view: GlideView = { scrollTop: 0, clientHeight: 600 }
+    const g = createGlider(() => view, c.env)
+    const first: Array<[boolean, boolean | undefined]> = []
+    const second: Array<[boolean, boolean | undefined]> = []
+    g.start({ goal: () => 500, done: (l, r) => first.push([l, r]) })
+    c.frame(16)
+    g.start({ goal: () => 500, done: (l, r) => second.push([l, r]) })
+    expect(first).toEqual([[false, true]])
+    expect(second).toEqual([])
+    c.frame(16)
+    expect(first).toEqual([[false, true]])
+    expect(g.live()).toBe(true)
+  })
 })
 
 describe('bezier', () => {
