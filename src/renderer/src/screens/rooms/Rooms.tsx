@@ -2,7 +2,7 @@ import type { Room } from '@shared/types'
 import { actions, useStore } from '../../store'
 import { openRoom } from '../../lead'
 import { KernelMark } from '../../icons'
-import { Button, Icon, Pill } from '../../ui'
+import { Button, Icon, Pill, useListKeys } from '../../ui'
 import { call } from '../../api'
 import { oneOf, useRemembered } from '../../remember'
 import { openNewRoom } from './draft'
@@ -13,7 +13,7 @@ import { SidebarToggleSlot } from '../../components/PanelToggles'
 
 type Tab = 'all' | 'active' | 'archived'
 
-function RoomRow({ room }: { room: Room }) {
+function RoomRow({ room, nav }: { room: Room; nav: ReturnType<typeof useListKeys>['rowProps'] }) {
   const agents = teamOf(useStore((s) => s.agents[room.id]))
   const status = useStore((s) => s.status[room.id])
   const approvals = useStore((s) => s.approvals)
@@ -27,7 +27,7 @@ function RoomRow({ room }: { room: Room }) {
       <span className="rm-name">
         <RoomIcon room={room} className="rm-letter" />
         <span className="col" style={{ minWidth: 0 }}>
-          <button type="button" className="rm-link" onClick={(e) => { e.stopPropagation(); open() }}>{room.name}</button>
+          <button type="button" {...nav(room.id)} className="rm-link" onClick={(e) => { e.stopPropagation(); open() }}>{room.name}</button>
           <span className="rm-desc ellipsis">{room.desc}</span>
         </span>
         {room.hidden && <button type="button" className="rm-show" aria-label={`Show ${room.name} in the sidebar`} onClick={(e) => { e.stopPropagation(); show() }}>Show in sidebar</button>}
@@ -55,6 +55,7 @@ export function Rooms() {
   const active = rooms.filter((r) => !r.archived)
   const shown = tab === 'all' ? rooms : tab === 'active' ? active : rooms.filter((r) => r.archived)
   const tabs: [Tab, string, number][] = [['all', 'All rooms', rooms.length], ['active', 'Active', active.length], ['archived', 'Archived', rooms.length - active.length]]
+  const keys = useListKeys({ ids: shown.map((r) => r.id), rowId: (id) => `rm-${id}`, onOpen: (id) => void openRoom(id) })
   return (
     <div className="panel">
       <header className="header" style={{ paddingRight: 12 }}>
@@ -67,9 +68,9 @@ export function Rooms() {
       <div className="rm-tabs" role="group" aria-label="Filter rooms">
         {tabs.map(([id, label, n]) => <Pill key={id} pressed={tab === id} onClick={() => setTab(id)}>{label}<span className="rm-n">{n}</span></Pill>)}
       </div>
-      <div className="rm-table">
+      <div className="rm-table" onKeyDown={keys.onKeyDown}>
         <div className="rm-head"><span>Name</span><span>Source</span><span>Agents</span><span>Status</span><span style={{ textAlign: 'right' }}>Updated</span></div>
-        {shown.map((r) => <RoomRow key={r.id} room={r} />)}
+        {shown.map((r) => <RoomRow key={r.id} room={r} nav={keys.rowProps} />)}
         {!shown.length && <p className="muted" style={{ padding: 24, margin: 0 }}>{tab === 'archived' ? 'No archived rooms.' : 'No rooms yet. Make one with New room.'}</p>}
       </div>
     </div>

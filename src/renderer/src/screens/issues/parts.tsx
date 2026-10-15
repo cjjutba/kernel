@@ -12,8 +12,6 @@ export function FilterChip({ label, value, options, onChange }: { label: string;
   return <Select variant="chip" prefix={label} label={label} value={value || (options[0]?.value ?? '')} options={options} onChange={onChange} />
 }
 
-export const typing = (t: HTMLElement | null) => !!t?.closest('input, textarea, select, [contenteditable="true"]')
-
 /** The room the page lists and the rooms it can switch to. A page with no room at all has none. */
 export interface RoomHead { rooms: Room[]; room?: Room; onRoom: (id: string) => void }
 

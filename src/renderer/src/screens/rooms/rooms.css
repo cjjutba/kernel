@@ -7,6 +7,8 @@
 .rm-head { height: 40px; font-size: 12px; color: var(--muted); }
 .rm-row { height: 60px; border-top: 1px solid var(--line); cursor: pointer; }
 .rm-row:hover { background: var(--nav-hover); }
+.rm-row:has(.rm-link:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
+.rm-link:focus-visible { outline: none; }
 .rm-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .rm-letter { width: 28px; height: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-3); font-size: 12px; font-weight: 600; }
 .rm-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-weight: 500; text-align: left; }

@@ -255,6 +255,13 @@ async function hoverAndFocusRows(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// The list shots (KERNEL-871) focus the first row and press Down once, so the ring is a keyboard ring on the second row.
+async function focusListRow(page: Page) {
+  await page.locator('[data-list-row]').first().focus()
+  await page.keyboard.press('ArrowDown')
+  await page.waitForTimeout(300)
+}
+
 // HeaderBranchTooltip is the header with the title hovered, long enough for the tooltip to open (KERNEL-413).
 async function hoverTitle(page: Page) {
   await page.locator('.ws-title-btn').hover()
@@ -612,6 +619,11 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
   TurnFilesHover: hoverAndFocusRows,
+  InboxRowFocused: focusListRow,
+  IssuesRowFocused: focusListRow,
+  RoomsRowFocused: focusListRow,
+  PullRequestsRowFocused: focusListRow,
+  HistoryRowFocused: focusListRow,
   PanelResize: hoverSplitHandle,
   WorkspaceHistoryButtonsNarrow: narrowSidebar,
   PanelTabsOverflow: narrowPanel,

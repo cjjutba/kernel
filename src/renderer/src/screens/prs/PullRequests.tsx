@@ -1,7 +1,7 @@
 import { useLayoutEffect } from 'react'
 import type { Workspace } from '@shared/types'
 import { go, useStore } from '../../store'
-import { Banner, Icon, Pill, Spinner } from '../../ui'
+import { Banner, Icon, Pill, Spinner, useListKeys } from '../../ui'
 import { oneOf, useRemembered } from '../../remember'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
 import { age } from '../inbox/model'
@@ -21,14 +21,16 @@ function CellText({ cell }: { cell: Cell }) {
   return <span className="prs-cell" data-tone={cell.tone}>{cell.spin && <Spinner label={null} pattern="checker" />}{cell.text}</span>
 }
 
-function OpenRow({ row }: { row: LeadPr }) {
+type Nav = ReturnType<typeof useListKeys>['rowProps']
+
+function OpenRow({ row, nav }: { row: LeadPr; nav: Nav }) {
   const { ws } = row
   const room = useStore((s) => s.rooms.find((r) => r.id === ws.roomId))
   const pr = useStore((s) => s.prs[ws.id])
   const title = ws.prTitle ?? ws.title ?? ws.name
   return (
     <li className="prs-row">
-      <button type="button" className="prs-main" aria-label={`Open ${title}, PR #${ws.prNumber}`} onClick={() => openWorkspace(ws)}>
+      <button type="button" {...nav(ws.id)} className="prs-main" aria-label={`Open ${title}, PR #${ws.prNumber}`} onClick={() => openWorkspace(ws)}>
         <Icon name={ws.prState === 'draft' ? 'prDraft' : 'pr'} size={16} />
         <span className="col" style={{ minWidth: 0 }}>
           <span className="prs-title ellipsis">{title}</span>
@@ -43,13 +45,13 @@ function OpenRow({ row }: { row: LeadPr }) {
   )
 }
 
-function MergedRow({ ws }: { ws: Workspace }) {
+function MergedRow({ ws, nav }: { ws: Workspace; nav: Nav }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === ws.roomId))
   const agent = useStore((s) => s.agents[ws.roomId]?.find((a) => a.id === ws.agentId))
   const title = ws.prTitle ?? ws.title ?? ws.name
   return (
     <li className="prs-row prs-merged">
-      <button type="button" className="prs-main" aria-label={`Open ${title}, PR #${ws.prNumber}`} onClick={() => openWorkspace(ws)}>
+      <button type="button" {...nav(ws.id)} className="prs-main" aria-label={`Open ${title}, PR #${ws.prNumber}`} onClick={() => openWorkspace(ws)}>
         <span className="prs-merged-icon"><Icon name="merged" size={16} /></span>
         <span className="col" style={{ minWidth: 0 }}>
           <span className="prs-title ellipsis">{title}</span>
@@ -70,6 +72,8 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   const [filter, setFilter] = useRemembered<Filter>('kernel.prsTab', oneOf<Filter>(['open', 'merged'], 'open'))
   useLayoutEffect(() => { if (first) setFilter(first) }, [first])
   const { open, merged, mergedTotal, reading, reads } = usePullRequests()
+  const shown = filter === 'open' ? open.map((r) => r.ws) : merged
+  const keys = useListKeys({ ids: shown.map((w) => w.id), rowId: (id) => `prs-${id}`, onOpen: (id) => { const ws = shown.find((w) => w.id === id); if (ws) openWorkspace(ws) } })
   const counts: Record<Filter, number> = { open: open.length, merged: merged.length }
   const readAt = oldestRead(reads)
   const failed = reads.find((r) => r.failed)
@@ -96,14 +100,14 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
         open.length ? (
           <div className="prs-scroll">
             <div className="prs-head prs-row" aria-hidden="true"><span>Pull request</span><span>Checks</span><span>Review</span><span>Conflicts</span><span /></div>
-            <ul className="prs-list" aria-label="Open pull requests">{open.map((r) => <OpenRow key={r.ws.id} row={r} />)}</ul>
+            <ul className="prs-list" aria-label="Open pull requests" onKeyDown={keys.onKeyDown}>{open.map((r) => <OpenRow key={r.ws.id} row={r} nav={keys.rowProps} />)}</ul>
           </div>
         ) : (
           <div className="prs-empty"><h2>No open pull requests</h2><p>When an agent opens a pull request in any room, it shows up here with its checks and review.</p></div>
         )
       ) : merged.length ? (
         <div className="prs-scroll">
-          <ul className="prs-list" aria-label="Merged pull requests">{merged.map((w) => <MergedRow key={w.id} ws={w} />)}</ul>
+          <ul className="prs-list" aria-label="Merged pull requests" onKeyDown={keys.onKeyDown}>{merged.map((w) => <MergedRow key={w.id} ws={w} nav={keys.rowProps} />)}</ul>
           {mergedTotal > MERGED_LIMIT && <p className="prs-cap">Showing the {MERGED_LIMIT} most recent of {mergedTotal} merged pull requests.</p>}
         </div>
       ) : (

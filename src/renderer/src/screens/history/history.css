@@ -36,3 +36,4 @@
   .hs-row { grid-template-columns: minmax(0, 1fr) 110px auto; }
   .hs-row > .hs-room, .hs-row > .hs-when { display: none; }
 }
+.hs-row:focus-visible { outline-offset: -2px; }
