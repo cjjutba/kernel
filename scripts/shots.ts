@@ -167,8 +167,8 @@ async function askApprove(page: Page) {
 // WorkspaceQuestionStates is option 1 picked, option 3 focused from the keyboard and option 2 hovered (KERNEL-676).
 async function questionStates(page: Page) {
   await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
-  await page.keyboard.press('Tab')
-  await page.keyboard.press('Tab')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
   await page.getByRole('radio', { name: /Add the client name/ }).hover()
   await page.waitForTimeout(300)
 }

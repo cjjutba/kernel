@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { GithubIssue, GithubIssueDetail, Room } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
@@ -14,7 +14,9 @@ import { githubPlanParts, issueAge, linkedWorkspaces, loginInitials } from './mo
 /** The selected GitHub issue: what GitHub says about it, the workspaces already working on it, and the buttons that start work (IssuesGitHub.png). */
 export function GithubDetail({ room, id, summary, tick }: { room: Room; id: string; summary?: GithubIssue; tick: number }) {
   const [loaded, setLoaded] = useState<GithubIssueDetail | null>(null)
-  const [failed, setFailed] = useState<string | null>(null)
+  const [failure, setFailure] = useState<{ id: string; message: string } | null>(null)
+  const failed = failure?.id === id ? failure.message : null
+  const waiting = useRef<(() => void)[]>([])
   const [attempt, setAttempt] = useState(0)
   const [busy, run] = useBusy<'plan'>()
   const workspaces = useStore((s) => s.workspaces)
@@ -23,11 +25,13 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
   // The description and comments come from `github.issue`. The list already has the rest, so the header shows at once.
   useEffect(() => {
     let live = true
-    setFailed(null)
-    call('github.issue', { roomId: room.id, id }).then((d) => live && setLoaded(d)).catch((e: Error) => live && setFailed(cleanError(e)))
+    call('github.issue', { roomId: room.id, id }).then((d) => { if (live) { setLoaded(d); setFailure(null) } }).catch((e: Error) => { if (live) setFailure({ id, message: cleanError(e) }) }).finally(() => waiting.current.splice(0).forEach((done) => done()))
     return () => { live = false }
   }, [room.id, id, tick, attempt])
-  const retry = () => { setFailed(null); setAttempt((a) => a + 1) }
+  const retry = () => {
+    setAttempt((a) => a + 1)
+    return new Promise<void>((done) => waiting.current.push(done))
+  }
   const detail = loaded?.id === id ? loaded : null
   const issue: GithubIssue | undefined = detail ?? summary
   const linked = useMemo(() => linkedWorkspaces(id, workspaces.filter((w) => w.roomId === room.id)), [id, workspaces, room.id])
