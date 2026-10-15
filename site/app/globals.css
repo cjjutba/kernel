@@ -45,6 +45,9 @@
 
   --color-wordmark-top: #1b1c1f;
 
+  /* Claude's own orange, for its mark in the hero only (the app's --claude). */
+  --color-claude: #d97757;
+
   /* Plan mode, as the app draws it (src/renderer/src/tokens.css --plan, --on-plan). Blue means plan mode, nothing else. */
   --color-plan: #5aa2ff;
   --color-on-plan: #06101e;
@@ -284,6 +287,14 @@
   max-height: calc(100vh - var(--spacing) * 16);
   overflow-y: auto;
   scrollbar-width: thin;
+}
+
+/* The bar on the On this page rail slides to the section you're reading. */
+@utility toc-bar {
+  top: 0;
+  transition:
+    transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    height 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 @utility docs-search {
@@ -549,6 +560,30 @@
   border: 0;
 }
 
+/* The provider tiles beside the hero's headline: a raised face lit from above, and a slow drift. */
+@utility provider-tile {
+  background: linear-gradient(180deg, var(--color-surface-4) 0%, var(--color-surface-2) 100%);
+  border-top-color: var(--color-rule);
+}
+
+@utility float-a {
+  animation: tile-float 7s ease-in-out infinite;
+}
+
+@utility float-b {
+  animation: tile-float 8s ease-in-out 1.2s infinite;
+}
+
+@keyframes tile-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -8px;
+  }
+}
+
 @utility fade-in {
   animation: fade-in 0.5s ease both;
 }
@@ -595,7 +630,8 @@
   & h3 {
     color: var(--color-ink);
     font-weight: 600;
-    scroll-margin-top: calc(var(--spacing) * 20);
+    /* The page's scroll padding already clears the sticky nav. This is the breathing room under it. */
+    scroll-margin-top: calc(var(--spacing) * 6);
   }
 
   & h2 {

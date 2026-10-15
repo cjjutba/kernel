@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { Marked, type Tokens } from 'marked'
 import { DOCS_NAV } from '@/content/docs/nav'
 import { REPO_URL } from './links'
+import { SITE_URL } from './site'
 import { parseFrontmatter } from './schema'
 
 // The docs: Markdown files in content/docs, read and rendered at build time, so a docs page ships no script for its
@@ -12,6 +13,9 @@ const DIR = join(process.cwd(), 'content', 'docs')
 
 export type DocHeading = { id: string; text: string; depth: 2 | 3 }
 export type DocPage = {
+  /** The page as Markdown for people and AI tools: its title, description and body, with site links made absolute. */
+  markdown: string
+  mdHref: string
   slug: string
   href: string
   section: string
@@ -101,7 +105,10 @@ export function getDoc(slug: string): DocPage | null {
   const { data, body } = parseFrontmatter(readFileSync(join(DIR, `${slug}.md`), 'utf8'))
   if (!data.title || !data.description) throw new Error(`${file} needs a title and a description in its frontmatter`)
   const { html, headings } = render(body)
+  const markdown = [`# ${data.title}`, '', `> ${data.description}`, '', body.trim().replace(/\]\(\/(?!\/)/g, `](${SITE_URL}/`), ''].join('\n')
   const page: DocPage = {
+    markdown,
+    mdHref: `/docs/${slug}.md`,
     slug,
     href: docHref(slug),
     section: DOCS_NAV.find((s) => s.pages.includes(slug))!.title,

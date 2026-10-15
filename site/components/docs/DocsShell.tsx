@@ -3,7 +3,10 @@ import { SiteFooter } from '@/components/layout/SiteFooter'
 import { SiteNav } from '@/components/layout/SiteNav'
 import { ArrowIcon, GitHubIcon } from '@/components/ui/icons'
 import { docsNav, neighbors, type DocPage } from '@/lib/docs'
+import { SITE_URL } from '@/lib/site'
+import { CopyPage } from './CopyPage'
 import { DocsSearch, SearchButton } from './DocsSearch'
+import { Toc } from './Toc'
 
 // A docs page: the sections on the left, the page in the middle and "On this page" on the right. On narrower screens
 // "On this page" goes, then the sidebar folds into a menu above the page.
@@ -64,8 +67,17 @@ export function DocsShell({ page }: { page: DocPage }) {
           </div>
 
           <article aria-labelledby="doc-title" className="max-w-180 max-docs:mt-8">
-            <p className="text-small font-medium text-muted">{page.section}</p>
-            <h1 id="doc-title" className="mt-3 text-h2 text-balance">
+            <div className="flex items-center justify-between gap-4">
+              <p className="flex items-center gap-1.5 text-small text-muted">
+                {page.section}
+                <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-faint">
+                  <path d="m6 4 4 4-4 4" />
+                </svg>
+                <span className="text-ink-2">{page.title}</span>
+              </p>
+              <CopyPage markdown={page.markdown} mdUrl={page.mdHref} mdAbsolute={`${SITE_URL}${page.mdHref}`} title={page.title} />
+            </div>
+            <h1 id="doc-title" className="mt-4 text-h2 text-balance">
               {page.title}
             </h1>
             <p className="mt-4 text-lead text-muted">{page.description}</p>
@@ -100,20 +112,7 @@ export function DocsShell({ page }: { page: DocPage }) {
         </main>
 
         <div className="docs-rail pt-10 pb-16 max-toc:hidden">
-          {page.headings.length ? (
-            <nav aria-label="On this page">
-              <p className="text-small font-medium text-ink">On this page</p>
-              <ul className="mt-3 flex flex-col gap-2 border-l border-line">
-                {page.headings.map((h) => (
-                  <li key={h.id}>
-                    <a href={`#${h.id}`} className={`-ml-px block border-l border-transparent text-small text-muted transition-colors hover:border-rule hover:text-ink ${h.depth === 3 ? 'pl-6' : 'pl-3'}`}>
-                      {h.text}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          ) : null}
+          <Toc headings={page.headings} />
         </div>
       </div>
       <DocsSearch />

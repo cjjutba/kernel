@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/Button'
 import { ArrowIcon, DownloadIcon, GitHubIcon } from '@/components/ui/icons'
 import { DOWNLOAD_URL, REPO_URL } from '@/lib/links'
 import { HeroDemo } from './HeroDemo'
+import { ProviderTiles } from './ProviderTiles'
+import { WaitlistForm } from './WaitlistForm'
 
 /** `version` is the newest release's label, such as "0.1". */
 export function Hero({ version }: { version: string }) {
@@ -13,6 +15,7 @@ export function Hero({ version }: { version: string }) {
         aria-hidden="true"
         className="pointer-events-none absolute top-150 left-1/2 h-140 w-full max-w-300 -translate-x-1/2 glow-hero"
       />
+      <ProviderTiles />
       <div className="relative px-6">
         <Link
           href="/changelog"
@@ -40,6 +43,12 @@ export function Hero({ version }: { version: string }) {
           </Button>
         </div>
         <p className="mt-4 text-small text-faint">Free · For Macs with Apple silicon</p>
+        <div className="mx-auto mt-10 max-w-115">
+          <p className="text-small text-balance text-muted">On Windows, Linux or an Intel Mac? Get one email when Kernel runs there.</p>
+          <div className="mt-3">
+            <WaitlistForm compact />
+          </div>
+        </div>
       </div>
       <div className="relative mt-16 px-6">
         <HeroDemo />

@@ -14,10 +14,13 @@ const PLATFORMS = [
 
 type State = { kind: 'idle' } | { kind: 'sending' } | { kind: 'sent'; email: string; link?: string } | { kind: 'error'; message: string }
 
-export function WaitlistForm() {
+const ALL = PLATFORMS.map((p) => p.id as string)
+
+/** `compact` is the hero's one-line form: an email and a button, signing up for every platform. */
+export function WaitlistForm({ compact = false }: { compact?: boolean }) {
   const id = useId()
   const [email, setEmail] = useState('')
-  const [picked, setPicked] = useState<string[]>([])
+  const [picked, setPicked] = useState<string[]>(compact ? ALL : [])
   const [company, setCompany] = useState('')
   const [state, setState] = useState<State>({ kind: 'idle' })
 
@@ -41,6 +44,20 @@ export function WaitlistForm() {
     } catch {
       setState({ kind: 'error', message: "Couldn't reach the server. Check your connection and try again." })
     }
+  }
+
+  if (state.kind === 'sent' && compact) {
+    return (
+      <p role="status" className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-lg border border-line-strong bg-surface-2 px-4 py-3 text-small text-ink-2">
+        <CheckIcon size={13} className="shrink-0" />
+        Check your inbox at <span className="text-ink">{state.email}</span> and confirm.
+        {state.link ? (
+          <a href={state.link} className="text-muted underline decoration-rule underline-offset-3 hover:text-ink">
+            Open the confirm link (development)
+          </a>
+        ) : null}
+      </p>
+    )
   }
 
   if (state.kind === 'sent') {
@@ -76,6 +93,46 @@ export function WaitlistForm() {
   }
 
   const sending = state.kind === 'sending'
+  if (compact) {
+    return (
+      <form onSubmit={submit} noValidate className="relative" aria-describedby={state.kind === 'error' ? `${id}-error` : undefined}>
+        <div className="flex items-center gap-1 rounded-lg border border-line-strong bg-surface-1/90 p-1 transition-colors focus-within:border-rule">
+          <label htmlFor={`${id}-email`} className="sr-only">
+            Email address
+          </label>
+          <input
+            id={`${id}-email`}
+            type="email"
+            required
+            autoComplete="email"
+            inputMode="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="h-9 min-w-0 flex-1 bg-transparent px-3 text-ui text-ink outline-none placeholder:text-faint"
+          />
+          <button
+            type="submit"
+            disabled={sending}
+            aria-busy={sending}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-ink px-3.5 text-ui font-medium text-canvas transition-colors hover:bg-white disabled:opacity-70"
+          >
+            {sending ? <span aria-hidden="true" className="spinner" /> : null}
+            {sending ? 'Joining' : 'Join the waitlist'}
+          </button>
+        </div>
+        <div aria-hidden="true" className="absolute -left-2500 size-px overflow-hidden">
+          <label>
+            Company
+            <input tabIndex={-1} autoComplete="off" value={company} onChange={(e) => setCompany(e.target.value)} />
+          </label>
+        </div>
+        <p id={`${id}-error`} role={state.kind === 'error' ? 'alert' : undefined} className="mt-2 min-h-5 text-small text-del">
+          {state.kind === 'error' ? state.message : ''}
+        </p>
+      </form>
+    )
+  }
   return (
     <form onSubmit={submit} noValidate className="relative" aria-describedby={state.kind === 'error' ? `${id}-error` : undefined}>
       <fieldset>
