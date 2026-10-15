@@ -21,14 +21,6 @@ export type SettingsPage =
 /** The Claude plan the account is on, from `subscriptionType`. `unknown` covers a sign-out and a type Kernel doesn't know (KERNEL-225). */
 export type ClaudePlan = 'pro' | 'max' | 'team' | 'enterprise' | 'unknown'
 
-/** The plans a Claude account Kernel adds can be on, for the Add account sheet, which asks since its token can't tell (KERNEL-406). */
-export const CLAUDE_PLANS: { id: Exclude<ClaudePlan, 'unknown'>; label: string }[] = [
-  { id: 'pro', label: 'Pro' },
-  { id: 'max', label: 'Max' },
-  { id: 'team', label: 'Team' },
-  { id: 'enterprise', label: 'Enterprise' }
-]
-
 /** Summarize a long chat before it moves to another account, continue it as it is, or ask each time (KERNEL-841). */
 export type LongChatMove = 'summarize' | 'continue' | 'ask'
 

@@ -39,7 +39,6 @@ export const KNOWN_HOOKS = {
 } as const
 
 export type HookName = keyof typeof KNOWN_HOOKS
-export const HOOK_NAMES = Object.keys(KNOWN_HOOKS) as HookName[]
 
 export type HookPayload = { [K in HookName]: z.infer<(typeof KNOWN_HOOKS)[K]> }[HookName]
 export type AnyHook = z.infer<typeof BaseHook>

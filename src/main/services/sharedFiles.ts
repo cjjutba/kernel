@@ -36,9 +36,6 @@ const CLAIMS: Record<string, Claim> = {
 /** What the file's extension claims it is, or undefined for a type Kernel doesn't show. */
 export const claimOf = (name: string): Claim | undefined => CLAIMS[extname(name).toLowerCase()]
 
-/** The label for a version's type in the tool's reply: "HTML", "PNG". */
-export const labelOf = (mime: string) => Object.values(CLAIMS).find((c) => c.mime === mime)?.label ?? mime
-
 /** A refusal. Its message finishes "Not shared: ". */
 export class Refused extends Error {}
 
