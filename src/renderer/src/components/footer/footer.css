@@ -36,6 +36,9 @@
 .ft-pill:focus-visible { outline-offset: 2px; }
 /* The pill fits the 32px footer. */
 .ft .ft-pill { height: 24px; }
+/* The quiet update line: progress or a failure, with Try again as a small pill. */
+.ft-upd { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ft-retry { color: var(--ink-2); }
 
 /* A narrow window folds the inline other accounts into one "more" chip that counts them all, then drops the Fable number. Nothing wraps or overlaps. */
 @container ft (max-width: 1040px) {
