@@ -104,6 +104,11 @@ echo "stagingPercentage: $rollout" >> dist/latest-mac.yml
 
 if $dry; then
   node scripts/release-notes.ts --github "$version" > dist/release-body.md
+  if [[ "$rollout" == 100 ]]; then
+    node scripts/update-cask.ts "$version" --dmg dist/Kernel-arm64.dmg --dry || echo "release: the cask dry run failed, see above." >&2
+  else
+    echo "release: the Homebrew cask is only updated at 100%, so this run would leave it alone."
+  fi
   echo "release: dry run done at $rollout%. Artifacts are in dist/, and the release body (without GitHub's list) in dist/release-body.md."
   exit 0
 fi
@@ -119,3 +124,13 @@ gh release create "$tag" --repo "$repo" --verify-tag --title "Kernel $version" -
 echo "release: published $tag at $rollout%. https://github.com/$repo/releases/tag/$tag"
 # The release is public now, so a failure here means fixing the feed with pnpm release:rollout, not releasing again.
 node scripts/release-rollout.ts --check "$version" "$rollout" || fail "the live feed for $tag doesn't match what was uploaded. Read the error above before anyone updates."
+# Homebrew installs the DMG just published, so the cask moves only once every install is offered it (KERNEL-904). The
+# release is already public, so a failed push warns instead of failing it.
+if [[ "$rollout" == 100 ]]; then
+  node scripts/update-cask.ts "$version" || {
+    echo "release: WARNING: the Homebrew cask was NOT updated, so brew still installs the previous version." >&2
+    echo "release: the release itself is fine. Rerun: node scripts/update-cask.ts $version" >&2
+  }
+else
+  echo "release: the Homebrew cask stays on the previous version until the rollout reaches 100. Then: pnpm release:rollout $version 100"
+fi
