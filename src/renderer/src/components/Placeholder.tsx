@@ -1,6 +1,6 @@
 import { Modal } from './Shell'
 import { actions } from '../store'
-import { SidebarToggle } from './PanelToggles'
+import { SidebarToggleSlot } from './PanelToggles'
 
 // Stand-ins for screens no lane has built yet (KERNEL-8). Each one lives in the file its lane replaces.
 // Delete this file once nothing imports it.
@@ -8,7 +8,7 @@ import { SidebarToggle } from './PanelToggles'
 export function PlaceholderPage({ title, issue }: { title: string; issue: string }) {
   return (
     <div className="panel" data-placeholder={issue}>
-      <header className="header"><SidebarToggle /><h1>{title}</h1></header>
+      <header className="header"><SidebarToggleSlot /><h1>{title}</h1></header>
     </div>
   )
 }

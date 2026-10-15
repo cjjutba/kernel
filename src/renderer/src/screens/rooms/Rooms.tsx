@@ -9,7 +9,7 @@ import { openNewRoom } from './draft'
 import { ago, initial, roomState, sourceOf, stateLabel, teamOf } from './roomInfo'
 import './rooms.css'
 import { RoomIcon } from '../../components/RoomIcon'
-import { SidebarToggle } from '../../components/PanelToggles'
+import { SidebarToggleSlot } from '../../components/PanelToggles'
 
 type Tab = 'all' | 'active' | 'archived'
 
@@ -58,7 +58,7 @@ export function Rooms() {
   return (
     <div className="panel">
       <header className="header" style={{ paddingRight: 12 }}>
-        <SidebarToggle />
+        <SidebarToggleSlot />
         <Icon name="rooms" />
         <h1>All rooms</h1>
         <span className="grow" />

@@ -3,7 +3,7 @@ import type { Room } from '@shared/types'
 import { go } from '../../store'
 import { Button, Icon, Menu, Select } from '../../ui'
 import { RoomIcon } from '../../components/RoomIcon'
-import { SidebarToggle } from '../../components/PanelToggles'
+import { SidebarToggleSlot } from '../../components/PanelToggles'
 
 type Option = { value: string; label: string }
 
@@ -27,7 +27,7 @@ export function IssuesHeader({ head, where }: { head: RoomHead; where?: ReactNod
   const { rooms, room, onRoom } = head
   return (
     <header className="header is-head">
-      <SidebarToggle />
+      <SidebarToggleSlot />
       <Icon name="issues" />
       <h1>Issues</h1>
       {room && (

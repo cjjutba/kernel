@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Workspace } from '@shared/types'
 import { go, useStore } from '../../store'
 import { Icon, Pill, Spinner } from '../../ui'
-import { SidebarToggle } from '../../components/PanelToggles'
+import { SidebarToggleSlot } from '../../components/PanelToggles'
 import { age } from '../inbox/model'
 import { MergeButton } from '../workspace/pr/MergeButton'
 import type { LeadPr } from '../workspace/pr/leadPrList'
@@ -72,7 +72,7 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   return (
     <div className="panel">
       <header className="header" style={{ paddingRight: 12 }}>
-        <SidebarToggle />
+        <SidebarToggleSlot />
         <Icon name="pr" />
         <h1>Pull requests</h1>
       </header>
