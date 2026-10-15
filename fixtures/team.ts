@@ -678,6 +678,10 @@ export const teamFixtures: Record<string, Fixture> = {
     }
   }),
   CommandPalette: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
+  // KERNEL-903: the palette scoped to Shared (Tab twice from All), a query with its matches in full ink, and a query that finds nothing. The motion types the keys, so the last frame is the shot.
+  SearchScope: { ...scene((f) => ({ ...homeScene(f), shared: sharedFiles(), sharedData: sharedStills, ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })), motion: { action: { press: ['Tab', 'Tab'] }, ms: 400, area: '.modal' } },
+  SearchQuery: { ...scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })), motion: { action: { press: ['i', 'n', 'v'] }, ms: 400, area: '.modal' } },
+  SearchNoMatches: { ...scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })), motion: { action: { press: ['z', 'z', 'z', 'z'] }, ms: 400, area: '.modal' } },
   // KERNEL-339: the palette in Kernel's chat. It lists the project's open chats with their tab counts, and New tab adds a tab to this one.
   GroupedPalette: scene((f) => { const g = grouped(f); return { ...g, ui: { ...g.ui!, modal: { name: 'search' } } } }),
   // KERNEL-307: the palette in Noor's workspace, with the four files she shared in it. Kai's file is in another workspace, so it only turns up by typing.
