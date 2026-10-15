@@ -25,8 +25,8 @@ export interface ActivityEvent {
   data?: Record<string, unknown>
 }
 
-/** Inbox rows that are not approvals: merge ready, a failed check, a finished workspace, a standup, system news (Inbox.png). `overlap` and `trust` rows are built in the renderer from live state, never stored. */
-export type NotificationKind = 'approval' | 'merge' | 'blocked' | 'check' | 'finished' | 'idle' | 'standup' | 'system' | 'overlap' | 'trust'
+/** Inbox rows that are not approvals: merge ready, a failed check, a finished workspace, a standup, system news (Inbox.png). `overlap` rows are built in the renderer from live state, never stored. */
+export type NotificationKind = 'approval' | 'merge' | 'blocked' | 'check' | 'finished' | 'idle' | 'standup' | 'system' | 'overlap'
 
 export interface Notification {
   id: string

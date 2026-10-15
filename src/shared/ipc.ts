@@ -2,7 +2,7 @@ import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubAuth, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewProjectRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
-  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ScriptTrust, ChatArchivePreview, MoveChoice, MoveNotice, MovePreview, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ChatArchivePreview, MoveChoice, MoveNotice, MovePreview, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -57,10 +57,6 @@ export interface KernelApi {
   'projects.lastActivity': { req: { projectId: string }; res: Record<string, number> }
   /** "Let Kernel sort it": the Lead decides which worktree keeps the change. */
   'projects.resolveOverlap': { req: { overlapId: string }; res: Ok }
-  /** What the project's scripts and files.copy list wait on, or null when there is nothing to trust (KERNEL-209). */
-  'projects.scriptTrust': { req: { projectId: string }; res: ScriptTrust | null }
-  /** Trust the text behind `hash` and release the project's workspaces held in `trust`. Rejects when the text changed since. */
-  'projects.trust': { req: { projectId: string; hash: string }; res: Ok }
   /**
    * Whether git can push from the project's checkout (KERNEL-460): the last result, or a new one when there is none or `recheck`
    * is set. Null when the project has no remote. A recheck also updates the project's Check push access step while setup shows.
@@ -660,8 +656,6 @@ export type PushEvent =
   | { type: 'approval'; approval: Approval }
   | { type: 'project'; project: Project }
   | { type: 'project.setup'; projectId: string; steps: ProjectSetupStep[] }
-  /** The project's scripts wait for the user to trust them. Null once they are trusted (KERNEL-209). */
-  | { type: 'project.trust'; projectId: string; trust: ScriptTrust | null }
   /**
    * A project's .kernel/settings.toml or settings.local.toml changed on disk outside Kernel: by hand, from Open settings.toml or a
    * git pull. `settings` is what `settings.project` reads now. Kernel's own saves and a file that stops parsing send none (KERNEL-723).
