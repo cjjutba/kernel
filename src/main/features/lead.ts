@@ -12,7 +12,8 @@ import { bus } from '../bus'
 import { renderAgentFile } from '../services/agents'
 import { parsePlanSteps } from '../services/approvals'
 import { NUDGE_LIMIT, nudgeKey } from '../services/nudges'
-import { attachedImages, PLANS_DIR, revisedPlanFile, savePlan } from '../services/plans'
+import { PLANS_DIR, revisedPlanFile, savePlan } from '../services/plans'
+import { attachedFiles } from '../services/attachments'
 import { dropCheckpoints } from '../services/checkpoints'
 import { cleanupSwitch, loadRepoSettings } from '../services/settings'
 import { gitStatus } from '../services/archive'
@@ -699,11 +700,12 @@ export class Lead extends Feature {
       },
       messageWorkspace: (workspaceId, text, images, review) => this.messageWorkspace(projectId, workspaceId, text, chat.id, images, review),
       reviewKinds: (workspaceId) => this.reviewKinds(workspaceId),
-      // Only what the user attached in this chat's own workspace, read when the Lead calls (KERNEL-658).
+      // Only what the user attached in this chat's own workspace, read when the Lead calls (KERNEL-658). Any file goes,
+      // and the teammate's send copies it into their worktree (KERNEL-907).
       attachedImages: async (paths) => {
         const own = this.store.workspace(chat.workspaceId)
-        if (!own) throw new Error('this chat has no workspace to pass images from.')
-        return attachedImages(own.path, paths)
+        if (!own) throw new Error('this chat has no workspace to pass files from.')
+        return attachedFiles(own.path, paths)
       },
       // An image a teammate in this project shared, at the version the Lead names (KERNEL-659).
       sharedImage: (id, version) => this.k.sharing.sharedImage(projectId, id, version),

@@ -18,7 +18,8 @@ import { forProvider, Handoffs, leadRule, planApproval } from './handoff'
 import { mentionNote, mentionsOf } from './mentions'
 import { missingServers, type MissingServer } from './agentTools'
 import type { McpReport } from './mcp'
-import { hasUnsavedImages, revisedPlanFile, savePlan, withImageFiles } from './plans'
+import { revisedPlanFile, savePlan } from './plans'
+import { hasUnsaved, withAttachments } from './attachments'
 import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
 import { endAll } from './processes'
@@ -1181,17 +1182,22 @@ export class Sessions {
   }
 
   /**
-   * Sends the turn's message. Its images are saved to the workspace first, for the agent to open with Read (KERNEL-545), and
-   * the message goes once they are. The rows keep their data URLs, so the user's bubble doesn't change. A session stopped or
-   * replaced meanwhile gets nothing: `renew` sends `live.sent` itself, as it stood, and never saves again.
+   * Sends the turn's message. Its images and attached files are saved to the workspace first, for the agent to open with its
+   * own tools (KERNEL-545, KERNEL-907), and the message goes once they are. The rows keep their parts as sent, so the user's
+   * bubble doesn't change. A session stopped or replaced meanwhile gets nothing: `renew` sends `live.sent` itself, as it
+   * stood, and never saves again. When a file can't be saved the message isn't sent, and the turn ends with the reason.
    */
   private push(chatId: string, ws: Workspace, live: Live) {
     const sent = live.sent ?? []
-    if (!hasUnsavedImages(sent)) { live.runner.push(sent); return }
-    void withImageFiles(ws.path, sent).then((saved) => {
+    if (!hasUnsaved(sent)) { live.runner.push(sent); return }
+    void withAttachments(ws.path, sent).then((saved) => {
       if (this.live.get(chatId) !== live) return
       live.sent = saved
       live.runner.push(saved)
+    }, (e: Error) => {
+      if (this.live.get(chatId) !== live) return
+      live.sent = undefined
+      this.turnEnded(chatId, ws, live, { id: randomUUID(), ok: false, durationMs: 0, error: `Not sent: ${e.message}` })
     })
   }
 
