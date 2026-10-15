@@ -67,7 +67,7 @@ export default function PricingPage() {
     <>
       <SiteNav current="/pricing" />
       <main id="content">
-        <section aria-labelledby="pricing-title" className="relative pt-32 text-center">
+        <section aria-labelledby="pricing-title" className="relative pt-32 text-center max-nav:pt-20">
           <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-130 bg-dots-hero" />
           <div className="relative px-6">
             <h1 id="pricing-title" className="text-display-sm text-balance">
@@ -77,10 +77,10 @@ export default function PricingPage() {
           </div>
         </section>
 
-        <section aria-label="The plan" className="mx-auto mt-14 max-w-250 px-6">
+        <section aria-label="The plan" className="mx-auto mt-14 max-w-250 px-6 max-nav:mt-10">
           <div className="frame-gradient">
             <div className="rounded-frame-in bg-surface-1">
-              <div className="flex items-end justify-between gap-x-10 gap-y-8 p-10 max-faq:flex-col max-faq:items-start max-nav:p-7">
+              <div className="flex items-end justify-between gap-x-10 gap-y-8 p-10 max-faq:flex-col max-faq:items-start max-nav:gap-y-7 max-nav:p-6">
                 <div>
                   <p className="text-item text-ink">Kernel</p>
                   <p className="mt-5 flex items-baseline gap-2.5">
@@ -89,16 +89,17 @@ export default function PricingPage() {
                   </p>
                   <p className="mt-3 text-small text-faint">For Macs with Apple silicon, on macOS 13 or later.</p>
                 </div>
-                <div className="flex flex-wrap gap-3">
-                  <Button href={DOWNLOAD_URL} size="lg" icon={<DownloadIcon />}>
+                {/* On phones the two buttons span the card, one above the other. */}
+                <div className="flex flex-wrap gap-3 max-nav:w-full max-nav:flex-col">
+                  <Button href={DOWNLOAD_URL} size="lg" icon={<DownloadIcon />} className="max-nav:w-full">
                     Download for macOS
                   </Button>
-                  <Button href="/docs/install" variant="secondary" size="lg">
+                  <Button href="/docs/install" variant="secondary" size="lg" className="max-nav:w-full">
                     Install guide
                   </Button>
                 </div>
               </div>
-              <div className="border-t border-line p-10 max-nav:p-7">
+              <div className="border-t border-line p-10 max-nav:p-6">
                 <p className="text-small font-medium text-ink-2">Everything included</p>
                 <ul className="mt-5 grid grid-cols-2 gap-x-10 gap-y-3.5 max-nav:grid-cols-1">
                   {INCLUDED.map((item) => (
@@ -113,24 +114,25 @@ export default function PricingPage() {
           </div>
         </section>
 
-        <section aria-labelledby="costs-title" className="mx-auto max-w-250 px-6 pt-28">
+        <section aria-labelledby="costs-title" className="mx-auto max-w-250 px-6 pt-28 max-nav:pt-20">
           <h2 id="costs-title" className="text-h3">
             What you pay for
           </h2>
           <ul className="mt-8 border-t border-line">
             {COSTS.map((c) => (
-              <li key={c.item} className="flex items-baseline justify-between gap-8 border-b border-line py-5 max-nav:flex-col max-nav:gap-1.5">
-                <div>
+              <li key={c.item} className="border-b border-line py-5">
+                {/* The cost sits on the item's line at every width, with the note below. */}
+                <div className="flex items-baseline justify-between gap-6">
                   <p className="text-item text-ink">{c.item}</p>
-                  <p className="mt-1 text-body text-muted">{c.note}</p>
+                  <p className="shrink-0 text-right text-body font-medium text-ink-2">{c.cost}</p>
                 </div>
-                <p className="shrink-0 text-body font-medium text-ink-2">{c.cost}</p>
+                <p className="mt-1 text-body text-muted">{c.note}</p>
               </li>
             ))}
           </ul>
         </section>
 
-        <section aria-labelledby="pricing-faq-title" className="mx-auto grid max-w-250 grid-faq items-start gap-16 px-6 pt-28 max-faq:grid-cols-1 max-faq:gap-8">
+        <section aria-labelledby="pricing-faq-title" className="mx-auto grid max-w-250 grid-faq items-start gap-16 px-6 pt-28 max-faq:grid-cols-1 max-faq:gap-8 max-nav:pt-20">
           <h2 id="pricing-faq-title" className="text-h3">
             Questions
           </h2>
@@ -148,7 +150,7 @@ export default function PricingPage() {
           </div>
         </section>
 
-        <Waitlist className="pt-32 pb-32" />
+        <Waitlist className="pt-32 pb-32 max-nav:pt-24 max-nav:pb-24" />
       </main>
       <SiteFooter />
     </>

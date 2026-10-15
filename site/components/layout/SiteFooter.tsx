@@ -79,9 +79,12 @@ export async function SiteFooter() {
           </nav>
         ))}
       </div>
-      <div className="mx-auto mt-16 flex max-w-312 flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 pt-6 text-small text-faint rule-inset">
-        <span>© 2026 Christian Jerald Jutba · Elastic License 2.0</span>
-        <a href={REPO_URL} target="_blank" rel="noopener" aria-label="Kernel on GitHub" className="inline-flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/4 hover:text-ink">
+      <div className="mx-auto mt-16 flex max-w-312 items-center justify-between gap-6 px-6 pt-6 text-small text-faint rule-inset">
+        {/* The line wraps on its own, so the GitHub link stays at its right on phones. */}
+        <span className="min-w-0">
+          © 2026 Christian Jerald Jutba · <span className="whitespace-nowrap">Elastic License 2.0</span>
+        </span>
+        <a href={REPO_URL} target="_blank" rel="noopener" aria-label="Kernel on GitHub" className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/4 hover:text-ink">
           <GitHubIcon size={16} />
         </a>
       </div>
