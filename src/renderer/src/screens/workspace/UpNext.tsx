@@ -14,12 +14,13 @@ const NAMES: Record<TrackerKind, string> = { linear: 'Linear', github: 'GitHub' 
  * Up next, on New chat's composer: the room tracker's issues nobody has started, the most pressing first, as `issues.next` lists them,
  * less the ones a workspace in the room already started from. A Linear room lists its own team's only. Each row is one button: the
  * priority, the key, the title and the project, with Plan showing on hover and focus. Pressing it hands the issue to `onPlan` as a chip.
- * A room with no tracker, a Linear room with no team, or a tracker that doesn't answer shows nothing.
+ * A room with no tracker, a Linear room with no team, or a tracker that doesn't answer shows nothing, and holds no space while it is asked,
+ * so the box never moves for a room that has no Up next.
  */
 export function UpNext({ roomId, lead, onPlan }: { roomId: string; lead: string; onPlan: (part: ChatPart) => void }) {
-  const [view, setView] = useState(() => ({ roomId, entry: readUpNext(roomId), settled: false }))
+  const [view, setView] = useState(() => ({ roomId, entry: readUpNext(roomId) }))
   // Render this room's cached rows on the first paint of a new room, before the effect below refreshes them.
-  const current = view.roomId === roomId ? view : { roomId, entry: readUpNext(roomId), settled: false }
+  const current = view.roomId === roomId ? view : { roomId, entry: readUpNext(roomId) }
   useEffect(() => {
     let live = true
     let rows: IssueSummary[] | undefined
@@ -30,12 +31,12 @@ export function UpNext({ roomId, lead, onPlan }: { roomId: string; lead: string;
       const old = readUpNext(roomId)
       // Each call that failed keeps what the cache had; both failing leaves the cached entry as it was.
       const entry = rows || kind !== undefined ? storeUpNext(roomId, { kind: kind ?? old?.kind, rows: rows ?? old?.rows ?? [] }) : old
-      setView({ roomId, entry, settled: true })
+      setView({ roomId, entry })
     }
     // Both calls start now: main resolves the tracker for `issues.next` itself, so the list never waits on the kind.
     call('issues.next', { roomId }).then((r) => { rows = r }, () => undefined).then(done)
     call('issues.tracker', { roomId }).then((t) => { kind = t.kind }, () => undefined).then(done)
-    setView((v) => (v.roomId === roomId ? v : { roomId, entry: readUpNext(roomId), settled: false }))
+    setView((v) => (v.roomId === roomId ? v : { roomId, entry: readUpNext(roomId) }))
     return () => { live = false }
   }, [roomId])
   const rows = current.entry?.rows ?? []
@@ -45,8 +46,6 @@ export function UpNext({ roomId, lead, onPlan }: { roomId: string; lead: string;
     const taken = new Set(started.split('\n'))
     return rows.filter((i) => !taken.has(i.id)).slice(0, SHOWN)
   }, [rows, started])
-  // Nothing cached and nothing answered yet: hold the block's height, so the composer doesn't move when the rows land.
-  if (!current.entry && !current.settled) return <UpNextSpace />
   if (!kind || !shown.length) return null
 
   const name = NAMES[kind]
@@ -69,18 +68,6 @@ export function UpNext({ roomId, lead, onPlan }: { roomId: string; lead: string;
             </button>
           </li>
         ))}
-      </ul>
-    </section>
-  )
-}
-
-/** The empty block, the same markup as the real one with nothing visible, so the two always have the same height. */
-function UpNextSpace() {
-  return (
-    <section className="up-next up-next-space" aria-hidden="true">
-      <div className="up-next-head"><h3>&nbsp;</h3></div>
-      <ul className="up-next-plain">
-        {[0, 1, 2].map((i) => <li key={i} className="up-next-item"><span className="up-next-row" /></li>)}
       </ul>
     </section>
   )
