@@ -558,6 +558,7 @@ async function hoverLockedProvider(page: Page) {
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   ComposerDragOver: dragOverPane,
   WorkspaceModelPickerCodex: openLegacyModels,
+  WorkspaceModelPickerKeys: async (page) => { await page.keyboard.press('ArrowUp'); await page.waitForTimeout(300) },
   WorkspaceModelPickerFavorites: starModels,
   WorkspaceModelPickerLocked: hoverLockedProvider,
   ComposerAttaching: dropWhileReading,

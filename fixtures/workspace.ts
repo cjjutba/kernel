@@ -2981,6 +2981,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: { ...open, menu: 'model' }
     }
   }),
+  // The picker with the cursor moved up one row by the arrow key.
+  WorkspaceModelPickerKeys: scene((f) => ({
+    settings: codexRoleSettings(),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+    models: { codex: codexModels },
+    ui: { ...open, menu: 'model' }
+  })),
   // The picker of a chat that started on Codex: it opens on Codex and Claude is dimmed. The shot opens Legacy models.
   WorkspaceModelPickerCodex: scene((f) => ({
     settings: codexRoleSettings(),
