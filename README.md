@@ -89,3 +89,5 @@ Kernel's source is available under the [Elastic License 2.0](LICENSE.md). In pla
 - You can't remove or work around license keys, if Kernel ever has them.
 
 This summary isn't the license. [LICENSE.md](LICENSE.md) is.
+
+Contributors sign the [contributor agreement](CLA.md) before their first pull request merges.
