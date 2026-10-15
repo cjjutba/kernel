@@ -374,6 +374,27 @@ describe('Codex chats keep the account that holds their cache (KERNEL-843)', () 
     expect(k.store.chat('codex2')?.ranOn).toBe('cli')
     await k.stop({ budgetMs: 0 })
   })
+
+  it('asks before a long Codex chat moves onto a key account, with no price since Kernel has none for Codex, and runs it once answered', async () => {
+    const { k, h } = await kernel()
+    await chats(k)
+    const run = async () => { await until(() => !k.sessions.isRunning('codex')) }
+    await k.sessions.send('codex', [{ type: 'text', text: 'hi' }])
+    await until(() => k.store.chat('codex')?.sessionId && !k.sessions.isRunning('codex'))
+    const chat = k.store.chat('codex')!
+    k.store.saveChat({ ...chat, lastTurn: { at: Date.now(), account: 'cli', model: chat.model, context: 120_000, input: 0, cacheRead: 120_000, cacheWrite: 0 } })
+    const key = await h['accounts.addKey']({ provider: 'codex', label: 'Billing', key: OPENAI_KEY })
+    expect(await h['accounts.previewSwitch']({ provider: 'codex', accountId: key.id })).toMatchObject({ chats: [{ chatId: 'codex', tokens: 120_000, coldReason: 'account', fits: true }] })
+    expect((await h['accounts.previewSwitch']({ provider: 'codex', accountId: key.id })).chats[0]).not.toHaveProperty('price')
+    await h['accounts.switch']({ provider: 'codex', accountId: key.id, move: 'all' })
+    await k.sessions.send('codex', [{ type: 'text', text: 'next' }])
+    await until(() => k.sessions.queueReason('codex') === 'move')
+    await h['chats.moveChoice']({ chatId: 'codex', choice: 'continue' })
+    await until(() => k.store.chat('codex')?.ranOn === key.id)
+    await run()
+    expect(k.store.chat('codex')?.ranOn).toBe(key.id)
+    await k.stop({ budgetMs: 0 })
+  })
 })
 
 describe('Kernel never switches to a key account on its own (KERNEL-523)', () => {
