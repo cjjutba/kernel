@@ -1,7 +1,7 @@
 import type { IssueSummary } from './pullRequests'
 
 /** The issue trackers a room can use. A room's `[tracker] kind` can also be `none` (KERNEL-432). */
-export type TrackerKind = 'linear' | 'github' | 'jira'
+export type TrackerKind = 'linear' | 'github'
 
 /** One issue as every tracker gives it: what create_workspace and the brief need (KERNEL-432). */
 export interface TrackerIssue {
@@ -40,7 +40,7 @@ export interface IssueTaken {
 }
 
 /**
- * A room's issue tracker: Linear, GitHub Issues, Jira or none (KERNEL-432). Kernel builds one per room, so no call names
+ * A room's issue tracker: Linear, GitHub Issues or none (KERNEL-432). Kernel builds one per room, so no call names
  * the room. A tracker that can't answer rejects, and the caller decides what that costs.
  */
 export interface Tracker {
@@ -83,46 +83,4 @@ export interface GithubIssue {
 export interface GithubIssueDetail extends GithubIssue {
   body: string
   comments: { id: string; author?: string; body: string; createdAt: string }[]
-}
-
-/** The Jira Cloud account saved in Settings, as Jira reads it (KERNEL-474). */
-export interface JiraAccount {
-  /** The site's host: "acme.atlassian.net". */
-  site: string
-  email: string
-  /** The name Jira shows for the account. */
-  name: string
-  accountId: string
-}
-
-/** Jira's three status categories: To Do is `new`, In Progress is `indeterminate`. */
-export type JiraStatusCategory = 'new' | 'indeterminate' | 'done'
-
-/** One open Jira issue for the Issues screen (KERNEL-474). */
-export interface JiraIssue {
-  /** The key: "PROJ-7". */
-  id: string
-  title: string
-  url: string
-  status: { name: string; category: JiraStatusCategory }
-  assignee?: { name: string; accountId: string }
-  /** The issue type: "Bug", "Story". */
-  type?: string
-  priority?: string
-  labels: string[]
-  updatedAt: string
-}
-
-/** The Issues screen's Jira filter. `mine` keeps the issues assigned to the saved account. */
-export interface JiraFilter {
-  query?: string
-  mine?: boolean
-}
-
-/** A move Jira offers an issue, which the room saves to start its issues with (KERNEL-474). */
-export interface JiraTransition {
-  id: string
-  name: string
-  /** The status the issue lands in. */
-  to: { name: string; category: JiraStatusCategory }
 }

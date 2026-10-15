@@ -94,7 +94,7 @@ export interface PrSummary {
   author?: string
 }
 
-/** An issue the new workspace modal can start from, in Linear, GitHub or Jira. */
+/** An issue the new workspace modal can start from, in Linear or GitHub. */
 export interface IssueSummary {
   id: string
   title: string

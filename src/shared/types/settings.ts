@@ -220,11 +220,6 @@ export interface RoomSettings {
   /** The room's issue tracker, `[tracker] kind`. Without it Kernel works the tracker out from the Linear token and the remote (KERNEL-432). */
   tracker?: { kind?: TrackerKind | 'none' }
   /**
-   * The room's Jira, a `[jira]` table (KERNEL-474). `project` is the project key ("PROJ") its issues come from, else every
-   * project the account sees. `transition` is the id of the transition that moves an issue to In Progress, else none moves.
-   */
-  jira?: { project?: string; transition?: string }
-  /**
    * The room's PR instructions, a `[pr]` table. A missing key uses the app's (KERNEL-190). `optionalChecks` names checks
    * that never fail a PR in a repo that requires none, `*` matching any run of characters ("Vercel*"). A check the repo
    * requires always counts (KERNEL-388). `mergeMethod` (`merge_method`) is this room's over the app's (KERNEL-432).

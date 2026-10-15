@@ -1,7 +1,7 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptSuggestion, ScriptTrust, ChatArchivePreview, MoveChoice, MoveNotice, MovePreview, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -186,18 +186,6 @@ export interface KernelApi {
   'linear.scope': { req: void; res: LinearScope }
   /** Plan with Kernel: a fresh Lead chat in plan mode, briefed with the issue. */
   'linear.plan': { req: { id: string; roomId: string }; res: { chatId: string; workspaceId: string } }
-
-  // Jira issues (KERNEL-474)
-  /** Checks the account with Jira, then saves it encrypted. An empty token disconnects and returns null. */
-  'jira.connect': { req: { site: string; email: string; token: string }; res: JiraAccount | null }
-  /** The saved account as Jira reads it now, or null when none is saved. Rejects with Jira's reason when it refuses. */
-  'jira.test': { req: void; res: JiraAccount | null }
-  /** The room's open Jira issues, last updated first, up to 100, from its `[jira] project` when it names one. */
-  'jira.issues': { req: { roomId: string; filter: JiraFilter }; res: JiraIssue[] }
-  /** The transitions Jira offers `issue`, else the room's latest To Do issue. Empty when the room has none. */
-  'jira.transitions': { req: { roomId: string; issue?: string }; res: JiraTransition[] }
-  /** Saves the room's `[jira] transition`, in the personal file unless `shared`. `null` removes it, so no issue moves. */
-  'jira.saveTransition': { req: { roomId: string; transition: string | null; shared?: boolean }; res: RoomSettings }
 
   // chats (KERNEL-10, 11, 12, 28)
   'chats.list': { req: { workspaceId: string }; res: Chat[] }
