@@ -7,7 +7,7 @@ export function ComposerInput({ d, disabled, ...rest }: ComponentProps<typeof Dr
   const hint = !disabled && !d.parts.length
   return (
     <div className="cmp-field" data-hint={hint || undefined}>
-      <DraftInput d={d} disabled={disabled} {...rest} />
+      <DraftInput d={d} disabled={disabled} data-composer-input="" {...rest} />
       {hint && <span className="cmp-hint" aria-hidden="true">⌘L to focus</span>}
     </div>
   )

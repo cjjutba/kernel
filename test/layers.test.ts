@@ -3,7 +3,7 @@ import * as React from 'react'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
-import { closeAllLayers, isOutsidePress, useLayer } from '../src/renderer/src/ui/hooks'
+import { closeAllLayers, isOutsidePress, useLayer, useScreenEscape, useToastEscape } from '../src/renderer/src/ui/hooks'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -87,5 +87,119 @@ describe('layer stack', () => {
     log.length = 0
     closeAllLayers()
     expect(log).toEqual(['b', 'a'])
+  })
+})
+
+describe('Escape order', () => {
+  let root: Root | null = null
+  let host: HTMLElement
+  afterEach(() => { act(() => root?.unmount()); root = null; host?.remove() })
+
+  const escape = (from: Element | Window = window) => {
+    const e = new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    act(() => { from.dispatchEvent(e) })
+    return e
+  }
+  function Stack({ log, layer, screen, toast }: { log: string[]; layer: boolean; screen: boolean; toast: boolean }) {
+    useLayer({ onEscape: () => log.push('layer'), onOutside: () => undefined }, layer)
+    useScreenEscape((_e, inField) => { log.push(inField ? 'screen:field' : 'screen'); return screen }, true)
+    useToastEscape((_e, inField) => { if (inField) return false; log.push('toast'); return toast })
+    return React.createElement(React.Fragment, null, React.createElement('input', { id: 'f' }), React.createElement('div', { id: 'c', 'data-composer-input': '', contentEditable: true, tabIndex: 0 }))
+  }
+  const mount = (log: string[], o: { layer?: boolean; screen?: boolean; toast?: boolean }) => {
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    act(() => root!.render(React.createElement(Stack, { log, layer: !!o.layer, screen: o.screen ?? true, toast: o.toast ?? true })))
+  }
+
+  it('an open layer takes Escape before the screen and the toast', () => {
+    const log: string[] = []
+    mount(log, { layer: true })
+    escape()
+    expect(log).toEqual(['layer'])
+  })
+  it('the screen takes it before the toast, and a handled key stops there', () => {
+    const log: string[] = []
+    mount(log, {})
+    const e = escape()
+    expect(log).toEqual(['screen'])
+    expect(e.defaultPrevented).toBe(true)
+  })
+  it('the toast gets what the screen leaves', () => {
+    const log: string[] = []
+    mount(log, { screen: false })
+    escape()
+    expect(log).toEqual(['screen', 'toast'])
+  })
+  it('a key a field already handled reaches neither', () => {
+    const log: string[] = []
+    mount(log, {})
+    const e = new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    e.preventDefault()
+    act(() => { window.dispatchEvent(e) })
+    expect(log).toEqual([])
+  })
+  it('a text field keeps Escape from the toast, and the screen is told it came from a field', () => {
+    const log: string[] = []
+    mount(log, { screen: false })
+    escape(host.querySelector('#f')!)
+    expect(log).toEqual(['screen:field'])
+  })
+  it('the composer is not a field that keeps Escape', () => {
+    const log: string[] = []
+    mount(log, { screen: false })
+    escape(host.querySelector('#c')!)
+    expect(log).toEqual(['screen', 'toast'])
+  })
+})
+
+describe('focus return', () => {
+  let root: Root | null = null
+  let host: HTMLElement
+  afterEach(() => { act(() => root?.unmount()); root = null; host?.remove() })
+
+  function Overlay({ open, inputFocus }: { open: boolean; inputFocus?: boolean }) {
+    const ref = React.useRef<HTMLDivElement>(null)
+    useLayer({ onEscape: () => undefined, onOutside: () => undefined, ref }, open)
+    return open ? React.createElement('div', { ref }, React.createElement('input', { id: 'in', autoFocus: inputFocus })) : null
+  }
+  const setup = (opener: boolean) => {
+    host = document.createElement('div')
+    document.body.append(host)
+    const btn = document.createElement('button')
+    btn.id = 'opener'
+    const composer = document.createElement('div')
+    composer.setAttribute('data-composer-input', '')
+    composer.tabIndex = 0
+    const other = document.createElement('input')
+    host.append(btn, composer, other)
+    if (opener) btn.focus()
+    const mount = document.createElement('div')
+    host.append(mount)
+    root = createRoot(mount)
+    return { btn, composer, other, render: (open: boolean, inputFocus = true) => act(() => root!.render(React.createElement(Overlay, { open, inputFocus }))) }
+  }
+
+  it('returns focus to the element that opened the overlay, even when a field in it took focus on open', () => {
+    const t = setup(true)
+    t.render(true)
+    expect(document.activeElement?.id).toBe('in')
+    t.render(false)
+    expect(document.activeElement).toBe(t.btn)
+  })
+  it('falls back to the composer when the opener is gone', () => {
+    const t = setup(true)
+    t.render(true)
+    t.btn.remove()
+    t.render(false)
+    expect(document.activeElement).toBe(t.composer)
+  })
+  it('leaves focus alone when it moved to another field', () => {
+    const t = setup(true)
+    t.render(true)
+    t.other.focus()
+    t.render(false)
+    expect(document.activeElement).toBe(t.other)
   })
 })
