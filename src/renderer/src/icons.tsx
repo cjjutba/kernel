@@ -47,6 +47,7 @@ import {
   RefreshIcon,
   ReplyIcon,
   Search01Icon,
+  StarIcon,
   SentIcon,
   ServerStack01Icon,
   Shield01Icon,
@@ -64,6 +65,7 @@ import {
 // Hugeicons' free stroke-rounded set is the icon spec (KERNEL-663). Each name maps to its closest glyph.
 const H = {
   search: Search01Icon,
+  star: StarIcon,
   home: Home01Icon,
   inbox: InboxIcon,
   issues: Task01Icon,
