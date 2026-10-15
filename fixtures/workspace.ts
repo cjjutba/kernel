@@ -2238,6 +2238,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   // All files drawn like VS Code's explorer (KERNEL-399): Material icons, compact folders, indent guides, git colors, the open file selected.
   WorkspaceFilesTree: treeScene('files', 'file:src/app/invoices/table.tsx'),
+  // KERNEL-893: the tree read is slow and nothing is cached, so skeleton rows stand in for the files.
+  WorkspaceFilesLoading: { ...treeScene('files', 'file:src/app/invoices/table.tsx'), lag: { 'workspaces.tree': 60000 } },
   // The Changes tab as VS Code's Source Control draws it, as a list and as a tree (KERNEL-399).
   WorkspaceChangesList: treeScene('changes', 'diff:src/app/invoices/page.tsx', 'list'),
   WorkspaceChangesTree: treeScene('changes', 'diff:', 'tree'),
