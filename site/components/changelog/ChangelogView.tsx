@@ -14,7 +14,7 @@ export function ChangelogView({ data }: { data: NonNullable<Awaited<ReturnType<t
       <SiteNav current="/changelog" />
       <main id="content">
         <ChangelogHeader page={page} pages={pages} />
-        <div className="mx-auto max-w-262 px-6 pb-24">
+        <div className="mx-auto max-w-262 px-6 pb-24 max-nav:pb-16">
           {releases.map((release, i) => (
             <ReleaseEntry key={release.version} release={release} latest={page === 1 && i === 0} />
           ))}

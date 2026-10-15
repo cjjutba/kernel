@@ -15,7 +15,7 @@ const link = 'inline-flex items-center gap-2 text-link font-medium text-ink-2 tr
 /** `page` and `pages` add a page count under the lead on pages after the first. */
 export function ChangelogHeader({ page = 1, pages = 1 }: { page?: number; pages?: number }) {
   return (
-    <section id="top" aria-labelledby="changelog-title" className="relative border-b border-line-faint pt-32 pb-14">
+    <section id="top" aria-labelledby="changelog-title" className="relative border-b border-line-faint pt-32 pb-14 max-nav:pt-20 max-nav:pb-10">
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-130 bg-dots-hero" />
       <div className="relative mx-auto max-w-262 px-6">
         <h1 id="changelog-title" className="text-changelog-title">
@@ -27,7 +27,7 @@ export function ChangelogHeader({ page = 1, pages = 1 }: { page?: number; pages?
             Page {page} of {pages}
           </p>
         ) : null}
-        <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-3 max-nav:mt-6">
           <a href={RELEASES_URL} target="_blank" rel="noopener" className={link}>
             <GitHubIcon size={15} />
             Releases on GitHub

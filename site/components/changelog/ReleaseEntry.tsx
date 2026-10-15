@@ -12,7 +12,7 @@ const versionPill = 'inline-flex h-6 items-center rounded-chip border px-2 font-
  */
 export function EntryShell({ titleId, meta, children }: { titleId: string; meta: ReactNode; children: ReactNode }) {
   return (
-    <article aria-labelledby={titleId} className="grid grid-entry gap-14 border-b border-line-faint py-16 max-nav:grid-cols-1 max-nav:gap-4">
+    <article aria-labelledby={titleId} className="grid grid-entry gap-14 border-b border-line-faint py-16 max-nav:grid-cols-1 max-nav:gap-3 max-nav:py-10">
       <div className="nav:sticky nav:top-24 nav:self-start">{meta}</div>
       <div>{children}</div>
     </article>
@@ -46,11 +46,17 @@ export function ReleaseEntry({ release, latest }: { release: Release; latest: bo
               </span>
             ) : null}
           </div>
-          <time dateTime={release.date} className="mt-2 block text-label text-muted">
-            {formatDate(release.date)}
-          </time>
-          <p className="mt-1 text-label text-faint">
-            {changes} {changes === 1 ? 'change' : 'changes'}
+          {/* Stacked beside the entry on wide screens; one line above it on phones. */}
+          <p className="mt-2 text-label text-muted">
+            <time dateTime={release.date} className="nav:block">
+              {formatDate(release.date)}
+            </time>
+            <span aria-hidden="true" className="text-faint nav:hidden">
+              {' · '}
+            </span>
+            <span className="text-faint nav:mt-1 nav:block">
+              {changes} {changes === 1 ? 'change' : 'changes'}
+            </span>
           </p>
         </>
       }
@@ -66,10 +72,10 @@ export function ReleaseEntry({ release, latest }: { release: Release; latest: bo
           className="mt-8"
         />
       ) : null}
-      {release.intro ? <p className="mt-6 text-intro text-ink-2">{release.intro}</p> : null}
+      {release.intro ? <p className="mt-6 text-intro text-ink-2 max-nav:mt-4">{release.intro}</p> : null}
       {release.sections.map((section) => (
         <section key={section.title}>
-          <h3 className="mt-10 flex items-baseline gap-2 text-body font-semibold">
+          <h3 className="mt-10 flex items-baseline gap-2 text-body font-semibold max-nav:mt-8">
             {section.title}
             <span className="font-mono text-tag font-medium text-faint">{section.items.length}</span>
           </h3>

@@ -24,7 +24,7 @@ export function Pager({ page, pages }: { page: number; pages: number }) {
   const newer = page > 1 ? changelogPageHref(page - 1) : null
   const older = page < pages ? changelogPageHref(page + 1) : null
   return (
-    <nav aria-label="Changelog pages" className="flex items-center justify-between gap-4 pt-12">
+    <nav aria-label="Changelog pages" className="flex items-center justify-between gap-4 pt-12 max-nav:pt-8">
       {newer ? (
         <Link href={newer} rel="prev" className={`${end} border border-line-strong text-ink-2 transition-colors hover:border-edge-hover hover:text-ink`}>
           <ArrowIcon className="rotate-180 text-muted" />
