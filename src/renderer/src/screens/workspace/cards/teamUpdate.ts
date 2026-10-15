@@ -4,7 +4,7 @@ import { lensOf, reviewVerdicts } from '@shared/merge'
 type UserItem = Extract<ChatItem, { kind: 'user' }>
 
 /** The text Kernel sent the Lead, which Copy copies. */
-export const textOf = (item: UserItem) => item.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('\n')
+const textOf = (item: UserItem) => item.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('\n')
 
 /** The card's data: what Kernel saved with the update, or, for an update from before KERNEL-117, its lines read back. */
 export function cardData(item: UserItem): TeamUpdate {
