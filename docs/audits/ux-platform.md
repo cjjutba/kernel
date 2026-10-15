@@ -12,7 +12,7 @@ Counts at the first audit: blocker 0, major 6, minor 2, polish 2.
 
 Rechecked on `a9e880daf`, after KERNEL-859 to 871 merged. Every fixture named here was shot again and set beside its before shot on the sheet shared in the PR. The keyboard and focus paths were driven in a hidden Electron window (`KERNEL_HEADLESS=1`, Playwright), not read from code. Each finding below carries a **Status** line. "Fixed (code)" means the fix is in the source and no fixture can draw it, so it was read, not run.
 
-Result: 9 fixed (M5 by code only), 1 fixed in part (m2), 0 still open from the first list.
+Result: 9 fixed (M5 by code only), and m2 fixed in part (the close is unverified, KERNEL-882).
 One thing could not be proved: **focus return after a modal closes.** The fixtures open `ConfirmArchive` and `TelemetryAsk` directly, with no trigger, so there is nothing to return to. Tab trapping and Escape were walked live on `ConfirmArchive` (Tab cycles Archive anyway, Cancel, Push and archive and the input, Escape closes). The `TelemetryAsk` dialog stayed open after Escape in the fixture, probably because the fixture bypasses the answered flag. The sidebar's Archive button archives with no dialog. Focus after the command palette closes is a real miss, see the team audit (n1).
 
 ## Major
@@ -49,7 +49,7 @@ One thing could not be proved: **focus return after a modal closes.** The fixtur
 
 **m2. Escape on the usage-data question is a permanent "Don't share".** Fixture `TelemetryAsk`. `onCancel` saves `off`, so pressing Escape by habit answers for good. Initial focus is on "See what's sent", not the primary. Fails 1, 3. Direction: let Escape close without saving, and ask again next launch.
 
-**Status: fixed in part.** Escape now sends no settings call, so it no longer answers "Don't share" for good (walked live on `TelemetryAsk`). In that fixture the dialog stayed open, which looks like a fixture artifact (the fixture opens it directly, bypassing the answered flag). Not proven either way, so the close itself is unverified.
+**Status: fixed in part, KERNEL-882.** Escape now sends no settings call, so it no longer answers "Don't share" for good (walked live on `TelemetryAsk`). In that fixture the dialog stayed open, which looks like a fixture artifact (the fixture opens it directly, bypassing the answered flag). Not proven either way, so the close itself is unverified.
 
 ## Polish
 
@@ -81,6 +81,5 @@ One thing could not be proved: **focus return after a modal closes.** The fixtur
 ## New fixtures
 
 The UX pass added `AuditSetupChecksSlow`.
-
 
 All in `fixtures/platform.ts`, prefixed `Audit`: `AuditAboutChecking`, `AuditAboutDownloading`, `AuditAboutUpdateError`, `AuditAboutUpdateBlocked`, `AuditHomeUpdateDownloading`, `AuditHomeUpdateError`, `AuditToastsStacked`, `AuditToastLong`, `AuditFirstLaunchHome`, `AuditSetupChecksWaiting`, `AuditSidebarWide` (with an `interactions` entry in `scripts/shots.ts`). Reused: the fixtures named under "States that pass" and `UpdateReady`, `Welcome`, `LoadingApp`, `CheckHooks`, `SetupPermissions`, `InboxEmpty`, `SettingsAbout`, `SettingsPrivacy`.

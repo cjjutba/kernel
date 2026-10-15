@@ -19,11 +19,11 @@ Contact sheet of every state: shared in the Kernel chat as "Team screens audit s
 
 Rechecked on `a9e880daf`, after KERNEL-859 to 871 merged. Every fixture named in the findings was shot again and set beside its before shot on the sheet shared in the PR. Keyboard paths were driven in a hidden Electron window. "Fixed (code)" means the fix is in the source and no fixture can draw it.
 
-Result: 17 of the 18 first findings fixed (M1, m1 and p2 by code only), 1 still open in part (M6, no Try again on a failed setup step), and p1 still open. That makes 2 open from the first list.
+Result: 16 of the 18 first findings fixed (M1, m1 and p2 by code only), and 2 still open (M6, no Try again on a failed setup step, and p1). Plus n1 below, new.
 
 New since the first audit:
 
-**n1. Focus is lost when the command palette closes.** Status: still open. Opened from the Search button with Enter, the palette takes focus on its combobox and Escape closes it, but focus lands on the page body, not on the Search button. Direction: return focus to the opener. Fails 3.
+**n1. Focus is lost when the command palette closes.** Status: still open, KERNEL-878. Opened from the Search button with Enter, the palette takes focus on its combobox and Escape closes it, but focus lands on the page body, not on the Search button. Direction: return focus to the opener. Fails 3.
 
 ## Counts
 
@@ -60,7 +60,7 @@ No blocker: nothing loses data or locks the app. The majors are dead ends where 
 
 **M6. Room setup failed: no retry, and the page still says "This takes a minute".** Shot: `RoomSetupFailed`. The failed step has red text, the later steps stay as dashes, "Open the room" is disabled, and the footer still says "Kernel keeps going". Fails 1, 2, 4. Direction: change the heading and footer on failure, add Try again on the failed step, and use the neutral banner style for the error.
 
-**Status: still open (retry missing).** The heading and footer are fixed ("did not finish setting up", "A step stopped. Its error is below.") and the error uses the neutral box. The failed step still has no Try again button. After: `RoomSetupFailed`.
+**Status: still open (retry missing), KERNEL-876 (engine channel) and KERNEL-877 (button).** The heading and footer are fixed ("did not finish setting up", "A step stopped. Its error is below.") and the error uses the neutral box. The failed step still has no Try again button. After: `RoomSetupFailed`.
 
 **M7. Delete from History: if the preview call fails, the dialog sits on "Counting" forever.** Fixture: none (needs a failing `deletePreview`). Source: code, `history/ConfirmDeleteHistory.tsx`. Fails 1, 2, 5. Direction: show the error and a Try again button, and keep Delete disabled.
 
@@ -104,7 +104,7 @@ No blocker: nothing loses data or locks the app. The majors are dead ends where 
 
 **p1. New room repeats "Brief Kernel right away".** Shot: `NewRoom`. Source: code.
 
-**Status: still open.** `NewRoom` still shows the "Brief Kernel right away" label twice. After: `NewRoom`.
+**Status: still open, KERNEL-877.** `NewRoom` still shows the "Brief Kernel right away" label twice. After: `NewRoom`.
 
 **p2. The command palette's `aria-expanded` is always true.** Source: code, `search/CommandPalette.tsx`. Fails 3.
 

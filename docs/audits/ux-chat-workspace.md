@@ -29,9 +29,9 @@ Rechecked on `a9e880daf`, after KERNEL-859 to 871 merged. Every fixture named in
 
 Result: 11 of the 12 findings fixed, and m2 fixed in part (the fold, group collapse, tray and scrim durations still differ). New since the audit: n1 and n2 below, both still open.
 
-**n1. Focus is lost when the link-issue menu closes.** Status: still open. ⌘I opens the menu with focus in "Search issues". Escape closes it, but focus falls to the body, so a second Escape does not stop the running turn. Direction: return focus to the composer when the menu closes. Fails 3.
+**n1. Focus is lost when the link-issue menu closes.** Status: still open, KERNEL-878. ⌘I opens the menu with focus in "Search issues". Escape closes it, but focus falls to the body, so a second Escape does not stop the running turn. Direction: return focus to the composer when the menu closes. Fails 3.
 
-**n2. The question card's choices are separate Tab stops.** Status: still open, polish. In `WorkspaceQuestion` ArrowDown does not move between the radios. Space selects, Tab reaches Send, and Enter answers, so it works with the keyboard alone. Direction: make the choices one roving radio group.
+**n2. The question card's choices are separate Tab stops.** Status: still open, polish, KERNEL-882. In `WorkspaceQuestion` ArrowDown does not move between the radios. Space selects, Tab reaches Send, and Enter answers, so it works with the keyboard alone. Direction: make the choices one roving radio group.
 
 ## Findings
 
@@ -73,7 +73,7 @@ Fixture: `WorkspaceNewChatSendMotion --motion`. Suspect (b) confirmed: the first
 Fails 4. Direction: set the anchor in a layout effect.
 
 **m2. Five timing systems, none shared.** (motion and code)
-**Status: fixed in part.** One scroll engine now drives the send, lift, rail and approve moves (KERNEL-862). The fold, group collapse, tray row and scrim durations are still separate. Open, minor.
+**Status: fixed in part, KERNEL-881.** One scroll engine now drives the send, lift, rail and approve moves (KERNEL-862). The fold, group collapse, tray row and scrim durations are still separate. Open, minor.
 Suspect (c) confirmed. The send glide and the lift are 120 to 700ms, set by distance (`Transcript.tsx:65`, `glideMs`, ease `cubic-bezier(0.45,0,0.05,1)`). The rail jump is native smooth scroll with a 1000ms fallback and a 1.2s ring (`ChatRail.tsx`). The approval fold is 200ms with a 120ms fade (`archiveMotion.css`). Group collapse is 180ms ease. The queue tray row leaves in 160ms (`QueueList.tsx:34`), and the scrim is 160ms.
 Each one looks fine alone. They collide only in plan approve (M2). Recorded paths: send in a long chat is one glide of about 4 frames (`WorkspaceSendLongMotion`); send in a short chat is already at rest at frame 0 (`WorkspaceSendShortMotion`, see "Can't be reached"); question answer shows the answer bubble at once and the card folds in about 4 frames, one motion (`AuditQuestionAnswerMotion`); rail jump is one glide from the end to the first message that lands in about 400ms and retakes the aim once (`AuditRailJumpMotion`); first message and plan approve are m1 and M2; Scroll to bottom is three frames.
 Direction: put the durations in tokens so they can be tuned together. Not urgent.
