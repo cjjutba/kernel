@@ -2787,6 +2787,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const draft = ['Settings search should land on the setting, not only open its page. When I pick a result:', '1. Open the Settings page the setting belongs to.', '2. Scroll the matching row into view, centered when it fits.', '3. Outline the row for about a second, then let the outline fade.', '4. Put focus on the row\'s control so I can change it from the keyboard.', 'Enter in the search field opens the first match.', 'If I come back to search, my query is still in the field.'].join('\n')
     return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft } } } }
   }),
+  // KERNEL-869: the first visit to New chat in a room with no tracker. The tracker answers late, and nothing was held for Up next, so the box stays where it was.
+  NewChatNoTracker: { ...scene((f) => ({ ...noPlan(leadNoChats(f)), ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }, trackers: { [ids.roomA]: { kind: 'none' as const } }, lag: { 'issues.next': 700, 'issues.tracker': 700 } })), motion: { action: { click: 'New chat in Client A' }, ms: 1000, area: '.lead-new' } },
   NewChatPlan: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: true } } })),
   // KERNEL-786: the + menu with Run in and Branch, and each picker open (the shot opens them, scripts/shots.ts). NewChatLocal has Local picked by Settings' workspace mode, so the chip beside + says Local.
   // NewChatBranch lists branches with two that have an open workspace, one that is local only, and the default first. NewChatBranchChip picks one, so the chip says where the chat starts from.
@@ -2825,6 +2827,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),
+  WorkspaceSharedMissing: scene((f) => ({ ...renderer(f), shared: sharedFiles(2).filter((x) => x.workspaceId === ids.table && x.id !== 'sh-html'), ui: { ...open, workspace: { right: 'changes', bottom: 'run' } } })), // the chat's HTML card with its file gone from the store (KERNEL-870)
   WorkspaceSharedHtml: sharedTab('sh-html'),
   WorkspaceSharedPhone: sharedTab('sh-html'),
   WorkspaceSharedImage: sharedTab('sh-image'),
@@ -3077,6 +3080,26 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
+  // KERNEL-869: the queue and the run mode could not be read, so one line above the box says so, with Retry, instead of an empty tray and the default mode.
+  WorkspaceComposerLoadFailed: scene((f) => ({
+    items: { [ids.tableChat]: queuedItems() },
+    queue: { [ids.tableChat]: [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] }] },
+    fails: { 'chats.queue': 'Kernel did not answer.', 'chats.queueReason': 'Kernel did not answer.', 'chats.runMode': 'Kernel did not answer.' },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: open
+  })),
+  // KERNEL-869: Stop with a draft in the box and two messages queued. Stop spins and says Stopping while main answers, then the queued messages
+  // are in the box after the draft, in order, and the tray is gone.
+  WorkspaceStop: { ...scene((f) => ({
+    items: { [ids.tableChat]: queuedItems() },
+    queue: { [ids.tableChat]: [
+      { id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] },
+      { id: 'q2', chatId: ids.tableChat, ts: at(10, 31), parts: [{ type: 'text', text: 'Use the shared EmptyState component' }] }
+    ] },
+    lag: { 'chats.interrupt': 600 },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'Keep the header sticky' } } }
+  })), motion: { action: { press: ['Meta+l', 'Escape'] }, ms: 1400, area: '.ws-main' } },
   /** One follow-up behind a running turn: the tray has no "N queued" header. */
   WorkspaceQueuedOne: scene((f) => ({
     items: { [ids.tableChat]: queuedItems() },

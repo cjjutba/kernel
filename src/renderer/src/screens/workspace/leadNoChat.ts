@@ -33,6 +33,14 @@ export function newChatTab<T>(noChat: boolean, focus: () => void, create: () => 
 /** The one tab in the tab order: the active one, or the first while none is, as with the New chat box on screen, so Tab lands in the row and the arrow keys work from there. */
 export const tabStop = (ids: string[], active?: string) => (active !== undefined && ids.includes(active) ? active : ids[0])
 
+/** Where an arrow key, Home or End takes focus from tab `id`: arrows wrap, Home and End go to the first and last. Undefined for any other key. */
+export const tabAfterKey = (ids: string[], id: string, key: string) => {
+  if (key === 'Home') return ids[0]
+  if (key === 'End') return ids[ids.length - 1]
+  const step = key === 'ArrowRight' ? 1 : key === 'ArrowLeft' ? -1 : 0
+  return step ? ids[(ids.indexOf(id) + step + ids.length) % ids.length] : undefined
+}
+
 /**
  * The sidebar's Lead row and ⌘⇧L ask for the composer. With no chat open and a file, diff or shared tab in front it isn't mounted, so `bringUp` puts the box in its place.
  * It looks when this starts, for a request made before the screen mounted, and when one is made, never when a tab opens later: a request left waiting by a terminal

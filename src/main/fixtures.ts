@@ -66,7 +66,9 @@ export function fixtureHandlers(f: Fixture): Handlers {
   }
   /** A provider's status table: the fixture's, else Kernel's bundled copy, signed in (KERNEL-406). */
   const status = (provider: Provider): ProviderStatus => f.providerStatus?.[provider] ?? { provider, source: 'bundled', signedIn: true, configFile: '' }
-  const queue = (chatId: string) => f.queue?.[chatId] ?? []
+  /** Queued messages a fixture run removed, so Remove and Stop leave them out of the next read. */
+  const unqueued = new Set<string>()
+  const queue = (chatId: string) => (f.queue?.[chatId] ?? []).filter((q) => !unqueued.has(q.id))
   const decided = (a: Approval, d: Parameters<Handlers['approvals.decide']>[0]['decision']): Approval =>
     d.behavior === 'answer' ? { ...a, status: 'answered', answer: d.text } : { ...a, status: d.behavior === 'allow' ? 'allowed' : 'denied' }
 
@@ -201,7 +203,10 @@ export function fixtureHandlers(f: Fixture): Handlers {
       for (const step of f.afterSend ?? []) setTimeout(() => step.events.forEach((e) => bus.push(e)), step.afterMs)
       return { queued: false }
     },
-    'chats.interrupt': async () => ok,
+    'chats.interrupt': async ({ chatId }) => {
+      bus.push({ type: 'chat.running', chatId, running: false })
+      return ok
+    },
     'chats.configure': async ({ chatId, ...patch }) => ({ ...chat(chatId), ...patch }),
     'chats.rename': async ({ chatId, title }) => ({ ...chat(chatId), title }),
     'chats.close': async () => ok,
@@ -225,7 +230,10 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     // A fixture's running chats, retries, script lines and terminal output come from its push events.
     'chats.live': async () => ({ running: [], retry: {} }),
-    'chats.unqueue': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
+    'chats.unqueue': async ({ chatId, id }) => {
+      unqueued.add(id)
+      return queue(chatId)
+    },
     'chats.sendNow': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
     'skills.list': async () => f.skills ?? [],
     'commands.list': async () => [],
@@ -475,6 +483,18 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'telemetry.track': async () => ok
   }
   for (const channel of f.hold ?? []) (handlers as Record<string, unknown>)[channel] = () => new Promise<never>(() => undefined)
+  // A fixture can make a call fail or answer late, to draw a failed load or catch a call in flight (KERNEL-869).
+  for (const channel of Object.keys(handlers) as (keyof Handlers)[]) {
+    const fails = f.fails?.[channel]
+    const lag = f.lag?.[channel]
+    if (fails === undefined && lag === undefined) continue
+    const inner = handlers[channel] as (req: unknown) => Promise<unknown>
+    ;(handlers as Record<string, unknown>)[channel] = async (req: unknown) => {
+      if (lag) await new Promise((r) => setTimeout(r, lag))
+      if (fails !== undefined) throw new Error(fails)
+      return inner(req)
+    }
+  }
   return handlers
 }
 

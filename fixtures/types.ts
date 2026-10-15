@@ -3,7 +3,7 @@ import type { AccountProfile, MoveNotice, MovePreview, Provider, ProviderModel, 
   FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
-import type { PushEvent } from '@shared/ipc'
+import type { Channel, PushEvent } from '@shared/ipc'
 import type { TelemetryRecord } from '@shared/telemetry'
 
 /** What `pnpm shots <Screen> --motion` does: a click on a button by its accessible name, or key presses in Playwright's names (`Meta+Shift+Enter`). */
@@ -142,6 +142,10 @@ export interface Fixture {
   ui: ForcedUi
   /** `pnpm shots <Screen> --motion` runs `action` and captures frames for `ms`. `area` is a selector to crop to, else the whole window (KERNEL-831). */
   motion?: { action: MotionAction; ms: number; area?: string }
+  /** Channels that reject with this text, so a screen can show a failed load (KERNEL-869). */
+  fails?: Partial<Record<Channel, string>>
+  /** Channels that answer after this many milliseconds, so a motion can catch a call in flight (KERNEL-869). */
+  lag?: Partial<Record<Channel, number>>
   /** Events `chats.send` pushes after the given delays, so a `motion` that clicks Send can step a running turn through more calls. */
   afterSend?: { afterMs: number; events: PushEvent[] }[]
   /**

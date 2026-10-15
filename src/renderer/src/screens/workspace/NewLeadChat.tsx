@@ -163,15 +163,22 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
   /** Sends what is typed. A picked branch goes as the base, and as a line for the Lead. A failed start keeps the text. */
   const start = () => {
     const typed = d.message()
-    if (!typed.length || !usable) { d.focus(); return }
+    if (!typed.length || !usable) {
+      actions.ui.toast(usable ? { title: 'Nothing to send', sub: `Type a message for ${name} first.` } : { title: 'Pick a room first', sub: 'This room is archived or gone, so there is nowhere to start the chat.' })
+      d.focus()
+      return
+    }
     const parts = briefParts(typed, null, pickedLines({ mode: place, target: base.target, fallback: base.fallback, picked: '' }))
     void run('send', async () => {
       const issue = typed.find((p): p is Extract<ChatPart, { type: 'issue' }> => p.type === 'issue')
       if (issue && (await someoneIsOn(issue, parts))) return
       const failed = await startChat({ roomId, parts, model, effort, plan, mode, baseRef: picked && place === 'worktree' ? picked : '', leadMode })
-      if (failed) actions.ui.toast({ title: 'Could not send', sub: failed })
+      if (failed) { actions.ui.toast({ title: 'Could not send', sub: failed }); refocus.current = true }
     })
   }
+  // The box is disabled while the send runs, so the caret goes back once it is enabled again.
+  const refocus = useRef(false)
+  useEffect(() => { if (!busy && refocus.current) { refocus.current = false; d.focus() } }, [busy])
 
   /** Up next's Plan: the issue goes in the box as a chip, plan mode turns on, and nothing sends until you do. */
   const planIssue = (part: ChatPart) => {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { call, cleanError } from '../api'
 import { actions, useStore } from '../store'
-import { Button, Icon } from '../ui'
+import { Button } from '../ui'
 
 /**
  * The card a downloaded update shows in the bottom right, like Conductor's (KERNEL-164). The footer's Update ready
@@ -31,9 +31,6 @@ export function UpdateCard() {
   }
   return (
     <div className="update-card">
-      <button type="button" className="update-card-x" aria-label="Close" disabled={busy} onClick={() => setClosedFor(version)}>
-        <Icon name="close" size={12} />
-      </button>
       <span className="update-card-title">New update available</span>
       <div className="update-card-actions">
         <Button disabled={busy} onClick={seeChanges}>See changes</Button>
