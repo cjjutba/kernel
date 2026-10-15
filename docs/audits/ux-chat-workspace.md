@@ -11,68 +11,174 @@ Audit only. No file under `src/` changed. Scope is `screens/workspace/` and `scr
 
 Composer findings are tagged **may change with the composer redesign** (Kai's work after #862). The composer was audited as it is on main.
 
-## How far this got
+## How this was done
 
-Graded with a shot or a motion sheet: the held chat load, the Interrupted, Relaunch, Error, Offline, Hooks down and queued-offline states, the question card, a message with ten images, send in a new chat, plan approve, Scroll to bottom. Everything else in scope was read in code only, and is listed under "Not reproduced". The keyboard walk is from code, not run. This is a partial audit, not a full one.
+Three kinds of evidence, tagged on every line that depends on one:
 
-Counts: blocker 0, major 4, minor 1, polish 0.
+- **shot**: a `pnpm shots` image of a fixture, in `shots/` (git-ignored) and in the shared sheets. Looked at in the 1440x900 render, and in 640px tiles on the group sheets.
+- **motion**: a `--motion` contact sheet and GIF.
+- **code**: read from source, not run. Each has a file and line, and repro steps for whoever fixes it. A code tag means "I did not see this happen".
+
+The keyboard and focus walk is a code read. Question 6 (restart, chat switch, resize) is graded from shots at 1440x900 and the narrow fixtures, and from code for restart. No state was run through a real restart.
+
+Counts: blocker 0, major 4, minor 7, polish 1.
 
 ## Findings
 
 ### Major
 
-**M1. An existing chat shows the new chat welcome while its items load.**
-State: opening a chat whose `chats.items` call is slow. Fixture: `AuditItemsLoading` (`hold: ['chats.items']`). Shot: `shots/AuditItemsLoading.png`, first cell of the state sheet.
-The transcript says "New tab with Kai, Same worktree and branch, fresh context" with three starter buttons, over a chat that has a full history. `loadWorkspace` in `store.ts` sets the chat list first and loads items one chat at a time after, and `Transcript.tsx:1229` treats `!items.length && !running` as empty. Suspect (a) is confirmed.
+**M1. An existing chat shows the new chat welcome while its items load.** (shot)
+State: opening a chat whose `chats.items` call is slow. Fixture: `AuditItemsLoading` (`hold: ['chats.items']`). Shot: `shots/AuditItemsLoading.png`.
+The transcript says "New tab with Kai, Same worktree and branch, fresh context" with three starter buttons, over a chat that has a full history. `loadWorkspace` in `store.ts` sets the chat list first and loads items one chat at a time after, and `Transcript.tsx:1229` treats `!items.length && !running` as empty. Suspect (a) confirmed.
 Fails 1 and 5. The welcome is wrong, and it only goes away when the load answers, so a failed load leaves it up for good.
 Direction: keep a per chat "items loaded" flag and show a blank or skeleton thread until it is true. Show an error with Retry if the load fails.
 
-**M2. Plan approve moves four things at once.**
-State: approve a plan in the Lead chat. Fixture: `WorkspacePlanApprove --motion`. Sheet: `shots/WorkspacePlanApprove-motion.png`, shared as "Audit motion: plan approve".
-Frame 0 to 3: the plan card collapses to an "Approved" pill, the pill jumps about 110px up the view, the uncommitted file note and composer shift about 14px as the plan bar closes, and the mode chip flips from Plan to Auto later, around frame 7. The thread is left mostly empty under the pill. Suspect (d) is confirmed. `plan.tsx:91` also uses an instant `scrollIntoView` while the transcript aim runs, so smooth scroll restarts when the goal moves 48px or more.
-Fails 4 (motion).
+**M2. Plan approve moves four things at once.** (motion)
+Fixture: `WorkspacePlanApprove --motion`. Sheet: `shots/WorkspacePlanApprove-motion.png`.
+Frames 0 to 3: the plan card collapses to an "Approved" pill, the pill jumps about 110px up the view, the uncommitted file note and composer shift about 14px as the plan bar closes, and the mode chip flips from Plan to Auto around frame 7. The thread is left mostly empty under the pill. Suspect (d) confirmed. `plan.tsx:91` also uses an instant `scrollIntoView` while the transcript aim runs, so smooth scroll restarts when the goal moves 48px or more.
+Fails 4.
 Direction: sequence it. Close the strip first, then collapse the card, and let the aim settle once at the end.
 
-**M3. The composer swallows load failures.**
-State: `chats.queue`, `chats.queueReason` and `chats.runMode` fail. Code: `composer/Composer.tsx:137`, `:138`, `:221` end in `.catch(() => undefined)`. No fixture can inject a failing call, so there is no shot. Suspect (f) is confirmed from code only.
-A failed queue load means a queued message is not shown and the person may send it twice. A failed run mode load shows the default mode as if it were the chat's. Nothing is said in either case.
+**M3. The composer swallows load failures.** (code)
+`composer/Composer.tsx:137`, `:138` and `:221` end in `.catch(() => undefined)` for `chats.queue`, `chats.queueReason` and `chats.runMode`. No fixture can fail an IPC call. Suspect (f) confirmed.
+Repro: in devtools, make `chats.queue` reject (or block it in the main handler), then open a chat that has a queued message. The tray is empty and nothing says why, so the person can send it twice. A failed `chats.runMode` shows the default mode as if it were the chat's.
 Fails 1, 2 and 5.
-Direction: show a one line note above the box with a Retry button, and retry on reconnect. **May change with the composer redesign.**
+Direction: one line note above the box with Retry, and retry on reconnect. **May change with the composer redesign.**
 
-**M4. There is no way to stop a turn from the keyboard, and Stop has no busy state.**
-Code: `composer/Composer.tsx` `onKey` handles Escape only for the autocomplete. `composer/ComposerToolbar.tsx:54` renders Stop only when the box is empty, and it does not spin or say "Stopping".
-With a draft in the box, a running turn can only be stopped by clearing the draft first. Stop can be pressed twice with no sign the first press landed.
-Fails 3 and 4 (busy buttons, DESIGN.md).
-Direction: Escape stops the turn after the picker and chips have taken theirs, and never touches the draft. Use `useBusy` on Stop. **May change with the composer redesign.**
+**M4. No way to stop a turn from the keyboard, and Stop has no busy state.** (code)
+`composer/Composer.tsx` `onKey` handles Escape only for the autocomplete. `composer/ComposerToolbar.tsx:54` renders Stop only when the box is empty, and the Stop handler (`Composer.tsx:391`, `chats.interrupt`) does not spin or say "Stopping".
+Repro: start a turn, type a few characters. The Stop button is gone, and Escape does nothing. Clear the box and press Stop twice quickly: both presses fire.
+Fails 3 and 4 (busy buttons).
+Direction: Escape stops the turn after the picker and chips have had theirs, and never touches the draft. Use `useBusy` on Stop. **May change with the composer redesign.**
 
 ### Minor
 
-**m1. A new chat's first message paints low, then glides up.**
-Fixture: `WorkspaceNewChatSendMotion --motion`, shared as "Audit motion: new chat first message". Suspect (b) is confirmed: the first frames show the message near the bottom, then it moves to the top anchor. The anchor is set in an effect, after the first paint. It is one motion and it ends in the right place, so it is minor.
-Fails 4 (motion).
-Direction: set the anchor in a layout effect so the first paint is the final position.
+**m1. A new chat's first message paints low, then glides up.** (motion)
+Fixture: `WorkspaceNewChatSendMotion --motion`. Suspect (b) confirmed: the first frames show the message near the bottom, then it moves to the top anchor. The anchor is set in an effect, after the first paint. One motion, right end point.
+Fails 4. Direction: set the anchor in a layout effect.
 
-## Suspects ruled out
+**m2. Five timing systems, none shared.** (motion and code)
+Suspect (c) confirmed. The send glide and the lift are 120 to 700ms, set by distance (`Transcript.tsx:65`, `glideMs`, ease `cubic-bezier(0.45,0,0.05,1)`). The rail jump is native smooth scroll with a 1000ms fallback and a 1.2s ring (`ChatRail.tsx`). The approval fold is 200ms with a 120ms fade (`archiveMotion.css`). Group collapse is 180ms ease. The queue tray row leaves in 160ms (`QueueList.tsx:34`), and the scrim is 160ms.
+Each one looks fine alone. They collide only in plan approve (M2). Recorded paths: send in a long chat is one glide of about 4 frames (`WorkspaceSendLongMotion`); send in a short chat is already at rest at frame 0 (`WorkspaceSendShortMotion`, see "Can't be reached"); question answer shows the answer bubble at once and the card folds in about 4 frames, one motion (`AuditQuestionAnswerMotion`); rail jump is one glide from the end to the first message that lands in about 400ms and retakes the aim once (`AuditRailJumpMotion`); first message and plan approve are m1 and M2; Scroll to bottom is three frames.
+Direction: put the durations in tokens so they can be tuned together. Not urgent.
 
-- **Ten images (i):** `AuditTenImages`. Images in a sent message are file chips, not thumbnails, so ten of them wrap onto three lines and nothing shifts when image data arrives. Fine.
-- **Several banners at once (g):** `banners/model.ts` returns one banner by priority and masks the rest, so banners do not stack. The notes above the composer (uncommitted note, queue tray, hunk card) can still stack. `WorkspaceOffline` shows the offline banner over the queue tray and the box with room to spare, and fits at 1440x900. Not checked at a small window height.
-- **Scroll to bottom motion:** `AuditScrollToBottomMotion --motion`. The view reaches the end in about three frames as one motion. Fine.
-- **Approval buttons with no spinner:** deliberate, KERNEL-834 (`cards/decideFold.ts`). Not a finding.
+**m3. A failed answer leaves the view jumping.** (code)
+Suspect (h). A composer send has no optimistic row, so a failed send leaves no padding behind (ruled out for typing). An answer does: `decideInChat` places a row (`cards/optimisticAnswer.ts:33-38`) and anchors it, `padReply` pads below it. When the call fails, `undo()` drops the row, `anchored.current` points at a row that is gone, `padReply` sets padding to 0 (`Transcript.tsx:1083`), and the view clamps and jumps.
+Repro: make `approvals.decide` reject, then answer a question card or approve a plan. The answer appears, the card folds, then the answer vanishes, the card comes back and the view shifts by the padding.
+Fails 4 and 6.
+Direction: when the anchored row is dropped, release the anchor and keep the scroll position.
 
-## Not reproduced
+**m4. Up next can move the composer on first visit.** (code)
+`UpNext.tsx` holds a three row spacer until the tracker call settles, then returns null for a room with no tracker. The composer, docked under it, moves by the spacer height. Failures are swallowed on purpose.
+Repro: open the New chat page of a room with no tracker with `trackers.issues` slow (or held in a fixture with `hold`). Fails 4.
 
-Each needs either a fixture that can fail an IPC call, a scripted click in `scripts/shots.ts`, or a live run.
+**m5. After a failed first send, nothing takes focus.** (code)
+`NewLeadChat.tsx`: `ComposerInput disabled={busy}` blurs the box while the first message goes out. On failure the toast says "Could not send" and the text stays, but nothing focuses the box again. `start()` on an empty draft or an unusable room focuses it silently, with no word on why.
+Repro: make `leads.start` reject, type, press Enter, then press a key. Nothing is typed. Fails 3 and 2.
 
-- (c) Four motion systems with different timing: seen in the plan approve sheet, not measured.
-- (e) The aim snaps after 150 frames (`AIM_FRAMES`, `Transcript.tsx:1140`): code reading only. Needs a transcript whose height keeps changing for over 2 seconds.
-- (h) A failed send leaving padding under nothing: no fixture fails a send.
-- (j) Stop then send at once, queued messages after a failed turn, archiving a running chat, an approval answered elsewhere: not run. `WorkspaceInterrupted` and `WorkspaceRelaunch` render sensibly (see the state sheet) but I did not check the keyboard or recovery paths.
-- Question answer motion: `AuditQuestionPicked` captures the picked state, but a motion run of the answer timed out clicking under `--motion` and I did not find out why.
-- A 200 line command output: `AuditLongOutput` renders, but the output is inside a collapsed "Ran a command" row, so the shot shows none of it. Needs a click helper.
-- Plan taller than the view, huge diff, queued messages after a failed turn: no fixture yet.
-- Not read at all: `SetupWait`, `UpNext`, `NewLeadChat`, `ChatTabs`, `ChatRail`, `Panels`, `TeamUpdateCard`, `SharedCard`, `ErrorCard` beyond its shot.
-- Window resize and restart (question 6) were not checked for any state.
+**m6. A shared file card vanishes when the file is not in the store.** (code)
+`SharedCard.tsx`: `if (!file || !v) return null`. A message that points at a shared file the store doesn't have (an archived workspace, a failed list load) loses the card and the message reads as if it was never attached.
+Repro: remove the file from `shared` in a fixture and render `WorkspaceSharedCard`. Fails 1 and 5.
+
+**m7. Stop clears the queue without a word.** (code)
+`sessions.ts:1889`: `if (stopped) this.setQueue(chatId, [])`. This is deliberate (D-030, "Stopping a chat clears its queue"). The tray rows fade out and nothing says the messages were dropped, so someone who queued three messages and pressed Stop loses all three with no way back. Send now keeps them.
+Repro: run a turn, queue two messages, press Stop. Fails 1.
+Direction: keep the rule, add a toast with Undo, or put the dropped text back in the box.
+
+### Polish
+
+**p1. Chat tabs take no Home and End.** (code)
+`ChatTabs.tsx`: arrows wrap and focus is roving, but Home and End do nothing. The ChatRail has both. Fails 3 for the last tab of a long strip.
+
+## State inventory and grades by surface
+
+Grades are the six questions in order, 1 to 6, as pass (P), fail (F) or not applicable (n/a). A code grade is a read, not a run. Sheets: `audit-g1` to `audit-g9`, shared with this PR.
+
+### ChatRail (sheet g1)
+
+States: hidden under 2 entries, closed, open with long labels, Lead list with team updates, narrow window. Shots: `ChatRail`, `ChatRailOpen`, `ChatRailLead`, `ChatRailNarrow`. Motion: `AuditRailJumpMotion`.
+Grades: 1 P, 2 P (Enter jumps when open), 3 P (`aria-haspopup=listbox`, `aria-activedescendant`, Home, End, arrows, Enter, Escape, code), 4 P, 5 P (follows the items), 6 P for resize (`ChatRailNarrow`), restart and chat switch not run. The 1.2s jump ring is not visible in the dark frames at sheet scale (see "Can't be reached"). Findings: m2.
+
+### Chat tabs (g1)
+
+States: one tab, several, a running tab, an unread tab, overflow, the tab menu, rename. Shots: `WorkspaceTabStates`, `WorkspaceTabMenu`.
+Grades: 1 P, 2 P (the menu has the real actions), 3 P with p1 (`role=tablist`, roving tabindex, arrows wrap, ⌘T, ⌘W, ⌘⇧T, code), 4 P, 5 P, 6 P (tabs are in the store). Rename commits on Enter and blur and cancels on Escape. Whether blur after Escape commits is unverified. Close, rename and fork failures toast. Closing a running chat asks first. Findings: p1.
+
+### Panels
+
+**Files.** `WorkspaceFilesTree`, `WorkspaceFile` (g2). Empty, tree, file open, open in editor. "Could not list files" is in code (`Panels.tsx:66`) and has no Retry button. Grades: 1 P, 2 F on the failure (no Retry, code), 3 P, 4 P, 5 F on the failure (stays until reopened, code), 6 P.
+**Diffs.** `WorkspaceChangesList`, `WorkspaceDiffTab`, `PanelFilter`, `PanelCompare` (g2, g3, g4). Changes list, filtered list, empty filter, compare menu, diff tab. "Could not compare" and the empty and no-match states are in code. Grades: 1 P, 2 P, 3 P, 4 P, 5 P, 6 P. In `PanelCompare` the commit list sits close to the right edge of the window. Cosmetic, looked at in a 640px tile only, not counted.
+**Terminal.** `WorkspaceTerminal` (g3). Shows the Claude Code banner and a live prompt. Grades: 1 P, 2 n/a, 3 P (the terminal takes keys, so leaving it is the tab strip or ⌘ shortcuts, code), 4 P, 5 n/a, 6 not run (a restart ends the pty, code).
+**Scripts.** `WorkspaceRunScripts`, `WorkspaceRunEmpty`, `WorkspaceSetupAdd`, `PanelSetup` (g2, g4). Run output with tabs per script, "No run script" with Add run script, "Add setup script" with Ask Kernel and Add manually. Setup tab has Stop (`Panels.tsx:526`). Start and stop failures toast ("Could not stop setup", "Could not start ..."). Grades: 1 P, 2 P, 3 P, 4 P, 5 P, 6 P. Busy buttons spin.
+**PR view and checks.** `WorkspacePRChecks`, `WorkspacePRConflict`, `PanelSplit`, `PanelCollapsed`, `PanelTabsOverflow` (g4). Open PR, checks running, merge conflicts with "Resolve conflicts", no PR with "Create PR". Grades: 1 P, 2 P, 3 P, 4 P (status is text and icon, no dots), 5 P (follows GitHub), 6 P.
+**Shared tab.** `WorkspaceSharedPanel`, `WorkspaceSharedPanelEmpty` (g4). List and the empty "Nothing shared in this workspace yet". Grades all P.
+
+### SetupWait (g5)
+
+States: running with a queued bubble, failed after 1:08, stopped, worktree failed, edit a queued message. Shots: `SetupRunning`, `SetupFailed`, `SetupStopped`, `SetupWorktreeFailed`, `SetupEditQueued`.
+Grades: 1 P ("Running setup", "Setup failed after 1:08", "Couldn't create the worktree"), 2 P (Run again, Send anyway, Edit script, or Try again), 3 P (real busy buttons, `role=status`, code), 4 P, 5 P (Run again re-enters the wait), 6 P for chat switch, restart drops the held first prompt by design (D-044). Queued bubbles have Edit and Cancel. There is no Stop on the card itself, only in the Setup tab. "Show log" appears only when the panel is closed. Findings: none.
+
+### UpNext (g6)
+
+States: three rows, none (no tracker), no room. Shots: `NewChat`, `NewChatNoRoom`. Grades: 1 P, 2 P, 3 P, 4 P, 5 P (a failed read is swallowed on purpose and the section is just absent, code), 6 P. Findings: m4.
+
+### New chat page (g6)
+
+States: ready, no room ("Pick a room" button), long draft, narrow, after send, queued. Shots: `NewChat`, `NewChatNoRoom`, `NewChatLongDraft`, `NewChatNarrow`, `NewChatAfterSend`, and the first message motion (m1).
+Grades: 1 P, 2 P, 3 F after a failed start (m5), 4 P, 5 P, 6 P (draft survives a switch, long draft and narrow render fine). `lead.prefetch` failures are swallowed, harmless. Findings: m5, m1.
+
+### TeamUpdateCard (g7)
+
+States: merge, review, ask, PR states (checks failed, merging, changes requested, conflicts, draft, in history), shared files in an update. Shots: `TeamUpdateMerge`, `TeamUpdateReview`, `TeamUpdateAsk`, `TeamUpdatePrStates`, `TeamUpdateShared`, `WorkspaceKernelNote`.
+Grades: 1 P, 2 P (Merge only on the newest row per PR, "Needs you" replaces Merge for a stuck PR, "Merge anyway" when blocked), 3 P (the reply clamps to 3 lines with a Show more button, `aria-expanded`, code), 4 P, 5 P (rows follow PR state), 6 P. Open items cap at 5 and the fallbacks "In History" and "From ..." read well. Findings: none. Note: "Could not read the pull request from GitHub." shows inline on a card and has no Retry (shot `TeamUpdateShared`). Not counted, the next poll recovers it.
+
+### SharedCard (g8)
+
+States: card in a message (thumbnail, kind, version, who), a comment on an archived workspace, comment with "Noor's workspace is archived" and a disabled Send. Shots: `WorkspaceSharedCard`, `WorkspaceSharedCommentArchived`.
+Grades: 1 P, 2 P (Open, "Restore it from History"), 3 P, 4 P, 5 F when the file is missing (m6), 6 P. Findings: m6.
+
+### Steps and folds (g8, g9)
+
+States: step states, long run of steps, 493 earlier steps, working fold, folded, folded then opened, stopped turn, failed turn, orphaned turn, error card, queued. Shots: `WorkspaceStepStates`, `WorkspaceStepsLong`, `WorkspaceFoldWorking`, `WorkspaceTurnFolded`, `WorkspaceTurnFoldedOpen`, `WorkspaceTurnStopped`, `WorkspaceTurnFailed`, `WorkspaceTurnOrphaned`, `WorkspaceError`, `WorkspaceQueued`, `WorkspaceQueuedOffline`, `WorkspaceInterrupted`.
+Grades: 1 P ("INTERRUPTED BY YOU", "Couldn't run a command", "The turn failed"), 2 P (ErrorCard has Open terminal, Retry and Ask Kai to fix, all busy buttons, `role=alert`; the queue has Edit, Send now and Remove), 3 P (code), 4 P, 5 F: ErrorCard never clears itself when the cause goes away, it waits for Retry (code, by design, not counted), 6 P (open state of a fold survives a chat switch via `useRowOpen`, `chatPlace.ts:86`, until Kernel restarts, KERNEL-765). Findings: m7 for the queue.
+
+## Interrupted flows (suspect j)
+
+- **Quit mid-turn.** (shot) `WorkspaceRelaunch` and `WorkspaceInterrupted` read sensibly. The turn carries on at the next launch, and `onTurnDone` is skipped while Kernel closes (`sessions.ts:1887`), so no false "finished" note. Ruled out. A quit that fails on a sign-out waits for the hold to lift (`sessions.ts:1868`).
+- **Stop, then send at once.** (code) `interrupt` sets `live.interrupted` (`sessions.ts:1393`), the message queues, and Stop empties the queue when the turn ends (`sessions.ts:1877`). A message sent after Stop but before the turn ends is dropped with the rest. Sent after it ends, it goes. That is m7, and the window is small but real. Repro: press Stop and type a message within the time the turn takes to end, then press Enter.
+- **Queued messages after a failed turn.** (code) The turn ends with `ok` false and not stopped, so `drain` sends the next queued message (`sessions.ts:1890`) while an ErrorCard with Retry sits above. Retry then re-sends the earlier turn after the new one has started. I did not run it. Repro: queue a message, make the turn fail (bad command), watch the queue. Needs a live check before anyone acts on it.
+- **Archiving a running chat.** (code) `archiveChatFromSidebar` reads `threads.archivePreview`, and a workspace with `running` opens `ConfirmArchiveChat`, which says "still running" and "Archiving removes the worktrees" (`archiveChat.ts:38-40`, `ConfirmArchiveChat.tsx:20`). A failed preview says "Kernel couldn't read what this chat would stop." and still archives on confirm. Ruled out as a finding.
+- **An approval answered elsewhere.** (code) `store.ts:798` upserts the approval on the push, so a pending card flips to answered where it sits. No toast, the card just resolves. An answer sent from here at the same moment would see the engine's row replace the optimistic one by id (`optimisticAnswer.ts:1-10`). Ruled out.
+
+## Keyboard and focus walk (code read, not run)
+
+- **Send and newline.** Enter sends, Shift+Enter inserts a newline, ⌘⇧Enter sends a queued message now, Shift+Tab cycles the mode. ArrowUp in an empty box edits the last queued message.
+- **Escape order.** The autocomplete closes first. Nothing else handles Escape in the composer, so a running turn can't be stopped from the keyboard (M4). Escape never discards a draft, which is correct. The rail and the tab rename handle their own Escape.
+- **Moving around.** Composer, thread, cards and tabs are all real buttons and inputs. Tab strip arrows are `tabIndex={-1}` and the strip is a roving `tablist`, so Tab enters it once. Home and End are missing (p1).
+- **Approve a plan, answer a question.** Both cards are radios and buttons, so Tab and Enter work. `AuditQuestionAnswerMotion` does exactly that (focus the card's Send, press Enter) and records 31 frames.
+- **Where focus lands.** After send, the box keeps focus (`d.reset()`, no remount). After approve or answer, the card folds and focus falls to the body if the button was inside it (code, unverified). After a failed first send on the New chat page, nothing is focused (m5). After a modal closes, focus returns to the trigger through the one modal shell. After an error toast, focus stays where it was.
 
 ## Fixtures added
 
-In `fixtures/workspace.ts`, after `WorkspaceError`: `AuditItemsLoading`, `AuditLongOutput`, `AuditTenImages`, `AuditScrollToBottomMotion`, `AuditQuestionPicked`. `scripts/shots.ts` has two interaction entries for the last two.
+In `fixtures/workspace.ts`: `AuditItemsLoading`, `AuditLongOutput`, `AuditTenImages`, `AuditScrollToBottomMotion`, `AuditQuestionPicked`, `AuditQuestionAnswerMotion`, `AuditRailJumpMotion`. `scripts/shots.ts` has an interaction entry for each of the last four and `AuditScrollToBottomMotion`. The other surfaces used fixtures that were already on main.
+
+## Suspects ruled out
+
+- **Ten images (i):** `AuditTenImages`. Images in a sent message are file chips, so ten wrap onto three lines and nothing shifts when image data arrives.
+- **Several banners at once (g):** `banners/model.ts` picks one banner by priority. The notes above the composer (uncommitted note, queue tray, hunk card) can still stack. `WorkspaceOffline` fits at 1440x900. Not checked at a small window height.
+- **Scroll to bottom motion:** three frames, one motion.
+- **Approval buttons with no spinner:** deliberate, KERNEL-834 (`cards/decideFold.ts`).
+- **The 150 frame aim cap (e):** (code) `Transcript.tsx:1140`. At `AIM_FRAMES` the aim stops being smooth and does one instant `scrollTo` if the view is not calm. It needs a row that keeps changing height for about 2.5 seconds at 60Hz (1.25s at 120Hz). Nothing in the app does that on a normal run, so it is not a finding. Repro for whoever wants to see it: in a fixture, make the last row's height change every frame for 3 seconds right after a send.
+- **A 200 line command output:** `AuditLongOutput` renders, but the output sits in a collapsed row. Fine as far as the shot goes, see below.
+
+## Can't be reached, and why
+
+- **Failed IPC calls** (M3, m3, m5, the "Could not list files" state, "Could not compare"): no fixture injects a failing call. Needs a `fail: string[]` option next to `hold`, in `fixtures/types.ts` and the shots harness. That is outside this audit's rule against changing shared files, so the findings are code tags with repro steps.
+- **The first frames of a short chat send** (`WorkspaceSendShortMotion`): the lift is at least 120ms and the harness waits about 150ms before frame 0, so the start is not captured.
+- **120Hz** and **the 150 frame cap in practice**: no display here. Code tag above.
+- **The rail's jump ring:** lasts 1.2s but is a low contrast hairline, and is not visible at 640px in the dark theme. Read in code only.
+- **Quit and relaunch for real:** fixtures show the state after a relaunch, not the relaunch. Question 6 for restart is graded from code.
+- **The output of a long command:** the row is collapsed and `shots.ts` has no step that opens it. A click helper would do it. Not done.
+- **A plan taller than the view, a huge diff:** no fixture. Not built, since neither is in the known suspects.
+- **Small window height** for stacked banners: shots are at 1440x900 only, apart from the narrow fixtures.
+- **Retry after a failed turn with a message queued:** needs a live run.
