@@ -47,22 +47,25 @@ export function createPrText(c: RepoConventions = {}, ctx?: PrContext): string {
   return prText('# Create a pull request', [
     ...(c.contributing ? [`Read \`${c.contributing}\` and follow what it says about pull requests.`] : []),
     'Commit any uncommitted work.',
-    'Rebase onto the base branch if it has moved.',
+    'If the base branch has moved, rebase onto it while the branch has never been pushed, and merge it in once the branch is on the remote.',
     'Run the checks the repo asks for before a push. If it names none, run the tests that cover what you changed.',
-    `Push the branch and set its upstream${ctx ? ` with \`git push -u ${ctx.remote} ${ctx.branch}\`` : ''}. Use \`--force-with-lease\` if you rebased commits that were already pushed.`,
+    `Push the branch and set its upstream${ctx ? ` with \`git push -u ${ctx.remote} ${ctx.branch}\`` : ''}.`,
     c.commitlint ? `Title it and write its commits as Conventional Commits. The repo checks them with commitlint (\`${c.commitlint}\`).` : "Title it in the style of the repo's recent commits.",
     `Write the body about every change on the branch, not only this chat's. ${body}`,
     `Open it with \`${create}\` and print the URL.`
   ], c, ctx)
 }
 
-/** Kernel's Resolve conflicts text. With a workspace it names the base to rebase onto. */
+/**
+ * Kernel's Resolve conflicts text. With a workspace it names the base to merge. A PR's branch is on the remote, so it takes the
+ * base by a merge: a rebase would need the force push the guard denies (KERNEL-886).
+ */
 export function resolveText(c: RepoConventions = {}, ctx?: PrContext): string {
   return prText('# Resolve conflicts', [
-    `Bring in the base branch the way the repo does: rebase${ctx ? ` onto \`${ctx.remote}/${ctx.base}\`` : ''}, unless its docs say to merge.`,
+    `Merge the base branch${ctx ? `, \`${ctx.remote}/${ctx.base}\`,` : ''} into this branch. It is already pushed, so don't rebase it.`,
     "Keep both sides where they don't overlap. Where they do, keep what each side meant and say what you chose.",
     'Run the checks the repo asks for before a push. If it names none, run the tests that cover the files that conflicted.',
-    'Push. After a rebase, use `git push --force-with-lease`.',
+    'Push as usual.',
     'Say what you changed in each file.'
   ], c, ctx)
 }

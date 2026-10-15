@@ -647,6 +647,7 @@ describe('a teammate that already started', () => {
     callsIn(w)[0].feed(result('r2'))
     await vi.waitFor(() => expect(pending(k).filter((e) => e.kind === 'wait.rebase_missing' && e.workspaceId === w.id)).toHaveLength(1), SLOW)
     expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ on: [noor.id], tip: expect.any(String) })
+    expect(pending(k).find((e) => e.kind === 'wait.rebase_missing' && e.workspaceId === w.id)?.wait).toMatchObject({ onto: 'origin/main', pushed: true })
     // A merge commit, not a rebase: the branch contains the base by ancestry, which is what the kept wait checks.
     expect((await k.lead['messageWorkspace'](room.id, w.id, 'Merge origin/main in, please.', lead.id)).sent).toBe(true)
     await mergeBase(w)
@@ -817,7 +818,7 @@ describe('the Lead\'s tools', () => {
     }
     const tools = kernelTools(deps)
     const call = async (name: string, input: object) => { const r = await tools.find((t) => t.name === name)!.handler(input as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } }
-    expect(await call('wait_for_merge', { workspace_id: 'k1', on: ['164'] })).toEqual({ isError: false, text: 'Kai waits for PR #164 by Noor to merge, and Kernel tells Kai to rebase onto it then. Tell the user that merging it moves Kai on.' })
+    expect(await call('wait_for_merge', { workspace_id: 'k1', on: ['164'] })).toEqual({ isError: false, text: 'Kai waits for PR #164 by Noor to merge, and Kernel tells Kai to bring its branch up to date with it then. Tell the user that merging it moves Kai on.' })
     expect(set).toEqual([['k1', ['w1']]])
     expect(await call('wait_for_merge', { workspace_id: 'nope', on: [] })).toEqual({ isError: true, text: 'Not set: there is no open workspace nope in this room. Call list_workspaces for the ids.' })
     expect(await call('wait_for_merge', { workspace_id: 'k1', on: ['k1'] })).toEqual({ isError: true, text: "Not set: k1 can't wait for itself." })

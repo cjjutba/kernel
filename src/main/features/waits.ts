@@ -264,7 +264,8 @@ export class Waits extends Feature {
     const { releasing: _, ...wait } = now.waitsFor
     const kept = this.updateWs(id, { waitsFor: wait })
     const remote = await this.k.config.remoteOfWs(kept)
-    this.leadUpdates.waits(kept, 'wait.rebase_missing', { on: wait.on, label: this.waitLabelOf(kept), held: false, onto: `${remote}/${stripRemote(kept.baseRef, remote)}` })
+    const pushed = await isPushed(kept.path, kept.branch, remote)
+    this.leadUpdates.waits(kept, 'wait.rebase_missing', { on: wait.on, label: this.waitLabelOf(kept), held: false, onto: `${remote}/${stripRemote(kept.baseRef, remote)}`, ...(pushed ? { pushed } : {}) })
   }
 
   /** A wait kept for a missing rebase ends at the end of any later turn, the Lead's message or the user's, that rebased (KERNEL-691). */

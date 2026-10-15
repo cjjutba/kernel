@@ -4,6 +4,7 @@ import type { AgentDef, Workspace } from '@shared/types'
 import { takesTasks } from '@shared/team'
 import { pickAgent } from './kernelMcp'
 import { isMerged, resolveTarget, waitRefusal } from './waits'
+import { isPushed, stripRemote } from './worktrees'
 
 export interface TeammateToolDeps {
   /** The calling teammate's workspace, as it is now. */
@@ -59,7 +60,12 @@ export function teammateTools(d: TeammateToolDeps) {
         if (refusal) return refuse(refusal)
         const target = resolveTarget(all, on)!
         const what = target.prNumber ? `PR #${target.prNumber}` : `${d.nameOf(target)}'s work`
-        if (isMerged(target)) return text(`${what} already merged, so there is nothing to wait for. Rebase onto it and carry on.`)
+        if (isMerged(target)) {
+          // A branch the remote has takes the base by a merge: a rebase would need the force push the guard denies (KERNEL-886).
+          const remote = await d.remote?.() ?? 'origin'
+          const take = await isPushed(ws.path, ws.branch, remote) ? `Merge ${remote}/${stripRemote(ws.baseRef, remote)} into your branch` : 'Rebase onto it'
+          return text(`${what} already merged, so there is nothing to wait for. ${take} and carry on.`)
+        }
         // Added to what the workspace already waits for: the teammate can't see a wait the Lead set.
         await d.setWait([...(ws.waitsFor?.on ?? []), target.id], why?.trim() || undefined)
         return text(`Kernel will message you when ${what} merges. End your turn now.`)
