@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { cp, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ActivityEvent } from '@shared/types'
@@ -19,13 +19,28 @@ import { tempRepo, freePort } from './helpers'
 // The SDK's `query` is wrapped to log every message, hook call and permission ask; Kernel's code runs as it is. Teams and
 // tasks land in ~/.claude, since a temp CLAUDE_CONFIG_DIR has no login. The run copies the folders it made into the
 // evidence folder and removes them, and leaves everything else in ~/.claude alone.
+// A run that is cut off keeps what it saw: each log entry is appended to log.jsonl as it happens, evidence.json is written
+// after every step, and each step prints one line (also in progress.txt). Ctrl+C (SIGINT) or SIGTERM writes the evidence
+// and cleans ~/.claude before the worker dies. Save the terminal with `2>&1 | tee -i <folder>/console.txt`.
 
 type Entry = Record<string, any> & { t: number; kind: string }
 /** Every SDK message, hook call, permission ask and step of the run, in order. */
 const log: Entry[] = []
 const queries: { q: any; sessionId?: string; chat?: string }[] = []
 const t0 = Date.now()
-const note = (kind: string, data: Record<string, unknown> = {}) => { log.push({ t: Date.now() - t0, kind, ...data }) }
+/** The evidence folder, once the run has made it. Until then entries are only kept in memory. */
+let outDir: string | undefined
+const note = (kind: string, data: Record<string, unknown> = {}) => {
+  const e = { t: Date.now() - t0, kind, ...data }
+  log.push(e)
+  if (outDir) appendFileSync(join(outDir, 'log.jsonl'), `${JSON.stringify(e)}\n`)
+}
+/** One line to the terminal and to progress.txt, for a run a person watches. */
+const say = (line: string) => {
+  const text = `[k857 ${new Date().toISOString().slice(11, 19)}] ${line}\n`
+  process.stderr.write(text)
+  if (outDir) appendFileSync(join(outDir, 'progress.txt'), text)
+}
 
 /** Long strings cut, so the log stays readable. */
 function clip(v: unknown, n = 400): unknown {
@@ -119,19 +134,39 @@ You review. Keep replies short.
 
 const claudeDir = join(homedir(), '.claude')
 const listDir = async (p: string): Promise<string[]> => (existsSync(p) ? readdir(p) : [])
+const listDirSync = (p: string): string[] => (existsSync(p) ? readdirSync(p) : [])
+/** What ~/.claude/teams and ~/.claude/tasks held before the run. Only folders that weren't there are copied and removed. */
+const before = { teams: [] as string[], tasks: [] as string[] }
+/** Copies the folders the run made in ~/.claude into the evidence folder under `label`, then removes them. Synchronous, so a signal handler can run it. */
+function cleanClaude(label: string): string[] {
+  const removed: string[] = []
+  for (const kind of ['teams', 'tasks'] as const) {
+    for (const name of listDirSync(join(claudeDir, kind)).filter((n) => !before[kind].includes(n))) {
+      if (outDir) try { cpSync(join(claudeDir, kind, name), join(outDir, 'claude', label, kind, name), { recursive: true }) } catch { /* copy what can be copied */ }
+      rmSync(join(claudeDir, kind, name), { recursive: true, force: true })
+      removed.push(`${kind}/${name}`)
+    }
+  }
+  return removed
+}
 const hooks = (event: string, pred: (input: any) => boolean = () => true) => log.filter((l) => l.kind === 'hook' && l.event === event && pred(l.input))
 const msgs = (pred: (m: Entry) => boolean) => log.filter((l) => l.kind === 'msg' && pred(l))
 const bashRan = (match: string) => hooks('PreToolUse', (i) => i.tool_name === 'Bash' && String(i.tool_input?.command ?? '').includes(match))
 const bashDone = (match: string) => hooks('PostToolUse', (i) => i.tool_name === 'Bash' && String(i.tool_input?.command ?? '').includes(match))
 
 describe.skipIf(!process.env.KERNEL_LIVE)('live agent teams', () => {
-  it('records what a team does in a Kernel chat', { timeout: 2_400_000 }, async () => {
+  it('records what a team does in a Kernel chat', { timeout: 3_600_000 }, async () => {
     const out = process.env.KERNEL_LIVE_OUT ?? (await mkdtemp(join(tmpdir(), 'kernel-teams-evidence-')))
-    await mkdir(out, { recursive: true })
+    mkdirSync(out, { recursive: true })
+    for (const f of ['log.jsonl', 'progress.txt']) writeFileSync(join(out, f), '')
+    outDir = out
+    for (const e of log) appendFileSync(join(out, 'log.jsonl'), `${JSON.stringify(e)}\n`)
+    say(`evidence goes to ${out}`)
     // The test may run inside Claude Code: its own session's variables would reach the session as the Mac's.
     const saved = { ...process.env }
     for (const key of Object.keys(process.env)) if (key === 'CLAUDECODE' || key.startsWith('CLAUDE_CODE_') || key === 'CLAUDE_PID' || key === 'CLAUDE_EFFORT') delete process.env[key]
-    const before = { teams: await listDir(join(claudeDir, 'teams')), tasks: await listDir(join(claudeDir, 'tasks')) }
+    before.teams = await listDir(join(claudeDir, 'teams'))
+    before.tasks = await listDir(join(claudeDir, 'tasks'))
     const made = async () => ({
       teams: (await listDir(join(claudeDir, 'teams'))).filter((n) => !before.teams.includes(n)),
       tasks: (await listDir(join(claudeDir, 'tasks'))).filter((n) => !before.tasks.includes(n))
@@ -171,10 +206,30 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live agent teams', () => {
     const h = k.handlers()
     const evidence: Record<string, unknown> = { reference, bg: process.env.KERNEL_LIVE_BG ?? 'on' }
     const phases: Record<string, string> = {}
+    evidence.phases = phases
+    const writeEvidence = () => writeFileSync(join(out, 'evidence.json'), JSON.stringify(evidence, null, 2))
+    const STEPS = 9
+    let step = 0
     const phase = async (name: string, fn: () => Promise<void>) => {
+      step++
+      say(`step ${step}/${STEPS}: ${name}`)
       note('phase', { name })
       try { await fn(); phases[name] = 'ok' } catch (e) { phases[name] = String((e as Error).message ?? e); note('phase.failed', { name, error: phases[name] }) }
+      say(`step ${step}/${STEPS}: ${name}, ${phases[name] === 'ok' ? 'done' : `failed: ${phases[name]}`}`)
+      writeEvidence()
     }
+    // A vitest worker ignores process.exit, and its orphan guard SIGKILLs it once the runner is gone, so the handler does
+    // everything synchronously and then ends the worker itself.
+    const onSignal = (signal: string) => {
+      say(`${signal}: writing the evidence and cleaning ~/.claude`)
+      note('signal', { signal, step })
+      try { writeEvidence() } catch { /* the log is already on disk */ }
+      say(`removed from ~/.claude: ${JSON.stringify(cleanClaude('interrupted'))}`)
+      process.kill(process.pid, 'SIGKILL')
+    }
+    const onInt = () => onSignal('SIGINT')
+    const onTerm = () => onSignal('SIGTERM')
+    process.once('SIGINT', onInt).once('SIGTERM', onTerm)
     const live = (chatId: string) => (k.sessions as any).live.get(chatId) as { running: boolean; tasks: Set<string> } | undefined
     const state = (chatId: string, label: string) => {
       const l = live(chatId)
@@ -304,22 +359,21 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live agent teams', () => {
         evidence.tasksAfterArchive = k.store.tasks(roomId)
       })
     } finally {
+      say('finishing: archiving, stopping Kernel and cleaning ~/.claude')
       bus.off('push', onPush); bus.off('activity', onActivity)
-      evidence.phases = phases
       evidence.sessions = queries.map((q) => ({ cwd: q.chat, sessionId: q.sessionId }))
       evidence.approvals = roomId ? k.store.approvals({ roomId }).map((a) => clip(a)) : []
       evidence.activity = activity.filter((a) => a.roomId === roomId).map((a) => ({ kind: a.kind, text: a.text, object: a.object, agentId: a.agentId, workspaceId: a.workspaceId, data: a.data }))
       evidence.items = Object.fromEntries(k.store.workspaces().flatMap((w) => k.store.chats(w.id)).map((c) => [c.id, k.store.items(c.id).map((i) => clip(i, 300))]))
-      await writeFile(join(out, 'log.jsonl'), log.map((l) => JSON.stringify(l)).join('\n'))
-      await writeFile(join(out, 'evidence.json'), JSON.stringify(evidence, null, 2))
+      writeEvidence()
       for (const w of k.store.workspaces()) if (w.mode === 'worktree' && w.status !== 'archived') await k.archiveWorkspace(w.id, true).catch(() => undefined)
       await k.stop({ budgetMs: 0 })
       // Whatever the run made in ~/.claude goes into the evidence and out of the user's folder.
-      const left = await snapshot('end')
-      for (const kind of ['teams', 'tasks'] as const) for (const name of left[kind]) await rm(join(claudeDir, kind, name), { recursive: true, force: true })
+      note('cleaned', { removed: cleanClaude('end') })
+      process.off('SIGINT', onInt).off('SIGTERM', onTerm)
       for (const dir of [home, dataDir, repo, reference]) await rm(dir, { recursive: true, force: true })
       process.env = saved
-      console.log(`[live] evidence: ${out}\n[live] phases: ${JSON.stringify(phases, null, 1)}`)
+      say(`finished. phases: ${JSON.stringify(phases)}`)
     }
     expect(phases.spawn).toBe('ok')
   })
