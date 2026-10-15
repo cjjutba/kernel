@@ -334,6 +334,15 @@ describe('a chat on Codex (KERNEL-406)', () => {
     await t.sessions.compact('chat')
     expect((await t.sent('thread/compact/start'))[0].params).toEqual({ threadId: 'thread-1' })
   })
+
+  it('compacts after a turn that completed before turn/start was answered', async () => {
+    const t = track(await setup())
+    // turn/start's answer, turn/started and turn/completed in one chunk: the turn ends before its start is answered.
+    await t.sessions.send('chat', [{ type: 'text', text: script({ complete: 'completed', withStart: true }) }])
+    await t.idle()
+    await t.sessions.compact('chat')
+    expect((await t.sent('thread/compact/start'))[0].params).toEqual({ threadId: 'thread-1' })
+  })
 })
 
 describe('permission modes on Codex (KERNEL-447)', () => {

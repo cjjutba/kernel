@@ -188,6 +188,11 @@ export class CodexRunner implements Runner {
    */
   private compaction?: { turnId?: string; done: () => void }
   /**
+   * The turn that completed while `turn` waited for turn/start's answer. A turn can end in the chunk that answers its start,
+   * and its id must not come back as the running turn: a compaction after it would then never resolve.
+   */
+  private endedTurn?: string
+  /**
    * Aborts when the running turn stops (Stop, Send now), ends or loses its process. Every card the turn put up waits on
    * it, Kernel's tools' too, so a stopped turn's card ends as expired (KERNEL-563).
    */
@@ -386,12 +391,13 @@ export class CodexRunner implements Runner {
   private async turn(parts: ChatPart[]) {
     this.turnStop = new AbortController()
     const start = (this.starting = { stopAsked: false })
+    this.endedTurn = undefined
     let turnId: string | undefined
     let current = false
     try { turnId = await this.startTurn(parts) } finally { current = this.starting === start; if (current) this.starting = undefined }
     // A turn queued while this one's start was answered is the chat's turn now, so this one's id and Stop are stale.
     if (!current) return
-    if (turnId) this.turnId = turnId
+    if (turnId && turnId !== this.endedTurn) this.turnId = turnId
     if (start.stopAsked) await this.interrupt()
   }
 
@@ -531,6 +537,7 @@ export class CodexRunner implements Runner {
   private async turnCompleted(turn: Turn) {
     if (turn.id && this.turnId && turn.id !== this.turnId) return
     this.turnId = undefined
+    this.endedTurn = turn.id
     // Codex clears a request still open when a turn ends, so a card the turn left ends with it.
     this.turnStop.abort()
     const ok = turn.status === 'completed'
