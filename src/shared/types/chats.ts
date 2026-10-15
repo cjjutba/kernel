@@ -95,8 +95,6 @@ export interface Chat {
   threadId?: string
   /** When a turn last ended in this chat since the user saw it. Unset is read, as is every chat from before (KERNEL-507). */
   unreadAt?: number
-  /** Claude's guess at the user's next message, sent after a turn. The next turn to start clears it. Codex chats never get one (KERNEL-530). */
-  suggestion?: string
   /**
    * The review this chat runs in a review workspace Kernel started (KERNEL-549), fixed when the review starts. `agent` is the
    * project agent whose prompt it runs, absent when Kernel's own prompt for `kind` does. `optional`: the kind wasn't required

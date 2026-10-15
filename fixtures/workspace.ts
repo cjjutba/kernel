@@ -3122,8 +3122,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceContextPopoverFull: scene((f) => ({ chats: contextChat(f, 160_000), ui: { ...open, workspace: { right: 'changes', bottom: 'run', contextOpen: true } } })),
   WorkspaceMention: composing({ parts: [], draft: '@inv' }, { tree: { [ids.table]: mentionTree } }),
   WorkspaceSlash: composing({ parts: [], draft: '/' }, { skills }),
-  /** KERNEL-531: Claude's guess at the next message stands in for the placeholder of an empty box. Not on the canvas, see docs/decisions/KERNEL-530.md. */
-  WorkspaceSuggestion: scene((f) => ({ chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, suggestion: 'Run the tests and fix anything that fails' } : c)), ui: open })),
   // KERNEL-406: a role runs on Codex, so the picker offers both providers. This chat has started on Claude, so Codex is dimmed.
   WorkspaceModelPicker: scene((f) => {
     return {

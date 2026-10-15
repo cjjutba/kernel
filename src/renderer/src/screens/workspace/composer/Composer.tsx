@@ -231,8 +231,6 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     void configure({ effort }).then((ok) => { if (!ok) actions.chats.upsert({ ...chat, effort: was }) })
   }
   const fallback = useDefaultEffort(agent?.effort)
-  // Claude's guess at the next message (KERNEL-530) stands in for the placeholder of an empty box, and Tab or → takes it. Only a key does: Enter on an empty box sends nothing.
-  const suggested = provider === 'claude' && !d.parts.length && !running && !chat.plan && !plan && !blocked && !queue.length && queueWhy !== 'setup' && !acOpen ? chat.suggestion : undefined
   const sendWith = useSendWith()
   const [sendingNow, runNow] = useBusy<string>()
   const sendNow = (q: QueuedMessage) => void runNow(q.id, () => attempt('Could not send now', async () => {
@@ -271,7 +269,6 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
     // After the menu, the pickers and the chips have had their Escape, it stops a running turn. It never clears or edits the draft.
     if (e.key === 'Escape' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && escapeStops({ running, stopping: stopping !== null, menuOpen: menu !== null, autocompleteOpen: acOpen })) { e.preventDefault(); stop(); return }
-    if (suggested && (e.key === 'Tab' || e.key === 'ArrowRight') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); d.setText(suggested); d.focus(); return }
     // ⌘⇧ Enter sends the first queued message now, whatever Send messages with says.
     if (e.key === 'Enter' && e.shiftKey && (e.metaKey || e.ctrlKey) && queue.length && canSendNow(queueWhy)) { e.preventDefault(); sendNow(queue[0]); return }
     // Up in an empty box pulls the last queued message back, as clicking its text does.
@@ -295,7 +292,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
 
   const model = modelLabelOf(chat.model, providerModels)
   const hasDraft = !d.empty
-  const placeholder = blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'setup' ? 'Add a follow up' : suggested || (withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`)
+  const placeholder = blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'setup' ? 'Add a follow up' : withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`
 
   // ^⌘1 to 9 pick the Nth current model of the chat's provider and ⌘⇧/ cycles the effort, with the picker open or not (useModelKeys).
   useModelKeys({ provider, model: chat.model, effort: chat.effort, fallback, onModel: pickModel, onEffort: setEffort })
