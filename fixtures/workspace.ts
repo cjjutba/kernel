@@ -223,7 +223,13 @@ const pending = (kind: 'tool' | 'plan' | 'question' | 'agent', agentId: string, 
   ({ id: `ap-${kind}-${agentId}`, kind, source: 'sdk', roomId: ids.roomA, workspaceId: ids.table, agentId, status: 'pending', createdAt: at(10, 30), title: '', ...extra })
 
 /** Codex's model list as `model/list` returns it, for a shot whose chat runs on Codex. */
-const codexModels = ['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna'].map((label, i) => ({ provider: 'codex' as const, id: label.toLowerCase(), label, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as Effort[], defaultEffort: 'medium' as Effort, isDefault: i === 0 }))
+const codexModels = [...['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna'].map((label) => ({ label, legacy: false })), ...['GPT-5.5', 'GPT-5.4', 'GPT-5.3-Codex', 'GPT-5.2'].map((label) => ({ label, legacy: true }))].map(({ label, legacy }, i) => ({ provider: 'codex' as const, id: label.toLowerCase(), label, legacy, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as Effort[], defaultEffort: 'medium' as Effort, isDefault: i === 0 }))
+
+/** Settings with a role on Codex, so the picker offers both providers. */
+const codexRoleSettings = () => {
+  const d = DEFAULT_SETTINGS('/Users/you')
+  return { ...d, models: { ...d.models, roles: { ...d.models.roles, qa: { provider: 'codex' as const, model: 'gpt-6-astra', effort: 'medium' as Effort } } } }
+}
 
 const userMsg = (id: string, text: string, plan = false): ChatItem =>
   ({ kind: 'user', id, ts: at(10, 27), parts: [{ type: 'text', text }, ...(plan ? [{ type: 'file' as const, name: 'plan.md', path: 'docs/plan.md', lines: 42 }] : [])] })
@@ -3006,16 +3012,43 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceSlash: composing({ parts: [], draft: '/' }, { skills }),
   /** KERNEL-531: Claude's guess at the next message stands in for the placeholder of an empty box. Not on the canvas, see docs/decisions/KERNEL-530.md. */
   WorkspaceSuggestion: scene((f) => ({ chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, suggestion: 'Run the tests and fix anything that fails' } : c)), ui: open })),
-  // KERNEL-406: a role runs on Codex, so the picker groups models by provider. This chat has started on Claude, so Codex's open a new chat.
+  // KERNEL-406: a role runs on Codex, so the picker offers both providers. This chat has started on Claude, so Codex is dimmed.
   WorkspaceModelPicker: scene((f) => {
-    const d = DEFAULT_SETTINGS('/Users/you')
     return {
-      settings: { ...d, models: { ...d.models, roles: { ...d.models.roles, qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } } } },
+      settings: codexRoleSettings(),
       chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
       models: { codex: codexModels },
       ui: { ...open, menu: 'model' }
     }
   }),
+  // The picker with the cursor moved up one row by the arrow key.
+  WorkspaceModelPickerKeys: scene((f) => ({
+    settings: codexRoleSettings(),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+    models: { codex: codexModels },
+    ui: { ...open, menu: 'model' }
+  })),
+  // The picker of a chat that started on Codex: it opens on Codex and Claude is dimmed. The shot opens Legacy models.
+  WorkspaceModelPickerCodex: scene((f) => ({
+    settings: codexRoleSettings(),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, provider: 'codex' as const, model: 'gpt-6-astra', effort: 'medium' as Effort, sessionId: 'session-kai' } : c)),
+    models: { codex: codexModels },
+    ui: { ...open, menu: 'model' }
+  })),
+  // Stars on two Claude models, then the Favorites tab.
+  WorkspaceModelPickerFavorites: scene((f) => ({
+    settings: codexRoleSettings(),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+    models: { codex: codexModels },
+    ui: { ...open, menu: 'model' }
+  })),
+  // The other provider in a chat that has started: its rail icon is dimmed and the tooltip says why.
+  WorkspaceModelPickerLocked: scene((f) => ({
+    settings: codexRoleSettings(),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+    models: { codex: codexModels },
+    ui: { ...open, menu: 'model' }
+  })),
   // KERNEL-746: in the Lead's chat @ offers the room's teammates above Files. A teammate's chat (WorkspaceMention) lists files only.
   ComposerMentionAgent: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@no' } } } })),
   ComposerMentionAgentEmpty: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@zzz' } } } })),

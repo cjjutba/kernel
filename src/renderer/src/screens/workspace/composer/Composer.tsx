@@ -234,11 +234,6 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
   }
   const providerModels = useProviderModels(provider)
   const efforts = effortsOf(chat.model, providerModels)
-  const newChatOn = (p: Provider, m: string, x: Effort) => void attempt('Could not open a tab', async () => {
-    const c = await call('chats.create', { workspaceId: chat.workspaceId, kind: 'chat', provider: p, model: m, effort: x, ...(chat.threadId ? { threadId: chat.threadId } : {}) })
-    await loadWorkspace(chat.workspaceId)
-    actions.ui.openTab(chat.workspaceId, c.id)
-  })
   const setEffort = (effort: Effort) => { rememberEffort(chat.model, effort); void configure({ effort }) }
   const memory = useEffortMemory()
   const fallback = useDefaultEffort(agent?.effort)
@@ -382,7 +377,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
       foot={<ComposerToolbar
         lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), open: menu === 'leadMode', onOpen: (o) => setMenu(o ? 'leadMode' : null), onPick: pickLeadMode } : undefined}
         agent={!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
-        model={{ label: model, provider, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, onNewChat: (p, m, x) => { setMenu(null); newChatOn(p, m, x) }, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: setEffort } }}
+        model={{ label: model, provider, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: setEffort } }}
         effort={{ value: chat.effort, open: menu === 'effort', onOpen: (o) => setMenu(o ? 'effort' : null), onPick: setEffort }}
         mode={{ provider, availability, shown, from: swapFrom?.shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
         context={chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
