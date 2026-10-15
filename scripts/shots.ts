@@ -696,7 +696,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
 // stepped by time with Animation.currentTime, so a frame doesn't depend on how fast the capture runs. A smooth scroll is the
 // compositor's, which can't be stepped: it runs in real time, and a frame in which a scroll offset moved is labelled "sampled".
 const FPS = 30
-type MotionAction = { click: string } | { press: string[] }
+type MotionAction = { click: string } | { press: string[] } | { hold: string }
 type Motion = { action: MotionAction; ms: number; area?: string }
 interface Frame { n: number; ms: number; sampled: boolean; file: string }
 
@@ -772,6 +772,7 @@ async function stepTo(page: Page, t: number): Promise<boolean> {
 
 async function runMotionAction(page: Page, action: MotionAction) {
   if ('click' in action) await page.getByRole('button', { name: action.click, exact: true }).click()
+  else if ('hold' in action) { await page.getByRole('button', { name: action.hold, exact: true }).first().hover(); await page.mouse.down() }
   else for (const key of action.press) {
     if (key.startsWith('click:')) await page.getByRole('button', { name: key.slice(6), exact: true }).click()
     else await page.keyboard.press(key)

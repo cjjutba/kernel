@@ -6,8 +6,8 @@ import type { AccountProfile, MoveNotice, MovePreview, Provider, ProviderModel, 
 import type { Channel, PushEvent } from '@shared/ipc'
 import type { TelemetryRecord } from '@shared/telemetry'
 
-/** What `pnpm shots <Screen> --motion` does: a click on a button by its accessible name, or key presses in Playwright's names (`Meta+Shift+Enter`). */
-export type MotionAction = { click: string } | { press: string[] }
+/** What `pnpm shots <Screen> --motion` does: a click on a button by its accessible name, key presses in Playwright's names (`Meta+Shift+Enter`), or `hold`, which hovers a button and keeps the mouse down on it. */
+export type MotionAction = { click: string } | { press: string[] } | { hold: string }
 
 /** Everything one screen needs. `KERNEL_FIXTURES=<key>` serves it in place of the kernel. */
 export interface Fixture {
