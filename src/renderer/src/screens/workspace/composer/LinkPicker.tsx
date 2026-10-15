@@ -5,7 +5,7 @@ import { useStore } from '../../../store'
 import { oneOf, useRemembered } from '../../../remember'
 import { Button, Icon, Tabs } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
-import { chooseTracker, JIRA_NOT_BROWSABLE } from '../../issues/parts'
+import { chooseTracker } from '../../issues/parts'
 import { useRoomTracker } from '../../issues/useRoomTracker'
 
 // + > Link issue, Link pull request and Link workspaces (D-093, KERNEL-786). Each adds chips the agent reads as a line of context.
@@ -36,22 +36,21 @@ function Panel({ label, query, onQuery, placeholder, onKey, anchorRef, onClose, 
 
 /**
  * The room's issues: its tracker's (Linear with the token in Settings, Integrations, or GitHub Issues through gh). A Linear room can
- * also link one of its repo's GitHub issues, so it keeps the second tab. A room with no tracker says so, and so does a Jira room,
- * whose issues can't be browsed yet (KERNEL-503). The stored tab only ever applies to a Linear room. Enter links the active one.
+ * also link one of its repo's GitHub issues, so it keeps the second tab. A room with no tracker says so. The stored tab only ever
+ * applies to a Linear room. Enter links the active one.
  */
 export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roomId: string; anchorRef: React.RefObject<HTMLElement | null>; onPick: (part: ChatPart) => void; onClose: () => void; style?: CSSProperties }) {
   const { read } = useRoomTracker(roomId)
   const kind = read.kind === 'ready' ? read.tracker.kind : undefined
   const roomName = useStore((s) => s.rooms.find((r) => r.id === roomId)?.name)
   const [tab, setTab] = useRemembered<Source>(TAB_KEY, oneOf<Source>(['linear', 'github'], 'linear'))
-  // A GitHub room has the one source and only a Linear room chooses between the two. A Jira room or one with no tracker lists
-  // nothing, so a tab stored from another room never lists that tracker's issues here.
+  // A GitHub room has the one source and only a Linear room chooses between the two. A room with no tracker lists nothing, so
+  // a tab stored from another room never lists that tracker's issues here.
   const source: Source | undefined = kind === 'github' ? 'github' : kind === 'linear' ? tab : undefined
   const [q, setQ] = useState('')
   const [at, setAt] = useState(0)
   const [load, setLoad] = useState<Load>({ state: 'loading' })
   const none = kind === 'none'
-  const jira = kind === 'jira'
 
   useEffect(() => {
     if (read.kind === 'error') { setLoad({ state: 'error', message: read.message }); return }
@@ -80,7 +79,7 @@ export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roo
   return (
     <Panel label="Link issue" placeholder="Search issues" query={q} onQuery={setQ} onKey={onKey} anchorRef={anchorRef} onClose={onClose} style={style}>
       {kind === 'linear' && <div className="link-tabs"><Tabs label="Issue source" tabs={SOURCES} value={tab} onChange={(id) => switchTo(id as Source)} /></div>}
-      <div className="link-rows" role="listbox" aria-label={source ? `${SOURCE_NAME[source]} issues` : jira ? 'Jira issues' : 'Issues'}>
+      <div className="link-rows" role="listbox" aria-label={source ? `${SOURCE_NAME[source]} issues` : 'Issues'}>
         {rows.map((r, i) => (
           <button key={r.id} type="button" role="option" aria-selected={i === at} tabIndex={-1} className="menu-item link-row" data-active={i === at}
             onMouseEnter={() => setAt(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(r)}>
@@ -93,12 +92,6 @@ export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roo
         {none && (
           <div className="link-none">
             <p className="link-note">{roomName ?? 'This room'} has no issue tracker. Choose Linear or GitHub Issues in this room's settings.</p>
-            <Button onClick={() => { onClose(); chooseTracker(roomId) }}>Choose a tracker</Button>
-          </div>
-        )}
-        {jira && (
-          <div className="link-none">
-            <p className="link-note">{JIRA_NOT_BROWSABLE}. To list issues here, choose Linear or GitHub Issues in {roomName ? `${roomName}'s` : "this room's"} settings.</p>
             <Button onClick={() => { onClose(); chooseTracker(roomId) }}>Choose a tracker</Button>
           </div>
         )}

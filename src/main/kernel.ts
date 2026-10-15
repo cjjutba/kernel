@@ -204,6 +204,7 @@ export class Kernel {
     void this.chats.nameStuckChats().catch(() => undefined)
     this.leadUpdates.attach()
     this.account.start()
+    await this.integrations.start()
     this.tasks.attach()
     for (const r of this.store.rooms()) void this.config.remoteFor(r.path)
     // Claude Code processes a crash or a force quit left behind keep working in the worktrees the chats resume in.

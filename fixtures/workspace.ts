@@ -2757,6 +2757,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   NewChatLocal: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), workspace: { ...DEFAULT_SETTINGS('/Users/you').workspace, mode: 'current' }, models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } } })),
   NewChatPlus: scene((f) => noPlan(leadNoChats(f))),
+  NewChatLinkIssue: scene((f) => noPlan(leadNoChats(f))), // the + menu's Link issue picker over the room's Linear issues
   // KERNEL-805: New chat has the chat's mode chip. NewChat is Hand off at rest. NewChatLeadModeMenu has the chip's menu open and NewChatBuildHere has Build here picked from it (scripts/shots.ts).
   NewChatLeadModeMenu: scene((f) => noPlan(leadNoChats(f))),
   // New chat with the effort menu and the permission menu open, each from its own button (scripts/shots.ts).

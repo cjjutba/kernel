@@ -30,7 +30,7 @@ export const NAV: NavGroup[] = [
     { page: 'bigterm', label: 'Big terminal', icon: 'term', keywords: [{ label: 'Big terminal tab', rowId: 'big-terminal-tab' }, { label: 'Terminal tabs only in worktrees', rowId: 'terminal-only-worktrees' }], terms: ['terminal', 'presets', 'tabs'] }
   ] },
   { title: 'System', items: [
-    { page: 'integrations', label: 'Integrations', icon: 'link', keywords: [{ label: 'GitHub', rowId: 'github' }, { label: 'Linear', rowId: 'linear' }, { label: 'Jira', rowId: 'jira' }], terms: ['github', 'linear', 'jira', 'connect'] },
+    { page: 'integrations', label: 'Integrations', icon: 'link', keywords: [{ label: 'GitHub', rowId: 'github' }, { label: 'Linear', rowId: 'linear' }], terms: ['github', 'linear', 'connect'] },
     { page: 'hooks', label: 'Hooks', icon: 'plug', keywords: [{ label: 'Kernel’s hooks', rowId: 'kernel-hooks' }, { label: 'Settings file', rowId: 'settings-file' }, { label: 'Hook server port', rowId: 'hook-port' }], terms: ['hook server', 'port', 'test event', 'settings.json'] },
     { page: 'privacy', label: 'Privacy', icon: 'lock', keywords: [{ label: 'Share diagnostics', rowId: 'diagnostics' }], terms: ['diagnostics', 'telemetry', 'events'] },
     { page: 'about', label: 'About', icon: 'info', keywords: [{ label: 'Data folder', rowId: 'data-folder' }, { label: 'Logs', rowId: 'logs' }, { label: 'Onboarding', rowId: 'onboarding' }], terms: ['version', 'updates', 'data folder', 'logs', 'onboarding'] }

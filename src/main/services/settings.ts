@@ -453,13 +453,13 @@ const DEFAULT_COPY = ['.env', '.env.local']
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
 
 /** The tables a room's settings files may hold. Anything else in a patch or a file is left alone. */
-const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env', 'tracker', 'jira', 'mcp', 'agents'] as const
+const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env', 'tracker', 'mcp', 'agents'] as const
 type Group = (typeof GROUPS)[number]
 
 /** The keys that hold a table of names: both files merge it name by name, and a patch changes only the names it lists (KERNEL-432). */
 const NAMED: Partial<Record<Group, string>> = { mcp: 'aliases', agents: 'allow' }
 
-const TRACKER_KINDS: readonly (TrackerKind | 'none')[] = ['linear', 'github', 'jira', 'none']
+const TRACKER_KINDS: readonly (TrackerKind | 'none')[] = ['linear', 'github', 'none']
 const MERGE_METHODS: readonly MergeMethod[] = ['squash', 'merge', 'rebase']
 const UNLISTED_TOOLS: readonly UnlistedTools[] = ['ask', 'hide']
 
@@ -532,9 +532,8 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     },
     preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)])),
     env: Object.fromEntries(Object.entries(picked(doc.env, ['files'], Array.isArray)).map(([k, v]) => [k, strings(v)])),
-    tracker: picked(doc.tracker, ['kind'], (v) => TRACKER_KINDS.includes(v as TrackerKind)),
-    // `[jira]` (KERNEL-474). Jira's transition ids are numbers, so a hand-written `transition = 21` reads as "21".
-    jira: Object.fromEntries(Object.entries(picked(doc.jira, ['project', 'transition'], (v) => isString(v) || Number.isInteger(v))).map(([k, v]) => [k, String(v)])),
+    // `kind = "jira"` from a room set up before Jira was removed reads as none, and a leftover `[jira]` table is no group.
+    tracker: picked({ kind: doc.tracker?.kind === 'jira' ? 'none' : doc.tracker?.kind }, ['kind'], (v) => TRACKER_KINDS.includes(v as TrackerKind)),
     mcp: Object.keys(aliases).length ? { aliases } : {},
     // `open_workspaces` is a whole number from 0, no limit, to 12 (KERNEL-492).
     agents: {
@@ -591,7 +590,7 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
   const runs = new Map([...sharedRuns, ...localRuns])
   for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
   if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
-  const { scripts, files, workspace, disabled, linear, pr, preview, env, tracker, jira, mcp, agents } = merged
+  const { scripts, files, workspace, disabled, linear, pr, preview, env, tracker, mcp, agents } = merged
   // `references` only from the personal file: the paths differ per Mac (KERNEL-748).
   const references = referencesOf(localDoc)
   const missingReferences = references.filter((p) => !isFolder(p))
@@ -619,7 +618,6 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
     // `[merge] always_review` too: the team's paths. The personal file's own list is the user's, and Settings, Pull requests shows it (KERNEL-594).
     merge: { alwaysReview: sharedMerge(sharedDoc).alwaysReview },
     ...(tracker.kind ? { tracker: { kind: tracker.kind } } : {}),
-    ...(Object.keys(jira).length ? { jira } : {}),
     ...(mcp.aliases ? { mcp: { aliases: mcp.aliases } } : {}),
     ...(Object.keys(agents).length ? { agents } : {}),
     sources

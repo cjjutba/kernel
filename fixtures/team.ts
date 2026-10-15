@@ -548,9 +548,9 @@ const githubIssues = (): GithubIssueDetail[] => {
 /** Client B reads GitHub Issues and Portfolio has no tracker. The other rooms read Linear, as every fixture before KERNEL-438 drew them. */
 const trackerRooms = { trackers: { [ids.roomB]: { kind: 'github' as const, where: 'cjjutba/client-b' }, [ids.roomPortfolio]: { kind: 'none' as const } } }
 
-/** The Issues page on Client B (GitHub), Portfolio (no tracker) or, with `jira`, Own app on Jira. */
-const issuesTrackerScene = (f: Fixture, route: { issueId?: string; roomId: string }, jira?: string): Partial<Fixture> => ({
-  ...homeScene(f), integrations: linearIntegrations, trackers: { ...trackerRooms.trackers, ...(jira ? { [jira]: { kind: 'jira' as const } } : {}) }, githubIssues: { [ids.roomB]: githubIssues() },
+/** The Issues page on Client B (GitHub) or Portfolio (no tracker). */
+const issuesTrackerScene = (f: Fixture, route: { issueId?: string; roomId: string }): Partial<Fixture> => ({
+  ...homeScene(f), integrations: linearIntegrations, trackers: trackerRooms.trackers, githubIssues: { [ids.roomB]: githubIssues() },
   ui: { route: { name: 'issues', ...route } }
 })
 
@@ -754,8 +754,6 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesGitHub: scene((f) => issuesTrackerScene(f, { issueId: '#31', roomId: ids.roomB })),
   // A room with no tracker says so and points at its settings, where the tracker is chosen.
   IssuesNoTracker: scene((f) => issuesTrackerScene(f, { roomId: ids.roomPortfolio })),
-  // A room whose `[tracker] kind` is jira says its issues can't be browsed in Kernel yet (KERNEL-503).
-  IssuesJira: scene((f) => issuesTrackerScene(f, { roomId: ids.roomOwn }, ids.roomOwn)),
   // The From popover's Issues tab for each: the room's GitHub issues with their assignees, and the line for a room with none.
   SidebarRoomsMenu: withMenu('rooms', { name: 'inbox' }),
   SidebarLeadChats: scene(sidebarLeadChats),

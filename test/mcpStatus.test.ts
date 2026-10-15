@@ -78,8 +78,8 @@ describe("a room's MCP servers", () => {
       { name: 'linear', source: 'user', enabled: true, status: 'failed', error: 'ENOENT' }, { name: 'claude.ai Notion', source: 'user', enabled: true, status: 'connected' },
       { name: 'claude.ai Gmail', source: 'claudeai', enabled: false, status: 'needs-auth' }, { name: 'acme', source: 'managed', enabled: true, status: 'connected' }
     ])
-    expect(withStatus(found, [{ name: 'linear', status: 'connected' }, { name: 'jira', status: 'pending' }], [], 'codex')).toEqual([
-      { name: 'linear', source: 'user', provider: 'codex', enabled: true, status: 'connected' }, { name: 'jira', source: 'user', provider: 'codex', enabled: true, status: 'pending' }
+    expect(withStatus(found, [{ name: 'linear', status: 'connected' }, { name: 'sentry', status: 'pending' }], [], 'codex')).toEqual([
+      { name: 'linear', source: 'user', provider: 'codex', enabled: true, status: 'connected' }, { name: 'sentry', source: 'user', provider: 'codex', enabled: true, status: 'pending' }
     ])
   })
 

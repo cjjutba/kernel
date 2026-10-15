@@ -6,9 +6,9 @@ import { useMenuOpen } from './roomMenu'
 
 type Kind = TrackerKind | 'none'
 
-/** The trackers a room can pick, in list order (Jira since KERNEL-474). */
-const CHOICES: Kind[] = ['linear', 'github', 'jira', 'none']
-const LABEL: Record<Kind, string> = { linear: 'Linear', github: 'GitHub Issues', jira: 'Jira', none: 'None' }
+/** The trackers a room can pick, in list order. */
+const CHOICES: Kind[] = ['linear', 'github', 'none']
+const LABEL: Record<Kind, string> = { linear: 'Linear', github: 'GitHub Issues', none: 'None' }
 /** What the row says when the room has no `[tracker] kind` and detection decided. */
 const DETECTED: Partial<Record<Kind, string>> = {
   linear: 'Detected from your Linear connection.',

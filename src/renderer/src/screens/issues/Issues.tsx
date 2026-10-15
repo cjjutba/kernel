@@ -3,14 +3,14 @@ import { go, lastRoom, useStore } from '../../store'
 import { Banner, Button, Spinner } from '../../ui'
 import { GithubIssues } from './GithubIssues'
 import { LinearIssues } from './LinearIssues'
-import { IssuesHeader, JiraNotBrowsable, NoTracker, type RoomHead } from './parts'
+import { IssuesHeader, NoTracker, type RoomHead } from './parts'
 import { useRoomTracker } from './useRoomTracker'
 import './issues.css'
 
 /**
  * The Issues page for one room (KERNEL-471). The room's tracker decides what it lists: Linear's list (the account's, as it always
- * was), the room's GitHub Issues, a line saying a Jira room can't be browsed yet (KERNEL-503), or a line saying the room has no
- * tracker. The route's `roomId` picks the room, else the one used last. The room menu in the header switches to another room's tracker.
+ * was), the room's GitHub Issues, or a line saying the room has no tracker. The route's `roomId` picks the room, else the one used
+ * last. The room menu in the header switches to another room's tracker.
  */
 export function Issues({ issueId, roomId }: { issueId?: string; roomId?: string }) {
   const rooms = useStore((s) => s.rooms)
@@ -39,7 +39,6 @@ export function Issues({ issueId, roomId }: { issueId?: string; roomId?: string 
           </div>
         </div>
       )}
-      {read.kind === 'ready' && read.tracker.kind === 'jira' && <JiraNotBrowsable room={room} />}
       {read.kind === 'ready' && read.tracker.kind === 'none' && <NoTracker room={room} />}
     </div>
   )

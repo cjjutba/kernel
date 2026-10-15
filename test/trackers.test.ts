@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { exec, ExecResult } from '../src/main/services/exec'
-import { trackerKind } from '../src/main/services/trackers'
+import type { TrackerKind } from '../src/shared/types'
+import { issueTracker, trackerKind, trackerName } from '../src/main/services/trackers'
 import { GH_SIGNED_OUT, githubKey, githubTracker, parseIssueView } from '../src/main/services/trackers/github'
 import { LINEAR_SIGNED_OUT, linearTracker } from '../src/main/services/trackers/linear'
 import { NO_TRACKER, noneTracker } from '../src/main/services/trackers/none'
@@ -31,6 +32,25 @@ describe('the tracker a room uses (KERNEL-462)', () => {
     expect(trackerKind({ ...none, linearTeam: true, githubRemote: true })).toBe('github')
     expect(trackerKind({ ...none, linearToken: true })).toBe('none')
     expect(trackerKind(none)).toBe('none')
+  })
+})
+
+describe('the tracker an issue came from (KERNEL-470)', () => {
+  // A source saved while Jira was a tracker keeps its tag in the database.
+  const jira = { id: 'PROJ-7', tracker: 'jira' as string as TrackerKind }
+
+  it('reads an issue saved on Jira, before Jira was removed, as from no tracker Kernel has', () => {
+    expect(issueTracker(jira)).toBeUndefined()
+    expect(trackerName(issueTracker(jira))).toBe('the issue tracker')
+    expect(trackerName(jira.tracker)).toBe('the issue tracker')
+  })
+
+  it('reads the tag, else the key: # is GitHub, anything else Linear', () => {
+    expect(issueTracker({ id: 'KERNEL-7', tracker: 'github' })).toBe('github')
+    expect(issueTracker({ id: '#41' })).toBe('github')
+    expect(issueTracker({ id: 'KERNEL-7' })).toBe('linear')
+    expect(trackerName('linear')).toBe('Linear')
+    expect(trackerName(undefined)).toBe('the issue tracker')
   })
 })
 

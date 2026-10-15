@@ -72,8 +72,8 @@ describe('repo settings files', () => {
     ])
     // An account's own Codex home is read instead.
     const account = await mkdtemp(join(tmpdir(), 'kernel-codex-'))
-    await writeFile(join(account, 'config.toml'), '[mcp_servers.jira]\ncommand = "jira-mcp"\n')
-    expect((await discoverMcp(repo, home, [], { codexHome: account })).filter((s) => s.provider)).toEqual([{ name: 'jira', source: 'user', provider: 'codex', enabled: true }])
+    await writeFile(join(account, 'config.toml'), '[mcp_servers.sentry]\ncommand = "sentry-mcp"\n')
+    expect((await discoverMcp(repo, home, [], { codexHome: account })).filter((s) => s.provider)).toEqual([{ name: 'sentry', source: 'user', provider: 'codex', enabled: true }])
     expect([await readFile(join(home, '.claude.json'), 'utf8'), await readFile(join(home, '.codex', 'config.toml'), 'utf8')]).toEqual([claude, codex])
   })
 
@@ -775,7 +775,7 @@ describe("a room's tracker for the Issues screen (KERNEL-471)", () => {
     await k.stop()
   })
 
-  it('follows the room\'s [tracker] kind, Jira included (KERNEL-474)', async () => {
+  it("follows the room's [tracker] kind", async () => {
     vi.stubEnv('LINEAR_API_KEY', 'lin_key')
     const { k, repo, room } = await startKernel({ 'README.md': '# a\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n' })
     await git(repo, 'remote', 'add', 'origin', 'git@github.com:acme/app.git')
@@ -785,9 +785,33 @@ describe("a room's tracker for the Issues screen (KERNEL-471)", () => {
     expect(await tracker()).toEqual({ kind: 'github', where: 'acme/app' })
     await saveRepoSettings(repo, { tracker: { kind: 'none' } })
     expect(await tracker()).toEqual({ kind: 'none' })
-    await saveRepoSettings(repo, { tracker: { kind: 'jira' } })
-    expect(await tracker()).toEqual({ kind: 'jira' })
     await k.stop()
+  })
+
+  it('reads a room set up on Jira as having no tracker, and ignores its leftover [jira] table', async () => {
+    vi.stubEnv('LINEAR_API_KEY', 'lin_key')
+    const { k, repo, room } = await startKernel({ 'README.md': '# a\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n\n[tracker]\nkind = "jira"\n\n[jira]\nproject = "PROJ"\ntransition = 21\n' })
+    await git(repo, 'remote', 'add', 'origin', 'git@github.com:acme/app.git')
+    const settings = await loadRepoSettings(repo)
+    expect(settings.tracker).toEqual({ kind: 'none' })
+    expect(settings).not.toHaveProperty('jira')
+    expect(Object.keys(settings.sources).filter((s) => s.startsWith('jira'))).toEqual([])
+    expect(await k.integrations.handlers()['issues.tracker']({ roomId: room.id })).toEqual({ kind: 'none' })
+    // Saving another setting keeps the file's other tables as they were.
+    await saveRepoSettings(repo, { linear: { team: 'APP' } }, true)
+    expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('[jira]')
+    await k.stop()
+  })
+
+  it('deletes the Jira account file from the data folder on start', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
+    await writeFile(join(dataDir, 'jira.json'), JSON.stringify({ site: 'acme.atlassian.net', email: 'a@b.c', token: 'secret' }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    await expect(stat(join(dataDir, 'jira.json'))).rejects.toThrow()
+    await k.stop({ budgetMs: 0 })
   })
 })
 

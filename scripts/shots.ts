@@ -550,6 +550,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   NewChatBranch: openBranchMenu,
   NewChatLocal: hoverLocalBranch,
   NewChatPlus: (page) => openWhere(page, 'Add context'),
+  NewChatLinkIssue: async (page) => { await page.getByRole('button', { name: 'Add context' }).click(); await page.getByRole('menuitem', { name: /Link issue/ }).click(); await page.getByRole('listbox').waitFor(); await page.mouse.move(0, 0); await page.waitForTimeout(400) },
   NewChatLeadModeMenu: openLeadModeMenu,
   NewChatEffortMenu: openEffortMenu,
   NewChatNarrow: windowAt(600),
