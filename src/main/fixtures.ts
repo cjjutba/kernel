@@ -203,7 +203,10 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return { ...base, kind: 'terminal', title: terminalTitle(term.preset), terminal: term.terminal }
     },
     'chats.items': async ({ chatId }) => f.items[chatId] ?? [],
-    'chats.send': async () => ({ queued: false }),
+    'chats.send': async () => {
+      for (const step of f.afterSend ?? []) setTimeout(() => step.events.forEach((e) => bus.push(e)), step.afterMs)
+      return { queued: false }
+    },
     'chats.interrupt': async () => ok,
     'chats.configure': async ({ chatId, ...patch }) => ({ ...chat(chatId), ...patch }),
     'chats.rename': async ({ chatId, title }) => ({ ...chat(chatId), title }),
@@ -218,6 +221,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.restart': async () => ok,
     'chats.queue': async ({ chatId }) => queue(chatId),
     'chats.queueReason': async () => null,
+    'chats.moveNotice': async ({ chatId }) => f.moveNotices?.[chatId] ?? null,
     'chats.moveChoice': async ({ chatId, choice }) => ({ ...chat(chatId), moveChoice: { choice, at: Date.now() } }),
     // A fixture has no process and reads no policy, so every mode is available and nothing waits for a turn.
     'chats.runMode': async ({ chatId }) => {

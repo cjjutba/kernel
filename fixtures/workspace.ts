@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AccountProfile, MovePreview, MovePreviewChat, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AccountProfile, MoveNotice, MovePreview, MovePreviewChat, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
@@ -1238,6 +1238,14 @@ const switchConfirm = ({ key }: { key?: boolean } = {}) => scene(() => {
   return { accounts: moveAccounts(), movePreview: preview, ui: { ...open, modal: { name: 'confirm', kind: 'switchAccount', provider: 'claude', accountId: to, preview } } }
 })
 
+// KERNEL-841: the notice above the composer. The chat last ran on Main account and its next turn runs on the 3rd account.
+const moveNoticeScene = (notice: Partial<MoveNotice>, chat: Partial<Chat> = {}) => scene((f) => ({
+  accounts: moveAccounts(),
+  chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, ranOn: 'cli', ...chat } : c)),
+  moveNotices: { [ids.tableChat]: { kind: 'move', reason: 'account', from: 'cli', to: 'third', tokens: 310_000, keep: true, ...notice } },
+  ui: open
+}))
+
 const revertScene = (ui: Partial<Fixture['ui']>, prState?: Workspace['prState']) => scene((f) => ({
   ...(prState && { workspaces: withWorkspace(f, ids.table, { ...pr, prTitle, prState }) }),
   items: { [ids.tableChat]: revertItems },
@@ -2101,6 +2109,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // KERNEL-845: a switch that would make long chats read their history again. Keeping them is the primary button. The key variant adds what reading them once costs.
   SwitchAccountConfirm: switchConfirm(),
   SwitchAccountConfirmApiKey: switchConfirm({ key: true }),
+  // KERNEL-841: the chat's own notice before its next turn re-reads 310k tokens on another account. The key variant adds the price, the idle one is a hint with no buttons.
+  ChatMoveNotice: moveNoticeScene({}),
+  ChatMoveNoticeApiKey: moveNoticeScene({ to: 'key', price: 1.74 }),
+  ChatMoveNoticeIdle: moveNoticeScene({ kind: 'idle', reason: 'idle', to: 'cli', keep: false }),
   SettingsAccountsMoves: scene(() => ({ accounts: moveAccounts(), ui: { route: { name: 'settings', page: 'accounts' } } })),
   ConfirmRevert: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '3' } }),
   ConfirmRevertCommits: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }),
@@ -2186,6 +2198,28 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
   })),
+  /** A running turn with a command in flight: one summary line and the clock, and nothing from inside the fold (the fold-of-everything change). */
+  WorkspaceRunningFold: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
+    items: { [ids.tableChat]: runningItems() },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+  })),
+  /** The same turn stepped through two more calls after Send: the summary grows, the command text never shows. */
+  WorkspaceRunningFoldSteps: { ...scene((f) => ({
+    ...withDraft({
+      workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+      chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
+      items: { [ids.tableChat]: runningItems() },
+      push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+      ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+    }, 'Keep going.'),
+    afterSend: [
+      { afterMs: 250, events: [{ type: 'chat.item', chatId: ids.tableChat, item: tool('rt4', 'Run the new tests', 'pnpm vitest run tests/invoice-pdf.spec.ts', { status: 'done', durationMs: 4100, input: { command: 'pnpm vitest run tests/invoice-pdf.spec.ts' } }) }, { type: 'chat.item', chatId: ids.tableChat, item: tool('rt5', 'Lint the tests', 'pnpm lint tests', { status: 'running', durationMs: undefined, input: { command: 'pnpm lint tests' } }) }] },
+      { afterMs: 500, events: [{ type: 'chat.item', chatId: ids.tableChat, item: tool('rt5', 'Lint the tests', 'pnpm lint tests', { status: 'done', durationMs: 900, input: { command: 'pnpm lint tests' } }) }, { type: 'chat.item', chatId: ids.tableChat, item: tool('rt6', 'Typecheck', 'pnpm typecheck', { status: 'running', durationMs: undefined, input: { command: 'pnpm typecheck' } }) }] }
+    ]
+  })), motion: { action: { click: 'Queue message' }, ms: 900, area: '.ws-main' } },
   /** A long command in flight: the step stays one row and the clock sits on its own row under it (KERNEL-823). */
   WorkspaceRunningLongCommand: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),

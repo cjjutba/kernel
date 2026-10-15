@@ -14,15 +14,13 @@ export interface Run { id: string; key: string; service?: ToolService; tools: To
 export type Entry = { kind: 'item'; item: ChatItem } | { kind: 'run'; run: Run }
 
 /**
- * What the transcript draws. A finished turn folds its work into one `group` row, and a turn still running folds each stretch of
- * finished steps the same way, with the step in flight as a `live` line under them (KERNEL-784).
+ * What the transcript draws. Every stretch of steps, in a finished turn or a running one, is one `group` row, the step in flight
+ * included, so a collapsed fold shows nothing from inside it (KERNEL-784, amended).
  */
 export type ThreadBlock =
   /** `actions` marks the last agent line of a stopped turn, or of one an app restart cut off: it carries the full actions where every other line only offers Copy (KERNEL-828). */
   | { kind: 'item'; item: ChatItem; actions?: true }
   | { kind: 'group'; id: string; items: ChatItem[]; entries: Entry[]; summary: Summary }
-  | { kind: 'run'; id: string; run: Run }
-  | { kind: 'live'; id: string; item: Step }
   | { kind: 'files'; id: string; files: ChangedFile[] }
   /** A turn's time. `actions` is on a finished turn that doesn't end on text: the time line then carries Copy, Retry and the "..." menu, with `copy` the turn's last message when it has one (KERNEL-828). */
   | { kind: 'meta'; id: string; text: string; actions?: { copy?: string; files: boolean; checkpointId?: string } }
@@ -90,17 +88,28 @@ const OTHER = phrase('Made', 'Making', 'make', 'call')
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)
 
 /** What a call count touched and how it went. `total` counts every call, `done` the ones that worked. */
-interface Tally { key: string; service?: ToolService; total: number; done: number; failed: number; denied: number; verb?: string }
+interface Tally { key: string; service?: ToolService; total: number; done: number; failed: number; denied: number; running?: number; verb?: string }
 
 const noun = (p: Phrase, n: number) => (n === 1 ? p.one : p.many)
 
-/** "Filed 7 issues", "Filed 6 of 7 issues" when some didn't work, "Couldn't file 7 issues" when none did. */
-function count(t: Tally): string {
+const article = (n: string) => `${/^[aeiou]/i.test(n) ? 'an' : 'a'} ${n}`
+
+/**
+ * "Filed 7 issues", "Filed 6 of 7 issues" when some didn't work, "Couldn't file 7 issues" when none did. Calls still running follow
+ * in the present tense: "Ran 4 commands, running 1 more", or "Running a command" when none has finished. `alone` is the only phrase of
+ * a summary, where one call reads "Ran a command".
+ */
+function count(t: Tally, alone = false): string {
+  const running = t.running ?? 0
   // A call with no phrase of its own reads as its row does when it is alone ("Listed issue labels"), and as "Made 3 calls" when it isn't.
   if (!PHRASES[t.key] && t.total === 1 && t.verb) return t.verb
   const p = PHRASES[t.key] ?? OTHER
+  if (running) {
+    if (running === t.total) return `${p.ing} ${running === 1 ? article(p.one) : `${running} ${p.many}`}`
+    return `${count({ ...t, total: t.total - running, running: 0 })}, ${p.ing.toLowerCase()} ${running} more`
+  }
   const bad = t.failed + t.denied
-  if (!bad) return `${p.ed} ${t.total} ${noun(p, t.total)}`
+  if (!bad) return alone && t.total === 1 ? `${p.ed} ${article(p.one)}` : `${p.ed} ${t.total} ${noun(p, t.total)}`
   if (!t.done) return t.denied === t.total ? `You denied ${t.total} ${noun(p, t.total)}` : `Couldn't ${p.base} ${t.total} ${noun(p, t.total)}`
   return `${p.ed} ${t.done} of ${t.total} ${noun(p, t.total)}`
 }
@@ -109,10 +118,11 @@ function count(t: Tally): string {
 const trouble = (failed: number, denied: number) => [failed && `${failed} failed`, denied && `${denied} denied`].filter(Boolean).join(', ')
 
 const tally = (tools: Tool[], key: string, service?: ToolService): Tally => {
-  const t: Tally = { key, service, total: tools.length, done: 0, failed: 0, denied: 0, verb: tools[0] && viewOf(tools[0]).verb }
+  const t: Tally = { key, service, total: tools.length, done: 0, failed: 0, denied: 0, running: 0, verb: tools[0] && viewOf(tools[0]).verb }
   for (const tool of tools) {
     const state = viewOf(tool).state
-    if (state === 'failed' || state === 'stopped') t.failed++
+    if (state === 'running') t.running!++
+    else if (state === 'failed' || state === 'stopped') t.failed++
     else if (state === 'denied') t.denied++
     else t.done++
   }
@@ -140,10 +150,10 @@ export function summarize(items: ChatItem[]): Summary {
     const t = tallies.get(key)
     if (!t) { tallies.set(key, tally([item], key, view.service)); continue }
     const one = tally([item], key)
-    t.total += 1; t.done += one.done; t.failed += one.failed; t.denied += one.denied
+    t.total += 1; t.done += one.done; t.failed += one.failed; t.denied += one.denied; t.running! += one.running!
   }
   const all = [...tallies.values()]
-  const phrases = all.slice(0, SHOWN).map(count).map((p, i) => (i ? lower(p) : p))
+  const phrases = all.slice(0, SHOWN).map((t) => count(t, all.length === 1)).map((p, i) => (i ? lower(p) : p))
   const more = all.length - SHOWN
   const text = more > 0 ? `${phrases.join(', ')} and ${more} more` : phrases.join(', ')
   return { text, bad: trouble(all.reduce((n, t) => n + t.failed, 0), all.reduce((n, t) => n + t.denied, 0)) }
@@ -203,47 +213,46 @@ function countOf(run: Run) {
   return { done, failed, denied }
 }
 
-/**
- * A fold's steps as blocks. A fold of one row isn't a fold, so a lone run or step is drawn as it is. Inside a fold every call is a
- * plain row in one flat list, and the summary line is the only tally.
- */
-function foldBlocks(all: ChatItem[], blocks: ThreadBlock[]) {
-  const steps = all.filter(hasContent)
-  const entries = entriesOf(steps)
-  if (entries.length > 1 && steps.some((i) => i.kind === 'tool' && !viewOf(i).hidden)) {
-    const rows = steps.filter((i) => i.kind !== 'tool' || !viewOf(i).hidden)
-    blocks.push({ kind: 'group', id: `group-${steps[0].id}`, items: steps, entries: rows.map((item): Entry => ({ kind: 'item', item })), summary: summarize(steps) })
-    return
-  }
-  for (const e of entries) blocks.push(e.kind === 'run' ? { kind: 'run', id: e.run.id, run: e.run } : { kind: 'item', item: e.item })
-}
-
 /** The tools whose call is a question to the user: Claude's, and the Lead's through Claude or Codex. Their card shows the question, so a row of raw JSON would say it twice. */
 const QUESTION_TOOLS = new Set(['AskUserQuestion', 'mcp__kernel__ask_user'])
 
 const isStep = (i: ChatItem): i is Step => i.kind === 'tool' || i.kind === 'thinking' || i.kind === 'text'
 
 /**
- * Each stretch of steps between notes, approvals and questions folds into one row, and with `open` the step in flight stays out of
- * the fold as the `live` line (KERNEL-784). The agent's messages are steps too (KERNEL-840), so the fold shows what it said between its calls.
- * Notes, approvals and questions are never folded, in a running turn or a finished one (KERNEL-800). A message is the live line only once the
- * turn has a call, so a reply that is the first thing a turn says still streams in full.
+ * A stretch of steps as blocks: one `group`, even for a single step, so a collapsed fold shows nothing from inside it. Its id is the
+ * stretch's first item before anything is filtered out, so a fold the user opened never closes when a step appears or fills in.
+ * `inFold` is a running turn that has made a call, where a stretch of only messages and thinking is a fold too ("Working"); otherwise
+ * such a stretch is the agent talking and stays as it is.
  */
-function foldTurn(turn: ChatItem[], blocks: ThreadBlock[], open: boolean) {
+function foldBlocks(all: ChatItem[], blocks: ThreadBlock[], inFold: boolean) {
+  const steps = all.filter(hasContent)
+  const worked = steps.some((i) => i.kind === 'tool' && !viewOf(i).hidden)
+  if (worked || (inFold && steps.length)) {
+    const rows = steps.filter((i) => i.kind !== 'tool' || !viewOf(i).hidden)
+    const summary = summarize(steps)
+    blocks.push({ kind: 'group', id: `group-${all[0].id}`, items: steps, entries: rows.map((item): Entry => ({ kind: 'item', item })), summary: summary.text ? summary : { text: 'Working', bad: '' } })
+    return
+  }
+  for (const item of steps) blocks.push({ kind: 'item', item })
+}
+
+/**
+ * Each stretch of steps between notes, approvals and questions folds into one row, the step in flight included (KERNEL-784). The agent's
+ * messages are steps too (KERNEL-840), so once a running turn has made a call everything it writes goes in the fold, the reply included,
+ * and appears in one piece when the turn ends. Notes, approvals and questions are never folded (KERNEL-800).
+ */
+function foldTurn(turn: ChatItem[], blocks: ThreadBlock[], running: boolean) {
   let steps: ChatItem[] = []
-  const worked = turn.some((i) => i.kind === 'tool')
-  const flush = (last: boolean) => {
-    const tail = steps[steps.length - 1]
-    const live = open && last && tail && ((tail.kind === 'tool' && tail.status === 'running') || tail.kind === 'thinking' || (tail.kind === 'text' && worked && hasContent(tail))) ? tail : undefined
-    foldBlocks(live ? steps.slice(0, -1) : steps, blocks)
-    if (live && isStep(live)) blocks.push({ kind: 'live', id: live.id, item: live })
+  const inFold = running && turn.some((i) => i.kind === 'tool')
+  const flush = () => {
+    if (steps.length) foldBlocks(steps, blocks, inFold)
     steps = []
   }
   for (const item of turn) {
     if (isStep(item)) steps.push(item)
-    else { flush(false); blocks.push({ kind: 'item', item }) }
+    else { flush(); blocks.push({ kind: 'item', item }) }
   }
-  flush(true)
+  flush()
 }
 
 /**
@@ -253,8 +262,8 @@ function foldTurn(turn: ChatItem[], blocks: ThreadBlock[], open: boolean) {
  * When the reply is the turn's last row, those three are one `reply` block, so its actions share the time's line. A turn that ends on a
  * step instead puts the actions on the time's line (KERNEL-828). Every other agent line offers Copy alone.
  * Every agent message before the reply is a step in that fold (KERNEL-840), so the turn reads as the user's message, one fold and the reply.
- * A turn still running folds its finished steps (`running` says whether the chat's turn is). A stopped or failed one shows every item,
- * so nothing is hidden while it matters.
+ * A turn still running folds all its steps, the one in flight too (`running` says whether the chat's turn is). A stopped one, or one an app
+ * restart cut off, folds the same way with its stop note and actions under the fold. A failed one shows every item above its error card.
  */
 export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
   const blocks: ThreadBlock[] = []
@@ -266,16 +275,27 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
       turn = []
       return
     }
-    if (!result?.ok) {
-      const stopped = turn.some((i) => i.kind === 'interrupted')
+    const stopped = turn.some((i) => i.kind === 'interrupted')
+    if (result && !result.ok && !stopped) {
+      // A failed turn keeps every item and ends on its error card, with Retry.
       const failedTool = [...turn].reverse().find((i): i is Extract<ChatItem, { kind: 'tool' }> => i.kind === 'tool' && i.status === 'failed')
-      // A stopped turn, or one with no result that nothing is running, offers its actions on its last message. A failed one has the error card's Retry.
-      const tail = stopped || !result ? turn.map((i) => i.kind).lastIndexOf('text') : -1
-      for (const [n, item] of turn.entries()) {
-        if (item.kind !== 'result') blocks.push(n === tail ? { kind: 'item', item, actions: true } : { kind: 'item', item })
-        else if (stopped || item.ok) blocks.push({ kind: 'meta', id: item.id, text: `${fmtDuration(item.durationMs)} · ${fmtClock(item.ts)}` })
+      for (const item of turn) {
+        if (item.kind !== 'result') blocks.push({ kind: 'item', item })
         else blocks.push({ kind: 'error', id: item.id, message: item.error ?? 'The turn failed', output: failedTool?.output })
       }
+      turn = []
+      return
+    }
+    if (!result?.ok) {
+      // A stopped turn, or one an app restart cut off, folds like a finished one. Its last message stays out of the fold and offers the actions.
+      const body = turn.filter((i) => i.kind !== 'result')
+      const tail = body.map((i) => i.kind).lastIndexOf('text')
+      foldTurn(tail < 0 ? body : body.slice(0, tail), blocks, false)
+      if (tail >= 0) {
+        blocks.push({ kind: 'item', item: body[tail], actions: true })
+        foldTurn(body.slice(tail + 1), blocks, false)
+      }
+      for (const item of turn) if (item.kind === 'result') blocks.push({ kind: 'meta', id: item.id, text: `${fmtDuration(item.durationMs)} · ${fmtClock(item.ts)}` })
       turn = []
       return
     }

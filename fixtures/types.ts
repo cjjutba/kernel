@@ -1,4 +1,4 @@
-import type { AccountProfile, MovePreview, Provider, ProviderModel, ProviderStatus,
+import type { AccountProfile, MoveNotice, MovePreview, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, ClaudeAccount, DeletePreview,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
@@ -112,6 +112,8 @@ export interface Fixture {
   accounts?: AccountProfile[]
   /** What `accounts.previewSwitch` returns: the long chats a switch would move (KERNEL-845). Without it a switch moves none. */
   movePreview?: MovePreview
+  /** By chat id, what `chats.moveNotice` answers: the notice above the composer (KERNEL-841). */
+  moveNotices?: Record<string, MoveNotice>
   /** The status table of each provider's Providers tab. */
   providerStatus?: Partial<Record<Provider, ProviderStatus>>
   /** Each provider's models for the pickers. Claude's default to Kernel's list. */
@@ -138,6 +140,8 @@ export interface Fixture {
   ui: ForcedUi
   /** `pnpm shots <Screen> --motion` runs `action` and captures frames for `ms`. `area` is a selector to crop to, else the whole window (KERNEL-831). */
   motion?: { action: MotionAction; ms: number; area?: string }
+  /** Events `chats.send` pushes after the given delays, so a `motion` that clicks Send can step a running turn through more calls. */
+  afterSend?: { afterMs: number; events: PushEvent[] }[]
   /**
    * Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). A run
    * script that prints a local URL here gets its `script.url` too, as in the engine (KERNEL-246).

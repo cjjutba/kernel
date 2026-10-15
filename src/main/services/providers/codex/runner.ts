@@ -182,16 +182,13 @@ export class CodexRunner implements Runner {
   private planAsked = false
   /** The running turn's first and last model calls, from `thread/tokenUsage/updated`, for the turn's facts (KERNEL-842). */
   private calls: { first?: TokenUsageBreakdown; last?: TokenUsageBreakdown } = {}
+  /** The id of the last turn that completed, so a start answered after its turn ended doesn't leave it as the current turn. */
+  private endedTurn?: string
   /**
    * A compaction under way (`compact`): Codex runs it as a turn of its own, whose id `turn/started` gives. Its end resolves
    * `compact` and isn't one of Kernel's turns (KERNEL-844).
    */
   private compaction?: { turnId?: string; done: () => void }
-  /**
-   * The turn that completed while `turn` waited for turn/start's answer. A turn can end in the chunk that answers its start,
-   * and its id must not come back as the running turn: a compaction after it would then never resolve.
-   */
-  private endedTurn?: string
   /**
    * Aborts when the running turn stops (Stop, Send now), ends or loses its process. Every card the turn put up waits on
    * it, Kernel's tools' too, so a stopped turn's card ends as expired (KERNEL-563).
@@ -391,12 +388,12 @@ export class CodexRunner implements Runner {
   private async turn(parts: ChatPart[]) {
     this.turnStop = new AbortController()
     const start = (this.starting = { stopAsked: false })
-    this.endedTurn = undefined
     let turnId: string | undefined
     let current = false
     try { turnId = await this.startTurn(parts) } finally { current = this.starting === start; if (current) this.starting = undefined }
     // A turn queued while this one's start was answered is the chat's turn now, so this one's id and Stop are stale.
     if (!current) return
+    // The turn's own notifications can be handled before its start is answered here, so one that already ended must not become the current turn again.
     if (turnId && turnId !== this.endedTurn) this.turnId = turnId
     if (start.stopAsked) await this.interrupt()
   }

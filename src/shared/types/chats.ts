@@ -131,6 +131,25 @@ export type ColdReason = 'account' | 'model' | 'idle'
 export type MoveChoice = 'summarize' | 'continue' | 'keep'
 
 /**
+ * What the chat's next turn does to its cache, for the notice above the composer (KERNEL-841). `move`: the turn runs on another
+ * account (`to`, `from` is where it last ran) or another model (`model` is its label), so it re-reads about `tokens` tokens.
+ * `idle`: only the cache lifetime ran out, so the hint has no buttons. `price` is in US dollars, only for a Claude API key
+ * target. `keep`: the account it last ran on can still run the chat, so Keep is offered. Absent when the chat is under
+ * Settings, Account "Long chat", has no turn on record, or the user already chose.
+ */
+export interface MoveNotice {
+  kind: 'move' | 'idle'
+  reason: ColdReason
+  from: string
+  to: string
+  model?: string
+  tokens: number
+  estimated?: true
+  price?: number
+  keep: boolean
+}
+
+/**
  * One long chat a switch to `to` would move off `from`, the account its provider runs on now (KERNEL-842). `tokens` is its
  * size, `estimated` when Kernel guessed it from the transcript. `running`: a turn is running now, which finishes where it
  * started. `coldReason` is why the move reads the whole chat again, none when the target shares its cache. `fits` says it

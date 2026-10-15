@@ -1,4 +1,4 @@
-import { MODELS, type Chat, type ChatItem, type ColdReason, type LastTurn, type MoveChoice, type MovePreview, type MovePreviewChat, type Provider, type RateLimit } from '@shared/types'
+import { MODELS, type Chat, type ChatItem, type ColdReason, type LastTurn, type MoveChoice, type MoveNotice, type MovePreview, type MovePreviewChat, type Provider, type RateLimit } from '@shared/types'
 import { chatProvider, limitProvider } from '@shared/providers'
 import { nearLimit } from '@shared/usage'
 import { blockingLimit, limitedModels } from '../services/health'
@@ -294,6 +294,31 @@ export class Placement extends Feature {
   }
 
   /**
+   * What the chat's next turn re-reads and why, for the notice above the composer (KERNEL-841), read only. Nothing for a
+   * chat under the Long chat size, a chat that never ran, one the user chose Summarize or Continue for, or a warm one. Keep hides it only while the kept account can still run the chat. A cache gone cold
+   * from idling alone is an `idle` hint, since it would re-read wherever it ran.
+   */
+  moveNotice(chatId: string, now = Date.now()): MoveNotice | null {
+    const chat = this.store.chat(chatId)
+    // Summarize and Continue are answers to this move. Keep is one only while the kept account can run the chat, which `accountFor` checks.
+    if (!chat || chat.kind !== 'chat' || (chat.moveChoice && chat.moveChoice.choice !== 'keep')) return null
+    const provider = chatProvider(chat)
+    const from = chat.ranOn ?? chat.lastTurn?.account
+    if (!from) return null
+    const to = this.accountFor(provider, chat, undefined, now) ?? CLI_ACCOUNT
+    const reason = this.coldReason(chat, { account: to }, now)
+    if (!reason) return null
+    const cost = this.moveCost(chat, { account: to })
+    if (cost.tokens < (this.settings?.accounts?.longChatTokens ?? 50_000)) return null
+    const model = reason === 'model' ? MODELS.find((m) => m.id === bareModel(chat.model))?.label ?? chat.model : undefined
+    return {
+      kind: reason === 'idle' ? 'idle' : 'move', reason, from, to, ...(model ? { model } : {}), tokens: cost.tokens,
+      ...(cost.estimated ? { estimated: true as const } : {}), ...(cost.price !== undefined ? { price: cost.price } : {}),
+      keep: reason === 'account' && from !== to && this.canRun(provider, from, chat.model, now)
+    }
+  }
+
+  /**
    * Keeps what the user picked for a long chat that moves to another account, which its next turn acts on (`Moves.plan`,
    * KERNEL-844). Keep holds it where it is while that account can run it.
    */
@@ -303,7 +328,8 @@ export class Placement extends Feature {
 
   handlers() {
     return {
-      'accounts.previewSwitch': async ({ provider, accountId }) => this.previewSwitch(provider, accountId)
+      'accounts.previewSwitch': async ({ provider, accountId }) => this.previewSwitch(provider, accountId),
+      'chats.moveNotice': async ({ chatId }) => this.moveNotice(chatId)
     } satisfies Partial<Handlers>
   }
 }
