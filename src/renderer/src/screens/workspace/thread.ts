@@ -35,9 +35,9 @@ export type ThreadBlock =
   | { kind: 'error'; id: string; message: string; output?: string }
 
 /**
- * What a fold knows about its turn. `live` is a turn that hasn't ended: its folds show their steps. `timer` is on the turn's first fold, which carries the
- * duration ("Worked for 2m 14s"); the others show only their summary. `startedAt` is the turn's message, for the live clock, and `durationMs` is the
- * turn's result, or the stop's. `short` is a turn that took under `SHORT_MS` or made one step, which folds without being seen to.
+ * What a fold knows about its turn. `live` is a turn that hasn't ended: its folds show their steps. `timer` is on the turn's first fold. A header is
+ * only the fold's summary, so the times don't reach it: `startedAt` (the turn's message) feeds the line at the end of a running turn, and `durationMs`
+ * (the turn's result, or the stop's) the time under the reply. `short` is a turn that took under `SHORT_MS` or made one step, which folds without being seen to.
  */
 export interface FoldTurn { live: boolean; timer: boolean; startedAt?: number; durationMs?: number; short: boolean }
 

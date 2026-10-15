@@ -269,6 +269,20 @@ const finishedFoldItems = (): ChatItem[] => {
   ]
 }
 
+/** A running turn whose commands are longer than the 760px column (WorkspaceFoldLongCommands): each row ends in an ellipsis at the column edge. */
+const longCommandItems = (): ChatItem[] => {
+  const now = Date.now()
+  const cmd = (id: string, command: string, ago: number, status: 'done' | 'running' = 'done') =>
+    tool(id, 'Run a command', command, { ts: now - ago * 1000, status, durationMs: status === 'done' ? 900 : undefined, input: { command } })
+  return [
+    { kind: 'user', id: 'lcu1', ts: now - 60_000, parts: [{ type: 'text', text: 'Find where the hash-style file names come from.' }] },
+    cmd('lc1', 'grep -rn "attachments" src --include=*.ts --include=*.tsx -l | head -30; grep -rn "\\[Image " src | head -20; grep -rn "createHash" src/main src/renderer | head -40', 50),
+    cmd('lc2', 'sed -n 80,170p src/main/services/plans.ts; grep -rn "kernel/attachments\\|createHash\\|sha256" src/main | grep -i attach | head -20; grep -rln "imageMarker" src', 40),
+    cmd('lc3', 'grep -rn "name:" src/renderer/src/screens/workspace/composer/*.ts | grep -i "image\\|file\\|hash\\|png" | head; grep -rn "sha\\|digest\\|hash" src/renderer/src/screens/workspace/composer', 30),
+    cmd('lc4', 'find src -name "*.ts" -newer package.json -not -path "*/node_modules/*" | xargs wc -l | sort -rn | head -50 && git log --oneline -20 -- src/main/services/plans.ts', 15, 'running')
+  ]
+}
+
 /** A turn 20 steps in (WorkspaceFoldWorkingLong): reads, edits and checks, with the last command in flight. */
 const longRunningItems = (): ChatItem[] => {
   const now = Date.now()
@@ -2293,7 +2307,24 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
   })),
-  /** The same turn finished: one folded line, "Worked for 2m 14s · ...", and the reply right under it. */
+  /** A running turn with an open fold of very long commands: they end in "…" at the column edge, and the thread doesn't shift sideways. */
+  WorkspaceFoldLongCommands: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
+    items: { [ids.tableChat]: longCommandItems() },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
+  })),
+  /** A running turn waiting on an approval: the line under the fold reads "Waiting for you", with no spinner and no clock. */
+  WorkspaceFoldWaiting: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
+    items: { [ids.tableChat]: runningItems().slice(0, -1) },
+    approvals: [{ ...pending('tool', 'ivy', { toolName: 'Bash', input: { command: 'pnpm vitest run tests/invoice-pdf.spec.ts' }, title: 'Run pnpm vitest run tests/invoice-pdf.spec.ts' }), workspaceId: ids.table, chatId: ids.tableChat }, ...f.approvals],
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
+  })),
+  /** The same turn finished: one folded line with only its summary, and the reply right under it. */
   WorkspaceFoldDone: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),

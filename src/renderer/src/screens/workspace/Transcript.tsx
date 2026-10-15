@@ -16,7 +16,7 @@ import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, CopyOverlay, MessageActions, useCopy, type MessageAction } from './MessageActions'
 import { ChipIcon, HoverPreview, ImageButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
-import { foldHeader, settle, wantOpen, windowEntries, WINDOW } from './fold'
+import { foldHeader, settle, wantOpen, windowEntries, WAITING, WINDOW } from './fold'
 import { buildThread, countsLabel, fmtDuration, messageLabel, runLabel, turnFiles, type Entry, type Run, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
 import { instructionOf } from './pr/model'
@@ -682,9 +682,6 @@ const GroupEntry = memo(function GroupEntry({ entry, changes, full }: { entry: E
 /** Whether the reader is away from the end of the transcript, which a fold waits on before it closes under them. */
 const TranscriptAway = createContext(false)
 
-/** The agent is waiting on the reader's plan approval, so its folds show no spinner or clock. */
-const TranscriptWaiting = createContext(false)
-
 /** Whether the reader has text selected inside `el`. */
 const selectingIn = (el: HTMLElement | null) => {
   const sel = getSelection()
@@ -702,7 +699,6 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
   const chatId = useContext(TranscriptChat)
   const mode = useStore((s) => s.ui.workspace.toolCalls ?? 'auto')
   const away = useContext(TranscriptAway)
-  const waiting = useContext(TranscriptWaiting)
   const { turn } = block
   const want = wantOpen(mode, turn.live)
   const [manual, setManual, touched] = useRowOpen(chatId, block.id, want)
@@ -731,16 +727,15 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
   const [all, setAll] = useRowOpen(chatId, `${block.id}:earlier`, false)
   const { shown: rows, earlier } = windowEntries(block.entries, turn.live, all)
   const id = `${block.id}-list`
-  const h = foldHeader(turn, block.summary, waiting)
+  const head = foldHeader(turn, block.summary)
   const { bad } = block.summary
   const last = block.entries[block.entries.length - 1]
   return (
     <div className="col" style={{ gap: 2 }} ref={box}>
       <button type="button" className="group-btn" aria-expanded={open} aria-controls={id} onClick={() => setManual(!open)}>
         <span className="chev" data-open={open}><Icon name="right" size={12} /></span>
-        {turn.live && turn.timer && !waiting && <Spinner label="Working" pattern="spiral" />}
         <span className="group-text">
-          {h.head}{h.clock && turn.startedAt !== undefined && <> · <Clock since={turn.startedAt} /></>}{h.tail && ` · ${h.tail}`}{bad && <span className="step-bad">, {bad}</span>}
+          {head}{bad && <span className="step-bad">, {bad}</span>}
         </span>
       </button>
       {mounted && (
@@ -757,18 +752,21 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
   )
 }
 
-/** The live clock in a running fold's header, from the turn's own timestamp so it is right after a reload. */
-function Clock({ since }: { since: number }) {
+/**
+ * The line at the end of a running turn, under every fold, card and note: the spinner and the seconds since the turn started, counted from the message's own
+ * timestamp so it is right after a reload. While a request waits on the reader it says "Waiting for you", with no spinner and no clock.
+ */
+function TurnLine({ since, waiting }: { since: number; waiting: boolean }) {
   const [now, setNow] = useState(() => Date.now())
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
-  return <>{fmtDuration(now - since)}</>
-}
-
-/** Seconds since the turn started. Counts from the message's own timestamp, so it is right after a reload. */
-function Elapsed({ since }: { since: number }) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
-  return <span className="running"><Spinner label="Working" pattern="spiral" />{fmtDuration(now - since)}</span>
+  useEffect(() => {
+    if (waiting) return
+    setNow(Date.now())
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [waiting])
+  return waiting
+    ? <span className="running">{WAITING}</span>
+    : <span className="running"><Spinner label="Working" pattern="spiral" />{fmtDuration(now - since)}</span>
 }
 
 /** One line across the thread where the chat switched between Hand off and Build here, so the transcript shows which turns could edit (KERNEL-780). */
@@ -872,15 +870,13 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const items = useStore((s) => s.items[chat.id] ?? EMPTY)
   const running = useStore((s) => !!s.running[chat.id])
   const approvals = useStore((s) => s.approvals)
-  // The agent is waiting on you, not working, while its plan waits.
+  // The agent is waiting on you, not working, while a request or its plan waits. Both come from the real approvals, so the line at the end of the turn never guesses.
   const planWaits = useStore((s) => !!waitingPlan(s.approvals, chat))
   const agentName = useStore((s) => { const ws = s.workspaces.find((w) => w.id === workspaceId); return s.agents[ws?.roomId ?? '']?.find((a) => a.id === ws?.agentId)?.name ?? 'the agent' })
   const isLead = useStore((s) => { const ws = s.workspaces.find((w) => w.id === workspaceId); return !!s.agents[ws?.roomId ?? '']?.find((a) => a.id === ws?.agentId)?.lead })
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const pr = useStore((s) => s.prs[workspaceId])
   const blocks = useMemo(() => buildThread(items, running), [items, running])
-  // A running fold carries the turn's clock in its header, so the clock row is only for a turn with no fold yet.
-  const timed = blocks.some((b) => b.kind === 'group' && b.turn.live && b.turn.timer && b.turn.startedAt !== undefined)
   // The failed step above an error card is the one whose output the card shows, so its row leaves the output out.
   const inError = useMemo(() => {
     const ids = new Set<string>()
@@ -908,6 +904,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const placed = new Set(items.flatMap((i) => (i.kind === 'approval' ? [i.approvalId] : [])))
     return approvals.filter((a: Approval) => a.status === 'pending' && !placed.has(a.id) && a.workspaceId === workspaceId && (!a.chatId || a.chatId === chat.id))
   }, [approvals, items, workspaceId, chat.id])
+  const waits = planWaits || approvals.some((a: Approval) => a.status === 'pending' && a.workspaceId === workspaceId && (!a.chatId || a.chatId === chat.id))
   // The chat follows its end only while the reader is at it. Scrolling up to read stops it, scrolling back down starts it again.
   const scroller = useRef<HTMLDivElement>(null)
   const thread = useRef<HTMLDivElement>(null)
@@ -1278,18 +1275,16 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         <TranscriptWorkspace.Provider value={workspaceId}>
         <TranscriptChat.Provider value={chatId}>
         <TranscriptAway.Provider value={away}>
-        <TranscriptWaiting.Provider value={planWaits}>
         <ShownInError.Provider value={inError}>
         <div ref={thread} className="thread" style={empty ? { display: 'none' } : undefined}>
           {blocks.map((b, i) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} workspaceId={workspaceId} changes={changes} inWorkspace={i === latestFiles && changes.length > 0 && changes.length !== ((b.kind === 'reply' || b.kind === 'files') && b.files ? b.files.length : 0) ? changes.length : undefined} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
           {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
           {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
           {ws && <LocalMergeRow ws={ws} />}
-          {running && !planWaits && !timed && <Elapsed since={since} />}
+          {running && <TurnLine since={since} waiting={waits} />}
           <div ref={end} />
         </div>
         </ShownInError.Provider>
-        </TranscriptWaiting.Provider>
         </TranscriptAway.Provider>
         </TranscriptChat.Provider>
         </TranscriptWorkspace.Provider>
