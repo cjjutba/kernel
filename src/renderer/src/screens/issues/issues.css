@@ -14,10 +14,6 @@
 
 /* States with no list */
 .is-center { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 40px; }
-.is-loading { gap: 8px; color: var(--muted); }
-.is-state { flex-direction: column; gap: 8px; text-align: center; }
-.is-state h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
-.is-state p { margin: 0 0 10px; max-width: 340px; color: var(--muted); line-height: 1.5; }
 .is-notice { padding: 8px 12px 0; }
 .is-notice .banner { padding: 10px 10px 10px 14px; gap: 12px; border-radius: var(--r-md); }
 .is-notice .banner-title { font-size: 13px; }
@@ -54,7 +50,6 @@
 .is-av { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--surface-3); color: var(--ink-2); font-size: 9.5px; font-weight: 600; }
 .is-right .is-av { width: 18px; height: 18px; font-size: 9px; }
 .is-av-md { width: 24px; height: 24px; font-size: 10px; }
-.is-av-lg { width: 28px; height: 28px; font-size: 11px; }
 
 /* Detail */
 .is-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }

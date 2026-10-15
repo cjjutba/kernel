@@ -4,7 +4,6 @@
 .sys-logo { width: 36px; height: 36px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink-2); }
 .sys-connect { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .sys-connect .set-token { flex: 1 1 160px; width: auto; }
-.sys-line { margin: 0; font-size: 12.5px; color: var(--muted); }
 
 /* Pull requests: the user's own paths in mono, the locked built-in ones as written */
 .sys-paths .set-tag:not([data-locked]) > span:first-child { font-family: var(--mono); }

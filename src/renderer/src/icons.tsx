@@ -252,7 +252,6 @@ const ST: Record<IssueStateShape, StateDraw> = {
   done: { label: 'Done', inner: 'm5.6 8.2 1.6 1.6 3.2-3.4', tone: 'muted' },
   canceled: { label: 'Canceled', inner: 'M6.2 6.2l3.6 3.6M9.8 6.2l-3.6 3.6', tone: 'muted' }
 }
-export const issueStateLabel = (s: IssueStateShape) => ST[s].label
 
 /** A Linear state as a 16px circle: dashed for backlog, a half fill for in progress. */
 export function IssueState({ shape, size = 16 }: { shape: IssueStateShape; size?: number }) {
