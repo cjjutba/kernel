@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
-import { Button, Icon, Kbd } from '../../../ui'
+import { Icon, Kbd } from '../../../ui'
 import { stripRemote } from '../../settings/remote'
 import { useRemote } from '../../settings/useSettings'
 import { branchLine, branchRows, type BranchRow } from './branchRows'
@@ -19,24 +19,14 @@ export function useBaseBranch(roomId: string, picked: string): { target: string;
 }
 
 /**
- * The branch New chat's chat starts from, in the where row. The button names it, and its menu searches the room's branches: each row has the
+ * The branch New chat's chat starts from, opened from the + menu's Branch row or the chip beside + (KERNEL-786). Its menu searches the room's branches: each row has the
  * branch's name in mono and a muted line, its age and a tag (default, remote, has a workspace). A branch with an open workspace offers
  * Open workspace (⌘↵) on hover and focus, and picking the row still sets the base. Arrow keys, Home and End move, Enter picks, Escape closes.
  * `picked` is empty for the default.
  */
-export function BranchPicker({ roomId, picked, open, disabled, onToggle, onClose, onPick }: { roomId: string; picked: string; open: boolean; disabled?: boolean; onToggle: () => void; onClose: () => void; onPick: (ref: string) => void }) {
+export function BranchPanel({ roomId, picked, anchorRef, onClose, onPick }: { roomId: string; picked: string; anchorRef: React.RefObject<HTMLElement | null>; onClose: (refocus?: boolean) => void; onPick: (ref: string) => void }) {
   const { target, fallback, remote } = useBaseBranch(roomId, picked)
-  const anchor = useRef<HTMLSpanElement>(null)
-  const close = (refocus?: boolean) => { onClose(); if (refocus) anchor.current?.querySelector<HTMLButtonElement>('.cmp-branch')?.focus() }
-  const name = stripRemote(target, remote)
-  return (
-    <span ref={anchor} className="cmp-branch-anchor">
-      <Button variant="ghost" className="cmp-model cmp-branch cmp-where-btn" disabled={disabled} aria-label={`New branch from ${name}`} aria-haspopup="menu" aria-expanded={open} onClick={onToggle}>
-        <Icon name="branch" size={14} /><span className="cmp-branch-name mono">{name}</span><Icon name="chevron" size={12} />
-      </Button>
-      {open && <BranchMenu roomId={roomId} target={target} fallback={fallback} remote={remote} anchorRef={anchor} onClose={close} onPick={(ref) => { onPick(ref === fallback ? '' : ref); close(true) }} />}
-    </span>
-  )
+  return <BranchMenu roomId={roomId} target={target} fallback={fallback} remote={remote} anchorRef={anchorRef} onClose={onClose} onPick={(ref) => onPick(ref === fallback ? '' : ref)} />
 }
 
 export type BranchRead = { ok: { name: string; committedAt: number }[] } | { failed: true } | null
@@ -94,7 +84,7 @@ function BranchMenu({ roomId, target, fallback, remote, anchorRef, onClose, onPi
   }
 
   return (
-    <WherePop anchorRef={anchorRef} label="Branch from" width={440} onClose={onClose} onKey={onKey} focusFirst={false}>
+    <WherePop anchorRef={anchorRef} label="Branch from" width={440} align="end" onClose={onClose} onKey={onKey} focusFirst={false}>
       <PopSearch label="Search branches…" value={text} onChange={setText} />
       <div ref={list} className="where-list where-branches" role="group" aria-label="Branches">
         {shown.map((r) => (

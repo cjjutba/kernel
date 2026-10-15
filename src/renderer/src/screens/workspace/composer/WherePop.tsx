@@ -10,10 +10,12 @@ const STOPS = 'input, [role^="menuitem"]'
  * message box (KERNEL-805). Arrow keys move between its field and rows (Home and End once the field is not focused), Escape closes and hands focus back
  * to the button, Tab closes. `onKey` sees a key first and may take it.
  */
-export function WherePop({ anchorRef, label, width, onClose, onKey, focusFirst = true, drop = 'up', children }: {
+export function WherePop({ anchorRef, label, width, onClose, onKey, focusFirst = true, drop = 'up', align = 'start', children }: {
   anchorRef: RefObject<HTMLElement | null>; label: string; width: number; onClose: (refocus?: boolean) => void
   /** Down for a menu whose button sits above the box, as New chat's title does, centred under it. */
   drop?: 'up' | 'down'
+  /** Which edge of its anchor an upward menu lines up with. The + menu's pickers open from the box's right edge, so they use `end`. */
+  align?: 'start' | 'end'
   onKey?: (e: KeyboardEvent) => void
   /** Focus the checked row, else the first stop, when the menu opens. Off for one that focuses its own. */
   focusFirst?: boolean; children: ReactNode
@@ -39,7 +41,7 @@ export function WherePop({ anchorRef, label, width, onClose, onKey, focusFirst =
     else if (e.key === 'Tab') { e.preventDefault(); onClose(true) }
   }
   return (
-    <div ref={ref} className="menu where-pop" data-drop={drop} role="menu" aria-label={label} style={{ width }} onKeyDown={keys}>
+    <div ref={ref} className="menu where-pop" data-drop={drop} data-align={align} role="menu" aria-label={label} style={{ width }} onKeyDown={keys}>
       {children}
     </div>
   )

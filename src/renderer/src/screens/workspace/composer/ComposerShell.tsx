@@ -3,9 +3,9 @@ import './composer.css'
 
 /**
  * The frame of the message box, for a chat's composer and New chat's: the wrap and its width, what stacks above the box, the box
- * with its input and its toolbar, and the where row under it. Both render this, so the box has one position, width and slot order.
+ * with its input and its toolbar. Both render this, so the box has one position, width and slot order.
  */
-export function ComposerShell({ above, popup, box, top, input, foot, hidden, where }: {
+export function ComposerShell({ above, popup, box, top, input, foot, hidden }: {
   /** Banners, queue and cards drawn above the box. They push it up, never down. */
   above?: ReactNode
   /** A menu that opens over the box's top edge, inside the box's own positioning. */
@@ -18,8 +18,6 @@ export function ComposerShell({ above, popup, box, top, input, foot, hidden, whe
   foot: ReactNode
   /** Elements that draw nothing, such as the file input. */
   hidden?: ReactNode
-  /** The where row, under the box and outside its border. */
-  where?: ReactNode
 }) {
   return (
     <div className="composer-wrap">
@@ -34,7 +32,6 @@ export function ComposerShell({ above, popup, box, top, input, foot, hidden, whe
           </div>
         </div>
         {hidden}
-        {where}
       </div>
     </div>
   )

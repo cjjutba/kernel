@@ -737,6 +737,10 @@ function leadNoChats(f: Fixture): Partial<Fixture> {
 
 /** New chat with the Lead's plan mode off, as a fresh install has it, so the box shows its permission mode. */
 const noPlan = (p: Partial<Fixture>): Partial<Fixture> => ({ ...p, settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } } })
+const newChatBranches = (f: Fixture): Partial<Fixture> => ({
+  ...noPlan(leadNoChats(f)),
+  branches: ['origin/main', 'origin/feat/t-14-invoice-table', 'origin/feat/t-12-invoice-schema', 'origin/feat/t-09-org-invites', 'origin/fix/t-17-pdf-fonts', 'origin/feat/t-21-saving-saved', 'origin/feat/t-23-room-settings', 'spike/pdf-fonts']
+})
 
 function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatItem[], extra: Partial<Fixture>, chat: Partial<Chat> = {}): Partial<Fixture> {
   const id = ws.id ?? ids.table
@@ -2130,7 +2134,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ChatRailLead: scene((f) => railLead(f)),
   // KERNEL-780: Hand off and Build here. Hand off is the default and is drawn as before, with the mode chip first in the composer.
   WorkspaceLeadHandOff: scene((f) => leadModeScene(f, { mode: 'handoff', items: lmReply('lm-a', 'Noor has it. I will tell you when the PR is ready.', 1) })),
-  WorkspaceLeadModeMenu: scene((f) => leadModeScene(f, { mode: 'handoff', menu: 'mode', items: lmReply('lm-a', 'Noor has it. I will tell you when the PR is ready.', 1) })),
   WorkspaceLeadBuildHere: scene((f) => leadModeScene(f, {
     mode: 'build', right: 'changes', changes: lmFiles,
     items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'I rounded refunds half away from zero in money.ts and added a test for the cent case.', 3)]
@@ -2776,7 +2779,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   LeadNoChats: scene(leadNoChats),
   // New branch from main opened: the remote's branches with the default checked. The menu is the composer's own, so the shot opens it (scripts/shots.ts).
   LeadNoChatsBranch: scene(leadNoChats),
-  // KERNEL-781: New chat's box is a chat's box. NewChat is the page at rest and ChatWhereRow an open chat, to compare the box's top edge and toolbar. NewChatLongDraft is eight lines in the box, which grows up
+  // KERNEL-781: New chat's box is a chat's box. NewChat is the page at rest and ChatComposer an open chat, to compare the box's top edge and toolbar. NewChatLongDraft is eight lines in the box, which grows up
   // with Up next and the title moving ahead of it. NewChatPlan has plan mode on: the box is hatched and the permission slot reads Plan.
   NewChat: scene((f) => noPlan(leadNoChats(f))),
   NewChatLongDraft: scene((f) => {
@@ -2785,8 +2788,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft } } } }
   }),
   NewChatPlan: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: true } } })),
-  // KERNEL-786: the where row's pickers and the + menu, each open (the shot opens them, scripts/shots.ts). NewChatLocal has Local picked by Settings' workspace mode.
-  // NewChatBranch lists branches with two that have an open workspace, one that is local only, and the default first. NewChatLinked has an issue chip in the box.
+  // KERNEL-786: the + menu with Run in and Branch, and each picker open (the shot opens them, scripts/shots.ts). NewChatLocal has Local picked by Settings' workspace mode, so the chip beside + says Local.
+  // NewChatBranch lists branches with two that have an open workspace, one that is local only, and the default first. NewChatBranchChip picks one, so the chip says where the chat starts from.
+  // NewChatLinked has an issue chip in the box.
   NewChatRoomPicker: scene((f) => noPlan(leadNoChats(f))),
   // New chat on a room that was archived under it: the title asks without a room, and Pick a room opens the same menu.
   NewChatNoRoom: scene((f) => {
@@ -2796,19 +2800,17 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   NewChatMode: scene((f) => noPlan(leadNoChats(f))),
   NewChatKeyboard: scene((f) => noPlan(leadNoChats(f))),
-  NewChatBranch: scene((f) => ({
-    ...noPlan(leadNoChats(f)),
-    branches: ['origin/main', 'origin/feat/t-14-invoice-table', 'origin/feat/t-12-invoice-schema', 'origin/feat/t-09-org-invites', 'origin/fix/t-17-pdf-fonts', 'origin/feat/t-21-saving-saved', 'origin/feat/t-23-room-settings', 'spike/pdf-fonts']
-  })),
+  NewChatBranch: scene(newChatBranches),
+  NewChatBranchChip: scene(newChatBranches),
   NewChatLocal: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), workspace: { ...DEFAULT_SETTINGS('/Users/you').workspace, mode: 'current' }, models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } } })),
   NewChatPlus: scene((f) => noPlan(leadNoChats(f))),
   NewChatLinkIssue: scene((f) => noPlan(leadNoChats(f))), // the + menu's Link issue picker over the room's Linear issues
-  // KERNEL-805: New chat has the chat's mode chip. NewChat is Hand off at rest. NewChatLeadModeMenu has the chip's menu open and NewChatBuildHere has Build here picked from it (scripts/shots.ts).
-  NewChatLeadModeMenu: scene((f) => noPlan(leadNoChats(f))),
+  // KERNEL-805: New chat has the Hand off | Build here switch. NewChat is Hand off at rest and NewChatBuildHere has Build here picked on it (scripts/shots.ts).
   // New chat with the effort menu and the permission menu open, each from its own button (scripts/shots.ts).
   NewChatEffortMenu: scene((f) => noPlan(leadNoChats(f))),
   NewChatPermissionMenu: scene((f) => noPlan(leadNoChats(f))),
   NewChatNarrow: scene((f) => noPlan(leadNoChats(f))),
+  NewChatSwitchNarrow: scene((f) => noPlan(leadNoChats(f))), // the chat column at 460px (scripts/shots.ts): the switch keeps its icons and drops its labels
   NewChatBuildHere: scene((f) => noPlan(leadNoChats(f))),
   // KERNEL-788: NewChat is the page at rest, with the header a chat has and one New chat tab. NewChatAfterSend is the chat right after the send: the box stays at the same y, the
   // breadcrumb and tab take the chat's title, and the panel setting is on but held closed. ChatPanelOpened is that chat after the toggle was pressed.
@@ -2819,7 +2821,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const issue = { type: 'issue' as const, name: 'T-17', title: 'Email an invoice to the client from the row actions', url: 'https://linear.app/client-a/issue/T-17', source: 'linear' as const }
     return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [issue, { type: 'text', text: ' ' }], draft: '' } } } }
   }),
-  ChatWhereRow: scene(() => ({ ui: open })),
+  ChatComposer: scene(() => ({ ui: open })),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),
