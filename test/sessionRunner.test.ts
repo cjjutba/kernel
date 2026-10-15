@@ -2879,9 +2879,9 @@ describe('images in a chat message (KERNEL-545)', () => {
   ]
   const sentText = [
     'look at',
-    '[Image 1: .kernel/attachments/image.png, 800x600]',
+    '[Image 1: .kernel/attachments/1/image.png, 800x600]',
     'and compare with',
-    '[Image 2: .kernel/attachments/image-2.png, 1440x900]',
+    '[Image 2: .kernel/attachments/1/image-2.png, 1440x900]',
     'Read each of the 2 attached images with the Read tool before answering.'
   ]
   /** The text blocks of the next message Kernel sent the session. */
@@ -2895,8 +2895,8 @@ describe('images in a chat message (KERNEL-545)', () => {
     expect(await nextSent(s.call)).toBe('Add a pdf_url column')
     s.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 5 })
     expect(await nextBlocks(s.call)).toEqual(sentText)
-    expect(await readFile(join(repo, '.kernel/attachments/image.png'), 'utf8')).toBe('first')
-    expect(await readFile(join(repo, '.kernel/attachments/image-2.png'), 'utf8')).toBe('second')
+    expect(await readFile(join(repo, '.kernel/attachments/1/image.png'), 'utf8')).toBe('first')
+    expect(await readFile(join(repo, '.kernel/attachments/1/image-2.png'), 'utf8')).toBe('second')
     expect((await run('git', ['-C', repo, 'status', '--porcelain', '--untracked-files=all'])).trim()).toBe('')
     // The user's bubble shows the images as they were sent.
     expect(s.store.items('chat').filter((i) => i.kind === 'user').at(-1)).toMatchObject({ parts })
@@ -2914,7 +2914,8 @@ describe('images in a chat message (KERNEL-545)', () => {
     const fresh = sdk.calls.at(-1)!
     expect(fresh).not.toBe(first)
     expect(await nextBlocks(fresh)).toEqual(sentText)
-    expect((await readdir(join(repo, '.kernel/attachments'))).sort()).toEqual(['image-2.png', 'image.png'])
+    expect(await readdir(join(repo, '.kernel/attachments'))).toEqual(['1'])
+    expect((await readdir(join(repo, '.kernel/attachments/1'))).sort()).toEqual(['image-2.png', 'image.png'])
   })
 })
 

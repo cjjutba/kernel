@@ -173,11 +173,11 @@ describe('plan cards outlive a restart', () => {
     expect(k2.store.chat(kai.id)?.plan).toBe(true)
     const sent = users(k2, kai).at(-1)!
     expect(sent.startsWith(planChanges('Split the API work out', card.planFile))).toBe(true)
-    expect(sent).toMatch(/\.kernel\/attachments\/mock\.png/)
+    expect(sent).toMatch(/\.kernel\/attachments\/1\/mock\.png/)
     // The card keeps what the user typed, without the image lines, and Kernel's message names it.
     expect(decided.answer).toBe('Split the API work out')
     // It keeps the image too, as the image part a user message carries, for the chip in the bubble.
-    const image = { type: 'image', name: 'mock.png', dataUrl: PNG, path: '.kernel/attachments/mock.png' }
+    const image = { type: 'image', name: 'mock.png', dataUrl: PNG, path: '.kernel/attachments/1/mock.png' }
     expect(decided.images).toEqual([image])
     expect(k2.store.approval(card.id)?.images).toEqual([image])
     expect(k2.store.items(kai.id).filter((i) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel', approvalId: card.id })
@@ -315,10 +315,10 @@ describe('plan answers while the agent waits', () => {
   it('Request changes keeps what the user typed and attached on the card, without the image lines', async () => {
     const { k, card, answer } = await planning()
     const decided = await k.handlers()['approvals.decide']({ id: card.id, decision: { behavior: 'deny', message: ' Split the API work out ', images: [{ name: 'mock.png', dataUrl: PNG }] } })
-    const images = [{ type: 'image', name: 'mock.png', dataUrl: PNG, path: '.kernel/attachments/mock.png' }]
+    const images = [{ type: 'image', name: 'mock.png', dataUrl: PNG, path: '.kernel/attachments/1/mock.png' }]
     expect(decided).toMatchObject({ status: 'denied', answer: 'Split the API work out', images })
     expect(k.store.approval(card.id)?.images).toEqual(images)
-    expect(await answer).toMatchObject({ behavior: 'deny', message: expect.stringMatching(/\.kernel\/attachments\/mock\.png/) })
+    expect(await answer).toMatchObject({ behavior: 'deny', message: expect.stringMatching(/\.kernel\/attachments\/1\/mock\.png/) })
     await k.stop({ budgetMs: 0 })
   }, 30000)
 

@@ -7,6 +7,7 @@ import { cleanError } from '../../../api'
 
 const MAX_ATTACH_BYTES = 1024 * 1024
 const PASTE_NAME = /^pasted_text_(\d+)\.txt$/
+const IMAGE_NAME = /^image(?:-(\d+))?\.[a-z]+$/
 
 const readAsDataUrl = (file: Blob) => new Promise<string>((resolve, reject) => {
   const r = new FileReader()
@@ -39,6 +40,7 @@ export class Held {
   private names = new Map<string, string>()
   get size() { return this.names.size }
   ids() { return [...this.names.keys()] }
+  all() { return [...this.names.values()] }
   add(id: string, name: string) { this.names.set(id, name) }
   nameOf(id: string) { return this.names.get(id) }
   /** Takes the file out, for a read that ended or a cancel. False when it was already out. */
@@ -54,6 +56,22 @@ export interface AttachHost {
   settle: (id: string, part: ChatPart) => void
   /** The placeholder goes. */
   drop: (id: string) => void
+  /** The names already in the message, chips and placeholders, which new images are numbered after. */
+  taken?: string[]
+}
+
+/**
+ * Images renamed by their place in the message: image.png, then image-2.png, numbered after the images already in it, so the
+ * user can name one in the prompt. Every message starts at image.png. Other files keep their names.
+ */
+export function numberImages(files: File[], taken: string[] = []): File[] {
+  let last = Math.max(0, ...taken.map((name) => { const m = IMAGE_NAME.exec(name); return m ? Number(m[1] ?? 1) : 0 }))
+  return files.map((f) => {
+    if (!f.type?.startsWith('image/')) return f
+    const ext = f.type.slice('image/'.length).replace(/\+.*$/, '').replace('jpeg', 'jpg') || 'png'
+    last++
+    return new File([f], `${last === 1 ? 'image' : `image-${last}`}.${ext}`, { type: f.type, lastModified: f.lastModified })
+  })
 }
 
 /**
@@ -61,7 +79,7 @@ export interface AttachHost {
  * files came in. One that can't be attached loses its placeholder and gets a toast, and the rest still go.
  */
 export async function attachFiles(files: File[], host: AttachHost, read: (file: File) => Promise<ChatPart> = partOf) {
-  const held = files.map((f) => ({ file: f, id: host.hold(f.name || 'image.png') }))
+  const held = numberImages(files, host.taken).map((f) => ({ file: f, id: host.hold(f.name || 'image.png') }))
   for (const { file, id } of held) {
     try { host.settle(id, await read(file)) } catch (e) {
       host.drop(id)

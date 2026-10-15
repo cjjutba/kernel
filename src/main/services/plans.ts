@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
+import { access, mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { basename, extname, join, relative, resolve, sep } from 'node:path'
 import type { Approval, ChatPart } from '@shared/types'
 import { excludeFromGit } from './settings'
@@ -54,8 +54,9 @@ export const ATTACHMENTS_DIR = '.kernel/attachments'
 export const IMAGE_DATA_URL = /^data:(image\/[a-z+]+);base64,(.*)$/
 
 /**
- * Writes each image under a name of its own (pasted images often all arrive as `image.png`) and returns absolute paths.
- * Every image is checked before any is written, so a refused one leaves no files behind.
+ * Writes a message's images to a folder of its own in `.kernel/attachments/` (`1/`, `2/`, ...), so each keeps the name its
+ * chip showed (image.png, image-2.png) and the user can name it in the prompt. Two images with one name in a message get
+ * `-2` and on. Returns absolute paths. Every image is checked before any is written, so a refused one leaves no files behind.
  */
 export async function saveAttachments(root: string, images: { name: string; dataUrl: string }[]): Promise<string[]> {
   const files = images.map((image) => {
@@ -67,18 +68,28 @@ export async function saveAttachments(root: string, images: { name: string; data
   })
   await excludeFromGit(root, `${ATTACHMENTS_DIR}/`)
   await mkdir(join(root, ATTACHMENTS_DIR), { recursive: true })
+  const dir = await messageDir(join(root, ATTACHMENTS_DIR))
   const paths: string[] = []
   for (const { base, ext, data } of files) {
     for (let n = 1; ; n++) {
-      const path = join(root, ATTACHMENTS_DIR, `${n === 1 ? base : `${base}-${n}`}.${ext}`)
-      // `wx` fails on a taken name, so two requests saving at once never write to the same file.
-      try { await writeFile(path, data, { flag: 'wx' }) }
-      catch (e) { if ((e as NodeJS.ErrnoException).code === 'EEXIST') continue; throw e }
+      const path = join(dir, `${n === 1 ? base : `${base}-${n}`}.${ext}`)
+      if (paths.includes(path)) continue
+      await writeFile(path, data)
       paths.push(path)
       break
     }
   }
   return paths
+}
+
+/** A new numbered folder in `dir`, after the highest there. `mkdir` fails on a taken one, so two saves at once never share a folder. */
+async function messageDir(dir: string): Promise<string> {
+  const names = await readdir(dir).catch(() => [] as string[])
+  for (let n = Math.max(0, ...names.map((name) => (/^\d+$/.test(name) ? Number(name) : 0))) + 1; ; n++) {
+    const path = join(dir, String(n))
+    try { await mkdir(path); return path }
+    catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e }
+  }
 }
 
 /** The change request with a line per saved image after what the user typed. */

@@ -54,7 +54,7 @@ describe('saved plans', () => {
 const png = (bytes: string) => `data:image/png;base64,${Buffer.from(bytes).toString('base64')}`
 
 describe('change request attachments', () => {
-  it('saves each image under .kernel/attachments with a name of its own, out of git', async () => {
+  it('saves each message in a folder of its own under .kernel/attachments, keeping each image name, out of git', async () => {
     const repo = await tempRepo()
     const paths = await saveAttachments(repo, [
       { name: 'image.png', dataUrl: png('first') },
@@ -62,15 +62,16 @@ describe('change request attachments', () => {
       { name: 'Screen Shot.jpeg', dataUrl: `data:image/jpeg;base64,${Buffer.from('third').toString('base64')}` }
     ])
     expect(paths).toEqual([
-      join(repo, '.kernel/attachments/image.png'),
-      join(repo, '.kernel/attachments/image-2.png'),
-      join(repo, '.kernel/attachments/screen-shot.jpg')
+      join(repo, '.kernel/attachments/1/image.png'),
+      join(repo, '.kernel/attachments/1/image-2.png'),
+      join(repo, '.kernel/attachments/1/screen-shot.jpg')
     ])
     expect(await Promise.all(paths.map((p) => readFile(p, 'utf8')))).toEqual(['first', 'second', 'third'])
     expect(await status(repo)).toBe('')
     expect(await readFile(join(repo, '.git/info/exclude'), 'utf8')).toContain('/.kernel/attachments/\n')
-    // A later request doesn't overwrite an earlier one's images.
-    expect(await saveAttachments(repo, [{ name: 'image.png', dataUrl: png('fourth') }])).toEqual([join(repo, '.kernel/attachments/image-3.png')])
+    // The next message starts at image.png again, in its own folder, and doesn't overwrite the first.
+    expect(await saveAttachments(repo, [{ name: 'image.png', dataUrl: png('fourth') }])).toEqual([join(repo, '.kernel/attachments/2/image.png')])
+    expect(await readFile(paths[0], 'utf8')).toBe('first')
   })
 
   it('refuses something that is not an image data URL, and writes none of the request', async () => {
@@ -99,12 +100,12 @@ describe('images in a chat message (KERNEL-545)', () => {
       { type: 'image', name: 'image.png', dataUrl: png('second') }
     ]
     const saved = await withImageFiles(repo, parts)
-    expect(saved).toEqual([parts[0], { ...parts[1], path: '.kernel/attachments/image.png' }, parts[2], { ...parts[3], path: '.kernel/attachments/image-2.png' }])
-    expect(await readFile(join(repo, '.kernel/attachments/image-2.png'), 'utf8')).toBe('second')
+    expect(saved).toEqual([parts[0], { ...parts[1], path: '.kernel/attachments/1/image.png' }, parts[2], { ...parts[3], path: '.kernel/attachments/1/image-2.png' }])
+    expect(await readFile(join(repo, '.kernel/attachments/1/image-2.png'), 'utf8')).toBe('second')
     expect(await status(repo)).toBe('')
     // Saved already, so nothing is written again.
     expect(await withImageFiles(repo, saved)).toBe(saved)
-    await expect(access(join(repo, '.kernel/attachments/image-3.png'))).rejects.toThrow()
+    await expect(access(join(repo, '.kernel/attachments/2'))).rejects.toThrow()
   })
 
   it('leaves the message as it was when the images can\'t be saved, so they go inline', async () => {
@@ -181,8 +182,8 @@ describe('a plan change request with images, through approvals.decide', () => {
     const { approval, decision } = ask()
     const a = await decide({ id: approval.id, decision: { behavior: 'deny', message: 'Match this', images: [{ name: 'image.png', dataUrl: png('a') }, { name: 'image.png', dataUrl: png('b') }] } })
     expect(a.status).toBe('denied')
-    const one = join(ws.path, '.kernel/attachments/image.png')
-    const two = join(ws.path, '.kernel/attachments/image-2.png')
+    const one = join(ws.path, '.kernel/attachments/1/image.png')
+    const two = join(ws.path, '.kernel/attachments/1/image-2.png')
     expect(await decision).toEqual({ behavior: 'deny', message: `Match this\n\nAttached image: ${one}. Read it before revising the plan.\nAttached image: ${two}. Read it before revising the plan.` })
     expect(await readFile(two, 'utf8')).toBe('b')
     expect(await status(ws.path)).toBe('')
@@ -192,12 +193,12 @@ describe('a plan change request with images, through approvals.decide', () => {
     const { k, ws, ask, decide } = await kernel()
     const first = ask()
     await decide({ id: first.approval.id, decision: { behavior: 'deny', message: '', images: [{ name: 'shot.png', dataUrl: png('a') }] } })
-    expect(await first.decision).toEqual({ behavior: 'deny', message: `Attached image: ${join(ws.path, '.kernel/attachments/shot.png')}. Read it before revising the plan.` })
+    expect(await first.decision).toEqual({ behavior: 'deny', message: `Attached image: ${join(ws.path, '.kernel/attachments/1/shot.png')}. Read it before revising the plan.` })
     const second = ask()
     await decide({ id: second.approval.id, decision: { behavior: 'deny', message: 'Smaller steps' } })
     expect(await second.decision).toEqual({ behavior: 'deny', message: 'Smaller steps' })
     // Only the request with an image keeps one on its approval.
-    expect(k.store.approval(first.approval.id)?.images).toEqual([{ type: 'image', name: 'shot.png', dataUrl: png('a'), path: '.kernel/attachments/shot.png' }])
+    expect(k.store.approval(first.approval.id)?.images).toEqual([{ type: 'image', name: 'shot.png', dataUrl: png('a'), path: '.kernel/attachments/1/shot.png' }])
     expect(k.store.approval(second.approval.id)).not.toHaveProperty('images')
   })
 
@@ -205,7 +206,7 @@ describe('a plan change request with images, through approvals.decide', () => {
     const { ws, ask, decide } = await kernel()
     const { approval, decision } = ask({ kind: 'plan' })
     await decide({ id: approval.id, decision: { behavior: 'deny', message: 'Split T-2', images: [{ name: 'tasks.png', dataUrl: png('a') }] } })
-    expect(await decision).toEqual({ behavior: 'deny', message: `Split T-2\n\nAttached image: ${join(ws.path, '.kernel/attachments/tasks.png')}. Read it before revising the plan.` })
+    expect(await decision).toEqual({ behavior: 'deny', message: `Split T-2\n\nAttached image: ${join(ws.path, '.kernel/attachments/1/tasks.png')}. Read it before revising the plan.` })
   })
 
   it('drops images from any other denial and writes nothing', async () => {
