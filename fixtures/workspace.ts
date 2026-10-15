@@ -1251,7 +1251,7 @@ const moveAccounts = (): AccountProfile[] => [
 const moveChat = (chatId: string, title: string, workspace: string, tokens: number, to: string, extra: Partial<MovePreviewChat> = {}): MovePreviewChat => ({
   chatId, title, workspaceId: ids.table, workspace, provider: 'claude', from: 'cli', to, tokens, running: false, coldReason: 'account', fits: true, ...extra
 })
-const switchConfirm = ({ key }: { key?: boolean } = {}) => scene(() => {
+const switchConfirm = ({ key, atLimit }: { key?: boolean; atLimit?: boolean } = {}) => scene(() => {
   const to = key ? 'key' : 'third'
   const price = (tokens: number) => (key ? { price: Math.round(tokens * 0.0000045 * 100) / 100 } : {})
   const chats = [
@@ -1261,7 +1261,7 @@ const switchConfirm = ({ key }: { key?: boolean } = {}) => scene(() => {
     moveChat('c4', 'Fix the CSV export', 'Invoice table', 70_000, to, price(70_000))
   ]
   const preview: MovePreview = { provider: 'claude', from: 'cli', to, chats }
-  return { accounts: moveAccounts(), movePreview: preview, ui: { ...open, modal: { name: 'confirm', kind: 'switchAccount', provider: 'claude', accountId: to, preview } } }
+  return { accounts: moveAccounts(), movePreview: preview, ui: { ...open, modal: { name: 'confirm', kind: 'switchAccount', provider: 'claude', accountId: to, preview, ...(atLimit ? { reason: 'banner' as const } : {}) } } }
 })
 
 // KERNEL-841: the notice above the composer. The chat last ran on Main account and its next turn runs on the 3rd account.
@@ -2166,6 +2166,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // KERNEL-845: a switch that would make long chats read their history again. Keeping them is the primary button. The key variant adds what reading them once costs.
   SwitchAccountConfirm: switchConfirm(),
   SwitchAccountConfirmApiKey: switchConfirm({ key: true }),
+  // KERNEL-841: the switch from the limit banner. Main account can't run the chats, so there is no Keep button and Move all chats now has the focus.
+  SwitchAccountConfirmAtLimit: switchConfirm({ atLimit: true }),
   // KERNEL-841: the chat's own notice before its next turn re-reads 310k tokens on another account. The key variant adds the price, the idle one is a hint with no buttons.
   ChatMoveNotice: moveNoticeScene({}),
   ChatMoveNoticeApiKey: moveNoticeScene({ to: 'key', price: 1.74 }),

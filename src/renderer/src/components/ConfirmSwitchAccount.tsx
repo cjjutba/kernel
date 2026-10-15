@@ -13,10 +13,13 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
  * chats on their account is the default, so the primary button is the safe one. Every switch entry point opens it through
  * `actions.accounts.requestSwitch`.
  */
-export function ConfirmSwitchAccount({ provider, accountId, preview, reason }: { provider: Provider; accountId: string; preview: MovePreview; reason?: 'banner' }) {
+export function ConfirmSwitchAccount({ provider, accountId, preview, reason, onSwitched }: { provider: Provider; accountId: string; preview: MovePreview; reason?: 'banner'; onSwitched?: () => void }) {
   const id = useId()
   const accounts = useStore((s) => s.accounts)
-  const keeps = useStore((s) => s.settings?.accounts.keepChatsOnAccount ?? true)
+  const policyKeeps = useStore((s) => s.settings?.accounts.keepChatsOnAccount ?? true)
+  // From the limit banner the account being left can't run the chats, so Kernel moves them whatever the policy says.
+  const atLimit = reason === 'banner'
+  const keeps = policyKeeps && !atLimit
   const [busy, run] = useBusy<'keep' | 'all'>()
   // The modal focuses its first button once it mounts, which is Cancel. Keeping chats is the default, so it takes the focus after.
   useEffect(() => { queueMicrotask(() => document.getElementById(`${id}k`)?.focus()) }, [id])
@@ -28,7 +31,7 @@ export function ConfirmSwitchAccount({ provider, accountId, preview, reason }: {
   const price = priced.reduce((n, c) => n + (c.price ?? 0), 0)
   const go = (move: 'keep' | 'all') => run(move, async () => {
     try {
-      await actions.accounts.confirmSwitch(provider, accountId, move, reason)
+      await actions.accounts.confirmSwitch(provider, accountId, move, reason, onSwitched)
       actions.ui.closeModal()
     } catch (e) { actions.ui.toast({ title: 'Could not switch accounts', sub: cleanError(e) }) }
   })
@@ -48,7 +51,9 @@ export function ConfirmSwitchAccount({ provider, accountId, preview, reason }: {
         <h2 id={`${id}t`}>Switch to {to}?</h2>
         <p id={`${id}b`}>
           {chats.length} {plural(chats.length, 'chat will', 'chats will')} re-read {plural(chats.length, 'its', 'their')} history on {to}, about {kTokens(tokens)} tokens.
-          {' '}{keeps ? `Keeping ${plural(chats.length, 'it', 'them')} on ${from} reads nothing again, and only new chats start on ${to}.` : 'Keep chats on their account is off in Settings, Accounts, so every chat moves.'}
+          {' '}{keeps
+            ? `Keeping ${plural(chats.length, 'it', 'them')} on ${from} reads nothing again, and only new chats start on ${to}.`
+            : atLimit ? `${from} hit its limit and can't run ${plural(chats.length, 'it', 'them')}, so ${plural(chats.length, 'it moves', 'they move')} and follow${plural(chats.length, 's', '')} the policy in Settings, Accounts.` : 'Keep chats on their account is off in Settings, Accounts, so every chat moves.'}
         </p>
         {priced.length > 0 && <p className="ssa-price">On this API key, reading {plural(priced.length, 'it', 'them')} once costs about {dollars(price)}.</p>}
         <ul className="ssa-list" aria-label="Chats that would move">

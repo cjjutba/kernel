@@ -65,7 +65,7 @@ export function ChatMoveNotice({ chat, notice }: { chat: Chat; notice: MoveNotic
     return <Banner kind="context" title={`This chat has been idle, so its next turn re-reads ${read}.`}>{notice.price !== undefined ? `On this API key that costs about ${dollars(notice.price)}.` : undefined}</Banner>
   }
   const title = notice.reason === 'model'
-    ? `Switching to ${notice.model} re-reads about ${kTokens(notice.tokens)} tokens.`
+    ? `Switching to ${notice.model} re-reads ${read}.`
     : `This chat last ran on ${from}. Its next turn re-reads ${read} on ${to}.`
   const sub = [
     notice.price !== undefined ? `On this API key that costs about ${dollars(notice.price)}.` : '',
