@@ -79,15 +79,21 @@ export const opensAtEnd = (place: Place | undefined, lastSentId: string | undefi
 /** The chat a transcript shows, so a row can keep its open state without every prop passing it down. */
 export const TranscriptChat = createContext<string | null>(null)
 
-/** Open state for a row inside a chat that outlives the row being drawn. Without a chat id it is plain local state. */
-export function useRowOpen(chatId: string | null, rowId: string, initial: boolean): [boolean, (open: boolean) => void] {
-  const [open, set] = useState(() => (chatId ? opened.get(chatId)?.get(rowId) : undefined) ?? initial)
+/**
+ * Open state for a row inside a chat that outlives the row being drawn. Without a chat id it is plain local state. `touched` is whether the reader
+ * has set it by hand, which a row that opens or closes itself (a fold at the end of a turn) must never override.
+ */
+export function useRowOpen(chatId: string | null, rowId: string, initial: boolean): [boolean, (open: boolean) => void, boolean] {
+  const kept = chatId ? opened.get(chatId)?.get(rowId) : undefined
+  const [open, set] = useState(() => kept ?? initial)
+  const [touched, touch] = useState(() => kept !== undefined)
   const setOpen = useCallback((next: boolean) => {
     set(next)
+    touch(true)
     if (!chatId) return
     let rows = opened.get(chatId)
     if (!rows) opened.set(chatId, (rows = new Map()))
     rows.set(rowId, next)
   }, [chatId, rowId])
-  return [open, setOpen]
+  return [open, setOpen, touched]
 }

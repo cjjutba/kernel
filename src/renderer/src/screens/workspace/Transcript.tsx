@@ -16,6 +16,7 @@ import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, CopyOverlay, MessageActions, useCopy, type MessageAction } from './MessageActions'
 import { ChipIcon, HoverPreview, ImageButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
+import { foldHeader, settle, wantOpen, windowEntries, WINDOW } from './fold'
 import { buildThread, countsLabel, fmtDuration, messageLabel, runLabel, turnFiles, type Entry, type Run, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
 import { instructionOf } from './pr/model'
@@ -645,7 +646,9 @@ function toolMeta(item: Tool, changes: ChangedFile[]): string {
 }
 
 /** A row in the folded list: every step the turn took before its reply, in order, each closed until opened. */
-const GroupItem = memo(function GroupItem({ item, meta }: { item: ChatItem; meta?: string }) {
+const GroupItem = memo(function GroupItem({ item, meta, full }: { item: ChatItem; meta?: string; full?: boolean }) {
+  // The newest step of a running turn that is a message streams in full, as the reply will read under the fold; once another step follows, it is a row.
+  if (item.kind === 'text' && full) return <div className="group-item"><div className="msg msg-reply"><Markdown text={item.text} /></div></div>
   if (item.kind === 'tool') return toolView(item).hidden ? null : <div className="group-item"><ToolRow item={item} meta={meta} /></div>
   if (item.kind === 'thinking') return <div className="group-item"><ThinkingRow item={item} /></div>
   if (item.kind === 'text') return <div className="group-item"><MessageRow item={item} /></div>
@@ -671,29 +674,94 @@ const RunRow = memo(function RunRow({ run, changes, startOpen }: { run: Run; cha
   )
 }, (a, b) => (a.run === b.run || (a.run.id === b.run.id && sameList(a.run.items, b.run.items) && a.run.failed === b.run.failed)) && a.changes === b.changes && a.startOpen === b.startOpen)
 
-const GroupEntry = memo(function GroupEntry({ entry, changes }: { entry: Entry; changes: ChangedFile[] }) {
+const GroupEntry = memo(function GroupEntry({ entry, changes, full }: { entry: Entry; changes: ChangedFile[]; full?: boolean }) {
   if (entry.kind === 'run') return <div className="group-item"><RunRow run={entry.run} changes={changes} startOpen /></div>
-  return <GroupItem item={entry.item} meta={entry.item.kind === 'tool' ? toolMeta(entry.item, changes) : undefined} />
-}, (a, b) => (a.entry === b.entry || (a.entry.kind === 'item' && b.entry.kind === 'item' && a.entry.item === b.entry.item) || (a.entry.kind === 'run' && b.entry.kind === 'run' && a.entry.run.id === b.entry.run.id && sameList(a.entry.run.items, b.entry.run.items))) && a.changes === b.changes)
+  return <GroupItem item={entry.item} meta={entry.item.kind === 'tool' ? toolMeta(entry.item, changes) : undefined} full={full} />
+}, (a, b) => a.full === b.full && (a.entry === b.entry || (a.entry.kind === 'item' && b.entry.kind === 'item' && a.entry.item === b.entry.item) || (a.entry.kind === 'run' && b.entry.kind === 'run' && a.entry.run.id === b.entry.run.id && sameList(a.entry.run.items, b.entry.run.items))) && a.changes === b.changes)
 
+/** Whether the reader is away from the end of the transcript, which a fold waits on before it closes under them. */
+const TranscriptAway = createContext(false)
+
+/** The agent is waiting on the reader's plan approval, so its folds show no spinner or clock. */
+const TranscriptWaiting = createContext(false)
+
+/** Whether the reader has text selected inside `el`. */
+const selectingIn = (el: HTMLElement | null) => {
+  const sel = getSelection()
+  return !!el && !!sel && !sel.isCollapsed && !!sel.anchorNode && el.contains(sel.anchorNode)
+}
+
+const reduced = () => document.documentElement.dataset.reduceMotion === 'true' || matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/**
+ * A stretch of steps. Its header is one row that changes tense (`foldHeader`). By default it is open while its turn runs and folds when the turn ends;
+ * a fold the reader opened or closed keeps that, and Settings, Appearance, Tool calls picks the other two ways. A fold waits to close until the
+ * reader is at the end and holds no selection in it. A running fold lists its newest steps, with the rest behind a row at the top.
+ */
 function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'group' }>; changes: ChangedFile[] }) {
-  // Each group opens on its own. The view's flag only sets how a group starts, which is how WorkspaceToolCalls shows them open.
-  const [open, setOpen] = useRowOpen(useContext(TranscriptChat), block.id, getState().ui.workspace.toolsOpen)
+  const chatId = useContext(TranscriptChat)
+  const mode = useStore((s) => s.ui.workspace.toolCalls ?? 'auto')
+  const away = useContext(TranscriptAway)
+  const waiting = useContext(TranscriptWaiting)
+  const { turn } = block
+  const want = wantOpen(mode, turn.live)
+  const [manual, setManual, touched] = useRowOpen(chatId, block.id, want)
+  const [shown, setShown] = useState(want)
+  const box = useRef<HTMLDivElement>(null)
+  const pending = shown && !want && !touched
+  useEffect(() => {
+    const run = () => setShown((cur) => settle({ shown: cur, want, touched, mode, away, selecting: selectingIn(box.current) }))
+    run()
+    if (!pending) return
+    document.addEventListener('selectionchange', run)
+    return () => document.removeEventListener('selectionchange', run)
+  }, [want, touched, mode, away, pending])
+  const open = touched ? manual : shown
+  // The list leaves the page after its fold-up has played. A short turn, and reduced motion, skip it.
+  const animates = !turn.short && !(typeof matchMedia === 'function' && reduced())
+  const [mounted, setMounted] = useState(open)
+  const first = useRef(true)
+  useLayoutEffect(() => {
+    if (open || !mounted) { setMounted(open); return }
+    if (!animates) { setMounted(false); return }
+    const t = setTimeout(() => setMounted(false), 200)
+    return () => clearTimeout(t)
+  }, [open, animates]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { first.current = false }, [])
+  const [all, setAll] = useRowOpen(chatId, `${block.id}:earlier`, false)
+  const { shown: rows, earlier } = windowEntries(block.entries, turn.live, all)
   const id = `${block.id}-list`
-  const { text, bad } = block.summary
+  const h = foldHeader(turn, block.summary, waiting)
+  const { bad } = block.summary
+  const last = block.entries[block.entries.length - 1]
   return (
-    <div className="col" style={{ gap: 2 }}>
-      <button type="button" className="group-btn" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+    <div className="col" style={{ gap: 2 }} ref={box}>
+      <button type="button" className="group-btn" aria-expanded={open} aria-controls={id} onClick={() => setManual(!open)}>
         <span className="chev" data-open={open}><Icon name="right" size={12} /></span>
-        <span className="group-text">{text}{bad && <span className="step-bad">, {bad}</span>}</span>
+        {turn.live && turn.timer && !waiting && <Spinner label="Working" pattern="spiral" />}
+        <span className="group-text">
+          {h.head}{h.clock && turn.startedAt !== undefined && <> · <Clock since={turn.startedAt} /></>}{h.tail && ` · ${h.tail}`}{bad && <span className="step-bad">, {bad}</span>}
+        </span>
       </button>
-      {open && (
-        <div id={id} className="group-list">
-          {block.entries.map((e) => <GroupEntry key={e.kind === 'run' ? e.run.id : e.item.id} entry={e} changes={changes} />)}
+      {mounted && (
+        <div className="group-collapse" data-open={open} data-animate={animates && !first.current ? '' : undefined}>
+          <div id={id} className="group-list">
+            {earlier > 0 && (
+              <button type="button" className="group-earlier" aria-expanded={false} onClick={() => setAll(true)}>{earlier} earlier {earlier === 1 ? 'step' : 'steps'}</button>
+            )}
+            {rows.map((e) => <GroupEntry key={e.kind === 'run' ? e.run.id : e.item.id} entry={e} changes={changes} full={turn.live && e === last && e.kind === 'item' && e.item.kind === 'text'} />)}
+          </div>
         </div>
       )}
     </div>
   )
+}
+
+/** The live clock in a running fold's header, from the turn's own timestamp so it is right after a reload. */
+function Clock({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
+  return <>{fmtDuration(now - since)}</>
 }
 
 /** Seconds since the turn started. Counts from the message's own timestamp, so it is right after a reload. */
@@ -740,7 +808,7 @@ function sameBlock(a: ThreadBlock, b: ThreadBlock): boolean {
   if (a === b) return true
   switch (a.kind) {
     case 'item': return b.kind === 'item' && a.item === b.item && a.actions === b.actions
-    case 'group': return b.kind === 'group' && a.id === b.id && sameList(a.items, b.items)
+    case 'group': return b.kind === 'group' && a.id === b.id && sameList(a.items, b.items) && a.turn.live === b.turn.live && a.turn.timer === b.turn.timer && a.turn.startedAt === b.turn.startedAt && a.turn.durationMs === b.turn.durationMs && a.turn.short === b.turn.short
     case 'files': return b.kind === 'files' && a.id === b.id && sameList(a.files, b.files)
     case 'meta': return b.kind === 'meta' && a.id === b.id && a.text === b.text && a.actions?.copy === b.actions?.copy && a.actions?.files === b.actions?.files && a.actions?.checkpointId === b.actions?.checkpointId && !a.actions === !b.actions
     case 'reply': return b.kind === 'reply' && a.item === b.item && a.meta === b.meta && a.checkpointId === b.checkpointId && sameList(a.files ?? [], b.files ?? [])
@@ -811,6 +879,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const pr = useStore((s) => s.prs[workspaceId])
   const blocks = useMemo(() => buildThread(items, running), [items, running])
+  // A running fold carries the turn's clock in its header, so the clock row is only for a turn with no fold yet.
+  const timed = blocks.some((b) => b.kind === 'group' && b.turn.live && b.turn.timer && b.turn.startedAt !== undefined)
   // The failed step above an error card is the one whose output the card shows, so its row leaves the output out.
   const inError = useMemo(() => {
     const ids = new Set<string>()
@@ -1207,16 +1277,20 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         )}
         <TranscriptWorkspace.Provider value={workspaceId}>
         <TranscriptChat.Provider value={chatId}>
+        <TranscriptAway.Provider value={away}>
+        <TranscriptWaiting.Provider value={planWaits}>
         <ShownInError.Provider value={inError}>
         <div ref={thread} className="thread" style={empty ? { display: 'none' } : undefined}>
           {blocks.map((b, i) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} workspaceId={workspaceId} changes={changes} inWorkspace={i === latestFiles && changes.length > 0 && changes.length !== ((b.kind === 'reply' || b.kind === 'files') && b.files ? b.files.length : 0) ? changes.length : undefined} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
           {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
           {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
           {ws && <LocalMergeRow ws={ws} />}
-          {running && !planWaits && <Elapsed since={since} />}
+          {running && !planWaits && !timed && <Elapsed since={since} />}
           <div ref={end} />
         </div>
         </ShownInError.Provider>
+        </TranscriptWaiting.Provider>
+        </TranscriptAway.Provider>
         </TranscriptChat.Provider>
         </TranscriptWorkspace.Provider>
       </div>

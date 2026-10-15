@@ -133,6 +133,9 @@ export interface Toast {
   action?: { label: string; href?: string; tab?: { workspaceId: string; id: string }; route?: Route; modal?: Exclude<Modal, null>; switchAccount?: { provider: Provider; accountId: string } }
 }
 
+/** The three ways a turn's folds behave. */
+export type ToolCalls = 'auto' | 'closed' | 'open'
+
 /** The workspace screen's panes, so fixtures can open any of them. */
 export interface WorkspaceView {
   /** The right panel's tab. `prs` is the Lead's own, so a teammate's workspace shows Changes in its place (KERNEL-354). */
@@ -140,8 +143,8 @@ export interface WorkspaceView {
   /** The tab the Lead's workspace shows. The store starts it at `prs` and sets it back on entering a workspace, as it does `right` to `changes`; a fixture can leave it out. */
   leadRight?: 'prs' | 'files' | 'changes' | 'checks' | 'shared'
   bottom: 'setup' | 'run' | 'terminal'
-  /** Tool call groups shown expanded (WorkspaceToolCalls.png). */
-  toolsOpen: boolean
+  /** How a turn's folds start (Settings, Appearance, Tool calls). `auto` shows the steps while the turn works and folds them when it ends, `closed` starts every fold closed, `open` starts every fold open and never folds one. A fixture can leave it out for `auto`. */
+  toolCalls?: ToolCalls
   /** The Changes tab as a flat list or a folder tree, like VS Code's Source Control (KERNEL-399). The store starts it at what was last picked; a fixture can leave it out. */
   changesView?: 'list' | 'tree'
   /** What the composer starts with. Fixtures force it so a shot can show chips and an open @ or / menu; the app never sets it. */
