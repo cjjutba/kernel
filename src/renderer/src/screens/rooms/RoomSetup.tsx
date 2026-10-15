@@ -81,6 +81,10 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
     if (!roomId) return
     try { await call('rooms.pushCheck', { roomId, recheck: true }) } catch (e) { actions.ui.toast({ title: 'Could not check push access', sub: cleanError(e) }) }
   })
+  const retry = () => run('retry', async () => {
+    if (!roomId) return
+    try { await call('rooms.retrySetup', { roomId }) } catch (e) { actions.ui.toast({ title: 'Could not try again', sub: cleanError(e) }) }
+  })
   const status = stopped ? `${failed} ${failed === 1 ? 'step' : 'steps'} did not finish.${finished ? ' You can still open the room.' : ''}`
     : finished && warned ? `${warned} ${warned === 1 ? 'thing needs' : 'things need'} your attention. Tell Kernel what to build.`
       : finished ? 'Done. Tell Kernel what to build.'
@@ -109,7 +113,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                 <div className="ob-body">
                   <span className="ob-name" style={s.state === 'wait' ? { color: 'var(--muted)', fontWeight: 400 } : undefined}>{s.title}</span>
                   <span className="ob-detail">{s.detail}</span>
-                  {s.error && <div className="rs-fail"><Banner kind="setup" title={`${s.title} did not finish`}>{s.error}</Banner></div>}
+                  {s.error && <div className="rs-fail"><Banner kind="setup" title={`${s.title} did not finish`} actions={s.state === 'fail' ? <Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" disabled={busy !== null} onClick={() => void retry()}>Try again</Button> : undefined}>{s.error}</Banner></div>}
                   {s.output && <pre className="code boxed rs-out">{s.output}</pre>}
                   {s.fix?.command && <div className="ob-fix"><CodeBlock inline>{s.fix.command}</CodeBlock></div>}
                   {s.fix?.action === 'recheck' && (

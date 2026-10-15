@@ -15,20 +15,15 @@ export function OpenFolder() {
   const [init, setInit] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [tries, setTries] = useState(0)
   const [busy, run] = useBusy<'retry'>()
 
   useEffect(() => { const t = setTimeout(() => document.querySelector<HTMLElement>('[role=dialog]')?.focus(), 0); return () => clearTimeout(t) }, [])
-  useEffect(() => {
-    let live = true
-    call('rooms.recentFolders', undefined).then((list) => { if (live) { setFolders(list); setLoadError(null) } }, (e: unknown) => { if (live) { setFolders([]); setLoadError(cleanError(e)) } })
-    return () => { live = false }
-  }, [tries])
+  const load = () => call('rooms.recentFolders', undefined).then((list) => { setFolders(list); setLoadError(null) }, (e: unknown) => { setFolders([]); setLoadError(cleanError(e)) })
+  useEffect(() => { void load() }, [])
   const retry = () => run('retry', async () => {
     setFolders(null)
     setLoadError(null)
-    setTries((n) => n + 1)
-    await new Promise<void>((done) => setTimeout(done, 400))
+    await load()
   })
 
   const add = (f: FolderInfo) => { setFolders((list) => [f, ...(list ?? []).filter((x) => x.path !== f.path)]); setPicked(f.path); setError(null) }
