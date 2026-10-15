@@ -17,7 +17,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const GREEN: PrCheck[] = [{ name: 'Test', state: 'pass' }]
 
 /**
- * A room on a fake GitHub, with the app's settings `app`. `pr` opens Kai's work on a PR that passed its checks, with the
+ * A project on a fake GitHub, with the app's settings `app`. `pr` opens Kai's work on a PR that passed its checks, with the
  * approvals and the blockers of the kinds named, all on its head commit.
  */
 async function setup(app: object = {}) {
@@ -36,13 +36,13 @@ async function setup(app: object = {}) {
     ready: async () => undefined,
     reopen: async () => undefined
   }
-  const room = await k.addRoom(repo)
+  const project = await k.addProject(repo)
   const activity: ActivityEvent[] = []
   const onActivity = (e: ActivityEvent) => { activity.push(e) }
   bus.on('activity', onActivity)
   onTestFinished(() => { bus.off('activity', onActivity) })
   const pr = async (r: { approved?: ReviewKind[]; blockers?: ReviewKind[] } = {}) => {
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Task' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Task' })
     await writeFile(join(ws.path, 'a.ts'), 'export const a = 1\n')
     await git(ws.path, 'add', '-A')
     await git(ws.path, 'commit', '-qm', 'work')
@@ -128,7 +128,7 @@ describe('auto-merge and an overrule', () => {
 })
 
 describe("the Team update's To do", () => {
-  const ws = { id: 'w1', roomId: 'room', name: 'w1', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 54, baseRef: 'main' } as Workspace
+  const ws = { id: 'w1', projectId: 'project', name: 'w1', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 54, baseRef: 'main' } as Workspace
   const review = (o: Partial<ReviewState> = {}): ReviewState => ({ approved: [], blocking: [], blockers: false, reviewing: [], inProgress: false, waiting: [], ...o })
   const verdict: TeamEvent = { n: 1, workspaceId: 'rv', kind: 'review', review: { verdict: 'blockers', lens: 'code', summary: '', of: 'w1', ofName: 'Noor', ofPr: 54, current: true } }
   const todo = (state: ReviewState) => decide({ ws: { ...ws, id: 'rv', reviewOf: 'w1' }, name: 'Theo', events: [verdict] }, { allMerged: () => false, workspace: () => ws, stateOf: () => state }).todo
@@ -150,8 +150,8 @@ describe("the Team update's To do", () => {
 
 describe('overrule_blockers', () => {
   const list = (): Workspace[] => [
-    { id: 'w1', roomId: 'room', name: 'w1', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 54 } as Workspace,
-    { id: 'rv', roomId: 'room', name: 'rv', agentId: 'theo', status: 'ready', prState: 'none', reviewOf: 'w1' } as Workspace
+    { id: 'w1', projectId: 'project', name: 'w1', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 54 } as Workspace,
+    { id: 'rv', projectId: 'project', name: 'rv', agentId: 'theo', status: 'ready', prState: 'none', reviewOf: 'w1' } as Workspace
   ]
   function lead(o: { said?: string; userTurn?: boolean; fails?: string } = {}) {
     const all = list()
@@ -161,7 +161,7 @@ describe('overrule_blockers', () => {
       return { ...w, overruled: { head: 'a'.repeat(40), kinds: ['code' as const], by: 'lead' as const, ts: 1, ...(note ? { note } : {}) } }
     })
     const deps: KernelToolDeps = {
-      roomId: 'room', lead: { id: 'kernel', lead: true } as AgentDef, agents: async () => [], workspaces: () => all,
+      projectId: 'project', lead: { id: 'kernel', lead: true } as AgentDef, agents: async () => [], workspaces: () => all,
       createWorkspace: async () => all[0], messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => undefined, isRunning: () => false, unsaved: async () => false,
       overrule, userTurn: () => o.userTurn ?? true, userSaid: () => ({ text: o.said ?? 'Those blockers are fine, ignore them and merge.', at: 1 })

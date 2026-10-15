@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { RoomSettings } from '@shared/types'
+import type { ProjectSettings } from '@shared/types'
 
 // KERNEL-249: run scripts in the renderer. Each script keeps its own lines and exit, the Run tab lists what is running, and a save shows at once.
 
@@ -91,12 +91,12 @@ describe('the Run tab names', () => {
     expect(runningRuns(getState(), 'w1')).toEqual(['frontend'])
   })
 
-  it("keeps a running script that Settings no longer lists, after the room's own", () => {
+  it("keeps a running script that Settings no longer lists, after the project's own", () => {
     lines('frontend')
     expect(pickerNames(['run', 'web'], runningRuns(getState(), 'w1'))).toEqual(['run', 'web', 'frontend'])
   })
 
-  it("knows the default script is running before the room's settings load", () => {
+  it("knows the default script is running before the project's settings load", () => {
     lines('run')
     expect(pickerNames([], runningRuns(getState(), 'w1'))).toEqual(['run'])
   })
@@ -116,8 +116,8 @@ describe('the Run tab names', () => {
 })
 
 describe('applyRunScripts', () => {
-  const list: RoomSettings['runScripts'] = [{ name: 'run', command: 'pnpm dev' }, { name: 'web', command: 'pnpm web' }, { name: 'api', command: 'pnpm api' }]
-  const sources = (): RoomSettings['sources'] => ({ 'runScripts.run': 'override', 'runScripts.web': 'shared', 'runScripts.api': 'local' })
+  const list: ProjectSettings['runScripts'] = [{ name: 'run', command: 'pnpm dev' }, { name: 'web', command: 'pnpm web' }, { name: 'api', command: 'pnpm api' }]
+  const sources = (): ProjectSettings['sources'] => ({ 'runScripts.run': 'override', 'runScripts.web': 'shared', 'runScripts.api': 'local' })
 
   it('adds a new script as a personal one', () => {
     const s = sources()

@@ -4,7 +4,7 @@ import { call, cleanError, onPush } from '../../../api'
 import { actions, mcpNeedYou, mcpRunKey, useStore } from '../../../store'
 import { Icon, Spinner, useBusy } from '../../../ui'
 
-// Every account's MCP servers (KERNEL-627): the pieces the MCP servers page, Set up this account, the Providers row and a room's
+// Every account's MCP servers (KERNEL-627): the pieces the MCP servers page, Set up this account, the Providers row and a project's
 // Skills and MCP share (KERNEL-661).
 
 /** "Google Drive" for the connector Claude Code lists as "claude.ai Google Drive". */

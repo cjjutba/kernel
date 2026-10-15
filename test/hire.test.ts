@@ -10,7 +10,7 @@ import { callTool } from '../src/main/services/providers/codex/tools'
 import { tempRepo, freePort } from './helpers'
 
 // KERNEL-476: a new agent that should open pull requests gets Edit and Write, and create_agent says where it landed and
-// which MCP servers it can reach. The SDK is scripted so the room's MCP check lists `servers` and no Claude Code starts.
+// which MCP servers it can reach. The SDK is scripted so the project's MCP check lists `servers` and no Claude Code starts.
 const sdk = vi.hoisted(() => ({ servers: [] as unknown[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
   ...await original<object>(),
@@ -30,7 +30,7 @@ function hireTool(o: { answer: Decision | null; team?: (saved: { id: string; too
   const saved: Parameters<KernelToolDeps['hireAgent']>[0][] = []
   const reach = vi.fn<NonNullable<KernelToolDeps['reach']>>(async () => o.reach!)
   const deps = {
-    roomId: 'room', lead: undefined, workspaces: () => [], createWorkspace: async () => { throw new Error('no') }, messageWorkspace: async () => ({ ok: true, note: '' }),
+    projectId: 'project', lead: undefined, workspaces: () => [], createWorkspace: async () => { throw new Error('no') }, messageWorkspace: async () => ({ ok: true, note: '' }),
     agents: async () => (saved.length && o.team ? o.team(saved[0]) : []), askUser,
     hireAgent: async (a: Parameters<KernelToolDeps['hireAgent']>[0]) => { saved.push(a); return `/repo/.claude/agents/${a.id}.md` },
     archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false as const,
@@ -60,7 +60,7 @@ describe('create_agent', () => {
       isError: false,
       text: 'Saved /repo/.claude/agents/wren.md, just for the user on this Mac. Wren joins the team and takes tasks. MCP servers Wren can reach: figma. Wren can\'t use a server its file names. claude.ai Linear needs the user to sign in with /mcp in Claude Code. Don\'t hand Wren work that needs it until the user fixes that.'
     })
-    // Once for the card, and again after the save, waiting for the room's first check.
+    // Once for the card, and again after the save, waiting for the project's first check.
     expect(h.reach.mock.calls.map((c) => [c[0].id, c[1]])).toEqual([['wren', undefined], ['wren', { wait: true }]])
   })
 
@@ -80,11 +80,11 @@ describe('create_agent', () => {
     expect(r.text).toBe("Saved /repo/.claude/agents/wren.md, just for the user on this Mac. Wren joins as a helper and doesn't take tasks. To open a PR, its tools need Bash, and Edit or Write. The user can add them on Wren's profile in Team. Wren can reach no MCP servers besides Kernel's own.")
   })
 
-  it('says when the hire reviews, or is a helper the room made one, and names every server it lacks', async () => {
+  it('says when the hire reviews, or is a helper the project made one, and names every server it lacks', async () => {
     const reach: AgentReach = { reach: [], blocked: [{ name: 'neon', why: 'failed' }, { name: 'slack', why: 'missing' }, { name: 'lin', why: 'missing', suggestion: 'claude_ai_Linear' }] }
     const reviews = await hireTool({ answer: { behavior: 'allow' }, reach, team: (a) => [agent(a.id, { role: 'Reviewer', reviewer: true, member: false, tools: a.tools })] })
       .run({ id: 'sec', description: 'Reviews security.', prompt: 'x', role: 'Reviewer' })
-    expect(reviews.text).toBe("Saved /repo/.claude/agents/sec.md, just for the user on this Mac. Sec joins the team and reviews PRs. Sec can reach no MCP servers besides Kernel's own. Sec can't use 3 servers its file names. neon failed to connect. slack is not a server in this room. lin is not a server in this room, but claude_ai_Linear may be the one it means. Don't hand Sec work that needs those until the user fixes that.")
+    expect(reviews.text).toBe("Saved /repo/.claude/agents/sec.md, just for the user on this Mac. Sec joins the team and reviews PRs. Sec can reach no MCP servers besides Kernel's own. Sec can't use 3 servers its file names. neon failed to connect. slack is not a server in this project. lin is not a server in this project, but claude_ai_Linear may be the one it means. Don't hand Sec work that needs those until the user fixes that.")
     const helper = await hireTool({ answer: { behavior: 'allow' }, team: (a) => [agent(a.id, { tools: a.tools, member: false })] }).run({ id: 'kai', description: 'Frontend.', prompt: 'x' })
     // No `reach` in the deps: nothing about servers.
     expect(helper.text).toBe("Saved /repo/.claude/agents/kai.md, just for the user on this Mac. Kai joins as a helper and doesn't take tasks.")
@@ -136,8 +136,8 @@ describe('a plan that needs an agent the team lacks', () => {
   })
 })
 
-describe('creating an agent in a real room', () => {
-  it("writes a Designer that takes tasks, and lists the servers it reaches after the room's first check", async () => {
+describe('creating an agent in a real project', () => {
+  it("writes a Designer that takes tasks, and lists the servers it reaches after the project's first check", async () => {
     const repo = await tempRepo({ 'README.md': '# app\n', '.mcp.json': JSON.stringify({ mcpServers: { figma: {}, neon: {} } }), '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -145,15 +145,15 @@ describe('creating an agent in a real room', () => {
     const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') })
     onTestFinished(() => k.stop())
     await k.start()
-    const room = await k.rooms.addRoom(repo)
-    const chat = await k.lead.leadChat(room.id)
-    const lead = (await k.team.agents(room.id)).find((a) => a.lead)!
+    const project = await k.projects.addProject(repo)
+    const chat = await k.lead.leadChat(project.id)
+    const lead = (await k.team.agents(project.id)).find((a) => a.lead)!
     sdk.servers = [
       { name: 'figma', status: 'connected', scope: 'project' }, { name: 'neon', status: 'failed', scope: 'project' },
       { name: 'claude.ai Linear', status: 'needs-auth', scope: 'claudeai', source: 'claudeai' }
     ]
     const cards: Approval['agentFile'][] = []
-    const deps: KernelToolDeps = { ...k.lead.leadToolDeps(room.id, lead, chat), askUser: async (o) => { cards.push(o.agentFile); return { behavior: 'allow' } } }
+    const deps: KernelToolDeps = { ...k.lead.leadToolDeps(project.id, lead, chat), askUser: async (o) => { cards.push(o.agentFile); return { behavior: 'allow' } } }
     const leadTools = kernelTools(deps)
     const call = async (name: string, args: object) => {
       const r = await leadTools.find((t) => t.name === name)!.handler(args as never, {})
@@ -172,14 +172,14 @@ describe('creating an agent in a real room', () => {
     expect(await run({ id: 'wren', description: 'Designer. Checks every screen against DESIGN.md.', prompt: 'You are Wren. Open a PR with your fixes.' }))
       .toBe(`Saved ${join(home, '.claude', 'agents', 'wren.md')}, just for the user on this Mac. Wren joins the team and takes tasks. Wren can reach no MCP servers besides Kernel's own.`)
     expect(await readFile(join(home, '.claude', 'agents', 'wren.md'), 'utf8')).toContain(PR_TOOLS)
-    expect((await k.team.agents(room.id)).find((a) => a.id === 'wren')).toMatchObject({ member: true, tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] })
+    expect((await k.team.agents(project.id)).find((a) => a.id === 'wren')).toMatchObject({ member: true, tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] })
     expect((await call('list_agents', {})).text).toBe('kernel-lead: Kernel, Lead (the Lead, you). Lead.\nwren: Wren, Designer. Designer. Checks every screen against DESIGN.md.')
 
     const tools = ['Read', 'Edit', 'Write', 'Bash', 'mcp__figma', 'mcp__claude_ai_Linear', 'mcp__neon__run_sql', 'mcp__slack']
     expect(await run({ id: 'ivy', description: 'Frontend engineer.', prompt: 'You are Ivy.', tools })).toBe(
-      `Saved ${join(home, '.claude', 'agents', 'ivy.md')}, just for the user on this Mac. Ivy joins the team and takes tasks. MCP servers Ivy can reach: figma. Ivy can't use 3 servers its file names. claude.ai Linear needs the user to sign in with /mcp in Claude Code. neon failed to connect. slack is not a server in this room. Don't hand Ivy work that needs those until the user fixes that.`
+      `Saved ${join(home, '.claude', 'agents', 'ivy.md')}, just for the user on this Mac. Ivy joins the team and takes tasks. MCP servers Ivy can reach: figma. Ivy can't use 3 servers its file names. claude.ai Linear needs the user to sign in with /mcp in Claude Code. neon failed to connect. slack is not a server in this project. Don't hand Ivy work that needs those until the user fixes that.`
     )
-    // The room was checked by then, so the second card knew every server.
+    // The project was checked by then, so the second card knew every server.
     expect(cards[1]!.servers).toEqual({ reach: ['figma'], blocked: [{ name: 'claude.ai Linear', why: 'needs-auth' }, { name: 'neon', why: 'failed' }, { name: 'slack', why: 'missing' }] })
   })
 })

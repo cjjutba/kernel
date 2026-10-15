@@ -1,4 +1,4 @@
-import type { AccountProfile, AgentDef, AppSettings, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpAccountServer, McpServer, McpSignInAll, Modal, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Room, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AccountProfile, AgentDef, AppSettings, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpAccountServer, McpServer, McpSignInAll, Modal, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Project, ProjectSettings, ProjectSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { mcpCounts } from '@shared/mcpCounts'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
@@ -13,7 +13,7 @@ import { at, base, ids, invaderIcon, scene, tableItems, withWorkspace } from './
 const onboarding = { route: { name: 'onboarding', step: 'checks' } } as const
 const permissionStep = { route: { name: 'onboarding', step: 'permissions' } } as const
 const open = { route: { name: 'workspace', workspaceId: ids.table } } as const
-const empty = { rooms: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [] }
+const empty = { projects: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [] }
 
 // The checks, in canvas order. Copy matches src/main/services/preflight.ts.
 const claudeOk: PreflightCheck = { id: 'claude', ok: true, blocking: false, title: 'Claude Code', detail: 'Found on your PATH', meta: 'v2.1.284' }
@@ -68,10 +68,10 @@ const withChat = (f: Fixture, change: Partial<Fixture['chats'][number]>) => f.ch
 // KERNEL-9: the component gallery in both themes. the `devUi` route shows it. No design PNG, so no compare.
 const gallery = (page: DevUiPage) => scene(() => ({ ...empty, ui: { route: { name: 'devUi', page } } }))
 
-// KERNEL-25: the app-wide settings pages. The seed's rooms fill the nav; Account adds the three usage windows the canvas shows.
+// KERNEL-25: the app-wide settings pages. The seed's projects fill the nav; Account adds the three usage windows the canvas shows.
 const settingsPage = (page: SettingsPage, extra: Partial<Fixture> = {}) => scene(() => ({ ...extra, ui: { route: { name: 'settings', page } } }))
-/** One of Client A's room pages (KERNEL-191). */
-const roomPage = (section: RoomSettingsSection, extra: Partial<Fixture> = {}, menu?: 'settingsFiles') => scene(() => ({ ...extra, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section }, ...(menu ? { menu } : {}) } }))
+/** One of Client A's project pages (KERNEL-191). */
+const projectPage = (section: ProjectSettingsSection, extra: Partial<Fixture> = {}, menu?: 'settingsFiles') => scene(() => ({ ...extra, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section }, ...(menu ? { menu } : {}) } }))
 /** Settings with some roles moved, the rest as Kernel ships them (KERNEL-406). */
 const withRoles = (roles: Partial<AppSettings['models']['roles']>): AppSettings => {
   const d = DEFAULT_SETTINGS('/Users/you')
@@ -174,9 +174,9 @@ const limitPage = () => providersPage('claude', { usage: limitUsage(), settings:
 /** The Add account sheet is opened from the page's button, and a sign-in that waits on the browser is the engine's `account.add` step. */
 const addAccountPage = (tab: Provider, step?: 'browser' | 'code') => providersPage(tab, step ? { push: [{ type: 'account.add', add: { provider: tab, step, url: tab === 'claude' ? 'https://claude.ai/oauth/authorize' : 'https://auth.openai.com/oauth/authorize' } }] } : {})
 
-// KERNEL-26, KERNEL-191: the room pages read their own room's .kernel files, so the fixture gives Client A the values the canvas shows.
+// KERNEL-26, KERNEL-191: the project pages read their own project's .kernel files, so the fixture gives Client A the values the canvas shows.
 // `sources` says which file set what: both files are there, so the settings files button offers both.
-const kernelFiles: RoomSettings = {
+const kernelFiles: ProjectSettings = {
   scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local', run: 'pnpm dev --port $KERNEL_PORT', archive: 'docker compose down', runMode: 'concurrent' },
   runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }],
   files: { copy: ['.env.local', '.env.test', 'certs/*.pem'], symlinkNodeModules: false },
@@ -188,7 +188,7 @@ const kernelFiles: RoomSettings = {
   references: [],
   sources: { 'scripts.setup': 'shared', 'scripts.run': 'override', 'files.copy': 'shared', 'workspace.baseRef': 'override', 'pr.createInstructions': 'override' }
 }
-const clientA = (extra: Partial<RoomSettings> = {}) => ({ roomSettings: { [ids.roomA]: { ...kernelFiles, ...extra } } })
+const clientA = (extra: Partial<ProjectSettings> = {}) => ({ projectSettings: { [ids.projectA]: { ...kernelFiles, ...extra } } })
 /**
  * Client A's push check (KERNEL-460): both rows pass, gh can push but git isn't using its login, or origin is out of reach.
  * Checked two minutes before the shot, or just now for the unreachable one, as the drawings say.
@@ -205,17 +205,17 @@ const pushCheck = (state: 'ok' | 'failed' | 'unreachable'): Pick<Fixture, 'pushC
     check.reach = { state: 'fail', detail: 'git ls-remote origin', output: 'fatal: unable to access \'https://github.com/samrivera/client-a.git/\': Could not resolve host: github.com', note: 'Check your connection or VPN, then check again.' }
     check.push = { state: 'unchecked', detail: 'Needs a reachable remote' }
   }
-  return { pushChecks: { [ids.roomA]: check } }
+  return { pushChecks: { [ids.projectA]: check } }
 }
 /** Client A's Environment page: two variables and two env files from its personal file, `src/backend/.env` missing. */
 const envFiles = ['.env', 'src/backend/.env']
-const envRoomA: Partial<Fixture> = {
+const envProjectA: Partial<Fixture> = {
   ...clientA({ env: { files: envFiles }, sources: { ...kernelFiles.sources, 'env.files': 'local' } }),
-  env: { rooms: { [ids.roomA]: { names: ['DATABASE_URL', 'STRIPE_SECRET_KEY'], files: envFiles.map((path) => ({ path, missing: path.startsWith('src/') })) } } }
+  env: { projects: { [ids.projectA]: { names: ['DATABASE_URL', 'STRIPE_SECRET_KEY'], files: envFiles.map((path) => ({ path, missing: path.startsWith('src/') })) } } }
 }
 const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, autoMerge: { on: false, maxLines: 200, alwaysReview: ['infra/**', 'scripts/release.sh'] }, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck', fixChecksInstructions: '# Fix failing checks\n1. Read the failing job log\n2. Fix the cause, not the test\n3. Push and wait for the checks', addressReviewInstructions: '# Address review comments\n1. Read every open thread\n2. Change the code or reply with a reason\n3. Push and resolve the threads' } }
-/** What approvals saved with Always allow in this room. The gh one is long enough to clamp to two lines. */
-const roomRules = [
+/** What approvals saved with Always allow in this project. The gh one is long enough to clamp to two lines. */
+const projectRules = [
   'pnpm test', 'pnpm typecheck',
   'gh pr view --json number,title,state,statusCheckRollup,reviewDecision,mergeable,headRefName,baseRefName',
   'git log --oneline origin/main..HEAD',
@@ -224,41 +224,41 @@ const roomRules = [
   'gh pr create --title "build: move the Kernel repo from npm to pnpm (KERNEL-110)" --body-file - <<\'EOF\'\n## Summary\nThe app at the root and the website in site/ now use pnpm 12.3.4.\nEOF'
 ]
 /** The tools saved the same way (KERNEL-455), as Claude Code writes a rule. */
-const roomToolRules = ['mcp__linear__get_issue', 'mcp__github__create_pull_request', 'WebFetch(domain:docs.stripe.com)']
+const projectToolRules = ['mcp__linear__get_issue', 'mcp__github__create_pull_request', 'WebFetch(domain:docs.stripe.com)']
 /** Auto is the app's mode, as the canvas draws it (KERNEL-455). A8 makes it the default for new installs. */
 const autoMode = (): AppSettings => { const d = DEFAULT_SETTINGS('/Users/you'); return { ...d, permissions: { ...d.permissions, mode: 'auto' } } }
-/** Client A's Permissions page: the commands and tools saved with Always allow in this room, over an app that runs Auto. */
-const roomPermissions = (f: Fixture): Partial<Fixture> => ({
+/** Client A's Permissions page: the commands and tools saved with Always allow in this project, over an app that runs Auto. */
+const projectPermissions = (f: Fixture): Partial<Fixture> => ({
   ...clientA(),
   settings: autoMode(),
-  rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, allow: roomRules, allowTools: roomToolRules } : r))
+  projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, allow: projectRules, allowTools: projectToolRules } : r))
 })
-/** Client A's General page (SettingsRoom.png), which SettingsRoomIcon builds on. */
-const settingsRoom = (f: Fixture): Partial<Fixture> => ({
+/** Client A's General page (SettingsProject.png), which SettingsProjectIcon builds on. */
+const settingsProject = (f: Fixture): Partial<Fixture> => ({
   ...clientA({ scripts: { setup: 'pnpm install' }, linear: { team: 'KERNEL' } }),
-  rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a', repo: 'cjjutba/client-a' } : r)),
-  agents: { ...f.agents, [ids.roomA]: sixAgents.slice(0, 5) },
-  // KERNEL-161: Linear is connected and the room has a team, so the row shows its select.
+  projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, path: '/Users/you/Projects/client-a', repo: 'cjjutba/client-a' } : r)),
+  agents: { ...f.agents, [ids.projectA]: sixAgents.slice(0, 5) },
+  // KERNEL-161: Linear is connected and the project has a team, so the row shows its select.
   integrations: integrationRows.map((r) => (r.id === 'linear' ? { ...r, connected: true } : r)),
   linear: { scope: { teams: [{ id: 'team-kernel', key: 'KERNEL', name: 'Kernel' }, { id: 'team-web', key: 'WEB', name: 'Web' }], projects: [], cycles: [] } },
-  ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA } }
+  ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA } }
 })
 
 /**
- * A room's General page with its issue tracker row (SettingsRoomTracker.png, SettingsRoomTrackerNone.png, KERNEL-472). Linear isn't
- * connected in either room, so the row follows the remote. `menu` opens the tracker menu.
+ * A project's General page with its issue tracker row (SettingsProjectTracker.png, SettingsProjectTrackerNone.png, KERNEL-472). Linear isn't
+ * connected in either project, so the row follows the remote. `menu` opens the tracker menu.
  */
-const trackerRoom = (id: string, crew: string[], room: Partial<Room>, menu = false) => scene((f) => ({
-  roomSettings: { [id]: kernelFiles },
-  rooms: f.rooms.map((r) => (r.id === id ? { ...r, ...room } : r)),
+const trackerProject = (id: string, crew: string[], project: Partial<Project>, menu = false) => scene((f) => ({
+  projectSettings: { [id]: kernelFiles },
+  projects: f.projects.map((r) => (r.id === id ? { ...r, ...project } : r)),
   agents: { ...f.agents, [id]: sixAgents.filter((a) => crew.includes(a.id)) },
   integrations: integrationRows,
-  ui: { route: { name: 'settings', page: 'room', roomId: id }, ...(menu ? { menu: 'roomTracker' as const } : {}) }
+  ui: { route: { name: 'settings', page: 'project', projectId: id }, ...(menu ? { menu: 'projectTracker' as const } : {}) }
 }))
 
 const skill = (name: string): Skill => ({ name, description: '', source: 'project', enabled: true })
 const mcpServers: McpServer[] = ['GitHub', 'Linear', 'Vercel', 'Figma'].map((name) => ({ name, source: 'user', enabled: true }))
-/** KERNEL-647: every server the page lists comes from the accounts, so a room's own list only needs the ones that differ. */
+/** KERNEL-647: every server the page lists comes from the accounts, so a project's own list only needs the ones that differ. */
 const mcpAcrossServers: McpServer[] = [
   { name: 'GitHub', source: 'user', enabled: true }, { name: 'Linear', source: 'user', enabled: true }, { name: 'Vercel', source: 'user', enabled: true },
   { name: 'claude.ai Gmail', source: 'claudeai', enabled: true }, { name: 'claude.ai Google Drive', source: 'claudeai', enabled: true },
@@ -338,7 +338,7 @@ const light = (src: Fixture): Fixture => ({ ...src, ui: { ...src.ui, theme: 'lig
 // What's new (KERNEL-30): the canvas's four notes on a ready 0.2.0, over UpdateReady's home.
 const whatsNewNotes = [
   { title: 'Checkpoints', body: 'Every turn saves the worktree. Revert any workspace to an earlier turn without losing the chat.' },
-  { title: 'Pause room', body: 'Freeze every agent in a room with one click. They finish the current step, then wait.' },
+  { title: 'Pause project', body: 'Freeze every agent in a project with one click. They finish the current step, then wait.' },
   { title: 'Big terminal', body: 'Open Claude Code itself in a tab with ⌘⇧T, in the same worktree as your chats.' },
   { title: 'Overlap warnings', body: 'Kernel flags it when two agents edit the same file in different worktrees.' }
 ]
@@ -377,7 +377,7 @@ function leadSetup(f: Fixture, lines: Omit<ScriptLine, 'kind'>[], code?: number)
   return {
     ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
     workspaces: withWorkspace(f, ids.lead, { status: code === undefined ? 'setup' : 'failed', name: 'add-pdf-export-to-invoices', branch: 'kernel/add-pdf-export-to-invoices' }),
-    threads: [{ id: 't-lead', roomId: ids.roomA, title: 'Add PDF export to invoices', createdAt: at(10, 40) }],
+    threads: [{ id: 't-lead', projectId: ids.projectA, title: 'Add PDF export to invoices', createdAt: at(10, 40) }],
     chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, title: 'New tab' } : c)),
     items: {},
     queue: { [ids.leadChat]: queue },
@@ -391,7 +391,7 @@ function leadSetup(f: Fixture, lines: Omit<ScriptLine, 'kind'>[], code?: number)
   }
 }
 
-const roomGitToast: Fixture = (() => { const f = roomPage('git', { ...clientA({}), branches: ['origin/main'], ...pushCheck('ok') }); return { ...f, ui: { ...f.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } } })()
+const projectGitToast: Fixture = (() => { const f = projectPage('git', { ...clientA({}), branches: ['origin/main'], ...pushCheck('ok') }); return { ...f, ui: { ...f.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } } })()
 
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
@@ -534,7 +534,7 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
   // KERNEL-371: Archive on merge is off in the personal file over settings.toml, and Delete branch on archive follows the app.
   // KERNEL-401: the optional checks come from settings.toml.
-  SettingsRoomGit: roomPage('git', {
+  SettingsProjectGit: projectPage('git', {
     ...clientA({
       workspace: { ...kernelFiles.workspace, archiveOnMerge: false },
       pr: { ...kernelFiles.pr, optionalChecks: ['Vercel*', 'codecov/patch'] },
@@ -544,20 +544,20 @@ export const platformFixtures: Record<string, Fixture> = {
     ...pushCheck('ok')
   }, 'settingsFiles'),
   // KERNEL-460: gh can push, but git has no login of its own, so the fix is gh auth setup-git.
-  SettingsRoomGitPushFailed: roomPage('git', {
+  SettingsProjectGitPushFailed: projectPage('git', {
     ...clientA({ workspace: { ...kernelFiles.workspace, archiveOnMerge: false }, sources: { ...kernelFiles.sources, 'workspace.archiveOnMerge': 'override' } }),
     branches: ['origin/main', 'origin/dev', 'main'],
     ...pushCheck('failed')
   }),
   // KERNEL-460: git ls-remote couldn't resolve github.com, so the permission wasn't asked.
-  SettingsRoomGitUnreachable: roomPage('git', {
+  SettingsProjectGitUnreachable: projectPage('git', {
     ...clientA({ workspace: { ...kernelFiles.workspace, archiveOnMerge: false }, sources: { ...kernelFiles.sources, 'workspace.archiveOnMerge': 'override' } }),
     branches: ['origin/main', 'origin/dev', 'main'],
     ...pushCheck('unreachable')
   }),
   // KERNEL-249: run is overridden here, and frontend and backend are personal scripts, as the canvas draws them.
   // KERNEL-250: the two preview URLs come from settings.toml. The list is one value, so its source shows on the first row.
-  SettingsRoomSetup: roomPage('setup', clientA({
+  SettingsProjectSetup: projectPage('setup', clientA({
     runScripts: [
       { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
       { name: 'frontend', command: 'pnpm --filter web dev --port $KERNEL_PORT' },
@@ -567,19 +567,19 @@ export const platformFixtures: Record<string, Fixture> = {
     sources: { ...kernelFiles.sources, 'runScripts.run': 'override', 'runScripts.frontend': 'local', 'runScripts.backend': 'local', 'preview.urls': 'shared' }
   })),
   // KERNEL-684: Setup is empty, and Kernel found a script in the repo's Conductor file. Archive has a value, so it offers nothing.
-  SettingsRoomScriptsSuggestion: scene((f) => ({
+  SettingsProjectScriptsSuggestion: scene((f) => ({
     ...clientA({ scripts: { ...kernelFiles.scripts, setup: '' }, sources: Object.fromEntries(Object.entries(kernelFiles.sources ?? {}).filter(([k]) => k !== 'scripts.setup')) }),
-    scriptSuggestions: { [ids.roomA]: [{ source: 'conductor', file: '.conductor/settings.toml', patch: { scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local' } }, notes: ['The archive script was left out because this room already has one.'] }] },
-    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'setup' } }
+    scriptSuggestions: { [ids.projectA]: [{ source: 'conductor', file: '.conductor/settings.toml', patch: { scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local' } }, notes: ['The archive script was left out because this project already has one.'] }] },
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'setup' } }
   })),
   // KERNEL-254: names only, since a value only ever comes from env.reveal. Client A's list is its personal file, and one of the two files isn't there.
   SettingsEnvironment: settingsPage('env', { env: { app: ['GH_TOKEN', 'NPM_TOKEN', 'NODE_OPTIONS'] } }),
-  SettingsRoomEnvironment: roomPage('environment', envRoomA),
-  SettingsEnvironmentAdd: scene(() => ({ ...envRoomA, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'environment' }, modal: { name: 'envVar', roomId: ids.roomA } } })),
-  SettingsRoomPermissions: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' } } })),
-  // KERNEL-455: the room's mode menu is open, over Use app default.
-  SettingsRoomPermissionsMode: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' }, menu: 'roomMode' } })),
-  // KERNEL-726: Client A changes the merge method, so the app page says so under the row and links to the room.
+  SettingsProjectEnvironment: projectPage('environment', envProjectA),
+  SettingsEnvironmentAdd: scene(() => ({ ...envProjectA, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' }, modal: { name: 'envVar', projectId: ids.projectA } } })),
+  SettingsProjectPermissions: scene((f) => ({ ...projectPermissions(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'permissions' } } })),
+  // KERNEL-455: the project's mode menu is open, over Use app default.
+  SettingsProjectPermissionsMode: scene((f) => ({ ...projectPermissions(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'permissions' }, menu: 'projectMode' } })),
+  // KERNEL-726: Client A changes the merge method, so the app page says so under the row and links to the project.
   SettingsPRs: settingsPage('prs', { settings: prSettings, ...clientA({ pr: { ...kernelFiles.pr, mergeMethod: 'rebase' }, sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' } }) }),
   // KERNEL-727: a search for "size limit" landed here: the row is highlighted and its field has focus.
   SettingsPRsLanded: scene(() => ({ settings: prSettings, ui: { route: { name: 'settings', page: 'prs', row: 'size-limit' } } })),
@@ -589,19 +589,19 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsPRsClamped: settingsPage('prs', { settings: prSettings }),
   SettingsPRsSavedLight: settingsPage('prs', { settings: { ...prSettings, appearance: { ...prSettings.appearance, theme: 'light' } } }),
   // KERNEL-252: the list and the ignored files in Client A's checkout, so the preview shows the 11 the canvas lists.
-  SettingsRoomSetupFiles: scene((f) => ({
+  SettingsProjectSetupFiles: scene((f) => ({
     ...clientA({ files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false } }),
-    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
-    localFiles: { [ids.roomA]: [...['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem', 'certs/staging.pem', 'certs/wildcard.pem', '.DS_Store', 'certs/README.txt', 'dist/index.js'].map((path, i) => ({ path, size: 96 + i * 31 }))] },
-    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'setup' } }
+    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
+    localFiles: { [ids.projectA]: [...['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem', 'certs/staging.pem', 'certs/wildcard.pem', '.DS_Store', 'certs/README.txt', 'dist/index.js'].map((path, i) => ({ path, size: 96 + i * 31 }))] },
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'setup' } }
   })),
   // KERNEL-449: two of those files look like production, so the warning sits above the list, by file and variable name.
-  SettingsRoomSetupProduction: scene((f) => ({
+  SettingsProjectSetupProduction: scene((f) => ({
     ...clientA({ files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false } }),
-    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
-    localFiles: { [ids.roomA]: [...['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem', 'certs/staging.pem', 'certs/wildcard.pem', '.DS_Store', 'certs/README.txt', 'dist/index.js'].map((path, i) => ({ path, size: 96 + i * 31 }))] },
-    production: { [ids.roomA]: [{ path: '.env', name: 'DATABASE_URL', why: 'remote-database' }, { path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }] },
-    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'setup' } }
+    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
+    localFiles: { [ids.projectA]: [...['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem', 'certs/staging.pem', 'certs/wildcard.pem', '.DS_Store', 'certs/README.txt', 'dist/index.js'].map((path, i) => ({ path, size: 96 + i * 31 }))] },
+    production: { [ids.projectA]: [{ path: '.env', name: 'DATABASE_URL', why: 'remote-database' }, { path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }] },
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'setup' } }
   })),
   // KERNEL-727: a search for "hook server port" lands inside the folded Advanced section, which opens first.
   SettingsHooksLanded: scene(() => ({ hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') }, ui: { route: { name: 'settings', page: 'hooks', row: 'hook-port' } } })),
@@ -609,27 +609,27 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-679: a dev run started inside a workspace says hooks are off in place of Install, with no snippet. No PNG.
   SettingsHooksWorkspaceRun: settingsPage('hooks', { hooks: { port: 4669, listening: true, installed: false, build: 'run', problem: { kind: 'workspace-run' }, events: hookEvents.map((e) => ({ ...e, installed: false, lastSeen: undefined })) } }),
   // KERNEL-493: Agents working at once is 4, so the Open workspaces row's first option reads "Same as agents working at once (4)".
-  SettingsTeam: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
-  // KERNEL-696: Kernel row in Roles as it ships (Default, Customize), and with the room's kernel.md (Customized, Open file, Reset to default).
-  SettingsTeamKernelDefault: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
-  SettingsTeamKernelCustomized: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => (a.lead ? { ...a, file: '/Users/you/Projects/client-a/.claude/agents/kernel.md' } : a)) }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
-  // KERNEL-742: the room's Lead file is rowan.md, so Kernel's row reads "Customized in rowan.md" with Open file and Move to kernel.md.
-  SettingsTeamKernelElsewhere: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => (a.lead ? { ...a, file: '/Users/you/Projects/client-a/.claude/agents/rowan.md' } : a)) }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
-  // An empty room with another room that has agents: Add the team, Copy from another room and New agent. No PNG, built from the Settings kit.
-  SettingsTeamEmpty: scene((f) => ({ ...clientA(), ...empty, rooms: f.rooms, agents: { ...f.agents, [ids.roomA]: [] }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
-  // KERNEL-639: the room's agents grouped by where they come from, scrolled to In this repo. Yours has a personal agent, and From plugins two with View, one with a long description cleaned to two lines.
-  SettingsTeamOrigins: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: [...sixAgents.filter((a) => ['kernel-lead', 'kai', 'noor', 'ivy', 'theo'].includes(a.id)), ...extraAgents] }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
-  // KERNEL-641: Settings, Agents with no room open: Yours has a personal agent and From plugins two. No PNG, built from the Settings kit and AgentProfile.png's fields.
-  // KERNEL-780: the Hand off and Build here defaults. The app default is Build here in both; Team's room overrides it with Hand off.
-  SettingsAgentsLeadMode: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), team: { ...DEFAULT_SETTINGS('/Users/you').team, leadMode: 'build' as const } }, agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'agents' } } })),
-  SettingsTeamLeadMode: scene((f) => ({ ...clientA({ agents: { leadMode: 'handoff' } }), settings: { ...DEFAULT_SETTINGS('/Users/you'), team: { ...DEFAULT_SETTINGS('/Users/you').team, leadMode: 'build' as const } }, agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
-  SettingsAgents: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.roomA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents' } } })),
+  SettingsTeam: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.projectA]: sixAgents }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
+  // KERNEL-696: Kernel row in Roles as it ships (Default, Customize), and with the project's kernel.md (Customized, Open file, Reset to default).
+  SettingsTeamKernelDefault: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.projectA]: sixAgents }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
+  SettingsTeamKernelCustomized: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => (a.lead ? { ...a, file: '/Users/you/Projects/client-a/.claude/agents/kernel.md' } : a)) }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
+  // KERNEL-742: the project's Lead file is rowan.md, so Kernel's row reads "Customized in rowan.md" with Open file and Move to kernel.md.
+  SettingsTeamKernelElsewhere: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => (a.lead ? { ...a, file: '/Users/you/Projects/client-a/.claude/agents/rowan.md' } : a)) }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
+  // An empty project with another project that has agents: Add the team, Copy from another project and New agent. No PNG, built from the Settings kit.
+  SettingsTeamEmpty: scene((f) => ({ ...clientA(), ...empty, projects: f.projects, agents: { ...f.agents, [ids.projectA]: [] }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
+  // KERNEL-639: the project's agents grouped by where they come from, scrolled to In this repo. Yours has a personal agent, and From plugins two with View, one with a long description cleaned to two lines.
+  SettingsTeamOrigins: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.projectA]: [...sixAgents.filter((a) => ['kernel-lead', 'kai', 'noor', 'ivy', 'theo'].includes(a.id)), ...extraAgents] }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
+  // KERNEL-641: Settings, Agents with no project open: Yours has a personal agent and From plugins two. No PNG, built from the Settings kit and AgentProfile.png's fields.
+  // KERNEL-780: the Hand off and Build here defaults. The app default is Build here in both; Team's project overrides it with Hand off.
+  SettingsAgentsLeadMode: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), team: { ...DEFAULT_SETTINGS('/Users/you').team, leadMode: 'build' as const } }, agents: { ...f.agents, [ids.projectA]: sixAgents }, ui: { route: { name: 'settings', page: 'agents' } } })),
+  SettingsTeamLeadMode: scene((f) => ({ ...clientA({ agents: { leadMode: 'handoff' } }), settings: { ...DEFAULT_SETTINGS('/Users/you'), team: { ...DEFAULT_SETTINGS('/Users/you').team, leadMode: 'build' as const } }, agents: { ...f.agents, [ids.projectA]: sixAgents }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
+  SettingsAgents: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents' } } })),
   // KERNEL-641: a personal agent's editor, opened from Settings, Agents: Back says Agents, and there is no status, workspace or recent work.
-  SettingsAgentEdit: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.roomA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
+  SettingsAgentEdit: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
   // KERNEL-641: a plugin's agent read only: the fields are disabled, the line names the plugin, and there is no Save changes or Retire.
-  SettingsAgentPlugin: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.roomA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'vercel:deployment-expert' } } })),
-  // KERNEL-557: Client A's `[review]` as the canvas draws it (KERNEL-594: and its always-review paths). The code review runs as Kernel, so the room has no agent that reviews. Security runs as Theo, and the UX review as Wren, which is optional.
-  SettingsRoomPrs: scene((f) => ({
+  SettingsAgentPlugin: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'vercel:deployment-expert' } } })),
+  // KERNEL-557: Client A's `[review]` as the canvas draws it (KERNEL-594: and its always-review paths). The code review runs as Kernel, so the project has no agent that reviews. Security runs as Theo, and the UX review as Wren, which is optional.
+  SettingsProjectPrs: scene((f) => ({
     ...clientA({
       review: {
         rounds: 2,
@@ -644,12 +644,12 @@ export const platformFixtures: Record<string, Fixture> = {
       pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
       sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' }
     }),
-    agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
-    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'prs' } }
+    agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
   })),
   // KERNEL-726: a shared review setting was just changed, so the page says to commit settings.toml.
-  // KERNEL-726: settings.toml sets the merge method, so the row says Changed for this room and has no Reset.
-  SettingsRoomPrsShared: scene((f) => ({
+  // KERNEL-726: settings.toml sets the merge method, so the row says Changed for this project and has no Reset.
+  SettingsProjectPrsShared: scene((f) => ({
     ...clientA({
       review: {
         rounds: 2,
@@ -664,11 +664,11 @@ export const platformFixtures: Record<string, Fixture> = {
       pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
       sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'shared' }
     }),
-    agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
-    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'prs' } }
+    agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
   })),
   // KERNEL-726: a shared review setting was just changed, so the page says to commit settings.toml.
-  SettingsRoomPrsSaved: scene((f) => ({
+  SettingsProjectPrsSaved: scene((f) => ({
     ...clientA({
       review: {
         rounds: 2,
@@ -683,12 +683,12 @@ export const platformFixtures: Record<string, Fixture> = {
       pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
       sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' }
     }),
-    agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
-    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'prs' } }
+    agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
   })),
-  SettingsSkills: roomPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts }),
-  // KERNEL-661: twenty-seven servers as switches in a room, each with one word of status and the link to the global page.
-  SettingsSkillsMany: roomPage('skills', { ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpAcrossServers, mcpAccounts: manyServers() }),
+  SettingsSkills: projectPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts }),
+  // KERNEL-661: twenty-seven servers as switches in a project, each with one word of status and the link to the global page.
+  SettingsSkillsMany: projectPage('skills', { ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpAcrossServers, mcpAccounts: manyServers() }),
   // KERNEL-661: Settings, MCP servers opens on the active account, Work, with every server ready and folded into one line per group.
   SettingsMcpServersReady: mcpPage({}, {}),
   // KERNEL-661: the notice or Providers opens the page on Personal: sign-ins, a failure, connectors not set up and one ignored.
@@ -704,27 +704,27 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-661: it ended with Vercel failed, the connectors left for claude.ai and one server ignored.
   SettingsMcpSetUpDone: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal }, push: [{ type: 'account.mcpSignInAll', run: { ...setUpRun, current: undefined, done: ['Linear'], failed: [{ server: 'Vercel', error: 'The sign-in was not finished in the browser.' }], finished: true, connect: setUpConnect } }] }),
   SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
-  SettingsRoom: scene(settingsRoom),
-  // KERNEL-253: the room has its GitHub avatar and the Icon row's menu is open. The sidebar row for Client A shows it too.
-  SettingsRoomIcon: scene((f) => {
-    const room = settingsRoom(f)
+  SettingsProject: scene(settingsProject),
+  // KERNEL-253: the project has its GitHub avatar and the Icon row's menu is open. The sidebar row for Client A shows it too.
+  SettingsProjectIcon: scene((f) => {
+    const project = settingsProject(f)
     return {
-      ...room,
-      rooms: room.rooms!.map((r) => (r.id === ids.roomA ? { ...r, icon: { kind: 'github' as const, file: `${ids.roomA}-1.png`, at: at(9, 0) } } : r)),
-      roomIcons: { [ids.roomA]: invaderIcon },
-      ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA }, menu: 'roomIcon' }
+      ...project,
+      projects: project.projects!.map((r) => (r.id === ids.projectA ? { ...r, icon: { kind: 'github' as const, file: `${ids.projectA}-1.png`, at: at(9, 0) } } : r)),
+      projectIcons: { [ids.projectA]: invaderIcon },
+      ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA }, menu: 'projectIcon' }
     }
   }),
   // KERNEL-472: Client B's repo is on GitHub and Linear isn't connected, so detection says GitHub Issues, and the menu marks it.
-  SettingsRoomTracker: trackerRoom(ids.roomB, ['kernel-lead', 'noor', 'theo'], { path: '/Users/you/Projects/client-b', repo: 'cjjutba/client-b' }, true),
+  SettingsProjectTracker: trackerProject(ids.projectB, ['kernel-lead', 'noor', 'theo'], { path: '/Users/you/Projects/client-b', repo: 'cjjutba/client-b' }, true),
   // KERNEL-472: Portfolio is a folder with no GitHub remote and no Linear, so there is nothing to detect and the tracker is None.
-  SettingsRoomTrackerNone: trackerRoom(ids.roomPortfolio, ['kernel-lead', 'kai'], { path: '/Users/you/Projects/portfolio', repo: undefined, kind: 'folder' }),
+  SettingsProjectTrackerNone: trackerProject(ids.projectPortfolio, ['kernel-lead', 'kai'], { path: '/Users/you/Projects/portfolio', repo: undefined, kind: 'folder' }),
   // KERNEL-750: Client A's General page with no reference folders, then with two, one of them gone from this Mac.
-  SettingsReferenceFoldersEmpty: scene(settingsRoom),
+  SettingsReferenceFoldersEmpty: scene(settingsProject),
   SettingsReferenceFolders: scene((f) => {
-    const room = settingsRoom(f)
-    const rs = room.roomSettings![ids.roomA]
-    return { ...room, roomSettings: { [ids.roomA]: { ...rs, references: ['/Users/you/Projects/client-a-api', '/Users/you/Projects/design-system'], missingReferences: ['/Users/you/Projects/design-system'] } } }
+    const project = settingsProject(f)
+    const rs = project.projectSettings![ids.projectA]
+    return { ...project, projectSettings: { [ids.projectA]: { ...rs, references: ['/Users/you/Projects/client-a-api', '/Users/you/Projects/design-system'], missingReferences: ['/Users/you/Projects/design-system'] } } }
   }),
   DevUi: { ...gallery('components'), motion: { action: { hold: 'Deny' }, ms: 400, area: '.devui-row' } },
   DevUiDisplay: gallery('display'),
@@ -764,28 +764,28 @@ export const platformFixtures: Record<string, Fixture> = {
   SetupPermissionsNoAuto: scene(() => ({ ...empty, settings: withRoles({ lead: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }), ui: permissionStep })),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
-  // KERNEL-406: Kai on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has room.
+  // KERNEL-406: Kai on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has project.
   WorkspaceProviderLimit: scene(() => ({
     settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
     accounts: claudeAccounts,
     usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }, { type: 'five_hour', status: 'allowed', utilization: 0.12, resetsAt: secs(next(15, 40)), accountId: 'work' }],
     ui: open
   })),
-  // KERNEL-524: the account on offer is an API key, so the banner says it is billed per token. Kai's room runs on Codex too, as in the one above.
+  // KERNEL-524: the account on offer is an API key, so the banner says it is billed per token. Kai's project runs on Codex too, as in the one above.
   WorkspaceProviderLimitApiKey: scene(() => ({
     settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
     accounts: [claudeAccounts[0], keyAccount('claude')],
     usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }],
     ui: open
   })),
-  // KERNEL-619: the only other account is signed out, so the banner says so and offers its sign-in beside Notify me. Kai's room runs on Codex too, as in the ones above.
+  // KERNEL-619: the only other account is signed out, so the banner says so and offers its sign-in beside Notify me. Kai's project runs on Codex too, as in the ones above.
   WorkspaceProviderLimitSignedOut: scene(() => ({
     settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
     accounts: [workClaude, { ...personalClaude, signedIn: false }],
     usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }],
     ui: open
   })),
-  // KERNEL-569: Work is at 90% of its 5-hour window and Personal has room, so the banner offers the move before the limit. Switching at a limit is off.
+  // KERNEL-569: Work is at 90% of its 5-hour window and Personal has project, so the banner offers the move before the limit. Switching at a limit is off.
   WorkspaceProviderNearLimit: scene(() => ({
     accounts: [workClaude, personalClaude],
     usage: [window5('claude', 'cli', 90, next(15, 40)), window5('claude', 'personal', 8, next(17, 10))],
@@ -848,7 +848,7 @@ export const platformFixtures: Record<string, Fixture> = {
   // Main keeps the last name it read when a session reports the sign-out, so the account menu still says who.
   WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }, ui: open })),
   // KERNEL-218: the dialog the banner's Review opens, over the held workspace.
-  TrustScripts: scene(() => ({ ...workspaceFixtures.WorkspaceTrustHeld, ui: { ...open, modal: { name: 'confirm', kind: 'trust', roomId: ids.roomA } } })),
+  TrustScripts: scene(() => ({ ...workspaceFixtures.WorkspaceTrustHeld, ui: { ...open, modal: { name: 'confirm', kind: 'trust', projectId: ids.projectA } } })),
   WorkspaceSetupFailed: scene((f) => ({
     ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
     workspaces: withWorkspace(f, ids.table, { status: 'failed' }),
@@ -905,9 +905,9 @@ export const platformFixtures: Record<string, Fixture> = {
   ] } },
   // A turn running and a toast up, and Settings with a toast up: Escape goes to the open thing first, the screen next, the toast last (KERNEL-878).
   AuditEscapeTurnToast: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } },
-  AuditEscapeSettingsFieldToast: roomGitToast,
+  AuditEscapeSettingsFieldToast: projectGitToast,
   AuditEscapeSettingsToast: { ...settingsPage('general'), ui: { ...settingsPage('general').ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } },
-  // First launch: no room, no chat, no workspace, on Home and in the checks that hang.
+  // First launch: no project, no chat, no workspace, on Home and in the checks that hang.
   AuditFirstLaunchHome: scene(() => ({ ...empty, ui: { route: { name: 'inbox' } } })),
   AuditSetupChecksWaiting: { ...setup([]), hold: ['preflight.run'] },
   // The same call past the time limit, drawn with the limit shortened so a shot can reach it.

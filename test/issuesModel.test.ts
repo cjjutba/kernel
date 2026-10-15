@@ -79,7 +79,7 @@ describe('issueAge and initials', () => {
 })
 
 const ws = (id: string, extra: Partial<Workspace> = {}): Workspace => ({
-  id, roomId: 'r', name: id, branch: id, baseRef: 'origin/main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1,
+  id, projectId: 'r', name: id, branch: id, baseRef: 'origin/main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1,
   source: { kind: 'issue', id: 'K-1', title: 'T' }, ...extra
 })
 

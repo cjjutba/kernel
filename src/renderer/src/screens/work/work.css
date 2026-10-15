@@ -9,7 +9,7 @@
 .wk-tabs button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .wk-n { font-size: 12px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
 .wk-vr { width: 1px; height: 18px; background: var(--line-2); flex-shrink: 0; }
-.wk-room { position: relative; display: inline-flex; }
+.wk-project { position: relative; display: inline-flex; }
 .wk-pick { gap: 8px; height: 28px; padding: 0 8px; border-radius: var(--r-sm); font-size: 13px; }
 .wk-pick > svg:last-child { color: var(--muted); }
 .wk-letter { width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: 10px; font-weight: 600; }

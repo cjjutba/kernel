@@ -3,7 +3,7 @@ import type { WorkspaceGitStatus } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { Button, ConfirmDialog, useBusy } from '../../ui'
-import { useRoomSettings } from '../settings/useSettings'
+import { useProjectSettings } from '../settings/useSettings'
 import { archiveByHand } from './byHand'
 import './confirm.css'
 
@@ -22,9 +22,9 @@ function closeArchiveDialog(workspaceId: string) {
 export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const appDefault = useStore((s) => s.settings?.workspace.deleteBranchOnArchive ?? false)
-  // The room's own value wins over the app's. Room settings arrive after the first render, so the box follows the default until the person touches it.
-  const roomDefault = useRoomSettings(ws?.roomId)?.workspace.deleteBranchOnArchive
-  const deleteByDefault = roomDefault ?? appDefault
+  // The project's own value wins over the app's. Project settings arrive after the first render, so the box follows the default until the person touches it.
+  const projectDefault = useProjectSettings(ws?.projectId)?.workspace.deleteBranchOnArchive
+  const deleteByDefault = projectDefault ?? appDefault
   const [git, setGit] = useState<WorkspaceGitStatus | null>(null)
   // The status couldn't be read: archiving still works, and the branch stays (KERNEL-70).
   const [unread, setUnread] = useState(false)
@@ -35,7 +35,7 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     void call('workspaces.gitStatus', { workspaceId }).then(setGit).catch(() => setUnread(true))
   }, [workspaceId])
-  // The dialog leaves in the commit that archives the workspace, with its sidebar row and, when it is open, its screen going to the room's
+  // The dialog leaves in the commit that archives the workspace, with its sidebar row and, when it is open, its screen going to the project's
   // front door. It doesn't wait for the call to return, which is after the pushes that follow (KERNEL-547, KERNEL-596).
   const archived = ws?.status === 'archived'
   useLayoutEffect(() => { if (archived) closeArchiveDialog(workspaceId) }, [archived, workspaceId])

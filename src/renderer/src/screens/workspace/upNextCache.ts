@@ -1,12 +1,12 @@
-import type { IssueSummary, RoomTracker } from '@shared/types'
+import type { IssueSummary, ProjectTracker } from '@shared/types'
 
-/** What Up next last showed for a room: the tracker's kind and the rows `issues.next` returned. */
-export type UpNextEntry = { kind?: RoomTracker['kind']; rows: IssueSummary[] }
+/** What Up next last showed for a project: the tracker's kind and the rows `issues.next` returned. */
+export type UpNextEntry = { kind?: ProjectTracker['kind']; rows: IssueSummary[] }
 
 const cache = new Map<string, UpNextEntry>()
 
-export function readUpNext(roomId: string): UpNextEntry | undefined {
-  return cache.get(roomId)
+export function readUpNext(projectId: string): UpNextEntry | undefined {
+  return cache.get(projectId)
 }
 
 /** Whether two lists show the same issues in the same order, so a refresh that found nothing new changes nothing on screen. */
@@ -18,10 +18,10 @@ export function sameIssues(a: IssueSummary[], b: IssueSummary[]): boolean {
  * Keeps a successful refresh. Returns the entry to show: the cached one when nothing changed, so React sees the same object,
  * otherwise the new one. A failed refresh never gets here, which is how it keeps the cached rows.
  */
-export function storeUpNext(roomId: string, next: UpNextEntry): UpNextEntry {
-  const old = cache.get(roomId)
+export function storeUpNext(projectId: string, next: UpNextEntry): UpNextEntry {
+  const old = cache.get(projectId)
   if (old && old.kind === next.kind && sameIssues(old.rows, next.rows)) return old
-  cache.set(roomId, next)
+  cache.set(projectId, next)
   return next
 }
 

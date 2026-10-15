@@ -7,11 +7,11 @@ describe('githubIssueUrl', () => {
   it('keeps the url the source carries', () => {
     expect(githubIssueUrl(issue('#12', 'https://github.com/a/b/issues/12'), { kind: 'repo', repo: 'x/y' })).toBe('https://github.com/a/b/issues/12')
   })
-  it('builds it from the room repo when the source has none', () => {
+  it('builds it from the project repo when the source has none', () => {
     expect(githubIssueUrl(issue('#12'), { kind: 'repo', repo: 'cjjutba/client-a' })).toBe('https://github.com/cjjutba/client-a/issues/12')
     expect(githubIssueUrl(issue('#12'), { kind: 'folder', repo: 'cjjutba/client-a' })).toBe('https://github.com/cjjutba/client-a/issues/12')
   })
-  it('has nothing to open without a repo, for a scratch room, or for a key that is not a number', () => {
+  it('has nothing to open without a repo, for a scratch project, or for a key that is not a number', () => {
     expect(githubIssueUrl(issue('#12'), { kind: 'folder' })).toBeUndefined()
     expect(githubIssueUrl(issue('#12'), { kind: 'scratch', repo: 'kernel/starter' })).toBeUndefined()
     expect(githubIssueUrl(issue('#12'))).toBeUndefined()

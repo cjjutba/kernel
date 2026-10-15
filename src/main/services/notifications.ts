@@ -7,8 +7,8 @@ import { bus } from '../bus'
 type Deps = {
   store: Store
   settings: () => AppSettings
-  /** Name of an agent in a room, for "Noor wants to run ...". */
-  agentName: (roomId: string | undefined, agentId: string | undefined) => string | undefined
+  /** Name of an agent in a project, for "Noor wants to run ...". */
+  agentName: (projectId: string | undefined, agentId: string | undefined) => string | undefined
   /** Show a macOS notification. Not called while the app has focus. */
   show?: (n: Notification, o: { silent: boolean; sound?: string }) => void
   /** True while no Kernel window has focus. */
@@ -133,14 +133,14 @@ export class Notifications {
     const ws = this.d.store.workspace(asked.id) ?? asked
     if (t.lead || !t.ok || t.interrupted || t.queued || ws.status === 'archived') return
     if (this.d.store.approvals({ pendingOnly: true }).some((a) => a.chatId === chat.id)) return
-    const room = this.d.store.room(ws.roomId)
-    const who = this.d.agentName(ws.roomId, ws.agentId) ?? 'An agent'
+    const project = this.d.store.project(ws.projectId)
+    const who = this.d.agentName(ws.projectId, ws.agentId) ?? 'An agent'
     const task = ws.title ?? ws.name
     const reply = [...this.d.store.items(chat.id)].reverse().find((i) => i.kind === 'text')
     const now = this.d.now?.() ?? Date.now()
     const n = this.save({
-      id: `n-finished-${ws.id}`, kind: 'finished', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId,
-      title: `Finished ${task}`, sub: `Workspace ready${room ? ` · ${room.name}` : ''}`,
+      id: `n-finished-${ws.id}`, kind: 'finished', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId,
+      title: `Finished ${task}`, sub: `Workspace ready${project ? ` · ${project.name}` : ''}`,
       heading: `${who} finished ${task}`, body: reply?.kind === 'text' ? replyExcerpt(reply.text) : undefined,
       needsYou: false, read: false, createdAt: now
     })
@@ -160,10 +160,10 @@ export class Notifications {
     this.idle.delete(workspaceId)
     const ws = this.d.store.workspace(workspaceId)
     if (!ws || ws.status === 'archived' || !this.d.settings().notifications.idle) return
-    const room = this.d.store.room(ws.roomId)
+    const project = this.d.store.project(ws.projectId)
     const n = this.save({
-      id: `n-idle-${ws.id}`, kind: 'idle', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId,
-      title: `${who} is idle`, sub: `${task}${room ? ` · ${room.name}` : ''}`,
+      id: `n-idle-${ws.id}`, kind: 'idle', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId,
+      title: `${who} is idle`, sub: `${task}${project ? ` · ${project.name}` : ''}`,
       heading: `${who} has been idle for 10 minutes`, body: `Nothing has happened in ${task} since ${who}'s last turn.`,
       needsYou: false, read: false, createdAt: this.d.now?.() ?? Date.now()
     })
@@ -174,10 +174,10 @@ export class Notifications {
    * A row in Inbox > Updates that asks nothing of the user, such as the weekly usage warning (KERNEL-220), and a macOS banner
    * while the app is in the background. The feature that sends it has its own switch, so Settings > Notifications' per-kind
    * switches don't apply, and quiet hours and the sound setting still do. One row per `id`: a second call with it changes nothing,
-   * unless `replace`, which updates the row in place, as a room's list of chats waiting on the user does (KERNEL-844). A row
+   * unless `replace`, which updates the row in place, as a project's list of chats waiting on the user does (KERNEL-844). A row
    * that comes to need the user again is unread and alerts again.
    */
-  notice(n: Pick<Notification, 'id' | 'title' | 'sub'> & Partial<Pick<Notification, 'heading' | 'body' | 'roomId' | 'workspaceId' | 'needsYou' | 'resolved'>>, o: { replace?: boolean } = {}): Notification {
+  notice(n: Pick<Notification, 'id' | 'title' | 'sub'> & Partial<Pick<Notification, 'heading' | 'body' | 'projectId' | 'workspaceId' | 'needsYou' | 'resolved'>>, o: { replace?: boolean } = {}): Notification {
     const made: Notification = { kind: 'system', needsYou: false, read: false, createdAt: this.d.now?.() ?? Date.now(), ...n }
     if (this.detached) return made
     const had = this.d.store.notification(n.id)
@@ -213,14 +213,14 @@ export class Notifications {
       return
     }
     if (prev) return
-    const room = a.roomId ? this.d.store.room(a.roomId) : undefined
-    const who = this.d.agentName(a.roomId, a.agentId) ?? 'An agent'
+    const project = a.projectId ? this.d.store.project(a.projectId) : undefined
+    const who = this.d.agentName(a.projectId, a.agentId) ?? 'An agent'
     const plan = a.kind === 'plan' || a.toolName === 'ExitPlanMode'
     const count = a.questions?.length ?? 0
     const n: Notification = {
-      id, kind: 'approval', roomId: a.roomId, workspaceId: a.workspaceId, agentId: a.agentId, approvalId: a.id,
+      id, kind: 'approval', projectId: a.projectId, workspaceId: a.workspaceId, agentId: a.agentId, approvalId: a.id,
       title: plan ? `Plan ready: ${a.title.replace(/^Plan (for|to) /i, '')}` : a.kind === 'question' ? a.title : `Wants to ${a.title.charAt(0).toLowerCase()}${a.title.slice(1)}`,
-      sub: `${kindLabel(a)}${room ? ` · ${room.name}` : ''}`,
+      sub: `${kindLabel(a)}${project ? ` · ${project.name}` : ''}`,
       heading: plan ? `${who} has a plan for you to review` : a.kind === 'question' ? (count > 1 ? `${who} has ${count} questions` : `${who} has a question`) : `${who} wants to ${a.title.charAt(0).toLowerCase()}${a.title.slice(1)}`,
       needsYou: true, read: false, createdAt: a.createdAt
     }
@@ -232,14 +232,14 @@ export class Notifications {
     const ws = this.d.store.workspace(workspaceId)
     // A PR refresh that lands after the archive would add a row the archive already cleared (D-137).
     if (!ws || ws.status === 'archived') return
-    const room = this.d.store.room(ws.roomId)
+    const project = this.d.store.project(ws.projectId)
     const num = ws.prNumber ? `#${ws.prNumber}` : 'PR'
     const mine = this.d.store.notifications().filter((n) => n.workspaceId === workspaceId && (n.kind === 'merge' || n.kind === 'check'))
     // A new state settles whatever the PR was waiting on before.
     const settle = (resolved: string) => { for (const n of mine) if (n.needsYou) this.save({ ...n, needsYou: false, read: true, resolved }) }
     const make = (kind: 'merge' | 'check', title: string, heading: string, body: string, gate: 'merge' | 'checkFailed') => {
       settle('The PR changed after this.')
-      const n = this.save({ id: `n-pr-${workspaceId}-${state}-${this.d.now?.() ?? Date.now()}`, kind, roomId: ws.roomId, workspaceId, agentId: ws.agentId, title, sub: `${kind === 'merge' ? 'Merge' : 'Check failed'}${room ? ` · ${room.name}` : ''}`, heading, body, needsYou: true, read: false, createdAt: this.d.now?.() ?? Date.now() })
+      const n = this.save({ id: `n-pr-${workspaceId}-${state}-${this.d.now?.() ?? Date.now()}`, kind, projectId: ws.projectId, workspaceId, agentId: ws.agentId, title, sub: `${kind === 'merge' ? 'Merge' : 'Check failed'}${project ? ` · ${project.name}` : ''}`, heading, body, needsYou: true, read: false, createdAt: this.d.now?.() ?? Date.now() })
       this.alert(n, gate)
     }
     // A ready PR GitHub won't merge isn't ready to merge. Its row waits for the block to lift, which `onBlocked` hears. This

@@ -95,7 +95,7 @@ export function useLeadBox(key: string, lead: AgentDef | undefined, seed?: Draft
     /** An effort picked for the model on show. The model stays with it, and the effort goes in the model's memory (D-130). */
     pickEffort: (effort: Effort) => { rememberEffort(now.model, effort); savePicks(key, { model: now.model, effort }) },
     togglePlan: () => savePicks(key, { plan: !now.plan }),
-    /** The permission mode the draft picked, left out while it follows the room or Settings. */
+    /** The permission mode the draft picked, left out while it follows the project or Settings. */
     mode: picks?.mode,
     /** A permission pick, as `modePatch` and `cyclePatch` word it: Plan sets `plan` and leaves `mode`. */
     savePick: (patch: DraftPicks) => savePicks(key, patch)

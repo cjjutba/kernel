@@ -62,17 +62,17 @@ export interface CodexStart {
   /** Kernel's own tools for this agent, offered as dynamic tools. */
   tools: SdkMcpToolDefinition<any>[]
   personality: CodexPersonality
-  /** The MCP servers the room switched off, and its `[mcp.aliases]` the agent file's tools line reads through (KERNEL-464). */
+  /** The MCP servers the project switched off, and its `[mcp.aliases]` the agent file's tools line reads through (KERNEL-464). */
   disabled?: string[]
   aliases?: Record<string, string>
-  /** The room's `[agents]` table for this agent: `unlisted_tools`, and the MCP servers `allow` adds to its tools line (KERNEL-537). */
+  /** The project's `[agents]` table for this agent: `unlisted_tools`, and the MCP servers `allow` adds to its tools line (KERNEL-537). */
   access?: { unlisted: UnlistedTools; allow: string[] }
   /**
    * The chat runs in Bypass permissions (`effectiveMode`, so not while it plans), and with `unlisted_tools = "ask"` the thread
    * keeps the MCP servers its tools line leaves out. The thread keeps that list until its process restarts (bypass-allows-unlisted-mcp).
    */
   bypass?: boolean
-  /** The room's reference folders that are there now: the agent may read them, and Kernel declines changes under them (KERNEL-790). */
+  /** The project's reference folders that are there now: the agent may read them, and Kernel declines changes under them (KERNEL-790). */
   references?: string[]
 }
 
@@ -204,9 +204,9 @@ export class CodexRunner implements Runner {
   /** File changes by item id, which their approval request names only by id. */
   private readonly changes = new Map<string, Extract<ThreadItem, { type: 'fileChange' }>>()
   private ended = false
-  /** Servers Codex reported a startup status for. A tool call tells the room how the others are doing (KERNEL-464). */
+  /** Servers Codex reported a startup status for. A tool call tells the project how the others are doing (KERNEL-464). */
   private readonly reported = new Set<string>()
-  /** What tool calls last said of each server Codex reported nothing for, so a run of calls tells the room once. */
+  /** What tool calls last said of each server Codex reported nothing for, so a run of calls tells the project once. */
   private readonly called = new Map<string, boolean>()
 
   constructor(private readonly host: RunnerHost, private readonly o: CodexStart) {
@@ -344,7 +344,7 @@ export class CodexRunner implements Runner {
   }
 
   /**
-   * The agent file's limits on Codex's MCP servers, and the servers the room switched off, as the thread's config
+   * The agent file's limits on Codex's MCP servers, and the servers the project switched off, as the thread's config
    * (KERNEL-451, KERNEL-464). In Bypass permissions with `unlisted_tools = "ask"`, servers the tools line leaves out stay on
    * (bypass-allows-unlisted-mcp). Codex says which servers it has for this folder. When it can't, the chat says what doesn't
    * hold, rather than failing to start.
@@ -361,13 +361,13 @@ export class CodexRunner implements Runner {
       const config = mcpOverrides(policy, servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {}, off, { unlisted })
       return Object.keys(config).length ? config : undefined
     } catch {
-      const what = policy ? `${agent?.name ?? 'this agent'}'s file doesn't limit them` : 'the ones switched off in this room are on'
+      const what = policy ? `${agent?.name ?? 'this agent'}'s file doesn't limit them` : 'the ones switched off in this project are on'
       this.host.item({ kind: 'note', id: `codex-mcp-${Date.now()}`, ts: Date.now(), text: `Kernel couldn't read Codex's MCP servers, so ${what} in this chat.` })
       return undefined
     }
   }
 
-  /** Codex says how a server's start went. The room keeps it (KERNEL-464). */
+  /** Codex says how a server's start went. The project keeps it (KERNEL-464). */
   private mcpStarted(p: McpServerStatusUpdatedNotification) {
     const status = codexStatus(p.status, p.failureReason)
     if (!status || !p.name) return
@@ -377,7 +377,7 @@ export class CodexRunner implements Runner {
 
   /**
    * A tool call on a server Codex reported nothing for says whether the server works: it connected if the call went
-   * through, else it failed with the call's error. The room hears when that changes (KERNEL-464).
+   * through, else it failed with the call's error. The project hears when that changes (KERNEL-464).
    */
   private mcpCalled(server: string, ok: boolean, error?: string) {
     if (this.reported.has(server) || this.called.get(server) === ok) return
@@ -581,14 +581,14 @@ export class CodexRunner implements Runner {
     }
   }
 
-  /** The rules for the next step, with the room's reference folders, which no file change may touch (KERNEL-790). */
+  /** The rules for the next step, with the project's reference folders, which no file change may touch (KERNEL-790). */
   private rules(): Rules { return { ...rulesOf(this.host), references: this.o.references } }
 
-  /** A paused room's agent waits here, before its next step, as a Claude agent waits at its next tool call. */
+  /** A paused project's agent waits here, before its next step, as a Claude agent waits at its next tool call. */
   private async held() { const open = this.host.held(); if (open) await open }
 
   /**
-   * A command Codex wants to run. Kernel's order (docs/decisions/KERNEL-406.md): Never allow and Network off decline, a room
+   * A command Codex wants to run. Kernel's order (docs/decisions/KERNEL-406.md): Never allow and Network off decline, a project
    * rule accepts, then anything that leaves the sandbox asks (`leavesSandbox`), which on Codex is every command it asks about.
    * Only typing into a running terminal follows the mode: Manual asks, the others accept. Bypass permissions declines what
    * Never allow, network off and protected branches refuse and accepts the rest, outside the sandbox too (KERNEL-447).
@@ -679,11 +679,11 @@ export function sharesFile(workspace: string, path: string): boolean {
   return !!rel && !rel.startsWith('..') && !isAbsolute(rel) && !rel.split(sep).includes('..')
 }
 
-/** The thread's developer instructions, with the room's reference folders named, so the agent knows it may read them (KERNEL-790). */
+/** The thread's developer instructions, with the project's reference folders named, so the agent knows it may read them (KERNEL-790). */
 export function withReferences(prompt: string, references: string[] | undefined): string {
   if (!references?.length) return prompt
   const list = references.map((r) => `- ${r}`).join('\n')
-  return `${prompt}\n\nThe room's reference folders. Read them when they help, but don't change them, since Kernel declines any edit there:\n${list}`
+  return `${prompt}\n\nThe project's reference folders. Read them when they help, but don't change them, since Kernel declines any edit there:\n${list}`
 }
 
 /** What a command card says when accepting runs the command outside Codex's sandbox. */

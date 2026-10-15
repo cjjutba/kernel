@@ -46,9 +46,9 @@ export const EVENTS = {
   'tool.blocked_by_agent_file': { tool: { enum: TOOL_KINDS } },
   /** A PR passed checks and nobody was there to review it. */
   'pr.ready_unreviewed': { hasReviewer: { bool: true } },
-  /** One kind of warning a room's agent files have, sent with `team.resolved`. */
+  /** One kind of warning a project's agent files have, sent with `team.resolved`. */
   'agent.warning': { kind: { enum: WARNING_KINDS } },
-  /** A room's team changed shape: where its Lead and reviewer come from, and how many agents it has. */
+  /** A project's team changed shape: where its Lead and reviewer come from, and how many agents it has. */
   'team.resolved': {
     leadFrom: { enum: ['file', 'setting', 'builtin', 'none'] },
     reviewerFrom: { enum: ['file', 'setting', 'builtin', 'none'] },
@@ -56,7 +56,7 @@ export const EVENTS = {
     helpers: { enum: COUNT },
     warnings: { enum: COUNT }
   },
-  /** What the user did with the team Room setup showed them. */
+  /** What the user did with the team Project setup showed them. */
   'setup.team_review': { choice: { enum: ['kept', 'changed'] } },
   /** The user copied Kernel's Lead or reviewer into the repo to edit it. */
   'builtin.customized': { which: { enum: ['lead', 'reviewer'] } }

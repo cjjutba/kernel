@@ -15,7 +15,7 @@ import { Approvals } from '../src/main/services/approvals'
 import { QUIT_NOTE, RELAUNCH_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { probeClaudeMcp, sessionEnv } from '../src/main/services/providers/claude'
-import { trustRoom, freePort } from './helpers'
+import { trustProject, freePort } from './helpers'
 
 // The KERNEL-6 round trip against real Claude Code. It spends a few short Sonnet turns on the Claude plan, so it
 // only runs when asked:
@@ -62,20 +62,20 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live round trip', () => {
     const evidence: Record<string, unknown> = { repo, hookPort }
     let wsId: string | undefined
     try {
-      // AC1: the side project becomes a room and its agents load
-      const room = await h['rooms.add']({ path: repo })
-      const agents = await h['agents.list']({ roomId: room.id })
+      // AC1: the side project becomes a project and its agents load
+      const project = await h['projects.add']({ path: repo })
+      const agents = await h['agents.list']({ projectId: project.id })
       evidence.agents = agents.map((a) => a.id)
       expect(agents.length).toBeGreaterThan(0)
       const agent = agents.find((a) => a.id === 'implementer') ?? agents[0]
 
-      // The room's committed scripts and files.copy list wait for the user's trust (KERNEL-209). The trusted hash lives in
+      // The project's committed scripts and files.copy list wait for the user's trust (KERNEL-209). The trusted hash lives in
       // dataDir, so the side project is not changed. The local override above replaces only `setup`: the run script never
       // starts (runAfterSetup is off), and files.copy copies the project's .env files into the temp worktree.
-      await trustRoom(k, room.id)
+      await trustProject(k, project.id)
 
       // AC2: worktree, branch, setup and the first prompt
-      const ws = await h['workspaces.create']({ roomId: room.id, agentId: agent.id, prompt: 'Check the working tree. First think it through: which is larger, 2^10 or 10^3, and by how much? Then run exactly `git status --short` with the Bash tool and reply in two short sentences. Run nothing else.' })
+      const ws = await h['workspaces.create']({ projectId: project.id, agentId: agent.id, prompt: 'Check the working tree. First think it through: which is larger, 2^10 or 10^3, and by how much? Then run exactly `git status --short` with the Bash tool and reply in two short sentences. Run nothing else.' })
       wsId = ws.id
       const chat = (await h['chats.list']({ workspaceId: ws.id }))[0]
       const setup = pushes.flatMap((e) => (e.type === 'script.output' && e.workspaceId === ws.id && e.kind === 'setup' ? e.lines.map((l) => l.line) : []))
@@ -89,7 +89,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live round trip', () => {
       const items = () => k.store.items(chat.id)
       const results = () => items().filter((i) => i.kind === 'result').length
       const tools = () => items().filter((i): i is ChatItem & { kind: 'tool' } => i.kind === 'tool')
-      const approvals = () => k.store.approvals({ roomId: room.id })
+      const approvals = () => k.store.approvals({ projectId: project.id })
       const pending = async (match: string) => waitFor(`approval for ${match}`, () => approvals().find((a) => a.status === 'pending' && a.toolName === 'Bash' && a.title.includes(match)))
 
       // AC4 approve, and AC5 billing from the init message
@@ -106,12 +106,12 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live round trip', () => {
       expect(existsSync(join(ws.path, 'kernel-deny-check'))).toBe(false)
       expect(tools().find((t) => t.detail.includes('kernel-deny-check'))?.status).toBe('failed')
 
-      // AC4 always allow: saved on the room, and the repeat runs without asking. A command off the list never asks.
+      // AC4 always allow: saved on the project, and the repeat runs without asking. A command off the list never asks.
       await h['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Run exactly `git log --oneline -1` with the Bash tool, then say done.' }] })
       k.approvals.decide((await pending('git log')).id, { behavior: 'allow', always: true })
       await waitFor('always allow turn', () => results() >= 3)
-      evidence.roomAllow = k.store.room(room.id)?.allow
-      expect(k.store.room(room.id)?.allow).toContain('git log --oneline -1')
+      evidence.projectAllow = k.store.project(project.id)?.allow
+      expect(k.store.project(project.id)?.allow).toContain('git log --oneline -1')
       const asked = approvals().length
       await h['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Run exactly `git log --oneline -1` again with the Bash tool, then exactly `echo kernel-live-ok`, then say done.' }] })
       await waitFor('repeat turn', () => results() >= 4)
@@ -185,7 +185,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live round trip', () => {
       evidence.outside = { code: outside.code, stdout: outside.stdout.trim().slice(0, 200), stderr: outside.stderr.trim().slice(0, 500) }
       expect(outside.code).toBe(0)
       const seen = await waitFor('outside activity', () => {
-        const rows = activity.filter((a) => a.roomId === room.id && a.sessionId && !k.sessions.isManaged(a.sessionId))
+        const rows = activity.filter((a) => a.projectId === project.id && a.sessionId && !k.sessions.isManaged(a.sessionId))
         return rows.some((a) => a.kind === 'turn.done') ? rows : undefined
       })
       evidence.outsideActivity = seen.map((a) => ({ kind: a.kind, text: a.text, object: a.object, workspaceId: a.workspaceId }))
@@ -265,12 +265,12 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live relaunch', () => {
       let wsId: string | undefined
       try {
         const h = k.handlers()
-        const room = await h['rooms.add']({ path: repo })
-        const agents = await h['agents.list']({ roomId: room.id })
+        const project = await h['projects.add']({ path: repo })
+        const agents = await h['agents.list']({ projectId: project.id })
         const agent = agents.find((a) => a.id === 'implementer') ?? agents.find((a) => !a.lead) ?? agents[0]
         // Trust the committed scripts, or the workspace waits and the brief never goes out (KERNEL-209). Setup is off above.
-        await trustRoom(k, room.id)
-        const ws = await h['workspaces.create']({ roomId: room.id, agentId: agent.id, prompt: 'Remember the word kumquat for later. Run exactly `sleep 20` with the Bash tool, then say done. Run nothing else.' })
+        await trustProject(k, project.id)
+        const ws = await h['workspaces.create']({ projectId: project.id, agentId: agent.id, prompt: 'Remember the word kumquat for later. Run exactly `sleep 20` with the Bash tool, then say done. Run nothing else.' })
         wsId = ws.id
         const chat = (await h['chats.list']({ workspaceId: ws.id }))[0]
         await waitFor('sleep 20 running', () => k.store.items(chat.id).find((i) => i.kind === 'tool' && i.detail === 'sleep 20' && i.status === 'running'))
@@ -343,10 +343,10 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live lead move', () => {
     let k = new Kernel(where)
     await k.start()
     try {
-      const room = await k.addRoom(repo)
+      const project = await k.addProject(repo)
       // The Lead as it was before the move: one shared workspace on the checkout, with a chat in it.
-      const made = k.store.saveWorkspace({ id: 'old-lead', roomId: room.id, name: 'lead', branch: 'main', baseRef: 'main', path: repo, mode: 'current', agentId: 'kernel', lead: true, port: 4300, status: 'ready', prState: 'none', createdAt: Date.now() })
-      k.store.saveThread({ id: 'kumquat', roomId: room.id, title: 'Kumquat', createdAt: Date.now() })
+      const made = k.store.saveWorkspace({ id: 'old-lead', projectId: project.id, name: 'lead', branch: 'main', baseRef: 'main', path: repo, mode: 'current', agentId: 'kernel', lead: true, port: 4300, status: 'ready', prState: 'none', createdAt: Date.now() })
+      k.store.saveThread({ id: 'kumquat', projectId: project.id, title: 'Kumquat', createdAt: Date.now() })
       const chat = k.store.saveChat({ id: 'kumquat-tab', workspaceId: made.id, title: 'Kumquat', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, threadId: 'kumquat', createdAt: Date.now() })
       k.store.saveMeta('leadChatsMoved', false)
       await k.handlers()['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Remember the word kumquat for later. Reply with just ok. Use no tools.' }] })
@@ -399,7 +399,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live session gone', () => {
   it('starts a fresh session that replies when the saved one is gone', { timeout: 180_000 }, async () => {
     const dir = await mkdtemp(join(tmpdir(), 'kernel-live-gone-'))
     const store = new Store(join(dir, 'kernel.db'))
-    const ws = { id: 'ws', roomId: 'room', name: 'gone', branch: 'main', baseRef: 'main', path: dir, mode: 'current', agentId: 'noor', port: 4311, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
+    const ws = { id: 'ws', projectId: 'project', name: 'gone', branch: 'main', baseRef: 'main', path: dir, mode: 'current', agentId: 'noor', port: 4311, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
     const missing = randomUUID()
     const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Gone', kind: 'chat', model: 'claude-haiku-4-5-20251001', effort: 'low', plan: false, createdAt: 1, sessionId: missing }
     store.saveWorkspace(ws)
@@ -409,7 +409,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live session gone', () => {
     const turn = new Promise<boolean>((resolve) => { done = resolve })
     const sessions = new Sessions({
       store, approvals: new Approvals(store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined,
-      roomAllow: () => [], allowInRoom: () => {}, onTurnDone: (_ws, _chat, t) => done(t.ok)
+      projectAllow: () => [], allowInProject: () => {}, onTurnDone: (_ws, _chat, t) => done(t.ok)
     })
     try {
       await sessions.send('chat', [{ type: 'text', text: 'Reply with the single word ok and nothing else.' }])
@@ -465,18 +465,18 @@ describe.skipIf(!liveCodex)('live codex teammate', () => {
     const evidence: Record<string, unknown> = { repo, model: codexModel }
     let wsId: string | undefined
     try {
-      const room = await k.handlers()['rooms.add']({ path: repo })
-      await trustRoom(k, room.id)
-      const agents = await k.handlers()['agents.list']({ roomId: room.id })
+      const project = await k.handlers()['projects.add']({ path: repo })
+      await trustProject(k, project.id)
+      const agents = await k.handlers()['agents.list']({ projectId: project.id })
       const agent = agents.find((a) => !a.lead && !a.builtIn) ?? agents[0]
-      const ws = await k.handlers()['workspaces.create']({ roomId: room.id, agentId: agent.id, prompt: 'Think briefly about which is larger, 2^10 or 10^3. Then run exactly `touch kernel-ask-check` in the shell, and reply in one short sentence.' })
+      const ws = await k.handlers()['workspaces.create']({ projectId: project.id, agentId: agent.id, prompt: 'Think briefly about which is larger, 2^10 or 10^3. Then run exactly `touch kernel-ask-check` in the shell, and reply in one short sentence.' })
       wsId = ws.id
       const chat = (await k.handlers()['chats.list']({ workspaceId: ws.id }))[0]
       expect(chat).toMatchObject({ provider: 'codex', model: codexModel })
       const items = () => k.store.items(chat.id)
       const results = () => items().filter((i) => i.kind === 'result').length
       const tools = () => items().filter((i): i is ChatItem & { kind: 'tool' } => i.kind === 'tool')
-      const pending = (match: string) => waitFor(`approval for ${match}`, () => k.store.approvals({ roomId: room.id }).find((a) => a.status === 'pending' && a.title.includes(match)))
+      const pending = (match: string) => waitFor(`approval for ${match}`, () => k.store.approvals({ projectId: project.id }).find((a) => a.status === 'pending' && a.title.includes(match)))
 
       // Always ask: the card shows, and the command runs once allowed.
       k.approvals.decide((await pending('kernel-ask-check')).id, { behavior: 'allow' })
@@ -491,10 +491,10 @@ describe.skipIf(!liveCodex)('live codex teammate', () => {
       expect(existsSync(join(ws.path, 'kernel-deny-check'))).toBe(false)
 
       // Never allow is declined without asking.
-      const asked = k.store.approvals({ roomId: room.id }).length
+      const asked = k.store.approvals({ projectId: project.id }).length
       await k.handlers()['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Run exactly `git push origin main` in the shell once. If it is declined, do not retry; say so in one sentence.' }] })
       await waitFor('never allow turn', () => results() >= 3)
-      expect(k.store.approvals({ roomId: room.id }).length).toBe(asked)
+      expect(k.store.approvals({ projectId: project.id }).length).toBe(asked)
 
       const kinds = items().reduce<Record<string, number>>((acc, i) => ({ ...acc, [i.kind]: (acc[i.kind] ?? 0) + 1 }), {})
       evidence.transcript = kinds
@@ -539,16 +539,16 @@ describe.skipIf(!liveCodex)('live codex lead', () => {
     const k = await codexKernel(dataDir, home)
     const evidence: Record<string, unknown> = { repo, model: codexModel }
     try {
-      const room = await k.handlers()['rooms.add']({ path: repo })
-      await trustRoom(k, room.id)
-      const agents = await k.handlers()['agents.list']({ roomId: room.id })
+      const project = await k.handlers()['projects.add']({ path: repo })
+      await trustProject(k, project.id)
+      const agents = await k.handlers()['agents.list']({ projectId: project.id })
       const teammate = agents.find((a) => !a.lead && !a.builtIn) ?? agents.find((a) => !a.lead)!
-      const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: `Plan one small task for ${teammate.name}: add the line "Hello from Kernel" to the end of README.md. One task, a short plan. Don't read any files.` })
+      const chat = await k.handlers()['lead.start']({ projectId: project.id, prompt: `Plan one small task for ${teammate.name}: add the line "Hello from Kernel" to the end of README.md. One task, a short plan. Don't read any files.` })
       expect(chat).toMatchObject({ provider: 'codex', plan: true })
-      const plan = await waitFor('plan card', () => k.store.approvals({ roomId: room.id }).find((a) => a.kind === 'plan' && a.status === 'pending'), 300_000)
+      const plan = await waitFor('plan card', () => k.store.approvals({ projectId: project.id }).find((a) => a.kind === 'plan' && a.status === 'pending'), 300_000)
       evidence.plan = plan.detail
       k.approvals.decide(plan.id, { behavior: 'allow' })
-      const handed = await waitFor('hand-off', () => k.store.workspaces(room.id).find((w) => w.leadChatId === chat.id), 300_000)
+      const handed = await waitFor('hand-off', () => k.store.workspaces(project.id).find((w) => w.leadChatId === chat.id), 300_000)
       evidence.handedOff = { name: handed.name, agent: handed.agentId }
       const rows = k.store.items(chat.id).filter((i): i is ChatItem & { kind: 'tool' } => i.kind === 'tool')
       evidence.leadTools = rows.map((t) => [t.name, t.status])

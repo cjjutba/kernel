@@ -103,12 +103,12 @@
 .is-when { margin-left: 8px; font-size: 12px; }
 .is-body.md { font-size: 13px; line-height: 1.55; color: var(--ink-2); }
 
-/* Footer: the room and the three buttons */
+/* Footer: the project and the three buttons */
 .is-foot { flex-shrink: 0; padding: 12px 40px; border-top: 1px solid var(--line); }
 .is-foot .is-inner { gap: 12px; }
 .is-link { padding: 10px 10px 10px 14px; gap: 12px; border-radius: var(--r-md); }
 .is-actions { display: flex; align-items: center; gap: 8px; }
-.is-room .select-trigger { height: 32px; gap: 8px; border-radius: var(--r-sm); font-size: 13px; }
+.is-project .select-trigger { height: 32px; gap: 8px; border-radius: var(--r-sm); font-size: 13px; }
 .is-letter { width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: 10px; font-weight: 600; }
 .is-actions a.btn { text-decoration: none; }
 

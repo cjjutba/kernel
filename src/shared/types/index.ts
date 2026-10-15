@@ -3,7 +3,7 @@
 // commit at the top of a lane's PR rather than reshaping what is already here.
 
 export * from './agents'
-export * from './rooms'
+export * from './projects'
 export * from './workspaces'
 export * from './chats'
 export * from './approvals'

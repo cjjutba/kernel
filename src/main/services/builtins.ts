@@ -9,7 +9,7 @@ import { agentFromFile } from './agents'
  * reserved id, is always named Kernel, and is never written to the repo. It has no model of its own, so Settings, Models
  * decides it, unless a repo file customizes it (`resolveTeam`).
  *
- * The Lead is Kernel's only built-in agent (KERNEL-553). Theo is a starter, and a room with no reviewer gets Kernel's code review
+ * The Lead is Kernel's only built-in agent (KERNEL-553). Theo is a starter, and a project with no reviewer gets Kernel's code review
  * (KERNEL-549). `theo` is Kernel's Theo as it reviewed until then. It never joins a team. A review workspace made while it
  * reviewed still runs it and shows its name.
  */

@@ -1,6 +1,6 @@
 import type { ChatPart, Effort } from './chats'
-import type { NewAgentPrefill, NewRoomPrefill } from './rooms'
-import type { RoomSettingsSection, SettingsPage, Theme } from './settings'
+import type { NewAgentPrefill, NewProjectPrefill } from './projects'
+import type { ProjectSettingsSection, SettingsPage, Theme } from './settings'
 import type { MovePreview, Provider } from './chats'
 import type { AppUpdate } from './system'
 import type { LeadMode, WorkspaceMode, WorkspaceSource } from './workspaces'
@@ -9,36 +9,36 @@ import type { LeadMode, WorkspaceMode, WorkspaceSource } from './workspaces'
  * `loading` is LoadingApp.png: the app shell while the main process boots or reconnects. `permissions` comes after `checks`
  * and picks the permission mode. Nothing opens it until its screen is built (KERNEL-432).
  */
-export type OnboardingStep = 'welcome' | 'checks' | 'permissions' | 'room' | 'loading'
+export type OnboardingStep = 'welcome' | 'checks' | 'permissions' | 'project' | 'loading'
 
 /** Where the renderer is. Lives here so fixtures can open any screen. One entry per screen family. */
 export type DevUiPage = 'components' | 'display' | 'states' | 'overlays' | 'dialogs'
 
 export type Route =
-  | { name: 'onboarding'; step: OnboardingStep; roomId?: string }
+  | { name: 'onboarding'; step: OnboardingStep; projectId?: string }
   | { name: 'inbox' } |
-  /** Archived workspaces. `roomId` lists one room's, from the room's menu in the sidebar. */
-  { name: 'history'; roomId?: string } | { name: 'rooms' }
+  /** Archived workspaces. `projectId` lists one project's, from the project's menu in the sidebar. */
+  { name: 'history'; projectId?: string } | { name: 'projects' }
   | { name: 'workspace'; workspaceId: string }
   /**
    * New chat, the page every entry point opens (KERNEL-788). No workspace exists until the first message (KERNEL-405). `source` is what the
    * chat starts from, which the box shows as a chip, and `picks` is what the box had chosen when the issue warning sent it back (KERNEL-500).
    */
-  | { name: 'leadNew'; roomId: string; source?: WorkspaceSource; picks?: NewChatPicks }
+  | { name: 'leadNew'; projectId: string; source?: WorkspaceSource; picks?: NewChatPicks }
   /** Linear issues. `issueId` is the identifier of the open issue. */
-  /** `roomId` is the room whose tracker the screen lists. Without it the screen opens on the room used last (KERNEL-471). */
-  | { name: 'issues'; issueId?: string; roomId?: string }
-  /** Pull requests across every room. `filter` is the list it opens on, Open when unset. */
+  /** `projectId` is the project whose tracker the screen lists. Without it the screen opens on the project used last (KERNEL-471). */
+  | { name: 'issues'; issueId?: string; projectId?: string }
+  /** Pull requests across every project. `filter` is the list it opens on, Open when unset. */
   | { name: 'prs'; filter?: 'open' | 'merged' }
-  /** `section` is for `page: 'room'`, and none means General. */
+  /** `section` is for `page: 'project'`, and none means General. */
   /** `tab` puts that provider's accounts in view on Settings, Accounts (KERNEL-406). */
   /** `account` is the id of the account Skills and MCP puts first in view (KERNEL-627). */
   /**
-   * `agentId` opens that agent's editor inside the Agents page it came from: `page: 'agents'` for the app's list, or `page: 'room'`
-   * with `section: 'agents'` and a `roomId` for a room's (KERNEL-641).
+   * `agentId` opens that agent's editor inside the Agents page it came from: `page: 'agents'` for the app's list, or `page: 'project'`
+   * with `section: 'agents'` and a `projectId` for a project's (KERNEL-641).
    */
   /** `row` is the id of the setting's row to scroll to, highlight and focus once the page is open (KERNEL-727). */
-  | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection; tab?: Provider; account?: string; agentId?: string; row?: string }
+  | { name: 'settings'; page: SettingsPage; projectId?: string; section?: ProjectSettingsSection; tab?: Provider; account?: string; agentId?: string; row?: string }
   /** The component gallery (KERNEL-9). Dev builds open it from `#/dev/ui/<page>`; fixtures can force it for shots. */
   | { name: 'devUi'; page: DevUiPage }
 
@@ -50,41 +50,41 @@ export interface NewChatPicks {
   plan: boolean
   /** The target branch picked, empty for the default. */
   baseRef: string
-  /** Hand off or Build here, when picked in the box. Left out while it follows the room or Settings. */
+  /** Hand off or Build here, when picked in the box. Left out while it follows the project or Settings. */
   leadMode?: LeadMode
 }
 
-/** A New chat the issue check held back (KERNEL-500). Start anyway sends `parts` to the room's Lead, and Cancel reopens New chat on `source` with `picks`. */
+/** A New chat the issue check held back (KERNEL-500). Start anyway sends `parts` to the project's Lead, and Cancel reopens New chat on `source` with `picks`. */
 export interface HeldChat {
-  roomId: string
+  projectId: string
   source: WorkspaceSource
   parts: ChatPart[]
   picks: NewChatPicks
 }
 
-export type ConfirmKind = 'archive' | 'discard' | 'removeRoom' | 'retire' | 'trust'
+export type ConfirmKind = 'archive' | 'discard' | 'removeProject' | 'retire' | 'trust'
 
 /** The one modal shell's contents. At most one modal is open. */
 export type Modal =
   | null
   | { name: 'search' }
-  | { name: 'newRoom'; prefill?: NewRoomPrefill }
+  | { name: 'newProject'; prefill?: NewProjectPrefill }
   | { name: 'connectRepo' } | { name: 'openFolder' } | { name: 'checkHooks' }
-  | { name: 'newAgent'; roomId?: string; step: 'describe' | 'draft' | 'done'; prefill?: NewAgentPrefill }
+  | { name: 'newAgent'; projectId?: string; step: 'describe' | 'draft' | 'done'; prefill?: NewAgentPrefill }
   /** `update` is the install What's new opened with, which later update pushes must not replace (KERNEL-30). */
   | { name: 'whatsNew'; update?: AppUpdate }
-  /** The add and edit form on an Environment page. No `roomId` is the app's page, and `editName` is the variable being edited (KERNEL-254). */
-  | { name: 'envVar'; roomId?: string; editName?: string }
+  /** The add and edit form on an Environment page. No `projectId` is the app's page, and `editName` is the variable being edited (KERNEL-254). */
+  | { name: 'envVar'; projectId?: string; editName?: string }
   | { name: 'confirm'; kind: 'archive'; workspaceId: string }
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }
   /** Revert files to a checkpoint from the transcript. `start` says it is the chat's first (KERNEL-766). */
   | { name: 'confirm'; kind: 'revert'; workspaceId: string; checkpointId: string; start?: boolean }
-  | { name: 'confirm'; kind: 'removeRoom'; roomId: string }
+  | { name: 'confirm'; kind: 'removeProject'; projectId: string }
   /** History > Delete: archived workspaces, with their branches, checkpoints and transcripts (KERNEL-333). */
   | { name: 'confirm'; kind: 'deleteHistory'; workspaceIds: string[] }
-  | { name: 'confirm'; kind: 'retire'; roomId: string; agentId: string }
-  /** Run this repo's scripts? The room's scripts and files.copy list waiting in `scriptTrust` (KERNEL-218). */
-  | { name: 'confirm'; kind: 'trust'; roomId: string }
+  | { name: 'confirm'; kind: 'retire'; projectId: string; agentId: string }
+  /** Run this repo's scripts? The project's scripts and files.copy list waiting in `scriptTrust` (KERNEL-218). */
+  | { name: 'confirm'; kind: 'trust'; projectId: string }
   /** Archiving a Lead chat that would stop something: its row's Archive, or closing its last tab (KERNEL-405). */
   | { name: 'confirm'; kind: 'archiveChat'; threadId: string }
   /** Closing chats that are still running: the X on a chat tab, Close tab, Close other tabs or Cmd+W. */
@@ -96,12 +96,12 @@ export type Modal =
    */
   | { name: 'confirm'; kind: 'issueTaken'; issue: string; findings: ({ kind: 'branch'; ref: string } | { kind: 'pr'; number: number; title: string } | { kind: 'assignee'; name: string })[]; held: HeldChat }
   /**
-   * The first switch into Bypass permissions, asked once (KERNEL-455). `roomId` is the room whose mode override is being set,
+   * The first switch into Bypass permissions, asked once (KERNEL-455). `projectId` is the project whose mode override is being set,
    * and none means the app's mode in Settings, Permissions. `chatId` is a chat that picked Bypass permissions in its composer: only
    * that chat's own mode is set, and Settings stays as it is (KERNEL-456).
    */
-  | { name: 'confirm'; kind: 'bypass'; roomId?: string; chatId?: string; /** New chat's box, whose draft keeps the pick until the chat starts. */ draftKey?: string }
-  /** The one-time question about usage data, after the first room (KERNEL-397). */
+  | { name: 'confirm'; kind: 'bypass'; projectId?: string; chatId?: string; /** New chat's box, whose draft keeps the pick until the chat starts. */ draftKey?: string }
+  /** The one-time question about usage data, after the first project (KERNEL-397). */
   | { name: 'telemetryAsk' }
   /** A switch that would make long chats read their history again on `accountId`: what it costs, and whether to keep them or move them (KERNEL-845). `reason` is the banner's. */
   | { name: 'confirm'; kind: 'switchAccount'; provider: Provider; accountId: string; preview: MovePreview; reason?: 'banner'; /** Runs once the switch is done. It belongs to this request, so a newer one replaces it. */ onSwitched?: () => void }
@@ -109,21 +109,21 @@ export type Modal =
   | { name: 'mcpSetUp'; provider: Provider; accountId: string }
 
 /**
- * Menus and popovers. One is open at a time. `room:<id>` is a sidebar room's menu, and `reply:<id>` the "..." menu under a reply.
+ * Menus and popovers. One is open at a time. `project:<id>` is a sidebar project's menu, and `reply:<id>` the "..." menu under a reply.
   */
 export type MenuId =
-  | 'rooms' | `room:${string}` | 'account' | 'plan'
+  | 'projects' | `project:${string}` | 'account' | 'plan'
   | 'pr' | 'tab' | 'newTab' | `reply:${string}`
   | 'plus' | 'model' | 'effort' | 'mode' | 'mention' | 'slash' | 'linkIssue' | 'linkPr' | 'linkWorkspaces'
-  | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'roomMode' | 'preview'
-  | 'roomTracker' | 'help'
+  | 'branch' | 'from' | 'settingsFiles' | 'projectIcon' | 'projectMode' | 'preview'
+  | 'projectTracker' | 'help'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry' | 'trust'
 
 export interface Banner {
   kind: BannerKind
-  roomId?: string
+  projectId?: string
   workspaceId?: string
   chatId?: string
 }

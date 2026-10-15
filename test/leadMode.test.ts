@@ -12,7 +12,7 @@ import { loadRepoSettings, saveRepoSettings } from '../src/main/services/setting
 import { sharesFile } from '../src/main/services/providers/codex/runner'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
-import { setUp, tempRepo, trustRoom, freePort } from './helpers'
+import { setUp, tempRepo, trustProject, freePort } from './helpers'
 
 // Hand off and Build here: the two ways a chat with Kernel works (KERNEL-770).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -33,18 +33,18 @@ async function setup(o: { app?: Record<string, unknown>; files?: Record<string, 
   await k.start()
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
-  const room = await k.addRoom(repo)
-  await trustRoom(k, room.id)
+  const project = await k.addProject(repo)
+  await trustProject(k, project.id)
   const chat = async () => {
-    const c = await k.lead.newLeadChat(room.id, { prompt: '' })
+    const c = await k.lead.newLeadChat(project.id, { prompt: '' })
     await setUp(k, c.id, 'settled')
     return k.store.chat(c.id)!
   }
-  return { k, room, repo, chat }
+  return { k, project, repo, chat }
 }
 
 describe("a new chat's mode (KERNEL-770)", () => {
-  it('follows the room, then the app, then Hand off', () => {
+  it('follows the project, then the app, then Hand off', () => {
     expect(newChatLeadMode(undefined, undefined)).toBe('handoff')
     expect(newChatLeadMode({ team: { leadMode: 'build' } }, undefined)).toBe('build')
     expect(newChatLeadMode({ team: { leadMode: 'build' } }, { agents: { leadMode: 'handoff' } })).toBe('handoff')
@@ -55,7 +55,7 @@ describe("a new chat's mode (KERNEL-770)", () => {
     expect(leadModeOf({})).toBe('handoff')
   })
 
-  it("reads and saves the room's [agents] lead_mode", async () => {
+  it("reads and saves the project's [agents] lead_mode", async () => {
     const repo = await tempRepo({ 'README.md': '# x\n', '.kernel/settings.toml': '[agents]\nlead_mode = "build"\n' })
     expect((await loadRepoSettings(repo)).agents?.leadMode).toBe('build')
     await saveRepoSettings(repo, { agents: { leadMode: 'handoff' } })
@@ -64,7 +64,7 @@ describe("a new chat's mode (KERNEL-770)", () => {
     expect((await loadRepoSettings(repo)).agents?.leadMode).toBe('build')
   })
 
-  it('starts in Hand off by default, in the app default, and in the room default over it, and a changed default leaves open chats alone', async () => {
+  it('starts in Hand off by default, in the app default, and in the project default over it, and a changed default leaves open chats alone', async () => {
     const plain = await setup()
     expect(plain.k.settings.team.leadMode).toBe('handoff')
     expect(plain.k.store.workspace((await plain.chat()).workspaceId)?.leadMode).toBe('handoff')
@@ -81,16 +81,16 @@ describe("a new chat's mode (KERNEL-770)", () => {
 
   it('starts in the mode lead.start sends over the default (KERNEL-805)', async () => {
     const s = await setup({ app: { team: { leadMode: 'build' } } })
-    const picked = await s.k.lead.newLeadChat(s.room.id, { prompt: '', leadMode: 'handoff' })
+    const picked = await s.k.lead.newLeadChat(s.project.id, { prompt: '', leadMode: 'handoff' })
     expect(s.k.store.workspace(picked.workspaceId)?.leadMode).toBe('handoff')
-    const plain = await s.k.lead.newLeadChat(s.room.id, { prompt: '' })
+    const plain = await s.k.lead.newLeadChat(s.project.id, { prompt: '' })
     expect(s.k.store.workspace(plain.workspaceId)?.leadMode).toBe('build')
   })
 })
 
 describe('lead.setMode (KERNEL-770)', () => {
   it("switches the chat, leaves a divider in its tabs and restarts its idle processes, and refuses what isn't a chat with Kernel", async () => {
-    const { k, room, chat } = await setup()
+    const { k, project, chat } = await setup()
     const c = await chat()
     const restarted: string[][] = []
     const restartIdle = k.sessions.restartIdle.bind(k.sessions)
@@ -110,8 +110,8 @@ describe('lead.setMode (KERNEL-770)', () => {
     expect(dividers().map((d) => d.mode)).toEqual(['handoff'])
     expect(leadModeSwitched('build')).toBe("Switched to Build here. Kernel can edit files in this chat's worktree.")
 
-    const kai = (await k.agents(room.id)).find((a) => a.id === 'kai')!
-    const teammate = await k.workspaces.createWorkspace(room.id, { prompt: 'Fix the padding', agentId: kai.id, title: 'Padding' })
+    const kai = (await k.agents(project.id)).find((a) => a.id === 'kai')!
+    const teammate = await k.workspaces.createWorkspace(project.id, { prompt: 'Fix the padding', agentId: kai.id, title: 'Padding' })
     await expect(k.handlers()['lead.setMode']({ workspaceId: teammate.id, mode: 'build' })).rejects.toThrow('Only a chat with Kernel')
     await expect(k.handlers()['lead.setMode']({ workspaceId: 'nope', mode: 'build' })).rejects.toThrow('Only a chat with Kernel')
     await expect(k.handlers()['lead.setMode']({ workspaceId: c.workspaceId, mode: 'solo' as never })).rejects.toThrow('is not a mode')
@@ -151,10 +151,10 @@ describe('lead.setMode (KERNEL-770)', () => {
   })
 
   it("counts files changed in the chat's own worktree, which teammates won't start from", async () => {
-    const { k, room, chat } = await setup()
+    const { k, project, chat } = await setup()
     const c = await chat()
-    const lead = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
-    const deps = () => k.lead.leadToolDeps(room.id, lead, k.store.chat(c.id)!)
+    const lead = (await k.agents(project.id)).find((a) => a.lead) as AgentDef
+    const deps = () => k.lead.leadToolDeps(project.id, lead, k.store.chat(c.id)!)
     expect(deps().leadMode).toBe('handoff')
     expect(await deps().ownChanges!()).toBe(0)
     const path = k.store.workspace(c.workspaceId)!.path
@@ -176,13 +176,13 @@ describe("Kernel's tools in each mode (KERNEL-770)", () => {
   const kernel = { id: 'kernel', name: 'Kernel', role: 'Lead', description: '', lead: true, prompt: '' } as AgentDef
   const kai = { id: 'kai', name: 'Kai', role: 'Frontend', description: '', lead: false, prompt: '' } as AgentDef
   const theo = { id: 'theo', name: 'Theo', role: 'Reviewer', description: '', lead: false, prompt: '' } as AgentDef
-  const target: Workspace = { id: 'w-kai', roomId: 'room', name: 'padding', branch: 'feat/padding', baseRef: 'main', path: '/tmp/w-kai', mode: 'worktree', agentId: 'kai', port: 4301, status: 'ready', prState: 'open', createdAt: 1 }
+  const target: Workspace = { id: 'w-kai', projectId: 'project', name: 'padding', branch: 'feat/padding', baseRef: 'main', path: '/tmp/w-kai', mode: 'worktree', agentId: 'kai', port: 4301, status: 'ready', prState: 'open', createdAt: 1 }
   function tools(o: Partial<KernelToolDeps>) {
     const created: unknown[] = []
     const asked: { detail?: string }[] = []
     const suggested: string[] = []
     const deps = {
-      roomId: 'room', lead: kernel, chatId: 'chat', agents: async () => [kernel, kai, theo], workspaces: () => [target],
+      projectId: 'project', lead: kernel, chatId: 'chat', agents: async () => [kernel, kai, theo], workspaces: () => [target],
       createWorkspace: async (c: { agentId: string; baseRef?: string }) => { created.push(c); return { ...target, id: `new-${created.length}`, agentId: c.agentId, branch: 'feat/x', baseRef: 'origin/main' } },
       messageWorkspace: async () => ({ ok: true, sent: true, note: '' }), askUser: async (a: { detail?: string }) => { asked.push(a); return { behavior: 'allow' } }, hireAgent: async () => '', archiveWorkspace: async () => {},
       isRunning: () => false, unsaved: async () => false, planMode: () => true, planApproved: () => 'Plan approved.', suggestHandoff: (why: string) => { suggested.push(why) }, ...o
@@ -247,7 +247,7 @@ describe("Kernel's tools in each mode (KERNEL-770)", () => {
 
 describe("the Lead's prompt and tools in each mode (KERNEL-770)", () => {
   const kernel = { id: 'kernel', name: 'Kernel', role: 'Lead', description: '', lead: true, prompt: 'You are Kernel.' } as AgentDef
-  const ws = { id: 'ws', roomId: 'room', name: 'chat', branch: 'kernel/chat', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kernel', lead: true, threadId: 't', port: 4300, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
+  const ws = { id: 'ws', projectId: 'project', name: 'chat', branch: 'kernel/chat', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kernel', lead: true, threadId: 't', port: 4300, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
 
   it('Hand off keeps the hand-off lines, Build here drops them for its own, and both keep the shared lines', () => {
     const handoff = agentPrompt(kernel, ws)
@@ -327,39 +327,39 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
   const notes = (k: Kernel, chatId: string) => k.store.items(chatId).filter((i): i is Extract<ChatItem, { kind: 'note' }> => i.kind === 'note').map((n) => n.text)
 
   it('starts a new branch from the base once the PR merged and the worktree is clean, and says why it waits while it is not', async () => {
-    const { k, room, c, ws, chat } = await building()
+    const { k, project, c, ws, chat } = await building()
     const head = (await git(ws.path, 'rev-parse', 'HEAD')).trim()
     k.store.saveWorkspace({ ...ws, prNumber: 54, prState: 'merged', prUrl: 'https://x/54', prHead: head, mergedAt: 2, source: { kind: 'issue', id: 'KERNEL-760', title: 'Retry button' } })
     await writeFile(join(ws.path, 'README.md'), '# edited\n')
-    await k.lead.syncLead(room.id, { workspaceId: ws.id })
-    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    await k.lead.syncLead(project.id, { workspaceId: ws.id })
+    await k.lead.syncLead(project.id, { workspaceId: ws.id })
     expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prNumber: 54, prState: 'merged' })
     expect(notes(k, c.id)).toEqual([`PR #54 merged, but this worktree has uncommitted changes, so Kernel kept this chat on ${ws.branch}. It starts a new branch from main once nothing here is left out of the merge.`])
 
     // Committed after the merge: the commit isn't in the PR, so the chat stays where it is, and hears why once.
     await git(ws.path, 'commit', '-qam', 'after the merge')
-    await k.lead.syncLead(room.id, { workspaceId: ws.id })
-    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    await k.lead.syncLead(project.id, { workspaceId: ws.id })
+    await k.lead.syncLead(project.id, { workspaceId: ws.id })
     expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prState: 'merged' })
     expect((await git(ws.path, 'log', '-1', '--format=%s')).trim()).toBe('after the merge')
     expect(notes(k, c.id).slice(1)).toEqual([`PR #54 merged, but ${ws.branch} has a commit the PR didn't include, so Kernel kept this chat on ${ws.branch}. It starts a new branch from main once nothing here is left out of the merge.`])
     // Pushed to the merged branch, it still isn't in the PR. Dropping it lets the chat go on.
-    await git(room.path, 'update-ref', `refs/remotes/origin/${ws.branch}`, 'HEAD')
-    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    await git(project.path, 'update-ref', `refs/remotes/origin/${ws.branch}`, 'HEAD')
+    await k.lead.syncLead(project.id, { workspaceId: ws.id })
     expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prState: 'merged' })
     await git(ws.path, 'reset', '-q', '--hard', head)
-    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    await k.lead.syncLead(project.id, { workspaceId: ws.id })
     const next = k.store.workspace(ws.id)!
     expect(next.branch).not.toBe(ws.branch)
     expect(next.branch).toMatch(/^kernel\//)
     expect(next).toMatchObject({ baseRef: 'main', prState: 'none' })
     for (const f of ['prNumber', 'prUrl', 'prHead', 'mergedAt', 'source'] as const) expect(next[f], f).toBeUndefined()
     expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(next.branch)
-    expect((await git(ws.path, 'rev-parse', 'HEAD')).trim()).toBe((await git(room.path, 'rev-parse', 'main')).trim())
+    expect((await git(ws.path, 'rev-parse', 'HEAD')).trim()).toBe((await git(project.path, 'rev-parse', 'main')).trim())
     expect(notes(k, c.id).at(-1)).toBe(`PR #54 merged. This chat now works on ${next.branch}, from main.`)
     // The next PR is a new one, opened from the new branch, and its merge starts another.
     k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prNumber: 55, prState: 'merged' })
-    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    await k.lead.syncLead(project.id, { workspaceId: ws.id })
     expect(k.store.workspace(ws.id)).toMatchObject({ prState: 'none' })
     expect(k.store.workspace(ws.id)!.branch).not.toBe(next.branch)
 
@@ -367,18 +367,18 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
     const other = await chat()
     const handoff = k.store.workspace(other.workspaceId)!
     k.store.saveWorkspace({ ...handoff, prNumber: 56, prState: 'merged' })
-    await k.lead.syncLead(room.id, { workspaceId: handoff.id })
+    await k.lead.syncLead(project.id, { workspaceId: handoff.id })
     expect(k.store.workspace(handoff.id)).toMatchObject({ branch: handoff.branch, prState: 'merged' })
   })
 
   it("links an issue, renaming the branch before the first push and only linking after it, and refuses a chat in Hand off", async () => {
-    const { k, room, ws, chat } = await building()
+    const { k, project, ws, chat } = await building()
     const linked = await k.handlers()['lead.linkIssue']({ workspaceId: ws.id, issue: 'KERNEL-760' })
     expect(linked.source).toMatchObject({ kind: 'issue', id: 'KERNEL-760' })
     expect(linked.branch).toMatch(/^feat\/kernel-760/)
     expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(linked.branch)
     // Pushed: the branch keeps its name, and only the link changes.
-    await git(room.path, 'update-ref', `refs/remotes/origin/${linked.branch}`, 'HEAD')
+    await git(project.path, 'update-ref', `refs/remotes/origin/${linked.branch}`, 'HEAD')
     const relinked = await k.lead.linkIssue(ws.id, 'KERNEL-761')
     expect(relinked).toMatchObject({ branch: linked.branch, source: { kind: 'issue', id: 'KERNEL-761' } })
     // So does a branch with a PR.

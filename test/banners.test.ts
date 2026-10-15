@@ -4,7 +4,7 @@ import { bannerFor, limitBannerExpired, limitBannerKey, setupCommand, type Banne
 
 const now = new Date(2026, 9, 7, 11, 0).getTime()
 const S = (ms: number) => Math.round(ms / 1000)
-const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-table', branch: 'feat/x', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-table', branch: 'feat/x', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
 const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Table', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: 1 }
 const input = (o: Partial<BannerInput> = {}): BannerInput => ({
   ws, chat, agentName: 'Kai', running: false, usage: [], account: { signedIn: true }, online: true,
@@ -24,7 +24,7 @@ describe('workspace banners', () => {
 
   it('blocks the composer on the weekly limit and names the reset day', () => {
     const b = bannerFor(input({ usage: [{ type: 'seven_day', status: 'rejected', resetsAt: S(new Date(2026, 9, 12, 9, 0).getTime()) }, { type: 'five_hour', status: 'rejected', resetsAt: S(now + 3600_000) }] }))
-    expect(b).toMatchObject({ id: 'weekly', sub: 'Resets Monday at 9:00 AM. Every room is paused.', blocks: true })
+    expect(b).toMatchObject({ id: 'weekly', sub: 'Resets Monday at 9:00 AM. Every project is paused.', blocks: true })
   })
 
   it('ignores a rejection whose reset time has passed', () => {
@@ -32,7 +32,7 @@ describe('workspace banners', () => {
   })
 
   it('offers another model in one click when the chat\'s own model is limited', () => {
-    // Claude Code calls `seven_day_overage_included` the Fable limit. It is not the weekly limit, so no room is paused.
+    // Claude Code calls `seven_day_overage_included` the Fable limit. It is not the weekly limit, so no project is paused.
     const b = bannerFor(input({ chat: { ...chat, model: 'claude-fable-5-1' }, usage: [{ type: 'seven_day_overage_included', status: 'rejected', model: 'claude-fable-5-1', resetsAt: S(now + 3 * 86_400_000 - 3600_000) }] }))
     expect(b).toMatchObject({ id: 'model', title: "You've reached your Fable 5.1 limit", sub: 'It resets Saturday at 10:00 AM. Opus 5.5 can pick up where this left off.', switchTo: 'claude-opus-5-5', blocks: false })
     expect(b?.actions.map((a) => a.label)).toEqual(['Wait', 'Switch to Opus 5.5'])
@@ -50,7 +50,7 @@ describe('workspace banners', () => {
     expect(bannerFor(input({ chat: { ...chat, context: 92 } }))).toMatchObject({ id: 'context', actions: [{ id: 'newChat' }, { id: 'compact', primary: true }] })
   })
 
-  it('shows no banner for a long chat while the window has room, and the next one still shows (KERNEL-488)', () => {
+  it('shows no banner for a long chat while the window has project, and the next one still shows (KERNEL-488)', () => {
     const used = (tokens: number, max = 1_000_000, context = Math.round((tokens / max) * 100)) => ({ ...chat, context, contextUsage: { used: tokens, max, rows: [] } })
     // 160k and 336k in a 1M window are far under 90%, and the context popover already shows how much is free.
     expect(bannerFor(input({ chat: used(160_000) }))).toBeNull()
@@ -83,7 +83,7 @@ describe('workspace banners', () => {
       expect(bannerFor(input({ usage: [near('five_hour', 0.89, at340)] }))).toBeNull()
     })
 
-    it('says so for the weekly window at 95%, with the day it resumes, and names the room\'s own Lead', () => {
+    it('says so for the weekly window at 95%, with the day it resumes, and names the project\'s own Lead', () => {
       expect(bannerFor(input({ usage: [near('seven_day', 0.96, monday)], leadName: 'Ana' }))).toMatchObject({ id: 'nearLimit', title: 'Close to your weekly limit', sub: 'New work from teammates waits until Monday at 9:00 AM. Ana can still answer you.' })
     })
 

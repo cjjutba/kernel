@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, expectTypeOf, it } from 'vitest'
-import { APP_SETTING_TIMING, ROOM_SETTING_TIMING, type RoomSettingPath } from '../src/shared/settingsTiming'
+import { APP_SETTING_TIMING, PROJECT_SETTING_TIMING, type ProjectSettingPath } from '../src/shared/settingsTiming'
 import { DEFAULT_SETTINGS, loadRepoSettings } from '../src/main/services/settings'
 
 const isTable = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
@@ -37,23 +37,23 @@ describe('settings timing (KERNEL-724)', () => {
     expect(Object.keys(APP_SETTING_TIMING).filter((p) => !app.all.includes(p))).toEqual([])
   })
 
-  it('records every room setting', () => {
-    // The type is the full list, so a room key without an entry fails pnpm typecheck.
-    expectTypeOf<keyof typeof ROOM_SETTING_TIMING>().toEqualTypeOf<RoomSettingPath>()
-    // A room's workspace keys are the app's, and an empty room file still has its tables.
+  it('records every project setting', () => {
+    // The type is the full list, so a project key without an entry fails pnpm typecheck.
+    expectTypeOf<keyof typeof PROJECT_SETTING_TIMING>().toEqualTypeOf<ProjectSettingPath>()
+    // A project's workspace keys are the app's, and an empty project file still has its tables.
     const workspace = Object.keys(DEFAULT_SETTINGS('').workspace).map((k) => `workspace.${k}`)
-    expect(workspace.filter((p) => !(p in ROOM_SETTING_TIMING))).toEqual([])
+    expect(workspace.filter((p) => !(p in PROJECT_SETTING_TIMING))).toEqual([])
   })
 
-  it('records every table an empty room loads with', async () => {
+  it('records every table an empty project loads with', async () => {
     const repo = mkdtempSync(join(tmpdir(), 'kernel-timing-'))
-    const { sources: _sources, ...room } = await loadRepoSettings(repo)
-    const keys = Object.keys(ROOM_SETTING_TIMING)
-    expect(Object.keys(room).filter((g) => !keys.some((k) => k === g || k.startsWith(`${g}.`)))).toEqual([])
+    const { sources: _sources, ...project } = await loadRepoSettings(repo)
+    const keys = Object.keys(PROJECT_SETTING_TIMING)
+    expect(Object.keys(project).filter((g) => !keys.some((k) => k === g || k.startsWith(`${g}.`)))).toEqual([])
   })
 
-  it('gives a room key the same timing as the app key it overrides', () => {
-    const differs = Object.entries(ROOM_SETTING_TIMING).filter(([p, t]) => p in APP_SETTING_TIMING && APP_SETTING_TIMING[p] !== t)
+  it('gives a project key the same timing as the app key it overrides', () => {
+    const differs = Object.entries(PROJECT_SETTING_TIMING).filter(([p, t]) => p in APP_SETTING_TIMING && APP_SETTING_TIMING[p] !== t)
     expect(differs).toEqual([])
   })
 })

@@ -156,7 +156,7 @@ describe('the checks that decide a PR', () => {
     ])
   })
 
-  it("counts every check in a repo that requires none, except those the room's optional_checks names", () => {
+  it("counts every check in a repo that requires none, except those the project's optional_checks names", () => {
     expect(checksOf([run('Test', 'FAILURE', false), run('Vercel – web', null, false)]).some((c) => c.optional)).toBe(false)
     expect(checksOf([run('Test', 'FAILURE', false), run('Vercel – web', null, false)], ['vercel*'])).toEqual([
       { name: 'Test', state: 'fail' },
@@ -166,7 +166,7 @@ describe('the checks that decide a PR', () => {
     expect(checksOf([run('Vercel', 'FAILURE', true)], ['Vercel'])).toEqual([{ name: 'Vercel', state: 'fail' }])
   })
 
-  it('matches room patterns whole, without case, with * for any run of characters', () => {
+  it('matches project patterns whole, without case, with * for any run of characters', () => {
     expect(matchesCheck(['Vercel*'], 'vercel preview comments')).toBe(true)
     expect(matchesCheck(['Vercel'], 'Vercel preview')).toBe(false)
     expect(matchesCheck(['*coverage*'], 'codecov/coverage (patch)')).toBe(true)
@@ -200,7 +200,7 @@ describe('the PR state', () => {
     expect(infoOf('w', v, [], []).blocked).toBe(blocked)
   })
 
-  it("reads a check the room's optional_checks names as not deciding the PR", () => {
+  it("reads a check the project's optional_checks names as not deciding the PR", () => {
     const v = view({ mergeStateStatus: 'UNSTABLE', statusCheckRollup: [run('Vercel', 'FAILURE', false)] })
     expect(prStateOf(v)).toBe('cifail')
     expect(prStateOf(v, { optional: ['Vercel'] })).toBe('ready')
@@ -246,7 +246,7 @@ describe('what Kernel tells the agent about failed checks', () => {
   })
 })
 
-describe("the room's optional_checks", () => {
+describe("the project's optional_checks", () => {
   it('reads a list of names from either settings file, the personal one winning, and keeps it when Settings saves other keys', async () => {
     const repo = await tempRepo()
     await mkdir(join(repo, '.kernel'), { recursive: true })

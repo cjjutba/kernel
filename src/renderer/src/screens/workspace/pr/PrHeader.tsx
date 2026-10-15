@@ -46,12 +46,12 @@ export function PrHeader({ ws, spread, capsule, toggle }: { ws: Workspace; sprea
   const caret = useRef<HTMLSpanElement>(null)
   const id = ws.id
   const changed = hasChanges(ws)
-  // A room with no GitHub merges the branch on the Mac, and its header keeps the band with a `→ main` pill in place of the PR link (KERNEL-478).
+  // A project with no GitHub merges the branch on the Mac, and its header keeps the band with a `→ main` pill in place of the PR link (KERNEL-478).
   const local = useLocalMerge(ws)
   // Blockers on the latest commit are all that holds the merge: the band reads red and Merge anyway asks first (KERNEL-501).
   const rules = useStore((s) => s.settings?.pr) ?? NO_RULES
   const pr = useStore((s) => s.prs[ws.id])
-  const agents = useStore((s) => s.agents[ws.roomId])
+  const agents = useStore((s) => s.agents[ws.projectId])
   const held = blockersHold(ws, pr, rules, (agentId) => agents?.find((a) => a.id === agentId)?.name ?? agentId)
   const [confirm, setConfirm] = useState<NonNullable<typeof held> | null>(null)
   const [overruling, setOverruling] = useState(false)
@@ -168,7 +168,7 @@ export function PrHeader({ ws, spread, capsule, toggle }: { ws: Workspace; sprea
               <Menu label="Pull request options" anchorRef={caret} onClose={actions.ui.closeMenu} style={{ right: 0, top: 'calc(100% + 6px)', width: 260 }} items={[
                 { id: 'pr', label: 'Create PR', shortcut: '⌘⇧P', onSelect: () => start('create') },
                 { id: 'draft', label: 'Create draft PR', onSelect: createDraft },
-                { id: 'edit', label: 'Edit PR instructions', onSelect: () => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'prs' }) },
+                { id: 'edit', label: 'Edit PR instructions', onSelect: () => go({ name: 'settings', page: 'project', projectId: ws.projectId, section: 'prs' }) },
                 { id: 'copy', label: 'Copy branch name', onSelect: () => void copyBranch(ws.branch) },
                 { id: 'discard', label: 'Discard changes', disabled: ws.mode === 'current', onSelect: () => actions.ui.openModal({ name: 'confirm', kind: 'discard', workspaceId: id }) }
               ]} />

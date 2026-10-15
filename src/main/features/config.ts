@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
-import type { ClaudePlan, DeepPartial, ProductionHint, Room, RoomSettingsPatch, Workspace } from '@shared/types'
+import type { ClaudePlan, DeepPartial, ProductionHint, Project, ProjectSettingsPatch, Workspace } from '@shared/types'
 import type { Handlers } from '../kernel'
 import { applySettingsPatch, configuredRemote, DEFAULT_SETTINGS, loadRepoSettings, PLAN_KEYS, remoteOf, saveAppSettings, saveRepoSettings, withPlan, type AppSettings, type RepoSettings, type SettingsError } from '../services/settings'
 import { bus } from '../bus'
@@ -21,20 +21,20 @@ function picked(after: any, patch: any): any {
 
 const dotted = (o: unknown, path: string): unknown => path.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), o)
 
-/** How `Room.keepCopying` names a file and variable (KERNEL-449). */
+/** How `Project.keepCopying` names a file and variable (KERNEL-449). */
 const keepKey = (h: Pick<ProductionHint, 'path' | 'name'>) => `${h.path}:${h.name}`
 
-/** The app's settings, each room's settings file, and the git remote they name (KERNEL-325). */
+/** The app's settings, each project's settings file, and the git remote they name (KERNEL-325). */
 export class Config extends Feature {
-  /** Each room's own `workspace.remote` by path, for the review rule, which can't wait on a file read (`remoteFor`). */
-  readonly roomRemotes = new Map<string, string | undefined>()
+  /** Each project's own `workspace.remote` by path, for the review rule, which can't wait on a file read (`remoteFor`). */
+  readonly projectRemotes = new Map<string, string | undefined>()
 
   get settingsFile() { return join(this.o.dataDir, 'settings.json') }
 
-  /** Each room's watcher on its `.kernel/settings*.toml`, from the first time the window reads the room's settings (KERNEL-723). */
-  private roomWatchers = new Map<string, () => void>()
-  /** The room's settings the window last had from Kernel, as JSON. A file event that reads the same is Kernel's own save. */
-  private roomShown = new Map<string, string>()
+  /** Each project's watcher on its `.kernel/settings*.toml`, from the first time the window reads the project's settings (KERNEL-723). */
+  private projectWatchers = new Map<string, () => void>()
+  /** The project's settings the window last had from Kernel, as JSON. A file event that reads the same is Kernel's own save. */
+  private projectShown = new Map<string, string>()
 
   /**
    * What the user chose, which is all settings.json holds: the keys they changed, or that an older file carried and still
@@ -81,157 +81,157 @@ export class Config extends Feature {
   }
 
   /**
-   * The git remote a room fetches from and pushes to: the room's, then the app's, then origin (`remoteOf`, KERNEL-190).
-   * Pass `repo` when the room's settings are already loaded.
+   * The git remote a project fetches from and pushes to: the project's, then the app's, then origin (`remoteOf`, KERNEL-190).
+   * Pass `repo` when the project's settings are already loaded.
    */
   async remoteFor(path: string, repo?: RepoSettings): Promise<string> {
     const r = repo ?? await loadRepoSettings(path)
-    this.roomRemotes.set(path, r.workspace.remote)
+    this.projectRemotes.set(path, r.workspace.remote)
     return remoteOf(r, this.settings)
   }
 
-  remoteOfWs(ws: Workspace) { return this.remoteFor(this.mustRoom(ws.roomId).path) }
+  remoteOfWs(ws: Workspace) { return this.remoteFor(this.mustProject(ws.projectId).path) }
 
   /**
-   * A room's settings file stopped parsing (KERNEL-231). The room runs on its other file and the app's defaults meanwhile, so
-   * the room's feed keeps a warning with the line, and a toast says so now. A save from Settings refuses until it's fixed.
+   * A project's settings file stopped parsing (KERNEL-231). The project runs on its other file and the app's defaults meanwhile, so
+   * the project's feed keeps a warning with the line, and a toast says so now. A save from Settings refuses until it's fixed.
    */
   settingsError({ file, problem }: SettingsError) {
     const name = `.kernel/${basename(file)}`
     const where = problem.line ? ` on line ${problem.line}` : ''
-    for (const room of this.store.rooms().filter((r) => join(r.path, '.kernel') === dirname(file))) {
-      bus.activity({ kind: 'note', roomId: room.id, actor: 'kernel', text: `uses the defaults in ${room.name} because ${name} has a mistake${where}:`, object: problem.what, warn: true })
-      bus.push({ type: 'toast', toast: { title: `${name} in ${room.name} has a mistake${where}`, sub: `${problem.what}. Kernel uses the defaults until you fix it.` } })
+    for (const project of this.store.projects().filter((r) => join(r.path, '.kernel') === dirname(file))) {
+      bus.activity({ kind: 'note', projectId: project.id, actor: 'kernel', text: `uses the defaults in ${project.name} because ${name} has a mistake${where}:`, object: problem.what, warn: true })
+      bus.push({ type: 'toast', toast: { title: `${name} in ${project.name} has a mistake${where}`, sub: `${problem.what}. Kernel uses the defaults until you fix it.` } })
     }
   }
 
   /**
-   * The room's files to copy that look like production, one hint per file: its strongest variable the user hasn't chosen
+   * The project's files to copy that look like production, one hint per file: its strongest variable the user hasn't chosen
    * Keep copying for. Names only (KERNEL-449).
    */
-  async production(room: Room): Promise<ProductionHint[]> {
-    const { files } = await loadRepoSettings(room.path)
-    const kept = new Set(room.keepCopying ?? [])
+  async production(project: Project): Promise<ProductionHint[]> {
+    const { files } = await loadRepoSettings(project.path)
+    const kept = new Set(project.keepCopying ?? [])
     const out = new Map<string, ProductionHint>()
-    for (const h of await productionInCopy(room.path, files.copy, files.exclude)) if (!out.has(h.path) && !kept.has(keepKey(h))) out.set(h.path, h)
+    for (const h of await productionInCopy(project.path, files.copy, files.exclude)) if (!out.has(h.path) && !kept.has(keepKey(h))) out.set(h.path, h)
     return [...out.values()]
   }
 
   /**
-   * Saves a patch to the room's `.kernel/settings.local.toml`, or to `settings.toml` with `shared`, then settles trust for
-   * what changed. Settings and the Lead's set_room_scripts both save here (KERNEL-683).
+   * Saves a patch to the project's `.kernel/settings.local.toml`, or to `settings.toml` with `shared`, then settles trust for
+   * what changed. Settings and the Lead's set_project_scripts both save here (KERNEL-683).
    */
-  async setRoom(roomId: string, patch: RoomSettingsPatch, shared?: boolean): Promise<RepoSettings> {
-    const room = this.mustRoom(roomId)
-    const before = await this.k.trust.trustState(room)
-    const next = this.wrote(roomId, await saveRepoSettings(room.path, patch, shared))
-    this.roomRemotes.set(room.path, next.workspace.remote)
-    await this.k.trust.trustSaved(room, before, patch, !!shared, next)
+  async setProject(projectId: string, patch: ProjectSettingsPatch, shared?: boolean): Promise<RepoSettings> {
+    const project = this.mustProject(projectId)
+    const before = await this.k.trust.trustState(project)
+    const next = this.wrote(projectId, await saveRepoSettings(project.path, patch, shared))
+    this.projectRemotes.set(project.path, next.workspace.remote)
+    await this.k.trust.trustSaved(project, before, patch, !!shared, next)
     // A saved env files list counts once the check agrees, trusted or the user's own (KERNEL-247).
-    await this.k.trust.untrusted(room, next)
+    await this.k.trust.untrusted(project, next)
     return next
   }
 
   /** Settings Kernel saved or read for the window. The watcher sends nothing for them, so a save doesn't echo back (KERNEL-723). */
-  wrote(roomId: string, rs: RepoSettings): RepoSettings {
-    this.roomShown.set(roomId, JSON.stringify(rs))
-    this.watchRoom(roomId)
+  wrote(projectId: string, rs: RepoSettings): RepoSettings {
+    this.projectShown.set(projectId, JSON.stringify(rs))
+    this.watchProject(projectId)
     return rs
   }
 
   /**
-   * Watches the room's settings files, so a hand edit, Open settings.toml or a git pull reaches its Settings pages as
-   * `settings.roomChanged`. Debounced at 200 ms, as an editor's save is often several events.
+   * Watches the project's settings files, so a hand edit, Open settings.toml or a git pull reaches its Settings pages as
+   * `settings.projectChanged`. Debounced at 200 ms, as an editor's save is often several events.
    */
-  watchRoom(roomId: string) {
-    if (this.stopped || this.roomWatchers.has(roomId)) return
-    const room = this.store.room(roomId)
-    if (!room || room.archived || !existsSync(room.path)) return
-    this.roomWatchers.set(roomId, watchTeamSettings(room.path, () => void this.roomFileChanged(roomId).catch(() => undefined), 200))
+  watchProject(projectId: string) {
+    if (this.stopped || this.projectWatchers.has(projectId)) return
+    const project = this.store.project(projectId)
+    if (!project || project.archived || !existsSync(project.path)) return
+    this.projectWatchers.set(projectId, watchTeamSettings(project.path, () => void this.projectFileChanged(projectId).catch(() => undefined), 200))
   }
 
   /**
-   * An archived or removed room, or a repo folder that's gone, stops its watcher. A gone folder is noticed at the next event
+   * An archived or removed project, or a repo folder that's gone, stops its watcher. A gone folder is noticed at the next event
    * the watcher hears, as macOS sends none when the whole folder is deleted. Quit closes it in any case.
    */
-  unwatchRoom(roomId: string) {
-    this.roomWatchers.get(roomId)?.()
-    this.roomWatchers.delete(roomId)
-    this.roomShown.delete(roomId)
+  unwatchProject(projectId: string) {
+    this.projectWatchers.get(projectId)?.()
+    this.projectWatchers.delete(projectId)
+    this.projectShown.delete(projectId)
   }
 
-  watching(roomId: string): boolean { return this.roomWatchers.has(roomId) }
+  watching(projectId: string): boolean { return this.projectWatchers.has(projectId) }
 
-  /** Quit, or a test done with this Kernel: every room's watcher stops. */
+  /** Quit, or a test done with this Kernel: every project's watcher stops. */
   stopWatching() {
-    for (const roomId of [...this.roomWatchers.keys()]) this.unwatchRoom(roomId)
+    for (const projectId of [...this.projectWatchers.keys()]) this.unwatchProject(projectId)
   }
 
-  private async roomFileChanged(roomId: string) {
+  private async projectFileChanged(projectId: string) {
     if (this.stopped) return this.stopWatching()
-    const room = this.store.room(roomId)
-    if (!room || room.archived || !existsSync(room.path)) return this.unwatchRoom(roomId)
+    const project = this.store.project(projectId)
+    if (!project || project.archived || !existsSync(project.path)) return this.unwatchProject(projectId)
     // A file that stopped parsing raises `settingsError` here (KERNEL-231). The pages keep the last good values, so nothing is sent.
-    const rs = await loadRepoSettings(room.path)
-    if (!(await parses(room.path)) || !this.roomWatchers.has(roomId)) return
+    const rs = await loadRepoSettings(project.path)
+    if (!(await parses(project.path)) || !this.projectWatchers.has(projectId)) return
     const json = JSON.stringify(rs)
-    if (this.roomShown.get(roomId) === json) return
-    this.roomShown.set(roomId, json)
-    this.roomRemotes.set(room.path, rs.workspace.remote)
-    bus.push({ type: 'settings.roomChanged', roomId, settings: rs })
+    if (this.projectShown.get(projectId) === json) return
+    this.projectShown.set(projectId, json)
+    this.projectRemotes.set(project.path, rs.workspace.remote)
+    bus.push({ type: 'settings.projectChanged', projectId, settings: rs })
   }
 
   handlers() {
     return {
-      'git.branches': async ({ roomId }) => {
-        const { path } = this.mustRoom(roomId)
+      'git.branches': async ({ projectId }) => {
+        const { path } = this.mustProject(projectId)
         const repo = await loadRepoSettings(path)
-        this.roomRemotes.set(path, repo.workspace.remote)
+        this.projectRemotes.set(path, repo.workspace.remote)
         return listBranches(path, configuredRemote(repo, this.settings))
       },
-      'git.branchList': async ({ roomId }) => {
-        const { path } = this.mustRoom(roomId)
+      'git.branchList': async ({ projectId }) => {
+        const { path } = this.mustProject(projectId)
         const repo = await loadRepoSettings(path)
-        this.roomRemotes.set(path, repo.workspace.remote)
+        this.projectRemotes.set(path, repo.workspace.remote)
         return listBranchTimes(path, configuredRemote(repo, this.settings))
       },
-      'skills.list': async ({ roomId }) => {
-        const off = (await loadRepoSettings(this.mustRoom(roomId).path)).disabled?.skills ?? []
-        return (await discoverSkills(this.mustRoom(roomId).path, this.home)).map((s) => ({ ...s, enabled: !off.includes(s.name) }))
+      'skills.list': async ({ projectId }) => {
+        const off = (await loadRepoSettings(this.mustProject(projectId).path)).disabled?.skills ?? []
+        return (await discoverSkills(this.mustProject(projectId).path, this.home)).map((s) => ({ ...s, enabled: !off.includes(s.name) }))
       },
       'settings.get': async () => this.settings,
       'settings.set': async ({ patch }) => this.setSettings(patch),
-      'settings.room': async ({ roomId }) => {
-        const { path } = this.mustRoom(roomId)
+      'settings.project': async ({ projectId }) => {
+        const { path } = this.mustProject(projectId)
         const rs = await loadRepoSettings(path)
-        // A read refreshes the room's remote as a save does, so a file edited outside Kernel takes effect (KERNEL-244).
-        this.roomRemotes.set(path, rs.workspace.remote)
-        return this.wrote(roomId, rs)
+        // A read refreshes the project's remote as a save does, so a file edited outside Kernel takes effect (KERNEL-244).
+        this.projectRemotes.set(path, rs.workspace.remote)
+        return this.wrote(projectId, rs)
       },
-      'settings.setRoom': async ({ roomId, patch, shared }) => this.setRoom(roomId, patch, shared),
+      'settings.setProject': async ({ projectId, patch, shared }) => this.setProject(projectId, patch, shared),
       // Lists, never copies, through the same confinement as the copy, so it shows nothing outside the repo (KERNEL-209).
-      'files.preview': async ({ roomId, patterns }) => {
-        const { path } = this.mustRoom(roomId)
+      'files.preview': async ({ projectId, patterns }) => {
+        const { path } = this.mustProject(projectId)
         const { files } = await loadRepoSettings(path)
         return resolveFilesToCopy(path, patterns ?? files.copy, [], files.exclude)
       },
-      'files.production': async ({ roomId }) => this.production(this.mustRoom(roomId)),
-      'files.keepCopying': async ({ roomId, hints }) => {
-        const room = this.mustRoom(roomId)
+      'files.production': async ({ projectId }) => this.production(this.mustProject(projectId)),
+      'files.keepCopying': async ({ projectId, hints }) => {
+        const project = this.mustProject(projectId)
         // Each file is kept whole: every variable in it that looks like production now, not only the one the banner names.
         // A variable added later warns again.
         const paths = new Set(hints.map((h) => h.path))
-        const { files } = await loadRepoSettings(room.path)
-        const now = (await productionInCopy(room.path, files.copy, files.exclude)).filter((h) => paths.has(h.path))
-        const next = this.store.saveRoom({ ...room, keepCopying: [...new Set([...(room.keepCopying ?? []), ...hints.map(keepKey), ...now.map(keepKey)])] })
-        bus.push({ type: 'room', room: next })
+        const { files } = await loadRepoSettings(project.path)
+        const now = (await productionInCopy(project.path, files.copy, files.exclude)).filter((h) => paths.has(h.path))
+        const next = this.store.saveProject({ ...project, keepCopying: [...new Set([...(project.keepCopying ?? []), ...hints.map(keepKey), ...now.map(keepKey)])] })
+        bus.push({ type: 'project', project: next })
         return next
       }
     } satisfies Partial<Handlers>
   }
 }
 
-/** Whether both settings files parse. A missing file counts, since the room reads it as empty. */
+/** Whether both settings files parse. A missing file counts, since the project reads it as empty. */
 async function parses(repo: string): Promise<boolean> {
   for (const name of ['settings.toml', 'settings.local.toml']) {
     const text = await readFile(join(repo, '.kernel', name), 'utf8').catch(() => undefined)

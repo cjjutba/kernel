@@ -21,8 +21,8 @@ export function mcpIssue(s: McpAccountServer): { tone: 'failed' | 'warn'; label:
   return { tone: 'warn', label: s.state === 'needs-sign-in' ? 'Needs sign-in' : 'Not set up' }
 }
 
-/** A server that is neither ready nor in need: switched off, or off in every room. */
-export const mcpIsOff = (s: McpAccountServer): boolean => s.state === 'off' || (!!s.roomOff && s.state !== 'ready' && s.state !== 'ignored')
+/** A server that is neither ready nor in need: switched off, or off in every project. */
+export const mcpIsOff = (s: McpAccountServer): boolean => s.state === 'off' || (!!s.projectOff && s.state !== 'ready' && s.state !== 'ignored')
 
 /** The servers of one group: the ones that need the user first, then the rest in the order they came. */
 export function groupServers(servers: McpAccountServer[], kind: McpServerKind, query = ''): McpAccountServer[] {

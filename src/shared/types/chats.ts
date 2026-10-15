@@ -77,7 +77,7 @@ export interface Chat {
   model: string
   effort: Effort
   plan: boolean
-  /** The chat's own permission mode, picked in the composer. Unset follows the room's, then the app's. Plan mode stays `plan` (KERNEL-432). */
+  /** The chat's own permission mode, picked in the composer. Unset follows the project's, then the app's. Plan mode stays `plan` (KERNEL-432). */
   mode?: PermissionMode
   /** Set on a fork: the chat and the transcript item it was forked after. */
   forkOf?: { chatId: string; itemId: string }
@@ -99,7 +99,7 @@ export interface Chat {
   suggestion?: string
   /**
    * The review this chat runs in a review workspace Kernel started (KERNEL-549), fixed when the review starts. `agent` is the
-   * room agent whose prompt it runs, absent when Kernel's own prompt for `kind` does. `optional`: the kind wasn't required
+   * project agent whose prompt it runs, absent when Kernel's own prompt for `kind` does. `optional`: the kind wasn't required
    * for the PR, so its approval doesn't count toward a merge. A review chat from before has none and reads as the code review.
    */
   lens?: { kind: ReviewKind; agent?: string; optional?: true }
@@ -196,7 +196,7 @@ export interface MovePreview { provider: Provider; from: string; to: string; cha
  */
 export interface Thread {
   id: string
-  roomId: string
+  projectId: string
   title: string
   createdAt: number
   closedAt?: number
@@ -265,7 +265,7 @@ export type SharedKind = 'html' | 'image' | 'pdf' | 'markdown'
 export interface SharedVersion { n: number; at: number; file: string; mime: string; bytes: number; sha256: string; chatId?: string; note?: string; thumb?: boolean; width?: number; height?: number; outside?: number }
 
 /** A file an agent shared, one per workspace and source path, with every version Kernel kept (KERNEL-302). `source` is relative to the workspace. */
-export interface SharedFile { id: string; roomId: string; workspaceId: string; agentId: string; source: string; title: string; kind: SharedKind; versions: SharedVersion[]; createdAt: number; updatedAt: number }
+export interface SharedFile { id: string; projectId: string; workspaceId: string; agentId: string; source: string; title: string; kind: SharedKind; versions: SharedVersion[]; createdAt: number; updatedAt: number }
 
 // comments on shared files (KERNEL-310)
 /**
@@ -319,15 +319,15 @@ export interface QueuedMessage {
 
 /**
  * What a chat's queue waits for: the running turn, the workspace's setup, a PR to merge before the brief goes out (KERNEL-259),
- * a paused room, every room held (`offline` covers a lost connection and a sign-out alike), the agent limit in Settings,
+ * a paused project, every project held (`offline` covers a lost connection and a sign-out alike), the agent limit in Settings,
  * Models, or a usage window close to its limit while Settings, Account pauses new work there (`limit`, KERNEL-220),
  * or a long chat that waits to move to another account (`move`, KERNEL-841).
  * Computed, never saved (KERNEL-271, KERNEL-361).
  */
 export type QueueReason = 'running' | 'setup' | 'merge' | 'paused' | 'offline' | 'capacity' | 'limit' | 'move'
 
-/** Where a chat's permission mode was picked: in the chat's composer, for its room, or in Settings, Permissions. */
-export type ModeScope = 'chat' | 'room' | 'app'
+/** Where a chat's permission mode was picked: in the chat's composer, for its project, or in Settings, Permissions. */
+export type ModeScope = 'chat' | 'project' | 'app'
 
 /**
  * Why a chat runs in another mode than the one picked (KERNEL-572). When more than one applies, the first that moved it counts.
@@ -343,7 +343,7 @@ export type ModeReason = 'plan' | 'agentFile' | 'noAuto' | 'noBypass' | 'worktre
 
 /**
  * The permission mode a chat runs in, as main works it out, so the composer doesn't work it out again (KERNEL-572). `picked`
- * is the chat's own mode, else its room's, else Settings, Permissions', and `pickedIn` says which. `why` is set exactly when
+ * is the chat's own mode, else its project's, else Settings, Permissions', and `pickedIn` says which. `why` is set exactly when
  * `mode` isn't `picked`. Right for a chat with no process too. Computed, never saved.
  */
 export interface ChatRunMode {
@@ -424,7 +424,7 @@ export type OpenItemKind = 'question' | 'blockers' | 'handoff.proposed' | 'menti
 export interface OpenItem {
   id: string
   kind: OpenItemKind
-  roomId: string
+  projectId: string
   /** The Lead chat it belongs to, and the tab it opened in. */
   threadId: string
   chatId: string
@@ -496,7 +496,7 @@ export interface BuiltinCommand {
 }
 
 /**
- * An MCP server a room's agents can reach (Settings > Skills and MCP). `enabled` is the room's switch. Since KERNEL-464:
+ * An MCP server a project's agents can reach (Settings > Skills and MCP). `enabled` is the project's switch. Since KERNEL-464:
  * - `source`: where the server is defined. `local` is the user's entry for this repo in `~/.claude.json`, which Claude Code
  *   reads over `project` (`.mcp.json`) and `user`. `claudeai`, `plugin` and `managed` are only known from a status report.
  * - `provider`: unset for Claude Code's servers. `codex` for the `[mcp_servers]` in Codex's `config.toml`.

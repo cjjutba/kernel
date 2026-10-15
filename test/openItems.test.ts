@@ -47,26 +47,26 @@ async function start(dataDir: string, home: string) {
   return { k, posts }
 }
 
-/** A room with Kai and Noor at work, both handed off from the same Lead tab. */
+/** A project with Kai and Noor at work, both handed off from the same Lead tab. */
 async function setup() {
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor') })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const { k, posts } = await start(dataDir, home)
-  const room = await k.addRoom(repo)
-  const lead = await k.leadChat(room.id)
-  const kai = await k.createWorkspace(room.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id })
-  const noor = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'noor', title: 'Invoice table', leadChatId: lead.id })
+  const project = await k.addProject(repo)
+  const lead = await k.leadChat(project.id)
+  const kai = await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id })
+  const noor = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'noor', title: 'Invoice table', leadChatId: lead.id })
   const teammate = (ws: Workspace, name: 'ask_lead' | 'propose_handoff', input: Record<string, unknown>) =>
     teammateTools(k.waits['teammateToolDeps'](ws.id)).find((x) => x.name === name)!.handler(input as never, {})
   const leadTool = async (name: string, input: Record<string, unknown>) => {
-    const agent = (await k.agents(room.id)).find((a) => a.lead)!
-    const r = await kernelTools(k.lead.leadToolDeps(room.id, agent, k.store.chat(lead.id)!)).find((t) => t.name === name)!.handler(input as never, {})
+    const agent = (await k.agents(project.id)).find((a) => a.lead)!
+    const r = await kernelTools(k.lead.leadToolDeps(project.id, agent, k.store.chat(lead.id)!)).find((t) => t.name === name)!.handler(input as never, {})
     return (r.content[0] as { text: string }).text
   }
   const kinds = (chatId = lead.id) => k.openItems.owed(chatId).map((i) => `${i.kind} ${i.name}`)
-  return { k, dataDir, home, room, lead, kai, noor, posts, teammate, leadTool, kinds }
+  return { k, dataDir, home, project, lead, kai, noor, posts, teammate, leadTool, kinds }
 }
 
 type Setup = Awaited<ReturnType<typeof setup>>
@@ -247,8 +247,8 @@ describe('open items go with their Lead chat (KERNEL-791)', () => {
   it('the migration deletes the items of Lead chats deleted before', () => {
     const db = new Database(':memory:')
     migrate(db, ':memory:', Date.now(), migrations.filter((m) => m.version <= 6))
-    db.prepare('insert into threads (id, room_id, data, created_at) values (?, ?, ?, ?)').run('kept', 'r', '{}', 1)
-    const item = db.prepare('insert into open_items (id, thread_id, room_id, key, data, created_at) values (?, ?, ?, ?, ?, ?)')
+    db.prepare('insert into threads (id, project_id, data, created_at) values (?, ?, ?, ?)').run('kept', 'r', '{}', 1)
+    const item = db.prepare('insert into open_items (id, thread_id, project_id, key, data, created_at) values (?, ?, ?, ?, ?, ?)')
     item.run('a', 'kept', 'r', 'k', '{}', 1)
     item.run('b', 'gone', 'r', 'k', '{}', 1)
     migrate(db, ':memory:')

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { ChangedFile, NewChatPicks, Room, Workspace as WorkspaceModel, WorkspaceSource } from '@shared/types'
+import type { ChangedFile, NewChatPicks, Project, Workspace as WorkspaceModel, WorkspaceSource } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, panelShownIn, useStore } from '../../store'
 import { Icon } from '../../ui'
@@ -7,9 +7,9 @@ import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
 import { PanelToggleSlot, RightPanelToggle, SidebarToggleSlot } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
-import { isLeadWorkspace, leadOf, openRoom } from '../../lead'
+import { isLeadWorkspace, leadOf, openProject } from '../../lead'
 import { currentThread, tabOf, threadIdOf } from '../../nav'
-import { RoomIcon } from '../../components/RoomIcon'
+import { ProjectIcon } from '../../components/ProjectIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './leadNoChat'
 import { NewChatHeader, NewChatTab } from './NewChatBar'
@@ -60,12 +60,12 @@ interface OpenedImage { id: string; part: ImagePart }
 interface OpenedText { id: string; part: TextPart }
 
 /**
- * The branch the shared Lead worktree from before KERNEL-405 follows, for the header's "latest main" (KERNEL-355): the room's default
+ * The branch the shared Lead worktree from before KERNEL-405 follows, for the header's "latest main" (KERNEL-355): the project's default
  * branch when the base is that branch on its remote or locally, so only a remote name comes off ("release/v2" stays whole), else the
  * base as it is.
  */
-const leadBase = (ws: WorkspaceModel, room?: Room) => {
-  const d = room?.defaultBranch
+const leadBase = (ws: WorkspaceModel, project?: Project) => {
+  const d = project?.defaultBranch
   return d && (ws.baseRef === d || ws.baseRef.endsWith(`/${d}`)) ? d : ws.baseRef
 }
 
@@ -86,11 +86,11 @@ export function headerTitle(ws: Pick<WorkspaceModel, 'title' | 'name' | 'source'
 /** Header, tabs, transcript, composer, and the right and bottom panels (Workspace.png). */
 export function Workspace({ workspaceId }: { workspaceId: string }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
-  const room = useStore((s) => s.rooms.find((r) => r.id === ws?.roomId))
-  const agent = useStore((s) => (ws ? s.agents[ws.roomId]?.find((a) => a.id === ws.agentId) : undefined))
+  const project = useStore((s) => s.projects.find((r) => r.id === ws?.projectId))
+  const agent = useStore((s) => (ws ? s.agents[ws.projectId]?.find((a) => a.id === ws.agentId) : undefined))
   const everyChat = useStore((s) => s.chats[workspaceId] ?? EMPTY_CHATS)
   // The Lead's workspace shows one chat at a time: that chat's tabs, then the files. Its other chats' tabs are rows in the sidebar (KERNEL-338).
-  const isLead = useStore((s) => !!ws && isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id))
+  const isLead = useStore((s) => !!ws && isLeadWorkspace(ws, ws.projectId, leadOf(s.agents, ws.projectId)?.id))
   const threadId = useStore((s) => (isLead ? currentThread(s, workspaceId) : undefined))
   const chats = useMemo(
     // With no chat open (threadId unset) a closed chat's tab stays out of the row too, so only a terminal is left (KERNEL-366).
@@ -129,7 +129,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const sharedId = tab?.startsWith('shared:') ? tab.slice(7) : undefined
   const image = images.find((i) => i.id === tab)?.part
   const text = texts.find((t) => t.id === tab)?.part
-  // A room whose last chat was closed has no chat to show: New chat is drawn instead, and the first message starts the chat (KERNEL-366).
+  // A project whose last chat was closed has no chat to show: New chat is drawn instead, and the first message starts the chat (KERNEL-366).
   // A terminal tab is shown while it is the one open, until + or ⌘T ask for the box (`newChat`).
   const noChat = leadHasNoChat(isLead, everyChat)
   const showNewChat = showsNewChat(noChat, newChat, chats, tab)
@@ -189,7 +189,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const title = headerTitle(ws)
   // the Lead's shared worktree and a current-branch workspace say what they follow instead of a branch. That label carries meaning, so it
   // stays, and it has no copy: the title is plain text there.
-  const label = ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, room)}` : undefined
+  const label = ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, project)}` : undefined
   // A chat waiting for setup shows what waits and where setup stands (KERNEL-430). It draws a failed setup as its own card, so the
   // banner doesn't say it a second time. A teammate's brief still on its way keeps the box shut, so nothing goes out before it. A chat
   // with the Lead that isn't held shows its transcript and stays open while setup runs (KERNEL-490).
@@ -240,7 +240,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
     setTexts((list) => list.filter((t) => t.id !== id))
     afterClosing(id)
   }
-  // New chat is the only tab while the room has no chat and nothing else is open, so the row is its one tab (KERNEL-788).
+  // New chat is the only tab while the project has no chat and nothing else is open, so the row is its one tab (KERNEL-788).
   const alone = newChatShown && !order.length
   const changed = filePath ? changes.some((c) => c.path === filePath) : false
 
@@ -251,17 +251,17 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // under it (KERNEL-769).
   return (
     <div className="panel ws-panel">
-      {newChatShown ? <NewChatHeader room={room} /> : <header className="header">
+      {newChatShown ? <NewChatHeader project={project} /> : <header className="header">
         <SidebarToggleSlot />
-        <RoomIcon room={room} className="crumb-avatar" />
-        <button type="button" className="crumb" onClick={() => room && void openRoom(room.id)}>{room?.name}</button>
+        <ProjectIcon project={project} className="crumb-avatar" />
+        <button type="button" className="crumb" onClick={() => project && void openProject(project.id)}>{project?.name}</button>
         <span className="muted"><Icon name="right" size={12} /></span>
         {label ? <h1 className="ellipsis">{title}</h1> : <WorkspaceTitle branch={ws.branch} title={title} />}
         {label && <span className="mono muted ellipsis ws-label">{label}</span>}
-        <IssueKey ws={ws} room={room} />
+        <IssueKey ws={ws} project={project} />
         <span className="grow" />
         <OpenIn ws={ws} />
-        {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary roomId={ws.roomId} capsule quiet={held} />)}
+        {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary projectId={ws.projectId} capsule quiet={held} />)}
         {!panels && <PanelToggleSlot />}
       </header>}
       <OpenImage.Provider value={openImage}>
@@ -283,7 +283,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                 : setupWait
                   ? <SetupWait ws={ws} chat={chat} />
                   : showNewChat
-                    ? <NewLeadChat roomId={ws.roomId} focusIn={workspaceId} />
+                    ? <NewLeadChat projectId={ws.projectId} focusIn={workspaceId} />
                   : chat?.kind === 'terminal'
                     ? <><SkipNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>
                   : chat
@@ -301,7 +301,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
           <div className="ws-aside-head">
-            {ownPr ? <PrHeader ws={ws} spread toggle={<PanelToggleSlot />} /> : <LeadPrSummary roomId={ws.roomId} spread toggle={<PanelToggleSlot />} />}
+            {ownPr ? <PrHeader ws={ws} spread toggle={<PanelToggleSlot />} /> : <LeadPrSummary projectId={ws.projectId} spread toggle={<PanelToggleSlot />} />}
           </div>
           {ownPr && <LocalMergeInfo ws={ws} />}
           {/* Below the PR band the panel is two panes, 2/3 over 1/3 until the bottom is dragged. The one fraction is every chat's (KERNEL-513). */}
@@ -320,14 +320,14 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
  * The New chat page (KERNEL-788): the `leadNew` route, the same two header rows as a chat and the box below. No workspace exists before
  * the first message, which makes the chat's own worktree (KERNEL-405), so there is no right panel. `source` and `picks` are the route's.
  */
-export function LeadNewScreen({ roomId, source, picks }: { roomId: string; source?: WorkspaceSource; picks?: NewChatPicks }) {
-  const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
+export function LeadNewScreen({ projectId, source, picks }: { projectId: string; source?: WorkspaceSource; picks?: NewChatPicks }) {
+  const project = useStore((s) => s.projects.find((r) => r.id === projectId))
   return (
     <div className="panel ws-panel">
-      <NewChatHeader room={room} />
+      <NewChatHeader project={project} />
       <section aria-label="Agent" className="ws-main">
         <NewChatTab />
-        <div className="col grow" style={{ minHeight: 0 }}><NewLeadChat roomId={roomId} source={source} picks={picks} /></div>
+        <div className="col grow" style={{ minHeight: 0 }}><NewLeadChat projectId={projectId} source={source} picks={picks} /></div>
       </section>
     </div>
   )
@@ -346,14 +346,14 @@ function WorkspaceTitle({ branch, title }: { branch: string; title: string }) {
 
 /**
  * The issue a workspace started on, after the branch (WorkspaceIssue.png). A Linear key opens the Issues screen on it, in the workspace's
- * room, and a GitHub issue opens its page. A key with no page to open is plain text.
+ * project, and a GitHub issue opens its page. A key with no page to open is plain text.
  */
-function IssueKey({ ws, room }: { ws: WorkspaceModel; room?: Room }) {
+function IssueKey({ ws, project }: { ws: WorkspaceModel; project?: Project }) {
   const source = ws.source
   if (source?.kind !== 'issue') return null
   const tracker = issueTracker(source)
-  if (tracker === 'linear') return <button type="button" className="ws-issue" aria-label={`Open issue ${source.id}`} title={source.title} onClick={() => actions.ui.go({ name: 'issues', issueId: source.id, roomId: ws.roomId })}>{source.id}</button>
-  const url = tracker === 'github' ? githubIssueUrl(source, room) : source.url
+  if (tracker === 'linear') return <button type="button" className="ws-issue" aria-label={`Open issue ${source.id}`} title={source.title} onClick={() => actions.ui.go({ name: 'issues', issueId: source.id, projectId: ws.projectId })}>{source.id}</button>
+  const url = tracker === 'github' ? githubIssueUrl(source, project) : source.url
   if (!url) return <span className="ws-issue" title={source.title}>{source.id}</span>
   return <button type="button" className="ws-issue" aria-label={`Open issue ${source.id}`} title={source.title} onClick={() => void call('system.openExternal', { url })}>{source.id}</button>
 }

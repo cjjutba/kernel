@@ -28,7 +28,7 @@ const HOME = (home: string): Record<string, string> => ({
   [join(KIT, 'agents', 'builder.md')]: '---\nname: builder\ndescription: Builds features end to end and opens a PR.\n---\nYou build features.'
 })
 
-/** A Kernel with no rooms, a home folder with one personal agent and the kit plugin, and every push it sends. */
+/** A Kernel with no projects, a home folder with one personal agent and the kit plugin, and every push it sends. */
 async function boot() {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -46,10 +46,10 @@ async function boot() {
   return { k, h: k.handlers(), home, pushed }
 }
 
-describe('personal and plugin agents without a room (KERNEL-640)', () => {
-  it('lists the personal agents then the plugin agents with no rooms, flagged like a room flags them', async () => {
+describe('personal and plugin agents without a project (KERNEL-640)', () => {
+  it('lists the personal agents then the plugin agents with no projects, flagged like a project flags them', async () => {
     const { k, h, home } = await boot()
-    expect(k.store.rooms()).toEqual([])
+    expect(k.store.projects()).toEqual([])
     const list = await h['agents.listGlobal']({})
     expect(list.map((a) => [a.id, a.origin, a.warnings?.map((w) => w.kind)])).toEqual([
       ['broken', 'personal', ['unreadable-file']],
@@ -61,12 +61,12 @@ describe('personal and plugin agents without a room (KERNEL-640)', () => {
     expect(list.find((a) => a.id === 'kit:builder')).toMatchObject({ name: 'Builder', prompt: 'You build features.' })
   })
 
-  it("rewrites a personal agent's file, and every open room and the page pick it up", async () => {
+  it("rewrites a personal agent's file, and every open project and the page pick it up", async () => {
     const { k, h, home, pushed } = await boot()
-    const room = await k.rooms.addRoom(await tempRepo({ 'README.md': '# shop\n' }))
-    expect((await k.team.agents(room.id)).find((a) => a.id === 'scout')?.model).toBe('sonnet')
-    const rooms: AgentDef[][] = []
-    const onPush = (e: PushEvent) => { if (e.type === 'agents' && e.roomId === room.id) rooms.push(e.agents) }
+    const project = await k.projects.addProject(await tempRepo({ 'README.md': '# shop\n' }))
+    expect((await k.team.agents(project.id)).find((a) => a.id === 'scout')?.model).toBe('sonnet')
+    const projects: AgentDef[][] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'agents' && e.projectId === project.id) projects.push(e.agents) }
     bus.on('push', onPush)
     onTestFinished(() => { bus.off('push', onPush) })
 
@@ -76,9 +76,9 @@ describe('personal and plugin agents without a room (KERNEL-640)', () => {
     expect(text).toContain('model: opus')
     // Frontmatter Kernel doesn't know stays as written.
     expect(text).toContain('foo: kept')
-    // The room read its team again before the save returned, and told the renderer.
-    expect(k.team.agentsSync(room.id).find((a) => a.id === 'scout')).toMatchObject({ model: 'opus', prompt: 'You are Scout, and you dig.' })
-    expect(rooms.at(-1)?.find((a) => a.id === 'scout')?.model).toBe('opus')
+    // The project read its team again before the save returned, and told the renderer.
+    expect(k.team.agentsSync(project.id).find((a) => a.id === 'scout')).toMatchObject({ model: 'opus', prompt: 'You are Scout, and you dig.' })
+    expect(projects.at(-1)?.find((a) => a.id === 'scout')?.model).toBe('opus')
     await vi.waitFor(() => expect(pushed.at(-1)?.find((a) => a.id === 'scout')?.model).toBe('opus'), { timeout: 5000 })
   })
 
@@ -91,7 +91,7 @@ describe('personal and plugin agents without a room (KERNEL-640)', () => {
     expect(await readFile(file, 'utf8')).toBe(before)
   })
 
-  it('pushes the list when ~/.claude/agents changes, with no rooms', async () => {
+  it('pushes the list when ~/.claude/agents changes, with no projects', async () => {
     const { h, home, pushed } = await boot()
     await h['agents.listGlobal']({})
     await writeFile(join(home, '.claude', 'agents', 'mira.md'), '---\nname: mira\ndescription: Writer. Drafts release notes.\n---\nYou are Mira.')
@@ -99,9 +99,9 @@ describe('personal and plugin agents without a room (KERNEL-640)', () => {
     expect(pushed.at(-1)?.find((a) => a.id === 'mira')).toMatchObject({ origin: 'personal', role: 'Writer' })
   })
 
-  it('drafts and creates a personal agent with no rooms, and the page hears of it', async () => {
+  it('drafts and creates a personal agent with no projects, and the page hears of it', async () => {
     const { k, h, home, pushed } = await boot()
-    expect(k.store.rooms()).toEqual([])
+    expect(k.store.projects()).toEqual([])
     await h['agents.listGlobal']({})
     const draft = await h['agents.draft']({ description: 'Writer. Drafts release notes.', name: 'Mira' })
     expect(draft).toMatchObject({ id: 'mira', name: 'Mira' })
@@ -112,22 +112,22 @@ describe('personal and plugin agents without a room (KERNEL-640)', () => {
     await vi.waitFor(() => expect(pushed.at(-1)?.map((a) => a.id)).toContain('mira'), { timeout: 5000 })
   })
 
-  it('refuses a team agent with no room, and writes nothing', async () => {
+  it('refuses a team agent with no project, and writes nothing', async () => {
     const { h, home } = await boot()
     const draft = await h['agents.draft']({ description: 'QA. Runs the tests.', name: 'Ivy' })
-    await expect(h['agents.create']({ draft, scope: 'team' })).rejects.toThrow("A team agent is saved in a room's repo. Open a room to add one.")
+    await expect(h['agents.create']({ draft, scope: 'team' })).rejects.toThrow("A team agent is saved in a project's repo. Open a project to add one.")
     await expect(readFile(join(home, '.claude', 'agents', 'ivy.md'), 'utf8')).rejects.toThrow()
   })
 
-  it('creates with no room open, and a room Kernel has read picks the agent up', async () => {
+  it('creates with no project open, and a project Kernel has read picks the agent up', async () => {
     const { k, h } = await boot()
-    const room = await k.rooms.addRoom(await tempRepo({ 'README.md': '# shop\n', '.claude/agents/ivy.md': '---\nname: ivy\ndescription: QA.\n---\nYou are Ivy.' }))
-    await k.team.agents(room.id)
-    // A room's file would win over the user's own, so its names are taken.
+    const project = await k.projects.addProject(await tempRepo({ 'README.md': '# shop\n', '.claude/agents/ivy.md': '---\nname: ivy\ndescription: QA.\n---\nYou are Ivy.' }))
+    await k.team.agents(project.id)
+    // A project's file would win over the user's own, so its names are taken.
     const ivy = await h['agents.draft']({ description: 'QA. Runs the tests.', name: 'Ivy' })
     await expect(h['agents.create']({ draft: ivy })).rejects.toThrow('Ivy is already on the team.')
     const nia = await h['agents.draft']({ description: 'Docs writer. Keeps the README current.', name: 'Nia' })
     await h['agents.create']({ draft: nia })
-    expect(k.team.agentsSync(room.id).find((a) => a.id === 'nia')).toMatchObject({ origin: 'personal' })
+    expect(k.team.agentsSync(project.id).find((a) => a.id === 'nia')).toMatchObject({ origin: 'personal' })
   })
 })

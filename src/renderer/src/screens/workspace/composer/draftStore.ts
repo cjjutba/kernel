@@ -1,10 +1,10 @@
 import { EFFORT_LABELS, PERMISSION_MODES, type ChatPart, type Effort, type LeadMode, type PermissionMode, type WorkspaceMode } from '@shared/types'
 
 /**
- * What a New chat box picked, a field only once it is picked. A field left out follows the Lead, the room or Settings, so a box nobody
+ * What a New chat box picked, a field only once it is picked. A field left out follows the Lead, the project or Settings, so a box nobody
  * touched follows them as they change (KERNEL-544). Picks live with the box's draft, in memory and on disk, so leaving the page keeps them.
  * Model, effort, plan, permission mode and the branch are the next chat's and go with a send. Hand off or Build here and Worktree or
- * Local are the room's way of working and stay after one (`ROOM_PICKS`).
+ * Local are the project's way of working and stay after one (`PROJECT_PICKS`).
  */
 export interface DraftPicks {
   model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode
@@ -16,8 +16,8 @@ export interface DraftPicks {
   baseRef?: string
 }
 
-/** The picks a send keeps: how the user works in the room, not what the next chat starts from. */
-const ROOM_PICKS = ['leadMode', 'place'] as const
+/** The picks a send keeps: how the user works in the project, not what the next chat starts from. */
+const PROJECT_PICKS = ['leadMode', 'place'] as const
 
 /**
  * Unsent messages by chat id: the parts in the box, text and chips in order, and the workspace the chat belongs to. Module level, so
@@ -30,8 +30,8 @@ const saved = new Map<string, Draft>()
 
 /** A New chat box's draft belongs to no chat or workspace, so it is never pruned, and it goes to disk like a chat's. */
 const NEW_CHAT = 'new-chat'
-/** The draft of a room's New chat page (KERNEL-788). Kept per room, so one room's text never shows in another. The retired modal's bare `new-chat` draft is no longer read, so the next write drops it from disk. */
-export const newChatDraftOf = (roomId: string) => `${NEW_CHAT}:${roomId}`
+/** The draft of a project's New chat page (KERNEL-788). Kept per project, so one project's text never shows in another. The retired modal's bare `new-chat` draft is no longer read, so the next write drops it from disk. */
+export const newChatDraftOf = (projectId: string) => `${NEW_CHAT}:${projectId}`
 const isNewChatDraft = (key: string) => key.startsWith(`${NEW_CHAT}:`)
 /** Whether a draft can be written to disk: it names its workspace, or it is a New chat box's. */
 const lasting = (key: string, workspaceId: string) => !!workspaceId || isNewChatDraft(key)
@@ -154,8 +154,8 @@ export function savePicks(key: string, patch: DraftPicks) {
 }
 
 /**
- * Moves what is typed in one New chat box to another's key, for picking a different room under the box (KERNEL-786). The text and chips
- * replace the other box's, and the picks stay with the room they were made in. An empty box moves nothing.
+ * Moves what is typed in one New chat box to another's key, for picking a different project under the box (KERNEL-786). The text and chips
+ * replace the other box's, and the picks stay with the project they were made in. An empty box moves nothing.
  */
 export function moveDraft(from: string, to: string) {
   load()
@@ -168,21 +168,21 @@ export function moveDraft(from: string, to: string) {
   schedule()
 }
 
-/** A send: the draft goes with its text and the next chat's picks, so the box starts from the Lead again. The room's picks stay. */
+/** A send: the draft goes with its text and the next chat's picks, so the box starts from the Lead again. The project's picks stay. */
 export function clearDraft(key: string) {
   load()
   const had = saved.get(key)?.picks
-  const kept = Object.fromEntries(ROOM_PICKS.flatMap((k) => (had?.[k] ? [[k, had[k]]] : []))) as DraftPicks
+  const kept = Object.fromEntries(PROJECT_PICKS.flatMap((k) => (had?.[k] ? [[k, had[k]]] : []))) as DraftPicks
   if (Object.keys(kept).length) saved.set(key, { workspaceId: saved.get(key)?.workspaceId ?? '', parts: [], picks: kept })
   else saved.delete(key)
   schedule()
   if (had) for (const fn of [...pickListeners]) fn()
 }
 
-/** Forgets the New chat drafts of rooms that are gone or archived, text and picks, so a room that comes back starts from its defaults. */
-export function dropRoomDrafts(liveRoomIds: Iterable<string>) {
+/** Forgets the New chat drafts of projects that are gone or archived, text and picks, so a project that comes back starts from its defaults. */
+export function dropProjectDrafts(liveProjectIds: Iterable<string>) {
   load()
-  const live = new Set(liveRoomIds)
+  const live = new Set(liveProjectIds)
   let changed = false
   for (const key of [...saved.keys()]) {
     if (isNewChatDraft(key) && !live.has(key.slice(NEW_CHAT.length + 1))) { saved.delete(key); changed = true }

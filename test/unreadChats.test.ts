@@ -29,8 +29,8 @@ async function setup() {
   k.sessions.send = async () => ({ queued: false })
   k.chats.titleFor = async () => undefined
   k.github = { info: async () => null, merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
-  const room = await k.addRoom(repo)
-  const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+  const project = await k.addProject(repo)
+  const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
   const chatId = k.store.chats(ws.id)[0].id
   const pushed: Chat[] = []
   const onPush = (e: PushEvent) => { if (e.type === 'chat' && e.chat.id === chatId) pushed.push(e.chat) }

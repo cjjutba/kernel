@@ -7,7 +7,7 @@ export const ZOOM_MIN = 0.25
 export const ZOOM_MAX = 4
 /** The stops the buttons and ⌘+ and ⌘- move between. Fit is a stop of its own, which is `fitScale` and varies with the image. */
 export const ZOOM_STOPS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]
-/** The room round the image in its frame, as `.shared-zoom` pads it. */
+/** The project round the image in its frame, as `.shared-zoom` pads it. */
 export const ZOOM_PAD = 16
 /** A scale this close to Fit, as a share of it, is Fit. A stop or a wheel turn that lands beside it settles on it. */
 const SNAP = 0.01

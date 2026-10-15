@@ -26,42 +26,42 @@ describe('team handlers (KERNEL-19)', () => {
     const onPush = (e: PushEvent) => pushed.push(e)
     bus.on('push', onPush)
     try {
-      const room = await k.addRoom(repo)
-      await k.agents(room.id)
+      const project = await k.addProject(repo)
+      await k.agents(project.id)
 
       // Save, just for the user by default (KERNEL-466), pushes the reloaded team and leaves the repo's file as it is.
       const kaiFile = await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')
-      const saved = await h['agents.save']({ roomId: room.id, agentId: 'kai', patch: { effort: 'high', tools: ['Read', 'Edit'] } })
+      const saved = await h['agents.save']({ projectId: project.id, agentId: 'kai', patch: { effort: 'high', tools: ['Read', 'Edit'] } })
       expect(saved).toMatchObject({ id: 'kai', effort: 'high', tools: ['Read', 'Edit'], model: 'sonnet' })
       expect(pushed.find((e) => e.type === 'agents')).toBeTruthy()
       expect(await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')).toBe(kaiFile)
 
-      // Hire from a draft: the file lands in ~/.claude/agents and the agent takes a desk at the end of room.desks.
-      await k.updateRoom(room.id, { desks: ['kernel-lead', 'kai'] })
-      const draft = await h['agents.draft']({ roomId: room.id, description: 'A designer who checks screens against DESIGN.md', name: 'Wren' })
-      const wren = await h['agents.create']({ roomId: room.id, draft })
+      // Hire from a draft: the file lands in ~/.claude/agents and the agent takes a desk at the end of project.desks.
+      await k.updateProject(project.id, { desks: ['kernel-lead', 'kai'] })
+      const draft = await h['agents.draft']({ projectId: project.id, description: 'A designer who checks screens against DESIGN.md', name: 'Wren' })
+      const wren = await h['agents.create']({ projectId: project.id, draft })
       expect(wren).toMatchObject({ id: 'wren', origin: 'personal', file: join(home, '.claude', 'agents', 'wren.md') })
       expect(await readdir(join(home, '.claude', 'agents'))).toEqual(['wren.md'])
       expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['kai.md', 'kernel.md'])
-      expect(k.store.room(room.id)?.desks).toEqual(['kernel-lead', 'kai', 'wren'])
+      expect(k.store.project(project.id)?.desks).toEqual(['kernel-lead', 'kai', 'wren'])
 
       // The profile's model and effort reach the chat a new workspace starts with.
-      await h['agents.save']({ roomId: room.id, agentId: 'kai', patch: { model: 'fable', effort: 'xhigh' } })
-      const fable = await k.createWorkspace(room.id, { prompt: 'One', agentId: 'kai', title: 'Model one' })
+      await h['agents.save']({ projectId: project.id, agentId: 'kai', patch: { model: 'fable', effort: 'xhigh' } })
+      const fable = await k.createWorkspace(project.id, { prompt: 'One', agentId: 'kai', title: 'Model one' })
       expect(k.store.chats(fable.id)[0]).toMatchObject({ model: 'claude-fable-5-1', effort: 'xhigh' })
-      await h['agents.save']({ roomId: room.id, agentId: 'kai', patch: { model: 'sonnet' } })
-      const sonnet = await k.createWorkspace(room.id, { prompt: 'Two', agentId: 'kai', title: 'Model two' })
+      await h['agents.save']({ projectId: project.id, agentId: 'kai', patch: { model: 'sonnet' } })
+      const sonnet = await k.createWorkspace(project.id, { prompt: 'Two', agentId: 'kai', title: 'Model two' })
       expect(k.store.chats(sonnet.id)[0].model).toBe('claude-sonnet-5-5')
 
       // Retire hands the open workspace to the Lead and frees the desk, and the file stays. The Lead cannot be retired.
-      const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Table' })
-      await expect(h['agents.retire']({ roomId: room.id, agentId: 'kernel-lead' })).rejects.toThrow(/leads this room/)
-      await h['agents.retire']({ roomId: room.id, agentId: 'kai' })
+      const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Table' })
+      await expect(h['agents.retire']({ projectId: project.id, agentId: 'kernel-lead' })).rejects.toThrow(/leads this project/)
+      await h['agents.retire']({ projectId: project.id, agentId: 'kai' })
       expect(k.store.workspace(ws.id)?.agentId).toBe('kernel-lead')
-      expect(k.store.room(room.id)?.desks).toEqual(['kernel-lead', 'wren'])
-      expect((await h['agents.list']({ roomId: room.id })).map((a) => a.id)).toEqual(['kernel-lead', 'wren'])
-      expect((await h['agents.list']({ roomId: room.id, retired: true })).map((a) => a.id)).toEqual(['kai'])
-      expect((await h['agents.restore']({ roomId: room.id, agentId: 'kai' })).id).toBe('kai')
+      expect(k.store.project(project.id)?.desks).toEqual(['kernel-lead', 'wren'])
+      expect((await h['agents.list']({ projectId: project.id })).map((a) => a.id)).toEqual(['kernel-lead', 'wren'])
+      expect((await h['agents.list']({ projectId: project.id, retired: true })).map((a) => a.id)).toEqual(['kai'])
+      expect((await h['agents.restore']({ projectId: project.id, agentId: 'kai' })).id).toBe('kai')
       // None of it touched the checkout.
       expect(await git(repo, 'status', '--porcelain')).toBe('')
 

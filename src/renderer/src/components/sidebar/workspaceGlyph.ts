@@ -33,7 +33,7 @@ const waitingGlyph = (waiting: Approval[]): WorkspaceGlyph =>
 /** A worktree deleted outside Kernel (KERNEL-291). It waits on you to archive it. */
 const FOLDER_GONE: WorkspaceGlyph = { icon: 'warning', tone: 'del', label: 'Folder missing' }
 
-/** A workspace held in `trust` waits on you as much as an approval does, until you trust the room's scripts (KERNEL-209, KERNEL-342). */
+/** A workspace held in `trust` waits on you as much as an approval does, until you trust the project's scripts (KERNEL-209, KERNEL-342). */
 const TRUST_GLYPH: WorkspaceGlyph = { icon: 'question', tone: 'needs', label: 'Trust scripts' }
 
 const PR_OPEN: WorkspaceGlyph = { icon: 'pr', tone: 'add', label: 'PR open' }

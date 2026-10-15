@@ -22,11 +22,11 @@ const MODEL_CHOICES = [{ value: 'sonnet', label: 'Sonnet 5.5' }, { value: 'opus'
 /**
  * New agent in three steps (NewAgent.png, NewAgentDraft.png, NewAgentDone.png): describe it, review and edit the file Kernel drafted,
  * and see them join. The step is part of the modal route, the form lives here, so Back keeps what was typed.
- * With no `roomId` (Settings, Agents before any room exists) the agent is personal: it saves to ~/.claude/agents and there is no room to refine it in.
+ * With no `projectId` (Settings, Agents before any project exists) the agent is personal: it saves to ~/.claude/agents and there is no project to refine it in.
  */
-export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Step; prefill?: NewAgentPrefill }) {
-  const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
-  const agents = useStore((s) => (roomId ? s.agents[roomId] : undefined))
+export function NewAgent({ projectId, step, prefill }: { projectId?: string; step: Step; prefill?: NewAgentPrefill }) {
+  const project = useStore((s) => s.projects.find((r) => r.id === projectId))
+  const agents = useStore((s) => (projectId ? s.agents[projectId] : undefined))
   const [name, setName] = useState(prefill?.name ?? '')
   const [description, setDescription] = useState(prefill?.description ?? '')
   const [model, setModel] = useState(prefill?.model ?? 'sonnet')
@@ -37,15 +37,15 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
   const gone = useRef(false)
   useEffect(() => { gone.current = false; return () => { gone.current = true } }, [])
   const close = () => { gone.current = true; actions.ui.closeModal() }
-  // Done with no room goes back to Settings, Agents, where the new agent shows under Yours.
-  const finish = () => { actions.ui.closeModal(); if (!roomId) actions.ui.go({ name: 'settings', page: 'agents' }) }
+  // Done with no project goes back to Settings, Agents, where the new agent shows under Yours.
+  const finish = () => { actions.ui.closeModal(); if (!projectId) actions.ui.go({ name: 'settings', page: 'agents' }) }
   const lead = agents?.find((a) => a.lead)
-  const to = (next: Step, p: NewAgentPrefill = { name, description, model, draft }) => actions.ui.openModal({ name: 'newAgent', roomId, step: next, prefill: p })
+  const to = (next: Step, p: NewAgentPrefill = { name, description, model, draft }) => actions.ui.openModal({ name: 'newAgent', projectId, step: next, prefill: p })
 
   const makeDraft = () => run('draft', async () => {
     setError(null)
     try {
-      const d = await call('agents.draft', { ...(roomId ? { roomId } : {}), description: description.trim(), name: name.trim() || undefined, model })
+      const d = await call('agents.draft', { ...(projectId ? { projectId } : {}), description: description.trim(), name: name.trim() || undefined, model })
       if (gone.current) return
       setDraft(d); setText(d.text)
       to('draft', { name, description, model, draft: d })
@@ -55,8 +55,8 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
   const create = () => draft && run('create', async () => {
     setError(null)
     try {
-      const def = await call('agents.create', roomId ? { roomId, draft: { ...draft, text } } : { draft: { ...draft, text }, scope: 'me' })
-      if (roomId) actions.agents.set(roomId, [...(getState().agents[roomId] ?? []).filter((a) => a.id !== def.id), def])
+      const def = await call('agents.create', projectId ? { projectId, draft: { ...draft, text } } : { draft: { ...draft, text }, scope: 'me' })
+      if (projectId) actions.agents.set(projectId, [...(getState().agents[projectId] ?? []).filter((a) => a.id !== def.id), def])
       const done = { ...draft, id: def.id, name: def.name, file: def.file.includes('.claude/') ? `.claude/${def.file.split('.claude/')[1]}` : draft.file, text }
       if (gone.current) return
       setDraft(done)
@@ -65,14 +65,14 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
   })
 
   // Hand the draft to Kernel to improve in a chat. It proposes the final file with create_agent, and it comes back as an approval card.
-  const refine = () => draft && roomId && run('refine', async () => {
+  const refine = () => draft && projectId && run('refine', async () => {
     setError(null)
     try {
       // A new Lead chat, which opens before its worktree exists (KERNEL-542). The brief is a plain one, not a plan.
-      const chat = await call('lead.start', { roomId, prompt: `I am adding a new agent. Here is the draft of ${draft.file}. Improve it with me, then propose the final file with create_agent.\n\n${text}`, plan: false })
+      const chat = await call('lead.start', { projectId, prompt: `I am adding a new agent. Here is the draft of ${draft.file}. Improve it with me, then propose the final file with create_agent.\n\n${text}`, plan: false })
       markJustSent(chat.id)
       actions.chats.upsert(chat)
-      await openLeadChat(roomId, chat.id)
+      await openLeadChat(projectId, chat.id)
     } catch (e) { setError(cleanError(e)) }
   })
 
@@ -116,7 +116,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
             <div className="na-file-head">{draft.file}<span className="na-tag">new file</span></div>
             <textarea className="na-code" aria-label={`Contents of ${draft.file}`} value={text} spellCheck={false} onChange={(e) => setText(e.target.value)} />
           </div>
-          {roomId && <button type="button" className="na-link" disabled={busy !== null} aria-busy={busy === 'refine' || undefined} onClick={() => void refine()}>{busy === 'refine' ? <><Spinner label={null} pattern="arrow-right" />Sending to {author}</> : `Refine it in a chat with ${author}`}</button>}
+          {projectId && <button type="button" className="na-link" disabled={busy !== null} aria-busy={busy === 'refine' || undefined} onClick={() => void refine()}>{busy === 'refine' ? <><Spinner label={null} pattern="arrow-right" />Sending to {author}</> : `Refine it in a chat with ${author}`}</button>}
         </div>
       </Modal>
     )
@@ -130,7 +130,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
       footer={<><span className="grow" /><Button variant="primary" size="lg" onClick={finish}>Close</Button></>}
     >
       <div className="na-done">
-        <span className="tm-av xl" aria-hidden="true" style={{ background: joined ? shirtOf(joined, team, room) : undefined }}>{draft.name[0]}</span>
+        <span className="tm-av xl" aria-hidden="true" style={{ background: joined ? shirtOf(joined, team, project) : undefined }}>{draft.name[0]}</span>
         <h3>{draft.name} is on the team</h3>
         <p>Saved to {shortFile(draft.file)}. {draft.name} shows up in every new workspace picker.</p>
       </div>

@@ -16,12 +16,12 @@ const LETTER_TONE: Record<string, string> = { A: 'add', U: 'add', D: 'del', C: '
 
 /**
  * What a branch that merges on the Mac says under the panel's band, above the tabs so every tab shows it (KERNEL-478, PrLocal*.png):
- * the merge line with how far the branch is from its base and the room's merge method, then one note for the states that
- * need one (behind, conflicts, a refused merge). Nothing shows for a room on GitHub or a branch with nothing committed.
+ * the merge line with how far the branch is from its base and the project's merge method, then one note for the states that
+ * need one (behind, conflicts, a refused merge). Nothing shows for a project on GitHub or a branch with nothing committed.
  */
 export function LocalMergeInfo({ ws }: { ws: Workspace }) {
   const local = useLocalMerge(ws)
-  const who = useStore((s) => s.agents[ws.roomId]?.find((a) => a.id === ws.agentId)?.name)
+  const who = useStore((s) => s.agents[ws.projectId]?.find((a) => a.id === ws.agentId)?.name)
   if (!local || local.stand === 'none') return null
   const { stand, base, info } = local
   const git = info?.local

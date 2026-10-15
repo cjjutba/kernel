@@ -1,6 +1,6 @@
 import type { AccountProfile, MoveNotice, MovePreview, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, ClaudeAccount, DeletePreview,
-  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Project, ProjectSettings, ProjectTracker, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { Channel, PushEvent } from '@shared/ipc'
@@ -11,10 +11,10 @@ export type MotionAction = { click: string } | { press: string[] } | { hold: str
 
 /** Everything one screen needs. `KERNEL_FIXTURES=<key>` serves it in place of the kernel. */
 export interface Fixture {
-  rooms: Room[]
-  /** By room id. */
+  projects: Project[]
+  /** By project id. */
   agents: Record<string, AgentDef[]>
-  /** By room id, then agent id. */
+  /** By project id, then agent id. */
   status: Record<string, Record<string, AgentStatus>>
   workspaces: Workspace[]
   chats: Chat[]
@@ -29,7 +29,7 @@ export interface Fixture {
   /** By workspace id. */
   diffs: Record<string, string>
   // Optional data for screens built after KERNEL-8. A missing field reads as empty, or as the defaults in src/main/fixtures.ts.
-  /** By room id. */
+  /** By project id. */
   tasks?: Record<string, Task[]>
   /** The chat New chat's Send lands on, by chat id. Without it a send fails, since fixture mode starts nothing (KERNEL-825). */
   leadStart?: string
@@ -77,9 +77,9 @@ export interface Fixture {
   issueTaken?: IssueTaken
   /** What the Issues screen reads (KERNEL-159). Issues carry their detail, so the issue pane needs nothing else. */
   linear?: { issues?: LinearIssueDetail[]; scope?: LinearScope }
-  /** By room id, the tracker `issues.tracker` reports. A room without one reads as Linear, which every Issues and New workspace fixture drew before KERNEL-471. */
-  trackers?: Record<string, RoomTracker>
-  /** By room id, the open issues of a GitHub room, each with the description and comments the Issues pane reads (KERNEL-471). */
+  /** By project id, the tracker `issues.tracker` reports. A project without one reads as Linear, which every Issues and New workspace fixture drew before KERNEL-471. */
+  trackers?: Record<string, ProjectTracker>
+  /** By project id, the open issues of a GitHub project, each with the description and comments the Issues pane reads (KERNEL-471). */
   githubIssues?: Record<string, GithubIssueDetail[]>
   settings?: AppSettings
   /** When set, `preflight.fix` fails with this message, so a shot can show a fix that did not work (SetupPortBusyFixFailed, KERNEL-865). */
@@ -87,27 +87,27 @@ export interface Fixture {
   /** Channels whose calls never answer, so a screenshot can show the wait (IssuesLoading, AccountSwitching, KERNEL-759). */
   hold?: string[]
   /**
-   * By room id. `sources` is optional: a fixture without it reads as every value coming from the app default. So is
-   * `runScripts`: without it the room has `run` alone, when `scripts.run` is set. And `preview`, which reads as no URLs,
+   * By project id. `sources` is optional: a fixture without it reads as every value coming from the app default. So is
+   * `runScripts`: without it the project has `run` alone, when `scripts.run` is set. And `preview`, which reads as no URLs,
    * and `env`, which reads as no env files.
    */
-  roomSettings?: Record<string, Omit<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env' | 'references'> & Partial<Pick<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env' | 'references'>>>
-  /** By room id, what `scripts.suggest` returns. None when unset (KERNEL-682). */
+  projectSettings?: Record<string, Omit<ProjectSettings, 'sources' | 'runScripts' | 'preview' | 'env' | 'references'> & Partial<Pick<ProjectSettings, 'sources' | 'runScripts' | 'preview' | 'env' | 'references'>>>
+  /** By project id, what `scripts.suggest` returns. None when unset (KERNEL-682). */
   scriptSuggestions?: Record<string, ScriptSuggestion[]>
   /**
-   * Variables by name only, never values: `app` for the app's, `rooms` by room id. A room's `files` are its env files
+   * Variables by name only, never values: `app` for the app's, `projects` by project id. A project's `files` are its env files
    * with whether each is missing (KERNEL-247).
    */
-  env?: { app?: string[]; rooms?: Record<string, { names?: string[]; files?: { path: string; missing: boolean }[] }> }
+  env?: { app?: string[]; projects?: Record<string, { names?: string[]; files?: { path: string; missing: boolean }[] }> }
   /** The CLIs `terminal.presets` lists as found on the PATH, after the built-ins and before the custom ones. None when unset (KERNEL-248). */
   terminalClis?: TerminalPreset[]
-  /** By room id, the data URL `rooms.icon` returns for a room with an icon. */
-  roomIcons?: Record<string, string>
-  /** By room id, what `rooms.pushCheck` returns (KERNEL-460). A room left out has no remote. */
+  /** By project id, the data URL `projects.icon` returns for a project with an icon. */
+  projectIcons?: Record<string, string>
+  /** By project id, what `projects.pushCheck` returns (KERNEL-460). A project left out has no remote. */
   pushChecks?: Record<string, PushCheck>
-  /** By room id, the ignored files in the room's main checkout. `files.preview` picks from them with the room's Files to copy. */
+  /** By project id, the ignored files in the project's main checkout. `files.preview` picks from them with the project's Files to copy. */
   localFiles?: Record<string, FileToCopy[]>
-  /** By room id, what `files.production` answers: the files to copy that look like production (KERNEL-449). */
+  /** By project id, what `files.production` answers: the files to copy that look like production (KERNEL-449). */
   production?: Record<string, ProductionHint[]>
   account?: ClaudeAccount
   /** Both providers' accounts (Settings, Providers, the account menu, KERNEL-406). */
@@ -126,7 +126,7 @@ export interface Fixture {
   /** By workspace id. What the archive and discard confirmations read. Defaults to the fixture's changes and nothing unpushed. */
   gitStatus?: Record<string, WorkspaceGitStatus>
   update?: AppUpdate
-  /** Files agents shared (KERNEL-302). `shared.list` filters them by room or workspace. */
+  /** Files agents shared (KERNEL-302). `shared.list` filters them by project or workspace. */
   shared?: SharedFile[]
   /**
    * By shared id, then version: what `shared.read` returns. Images and PDFs as a data URL, Markdown and HTML as text.
@@ -148,7 +148,7 @@ export interface Fixture {
   lag?: Partial<Record<Channel, number>>
   /** Events `chats.send` pushes after the given delays, so a `motion` that clicks Send can step a running turn through more calls. */
   afterSend?: { afterMs: number; events: PushEvent[] }[]
-  /** Events `rooms.retrySetup` pushes after the given delays, so a `motion` that clicks Try again can step a setup through its steps. */
+  /** Events `projects.retrySetup` pushes after the given delays, so a `motion` that clicks Try again can step a setup through its steps. */
   afterRetry?: { afterMs: number; events: PushEvent[] }[]
   /**
    * Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). A run

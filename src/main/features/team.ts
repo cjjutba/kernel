@@ -10,7 +10,7 @@ import type { Handlers } from '../kernel'
 import { createAgent, draftAgent, loadAgents, loadPersonalAgents, teamFiles, watchAgents, watchPersonalAgents, watchTeamSettings } from '../services/agents'
 import { builtinFile, loadBuiltins, type Builtins } from '../services/builtins'
 import { loadPluginAgents } from '../services/pluginAgents'
-import { agentFiles, copyAgentFiles, seatStarterTeam, STARTER_IDS } from '../services/rooms'
+import { agentFiles, copyAgentFiles, seatStarterTeam, STARTER_IDS } from '../services/projects'
 import { loadRepoSettings, saveTeamSettings } from '../services/settings'
 import { adviseRoster, resolveTeam, takesTasksByDefault, type Resolved } from '../services/teamResolve'
 import { Feature } from './feature'
@@ -22,22 +22,22 @@ import { Feature } from './feature'
 const pinOf = (a: AgentDef) => { const pick = rolePick(a, { provider: 'claude', model: '', effort: 'high' }); return pick.model ? pick : undefined }
 
 /**
- * Each room's team: the agent files in .claude/agents, their statuses, and hiring and retiring (KERNEL-326). Who leads,
- * who reviews and who takes tasks come from the files, the room's `[team]` settings and Kernel (KERNEL-397,
- * KERNEL-553). The user's own agents in ~/.claude/agents and Claude Code's plugin agents join every room (KERNEL-463).
+ * Each project's team: the agent files in .claude/agents, their statuses, and hiring and retiring (KERNEL-326). Who leads,
+ * who reviews and who takes tasks come from the files, the project's `[team]` settings and Kernel (KERNEL-397,
+ * KERNEL-553). The user's own agents in ~/.claude/agents and Claude Code's plugin agents join every project (KERNEL-463).
  */
 export class Team extends Feature {
   readonly agentCache = new Map<string, AgentDef[]>()
   /**
-   * Each room's built-in Lead as last resolved, so a workspace on it still finds its agent once the room has its own, and
+   * Each project's built-in Lead as last resolved, so a workspace on it still finds its agent once the project has its own, and
    * Kernel's Theo for review workspaces from before KERNEL-553.
    */
   private builtins = new Map<string, Builtins>()
-  /** Rooms whose last list sent to the renderer had Kernel's Theo in it. */
+  /** Projects whose last list sent to the renderer had Kernel's Theo in it. */
   private listsTheo = new Set<string>()
   private agentWatchers = new Map<string, () => void>()
   readonly statuses = new Map<string, Record<string, AgentStatus>>()
-  /** The shape last reported for each room, so `team.resolved` goes out once per change. */
+  /** The shape last reported for each project, so `team.resolved` goes out once per change. */
   private shapes = new Map<string, string>()
   /** Plugin agents, as Claude Code listed them once this launch (KERNEL-463). Unset until the list comes back. */
   private plugins?: AgentDef[]
@@ -62,85 +62,85 @@ export class Team extends Feature {
     this.globalWatcher = undefined
   }
 
-  /** A removed room's team: its watcher, the cached agents, their statuses and the user's own changes to them. */
-  forgetRoom(roomId: string) {
-    void this.k.agentChanges.forgetRoom(roomId).catch(() => undefined)
-    this.agentWatchers.get(roomId)?.()
-    this.agentWatchers.delete(roomId)
-    this.agentCache.delete(roomId)
-    this.builtins.delete(roomId)
-    this.listsTheo.delete(roomId)
-    this.statuses.delete(roomId)
-    this.shapes.delete(roomId)
+  /** A removed project's team: its watcher, the cached agents, their statuses and the user's own changes to them. */
+  forgetProject(projectId: string) {
+    void this.k.agentChanges.forgetProject(projectId).catch(() => undefined)
+    this.agentWatchers.get(projectId)?.()
+    this.agentWatchers.delete(projectId)
+    this.agentCache.delete(projectId)
+    this.builtins.delete(projectId)
+    this.listsTheo.delete(projectId)
+    this.statuses.delete(projectId)
+    this.shapes.delete(projectId)
   }
 
   onStatus(e: Extract<PushEvent, { type: 'agent.status' }>) {
-    this.statuses.set(e.roomId, { ...(this.statuses.get(e.roomId) ?? {}), [e.agentId]: e.status })
-    // A room's first review on `kernel-reviewer` started, so the renderer needs Theo's name for it now (KERNEL-553).
-    if (e.agentId === KERNEL_REVIEWER && !this.listsTheo.has(e.roomId) && this.agentCache.has(e.roomId)) {
-      const list = this.listed(e.roomId, this.agentsSync(e.roomId))
-      if (this.listsTheo.has(e.roomId)) bus.push({ type: 'agents', roomId: e.roomId, agents: list })
+    this.statuses.set(e.projectId, { ...(this.statuses.get(e.projectId) ?? {}), [e.agentId]: e.status })
+    // A project's first review on `kernel-reviewer` started, so the renderer needs Theo's name for it now (KERNEL-553).
+    if (e.agentId === KERNEL_REVIEWER && !this.listsTheo.has(e.projectId) && this.agentCache.has(e.projectId)) {
+      const list = this.listed(e.projectId, this.agentsSync(e.projectId))
+      if (this.listsTheo.has(e.projectId)) bus.push({ type: 'agents', projectId: e.projectId, agents: list })
     }
   }
 
   /**
-   * The team as the renderer gets it. The renderer names each workspace's agent from this list, so while the room has a
+   * The team as the renderer gets it. The renderer names each workspace's agent from this list, so while the project has a
    * workspace on `kernel-reviewer` it also holds Kernel's Theo, marked retired so no team view shows it. A review Theo ran
    * before KERNEL-553 keeps Theo's name, as Kernel's code reviews on that id do (KERNEL-553).
    */
-  listed(roomId: string, list: AgentDef[]): AgentDef[] {
-    const theo = this.builtins.get(roomId)?.theo
-    const on = !!theo && !list.some((a) => a.id === KERNEL_REVIEWER) && this.store.workspaces(roomId).some((w) => w.agentId === KERNEL_REVIEWER)
-    if (on) this.listsTheo.add(roomId)
-    else this.listsTheo.delete(roomId)
+  listed(projectId: string, list: AgentDef[]): AgentDef[] {
+    const theo = this.builtins.get(projectId)?.theo
+    const on = !!theo && !list.some((a) => a.id === KERNEL_REVIEWER) && this.store.workspaces(projectId).some((w) => w.agentId === KERNEL_REVIEWER)
+    if (on) this.listsTheo.add(projectId)
+    else this.listsTheo.delete(projectId)
     return on ? [...list, { ...theo, retired: true, reviewer: false, member: false }] : list
   }
 
   /**
-   * Empty room: write a team into .claude/agents and seat it. Refuses a room that already has agents. The starter templates
+   * Empty project: write a team into .claude/agents and seat it. Refuses a project that already has agents. The starter templates
    * seat starter files only: Kernel leads (KERNEL-397). The full team has Theo to review (KERNEL-553).
    */
-  private async seedAgents(roomId: string, template: TeamTemplate): Promise<AgentDef[]> {
-    const room = this.mustRoom(roomId)
-    if ((await agentFiles(room.path)).length) throw new Error('This room already has agents.')
+  private async seedAgents(projectId: string, template: TeamTemplate): Promise<AgentDef[]> {
+    const project = this.mustProject(projectId)
+    if ((await agentFiles(project.path)).length) throw new Error('This project already has agents.')
     if (template.kind === 'copy') {
-      const from = this.mustRoom(template.fromRoomId)
-      if (from.id === room.id) throw new Error('Pick a different room to copy from.')
-      if (!(await copyAgentFiles(from.path, room.path))) throw new Error(`${from.name} has no agents to copy.`)
+      const from = this.mustProject(template.fromProjectId)
+      if (from.id === project.id) throw new Error('Pick a different project to copy from.')
+      if (!(await copyAgentFiles(from.path, project.path))) throw new Error(`${from.name} has no agents to copy.`)
     } else {
       if (!this.o.starterDir) throw new Error('No starter team found. Add agent files to .claude/agents.')
-      await seatStarterTeam(this.o.starterDir, room.path, template.kind === 'pair' ? ['kai'] : [...STARTER_IDS])
+      await seatStarterTeam(this.o.starterDir, project.path, template.kind === 'pair' ? ['kai'] : [...STARTER_IDS])
     }
-    const list = await this.agents(roomId)
-    bus.push({ type: 'agents', roomId, agents: this.listed(roomId, list) })
-    for (const a of list) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: room.paused ? 'paused' : 'idle' })
+    const list = await this.agents(projectId)
+    bus.push({ type: 'agents', projectId, agents: this.listed(projectId, list) })
+    for (const a of list) bus.push({ type: 'agent.status', projectId, agentId: a.id, status: project.paused ? 'paused' : 'idle' })
     return list
   }
 
-  /** The room's team as Kernel resolves it now (KERNEL-397). Every caller reads the team through here or `agentsSync`. */
-  async agents(roomId: string): Promise<AgentDef[]> {
-    const r = await this.resolve(roomId)
-    this.watchTeam(roomId)
+  /** The project's team as Kernel resolves it now (KERNEL-397). Every caller reads the team through here or `agentsSync`. */
+  async agents(projectId: string): Promise<AgentDef[]> {
+    const r = await this.resolve(projectId)
+    this.watchTeam(projectId)
     return r.agents
   }
 
-  private async resolve(roomId: string, config?: TeamConfig): Promise<Resolved & { builtins: Builtins }> {
-    const room = this.mustRoom(roomId)
+  private async resolve(projectId: string, config?: TeamConfig): Promise<Resolved & { builtins: Builtins }> {
+    const project = this.mustProject(projectId)
     void this.askPlugins()
     const plugins = this.plugins
-    const [files, repo] = await Promise.all([this.ownFiles(roomId, plugins), loadRepoSettings(room.path)])
+    const [files, repo] = await Promise.all([this.ownFiles(projectId, plugins), loadRepoSettings(project.path)])
     const builtins = await loadBuiltins(this.o.starterDir)
     // A config passed in is a choice being weighed, read as it is. The saved one gets the agents the user joined themselves.
-    const resolved = resolveTeam({ files, config: config ?? await this.ownRoster(roomId, repo.team), builtins })
+    const resolved = resolveTeam({ files, config: config ?? await this.ownRoster(projectId, repo.team), builtins })
     if (config) return { ...resolved, builtins }
     // Only here does Kernel know who is signed in, so the pure `resolveTeam` leaves pinned models alone (KERNEL-550).
     const r = { ...resolved, agents: await this.flagPins(resolved.agents) }
-    this.agentCache.set(roomId, r.agents)
-    this.builtins.set(roomId, builtins)
-    this.adoptLead(roomId, r.agents.find((a) => a.lead))
-    this.report(roomId, r)
-    // The plugin list came back while this ran, so the room reads it now.
-    if (plugins !== this.plugins) this.reload(roomId, { quiet: true })
+    this.agentCache.set(projectId, r.agents)
+    this.builtins.set(projectId, builtins)
+    this.adoptLead(projectId, r.agents.find((a) => a.lead))
+    this.report(projectId, r)
+    // The plugin list came back while this ran, so the project reads it now.
+    if (plugins !== this.plugins) this.reload(projectId, { quiet: true })
     return { ...r, builtins }
   }
 
@@ -183,40 +183,40 @@ export class Team extends Feature {
     else this.offers.clear()
   }
 
-  /** Whether Room setup asks for a roster, and who Kernel would pick, from every agent file whatever `[team] roster` says (KERNEL-465). */
-  async rosterOf(roomId: string): Promise<RosterAdvice> {
-    const team = (await loadRepoSettings(this.mustRoom(roomId).path)).team
-    return adviseRoster((await this.resolve(roomId, { ...team, roster: undefined })).agents, team)
+  /** Whether Project setup asks for a roster, and who Kernel would pick, from every agent file whatever `[team] roster` says (KERNEL-465). */
+  async rosterOf(projectId: string): Promise<RosterAdvice> {
+    const team = (await loadRepoSettings(this.mustProject(projectId).path)).team
+    return adviseRoster((await this.resolve(projectId, { ...team, roster: undefined })).agents, team)
   }
 
-  /** A new or restored agent joins the room's roster, when it has one, so it doesn't land off the team (KERNEL-465). */
-  async joinRoster(roomId: string, agentId: string) {
-    const room = this.mustRoom(roomId)
-    const roster = (await loadRepoSettings(room.path)).team?.roster
-    if (roster?.length && !roster.includes(agentId)) await saveTeamSettings(room.path, { roster: [...roster, agentId] })
+  /** A new or restored agent joins the project's roster, when it has one, so it doesn't land off the team (KERNEL-465). */
+  async joinRoster(projectId: string, agentId: string) {
+    const project = this.mustProject(projectId)
+    const roster = (await loadRepoSettings(project.path)).team?.roster
+    if (roster?.length && !roster.includes(agentId)) await saveTeamSettings(project.path, { roster: [...roster, agentId] })
   }
 
-  /** The room's agent files with the user's own changes on this Mac laid over them, and the ones they retired left out (KERNEL-466). */
-  private async ownFiles(roomId: string, plugins = this.plugins): Promise<AgentDef[]> {
-    return this.k.agentChanges.apply(roomId, await this.loadTeamFiles(this.mustRoom(roomId).path, plugins))
+  /** The project's agent files with the user's own changes on this Mac laid over them, and the ones they retired left out (KERNEL-466). */
+  private async ownFiles(projectId: string, plugins = this.plugins): Promise<AgentDef[]> {
+    return this.k.agentChanges.apply(projectId, await this.loadTeamFiles(this.mustProject(projectId).path, plugins))
   }
 
   /** `[team]` with the agents the user hired or brought back for themselves added to a roster, so it doesn't leave them out (KERNEL-466). */
-  private async ownRoster(roomId: string, config: TeamConfig | undefined): Promise<TeamConfig | undefined> {
+  private async ownRoster(projectId: string, config: TeamConfig | undefined): Promise<TeamConfig | undefined> {
     if (!config?.roster?.length) return config
-    const joined = (await this.k.agentChanges.joinedHere(roomId)).filter((id) => !config.roster!.includes(id))
+    const joined = (await this.k.agentChanges.joinedHere(projectId)).filter((id) => !config.roster!.includes(id))
     return joined.length ? { ...config, roster: [...config.roster, ...joined] } : config
   }
 
   /** Team's retired list: the files in .claude/retired-agents, and the agents the user retired on this Mac (KERNEL-466). */
-  private async retiredOf(roomId: string): Promise<AgentDef[]> {
-    const path = this.mustRoom(roomId).path
-    const here = await this.k.agentChanges.retiredHere(roomId, await this.loadTeamFiles(path))
+  private async retiredOf(projectId: string): Promise<AgentDef[]> {
+    const path = this.mustProject(projectId).path
+    const here = await this.k.agentChanges.retiredHere(projectId, await this.loadTeamFiles(path))
     const files = await loadAgents(path, { retired: true })
     return [...here, ...files.filter((a) => !here.some((h) => h.id === a.id))]
   }
 
-  /** The room's own agent files, the user's personal ones and plugin agents, as `resolveTeam` takes them (KERNEL-463). */
+  /** The project's own agent files, the user's personal ones and plugin agents, as `resolveTeam` takes them (KERNEL-463). */
   private async loadTeamFiles(repoPath: string, plugins = this.plugins): Promise<AgentDef[]> {
     const [project, personal] = await Promise.all([loadAgents(repoPath), loadPersonalAgents(this.home)])
     return teamFiles(project, personal, plugins)
@@ -224,7 +224,7 @@ export class Team extends Feature {
 
   /**
    * Asks Claude Code for its plugin agents, once a launch and only when the app passes `claudeAgents`. The first team reads
-   * go ahead without them, and every room read so far reads again when the list comes back. A failed ask leaves no plugin
+   * go ahead without them, and every project read so far reads again when the list comes back. A failed ask leaves no plugin
    * agents until the next launch, so a Mac without Claude Code doesn't start a process at every read.
    */
   private askPlugins(): Promise<void> {
@@ -234,14 +234,14 @@ export class Team extends Feature {
       const list = await ask(this.home)
       this.plugins = await loadPluginAgents(list, this.home)
       if (this.stopped) return
-      for (const roomId of this.agentCache.keys()) this.reload(roomId, { quiet: true })
+      for (const projectId of this.agentCache.keys()) this.reload(projectId, { quiet: true })
       if (this.globalWatcher) this.pushGlobal()
     })().catch((err) => { this.plugins = []; console.warn('[kernel] could not list plugin agents', err) }))
   }
 
   /**
-   * Settings, Agents with no room open (KERNEL-640): the agents that join every room, the user's own then plugin agents, read
-   * as a room reads them. The first list waits for Claude Code's plugin list, and starts watching ~/.claude/agents so the page
+   * Settings, Agents with no project open (KERNEL-640): the agents that join every project, the user's own then plugin agents, read
+   * as a project reads them. The first list waits for Claude Code's plugin list, and starts watching ~/.claude/agents so the page
    * hears of a change as `globalAgents`.
    */
   async globalAgents(): Promise<AgentDef[]> {
@@ -261,7 +261,7 @@ export class Team extends Feature {
   }
 
   /**
-   * Settings, Agents > Save changes, with or without a room (KERNEL-640): rewrites a personal agent's file, then every room
+   * Settings, Agents > Save changes, with or without a project (KERNEL-640): rewrites a personal agent's file, then every project
    * Kernel has read reads its team again, so the edit shows there and the agent's next turn uses it.
    */
   private async saveGlobal(agentId: string, patch: AgentEdit): Promise<AgentDef> {
@@ -269,29 +269,29 @@ export class Team extends Feature {
     if (!agent) throw new Error(`${agentId} is not in ~/.claude/agents.`)
     await this.k.agentChanges.editOwn(agent, patch)
     this.pushGlobal()
-    await Promise.all([...this.agentCache.keys()].map((roomId) => this.reread(roomId).catch(() => undefined)))
+    await Promise.all([...this.agentCache.keys()].map((projectId) => this.reread(projectId).catch(() => undefined)))
     return (await this.globalAgents()).find((a) => a.id === agentId) ?? agent
   }
 
   /**
-   * Settings, Agents > New agent with no room: the file goes to ~/.claude/agents, the page hears of it as `globalAgents`, and
-   * every room Kernel has read reads its team again, as after a save.
+   * Settings, Agents > New agent with no project: the file goes to ~/.claude/agents, the page hears of it as `globalAgents`, and
+   * every project Kernel has read reads its team again, as after a save.
    */
   private async hireGlobal(draft: AgentDraft, scope: AgentScope = 'me'): Promise<AgentDef> {
     const agent = await this.k.agentChanges.hireOwn(draft, scope)
     this.pushGlobal()
-    await Promise.all([...this.agentCache.keys()].map((roomId) => this.reread(roomId).catch(() => undefined)))
+    await Promise.all([...this.agentCache.keys()].map((projectId) => this.reread(projectId).catch(() => undefined)))
     return (await this.globalAgents()).find((a) => a.id === agent.id) ?? agent
   }
 
   /** The Lead changed (Settings, a file, an upgrade): its workspace and chats go to the new Lead, which starts fresh (KERNEL-397). */
-  private adoptLead(roomId: string, lead: AgentDef | undefined) {
-    const moved = lead ? this.k.lead.adoptLeadWorkspace(roomId, lead.id) : undefined
+  private adoptLead(projectId: string, lead: AgentDef | undefined) {
+    const moved = lead ? this.k.lead.adoptLeadWorkspace(projectId, lead.id) : undefined
     if (moved) this.sessions.restartIdle([moved.id])
   }
 
-  /** `team.resolved` once per change in the room's shape, and one `agent.warning` per kind of warning it has. */
-  private report(roomId: string, r: Resolved) {
+  /** `team.resolved` once per change in the project's shape, and one `agent.warning` per kind of warning it has. */
+  private report(projectId: string, r: Resolved) {
     const files = r.agents.filter((a) => !a.builtIn)
     const kinds = [...new Set(r.agents.flatMap((a) => a.warnings ?? []).map((w) => w.kind))].sort()
     const event = {
@@ -299,65 +299,65 @@ export class Team extends Feature {
       helpers: countRange(files.filter((a) => !a.lead && !a.member).length), warnings: countRange(r.agents.reduce((n, a) => n + (a.warnings?.length ?? 0), 0))
     }
     const shape = JSON.stringify([event, kinds])
-    if (this.shapes.get(roomId) === shape) return
-    this.shapes.set(roomId, shape)
+    if (this.shapes.get(projectId) === shape) return
+    this.shapes.set(projectId, shape)
     bus.track(event)
     for (const kind of kinds) bus.track({ name: 'agent.warning', kind })
   }
 
   /**
-   * Files in .claude/agents or ~/.claude/agents, or the room's `[team]` settings, changed from outside Kernel (or from here).
+   * Files in .claude/agents or ~/.claude/agents, or the project's `[team]` settings, changed from outside Kernel (or from here).
    * Reload, and tell the renderer when the team differs.
    */
-  private watchTeam(roomId: string) {
-    if (this.agentWatchers.has(roomId)) return
-    const room = this.store.room(roomId)
-    if (!room) return
-    const reload = () => this.reload(roomId)
-    const files = watchAgents(room.path, reload)
+  private watchTeam(projectId: string) {
+    if (this.agentWatchers.has(projectId)) return
+    const project = this.store.project(projectId)
+    if (!project) return
+    const reload = () => this.reload(projectId)
+    const files = watchAgents(project.path, reload)
     const personal = watchPersonalAgents(this.home, reload)
-    const settings = watchTeamSettings(room.path, reload)
-    this.agentWatchers.set(roomId, () => { files(); personal(); settings() })
+    const settings = watchTeamSettings(project.path, reload)
+    this.agentWatchers.set(projectId, () => { files(); personal(); settings() })
   }
 
   /**
-   * Reads the room's team again and tells the renderer when it differs. With `quiet`, plugin agents that show up don't walk
+   * Reads the project's team again and tells the renderer when it differs. With `quiet`, plugin agents that show up don't walk
    * in: they were there all along, and Kernel only just heard of them.
    */
-  private reload(roomId: string, o: { quiet?: boolean } = {}) {
-    void this.reread(roomId, o).catch(() => undefined)
+  private reload(projectId: string, o: { quiet?: boolean } = {}) {
+    void this.reread(projectId, o).catch(() => undefined)
   }
 
-  private async reread(roomId: string, o: { quiet?: boolean } = {}) {
-    if (!this.store.room(roomId)) return
-    const was = this.agentCache.get(roomId)
+  private async reread(projectId: string, o: { quiet?: boolean } = {}) {
+    if (!this.store.project(projectId)) return
+    const was = this.agentCache.get(projectId)
     const before = JSON.stringify(was)
-    const list = await this.agents(roomId)
+    const list = await this.agents(projectId)
     if (JSON.stringify(list) === before) return
-    this.changed(roomId, list, o.quiet ? [...(was ?? []), ...list.filter((a) => a.origin === 'plugin' && !was?.some((w) => w.id === a.id))] : was)
+    this.changed(projectId, list, o.quiet ? [...(was ?? []), ...list.filter((a) => a.origin === 'plugin' && !was?.some((w) => w.id === a.id))] : was)
   }
 
   /** The team changed: the renderer hears, and agents whose definition changed start fresh at their next turn. */
-  private changed(roomId: string, list: AgentDef[], was?: AgentDef[]) {
-    this.announceTeam(roomId, list, was)
+  private changed(projectId: string, list: AgentDef[], was?: AgentDef[]) {
+    this.announceTeam(projectId, list, was)
     const before = new Map((was ?? []).map((a) => [a.id, JSON.stringify(a)]))
     const moved = new Set(list.filter((a) => before.has(a.id) && before.get(a.id) !== JSON.stringify(a)).map((a) => a.id))
-    const open = this.store.workspaces(roomId).filter((w) => w.status !== 'archived' && moved.has(w.agentId))
+    const open = this.store.workspaces(projectId).filter((w) => w.status !== 'archived' && moved.has(w.agentId))
     if (open.length) this.sessions.restartIdle(open.map((w) => w.id))
   }
 
   /** `was` is the team before the change: whoever is new walks in. Leave it out to announce no one. */
-  announceTeam(roomId: string, list: AgentDef[], was?: AgentDef[]) {
+  announceTeam(projectId: string, list: AgentDef[], was?: AgentDef[]) {
     const had = new Set((was ?? list).map((a) => a.id))
-    const room = this.mustRoom(roomId)
-    const known = this.statuses.get(roomId) ?? {}
-    bus.push({ type: 'agents', roomId, agents: this.listed(roomId, list) })
+    const project = this.mustProject(projectId)
+    const known = this.statuses.get(projectId) ?? {}
+    bus.push({ type: 'agents', projectId, agents: this.listed(projectId, list) })
     for (const a of list) {
       if (known[a.id]) continue
-      bus.push({ type: 'agent.status', roomId, agentId: a.id, status: room.paused ? 'paused' : 'idle' })
+      bus.push({ type: 'agent.status', projectId, agentId: a.id, status: project.paused ? 'paused' : 'idle' })
       // A new agent file, from create_agent, New agent or a file added outside Kernel, walks in from the door (FloorHired.png).
       // Kernel has no file to come from.
-      if (!a.retired && !a.builtIn && !had.has(a.id)) bus.activity({ kind: 'agent.joined', roomId, agentId: a.id, text: 'joined from', object: a.file })
+      if (!a.retired && !a.builtIn && !had.has(a.id)) bus.activity({ kind: 'agent.joined', projectId, agentId: a.id, text: 'joined from', object: a.file })
     }
   }
 
@@ -365,30 +365,30 @@ export class Team extends Feature {
    * AgentProfile > Save changes. For me, the next turn uses the new model, effort and tools, and the repo's file stays as it is.
    * For the team, a pull request changes the file and the agent stays as it is until that merges (KERNEL-466).
    */
-  private async saveAgentEdit(roomId: string, agentId: string, patch: AgentEdit, scope: AgentScope = 'me'): Promise<AgentDef & { pr?: AgentChangePr }> {
-    const was = this.agentCache.get(roomId)
-    const agent = (await this.agents(roomId)).find((a) => a.id === agentId) ?? this.agentOf(roomId, agentId)
+  private async saveAgentEdit(projectId: string, agentId: string, patch: AgentEdit, scope: AgentScope = 'me'): Promise<AgentDef & { pr?: AgentChangePr }> {
+    const was = this.agentCache.get(projectId)
+    const agent = (await this.agents(projectId)).find((a) => a.id === agentId) ?? this.agentOf(projectId, agentId)
     if (agent?.builtIn) throw new Error("This is Kernel's own agent. Customize it to edit a copy in .claude/agents.")
     if (!agent) throw new Error(`${agentId} is not in .claude/agents.`)
-    const pr = await this.k.agentChanges.edit(roomId, agent, patch, scope)
+    const pr = await this.k.agentChanges.edit(projectId, agent, patch, scope)
     if (pr) return { ...agent, pr }
-    const list = await this.agents(roomId)
-    this.changed(roomId, list, was)
+    const list = await this.agents(projectId)
+    this.changed(projectId, list, was)
     return list.find((a) => a.id === agentId) ?? agent
   }
 
   /**
    * New agent > Create agent. For me, the file goes to ~/.claude/agents and the agent takes a desk (the next free one, or the end
-   * of `room.desks`). For the team, a pull request adds it to .claude/agents, and it joins once that merges (KERNEL-466).
+   * of `project.desks`). For the team, a pull request adds it to .claude/agents, and it joins once that merges (KERNEL-466).
    */
-  private async hireFromDraft(roomId: string, draft: AgentDraft, scope: AgentScope = 'me'): Promise<AgentDef & { pr?: AgentChangePr }> {
-    const room = this.mustRoom(roomId)
-    const was = this.agentCache.get(roomId) ?? await this.agents(roomId)
-    const { agent, pr } = await this.k.agentChanges.hire(roomId, draft, scope)
+  private async hireFromDraft(projectId: string, draft: AgentDraft, scope: AgentScope = 'me'): Promise<AgentDef & { pr?: AgentChangePr }> {
+    const project = this.mustProject(projectId)
+    const was = this.agentCache.get(projectId) ?? await this.agents(projectId)
+    const { agent, pr } = await this.k.agentChanges.hire(projectId, draft, scope)
     if (pr) return { ...agent, pr }
-    if (room.desks && !room.desks.includes(agent.id)) await this.k.rooms.updateRoom(roomId, { desks: [...room.desks, agent.id] })
-    const list = await this.agents(roomId)
-    this.announceTeam(roomId, list, was)
+    if (project.desks && !project.desks.includes(agent.id)) await this.k.projects.updateProject(projectId, { desks: [...project.desks, agent.id] })
+    const list = await this.agents(projectId)
+    this.announceTeam(projectId, list, was)
     return list.find((a) => a.id === agent.id) ?? agent
   }
 
@@ -398,39 +398,39 @@ export class Team extends Feature {
    * next, else Kernel's code review (KERNEL-553), and the desk frees up. A turn already running keeps its own copy of the
    * agent and finishes. Kernel, the Lead, cannot be retired, because nobody would plan.
    */
-  private async retire(roomId: string, agentId: string, handoffTo?: string, scope: AgentScope = 'me'): Promise<AgentChangePr | undefined> {
-    const room = this.mustRoom(roomId)
-    const team = await this.agents(roomId)
+  private async retire(projectId: string, agentId: string, handoffTo?: string, scope: AgentScope = 'me'): Promise<AgentChangePr | undefined> {
+    const project = this.mustProject(projectId)
+    const team = await this.agents(projectId)
     const agent = team.find((a) => a.id === agentId)
     if (!agent) throw new Error(`${agentId} is not on this team.`)
-    if (agent.builtIn || agent.lead) throw new Error(`${agent.name} leads this room, so it can't be retired.`)
-    const pr = await this.k.agentChanges.retire(roomId, agent, scope)
-    const list = await this.agents(roomId)
+    if (agent.builtIn || agent.lead) throw new Error(`${agent.name} leads this project, so it can't be retired.`)
+    const pr = await this.k.agentChanges.retire(projectId, agent, scope)
+    const list = await this.agents(projectId)
     const chosen = list.find((a) => a.id === (handoffTo ?? '') && a.id !== agentId)
     const reviewer = isReviewer(agent) ? list.find(isReviewer)?.id ?? KERNEL_REVIEWER : undefined
     const lead = list.find((a) => a.lead)?.id
-    for (const ws of this.store.workspaces(roomId)) {
+    for (const ws of this.store.workspaces(projectId)) {
       const heir = chosen?.id ?? (ws.reviewOf && reviewer ? reviewer : lead)
       if (ws.agentId === agentId && ws.status !== 'archived' && heir) this.saveWs({ ...ws, agentId: heir })
     }
-    if (room.desks?.includes(agentId)) await this.k.rooms.updateRoom(roomId, { desks: room.desks.filter((d) => d !== agentId) })
-    const statuses = this.statuses.get(roomId)
+    if (project.desks?.includes(agentId)) await this.k.projects.updateProject(projectId, { desks: project.desks.filter((d) => d !== agentId) })
+    const statuses = this.statuses.get(projectId)
     if (statuses) delete statuses[agentId]
-    this.announceTeam(roomId, list, team)
-    bus.activity({ kind: 'agent.retired', roomId, agentId, actor: 'you', text: 'retired', object: agent.name })
+    this.announceTeam(projectId, list, team)
+    bus.activity({ kind: 'agent.retired', projectId, agentId, actor: 'you', text: 'retired', object: agent.name })
     return pr
   }
 
   /**
-   * Settings, Agents and Room setup: who reviews and who takes tasks (KERNEL-397). Kernel always leads, so `lead` in the patch
+   * Settings, Agents and Project setup: who reviews and who takes tasks (KERNEL-397). Kernel always leads, so `lead` in the patch
    * is ignored and a `[team] lead` already in the file stays as it is (KERNEL-692). The change goes to `[team]` in the shared
    * settings.toml, holding only what differs from what Kernel works out from the files, so a team that agrees with Kernel
    * writes nothing. `members` and `helpers` may list every agent; only the exceptions are kept. `roster` keeps
    * the agents it lists that have a file (KERNEL-465).
    */
-  private async setTeam(roomId: string, patch: TeamPatch, from?: 'setup' | 'settings'): Promise<AgentDef[]> {
-    const room = this.mustRoom(roomId)
-    const [files, repo] = await Promise.all([this.ownFiles(roomId), loadRepoSettings(room.path)])
+  private async setTeam(projectId: string, patch: TeamPatch, from?: 'setup' | 'settings'): Promise<AgentDef[]> {
+    const project = this.mustProject(projectId)
+    const [files, repo] = await Promise.all([this.ownFiles(projectId), loadRepoSettings(project.path)])
     const ids = new Set(files.map((a) => a.id))
     const want: TeamConfig = { ...repo.team }
     for (const [k, v] of Object.entries(patch) as [keyof TeamConfig, TeamPatch[keyof TeamConfig]][]) {
@@ -443,14 +443,14 @@ export class Team extends Feature {
     want.roster = want.roster && [...new Set(want.roster)].filter((id) => ids.has(id))
     // An agent the roster leaves off can't keep its open work: those workspaces would have no agent to run.
     if (want.roster?.length) {
-      const kept = new Set((await this.resolve(roomId, want)).agents.map((a) => a.id))
-      const open = (id: string) => this.store.workspaces(roomId).some((w) => w.agentId === id && !w.lead && w.status !== 'archived')
+      const kept = new Set((await this.resolve(projectId, want)).agents.map((a) => a.id))
+      const open = (id: string) => this.store.workspaces(projectId).some((w) => w.agentId === id && !w.lead && w.status !== 'archived')
       const left = files.filter((a) => !kept.has(a.id) && open(a.id)).map((a) => a.name)
       const who = left.length > 1 ? `${left.slice(0, -1).join(', ')} and ${left[left.length - 1]}` : left[0]
       if (left.length) throw new Error(`${who} ${left.length === 1 ? 'has' : 'have'} open work. Archive it first, or keep ${left.length === 1 ? who : 'them'} on the team.`)
     }
     // With no reviewer agent, Kernel's code review runs (KERNEL-553), so `none` is a choice and `kernel-reviewer` isn't.
-    if (want.reviewer && ((await this.resolve(roomId, { ...want, reviewer: undefined })).agents.find((a) => a.reviewer)?.id ?? KERNEL_REVIEWER) === want.reviewer) delete want.reviewer
+    if (want.reviewer && ((await this.resolve(projectId, { ...want, reviewer: undefined })).agents.find((a) => a.reviewer)?.id ?? KERNEL_REVIEWER) === want.reviewer) delete want.reviewer
     const byDefault = (id: string) => { const a = files.find((f) => f.id === id); return !!a && takesTasksByDefault(a) }
     want.members = want.members?.filter((id) => ids.has(id) && !byDefault(id))
     want.helpers = want.helpers?.filter((id) => ids.has(id) && byDefault(id))
@@ -459,48 +459,48 @@ export class Team extends Feature {
       const value = Array.isArray(want[k]) && !(want[k] as string[]).length ? undefined : want[k]
       if (JSON.stringify(value ?? null) !== JSON.stringify(repo.team?.[k] ?? null)) (next as Record<string, unknown>)[k] = value ?? null
     }
-    if (Object.keys(next).length) await saveTeamSettings(room.path, next)
+    if (Object.keys(next).length) await saveTeamSettings(project.path, next)
     // A roster the user picks is the team they want here, over the agents they joined for themselves before (KERNEL-466).
-    if ('roster' in next) await this.k.agentChanges.clearJoined(roomId)
+    if ('roster' in next) await this.k.agentChanges.clearJoined(projectId)
     if (from === 'setup') bus.track({ name: 'setup.team_review', choice: Object.keys(next).length ? 'changed' : 'kept' })
-    const was = this.agentCache.get(roomId)
-    const list = await this.agents(roomId)
-    this.changed(roomId, list, was)
+    const was = this.agentCache.get(projectId)
+    const list = await this.agents(projectId)
+    this.changed(projectId, list, was)
     return list
   }
 
   /**
    * Customize on Kernel's profile: writes .claude/agents/kernel.md from the bundled file, without its model line, so the user
    * can edit Kernel's instructions and tools (KERNEL-692). Kernel stays the Lead under its reserved id, so no workspace moves.
-   * A room that has kernel.md already is customized. Theo is a starter now, added from Team, so Kernel's Theo has nothing to
+   * A project that has kernel.md already is customized. Theo is a starter now, added from Team, so Kernel's Theo has nothing to
    * customize (KERNEL-553).
    */
-  private async customize(roomId: string, agentId: string): Promise<AgentDef> {
-    const room = this.mustRoom(roomId)
-    const agent = this.agentOf(roomId, agentId) ?? (await this.agents(roomId)).find((a) => a.id === agentId)
+  private async customize(projectId: string, agentId: string): Promise<AgentDef> {
+    const project = this.mustProject(projectId)
+    const agent = this.agentOf(projectId, agentId) ?? (await this.agents(projectId)).find((a) => a.id === agentId)
     if (agent?.builtIn !== 'lead') throw new Error(agent?.builtIn ? 'Only Kernel can be customized. Theo is a starter agent now, so add Theo from Team.' : `${agent?.name ?? agentId} already has a file in .claude/agents.`)
     if (!this.o.starterDir) throw new Error("Kernel's own agents aren't available in this build.")
-    const path = join(room.path, '.claude', 'agents', KERNEL_FILE)
+    const path = join(project.path, '.claude', 'agents', KERNEL_FILE)
     if (await stat(path).then(() => true, () => false)) throw new Error(`Kernel is already customized in ${KERNEL_FILE}.`)
     const src = await readFile(builtinFile(this.o.starterDir), 'utf8')
     const end = src.indexOf('\n---', 3)
     const head = src.slice(0, end).replace(/^model:.*\n/m, '')
-    const was = await this.agents(roomId)
-    await createAgent(room.path, { id: KERNEL_FILE.replace(/\.md$/, ''), text: `${head}\n---\n${agent.prompt.trim()}\n` })
-    const list = await this.reloadLead(roomId, was)
+    const was = await this.agents(projectId)
+    await createAgent(project.path, { id: KERNEL_FILE.replace(/\.md$/, ''), text: `${head}\n---\n${agent.prompt.trim()}\n` })
+    const list = await this.reloadLead(projectId, was)
     bus.track({ name: 'builtin.customized', which: 'lead' })
     return list.find((a) => a.lead)!
   }
 
   /** Reset on Kernel's profile: deletes .claude/agents/kernel.md, so Kernel runs as it ships unless another file customizes it (KERNEL-692). */
-  private async resetLead(roomId: string): Promise<AgentDef[]> {
-    const room = this.mustRoom(roomId)
-    const was = await this.agents(roomId)
+  private async resetLead(projectId: string): Promise<AgentDef[]> {
+    const project = this.mustProject(projectId)
+    const was = await this.agents(projectId)
     const file = was.find((a) => a.lead)?.file
-    const path = join(room.path, '.claude', 'agents', KERNEL_FILE)
+    const path = join(project.path, '.claude', 'agents', KERNEL_FILE)
     if (file && file !== path) throw new Error(`Kernel is customized in ${basename(file)}. Move it to ${KERNEL_FILE} first.`)
     await rm(path, { force: true })
-    return this.reloadLead(roomId, was)
+    return this.reloadLead(projectId, was)
   }
 
   /**
@@ -509,43 +509,43 @@ export class Team extends Feature {
    * id, name and `lead: true` lines are harmless there, since kernel.md customizes Kernel by its name. Kernel keeps its id,
    * so its open chats carry on.
    */
-  private async moveLead(roomId: string): Promise<AgentDef[]> {
-    const room = this.mustRoom(roomId)
-    const was = await this.agents(roomId)
+  private async moveLead(projectId: string): Promise<AgentDef[]> {
+    const project = this.mustProject(projectId)
+    const was = await this.agents(projectId)
     const file = was.find((a) => a.lead)?.file
-    const dir = join(room.path, '.claude', 'agents')
+    const dir = join(project.path, '.claude', 'agents')
     const path = join(dir, KERNEL_FILE)
-    if (!file) throw new Error('No file customizes Kernel in this room.')
+    if (!file) throw new Error('No file customizes Kernel in this project.')
     if (file === path) throw new Error(`Kernel is already customized in ${KERNEL_FILE}.`)
-    if (dirname(file) !== dir) throw new Error(`Kernel is customized in ${basename(file)}, which isn't in this room's .claude/agents.`)
+    if (dirname(file) !== dir) throw new Error(`Kernel is customized in ${basename(file)}, which isn't in this project's .claude/agents.`)
     if (await stat(path).then(() => true, () => false)) throw new Error(`.claude/agents already has a ${KERNEL_FILE}. Remove it or rename it first.`)
-    const custom = (await loadAgents(room.path)).find((a) => a.file === file)
+    const custom = (await loadAgents(project.path)).find((a) => a.file === file)
     await rename(file, path)
-    const { team } = await loadRepoSettings(room.path)
-    if (team?.lead && team.lead === custom?.id) await saveTeamSettings(room.path, { lead: null })
-    return this.reloadLead(roomId, was)
+    const { team } = await loadRepoSettings(project.path)
+    if (team?.lead && team.lead === custom?.id) await saveTeamSettings(project.path, { lead: null })
+    return this.reloadLead(projectId, was)
   }
 
-  /** The team after Kernel's file changed: Kernel's idle chats restart on its new instructions, and the room hears of it. */
-  private async reloadLead(roomId: string, was: AgentDef[]): Promise<AgentDef[]> {
-    const list = await this.agents(roomId)
-    const open = this.store.workspaces(roomId).filter((w) => w.agentId === KERNEL_LEAD && w.status !== 'archived')
+  /** The team after Kernel's file changed: Kernel's idle chats restart on its new instructions, and the project hears of it. */
+  private async reloadLead(projectId: string, was: AgentDef[]): Promise<AgentDef[]> {
+    const list = await this.agents(projectId)
+    const open = this.store.workspaces(projectId).filter((w) => w.agentId === KERNEL_LEAD && w.status !== 'archived')
     if (open.length) this.sessions.restartIdle(open.map((w) => w.id))
-    this.announceTeam(roomId, list, was)
+    this.announceTeam(projectId, list, was)
     return list
   }
 
   /** Team > Add a starter agent: one of Kernel's starter teammates joins a team that already has agents (KERNEL-397). */
-  private async addStarter(roomId: string, id: string): Promise<AgentDef> {
-    const room = this.mustRoom(roomId)
+  private async addStarter(projectId: string, id: string): Promise<AgentDef> {
+    const project = this.mustProject(projectId)
     if (!this.o.starterDir) throw new Error('No starter team found. Add agent files to .claude/agents.')
     if (!(STARTER_IDS as readonly string[]).includes(id)) throw new Error(`${id} isn't one of Kernel's starter agents.`)
-    const was = await this.agents(roomId)
+    const was = await this.agents(projectId)
     if (was.some((a) => a.id === id)) throw new Error(`${was.find((a) => a.id === id)!.name} is already on the team.`)
-    if (!(await seatStarterTeam(this.o.starterDir, room.path, [id])).length) throw new Error(`.claude/agents already has a file named ${id}.md.`)
-    await this.joinRoster(roomId, id)
-    const list = await this.agents(roomId)
-    this.announceTeam(roomId, list, was)
+    if (!(await seatStarterTeam(this.o.starterDir, project.path, [id])).length) throw new Error(`.claude/agents already has a file named ${id}.md.`)
+    await this.joinRoster(projectId, id)
+    const list = await this.agents(projectId)
+    this.announceTeam(projectId, list, was)
     const def = list.find((a) => a.id === id)
     if (!def) throw new Error(`${id} could not be added.`)
     return def
@@ -553,41 +553,41 @@ export class Team extends Feature {
 
   /**
    * Restore: an agent retired on this Mac comes back. A file the team retired comes back to ~/.claude/agents for me, or in a
-   * pull request for the team (KERNEL-466). Either way it joins the room's roster, when it has one (KERNEL-465).
+   * pull request for the team (KERNEL-466). Either way it joins the project's roster, when it has one (KERNEL-465).
    */
-  private async restore(roomId: string, agentId: string, scope: AgentScope = 'me'): Promise<AgentDef & { pr?: AgentChangePr }> {
-    const { agent, pr } = await this.k.agentChanges.restore(roomId, agentId, scope)
+  private async restore(projectId: string, agentId: string, scope: AgentScope = 'me'): Promise<AgentDef & { pr?: AgentChangePr }> {
+    const { agent, pr } = await this.k.agentChanges.restore(projectId, agentId, scope)
     if (agent && pr) return { ...agent, pr }
-    const list = await this.agents(roomId)
-    this.announceTeam(roomId, list)
+    const list = await this.agents(projectId)
+    this.announceTeam(projectId, list)
     const def = list.find((a) => a.id === agentId) ?? agent
     if (!def) throw new Error(`${agentId} could not be restored.`)
     return def
   }
 
-  agentsSync(roomId: string) { return this.agentCache.get(roomId) ?? [] }
+  agentsSync(projectId: string) { return this.agentCache.get(projectId) ?? [] }
 
   /**
    * The agent a workspace runs, by id: the team's, which always has Kernel under `kernel-lead` (KERNEL-692), else the built-in
    * Lead before the team first resolves. `kernel-reviewer` is Kernel's Theo, so a review workspace from
    * before KERNEL-553 still runs Theo and shows Theo's name. A review chat Kernel started runs its kind's prompt instead (KERNEL-549).
    */
-  agentOf(roomId: string, agentId: string): AgentDef | undefined {
-    const b = this.builtins.get(roomId)
-    return this.agentsSync(roomId).find((a) => a.id === agentId) ?? (agentId === KERNEL_LEAD ? b?.lead : agentId === KERNEL_REVIEWER ? b?.theo : undefined)
+  agentOf(projectId: string, agentId: string): AgentDef | undefined {
+    const b = this.builtins.get(projectId)
+    return this.agentsSync(projectId).find((a) => a.id === agentId) ?? (agentId === KERNEL_LEAD ? b?.lead : agentId === KERNEL_REVIEWER ? b?.theo : undefined)
   }
 
-  /** The room's reviewer, if it has one. */
-  reviewerOf(roomId: string): AgentDef | undefined { return this.agentsSync(roomId).find(isReviewer) }
+  /** The project's reviewer, if it has one. */
+  reviewerOf(projectId: string): AgentDef | undefined { return this.agentsSync(projectId).find(isReviewer) }
   /**
    * The Lead's own workspace, archived or not (KERNEL-353): History and comments on an archived Lead's files ask too. The shared
    * `isLeadWorkspace` is the same check for open workspaces.
    */
-  isLeadWorkspace(ws: Workspace) { return !!ws.lead && !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead }
+  isLeadWorkspace(ws: Workspace) { return !!ws.lead && !!this.agentsSync(ws.projectId).find((a) => a.id === ws.agentId)?.lead }
 
-  statusOf(roomId: string): Record<string, AgentStatus> {
-    const s = { ...(this.statuses.get(roomId) ?? {}) }
-    for (const a of this.agentsSync(roomId)) s[a.id] ??= this.mustRoom(roomId).paused ? 'paused' : 'idle'
+  statusOf(projectId: string): Record<string, AgentStatus> {
+    const s = { ...(this.statuses.get(projectId) ?? {}) }
+    for (const a of this.agentsSync(projectId)) s[a.id] ??= this.mustProject(projectId).paused ? 'paused' : 'idle'
     return s
   }
 
@@ -625,22 +625,22 @@ export class Team extends Feature {
 
   handlers() {
     return {
-      'agents.seed': async ({ roomId, template }) => this.listed(roomId, await this.seedAgents(roomId, template)),
-      'agents.list': async ({ roomId, retired }) => (retired ? this.retiredOf(roomId) : this.listed(roomId, await this.agents(roomId))),
-      'agents.save': async ({ roomId, agentId, patch, scope }) => this.saveAgentEdit(roomId, agentId, patch, scope),
+      'agents.seed': async ({ projectId, template }) => this.listed(projectId, await this.seedAgents(projectId, template)),
+      'agents.list': async ({ projectId, retired }) => (retired ? this.retiredOf(projectId) : this.listed(projectId, await this.agents(projectId))),
+      'agents.save': async ({ projectId, agentId, patch, scope }) => this.saveAgentEdit(projectId, agentId, patch, scope),
       'agents.draft': async ({ description, name, model }) => draftAgent({ description, name, model }),
-      'agents.create': async ({ roomId, draft, scope }) => (roomId ? this.hireFromDraft(roomId, draft, scope) : this.hireGlobal(draft, scope)),
-      'agents.retire': async ({ roomId, agentId, handoffTo, scope }) => {
-        const pr = await this.retire(roomId, agentId, handoffTo, scope)
+      'agents.create': async ({ projectId, draft, scope }) => (projectId ? this.hireFromDraft(projectId, draft, scope) : this.hireGlobal(draft, scope)),
+      'agents.retire': async ({ projectId, agentId, handoffTo, scope }) => {
+        const pr = await this.retire(projectId, agentId, handoffTo, scope)
         return { ok: true as const, ...(pr ? { pr } : {}) }
       },
-      'agents.restore': async ({ roomId, agentId, scope }) => this.restore(roomId, agentId, scope),
-      'agents.status': async ({ roomId }) => this.statusOf(roomId),
-      'agents.setTeam': async ({ roomId, team, from }) => this.listed(roomId, await this.setTeam(roomId, team, from)),
-      'agents.customize': async ({ roomId, agentId }) => this.customize(roomId, agentId),
-      'agents.resetLead': async ({ roomId }) => this.listed(roomId, await this.resetLead(roomId)),
-      'agents.moveLead': async ({ roomId }) => this.listed(roomId, await this.moveLead(roomId)),
-      'agents.addStarter': async ({ roomId, id }) => this.addStarter(roomId, id),
+      'agents.restore': async ({ projectId, agentId, scope }) => this.restore(projectId, agentId, scope),
+      'agents.status': async ({ projectId }) => this.statusOf(projectId),
+      'agents.setTeam': async ({ projectId, team, from }) => this.listed(projectId, await this.setTeam(projectId, team, from)),
+      'agents.customize': async ({ projectId, agentId }) => this.customize(projectId, agentId),
+      'agents.resetLead': async ({ projectId }) => this.listed(projectId, await this.resetLead(projectId)),
+      'agents.moveLead': async ({ projectId }) => this.listed(projectId, await this.moveLead(projectId)),
+      'agents.addStarter': async ({ projectId, id }) => this.addStarter(projectId, id),
       'agents.listGlobal': async () => this.globalAgents(),
       'agents.saveGlobal': async ({ agentId, patch }) => this.saveGlobal(agentId, patch)
     } satisfies Partial<Handlers>

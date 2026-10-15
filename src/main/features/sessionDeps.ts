@@ -3,22 +3,22 @@ import { buildsHere } from '@shared/leadMode'
 import type { Kernel } from '../kernel'
 import { bus } from '../bus'
 import type { SessionDeps } from '../services/sessions'
-import { agentAccessInRoom, aliasesInRoom, disabledInRoom, referencesInRoom } from '../services/settings'
+import { agentAccessInProject, aliasesInProject, disabledInProject, referencesInProject } from '../services/settings'
 
 /**
  * What Sessions calls back into Kernel for (KERNEL-324). A new reaction to a finished turn goes in `onTurnDone`, where the
  * order matters: the Lead hears about a turn only after Kernel has read the PR it may have opened.
  */
 export function sessionDeps(k: Kernel): SessionDeps {
-  // Reference folders the room log already warned about, by room and path, so each warns once per run (KERNEL-748).
+  // Reference folders the project log already warned about, by project and path, so each warns once per run (KERNEL-748).
   const warned = new Set<string>()
   return {
     store: k.store,
     approvals: k.approvals,
     settings: () => k.settings,
     // A review chat runs its kind's agent, which isn't always its workspace's (KERNEL-549).
-    agentFor: (ws, chat) => (chat && k.reviews.agentForChat(ws, chat)) || k.team.agentOf(ws.roomId, ws.agentId),
-    teamOf: (roomId) => k.team.agentCache.get(roomId),
+    agentFor: (ws, chat) => (chat && k.reviews.agentForChat(ws, chat)) || k.team.agentOf(ws.projectId, ws.agentId),
+    teamOf: (projectId) => k.team.agentCache.get(projectId),
     openItems: {
       mentioned: (chat, mentioned) => k.openItems.mentioned(chat, mentioned),
       userSent: (chatId) => k.openItems.userSent(chatId),
@@ -28,34 +28,34 @@ export function sessionDeps(k: Kernel): SessionDeps {
     mcpFor: (ws, agent, chat) => k.tools.mcpFor(ws, agent, chat),
     // The chat's account's home and key, which can be another than the one in use (KERNEL-843). Codex's own login is ~/.codex.
     codexFor: (ws, agent, chat, account) => ({ bin: k.providers.binary('codex').path, home: account ? k.providers.codexHome(account) : undefined, apiKey: account ? k.providers.apiKey('codex', account) : undefined, personality: k.settings.providers.codex.personality, ...k.tools.codexTools(ws, agent, chat) }),
-    disabledFor: (ws) => { const room = k.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
-    aliasesFor: (ws) => { const room = k.store.room(ws.roomId); return room ? aliasesInRoom(room.path) : undefined },
-    accessFor: (ws) => { const room = k.store.room(ws.roomId); return room ? agentAccessInRoom(room.path, ws.agentId) : undefined },
-    // A folder that isn't there is skipped, so the chat still starts, and the room log says so once (KERNEL-748).
+    disabledFor: (ws) => { const project = k.store.project(ws.projectId); return project ? disabledInProject(project.path) : undefined },
+    aliasesFor: (ws) => { const project = k.store.project(ws.projectId); return project ? aliasesInProject(project.path) : undefined },
+    accessFor: (ws) => { const project = k.store.project(ws.projectId); return project ? agentAccessInProject(project.path, ws.agentId) : undefined },
+    // A folder that isn't there is skipped, so the chat still starts, and the project log says so once (KERNEL-748).
     referencesFor: (ws) => {
-      const room = k.store.room(ws.roomId)
-      if (!room) return undefined
-      const { present, missing } = referencesInRoom(room.path)
+      const project = k.store.project(ws.projectId)
+      if (!project) return undefined
+      const { present, missing } = referencesInProject(project.path)
       for (const path of missing) {
-        if (warned.has(`${room.id}\0${path}`)) continue
-        warned.add(`${room.id}\0${path}`)
-        bus.activity({ kind: 'note', roomId: room.id, actor: 'kernel', text: 'skipped a reference folder that is missing:', object: path, warn: true })
+        if (warned.has(`${project.id}\0${path}`)) continue
+        warned.add(`${project.id}\0${path}`)
+        bus.activity({ kind: 'note', projectId: project.id, actor: 'kernel', text: 'skipped a reference folder that is missing:', object: path, warn: true })
       }
       return present
     },
-    onMcp: (ws, provider, servers) => k.mcp.reported(ws.roomId, provider, servers),
+    onMcp: (ws, provider, servers) => k.mcp.reported(ws.projectId, provider, servers),
     rulesFor: (ws, agent, chat) => k.tools.rulesFor(ws, agent, chat),
-    roomAllow: (roomId) => k.store.room(roomId)?.allow ?? [],
+    projectAllow: (projectId) => k.store.project(projectId)?.allow ?? [],
     availability: (chat, ws, wants) => k.permissions.forChat(chat, ws, wants),
     envFor: (ws) => k.env.envFor(ws),
-    allowInRoom: (roomId, rule) => {
-      const room = k.store.room(roomId)
-      if (room && !room.allow?.includes(rule)) k.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
+    allowInProject: (projectId, rule) => {
+      const project = k.store.project(projectId)
+      if (project && !project.allow?.includes(rule)) k.store.saveProject({ ...project, allow: [...(project.allow ?? []), rule] })
     },
-    roomTools: (roomId) => k.store.room(roomId)?.allowTools ?? [],
-    allowToolInRoom: (roomId, rule) => {
-      const room = k.store.room(roomId)
-      if (room && !room.allowTools?.includes(rule)) k.store.saveRoom({ ...room, allowTools: [...(room.allowTools ?? []), rule] })
+    projectTools: (projectId) => k.store.project(projectId)?.allowTools ?? [],
+    allowToolInProject: (projectId, rule) => {
+      const project = k.store.project(projectId)
+      if (project && !project.allowTools?.includes(rule)) k.store.saveProject({ ...project, allowTools: [...(project.allowTools ?? []), rule] })
     },
     onReply: (ws, chat) => void k.chats.nameChat(ws, chat),
     // A reply proves the network works, so a failing DNS probe behind a proxy doesn't hold every send (KERNEL-231).
@@ -66,7 +66,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
       void k.chats.nameChat(ws, chat, true)
       // A turn the user stopped is one they were watching (KERNEL-507).
       if (!turn.interrupted) k.chats.markUnread(chat)
-      const lead = !!k.team.agentOf(ws.roomId, ws.agentId)?.lead
+      const lead = !!k.team.agentOf(ws.projectId, ws.agentId)?.lead
       const done = { ...turn, lead, queued: k.sessions.queued(chat.id).length > 0 }
       k.notifications.turnDone(ws, chat, done)
       // A teammate's update waits until Kernel has read its PR, so a PR the turn opened speaks for the turn however long GitHub
@@ -88,13 +88,13 @@ export function sessionDeps(k: Kernel): SessionDeps {
       }
       // A Lead chat can open a PR from its own branch too (KERNEL-405). Nobody else hears about it.
       else if (ws.prNumber) void k.refreshPr(ws.id).catch(() => undefined)
-      void k.overlaps.check(ws.roomId).catch(() => undefined)
+      void k.overlaps.check(ws.projectId).catch(() => undefined)
       // A teammate that was busy when main moved is told now, if it still would conflict (KERNEL-180). One that started from a
       // stale base fetches again and catches up (KERNEL-653).
-      if (prPath) void k.baseWatch.check(ws.roomId, { fetch: false, only: ws.id }).catch(() => undefined)
+      if (prPath) void k.baseWatch.check(ws.projectId, { fetch: false, only: ws.id }).catch(() => undefined)
       void k.waits.releaseTaken(ws.id, chat.id, turn.by).catch(() => undefined)
       // A sync skipped while this chat's turn ran happens once it ends. It does nothing while another of its tabs runs (KERNEL-181, KERNEL-405).
-      if (own) void k.lead.syncLead(ws.roomId, { workspaceId: ws.id })
+      if (own) void k.lead.syncLead(ws.projectId, { workspaceId: ws.id })
       // The footer shows usage all the time, so the account the turn ran on is read again (KERNEL-673).
       k.providers.readUsageAfterTurn(chatProvider(chat), turn.account)
     },

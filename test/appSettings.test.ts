@@ -270,8 +270,8 @@ describe('open to (replaces the default home view)', () => {
       if (general) await writeFile(file, JSON.stringify({ general }))
       return (await loadAppSettings(file, '/home/cj')).resolved.general as Record<string, unknown>
     }
-    it('opens where you left off for a saved home or last room, which every launch wrote without a choice', async () => {
-      for (const homeView of ['home', 'lastRoom']) {
+    it('opens where you left off for a saved home or last project, which every launch wrote without a choice', async () => {
+      for (const homeView of ['home', 'lastProject']) {
         const g = await load({ homeView, openAtLogin: true })
         expect(g.openTo).toBe('lastPlace')
         expect('homeView' in g).toBe(false)
@@ -346,13 +346,13 @@ describe('agents working at once', () => {
   async function setup(agentLimit: number, leads: string[] = []) {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-limit-')), 'kernel.db'))
     for (const id of ['a', 'b', 'c', ...leads]) {
-      const ws: Workspace = { id: `ws-${id}`, roomId: 'room', name: id, branch: `feat/${id}`, baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: leads.includes(id) ? 'kernel' : id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+      const ws: Workspace = { id: `ws-${id}`, projectId: 'project', name: id, branch: `feat/${id}`, baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: leads.includes(id) ? 'kernel' : id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
       const chat: Chat = { id, workspaceId: ws.id, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
       store.saveWorkspace(ws)
       store.saveChat(chat)
     }
     const settings = { ...DEFAULT_SETTINGS('/home/cj'), models: { ...DEFAULT_SETTINGS('/home/cj').models, agentLimit } }
-    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: (ws) => (ws.agentId === 'kernel' ? kernel : undefined), mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {} })
+    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: (ws) => (ws.agentId === 'kernel' ? kernel : undefined), mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
     return { sessions, settings }
   }
   const kernel: AgentDef = { id: 'kernel', name: 'Kernel', role: 'Lead', description: '', lead: true, prompt: '', file: '' }
@@ -668,17 +668,17 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
       '.claude/agents/noor.md': '---\nname: noor\ndescription: Backend.\nrole: Backend\nmodel: opus\n---\nYou are Noor.'
     })
     const { k, h } = await kernel({ plan: 'pro' })
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     await h['account.get'](undefined)
-    const models = async () => Object.fromEntries((await k.team.agents(room.id)).map((a) => [a.id, k.team.modelFor(a)]))
+    const models = async () => Object.fromEntries((await k.team.agents(project.id)).map((a) => [a.id, k.team.modelFor(a)]))
     expect(await models()).toMatchObject({ 'kernel-lead': 'claude-sonnet-5-5', theo: 'claude-sonnet-5-5', kai: 'claude-sonnet-5-5', noor: 'claude-opus-5-5' })
     await h['settings.set']({ patch: { models: { roles: { lead: { provider: 'claude', model: 'claude-opus-5-5' } } } } })
     expect((await models())['kernel-lead']).toBe('claude-opus-5-5')
     await k.stop()
     const max = await kernel({ plan: 'max' })
-    const room2 = await max.k.addRoom(repo)
+    const project2 = await max.k.addProject(repo)
     await max.h['account.get'](undefined)
-    expect(max.k.team.modelFor((await max.k.team.agents(room2.id)).find((a) => a.lead)!)).toBe('claude-opus-5-5')
+    expect(max.k.team.modelFor((await max.k.team.agents(project2.id)).find((a) => a.lead)!)).toBe('claude-opus-5-5')
     await max.k.stop()
   })
 

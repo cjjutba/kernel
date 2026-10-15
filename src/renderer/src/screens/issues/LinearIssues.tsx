@@ -6,7 +6,7 @@ import { readSaved as readStored, writeSaved } from '../../remember'
 import { Button, EmptyList, FailedState, Icon, NotConnectedState, Pill, useListKeys } from '../../ui'
 import { IssuePriority, IssueState } from '../../icons'
 import { IssueDetail } from './IssueDetail'
-import { CapNote, FilterChip, IssueSkeleton, RefreshNotice, type RoomHead } from './parts'
+import { CapNote, FilterChip, IssueSkeleton, RefreshNotice, type ProjectHead } from './parts'
 import { RowStatus, useReadPrs } from './WorkCard'
 import { WorkHeader } from '../work/WorkHeader'
 import { useOpenPrCount } from '../prs/model'
@@ -38,9 +38,9 @@ let knownSlug: string | undefined
 
 /**
  * Issues.png and its states: your open Linear issues in a list, the selected one on the right (KERNEL-160). The route's `issueId` opens with
- * that issue selected. Linear's list is the account's, so the room in the header only says which room's page this is (KERNEL-471).
+ * that issue selected. Linear's list is the account's, so the project in the header only says which project's page this is (KERNEL-471).
  */
-export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHead }) {
+export function LinearIssues({ issueId, head }: { issueId?: string; head: ProjectHead }) {
   const prCount = useOpenPrCount()
   const online = useStore((s) => s.system.online)
   const workspaces = useStore((s) => s.workspaces)

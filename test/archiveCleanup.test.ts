@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, trustRoom, freePort } from './helpers'
+import { tempRepo, trustProject, freePort } from './helpers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
@@ -27,17 +27,17 @@ async function boot(dataDir: string, home: string) {
   return k
 }
 
-/** A room whose archive script is `script`, trusted, with one workspace whose branch is pushed nowhere. */
+/** A project whose archive script is `script`, trusted, with one workspace whose branch is pushed nowhere. */
 async function setup(script?: string, app: object = {}) {
   const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': KAI, ...(script ? { '.kernel/settings.toml': `[scripts]\narchive = ${JSON.stringify(script)}\n` } : {}) })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
   const k = await boot(dataDir, home)
-  const room = await k.addRoom(repo)
-  await trustRoom(k, room.id)
-  const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
-  return { k, repo, room, ws, dataDir, home }
+  const project = await k.addProject(repo)
+  await trustProject(k, project.id)
+  const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+  return { k, repo, project, ws, dataDir, home }
 }
 
 /** A file the archive script waits for, so the test decides when the cleanup goes on. */
@@ -47,7 +47,7 @@ async function gate() {
   return { script: `while [ ! -f ${file} ]; do sleep 0.05; done`, open: () => writeFile(file, '') }
 }
 
-const warnings = (k: Kernel, roomId: string, id: string) => k.store.activity(roomId).filter((a) => a.kind === 'note' && a.workspaceId === id && a.warn)
+const warnings = (k: Kernel, projectId: string, id: string) => k.store.activity(projectId).filter((a) => a.kind === 'note' && a.workspaceId === id && a.warn)
 
 describe('archive returns before its cleanup (KERNEL-702)', () => {
   it('saves archived while the archive script still runs, and the folder goes once the cleanup ends', async () => {
@@ -66,10 +66,10 @@ describe('archive returns before its cleanup (KERNEL-702)', () => {
 
   it('keeps the port block and the folder taken until the cleanup ends', async () => {
     const g = await gate()
-    const { k, room, ws } = await setup(g.script)
+    const { k, project, ws } = await setup(g.script)
     await k.archiveWorkspace(ws.id)
     expect(k.workspaces.reservedPorts.has(ws.port)).toBe(true)
-    const next = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const next = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
     expect(blocksOverlap(next.port, ws.port)).toBe(false)
     expect(next.path).not.toBe(ws.path)
     await g.open()
@@ -107,35 +107,35 @@ describe('archive returns before its cleanup (KERNEL-702)', () => {
     expect(existsSync(ws.path)).toBe(false)
     expect(await branchExists(repo, ws.branch)).toBe(false)
     expect(again.store.meta('cleanups')).toEqual({})
-    expect(warnings(again, ws.roomId, ws.id)).toEqual([])
+    expect(warnings(again, ws.projectId, ws.id)).toEqual([])
   })
 
   it('says so in a warning note when the archive script fails, and still removes the worktree', async () => {
-    const { k, room, ws } = await setup('exit 3')
+    const { k, project, ws } = await setup('exit 3')
     await k.archiveWorkspace(ws.id)
     await k.archive.cleanedUp(ws.id)
-    expect(warnings(k, room.id, ws.id).map((a) => `${a.text} ${a.object}`)).toEqual([`saw the archive script fail with exit code 3 in ${ws.name}`])
+    expect(warnings(k, project.id, ws.id).map((a) => `${a.text} ${a.object}`)).toEqual([`saw the archive script fail with exit code 3 in ${ws.name}`])
     expect(existsSync(ws.path)).toBe(false)
   })
 
   it('says so in a warning note when the archive script times out', async () => {
-    const { k, room, ws } = await setup('sleep 600')
+    const { k, project, ws } = await setup('sleep 600')
     // Below the setting's one minute floor, so the test doesn't wait one.
     k.settings.scripts.timeoutMinutes = 0.01
     await k.archiveWorkspace(ws.id)
     await k.archive.cleanedUp(ws.id)
-    expect(warnings(k, room.id, ws.id).map((a) => `${a.text} ${a.object}`)).toEqual([`stopped the archive script after 0.01 minutes in ${ws.name}`])
+    expect(warnings(k, project.id, ws.id).map((a) => `${a.text} ${a.object}`)).toEqual([`stopped the archive script after 0.01 minutes in ${ws.name}`])
     expect(existsSync(ws.path)).toBe(false)
   })
 
   it('turns a failed worktree removal into a warning note, not a throw', async () => {
-    const { k, room, repo, ws } = await setup()
+    const { k, project, repo, ws } = await setup()
     await run('git', ['-C', repo, 'worktree', 'lock', ws.path])
     onTestFinished(async () => { await run('git', ['-C', repo, 'worktree', 'unlock', ws.path]).catch(() => undefined) })
     await k.archiveWorkspace(ws.id)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
     await k.archive.cleanedUp(ws.id)
-    expect(warnings(k, room.id, ws.id)).toMatchObject([{ text: "couldn't finish cleaning up after archiving", object: ws.name, quote: expect.stringMatching(/locked/) }])
+    expect(warnings(k, project.id, ws.id)).toMatchObject([{ text: "couldn't finish cleaning up after archiving", object: ws.name, quote: expect.stringMatching(/locked/) }])
     expect(existsSync(ws.path)).toBe(true)
   })
 
@@ -153,7 +153,7 @@ describe('archive returns before its cleanup (KERNEL-702)', () => {
     expect(existsSync(ws.path)).toBe(false)
     expect(await branchExists(repo, ws.branch)).toBe(false)
     // One archive, one cleanup.
-    expect(k.store.activity(ws.roomId).filter((a) => a.kind === 'workspace.archived' && a.workspaceId === ws.id)).toHaveLength(1)
+    expect(k.store.activity(ws.projectId).filter((a) => a.kind === 'workspace.archived' && a.workspaceId === ws.id)).toHaveLength(1)
   })
 })
 
@@ -186,7 +186,7 @@ describe('archive ends what still runs in the worktree (KERNEL-810)', () => {
     return kill.mock.calls.filter(([, sig]) => sig !== 0).map(([pid, sig]) => [pid, sig])
   }
 
-  it('ends one in its own group and one left with nohup, and leaves one in the room repo alone', async () => {
+  it('ends one in its own group and one left with nohup, and leaves one in the project repo alone', async () => {
     const { k, repo, ws } = await setup()
     await mkdir(join(ws.path, 'web'))
     const group = await leave(ws.path, 'group')
@@ -210,9 +210,9 @@ describe('archive ends what still runs in the worktree (KERNEL-810)', () => {
   })
 
   it('signals nothing for a current-branch workspace, and never Kernel itself', async () => {
-    const { k, repo, room, ws } = await setup()
-    // Work on the room's checkout, as a current-branch workspace does, with the user's own program running there.
-    const current = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'On main' })
+    const { k, repo, project, ws } = await setup()
+    // Work on the project's checkout, as a current-branch workspace does, with the user's own program running there.
+    const current = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'On main' })
     k.store.saveWorkspace({ ...k.store.workspace(current.id)!, mode: 'current', path: repo, branch: 'main' })
     const mine = await leave(repo, 'nohup')
     expect(await signalled(async () => { await k.archiveWorkspace(current.id); await k.archive.cleanedUp(current.id) })).toEqual([])

@@ -1,8 +1,8 @@
-/** A line in the room logs. */
+/** A line in the project logs. */
 export interface ActivityEvent {
   id: string
   ts: number
-  roomId?: string
+  projectId?: string
   workspaceId?: string
   agentId?: string
   sessionId?: string
@@ -13,7 +13,7 @@ export interface ActivityEvent {
     | 'session.start' | 'session.end' | 'prompt' | 'tool.start' | 'tool.end' | 'tool.failed'
     | 'turn.done' | 'approval.requested' | 'approval.decided' | 'task.created' | 'task.assigned' | 'task.completed'
     | 'workspace.created' | 'workspace.archived' | 'workspace.restored' | 'pr.changed' | 'agent.status' | 'agent.say'
-    | 'agent.joined' | 'agent.talk' | 'agent.retired' | 'room.paused' | 'room.resumed' | 'brief' | 'overlap' | 'checkpoint.reverted'
+    | 'agent.joined' | 'agent.talk' | 'agent.retired' | 'project.paused' | 'project.resumed' | 'brief' | 'overlap' | 'checkpoint.reverted'
     | 'limit' | 'note'
   text: string
   object?: string
@@ -31,7 +31,7 @@ export type NotificationKind = 'approval' | 'merge' | 'blocked' | 'check' | 'fin
 export interface Notification {
   id: string
   kind: NotificationKind
-  roomId?: string
+  projectId?: string
   workspaceId?: string
   agentId?: string
   taskId?: string

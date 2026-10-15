@@ -15,7 +15,7 @@ const IVY = '---\nname: ivy\nrole: QA\ndescription: Tests things.\nmodel: gpt-6-
 const codexModel = (id: string): ProviderModel => ({ provider: 'codex', id, label: id, efforts: ['medium'], defaultEffort: 'medium' })
 
 /**
- * A room whose agents pin models, on a Kernel that checks pins. Who is signed in, and what Codex's `model/list` returns, are
+ * A project whose agents pin models, on a Kernel that checks pins. Who is signed in, and what Codex's `model/list` returns, are
  * stubs the test changes, so no read starts Claude Code or Codex.
  */
 async function kernel(files: Record<string, string>, o: { checkPins?: boolean } = { checkPins: true }) {
@@ -30,9 +30,9 @@ async function kernel(files: Record<string, string>, o: { checkPins?: boolean } 
   vi.spyOn(k.providers, 'models').mockImplementation((p) => (p === 'codex' ? state.codex() : claudeModels(p)))
   await k.start()
   k.sessions.send = async () => ({ queued: false })
-  const room = await k.rooms.addRoom(repo)
+  const project = await k.projects.addProject(repo)
   const read = async () => {
-    const team: AgentDef[] = await k.handlers()['agents.list']({ roomId: room.id })
+    const team: AgentDef[] = await k.handlers()['agents.list']({ projectId: project.id })
     return Object.fromEntries(team.filter((a) => !a.builtIn).map((a) => [a.id, (a.warnings ?? []).map((w) => w.kind).filter((w) => w === 'model-unavailable' || w === 'model-unknown')]))
   }
   return { k, state, signedIn, read }
@@ -86,7 +86,7 @@ describe('an agent that pins a model no signed-in provider offers (KERNEL-550)',
     await k.stop()
   })
 
-  it('says so on Team and in Room setup', () => {
+  it('says so on Team and in Project setup', () => {
     expect(warningText({ kind: 'model-unavailable' })).toBe('Pins a model you’re not signed in for.')
     expect(warningText({ kind: 'model-unknown' })).toBe('Pins a model Kernel doesn’t recognize.')
   })
@@ -102,7 +102,7 @@ describe('the sign-in check behind pinned models (KERNEL-634)', () => {
     await read()
     const asked = { signedIn: signedIn.mock.calls.length, models: models.mock.calls.length }
     await read()
-    await k.team.agents(k.store.rooms()[0].id)
+    await k.team.agents(k.store.projects()[0].id)
     expect({ signedIn: signedIn.mock.calls.length, models: models.mock.calls.length }).toEqual(asked)
 
     // Claude signed out, as its account push says.

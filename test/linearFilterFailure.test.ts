@@ -36,7 +36,7 @@ describe('a failed Linear filter change (KERNEL-882)', () => {
     const host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
-    act(() => root!.render(React.createElement(LinearIssues, { head: { rooms: [], room: undefined, onRoom: () => undefined } as never })))
+    act(() => root!.render(React.createElement(LinearIssues, { head: { projects: [], project: undefined, onProject: () => undefined } as never })))
     await settle()
     await act(async () => { pill(host, 'Mine').click() })
     await settle()

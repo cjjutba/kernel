@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { tempRepo, trustRoom, setUp, freePort } from './helpers'
+import { tempRepo, trustProject, setUp, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { saveRepoSettings } from '../src/main/services/settings'
 import { copyLocalFiles } from '../src/main/services/scripts'
@@ -33,10 +33,10 @@ async function setup(o: { link: boolean; modules?: boolean; copy?: string[]; loc
   const k = new Kernel({ dataDir, home })
   await k.start()
   k.sessions.send = async () => ({ queued: false })
-  const room = await k.addRoom(repo)
+  const project = await k.addProject(repo)
   // A copy list from settings.toml is the repo's text, which the user trusts before it copies (KERNEL-209).
-  await trustRoom(k, room.id)
-  const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+  await trustProject(k, project.id)
+  const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
   return { k, repo, ws }
 }
 
@@ -128,7 +128,7 @@ describe('files.copy stays inside the repo (KERNEL-209)', () => {
     expect(await resolveFilesToCopy(repo, entries, refused)).toEqual([{ path: '.env', size: 4 }])
     expect(refused).toEqual(expect.arrayContaining(['../**', '../*/id_rsa', `${outside}/*`]))
     // The preview lists the same, so it shows nothing outside the repo either.
-    expect(await k.handlers()['files.preview']({ roomId: ws.roomId, patterns: entries })).toEqual([{ path: '.env', size: 4 }])
+    expect(await k.handlers()['files.preview']({ projectId: ws.projectId, patterns: entries })).toEqual([{ path: '.env', size: 4 }])
     const wt = await mkdtemp(join(tmpdir(), 'kernel-wt-'))
     expect((await copyLocalFiles(repo, wt, entries)).copied).toEqual(['.env'])
     expect(await readdir(wt)).toEqual(['.env'])
@@ -163,13 +163,13 @@ describe('files.copy stays inside the repo (KERNEL-209)', () => {
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     // Saved in Settings, so trusted: confinement still applies to trusted text.
-    await k.handlers()['settings.setRoom']({ roomId: room.id, patch: { files: { copy: ['../../.ssh/id_rsa'] } }, shared: true })
+    await k.handlers()['settings.setProject']({ projectId: project.id, patch: { files: { copy: ['../../.ssh/id_rsa'] } }, shared: true })
     const lines: string[] = []
     const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'setup') lines.push(...e.lines.map((l) => l.line)) }
     bus.on('push', on)
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
     bus.off('push', on)
     expect(ws.status).toBe('ready')
     expect(lines).toContain('Did not copy ../../.ssh/id_rsa: files.copy can only copy files inside the repo.')
@@ -182,7 +182,7 @@ describe('Files to copy patterns in worktrees (KERNEL-245)', () => {
 
   it('copies what files.preview lists on create and again on restore', async () => {
     const { k, ws } = await setup({ link: false, copy: ['.env*', 'apps/**/.env', 'missing.txt'], local })
-    const preview = await k.handlers()['files.preview']({ roomId: ws.roomId })
+    const preview = await k.handlers()['files.preview']({ projectId: ws.projectId })
     expect(preview).toEqual([{ path: '.env', size: 6 }, { path: '.env.local', size: 6 }, { path: 'apps/web/.env', size: 6 }])
     for (const f of preview) expect(await readFile(join(ws.path, f.path), 'utf8')).toBe(local[f.path as keyof typeof local])
     // The tracked .env.example comes from git, not from the copy.

@@ -10,7 +10,7 @@ import { bypassConfirmed } from '../../../bypassConfirm'
 import { FileIcon } from '../../../components/FileIcon'
 import { useModeAvailability } from '../../../permissionModes'
 import { actions, getState, loadWorkspace, setLeadMode, useStore } from '../../../store'
-import { useRoomSettings } from '../../settings/useSettings'
+import { useProjectSettings } from '../../settings/useSettings'
 import { Button, Icon, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { PlanStrip, usePlanStrip } from '../cards/plan'
@@ -58,9 +58,9 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const queue = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
   const queueWhy = useStore((s) => s.queueWhy[chat.id])
   // What this workspace waits for, and who waits for it, named live as PRs open and merge (KERNEL-259). Only those
-  // workspaces are read, so a poll of the room's other PRs doesn't redraw the box.
+  // workspaces are read, so a poll of the project's other PRs doesn't redraw the box.
   const related = useStore((s) => (ws ? s.workspaces.filter((w) => ws.waitsFor?.on.includes(w.id) || w.waitsFor?.on.includes(ws.id)) : EMPTY_WS))
-  const team = useStore((s) => (ws ? s.agents[ws.roomId] : undefined)) ?? EMPTY_TEAM
+  const team = useStore((s) => (ws ? s.agents[ws.projectId] : undefined)) ?? EMPTY_TEAM
   const held = useMemo(() => (ws ? heldLine(ws, related, team) : undefined), [ws, related, team])
   const waiters = useMemo(() => (ws ? waitersLine(ws, related, team) : undefined), [ws, related, team])
   const forced = useStore((s) => s.ui.workspace.composer)
@@ -97,7 +97,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   // Only a chat with Kernel has a mode, Hand off or Build here (KERNEL-780).
   const withKernel = !!ws && isLeadChatWorkspace(ws)
   const leadMode = leadModeOf(ws)
-  const roomLeadMode = useRoomSettings(withKernel ? ws.roomId : undefined)?.agents?.leadMode
+  const projectLeadMode = useProjectSettings(withKernel ? ws.projectId : undefined)?.agents?.leadMode
   const appLeadMode = useStore((s) => s.settings?.team.leadMode)
   const pickLeadMode = (mode: LeadMode) => {
     d.focus()
@@ -130,13 +130,13 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const mentionGroups = useMemo(() => mentionMenu(files, mentionAgents), [files, mentionAgents])
   const mentionRows = mentionGroups.flatMap((g) => g.rows)
   const rows = mention ? mentionRows : slashRows
-  const roomId = ws?.roomId
+  const projectId = ws?.projectId
 
   // The queue, what it waits for and the run mode are also pushed as events; this reads what was set before the screen opened.
   // A read that failed says so above the box, with Retry, and is read again when the network is back.
   const { failed, retry } = useComposerLoads(chat.id)
   const [retrying, runRetry] = useBusy<'retry'>()
-  useEffect(() => { if (roomId) void call('skills.list', { roomId }).then(setSkills).catch(() => setSkills([])) }, [roomId])
+  useEffect(() => { if (projectId) void call('skills.list', { projectId }).then(setSkills).catch(() => setSkills([])) }, [projectId])
   useEffect(() => { void call('commands.list', undefined).then(setCommands).catch(() => setCommands([])) }, [])
 
   // Files for the @ menu, as the query changes. Older answers are dropped.
@@ -212,10 +212,10 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const grouped = useCodexInUse(provider)
   // KERNEL-456: the mode the chat runs in comes from main (KERNEL-572), which the window reads once for a chat it hasn't heard of and then hears of each change.
   const runMode = useStore((s) => s.runModes[chat.id])
-  const roomMode = useStore((s) => s.rooms.find((r) => r.id === roomId)?.permissionMode)
+  const projectMode = useStore((s) => s.projects.find((r) => r.id === projectId)?.permissionMode)
   const appMode = useStore((s) => s.settings?.permissions.mode)
   const availability = useModeAvailability()
-  const shown = shownMode(chat.plan || (holding && planWas), runMode, chat.mode ?? roomMode ?? appMode ?? 'default')
+  const shown = shownMode(chat.plan || (holding && planWas), runMode, chat.mode ?? projectMode ?? appMode ?? 'default')
   /** Plan sets `plan` and leaves the chat's `mode`. Every other mode sets `mode` and leaves plan. Bypass permissions asks once first, and what it saves is this chat's mode. */
   const setMode = (mode: ComposerMode, patch: (m: ComposerMode) => ReturnType<typeof modePatch> | ReturnType<typeof cyclePatch> = modePatch) => {
     if (mode === shown.picked) return
@@ -278,7 +278,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); cycleMode(); return }
     if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) run.current = null
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
-    if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i' && roomId) { e.preventDefault(); setMenu('linkIssue') }
+    if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i' && projectId) { e.preventDefault(); setMenu('linkIssue') }
   }
 
   const configure = (patch: { model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode | undefined }, onDone?: () => void) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); onDone?.(); await loadWorkspace(chat.workspaceId) })
@@ -393,12 +393,12 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
       top={<PlanStrip strip={strip} hasText={hasDraft} onSendChanges={() => void send()} onBack={d.focus} />}
       input={<ComposerInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} data-from={swapFrom && swapFrom.placeholder !== placeholder ? swapFrom.placeholder : undefined} onInput={() => setDismissed('')} onKeyDown={onKey} />}
       foot={<ComposerToolbar
-        lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), onPick: pickLeadMode } : undefined}
+        lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(projectLeadMode, appLeadMode), onPick: pickLeadMode } : undefined}
         agent={!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
         model={{ label: model, provider, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: setEffort } }}
         mode={{ provider, availability, shown, from: swapFrom?.shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
         context={chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
-        plus={{ panel: menu === 'model' || menu === 'context' || menu === 'mode' || menu === 'runIn' || menu === 'branch' ? null : menu, onPanel: setMenu, roomId, workspaceId: chat.workspaceId, onMode: () => setMenu('mode'), onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
+        plus={{ panel: menu === 'model' || menu === 'context' || menu === 'mode' || menu === 'runIn' || menu === 'branch' ? null : menu, onPanel: setMenu, projectId, workspaceId: chat.workspaceId, onMode: () => setMenu('mode'), onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
         send={{ label: plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send', ready: hasDraft && !blocked && !d.pending, disabled: blocked, busy: d.pending > 0, busyLabel: 'Attaching', stop: running, stopping: stopping !== null, onSend: () => void send(), onStop: stop }} />}
       hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
     />

@@ -7,8 +7,8 @@ import { FileIcon } from '../../components/FileIcon'
 import { Avatar, Button, Card, EmptyState, Icon, IconButton, Spinner, useBusy, type IconName } from '../../ui'
 import { ServiceMark } from '../../icons'
 import { actions, getState, go, loadWorkspace, setLeadMode, useStore } from '../../store'
-import { openRoom } from '../../lead'
-import { floorRoomId, noteLinkTarget } from './noteLink'
+import { openProject } from '../../lead'
+import { floorProjectId, noteLinkTarget } from './noteLink'
 import { NoteText } from './NoteText'
 import { ApprovalCard } from './cards/ApprovalCard'
 import { waitingPlan } from './cards/steps'
@@ -269,12 +269,12 @@ function TurnEnd({ block, chatId, workspaceId, onFork, onForkWorkspace }: { bloc
 }
 
 /**
- * A room link (see noteLink.ts) opens that room, in its Lead chat. A web link opens in the browser,
+ * A project link (see noteLink.ts) opens that project, in its Lead chat. A web link opens in the browser,
  * never in the app window (KERNEL-294). Any other href shows as plain text.
  */
 function NoteLink({ link }: { link: { label: string; href: string } }) {
   switch (noteLinkTarget(link.href)) {
-    case 'room': return <a href={link.href} onClick={(e) => { e.preventDefault(); void openRoom(floorRoomId(link.href)!) }}>{link.label}</a>
+    case 'project': return <a href={link.href} onClick={(e) => { e.preventDefault(); void openProject(floorProjectId(link.href)!) }}>{link.label}</a>
     case 'external': return <a href={link.href} onClick={(e) => { e.preventDefault(); void attempt('Could not open the link', () => call('system.openExternal', { url: link.href })) }}>{link.label}</a>
     default: return <span>{link.label}</span>
   }
@@ -582,7 +582,7 @@ function ReadImageRow({ item, image, file, meta }: { item: Tool; image: string; 
 /** The agent a workspace belongs to, by name, for a message_agent row. */
 const agentNamed = (workspaceId: unknown) => (s: ReturnType<typeof getState>) => {
   const ws = typeof workspaceId === 'string' ? s.workspaces.find((w) => w.id === workspaceId) : undefined
-  return ws && s.agents[ws.roomId]?.find((a) => a.id === ws.agentId)?.name
+  return ws && s.agents[ws.projectId]?.find((a) => a.id === ws.agentId)?.name
 }
 
 /** How a tool call looks as a step: its label, mark and object, the same in a fold and open in the thread. */
@@ -853,8 +853,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const approvals = useStore((s) => s.approvals)
   // The agent is waiting on you, not working, while a request or its plan waits. Both come from the real approvals, so the line at the end of the turn never guesses.
   const planWaits = useStore((s) => !!waitingPlan(s.approvals, chat))
-  const agentName = useStore((s) => { const ws = s.workspaces.find((w) => w.id === workspaceId); return s.agents[ws?.roomId ?? '']?.find((a) => a.id === ws?.agentId)?.name ?? 'the agent' })
-  const isLead = useStore((s) => { const ws = s.workspaces.find((w) => w.id === workspaceId); return !!s.agents[ws?.roomId ?? '']?.find((a) => a.id === ws?.agentId)?.lead })
+  const agentName = useStore((s) => { const ws = s.workspaces.find((w) => w.id === workspaceId); return s.agents[ws?.projectId ?? '']?.find((a) => a.id === ws?.agentId)?.name ?? 'the agent' })
+  const isLead = useStore((s) => { const ws = s.workspaces.find((w) => w.id === workspaceId); return !!s.agents[ws?.projectId ?? '']?.find((a) => a.id === ws?.agentId)?.lead })
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const pr = useStore((s) => s.prs[workspaceId])
   const blocks = useMemo(() => buildThread(items, running), [items, running])

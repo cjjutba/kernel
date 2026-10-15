@@ -21,16 +21,16 @@ export function hireName(file: { path: string; text: string }): string {
 export const WHY: Record<Blocked['why'], string> = {
   'needs-auth': 'Needs sign-in',
   failed: 'Didn’t connect',
-  off: 'Off in this room',
+  off: 'Off in this project',
   disabled: 'Disabled',
-  missing: 'Not in this room'
+  missing: 'Not in this project'
 }
 
 /** What has to happen before the new agent can use the server. */
 const UNTIL: Record<Exclude<Blocked['why'], 'missing'>, string> = {
   'needs-auth': 'until you sign in',
   failed: 'until it connects',
-  off: 'until you switch it on in this room',
+  off: 'until you switch it on in this project',
   disabled: 'until you enable it'
 }
 
@@ -38,7 +38,7 @@ const UNTIL: Record<Exclude<Blocked['why'], 'missing'>, string> = {
 export function blockedNote(b: Blocked, agent: string, lead: string): string {
   const server = serverTitle(b.name)
   const effect = `so ${lead} won’t hand ${agent} ${server} tasks.`
-  if (b.why === 'missing') return `This room has no ${server} server, ${effect}${b.suggestion ? ` Did you mean ${b.suggestion}?` : ''}`
+  if (b.why === 'missing') return `This project has no ${server} server, ${effect}${b.suggestion ? ` Did you mean ${b.suggestion}?` : ''}`
   return `${agent} can’t use ${server} ${UNTIL[b.why]}, ${effect}`
 }
 

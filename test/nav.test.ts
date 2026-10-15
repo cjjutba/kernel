@@ -1,24 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { actions, canBack, getState, launchRoute, resetHistory, setState } from '../src/renderer/src/store'
-import { currentThread, hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, stillThere, tabOf } from '../src/renderer/src/nav'
-import type { AgentDef, Chat, Room, Route, SharedFile, Workspace } from '../src/shared/types'
+import { currentThread, hasTab, isChatTab, nearest, placeToSave, restorePlace, projectHome, stillThere, tabOf } from '../src/renderer/src/nav'
+import type { AgentDef, Chat, Project, Route, SharedFile, Workspace } from '../src/shared/types'
 
-const room = (id: string, over: Partial<Room> = {}): Room => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1, ...over }) as Room
-const ws = (id: string, roomId: string, over: Partial<Workspace> = {}): Workspace =>
-  ({ id, roomId, name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', ...over }) as Workspace
+const project = (id: string, over: Partial<Project> = {}): Project => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1, ...over }) as Project
+const ws = (id: string, projectId: string, over: Partial<Workspace> = {}): Workspace =>
+  ({ id, projectId, name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', ...over }) as Workspace
 const chat = (id: string, workspaceId: string, over: Partial<Chat> = {}): Chat => ({ id, workspaceId, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: 1, ...over }) as Chat
 const lead = { id: 'kernel', lead: true } as AgentDef
 
-/** One room with a Lead workspace of three chats, a second workspace of one, and a second room. */
+/** One project with a Lead workspace of three chats, a second workspace of one, and a second project. */
 function seed() {
   setState({
-    rooms: [room('r1'), room('r2')],
+    projects: [project('r1'), project('r2')],
     agents: { r1: [lead] },
     workspaces: [ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', lead: true, threadId: 'r2t' })],
     chats: { lead: [chat('c1', 'lead'), chat('c2', 'lead'), chat('c3', 'lead')], other: [chat('o1', 'other')], r2lead: [chat('x1', 'r2lead')] }
   })
-  setState((s) => ({ ui: { ...s.ui, route: { name: 'rooms' }, tabs: {} } }))
+  setState((s) => ({ ui: { ...s.ui, route: { name: 'projects' }, tabs: {} } }))
 }
 const route = () => getState().ui.route
 const at = (workspaceId: string): Route => ({ name: 'workspace', workspaceId })
@@ -88,7 +88,7 @@ describe('openTab', () => {
 })
 
 const sharedFile = (id: string, versions: number[]): SharedFile => ({
-  id, roomId: 'r1', workspaceId: 'lead', agentId: 'noor', source: `.kernel/shared/${id}.html`, title: id, kind: 'html', createdAt: 1, updatedAt: 1,
+  id, projectId: 'r1', workspaceId: 'lead', agentId: 'noor', source: `.kernel/shared/${id}.html`, title: id, kind: 'html', createdAt: 1, updatedAt: 1,
   versions: versions.map((n) => ({ n, at: n, file: `${id}.html`, mime: 'text/html', bytes: 10, sha256: `${id}${n}` }))
 })
 
@@ -173,65 +173,65 @@ describe('stillThere and nearest', () => {
     expect(stillThere(at('other'), getState())).toBe(true)
     expect(nearest(at('other'), getState())).toEqual(at('other'))
   })
-  it('sends an archived workspace to the room’s Lead workspace', () => {
+  it('sends an archived workspace to the project’s Lead workspace', () => {
     actions.workspaces.upsert(ws('other', 'r1', { status: 'archived' }))
     expect(stillThere(at('other'), getState())).toBe(false)
     expect(nearest(at('other'), getState())).toEqual(at('lead'))
   })
-  it('sends an archived chat with Kernel to New chat with Kernel when no other chat is open, and a room with no Lead to Team (KERNEL-405)', () => {
+  it('sends an archived chat with Kernel to New chat with Kernel when no other chat is open, and a project with no Lead to Team (KERNEL-405)', () => {
     actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel', status: 'archived' }))
-    expect(nearest(at('lead'), getState())).toEqual({ name: 'leadNew', roomId: 'r1' })
+    expect(nearest(at('lead'), getState())).toEqual({ name: 'leadNew', projectId: 'r1' })
     setState((s) => ({ agents: { ...s.agents, r1: [] } }))
-    expect(nearest(at('lead'), getState())).toEqual({ name: 'settings', page: 'room', roomId: 'r1', section: 'agents' })
+    expect(nearest(at('lead'), getState())).toEqual({ name: 'settings', page: 'project', projectId: 'r1', section: 'agents' })
   })
-  it("sends a chat whose workspace closed to the room's newest open chat (KERNEL-405)", () => {
+  it("sends a chat whose workspace closed to the project's newest open chat (KERNEL-405)", () => {
     actions.workspaces.upsert(ws('newer', 'r1', { lead: true, threadId: 't2', agentId: 'kernel', createdAt: 5 }))
-    setState((s) => ({ threads: { t1: { id: 't1', roomId: 'r1', title: 'One', createdAt: 1 }, t2: { id: 't2', roomId: 'r1', title: 'Two', createdAt: 2 } } }))
-    expect(roomHome('r1', getState())).toEqual(at('newer'))
+    setState((s) => ({ threads: { t1: { id: 't1', projectId: 'r1', title: 'One', createdAt: 1 }, t2: { id: 't2', projectId: 'r1', title: 'Two', createdAt: 2 } } }))
+    expect(projectHome('r1', getState())).toEqual(at('newer'))
     actions.workspaces.upsert(ws('other', 'r1', { status: 'archived' }))
     expect(nearest(at('other'), getState())).toEqual(at('newer'))
   })
-  it('opens a room on the chat the user last sent a message in, the one the sidebar lists on top (KERNEL-498)', () => {
+  it('opens a project on the chat the user last sent a message in, the one the sidebar lists on top (KERNEL-498)', () => {
     const newer = ws('newer', 'r1', { lead: true, threadId: 't2', agentId: 'kernel', createdAt: 5 })
     actions.workspaces.upsert(newer)
-    setState({ threads: { t1: { id: 't1', roomId: 'r1', title: 'One', createdAt: 1, lastSentAt: 9 }, t2: { id: 't2', roomId: 'r1', title: 'Two', createdAt: 2 } } })
-    expect(roomHome('r1', getState())).toEqual(at('lead'))
+    setState({ threads: { t1: { id: 't1', projectId: 'r1', title: 'One', createdAt: 1, lastSentAt: 9 }, t2: { id: 't2', projectId: 'r1', title: 'Two', createdAt: 2 } } })
+    expect(projectHome('r1', getState())).toEqual(at('lead'))
     // The engine pushes the thread when the user sends in the newer chat.
-    actions.threads.upsert({ id: 't2', roomId: 'r1', title: 'Two', createdAt: 2, lastSentAt: 12 })
-    expect(roomHome('r1', getState())).toEqual(at('newer'))
+    actions.threads.upsert({ id: 't2', projectId: 'r1', title: 'Two', createdAt: 2, lastSentAt: 12 })
+    expect(projectHome('r1', getState())).toEqual(at('newer'))
     // A chat whose folder is gone is passed over for the next one down.
     actions.workspaces.upsert({ ...newer, folderGone: true })
-    expect(roomHome('r1', getState())).toEqual(at('lead'))
+    expect(projectHome('r1', getState())).toEqual(at('lead'))
   })
   it("treats a workspace whose folder was deleted outside Kernel as gone, so reopening and Back skip it (KERNEL-291)", () => {
     actions.workspaces.upsert(ws('other', 'r1', { folderGone: true }))
     expect(stillThere(at('other'), getState())).toBe(false)
     expect(nearest(at('other'), getState())).toEqual(at('lead'))
     actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel', folderGone: true }))
-    expect(roomHome('r1', getState())).toEqual({ name: 'leadNew', roomId: 'r1' })
+    expect(projectHome('r1', getState())).toEqual({ name: 'leadNew', projectId: 'r1' })
   })
-  it('sends a removed room, and a hidden or archived one, to New chat in another room, or Welcome with none', () => {
-    actions.rooms.upsert(room('r2', { archived: true }))
-    expect(nearest(at('r2lead'), getState())).toEqual({ name: 'leadNew', roomId: 'r1' })
-    actions.rooms.remove('r1')
+  it('sends a removed project, and a hidden or archived one, to New chat in another project, or Welcome with none', () => {
+    actions.projects.upsert(project('r2', { archived: true }))
+    expect(nearest(at('r2lead'), getState())).toEqual({ name: 'leadNew', projectId: 'r1' })
+    actions.projects.remove('r1')
     expect(nearest(at('other'), getState())).toEqual({ name: 'onboarding', step: 'welcome' })
-    expect(nearest({ name: 'settings', page: 'room', roomId: 'r1', section: 'agents' }, getState())).toEqual({ name: 'onboarding', step: 'welcome' })
+    expect(nearest({ name: 'settings', page: 'project', projectId: 'r1', section: 'agents' }, getState())).toEqual({ name: 'onboarding', step: 'welcome' })
   })
-  it('treats a Settings room page as gone with its room, and other pages as always there', () => {
-    expect(stillThere({ name: 'settings', page: 'room', roomId: 'r1' }, getState())).toBe(true)
-    actions.rooms.remove('r1')
-    expect(stillThere({ name: 'settings', page: 'room', roomId: 'r1' }, getState())).toBe(false)
-    expect(nearest({ name: 'settings', page: 'room', roomId: 'r1' }, getState())).toEqual({ name: 'leadNew', roomId: 'r2' })
+  it('treats a Settings project page as gone with its project, and other pages as always there', () => {
+    expect(stillThere({ name: 'settings', page: 'project', projectId: 'r1' }, getState())).toBe(true)
+    actions.projects.remove('r1')
+    expect(stillThere({ name: 'settings', page: 'project', projectId: 'r1' }, getState())).toBe(false)
+    expect(nearest({ name: 'settings', page: 'project', projectId: 'r1' }, getState())).toEqual({ name: 'leadNew', projectId: 'r2' })
     expect(stillThere({ name: 'settings', page: 'models' }, getState())).toBe(true)
   })
 })
 
 describe('tabs are dropped with their workspace', () => {
-  it('on archive, on workspaces.set and when the room is removed', () => {
+  it('on archive, on workspaces.set and when the project is removed', () => {
     for (const id of ['lead', 'other', 'r2lead']) actions.ui.openTab(id, id === 'lead' ? 'c2' : id === 'other' ? 'o1' : 'x1')
     actions.workspaces.upsert(ws('other', 'r1', { status: 'archived' }))
     expect(Object.keys(getState().ui.tabs).sort()).toEqual(['lead', 'r2lead'])
-    actions.rooms.remove('r2')
+    actions.projects.remove('r2')
     expect(Object.keys(getState().ui.tabs)).toEqual(['lead'])
     actions.workspaces.set([])
     expect(getState().ui.tabs).toEqual({})
@@ -272,17 +272,17 @@ describe('Settings remembers where you were', () => {
     actions.ui.go(at('lead'))
     expect(tabOf(getState(), 'lead')).toBe('c3')
   })
-  it('⌘, reopens the last page, and General when that room page is gone', () => {
-    actions.ui.go({ name: 'settings', page: 'room', roomId: 'r2' })
+  it('⌘, reopens the last page, and General when that project page is gone', () => {
+    actions.ui.go({ name: 'settings', page: 'project', projectId: 'r2' })
     actions.ui.leaveSettings()
     actions.ui.openSettings()
-    expect(route()).toEqual({ name: 'settings', page: 'room', roomId: 'r2' })
+    expect(route()).toEqual({ name: 'settings', page: 'project', projectId: 'r2' })
     actions.ui.leaveSettings()
-    actions.rooms.remove('r2')
+    actions.projects.remove('r2')
     actions.ui.openSettings()
     expect(route()).toEqual({ name: 'settings', page: 'general' })
   })
-  it('Back to app lands on the nearest place when the workspace was archived or the room removed meanwhile', () => {
+  it('Back to app lands on the nearest place when the workspace was archived or the project removed meanwhile', () => {
     actions.ui.go(at('other'))
     actions.ui.openSettings()
     actions.workspaces.upsert(ws('other', 'r1', { status: 'archived' }))
@@ -290,9 +290,9 @@ describe('Settings remembers where you were', () => {
     expect(route()).toEqual(at('lead'))
     actions.ui.go(at('r2lead'))
     actions.ui.openSettings()
-    actions.rooms.remove('r2')
+    actions.projects.remove('r2')
     actions.ui.leaveSettings()
-    expect(route()).toEqual({ name: 'leadNew', roomId: 'r1' })
+    expect(route()).toEqual({ name: 'leadNew', projectId: 'r1' })
   })
 })
 
@@ -305,31 +305,31 @@ describe('restorePlace', () => {
     const tabs = { lead: { tab: 'c3', lastChat: 'c3', files: ['a.ts'], diffs: ['src/a.ts', ''] }, other: { tab: 'diff:src/b.ts', files: [], diffs: ['src/b.ts'] } }
     expect(restorePlace(saved(at('lead'), tabs), getState())).toEqual({ route: at('lead'), tabs })
   })
-  it('drops the tabs of a workspace that is archived or gone, and opens the room\'s Lead chat', () => {
+  it('drops the tabs of a workspace that is archived or gone, and opens the project\'s Lead chat', () => {
     actions.workspaces.upsert(ws('other', 'r1', { status: 'archived' }))
     const tabs = { ...lead3, other: { tab: 'o1', files: [], diffs: [] }, vanished: { tab: 'v1', files: [], diffs: [] } }
     expect(restorePlace(saved(at('other'), tabs), getState())).toEqual({ route: at('lead'), tabs: lead3 })
   })
-  it('opens New chat in another room when the room is gone', () => {
-    actions.rooms.remove('r2')
-    expect(restorePlace(saved(at('r2lead')), getState())?.route).toEqual({ name: 'leadNew', roomId: 'r1' })
-    expect(restorePlace(saved({ name: 'team', roomId: 'r2' }), getState())?.route).toEqual({ name: 'leadNew', roomId: 'r1' })
+  it('opens New chat in another project when the project is gone', () => {
+    actions.projects.remove('r2')
+    expect(restorePlace(saved(at('r2lead')), getState())?.route).toEqual({ name: 'leadNew', projectId: 'r1' })
+    expect(restorePlace(saved({ name: 'team', projectId: 'r2' }), getState())?.route).toEqual({ name: 'leadNew', projectId: 'r1' })
   })
-  it('opens the room\'s Agents page in Settings for a team, agent, task, floor or board route', () => {
-    for (const route of [{ name: 'team', roomId: 'r1' }, { name: 'agent', roomId: 'r1', agentId: 'kai' }, { name: 'task', roomId: 'r1', taskId: 't1' }, { name: 'floor', roomId: 'r1' }, { name: 'board', roomId: 'r1' }]) {
-      expect(restorePlace(saved(route), getState())?.route).toEqual({ name: 'settings', page: 'room', roomId: 'r1', section: 'agents' })
+  it('opens the project\'s Agents page in Settings for a team, agent, task, floor or board route', () => {
+    for (const route of [{ name: 'team', projectId: 'r1' }, { name: 'agent', projectId: 'r1', agentId: 'kai' }, { name: 'task', projectId: 'r1', taskId: 't1' }, { name: 'floor', projectId: 'r1' }, { name: 'board', projectId: 'r1' }]) {
+      expect(restorePlace(saved(route), getState())?.route).toEqual({ name: 'settings', page: 'project', projectId: 'r1', section: 'agents' })
     }
   })
   it('opens the other screens as they were', () => {
-    for (const route of [{ name: 'inbox' }, { name: 'history' }, { name: 'rooms' }, { name: 'issues', issueId: 'KERNEL-9' }, { name: 'leadNew', roomId: 'r1' }]) {
+    for (const route of [{ name: 'inbox' }, { name: 'history' }, { name: 'projects' }, { name: 'issues', issueId: 'KERNEL-9' }, { name: 'leadNew', projectId: 'r1' }]) {
       expect(restorePlace(saved(route), getState())?.route).toEqual(route)
     }
   })
   it('keeps the source and picks of the New chat page, and drops ones that are not whole (KERNEL-788)', () => {
     const source = { kind: 'issue', id: 'KERNEL-9', title: 'Toast says which account', url: 'https://linear.app/x/KERNEL-9', tracker: 'linear' }
     const picks = { mode: 'worktree', model: 'claude-opus-5-5', effort: 'high', plan: true, baseRef: 'origin/dev' }
-    expect(restorePlace(saved({ name: 'leadNew', roomId: 'r1', source, picks }), getState())?.route).toEqual({ name: 'leadNew', roomId: 'r1', source, picks })
-    expect(restorePlace(saved({ name: 'leadNew', roomId: 'r1', source: { kind: 'issue' }, picks: { ...picks, plan: 'yes' } }), getState())?.route).toEqual({ name: 'leadNew', roomId: 'r1' })
+    expect(restorePlace(saved({ name: 'leadNew', projectId: 'r1', source, picks }), getState())?.route).toEqual({ name: 'leadNew', projectId: 'r1', source, picks })
+    expect(restorePlace(saved({ name: 'leadNew', projectId: 'r1', source: { kind: 'issue' }, picks: { ...picks, plan: 'yes' } }), getState())?.route).toEqual({ name: 'leadNew', projectId: 'r1' })
   })
   it('has nothing to restore for no value, bad JSON, an unknown version or a route it will not reopen', () => {
     expect(restorePlace(null, getState())).toBeUndefined()
@@ -409,18 +409,18 @@ describe('launchRoute, which Continue on the checks screen goes to', () => {
     launchRoute()
     expect(getState().ui.tabs.lead.diffs).toEqual(['kept.ts'])
   })
-  it('without a saved place falls back to the last room, then New chat in the first room', () => {
+  it('without a saved place falls back to the last project, then New chat in the first project', () => {
     vi.stubGlobal('localStorage', { getItem: (k: string) => (k === 'kernel.lastRoom' ? 'r1' : null), setItem: () => undefined, removeItem: () => undefined })
     openTo('lastPlace')
     expect(launchRoute()).toEqual(at('lead'))
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined, removeItem: () => undefined })
-    expect(launchRoute()).toEqual({ name: 'leadNew', roomId: 'r1' })
+    expect(launchRoute()).toEqual({ name: 'leadNew', projectId: 'r1' })
   })
 })
 
-// KERNEL-191 put each room's settings under the room, as a section of the room page. KERNEL-201 must keep them working.
-describe('a room Settings page with a section', () => {
-  const page: Route = { name: 'settings', page: 'room', roomId: 'r2', section: 'git' }
+// KERNEL-191 put each project's settings under the project, as a section of the project page. KERNEL-201 must keep them working.
+describe('a project Settings page with a section', () => {
+  const page: Route = { name: 'settings', page: 'project', projectId: 'r2', section: 'git' }
 
   it('⌘, reopens it with its section, and Back to app returns to where Settings was opened from', () => {
     actions.ui.go(at('lead'))
@@ -430,14 +430,14 @@ describe('a room Settings page with a section', () => {
     actions.ui.openSettings()
     expect(route()).toEqual(page)
   })
-  it('falls back to General when its room is removed', () => {
+  it('falls back to General when its project is removed', () => {
     actions.ui.go(page)
     actions.ui.leaveSettings()
-    actions.rooms.remove('r2')
+    actions.projects.remove('r2')
     actions.ui.openSettings()
     expect(route()).toEqual({ name: 'settings', page: 'general' })
   })
-  it('saves the place it was opened from, never the room page, for the page and for moving between pages', () => {
+  it('saves the place it was opened from, never the project page, for the page and for moving between pages', () => {
     actions.ui.go(at('lead'))
     actions.ui.openTab('lead', 'c2')
     actions.ui.go(page)
@@ -446,7 +446,7 @@ describe('a room Settings page with a section', () => {
     expect(placeToSave(getState(), { route: at('lead') })?.route).toEqual(at('lead'))
     expect(placeToSave(getState(), { route: at('lead') })?.tabs.lead.tab).toBe('c2')
   })
-  it('is never restored: a saved room page opens nothing', () => {
+  it('is never restored: a saved project page opens nothing', () => {
     expect(restorePlace(JSON.stringify({ v: 1, route: page, tabs: {} }), getState())).toBeUndefined()
   })
 })

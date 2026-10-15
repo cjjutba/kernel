@@ -53,40 +53,40 @@ describe('IPC contract', () => {
     expect(await empty['shared.list']({})).toEqual([])
     expect(await empty['shared.thumb']({ sharedId: 'x', version: 1 })).toBeNull()
     const v = { n: 1, at: 1, file: 'a.html', mime: 'text/html', bytes: 4, sha256: 'x' }
-    const file = (id: string, workspaceId: string, updatedAt: number) => ({ id, roomId: 'room-a', workspaceId, agentId: 'kai', source: `${id}.html`, title: id, kind: 'html' as const, versions: [v], createdAt: 1, updatedAt })
+    const file = (id: string, workspaceId: string, updatedAt: number) => ({ id, projectId: 'project-a', workspaceId, agentId: 'kai', source: `${id}.html`, title: id, kind: 'html' as const, versions: [v], createdAt: 1, updatedAt })
     const h = fixtureHandlers({ ...fixtures.Workspace, shared: [file('a', 'w1', 1), file('b', 'w2', 2)], sharedData: { a: { 1: { text: '<p>', thumb: 'data:image/png;base64,AA' } } } })
-    expect((await h['shared.list']({ roomId: 'room-a' })).map((f) => f.id)).toEqual(['b', 'a'])
+    expect((await h['shared.list']({ projectId: 'project-a' })).map((f) => f.id)).toEqual(['b', 'a'])
     expect((await h['shared.list']({ workspaceId: 'w1' })).map((f) => f.id)).toEqual(['a'])
     expect(await h['shared.read']({ sharedId: 'a', version: 1 })).toEqual({ kind: 'html', mime: 'text/html', text: '<p>' })
     expect(await h['shared.thumb']({ sharedId: 'a', version: 1 })).toBe('data:image/png;base64,AA')
     await expect(h['shared.read']({ sharedId: 'a', version: 2 })).rejects.toThrow()
   })
 
-  it('fixture mode answers the room icon channels, with the icon fixtures showing a small PNG', async () => {
-    const h = fixtureHandlers(fixtures.SettingsRoomIcon)
-    expect(await h['rooms.icon']({ roomId: 'room-a' })).toMatch(/^data:image\/png;base64,iVBORw0KGgo/)
-    expect(await h['rooms.icon']({ roomId: 'room-b' })).toBeNull()
-    expect((await h['rooms.setIcon']({ roomId: 'room-b', icon: { kind: 'github' } })).icon?.kind).toBe('github')
-    expect((await h['rooms.setIcon']({ roomId: 'room-a', icon: { kind: 'letter' } })).icon).toBeUndefined()
-    expect(await fixtureHandlers(fixtures.SidebarRoomIcon)['rooms.icon']({ roomId: 'room-b' })).toMatch(/^data:image\/png;base64,/)
-    // The other screens draw letters, so no base fixture room carries an icon.
-    expect(await fixtureHandlers(fixtures.Workspace)['rooms.icon']({ roomId: 'room-portfolio' })).toBeNull()
+  it('fixture mode answers the project icon channels, with the icon fixtures showing a small PNG', async () => {
+    const h = fixtureHandlers(fixtures.SettingsProjectIcon)
+    expect(await h['projects.icon']({ projectId: 'project-a' })).toMatch(/^data:image\/png;base64,iVBORw0KGgo/)
+    expect(await h['projects.icon']({ projectId: 'project-b' })).toBeNull()
+    expect((await h['projects.setIcon']({ projectId: 'project-b', icon: { kind: 'github' } })).icon?.kind).toBe('github')
+    expect((await h['projects.setIcon']({ projectId: 'project-a', icon: { kind: 'letter' } })).icon).toBeUndefined()
+    expect(await fixtureHandlers(fixtures.SidebarProjectIcon)['projects.icon']({ projectId: 'project-b' })).toMatch(/^data:image\/png;base64,/)
+    // The other screens draw letters, so no base fixture project carries an icon.
+    expect(await fixtureHandlers(fixtures.Workspace)['projects.icon']({ projectId: 'project-portfolio' })).toBeNull()
   })
 
-  it('fixture mode answers files.preview from the room\'s local files, with the saved list or the given patterns (KERNEL-245)', async () => {
-    expect(await fixtureHandlers(fixtures.Workspace)['files.preview']({ roomId: 'room-a' })).toEqual([])
-    const localFiles = { 'room-a': [{ path: 'apps/web/.env', size: 64 }, { path: '.env.local', size: 48 }, { path: '.env', size: 120 }, { path: 'notes.txt', size: 3 }] }
-    const h = fixtureHandlers({ ...fixtures.Workspace, localFiles, roomSettings: { 'room-a': { scripts: {}, files: { copy: ['.env'] }, workspace: {} } } })
-    expect(await h['files.preview']({ roomId: 'room-a' })).toEqual([{ path: '.env', size: 120 }])
-    expect((await h['files.preview']({ roomId: 'room-a', patterns: ['.env*', 'apps/**/.env'] })).map((f) => f.path)).toEqual(['.env', '.env.local', 'apps/web/.env'])
+  it('fixture mode answers files.preview from the project\'s local files, with the saved list or the given patterns (KERNEL-245)', async () => {
+    expect(await fixtureHandlers(fixtures.Workspace)['files.preview']({ projectId: 'project-a' })).toEqual([])
+    const localFiles = { 'project-a': [{ path: 'apps/web/.env', size: 64 }, { path: '.env.local', size: 48 }, { path: '.env', size: 120 }, { path: 'notes.txt', size: 3 }] }
+    const h = fixtureHandlers({ ...fixtures.Workspace, localFiles, projectSettings: { 'project-a': { scripts: {}, files: { copy: ['.env'] }, workspace: {} } } })
+    expect(await h['files.preview']({ projectId: 'project-a' })).toEqual([{ path: '.env', size: 120 }])
+    expect((await h['files.preview']({ projectId: 'project-a', patterns: ['.env*', 'apps/**/.env'] })).map((f) => f.path)).toEqual(['.env', '.env.local', 'apps/web/.env'])
   })
 
   it('fixture mode answers env names and files only, with no value to reveal (KERNEL-247)', async () => {
-    const h = fixtureHandlers({ ...fixtures.Workspace, env: { app: ['B', 'A'], rooms: { 'room-a': { names: ['TOKEN'], files: [{ path: '.env', missing: true }] } } } })
+    const h = fixtureHandlers({ ...fixtures.Workspace, env: { app: ['B', 'A'], projects: { 'project-a': { names: ['TOKEN'], files: [{ path: '.env', missing: true }] } } } })
     expect(await h['env.get']({})).toEqual({ names: ['A', 'B'], files: [] })
-    expect(await h['env.get']({ roomId: 'room-a' })).toEqual({ names: ['TOKEN'], files: [{ path: '.env', missing: true }] })
-    await expect(h['env.reveal']({ roomId: 'room-a', name: 'TOKEN' })).rejects.toThrow('no values')
-    expect(await fixtureHandlers(fixtures.Workspace)['env.get']({ roomId: 'room-a' })).toEqual({ names: [], files: [] })
+    expect(await h['env.get']({ projectId: 'project-a' })).toEqual({ names: ['TOKEN'], files: [{ path: '.env', missing: true }] })
+    await expect(h['env.reveal']({ projectId: 'project-a', name: 'TOKEN' })).rejects.toThrow('no values')
+    expect(await fixtureHandlers(fixtures.Workspace)['env.get']({ projectId: 'project-a' })).toEqual({ names: [], files: [] })
   })
 
   it('fixture mode answers terminal.presets and opens a terminal tab with a preset (KERNEL-248)', async () => {
@@ -102,7 +102,7 @@ describe('IPC contract', () => {
     await expect(h['chats.create']({ workspaceId, kind: 'terminal' })).rejects.toThrow('Big terminal tabs are off')
   })
 
-  it('serves app and room settings', async () => {
+  it('serves app and project settings', async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort() }))
@@ -110,24 +110,24 @@ describe('IPC contract', () => {
     await k.start()
     const h = k.handlers()
     expect((await h['settings.get']()).experimental.sharing).toBe(true)
-    const room = await k.addRoom(repo)
-    expect((await h['settings.room']({ roomId: room.id })).scripts.setup).toBe('pnpm install')
-    expect((await h['settings.room']({ roomId: room.id })).sources).toEqual({ 'scripts.setup': 'shared' })
+    const project = await k.addProject(repo)
+    expect((await h['settings.project']({ projectId: project.id })).scripts.setup).toBe('pnpm install')
+    expect((await h['settings.project']({ projectId: project.id })).sources).toEqual({ 'scripts.setup': 'shared' })
     await k.stop()
   })
 
   it('fixture mode answers the run script shapes: runScripts, a runScripts patch by name, and named Run and Stop (KERNEL-244)', async () => {
     const h = fixtureHandlers(structuredClone(fixtures.Workspace))
-    const roomId = fixtures.Workspace.rooms[0].id
+    const projectId = fixtures.Workspace.projects[0].id
     const workspaceId = fixtures.Workspace.workspaces[0].id
-    expect((await h['settings.room']({ roomId })).runScripts).toEqual([])
-    const rs = await h['settings.setRoom']({ roomId, patch: { runScripts: { run: 'pnpm dev', web: 'pnpm web' } }, shared: true })
+    expect((await h['settings.project']({ projectId })).runScripts).toEqual([])
+    const rs = await h['settings.setProject']({ projectId, patch: { runScripts: { run: 'pnpm dev', web: 'pnpm web' } }, shared: true })
     expect(rs.runScripts).toEqual([{ name: 'run', command: 'pnpm dev' }, { name: 'web', command: 'pnpm web' }])
     expect(rs.scripts.run).toBe('pnpm dev')
     expect(rs.sources).toMatchObject({ 'runScripts.web': 'shared', 'runScripts.run': 'shared', 'scripts.run': 'shared' })
     // `RUN` is `run`, as in the engine.
-    expect((await h['settings.setRoom']({ roomId, patch: { runScripts: { RUN: 'pnpm start' } }, shared: true })).runScripts[0]).toEqual({ name: 'run', command: 'pnpm start' })
-    const after = await h['settings.setRoom']({ roomId, patch: { runScripts: { web: null } }, shared: true })
+    expect((await h['settings.setProject']({ projectId, patch: { runScripts: { RUN: 'pnpm start' } }, shared: true })).runScripts[0]).toEqual({ name: 'run', command: 'pnpm start' })
+    const after = await h['settings.setProject']({ projectId, patch: { runScripts: { web: null } }, shared: true })
     expect(after.runScripts).toEqual([{ name: 'run', command: 'pnpm start' }])
     expect(after.sources['runScripts.web']).toBeUndefined()
     expect(await h['scripts.run']({ workspaceId, kind: 'run', name: 'web' })).toEqual({ ok: true })
@@ -148,29 +148,29 @@ describe('IPC contract', () => {
     expect(fixturePush({ ...f, push: [...f.push, { type: 'script.exit', workspaceId: ws, kind: 'run', code: 0 }] }).filter((e) => e.type === 'script.url').map((e) => e.type === 'script.url' && e.url))
       .toEqual(['http://localhost:4312', null])
     const h = fixtureHandlers(f)
-    const roomId = f.rooms[0].id
-    expect((await h['settings.room']({ roomId })).preview).toEqual({ urls: [] })
+    const projectId = f.projects[0].id
+    expect((await h['settings.project']({ projectId })).preview).toEqual({ urls: [] })
     const urls = [{ name: 'Web', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API', url: 'http://localhost:$((KERNEL_PORT + 1))' }]
-    const rs = await h['settings.setRoom']({ roomId, patch: { preview: { urls } } })
+    const rs = await h['settings.setProject']({ projectId, patch: { preview: { urls } } })
     expect(rs.preview.urls).toEqual(urls)
     expect(rs.sources['preview.urls']).toBe('local')
-    expect((await h['settings.setRoom']({ roomId, patch: { preview: { urls: null } } })).preview.urls).toEqual([])
+    expect((await h['settings.setProject']({ projectId, patch: { preview: { urls: null } } })).preview.urls).toEqual([])
     // An empty list, or all blank rows, removes the key as in the engine.
-    await h['settings.setRoom']({ roomId, patch: { preview: { urls } } })
-    const blank = await h['settings.setRoom']({ roomId, patch: { preview: { urls: [{ name: '', url: ' ' }] } } })
+    await h['settings.setProject']({ projectId, patch: { preview: { urls } } })
+    const blank = await h['settings.setProject']({ projectId, patch: { preview: { urls: [{ name: '', url: ' ' }] } } })
     expect(blank.preview.urls).toEqual([])
     expect(blank.sources['preview.urls']).toBeUndefined()
   })
 
-  it('fixture mode returns where room settings came from, and applies a patch to any group (KERNEL-190)', async () => {
+  it('fixture mode returns where project settings came from, and applies a patch to any group (KERNEL-190)', async () => {
     const h = fixtureHandlers(fixtures.Workspace)
-    const roomId = fixtures.Workspace.rooms[0].id
-    expect((await h['settings.room']({ roomId })).sources).toEqual({})
-    const rs = await h['settings.setRoom']({ roomId, patch: { pr: { createInstructions: '# Mine' }, workspace: { remote: 'upstream' } } })
+    const projectId = fixtures.Workspace.projects[0].id
+    expect((await h['settings.project']({ projectId })).sources).toEqual({})
+    const rs = await h['settings.setProject']({ projectId, patch: { pr: { createInstructions: '# Mine' }, workspace: { remote: 'upstream' } } })
     expect(rs.pr).toEqual({ createInstructions: '# Mine' })
     expect(rs.sources).toEqual({ 'pr.createInstructions': 'local', 'workspace.remote': 'local' })
-    expect((await h['settings.setRoom']({ roomId, patch: { workspace: { remote: 'fork' } }, shared: true })).sources['workspace.remote']).toBe('override')
-    const after = await h['settings.setRoom']({ roomId, patch: { pr: { createInstructions: null } } })
+    expect((await h['settings.setProject']({ projectId, patch: { workspace: { remote: 'fork' } }, shared: true })).sources['workspace.remote']).toBe('override')
+    const after = await h['settings.setProject']({ projectId, patch: { pr: { createInstructions: null } } })
     expect(after.pr).toEqual({})
     expect(after.sources).toEqual({ 'workspace.remote': 'override' })
   })
@@ -217,19 +217,19 @@ describe('renderer store', () => {
   })
 
   it('forgets the last tab of a thread when the thread closes', () => {
-    apply({ type: 'thread', thread: { id: 'tc', roomId: 'a', title: 'Closing', createdAt: 1 } })
+    apply({ type: 'thread', thread: { id: 'tc', projectId: 'a', title: 'Closing', createdAt: 1 } })
     const tab = { id: 'tc1', workspaceId: 'lead-ws', title: 'tc1', kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: 1, threadId: 'tc' }
     apply({ type: 'chat', chat: tab })
     actions.ui.openTab('lead-ws', 'tc1')
     expect(getState().lastTabs.tc).toBe('tc1')
-    apply({ type: 'thread', thread: { id: 'tc', roomId: 'a', title: 'Closing', createdAt: 1, closedAt: 9 } })
+    apply({ type: 'thread', thread: { id: 'tc', projectId: 'a', title: 'Closing', createdAt: 1, closedAt: 9 } })
     expect(getState().lastTabs.tc).toBeUndefined()
   })
 
   it('keeps the threads the thread push brings, closed ones too', () => {
-    apply({ type: 'thread', thread: { id: 't1', roomId: 'a', title: 'Plan the login', createdAt: 1 } })
-    apply({ type: 'thread', thread: { id: 't1', roomId: 'a', title: 'Plan the login', createdAt: 1, closedAt: 5 } })
-    apply({ type: 'thread', thread: { id: 't2', roomId: 'a', title: 'Fix the build', createdAt: 2 } })
+    apply({ type: 'thread', thread: { id: 't1', projectId: 'a', title: 'Plan the login', createdAt: 1 } })
+    apply({ type: 'thread', thread: { id: 't1', projectId: 'a', title: 'Plan the login', createdAt: 1, closedAt: 5 } })
+    apply({ type: 'thread', thread: { id: 't2', projectId: 'a', title: 'Fix the build', createdAt: 2 } })
     expect(Object.keys(getState().threads)).toEqual(expect.arrayContaining(['t1', 't2']))
     expect(getState().threads.t1.closedAt).toBe(5)
   })
@@ -250,13 +250,13 @@ describe('renderer store', () => {
     apply({ type: 'workspace', workspace: ws })
     apply({ type: 'pr', workspaceId: ws.id, state: 'merging' })
     apply({ type: 'chat.queue', chatId: 'c1', queue: [{ id: 'q1', chatId: 'c1', parts: [{ type: 'text', text: 'Also add a skeleton' }], ts: 1 }] })
-    apply({ type: 'room.setup', roomId: 'r1', steps: [{ id: 'clone', title: 'Clone', detail: '', state: 'run' }] })
+    apply({ type: 'project.setup', projectId: 'r1', steps: [{ id: 'clone', title: 'Clone', detail: '', state: 'run' }] })
     apply({ type: 'retry', chatId: 'c1', retry: { attempt: 2, of: 5, nextAt: 1 } })
     apply({ type: 'retry', chatId: 'c1', retry: null })
     const s = getState()
     expect(s.workspaces.find((w) => w.id === ws.id)?.prState).toBe('merging')
     expect(s.queue.c1).toHaveLength(1)
-    expect(s.roomSetup.r1[0].state).toBe('run')
+    expect(s.projectSetup.r1[0].state).toBe('run')
     expect(s.retry.c1).toBeUndefined()
   })
 

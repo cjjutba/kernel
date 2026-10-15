@@ -15,14 +15,14 @@ const SECTIONS: { group: PrGroup; title: string }[] = [
 ]
 
 /**
- * The Lead's PRs tab (LeadPrs.png, LeadPrsEmpty.png, KERNEL-354): every open PR in the room, so what can merge is in one place.
+ * The Lead's PRs tab (LeadPrs.png, LeadPrsEmpty.png, KERNEL-354): every open PR in the project, so what can merge is in one place.
  * Its rows sit in three lists, Ready to merge, Needs attention and In progress, each title first with one line under it, in the
  * words every place uses (KERNEL-417, KERNEL-757). One that only blockers hold back offers Merge anyway, and never counts as
  * ready (KERNEL-501). Each PR merges from its own row. The strip beside the tabs holds the tab's action (PanelToolbarPrs.png,
  * KERNEL-515): Refresh, which reads every listed PR again.
  */
-export function LeadPrs({ roomId }: { roomId: string }) {
-  const rows = useLeadPrs(roomId)
+export function LeadPrs({ projectId }: { projectId: string }) {
+  const rows = useLeadPrs(projectId)
   const sections = SECTIONS.map((s) => ({ ...s, rows: rows.filter((r) => r.group === s.group) })).filter((s) => s.rows.length)
   return (
     <>

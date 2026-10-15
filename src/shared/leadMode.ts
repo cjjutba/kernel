@@ -1,4 +1,4 @@
-import type { AppSettings, LeadMode, RoomSettings, Workspace } from './types'
+import type { AppSettings, LeadMode, ProjectSettings, Workspace } from './types'
 import { isLeadChatWorkspace } from './leadWorkspace'
 
 // Hand off and Build here, the two ways a chat with Kernel works (KERNEL-770).
@@ -15,12 +15,12 @@ export const leadModeOf = (ws: Pick<Workspace, 'leadMode'> | undefined): LeadMod
 export const buildsHere = (ws: Workspace | undefined): boolean => !!ws && isLeadChatWorkspace(ws) && leadModeOf(ws) === 'build'
 
 /**
- * The mode a new chat with Kernel starts in: the room's `[agents] lead_mode`, else Settings, Agents, else Hand off. The most
+ * The mode a new chat with Kernel starts in: the project's `[agents] lead_mode`, else Settings, Agents, else Hand off. The most
  * specific wins. Only a new chat reads it, so changing a default leaves open chats as they are.
  */
-export function newChatLeadMode(app: { team?: Partial<AppSettings['team']> } | undefined, room: Pick<RoomSettings, 'agents'> | undefined): LeadMode {
+export function newChatLeadMode(app: { team?: Partial<AppSettings['team']> } | undefined, project: Pick<ProjectSettings, 'agents'> | undefined): LeadMode {
   const valid = (m: unknown): m is LeadMode => LEAD_MODES.includes(m as LeadMode)
-  const own = room?.agents?.leadMode
+  const own = project?.agents?.leadMode
   const all = app?.team?.leadMode
   return valid(own) ? own : valid(all) ? all : 'handoff'
 }

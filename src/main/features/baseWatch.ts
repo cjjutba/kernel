@@ -42,21 +42,21 @@ export function catchUpMessage(baseRef: string, behind: number): string {
  * no file, index or stash list, and takes no lock on the index. The teammate hears it through a Kernel message, only when it is idle, once per base commit.
  * The Lead isn't woken.
  *
- * Triggers, all real events: a PR in the room merged (with a fetch), a teammate's turn ended (it may be told what waited
+ * Triggers, all real events: a PR in the project merged (with a fetch), a teammate's turn ended (it may be told what waited
  * while it was busy), and a workspace was created after a fetch that worked.
  *
  * It also catches up a workspace that started from a stale base because its fetch failed (KERNEL-179), once a fetch of the
- * room's remote passes (KERNEL-653). A teammate's turn end, while its workspace has `fetchFailed`, fetches again (reusing
+ * project's remote passes (KERNEL-653). A teammate's turn end, while its workspace has `fetchFailed`, fetches again (reusing
  * one that passed in the last minute), so that retry is a real event too.
  */
 export class BaseWatch extends Feature {
   private chain = new Map<string, Promise<unknown>>()
 
-  /** One check at a time per room, so two triggers together can't tell a teammate twice. */
-  check(roomId: string, o: { fetch: boolean; only?: string; fetched?: boolean }): Promise<void> {
-    const next = (this.chain.get(roomId) ?? Promise.resolve()).catch(() => undefined).then(() => this.run(roomId, o))
-    this.chain.set(roomId, next)
-    return next.finally(() => { if (this.chain.get(roomId) === next) this.chain.delete(roomId) })
+  /** One check at a time per project, so two triggers together can't tell a teammate twice. */
+  check(projectId: string, o: { fetch: boolean; only?: string; fetched?: boolean }): Promise<void> {
+    const next = (this.chain.get(projectId) ?? Promise.resolve()).catch(() => undefined).then(() => this.run(projectId, o))
+    this.chain.set(projectId, next)
+    return next.finally(() => { if (this.chain.get(projectId) === next) this.chain.delete(projectId) })
   }
 
   /**
@@ -70,7 +70,7 @@ export class BaseWatch extends Feature {
   /** A teammate's workspace, or a Build here chat's, which builds like one (KERNEL-778). */
   private teammateLike(ws: Workspace) { return !this.isLeadWorkspace(ws) || buildsHere(ws) }
 
-  /** One read and one write, with nothing awaited between them, so two rooms' checks never undo each other's change. */
+  /** One read and one write, with nothing awaited between them, so two projects' checks never undo each other's change. */
   private put(id: string, state?: Watched) {
     const all = { ...(this.store.meta<Record<string, Watched>>(META) ?? {}) }
     if (state) all[id] = state
@@ -79,24 +79,24 @@ export class BaseWatch extends Feature {
     this.store.saveMeta(META, all)
   }
 
-  private async run(roomId: string, o: { fetch: boolean; only?: string; fetched?: boolean }) {
-    const room = this.store.room(roomId)
-    if (!room || this.stopped) return
-    const remote = await this.k.config.remoteFor(room.path)
+  private async run(projectId: string, o: { fetch: boolean; only?: string; fetched?: boolean }) {
+    const project = this.store.project(projectId)
+    if (!project || this.stopped) return
+    const remote = await this.k.config.remoteFor(project.path)
     let fetched = !!o.fetched
     if (o.fetch) {
       // Fresh, since this runs because something merged a moment ago, which a fetch already running may have missed.
-      const r = await fetchOrigin(room.path, remote, { fresh: true }).catch(() => undefined)
+      const r = await fetchOrigin(project.path, remote, { fresh: true }).catch(() => undefined)
       if (!r?.ok) return
       fetched = true
     } else if (o.only && this.store.workspace(o.only)?.fetchFailed) {
       // A turn end of a workspace that started stale tries the fetch again (KERNEL-653).
-      fetched = !!(await fetchOrigin(room.path, remote).catch(() => undefined))?.ok
+      fetched = !!(await fetchOrigin(project.path, remote).catch(() => undefined))?.ok
     }
-    const caughtUp = fetched ? await this.catchUp(roomId, remote) : new Set<string>()
+    const caughtUp = fetched ? await this.catchUp(projectId, remote) : new Set<string>()
     const known = this.store.meta<Record<string, Watched>>(META) ?? {}
     for (const id of Object.keys(known)) if (!this.store.workspace(id)) this.put(id)
-    for (const ws of this.store.workspaces(roomId)) {
+    for (const ws of this.store.workspaces(projectId)) {
       if (o.only && ws.id !== o.only) continue
       // Just moved, or just asked to rebase: one message is enough.
       if (caughtUp.has(ws.id)) continue
@@ -129,13 +129,13 @@ export class BaseWatch extends Feature {
   }
 
   /**
-   * After a fetch of the room's remote passed: each idle teammate workspace with `fetchFailed` moves to its base when it has
+   * After a fetch of the project's remote passed: each idle teammate workspace with `fetchFailed` moves to its base when it has
    * no work of its own, or is told once to rebase when it has, and loses `fetchFailed` (KERNEL-653). A busy one waits for its
    * turn end. Returns the workspaces it moved or told.
    */
-  private async catchUp(roomId: string, remote: string): Promise<Set<string>> {
+  private async catchUp(projectId: string, remote: string): Promise<Set<string>> {
     const done = new Set<string>()
-    for (const ws of this.store.workspaces(roomId)) {
+    for (const ws of this.store.workspaces(projectId)) {
       if (!ws.fetchFailed || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.reviewOf || !this.teammateLike(ws)) continue
       if (await this.catchUpOne(ws, remote).catch(() => false)) done.add(ws.id)
     }
@@ -151,7 +151,7 @@ export class BaseWatch extends Feature {
     const own = await count(`${ws.baseRef}..HEAD`)
     const changed = (await git(ws.path, 'status', '--porcelain', '--untracked-files=no')).trim() !== ''
     if (held()) return false
-    const agent = this.k.team.agentOf(ws.roomId, ws.agentId)?.name ?? 'the teammate'
+    const agent = this.k.team.agentOf(ws.projectId, ws.agentId)?.name ?? 'the teammate'
     if (behind && (own || changed || !(await fastForward(ws.path, ws.baseRef)))) {
       const chat = this.prChat(ws.id)
       if (held() || !chat) return false
@@ -159,14 +159,14 @@ export class BaseWatch extends Feature {
       try { sent = this.sessions.post(chat.id, [{ type: 'text', text: catchUpMessage(ws.baseRef, behind) }]) } catch { return false }
       if (!sent) return false
       this.updateWs(ws.id, { fetchFailed: undefined })
-      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `told ${agent} to rebase onto ${ws.baseRef}, since its workspace started from it as last fetched` })
+      bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `told ${agent} to rebase onto ${ws.baseRef}, since its workspace started from it as last fetched` })
       return true
     }
     if (this.stopped) return false
     this.updateWs(ws.id, { fetchFailed: undefined })
     this.note(ws.id, `Fetched ${remote}, so this workspace now starts from the latest ${ws.baseRef}.`)
     if (behind) {
-      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `updated ${agent}'s worktree to ${ws.baseRef}, ${behind === 1 ? '1 new commit' : `${behind} new commits`}` })
+      bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `updated ${agent}'s worktree to ${ws.baseRef}, ${behind === 1 ? '1 new commit' : `${behind} new commits`}` })
       void this.k.workspaces.changes(ws.id).catch(() => undefined)
     }
     return true
@@ -174,7 +174,7 @@ export class BaseWatch extends Feature {
 
   /**
    * The message goes through `Sessions.post`, which sends nothing while the teammate is mid-turn, has messages queued, or
-   * is held. The next check tells it then. True when it went, with a line in the room's log.
+   * is held. The next check tells it then. True when it went, with a line in the project's log.
    */
   private tell(ws: Workspace, state: Watched): boolean {
     const chat = this.prChat(ws.id)
@@ -182,8 +182,8 @@ export class BaseWatch extends Feature {
     let sent = false
     try { sent = this.sessions.post(chat.id, [{ type: 'text', text: baseMessage(ws.baseRef, state.behind, state.conflicts) }]) } catch { return false }
     if (!sent) return false
-    const agent = this.k.team.agentOf(ws.roomId, ws.agentId)
-    bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `told ${agent?.name ?? 'the teammate'} to rebase, since ${ws.baseRef} moved ${state.behind} ${state.behind === 1 ? 'commit' : 'commits'} and would conflict in`, object: listFiles(state.conflicts, 3) })
+    const agent = this.k.team.agentOf(ws.projectId, ws.agentId)
+    bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `told ${agent?.name ?? 'the teammate'} to rebase, since ${ws.baseRef} moved ${state.behind} ${state.behind === 1 ? 'commit' : 'commits'} and would conflict in`, object: listFiles(state.conflicts, 3) })
     return true
   }
 }

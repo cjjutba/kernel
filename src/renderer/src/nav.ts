@@ -9,12 +9,12 @@ import type { State } from './store'
 export interface Place { route: Route; tab?: string }
 
 const visible = (r: { hidden?: boolean; archived?: boolean }) => !r.hidden && !r.archived
-const roomVisible = (s: State, roomId: string) => { const r = s.rooms.find((x) => x.id === roomId); return !!r && visible(r) }
+const projectVisible = (s: State, projectId: string) => { const r = s.projects.find((x) => x.id === projectId); return !!r && visible(r) }
 
-/** The room a route belongs to, if it belongs to one. */
-export function roomOf(route: Route, s: State): string | undefined {
-  if (route.name === 'workspace') return s.workspaces.find((w) => w.id === route.workspaceId)?.roomId
-  return 'roomId' in route ? route.roomId : undefined
+/** The project a route belongs to, if it belongs to one. */
+export function projectOf(route: Route, s: State): string | undefined {
+  if (route.name === 'workspace') return s.workspaces.find((w) => w.id === route.workspaceId)?.projectId
+  return 'projectId' in route ? route.projectId : undefined
 }
 
 /** Is `tab` open in the workspace: an open chat, or a file, diff or shared file in its lists. Image and text tabs live in the screen, which checks them itself. */
@@ -59,76 +59,76 @@ export const samePlace = (a: Place, b: Place) => a.tab === b.tab && JSON.stringi
 
 /**
  * Is the route still somewhere to go? Not an archived workspace or one whose folder was deleted outside Kernel (KERNEL-291), a
- * hidden or archived room, or a Settings page of a room that is gone. Opening a workspace with no folder still works: only
+ * hidden or archived project, or a Settings page of a project that is gone. Opening a workspace with no folder still works: only
  * reopening at launch, ⌘[ and Back to app skip it.
  */
 export function stillThere(route: Route, s: State): boolean {
   if (route.name === 'workspace') {
     const ws = s.workspaces.find((w) => w.id === route.workspaceId)
-    return !!ws && ws.status !== 'archived' && !ws.folderGone && roomVisible(s, ws.roomId)
+    return !!ws && ws.status !== 'archived' && !ws.folderGone && projectVisible(s, ws.projectId)
   }
   if (route.name === 'onboarding') return true
-  if (route.name === 'settings') return route.page !== 'room' || (!!route.roomId && roomVisible(s, route.roomId))
-  if ('roomId' in route && route.roomId) return roomVisible(s, route.roomId)
+  if (route.name === 'settings') return route.page !== 'project' || (!!route.projectId && projectVisible(s, route.projectId))
+  if ('projectId' in route && route.projectId) return projectVisible(s, route.projectId)
   return true
 }
 
 /**
- * The workspaces of the room's open Lead chats as the sidebar lists them: the one the user last sent a message in first, and a
+ * The workspaces of the project's open Lead chats as the sidebar lists them: the one the user last sent a message in first, and a
  * chat with no send yet by when it started (KERNEL-405, KERNEL-498).
  */
-export function chatWorkspaces(workspaces: Workspace[], threads: Record<string, Thread>, roomId: string): Workspace[] {
+export function chatWorkspaces(workspaces: Workspace[], threads: Record<string, Thread>, projectId: string): Workspace[] {
   const touched = (w: Workspace) => { const t = threads[w.threadId!]; return t ? t.lastSentAt ?? t.createdAt : w.createdAt }
-  return workspaces.filter((w) => w.roomId === roomId && isLeadChatWorkspace(w) && w.status !== 'archived').sort((a, b) => touched(b) - touched(a) || b.createdAt - a.createdAt)
+  return workspaces.filter((w) => w.projectId === projectId && isLeadChatWorkspace(w) && w.status !== 'archived').sort((a, b) => touched(b) - touched(a) || b.createdAt - a.createdAt)
 }
 
-/** Settings, a room, Agents: the one place for a room's agents (KERNEL-642). */
-export const roomAgents = (roomId: string): Route => ({ name: 'settings', page: 'room', roomId, section: 'agents' })
+/** Settings, a project, Agents: the one place for a project's agents (KERNEL-642). */
+export const projectAgents = (projectId: string): Route => ({ name: 'settings', page: 'project', projectId, section: 'agents' })
 
 /**
- * A room's front door: its top open Lead chat in the sidebar, New chat when none is open, or the room's Agents page in
- * Settings when the room has no Lead (D-104, KERNEL-405, KERNEL-498, KERNEL-642). Before agents load, which is after the first route is chosen, a room with a workspace
+ * A project's front door: its top open Lead chat in the sidebar, New chat when none is open, or the project's Agents page in
+ * Settings when the project has no Lead (D-104, KERNEL-405, KERNEL-498, KERNEL-642). Before agents load, which is after the first route is chosen, a project with a workspace
  * marked `lead` has one.
  */
-export function roomHome(roomId: string, s: State): Route {
-  const chat = chatWorkspaces(s.workspaces, s.threads, roomId).find((w) => !w.folderGone)
+export function projectHome(projectId: string, s: State): Route {
+  const chat = chatWorkspaces(s.workspaces, s.threads, projectId).find((w) => !w.folderGone)
   if (chat) return { name: 'workspace', workspaceId: chat.id }
-  return frontDoor(roomId, s)
+  return frontDoor(projectId, s)
 }
 
 /**
- * A room's neutral home: New chat, or the room's Agents page in Settings when the room has no Lead (D-104, KERNEL-405, KERNEL-642). It never picks a chat, so it is the
- * same place whatever else is open in the room.
+ * A project's neutral home: New chat, or the project's Agents page in Settings when the project has no Lead (D-104, KERNEL-405, KERNEL-642). It never picks a chat, so it is the
+ * same place whatever else is open in the project.
  */
-export function frontDoor(roomId: string, s: State): Route {
-  const agents = s.agents[roomId]
-  const lead = agents ? agents.some((a) => a.lead) : s.workspaces.some((w) => w.roomId === roomId && !!w.lead)
-  return lead ? { name: 'leadNew', roomId } : roomAgents(roomId)
+export function frontDoor(projectId: string, s: State): Route {
+  const agents = s.agents[projectId]
+  const lead = agents ? agents.some((a) => a.lead) : s.workspaces.some((w) => w.projectId === projectId && !!w.lead)
+  return lead ? { name: 'leadNew', projectId } : projectAgents(projectId)
 }
 
 /**
  * Where an archive takes you (KERNEL-596), one rule for every way a chat or workspace is archived. Archiving the one on screen goes to its
- * room's front door, never History and never another chat. Archiving anything else leaves you where you are, which is nothing here.
+ * project's front door, never History and never another chat. Archiving anything else leaves you where you are, which is nothing here.
  * `archived` says which workspaces the archive just stored.
  */
 export function archiveDestination(route: Route, s: State, archived: (workspaceId: string) => boolean): Route | undefined {
   if (route.name !== 'workspace' || !archived(route.workspaceId)) return undefined
-  const roomId = s.workspaces.find((w) => w.id === route.workspaceId)?.roomId
-  return roomId ? frontDoor(roomId, s) : undefined
+  const projectId = s.workspaces.find((w) => w.id === route.workspaceId)?.projectId
+  return projectId ? frontDoor(projectId, s) : undefined
 }
 
-/** Where the app lands when nothing better is known: New chat in the first visible room, or Welcome when there is no room. */
-export function landing(s: State, roomId?: string): Route {
-  const room = s.rooms.find((r) => r.id === roomId && roomVisible(s, r.id)) ?? s.rooms.find((r) => roomVisible(s, r.id))
-  return room ? frontDoor(room.id, s) : { name: 'onboarding', step: 'welcome' }
+/** Where the app lands when nothing better is known: New chat in the first visible project, or Welcome when there is no project. */
+export function landing(s: State, projectId?: string): Route {
+  const project = s.projects.find((r) => r.id === projectId && projectVisible(s, r.id)) ?? s.projects.find((r) => projectVisible(s, r.id))
+  return project ? frontDoor(project.id, s) : { name: 'onboarding', step: 'welcome' }
 }
 
-/** The route if it is still there, else its room's Lead workspace, then the room's Agents page, then New chat in the first room, then Welcome. */
+/** The route if it is still there, else its project's Lead workspace, then the project's Agents page, then New chat in the first project, then Welcome. */
 export function nearest(route: Route, s: State): Route {
   if (stillThere(route, s)) return route
-  const roomId = roomOf(route, s)
-  if (roomId && roomVisible(s, roomId)) {
-    const home = roomHome(roomId, s)
+  const projectId = projectOf(route, s)
+  if (projectId && projectVisible(s, projectId)) {
+    const home = projectHome(projectId, s)
     if (stillThere(home, s)) return home
   }
   return landing(s)
@@ -168,23 +168,23 @@ function soundPicks(v: any): NewChatPicks | undefined {
   return ok ? { mode: v.mode, model: v.model, effort: v.effort, plan: v.plan, baseRef: v.baseRef } : undefined
 }
 
-/** A saved route made sound, or nothing. Missing ids would open a screen with no room or workspace, so they are rejected here. */
+/** A saved route made sound, or nothing. Missing ids would open a screen with no project or workspace, so they are rejected here. */
 function soundRoute(r: any): Route | undefined {
   switch (r?.name) {
-    case 'inbox': case 'rooms': return { name: r.name }
-    case 'history': return { name: 'history', ...(isText(r.roomId) ? { roomId: r.roomId } : {}) }
-    case 'issues': return { name: 'issues', ...(isText(r.issueId) ? { issueId: r.issueId } : {}), ...(isText(r.roomId) ? { roomId: r.roomId } : {}) }
+    case 'inbox': case 'projects': return { name: r.name }
+    case 'history': return { name: 'history', ...(isText(r.projectId) ? { projectId: r.projectId } : {}) }
+    case 'issues': return { name: 'issues', ...(isText(r.issueId) ? { issueId: r.issueId } : {}), ...(isText(r.projectId) ? { projectId: r.projectId } : {}) }
     case 'workspace': return isText(r.workspaceId) ? { name: 'workspace', workspaceId: r.workspaceId } : undefined
-    case 'leadNew': return isText(r.roomId) ? { name: 'leadNew', roomId: r.roomId, ...(soundSource(r.source) ? { source: soundSource(r.source) } : {}), ...(soundPicks(r.picks) ? { picks: soundPicks(r.picks) } : {}) } : undefined
-    // Agents load after the first route is chosen, and older builds saved task, floor and board routes that no longer exist, so these open their room's Agents page in Settings (KERNEL-642).
-    case 'team': case 'agent': case 'task': case 'floor': case 'board': return isText(r.roomId) ? roomAgents(r.roomId) : undefined
+    case 'leadNew': return isText(r.projectId) ? { name: 'leadNew', projectId: r.projectId, ...(soundSource(r.source) ? { source: soundSource(r.source) } : {}), ...(soundPicks(r.picks) ? { picks: soundPicks(r.picks) } : {}) } : undefined
+    // Agents load after the first route is chosen, and older builds saved task, floor and board routes that no longer exist, so these open their project's Agents page in Settings (KERNEL-642).
+    case 'team': case 'agent': case 'task': case 'floor': case 'board': return isText(r.projectId) ? projectAgents(r.projectId) : undefined
     default: return undefined // onboarding, devUi, settings and anything unknown are never reopened
   }
 }
 
 /**
  * Reads `kernel.lastPlace` into where to open and the tabs to bring back. The tabs are only those of workspaces that are still live, and
- * the route is the nearest place that is still there (a closed workspace opens its room's Lead chat, a removed room opens New chat in another room). Nothing
+ * the route is the nearest place that is still there (a closed workspace opens its project's Lead chat, a removed project opens New chat in another project). Nothing
  * when there is nothing saved, it is not JSON, or it is a version this build doesn't know.
  */
 export function restorePlace(raw: string | null, s: State): { route: Route; tabs: UiState['tabs'] } | undefined {

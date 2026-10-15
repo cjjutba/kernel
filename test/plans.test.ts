@@ -167,13 +167,13 @@ describe('a plan change request with images, through approvals.decide', () => {
     const k = new Kernel({ dataDir, home })
     await k.start()
     onTestFinished(() => k.stop())
-    const room = await k.addRoom(repo)
-    const chat = await k.leadChat(room.id)
+    const project = await k.addProject(repo)
+    const chat = await k.leadChat(project.id)
     // The images go in the chat's worktree, which Kernel makes after the chat starts (KERNEL-542).
     await k.workspaces.worktreeMade(chat.workspaceId)
     const ws = k.store.workspace(chat.workspaceId)!
     const ask = (o: { kind?: Approval['kind']; toolName?: string } = { toolName: 'ExitPlanMode' }) =>
-      k.approvals.request({ roomId: room.id, workspaceId: ws.id, chatId: chat.id, kind: o.kind ?? 'plan', source: 'sdk', toolName: o.toolName, title: 'Plan for lead', input: { plan: PLAN } })
+      k.approvals.request({ projectId: project.id, workspaceId: ws.id, chatId: chat.id, kind: o.kind ?? 'plan', source: 'sdk', toolName: o.toolName, title: 'Plan for lead', input: { plan: PLAN } })
     return { k, ws, ask, decide: k.handlers()['approvals.decide'] }
   }
 

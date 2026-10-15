@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { actions, getState, resetHistory, setState } from '../src/renderer/src/store'
 import { tabOf } from '../src/renderer/src/nav'
-import type { AgentDef, Chat, Room, Workspace } from '../src/shared/types'
+import type { AgentDef, Chat, Project, Workspace } from '../src/shared/types'
 
 // What the main process answers: the Lead's workspace's chats, which `chats.close` shrinks. `chats.list` returns the open ones.
 let server: Chat[] = []
@@ -17,17 +17,17 @@ vi.mock('../src/renderer/src/api', () => ({
 
 const { closeChats, closesThread, frozenWhole, wholeChat } = await import('../src/renderer/src/screens/workspace/ConfirmCloseChats')
 
-const room = { id: 'r1', name: 'r1', path: '/r/r1', defaultBranch: 'main', paused: false, createdAt: 1 } as Room
+const project = { id: 'r1', name: 'r1', path: '/r/r1', defaultBranch: 'main', paused: false, createdAt: 1 } as Project
 const kernel = { id: 'kernel', lead: true } as AgentDef
-const lead = { id: 'lead', roomId: 'r1', name: 'lead', branch: 'main', baseRef: 'main', path: '/w/lead', mode: 'current', lead: true, agentId: 'kernel', port: 0, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
+const lead = { id: 'lead', projectId: 'r1', name: 'lead', branch: 'main', baseRef: 'main', path: '/w/lead', mode: 'current', lead: true, agentId: 'kernel', port: 0, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
 const tab = (id: string, threadId: string, over: Partial<Chat> = {}): Chat =>
   ({ id, workspaceId: 'lead', title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1, threadId, ...over })
 
 /** Three Lead chats: t1 with two tabs, t2 and t3 with one each. */
 function seed(chats = [tab('a1', 't1'), tab('a2', 't1'), tab('b1', 't2'), tab('c1', 't3')]) {
   server = chats
-  setState({ rooms: [room], agents: { r1: [kernel] }, workspaces: [lead], chats: { lead: chats }, threads: {} })
-  setState((s) => ({ ui: { ...s.ui, route: { name: 'rooms' }, tabs: {}, foldedChats: [] } }))
+  setState({ projects: [project], agents: { r1: [kernel] }, workspaces: [lead], chats: { lead: chats }, threads: {} })
+  setState((s) => ({ ui: { ...s.ui, route: { name: 'projects' }, tabs: {}, foldedChats: [] } }))
   resetHistory()
 }
 const route = () => getState().ui.route
@@ -84,9 +84,9 @@ describe('closeChats in the Lead\'s workspace (KERNEL-338, KERNEL-596)', () => {
     actions.ui.openTab('lead', id)
     await closeChats('lead', [id], id, select)
   }
-  const door = { name: 'leadNew', roomId: 'r1' }
+  const door = { name: 'leadNew', projectId: 'r1' }
 
-  it('goes to the room front door when the chat on screen closes, and not to the chat row above', async () => {
+  it('goes to the project front door when the chat on screen closes, and not to the chat row above', async () => {
     await closeLast('b1')
     expect(route()).toEqual(door)
   })

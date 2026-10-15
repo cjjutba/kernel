@@ -1,8 +1,8 @@
 import type { Tracker } from '@shared/types'
 
-export const NO_TRACKER = 'This room has no issue tracker.'
+export const NO_TRACKER = 'This project has no issue tracker.'
 
-/** A room with no issue tracker (KERNEL-462): no issues to list, none to read, nothing to move. */
+/** A project with no issue tracker (KERNEL-462): no issues to list, none to read, nothing to move. */
 export function noneTracker(): Tracker {
   return {
     kind: 'none',

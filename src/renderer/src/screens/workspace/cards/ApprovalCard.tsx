@@ -340,7 +340,7 @@ function PlanDecision({ a, lead }: { a: Approval; lead: boolean }) {
 
 /** A short plan as numbered rows, in the Inbox: the Lead's task list, or a plan-mode plan that is one list. */
 function PlanSteps({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead: boolean }) {
-  const tasks = useStore((s) => (a.roomId ? s.tasks[a.roomId] : undefined))
+  const tasks = useStore((s) => (a.projectId ? s.tasks[a.projectId] : undefined))
   const steps = planSteps(a)
   const open = (workspaceId: string) => go({ name: 'workspace', workspaceId })
   return (
@@ -431,7 +431,7 @@ function HireCard({ a, lead, inChat }: { a: Approval; lead: string; inChat?: boo
 
 /** The card for one approval, by kind (WorkspacePerm, Plan, Question, Hire, Lead). `inChat` is set in a transcript, where a composer sits below. */
 export function ApprovalCard({ approval: a, inChat }: { approval: Approval; inChat?: boolean }) {
-  const agents = useStore((s) => (a.roomId ? s.agents[a.roomId] : undefined)) ?? EMPTY
+  const agents = useStore((s) => (a.projectId ? s.agents[a.projectId] : undefined)) ?? EMPTY
   const agent = agents.find((x) => x.id === a.agentId)
   const who = agent?.name ?? 'An agent'
   const hasItem = useStore((s) => !!a.chatId && !!s.items[a.chatId]?.some((i) => i.id === answerItemId(a.id)))

@@ -10,7 +10,7 @@ import { ApprovalCard } from '../workspace/cards/ApprovalCard'
 import { outcome } from '../workspace/cards/steps'
 import { attempt } from '../workspace/MessageActions'
 import { decideAtOnce, useFoldPhase, useHeldRows } from '../workspace/cards/decideFold'
-import { openRoom } from '../../lead'
+import { openProject } from '../../lead'
 import { age, agentOf, allOverlaps, fileName, inboxItems, inTab, names, needsYou, type InboxItem, type InboxTab } from './model'
 import './inbox.css'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
@@ -27,18 +27,18 @@ const NO_AGENTS: AgentDef[] = []
 
 /** Agents changing the same file in different worktrees. The Lead sorts it out. */
 export function SortOverlap({ overlap: o }: { overlap: Overlap }) {
-  const lead = useStore((s) => s.agents[o.roomId]?.find((a) => a.lead))
+  const lead = useStore((s) => s.agents[o.projectId]?.find((a) => a.lead))
   const [busy, run] = useBusy()
   const name = lead?.name ?? 'the Lead'
   return (
-    <Button variant="primary" busy={!!busy} busyPattern="arrow-right" busyLabel="Sending" disabled={!!busy} onClick={() => void run('sort', () => attempt(`Could not hand that to ${name}`, () => call('rooms.resolveOverlap', { overlapId: o.id })))}>
+    <Button variant="primary" busy={!!busy} busyPattern="arrow-right" busyLabel="Sending" disabled={!!busy} onClick={() => void run('sort', () => attempt(`Could not hand that to ${name}`, () => call('projects.resolveOverlap', { overlapId: o.id })))}>
       Let {name} sort it
     </Button>
   )
 }
 
 function OverlapDetail({ overlap: o }: { overlap: Overlap }) {
-  const team = useStore((s) => s.agents[o.roomId]) ?? NO_AGENTS
+  const team = useStore((s) => s.agents[o.projectId]) ?? NO_AGENTS
   const workspaces = useStore((s) => s.workspaces)
   const rows = o.parties.map((p) => ({ ...p, name: team.find((a) => a.id === p.agentId)?.name ?? p.agentId, ws: workspaces.find((w) => w.id === p.workspaceId) }))
   return (
@@ -94,7 +94,7 @@ function Detail({ item }: { item: InboxItem }) {
           {phase !== 'folded' && (
             <div className={`ib-acts${phase ? ' decide-fold' : ''}`}>
               <Button onClick={() => decideAtOnce(a, { behavior: 'deny', message: 'Denied in Kernel.' })}>Deny</Button>
-              <button type="button" className="ib-link" onClick={() => decideAtOnce(a, { behavior: 'allow', always: true })}>Always allow in this room</button>
+              <button type="button" className="ib-link" onClick={() => decideAtOnce(a, { behavior: 'allow', always: true })}>Always allow in this project</button>
               <span className="grow" />
               <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>Approve</Button>
             </div>
@@ -102,11 +102,11 @@ function Detail({ item }: { item: InboxItem }) {
         </>
       )}
       {a && pending && !isTool(a) && <div className="ib-card"><ApprovalCard approval={a} /></div>}
-      {n.kind === 'trust' && n.roomId && n.workspaceId && (
+      {n.kind === 'trust' && n.projectId && n.workspaceId && (
         <div className="ib-acts">
           <button type="button" className="ib-link" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>Open workspace</button>
           <span className="grow" />
-          <Button variant="primary" onClick={() => actions.ui.openModal({ name: 'confirm', kind: 'trust', roomId: n.roomId! })}>Review scripts</Button>
+          <Button variant="primary" onClick={() => actions.ui.openModal({ name: 'confirm', kind: 'trust', projectId: n.projectId! })}>Review scripts</Button>
         </div>
       )}
       {!a && pending && n.kind !== 'trust' && n.workspaceId && (
@@ -128,17 +128,17 @@ function Detail({ item }: { item: InboxItem }) {
 export function Inbox() {
   const notifications = useStore((s) => s.notifications)
   const approvals = useStore((s) => s.approvals)
-  const rooms = useStore((s) => s.rooms)
+  const projects = useStore((s) => s.projects)
   const overlaps = useStore((s) => s.overlaps)
   const workspaces = useStore((s) => s.workspaces)
   const agents = useStore((s) => s.agents)
-  const firstRoom = useStore((s) => s.rooms.find((r) => !r.archived)?.id)
-  const lead = useStore((s) => (firstRoom ? s.agents[firstRoom]?.find((a) => a.lead) : undefined))
+  const firstProject = useStore((s) => s.projects.find((r) => !r.archived)?.id)
+  const lead = useStore((s) => (firstProject ? s.agents[firstProject]?.find((a) => a.lead) : undefined))
   // The tab stays picked when you leave the Inbox and come back (DESIGN.md, Remembered choices).
   const [tab, setTab] = useRemembered<InboxTab>('kernel.inboxTab', oneOf<InboxTab>(['all', 'needs', 'updates'], 'all'))
   const [sel, setSel] = useState<string | null>(null)
   const detail = useRef<HTMLDivElement>(null)
-  const all = useMemo(() => inboxItems(notifications, approvals, rooms, allOverlaps(overlaps), workspaces), [notifications, approvals, rooms, overlaps, workspaces])
+  const all = useMemo(() => inboxItems(notifications, approvals, projects, allOverlaps(overlaps), workspaces), [notifications, approvals, projects, overlaps, workspaces])
   const list = all.filter((i) => inTab(i, tab))
   const shownRows = useHeldRows(list, (i) => i.n.id, (i) => i.approval?.id)
   const cur = list.find((i) => i.n.id === sel) ?? list[0]
@@ -207,15 +207,15 @@ export function Inbox() {
           ))}
         </div>
         <div className="ib-pane" ref={detail}>
-          {cur ? <Detail key={cur.n.id} item={cur} /> : !rooms.some((r) => !r.archived) ? (
-            <EmptyList icon="branch" title="Add your first room" action={<div className="ib-first"><Button variant="primary" onClick={() => actions.ui.openModal({ name: 'connectRepo' })}>Connect a repo</Button><Button onClick={() => actions.ui.openModal({ name: 'openFolder' })}>Open a folder</Button></div>}>
-              A room is one project with its own team of agents. Nothing needs you until you add one.
+          {cur ? <Detail key={cur.n.id} item={cur} /> : !projects.some((r) => !r.archived) ? (
+            <EmptyList icon="branch" title="Add your first project" action={<div className="ib-first"><Button variant="primary" onClick={() => actions.ui.openModal({ name: 'connectRepo' })}>Connect a repo</Button><Button onClick={() => actions.ui.openModal({ name: 'openFolder' })}>Open a folder</Button></div>}>
+              A project is one project with its own team of agents. Nothing needs you until you add one.
             </EmptyList>
           ) : (
             <div className="ib-empty">
               <h2>You're all caught up</h2>
               <p>Approvals, plans to review and finished work land here. Nothing needs you right now.</p>
-              {firstRoom && <button type="button" className="ib-link" onClick={() => void openRoom(firstRoom)}>{lead ? `Open ${lead.name}'s chat` : 'Open the team'}</button>}
+              {firstProject && <button type="button" className="ib-link" onClick={() => void openProject(firstProject)}>{lead ? `Open ${lead.name}'s chat` : 'Open the team'}</button>}
             </div>
           )}
         </div>

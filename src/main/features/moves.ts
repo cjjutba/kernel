@@ -23,11 +23,11 @@ const CHOICES: readonly MoveChoice[] = ['summarize', 'continue', 'keep']
  * What a long chat does when it has to run on another account (KERNEL-844): Settings, Account's "When a long chat moves to
  * another account" for its provider, the chat's own choice, and the overrides. Sessions asks as each turn starts
  * (`plan`), so a move is decided once, where it happens. A chat that waits for the user's choice gets one Inbox item per
- * room. A switch Kernel makes by itself posts one grouped item, and ahead of a limit the old account summarizes its idle
+ * project. A switch Kernel makes by itself posts one grouped item, and ahead of a limit the old account summarizes its idle
  * long chats while their cache is warm.
  */
 export class Moves extends Feature {
-  /** Chats waiting for the user to choose how they move, by room, for the room's Inbox item. */
+  /** Chats waiting for the user to choose how they move, by project, for the project's Inbox item. */
   private asking = new Map<string, Set<string>>()
   /** Accounts whose idle long chats are being summarized ahead of a limit, as `provider:account`, so one run goes at a time. */
   private ahead = new Set<string>()
@@ -77,26 +77,26 @@ export class Moves extends Feature {
   }
 
   /**
-   * A chat started or stopped waiting for the user to choose how it moves (Sessions' `onMoveHold`). Its room's Inbox item
+   * A chat started or stopped waiting for the user to choose how it moves (Sessions' `onMoveHold`). Its project's Inbox item
    * lists the chats that wait, and once none does, says so and needs nothing more.
    */
   held(chat: Chat, held: boolean) {
     const ws = this.store.workspace(chat.workspaceId)
     if (!ws) return
-    const ids = this.asking.get(ws.roomId) ?? new Set<string>()
+    const ids = this.asking.get(ws.projectId) ?? new Set<string>()
     if (held === ids.has(chat.id)) return
     if (held) ids.add(chat.id)
     else ids.delete(chat.id)
-    this.asking.set(ws.roomId, ids)
-    this.askItem(ws.roomId, [...ids])
+    this.asking.set(ws.projectId, ids)
+    this.askItem(ws.projectId, [...ids])
   }
 
-  private askItem(roomId: string, ids: string[]) {
-    const id = `n-move-ask-${roomId}`
-    const room = this.store.room(roomId)
-    const sub = `Account move${room ? ` · ${room.name}` : ''}`
+  private askItem(projectId: string, ids: string[]) {
+    const id = `n-move-ask-${projectId}`
+    const project = this.store.project(projectId)
+    const sub = `Account move${project ? ` · ${project.name}` : ''}`
     if (!ids.length) {
-      this.asking.delete(roomId)
+      this.asking.delete(projectId)
       if (this.store.notification(id)?.needsYou) this.notifications.notice({ id, title: 'No chat waits to move to another account', sub, needsYou: false, resolved: 'Every chat has its answer.' }, { replace: true })
       return
     }
@@ -110,7 +110,7 @@ export class Moves extends Feature {
     const title = chats.length === 1 ? `${chats[0].title} waits to move to another account` : `${chats.length} long chats wait to move to another account`
     const only = chats.length === 1 ? chats[0] : undefined
     this.notifications.notice({
-      id, title, sub, roomId, ...(only ? { workspaceId: only.workspaceId } : {}), needsYou: true, heading: title,
+      id, title, sub, projectId, ...(only ? { workspaceId: only.workspaceId } : {}), needsYou: true, heading: title,
       body: `Kernel asks before these chats run on another account. ${lines.join('. ')}. In each chat, pick summarize it first, continue as it is, or keep it on its account.`
     }, { replace: true })
   }

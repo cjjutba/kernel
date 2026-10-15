@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PrInfo, PrState } from '@shared/types'
-import { tempRepo, trustRoom, setUp, freePort } from './helpers'
+import { tempRepo, trustProject, setUp, freePort } from './helpers'
 import { run } from '../src/main/services/exec'
 import { unpushedCommits } from '../src/main/services/archive'
 import { Kernel } from '../src/main/kernel'
@@ -34,9 +34,9 @@ async function setup(o: { files?: Record<string, string>; settings?: object } = 
     ready: async () => undefined,
     reopen: async () => undefined
   }
-  const room = await k.addRoom(repo)
-  await trustRoom(k, room.id)
-  return { k, room, gh }
+  const project = await k.addProject(repo)
+  await trustProject(k, project.id)
+  return { k, project, gh }
 }
 
 /** Kernel runs git before it reaches GitHub or saves a state, which takes a while when the whole suite runs at once (KERNEL-187). */
@@ -45,8 +45,8 @@ const branches = async (repo: string, name: string) => (await run('git', ['-C', 
 
 describe('workspace saves read the store, not a stale copy', () => {
   it('leaves a workspace archived when a PR refresh was waiting on GitHub', async () => {
-    const { k, room, gh } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const { k, project, gh } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     gh.pr = prInfo('ready'); gh.slow = true
     const refresh = k.refreshPr(ws.id)
     await vi.waitFor(() => expect(gh.release).toBeDefined(), SLOW)
@@ -60,8 +60,8 @@ describe('workspace saves read the store, not a stale copy', () => {
   })
 
   it("doesn't undo a merge that started while a refresh was waiting", async () => {
-    const { k, room, gh } = await setup({ settings: { pr: { requireGreen: false } } })
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const { k, project, gh } = await setup({ settings: { pr: { requireGreen: false } } })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     gh.pr = prInfo('ready')
     await k.refreshPr(ws.id)
     gh.slow = true
@@ -81,10 +81,10 @@ describe('workspace saves read the store, not a stale copy', () => {
   })
 
   it('stays archived when setup finishes after the archive', async () => {
-    const { k, room } = await setup({ files: { '.kernel/settings.toml': '[scripts]\nsetup = "sleep 5"\n' } })
-    const creating = k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Slow setup' })
+    const { k, project } = await setup({ files: { '.kernel/settings.toml': '[scripts]\nsetup = "sleep 5"\n' } })
+    const creating = k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Slow setup' })
     const id = await vi.waitFor(() => {
-      const ws = k.store.workspaces(room.id).find((w) => w.status === 'setup')
+      const ws = k.store.workspaces(project.id).find((w) => w.status === 'setup')
       expect(ws).toBeDefined()
       return ws!.id
     }, SLOW)
@@ -96,8 +96,8 @@ describe('workspace saves read the store, not a stale copy', () => {
   })
 
   it('restores an archived workspace and clears archivedAt', async () => {
-    const { k, room } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Come back' })
+    const { k, project } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Come back' })
     await k.archiveWorkspace(ws.id)
     await k.archive.cleanedUp(ws.id)
     const back = await k.restoreWorkspace(ws.id)
@@ -111,40 +111,40 @@ describe('workspace saves read the store, not a stale copy', () => {
 
 describe('the archive branch guard', () => {
   it('counts commits on the branch it deletes, not on the worktree HEAD', async () => {
-    const { k, room } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Keep me' })
+    const { k, project } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Keep me' })
     await writeFile(join(ws.path, 'c.ts'), 'c\n')
     await run('git', ['-C', ws.path, 'add', '-A'])
     await run('git', ['-C', ws.path, 'commit', '-q', '-m', 'only here'])
     // The agent moved HEAD off the branch: HEAD has nothing unpushed, the branch has one commit.
     await run('git', ['-C', ws.path, 'checkout', '-q', '--detach', 'main'])
-    expect(await unpushedCommits(room.path, ws.branch, ws.baseRef)).toBe(1)
+    expect(await unpushedCommits(project.path, ws.branch, ws.baseRef)).toBe(1)
     await k.archiveWorkspace(ws.id, true)
     await k.archive.cleanedUp(ws.id)
-    expect(await branches(room.path, ws.branch)).toContain(ws.branch)
+    expect(await branches(project.path, ws.branch)).toContain(ws.branch)
     await k.stop()
   })
 
   it("keeps the branch when its commits can't be counted, and says so", async () => {
-    const { k, room } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Unknown' })
+    const { k, project } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Unknown' })
     // Nothing to compare the branch against: no upstream, no origin, and a base that doesn't exist.
     k.store.saveWorkspace({ ...ws, baseRef: 'origin/nowhere' })
-    expect(await unpushedCommits(room.path, ws.branch, 'origin/nowhere')).toBeNull()
+    expect(await unpushedCommits(project.path, ws.branch, 'origin/nowhere')).toBeNull()
     await k.archiveWorkspace(ws.id, true)
     await k.archive.cleanedUp(ws.id)
-    expect(await branches(room.path, ws.branch)).toContain(ws.branch)
-    expect(k.store.activity(room.id).some((a) => a.kind === 'note' && a.object === ws.branch && a.text.includes('could not be counted'))).toBe(true)
+    expect(await branches(project.path, ws.branch)).toContain(ws.branch)
+    expect(k.store.activity(project.id).some((a) => a.kind === 'note' && a.object === ws.branch && a.text.includes('could not be counted'))).toBe(true)
     await k.stop()
   })
 
   it('still deletes a branch with nothing unpushed when asked', async () => {
-    const { k, room } = await setup()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Drop me' })
-    expect(await unpushedCommits(room.path, ws.branch, ws.baseRef)).toBe(0)
+    const { k, project } = await setup()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Drop me' })
+    expect(await unpushedCommits(project.path, ws.branch, ws.baseRef)).toBe(0)
     await k.archiveWorkspace(ws.id, true)
     await k.archive.cleanedUp(ws.id)
-    expect(await branches(room.path, ws.branch)).toBe('')
+    expect(await branches(project.path, ws.branch)).toBe('')
     await k.stop()
   })
 })

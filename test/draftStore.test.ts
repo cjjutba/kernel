@@ -175,10 +175,10 @@ describe('pruning drafts', () => {
     m.saveDraft('closed', words('2'), 'w1')
     m.saveDraft('archived-chat', words('3'), 'w2')
     m.saveDraft('unloaded', words('4'), 'w3')
-    m.saveDraft('removed-room', words('5'), 'w9')
+    m.saveDraft('removed-project', words('5'), 'w9')
     return m
   }
-  const left = (m: Awaited<ReturnType<typeof launch>>) => ['open', 'closed', 'archived-chat', 'unloaded', 'removed-room'].filter((id) => m.loadDraft(id))
+  const left = (m: Awaited<ReturnType<typeof launch>>) => ['open', 'closed', 'archived-chat', 'unloaded', 'removed-project'].filter((id) => m.loadDraft(id))
 
   it('drops a draft of an archived or removed workspace, or of a chat missing from a workspace whose chats have loaded', async () => {
     const m = await seed()
@@ -208,7 +208,7 @@ describe('pruning drafts', () => {
 })
 
 describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
-  const KEY = 'new-chat:room-z'
+  const KEY = 'new-chat:project-z'
   const picks = { model: 'claude-sonnet-5-5', effort: 'low' as const, plan: true }
 
   it('keeps picks without any text, and a box emptied by hand keeps them', async () => {
@@ -237,15 +237,15 @@ describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
   it('writes a draft with picks and no parts, and brings both back after a relaunch', async () => {
     const first = await launch()
     first.savePicks(KEY, picks)
-    first.savePicks('new-chat:room-a', { model: 'gpt-6-astra', effort: 'max' })
+    first.savePicks('new-chat:project-a', { model: 'gpt-6-astra', effort: 'max' })
     vi.advanceTimersByTime(500)
     expect(onDisk().drafts).toEqual({
       [KEY]: { workspaceId: '', parts: [], picks },
-      'new-chat:room-a': { workspaceId: '', parts: [], picks: { model: 'gpt-6-astra', effort: 'max' } }
+      'new-chat:project-a': { workspaceId: '', parts: [], picks: { model: 'gpt-6-astra', effort: 'max' } }
     })
     const second = await launch()
     expect(second.loadPicks(KEY)).toEqual(picks)
-    expect(second.loadPicks('new-chat:room-a')).toEqual({ model: 'gpt-6-astra', effort: 'max' })
+    expect(second.loadPicks('new-chat:project-a')).toEqual({ model: 'gpt-6-astra', effort: 'max' })
     expect(second.loadDraft(KEY)).toBeUndefined()
   })
 
@@ -271,20 +271,20 @@ describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
     const m = await launch()
     m.saveDraft(KEY, words('go'), '')
     m.savePicks(KEY, picks)
-    m.saveDraft('new-chat:room-a', words('other'), '')
-    m.savePicks('new-chat:room-a', { plan: true })
+    m.saveDraft('new-chat:project-a', words('other'), '')
+    m.savePicks('new-chat:project-a', { plan: true })
     vi.advanceTimersByTime(500)
     m.clearDraft(KEY)
     expect([m.loadDraft(KEY), m.loadPicks(KEY)]).toEqual([undefined, undefined])
-    expect([m.loadDraft('new-chat:room-a'), m.loadPicks('new-chat:room-a')]).toEqual([words('other'), { plan: true }])
+    expect([m.loadDraft('new-chat:project-a'), m.loadPicks('new-chat:project-a')]).toEqual([words('other'), { plan: true }])
     vi.advanceTimersByTime(500)
-    expect(Object.keys(onDisk().drafts)).toEqual(['new-chat:room-a'])
-    m.clearDraft('new-chat:room-a')
+    expect(Object.keys(onDisk().drafts)).toEqual(['new-chat:project-a'])
+    m.clearDraft('new-chat:project-a')
     vi.advanceTimersByTime(500)
     expect(disk.has('kernel.drafts')).toBe(false)
   })
 
-  it("keeps the room's Hand off or Build here and Worktree or Local through a send, and drops the branch with the rest", async () => {
+  it("keeps the project's Hand off or Build here and Worktree or Local through a send, and drops the branch with the rest", async () => {
     const m = await launch()
     m.saveDraft(KEY, words('go'), '')
     m.savePicks(KEY, { ...picks, leadMode: 'build', place: 'current', baseRef: 'origin/feat/x' })
@@ -306,13 +306,13 @@ describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
     expect(disk.has('kernel.drafts')).toBe(false)
   })
 
-  it('forgets the New chat drafts of rooms that are gone, and keeps the rest', async () => {
+  it('forgets the New chat drafts of projects that are gone, and keeps the rest', async () => {
     const m = await launch()
-    m.savePicks('new-chat:room-a', { leadMode: 'build' })
-    m.saveDraft('new-chat:room-b', words('b'), '')
+    m.savePicks('new-chat:project-a', { leadMode: 'build' })
+    m.saveDraft('new-chat:project-b', words('b'), '')
     m.saveDraft('c1', words('in a chat'), 'w1')
-    m.dropRoomDrafts(['room-b'])
-    expect([m.loadPicks('new-chat:room-a'), m.loadDraft('new-chat:room-b'), m.loadDraft('c1')]).toEqual([undefined, words('b'), words('in a chat')])
+    m.dropProjectDrafts(['project-b'])
+    expect([m.loadPicks('new-chat:project-a'), m.loadDraft('new-chat:project-b'), m.loadDraft('c1')]).toEqual([undefined, words('b'), words('in a chat')])
   })
 
   it('loads a draft saved before picks existed, text only', async () => {
@@ -376,9 +376,9 @@ describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
   it('keeps its picks through a prune, as it keeps its text', async () => {
     const m = await launch()
     m.savePicks(KEY, picks)
-    m.savePicks('new-chat:room-a', picks)
+    m.savePicks('new-chat:project-a', picks)
     m.pruneDrafts({ workspaces: [], chats: {} }, () => true)
-    expect([m.loadPicks(KEY), m.loadPicks('new-chat:room-a')]).toEqual([picks, picks])
+    expect([m.loadPicks(KEY), m.loadPicks('new-chat:project-a')]).toEqual([picks, picks])
   })
 
   it('neither reads nor writes picks in fixture mode', async () => {

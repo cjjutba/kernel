@@ -1,5 +1,5 @@
 import { EFFORTS, isRunName, MODELS } from '@shared/types'
-import type { AgentDef, Approval, Chat, ClaudeAccount, GithubIssue, HookStatus, LinearIssue, Provider, ProviderStatus, ReviewKind, RoomSettings, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ClaudeAccount, GithubIssue, HookStatus, LinearIssue, Provider, ProviderStatus, ReviewKind, ProjectSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
@@ -34,32 +34,32 @@ export function fixtureHandlers(f: Fixture): Handlers {
     if (!w) throw new Error(`Unknown workspace ${id}`)
     return w
   }
-  const room = (id: string) => {
-    const r = f.rooms.find((x) => x.id === id)
-    if (!r) throw new Error(`Unknown room ${id}`)
+  const project = (id: string) => {
+    const r = f.projects.find((x) => x.id === id)
+    if (!r) throw new Error(`Unknown project ${id}`)
     return r
   }
-  const agentOf = (roomId: string, id: string): AgentDef => {
-    const a = f.agents[roomId]?.find((x) => x.id === id)
+  const agentOf = (projectId: string, id: string): AgentDef => {
+    const a = f.agents[projectId]?.find((x) => x.id === id)
     if (!a) throw new Error(`Unknown agent ${id}`)
     return a
   }
-  /** The fixture's personal and plugin agents, once each, as `agents.listGlobal` gives them with no room (KERNEL-640). */
+  /** The fixture's personal and plugin agents, once each, as `agents.listGlobal` gives them with no project (KERNEL-640). */
   const globalAgents = (): AgentDef[] => {
     const all = Object.values(f.agents).flat().filter((a) => a.origin === 'personal' || a.origin === 'plugin')
     return [...new Map(all.map((a) => [a.id, a])).values()].sort((a, b) => Number(a.origin === 'plugin') - Number(b.origin === 'plugin'))
   }
-  /** The workspace of the room's newest open Lead chat, the one `lead.open` finds (KERNEL-405). */
-  const leadWs = (roomId: string) => {
-    const lead = f.agents[roomId]?.find((a) => a.lead)
-    return f.workspaces.filter((w) => w.roomId === roomId && isLeadWorkspace(w, lead?.id)).at(-1)
+  /** The workspace of the project's newest open Lead chat, the one `lead.open` finds (KERNEL-405). */
+  const leadWs = (projectId: string) => {
+    const lead = f.agents[projectId]?.find((a) => a.lead)
+    return f.workspaces.filter((w) => w.projectId === projectId && isLeadWorkspace(w, lead?.id)).at(-1)
   }
   let settings = f.settings ?? DEFAULT_SETTINGS('/Users/you')
   const hooks: HookStatus = f.hooks ?? { port: settings.hookPort, listening: true, installed: true, events: [] }
   const update = f.update ?? { status: 'idle' as const, current: '0.1.0' }
   const account = f.account ?? fixtureAccount
-  const roomSettings = (roomId: string): RoomSettings => {
-    const rs = f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
+  const projectSettings = (projectId: string): ProjectSettings => {
+    const rs = f.projectSettings?.[projectId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
     // Like the engine, `run` comes first, from `[scripts] run`.
     const runScripts = rs.runScripts ?? (rs.scripts.run ? [{ name: 'run', command: rs.scripts.run }] : [])
     return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, env: { files: rs.env?.files ?? [] }, references: rs.references ?? [], review: rs.review ?? reviewOf(undefined), merge: rs.merge ?? { alwaysReview: [] }, sources: rs.sources ?? {} }
@@ -87,39 +87,39 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     'hooks.test': async () => hooks,
     'hooks.restart': async () => hooks,
-    'rooms.list': async () => f.rooms,
-    'rooms.add': async ({ path, name }) => f.rooms.find((r) => r.path === path) ?? { id: 'fixture-room', name: name ?? path.split('/').pop() ?? path, path, defaultBranch: 'main', paused: false, createdAt: Date.now() },
-    'rooms.create': async ({ name, desc, source, from }) => ({ id: 'fixture-room', name, desc, kind: source, path: from, defaultBranch: 'main', paused: false, createdAt: Date.now() }),
-    'rooms.retrySetup': async () => {
+    'projects.list': async () => f.projects,
+    'projects.add': async ({ path, name }) => f.projects.find((r) => r.path === path) ?? { id: 'fixture-project', name: name ?? path.split('/').pop() ?? path, path, defaultBranch: 'main', paused: false, createdAt: Date.now() },
+    'projects.create': async ({ name, desc, source, from }) => ({ id: 'fixture-project', name, desc, kind: source, path: from, defaultBranch: 'main', paused: false, createdAt: Date.now() }),
+    'projects.retrySetup': async () => {
       for (const step of f.afterRetry ?? []) setTimeout(() => step.events.forEach((e) => bus.push(e)), step.afterMs)
       return ok
     },
-    'rooms.update': async ({ roomId, patch }) => ({ ...room(roomId), ...patch }),
-    'rooms.setIcon': async ({ roomId, icon }) => {
-      const { icon: _old, ...r } = room(roomId)
-      return icon.kind === 'letter' ? r : { ...r, icon: { kind: icon.kind, file: `${roomId}-fixture.png`, at: Date.now() } }
+    'projects.update': async ({ projectId, patch }) => ({ ...project(projectId), ...patch }),
+    'projects.setIcon': async ({ projectId, icon }) => {
+      const { icon: _old, ...r } = project(projectId)
+      return icon.kind === 'letter' ? r : { ...r, icon: { kind: icon.kind, file: `${projectId}-fixture.png`, at: Date.now() } }
     },
-    'rooms.icon': async ({ roomId }) => (room(roomId).icon ? f.roomIcons?.[roomId] ?? null : null),
-    'rooms.remove': async () => ok,
-    'rooms.setPaused': async ({ roomId, paused }) => ({ ...room(roomId), paused }),
-    'rooms.brief': async ({ roomId, agentId }) => {
-      const lead = f.agents[roomId]?.find((a) => a.lead)
-      const ws = f.workspaces.find((w) => w.roomId === roomId && w.agentId === (agentId ?? lead?.id) && w.status !== 'archived')
+    'projects.icon': async ({ projectId }) => (project(projectId).icon ? f.projectIcons?.[projectId] ?? null : null),
+    'projects.remove': async () => ok,
+    'projects.setPaused': async ({ projectId, paused }) => ({ ...project(projectId), paused }),
+    'projects.brief': async ({ projectId, agentId }) => {
+      const lead = f.agents[projectId]?.find((a) => a.lead)
+      const ws = f.workspaces.find((w) => w.projectId === projectId && w.agentId === (agentId ?? lead?.id) && w.status !== 'archived')
       const c = ws && f.chats.find((x) => x.workspaceId === ws.id)
       if (!ws || !c) throw new Error('This fixture has no chat for that agent.')
       return { chatId: c.id, workspaceId: ws.id }
     },
-    'rooms.overlaps': async ({ roomId }) => (f.overlaps ?? []).filter((o) => o.roomId === roomId),
-    'rooms.resolveOverlap': async () => ok,
-    'rooms.inspectFolder': async ({ path }) => f.folders?.find((x) => x.path === path) ?? { path, git: true, branch: 'main', dirty: 0 },
-    'rooms.recentFolders': async () => f.folders ?? [],
-    'rooms.pushCheck': async ({ roomId }) => f.pushChecks?.[roomId] ?? null,
-    'rooms.scriptTrust': async () => null,
-    'rooms.trust': async () => ok,
+    'projects.overlaps': async ({ projectId }) => (f.overlaps ?? []).filter((o) => o.projectId === projectId),
+    'projects.resolveOverlap': async () => ok,
+    'projects.inspectFolder': async ({ path }) => f.folders?.find((x) => x.path === path) ?? { path, git: true, branch: 'main', dirty: 0 },
+    'projects.recentFolders': async () => f.folders ?? [],
+    'projects.pushCheck': async ({ projectId }) => f.pushChecks?.[projectId] ?? null,
+    'projects.scriptTrust': async () => null,
+    'projects.trust': async () => ok,
     'github.repos': async ({ query }) => (f.repos ?? []).filter((r) => !query || r.fullName.includes(query)),
-    'agents.list': async ({ roomId, retired }) => (f.agents[roomId] ?? []).filter((a) => !!a.retired === !!retired),
-    'agents.status': async ({ roomId }) => f.status[roomId] ?? {},
-    'agents.save': async ({ roomId, agentId, patch }) => ({ ...agentOf(roomId, agentId), ...patch }),
+    'agents.list': async ({ projectId, retired }) => (f.agents[projectId] ?? []).filter((a) => !!a.retired === !!retired),
+    'agents.status': async ({ projectId }) => f.status[projectId] ?? {},
+    'agents.save': async ({ projectId, agentId, patch }) => ({ ...agentOf(projectId, agentId), ...patch }),
     'agents.listGlobal': async () => globalAgents(),
     'agents.saveGlobal': async ({ agentId, patch }) => {
       const a = globalAgents().find((x) => x.id === agentId)
@@ -127,20 +127,20 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return { ...a, ...patch }
     },
     'agents.draft': async ({ description, name, model }) => draftAgent({ description, name, model }),
-    'agents.create': async ({ roomId, draft, scope }) => {
-      if (roomId) return { ...agentFromFile(draft.file, draft.text), joinedAt: Date.now() }
-      if (scope === 'team') throw new Error("A team agent is saved in a room's repo. Open a room to add one.")
+    'agents.create': async ({ projectId, draft, scope }) => {
+      if (projectId) return { ...agentFromFile(draft.file, draft.text), joinedAt: Date.now() }
+      if (scope === 'team') throw new Error("A team agent is saved in a project's repo. Open a project to add one.")
       return { ...agentFromFile(`~/.claude/agents/${draft.id}.md`, draft.text), origin: 'personal', joinedAt: Date.now() }
     },
     'agents.retire': async () => ok,
-    'agents.restore': async ({ roomId, agentId }) => ({ ...agentOf(roomId, agentId), retired: false }),
-    'agents.seed': async ({ roomId }) => f.agents[roomId] ?? [],
-    'agents.setTeam': async ({ roomId }) => f.agents[roomId] ?? [],
-    'agents.customize': async ({ roomId, agentId }) => ({ ...agentOf(roomId, agentId), file: join('.claude', 'agents', KERNEL_FILE) }),
-    'agents.resetLead': async ({ roomId }) => (f.agents[roomId] ?? []).filter((a) => !a.retired),
-    'agents.moveLead': async ({ roomId }) => (f.agents[roomId] ?? []).filter((a) => !a.retired),
+    'agents.restore': async ({ projectId, agentId }) => ({ ...agentOf(projectId, agentId), retired: false }),
+    'agents.seed': async ({ projectId }) => f.agents[projectId] ?? [],
+    'agents.setTeam': async ({ projectId }) => f.agents[projectId] ?? [],
+    'agents.customize': async ({ projectId, agentId }) => ({ ...agentOf(projectId, agentId), file: join('.claude', 'agents', KERNEL_FILE) }),
+    'agents.resetLead': async ({ projectId }) => (f.agents[projectId] ?? []).filter((a) => !a.retired),
+    'agents.moveLead': async ({ projectId }) => (f.agents[projectId] ?? []).filter((a) => !a.retired),
     'agents.addStarter': async ({ id }) => ({ id, name: id.charAt(0).toUpperCase() + id.slice(1), role: '', description: '', lead: false, prompt: '', file: join('.claude', 'agents', `${id}.md`), joinedAt: Date.now() }),
-    'workspaces.list': async ({ roomId }) => f.workspaces.filter((w) => !roomId || w.roomId === roomId),
+    'workspaces.list': async ({ projectId }) => f.workspaces.filter((w) => !projectId || w.projectId === projectId),
     'workspaces.create': async () => { throw new Error('Fixture mode does not create workspaces.') },
     'workspaces.fork': async () => { throw new Error('Fixture mode does not create workspaces.') },
     'workspaces.archive': async () => ok,
@@ -163,20 +163,20 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'workspaces.hunks': async ({ workspaceId, path }) => (f.hunks?.[workspaceId] ?? []).filter((h) => !path || h.path === path),
     'workspaces.commit': async () => ok,
     'workspaces.discard': async () => ok,
-    'git.branches': async ({ roomId }) => f.branches ?? [...new Set(f.workspaces.filter((w) => w.roomId === roomId).map((w) => w.branch))],
+    'git.branches': async ({ projectId }) => f.branches ?? [...new Set(f.workspaces.filter((w) => w.projectId === projectId).map((w) => w.branch))],
     // Newest first, a few days apart, so the branch menu shows ages.
-    'git.branchList': async ({ roomId }) => (f.branches ?? [...new Set(f.workspaces.filter((w) => w.roomId === roomId).map((w) => w.branch))]).map((name, i) => ({ name, committedAt: Date.now() - (i * 3 + 1) * 86_400_000 })),
+    'git.branchList': async ({ projectId }) => (f.branches ?? [...new Set(f.workspaces.filter((w) => w.projectId === projectId).map((w) => w.branch))]).map((name, i) => ({ name, committedAt: Date.now() - (i * 3 + 1) * 86_400_000 })),
     'github.prs': async ({ query }) => (f.openPrs ?? []).filter((p) => !query || `#${p.number} ${p.title} ${p.author ?? ''}`.toLowerCase().includes(query.toLowerCase())),
     'github.issues': async ({ query }) => (f.issues ?? []).filter((i) => i.source === 'github' && (!query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase()))),
-    'issues.list': async ({ roomId, query }) => (f.issues?.filter((i) => i.source !== 'github') ?? (f.tasks?.[roomId] ?? []).map((t) => ({ id: t.id, title: t.title }))).filter((i) => !query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase())),
-    'issues.next': async ({ roomId }) => f.issues?.filter((i) => i.source !== 'github') ?? (f.tasks?.[roomId] ?? []).map((t) => ({ id: t.id, title: t.title })),
+    'issues.list': async ({ projectId, query }) => (f.issues?.filter((i) => i.source !== 'github') ?? (f.tasks?.[projectId] ?? []).map((t) => ({ id: t.id, title: t.title }))).filter((i) => !query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase())),
+    'issues.next': async ({ projectId }) => f.issues?.filter((i) => i.source !== 'github') ?? (f.tasks?.[projectId] ?? []).map((t) => ({ id: t.id, title: t.title })),
     'issues.taken': async () => f.issueTaken ?? { findings: [], notes: [] },
-    'issues.tracker': async ({ roomId }) => f.trackers?.[roomId] ?? { kind: 'linear' },
-    'github.issueList': async ({ roomId, query }) => (f.githubIssues?.[roomId] ?? [])
+    'issues.tracker': async ({ projectId }) => f.trackers?.[projectId] ?? { kind: 'linear' },
+    'github.issueList': async ({ projectId, query }) => (f.githubIssues?.[projectId] ?? [])
       .filter((i) => !query || `${i.id} ${i.title} ${i.author ?? ''}`.toLowerCase().includes(query.replace(/^#/, '').toLowerCase()))
       .map(({ body: _b, comments: _c, ...issue }): GithubIssue => issue),
-    'github.issue': async ({ roomId, id }) => {
-      const issue = f.githubIssues?.[roomId]?.find((i) => i.id === id)
+    'github.issue': async ({ projectId, id }) => {
+      const issue = f.githubIssues?.[projectId]?.find((i) => i.id === id)
       if (!issue) throw new Error(`Unknown issue ${id}`)
       return issue
     },
@@ -191,8 +191,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return issue
     },
     'linear.scope': async () => f.linear?.scope ?? { teams: [], projects: [], cycles: [] },
-    'linear.plan': async ({ roomId }) => {
-      const ws = leadWs(roomId)
+    'linear.plan': async ({ projectId }) => {
+      const ws = leadWs(projectId)
       const c = ws && f.chats.find((x) => x.workspaceId === ws.id)
       if (!ws || !c) throw new Error('This fixture has no chat with Kernel.')
       return { chatId: c.id, workspaceId: ws.id }
@@ -235,7 +235,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.runMode': async ({ chatId }) => {
       const c = chat(chatId)
       const ws = workspace(c.workspaceId)
-      return chatMode(c, ws, room(ws.roomId), settings, { auto: true, bypass: true }, f.agents[ws.roomId]?.find((a) => a.id === ws.agentId))
+      return chatMode(c, ws, project(ws.projectId), settings, { auto: true, bypass: true }, f.agents[ws.projectId]?.find((a) => a.id === ws.agentId))
     },
     // A fixture's running chats, retries, script lines and terminal output come from its push events.
     'chats.live': async () => ({ running: [], retry: {} }),
@@ -252,7 +252,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'checkpoints.list': async ({ workspaceId }) => f.checkpoints?.[workspaceId] ?? [],
     'checkpoints.preview': async ({ workspaceId, checkpointId }) => f.checkpointPreviews?.[workspaceId]?.[checkpointId] ?? { files: [], stat: { files: 0, added: 0, removed: 0 }, commitsAhead: 0, pushed: false, conflicts: [] },
     'checkpoints.revert': async ({ workspaceId }) => ({ backupBranch: `backup/${workspace(workspaceId).name}` }),
-    'approvals.list': async ({ roomId }) => f.approvals.filter((a) => !roomId || a.roomId === roomId).sort((a, b) => b.createdAt - a.createdAt),
+    'approvals.list': async ({ projectId }) => f.approvals.filter((a) => !projectId || a.projectId === projectId).sort((a, b) => b.createdAt - a.createdAt),
     'approvals.decide': async ({ id, decision }) => {
       const a = f.approvals.find((x) => x.id === id)
       if (!a) throw new Error('This request already timed out or was answered.')
@@ -271,13 +271,13 @@ export function fixtureHandlers(f: Fixture): Handlers {
       if (!a?.planFile || !ws) throw new Error('This plan has no file.')
       return { path: join(ws.path, a.planFile), relative: a.planFile }
     },
-    'tasks.list': async ({ roomId }) => f.tasks?.[roomId] ?? [],
+    'tasks.list': async ({ projectId }) => f.tasks?.[projectId] ?? [],
     'notifications.list': async () => f.notifications ?? [],
     'notifications.playSound': async () => ({ ok: true }),
     'notifications.read': async ({ ids }) => (f.notifications ?? []).map((n) => (ids === 'all' || ids.includes(n.id) ? { ...n, read: true } : n)),
-    'lead.open': async ({ roomId }) => {
-      if (!f.agents[roomId]?.some((a) => a.lead)) throw new Error('This fixture has no Kernel.')
-      return leadWs(roomId) ?? null
+    'lead.open': async ({ projectId }) => {
+      if (!f.agents[projectId]?.some((a) => a.lead)) throw new Error('This fixture has no Kernel.')
+      return leadWs(projectId) ?? null
     },
     'lead.start': async () => {
       const started = f.chats.find((c) => c.id === f.leadStart)
@@ -297,7 +297,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
       ws.source = { kind: 'issue', id: issue, title: ws.title ?? issue }
       return ws
     },
-    'threads.list': async ({ roomId }) => (f.threads ?? []).filter((t) => !roomId || t.roomId === roomId),
+    'threads.list': async ({ projectId }) => (f.threads ?? []).filter((t) => !projectId || t.projectId === projectId),
     'threads.rename': async () => { throw new Error('Fixture mode does not rename chats.') },
     'threads.archivePreview': async ({ threadId }) => {
       const t = f.threads?.find((x) => x.id === threadId)
@@ -325,12 +325,12 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'scripts.replay': async () => ok,
     'scripts.resize': async () => ok,
     'scripts.skipSetup': async () => ok,
-    'scripts.suggest': async ({ roomId }) => f.scriptSuggestions?.[roomId] ?? [],
+    'scripts.suggest': async ({ projectId }) => f.scriptSuggestions?.[projectId] ?? [],
     'scripts.askLead': async () => { throw new Error('Fixture mode does not start chats.') },
-    'activity.recent': async ({ roomId, limit = 50 }) => f.activity.filter((e) => !roomId || e.roomId === roomId).sort((a, b) => b.ts - a.ts).slice(0, limit),
-    'rooms.lastActivity': async ({ roomId }) => {
+    'activity.recent': async ({ projectId, limit = 50 }) => f.activity.filter((e) => !projectId || e.projectId === projectId).sort((a, b) => b.ts - a.ts).slice(0, limit),
+    'projects.lastActivity': async ({ projectId }) => {
       const last: Record<string, number> = {}
-      for (const e of f.activity) if (e.roomId === roomId && e.agentId) last[e.agentId] = Math.max(last[e.agentId] ?? 0, e.ts)
+      for (const e of f.activity) if (e.projectId === projectId && e.agentId) last[e.agentId] = Math.max(last[e.agentId] ?? 0, e.ts)
       return last
     },
     'usage.get': async (_req?: { force?: boolean } | void) => f.usage,
@@ -370,14 +370,14 @@ export function fixtureHandlers(f: Fixture): Handlers {
       if (process.env.KERNEL_SLOW_SETTINGS) await new Promise(() => undefined)
       return (settings = applySettingsPatch(settings, patch))
     },
-    'settings.room': async ({ roomId }) => roomSettings(roomId),
+    'settings.project': async ({ projectId }) => projectSettings(projectId),
     // Auto works on Claude and not on Codex, as on an account that runs it (KERNEL-447).
     'permissions.availability': async () => ({ claude: { auto: true, bypass: true }, codex: { auto: false, bypass: true, reason: CODEX_AUTO } }),
-    'settings.setRoom': async ({ roomId, patch, shared }) => {
+    'settings.setProject': async ({ projectId, patch, shared }) => {
       // Keeps the change for the life of the fixture, so a toggle in a screenshot run behaves like the real thing. Any group
       // the patch names is applied the same way, and the sources follow the file it was written to. `runScripts` is a list
       // here and a table in the patch, so it is applied by name, with `run` kept as `[scripts] run`.
-      const cur = roomSettings(roomId)
+      const cur = projectSettings(projectId)
       const next: Record<string, unknown> = { ...cur }
       const sources = { ...cur.sources }
       const file = shared ? 'shared' : 'local'
@@ -412,15 +412,15 @@ export function fixtureHandlers(f: Fixture): Handlers {
       const [from, to] = patch.runScripts && 'run' in patch.runScripts ? ['runScripts.run', 'scripts.run'] : ['scripts.run', 'runScripts.run']
       if (sources[from]) sources[to] = sources[from]
       else delete sources[to]
-      const run = from === 'runScripts.run' ? runs.get('run') : (next.scripts as RoomSettings['scripts']).run
-      next.scripts = { ...(next.scripts as RoomSettings['scripts']), run }
+      const run = from === 'runScripts.run' ? runs.get('run') : (next.scripts as ProjectSettings['scripts']).run
+      next.scripts = { ...(next.scripts as ProjectSettings['scripts']), run }
       next.runScripts = [...(run ? [{ name: 'run', command: run }] : []), ...[...runs].filter(([n]) => n !== 'run').map(([name, command]) => ({ name, command }))]
-      f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: { ...next, sources } as RoomSettings }
-      return roomSettings(roomId)
+      f.projectSettings = { ...(f.projectSettings ?? {}), [projectId]: { ...next, sources } as ProjectSettings }
+      return projectSettings(projectId)
     },
-    // Keeps the change for the life of the fixture, as `settings.setRoom` does. `null` puts the default back.
-    'settings.setReview': async ({ roomId, review }) => {
-      const cur = roomSettings(roomId)
+    // Keeps the change for the life of the fixture, as `settings.setProject` does. `null` puts the default back.
+    'settings.setReview': async ({ projectId, review }) => {
+      const cur = projectSettings(projectId)
       const defaults = reviewOf(undefined)
       const next = structuredClone(cur.review ?? defaults)
       if (review.rounds !== undefined) next.rounds = review.rounds ?? defaults.rounds
@@ -428,24 +428,24 @@ export function fixtureHandlers(f: Fixture): Handlers {
         const k = next.kinds[kind] as unknown as Record<string, unknown>
         for (const [key, v] of Object.entries(own)) if (v !== undefined) k[key] = v ?? (defaults.kinds[kind] as unknown as Record<string, unknown>)[key]
       }
-      f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: { ...cur, review: next } }
-      return roomSettings(roomId)
+      f.projectSettings = { ...(f.projectSettings ?? {}), [projectId]: { ...cur, review: next } }
+      return projectSettings(projectId)
     },
     // Keeps the list for the life of the fixture, as the engine's writer does: trimmed, without blanks or repeats.
-    'settings.setAlwaysReview': async ({ roomId, paths }) => {
-      f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: { ...roomSettings(roomId), merge: { alwaysReview: [...new Set(paths.map((p) => p.trim()).filter(Boolean))] } } }
-      return roomSettings(roomId)
+    'settings.setAlwaysReview': async ({ projectId, paths }) => {
+      f.projectSettings = { ...(f.projectSettings ?? {}), [projectId]: { ...projectSettings(projectId), merge: { alwaysReview: [...new Set(paths.map((p) => p.trim()).filter(Boolean))] } } }
+      return projectSettings(projectId)
     },
-    'files.preview': async ({ roomId, patterns }) => {
-      const { copy, exclude = [] } = roomSettings(roomId).files
+    'files.preview': async ({ projectId, patterns }) => {
+      const { copy, exclude = [] } = projectSettings(projectId).files
       const named = (list: string[], path: string) => list.some((e) => (isPattern(e) ? matchesGlob(path, e) : path === e))
-      return (f.localFiles?.[roomId] ?? []).filter((file) => named(patterns ?? copy, file.path) && !named(exclude, file.path))
+      return (f.localFiles?.[projectId] ?? []).filter((file) => named(patterns ?? copy, file.path) && !named(exclude, file.path))
         .sort((a, b) => a.path.localeCompare(b.path))
     },
-    'files.production': async ({ roomId }) => f.production?.[roomId] ?? [],
-    'files.keepCopying': async ({ roomId, hints }) => ({ ...room(roomId), keepCopying: hints.map((h) => `${h.path}:${h.name}`) }),
-    'shared.list': async ({ roomId, workspaceId, limit }) => (f.shared ?? [])
-      .filter((x) => (!roomId || x.roomId === roomId) && (!workspaceId || x.workspaceId === workspaceId))
+    'files.production': async ({ projectId }) => f.production?.[projectId] ?? [],
+    'files.keepCopying': async ({ projectId, hints }) => ({ ...project(projectId), keepCopying: hints.map((h) => `${h.path}:${h.name}`) }),
+    'shared.list': async ({ projectId, workspaceId, limit }) => (f.shared ?? [])
+      .filter((x) => (!projectId || x.projectId === projectId) && (!workspaceId || x.workspaceId === workspaceId))
       .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit ?? undefined),
     'shared.read': async ({ sharedId, version }) => {
       const file = f.shared?.find((x) => x.id === sharedId)
@@ -467,9 +467,9 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     'shared.comments': async ({ sharedId }) => (f.sharedComments ?? []).filter((c) => c.sharedId === sharedId).sort((a, b) => a.at - b.at),
     // Names only: a fixture holds no values, so there is nothing to reveal (KERNEL-247).
-    'env.get': async ({ roomId }) => {
-      const scope = roomId ? f.env?.rooms?.[roomId] : { names: f.env?.app }
-      return { names: [...(scope?.names ?? [])].sort(), files: roomId ? scope?.files ?? roomSettings(roomId).env.files.map((path) => ({ path, missing: false })) : [] }
+    'env.get': async ({ projectId }) => {
+      const scope = projectId ? f.env?.projects?.[projectId] : { names: f.env?.app }
+      return { names: [...(scope?.names ?? [])].sort(), files: projectId ? scope?.files ?? projectSettings(projectId).env.files.map((path) => ({ path, missing: false })) : [] }
     },
     'env.set': async () => ok,
     'env.reveal': async () => { throw new Error('Fixture mode has no values to show.') },
@@ -484,9 +484,9 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'app.exportLogs': async () => ({ path: '(fixture)' }),
     'app.info': async () => ({ version: '0.1.0', dataDir: join('~', 'Library', 'Application Support', 'Kernel'), telemetry: f.telemetry?.canSend ?? false }),
     'app.openTerminal': async () => ok,
-    // A fixed list with no icons, so a screenshot is the same on every Mac. Opening does nothing, but still refuses a path outside the fixture's rooms (KERNEL-427).
+    // A fixed list with no icons, so a screenshot is the same on every Mac. Opening does nothing, but still refuses a path outside the fixture's projects (KERNEL-427).
     'app.openApps': async () => ({ apps: OPEN_APPS.filter((a) => ['finder', 'vscode', 'cursor', 'terminal'].includes(a.id)).map(({ id, name, kind }) => ({ id, name, kind })), defaultId: 'vscode' }),
-    'app.openIn': async ({ path }) => { mustBeInside(path, [...f.rooms, ...f.workspaces].map((x) => x.path)); return ok },
+    'app.openIn': async ({ path }) => { mustBeInside(path, [...f.projects, ...f.workspaces].map((x) => x.path)); return ok },
     'app.checkOnline': async () => ({ online: !f.push.some((e) => e.type === 'online' && !e.online) }),
     'telemetry.recent': async () => f.telemetry?.recent ?? [],
     'telemetry.track': async () => ok

@@ -11,17 +11,17 @@
 .nav-item[data-unread] > .grow { font-weight: 600; color: var(--ink); }
 .nav-item[data-unread] > svg, .nav-item[data-unread] .nav-glyph svg { stroke-width: 1.8; }
 .nav-item[data-unread] > svg, .nav-item[data-unread] .nav-glyph:not([data-tone]) svg { color: var(--ink); }
-/* A room row keeps its hover fill while the pointer is on its buttons. Hovering it, or reaching it by keyboard, swaps the
-   room's letter for a chevron, which points down while the room is expanded (Conductor). A click alone does not. */
-.room-row:hover > .nav-item { background: var(--nav-hover); }
-.room-mark { width: 18px; height: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
-.room-letter { width: 18px; height: 18px; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface); font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
-.room-letter[data-current] { background: var(--surface-3); }
-.room-chev { display: none; }
-.room-chev[data-open='true'] svg { transform: rotate(90deg); }
-.room-row:hover .room-letter, .room-row:has(:focus-visible) .room-letter { display: none; }
-.room-row:hover .room-chev, .room-row:has(:focus-visible) .room-chev { display: inline-flex; }
-/* A chat row that started workspaces folds like a room. Its chevron sits over the 16px icon slot, a sibling of the title button so no
+/* A project row keeps its hover fill while the pointer is on its buttons. Hovering it, or reaching it by keyboard, swaps the
+   project's letter for a chevron, which points down while the project is expanded (Conductor). A click alone does not. */
+.project-row:hover > .nav-item { background: var(--nav-hover); }
+.project-mark { width: 18px; height: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.project-letter { width: 18px; height: 18px; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface); font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.project-letter[data-current] { background: var(--surface-3); }
+.project-chev { display: none; }
+.project-chev[data-open='true'] svg { transform: rotate(90deg); }
+.project-row:hover .project-letter, .project-row:has(:focus-visible) .project-letter { display: none; }
+.project-row:hover .project-chev, .project-row:has(:focus-visible) .project-chev { display: inline-flex; }
+/* A chat row that started workspaces folds like a project. Its chevron sits over the 16px icon slot, a sibling of the title button so no
    button holds another, and replaces the icon on hover or keyboard focus. It is transparent, not display: none, so Tab can reach it. */
 .chat-row { position: relative; }
 .chat-row:hover > .nav-item:not([aria-current='page']) { background: var(--nav-hover); }
@@ -34,9 +34,9 @@
 .chat-row:not([data-key]):hover > .nav-item, .chat-row:not([data-key]):has(:focus-visible) > .nav-item, .chat-row.busy:not([data-key]) > .nav-item { padding-right: 32px; }
 .chat-row.busy .more { opacity: 1; }
 .chat-row[data-key] .ws-archive { visibility: hidden; }
-/* A room's menu sits in a portal at a fixed spot (RoomMenu.tsx), so the scrolling rooms list can't clip it. */
-.room-menu { position: fixed; z-index: 60; }
-.room-menu .menu-anchor { position: static; }
+/* A project's menu sits in a portal at a fixed spot (ProjectMenu.tsx), so the scrolling projects list can't clip it. */
+.project-menu { position: fixed; z-index: 60; }
+.project-menu .menu-anchor { position: static; }
 /* Hovering a workspace row, or reaching it by keyboard, swaps its whole right end, the diff totals and the spinner, for the archive button, the way Conductor does. A chat row's spinner does the same.
    Selecting a row with the mouse leaves the totals. The name stops short of the button. */
 .ws-row { position: relative; }

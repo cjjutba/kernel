@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { GithubIssue, GitHubErrorKind, Room } from '@shared/types'
+import type { GithubIssue, GitHubErrorKind, Project } from '@shared/types'
 import { githubErrorKind } from '@shared/githubError'
 import { call, cleanError } from '../../api'
 import { getState, useStore } from '../../store'
@@ -11,7 +11,7 @@ import {
   byUpdated, DEFAULT_GITHUB_FILTER, githubFilterKey, parseGithubFilter, describeGithub, issueAge, joinFits, labelsOf, linkedWorkspaces, loginInitials, milestonesOf, narrowGithub, rowLabels, rowState,
   type GithubFilter
 } from './model'
-import { CapNote, chooseTracker, FilterChip, githubProblem, IssueSkeleton, RefreshNotice, type RoomHead } from './parts'
+import { CapNote, chooseTracker, FilterChip, githubProblem, IssueSkeleton, RefreshNotice, type ProjectHead } from './parts'
 import { RowStatus, useReadPrs } from './WorkCard'
 import { WorkHeader } from '../work/WorkHeader'
 import { useOpenPrCount } from '../prs/model'
@@ -26,11 +26,11 @@ const UNREACHABLE: Failure = { kind: 'error', why: 'offline', message: '' }
 const failure = (e: unknown): Failure => ({ kind: 'error', why: githubErrorKind(e) ?? 'other', message: cleanError(e) })
 
 /**
- * IssuesGitHub.png: a GitHub room's open issues in a list, the selected one on the right. It is Linear's page with GitHub's fields,
- * and one group, Open, because an issue is open or closed (KERNEL-438). The route's `issueId` opens with that issue selected. Each room
- * mounts its own, so nothing here carries over from the room before.
+ * IssuesGitHub.png: a GitHub project's open issues in a list, the selected one on the right. It is Linear's page with GitHub's fields,
+ * and one group, Open, because an issue is open or closed (KERNEL-438). The route's `issueId` opens with that issue selected. Each project
+ * mounts its own, so nothing here carries over from the project before.
  */
-export function GithubIssues({ room, where, issueId, head }: { room: Room; where?: string; issueId?: string; head: RoomHead }) {
+export function GithubIssues({ project, where, issueId, head }: { project: Project; where?: string; issueId?: string; head: ProjectHead }) {
   const prCount = useOpenPrCount()
   const online = useStore((s) => s.system.online)
   const workspaces = useStore((s) => s.workspaces)
@@ -41,7 +41,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
   const [view, setView] = useState<View>({ kind: 'loading' })
   const [problem, setProblem] = useState<Failure | null>(null)
   const [issues, setIssues] = useState<GithubIssue[]>([])
-  const [filter, setFilter] = useState<GithubFilter>(() => readSavedJson(githubFilterKey(room.id), parseGithubFilter))
+  const [filter, setFilter] = useState<GithubFilter>(() => readSavedJson(githubFilterKey(project.id), parseGithubFilter))
   const [query, setQuery] = useState('')
   const [sel, setSel] = useState<string | undefined>(issueId)
   const [tick, setTick] = useState(0)
@@ -59,7 +59,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
     const n = ++seq.current
     const q = queryNow.current.trim()
     try {
-      const rows = await call('github.issueList', { roomId: room.id, query: q || undefined })
+      const rows = await call('github.issueList', { projectId: project.id, query: q || undefined })
       if (n !== seq.current) return
       loadedQuery.current = q
       hasRows.current = true
@@ -71,9 +71,9 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
       if (hasRows.current) setProblem(failure(e))
       else setView(failure(e))
     }
-  }, [room.id])
+  }, [project.id])
 
-  // Read when the page opens, when the window gets focus while it shows, when the connection comes back and on Refresh. No interval. Another room is another mount.
+  // Read when the page opens, when the window gets focus while it shows, when the connection comes back and on Refresh. No interval. Another project is another mount.
   useEffect(() => { void load() }, [load])
   useEffect(() => {
     const focus = () => { setTick((t) => t + 1); void load() }
@@ -108,13 +108,13 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
   const cur = flat.find((i) => i.id === selId)
   const count = (n: number) => (n >= 100 ? '100+' : String(n))
 
-  const roomWorkspaces = useMemo(() => workspaces.filter((w) => w.roomId === room.id), [workspaces, room.id])
-  const rowLinked = useMemo(() => flat.flatMap((i) => linkedWorkspaces(i.id, roomWorkspaces)), [flat, roomWorkspaces])
+  const projectWorkspaces = useMemo(() => workspaces.filter((w) => w.projectId === project.id), [workspaces, project.id])
+  const rowLinked = useMemo(() => flat.flatMap((i) => linkedWorkspaces(i.id, projectWorkspaces)), [flat, projectWorkspaces])
   useReadPrs(rowLinked)
   const status = useMemo(() => {
     const runningOf = (w: { id: string }) => (chats[w.id] ?? []).some((c) => running[c.id])
-    return new Map(flat.map((i) => [i.id, rowState(linkedWorkspaces(i.id, roomWorkspaces), agents, runningOf, prs)]))
-  }, [flat, roomWorkspaces, agents, chats, running, prs])
+    return new Map(flat.map((i) => [i.id, rowState(linkedWorkspaces(i.id, projectWorkspaces), agents, runningOf, prs)]))
+  }, [flat, projectWorkspaces, agents, chats, running, prs])
 
   const keys = useListKeys({
     ids: useMemo(() => flat.map((i) => i.id), [flat]),
@@ -131,8 +131,8 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
   const failed: Failure | null = view.kind === 'ready' ? (!online ? UNREACHABLE : problem) : null
   const shown: View = !online && view.kind === 'error' ? UNREACHABLE : view
   const ready = shown.kind === 'ready'
-  // The room's filter is kept when you leave Issues and come back (DESIGN.md, Remembered choices).
-  useEffect(() => { writeSavedJson(githubFilterKey(room.id), filter) }, [room.id, filter])
+  // The project's filter is kept when you leave Issues and come back (DESIGN.md, Remembered choices).
+  useEffect(() => { writeSavedJson(githubFilterKey(project.id), filter) }, [project.id, filter])
   const set = (patch: Partial<GithubFilter>) => setFilter((f) => ({ ...f, ...patch }))
 
   return (
@@ -161,14 +161,14 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
       {shown.kind === 'error' && (() => {
         const p = githubProblem(shown.why, shown.message, where ?? 'this repo')
         if (shown.why === 'signed-out') return <EmptyList icon="key" title={p.title} action={<Button busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{p.sub}</EmptyList>
-        if (shown.why === 'not-found') return <EmptyList icon="warning" title={p.title} action={<Button onClick={() => chooseTracker(room.id)}>Open room settings</Button>}>{p.sub}</EmptyList>
+        if (shown.why === 'not-found') return <EmptyList icon="warning" title={p.title} action={<Button onClick={() => chooseTracker(project.id)}>Open project settings</Button>}>{p.sub}</EmptyList>
         return <FailedState title={p.title} onRetry={load}>{p.sub}</FailedState>
       })()}
 
       {ready && failed && (() => {
         const p = githubProblem(failed.why, failed.message, where ?? 'this repo')
         const action = failed.why === 'not-found'
-          ? <Button size="md" onClick={() => chooseTracker(room.id)}>Open room settings</Button>
+          ? <Button size="md" onClick={() => chooseTracker(project.id)}>Open project settings</Button>
           : <Button size="md" busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>
         return <RefreshNotice kind={p.banner} title={p.title} action={action}>{`${p.sub} The issues below are from the last time they loaded.`}</RefreshNotice>
       })()}
@@ -225,7 +225,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
             {issues.length >= 100 && <CapNote>Showing the 100 newest issues. Search or filter to find the rest.</CapNote>}
           </div>
           <div className="is-pane" ref={detail}>
-            {selId && <GithubDetail room={room} id={selId} summary={cur} tick={tick} />}
+            {selId && <GithubDetail project={project} id={selId} summary={cur} tick={tick} />}
           </div>
         </div>
       )}

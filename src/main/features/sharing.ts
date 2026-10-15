@@ -10,7 +10,7 @@ import { NEW_CHAT } from './shared'
 /** Files agents share, and their versions (KERNEL-302, KERNEL-329). */
 export class Sharing extends Feature {
   /**
-   * share_file for a chat: keeps the version, puts its card in the chat, tells the room and the Lead, then asks for a
+   * share_file for a chat: keeps the version, puts its card in the chat, tells the project and the Lead, then asks for a
    * thumbnail. A file with the same bytes as its newest version does none of that. Throws Refused.
    */
   async shareFile(workspaceId: string, chatId: string, o: ShareRequest) {
@@ -37,11 +37,11 @@ export class Sharing extends Feature {
   /**
    * One stored version of a shared image as a chat part the Lead passes on to a teammate, scaled down for the model
    * (KERNEL-659). It reads Kernel's copy of that version, so a later version never changes what was passed on. Throws the
-   * reason for a file outside `roomId`, a version Kernel doesn't have, or a file that isn't a PNG, JPEG, GIF or WebP.
+   * reason for a file outside `projectId`, a version Kernel doesn't have, or a file that isn't a PNG, JPEG, GIF or WebP.
    */
-  async sharedImage(roomId: string, id: string, version: number, downscale?: Downscale) {
+  async sharedImage(projectId: string, id: string, version: number, downscale?: Downscale) {
     const file = this.store.sharedFile(id)
-    if (!file || file.roomId !== roomId) throw new Error(`there is no shared file ${id} in this room. Use the id a Team update names.`)
+    if (!file || file.projectId !== projectId) throw new Error(`there is no shared file ${id} in this project. Use the id a Team update names.`)
     const got = this.shared.get(id, version)
     if (!got) throw new Error(`"${file.title}" has no v${version}. It has ${file.versions.map((v) => `v${v.n}`).join(', ')}.`)
     if (file.kind !== 'image') throw new Error(`"${file.title}" is ${file.kind === 'html' ? 'HTML' : file.kind === 'pdf' ? 'a PDF' : 'Markdown'}. Only shared images can be passed on.`)
@@ -73,8 +73,8 @@ export class Sharing extends Feature {
     const was = chatId ? this.store.chat(chatId) : undefined
     const open = was && !was.closed && was.kind !== 'terminal' && was.workspaceId === ws.id ? was : undefined
     // A file a Lead chat shared goes back to that chat while it is open, else to the newest open chat (KERNEL-405).
-    if (this.isLeadWorkspace(ws)) return (ws.status !== 'archived' && (open ?? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal'))) || this.k.lead.leadChat(ws.roomId)
-    const agent = (await this.k.team.agents(ws.roomId)).find((a) => a.id === ws.agentId)
+    if (this.isLeadWorkspace(ws)) return (ws.status !== 'archived' && (open ?? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal'))) || this.k.lead.leadChat(ws.projectId)
+    const agent = (await this.k.team.agents(ws.projectId)).find((a) => a.id === ws.agentId)
     const name = agent?.name ?? ws.agentId
     if (ws.status === 'archived') throw new Error(`${name}'s workspace is archived, so the comment can't reach ${name}. Restore it from History to send.`)
     return open ?? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
@@ -83,7 +83,7 @@ export class Sharing extends Feature {
 
   handlers() {
     return {
-      'shared.list': async ({ roomId, workspaceId, limit }) => this.store.sharedFiles({ roomId, workspaceId, limit }),
+      'shared.list': async ({ projectId, workspaceId, limit }) => this.store.sharedFiles({ projectId, workspaceId, limit }),
       'shared.read': async ({ sharedId, version }) => this.shared.read(sharedId, version),
       'shared.thumb': async ({ sharedId, version }) => this.shared.thumb(sharedId, version),
       'shared.reveal': async ({ sharedId, version }) => {

@@ -1,25 +1,25 @@
-import type { Room } from '@shared/types'
+import type { Project } from '@shared/types'
 import { landing } from '../../nav'
 import { actions, getState } from '../../store'
 import { Icon, IconButton } from '../../ui'
 import { useScreenEscape } from '../../ui/hooks'
-import { RoomIcon } from '../../components/RoomIcon'
+import { ProjectIcon } from '../../components/ProjectIcon'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
 
-/** Back to where New chat was opened from, or New chat in the first room when there is nowhere to go. The draft stays in the room's box. */
+/** Back to where New chat was opened from, or New chat in the first project when there is nowhere to go. The draft stays in the project's box. */
 const leave = () => { if (!actions.ui.back()) actions.ui.go(landing(getState())) }
 
 /**
- * New chat's header, the first row a chat has: the breadcrumb "room › New chat" and nothing on the right. No editor button, panel
+ * New chat's header, the first row a chat has: the breadcrumb "project › New chat" and nothing on the right. No editor button, panel
  * toggle or PR capsule, since there is no workspace yet (KERNEL-788).
  */
-export function NewChatHeader({ room }: { room?: Room }) {
+export function NewChatHeader({ project }: { project?: Project }) {
   return (
     <header className="header">
       <SidebarToggleSlot />
-      {room && !room.archived && <>
-        <RoomIcon room={room} className="crumb-avatar" />
-        <span className="crumb">{room.name}</span>
+      {project && !project.archived && <>
+        <ProjectIcon project={project} className="crumb-avatar" />
+        <span className="crumb">{project.name}</span>
         <span className="muted"><Icon name="right" size={12} /></span>
       </>}
       <h1 className="ellipsis">New chat</h1>

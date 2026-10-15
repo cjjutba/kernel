@@ -3,7 +3,7 @@ import type { Workspace } from '@shared/types'
 import { go, useStore } from '../../store'
 import { Banner, Button, EmptyList, Icon, NotConnectedState, Pill, Skeleton, Spinner, useListKeys } from '../../ui'
 import { oneOf, useRemembered } from '../../remember'
-import { WorkHeader, ALL_ROOMS } from '../work/WorkHeader'
+import { WorkHeader, ALL_PROJECTS } from '../work/WorkHeader'
 import { age } from '../inbox/model'
 import { MergeButton } from '../workspace/pr/MergeButton'
 import type { LeadPr } from '../workspace/pr/leadPrList'
@@ -25,7 +25,7 @@ type Nav = ReturnType<typeof useListKeys>['rowProps']
 
 function OpenRow({ row, nav }: { row: LeadPr; nav: Nav }) {
   const { ws } = row
-  const room = useStore((s) => s.rooms.find((r) => r.id === ws.roomId))
+  const project = useStore((s) => s.projects.find((r) => r.id === ws.projectId))
   const pr = useStore((s) => s.prs[ws.id])
   const title = ws.prTitle ?? ws.title ?? ws.name
   const key = issueKey(ws)
@@ -35,7 +35,7 @@ function OpenRow({ row, nav }: { row: LeadPr; nav: Nav }) {
         <Icon name={ws.prState === 'draft' ? 'prDraft' : 'pr'} size={16} />
         <span className="col" style={{ minWidth: 0 }}>
           <span className="prs-title ellipsis">{title}</span>
-          <span className="prs-sub"><span className="mono">#{ws.prNumber}</span><span className="ellipsis">{room?.name}</span><span className="ellipsis">{row.name}</span>{key && <span className="mono">{key}</span>}<span className="mono ellipsis">{ws.branch}</span></span>
+          <span className="prs-sub"><span className="mono">#{ws.prNumber}</span><span className="ellipsis">{project?.name}</span><span className="ellipsis">{row.name}</span>{key && <span className="mono">{key}</span>}<span className="mono ellipsis">{ws.branch}</span></span>
         </span>
       </button>
       <CellText cell={checksCell(ws, pr)} />
@@ -47,8 +47,8 @@ function OpenRow({ row, nav }: { row: LeadPr; nav: Nav }) {
 }
 
 function MergedRow({ ws, nav }: { ws: Workspace; nav: Nav }) {
-  const room = useStore((s) => s.rooms.find((r) => r.id === ws.roomId))
-  const agent = useStore((s) => s.agents[ws.roomId]?.find((a) => a.id === ws.agentId))
+  const project = useStore((s) => s.projects.find((r) => r.id === ws.projectId))
+  const agent = useStore((s) => s.agents[ws.projectId]?.find((a) => a.id === ws.agentId))
   const title = ws.prTitle ?? ws.title ?? ws.name
   return (
     <li className="prs-row prs-merged">
@@ -56,7 +56,7 @@ function MergedRow({ ws, nav }: { ws: Workspace; nav: Nav }) {
         <span className="prs-merged-icon"><Icon name="merged" size={16} /></span>
         <span className="col" style={{ minWidth: 0 }}>
           <span className="prs-title ellipsis">{title}</span>
-          <span className="prs-sub"><span className="mono">#{ws.prNumber}</span><span className="ellipsis">{room?.name}</span><span className="ellipsis">{agent?.name ?? ws.agentId}</span><span className="mono ellipsis">{ws.branch}</span></span>
+          <span className="prs-sub"><span className="mono">#{ws.prNumber}</span><span className="ellipsis">{project?.name}</span><span className="ellipsis">{agent?.name ?? ws.agentId}</span><span className="mono ellipsis">{ws.branch}</span></span>
         </span>
       </button>
       <span className="prs-cell" data-tone="faint">Merged {age(ws.mergedAt ?? ws.createdAt)} ago</span>
@@ -82,7 +82,7 @@ function PrSkeleton() {
 }
 
 /**
- * Pull requests across every room: the open ones with their checks, review and conflicts, and a Merge button on the ready ones,
+ * Pull requests across every project: the open ones with their checks, review and conflicts, and a Merge button on the ready ones,
  * or the recently merged ones. A row opens the PR's workspace.
  */
 export function PullRequests({ filter: first }: { filter?: Filter }) {
@@ -90,13 +90,13 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   useLayoutEffect(() => { if (first) setFilter(first) }, [first])
   const all = usePullRequests()
   const { mergedTotal, reading, reads, refresh } = all
-  // The room the list is narrowed to, or none for every room. A room that was archived or hidden since reads as none.
-  const rooms = useStore((s) => s.rooms)
-  const choices = useMemo(() => rooms.filter((r) => !r.archived && !r.hidden), [rooms])
-  const [roomId, setRoomId] = useRemembered<string>('kernel.prsRoom', (raw) => raw ?? ALL_ROOMS)
-  const room = choices.find((r) => r.id === roomId)
-  const open = room ? all.open.filter((r) => r.ws.roomId === room.id) : all.open
-  const merged = room ? all.merged.filter((w) => w.roomId === room.id) : all.merged
+  // The project the list is narrowed to, or none for every project. A project that was archived or hidden since reads as none.
+  const projects = useStore((s) => s.projects)
+  const choices = useMemo(() => projects.filter((r) => !r.archived && !r.hidden), [projects])
+  const [projectId, setProjectId] = useRemembered<string>('kernel.prsRoom', (raw) => raw ?? ALL_PROJECTS)
+  const project = choices.find((r) => r.id === projectId)
+  const open = project ? all.open.filter((r) => r.ws.projectId === project.id) : all.open
+  const merged = project ? all.merged.filter((w) => w.projectId === project.id) : all.merged
   const [refreshing, setRefreshing] = useState(false)
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
@@ -113,13 +113,13 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   const counts: Record<Filter, number> = { open: open.length, merged: merged.length }
   const readAt = oldestRead(reads)
   const failed = reads.find((r) => r.failed)
-  // Nothing read yet while GitHub is asked: the first read is still out. Signed out in every room: there is nothing to read until gh signs in.
+  // Nothing read yet while GitHub is asked: the first read is still out. Signed out in every project: there is nothing to read until gh signs in.
   const loading = filter === 'open' && reading && readAt === undefined
   const signedOut = reads.length > 0 && reads.every((r) => r.failed === 'signed-out')
   const readAgo = readAt === undefined ? undefined : age(readAt, now) === 'now' ? 'just now' : `${age(readAt, now)} ago`
   return (
     <div className="panel">
-      <WorkHeader tab="prs" allRooms head={{ rooms: choices, room, onRoom: setRoomId }} counts={{ prs: open.length }} where="GitHub" refreshing={refreshing}
+      <WorkHeader tab="prs" allProjects head={{ projects: choices, project, onProject: setProjectId }} counts={{ prs: open.length }} where="GitHub" refreshing={refreshing}
         onRefresh={() => { setRefreshing(true); void refresh().finally(() => setRefreshing(false)) }} />
       <div className="prs-bar" role="group" aria-label="Filter pull requests">
         {filters.map(([id, label]) => <Pill key={id} pressed={filter === id} onClick={() => setFilter(id)}>{label}<span className="prs-n">{counts[id]}</span></Pill>)}
@@ -155,8 +155,8 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
         ) : signedOut ? (
           <NotConnectedState icon="key" title="GitHub isn't signed in" page="integrations" label="Open Settings, Integrations">Sign the GitHub CLI in and the pull requests your agents open show up here with their checks and review.</NotConnectedState>
         ) : (
-          <EmptyList icon="pr" title="No open pull requests" action={room && all.open.length > 0 ? <Button size="lg" onClick={() => setRoomId(ALL_ROOMS)}>Show all rooms</Button> : merged.length > 0 ? <Button size="lg" onClick={() => setFilter('merged')}>Show merged</Button> : undefined}>
-            {room && all.open.length > 0 ? `${room.name} has none, but other rooms do.` : 'When an agent opens a pull request in any room, it shows up here with its checks and review.'}
+          <EmptyList icon="pr" title="No open pull requests" action={project && all.open.length > 0 ? <Button size="lg" onClick={() => setProjectId(ALL_PROJECTS)}>Show all projects</Button> : merged.length > 0 ? <Button size="lg" onClick={() => setFilter('merged')}>Show merged</Button> : undefined}>
+            {project && all.open.length > 0 ? `${project.name} has none, but other projects do.` : 'When an agent opens a pull request in any project, it shows up here with its checks and review.'}
           </EmptyList>
         )
       ) : merged.length ? (

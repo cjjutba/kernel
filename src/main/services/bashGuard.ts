@@ -1,6 +1,6 @@
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
 
-// The Bash guard: what Kernel says about a command before Claude Code runs it (D-016). Never allow, the room's Always allow
+// The Bash guard: what Kernel says about a command before Claude Code runs it (D-016). Never allow, the project's Always allow
 // rules, then Always ask, plus the protected-branch and network checks. It reads a command the way a shell does (KERNEL-230),
 // so quotes, wrappers, aliases and flag order don't change the answer. It is a guard for the forms an agent actually writes,
 // not a sandbox.
@@ -416,7 +416,7 @@ interface Analysis {
   /** The same, each with its wrappers taken off and the scripts they run read in (`unwrap`). */
   effective: Simple[]
   chained: boolean
-  /** The command has a pipe, `|` or `|&`. One inside a backtick isn't counted, and no room rule covers a backtick anyway. */
+  /** The command has a pipe, `|` or `|&`. One inside a backtick isn't counted, and no project rule covers a backtick anyway. */
   piped: boolean
   /** The text of the command with one spelling per meaning, or undefined when part of it only means something at run time. */
   canonical?: string
@@ -705,17 +705,17 @@ export function pushVerdict(s: Simple, protectedBranches: string[]): 'deny' | 'a
 // Rules
 
 /**
- * Kernel's say on one Bash command: Never allow, then the room's Always allow rules, then Always ask.
+ * Kernel's say on one Bash command: Never allow, then the project's Always allow rules, then Always ask.
  * Undefined leaves it to Claude Code's own settings, so the user's allow list still covers everyday commands.
  * A push to a protected branch is denied, a ref Kernel can't read is asked about, and a command Kernel can't read that
  * mentions a protected branch is asked about too.
  */
-export function bashVerdict(command: string, p: { neverAllow: string[]; alwaysAsk: string[]; protectedBranches?: string[]; network?: boolean }, roomAllow: string[]): BashVerdict {
+export function bashVerdict(command: string, p: { neverAllow: string[]; alwaysAsk: string[]; protectedBranches?: string[]; network?: boolean }, projectAllow: string[]): BashVerdict {
   const branches = p.protectedBranches ?? []
   const { effective } = analyze(command.trim())
   const pushes = effective.map((s) => pushVerdict(s, branches))
   if (matchesRule(command, p.neverAllow) || pushes.includes('deny') || (p.network === false && usesNetwork(command))) return 'deny'
-  if (matchesRoomRule(command, roomAllow)) return 'allow'
+  if (matchesProjectRule(command, projectAllow)) return 'allow'
   if (matchesRule(command, p.alwaysAsk) || pushes.includes('ask') || (branches.length > 0 && effective.some((s) => s.unknown && mentions(s.words, branches)))) return 'ask'
   return undefined
 }
@@ -817,8 +817,8 @@ const RUNS_INPUT = new Set([...SHELLS, 'source', '.'])
 /** A word that may be a glob, which only the same text covers exactly. The quotes are off by now, so a quoted `*` counts too. */
 const mayGlob = (w: string) => /[*?[]/.test(w) || w.startsWith('~')
 
-/** A room rule as the words of one plain simple command, `:*` making it a prefix. Undefined for a chain or anything else. */
-function roomRuleOf(rule: string): { words: string[]; prefix: boolean } | undefined {
+/** A project rule as the words of one plain simple command, `:*` making it a prefix. Undefined for a chain or anything else. */
+function projectRuleOf(rule: string): { words: string[]; prefix: boolean } | undefined {
   const r = rule.trim()
   const prefix = r.endsWith(':*')
   const a = analyze(prefix ? r.slice(0, -2).trim() : r)
@@ -828,7 +828,7 @@ function roomRuleOf(rule: string): { words: string[]; prefix: boolean } | undefi
 }
 
 /**
- * The words a room rule must cover in one simple command of a chain, without the `{`, `if` or `then` before them. Undefined
+ * The words a project rule must cover in one simple command of a chain, without the `{`, `if` or `then` before them. Undefined
  * when no rule may cover it (KERNEL-454): a redirection, process substitution, heredoc, `$(…)`, backtick or any word only known
  * when it runs; `eval`; a command that runs another one it names (`xargs git push`, a git `!` alias); a shell told to run a
  * script with `-c`, wherever it sits (`xargs sh -c`, `find -exec bash -c`); and a shell or `source` in a command with a pipe,
@@ -847,7 +847,7 @@ function coverable(s: Simple, piped: boolean): string[] | undefined {
 }
 
 /**
- * Whether the room's Always allow rules cover a command. Rules use Claude Code's Bash rule shape: `prefix:*` covers the prefix
+ * Whether the project's Always allow rules cover a command. Rules use Claude Code's Bash rule shape: `prefix:*` covers the prefix
  * with any arguments, otherwise the exact command. A rule covers the command it was saved from, spelled the same way whatever
  * the spacing, chained or not (KERNEL-230). Otherwise every simple command in it must be covered on its own (KERNEL-454): `cd`
  * needs no rule, and each other one is plain and matches a rule, a prefix rule by its first words and an exact rule by all of
@@ -855,13 +855,13 @@ function coverable(s: Simple, piped: boolean): string[] | undefined {
  * wave through `npm run build && pnpm db:reset`, and `echo:*` doesn't cover `echo hi > ~/.zshrc`. `$(…)`, backticks, `eval`,
  * `sh -c` and its kind and a pipe into a shell never match (`coverable`). A chain of `cd` alone matches nothing.
  */
-export function matchesRoomRule(command: string, rules: string[]): boolean {
+export function matchesProjectRule(command: string, rules: string[]): boolean {
   if (!rules.length) return false
   const c = command.trim()
   const a = analyze(c)
   const same = (r: string) => c === r || (a.canonical !== undefined && a.canonical === analyze(r).canonical)
   if (rules.some((r) => !r.trim().endsWith(':*') && same(r.trim()))) return true
-  const parsed = rules.flatMap((r) => roomRuleOf(r) ?? [])
+  const parsed = rules.flatMap((r) => projectRuleOf(r) ?? [])
   let ruled = false
   for (const s of a.simples) {
     const words = coverable(s, a.piped)
@@ -877,10 +877,10 @@ export function matchesRoomRule(command: string, rules: string[]): boolean {
 }
 
 /**
- * The rule "Always allow in this room" saves: Claude Code's own suggestion when it is a single Bash rule and may be saved,
+ * The rule "Always allow in this project" saves: Claude Code's own suggestion when it is a single Bash rule and may be saved,
  * else the exact command.
  */
-export function roomRule(command: string, suggestions?: PermissionUpdate[], suppressAlwaysAllowRule?: boolean): string {
+export function projectRule(command: string, suggestions?: PermissionUpdate[], suppressAlwaysAllowRule?: boolean): string {
   const rules = suppressAlwaysAllowRule ? [] : (suggestions ?? []).flatMap((s) => (s.type === 'addRules' && s.behavior === 'allow' ? s.rules : []))
   return rules.length === 1 && rules[0].toolName === 'Bash' && rules[0].ruleContent ? rules[0].ruleContent : command.trim()
 }

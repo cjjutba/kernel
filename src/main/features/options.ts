@@ -10,7 +10,7 @@ export interface KernelOptions {
   dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean; sound?: string }) => void; inBackground?: () => boolean
   /**
    * Claude Code's subagents, for the plugin agents among them (KERNEL-463). The app passes `claudeAgents`, which starts
-   * Claude Code to ask. Tests pass a stub or leave it out, and then no room has plugin agents.
+   * Claude Code to ask. Tests pass a stub or leave it out, and then no project has plugin agents.
    */
   claudeAgents?: (home: string) => Promise<import('@anthropic-ai/claude-agent-sdk').AgentInfo[]>
   /**

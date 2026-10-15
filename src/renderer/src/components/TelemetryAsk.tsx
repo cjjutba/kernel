@@ -7,7 +7,7 @@ import { call } from '../api'
 let asked = false
 
 /**
- * The one question about usage data (TelemetryAsk.png, KERNEL-397). Kernel asks once, after the first room, and only in a
+ * The one question about usage data (TelemetryAsk.png, KERNEL-397). Kernel asks once, after the first project, and only in a
  * build that can send. Nothing goes out until the answer is yes. Don’t share is no. Escape closes without an answer, so it asks again next launch.
  */
 export function TelemetryAsk() {
@@ -28,10 +28,10 @@ export function TelemetryAsk() {
   )
 }
 
-/** Opens the question when the app is booted with a room, nothing else is open, and this build can send. Not in Settings, which has the switch. */
+/** Opens the question when the app is booted with a project, nothing else is open, and this build can send. Not in Settings, which has the switch. */
 export async function askAboutTelemetry() {
   const s = getState()
-  if (asked || s.settings?.privacy?.telemetry !== 'ask' || !s.rooms.length || s.ui.modal || s.ui.route.name === 'onboarding' || s.ui.route.name === 'settings') return
+  if (asked || s.settings?.privacy?.telemetry !== 'ask' || !s.projects.length || s.ui.modal || s.ui.route.name === 'onboarding' || s.ui.route.name === 'settings') return
   const info = await call('app.info', undefined).catch(() => null)
   if (!info?.telemetry || getState().ui.modal) return
   asked = true

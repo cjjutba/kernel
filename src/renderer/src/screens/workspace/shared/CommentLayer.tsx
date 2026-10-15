@@ -176,7 +176,7 @@ function merge(a: SharedComment[], b: SharedComment[]): SharedComment[] {
   return [...a, ...b].filter((c) => !seen.has(c.id) && !!seen.add(c.id)).sort((x, y) => x.at - y.at)
 }
 
-/** The popover's frame: below its pin, inside the layer. It is measured once drawn, so it can go above the pin where there is no room below. */
+/** The popover's frame: below its pin, inside the layer. It is measured once drawn, so it can go above the pin where there is no project below. */
 function Pop({ at, layer, label, children }: { at: Spot; layer: Size; label: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pop, setPop] = useState<Size>({ width: 380, height: 0 })

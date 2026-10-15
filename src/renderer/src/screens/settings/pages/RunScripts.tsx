@@ -1,26 +1,26 @@
 import { useState, type FormEvent } from 'react'
-import { isRunName, PORT_BLOCK, RUN_SCRIPT_NAME, type RoomSettings } from '@shared/types'
+import { isRunName, PORT_BLOCK, RUN_SCRIPT_NAME, type ProjectSettings } from '@shared/types'
 import { Button, Modal, SegmentedControl, useBusy } from '../../../ui'
-import { DataTable, Row, roomValue, Section } from '../kit'
-import { patchRoomSettings } from '../useSettings'
+import { DataTable, Row, projectValue, Section } from '../kit'
+import { patchProjectSettings } from '../useSettings'
 
-type Script = RoomSettings['runScripts'][number]
+type Script = ProjectSettings['runScripts'][number]
 
-/** What is wrong with a name, or undefined. `others` are the names the room already has. */
+/** What is wrong with a name, or undefined. `others` are the names the project already has. */
 export function nameProblem(name: string, others: string[]): string | undefined {
   if (!name) return 'Give the script a name.'
   if (isRunName(name)) return 'run is the default script. Edit it in the list.'
   if (!RUN_SCRIPT_NAME.test(name)) return 'Use letters, digits, - and _, up to 32 characters, starting with a letter or digit.'
-  if (others.includes(name)) return `A script named ${name} is already in this room.`
+  if (others.includes(name)) return `A script named ${name} is already in this project.`
   return undefined
 }
 
-/** Run scripts, a table on Settings > a room > Setup and scripts (MorePage roomSetup, KERNEL-680). Saved in the personal file, so a script stays on this Mac. */
-export function RunScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | null }) {
+/** Run scripts, a table on Settings > a project > Setup and scripts (MorePage projectSetup, KERNEL-680). Saved in the personal file, so a script stays on this Mac. */
+export function RunScripts({ projectId, rs }: { projectId: string; rs: ProjectSettings | null }) {
   const [editing, setEditing] = useState<Script | 'new' | null>(null)
   const scripts = rs?.runScripts ?? []
   const path = (name: string) => `runScripts.${name}`
-  const drop = (name: string) => void patchRoomSettings(roomId, { runScripts: { [name]: null } })
+  const drop = (name: string) => void patchProjectSettings(projectId, { runScripts: { [name]: null } })
   return (
     <>
       <Section id="run-scripts" title="Run scripts" count={scripts.length} plain action={<Button onClick={() => setEditing('new')}>Add run script</Button>}>
@@ -43,17 +43,17 @@ export function RunScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | 
           })}
         />
       </Section>
-      {editing && <RunScriptForm roomId={roomId} rs={rs} script={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
+      {editing && <RunScriptForm projectId={projectId} rs={rs} script={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
     </>
   )
 }
 
 /** Run mode and Ports, the card under the run scripts table. The ports are explained here once; the forms only say how to use them. */
-export function RunMode({ roomId, rs }: { roomId: string; rs: RoomSettings | null }) {
+export function RunMode({ projectId, rs }: { projectId: string; rs: ProjectSettings | null }) {
   return (
     <Section label="Running">
-      <Row id="run-mode" label="Run mode" {...roomValue(rs, 'scripts.runMode', () => void patchRoomSettings(roomId, { scripts: { runMode: null } }))}>
-        <SegmentedControl label="Run mode" value={rs?.scripts.runMode ?? 'concurrent'} onChange={(v) => void patchRoomSettings(roomId, { scripts: { runMode: v as NonNullable<RoomSettings['scripts']['runMode']> } })} options={[{ value: 'concurrent', label: 'Concurrent' }, { value: 'single', label: 'One at a time' }]} />
+      <Row id="run-mode" label="Run mode" {...projectValue(rs, 'scripts.runMode', () => void patchProjectSettings(projectId, { scripts: { runMode: null } }))}>
+        <SegmentedControl label="Run mode" value={rs?.scripts.runMode ?? 'concurrent'} onChange={(v) => void patchProjectSettings(projectId, { scripts: { runMode: v as NonNullable<ProjectSettings['scripts']['runMode']> } })} options={[{ value: 'concurrent', label: 'Concurrent' }, { value: 'single', label: 'One at a time' }]} />
       </Row>
       <Row id="ports" label="Ports" desc={`Each workspace gets ${PORT_BLOCK}.`}>
         <span className="set-value">{`$KERNEL_PORT to $((KERNEL_PORT + ${PORT_BLOCK - 1}))`}</span>
@@ -63,7 +63,7 @@ export function RunMode({ roomId, rs }: { roomId: string; rs: RoomSettings | nul
 }
 
 /** Add or edit one run script. `run` keeps its name. So does a script settings.toml defines, since the personal file can't move it. */
-function RunScriptForm({ roomId, rs, script, onClose }: { roomId: string; rs: RoomSettings | null; script?: Script; onClose: () => void }) {
+function RunScriptForm({ projectId, rs, script, onClose }: { projectId: string; rs: ProjectSettings | null; script?: Script; onClose: () => void }) {
   const [name, setName] = useState(script?.name ?? '')
   const [command, setCommand] = useState(script?.command ?? '')
   const [shown, setShown] = useState(false)
@@ -81,7 +81,7 @@ function RunScriptForm({ roomId, rs, script, onClose }: { roomId: string; rs: Ro
     const next = fixed ? script!.name : name.trim()
     void run('save', async () => {
       // Renaming writes the new name and drops the old one from the personal file.
-      await patchRoomSettings(roomId, { runScripts: { ...(script && script.name !== next ? { [script.name]: null } : {}), [next]: command.trim() } })
+      await patchProjectSettings(projectId, { runScripts: { ...(script && script.name !== next ? { [script.name]: null } : {}), [next]: command.trim() } })
       onClose()
     })
   }

@@ -30,15 +30,15 @@ const DEFAULTS: PrInstructions = { createInstructions: createPrText(), resolveIn
 
 /**
  * Settings > Pull requests (MorePage prs, KERNEL-680). Automatic merging comes first: it is only this Mac's, off by default (KERNEL-557).
- * Then merging, reviews, and the default instructions each PR button sends, which open in a sheet. A room can replace any of them.
+ * Then merging, reviews, and the default instructions each PR button sends, which open in a sheet. A project can replace any of them.
  */
 export function PRs({ s }: { s: AppSettings }) {
   const p = s.pr
   const auto = p.autoMerge
-  const roomSettings = useStore((x) => x.roomSettings)
-  const rooms = useStore((x) => x.rooms)
-  useEffect(() => { for (const r of rooms) void call('settings.room', { roomId: r.id }).then((rs) => actions.settings.setRoom(r.id, rs)).catch(() => undefined) }, [rooms.map((r) => r.id).join()])
-  const changedIn = (path: string, row: string) => rooms.filter((r) => ['local', 'override', 'shared'].includes(roomSettings[r.id]?.sources?.[path] ?? '')).map((r) => ({ id: r.id, name: r.name, to: { page: 'room', roomId: r.id, section: 'prs', row } as const }))
+  const projectSettings = useStore((x) => x.projectSettings)
+  const projects = useStore((x) => x.projects)
+  useEffect(() => { for (const r of projects) void call('settings.project', { projectId: r.id }).then((rs) => actions.settings.setProject(r.id, rs)).catch(() => undefined) }, [projects.map((r) => r.id).join()])
+  const changedIn = (path: string, row: string) => projects.filter((r) => ['local', 'override', 'shared'].includes(projectSettings[r.id]?.sources?.[path] ?? '')).map((r) => ({ id: r.id, name: r.name, to: { page: 'project', projectId: r.id, section: 'prs', row } as const }))
   const [editing, setEditing] = useState<(typeof INSTRUCTIONS)[number] | null>(null)
   return (
     <>
@@ -60,11 +60,11 @@ export function PRs({ s }: { s: AppSettings }) {
           <Row id="require-green" label="Require green checks to merge"><Toggle label="Require green checks to merge" checked={p.requireGreen} onChange={(v) => set({ requireGreen: v })} /></Row>
           <Row id="lead-merge" label="Let Kernel merge when you ask" desc="Only when your own message asks."><Toggle label="Let Kernel merge when you ask" checked={p.leadMerge} onChange={(v) => set({ leadMerge: v })} /></Row>
         </Section>
-        <Section title="Reviews" note="Each room picks which reviews run.">
+        <Section title="Reviews" note="Each project picks which reviews run.">
           <Row id="auto-review" label="Review every pull request automatically" desc="Off saves usage. You can still ask for a review."><Toggle label="Review every pull request automatically" checked={p.autoReview} onChange={(v) => set({ autoReview: v })} /></Row>
           <Row id="require-reviewer" label="Wait for the reviewer’s approval to merge"><Toggle label="Wait for the reviewer’s approval to merge" checked={p.requireReviewer} onChange={(v) => set({ requireReviewer: v })} /></Row>
         </Section>
-        <Section title="Instructions" note="A room can replace any of them.">
+        <Section title="Instructions" note="A project can replace any of them.">
           {INSTRUCTIONS.map((i) => {
             const custom = !!p[i.key].trim() && p[i.key] !== DEFAULTS[i.key]
             return (

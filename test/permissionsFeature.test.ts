@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ModelInfo } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, Chat, ChatRunMode, Room, Workspace } from '@shared/types'
+import type { AgentDef, Chat, ChatRunMode, Project, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
@@ -30,10 +30,10 @@ async function kernel(o: { policy?: () => Promise<ClaudePolicy>; models?: () => 
   const moves = vi.spyOn(k.sessions, 'applyModes')
   await k.start()
   onTestFinished(() => k.stop())
-  const room = k.store.saveRoom({ id: 'room', name: 'invoices', path: '/tmp/invoices', defaultBranch: 'main', paused: false, createdAt: 1 } as Room)
-  const ws = { id: 'ws', roomId: room.id, path: '/tmp/invoices-ws', mode: 'worktree' } as Workspace
+  const project = k.store.saveProject({ id: 'project', name: 'invoices', path: '/tmp/invoices', defaultBranch: 'main', paused: false, createdAt: 1 } as Project)
+  const ws = { id: 'ws', projectId: project.id, path: '/tmp/invoices-ws', mode: 'worktree' } as Workspace
   const chat = (o: Partial<Chat> = {}) => ({ id: 'chat', model: 'claude-sonnet-5-5', plan: false, ...o }) as Chat
-  return { k, room, ws, chat, policyReads, moves, modelReads: () => modelReads }
+  return { k, project, ws, chat, policyReads, moves, modelReads: () => modelReads }
 }
 
 describe('permissions.availability (KERNEL-447)', () => {
@@ -65,12 +65,12 @@ describe('permissions.availability (KERNEL-447)', () => {
 })
 
 describe('what a chat can run (KERNEL-447)', () => {
-  it("reads the app's policy and every open room's at launch", async () => {
+  it("reads the app's policy and every open project's at launch", async () => {
     const { policyReads } = await kernel()
     expect(policyReads).toContain(undefined)
   })
 
-  it("reads nothing for a mode that needs nothing, and the room's policy once for Bypass permissions, moving live chats when it lands", async () => {
+  it("reads nothing for a mode that needs nothing, and the project's policy once for Bypass permissions, moving live chats when it lands", async () => {
     const { k, ws, chat, policyReads, moves } = await kernel()
     const launch = policyReads.length
     expect(k.permissions.forChat(chat(), ws, 'acceptEdits')).toEqual({ auto: false, bypass: false })
@@ -129,12 +129,12 @@ describe('what a chat can run (KERNEL-447)', () => {
     expect(modelReads()).toBe(2)
   })
 
-  it("moves the room's live chats when its mode changes", async () => {
-    const { k, room, moves } = await kernel()
+  it("moves the project's live chats when its mode changes", async () => {
+    const { k, project, moves } = await kernel()
     moves.mockClear()
-    await k.handlers()['rooms.update']({ roomId: room.id, patch: { name: 'Invoices' } })
+    await k.handlers()['projects.update']({ projectId: project.id, patch: { name: 'Invoices' } })
     expect(moves).not.toHaveBeenCalled()
-    await k.handlers()['rooms.update']({ roomId: room.id, patch: { permissionMode: 'bypassPermissions' } })
+    await k.handlers()['projects.update']({ projectId: project.id, patch: { permissionMode: 'bypassPermissions' } })
     expect(moves).toHaveBeenCalledTimes(1)
   })
 })
@@ -143,7 +143,7 @@ describe("the mode a chat runs in, for the renderer (KERNEL-572)", () => {
   /** A chat with no process, in a current-branch workspace unless `worktree`, and every `chat.runMode` push Kernel sends for it. */
   async function idleChat(o: Parameters<typeof kernel>[0] & { worktree?: boolean } = {}) {
     const t = await kernel(o)
-    t.k.store.saveWorkspace({ id: 'ws', roomId: t.room.id, name: 'invoices', branch: 'main', baseRef: 'main', path: '/tmp/invoices', mode: o.worktree ? 'worktree' : 'current', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    t.k.store.saveWorkspace({ id: 'ws', projectId: t.project.id, name: 'invoices', branch: 'main', baseRef: 'main', path: '/tmp/invoices', mode: o.worktree ? 'worktree' : 'current', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     t.k.store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoices', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const pushed: ChatRunMode[] = []
     const onPush = (e: PushEvent) => { if (e.type === 'chat.runMode' && e.chatId === 'chat') pushed.push(e.mode) }
@@ -153,32 +153,32 @@ describe("the mode a chat runs in, for the renderer (KERNEL-572)", () => {
     return { ...t, h, pushed, runMode: () => h['chats.runMode']({ chatId: 'chat' }) }
   }
 
-  it('updates a chat that never picked a mode when Settings, Permissions changes, then follows the room and the chat', async () => {
-    const { h, room, pushed, runMode } = await idleChat()
+  it('updates a chat that never picked a mode when Settings, Permissions changes, then follows the project and the chat', async () => {
+    const { h, project, pushed, runMode } = await idleChat()
     await h['settings.set']({ patch: { permissions: { mode: 'acceptEdits' } } })
     expect(await runMode()).toEqual({ mode: 'acceptEdits', picked: 'acceptEdits', pickedIn: 'app' })
     pushed.length = 0
     await h['settings.set']({ patch: { permissions: { mode: 'default' } } })
     expect(pushed).toEqual([{ mode: 'default', picked: 'default', pickedIn: 'app' }])
 
-    await h['rooms.update']({ roomId: room.id, patch: { permissionMode: 'bypassPermissions' } })
-    // Kernel reads the room's policy once Bypass permissions fits the workspace, and the chat runs in it when the read lands.
+    await h['projects.update']({ projectId: project.id, patch: { permissionMode: 'bypassPermissions' } })
+    // Kernel reads the project's policy once Bypass permissions fits the workspace, and the chat runs in it when the read lands.
     await h['settings.set']({ patch: { permissions: { bypassOnlyInWorktrees: false } } })
     await flush()
     await h['chats.configure']({ chatId: 'chat', mode: 'default' })
     expect(pushed.slice(1)).toEqual([
-      { mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'room', why: 'worktreesOnly' },
-      { mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'room', why: 'noBypass' },
-      { mode: 'bypassPermissions', picked: 'bypassPermissions', pickedIn: 'room' },
+      { mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'project', why: 'worktreesOnly' },
+      { mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'project', why: 'noBypass' },
+      { mode: 'bypassPermissions', picked: 'bypassPermissions', pickedIn: 'project' },
       { mode: 'default', picked: 'default', pickedIn: 'chat' }
     ])
     expect(await runMode()).toEqual(pushed.at(-1))
   })
 
   it('sends nothing when what the renderer has still holds', async () => {
-    const { h, room, pushed, runMode } = await idleChat()
+    const { h, project, pushed, runMode } = await idleChat()
     await runMode()
-    await h['rooms.update']({ roomId: room.id, patch: { name: 'Invoices' } })
+    await h['projects.update']({ projectId: project.id, patch: { name: 'Invoices' } })
     await h['settings.set']({ patch: { permissions: { approvalTimeoutSec: 120 } } })
     await h['chats.configure']({ chatId: 'chat', effort: 'high' })
     expect(pushed).toEqual([])

@@ -76,7 +76,7 @@ export class Inbox extends Feature {
         this.o.showNotification?.({ id: 'n-sound-preview', kind: 'system', title: 'Kernel', sub: 'This is how a notification sounds.', needsYou: false, read: true, createdAt: Date.now() }, bannerSound(sound))
         return { ok: true }
       },
-      'approvals.list': async ({ roomId }) => this.store.approvals({ roomId }),
+      'approvals.list': async ({ projectId }) => this.store.approvals({ projectId }),
       'approvals.decide': async ({ id, decision }) => {
         if (this.approvals.waitingPlan(id)) return this.answerPlan(id, decision)
         // Request changes keeps what the user typed and attached, without the lines Kernel adds for the images.
@@ -88,9 +88,9 @@ export class Inbox extends Feature {
         return a
       },
       'approvals.planFile': async ({ id }) => this.planFile(id),
-      'tasks.list': async ({ roomId }) => this.tasks.list(roomId),
-      'activity.recent': async ({ roomId, limit }) => this.store.activity(roomId, limit),
-      'rooms.lastActivity': async ({ roomId }) => this.store.lastActivity(roomId)
+      'tasks.list': async ({ projectId }) => this.tasks.list(projectId),
+      'activity.recent': async ({ projectId, limit }) => this.store.activity(projectId, limit),
+      'projects.lastActivity': async ({ projectId }) => this.store.lastActivity(projectId)
     } satisfies Partial<Handlers>
   }
 }

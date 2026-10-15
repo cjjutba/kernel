@@ -10,13 +10,13 @@ export interface MenuEntry {
   id: string
   label: string
   icon?: IconName
-  /** Drawn in place of `icon`, such as a room's picture. */
+  /** Drawn in place of `icon`, such as a project's picture. */
   leading?: ReactNode
-  /** Makes the item a radio of its menu: it is announced as checked or not, and a checked one shows a check mark (SettingsRoomIcon.png). */
+  /** Makes the item a radio of its menu: it is announced as checked or not, and a checked one shows a check mark (SettingsProjectIcon.png). */
   checked?: boolean
   /** Shown on the right, for example "⌘N". */
   shortcut?: string
-  /** A short word after the label, before the check, that says something about the item ("Detected", SettingsRoomTracker.png). */
+  /** A short word after the label, before the check, that says something about the item ("Detected", SettingsProjectTracker.png). */
   note?: string
   /** A nested menu, opened on hover, click or ArrowRight. */
   children?: MenuEntry[]
@@ -27,7 +27,7 @@ export interface MenuEntry {
   /** The accessible name, when `content` doesn't read well on its own. */
   ariaLabel?: string
   disabled?: boolean
-  /** Red text and icon. For the one destructive entry, such as Remove room (SidebarRoomMenu.png). */
+  /** Red text and icon. For the one destructive entry, such as Remove project (SidebarProjectMenu.png). */
   danger?: boolean
   onSelect?: () => void
 }

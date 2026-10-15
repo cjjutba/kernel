@@ -29,7 +29,7 @@ const PREVIEW_W = 480
 const PREVIEW_H = 320
 const GAP = 8
 
-/** Above the chip, or below it when there is no room above, kept inside the window. */
+/** Above the chip, or below it when there is no project above, kept inside the window. */
 function previewPlace(r: DOMRect): React.CSSProperties {
   const left = Math.max(GAP, Math.min(r.left, window.innerWidth - PREVIEW_W - GAP))
   return r.top > PREVIEW_H + GAP * 2 ? { left, bottom: window.innerHeight - r.top + GAP } : { left, top: r.bottom + GAP }

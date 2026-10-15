@@ -41,13 +41,13 @@ export function titleText(items: ChatItem[], max = 8000): string {
   const cap = Math.min(1500, Math.floor(max / 4))
   const head = lines[first].slice(0, cap)
   const tail: string[] = []
-  // Room for the "..." that marks the lines left out, and its separator.
-  let room = max - head.length - 5
+  // Project for the "..." that marks the lines left out, and its separator.
+  let project = max - head.length - 5
   for (let n = lines.length - 1; n > first; n--) {
     const line = lines[n].slice(0, cap)
-    if (line.length + 2 > room) break
+    if (line.length + 2 > project) break
     tail.unshift(line)
-    room -= line.length + 2
+    project -= line.length + 2
   }
   return [head, ...(tail.length && lines.length - 1 - first > tail.length ? ['...'] : []), ...tail].join('\n\n')
 }

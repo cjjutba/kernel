@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { actions, boot, getState } from '../src/renderer/src/store'
-import type { PreflightCheck, Room } from '../src/shared/types'
+import type { PreflightCheck, Project } from '../src/shared/types'
 
-const room = { id: 'r1', name: 'r1', path: '/r/r1', defaultBranch: 'main', paused: false, createdAt: 1 } as Room
-/** A launch with no saved place opens the room's front door, here its Agents page, since the fake room has no Lead. */
-const opened = { name: 'settings', page: 'room', roomId: 'r1', section: 'agents' }
+const project = { id: 'r1', name: 'r1', path: '/r/r1', defaultBranch: 'main', paused: false, createdAt: 1 } as Project
+/** A launch with no saved place opens the project's front door, here its Agents page, since the fake project has no Lead. */
+const opened = { name: 'settings', page: 'project', projectId: 'r1', section: 'agents' }
 const portTaken: PreflightCheck = { id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another process is using it.' }
 
 /** Boots against a fake main process. The checks answer when `finishChecks` is called, like a slow Mac. */
@@ -13,9 +13,9 @@ async function bootWith(checks: PreflightCheck[]) {
   let finishChecks = () => undefined as void
   const gate = new Promise<void>((resolve) => { finishChecks = resolve })
   const answers: Record<string, unknown> = {
-    'rooms.list': [room], 'workspaces.list': [], 'approvals.list': [], 'notifications.list': [], 'activity.recent': [], 'usage.get': [],
+    'projects.list': [project], 'workspaces.list': [], 'approvals.list': [], 'notifications.list': [], 'activity.recent': [], 'usage.get': [],
     'settings.get': DEFAULT_SETTINGS('/Users/you'), 'system.fixture': null, 'shared.list': [], 'threads.list': [], 'agents.list': [], 'agents.status': {}, 'tasks.list': [],
-    'rooms.lastActivity': null, 'rooms.overlaps': [], 'account.get': null, 'hooks.status': null, 'update.get': null
+    'projects.lastActivity': null, 'projects.overlaps': [], 'account.get': null, 'hooks.status': null, 'update.get': null
   }
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined, removeItem: () => undefined })
   vi.stubGlobal('window', {

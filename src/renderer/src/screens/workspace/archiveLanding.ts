@@ -8,7 +8,7 @@ import { archiveToast } from './pr/model'
  * Follows the store for the life of the app and moves the route when the workspace on screen turns archived (KERNEL-596). It is the one place
  * that decides where an archive takes you, so every way to archive lands the same: the row's Archive, a chat's last tab, ConfirmArchive,
  * ConfirmArchiveChat, a banner, a PR's Archive, a review once its work merged, and Kernel archiving after a merge. The destination is
- * `archiveDestination`, the room's front door, and never History or another chat.
+ * `archiveDestination`, the project's front door, and never History or another chat.
  *
  * It is a listener and not an effect, so the archived status and the move are one synchronous step and no screen has to be mounted for it:
  * no frame shows the workspace stripped of its tabs, and nothing waits for main to answer, which is after the pushes. A failed archive never
@@ -30,7 +30,7 @@ export function followArchives(): () => void {
     if (!to || route.name !== 'workspace') return
     const ws = s.workspaces.find((w) => w.id === route.workspaceId)
     if (ws && !archivedByHand(ws.id)) {
-      const toast = archiveToast(ws, ws.reviewOf ? s.workspaces.find((w) => w.id === ws.reviewOf) : undefined, s.agents[ws.roomId]?.find((a) => a.id === ws.agentId)?.name)
+      const toast = archiveToast(ws, ws.reviewOf ? s.workspaces.find((w) => w.id === ws.reviewOf) : undefined, s.agents[ws.projectId]?.find((a) => a.id === ws.agentId)?.name)
       if (toast) actions.ui.toast(toast)
     }
     go(to)

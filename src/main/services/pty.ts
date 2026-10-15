@@ -39,7 +39,7 @@ export class Ptys {
   start(id: string, o: PtyOptions) {
     if (this.procs.has(id)) return
     const env = { ...o.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
-    // The Mac's SHELL picks the binary, so a SHELL from a room's variables or env files can't (KERNEL-247).
+    // The Mac's SHELL picks the binary, so a SHELL from a project's variables or env files can't (KERNEL-247).
     const proc = pty.spawn(loginShell(process.env), ['-l'], { name: 'xterm-256color', cwd: o.cwd, env, cols: o.cols ?? 100, rows: o.rows ?? 30 })
     this.procs.set(id, proc)
     // A shell that exited and starts again goes on below its old output, as it does in the window.

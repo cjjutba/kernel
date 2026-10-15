@@ -3,10 +3,10 @@ import { newId, type Store } from '../db'
 import { bus } from '../bus'
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
 
-// Kernel's reads and writes of rooms, workspaces and chats, as plain functions of the Store and the bus (KERNEL-325).
+// Kernel's reads and writes of projects, workspaces and chats, as plain functions of the Store and the bus (KERNEL-325).
 // Kernel keeps a one-line method for each, and `Feature` a protected one, so a feature calls them without importing Kernel.
 
-export function mustRoom(store: Store, id: string) { const r = store.room(id); if (!r) throw new Error(`Unknown room ${id}`); return r }
+export function mustProject(store: Store, id: string) { const r = store.project(id); if (!r) throw new Error(`Unknown project ${id}`); return r }
 export function mustWs(store: Store, id: string) { const w = store.workspace(id); if (!w) throw new Error(`Unknown workspace ${id}`); return w }
 
 export function mustChat(store: Store, chatId: string): Chat {

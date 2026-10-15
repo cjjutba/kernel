@@ -52,10 +52,10 @@ async function setup() {
   }
   let k = await make()
   onTestFinished(() => k.stop())
-  const room = await k.rooms.addRoom(repo)
-  const lead = await k.lead.leadChat(room.id)
+  const project = await k.projects.addProject(repo)
+  const lead = await k.lead.leadChat(project.id)
   const leadWs = k.store.workspace(lead.workspaceId)!
-  const noor = await k.workspaces.createWorkspace(room.id, { prompt: 'Build the pricing page', agentId: 'noor', title: 'Pricing', leadChatId: lead.id })
+  const noor = await k.workspaces.createWorkspace(project.id, { prompt: 'Build the pricing page', agentId: 'noor', title: 'Pricing', leadChatId: lead.id })
   await git(noor.path, 'commit', '--allow-empty', '-qm', 'start')
   const firstChat = (ws: Workspace) => k.store.chats(ws.id).find((c) => c.kind !== 'terminal')!
   /** Writes the file in the workspace and shares it from a chat there, as share_file does. */
@@ -70,7 +70,7 @@ async function setup() {
     k.sharing.comment({ sharedId: file.id, version, note, anchor: o.anchor ?? ANCHOR, image: o.image ?? IMAGE })
   sent.length = 0
   const restart = async () => { await k.stop(); k = await make(); return k }
-  return { k: () => k, room, lead, leadWs, noor, firstChat, share, comment, sent, restart }
+  return { k: () => k, project, lead, leadWs, noor, firstChat, share, comment, sent, restart }
 }
 
 describe('a comment on a shared file (KERNEL-310)', () => {
@@ -188,7 +188,7 @@ describe('a comment on a shared file (KERNEL-310)', () => {
     const s = await setup()
     const f = await s.share(s.leadWs, '.kernel/shared/plan.html', PAGE(1))
     expect((await s.comment(f, 1)).chatId).toBe(s.lead.id)
-    // With that chat closed, the room's Lead chat takes it.
+    // With that chat closed, the project's Lead chat takes it.
     const k = s.k()
     k.store.saveChat({ ...s.lead, closed: true })
     const next = newChat(k.store, s.leadWs.id, 'Next', { model: s.lead.model, effort: s.lead.effort, plan: false })
@@ -196,7 +196,7 @@ describe('a comment on a shared file (KERNEL-310)', () => {
     expect(s.sent.map((x) => x.chatId)).toEqual([s.lead.id, next.id])
   })
 
-  it('keeps comments per version, after a restart, and deletes them with the room', async () => {
+  it('keeps comments per version, after a restart, and deletes them with the project', async () => {
     const s = await setup()
     const f = await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(1))
     await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(2))
@@ -207,7 +207,7 @@ describe('a comment on a shared file (KERNEL-310)', () => {
     expect(k.store.sharedComments(f.id, 1).map((c) => c.note)).toEqual(['One', 'Three'])
     expect(k.store.sharedComments(f.id, 2).map((c) => c.note)).toEqual(['Two'])
     expect((await k.sharing.handlers()['shared.comments']({ sharedId: f.id })).map((c) => [c.version, c.note])).toEqual([[1, 'One'], [2, 'Two'], [1, 'Three']])
-    k.store.deleteRoom(s.room.id)
+    k.store.deleteProject(s.project.id)
     expect(k.store.sharedComments(f.id)).toEqual([])
   })
 
@@ -225,7 +225,7 @@ describe('a comment on a shared file (KERNEL-310)', () => {
 
 describe('the message a comment makes', () => {
   const file = (kind: SharedFile['kind'], o: Partial<SharedFile> = {}): SharedFile => ({
-    id: 'f', roomId: 'r', workspaceId: 'w', agentId: 'noor', source: '.kernel/shared/x', title: 'Logo ideas', kind,
+    id: 'f', projectId: 'r', workspaceId: 'w', agentId: 'noor', source: '.kernel/shared/x', title: 'Logo ideas', kind,
     versions: [{ n: 1, at: 0, file: 'x', mime: 'x', bytes: 0, sha256: '', width: 616, height: 400 }], createdAt: 0, updatedAt: 0, ...o
   })
 

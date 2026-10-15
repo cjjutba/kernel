@@ -32,7 +32,7 @@ const AGENT = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.
 const result = (uuid: string) => ({ type: 'result', subtype: 'success', uuid, duration_ms: 1, session_id: 's' })
 const callsIn = (ws: Workspace) => sdk.calls.filter((c) => c.options.cwd === ws.path)
 
-/** A room with Kai and Noor at work, each handed off from its own Lead tab, and Scout, a helper that can't open a PR. */
+/** A project with Kai and Noor at work, each handed off from its own Lead tab, and Scout, a helper that can't open a PR. */
 async function setup() {
   const repo = await tempRepo({
     'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'),
@@ -43,11 +43,11 @@ async function setup() {
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
-  const room = await k.addRoom(repo)
-  const lead = await k.leadChat(room.id)
-  const other = await k.lead.newLeadChat(room.id, { prompt: '' })
-  const kai = await k.createWorkspace(room.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id })
-  const noor = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'noor', title: 'Invoice table', leadChatId: other.id })
+  const project = await k.addProject(repo)
+  const lead = await k.leadChat(project.id)
+  const other = await k.lead.newLeadChat(project.id, { prompt: '' })
+  const kai = await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id })
+  const noor = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'noor', title: 'Invoice table', leadChatId: other.id })
   const posts: { chatId: string; text: string; update?: TeamUpdate }[] = []
   k.sessions.post = (chatId: string, parts: ChatPart[], o: { update?: TeamUpdate } = {}) => { posts.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), update: o.update }); return true }
   ;(k.leadUpdates as unknown as { d: { delayMs?: number } }).d.delayMs = 20
@@ -58,7 +58,7 @@ async function setup() {
   }
   const pending = () => (k.store.meta<{ pending: [string, { owner?: string; events: { kind: string; workspaceId: string; question?: unknown; proposal?: unknown }[] }][] }>('leadUpdates')?.pending ?? [])
     .flatMap(([, p]) => p.events.map((e) => ({ ...e, owner: p.owner })))
-  return { k, room, lead, other, kai, noor, posts, call, pending }
+  return { k, project, lead, other, kai, noor, posts, call, pending }
 }
 
 describe('ask_lead', () => {
@@ -108,7 +108,7 @@ describe('propose_handoff', () => {
     expect(post.text).toContain('- Noor proposes handing "Retry button on failed exports" to Kai. Propose it to the user and ask for a go-ahead. Call create_workspace for it only on a go-ahead that approves it.')
     expect(post.update?.rows[0].events).toEqual([{ kind: 'handoff.proposed', text: 'Proposes Kai for: Retry button on failed exports', actionable: true }])
     // Kernel never creates the workspace itself.
-    expect(k.store.workspaces(kai.roomId).filter((w) => w.agentId === 'kai')).toHaveLength(1)
+    expect(k.store.workspaces(kai.projectId).filter((w) => w.agentId === 'kai')).toHaveLength(1)
     await k.stop()
   })
 
@@ -116,7 +116,7 @@ describe('propose_handoff', () => {
     const { k, kai, call, pending } = await setup()
     const refused = async (agent: string) => { const r = await call(kai, 'propose_handoff', { agent, task: 'Retry button', why: 'Not mine.' }); expect(r.isError).toBe(true); return r.text }
     expect(await refused('ivy')).toMatch(/^Not proposed: no agent "ivy" on this team\. Use an id from list_agents: .*kai.*noor/)
-    expect(await refused('scout')).toBe("Not proposed: Scout is a helper in this room and doesn't take tasks.")
+    expect(await refused('scout')).toBe("Not proposed: Scout is a helper in this project and doesn't take tasks.")
     expect(await refused('kai')).toBe('Not proposed: that is you. Carry on with it yourself, or ask the Lead with ask_lead if it is outside your task.')
     expect(await refused('kernel')).toMatch(/^Not proposed: .* is the Lead, who hands work out and builds none\./)
     expect(pending()).toEqual([])
@@ -135,8 +135,8 @@ describe('the rules and Codex', () => {
   })
 
   it("gives a Codex teammate both tools as Kernel's dynamic tools", async () => {
-    const { k, room, kai } = await setup()
-    const agents = await k.agents(room.id)
+    const { k, project, kai } = await setup()
+    const agents = await k.agents(project.id)
     const tools = k.tools.codexTools(kai, agents.find((a) => a.id === 'kai'), k.store.chats(kai.id)[0]).tools.map((t) => t.name)
     expect(tools).toEqual(expect.arrayContaining(['ask_lead', 'propose_handoff']))
     await k.stop()

@@ -101,7 +101,7 @@ const sameLogin = (a: { email?: string; orgId?: string } | undefined, b: { email
   return !!email && email === b?.email?.toLowerCase() && (!a!.orgId || !b.orgId || a!.orgId === b.orgId)
 }
 
-/** A role's name, for an agent Kernel names by its role before any room's team is read (KERNEL-616). */
+/** A role's name, for an agent Kernel names by its role before any project's team is read (KERNEL-616). */
 const ROLE_NAMES: Record<Role, string> = { lead: 'Kernel', engineers: 'Engineers', qa: 'QA', reviewer: 'Reviewer' }
 
 /** A model id without its case and its context-window tag (`[1m]`). */
@@ -307,9 +307,9 @@ export class Providers extends Feature {
     return a.home ? a.signedIn !== false && !this.moved(a) : this.tokenSignedIn(a.id)
   }
 
-  /** The providers a room's agents run on, by their picks. A room Kernel hasn't read yet counts every role's. */
-  usedIn(roomId: string): Provider[] {
-    const agents = this.k.team.agentsSync(roomId)
+  /** The providers a project's agents run on, by their picks. A project Kernel hasn't read yet counts every role's. */
+  usedIn(projectId: string): Provider[] {
+    const agents = this.k.team.agentsSync(projectId)
     const picks = agents.length ? agents.map((a) => this.k.team.pickFor(a).provider) : Object.values(this.settings.models.roles).map((r) => r.provider)
     return [...new Set(picks)]
   }
@@ -967,8 +967,8 @@ export class Providers extends Feature {
 
   /**
    * The account a switch at a limit moves `provider` to (KERNEL-616): `spareAccount`'s pick, unless it doesn't offer a model
-   * agents on the provider start on and another account with room does. Each account's models are read once per login. An
-   * account Kernel can't read counts as offering them. When none with room offers them all, the pick stands.
+   * agents on the provider start on and another account with project does. Each account's models are read once per login. An
+   * account Kernel can't read counts as offering them. When none with project offers them all, the pick stands.
    */
   async spareFor(provider: Provider, limits: RateLimit[], now = Date.now()): Promise<string | undefined> {
     const ids = this.spares(provider, limits, now)
@@ -992,7 +992,7 @@ export class Providers extends Feature {
     const accounts = [{ id: CLI_ACCOUNT, signedIn: file.cli?.signedIn !== false, login: file.cli }, ...file.accounts.filter((a) => a.auth !== 'apiKey').map((a) => ({ id: a.id, signedIn: this.storedSignedIn(provider, a), login: a }))]
       .filter((a) => a.id === active || !sameLogin(inUse, a.login))
       .map(({ login: _, ...a }) => ({ ...a, provider, active: a.id === active, auth: 'subscription' as const, sameOrg: this.sameOrg(provider, a.id), keychainWait: this.keychain.has(a.id) }))
-    return switchChoices(provider, accounts, limits, now).room.map((a) => a.id)
+    return switchChoices(provider, accounts, limits, now).project.map((a) => a.id)
   }
 
   /**
@@ -1249,14 +1249,14 @@ export class Providers extends Feature {
 
   /**
    * A Claude login's `mcpSignIns` for its row, without the servers that don't warn (KERNEL-646): ones ignored on it, and ones
-   * switched off in every room (`Mcp.roomOff`).
+   * switched off in every project (`Mcp.projectOff`).
    */
   private loudSignIns(accountId: string): McpSignIn[] | undefined {
     const list = this.mcpSignIns.get(accountId)
     if (!list) return undefined
     const ignored = new Set(this.mcpIgnored('claude', accountId))
-    const roomOff = this.k.mcp.roomOff()
-    return list.filter((s) => !ignored.has(s.server) && !roomOff(s.server))
+    const projectOff = this.k.mcp.projectOff()
+    return list.filter((s) => !ignored.has(s.server) && !projectOff(s.server))
   }
 
   /** The MCP servers ignored on an account, `cli` for the CLI's own login (`accounts.mcpIgnore`, KERNEL-646). */
@@ -1461,14 +1461,14 @@ export class Providers extends Feature {
 
   /**
    * The models agents on `provider` start on, by their role's default or their file's pin (`Team.pickFor`, KERNEL-550), each
-   * with the names of the agents on it, across the open rooms whose team Kernel has read. Before any is read, the roles'
+   * with the names of the agents on it, across the open projects whose team Kernel has read. Before any is read, the roles'
    * own defaults, named by role.
    */
   private pinned(provider: Provider): Map<string, Set<string>> {
     const out = new Map<string, Set<string>>()
     const add = (model: string, name: string) => out.set(model, (out.get(model) ?? new Set()).add(name))
     let read = false
-    for (const r of this.store.rooms()) {
+    for (const r of this.store.projects()) {
       if (r.archived) continue
       for (const a of this.k.team.agentsSync(r.id)) {
         read = true

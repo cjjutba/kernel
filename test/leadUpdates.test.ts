@@ -35,9 +35,9 @@ const REPLY = 'Linked node_modules into the worktree.\n\nTests pass.'
 /** `defaults`: Kernel's own delays, two seconds after the newest event and five after the oldest, for tests on fake timers. */
 async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boolean; log?: ConstructorParameters<typeof LeadUpdates>[0]['log']; ownChat?: (ws: Workspace) => string | undefined } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-lu-')), 'k.db'))
-  store.saveRoom({ id: 'r', name: 'Kernel', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
+  store.saveProject({ id: 'r', name: 'Kernel', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
   // Teammate workspaces were handed off in the Lead chat "lc" unless a test says otherwise.
-  const ws = (id: string, agentId: string, extra: Partial<Workspace> = {}) => store.saveWorkspace({ id, roomId: 'r', name: id, branch: id, baseRef: 'main', path: `/x/${id}`, mode: 'worktree', agentId, port: 1, status: 'ready', prState: 'none', createdAt: 1, ...(agentId === 'kernel' ? {} : { leadChatId: 'lc' }), ...extra } as Workspace)
+  const ws = (id: string, agentId: string, extra: Partial<Workspace> = {}) => store.saveWorkspace({ id, projectId: 'r', name: id, branch: id, baseRef: 'main', path: `/x/${id}`, mode: 'worktree', agentId, port: 1, status: 'ready', prState: 'none', createdAt: 1, ...(agentId === 'kernel' ? {} : { leadChatId: 'lc' }), ...extra } as Workspace)
   const chat = (id: string, workspaceId: string) => store.saveChat({ id, workspaceId, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 } as Chat)
   ws('lead', 'kernel', { mode: 'current' })
   ws('w1', 'noor', { title: 'Symlink node_modules' })
@@ -219,7 +219,7 @@ describe('teammate updates to the Lead', () => {
     expect(s.posts).toHaveLength(1)
   })
 
-  it("drops updates when the room's Lead was never briefed, and never starts a Lead chat", async () => {
+  it("drops updates when the project's Lead was never briefed, and never starts a Lead chat", async () => {
     const { u, s, pr } = await setup({ leadChat: false })
     pr('w1', 'ready')
     await wait()
@@ -439,7 +439,7 @@ describe('what wakes the Lead (KERNEL-121)', () => {
 })
 
 describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
-  const ws = (prState: PrState): Workspace => ({ id: 'w1', roomId: 'r', name: 'w1', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'noor', port: 1, status: 'ready', prState, createdAt: 1, leadChatId: 'lc' })
+  const ws = (prState: PrState): Workspace => ({ id: 'w1', projectId: 'r', name: 'w1', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'noor', port: 1, status: 'ready', prState, createdAt: 1, leadChatId: 'lc' })
   const ev = (kind: TeamEventKind, extra: Partial<TeamEvent> = {}): TeamEvent => ({ n: 1, workspaceId: 'w1', kind, pr: 54, ...extra })
   const at = '(workspace w1)'
   const BEHIND = "Ask Noor to update PR #54: fetch, rebase onto main, re-run the tests and force push, with message_agent (workspace w1). GitHub won't merge it while its branch is behind."
@@ -691,14 +691,14 @@ describe("a teammate's setup (KERNEL-126)", () => {
     expect(s.posts).toEqual([])
   })
 
-  it("lets a release by trusting the room's scripts ride along, and says the user trusted them (KERNEL-261)", async () => {
+  it("lets a release by trusting the project's scripts ride along, and says the user trusted them (KERNEL-261)", async () => {
     const { u, s, w1, pr } = await setup()
     u.setup(w1, true, { trusted: true })
     await wait()
     expect(s.posts).toEqual([])
     pr('w1', 'cifail')
     await wait()
-    expect(parts(s.posts.pop()!).body).toEqual([NOOR, "- The user trusted this room's scripts and setup passed, and Noor's brief was released.", OPENED_54, '- Checks failed on PR #54.'])
+    expect(parts(s.posts.pop()!).body).toEqual([NOOR, "- The user trusted this project's scripts and setup passed, and Noor's brief was released.", OPENED_54, '- Checks failed on PR #54.'])
   })
 })
 
@@ -1107,7 +1107,7 @@ describe("a teammate's turn and its PR (KERNEL-136)", () => {
     pr('w1', 'cifail')
     await wait()
     const post = s.posts.pop()!
-    expect(post).toContain('- Kernel quit while Noor was partway through a turn. Noor carries on by itself once nothing holds it, such as a paused room or the agent limit.')
+    expect(post).toContain('- Kernel quit while Noor was partway through a turn. Noor carries on by itself once nothing holds it, such as a paused project or the agent limit.')
     expect(post).not.toMatch(/unexpectedly|working again/)
     expect(s.updates.at(-1)?.rows[0].events[0]).toEqual({ kind: 'crash', text: 'Stopped when Kernel quit', actionable: false })
     u.crashed(w1, 'Kernel closed unexpectedly', { resumed: true })
@@ -1183,7 +1183,7 @@ describe('waiting updates across a restart (KERNEL-123)', () => {
     u.turnDone(w1, nc, done)
     u.turnDone(lead, lc, { ...done, lead: true, interrupted: true })
     await wait()
-    // An event for a workspace that no longer exists, as after its room was removed.
+    // An event for a workspace that no longer exists, as after its project was removed.
     const saved = store.meta<{ pending: [string, { events: TeamEvent[] }][] }>('leadUpdates')!
     saved.pending[0][1].events.push({ n: 999, workspaceId: 'ghost', kind: 'error', by: 'lead' })
     store.saveMeta('leadUpdates', saved)
@@ -1219,7 +1219,7 @@ describe('waiting updates across a restart (KERNEL-123)', () => {
 
   it('starts empty when the saved value is unreadable', async () => {
     const { store, restart } = await setup()
-    store.saveMeta('leadUpdates', { v: 1, seq: 3, pending: [['lc', { roomId: 'r', events: null }]], stopped: null })
+    store.saveMeta('leadUpdates', { v: 1, seq: 3, pending: [['lc', { projectId: 'r', events: null }]], stopped: null })
     expect(() => restart()).not.toThrow()
   })
 })
@@ -1370,7 +1370,7 @@ describe('teammate updates with several Lead chats (KERNEL-105)', () => {
 describe('shared files in Team updates (KERNEL-302)', () => {
   const file = (id: string, workspaceId: string, title: string, n: number, kind: SharedFile['kind'] = 'html'): [SharedFile, SharedVersion] => {
     const v: SharedVersion = { n, at: n, file: `${id}.html`, mime: 'text/html', bytes: 10, sha256: String(n) }
-    return [{ id, roomId: 'r', workspaceId, agentId: 'noor', source: `.kernel/shared/${id}.html`, title, kind, versions: [v], createdAt: 1, updatedAt: n }, v]
+    return [{ id, projectId: 'r', workspaceId, agentId: 'noor', source: `.kernel/shared/${id}.html`, title, kind, versions: [v], createdAt: 1, updatedAt: n }, v]
   }
   const SHARED = (title: string, n: number, source: string, id: string, kind = 'HTML') => `- Shared "${title}" v${n} (${kind}, ${source}, id ${id}). The user can open it from this update.`
 
@@ -1498,7 +1498,7 @@ describe("GitHub's merge block on a ready PR (KERNEL-401)", () => {
   })
 
   it("asks the author, not the reviewer, to update a PR that fell behind, in one line with the author's own news", () => {
-    const of = { id: 'w2', roomId: 'r', name: 'w2', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'ready', prNumber: 60, prBlocked: 'behind', createdAt: 1 } as Workspace
+    const of = { id: 'w2', projectId: 'r', name: 'w2', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'ready', prNumber: 60, prBlocked: 'behind', createdAt: 1 } as Workspace
     const approval: TeamEvent = { n: 1, workspaceId: 'rv', kind: 'review', review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } }
     const fromReview = decide({ ws: { ...of, id: 'rv', agentId: 'theo', prState: 'none', prBlocked: undefined }, name: 'Theo', events: [approval] }, { allMerged: () => false, workspace: () => of }).todo
     const fromAuthor = decide({ ws: of, name: 'Kai', events: [{ n: 2, workspaceId: 'w2', kind: 'pr.blocked', pr: 60, blocked: 'behind' }] }, { allMerged: () => false }).todo
@@ -1515,7 +1515,7 @@ describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () =
   it("sends an update a paused, offline or setup-held Lead chat couldn't take the moment Sessions lifts the hold, and logs why it waited", async () => {
     const t = await setup()
     // Sessions' own rule for what holds the Lead chat. Sending is the harness's, so nothing starts a real turn.
-    const sessions = new Sessions({ store: t.store, approvals: new Approvals(t.store), settings: () => DEFAULT_SETTINGS('/home/cj'), agentFor: (ws) => (ws.agentId === 'kernel' ? kernel : undefined), mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {}, onFreed: () => t.u.flushSoon() })
+    const sessions = new Sessions({ store: t.store, approvals: new Approvals(t.store), settings: () => DEFAULT_SETTINGS('/home/cj'), agentFor: (ws) => (ws.agentId === 'kernel' ? kernel : undefined), mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {}, onFreed: () => t.u.flushSoon() })
     t.s.hold = (chatId) => sessions.postHold(chatId)
     const holds: [string, () => void, () => void][] = [
       ['paused', () => sessions.pause('r'), () => sessions.resume('r')],
@@ -1577,7 +1577,7 @@ describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () =
     let settings = { ...DEFAULT_SETTINGS('/home/cj') }
     settings = { ...settings, models: { ...settings.models, agentLimit: 1 } }
     // No Lead agent, so "lc" takes a slot like any teammate's chat.
-    const sessions = new Sessions({ store: t.store, approvals: new Approvals(t.store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {}, onFreed: () => t.u.flushSoon() })
+    const sessions = new Sessions({ store: t.store, approvals: new Approvals(t.store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {}, onFreed: () => t.u.flushSoon() })
     // Kai's turn takes the only slot.
     ;(sessions as unknown as { live: Map<string, { running: boolean }> }).live.set('kc', { running: true })
     t.s.hold = (chatId) => sessions.postHold(chatId)
@@ -1604,7 +1604,7 @@ describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () =
       await wait()
       const lines = (await readFile(log.file, 'utf8')).trim().split('\n')
       expect(lines).toHaveLength(1)
-      expect(lines[0]).toMatch(/ INFO \[lead-updates\] delivered \{"roomId":"r","chatId":"lc",.*"heldBy":"none"/)
+      expect(lines[0]).toMatch(/ INFO \[lead-updates\] delivered \{"projectId":"r","chatId":"lc",.*"heldBy":"none"/)
       expect(lines[0]).not.toContain('Linked node_modules')
       expect(console.info).toHaveBeenCalledWith(expect.stringContaining('[lead-updates] delivered '))
       // A fixture run or a test has no log, and LeadUpdates falls back to the console.
@@ -1616,7 +1616,7 @@ describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () =
     const { u, s, w1, nc } = await setup()
     u.turnDone(w1, nc, done)
     await wait()
-    expect(logged(s)).toEqual([{ roomId: 'r', chatId: 'lc', workspaces: 1, ageMs: expect.any(Number), heldMs: expect.any(Number), heldBy: 'none', carried: 0, leftOut: 0 }])
+    expect(logged(s)).toEqual([{ projectId: 'r', chatId: 'lc', workspaces: 1, ageMs: expect.any(Number), heldMs: expect.any(Number), heldBy: 'none', carried: 0, leftOut: 0 }])
     expect(logged(s)[0].ageMs).toBeGreaterThanOrEqual(20)
     expect(s.logs.join('\n')).not.toContain('Linked node_modules')
   })
@@ -1726,19 +1726,19 @@ describe('a teammate a usage limit stopped (KERNEL-777)', () => {
     expect(s.updates[0].rows[0].events[0]).toEqual({ kind: 'limit', text: 'Hit its 5-hour limit, now on Account 2', actionable: false })
   })
 
-  it('wakes the Lead once with the earliest reset when no account has room, and once more when the teammate carries on', async () => {
+  it('wakes the Lead once with the earliest reset when no account has project, and once more when the teammate carries on', async () => {
     const { u, s, w1, nc, restart } = await setup()
     u.turnDone(w1, nc, limited, { ...L, switching: {} })
     await wait()
     expect(s.posts).toEqual([])
-    // Kernel read every account and none had room. The earliest reset across them is sooner than this account's.
+    // Kernel read every account and none had project. The earliest reset across them is sooner than this account's.
     const earliest = S(Date.now() + 1800_000)
     u.limitStuck('claude', { stuck: 'full', resetsAt: earliest })
     await wait()
     expect(s.posts).toHaveLength(1)
     expect(parts(s.posts[0]).body).toEqual([NOOR, `- Hit its 5-hour limit on Account 3. Every account is at its limit, so it is paused until ${until(earliest)}.`])
     expect(parts(s.posts[0]).todo).toEqual([`- ${PAUSED(earliest)}`])
-    // A second reading that still finds no room says nothing new.
+    // A second reading that still finds no project says nothing new.
     u.limitStuck('claude', { stuck: 'full', resetsAt: earliest })
     await wait()
     expect(s.posts).toHaveLength(1)

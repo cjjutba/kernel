@@ -6,14 +6,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { KEEP_ACTIVITY_MS, KEEP_APPROVAL_INPUT_MS, Store } from '../src/main/db'
 import { LATEST, migrate, migrations, NEWER_DATA, type Migration } from '../src/main/migrations'
-import type { Approval, Chat, Room, SharedFile, Workspace } from '@shared/types'
+import type { Approval, Chat, Project, SharedFile, Workspace } from '@shared/types'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 const DAY = 24 * 60 * 60 * 1000
 const dir = () => mkdtempSync(join(tmpdir(), 'kernel-db-'))
-const TABLES = ['rooms', 'workspaces', 'chats', 'chat_items', 'approvals', 'notifications', 'activity', 'tasks', 'meta', 'overlaps', 'shared_files']
+const TABLES = ['projects', 'workspaces', 'chats', 'chat_items', 'approvals', 'notifications', 'activity', 'tasks', 'meta', 'overlaps', 'shared_files']
 /** A table's rows, and none for a table an older file doesn't have yet. */
 const rows = (db: Database.Database, table: string) => (db.prepare(`select 1 from sqlite_master where type = 'table' and name = ?`).get(table)
   ? db.prepare(`select * from ${table} order by rowid`).all() as Record<string, unknown>[] : [])
@@ -28,21 +28,21 @@ function oldDb(file: string) {
   migrations[0].up(db, 0)
   const now = Date.now()
   const put = (sql: string, ...args: unknown[]) => db.prepare(sql).run(...args)
-  put('insert into rooms values (?, ?, ?)', 'r1', JSON.stringify({ id: 'r1', name: 'Invoices', createdAt: now }), now)
-  put('insert into workspaces values (?, ?, ?, ?)', 'w1', 'r1', JSON.stringify({ id: 'w1', roomId: 'r1', status: 'active' }), now)
+  put('insert into projects values (?, ?, ?)', 'r1', JSON.stringify({ id: 'r1', name: 'Invoices', createdAt: now }), now)
+  put('insert into workspaces values (?, ?, ?, ?)', 'w1', 'r1', JSON.stringify({ id: 'w1', projectId: 'r1', status: 'active' }), now)
   put('insert into chats values (?, ?, ?, ?)', 'c1', 'w1', JSON.stringify({ id: 'c1', workspaceId: 'w1', title: 'Export' }), now)
   put('insert into chat_items values (?, ?, ?, ?)', 'i1', 'c1', 1, JSON.stringify({ kind: 'text', id: 'i1', ts: now, text: 'Done' }))
   put('insert into approvals values (?, ?, ?, ?, ?)', 'a1', 'r1', 'pending', JSON.stringify({ id: 'a1', kind: 'tool', status: 'pending', title: 'Run ls', createdAt: now }), now)
   put('insert into approvals values (?, ?, ?, ?, ?)', 'a2', 'r1', 'allowed', JSON.stringify({ id: 'a2', kind: 'tool', status: 'allowed', title: 'Run pwd', createdAt: now }), now)
   put('insert into notifications values (?, ?, ?, ?)', 'n1', 'r1', JSON.stringify({ id: 'n1', title: 'Finished' }), now)
   put('insert into activity values (?, ?, ?, ?)', 'e1', 'r1', now, JSON.stringify({ id: 'e1', ts: now, kind: 'chat.started' }))
-  put('insert into tasks values (?, ?, ?, ?)', 'r1', 'T-1', JSON.stringify({ id: 'T-1', roomId: 'r1' }), now)
+  put('insert into tasks values (?, ?, ?, ?)', 'r1', 'T-1', JSON.stringify({ id: 'T-1', projectId: 'r1' }), now)
   put('insert into meta values (?, ?)', 'limits', JSON.stringify({ five: 1 }))
-  put('insert into overlaps values (?, ?, ?)', 'o1', 'r1', JSON.stringify({ id: 'o1', roomId: 'r1' }))
+  put('insert into overlaps values (?, ?, ?)', 'o1', 'r1', JSON.stringify({ id: 'o1', projectId: 'r1' }))
   db.close()
 }
 
-const approval = (a: Partial<Approval> & Pick<Approval, 'id' | 'status'>): Approval => ({ kind: 'tool', source: 'sdk', roomId: 'r1', title: a.id, createdAt: Date.now(), ...a })
+const approval = (a: Partial<Approval> & Pick<Approval, 'id' | 'status'>): Approval => ({ kind: 'tool', source: 'sdk', projectId: 'r1', title: a.id, createdAt: Date.now(), ...a })
 
 describe('kernel.db versions', () => {
   afterEach(() => { vi.restoreAllMocks() })
@@ -64,11 +64,11 @@ describe('kernel.db versions', () => {
       expect(now, t).toEqual(old[t])
     }
     const indexes = (store.db.prepare(`select name from sqlite_master where type = 'index'`).all() as { name: string }[]).map((r) => r.name)
-    expect(indexes).toEqual(expect.arrayContaining(['approvals_by_room_status', 'chats_by_workspace', 'activity_by_ts', 'shared_files_by_source', 'shared_files_by_room']))
+    expect(indexes).toEqual(expect.arrayContaining(['approvals_by_project_status', 'chats_by_workspace', 'activity_by_ts', 'shared_files_by_source', 'shared_files_by_project']))
     const settled = store.db.prepare('select id, settled_at from approvals order by id').all() as { id: string; settled_at: number | null }[]
     expect(settled[0]).toEqual({ id: 'a1', settled_at: null })
     expect(settled[1].settled_at).toBeGreaterThan(Date.now() - 60_000)
-    expect(store.rooms().map((r) => r.id)).toEqual(['r1'])
+    expect(store.projects().map((r) => r.id)).toEqual(['r1'])
     store.db.close()
 
     // The copy is the file as it was: version 0, every row, none of the new columns.
@@ -131,12 +131,12 @@ describe('kernel.db versions', () => {
     const src = join(d, 'live.db')
     const file = join(d, 'kernel.db')
     const live = new Store(src)
-    live.saveRoom({ id: 'r1', name: 'Invoices', createdAt: 1 } as never)
+    live.saveProject({ id: 'r1', name: 'Invoices', createdAt: 1 } as never)
     copyFileSync(src, file)
     copyFileSync(`${src}-wal`, `${file}-wal`)
     live.db.close()
     const store = new Store(file)
-    expect(store.rooms().map((r) => r.id)).toEqual(['r1'])
+    expect(store.projects().map((r) => r.id)).toEqual(['r1'])
     expect(store.db.pragma('user_version', { simple: true })).toBe(LATEST)
     store.db.close()
   })
@@ -160,18 +160,18 @@ describe('kernel.db versions', () => {
     const db = new Database(file)
     migrate(db, file, Date.now(), migrations.filter((m) => m.version <= 4))
     const put = (table: string, id: string, parent: string, data: object, at: number) => db.prepare(`insert into ${table} values (?, ?, ?, ?)`).run(id, parent, JSON.stringify({ id, ...data }), at)
-    db.prepare('insert into rooms values (?, ?, ?)').run('r1', JSON.stringify({ id: 'r1', name: 'Invoices', createdAt: 1 }), 1)
-    put('workspaces', 'lead', 'r1', { roomId: 'r1', name: 'lead', mode: 'current' }, 1)
-    put('workspaces', 'w1', 'r1', { roomId: 'r1', name: 'tabs', mode: 'worktree' }, 1)
+    db.prepare('insert into projects values (?, ?, ?)').run('r1', JSON.stringify({ id: 'r1', name: 'Invoices', createdAt: 1 }), 1)
+    put('workspaces', 'lead', 'r1', { projectId: 'r1', name: 'lead', mode: 'current' }, 1)
+    put('workspaces', 'w1', 'r1', { projectId: 'r1', name: 'tabs', mode: 'worktree' }, 1)
     put('chats', 'open', 'lead', { workspaceId: 'lead', title: 'Release plan', kind: 'chat', createdAt: 10 }, 10)
     put('chats', 'closed', 'lead', { workspaceId: 'lead', title: 'Chat icons sizing', kind: 'chat', closed: true, createdAt: 20 }, 20)
     put('chats', 'old', 'lead', { workspaceId: 'lead', title: 'Lead', createdAt: 5 }, 5)
     put('chats', 'term', 'lead', { workspaceId: 'lead', title: 'Terminal (claude)', kind: 'terminal', createdAt: 30 }, 30)
     put('chats', 'mate', 'w1', { workspaceId: 'w1', title: 'Tabs', kind: 'chat', createdAt: 40 }, 40)
     // Handed off from a closed Lead tab, from a teammate's chat, and by hand.
-    put('workspaces', 'w2', 'r1', { roomId: 'r1', name: 'icons', mode: 'worktree', leadChatId: 'closed' }, 2)
-    put('workspaces', 'w3', 'r1', { roomId: 'r1', name: 'odd', mode: 'worktree', leadChatId: 'mate' }, 3)
-    put('workspaces', 'w4', 'r1', { roomId: 'r1', name: 'manual', mode: 'worktree' }, 4)
+    put('workspaces', 'w2', 'r1', { projectId: 'r1', name: 'icons', mode: 'worktree', leadChatId: 'closed' }, 2)
+    put('workspaces', 'w3', 'r1', { projectId: 'r1', name: 'odd', mode: 'worktree', leadChatId: 'mate' }, 3)
+    put('workspaces', 'w4', 'r1', { projectId: 'r1', name: 'manual', mode: 'worktree' }, 4)
     db.close()
 
     const store = new Store(file)
@@ -193,13 +193,13 @@ describe('kernel.db versions', () => {
     again.db.close()
   })
 
-  it("forgets a room's Lead chats with the room, and keeps another room's (KERNEL-337)", () => {
+  it("forgets a project's Lead chats with the project, and keeps another project's (KERNEL-337)", () => {
     const store = new Store(join(dir(), 'kernel.db'))
-    for (const roomId of ['r1', 'r2']) {
-      store.saveRoom({ id: roomId, name: roomId, createdAt: 1 } as Room)
-      store.saveThread({ id: `t-${roomId}`, roomId, title: 'Release plan', createdAt: 1 })
+    for (const projectId of ['r1', 'r2']) {
+      store.saveProject({ id: projectId, name: projectId, createdAt: 1 } as Project)
+      store.saveThread({ id: `t-${projectId}`, projectId, title: 'Release plan', createdAt: 1 })
     }
-    store.deleteRoom('r1')
+    store.deleteProject('r1')
     expect(store.threads().map((t) => t.id)).toEqual(['t-r2'])
     store.db.close()
   })
@@ -218,8 +218,8 @@ describe('kernel.db versions', () => {
     const stamp99 = (file: string, wal: boolean) => {
       const db = new Database(file)
       if (wal) db.pragma('journal_mode = WAL')
-      db.exec('create table rooms (id text primary key, data text not null, created_at integer not null)')
-      db.prepare('insert into rooms values (?, ?, ?)').run('r1', '{"id":"r1"}', 1)
+      db.exec('create table projects (id text primary key, data text not null, created_at integer not null)')
+      db.prepare('insert into projects values (?, ?, ?)').run('r1', '{"id":"r1"}', 1)
       db.pragma('user_version = 99')
       db.close()
     }
@@ -243,7 +243,7 @@ describe('kernel.db versions', () => {
       const live = new Database(src)
       live.pragma('journal_mode = WAL')
       live.pragma('wal_autocheckpoint = 0')
-      live.exec('create table rooms (id text primary key, data text not null, created_at integer not null)')
+      live.exec('create table projects (id text primary key, data text not null, created_at integer not null)')
       live.pragma('user_version = 99')
       // Copied while open: the header still says 0, the -wal holds version 99, as after a crash of a newer build.
       copyFileSync(src, file)
@@ -268,8 +268,8 @@ describe('pruning', () => {
   it('drops old activity and settled tool input, and keeps pending approvals, plans and transcripts', () => {
     const store = new Store(':memory:')
     const old = now - KEEP_ACTIVITY_MS - DAY
-    store.saveActivity({ id: 'old', ts: old, roomId: 'r1', kind: 'chat.started', text: '' } as never)
-    store.saveActivity({ id: 'new', ts: now - DAY, roomId: 'r1', kind: 'chat.started', text: '' } as never)
+    store.saveActivity({ id: 'old', ts: old, projectId: 'r1', kind: 'chat.started', text: '' } as never)
+    store.saveActivity({ id: 'new', ts: now - DAY, projectId: 'r1', kind: 'chat.started', text: '' } as never)
     const write = { file_path: '/repo/src/big.ts', content: 'x'.repeat(50_000), lines: 400, edits: [{ a: 1 }] }
     store.saveApproval(approval({ id: 'settled', status: 'allowed', toolName: 'Write', input: write, createdAt: old }))
     store.saveApproval(approval({ id: 'bash', status: 'denied', toolName: 'Bash', input: { command: `echo ${'y'.repeat(300)}` }, createdAt: old }))
@@ -311,7 +311,7 @@ describe('pruning rows other builds saved', () => {
   it('counts from when it was asked for a settled approval with no settle time', () => {
     const store = new Store(':memory:')
     const old = Date.now() - KEEP_APPROVAL_INPUT_MS - DAY
-    store.db.prepare('insert into approvals (id, room_id, status, data, created_at) values (?, ?, ?, ?, ?)')
+    store.db.prepare('insert into approvals (id, project_id, status, data, created_at) values (?, ?, ?, ?, ?)')
       .run('a', 'r1', 'allowed', JSON.stringify(approval({ id: 'a', status: 'allowed', input: { content: 'z'.repeat(500) }, createdAt: old })), old)
     expect(store.prune().approvals).toBe(1)
     // Saved as pending again, it can be pruned again once it settles.
@@ -324,13 +324,13 @@ describe('store reads', () => {
   it('skips a row whose JSON does not parse and keeps the rest of the list', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const store = new Store(':memory:')
-    store.saveRoom({ id: 'a', name: 'A', createdAt: 1 } as never)
-    store.db.prepare('insert into rooms values (?, ?, ?)').run('bad', '{"id": "bad", nope', 2)
-    store.saveRoom({ id: 'c', name: 'C', createdAt: 3 } as never)
-    expect(store.rooms().map((r) => r.id)).toEqual(['a', 'c'])
+    store.saveProject({ id: 'a', name: 'A', createdAt: 1 } as never)
+    store.db.prepare('insert into projects values (?, ?, ?)').run('bad', '{"id": "bad", nope', 2)
+    store.saveProject({ id: 'c', name: 'C', createdAt: 3 } as never)
+    expect(store.projects().map((r) => r.id)).toEqual(['a', 'c'])
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('bad JSON'))
-    expect(store.room('bad')).toBeUndefined()
-    expect(store.room('a')?.id).toBe('a')
+    expect(store.project('bad')).toBeUndefined()
+    expect(store.project('a')?.id).toBe('a')
     vi.restoreAllMocks()
   })
 
@@ -342,42 +342,42 @@ describe('store reads', () => {
     expect(store.approval('nope')).toBeUndefined()
   })
 
-  it('lists shared files newest first by room or workspace, finds one by source and deletes them with the room (KERNEL-302)', () => {
+  it('lists shared files newest first by project or workspace, finds one by source and deletes them with the project (KERNEL-302)', () => {
     const store = new Store(':memory:')
-    const file = (id: string, roomId: string, workspaceId: string, source: string, updatedAt: number): SharedFile =>
-      ({ id, roomId, workspaceId, agentId: 'kai', source, title: id, kind: 'html', versions: [], createdAt: 1, updatedAt })
+    const file = (id: string, projectId: string, workspaceId: string, source: string, updatedAt: number): SharedFile =>
+      ({ id, projectId, workspaceId, agentId: 'kai', source, title: id, kind: 'html', versions: [], createdAt: 1, updatedAt })
     store.saveSharedFile(file('a', 'r1', 'w1', '.kernel/shared/a.html', 1))
     store.saveSharedFile(file('b', 'r1', 'w2', '.kernel/shared/b.html', 3))
     store.saveSharedFile(file('c', 'r2', 'w3', '.kernel/shared/c.html', 2))
     expect(store.sharedFiles().map((f) => f.id)).toEqual(['b', 'c', 'a'])
-    expect(store.sharedFiles({ roomId: 'r1' }).map((f) => f.id)).toEqual(['b', 'a'])
+    expect(store.sharedFiles({ projectId: 'r1' }).map((f) => f.id)).toEqual(['b', 'a'])
     expect(store.sharedFiles({ workspaceId: 'w1' }).map((f) => f.id)).toEqual(['a'])
     expect(store.sharedFiles({ limit: 1 }).map((f) => f.id)).toEqual(['b'])
     expect(store.sharedFileAt('w2', '.kernel/shared/b.html')?.id).toBe('b')
     expect(store.sharedFileAt('w1', '.kernel/shared/b.html')).toBeUndefined()
     store.saveSharedFile({ ...file('a', 'r1', 'w1', '.kernel/shared/a.html', 4), title: 'Again' })
-    expect(store.sharedFiles({ roomId: 'r1' }).map((f) => [f.id, f.title])).toEqual([['a', 'Again'], ['b', 'b']])
-    store.deleteRoom('r1')
+    expect(store.sharedFiles({ projectId: 'r1' }).map((f) => [f.id, f.title])).toEqual([['a', 'Again'], ['b', 'b']])
+    store.deleteProject('r1')
     expect(store.sharedFiles().map((f) => f.id)).toEqual(['c'])
   })
 })
 
 describe('deleting workspaces (KERNEL-333)', () => {
-  it('removes the named workspaces\' rows in every table and leaves the others and the room alone', () => {
+  it('removes the named workspaces\' rows in every table and leaves the others and the project alone', () => {
     const store = new Store(':memory:')
     const put = (sql: string, ...args: unknown[]) => store.db.prepare(sql).run(...args)
     const count = (table: string) => (store.db.prepare(`select count(*) as n from ${table}`).get() as { n: number }).n
-    store.saveRoom({ id: 'r1', name: 'Invoices', createdAt: 1 } as never)
+    store.saveProject({ id: 'r1', name: 'Invoices', createdAt: 1 } as never)
     for (const id of ['w1', 'w2', 'w3']) {
-      store.saveWorkspace({ id, roomId: 'r1', name: id, status: 'archived', createdAt: 1 } as Workspace)
+      store.saveWorkspace({ id, projectId: 'r1', name: id, status: 'archived', createdAt: 1 } as Workspace)
       store.saveChat({ id: `c-${id}`, workspaceId: id, title: id, createdAt: 1 } as never)
       store.saveItem(`c-${id}`, { kind: 'text', id: `i-${id}`, ts: 1, text: 'hi' })
-      store.saveSharedFile({ id: `s-${id}`, roomId: 'r1', workspaceId: id, agentId: 'kai', source: `${id}.html`, title: id, kind: 'html', versions: [], createdAt: 1, updatedAt: 1 })
+      store.saveSharedFile({ id: `s-${id}`, projectId: 'r1', workspaceId: id, agentId: 'kai', source: `${id}.html`, title: id, kind: 'html', versions: [], createdAt: 1, updatedAt: 1 })
       store.saveApproval(approval({ id: `a-${id}`, status: 'allowed', workspaceId: id } as never))
-      store.saveActivity({ id: `e-${id}`, ts: 1, roomId: 'r1', workspaceId: id, kind: 'turn.done', text: 'done' } as never)
-      store.saveNotification({ id: `n-${id}`, kind: 'finished', roomId: 'r1', workspaceId: id, title: id, sub: '', createdAt: 1 } as never)
+      store.saveActivity({ id: `e-${id}`, ts: 1, projectId: 'r1', workspaceId: id, kind: 'turn.done', text: 'done' } as never)
+      store.saveNotification({ id: `n-${id}`, kind: 'finished', projectId: 'r1', workspaceId: id, title: id, sub: '', createdAt: 1 } as never)
     }
-    put('insert into tasks values (?, ?, ?, ?)', 'r1', 'T-1', JSON.stringify({ id: 'T-1', roomId: 'r1', workspaceId: 'w1' }), 1)
+    put('insert into tasks values (?, ?, ?, ?)', 'r1', 'T-1', JSON.stringify({ id: 'T-1', projectId: 'r1', workspaceId: 'w1' }), 1)
 
     store.deleteWorkspaces([])
     expect(count('workspaces')).toBe(3)
@@ -393,7 +393,7 @@ describe('deleting workspaces (KERNEL-333)', () => {
     expect(store.approvals().map((a) => a.id)).toEqual(['a-w2'])
     expect(store.activity().map((e) => e.id)).toEqual(['e-w2'])
     expect(store.notifications().map((n) => n.id)).toEqual(['n-w2'])
-    expect(store.room('r1')).toBeDefined()
+    expect(store.project('r1')).toBeDefined()
     expect(count('tasks')).toBe(1)
   })
 })

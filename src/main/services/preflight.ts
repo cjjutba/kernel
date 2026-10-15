@@ -4,7 +4,7 @@ import { ghAuth, ghCanPush } from './github'
 import { bundledClaude } from './providers/binary'
 import { rcFile, type ShellRead } from './shellPath'
 import { githubRepoOf } from './worktrees'
-import type { PreflightCheck, PushCheck, PushCheckRow, RoomSetupStep } from '@shared/types'
+import type { PreflightCheck, PushCheck, PushCheckRow, ProjectSetupStep } from '@shared/types'
 
 export const MIN_CLAUDE = '2.1.80'
 
@@ -69,7 +69,7 @@ export const MIN_GIT = '2.38'
  * the hook port, a missing git and a broken bundled Claude block (KERNEL-213). Everything else is a warning.
  * `shell` is what `refreshPath` just read, and `env` the environment it left. `run`, `claude` and `env` are for tests: a
  * stubbed command runner, the session binary's path and the variables Bedrock and Vertex are read from. `gh: false` leaves
- * the GitHub CLI out when no room's PRs go to GitHub (KERNEL-477).
+ * the GitHub CLI out when no project's PRs go to GitHub (KERNEL-477).
  */
 export async function runPreflight(o: { hookPort: number; hookServerUp: boolean; run?: typeof exec; claude?: string | null; nextPort?: (from: number) => Promise<number>; codex?: { bin?: string }; shell?: ShellRead; env?: NodeJS.ProcessEnv; gh?: boolean }): Promise<PreflightCheck[]> {
   const run = o.run ?? exec
@@ -191,7 +191,7 @@ async function ghCheck(run: typeof exec, shell?: ShellRead): Promise<PreflightCh
   return { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail, ...(note ? { note } : {}), meta: meta && `gh ${meta}` }
 }
 
-// ---------- a room's push check (KERNEL-460)
+// ---------- a project's push check (KERNEL-460)
 
 /** How long each network step of the push check may take, in ms. */
 export const PUSH_CHECK_MS = 20_000
@@ -219,9 +219,9 @@ function transportOf(url: string): 'https' | 'ssh' | 'other' {
 }
 
 /**
- * Whether git can push from `cwd` to `remote`, asked before an agent needs to (SettingsRoomGit*.png). Reach is
+ * Whether git can push from `cwd` to `remote`, asked before an agent needs to (SettingsProjectGit*.png). Reach is
  * `git ls-remote`. Push is gh's permission on a GitHub repo and a dry-run push to a branch that doesn't exist, which logs in
- * as a real push does and sends nothing. Neither runs a hook. Null when the remote has no URL. `gh: false`, for a room
+ * as a real push does and sends nothing. Neither runs a hook. Null when the remote has no URL. `gh: false`, for a project
  * that merges locally, reads a GitHub remote as any other, so only git answers and gh is never asked (KERNEL-477). `run`
  * is for tests.
  */
@@ -274,11 +274,11 @@ export async function checkPush(cwd: string, remote: string, o: { run?: typeof e
 }
 
 /**
- * The Check push access step of room setup for a check's result (RoomSetup.png, RoomSetupWarnings.png). A failure is a
- * warning there, since a warning never blocks setup, while Settings, Room, Git shows the same result as a red x (KERNEL-437).
+ * The Check push access step of project setup for a check's result (ProjectSetup.png, ProjectSetupWarnings.png). A failure is a
+ * warning there, since a warning never blocks setup, while Settings, Project, Git shows the same result as a red x (KERNEL-437).
  * Every field is set, so a recheck that passes clears the last warning's.
  */
-export function pushStepOf(c: PushCheck): Pick<RoomSetupStep, 'state' | 'title' | 'detail' | 'output' | 'fix'> {
+export function pushStepOf(c: PushCheck): Pick<ProjectSetupStep, 'state' | 'title' | 'detail' | 'output' | 'fix'> {
   const to = c.repo ?? c.remote
   if (c.reach.state === 'fail') return { state: 'warn', title: `Git can't reach ${c.remote}`, detail: c.reach.note ?? '', output: c.reach.output, fix: { action: 'recheck' } }
   if (c.push.state === 'fail') {

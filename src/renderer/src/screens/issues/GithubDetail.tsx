@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { GithubIssue, GithubIssueDetail, Room } from '@shared/types'
+import type { GithubIssue, GithubIssueDetail, Project } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, FailedState, Icon, Skeleton, useBusy } from '../../ui'
@@ -12,7 +12,7 @@ import { markJustSent } from '../workspace/chatPlace'
 import { githubPlanParts, issueAge, linkedWorkspaces, loginInitials } from './model'
 
 /** The selected GitHub issue: what GitHub says about it, the workspaces already working on it, and the buttons that start work (IssuesGitHub.png). */
-export function GithubDetail({ room, id, summary, tick }: { room: Room; id: string; summary?: GithubIssue; tick: number }) {
+export function GithubDetail({ project, id, summary, tick }: { project: Project; id: string; summary?: GithubIssue; tick: number }) {
   const [loaded, setLoaded] = useState<GithubIssueDetail | null>(null)
   const [failure, setFailure] = useState<{ id: string; message: string } | null>(null)
   const failed = failure?.id === id ? failure.message : null
@@ -20,31 +20,31 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
   const [attempt, setAttempt] = useState(0)
   const [busy, run] = useBusy<'plan'>()
   const workspaces = useStore((s) => s.workspaces)
-  const lead = useStore((s) => s.agents[room.id]?.find((a) => a.lead)?.name) || 'Kernel'
+  const lead = useStore((s) => s.agents[project.id]?.find((a) => a.lead)?.name) || 'Kernel'
 
   // The description and comments come from `github.issue`. The list already has the rest, so the header shows at once.
   useEffect(() => {
     let live = true
-    call('github.issue', { roomId: room.id, id }).then((d) => { if (live) { setLoaded(d); setFailure(null) } }).catch((e: Error) => { if (live) setFailure({ id, message: cleanError(e) }) }).finally(() => waiting.current.splice(0).forEach((done) => done()))
+    call('github.issue', { projectId: project.id, id }).then((d) => { if (live) { setLoaded(d); setFailure(null) } }).catch((e: Error) => { if (live) setFailure({ id, message: cleanError(e) }) }).finally(() => waiting.current.splice(0).forEach((done) => done()))
     return () => { live = false }
-  }, [room.id, id, tick, attempt])
+  }, [project.id, id, tick, attempt])
   const retry = () => {
     setAttempt((a) => a + 1)
     return new Promise<void>((done) => waiting.current.push(done))
   }
   const detail = loaded?.id === id ? loaded : null
   const issue: GithubIssue | undefined = detail ?? summary
-  const linked = useMemo(() => linkedWorkspaces(id, workspaces.filter((w) => w.roomId === room.id)), [id, workspaces, room.id])
+  const linked = useMemo(() => linkedWorkspaces(id, workspaces.filter((w) => w.projectId === project.id)), [id, workspaces, project.id])
 
   const plan = () => run('plan', async () => {
     try {
-      const d = detail ?? (await call('github.issue', { roomId: room.id, id }))
-      const chat = await call('lead.start', { roomId: room.id, prompt: '', parts: githubPlanParts(d), plan: true })
+      const d = detail ?? (await call('github.issue', { projectId: project.id, id }))
+      const chat = await call('lead.start', { projectId: project.id, prompt: '', parts: githubPlanParts(d), plan: true })
       markJustSent(chat.id)
-      await openLeadChat(room.id, chat.id)
+      await openLeadChat(project.id, chat.id)
     } catch (e) { actions.ui.toast({ title: `Could not plan with ${lead}`, sub: cleanError(e) }) }
   })
-  const newChat = () => issue && openNewChat(room.id, { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url || undefined, tracker: 'github' } })
+  const newChat = () => issue && openNewChat(project.id, { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url || undefined, tracker: 'github' } })
 
   if (!issue) {
     return (

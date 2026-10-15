@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, trustRoom, freePort } from './helpers'
+import { tempRepo, trustProject, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
 import type { Chat, ChatItem, ChatPart } from '../src/shared/types'
@@ -35,9 +35,9 @@ async function setup(files: Record<string, string> = {}) {
   k.forkSession = (async (id: string, o: unknown) => { forks.push([id, o]); return { sessionId: 'forked-session' } }) as typeof k.forkSession
   const deletedSessions: string[] = []
   k.deleteSession = (async (id: string) => { deletedSessions.push(id) }) as typeof k.deleteSession
-  const room = await k.addRoom(repo)
-  if (files['.kernel/settings.toml']) await trustRoom(k, room.id)
-  const src = await k.createWorkspace(room.id, { prompt: 'Build the home screen', agentId: 'kai', title: 'Home screen' })
+  const project = await k.addProject(repo)
+  if (files['.kernel/settings.toml']) await trustProject(k, project.id)
+  const src = await k.createWorkspace(project.id, { prompt: 'Build the home screen', agentId: 'kai', title: 'Home screen' })
   const chat = k.store.saveChat({ ...k.store.chats(src.id)[0], title: 'Home screen', sessionId: 'src-session' })
   const items: ChatItem[] = [
     { kind: 'user', id: 'u1', ts: 1, parts: [{ type: 'text', text: 'Build the home screen' }] },
@@ -48,7 +48,7 @@ async function setup(files: Record<string, string> = {}) {
     { kind: 'result', id: 'r2', ts: 6, durationMs: 3000, ok: true }
   ]
   for (const i of items) k.store.saveItem(chat.id, i)
-  return { k, repo, room, src, chat, dispatched, forks, deletedSessions }
+  return { k, repo, project, src, chat, dispatched, forks, deletedSessions }
 }
 
 describe('fork into new workspace (KERNEL-346)', () => {
@@ -65,7 +65,7 @@ describe('fork into new workspace (KERNEL-346)', () => {
 
     const ws = await k.handlers()['workspaces.fork']({ chatId: chat.id, itemId: 'u2' })
 
-    expect(ws).toMatchObject({ roomId: src.roomId, agentId: 'kai', mode: 'worktree', baseRef: src.baseRef, branch: `${src.branch}-fork`, name: `${src.name}-fork`, title: 'Home screen' })
+    expect(ws).toMatchObject({ projectId: src.projectId, agentId: 'kai', mode: 'worktree', baseRef: src.baseRef, branch: `${src.branch}-fork`, name: `${src.name}-fork`, title: 'Home screen' })
     expect(ws.path).not.toBe(src.path)
     expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(src.path, 'rev-parse', 'HEAD'))
     expect(await readFile(join(ws.path, 'a.txt'), 'utf8')).toBe('edited\n')
@@ -110,19 +110,19 @@ describe('fork into new workspace (KERNEL-346)', () => {
   })
 
   it('waits for trust like any new workspace, and what was typed meanwhile goes out once setup passes', async () => {
-    const { k, repo, room, chat, dispatched } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "echo ran > ran.txt"\n', '.gitignore': 'ran.txt\n' })
+    const { k, repo, project, chat, dispatched } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "echo ran > ran.txt"\n', '.gitignore': 'ran.txt\n' })
     // The setup text changes after the source started, so nobody has trusted it yet.
     await writeFile(join(repo, '.kernel/settings.toml'), '[scripts]\nsetup = "echo again > ran.txt"\n')
     const ws = await k.workspaces.forkWorkspace(chat.id)
     await until(() => k.store.workspace(ws.id)?.status === 'trust')
     expect(existsSync(join(ws.path, 'ran.txt'))).toBe(false)
-    // The composer stays open while the room waits for trust. A message waits instead of starting the agent.
+    // The composer stays open while the project waits for trust. A message waits instead of starting the agent.
     delete (k.sessions as unknown as { send?: unknown }).send
     const fork = k.store.chats(ws.id)[0]
     expect(await k.sessions.send(fork.id, [{ type: 'text', text: 'Try the other layout' }])).toMatchObject({ queued: true, why: 'setup' })
     expect(dispatched).toEqual([])
 
-    await trustRoom(k, room.id)
+    await trustProject(k, project.id)
     await until(() => k.store.workspace(ws.id)?.status === 'ready', 15000)
     expect(await readFile(join(ws.path, 'ran.txt'), 'utf8')).toBe('again\n')
     await until(() => dispatched.includes(fork.id))
@@ -130,19 +130,19 @@ describe('fork into new workspace (KERNEL-346)', () => {
   }, 30000)
 
   it("refuses a big terminal, the Lead's workspace and an archived workspace", async () => {
-    const { k, room, src } = await setup()
+    const { k, project, src } = await setup()
     const term = await k.handlers()['chats.create']({ workspaceId: src.id, kind: 'terminal' })
     await expect(k.workspaces.forkWorkspace(term.id)).rejects.toThrow('cannot be forked')
-    const leadChat = await k.lead.leadChat(room.id)
+    const leadChat = await k.lead.leadChat(project.id)
     await expect(k.workspaces.forkWorkspace(leadChat.id)).rejects.toThrow("A chat with Kernel can't fork")
-    const other = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Other' })
+    const other = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Other' })
     await k.archiveWorkspace(other.id, false)
     await expect(k.workspaces.forkWorkspace(k.store.chats(other.id)[0].id)).rejects.toThrow('Restore the workspace')
   })
 
   it('leaves no workspace or branch behind when the session cannot fork, and drops the session when the worktree fails', async () => {
-    const { k, repo, room, src, chat, deletedSessions } = await setup()
-    const count = () => k.store.workspaces(room.id).length
+    const { k, repo, project, src, chat, deletedSessions } = await setup()
+    const count = () => k.store.workspaces(project.id).length
     const before = count()
     k.forkSession = (async () => { throw new Error('Session src-session not found') }) as typeof k.forkSession
     await expect(k.workspaces.forkWorkspace(chat.id)).rejects.toThrow('not found')

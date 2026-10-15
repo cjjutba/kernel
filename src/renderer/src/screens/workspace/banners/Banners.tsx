@@ -39,8 +39,8 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
   const scripts = useMemo<ScriptLine[] | undefined>(() => (setupCmd ? [{ kind: 'setup', line: `$ ${setupCmd}`, stream: 'stdout' }] : undefined), [setupCmd])
   const setupCode = useStore((s) => (ws ? s.scriptExit[ws.id]?.setup : undefined))
   // The near-limit hold leaves the Lead alone, and its banner names the Lead (KERNEL-224).
-  const isLead = useStore((s) => !!ws && isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id))
-  const leadName = useStore((s) => (ws ? leadOf(s.agents, ws.roomId)?.name : undefined))
+  const isLead = useStore((s) => !!ws && isLeadWorkspace(ws, ws.projectId, leadOf(s.agents, ws.projectId)?.id))
+  const leadName = useStore((s) => (ws ? leadOf(s.agents, ws.projectId)?.name : undefined))
   const pauseNearLimit = useStore((s) => s.settings?.usage.pauseNearLimit)
   const warnBeforeWeekly = useStore((s) => s.settings?.usage.warnBeforeWeekly)
   const switchAtLimit = useStore((s) => s.settings?.accounts.switchAtLimit[chat ? chatProvider(chat) : 'claude'])
@@ -136,12 +136,12 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
         })
         : go({ name: 'settings', page: 'accounts', tab: view.signIn.provider }))
       case 'providers': return go({ name: 'settings', page: 'accounts', tab: 'codex' })
-      case 'editScript': return go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'setup' })
+      case 'editScript': return go({ name: 'settings', page: 'project', projectId: ws.projectId, section: 'setup' })
       case 'runAgain': return run(id, 'Could not run setup', async () => {
         actions.ui.setWorkspaceView({ bottom: 'setup' })
         await call('scripts.run', { workspaceId: ws.id, kind: 'setup' })
       })
-      case 'review': return actions.ui.openModal({ name: 'confirm', kind: 'trust', roomId: ws.roomId })
+      case 'review': return actions.ui.openModal({ name: 'confirm', kind: 'trust', projectId: ws.projectId })
       case 'checkHooks': return actions.ui.openModal({ name: 'checkHooks' })
       case 'reconnect': return run(id, 'Could not restart the hook server', async () => actions.system.setHooks(await call('hooks.restart', {})))
       // A Lead chat archives with the workspaces it started, the way its row does (KERNEL-405).

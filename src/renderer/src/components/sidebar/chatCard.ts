@@ -23,7 +23,7 @@ export function waitLine({ approval: a, name }: Wait, who: string): string {
 
 /**
  * The card's line: the longest wait, naming the agent who asks (Noor in her workspace, the Lead in its own tabs), or that nothing waits.
- * `agents` are the room's, and an agent that isn't in them reads as the Lead.
+ * `agents` are the project's, and an agent that isn't in them reads as the Lead.
  */
 export function chatLine(waits: Wait[], agents: AgentDef[] | undefined): string {
   const lead = agents?.find((x) => x.lead)?.name ?? 'The Lead'
