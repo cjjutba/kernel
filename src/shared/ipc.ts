@@ -41,6 +41,11 @@ export interface KernelApi {
   'rooms.add': { req: { path: string; name?: string }; res: Room }
   /** New room modal. Progress arrives as `room.setup` push events. */
   'rooms.create': { req: NewRoomRequest; res: Room }
+  /**
+   * Try again on a failed room setup: runs the first failed step and every step after it, and returns once it has started.
+   * Progress arrives as `room.setup` push events, as for `rooms.create`. Refused while setup runs and once nothing failed.
+   */
+  'rooms.retrySetup': { req: { roomId: string }; res: Ok }
   'rooms.update': { req: { roomId: string; patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow' | 'allowTools' | 'permissionMode' | 'host'>> }; res: Room }
   /** Sets the room icon. The letter clears it. When the GitHub avatar can't be fetched it throws a plain error and the room keeps its letter. */
   'rooms.setIcon': { req: { roomId: string; icon: { kind: 'letter' } | { kind: 'github' } | { kind: 'image'; path: string } }; res: Room }
