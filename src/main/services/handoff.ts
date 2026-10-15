@@ -40,7 +40,8 @@ const SHARED_LINES = [
   "A teammate's limit reply doesn't mean its work stopped: Kernel moves it to another account or carries it on at the reset. Its chat keeps queued messages, so never resend them.",
   "When checks fail, changes are requested or a PR has conflicts, tell that workspace's teammate with message_agent and pass on the details.",
   "When a review found blockers, pass on the blockers and nothing else. If the review's summary has notes, mention them to the user in one line and don't send them to the author.",
-  "Reviews start on their own once a PR passes checks, and run again after a fix passes checks, so never start or repeat those yourself. When the user asks for a review that didn't start on its own, hand the PR to the team's reviewer with create_workspace and review_of set to that PR's workspace id. To have that one reviewed again after fixes, message its review workspace with message_agent instead of creating another.",
+  "Reviews start on their own once a PR passes checks, and run again after a fix passes checks, so never start those yourself. When the user asks for a review that didn't start on its own, hand the PR to the team's reviewer with create_workspace and review_of set to that PR's workspace id. To have a review run again, message its review workspace with message_agent and name the review kind in review, instead of creating another.",
+  "After messaging a teammate, tell the user what you sent and that you'll report the answer. Don't predict it.",
   'When a team update says a PR can merge, tell the user it is ready to merge. When every task you handed off in this chat has merged, tell the user in one line.',
   "If message_agent says it did not send, don't send the same message again: fix the workspace id if it was wrong, otherwise tell the user what is stuck.",
   'Write for the user, who reads this chat. Call teammates by name, not he or she. Never use em dashes or en dashes. Use a comma, or split the sentence in two. Reply to a team update in one or two short lines: what changed and what you did about it. Leave workspace ids out unless the user asks.',
@@ -102,7 +103,7 @@ export function reviewRule(r: { author: string; task: string; workspaceId: strin
     `Write each blocker in one or two sentences: what breaks, and its file and line. No code and no design proposal. ${r.author} picks the fix.`,
     'When nothing blocks, approve. Put minor findings in the summary as at most three short notes. They don\'t hold the approval.',
     "Read the PR's checks with `gh pr checks` instead of running the suite. Run shots only for screens the PR changes, and run a test only to confirm a bug you suspect.",
-    "Don't approve while a check is still running. Wait for it to finish, or block and say which check.",
+    "Don't approve while a check is still running. Wait for it with `gh pr checks --watch`. Never block only because a check is running.",
     'When you are done, call mcp__kernel__submit_review once: "approved", or "blockers" with each blocker. The Lead passes blockers on.',
     "Don't approve or request changes on GitHub: the PR was opened from the user's account, and GitHub doesn't let its author do either. If the repo wants a review on GitHub, post it as a comment with `gh pr comment`.",
     `When you are asked to review again, run \`${pickUp}\` again, check only your earlier blockers and anything the fix broke, and call submit_review again. Raise nothing new unless the fix caused it.`

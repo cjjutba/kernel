@@ -200,6 +200,8 @@ export class Reviews extends Feature {
     }
     this.notStarted.delete(of.id)
     if (this.starting.has(of.id)) return
+    // Never awaited, so the round below marks the review as starting before anything else reads it.
+    void this.recheck(of).catch((e) => { if (!this.stopped) console.warn(`[reviews] asking ${of.name}'s review again failed`, e) })
     const last = this.roundOf(of)
     const again = last && sameHeads(of, of.prHead ?? '').has(last.head) ? last : undefined
     if (again && (this.openReview(of) || !this.unreported(of, again).length)) return
@@ -302,6 +304,50 @@ export class Reviews extends Feature {
     return merged.code === 0 && tree.code === 0 && merged.stdout.split('\n')[0].trim() === tree.stdout.trim() ? { from: first, to: self } : undefined
   }
 
+  /**
+   * Checks finished on a commit a kind blocked while they still ran (feat-review-messages-reach-named). That kind is asked once
+   * to review again. Other kinds, approvals, and a kind already asked are left alone, so a second block on the commit goes to
+   * the user through the Lead's update. A verdict saved before Kernel recorded running checks has no record and isn't asked.
+   */
+  private async recheck(of: Workspace): Promise<void> {
+    const head = of.prHead
+    const rws = this.openReview(of)
+    if (!head || !rws || rws.status === 'archived') return
+    const heads = sameHeads(of, head)
+    const overruled = of.overruled?.head === head ? of.overruled.kinds : []
+    const due = (of.reviews ?? []).filter((v) => v.workspaceId === rws.id && v.verdict === 'blockers' && v.checksRunning && !v.checksRetried && !!v.sha && heads.has(v.sha)
+      && (!v.prNumber || v.prNumber === of.prNumber) && !overruled.includes(lensOf(v)))
+    if (!due.length) return
+    // Marked before the sends, so a ready that comes again meanwhile asks nobody twice.
+    this.updateWs(of.id, { reviews: (this.mustWs(of.id).reviews ?? []).map((v) => (due.some((d) => d.workspaceId === v.workspaceId && lensOf(d) === lensOf(v)) ? { ...v, checksRetried: true as const } : v)) })
+    for (const v of due) {
+      const chat = this.kindChat(rws, lensOf(v))
+      if (!chat) continue
+      const text = `The checks on PR #${of.prNumber} have finished. Review it again as your rule says, and call submit_review again.`
+      if (rws.status === 'ready') await this.sessions.send(chat.id, [{ type: 'text', text }], { from: 'kernel' })
+      else this.sessions.hold(chat.id, [{ type: 'text', text }], { from: 'kernel' })
+    }
+  }
+
+  /** The kinds of review a review workspace runs, one per chat Kernel started for a kind, closed tabs included, in REVIEW_KINDS' order. */
+  kindsOf(rws: Workspace): ReviewKind[] {
+    const kinds = new Set(this.store.chats(rws.id).flatMap((c) => (c.kind === 'chat' && c.lens ? [c.lens.kind] : [])))
+    return REVIEW_KINDS.map((k) => k.id).filter((k) => kinds.has(k))
+  }
+
+  /**
+   * The chat that runs `kind` in a review workspace, put back on the strip when the user closed it, so a message for the kind
+   * never lands in another kind's chat or in a chat with no kind (feat-review-messages-reach-named). Undefined when the
+   * workspace runs no such kind.
+   */
+  kindChat(rws: Workspace, kind: ReviewKind): Chat | undefined {
+    const chats = this.store.chats(rws.id).filter((c) => c.kind === 'chat' && c.lens?.kind === kind)
+    const chat = chats.find((c) => !c.closed) ?? chats.at(-1)
+    if (!chat?.closed) return chat
+    const { closed: _closed, ...open } = chat
+    return this.saveChat(open)
+  }
+
   /** The PR's newest review workspace still open. */
   private openReview(of: Workspace): Workspace | undefined {
     return this.store.workspaces(of.roomId).filter((r) => r.reviewOf === of.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)[0]
@@ -391,14 +437,20 @@ export class Reviews extends Feature {
     const sha = (await exec('git', ['-C', rws.path, 'rev-parse', 'HEAD'])).stdout.trim()
     // Read again after the await, so a verdict another reviewer saved meanwhile isn't lost.
     const fresh = this.mustWs(of.id)
+    const kind = lens?.kind ?? 'code'
+    // A kind Kernel already asked again on this commit stays asked, so a second block isn't retried (feat-review-messages-reach-named).
+    const retried = (fresh.reviews ?? []).some((v) => v.workspaceId === rws.id && lensOf(v) === kind && v.checksRetried && v.sha === sha)
+    const running = review.verdict === 'blockers' && fresh.prState === 'checks' && !retried
     const verdict: ReviewVerdict = {
       workspaceId: rws.id, agentId: lens ? lens.agent ?? KERNEL_REVIEWER : rws.agentId, verdict: review.verdict, summary: review.summary.trim(),
       ...(review.verdict === 'blockers' && review.blockers?.length ? { blockers: review.blockers } : {}),
       ...(/^[0-9a-f]{40}$/.test(sha) ? { sha } : {}), ...(fresh.prNumber ? { prNumber: fresh.prNumber } : {}),
-      ...(lens ? { lens: lens.kind } : {}), ...(lens?.optional ? { optional: true as const } : {}), ts: Date.now()
+      ...(lens ? { lens: lens.kind } : {}), ...(lens?.optional ? { optional: true as const } : {}),
+      ...(running ? { checksRunning: true as const } : {}), ...(retried ? { checksRetried: true as const } : {}), ts: Date.now()
     }
     const saved = this.updateWs(of.id, { reviews: [...(fresh.reviews ?? []).filter((v) => v.workspaceId !== rws.id || lensOf(v) !== lensOf(verdict)), verdict] })
-    this.leadUpdates.reviewed(rws, saved, verdict, chatId)
+    // A turn the Lead started with message_agent: its reply goes out with the verdict, and wakes the Lead (feat-review-messages-reach-named).
+    this.leadUpdates.reviewed(rws, saved, verdict, chatId, { asked: !!chatId && this.sessions.turnFrom(chatId) === 'lead' })
     const what = saved.prNumber ? `PR #${saved.prNumber}` : saved.name
     bus.activity({ kind: 'note', roomId: rws.roomId, workspaceId: saved.id, agentId: rws.agentId, text: review.verdict === 'approved' ? 'approved' : 'found blockers in', object: what })
     return review.verdict === 'approved' ? `Saved: you approved ${what}. The Lead hears about it.` : `Saved: ${verdict.blockers?.length ?? 0} blocker(s) in ${what}. The Lead passes them on.`

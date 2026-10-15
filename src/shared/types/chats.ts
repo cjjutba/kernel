@@ -452,6 +452,13 @@ export interface ReviewVerdict {
    * kind's paths (KERNEL-552). `sha` is then that later head.
    */
   keptFrom?: string
+  /**
+   * A blocking verdict that came in while the PR's checks were still running. When the same commit passes checks, Kernel asks
+   * its kind to review again, once (feat-review-messages-reach-named). Verdicts saved before have none and aren't asked.
+   */
+  checksRunning?: true
+  /** Kernel already asked this kind to review the commit again once its checks finished, so it never asks a second time. */
+  checksRetried?: true
   ts: number
 }
 
