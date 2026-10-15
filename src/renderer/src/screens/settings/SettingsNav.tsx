@@ -3,15 +3,11 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyEvent } from
 import type { RoomSettingsSection, SettingsPage } from '@shared/types'
 import { actions, getState, go, useStore } from '../../store'
 import { RoomIcon } from '../../components/RoomIcon'
-import { Icon } from '../../ui'
+import { Icon, useScreenEscape } from '../../ui'
 import { NAV, ROOM_PAGES, keywordHits, navMatch, type Keyword } from './nav'
 
 /** The groups the sidebar lists. They live in nav.ts so search and the command palette read the same list (KERNEL-680). */
 export const GROUPS = NAV
-
-/** A field you type into: Escape belongs to it, not to the page. */
-const isTextField = (el: HTMLElement) =>
-  el.isContentEditable || el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !/^(checkbox|radio|button|submit|range|color|file)$/.test(el.type))
 
 /**
  * What the sidebar frame holds in Settings (KERNEL-509): back to the app, search, the app pages, and each room with its own pages under it.
@@ -25,21 +21,16 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const match = (label: string, keywords?: Keyword[], terms?: string[]) => navMatch(q, label, keywords, terms)
   // Escape: the search box clears first. Other text fields keep it for themselves, and elsewhere it leaves Settings.
-  // Menus and modals take Escape before it gets here, so it only counts when none is open.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return
-      const { modal, menu } = getState().ui
-      if (modal || menu) return
-      const el = e.target instanceof HTMLElement ? e.target : null
-      if (el?.id === 'set-q' && q) { e.preventDefault(); setQ(''); return }
-      if (el && el.id !== 'set-q' && isTextField(el)) return
-      e.preventDefault()
-      actions.ui.leaveSettings()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [q])
+  // Menus and modals take Escape before it gets here, and a toast waits for it to be left alone.
+  useScreenEscape((e, inField) => {
+    const { modal, menu } = getState().ui
+    if (modal || menu) return false
+    const el = e.target instanceof HTMLElement ? e.target : null
+    if (el?.id === 'set-q' && q) { setQ(''); return true }
+    if (inField && el?.id !== 'set-q') return false
+    actions.ui.leaveSettings()
+    return true
+  })
   // A room's pages run past the bottom of the window, so a room page brings the end of its room and the next room's row into view, then the open page.
   useEffect(() => {
     if (page !== 'room') return

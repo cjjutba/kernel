@@ -2,7 +2,7 @@ import type { Room } from '@shared/types'
 import { landing } from '../../nav'
 import { actions, getState } from '../../store'
 import { Icon, IconButton } from '../../ui'
-import { useEscape } from '../../ui/hooks'
+import { useScreenEscape } from '../../ui/hooks'
 import { RoomIcon } from '../../components/RoomIcon'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
 
@@ -30,10 +30,14 @@ export function NewChatHeader({ room }: { room?: Room }) {
 
 /**
  * The tab row's one tab, "New chat", with the chat icon and a × that stays in view. No rename pencil, no new tab button. The × and Esc
- * go back (KERNEL-788). Esc is a layer, so an open menu takes it first.
+ * go back (KERNEL-788). Esc is the screen's own, so an open menu and a field being edited take it first, and a toast waits.
  */
 export function NewChatTab() {
-  useEscape(leave)
+  useScreenEscape((_e, inField) => {
+    if (inField) return false
+    leave()
+    return true
+  })
   return (
     <div className="ws-tabs">
       <div role="tablist" aria-label="Chats and files" className="row" style={{ gap: 2, alignItems: 'flex-end', minWidth: 0 }}>
