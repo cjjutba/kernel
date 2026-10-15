@@ -3045,6 +3045,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // The header and the PR capsule (KERNEL-413): the toggle ends the chat header in both states (KERNEL-425).
   PrMergedOpen: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { panel: true }),
   PrMergedHidden: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),
+  // KERNEL-911: the toggle takes the band's tone with the panel open. Merged is PrMergedOpen, blockers PrBlockers.
+  PrReadyOpen: headerScene('ready', [], { panel: true }),
+  PrCiFailOpen: headerScene('cifail', [prNote('h-note', 'Checks failed on PR #147.', 'cifail')], { panel: true }),
   PrReadyHidden: headerScene('ready', []),
   // Blockers on the latest commit: the band reads Blockers found in red, with a soft Merge anyway (KERNEL-501).
   PrBlockers: withBlockers(headerScene('ready', [], { panel: true })),
