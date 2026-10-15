@@ -157,7 +157,11 @@ export function DocsSearch({ suggestions = [] }: { suggestions?: Suggestion[] })
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown') {
+    // A search field spends Esc on clearing itself, so the dialog closes here instead, as its Esc hint says.
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      dialog.current?.close()
+    } else if (e.key === 'ArrowDown') {
       e.preventDefault()
       setActive((a) => Math.min(a + 1, Math.max(results.length - 1, 0)))
     } else if (e.key === 'ArrowUp') {
@@ -174,7 +178,7 @@ export function DocsSearch({ suggestions = [] }: { suggestions?: Suggestion[] })
       ref={dialog}
       aria-label="Search the docs"
       onClick={(e) => e.target === dialog.current && dialog.current?.close()}
-      className="docs-search m-auto mt-24 w-full max-w-150 rounded-frame border border-line-strong bg-surface-2 p-0 text-ink max-nav:mt-6 max-nav:max-w-none"
+      className="docs-search m-auto mt-24 w-full max-w-150 rounded-frame border border-line-strong bg-surface-2 p-0 text-ink max-nav:mx-3 max-nav:mt-4 max-nav:w-auto max-nav:max-w-none"
     >
       <div className="flex items-center gap-3 border-b border-line px-4">
         <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="shrink-0 text-faint">

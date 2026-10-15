@@ -10,9 +10,9 @@ export function Privacy() {
   return (
     <section id="privacy" aria-labelledby="privacy-title" className="mx-auto max-w-312 px-6 pt-40">
       <SectionHead title="Your Mac. Your plan. Your code." titleId="privacy-title" />
-      <div className="mt-14 grid grid-auto-fit border-y border-line">
+      <div className="mt-14 grid grid-cols-3 border-y border-line max-nav:grid-cols-1">
         {columns.map((col) => (
-          <div key={col.title} className="p-8 not-first:border-l not-first:border-line first:pl-0 last:pr-0 max-nav:px-0 max-nav:py-6 max-nav:not-first:border-t max-nav:not-first:border-l-0">
+          <div key={col.title} className="p-8 max-faq:p-6 not-first:border-l not-first:border-line first:pl-0 last:pr-0 max-nav:px-0 max-nav:py-6 max-nav:not-first:border-t max-nav:not-first:border-l-0">
             <h3 className="text-item">{col.title}</h3>
             <p className="mt-2 text-body leading-relaxed text-muted">{col.text}</p>
           </div>

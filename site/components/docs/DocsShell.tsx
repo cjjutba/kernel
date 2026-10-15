@@ -98,8 +98,9 @@ export function DocsShell({ page }: { page: DocPage }) {
     <DocsLayout current={page.slug} label={`${page.section}: ${page.title}`} toc={<Toc headings={page.headings} />}>
       <CodeCopy />
       <article aria-labelledby="doc-title" className="max-w-180 max-docs:mt-8">
-        <div className="flex items-center justify-between gap-4">
-          <p className="flex min-w-0 items-center gap-1.5 text-small text-muted">
+        <div className="flex items-center justify-between gap-4 max-nav:justify-end">
+          {/* On phones the menu above already names the section and page, so the trail gives Copy page the row. */}
+          <p className="flex min-w-0 items-center gap-1.5 text-small text-muted max-nav:hidden">
             <Link href="/docs" className="transition-colors hover:text-ink">
               Docs
             </Link>

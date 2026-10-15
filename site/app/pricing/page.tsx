@@ -80,7 +80,7 @@ export default function PricingPage() {
         <section aria-label="The plan" className="mx-auto mt-14 max-w-250 px-6">
           <div className="frame-gradient">
             <div className="rounded-frame-in bg-surface-1">
-              <div className="flex items-end justify-between gap-x-10 gap-y-8 p-10 max-nav:flex-col max-nav:items-start max-nav:p-7">
+              <div className="flex items-end justify-between gap-x-10 gap-y-8 p-10 max-faq:flex-col max-faq:items-start max-nav:p-7">
                 <div>
                   <p className="text-item text-ink">Kernel</p>
                   <p className="mt-5 flex items-baseline gap-2.5">
