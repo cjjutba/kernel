@@ -316,7 +316,7 @@ export type ProjectSettingSource = 'shared' | 'local' | 'override'
  * The sections of a project's settings page. A route without one opens General. `setup` holds the files to copy, the workspace scripts,
  * run scripts and preview URLs; `prs` holds reviews, merge rules and PR instructions (KERNEL-680).
  */
-export type ProjectSettingsSection = 'general' | 'git' | 'setup' | 'environment' | 'agents' | 'prs' | 'permissions' | 'skills'
+export type ProjectSettingsSection = 'general' | 'git' | 'setup' | 'environment' | 'agents' | 'prs'
 
 /** One file a new worktree gets from the main checkout. `path` is relative to the project's folder, `size` is in bytes. */
 export interface FileToCopy {

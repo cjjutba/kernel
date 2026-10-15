@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import { isRunName, PORT_BLOCK, RUN_SCRIPT_NAME, type ProjectSettings } from '@shared/types'
-import { Button, Modal, SegmentedControl, useBusy } from '../../../ui'
-import { DataTable, Row, projectValue, Section } from '../kit'
+import { Button, CodeLines, Icon, Modal, SegmentedControl, useBusy } from '../../../ui'
+import { Row, projectValue, Section } from '../kit'
 import { patchProjectSettings } from '../useSettings'
 
 type Script = ProjectSettings['runScripts'][number]
@@ -15,7 +15,7 @@ export function nameProblem(name: string, others: string[]): string | undefined 
   return undefined
 }
 
-/** Run scripts, a table on Settings > a project > Setup and scripts (MorePage projectSetup, KERNEL-680). Saved in the personal file, so a script stays on this Mac. */
+/** Run scripts on Settings > a project > Scripts (KERNEL-914): a row each with its first line. Saved in the personal file, so a script stays on this Mac. */
 export function RunScripts({ projectId, rs }: { projectId: string; rs: ProjectSettings | null }) {
   const [editing, setEditing] = useState<Script | 'new' | null>(null)
   const scripts = rs?.runScripts ?? []
@@ -23,25 +23,25 @@ export function RunScripts({ projectId, rs }: { projectId: string; rs: ProjectSe
   const drop = (name: string) => void patchProjectSettings(projectId, { runScripts: { [name]: null } })
   return (
     <>
-      <Section id="run-scripts" title="Run scripts" count={scripts.length} plain action={<Button onClick={() => setEditing('new')}>Add run script</Button>}>
-        <DataTable
-          label="Run scripts" columns={['Name', 'Command']} grid="140px minmax(0, 1fr)" empty="No run scripts. Add one to start the app from a workspace."
-          rows={scripts.map((s) => {
-            // Only the personal file is written. A script settings.toml defines can be edited here, and Reset drops the personal edit. Remove is for a script only this Mac has.
-            const source = rs?.sources?.[path(s.name)]
-            return {
-              key: s.name,
-              cells: [s.name, <span key="c" className="mono">{s.command}</span>],
-              actions: (
-                <>
+      <Section id="run-scripts" title="Run scripts" count={scripts.length || undefined} plain action={<Button icon="plus" onClick={() => setEditing('new')}>Add</Button>}>
+        <p className="rm-script-desc set-desc">Shortcuts for quick actions, like running your dev server or test suite.</p>
+        {scripts.length === 0 && <p className="set-empty rm-run-empty">No run scripts yet. Add one to start your app from a workspace.</p>}
+        {scripts.length > 0 && (
+          <div className="set-card">
+            {scripts.map((s) => {
+              // Only the personal file is written. A script settings.toml defines can be edited here, and Reset drops the personal edit. Remove is for a script only this Mac has.
+              const source = rs?.sources?.[path(s.name)]
+              const first = s.command.split('\n').find((l) => l.trim()) ?? ''
+              return (
+                <Row key={s.name} lead={<Icon name="play" size={14} />} label={s.name} desc={<span className="mono rm-run-line">{first}</span>}>
                   {source === 'override' && <Button variant="ghost" aria-label={`Reset ${s.name}`} onClick={() => drop(s.name)}>Reset</Button>}
-                  <Button variant="ghost" aria-label={`Edit ${s.name}`} onClick={() => setEditing(s)}>Edit</Button>
+                  <Button aria-label={`Edit ${s.name}`} onClick={() => setEditing(s)}>Edit</Button>
                   {source === 'local' && <Button variant="ghost" aria-label={`Remove ${s.name}`} onClick={() => drop(s.name)}>Remove</Button>}
-                </>
+                </Row>
               )
-            }
-          })}
-        />
+            })}
+          </div>
+        )}
       </Section>
       {editing && <RunScriptForm projectId={projectId} rs={rs} script={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
     </>
@@ -74,8 +74,7 @@ function RunScriptForm({ projectId, rs, script, onClose }: { projectId: string; 
   const others = (rs?.runScripts ?? []).map((s) => s.name).filter((n) => n !== script?.name)
   const problem = fixed ? undefined : nameProblem(name.trim(), others)
   const noCommand = !command.trim()
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
+  const save = () => {
     setShown(true)
     if (problem || noCommand) return
     const next = fixed ? script!.name : name.trim()
@@ -85,30 +84,33 @@ function RunScriptForm({ projectId, rs, script, onClose }: { projectId: string; 
       onClose()
     })
   }
+  const onKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save() }
+  }
   return (
     <Modal
       title={script ? `Edit ${script.name}` : 'Add run script'}
       onClose={onClose}
-      width={480}
-      top={200}
+      width={560}
+      top={160}
       footer={<>
         <span className="grow" />
         <Button variant="ghost" data-dismiss>Cancel</Button>
-        <Button variant="primary" type="submit" form="run-script-form" busy={busy === 'save'} busyLabel="Saving">Save</Button>
+        <Button variant="primary" type="submit" form="run-script-form" busy={busy === 'save'} busyLabel="Saving" aria-keyshortcuts="Meta+Enter">Save<span className="rm-keys" aria-hidden="true">⌘↵</span></Button>
       </>}
     >
-      <form id="run-script-form" className="modal-body set-form" onSubmit={submit} noValidate>
-        <p className="set-help">Saved in settings.local.toml, so it stays on your Mac. A workspace starts it from the Run tab.</p>
+      <form id="run-script-form" className="modal-body set-form" onSubmit={(e) => { e.preventDefault(); save() }} onKeyDown={onKeyDown} noValidate>
         <div className="set-field">
-          <label htmlFor="run-script-name">Name</label>
-          <input id="run-script-name" className="input" autoComplete="off" spellCheck={false} placeholder="frontend" value={fixed ? script!.name : name} disabled={fixed} aria-invalid={shown && !!problem} aria-describedby="run-script-name-note" onChange={(e) => setName(e.target.value)} />
+          <div className="rm-name">
+            <Icon name="play" size={16} />
+            <input id="run-script-name" className="input" aria-label="Name" autoComplete="off" spellCheck={false} placeholder="frontend" value={fixed ? script!.name : name} disabled={fixed} aria-invalid={shown && !!problem} aria-describedby="run-script-name-note" onChange={(e) => setName(e.target.value)} />
+          </div>
           {shown && problem
             ? <span id="run-script-name-note" role="alert" className="set-error">{problem}</span>
-            : <span id="run-script-name-note" className="set-help">{isRun ? 'run is the default script, so it keeps its name.' : shared ? 'This script is in settings.toml, so it keeps its name.' : 'Shown in the Run tab. Letters, digits, - and _.'}</span>}
+            : <span id="run-script-name-note" className="set-help">{isRun ? 'run is the default script, so it keeps its name.' : shared ? 'This script is in settings.toml, so it keeps its name.' : 'Shown in the Run tab. Letters, digits, - and _. Saved in settings.local.toml, so it stays on your Mac.'}</span>}
         </div>
         <div className="set-field">
-          <label htmlFor="run-script-command">Command</label>
-          <textarea id="run-script-command" className="input" spellCheck={false} placeholder="pnpm dev --port $KERNEL_PORT" value={command} aria-invalid={shown && noCommand} aria-describedby="run-script-command-note" onChange={(e) => setCommand(e.target.value)} />
+          <CodeLines id="run-script-command" label="Command" placeholder="pnpm dev --port $KERNEL_PORT" value={command} onChange={setCommand} minLines={2} maxLines={12} invalid={shown && noCommand} describedBy="run-script-command-note" />
           {shown && noCommand
             ? <span id="run-script-command-note" role="alert" className="set-error">Enter the command to run.</span>
             : <span id="run-script-command-note" className="set-help">$KERNEL_PORT is the first of the workspace's {PORT_BLOCK} ports. Use $((KERNEL_PORT + 1)) for the next.</span>}

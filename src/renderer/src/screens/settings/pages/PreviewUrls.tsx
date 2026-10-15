@@ -18,7 +18,7 @@ export function addressProblem(address: string): string | undefined {
   return undefined
 }
 
-/** Preview URLs, a table on Settings > a project > Setup and scripts (MorePage projectSetup, KERNEL-680). The list is saved whole in the personal file, so Remove works on rows settings.toml set too. */
+/** Preview URLs, a table on Settings > a project > Scripts (KERNEL-914). The list is saved whole in the personal file, so Remove works on rows settings.toml set too. */
 export function PreviewUrls({ projectId, rs }: { projectId: string; rs: ProjectSettings | null }) {
   // `index` is the row being edited, or the list's length for a new one.
   const [editing, setEditing] = useState<number | null>(null)

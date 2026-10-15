@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-type Place = { pinned: boolean; anchors: { id: string; offset: number }[]; scrollTop: number; lastUserId?: string }
+type Place = { pinned: boolean; anchors: { id: string; offset: number }[]; scrollTop: number; lastUserId?: string; heights?: Record<string, number> }
 type Mod = {
   readPlace: (rows: { id: string; top: number; height: number }[], scrollTop: number, pinned: boolean, lastUserId?: string) => Place
   placeTop: (place: Place, rowTop: (id: string) => number | undefined, range: number) => number
@@ -77,5 +77,17 @@ describe('spots per chat', () => {
     dropPlace('a')
     expect(takePlace('a')).toBeUndefined()
     expect(takePlace('b')?.scrollTop).toBe(2)
+  })
+})
+
+describe('row heights', () => {
+  it('saves the height of every row with the spot and drops them with it', async () => {
+    const { readPlace, savePlace, takePlace, dropPlace } = await load()
+    const place = readPlace(rows, 500, true)
+    expect(place.heights).toEqual({ r0: 200, r1: 200, r2: 200, r3: 200, r4: 200 })
+    savePlace('chat-h', place)
+    expect(takePlace('chat-h')?.heights?.r2).toBe(200)
+    dropPlace('chat-h')
+    expect(takePlace('chat-h')).toBeUndefined()
   })
 })

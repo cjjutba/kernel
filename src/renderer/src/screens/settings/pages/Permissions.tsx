@@ -87,7 +87,7 @@ export function Permissions({ s }: { s: AppSettings }) {
         <Row id="never-allow" className="ag-rule" label="Never allow" desc="Blocked in every mode, Bypass included." full={rule('Never allow', p.neverAllow, 'neverAllow', 'Add command')} />
         <Row id="protected-branches" className="ag-rule" label="Protected branches" desc="Pushes are blocked in Bypass. Other modes ask first." full={rule('Protected branches', p.protectedBranches, 'protectedBranches', 'Add branch')} />
       </Section>
-      <Section title="Safety" footnote={<>Commands and tools you allow from an approval are saved per project, on {firstProject ? <>each project’s <SettingsLink to={{ page: 'project', projectId: firstProject.id, section: 'permissions' }}>Permissions page</SettingsLink></> : 'each project’s Permissions page'}.</>}>
+      <Section title="Safety" footnote={<>Commands and tools you allow from an approval are saved per project, on {firstProject ? <>each project’s <SettingsLink to={{ page: 'project', projectId: firstProject.id, section: 'agents', row: 'mode' }}>Agents page</SettingsLink></> : 'each project’s Agents page'}.</>}>
         <Row id="network" label="Allow network access" desc="Off blocks the network in every mode."><Toggle label="Allow network access" checked={p.network} onChange={(v) => save({ network: v })} /></Row>
         <Row id="approval-timeout" label="Approval timeout" desc="Then the request falls back to Claude Code’s own prompt.">
           <Select label="Approval timeout" value={String(p.approvalTimeoutSec)} options={timeouts} onChange={(v) => save({ approvalTimeoutSec: Number(v) })} />

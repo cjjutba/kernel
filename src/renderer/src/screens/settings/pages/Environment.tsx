@@ -10,6 +10,7 @@ import { appliesTo, DataTable, isOverride, NoProject, Page, ProjectPage, Section
 import { RowMenu } from './RowMenu'
 import { envChanged, useEnv, type EnvList } from '../env'
 import { patchProjectSettings } from '../useSettings'
+import { FilesToCopy } from './FilesToCopy'
 
 /** Settings > Environment, and a project's Environment page (AgentsPage.dc.html, KERNEL-680). One page serves both. */
 export function Environment({ projectId }: { projectId?: string }) {
@@ -21,6 +22,7 @@ export function Environment({ projectId }: { projectId?: string }) {
     <>
       <Variables projectId={projectId} project={project} env={env} error={error} action={project ? add(false) : undefined} />
       {project && projectId && <EnvFiles projectId={projectId} rs={rs} env={env} />}
+      {project && projectId && <FilesToCopy projectId={projectId} project={project} rs={rs} />}
       {!project && <KernelVars />}
     </>
   )

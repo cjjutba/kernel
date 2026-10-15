@@ -172,3 +172,13 @@
 .devui .toast-stack { position: static; }
 
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } .toggle span { transition: none; } .toast-slot, .toast-slot > .toast { animation: none !important; transition: none !important; } .toast-slot[data-leaving] { visibility: hidden; } }
+
+/* CodeLines: a script field with a line-number gutter (KERNEL-914) */
+.code-lines { display: flex; width: 100%; min-width: 0; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--code-bg); overflow: hidden; }
+.code-lines:focus-within { border-color: var(--ink-3); }
+.code-lines[data-invalid='true'] { border-color: var(--ink); }
+.code-lines[data-disabled='true'] { opacity: 0.6; }
+.code-gutter { flex: 0 0 auto; min-width: 40px; box-sizing: border-box; padding: 8px 10px 8px 12px; border-right: 1px solid var(--line-2); overflow: hidden; font: 12.5px/20px var(--mono); color: var(--muted); text-align: right; user-select: none; }
+.code-gutter span { display: block; height: 20px; }
+.code-text { flex: 1 1 auto; min-width: 0; box-sizing: border-box; margin: 0; padding: 8px 12px; border: 0; background: transparent; color: var(--ink); font: 12.5px/20px var(--mono); white-space: pre; overflow: auto; resize: none; outline: none; user-select: text; tab-size: 2; }
+.code-text::placeholder { color: var(--muted); }

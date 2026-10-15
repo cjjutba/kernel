@@ -654,6 +654,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   AuditRailJumpMotion: async (page) => { await page.getByRole('button', { name: 'Jump to message' }).focus() },
   AuditRailJumpSendMotion: async (page) => { await page.getByRole('button', { name: 'Jump to message' }).focus() },
   AuditGroupCollapseMotion: async (page) => { await page.locator('.group-btn').first().focus() },
+  AuditGroupOpenMotion: async (page) => { await page.waitForTimeout(800); await page.locator('.group-btn').first().focus() },
   WorkspacePlanApproveDraft: askApprove,
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
@@ -684,11 +685,16 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceNewChatJustSent: sendFromNewChat,
   WorkspaceLeaveAndReturn: leaveAndReturn,
   WorkspaceScrolledUp: scrollUp,
+  WorkspaceChatSwitchWorkingMotion: async (page) => { await page.getByRole('tab', { name: 'Snapshot tests' }).click(); await page.waitForTimeout(500); await page.getByRole('tab', { name: 'Empty state copy' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(500) },
+  WorkspaceChatSwitchSavedSpotMotion: async (page) => { await scrollUp(page); await page.getByRole('tab', { name: 'Empty state copy' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(500) },
   ChatRestoredSpot: scrollUp,
   SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSaved: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSavedLight: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsClamped: (page) => leaveSizeLimit(page, '999999'),
+  SettingsProjectScriptsRuns: (page) => scrollToSection(page, 'Archive script'),
+  SettingsProjectAgents: (page) => scrollToSection(page, 'Permissions'),
+  SettingsRunScriptAdd: async (page) => { await page.getByRole('button', { name: 'Add', exact: true }).click(); await page.getByRole('dialog', { name: 'Add run script' }).waitFor(); await page.getByRole('textbox', { name: 'Name' }).fill('run'); await page.waitForTimeout(300) },
   SettingsProjectPrsSaved: async (page) => { await page.getByRole('switch', { name: 'UX review' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsAccountsMoves: (page) => scrollToSection(page, 'Chats and accounts'),
   SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),
@@ -778,7 +784,7 @@ async function stepTo(page: Page, t: number): Promise<boolean> {
 
 async function runMotionAction(page: Page, action: MotionAction, app: ElectronApplication) {
   if ('push' in action) await app.evaluate((_, events) => (globalThis as { kernelFixturePush?: (e: unknown[]) => void }).kernelFixturePush?.(events), action.push)
-  else if ('click' in action) await page.getByRole('button', { name: action.click, exact: true }).click()
+  else if ('click' in action) await page.getByRole('button', { name: action.click, exact: true }).or(page.getByRole('tab', { name: action.click })).click()
   else if ('hold' in action) { await page.getByRole('button', { name: action.hold, exact: true }).first().hover(); await page.mouse.down() }
   else for (const key of action.press) {
     if (key.startsWith('click:')) await page.getByRole('button', { name: key.slice(6), exact: true }).click()
@@ -816,8 +822,21 @@ async function captureMotion(page: Page, app: ElectronApplication, name: string,
   try {
     await freezeAnimations(page)
     // Frame 0 is the instant the action lands. Its async answers (a push from main, a render) arrive while animations are held.
+    await page.evaluate(() => {
+      const w = window as unknown as { __live: string[] }
+      w.__live = []
+      const t0 = performance.now()
+      const tick = () => {
+        const v = document.querySelector('.ws-scroll')
+        const row = v ? `${Math.round(v.scrollTop)}/${Math.round(v.scrollHeight - v.clientHeight)}${v.hasAttribute('data-opening') ? ' opening' : ''} anim${document.getAnimations().length}` : 'none'
+        if (w.__live[w.__live.length - 1]?.split('@')[0] !== row) w.__live.push(`${row}@${Math.round(performance.now() - t0)}`)
+        if (performance.now() - t0 < 900) requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    })
     await runMotionAction(page, motion.action, app)
     await page.waitForTimeout(150)
+    console.log(`${name} live scrollTop/range (ms): ${(await page.evaluate(() => (window as unknown as { __live: string[] }).__live)).join(' ')}`)
     const area = motion.area ? await page.locator(motion.area).first().boundingBox() : null
     const pad = 24
     const clip = area ? { x: Math.max(0, area.x - pad), y: Math.max(0, area.y - 120), width: Math.min(WIDTH, area.width + pad * 2), height: Math.min(HEIGHT, area.height + 120 + pad) } : { x: 0, y: 0, width: WIDTH, height: HEIGHT }
