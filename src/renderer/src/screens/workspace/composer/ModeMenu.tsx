@@ -57,10 +57,9 @@ export function ModeMenu({ anchorRef, provider, availability, shown, onPick, onC
 }
 
 /** The permission dropdown of the toolbar, after the model button: a chat's composer and New chat both draw it, with its menu under it. */
-export function ModeButton({ provider, availability, shown, from, open, onOpen, onPick, onCycle }: {
+export function ModeButton({ provider, availability, shown, open, onOpen, onPick, onCycle }: {
   provider: Provider; availability: ModeAvailabilities | null; shown: Shown
-  /** The mode the chip showed just before it changed. It fades out over the new one while that fades in (KERNEL-839). */
-  from?: Shown; open: boolean
+  open: boolean
   onOpen: (open: boolean) => void; onPick: (mode: ComposerMode) => void; onCycle: () => void
 }) {
   const anchor = useRef<HTMLSpanElement>(null)
@@ -68,7 +67,6 @@ export function ModeButton({ provider, availability, shown, from, open, onOpen, 
     <span ref={anchor} style={{ position: 'relative' }}>
       <Button variant="ghost" className="cmp-model cmp-mode" data-mode={shown.runs} aria-label={modeAria(shown)} aria-haspopup="menu" aria-expanded={open} onClick={() => onOpen(!open)}>
         <Icon name={MODE_ICON[shown.runs]} size={14} /><span className="cmp-mode-name">{buttonName(shown.runs)}</span><Icon name="chevron" size={12} />
-        {from && from.runs !== shown.runs && <span className="cmp-ghost" data-mode={from.runs} aria-hidden="true"><Icon name={MODE_ICON[from.runs]} size={14} /><span className="cmp-mode-name">{buttonName(from.runs)}</span><Icon name="chevron" size={12} /></span>}
       </Button>
       {open && <ModeMenu anchorRef={anchor} provider={provider} availability={availability} shown={shown} onPick={onPick} onCycle={onCycle} onClose={() => onOpen(false)} />}
     </span>

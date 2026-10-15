@@ -88,9 +88,11 @@ beforeAll(async () => {
 let n = 0
 /** The components an event made React run. One event of the same kind goes first, so first-time work (effects, lazy loads) is not counted. */
 async function renders(make: (n: number) => PushEvent): Promise<string[]> {
-  await act(async () => { push(make(++n)) })
+  // A queue change or a turn ending opens a burst that draws at the next task (KERNEL-895), so each event waits for it.
+  const sent = () => act(async () => { push(make(++n)); await new Promise((r) => setTimeout(r, 0)) })
+  await sent()
   commits.length = 0
-  await act(async () => { push(make(++n)) })
+  await sent()
   if (process.env.RENDER_COST) console.log(`RENDER_COST ${make.name} ${commits.flat().length} ${JSON.stringify(commits.flat())}`)
   return commits.flat()
 }

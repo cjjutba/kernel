@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { actions } from '../src/renderer/src/store'
 import type { Approval, Chat } from '../src/shared/types'
 
-// KERNEL-833: the message box stays in plan mode until the plan strip has closed, and a failed approval leaves what was typed alone.
+// KERNEL-895: the message box leaves plan mode in the frame its plan stops waiting, and the placeholder comes from the current state only.
 
 Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -39,26 +39,26 @@ describe('the composer around the plan strip', () => {
   const box = () => host.querySelector('.cmp') as HTMLElement
   const placeholder = () => host.querySelector('.cmp-input')?.getAttribute('data-placeholder')
 
-  it('holds the placeholder and the glow until the strip has closed, then swaps with a fade', async () => {
+  it('changes the placeholder, the chip and the glow in the frame the plan stops waiting', async () => {
     act(() => actions.approvals.set([plan]))
     await mount(true)
     expect(chip()).toBe('plan')
     expect(placeholder()).toBe('Enter your plan adjustments here')
     expect(box().getAttribute('data-plan')).toBe('true')
-    // The plan stops waiting (approved), and the chat leaves plan mode: the strip is still closing.
     act(() => actions.approvals.set([{ ...plan, status: 'allowed' }]))
     render(false)
-    const bar = host.querySelector('.cmp-planbar') as HTMLElement
-    expect(bar.hasAttribute('data-closing')).toBe(true)
-    expect(placeholder()).toBe('Enter your plan adjustments here')
-    expect(box().getAttribute('data-plan')).toBe('true')
-    expect(chip()).toBe('plan')
-    expect(box().hasAttribute('data-swap')).toBe(false)
-    act(() => { const e = new Event('animationend', { bubbles: true }); Object.assign(e, { animationName: 'planbar-out' }); bar.dispatchEvent(e) })
     expect(host.querySelector('.cmp-planbar')).toBeNull()
     expect(placeholder()).not.toBe('Enter your plan adjustments here')
     expect(chip()).not.toBe('plan')
     expect(box().hasAttribute('data-plan')).toBe(false)
-    expect(box().getAttribute('data-swap')).toBe('a')
+  })
+
+  it('shows the plan placeholder only while a plan waits', async () => {
+    await mount(false)
+    expect(placeholder()).not.toBe('Enter your plan adjustments here')
+    act(() => actions.approvals.set([plan]))
+    expect(placeholder()).toBe('Enter your plan adjustments here')
+    act(() => actions.approvals.set([]))
+    expect(placeholder()).not.toBe('Enter your plan adjustments here')
   })
 })

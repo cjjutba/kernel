@@ -1,5 +1,5 @@
 import { EFFORTS, isRunName, MODELS } from '@shared/types'
-import type { AgentDef, Approval, Chat, ClaudeAccount, GithubIssue, HookStatus, LinearIssue, Provider, ProviderStatus, ReviewKind, ProjectSettings, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ChatItem, ClaudeAccount, GithubIssue, HookStatus, LinearIssue, Provider, ProviderStatus, ReviewKind, ProjectSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
@@ -68,6 +68,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
   const status = (provider: Provider): ProviderStatus => f.providerStatus?.[provider] ?? { provider, source: 'bundled', signedIn: true, configFile: '' }
   /** Queued messages a fixture run removed, so Remove and Stop leave them out of the next read. */
   const unqueued = new Set<string>()
+  const saved = new Map<string, ChatItem[]>()
   const queue = (chatId: string) => (f.queue?.[chatId] ?? []).filter((q) => !unqueued.has(q.id))
   const decided = (a: Approval, d: Parameters<Handlers['approvals.decide']>[0]['decision']): Approval =>
     d.behavior === 'answer' ? { ...a, status: 'answered', answer: d.text } : { ...a, status: d.behavior === 'allow' ? 'allowed' : 'denied' }
@@ -207,10 +208,12 @@ export function fixtureHandlers(f: Fixture): Handlers {
       const term = resolvePreset(presetList(settings.terminal, f.terminalClis ?? []), settings.terminal, workspace(workspaceId).mode, preset)
       return { ...base, kind: 'terminal', title: terminalTitle(term.preset), terminal: term.terminal }
     },
-    'chats.items': async ({ chatId }) => f.items[chatId] ?? [],
-    'chats.send': async () => {
+    // What the engine saved: the fixture's items, then the rows its `after` events pushed, so a reload keeps them.
+    'chats.items': async ({ chatId }) => [...(f.items[chatId] ?? []), ...(saved.get(chatId) ?? [])],
+    'chats.send': async ({ parts, clientId }) => {
       for (const step of f.afterSend ?? []) setTimeout(() => step.events.forEach((e) => bus.push(e)), step.afterMs)
-      return { queued: false }
+      // A message sent now comes back with its row, as the engine's does (KERNEL-894).
+      return { queued: false, item: { kind: 'user', id: clientId ?? `fixture-${Date.now()}`, ts: Date.now(), parts } }
     },
     'chats.interrupt': async ({ chatId }) => {
       bus.push({ type: 'chat.running', chatId, running: false })
@@ -240,6 +243,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.live': async () => ({ running: [], retry: {} }),
     'chats.unqueue': async ({ chatId, id }) => {
       unqueued.add(id)
+      bus.push({ type: 'chat.queue', chatId, queue: queue(chatId) })
       return queue(chatId)
     },
     'chats.sendNow': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
@@ -488,15 +492,34 @@ export function fixtureHandlers(f: Fixture): Handlers {
   for (const channel of Object.keys(handlers) as (keyof Handlers)[]) {
     const fails = f.fails?.[channel]
     const lag = f.lag?.[channel]
-    if (fails === undefined && lag === undefined) continue
+    const after = f.after?.[channel]
+    if (fails === undefined && lag === undefined && !after) continue
     const inner = handlers[channel] as (req: unknown) => Promise<unknown>
     ;(handlers as Record<string, unknown>)[channel] = async (req: unknown) => {
       if (lag) await new Promise((r) => setTimeout(r, lag))
       if (fails !== undefined) throw new Error(fails)
-      return inner(req)
+      const res = await inner(req)
+      for (const step of after ?? []) setTimeout(() => step.events.forEach((e) => { const x = filled(e, req as Record<string, unknown>, f); if (x.type === 'chat.item') saved.set(x.chatId, [...(saved.get(x.chatId) ?? []).filter((i) => i.id !== x.item.id), x.item]); bus.push(x) }), step.afterMs)
+      return res
     }
   }
   return handlers
+}
+
+/** An event of `Fixture.after` with the call's message put in: `$id`, `$parts` and `$now`. A queued message's parts come from the fixture's queue for Send now. */
+function filled(e: PushEvent, req: Record<string, unknown>, f: Fixture): PushEvent {
+  // A window that sent no id gets a row under a new one, as the engine does.
+  const id = ((req.clientId ?? req.id) as string | undefined) ?? `engine-${Date.now()}`
+  const parts = req.parts ?? Object.values(f.queue ?? {}).flat().find((q) => q.id === req.id)?.parts ?? []
+  const fill = (v: unknown): unknown => {
+    if (v === '$id') return id
+    if (v === '$parts') return parts
+    if (v === '$now') return Date.now()
+    if (Array.isArray(v)) return v.map(fill)
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fill(x)]))
+    return v
+  }
+  return fill(e) as PushEvent
 }
 
 /**

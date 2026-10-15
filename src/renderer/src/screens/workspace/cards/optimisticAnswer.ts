@@ -1,32 +1,47 @@
 import type { Approval, ChatItem, Decision } from '@shared/types'
 import { answerItemId, answerParts } from '@shared/approvalAnswer'
 import { call } from '../../../api'
-import { actions } from '../../../store'
+import { actions, getState } from '../../../store'
 import { attempt } from '../MessageActions'
 import { isPlanApproval } from './steps'
 
 /**
  * The row the engine will place for a decision made in the chat (`placeAnswer`), built from the decision before the call returns. A typed send shows at
  * once, so an answer does too. The id is the engine's, so its row replaces this one in place and the answer is never drawn twice.
- * Nothing when the card has no answer (a tool permission), or for a plan's change request with images, which main saves first and words itself.
+ * A plan's change request carries its images as the same parts main keeps, so the bubble has the height it will keep.
+ * Nothing when the card has no answer (a tool permission).
  */
 export function answerRow(a: Approval, decision: Decision, ts = Date.now()): ChatItem | undefined {
-  if (decision.behavior === 'deny' && decision.images?.length) return undefined
   const status = decision.behavior === 'allow' ? 'allowed' : decision.behavior === 'deny' ? 'denied' : 'answered'
   const answer = decision.behavior === 'answer' ? decision.text
     : decision.behavior === 'deny' && isPlanApproval(a) ? decision.message?.trim() || undefined
     : a.answer
-  const parts = answerParts({ ...a, status, answer, answers: decision.behavior === 'answer' ? decision.answers ?? a.answers : a.answers })
+  const images = decision.behavior === 'deny' && decision.images?.length ? decision.images.map((i) => ({ type: 'image' as const, name: i.name, dataUrl: i.dataUrl })) : a.images
+  const parts = answerParts({ ...a, status, answer, images, answers: decision.behavior === 'answer' ? decision.answers ?? a.answers : a.answers })
   return parts ? { kind: 'user', id: answerItemId(a.id), ts, parts, approvalId: a.id } : undefined
 }
 
-/** Puts the answer in the chat now. Returns what undoes it when the call fails: it removes only this row, so one the engine has replaced it with stays. */
+const statusOf = (d: Decision): Approval['status'] => (d.behavior === 'allow' ? 'allowed' : d.behavior === 'deny' ? 'denied' : 'answered')
+
+/**
+ * Puts the result of a decision in the chat now, in one render (KERNEL-895). The answer row appears. A plan also stops waiting, so its strip, the Plan placeholder
+ * and the "Waiting for you" line go with it, and an approved one leaves plan mode as the engine will. Returns what undoes it when the call fails: each piece goes
+ * back only while it is still the one drawn here, so a row or card the engine has since replaced stays.
+ */
 export function placeAnswerNow(a: Approval, decision: Decision): () => void {
   const row = a.chatId ? answerRow(a, decision) : undefined
-  if (!row || !a.chatId) return () => undefined
   const chatId = a.chatId
-  actions.chats.upsertItem(chatId, row)
-  return () => actions.chats.dropItem(chatId, row)
+  const settled: Approval | undefined = isPlanApproval(a) ? { ...a, status: statusOf(decision) } : undefined
+  const chat = chatId && a.workspaceId ? getState().chats[a.workspaceId]?.find((c) => c.id === chatId) : undefined
+  const left = settled && decision.behavior === 'allow' && chat?.plan ? { ...chat, plan: false } : undefined
+  if (row && chatId) actions.chats.upsertItem(chatId, row)
+  if (settled) actions.approvals.upsert(settled)
+  if (chat && left) actions.chats.upsert(left)
+  return () => {
+    if (row && chatId) actions.chats.dropItem(chatId, row)
+    if (settled && getState().approvals.find((x) => x.id === a.id) === settled) actions.approvals.upsert(a)
+    if (chat && left && chat.workspaceId && getState().chats[chat.workspaceId]?.find((c) => c.id === chat.id) === left) actions.chats.upsert(chat)
+  }
 }
 
 /** A decision made in the chat: the answer shows at once, and goes again when the call fails, with the same toast as any decision (`title` names it). */
