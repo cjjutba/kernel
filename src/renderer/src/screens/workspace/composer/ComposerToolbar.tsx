@@ -1,6 +1,6 @@
 import { useRef, type ComponentProps, type JSXElementConstructor, type ReactNode } from 'react'
 import type { Effort, Provider } from '@shared/types'
-import { Button, Icon, IconButton, ProviderMark } from '../../../ui'
+import { Button, Icon, IconButton, ProviderMark, Spinner } from '../../../ui'
 import { EffortButton } from './EffortMenu'
 import { LeadModeSwitch, ModeButton } from './ModeMenu'
 import { ModelPicker } from './ModelPicker'
@@ -8,8 +8,8 @@ import { PlusMenu } from './PlusMenu'
 
 type Anchored<C extends JSXElementConstructor<any>> = Omit<ComponentProps<C>, 'anchorRef'>
 
-/** The send button's state: ready to send, busy, or, in a chat that is running with nothing typed, Stop. */
-export interface SendState { label: string; ready: boolean; disabled?: boolean; busy?: boolean; busyLabel?: string; stop?: boolean; onSend: () => void; onStop?: () => void }
+/** The send button's state: ready to send or busy. In a chat that is running, Stop comes before it, and alone while the box is empty. */
+export interface SendState { label: string; ready: boolean; disabled?: boolean; busy?: boolean; busyLabel?: string; stop?: boolean; stopping?: boolean; onSend: () => void; onStop?: () => void }
 
 /**
  * The toolbar of the message box, for a chat's composer and New chat's (KERNEL-805): the Hand off | Build here switch when the chat is with Kernel,
@@ -49,9 +49,8 @@ export function ComposerToolbar({ lead, agent, model, effort, mode, context, plu
       <span ref={plusAnchor} className="cmp-plus">
         <PlusMenu anchorRef={plusAnchor} {...plus} />
       </span>
-      {send.stop
-        ? <button type="button" className="icon-btn send stop" aria-label="Stop" onClick={send.onStop}><span /></button>
-        : <IconButton className="send" icon="up" size={14} label={send.label} busy={send.busy} busyPattern="arrow-right" busyLabel={send.busyLabel} disabled={send.disabled} data-ready={send.ready} onClick={send.onSend} />}
+      {send.stop && <button type="button" className="icon-btn send stop" aria-label={send.stopping ? 'Stopping' : 'Stop'} aria-busy={send.stopping || undefined} disabled={send.stopping} onClick={send.onStop}>{send.stopping ? <Spinner label={null} pattern="ripple-out" /> : <span />}</button>}
+      {(!send.stop || send.ready || send.busy) && <IconButton className="send" icon="up" size={14} label={send.label} busy={send.busy} busyPattern="arrow-right" busyLabel={send.busyLabel} disabled={send.disabled} data-ready={send.ready} onClick={send.onSend} />}
     </>
   )
 }

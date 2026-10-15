@@ -11,13 +11,15 @@ import { FileIcon } from '../../../components/FileIcon'
 import { useModeAvailability } from '../../../permissionModes'
 import { actions, getState, loadWorkspace, setLeadMode, useStore } from '../../../store'
 import { useRoomSettings } from '../../settings/useSettings'
-import { Icon, useBusy } from '../../../ui'
+import { Button, Icon, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { PlanStrip, usePlanStrip } from '../cards/plan'
 import { noteFromParts, waitingPlan } from '../cards/steps'
 import { baseName, dirName, filterAgents, mentionAt, mentionMenu, mentionPart, runsOnEnter, slashAt, slashMenu } from './autocomplete'
 import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued, takeComposerFocus } from './bus'
 import { useDraft } from './draft'
+import { escapeStops, queueBackInBox } from './stop'
+import { loadFailureLine, useComposerLoads } from './useComposerLoads'
 import { ComposerInput } from './ComposerInput'
 import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
@@ -130,12 +132,10 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const rows = mention ? mentionRows : slashRows
   const roomId = ws?.roomId
 
-  // The queue and what it waits for are also pushed as events; this reads what was queued before the screen opened.
-  // No reason comes back for an empty queue, so a null answer says nothing and leaves a pushed one alone.
-  useEffect(() => {
-    void call('chats.queue', { chatId: chat.id }).then((q) => actions.chats.setQueue(chat.id, q)).catch(() => undefined)
-    void call('chats.queueReason', { chatId: chat.id }).then((why) => { if (why) actions.chats.setQueueWhy(chat.id, why) }).catch(() => undefined)
-  }, [chat.id])
+  // The queue, what it waits for and the run mode are also pushed as events; this reads what was set before the screen opened.
+  // A read that failed says so above the box, with Retry, and is read again when the network is back.
+  const { failed, retry } = useComposerLoads(chat.id)
+  const [retrying, runRetry] = useBusy<'retry'>()
   useEffect(() => { if (roomId) void call('skills.list', { roomId }).then(setSkills).catch(() => setSkills([])) }, [roomId])
   useEffect(() => { void call('commands.list', undefined).then(setCommands).catch(() => setCommands([])) }, [])
 
@@ -215,10 +215,6 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const roomMode = useStore((s) => s.rooms.find((r) => r.id === roomId)?.permissionMode)
   const appMode = useStore((s) => s.settings?.permissions.mode)
   const availability = useModeAvailability()
-  useEffect(() => {
-    if (getState().runModes[chat.id]) return
-    void call('chats.runMode', { chatId: chat.id }).then((m) => { if (!getState().runModes[chat.id]) actions.chats.setRunMode(chat.id, m) }).catch(() => undefined)
-  }, [chat.id])
   const shown = shownMode(chat.plan || (holding && planWas), runMode, chat.mode ?? roomMode ?? appMode ?? 'default')
   /** Plan sets `plan` and leaves the chat's `mode`. Every other mode sets `mode` and leaves plan. Bypass permissions asks once first, and what it saves is this chat's mode. */
   const setMode = (mode: ComposerMode, patch: (m: ComposerMode) => ReturnType<typeof modePatch> | ReturnType<typeof cyclePatch> = modePatch) => {
@@ -240,6 +236,24 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const sendWith = useSendWith()
   const [sendingNow, runNow] = useBusy<string>()
   const sendNow = (q: QueuedMessage) => void runNow(q.id, () => attempt('Could not send now', async () => actions.chats.setQueue(chat.id, await call('chats.sendNow', { chatId: chat.id, id: q.id }))))
+  const [stopping, runStop] = useBusy<'stop'>()
+  /**
+   * Stop clears the queue (D-030), so the messages it drops go back into the box, in order, after what was typed. They leave the queue first, so
+   * the turn can't send the next one as it ends, and they are put back even when the interrupt fails.
+   */
+  const stop = () => void runStop('stop', async () => {
+    const id = chat.id
+    const dropped: QueuedMessage[] = []
+    try {
+      for (const q of getState().queue[id] ?? []) {
+        actions.chats.setQueue(id, await call('chats.unqueue', { chatId: id, id: q.id }))
+        dropped.push(q)
+      }
+      await call('chats.interrupt', { chatId: id })
+    }
+    catch (e) { actions.ui.toast({ title: 'Could not stop', sub: cleanError(e) }) }
+    if (dropped.length) { d.reset(queueBackInBox(d.snapshot(id), dropped), id); d.focus() }
+  })
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.nativeEvent.isComposing) return
     if (acOpen && rows.length) {
@@ -248,6 +262,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
       if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') { e.preventDefault(); pickRow(at, e.key === 'Enter'); return }
     }
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
+    // After the menu, the pickers and the chips have had their Escape, it stops a running turn. It never clears or edits the draft.
+    if (e.key === 'Escape' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && escapeStops({ running, stopping: stopping !== null, menuOpen: menu !== null, autocompleteOpen: acOpen })) { e.preventDefault(); stop(); return }
     if (suggested && (e.key === 'Tab' || e.key === 'ArrowRight') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); d.setText(suggested); d.focus(); return }
     // ⌘⇧ Enter sends the first queued message now, whatever Send messages with says.
     if (e.key === 'Enter' && e.shiftKey && (e.metaKey || e.ctrlKey) && queue.length && canSendNow(queueWhy)) { e.preventDefault(); sendNow(queue[0]); return }
@@ -311,6 +327,12 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
         <span className="sr-only" role="status" aria-live="polite">{strip.said}</span>
         {banner}
         {dirty.length > 0 && <UncommittedNote files={dirty} />}
+        {loadFailureLine(failed) && (
+          <div className="note" role="status">
+            <span className="note-text grow">{loadFailureLine(failed)}</span>
+            <Button variant="ghost" busy={retrying === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void runRetry('retry', retry)}>Retry</Button>
+          </div>
+        )}
         <QueueList
           queue={queue}
           why={queueWhy}
@@ -373,7 +395,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
         mode={{ provider, availability, shown, from: swapFrom?.shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
         context={chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
         plus={{ panel: menu === 'model' || menu === 'effort' || menu === 'context' || menu === 'mode' || menu === 'runIn' || menu === 'branch' ? null : menu, onPanel: setMenu, roomId, workspaceId: chat.workspaceId, onMode: () => setMenu('mode'), onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
-        send={{ label: plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send', ready: hasDraft && !blocked && !d.pending, disabled: blocked, busy: d.pending > 0, busyLabel: 'Attaching', stop: running && !hasDraft, onSend: () => void send(), onStop: () => void call('chats.interrupt', { chatId: chat.id }) }} />}
+        send={{ label: plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send', ready: hasDraft && !blocked && !d.pending, disabled: blocked, busy: d.pending > 0, busyLabel: 'Attaching', stop: running, stopping: stopping !== null, onSend: () => void send(), onStop: stop }} />}
       hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
     />
   )
