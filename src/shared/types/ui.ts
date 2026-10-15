@@ -62,8 +62,6 @@ export interface HeldChat {
   picks: NewChatPicks
 }
 
-export type ConfirmKind = 'archive' | 'discard' | 'removeRoom' | 'retire' | 'trust'
-
 /** The one modal shell's contents. At most one modal is open. */
 export type Modal =
   | null
