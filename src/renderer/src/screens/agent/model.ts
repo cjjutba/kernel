@@ -24,7 +24,6 @@ export const shortFile = (file: string) => {
 export const modelAlias = (id: string) => id.split('-')[1] ?? id
 /** Whether the agent's `model` (an alias or a full id) is this catalog entry. */
 export const sameModel = (model: string | undefined, id: string) => !!model && (model === id || model.toLowerCase() === modelAlias(id) || id.includes(`-${model.toLowerCase()}-`))
-export const modelName = (model?: string) => (model ? MODELS.find((m) => sameModel(model, m.id))?.label ?? model : 'Default model')
 
 /** Tools the editor always offers. An agent's own extra tools, such as `Bash(pnpm test:*)`, are added after these. */
 export const STANDARD_TOOLS = ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob', 'WebFetch']

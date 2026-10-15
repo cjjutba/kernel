@@ -160,11 +160,6 @@ export function useEscape(onEscape: (() => void) | undefined, active = true) {
   useLayer({ onEscape }, active && !!onEscape)
 }
 
-/** A press outside `ref` closes the top layer only. */
-export function useOutside(ref: RefObject<HTMLElement | null>, onOutside: (() => void) | undefined, active = true) {
-  useLayer({ onOutside, ref }, active && !!onOutside)
-}
-
 /**
  * Which button's work is running (DESIGN.md, Busy buttons). `run(key, fn)` marks `key` busy until `fn` settles, and does
  * nothing while another run is going, so a double click, Enter or a shortcut can't start the work twice. Give the button

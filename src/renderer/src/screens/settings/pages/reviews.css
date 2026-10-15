@@ -1,7 +1,6 @@
 /* Room Reviews and Settings, Pull requests' Merge automatically (KERNEL-557). Tokens only. */
 
 /* One review: its switch and Required or Optional at the right, and a line under the text for where it runs, who runs it and on what. */
-.rv-ctl { flex-shrink: 0; display: flex; align-items: center; gap: 16px; }
 .rv-line { display: flex; align-items: center; gap: 8px; }
 .rv-line-label { flex-shrink: 0; width: 58px; font-size: 12.5px; color: var(--muted); }
 .rv-paths { flex: 1; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--input-line); background: var(--panel); color: var(--ink-2); font: 12.5px var(--mono); outline: none; text-overflow: ellipsis; user-select: text; }
@@ -20,11 +19,4 @@
 .rv-number input:disabled { color: var(--muted); }
 .rv-unit { font-size: 12.5px; color: var(--muted); }
 
-/* Merge automatically: the rows under the switch are muted while it is off, and take full ink when it is on. */
-.rv-dim .set-label { color: var(--muted); }
-.rv-dim .set-lines, .rv-dim .rv-number input { color: var(--muted); }
 
-/* Fixed paths that can't be edited */
-.rv-pills { flex-basis: 100%; margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
-.rv-pills li { height: 26px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-2); font-size: 12.5px; color: var(--ink-2); }
-.rv-pills li[data-mono] { font: 11.5px var(--mono); }
