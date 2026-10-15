@@ -3,7 +3,10 @@ import { getStarCount, STAR_COUNT_MIN } from '@/lib/github'
 import { REPO_URL } from '@/lib/links'
 import { GitHubIcon, StarIcon } from './icons'
 
-/** The split Star button. The count shows only from STAR_COUNT_MIN stars, and never as a made-up number. */
+/**
+ * The split Star button, styled as the secondary Button at the md size so it matches Download beside it. The count shows
+ * only from STAR_COUNT_MIN stars, and never as a made-up number.
+ */
 export function StarButtonView({ count, className = '' }: { count: number | null; className?: string }) {
   const show = count !== null && count >= STAR_COUNT_MIN
   return (
@@ -11,16 +14,16 @@ export function StarButtonView({ count, className = '' }: { count: number | null
       href={REPO_URL}
       target="_blank"
       rel="noopener"
-      className={`group inline-flex h-8 items-stretch overflow-hidden rounded-md border border-line-strong text-label font-medium text-ink-2 hover:border-edge-hover hover:text-white ${className}`}
+      className={`group inline-flex h-8 items-stretch overflow-hidden rounded-md border border-edge bg-white/2 text-ui font-medium text-ink transition-colors hover:border-edge-hover hover:text-white ${className}`}
     >
-      <span className="inline-flex items-center gap-2 px-3 group-hover:bg-raised">
+      <span className="inline-flex items-center gap-2 px-3 transition-colors group-hover:bg-white/6">
         <GitHubIcon size={15} />
         Star
         {/* The name reads "Star Kernel on GitHub, 1.2k stars" and still contains the visible text. */}
         <span className="sr-only"> Kernel on GitHub{show ? ',' : ''}</span>
       </span>
       {show ? (
-        <span className="inline-flex items-center gap-1 border-l border-line-strong bg-surface-2 px-2.5 font-mono text-count font-medium text-muted">
+        <span className="inline-flex items-center gap-1 border-l border-edge bg-surface-2 px-2.5 font-mono text-count font-medium text-muted">
           <StarIcon />
           {formatStars(count)}
           <span className="sr-only"> stars</span>

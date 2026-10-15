@@ -16,11 +16,12 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const page = parse((await params).page)
-  return pageMetadata({
+  const base = pageMetadata({
     title: `Changelog, page ${page} · Kernel`,
     description: 'Earlier Kernel releases: new features, improvements and fixes.',
     path: changelogPageHref(page)
   })
+  return { ...base, alternates: { ...base.alternates, types: { 'application/rss+xml': '/changelog/rss.xml' } } }
 }
 
 export default async function ChangelogOlderPage({ params }: Props) {

@@ -7,7 +7,8 @@ import { pageMetadata } from '@/lib/site'
 const title = 'Changelog · Kernel'
 const description = 'New features, improvements and fixes in every Kernel release.'
 
-export const metadata: Metadata = pageMetadata({ title, description, path: '/changelog' })
+const base = pageMetadata({ title, description, path: '/changelog' })
+export const metadata: Metadata = { ...base, alternates: { ...base.alternates, types: { 'application/rss+xml': '/changelog/rss.xml' } } }
 
 export default async function ChangelogPage() {
   const data = await changelogPage(1)
