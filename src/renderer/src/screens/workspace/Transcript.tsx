@@ -682,6 +682,9 @@ const GroupEntry = memo(function GroupEntry({ entry, changes, full }: { entry: E
 /** Whether the reader is away from the end of the transcript, which a fold waits on before it closes under them. */
 const TranscriptAway = createContext(false)
 
+/** The agent is waiting on the reader's plan approval, so its folds show no spinner or clock. */
+const TranscriptWaiting = createContext(false)
+
 /** Whether the reader has text selected inside `el`. */
 const selectingIn = (el: HTMLElement | null) => {
   const sel = getSelection()
@@ -699,6 +702,7 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
   const chatId = useContext(TranscriptChat)
   const mode = useStore((s) => s.ui.workspace.toolCalls ?? 'auto')
   const away = useContext(TranscriptAway)
+  const waiting = useContext(TranscriptWaiting)
   const { turn } = block
   const want = wantOpen(mode, turn.live)
   const [manual, setManual, touched] = useRowOpen(chatId, block.id, want)
@@ -727,14 +731,14 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
   const [all, setAll] = useRowOpen(chatId, `${block.id}:earlier`, false)
   const { shown: rows, earlier } = windowEntries(block.entries, turn.live, all)
   const id = `${block.id}-list`
-  const h = foldHeader(turn, block.summary)
+  const h = foldHeader(turn, block.summary, waiting)
   const { bad } = block.summary
   const last = block.entries[block.entries.length - 1]
   return (
     <div className="col" style={{ gap: 2 }} ref={box}>
       <button type="button" className="group-btn" aria-expanded={open} aria-controls={id} onClick={() => setManual(!open)}>
         <span className="chev" data-open={open}><Icon name="right" size={12} /></span>
-        {turn.live && turn.timer && <Spinner label="Working" pattern="spiral" />}
+        {turn.live && turn.timer && !waiting && <Spinner label="Working" pattern="spiral" />}
         <span className="group-text">
           {h.head}{h.clock && turn.startedAt !== undefined && <> · <Clock since={turn.startedAt} /></>}{h.tail && ` · ${h.tail}`}{bad && <span className="step-bad">, {bad}</span>}
         </span>
@@ -1274,6 +1278,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         <TranscriptWorkspace.Provider value={workspaceId}>
         <TranscriptChat.Provider value={chatId}>
         <TranscriptAway.Provider value={away}>
+        <TranscriptWaiting.Provider value={planWaits}>
         <ShownInError.Provider value={inError}>
         <div ref={thread} className="thread" style={empty ? { display: 'none' } : undefined}>
           {blocks.map((b, i) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} workspaceId={workspaceId} changes={changes} inWorkspace={i === latestFiles && changes.length > 0 && changes.length !== ((b.kind === 'reply' || b.kind === 'files') && b.files ? b.files.length : 0) ? changes.length : undefined} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
@@ -1284,6 +1289,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
           <div ref={end} />
         </div>
         </ShownInError.Provider>
+        </TranscriptWaiting.Provider>
         </TranscriptAway.Provider>
         </TranscriptChat.Provider>
         </TranscriptWorkspace.Provider>

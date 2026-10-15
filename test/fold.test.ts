@@ -24,6 +24,20 @@ describe('the fold header changes tense', () => {
   })
 })
 
+describe('a fold while a plan waits for approval', () => {
+  it('shows no clock and no "Working", and keeps the summary', () => {
+    const t = turn({ live: true, startedAt: 1000 })
+    const text = headerText(t, sum('Read 1 file, finishing the plan'), 301_000, true)
+    expect(text).toBe('Waiting for you · read 1 file, finishing the plan')
+    expect(text).not.toMatch(/Working|\d+m|\d+s/)
+    expect(foldHeader(t, sum('Read a file'), true).clock).toBe(false)
+    expect(headerText(turn({ live: true, timer: false }), sum('Working'), 0, true)).toBe('Waiting for you')
+  })
+  it('does not change a finished fold', () => {
+    expect(headerText(turn({ durationMs: 12_000 }), sum('Ran 2 commands'), 0, true)).toBe('Worked for 12s · ran 2 commands')
+  })
+})
+
 describe('which way a fold goes', () => {
   it('wants open while working in auto, always in open, never in closed', () => {
     expect([wantOpen('auto', true), wantOpen('auto', false)]).toEqual([true, false])

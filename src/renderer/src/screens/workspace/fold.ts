@@ -4,6 +4,8 @@ import { fmtDuration, WORKING, type Entry, type FoldTurn, type Summary } from '.
 /** An open fold of a running turn lists this many of its newest steps, and a row above them opens the rest. */
 export const WINDOW = 8
 
+const WAITING = 'Waiting for you'
+
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)
 
 /**
@@ -11,17 +13,20 @@ const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)
  * "Worked for 2m 14s · ran 5 commands, read 3 files". Only the turn's first fold carries the time; the others show their summary alone.
  * A fold of only messages or thinking has no summary to add.
  */
-export function foldHeader(turn: FoldTurn, summary: Summary): { head: string; clock: boolean; tail: string } {
+export function foldHeader(turn: FoldTurn, summary: Summary, waiting = false): { head: string; clock: boolean; tail: string } {
   const bare = summary.text === WORKING
   const tail = bare ? '' : lower(summary.text)
-  if (!turn.timer) return { head: bare ? (turn.live ? WORKING : 'Worked') : summary.text, clock: false, tail: '' }
+  // A turn waiting on the reader's plan approval hasn't ended, but nothing is working: no clock and no "Working".
+  const idle = turn.live && waiting
+  if (!turn.timer) return { head: bare ? (idle ? WAITING : turn.live ? WORKING : 'Worked') : summary.text, clock: false, tail: '' }
+  if (idle) return { head: WAITING, clock: false, tail }
   if (turn.live) return { head: WORKING, clock: turn.startedAt !== undefined, tail }
   return { head: turn.durationMs === undefined ? 'Worked' : `Worked for ${fmtDuration(turn.durationMs)}`, clock: false, tail }
 }
 
 /** The header as one string, for a screen reader and for tests. `now` is the live clock's time. */
-export function headerText(turn: FoldTurn, summary: Summary, now = Date.now()): string {
-  const h = foldHeader(turn, summary)
+export function headerText(turn: FoldTurn, summary: Summary, now = Date.now(), waiting = false): string {
+  const h = foldHeader(turn, summary, waiting)
   const clock = h.clock && turn.startedAt !== undefined ? fmtDuration(now - turn.startedAt) : ''
   return [h.head, clock, h.tail].filter(Boolean).join(' · ')
 }
