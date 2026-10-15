@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { APP_FOLDER, DEV_FOLDER, dataDirs, moveToDev, openBy, unshareHookToken } from '../src/main/dataDir'
+import { APP_FOLDER, DEV_FOLDER, dataDirs, moveToDev, openBy, removeJiraAccount, unshareHookToken } from '../src/main/dataDir'
 
 // KERNEL-408: a dev run moves the data from Kernel to Kernel Dev on its first launch. Every test works in a temp folder
 // standing in for ~/Library/Application Support.
@@ -212,5 +212,16 @@ describe('unshareHookToken (KERNEL-675)', () => {
     expect(unshareHookToken({ own: to, other: from })).toBe(false)
     expect(readFileSync(join(to, 'hook-token'), 'utf8')).toBe('b'.repeat(64))
     expect(unshareHookToken({ own: to, other: join(from, 'missing') })).toBe(false)
+  })
+})
+
+describe('removeJiraAccount (remove-jira)', () => {
+  it('deletes the Jira account file and leaves the rest of the data folder, and a folder without one is fine', () => {
+    const { from } = appData()
+    writeFileSync(join(from, 'jira.json'), JSON.stringify({ site: 'acme.atlassian.net', email: 'a@b.c', token: 'secret' }))
+    removeJiraAccount(from)
+    expect(existsSync(join(from, 'jira.json'))).toBe(false)
+    expect(existsSync(join(from, 'integrations.json'))).toBe(true)
+    expect(() => removeJiraAccount(from)).not.toThrow()
   })
 })

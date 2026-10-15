@@ -14,7 +14,7 @@ import { diagnostics, Log } from './services/log'
 import { errorEvent } from './services/telemetrySend'
 import { appMenu } from './menu'
 import { BOOT_UPDATE_MS, readNotes, runUpdateTest, Updater, updateTestArgs } from './updater'
-import { dataDirs, moveToDev, unshareHookToken } from './dataDir'
+import { dataDirs, moveToDev, removeJiraAccount, unshareHookToken } from './dataDir'
 import { isInstalledCopy, loginItemSettings, offerMove, replaceBox, runsFrom, type CopyInfo } from './loginItem'
 import { lastFolder } from './picker'
 import { QuitGuard } from './quit'
@@ -125,6 +125,8 @@ if (dirs && primary && !app.isPackaged && !dirs.run) {
     refusal = { message: `${dirs.name} could not move its data`, detail: `Your data is still in ${dirs.other}. ${err instanceof Error ? err.message : String(err)}` }
   }
 }
+// No saved Jira token outlives Jira (remove-jira).
+if (dirs && primary && !refusal) removeJiraAccount(dirs.own)
 
 // Kernel's log (KERNEL-288). Fixture runs leave it off, so screenshots and scripted runs never write to the real one. A dev
 // run can point it at another folder, as test/crash.e2e.test.ts does.

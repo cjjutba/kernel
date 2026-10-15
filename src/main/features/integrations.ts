@@ -1,5 +1,3 @@
-import { rm } from 'node:fs/promises'
-import { join } from 'node:path'
 import type { IssueTaken, RoomTracker, Tracker, TrackerIssue, TrackerKind, Workspace, WorkspaceSource } from '@shared/types'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
@@ -30,14 +28,6 @@ function readsKey(kind: Tracker['kind'], key: string): boolean {
 
 /** Linear and GitHub, and the Integrations page that connects them (KERNEL-325). */
 export class Integrations extends Feature {
-  /**
-   * Jira was a tracker until it was removed (remove-jira). Its account sat in `jira.json` in the data
-   * folder, so start deletes that file, and no saved credential is left behind.
-   */
-  async start() {
-    await rm(join(this.o.dataDir, 'jira.json'), { force: true }).catch(() => undefined)
-  }
-
   /** The Linear token every Linear call uses: the one saved in Settings > Integrations, else LINEAR_API_KEY (KERNEL-445). */
   private async linearKey() { return (await storedLinearToken(this.o.dataDir, this.o.cipher)) ?? linearToken() }
   private get linearFetch(): typeof fetch { return this.o.fetch ?? fetch }

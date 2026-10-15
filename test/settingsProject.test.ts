@@ -802,17 +802,6 @@ describe("a room's tracker for the Issues screen (KERNEL-471)", () => {
     expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('[jira]')
     await k.stop()
   })
-
-  it('deletes the Jira account file from the data folder on start', async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
-    await writeFile(join(dataDir, 'jira.json'), JSON.stringify({ site: 'acme.atlassian.net', email: 'a@b.c', token: 'secret' }))
-    const k = new Kernel({ dataDir, home })
-    await k.start()
-    await expect(stat(join(dataDir, 'jira.json'))).rejects.toThrow()
-    await k.stop({ budgetMs: 0 })
-  })
 })
 
 describe('skills for a room', () => {
