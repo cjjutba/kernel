@@ -6,6 +6,8 @@ on:
   push:
     branches: [main]
     paths: ['site/**', 'design/site/**', '.github/workflows/site.yml']
+  # Ship the site by hand from main, for example after a deploy that failed for a reason outside the code.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -76,3 +78,29 @@ jobs:
           path: site/test-results/compare
           if-no-files-found: ignore
           retention-days: 30
+
+  # The only way the site reaches production. Vercel's Git integration is off in site/vercel.json, because it
+  # deployed on every push to main whether site/ changed or not, and those builds used up the account's daily
+  # deployment limit for every project on it. This job runs when the path filter above says the site changed, or
+  # by hand, and only after the checks pass. Vercel still builds it, from the project's root directory, site/.
+  deploy:
+    needs: site
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Not secrets. They name the Vercel team and the kernel project, so the CLI needs no .vercel folder.
+      VERCEL_ORG_ID: team_3mAiEwDWaFx0otQvMPYeMD3f
+      VERCEL_PROJECT_ID: prj_LZ1l9OXIiJh9Vz1Xbzb9trfMdLqf
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: site/.nvmrc
+
+      # Run from the repo root. The project's root directory is site/, so Vercel looks for site/ in the upload.
+      - name: Deploy to production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel@54.21.1 deploy --prod --yes --archive=tgz --token="$VERCEL_TOKEN"
