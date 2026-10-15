@@ -1362,7 +1362,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     bus.on('push', (e: PushEvent) => { if (e.type === 'account.mcpSignInAll' && e.run.done.includes('linear')) sdk.mcp[folder] = sdk.mcp[folder].map((s) => (s.name === 'linear' ? { ...s, status: 'connected' } : s)) })
     const logs = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m))
     // Nothing checked the account yet, so Sign in to all checks it first.
-    const run = await h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })
+    const run = await k.mcp.signInAll('claude', side.id)
     expect(run).toEqual({ accountId: side.id, servers: ['claude.ai Google Drive', 'figma', 'linear'], done: ['claude.ai Google Drive', 'linear'], failed: [{ server: 'figma', error: 'Claude Code said: Couldn\'t complete authentication for "figma": access denied' }], finished: true })
     expect(await logins()).toEqual(['claude.ai Google Drive', 'figma', 'linear'])
     // Each push says which server is next.
@@ -1386,17 +1386,17 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     sdk.mcp = { [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }] }
     await h['mcp.accounts'](undefined)
     process.env.FAKE_LOGIN_WAIT = '1'
-    const running = h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })
+    const running = k.mcp.signInAll('claude', side.id)
     await until(async () => (await logins()).includes('figma'))
     diag.push(['SEEN', Date.now() % 100000, await claude.calls()])
-    await expect(h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })).rejects.toThrow('Sign in to all is already running.')
+    await expect(k.mcp.signInAll('claude', side.id)).rejects.toThrow('Sign in to all is already running.')
     await h['accounts.cancelAdd']({ provider: 'claude' })
     expect(await running).toEqual({ accountId: side.id, servers: ['figma', 'linear'], done: [], failed: [], finished: true, canceled: true })
     diag.push(['AFTER', Date.now() % 100000, await claude.calls()])
     expect(await logins(), JSON.stringify(diag)).toEqual(['figma'])
     // It can run again once it ended.
     delete process.env.FAKE_LOGIN_WAIT
-    expect((await h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })).done).toEqual(['figma', 'linear'])
+    expect((await k.mcp.signInAll('claude', side.id)).done).toEqual(['figma', 'linear'])
     await k.stop({ budgetMs: 0 })
   })
 
@@ -1521,7 +1521,7 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
     for (const id of ['cli', work.id]) expect(on(after, 'codex', id)?.servers.find((s) => s.name === 'supabase')?.state).toBe('ready')
     // Sign in to all skips what is ready, and a failure carries Codex's reason.
     process.env.FAKE_MCP_FAIL = 'linear'
-    const run = await h['accounts.mcpSignInAll']({ provider: 'codex', accountId: 'cli' })
+    const run = await k.mcp.signInAll('codex', 'cli')
     expect(run).toEqual({ provider: 'codex', accountId: 'cli', servers: ['linear', 'mobbin'], done: ['mobbin'], failed: [{ server: 'linear', error: 'Codex said: access denied' }], finished: true })
     expect(runs.at(-1)).toEqual(run)
     // A server Codex can't sign in to says why, and Cancel stops a sign-in waiting in the browser.
@@ -1579,7 +1579,7 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
     // The row's warning counts only linear.
     expect((await h['accounts.list'](undefined)).find((a) => a.id === side.id)?.mcpSignIns).toEqual([{ server: 'linear', connector: false }])
     // Sign in to all signs in linear alone.
-    const run = await h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })
+    const run = await k.mcp.signInAll('claude', side.id)
     expect(run.servers).toEqual(['linear'])
     expect(await logins()).toEqual(['linear'])
     // Ignore is kept in accounts.json, so a new Kernel on the same data folder still ignores it.
@@ -1642,7 +1642,7 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
     // Needs you: supabase's sign-in and broken's failure. Not the four off, nor the ignored one.
     expect([codex?.needsYou, codex?.ready]).toEqual([2, 1])
     process.env.FAKE_MCP_FAIL = 'supabase'
-    expect((await h['accounts.mcpSignInAll']({ provider: 'codex', accountId: 'cli' })).servers).toEqual(['supabase'])
+    expect((await k.mcp.signInAll('codex', 'cli')).servers).toEqual(['supabase'])
     await k.stop({ budgetMs: 0 })
   })
 

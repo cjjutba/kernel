@@ -373,7 +373,7 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
 
   it("links an issue, renaming the branch before the first push and only linking after it, and refuses a chat in Hand off", async () => {
     const { k, room, ws, chat } = await building()
-    const linked = await k.handlers()['lead.linkIssue']({ workspaceId: ws.id, issue: 'KERNEL-760' })
+    const linked = await k.lead.linkIssue(ws.id, 'KERNEL-760')
     expect(linked.source).toMatchObject({ kind: 'issue', id: 'KERNEL-760' })
     expect(linked.branch).toMatch(/^feat\/kernel-760/)
     expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(linked.branch)

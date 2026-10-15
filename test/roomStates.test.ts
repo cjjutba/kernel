@@ -403,14 +403,13 @@ describe('room pause and team templates', () => {
     await k.stop()
   })
 
-  it('restarts a chat through the channel', async () => {
+  it('restarts a chat', async () => {
     const k = await kernel()
-    const h = k.handlers()
     const room = await k.addRoom(await tempRepo({ '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou lead.' }))
     const chat = await k.leadChat(room.id)
     await setUp(k, chat.id)
     const before = sdk.calls.length
-    expect(await h['chats.restart']({ chatId: chat.id })).toEqual({ ok: true })
+    await k.sessions.restart(chat.id)
     expect(sdk.calls.length).toBe(before + 1)
     await flush()
     await k.stop()

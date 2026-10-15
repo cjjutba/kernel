@@ -265,11 +265,6 @@ export async function lockfileInstall(repoPath: string): Promise<string | undefi
   return installOf(await stacksOf(repoPath))
 }
 
-/** Whether the checkout's install runs the repo's own code, besides package.json's install scripts, so it waits for trust (KERNEL-444). */
-export async function installRunsRepoCode(repoPath: string): Promise<boolean> {
-  return (await stacksOf(repoPath)).some((s) => s.runsRepoCode)
-}
-
 /** The scripts a package install runs from the root `package.json` itself, in the order it runs them. */
 const INSTALL_HOOKS = ['preinstall', 'install', 'postinstall', 'preprepare', 'prepare', 'postprepare'] as const
 
