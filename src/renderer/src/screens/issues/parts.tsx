@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
-import type { Room } from '@shared/types'
+import type { BannerKind, GitHubErrorKind, Room } from '@shared/types'
 import { go } from '../../store'
-import { Button, Icon, Menu, Select } from '../../ui'
+import { Banner, Button, Icon, Menu, Select, useBusy } from '../../ui'
 import { RoomIcon } from '../../components/RoomIcon'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
 
@@ -61,5 +61,32 @@ export function NoTracker({ room }: { room: Room }) {
       <p>Choose Linear or GitHub Issues in this room's settings and its issues show here. Chats work without one.</p>
       <Button variant="primary" size="lg" onClick={() => chooseTracker(room.id)}>Choose a tracker</Button>
     </div>
+  )
+}
+
+/** A failed refresh over rows that already loaded: the rows stay and this sits above them. */
+export function RefreshNotice({ kind, title, action, children }: { kind: BannerKind; title: string; action: ReactNode; children: ReactNode }) {
+  return <div className="is-notice"><Banner kind={kind} title={title} actions={action}>{children}</Banner></div>
+}
+
+/** The list stops at the most recent issues the tracker returns. Say so at its foot. */
+export function CapNote({ children }: { children: ReactNode }) {
+  return <p className="is-cap muted">{children}</p>
+}
+
+/** What a failed GitHub read says and where it points, by the kind the engine gave it (KERNEL-861). */
+export function githubProblem(kind: GitHubErrorKind, message: string, where: string): { title: string; sub: string; banner: BannerKind } {
+  if (kind === 'signed-out') return { title: "GitHub isn't signed in", sub: 'Run gh auth login in a terminal, then try again.', banner: 'auth' }
+  if (kind === 'not-found') return { title: `Can't find ${where}`, sub: 'The repo may have been renamed, deleted or made private. Choose another tracker for this room.', banner: 'setup' }
+  if (kind === 'rate-limited') return { title: 'GitHub rate limit reached', sub: 'Wait a few minutes, then try again.', banner: 'limit' }
+  if (kind === 'offline') return { title: "Can't reach GitHub", sub: 'Check your connection, then try again.', banner: 'offline' }
+  return { title: "Can't load issues", sub: message, banner: 'offline' }
+}
+
+/** The description and comments of an issue that did not load, with the way to ask again. The header and buttons stay. */
+export function DescriptionFailed({ children, onRetry }: { children: ReactNode; onRetry: () => void }) {
+  const [busy, run] = useBusy<'retry'>()
+  return (
+    <Banner kind="offline" title="Could not load the description" actions={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void run('retry', async () => onRetry())}>Try again</Button>}>{children}</Banner>
   )
 }

@@ -1,24 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import type { GithubIssue, Room } from '@shared/types'
+import type { GithubIssue, GitHubErrorKind, Room } from '@shared/types'
+import { githubErrorKind } from '@shared/githubError'
 import { call, cleanError } from '../../api'
 import { getState, useStore } from '../../store'
 import { readSavedJson, writeSavedJson } from '../../remember'
-import { Banner, Button, Icon, IconButton, Pill, Spinner } from '../../ui'
+import { Button, EmptyList, FailedState, Icon, IconButton, Pill, Spinner } from '../../ui'
 import { IssueState } from '../../icons'
 import { GithubDetail } from './GithubDetail'
 import {
   byUpdated, DEFAULT_GITHUB_FILTER, githubFilterKey, parseGithubFilter, describeGithub, issueAge, joinFits, labelsOf, linkedWorkspaces, loginInitials, milestonesOf, narrowGithub, rowLabels, rowStatus,
   type GithubFilter
 } from './model'
-import { FilterChip, IssuesHeader, typing, type RoomHead } from './parts'
+import { CapNote, chooseTracker, FilterChip, githubProblem, IssuesHeader, RefreshNotice, typing, type RoomHead } from './parts'
 import './issues.css'
 
-type View = { kind: 'loading' } | { kind: 'error'; title: string; sub: string } | { kind: 'ready' }
+type Failure = { kind: 'error'; why: GitHubErrorKind; message: string }
+type View = { kind: 'loading' } | Failure | { kind: 'ready' }
 
-const UNREACHABLE: View = { kind: 'error', title: "Can't reach GitHub", sub: 'Check your connection, then try again.' }
+const UNREACHABLE: Failure = { kind: 'error', why: 'offline', message: '' }
 
-/** What gh said, in the words the banner shows. The engine's messages already say what to do. */
-const failure = (e: unknown): View => ({ kind: 'error', title: "Can't load issues", sub: cleanError(e) })
+/** What gh said, and the kind of failure it was. The engine's messages already say what to do. */
+const failure = (e: unknown): Failure => ({ kind: 'error', why: githubErrorKind(e) ?? 'other', message: cleanError(e) })
 
 /**
  * IssuesGitHub.png: a GitHub room's open issues in a list, the selected one on the right. It is Linear's page with GitHub's fields,
@@ -32,6 +34,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
   const chats = useStore((s) => s.chats)
   const running = useStore((s) => s.running)
   const [view, setView] = useState<View>({ kind: 'loading' })
+  const [problem, setProblem] = useState<Failure | null>(null)
   const [issues, setIssues] = useState<GithubIssue[]>([])
   const [filter, setFilter] = useState<GithubFilter>(() => readSavedJson(githubFilterKey(room.id), parseGithubFilter))
   const [query, setQuery] = useState('')
@@ -43,6 +46,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
   // The newest load wins, so a slow answer for an old search can't replace a newer list.
   const seq = useRef(0)
   const loadedQuery = useRef<string | null>(null)
+  const hasRows = useRef(false)
   const queryNow = useRef(query)
   queryNow.current = query
 
@@ -53,10 +57,14 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
       const rows = await call('github.issueList', { roomId: room.id, query: q || undefined })
       if (n !== seq.current) return
       loadedQuery.current = q
+      hasRows.current = true
       setIssues(rows)
+      setProblem(null)
       setView({ kind: 'ready' })
     } catch (e) {
-      if (n === seq.current) setView(failure(e))
+      if (n !== seq.current) return
+      if (hasRows.current) setProblem(failure(e))
+      else setView(failure(e))
     }
   }, [room.id])
 
@@ -123,7 +131,8 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
     }
   }
 
-  const shown: View = !online && (view.kind === 'ready' || view.kind === 'error') ? UNREACHABLE : view
+  const failed: Failure | null = view.kind === 'ready' ? (!online ? UNREACHABLE : problem) : null
+  const shown: View = !online && view.kind === 'error' ? UNREACHABLE : view
   const ready = shown.kind === 'ready'
   // The room's filter is kept when you leave Issues and come back (DESIGN.md, Remembered choices).
   useEffect(() => { writeSavedJson(githubFilterKey(room.id), filter) }, [room.id, filter])
@@ -153,13 +162,20 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
 
       {shown.kind === 'loading' && <div className="is-center is-loading" role="status"><Spinner label={null} pattern="arrow-down" />Loading issues</div>}
 
-      {shown.kind === 'error' && (
-        <div className="is-center">
-          <div className="is-fail">
-            <Banner kind="offline" title={shown.title} actions={<Button size="md" busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{shown.sub}</Banner>
-          </div>
-        </div>
-      )}
+      {shown.kind === 'error' && (() => {
+        const p = githubProblem(shown.why, shown.message, where ?? 'this repo')
+        if (shown.why === 'signed-out') return <EmptyList icon="key" title={p.title} action={<Button busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{p.sub}</EmptyList>
+        if (shown.why === 'not-found') return <EmptyList icon="warning" title={p.title} action={<Button onClick={() => chooseTracker(room.id)}>Open room settings</Button>}>{p.sub}</EmptyList>
+        return <FailedState title={p.title} onRetry={load}>{p.sub}</FailedState>
+      })()}
+
+      {ready && failed && (() => {
+        const p = githubProblem(failed.why, failed.message, where ?? 'this repo')
+        const action = failed.why === 'not-found'
+          ? <Button size="md" onClick={() => chooseTracker(room.id)}>Open room settings</Button>
+          : <Button size="md" busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>
+        return <RefreshNotice kind={p.banner} title={p.title} action={action}>{`${p.sub} The issues below are from the last time they loaded.`}</RefreshNotice>
+      })()}
 
       {ready && flat.length === 0 && (() => {
         const d = describeGithub(filter, query, where ?? 'this repo')
@@ -207,6 +223,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
                 })}
               </ul>
             </section>
+            {issues.length >= 100 && <CapNote>Showing the 100 issues updated most recently. Search or filter to find the rest.</CapNote>}
           </div>
           <div className="is-pane" ref={detail}>
             {selId && <GithubDetail room={room} id={selId} summary={cur} tick={tick} />}

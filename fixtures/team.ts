@@ -790,6 +790,13 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesGitHubEmpty: scene((f) => ({ ...issuesTrackerScene(f, { roomId: ids.roomB }), githubIssues: { [ids.roomB]: [] } })),
   IssuesGitHubOffline: scene((f) => ({ ...issuesTrackerScene(f, { roomId: ids.roomB }), push: [{ type: 'online', online: false }] })),
   IssuesGitHubDetailLoading: scene((f) => ({ ...issuesTrackerScene(f, { issueId: '#31', roomId: ids.roomB }), hold: ['github.issue'] })),
+  IssuesRejected: scene((f) => ({ ...issuesScene(f), fails: { 'linear.issues': 'Linear rejected the token. Reconnect it in Settings > Integrations.' } })),
+  IssuesDetailFailed: scene((f) => ({ ...issuesScene(f), fails: { 'linear.issue': 'Linear could not reach the issue.' } })),
+  IssuesGitHubSignedOut: scene((f) => ({ ...issuesTrackerScene(f, { roomId: ids.roomB }), fails: { 'github.issueList': "GitHubError[signed-out]: The GitHub CLI isn't signed in. Run gh auth login in a terminal." } })),
+  IssuesGitHubRepoGone: scene((f) => ({ ...issuesTrackerScene(f, { roomId: ids.roomB }), fails: { 'github.issueList': 'GitHubError[not-found]: Could not read GitHub issues: GraphQL: Could not resolve to a Repository with the name cjjutba/client-b.' } })),
+  IssuesGitHubRateLimited: scene((f) => ({ ...issuesTrackerScene(f, { roomId: ids.roomB }), fails: { 'github.issueList': 'GitHubError[rate-limited]: Could not read GitHub issues: API rate limit exceeded.' } })),
+  IssuesGitHubFailed: scene((f) => ({ ...issuesTrackerScene(f, { roomId: ids.roomB }), fails: { 'github.issueList': 'GitHubError[other]: Could not read GitHub issues: unexpected response.' } })),
+  IssuesGitHubDetailFailed: scene((f) => ({ ...issuesTrackerScene(f, { issueId: '#31', roomId: ids.roomB }), fails: { 'github.issue': 'GitHubError[other]: Could not read GitHub issues: unexpected response.' } })),
   IssuesWorking: scene((f) => issuesScene(f, { issueId: 'KERNEL-24', working: true })),
   IssuesNoRoom: scene((f) => issuesScene(f, { linkedRoom: false })),
   // Nothing assigned to CJ, so the default Mine filter finds nothing.

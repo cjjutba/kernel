@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import type { LinearIssue, LinearIssueDetail, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, lastRoom, useStore } from '../../store'
-import { Button, Icon, Select, Skeleton, useBusy } from '../../ui'
+import { Button, FailedState, Icon, Select, Skeleton, useBusy } from '../../ui'
 import { IssuePriority, IssueState, PRIORITIES } from '../../icons'
 import { openLeadChat, openNewChat } from '../../lead'
 import { RoomIcon } from '../../components/RoomIcon'
 import { Markdown } from '../workspace/markdown'
+import { DescriptionFailed } from './parts'
 import { initials, issueAge, linkedWorkspaces, stateShape, workspaceState } from './model'
 
 /** One workspace working on the issue, with its agent and what it is doing. */
@@ -30,6 +31,7 @@ export function Linked({ ws }: { ws: Workspace }) {
 export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summary?: LinearIssue; tick: number; onPlanned: () => void }) {
   const [loaded, setLoaded] = useState<LinearIssueDetail | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
   const [busy, run] = useBusy<'plan' | 'link'>()
   const [picked, setPicked] = useState<{ issue: string; room: string } | null>(null)
   const [settled, setSettled] = useState(false)
@@ -46,7 +48,8 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
     setFailed(null)
     call('linear.issue', { id }).then((d) => live && setLoaded(d)).catch((e: Error) => live && setFailed(cleanError(e)))
     return () => { live = false }
-  }, [id, tick])
+  }, [id, tick, attempt])
+  const retry = () => { setFailed(null); setAttempt((a) => a + 1) }
   const issue: LinearIssue | undefined = loaded?.id === id ? loaded : summary
   const detail = loaded?.id === id ? loaded : null
 
@@ -83,10 +86,12 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
   if (!issue) {
     return (
       <article className="is-detail" aria-label={id} aria-busy={!failed || undefined}>
-        <div className="is-scroll"><div className="is-inner">
-          <span className="mono muted is-key">{id}</span>
-          {failed ? <p className="muted">Could not load this issue. {failed}</p> : <Skeleton width="60%" height={26} />}
-        </div></div>
+        {failed ? <FailedState title={`Could not load ${id}`} onRetry={retry}>{failed}</FailedState> : (
+          <div className="is-scroll"><div className="is-inner">
+            <span className="mono muted is-key">{id}</span>
+            <Skeleton width="60%" height={26} />
+          </div></div>
+        )}
       </article>
     )
   }
@@ -141,7 +146,7 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
               </section>
             </>
           ) : failed ? (
-            <p className="muted" style={{ margin: 0 }}>Could not load the description. {failed}</p>
+            <DescriptionFailed onRetry={retry}>{failed}</DescriptionFailed>
           ) : (
             <div className="col" style={{ gap: 8 }} aria-busy="true"><Skeleton width="85%" /><Skeleton width="70%" /><Skeleton width="40%" /></div>
           )}

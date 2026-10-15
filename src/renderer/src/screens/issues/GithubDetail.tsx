@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import type { GithubIssue, GithubIssueDetail, Room } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
-import { Button, Icon, Skeleton, useBusy } from '../../ui'
+import { Button, FailedState, Icon, Skeleton, useBusy } from '../../ui'
 import { IssueState } from '../../icons'
 import { openLeadChat, openNewChat } from '../../lead'
 import { Markdown } from '../workspace/markdown'
 import { Linked } from './IssueDetail'
+import { DescriptionFailed } from './parts'
 import { markJustSent } from '../workspace/chatPlace'
 import { githubPlanParts, issueAge, linkedWorkspaces, loginInitials } from './model'
 
@@ -14,6 +15,7 @@ import { githubPlanParts, issueAge, linkedWorkspaces, loginInitials } from './mo
 export function GithubDetail({ room, id, summary, tick }: { room: Room; id: string; summary?: GithubIssue; tick: number }) {
   const [loaded, setLoaded] = useState<GithubIssueDetail | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
   const [busy, run] = useBusy<'plan'>()
   const workspaces = useStore((s) => s.workspaces)
   const lead = useStore((s) => s.agents[room.id]?.find((a) => a.lead)?.name) || 'Kernel'
@@ -24,7 +26,8 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
     setFailed(null)
     call('github.issue', { roomId: room.id, id }).then((d) => live && setLoaded(d)).catch((e: Error) => live && setFailed(cleanError(e)))
     return () => { live = false }
-  }, [room.id, id, tick])
+  }, [room.id, id, tick, attempt])
+  const retry = () => { setFailed(null); setAttempt((a) => a + 1) }
   const detail = loaded?.id === id ? loaded : null
   const issue: GithubIssue | undefined = detail ?? summary
   const linked = useMemo(() => linkedWorkspaces(id, workspaces.filter((w) => w.roomId === room.id)), [id, workspaces, room.id])
@@ -42,10 +45,12 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
   if (!issue) {
     return (
       <article className="is-detail" aria-label={id} aria-busy={!failed || undefined}>
-        <div className="is-scroll"><div className="is-inner">
-          <span className="mono muted is-key">{id}</span>
-          {failed ? <p className="muted">Could not load this issue. {failed}</p> : <Skeleton width="60%" height={26} />}
-        </div></div>
+        {failed ? <FailedState title={`Could not load ${id}`} onRetry={retry}>{failed}</FailedState> : (
+          <div className="is-scroll"><div className="is-inner">
+            <span className="mono muted is-key">{id}</span>
+            <Skeleton width="60%" height={26} />
+          </div></div>
+        )}
       </article>
     )
   }
@@ -98,7 +103,7 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
               </section>
             </>
           ) : failed ? (
-            <p className="muted" style={{ margin: 0 }}>Could not load the description. {failed}</p>
+            <DescriptionFailed onRetry={retry}>{failed}</DescriptionFailed>
           ) : (
             <div className="col" style={{ gap: 8 }} aria-busy="true"><Skeleton width="85%" /><Skeleton width="70%" /><Skeleton width="40%" /></div>
           )}
