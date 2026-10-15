@@ -213,6 +213,11 @@
   --r-2xs: 4px; --r-xs: 6px; --r-sm: 8px; --r: 10px; --r-md: 12px; --r-lg: 16px; --r-xl: 18px; --r-pill: 999px;
   --font: 'Geist Variable', 'Geist', -apple-system, 'SF Pro Text', system-ui, sans-serif;
   --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
+  --dur-fast: 120ms;
+  --dur-base: 160ms;
+  --dur-glide: 180ms;
+  --ease-out: ease-out;
+  --ease-glide: cubic-bezier(0.45, 0, 0.05, 1);
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }

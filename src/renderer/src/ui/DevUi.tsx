@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Avatar, Banner, Button, Card, Chip, CodeBlock, ConfirmDialog, EmptyState, Icon, IconButton, Kbd, Menu, MENU_SEPARATOR, Meter, Modal, Pill, Popover, SegmentedControl, Select, Skeleton, Spinner, Tabs, Toast, Toggle, bannerIcon, iconNames } from './index'
+import { Avatar, Banner, Button, Card, Chip, CodeBlock, ConfirmDialog, EmptyState, Icon, IconButton, Kbd, Menu, MENU_SEPARATOR, Meter, Modal, Pill, Popover, SegmentedControl, Select, Skeleton, Spinner, Tabs, Toast, Toggle, bannerIcon, iconNames, LoadingRow, EmptyList, FailedState, NotConnectedState } from './index'
 import type { BannerKind, DevUiPage } from '@shared/types'
 import { spinnerPatterns } from './dotPatterns'
 
@@ -135,7 +135,18 @@ function Dialogs() {
   )
 }
 
-const pages = { components: Controls, display: Display, overlays: Overlays, dialogs: Dialogs }
+function States() {
+  return (
+    <>
+      <Section title="Loading row"><Card><div className="devui-state"><LoadingRow what="issues" /></div></Card></Section>
+      <Section title="Empty state"><Card><div className="devui-state"><EmptyList icon="inbox" title="No issues" action={<Button>New workspace</Button>}>Issues assigned to you show up here.</EmptyList></div></Card></Section>
+      <Section title="Failed state"><Card><div className="devui-state"><FailedState title="Can't load issues" onRetry={() => new Promise((r) => setTimeout(r, 1500))}>Could not reach Linear. Check your connection.</FailedState></div></Card></Section>
+      <Section title="Not connected state"><Card><div className="devui-state"><NotConnectedState icon="plug" title="Linear is not connected" page="integrations" label="Open Integrations">Connect Linear to see its issues here.</NotConnectedState></div></Card></Section>
+    </>
+  )
+}
+
+const pages = { components: Controls, display: Display, states: States, overlays: Overlays, dialogs: Dialogs }
 
 /** Every component in both themes (`#/dev/ui/<page>` in dev; fixtures DevUi, DevUiDisplay, DevUiOverlays and DevUiDialogs for the harness). */
 export function DevUi({ page = 'components' }: { page?: DevUiPage }) {
