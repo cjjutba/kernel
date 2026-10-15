@@ -18,7 +18,7 @@ const items = [
     text: 'Agents live as files in your repo. Edit them, or ask your lead to hire someone new.'
   },
   {
-    title: 'Pause the room',
+    title: 'Pause the project',
     text: 'Freeze every agent after its current step with one click, and pick up again when you are ready.'
   },
   {
