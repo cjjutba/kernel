@@ -36,7 +36,7 @@ export function useMoveNotice(chat: Chat | undefined): MoveNotice | null {
     void call('chats.moveNotice', { chatId: id }).then((notice) => { if (live) setShown({ chatId: id, notice }) }).catch(() => undefined)
     return () => { live = false }
   }, [id, stamp, accounts, windows])
-  return shown?.chatId === id ? shown.notice : null
+  return shown && shown.chatId === id ? shown.notice : null
 }
 
 const CHOICES: { choice: MoveChoice; label: string; busy: string }[] = [
