@@ -117,17 +117,17 @@ export default function PricingPage() {
           <h2 id="costs-title" className="text-h3">
             What you pay for
           </h2>
-          <dl className="mt-8 border-t border-line">
+          <ul className="mt-8 border-t border-line">
             {COSTS.map((c) => (
-              <div key={c.item} className="flex items-baseline justify-between gap-8 border-b border-line py-5 max-nav:flex-col max-nav:gap-1.5">
+              <li key={c.item} className="flex items-baseline justify-between gap-8 border-b border-line py-5 max-nav:flex-col max-nav:gap-1.5">
                 <div>
-                  <dt className="text-item text-ink">{c.item}</dt>
-                  <dd className="mt-1 text-body text-muted">{c.note}</dd>
+                  <p className="text-item text-ink">{c.item}</p>
+                  <p className="mt-1 text-body text-muted">{c.note}</p>
                 </div>
-                <dd className="shrink-0 text-body font-medium text-ink-2">{c.cost}</dd>
-              </div>
+                <p className="shrink-0 text-body font-medium text-ink-2">{c.cost}</p>
+              </li>
             ))}
-          </dl>
+          </ul>
         </section>
 
         <section aria-labelledby="pricing-faq-title" className="mx-auto grid max-w-250 grid-faq items-start gap-16 px-6 pt-28 max-faq:grid-cols-1 max-faq:gap-8">
