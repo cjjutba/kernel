@@ -63,6 +63,10 @@
 .cmp-input .cmp-chip { height: 22px; margin: 1px 4px 0; vertical-align: top; white-space: nowrap; cursor: default; }
 .cmp-chip { gap: 6px; padding: 0 5px 0 8px; font: 11.5px var(--mono); }
 .cmp-chip .chip-meta { color: var(--muted); }
+/* Attached files (KERNEL-909): a monochrome icon, and the status as a dim or a strike, never as text */
+.cmp-chip[data-tip] > svg { color: var(--muted); }
+.cmp-chip[data-state='unreadable'] { opacity: 0.6; }
+.cmp-chip[data-state='gone'] .chip-name { color: var(--muted); text-decoration: line-through; }
 .chip-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; }
 .chip[data-kind='image'] > .chip-open > svg { color: var(--add); }
 /* Attaching files (KERNEL-815): a placeholder while a file reads, the chip landing, and the drop overlay over the chat pane (draft.tsx) */

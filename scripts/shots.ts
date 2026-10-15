@@ -491,6 +491,11 @@ async function hoverRow(page: Page, row: string) {
   await page.waitForTimeout(300)
 }
 
+async function hoverFileChip(page: Page) {
+  await page.locator('.cmp-chip[data-tip]').first().hover()
+  await page.waitForTimeout(800)
+}
+
 // WorkspaceHistoryButtonsNarrow is the sidebar at its 200px minimum, where Hide sidebar, Back and Forward have the least project (KERNEL-643).
 async function narrowSidebar(page: Page) {
   const handle = page.getByRole('separator', { name: 'Resize sidebar' })
@@ -583,6 +588,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceModelPickerEffort: openEffortFlyout,
   WorkspaceModelPickerLocked: hoverLockedProvider,
   ComposerAttaching: dropWhileReading,
+  ComposerFileTip: hoverFileChip,
   ConfirmOverrule: openOverrule,
   UsageFooterNarrow: narrowWindow,
   AuditSidebarWide: async (page) => { const h = page.getByRole('separator', { name: 'Resize sidebar' }); await h.focus(); await page.keyboard.press('End'); await h.blur(); await page.waitForTimeout(300) },

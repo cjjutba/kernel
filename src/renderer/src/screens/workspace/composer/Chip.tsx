@@ -1,14 +1,62 @@
 import { createContext, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
-import type { ChatPart, Project, ProjectTracker } from '@shared/types'
+import type { ChatPart, FileKind, Project, ProjectTracker } from '@shared/types'
 import { call } from '../../../api'
 import { actions } from '../../../store'
 import { issueFromPart, issueOpen, issueUrl, type IssueTarget } from '../issueKey'
 import { FileIcon } from '../../../components/FileIcon'
 import { Icon, Modal, Spinner, type IconName } from '../../../ui'
 
-/** A short label after a chip's name: lines of a pasted text, the size of an image, or a linked issue's or pull request's title. */
+const KIND_LABELS: Record<FileKind, string> = {
+  pdf: 'PDF', doc: 'Document', sheet: 'Spreadsheet', slides: 'Slides', archive: 'Archive', audio: 'Audio', video: 'Video', image: 'Image', text: 'Text', binary: 'File'
+}
+
+/** The size of a file as a person reads it: 812 KB, 2.9 MB. */
+export function fileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  const mb = bytes / 1024 / 1024
+  return `${mb < 100 ? mb.toFixed(1) : Math.round(mb)} MB`
+}
+
+/** An attached file's type: its short extension in capitals (PDF, ZIP), else what it was found to be, else File. */
+function typeLabel(p: Extract<ChatPart, { type: 'file' }>): string {
+  const ext = /\.([a-z0-9]{1,5})$/i.exec(p.name)?.[1]
+  return ext ? ext.toUpperCase() : p.kind ? KIND_LABELS[p.kind] : 'File'
+}
+
+/** An attached file: it came from disk (`src`) or was copied to the workspace with a size. Pasted text and @ files are not. */
+const isAttachment = (p: ChatPart) => p.type === 'file' && (!!p.src || (p.size !== undefined && !p.lines))
+
+const CANT_OPEN = "The agent can't open this file type"
+const GONE = 'No longer available. The workspace was archived.'
+const NAME_MAX = 20
+
+/** A long name cut in the middle, so the extension and the end of the name stay: Client-contr…2026.pdf. */
+export function middleCut(name: string, max = NAME_MAX): string {
+  if (name.length <= max) return name
+  const ext = /\.[a-z0-9]{1,5}$/i.exec(name)?.[0] ?? ''
+  const tail = name.slice(-(ext.length + 4))
+  return `${name.slice(0, max - 1 - tail.length)}…${tail}`
+}
+
+/**
+ * What an attached file's chip shows and says. The chip itself carries the size, dimmed when the agent can't open the file and
+ * struck through when it is gone. Everything else, the full name, the type, a PDF's pages and the status, is in the tooltip.
+ */
+export function fileView(p: ChatPart, gone?: boolean): { label: string; size: string; tip: string; hint: string; state?: 'unreadable' | 'gone' } | undefined {
+  if (p.type !== 'file' || !isAttachment(p)) return undefined
+  const state = gone ? 'gone' : p.readable === false ? 'unreadable' : undefined
+  const details = [typeLabel(p), ...(p.pages ? [`${p.pages} ${p.pages === 1 ? 'page' : 'pages'}`] : []), ...(p.size !== undefined ? [fileSize(p.size)] : [])].join(' · ')
+  return {
+    label: middleCut(p.name), size: p.size !== undefined ? fileSize(p.size) : '', tip: p.name, state,
+    hint: state ? `${state === 'gone' ? GONE : CANT_OPEN}\n${details}` : details
+  }
+}
+
+/** A short label after a chip's name: lines of a pasted text, the type and size of an attached file, the size of an image, or a linked issue's or pull request's title. */
 function chipMeta(p: ChatPart): string {
+  if (p.type === 'file' && isAttachment(p)) return [typeLabel(p), ...(p.pages ? [`${p.pages} ${p.pages === 1 ? 'page' : 'pages'}`] : []), ...(p.size !== undefined ? [fileSize(p.size)] : [])].join(' · ')
   if (p.type === 'file' && p.lines && !p.path) return `${p.lines} lines`
   if (p.type === 'image' && p.width && p.height) return `${p.width}×${p.height}`
   if (p.type === 'issue' || p.type === 'pr') return p.title
@@ -20,7 +68,8 @@ export const chipIcon = (p: ChatPart): IconName => (p.type === 'image' ? 'image'
 
 /** A chip's icon. A file from the repo (an @ file, a picked file or a hunk) shows its VS Code icon, the rest the glyph for their kind (KERNEL-399). */
 export function ChipIcon({ part }: { part: ChatPart }) {
-  return part.type === 'file' && part.path ? <FileIcon path={part.path} dir={part.dir} size={14} /> : <Icon name={chipIcon(part)} size={12} />
+  if (part.type === 'file' && isAttachment(part)) return <Icon name={part.readable === false ? 'eyeoff' : 'doc'} size={12} />
+  return part.type === 'file' && (part.path || part.src) ? <FileIcon path={part.path ?? part.name} dir={part.dir} size={14} /> : <Icon name={chipIcon(part)} size={12} />
 }
 
 export type ImagePart = Extract<ChatPart, { type: 'image' }> & { dataUrl: string }
@@ -161,7 +210,7 @@ export function IssueButton({ issue, children, ...rest }: { issue: IssuePart } &
 }
 
 /** One attachment in a composer: pasted text, an image, a file, a skill, or a linked issue or workspace. Every composer draws them the same way, with an icon for the kind. */
-export function ComposerChip({ part, pending, entering, onRemove }: { part: ChatPart; /** A file still being read: its name with the dot loader where the icon goes. */ pending?: boolean; /** A chip that just landed, which fades in. */ entering?: boolean; onRemove: () => void }) {
+export function ComposerChip({ part, pending, entering, gone, onRemove }: { part: ChatPart; /** An attached file that no longer exists. */ gone?: boolean; /** A file still being read: its name with the dot loader where the icon goes. */ pending?: boolean; /** A chip that just landed, which fades in. */ entering?: boolean; onRemove: () => void }) {
   if (part.type === 'text') return null
   if (pending) {
     return (
@@ -173,16 +222,17 @@ export function ComposerChip({ part, pending, entering, onRemove }: { part: Chat
     )
   }
   const label = part.type === 'skill' ? `/${part.name}` : part.name
-  const meta = chipMeta(part)
+  const view = fileView(part, gone)
+  const meta = view ? view.size : chipMeta(part)
   const body = (
     <>
       <ChipIcon part={part} />
-      <span className="ellipsis" style={{ maxWidth: 220 }}>{label}</span>
+      <span className="chip-name ellipsis" style={{ maxWidth: 220 }}>{view ? view.label : label}</span>
       {meta && <span className="chip-meta ellipsis" style={{ maxWidth: 220 }}>{meta}</span>}
     </>
   )
   return (
-    <span className="chip cmp-chip" data-entering={entering || undefined} data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'pr' || part.type === 'workspace' || part.type === 'agent' ? part.type : 'file'}>
+    <span className="chip cmp-chip" data-tip={view?.tip} data-tip-hint={view?.hint} data-state={view?.state} data-entering={entering || undefined} data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'pr' || part.type === 'workspace' || part.type === 'agent' ? part.type : 'file'}>
       {part.type === 'image' && part.dataUrl ? <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="chip-open">{body}</ImageButton>
         : isPastedText(part) ? <TextButton paste={part} className="chip-open">{body}</TextButton>
         : part.type === 'issue' ? <IssueButton issue={part} className="chip-open">{body}</IssueButton> : body}
