@@ -287,6 +287,16 @@ describe('the first message of a new chat anchors, a reopened chat does not (KER
     expect(takeJustSent('never-sent')).toBe(false)
   })
 
+  it('keeps the mark through a place being saved and taken, so a chat that mounts twice places its message both times', async () => {
+    const { markJustSent, peekJustSent, takeJustSent, savePlace, takePlace } = await import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as { markJustSent: (id: string) => void; peekJustSent: (id: string) => boolean; takeJustSent: (id: string) => boolean; savePlace: (id: string, p: unknown) => void; takePlace: (id: string) => unknown }
+    markJustSent('twice')
+    expect(peekJustSent('twice')).toBe(true)
+    savePlace('twice', { pinned: false, anchors: [], scrollTop: 0, anchoredId: 'u1', anchoredTop: 24 })
+    expect(takePlace('twice')).toBeDefined()
+    expect(peekJustSent('twice')).toBe(true)
+    takeJustSent('twice')
+  })
+
   it('is dropped when nothing used it, so a chat opened much later is just a chat', async () => {
     const { markJustSent, peekJustSent, JUST_SENT_MS } = await load()
     markJustSent('old', 1000)

@@ -64,6 +64,10 @@ export interface State {
   lastTabs: Record<string, string>
   /** By chat id. */
   items: Record<string, ChatItem[]>
+  /** By chat id. True once the chat's items have arrived (KERNEL-860). Until then an empty `items` means loading, not a new chat. A chat created in this session has none to load. */
+  itemsLoaded: Record<string, boolean>
+  /** By chat id. True when the last load of the chat's items failed, until a load succeeds. */
+  itemsFailed: Record<string, boolean>
   /** By chat id. */
   running: Record<string, boolean>
   /** By chat id. */
@@ -207,7 +211,7 @@ let state: State = {
   rooms: [], roomSetup: {}, scriptTrust: {}, overlaps: {},
   agents: {}, status: {}, globalAgents: null,
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, scriptData: {}, scriptReplays: {}, checkpoints: {},
-  chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
+  chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, itemsLoaded: {}, itemsFailed: {}, running: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, roomSettings: {}, shared: {},
@@ -598,6 +602,8 @@ export const actions = {
         workspaces: s.workspaces.filter((w) => !gone.has(w.id)),
         chats: omit(s.chats, ids),
         items: omit(s.items, chatIds),
+        itemsLoaded: omit(s.itemsLoaded, chatIds),
+        itemsFailed: omit(s.itemsFailed, chatIds),
         scripts: omit(s.scripts, ids),
         scriptData: omit(s.scriptData, ids),
         ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => gone.has(id)) }
@@ -636,8 +642,13 @@ export const actions = {
   },
   chats: {
     set: (workspaceId: string, list: Chat[]) => { loadedChats.add(workspaceId); setState((s) => ({ chats: { ...s.chats, [workspaceId]: list } })) },
-    upsert: (chat: Chat) => setState((s) => ({ chats: { ...s.chats, [chat.workspaceId]: upsert(s.chats[chat.workspaceId] ?? [], chat) } })),
-    setItems: (chatId: string, list: ChatItem[]) => setState((s) => ({ items: { ...s.items, [chatId]: list } })),
+    upsert: (chat: Chat) => setState((s) => ({
+      chats: { ...s.chats, [chat.workspaceId]: upsert(s.chats[chat.workspaceId] ?? [], chat) },
+      // A chat that appears in a workspace whose chats are loaded was created now, so it has no history to wait for.
+      ...(s.itemsLoaded[chat.id] === undefined && loadedChats.has(chat.workspaceId) && !s.chats[chat.workspaceId]?.some((c) => c.id === chat.id) ? { itemsLoaded: { ...s.itemsLoaded, [chat.id]: true } } : {})
+    })),
+    setItems: (chatId: string, list: ChatItem[]) => setState((s) => ({ items: { ...s.items, [chatId]: list }, itemsLoaded: { ...s.itemsLoaded, [chatId]: true }, itemsFailed: omit(s.itemsFailed, [chatId]) })),
+    failItems: (chatId: string) => setState((s) => ({ itemsFailed: { ...s.itemsFailed, [chatId]: true } })),
     upsertItem: (chatId: string, item: ChatItem) => setState((s) => ({ items: { ...s.items, [chatId]: upsert(s.items[chatId] ?? [], item) } })),
     /** Takes an item out when it is still `item` itself: a row the engine has since replaced by id stays. For an optimistic row whose call failed. */
     dropItem: (chatId: string, item: ChatItem) => setState((s) => (s.items[chatId]?.includes(item) ? { items: { ...s.items, [chatId]: s.items[chatId].filter((i) => i !== item) } } : s)),
@@ -997,7 +1008,10 @@ export async function loadWorkspace(workspaceId: string) {
   }
   const chats = await call('chats.list', { workspaceId })
   actions.chats.set(workspaceId, chats)
-  for (const c of chats) actions.chats.setItems(c.id, await call('chats.items', { chatId: c.id }))
+  // One chat failing to load must not hold back the others. The failed one shows Try again (KERNEL-860).
+  for (const c of chats) {
+    try { actions.chats.setItems(c.id, await call('chats.items', { chatId: c.id })) } catch { actions.chats.failItems(c.id) }
+  }
   return chats
 }
 
