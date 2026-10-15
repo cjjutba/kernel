@@ -1,15 +1,50 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { SearchEntry } from '@/lib/docs'
 
 // Docs search: ⌘K or a search button opens a dialog that reads /docs/search-index.json once, then matches as you type.
-// Titles rank above headings, headings above the text. Up and Down move, Return opens, Esc closes.
+// Titles rank above headings, headings above the text, and the words you typed are marked in each result. Before you
+// type, it suggests the Get started pages. Up and Down move, Return opens, Esc closes.
 
 const OPEN = 'kernel:docs-search'
 
-type Result = { key: string; href: string; title: string; context: string; snippet: string; score: number }
+type Result = { key: string; href: string; title: string; context: string; snippet: string; score: number; heading?: boolean }
+
+/** A page the dialog offers before anything is typed. */
+export type Suggestion = { href: string; title: string; section: string }
+
+/** `text` with every typed word wrapped in a mark. */
+function marked(text: string, terms: string[]): ReactNode {
+  if (!terms.length) return text
+  const pattern = new RegExp(`(${terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
+  return text.split(pattern).map((part, i) =>
+    i % 2 ? (
+      <mark key={i} className="rounded-sm bg-white/10 text-ink">
+        {part}
+      </mark>
+    ) : (
+      <Fragment key={i}>{part}</Fragment>
+    )
+  )
+}
+
+function PageIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+      <path d="M9 1.8H4.2a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.6a1 1 0 0 0 1-1V5.6ZM9 1.8v3.8h3.8" />
+    </svg>
+  )
+}
+
+function HashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <path d="M6.2 2.5 5 13.5M11 2.5l-1.2 11M2.8 5.8h10.8M2.4 10.2h10.8" />
+    </svg>
+  )
+}
 
 function snippet(text: string, term: string) {
   const i = text.toLowerCase().indexOf(term)
@@ -38,7 +73,7 @@ function search(index: SearchEntry[], query: string): Result[] {
     for (const h of page.headings) {
       const text = h.text.toLowerCase()
       const hits = terms.filter((t) => text.includes(t)).length
-      if (hits) results.push({ key: `${page.href}#${h.id}`, href: `${page.href}#${h.id}`, title: h.text, context: page.title, snippet: '', score: 4 + hits * 3 })
+      if (hits) results.push({ key: `${page.href}#${h.id}`, href: `${page.href}#${h.id}`, title: h.text, context: page.title, snippet: '', score: 4 + hits * 3, heading: true })
     }
   }
   return results.sort((a, b) => b.score - a.score).slice(0, 12)
@@ -66,7 +101,7 @@ export function SearchButton({ size = 'md' }: { size?: 'md' | 'lg' }) {
   )
 }
 
-export function DocsSearch() {
+export function DocsSearch({ suggestions = [] }: { suggestions?: Suggestion[] }) {
   const router = useRouter()
   const dialog = useRef<HTMLDialogElement>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -74,7 +109,18 @@ export function DocsSearch() {
   const [failed, setFailed] = useState(false)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
-  const results = useMemo(() => (index ? search(index, query) : []), [index, query])
+  const typed = query.trim() !== ''
+  const terms = useMemo(() => query.toLowerCase().split(/\s+/).filter(Boolean), [query])
+  const found = useMemo(() => (index ? search(index, query) : []), [index, query])
+  // Before anything is typed, the list is the suggestions, and the arrow keys move through them the same way.
+  const results: Result[] = useMemo(
+    () => (typed ? found : suggestions.map((x) => ({ key: x.href, href: x.href, title: x.title, context: x.section, snippet: '', score: 0 }))),
+    [typed, found, suggestions]
+  )
+  const list = useRef<HTMLUListElement>(null)
+  useEffect(() => {
+    list.current?.querySelector<HTMLElement>(`#docs-result-${active}`)?.scrollIntoView({ block: 'nearest' })
+  }, [active])
 
   const open = useCallback(() => {
     if (!dialog.current || dialog.current.open) return
@@ -155,35 +201,58 @@ export function DocsSearch() {
         <kbd className="font-mono text-badge text-faint">Esc</kbd>
       </div>
       <div className="max-h-105 overflow-y-auto p-2">
-        {failed ? (
+        {failed && typed ? (
           <p className="px-3 py-8 text-center text-ui text-muted">Search couldn&apos;t load. Reload the page and try again.</p>
-        ) : !query.trim() ? (
-          <p className="px-3 py-8 text-center text-ui text-faint">Search titles, sections and text across the docs.</p>
-        ) : !index ? (
+        ) : typed && !index ? (
           <p className="px-3 py-8 text-center text-ui text-faint">Loading</p>
-        ) : results.length === 0 ? (
+        ) : typed && results.length === 0 ? (
           <p className="px-3 py-8 text-center text-ui text-muted">Nothing matches &ldquo;{query}&rdquo;.</p>
+        ) : results.length ? (
+          <>
+            {!typed ? <p className="px-3 pt-2 pb-1.5 text-small font-medium text-faint">Start here</p> : null}
+            <ul ref={list} id="docs-search-results" role="listbox" aria-label={typed ? 'Results' : 'Suggested pages'}>
+              {results.map((r, i) => (
+                <li key={r.key} id={`docs-result-${i}`} role="option" aria-selected={i === active}>
+                  <a
+                    href={r.href}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      go(r.href)
+                    }}
+                    onMouseMove={() => setActive(i)}
+                    className={`flex items-start gap-3 rounded-md px-3 py-2.5 ${i === active ? 'bg-white/6' : ''}`}
+                  >
+                    <span className={`mt-0.5 shrink-0 ${i === active ? 'text-ink-2' : 'text-faint'}`}>{r.heading ? <HashIcon /> : <PageIcon />}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-ui font-medium text-ink">{marked(r.title, terms)}</span>
+                      <span className="mt-0.5 block truncate text-small text-muted">
+                        {r.snippet ? marked(r.snippet, terms) : r.context}
+                      </span>
+                    </span>
+                    {i === active ? <kbd className="mt-0.5 shrink-0 font-mono text-badge text-faint">↵</kbd> : null}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </>
         ) : (
-          <ul id="docs-search-results" role="listbox" aria-label="Results">
-            {results.map((r, i) => (
-              <li key={r.key} id={`docs-result-${i}`} role="option" aria-selected={i === active}>
-                <a
-                  href={r.href}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    go(r.href)
-                  }}
-                  onMouseMove={() => setActive(i)}
-                  className={`block rounded-md px-3 py-2.5 ${i === active ? 'bg-white/6' : ''}`}
-                >
-                  <span className="block text-small text-faint">{r.context}</span>
-                  <span className="mt-0.5 block text-ui font-medium text-ink">{r.title}</span>
-                  {r.snippet ? <span className="mt-0.5 block truncate text-small text-muted">{r.snippet}</span> : null}
-                </a>
-              </li>
-            ))}
-          </ul>
+          <p className="px-3 py-8 text-center text-ui text-faint">Search titles, sections and text across the docs.</p>
         )}
+      </div>
+      <div className="flex items-center gap-4 border-t border-line px-4 py-2.5 text-small text-faint max-nav:hidden">
+        <span className="inline-flex items-center gap-1.5">
+          <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-chip border border-line-strong px-1 font-mono text-badge">↑</kbd>
+          <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-chip border border-line-strong px-1 font-mono text-badge">↓</kbd>
+          to move
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-chip border border-line-strong px-1 font-mono text-badge">↵</kbd>
+          to open
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <kbd className="inline-flex h-5 items-center justify-center rounded-chip border border-line-strong px-1.5 font-mono text-badge">Esc</kbd>
+          to close
+        </span>
       </div>
     </dialog>
   )

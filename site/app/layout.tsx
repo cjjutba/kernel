@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
 import { Geist_Mono, Inter } from 'next/font/google'
+import { ScrollIdle } from '@/components/ui/ScrollIdle'
 import { SITE_DESCRIPTION, SITE_URL, THEME_COLOR } from '@/lib/site'
 import './globals.css'
 
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           Skip to content
         </a>
         {children}
+        <ScrollIdle />
       </body>
     </html>
   )

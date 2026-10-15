@@ -7,14 +7,14 @@ import { docsNav } from '@/lib/docs'
 import { ISSUES_URL } from '@/lib/links'
 import { pageMetadata } from '@/lib/site'
 
-// The docs home: search, the four pages to start with, and every other section with its pages.
+// The docs home: search and the four pages to start with. The sidebar lists everything else.
 
 const description = 'How to brief Kernel, run Claude Code and Codex agents side by side, and merge what they build.'
 
 export const metadata: Metadata = pageMetadata({ title: 'Docs · Kernel', description, path: '/docs' })
 
 export default function DocsHome() {
-  const [start, ...sections] = docsNav()
+  const start = docsNav()[0]
   return (
     <DocsLayout current="home" label="Overview">
       <div className="max-w-220 max-docs:mt-8">
@@ -44,31 +44,6 @@ export default function DocsHome() {
           </ol>
         </section>
 
-        <section aria-labelledby="browse-title" className="mt-16">
-          <h2 id="browse-title" className="text-item text-ink">
-            Browse the docs
-          </h2>
-          <div className="mt-4 grid grid-cols-2 gap-3 max-nav:grid-cols-1">
-            {sections.map((s) => (
-              <div key={s.title} className="rounded-lg border border-line p-5">
-                <h3 className="flex items-baseline gap-2 text-ui font-medium text-ink">
-                  {s.title}
-                  <span className="font-mono text-tag text-faint">{s.pages.length}</span>
-                </h3>
-                <ul className="mt-3 flex flex-col gap-1">
-                  {s.pages.map((p) => (
-                    <li key={p.slug}>
-                      <Link href={p.href} className="group -mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-ui text-muted transition-colors hover:bg-white/3 hover:text-ink">
-                        {p.title}
-                        <ArrowIcon className="shrink-0 text-faint opacity-0 transition-opacity group-hover:opacity-100" />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </section>
 
         <p className="mt-16 border-t border-line-faint pt-6 text-small text-faint">
           Something missing?{' '}

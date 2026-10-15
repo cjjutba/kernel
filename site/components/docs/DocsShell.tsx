@@ -57,8 +57,9 @@ export function DocsLayout({ current, label, toc, children }: { current: string;
       <SiteNav current="/docs" />
       <div className="mx-auto grid max-w-336 grid-docs px-6">
         {/* The column carries the hairline the whole way down; the sidebar inside it stays in view. */}
-        <div className="border-r border-line-faint pr-6 max-docs:hidden">
-          <div className="docs-rail pt-10 pb-16">
+        <div className="border-r border-line-faint max-docs:hidden">
+          {/* The rail scrolls on its own, and its scrollbar sits on the hairline. */}
+          <div className="docs-rail pt-10 pr-5 pb-16">
             <SearchButton />
             <div className="mt-7">
               <Sidebar current={current} />
@@ -85,7 +86,7 @@ export function DocsLayout({ current, label, toc, children }: { current: string;
 
         {toc ? <div className="docs-rail pt-10 pb-16 max-toc:hidden">{toc}</div> : null}
       </div>
-      <DocsSearch />
+      <DocsSearch suggestions={docsNav()[0]!.pages.map((p) => ({ href: p.href, title: p.title, section: 'Get started' }))} />
       <SiteFooter />
     </>
   )

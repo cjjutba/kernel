@@ -1,8 +1,8 @@
 import Link from 'next/link'
 import { KernelMark } from '@/components/brand/KernelMark'
 import { Wordmark } from '@/components/brand/Wordmark'
-import { Button } from '@/components/ui/Button'
-import { DownloadIcon } from '@/components/ui/icons'
+import { ArrowIcon, GitHubIcon } from '@/components/ui/icons'
+import { latestRelease } from '@/content/changelog'
 import { CONTRIBUTING_URL, DOWNLOAD_URL, ISSUES_URL, LICENSE_URL, RELEASES_URL, REPO_URL, SECURITY_URL } from '@/lib/links'
 
 type FooterLink = { href: string; label: string; external?: boolean }
@@ -15,7 +15,7 @@ const columns: { title: string; links: FooterLink[] }[] = [
       { href: '/docs', label: 'Docs' },
       { href: '/pricing', label: 'Pricing' },
       { href: '/changelog', label: 'Changelog' },
-      { href: '/#waitlist', label: 'Windows and Linux' }
+      { href: '/#waitlist', label: 'Waitlist' }
     ]
   },
   {
@@ -42,7 +42,9 @@ const linkClass = 'block w-fit text-ui text-muted transition-colors hover:text-i
 // One footer per page, so a fixed id is safe.
 const FADE_ID = 'kernel-wordmark-fade'
 
-export function SiteFooter() {
+/** The site's footer: the brand with the newest release, three columns of links, and the large wordmark. */
+export async function SiteFooter() {
+  const latest = await latestRelease()
   return (
     <footer className="overflow-hidden border-t border-line-faint pt-20">
       <div className="mx-auto grid max-w-312 grid-footer gap-x-12 gap-y-12 px-6">
@@ -50,10 +52,15 @@ export function SiteFooter() {
           <Link href="/" className="inline-flex">
             <Wordmark />
           </Link>
-          <p className="mt-4 max-w-70 text-ui leading-relaxed text-muted">Your coding agents, working as a team. Free, with the source on GitHub.</p>
-          <Button href={DOWNLOAD_URL} icon={<DownloadIcon size={14} />} className="mt-6">
-            Download for macOS
-          </Button>
+          <p className="mt-4 max-w-70 text-ui leading-relaxed text-muted">Your coding agents, working as a team.</p>
+          <Link
+            href="/changelog"
+            className="mt-6 inline-flex h-7 items-center gap-2 rounded-pill border border-line-strong pr-2.5 pl-1 text-small text-muted transition-colors hover:border-edge-hover hover:text-ink"
+          >
+            <span className="inline-flex h-5 items-center rounded-pill bg-surface-3 px-2 font-mono text-tag text-ink-2">{latest.version}</span>
+            What&apos;s new
+            <ArrowIcon className="text-faint" />
+          </Link>
         </div>
         {columns.map((col) => (
           <nav key={col.title} aria-label={col.title}>
@@ -77,8 +84,10 @@ export function SiteFooter() {
         ))}
       </div>
       <div className="mx-auto mt-16 flex max-w-312 flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 pt-6 text-small text-faint rule-inset">
-        <span>© 2026 Christian Jerald Jutba</span>
-        <span>Elastic License 2.0 · Made for macOS</span>
+        <span>© 2026 Christian Jerald Jutba · Elastic License 2.0</span>
+        <a href={REPO_URL} target="_blank" rel="noopener" aria-label="Kernel on GitHub" className="inline-flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/4 hover:text-ink">
+          <GitHubIcon size={16} />
+        </a>
       </div>
       <div aria-hidden="true" className="mt-14 flex justify-center text-wordmark select-none wordmark-crop">
         <span className="inline-flex items-baseline">

@@ -178,6 +178,56 @@
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
+/* Scrollbars, as in the app (tokens.css, KERNEL-597, KERNEL-602). Every scroll area, the page included, draws one thin
+   thumb: 6px, rounded, no track, on the area's edge. It is invisible until the area scrolls (ScrollIdle sets
+   data-scrolling while it scrolls or its scrollbar is held, and for 800ms after), and fades in over 150ms and out over
+   200ms. Hovering an area doesn't show it. Chromium can't transition a scrollbar part, so the colour is a registered
+   custom property on the scroller, which it can, and the thumb reads it. It inherits, since a scrollbar part takes its
+   style from its scroller as a child does. ::-webkit-scrollbar only: scrollbar-width or scrollbar-color would switch
+   these rules off in Chromium, so Firefox gets its thin, always-on scrollbar from the @supports block alone. An element
+   that scrolls and declares its own transition must list --scroll-thumb too. Reduced motion drops the fade with every
+   other transition (@layer base). */
+@property --scroll-thumb {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: var(--radius-pill);
+  background: var(--scroll-thumb);
+}
+
+/* In the base layer, so Tailwind's transition utilities still win on the elements that use them. */
+@layer base {
+  :where(*) {
+    --scroll-thumb: transparent;
+    transition: --scroll-thumb 200ms ease-out;
+  }
+
+  :where([data-scrolling]) {
+    --scroll-thumb: var(--color-rule);
+    transition-duration: 150ms;
+  }
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-edge) transparent;
+  }
+}
+
 @layer base {
   html {
     color-scheme: dark;
@@ -207,6 +257,11 @@
 
   summary {
     list-style: none;
+  }
+
+  /* Search fields clear with Esc, so the browser's own clear button stays hidden. */
+  input[type='search']::-webkit-search-cancel-button {
+    appearance: none;
   }
 
   summary::-webkit-details-marker {
@@ -243,7 +298,7 @@
   grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
 
   @media (width < 761px) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
 
     & > :first-child {
       grid-column: 1 / -1;
@@ -271,7 +326,9 @@
   align-self: start;
   max-height: calc(100vh - var(--spacing) * 16);
   overflow-y: auto;
-  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  /* Scrolling past the rail's end doesn't carry on into the page. */
+  overscroll-behavior: contain;
 }
 
 /* The bar on the On this page rail slides to the section you're reading. */
