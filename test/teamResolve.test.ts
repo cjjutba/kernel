@@ -7,7 +7,7 @@ import { agentFromFile } from '../src/main/services/agents'
 import { loadBuiltins } from '../src/main/services/builtins'
 import { adviseRoster, resolveTeam, writtenAsSubagent } from '../src/main/services/teamResolve'
 
-// KERNEL-397: one team per room, whatever shape its .claude/agents folder has. Kernel is always the Lead (KERNEL-692), and
+// KERNEL-397: one team per project, whatever shape its .claude/agents folder has. Kernel is always the Lead (KERNEL-692), and
 // since KERNEL-553 no built-in agent fills a missing reviewer: Kernel's code review runs instead (KERNEL-549).
 const STARTERS = join(__dirname, '..', 'docs', 'starter-agents')
 
@@ -29,7 +29,7 @@ const PLANNER = file('planner', 'name: planner\ndescription: Lead. Plans.\nrole:
 const THEO = file('theo', 'name: theo\ndescription: Reviewer. Read-only.\nrole: Reviewer\ntools: Read, Grep, Glob, Bash')
 
 describe('resolveTeam', () => {
-  it('gives a room with no Lead file the default Kernel as its only built-in agent, and no reviewer agent', async () => {
+  it('gives a project with no Lead file the default Kernel as its only built-in agent, and no reviewer agent', async () => {
     const r = await team([])
     expect(roles(r.agents)).toEqual([KERNEL])
     // The reviewer is Kernel's code review, which is no agent (KERNEL-553).
@@ -44,7 +44,7 @@ describe('resolveTeam', () => {
     const theo = await team([KAI, THEO])
     expect(roles(theo.agents)).toEqual([KERNEL, ['kai', 'Kai', 'member'], ['theo', 'Theo', 'reviewer']])
     expect(theo.reviewerFrom).toBe('file')
-    // A room that picked Kernel's Theo before KERNEL-553 gets Kernel's code review, and "none" still means no review.
+    // A project that picked Kernel's Theo before KERNEL-553 gets Kernel's code review, and "none" still means no review.
     for (const reviewer of ['kernel-reviewer', 'none']) {
       const r = await team([KAI, THEO], { reviewer })
       expect(r.agents.filter((a) => a.reviewer || a.builtIn === 'reviewer')).toEqual([])

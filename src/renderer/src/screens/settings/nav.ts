@@ -1,4 +1,4 @@
-import type { RoomSettingsSection, SettingsPage } from '@shared/types'
+import type { ProjectSettingsSection, SettingsPage } from '@shared/types'
 import type { IconName } from '../../icons'
 
 /**
@@ -19,7 +19,7 @@ export const NAV: NavGroup[] = [
   ] },
   { title: 'Agents', items: [
     { page: 'models', label: 'Models and effort', icon: 'chip', keywords: [{ label: 'Kernel starts in plan mode', rowId: 'lead-plan-mode' }, { label: 'New workspaces start in plan mode', rowId: 'workspace-plan-mode' }, { label: 'Agents working at once', rowId: 'agent-limit' }, { label: 'Keep Kernel updated', rowId: 'lead-updates' }, { label: 'Agent teams', rowId: 'agent-teams' }], terms: ['model', 'effort', 'compact', 'lead', 'kernel', 'reviewer', 'planning', 'agents at once', 'agent teams'] },
-    { page: 'agents', label: 'Agents', icon: 'team', keywords: [{ label: 'New rooms start with', rowId: 'new-rooms-team' }], terms: ['personal agents', 'plugins', 'new rooms start with', 'default team'] },
+    { page: 'agents', label: 'Agents', icon: 'team', keywords: [{ label: 'New projects start with', rowId: 'new-projects-team' }], terms: ['personal agents', 'plugins', 'new projects start with', 'default team'] },
     { page: 'mcp', label: 'MCP servers', icon: 'layers', keywords: [], terms: ['mcp', 'servers', 'connectors', 'sign in'] },
     { page: 'permissions', label: 'Permissions', icon: 'shield', keywords: [{ label: 'Permission mode', rowId: 'mode' }, { label: 'Always ask before', rowId: 'always-ask' }, { label: 'Never allow', rowId: 'never-allow' }, { label: 'Protected branches', rowId: 'protected-branches' }, { label: 'Allow network access', rowId: 'network' }, { label: 'Approval timeout', rowId: 'approval-timeout' }], terms: ['mode', 'bypass', 'always ask', 'never allow', 'protected branches', 'network', 'approval timeout'] },
     { page: 'env', label: 'Environment', icon: 'env', keywords: [], terms: ['variables', 'env', 'secrets'] }
@@ -39,11 +39,11 @@ export const NAV: NavGroup[] = [
 
 export const NAV_PAGES: NavPage[] = NAV.flatMap((g) => g.items)
 
-/** A room's pages, in order. `section` is the route's, and a route without one opens General. */
-export interface RoomNavPage { section: RoomSettingsSection; label: string; icon: IconName; keywords: Keyword[]; terms: string[] }
+/** A project's pages, in order. `section` is the route's, and a route without one opens General. */
+export interface ProjectNavPage { section: ProjectSettingsSection; label: string; icon: IconName; keywords: Keyword[]; terms: string[] }
 
-export const ROOM_PAGES: RoomNavPage[] = [
-  { section: 'general', label: 'General', icon: 'sliders', keywords: [{ label: 'Icon', rowId: 'icon' }, { label: 'Repository', rowId: 'repository' }, { label: 'Local path', rowId: 'path' }, { label: 'Issue tracker', rowId: 'tracker' }, { label: 'Linear team', rowId: 'linear-team' }, { label: 'Archive room', rowId: 'archive-room' }], terms: ['icon', 'repository', 'path', 'tracker', 'linear team', 'archive room'] },
+export const PROJECT_PAGES: ProjectNavPage[] = [
+  { section: 'general', label: 'General', icon: 'sliders', keywords: [{ label: 'Icon', rowId: 'icon' }, { label: 'Repository', rowId: 'repository' }, { label: 'Local path', rowId: 'path' }, { label: 'Issue tracker', rowId: 'tracker' }, { label: 'Linear team', rowId: 'linear-team' }, { label: 'Archive project', rowId: 'archive-project' }], terms: ['icon', 'repository', 'path', 'tracker', 'linear team', 'archive project'] },
   { section: 'git', label: 'Git', icon: 'branch', keywords: [{ label: 'Workspace type', rowId: 'workspace-type' }, { label: 'Branch from', rowId: 'branch-from' }, { label: 'Remote', rowId: 'remote' }, { label: 'Branch names for chats with Kernel', rowId: 'lead-branch-names' }], terms: ['push access', 'base branch', 'branch names', 'remote'] },
   { section: 'setup', label: 'Setup and scripts', icon: 'term', keywords: [{ label: 'Setup script', rowId: 'script-setup' }, { label: 'Archive script', rowId: 'script-archive' }, { label: 'Wait for setup before the first message', rowId: 'wait-for-setup' }, { label: 'Gitignored files', rowId: 'copy-files' }, { label: 'Never copied', rowId: 'never-copied' }, { label: 'Symlink node_modules', rowId: 'symlink-node-modules' }, { label: 'Run scripts', rowId: 'run-scripts' }, { label: 'Run mode', rowId: 'run-mode' }, { label: 'Ports', rowId: 'ports' }, { label: 'Preview URLs', rowId: 'preview-urls' }], terms: ['files to copy', 'setup script', 'archive script', 'run scripts', 'ports', 'preview urls'] },
   { section: 'environment', label: 'Environment', icon: 'env', keywords: [], terms: ['variables', 'env files'] },

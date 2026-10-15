@@ -4,7 +4,7 @@ Kernel turns Claude Code into a small software team on your Mac. You brief the L
 
 **[Download Kernel for Mac (Apple silicon)](https://github.com/cjjutba/kernel/releases/latest/download/Kernel-arm64.dmg)** · [Website](https://kernel.cjjutba.dev)
 
-![Home: what needs you across every room, with each room's team, Lead and workspaces in the sidebar](docs/images/home.png)
+![Home: what needs you across every project, with each project's team, Lead and workspaces in the sidebar](docs/images/home.png)
 
 ## Requirements
 
@@ -17,9 +17,9 @@ On first launch Kernel checks Claude Code, your sign-in and the GitHub CLI, and 
 
 ## How it works
 
-### Rooms and the team
+### Projects and the team
 
-Each repo you add is a room, and every agent in the repo's `.claude/agents/` folder is on its team. The sidebar lists each room's Team, its Lead and its workspaces, and Home shows what needs you across all of them. Every status comes from real Claude Code events. Nothing changes on a timer, so an idle agent looks idle.
+Each repo you add is a project, and every agent in the repo's `.claude/agents/` folder is on its team. The sidebar lists each project's Team, its Lead and its workspaces, and Home shows what needs you across all of them. Every status comes from real Claude Code events. Nothing changes on a timer, so an idle agent looks idle.
 
 ![The team: each agent with its model, status and workspace](docs/images/team.png)
 
@@ -37,7 +37,7 @@ A workspace is one task: a git worktree on its own branch, with its own port for
 
 ### The Inbox
 
-Anything that needs a decision lands in the Inbox: a command an agent wants to run, a plan to review, a question, a PR that's ready to merge. You can approve a command once or always allow it in that room. Nothing merges by itself.
+Anything that needs a decision lands in the Inbox: a command an agent wants to run, a plan to review, a question, a PR that's ready to merge. You can approve a command once or always allow it in that project. Nothing merges by itself.
 
 ![The Inbox with a database command waiting for approval](docs/images/inbox.png)
 
@@ -51,13 +51,13 @@ Kernel snapshots the worktree after every agent turn. If a turn goes wrong, reve
 
 ## Privacy
 
-Kernel runs on your own Claude plan, using the Claude Code login you already have. There is no Kernel account and no Kernel server. Your rooms, chats, settings and history stay in a local database on your Mac.
+Kernel runs on your own Claude plan, using the Claude Code login you already have. There is no Kernel account and no Kernel server. Your projects, chats, settings and history stay in a local database on your Mac.
 
 Kernel itself makes these network calls and no others:
 
 - Claude Code, which talks to Anthropic as it always does
 - `gh`, for pull requests and checks
-- git, to fetch and push branches on your repo's own remote, and your package manager when a new room installs dependencies
+- git, to fetch and push branches on your repo's own remote, and your package manager when a new project installs dependencies
 - The update check, which reads this repo's GitHub Releases
 - An offline check, a DNS lookup of `api.anthropic.com`
 - Linear, only if you connect it in Settings

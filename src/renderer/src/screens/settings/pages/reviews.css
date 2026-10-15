@@ -1,4 +1,4 @@
-/* Room Reviews and Settings, Pull requests' Merge automatically (KERNEL-557). Tokens only. */
+/* Project Reviews and Settings, Pull requests' Merge automatically (KERNEL-557). Tokens only. */
 
 /* One review: its switch and Required or Optional at the right, and a line under the text for where it runs, who runs it and on what. */
 .rv-line { display: flex; align-items: center; gap: 8px; }

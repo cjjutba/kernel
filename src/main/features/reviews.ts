@@ -17,7 +17,7 @@ import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
 /**
- * One kind of review a PR gets, as Kernel settles it when the review starts (KERNEL-549): the room agent that runs it, none
+ * One kind of review a PR gets, as Kernel settles it when the review starts (KERNEL-549): the project agent that runs it, none
  * for Kernel's own prompt, whether its approval counts toward a merge, the model its chat runs on, and its `paths`.
  */
 export interface PlannedReview { kind: ReviewKind; agent?: AgentDef; optional: boolean; model?: string; provider?: Provider; paths: string[] }
@@ -31,7 +31,7 @@ interface Policy { review: ReviewConfig; team: TeamConfig; base?: string }
 /**
  * Review workspaces: where they start, the rule they get, and the verdicts they send (KERNEL-130, KERNEL-330). Since
  * KERNEL-549 Kernel starts them itself when a PR passes checks: one review workspace per PR, with one chat for each kind of
- * review the room's `[review]` asks for, as the PR's base branch has it.
+ * review the project's `[review]` asks for, as the PR's base branch has it.
  */
 export class Reviews extends Feature {
   /** PRs whose reviews Kernel is starting, by workspace id, so an update meanwhile reads them as in progress. */
@@ -48,11 +48,11 @@ export class Reviews extends Feature {
   reviewRuleFor(ws: Workspace, chat?: Chat): string | undefined {
     const of = ws.reviewOf ? this.store.workspace(ws.reviewOf) : undefined
     if (!of) return undefined
-    const author = this.agentsSync(ws.roomId).find((a) => a.id === of.agentId)?.name ?? of.agentId
+    const author = this.agentsSync(ws.projectId).find((a) => a.id === of.agentId)?.name ?? of.agentId
     // With a PR, the review is of what the PR holds on GitHub, the commit verdicts are checked against. Before one, it is
     // of the author's local branch, or the remote's copy when the local one was gone (reviewBase).
-    const room = this.store.room(ws.roomId)
-    const remote = remoteOf({ workspace: { remote: room && this.k.config['roomRemotes'].get(room.path) } }, this.settings)
+    const project = this.store.project(ws.projectId)
+    const remote = remoteOf({ workspace: { remote: project && this.k.config['projectRemotes'].get(project.path) } }, this.settings)
     const resetTo = of.prNumber ? `${remote}/${of.branch}` : ws.baseRef
     const lens = chat?.lens?.kind
     const others = lens ? [...new Set(this.chatTabs(ws.id).flatMap((c) => (c.lens && c.lens.kind !== lens ? [c.lens.kind] : [])))] : []
@@ -60,12 +60,12 @@ export class Reviews extends Feature {
   }
 
   /**
-   * The agent a review chat runs (KERNEL-549): the room agent its kind named when it started, else Kernel's own prompt for the
+   * The agent a review chat runs (KERNEL-549): the project agent its kind named when it started, else Kernel's own prompt for the
    * kind. One whose agent has left the team runs Kernel's prompt. Undefined for any other chat, which runs its workspace's agent.
    */
   agentForChat(ws: Workspace, chat: Chat): AgentDef | undefined {
     if (!ws.reviewOf || !chat.lens) return undefined
-    const own = chat.lens.agent ? this.k.team.agentOf(ws.roomId, chat.lens.agent) : undefined
+    const own = chat.lens.agent ? this.k.team.agentOf(ws.projectId, chat.lens.agent) : undefined
     return own && !own.retired && !isUnreadable(own) ? own : lensAgent(chat.lens.kind)
   }
 
@@ -75,12 +75,12 @@ export class Reviews extends Feature {
    * settings file, or none Kernel can resolve, runs on the defaults.
    */
   async policyFor(of: Workspace): Promise<Policy> {
-    const room = this.mustRoom(of.roomId)
-    const remote = await this.k.config.remoteFor(room.path)
+    const project = this.mustProject(of.projectId)
+    const remote = await this.k.config.remoteFor(project.path)
     const name = of.baseRef.startsWith(`${remote}/`) ? of.baseRef.slice(remote.length + 1) : of.baseRef
     for (const ref of new Set([`${remote}/${name}`, of.baseRef, name])) {
-      if (!(await this.resolves(room.path, ref))) continue
-      const shown = await exec('git', ['-C', room.path, 'show', `${ref}:.kernel/settings.toml`])
+      if (!(await this.resolves(project.path, ref))) continue
+      const shown = await exec('git', ['-C', project.path, 'show', `${ref}:.kernel/settings.toml`])
       return { ...reviewPolicyOf(shown.code === 0 ? shown.stdout : undefined), base: ref }
     }
     return reviewPolicyOf(undefined)
@@ -92,11 +92,11 @@ export class Reviews extends Feature {
 
   /** The files the PR changes against its base, renames as both paths, or undefined when git can't say. */
   private async changedFiles(of: Workspace, base: string): Promise<string[] | undefined> {
-    const room = this.mustRoom(of.roomId)
-    const remote = await this.k.config.remoteFor(room.path)
+    const project = this.mustProject(of.projectId)
+    const remote = await this.k.config.remoteFor(project.path)
     for (const head of [of.prHead, `${remote}/${of.branch}`, of.branch]) {
-      if (!head || !(await this.resolves(room.path, head))) continue
-      const r = await exec('git', ['-C', room.path, 'diff', '--name-only', '--no-renames', '-z', `${base}...${head}`])
+      if (!head || !(await this.resolves(project.path, head))) continue
+      const r = await exec('git', ['-C', project.path, 'diff', '--name-only', '--no-renames', '-z', `${base}...${head}`])
       return r.code === 0 ? r.stdout.split('\0').filter(Boolean) : undefined
     }
     return undefined
@@ -104,7 +104,7 @@ export class Reviews extends Feature {
 
   /** The files that differ between two commits of a PR, or undefined when git can't say, as when one is gone after a force push. */
   private async filesBetween(of: Workspace, from: string, to: string): Promise<string[] | undefined> {
-    const repo = this.mustRoom(of.roomId).path
+    const repo = this.mustProject(of.projectId).path
     if (!from || !to || !(await this.resolves(repo, from)) || !(await this.resolves(repo, to))) return undefined
     const r = await exec('git', ['-C', repo, 'diff', '--name-only', '--no-renames', '-z', from, to])
     return r.code === 0 ? r.stdout.split('\0').filter(Boolean) : undefined
@@ -112,7 +112,7 @@ export class Reviews extends Feature {
 
   /**
    * The reviews a PR gets, in REVIEW_KINDS' order (KERNEL-549): each kind its base branch's `[review]` turns on whose paths
-   * the PR touches. A kind's `agent` runs it. The code review's is otherwise the room's reviewer, as the base branch's
+   * the PR touches. A kind's `agent` runs it. The code review's is otherwise the project's reviewer, as the base branch's
    * `[team]` picks it, or Kernel's prompt when there is none. `[team] reviewer = "none"` leaves code review out unless
    * `[review.code]` names an agent. An agent never reviews its own PR: that kind runs Kernel's prompt instead. `rounds` is the
    * base branch's `[review] rounds` (KERNEL-552).
@@ -120,7 +120,7 @@ export class Reviews extends Feature {
   async planFor(of: Workspace): Promise<{ plan: PlannedReview[]; rounds: number }> {
     const policy = await this.policyFor(of)
     const files = policy.base ? await this.changedFiles(of, policy.base) : undefined
-    const pool = this.agentsSync(of.roomId).filter((a) => !a.lead && !a.retired && !a.builtIn && !isUnreadable(a))
+    const pool = this.agentsSync(of.projectId).filter((a) => !a.lead && !a.retired && !a.builtIn && !isUnreadable(a))
     const plan = kindsFor(policy.review, files).flatMap((kind): PlannedReview[] => {
       const c = policy.review.kinds[kind]
       let agent = c.agent ? pool.find((a) => a.id === c.agent) : undefined
@@ -209,7 +209,7 @@ export class Reviews extends Feature {
     this.starting.add(of.id)
     this.updateWs(of.id, { reviewPending: of.prHead ?? '' })
     try {
-      await this.k.team.agents(of.roomId)
+      await this.k.team.agents(of.projectId)
       const { plan, rounds } = await this.planFor(of)
       const now = this.store.workspace(of.id)
       if (!plan.length || !now || now.status === 'archived' || now.prState !== 'ready' || this.stopped) return
@@ -239,7 +239,7 @@ export class Reviews extends Feature {
     } catch (e) {
       if (this.stopped) return
       console.warn(`[reviews] starting the review of ${of.name} failed`, e)
-      bus.activity({ kind: 'note', roomId: of.roomId, workspaceId: of.id, agentId: of.agentId, actor: 'kernel', text: "couldn't start the review of", object: `PR #${of.prNumber}`, warn: true })
+      bus.activity({ kind: 'note', projectId: of.projectId, workspaceId: of.id, agentId: of.agentId, actor: 'kernel', text: "couldn't start the review of", object: `PR #${of.prNumber}`, warn: true })
     } finally {
       this.starting.delete(of.id)
       // A stopped Kernel's database is closed. The marker stays, and `start` takes it up at the next start.
@@ -270,7 +270,7 @@ export class Reviews extends Feature {
     const of = this.store.workspace(workspaceId)
     if (!of || !from || !to || from === to) return false
     if (of.baseUpdates?.some((u) => u.from === from && u.to === to)) return true
-    const repo = this.mustRoom(of.roomId).path
+    const repo = this.mustProject(of.projectId).path
     const remote = await this.k.config.remoteFor(repo)
     await fetchOrigin(repo, remote, { fresh: true })
     const update = await this.mergesBaseOnly(repo, remote, of.baseRef, from, to)
@@ -350,7 +350,7 @@ export class Reviews extends Feature {
 
   /** The PR's newest review workspace still open. */
   private openReview(of: Workspace): Workspace | undefined {
-    return this.store.workspaces(of.roomId).filter((r) => r.reviewOf === of.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)[0]
+    return this.store.workspaces(of.projectId).filter((r) => r.reviewOf === of.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)[0]
   }
 
   /** Kinds `round` ran, none it skipped, with no verdict on the PR's head, as after the review workspace was archived (KERNEL-633). */
@@ -365,12 +365,12 @@ export class Reviews extends Feature {
     const agent = first.agent ?? lensAgent(first.kind)
     // The verdicts go where the PR's news goes: the chat that handed it off, or the Build here chat it came from (KERNEL-778).
     const leadChatId = of.leadChatId ?? this.k.lead.buildTab(of)
-    const { ws, room, repo, chat } = await this.k.workspaces.cutWorkspace(of.roomId, {
+    const { ws, project, repo, chat } = await this.k.workspaces.cutWorkspace(of.projectId, {
       prompt: this.brief(of, first.kind), title: `Review PR #${of.prNumber}`, agentId: agent.id, agent, reviewOf: of.id, ...(leadChatId ? { leadChatId } : {})
     })
     const chats = plan.map((p, i) => this.lensChat(ws, p, i === 0 ? chat : undefined))
     for (const [i, c] of chats.entries()) this.sessions.hold(c.id, this.briefParts(of, plan[i].kind), { from: 'kernel' })
-    return this.k.workspaces.setUpWorkspace(ws, room, repo, chats[0])
+    return this.k.workspaces.setUpWorkspace(ws, project, repo, chats[0])
   }
 
   /**
@@ -418,7 +418,7 @@ export class Reviews extends Feature {
 
   /** The first message a review chat gets. Its rule says the rest: where the work is and how to report. */
   private brief(of: Workspace, kind: ReviewKind): string {
-    const author = this.agentsSync(of.roomId).find((a) => a.id === of.agentId)?.name ?? of.agentId
+    const author = this.agentsSync(of.projectId).find((a) => a.id === of.agentId)?.name ?? of.agentId
     return `Run ${reviewsText([kind]).replace(/^The/, 'the')} of PR #${of.prNumber}${of.prTitle ? ` "${of.prTitle}"` : ''} by ${author}.`
   }
 
@@ -452,7 +452,7 @@ export class Reviews extends Feature {
     // A turn the Lead started with message_agent: its reply goes out with the verdict, and wakes the Lead (feat-review-messages-reach-named).
     this.leadUpdates.reviewed(rws, saved, verdict, chatId, { asked: !!chatId && this.sessions.turnFrom(chatId) === 'lead' })
     const what = saved.prNumber ? `PR #${saved.prNumber}` : saved.name
-    bus.activity({ kind: 'note', roomId: rws.roomId, workspaceId: saved.id, agentId: rws.agentId, text: review.verdict === 'approved' ? 'approved' : 'found blockers in', object: what })
+    bus.activity({ kind: 'note', projectId: rws.projectId, workspaceId: saved.id, agentId: rws.agentId, text: review.verdict === 'approved' ? 'approved' : 'found blockers in', object: what })
     return review.verdict === 'approved' ? `Saved: you approved ${what}. The Lead hears about it.` : `Saved: ${verdict.blockers?.length ?? 0} blocker(s) in ${what}. The Lead passes them on.`
   }
 
@@ -461,12 +461,12 @@ export class Reviews extends Feature {
    * rounds (KERNEL-552).
    */
   reviewState(ws: Workspace): ReviewState {
-    // Kernel's own reviewer included, which isn't on the team when the room has a reviewer of its own.
-    const name = (id: string) => this.k.team.agentOf(ws.roomId, id)?.name ?? id
+    // Kernel's own reviewer included, which isn't on the team when the project has a reviewer of its own.
+    const name = (id: string) => this.k.team.agentOf(ws.projectId, id)?.name ?? id
     const s = kindStates(ws)
     const { verdicts, current } = reviewVerdicts(ws)
-    const reviews = this.store.workspaces(ws.roomId).filter((r) => r.reviewOf === ws.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)
-    // A review runs while its setup runs or waits for the user to trust the room's scripts (KERNEL-261), or while its chat
+    const reviews = this.store.workspaces(ws.projectId).filter((r) => r.reviewOf === ws.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)
+    // A review runs while its setup runs or waits for the user to trust the project's scripts (KERNEL-261), or while its chat
     // works on it or has messages waiting and hasn't sent a verdict on the head commit. A review whose setup failed isn't
     // running: it waits for the user. A chat from before review kinds runs the code review. One whose turn waits for usage
     // to drop is held, not running (KERNEL-552).
@@ -517,13 +517,13 @@ export class Reviews extends Feature {
     const ws = this.mustWs(id)
     if (ws.status === 'archived') throw new Error(`${ws.name} is archived.`)
     const what = ws.prNumber ? `PR #${ws.prNumber}` : ws.name
-    const lead = o.by === 'lead' ? this.agentsSync(ws.roomId).find((a) => a.lead) : undefined
+    const lead = o.by === 'lead' ? this.agentsSync(ws.projectId).find((a) => a.lead) : undefined
     const who = { actor: o.by === 'lead' ? ('agent' as const) : ('you' as const), agentId: lead?.id ?? ws.agentId }
     if (o.clear) {
       if (!ws.overruled) return ws
       const { overruled: _overruled, ...rest } = ws
       const saved = this.saveWs(rest)
-      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, ...who, text: 'took back the overrule of the blockers in', object: what })
+      bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, ...who, text: 'took back the overrule of the blockers in', object: what })
       return saved
     }
     if (!ws.prNumber || !ws.prHead) throw new Error(`Kernel doesn't know the latest commit of ${what} yet, so there is nothing to overrule.`)
@@ -533,7 +533,7 @@ export class Reviews extends Feature {
     const note = o.note?.trim()
     const saved = this.updateWs(id, { overruled: { head: ws.prHead, kinds, by: o.by, ts: Date.now(), ...(note ? { note } : {}) } })
     const whose = `${reviewsText(s.blocking).replace(/^The/, 'the')}${s.blocking.length > 1 ? "'" : "'s"}`
-    bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, ...who, text: `overruled ${whose} ${s.count} ${s.count === 1 ? 'blocker' : 'blockers'} in`, object: what, ...(note ? { quote: note } : {}) })
+    bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, ...who, text: `overruled ${whose} ${s.count} ${s.count === 1 ? 'blocker' : 'blockers'} in`, object: what, ...(note ? { quote: note } : {}) })
     return saved
   }
 
@@ -542,9 +542,9 @@ export class Reviews extends Feature {
       // The PR header's Overrule and its Undo (KERNEL-732).
       'reviews.overrule': async ({ workspaceId, note, clear }) => this.overrule(workspaceId, { by: 'user', note, clear }),
       // Kai's Settings page for reviews writes through this (KERNEL-549).
-      'settings.setReview': async ({ roomId, review }) => this.k.config.wrote(roomId, await saveReviewSettings(this.mustRoom(roomId).path, review)),
+      'settings.setReview': async ({ projectId, review }) => this.k.config.wrote(projectId, await saveReviewSettings(this.mustProject(projectId).path, review)),
       // The Reviews page's always-review box writes through this (KERNEL-594).
-      'settings.setAlwaysReview': async ({ roomId, paths }) => this.k.config.wrote(roomId, await saveAlwaysReview(this.mustRoom(roomId).path, paths))
+      'settings.setAlwaysReview': async ({ projectId, paths }) => this.k.config.wrote(projectId, await saveAlwaysReview(this.mustProject(projectId).path, paths))
     } satisfies Partial<Handlers>
   }
 }

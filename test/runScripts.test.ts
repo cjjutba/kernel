@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, trustRoom, freePort } from './helpers'
+import { tempRepo, trustProject, freePort } from './helpers'
 import { git } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
@@ -39,10 +39,10 @@ async function kernelOn(files: Record<string, string>, app: object = {}) {
   await k.start()
   kernels.push(k)
   k.sessions.send = async () => ({ queued: false })
-  const room = await k.addRoom(repo)
+  const project = await k.addProject(repo)
   // The repo brings its run scripts, which the user trusts before they run (KERNEL-209).
-  await trustRoom(k, room.id)
-  return { k, h: k.handlers(), room, repo }
+  await trustProject(k, project.id)
+  return { k, h: k.handlers(), project, repo }
 }
 
 const until = async (ok: () => boolean, what: string, ms = 15000) => {
@@ -71,7 +71,7 @@ describe('run scripts in .kernel/settings.toml (KERNEL-244)', () => {
     expect(rs.sources).toMatchObject({ 'scripts.run': 'shared', 'runScripts.run': 'shared', 'runScripts.web': 'override', 'runScripts.apiServer': 'shared', 'runScripts.worker': 'local' })
   })
 
-  it('a room with only [scripts] run has run alone, and one without has none', async () => {
+  it('a project with only [scripts] run has run alone, and one without has none', async () => {
     expect((await loadRepoSettings(await tempRepo(scripts('[scripts]\nrun = "pnpm dev"\n')))).runScripts).toEqual([{ name: 'run', command: 'pnpm dev' }])
     expect((await loadRepoSettings(await tempRepo())).runScripts).toEqual([])
   })
@@ -96,8 +96,8 @@ describe('run scripts in .kernel/settings.toml (KERNEL-244)', () => {
 
 describe('named run scripts (KERNEL-244)', () => {
   it('with only [scripts] run, Run and Stop work as before', async () => {
-    const { k, h, room } = await kernelOn(scripts(`[scripts]\nrun = "${LONG}"\n`))
-    const ws = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const { k, h, project } = await kernelOn(scripts(`[scripts]\nrun = "${LONG}"\n`))
+    const ws = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
     await h['scripts.run']({ workspaceId: ws.id, kind: 'run' })
     await until(() => printed(ws, 'run', `started-${ws.port}`), 'run to start')
     expect(runningRuns(ws.id)).toEqual(['run'])
@@ -108,8 +108,8 @@ describe('named run scripts (KERNEL-244)', () => {
   })
 
   it('run in parallel with their own output and exit, and stop one by one or all at once', async () => {
-    const { k, h, room } = await kernelOn(scripts(`[scripts]\nrun = "${LONG}"\n\n[run_scripts]\nweb = "echo web-$KERNEL_PORT; sleep 30"\nonce = "echo once; exit 3"\n`))
-    const ws = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const { k, h, project } = await kernelOn(scripts(`[scripts]\nrun = "${LONG}"\n\n[run_scripts]\nweb = "echo web-$KERNEL_PORT; sleep 30"\nonce = "echo once; exit 3"\n`))
+    const ws = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
     for (const name of ['run', 'web', 'once']) await h['scripts.run']({ workspaceId: ws.id, kind: 'run', name })
     await until(() => printed(ws, 'run', `started-${ws.port}`) && printed(ws, 'web', `web-${ws.port}`) && printed(ws, 'once', 'once'), 'all three to print')
     await until(() => exited(ws, 'once'), 'once to exit')
@@ -127,8 +127,8 @@ describe('named run scripts (KERNEL-244)', () => {
   })
 
   it('a script that ignores SIGTERM still stops and reports its exit', async () => {
-    const { k, h, room } = await kernelOn(scripts(`[run_scripts]\nstubborn = "trap '' TERM; echo ready; sleep 30"\n`))
-    const ws = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const { k, h, project } = await kernelOn(scripts(`[run_scripts]\nstubborn = "trap '' TERM; echo ready; sleep 30"\n`))
+    const ws = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
     await h['scripts.run']({ workspaceId: ws.id, kind: 'run', name: 'stubborn' })
     await until(() => printed(ws, 'stubborn', 'ready'), 'stubborn to start')
     const stopped = Date.now()
@@ -140,9 +140,9 @@ describe('named run scripts (KERNEL-244)', () => {
   it('archive and quit stop every named script, and quit kills one that ignores SIGTERM at once', async () => {
     // `stubborn` prints the pid of a sleep that ignores SIGTERM, so the test can see that the process itself is gone.
     const stubborn = "trap '' TERM; sleep 30 & echo pid-$!; wait"
-    const { k, h, room } = await kernelOn(scripts(`[scripts]\nrun = "${LONG}"\n\n[run_scripts]\nweb = "${LONG}"\nstubborn = "${stubborn}"\n`))
-    const a = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
-    const b = await k.createWorkspace(room.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
+    const { k, h, project } = await kernelOn(scripts(`[scripts]\nrun = "${LONG}"\n\n[run_scripts]\nweb = "${LONG}"\nstubborn = "${stubborn}"\n`))
+    const a = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const b = await k.createWorkspace(project.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
     for (const ws of [a, b]) for (const name of ['run', 'web']) await h['scripts.run']({ workspaceId: ws.id, kind: 'run', name })
     await until(() => runningRuns(a.id).length === 2 && runningRuns(b.id).length === 2, 'four scripts to start')
     await k.archiveWorkspace(a.id)
@@ -178,8 +178,8 @@ describe('a window that loads while scripts run (KERNEL-340)', () => {
   const runLines = (state: Extract<PushEvent, { type: 'script.state' }>) => state.lines.filter((l) => l.kind === 'run').map((l) => `${l.name}: ${l.line}`)
 
   it('gets back the lines, the URL while a script runs and the exit once it stops', async () => {
-    const { k, h, room } = await kernelOn(scripts(`[scripts]\nrun = "echo serving http://localhost:$KERNEL_PORT; sleep 30"\n\n[run_scripts]\nonce = "echo once; exit 3"\n`))
-    const ws = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const { k, h, project } = await kernelOn(scripts(`[scripts]\nrun = "echo serving http://localhost:$KERNEL_PORT; sleep 30"\n\n[run_scripts]\nonce = "echo once; exit 3"\n`))
+    const ws = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
     for (const name of ['run', 'once']) await h['scripts.run']({ workspaceId: ws.id, kind: 'run', name })
     await until(() => printed(ws, 'run', `serving http://localhost:${ws.port}`) && exited(ws, 'once'), 'run to serve and once to exit')
     const serving = await replay(h, ws.id)
@@ -203,8 +203,8 @@ describe('a window that loads while scripts run (KERNEL-340)', () => {
   })
 
   it("forgets an archived workspace's scripts, the exits that come after the archive included", async () => {
-    const { k, h, room } = await kernelOn(scripts(`[scripts]\nrun = "${LONG}"\n`))
-    const ws = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const { k, h, project } = await kernelOn(scripts(`[scripts]\nrun = "${LONG}"\n`))
+    const ws = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
     await h['scripts.run']({ workspaceId: ws.id, kind: 'run' })
     await until(() => printed(ws, 'run', `started-${ws.port}`), 'run to start')
     expect(runLines(await replay(h, ws.id))).toContain(`run: started-${ws.port}`)
@@ -217,10 +217,10 @@ describe('a window that loads while scripts run (KERNEL-340)', () => {
 describe('run mode (KERNEL-244)', () => {
   const toml = (mode: string) => scripts(`[scripts]\nrun = "${LONG}"\nrun_mode = "${mode}"\n\n[run_scripts]\nweb = "${LONG}"\n`)
 
-  it('One at a time stops the run scripts in the room\'s other workspaces', async () => {
-    const { k, h, room } = await kernelOn(toml('single'))
-    const a = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
-    const b = await k.createWorkspace(room.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
+  it('One at a time stops the run scripts in the project\'s other workspaces', async () => {
+    const { k, h, project } = await kernelOn(toml('single'))
+    const a = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const b = await k.createWorkspace(project.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
     await h['scripts.run']({ workspaceId: a.id, kind: 'run' })
     await h['scripts.run']({ workspaceId: a.id, kind: 'run', name: 'web' })
     await until(() => runningRuns(a.id).length === 2, 'both of a\'s scripts to start')
@@ -234,9 +234,9 @@ describe('run mode (KERNEL-244)', () => {
   })
 
   it('Concurrent leaves them running', async () => {
-    const { k, h, room } = await kernelOn(toml('concurrent'))
-    const a = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
-    const b = await k.createWorkspace(room.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
+    const { k, h, project } = await kernelOn(toml('concurrent'))
+    const a = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const b = await k.createWorkspace(project.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
     await h['scripts.run']({ workspaceId: a.id, kind: 'run' })
     await h['scripts.run']({ workspaceId: b.id, kind: 'run' })
     await until(() => printed(a, 'run', `started-${a.port}`) && printed(b, 'run', `started-${b.port}`), 'both to start')
@@ -245,10 +245,10 @@ describe('run mode (KERNEL-244)', () => {
   })
 
   it('applies to the run after setup too', async () => {
-    const { k, room } = await kernelOn(toml('single'), { scripts: { setupOnCreate: true, runAfterSetup: true, archiveOnArchive: true } })
-    const a = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const { k, project } = await kernelOn(toml('single'), { scripts: { setupOnCreate: true, runAfterSetup: true, archiveOnArchive: true } })
+    const a = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
     await until(() => runningRuns(a.id).length === 1, 'a\'s run to start after setup')
-    const b = await k.createWorkspace(room.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
+    const b = await k.createWorkspace(project.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
     expect(runningRuns(a.id)).toEqual([])
     expect(runningRuns(b.id)).toEqual(['run'])
   })
@@ -292,12 +292,12 @@ describe('port blocks (KERNEL-244)', () => {
   })
 
   it('gives two workspaces created at once different blocks, and keeps clear of a legacy port', async () => {
-    const { k, room } = await kernelOn({})
-    const legacy = await k.createWorkspace(room.id, { prompt: 'old', agentId: 'kai', title: 'Old' })
+    const { k, project } = await kernelOn({})
+    const legacy = await k.createWorkspace(project.id, { prompt: 'old', agentId: 'kai', title: 'Old' })
     k.store.saveWorkspace({ ...legacy, port: 4312 })
     const [a, b] = await Promise.all([
-      k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' }),
-      k.createWorkspace(room.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
+      k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' }),
+      k.createWorkspace(project.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
     ])
     expect(blocksOverlap(a.port, b.port)).toBe(false)
     for (const ws of [a, b]) {
@@ -307,27 +307,27 @@ describe('port blocks (KERNEL-244)', () => {
   })
 
   it('running out of ports says how many workspaces are open and leaves no worktree or branch behind (KERNEL-830)', async () => {
-    const { k, room, repo } = await kernelOn({})
-    const open = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const { k, project, repo } = await kernelOn({})
+    const open = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
     const branches = await git(repo, 'branch', '--format=%(refname:short)')
     const worktrees = await git(repo, 'worktree', 'list')
     // The other open workspaces' blocks, held as a hand-off in flight holds them.
     const reserved = k.workspaces['reservedPorts']
     for (const p of BLOCK_STARTS) if (!blocksOverlap(p, open.port)) reserved.add(p)
-    await expect(k.createWorkspace(room.id, { prompt: 'b', agentId: 'kai', title: 'Two' })).rejects.toThrow(
-      `Kernel is out of ports for new workspaces. 1 workspace is open across your rooms, and each holds ${PORT_BLOCK} ports. Archive the workspaces you've finished to free their ports.`)
+    await expect(k.createWorkspace(project.id, { prompt: 'b', agentId: 'kai', title: 'Two' })).rejects.toThrow(
+      `Kernel is out of ports for new workspaces. 1 workspace is open across your projects, and each holds ${PORT_BLOCK} ports. Archive the workspaces you've finished to free their ports.`)
     expect(await git(repo, 'branch', '--format=%(refname:short)')).toBe(branches)
     expect(await git(repo, 'worktree', 'list')).toBe(worktrees)
-    expect(k.store.workspaces(room.id).map((w) => w.id)).toEqual([open.id])
+    expect(k.store.workspaces(project.id).map((w) => w.id)).toEqual([open.id])
   })
 
   it('restore keeps the port unless another workspace took its block', async () => {
-    const { k, room } = await kernelOn({})
-    const a = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const { k, project } = await kernelOn({})
+    const a = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
     await k.archiveWorkspace(a.id)
     expect((await k.restoreWorkspace(a.id)).port).toBe(a.port)
     await k.archiveWorkspace(a.id)
-    const b = await k.createWorkspace(room.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
+    const b = await k.createWorkspace(project.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
     k.store.saveWorkspace({ ...b, port: a.port + 3 })
     const back = await k.restoreWorkspace(a.id)
     expect(blocksOverlap(back.port, a.port + 3)).toBe(false)
@@ -344,27 +344,27 @@ describe('nits from the KERNEL-190 review (KERNEL-244)', () => {
     expect(rs.sources).toEqual({})
   })
 
-  it("reading a room's settings refreshes its remote, as saving does", async () => {
-    const { k, h, room, repo } = await kernelOn(scripts('[scripts]\nsetup = "true"\n'))
-    const remotes = k.config['roomRemotes']
+  it("reading a project's settings refreshes its remote, as saving does", async () => {
+    const { k, h, project, repo } = await kernelOn(scripts('[scripts]\nsetup = "true"\n'))
+    const remotes = k.config['projectRemotes']
     // Edited outside Kernel, so nothing has told it yet.
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[workspace]\nremote = "upstream"\n')
     expect(remotes.get(repo)).toBeUndefined()
-    await h['settings.room']({ roomId: room.id })
+    await h['settings.project']({ projectId: project.id })
     expect(remotes.get(repo)).toBe('upstream')
   })
 
   it('fixture mode: a null on an override path leaves the other file\'s value', async () => {
     const h = fixtureHandlers(structuredClone(fixtures.Workspace))
-    const roomId = fixtures.Workspace.rooms[0].id
-    await h['settings.setRoom']({ roomId, patch: { workspace: { remote: 'upstream' } }, shared: true })
-    await h['settings.setRoom']({ roomId, patch: { workspace: { remote: 'fork' } } })
-    expect((await h['settings.room']({ roomId })).sources['workspace.remote']).toBe('override')
-    expect((await h['settings.setRoom']({ roomId, patch: { workspace: { remote: null } } })).sources['workspace.remote']).toBe('shared')
-    await h['settings.setRoom']({ roomId, patch: { workspace: { remote: 'fork' } } })
-    expect((await h['settings.setRoom']({ roomId, patch: { workspace: { remote: null } }, shared: true })).sources['workspace.remote']).toBe('local')
+    const projectId = fixtures.Workspace.projects[0].id
+    await h['settings.setProject']({ projectId, patch: { workspace: { remote: 'upstream' } }, shared: true })
+    await h['settings.setProject']({ projectId, patch: { workspace: { remote: 'fork' } } })
+    expect((await h['settings.project']({ projectId })).sources['workspace.remote']).toBe('override')
+    expect((await h['settings.setProject']({ projectId, patch: { workspace: { remote: null } } })).sources['workspace.remote']).toBe('shared')
+    await h['settings.setProject']({ projectId, patch: { workspace: { remote: 'fork' } } })
+    expect((await h['settings.setProject']({ projectId, patch: { workspace: { remote: null } }, shared: true })).sources['workspace.remote']).toBe('local')
     // Only one file set it: removing it there drops it.
-    expect((await h['settings.setRoom']({ roomId, patch: { workspace: { remote: null } } })).sources['workspace.remote']).toBeUndefined()
+    expect((await h['settings.setProject']({ projectId, patch: { workspace: { remote: null } } })).sources['workspace.remote']).toBeUndefined()
   })
 
   it('the branch list shows every remote until a remote is configured', async () => {
@@ -375,27 +375,27 @@ describe('nits from the KERNEL-190 review (KERNEL-244)', () => {
     }
     expect(await listBranches(repo)).toEqual(expect.arrayContaining(['main', 'origin/main', 'upstream/main']))
     expect(await listBranches(repo, 'upstream')).not.toContain('origin/main')
-    // The app's origin is its default, so only a room remote or another app remote narrows the list.
+    // The app's origin is its default, so only a project remote or another app remote narrows the list.
     expect(configuredRemote({ workspace: {} }, { workspace: { remote: 'origin' } as never })).toBeUndefined()
     expect(configuredRemote({ workspace: { remote: ' ' } }, { workspace: { remote: 'fork' } as never })).toBe('fork')
     expect(configuredRemote({ workspace: { remote: 'origin' } }, { workspace: { remote: 'fork' } as never })).toBe('origin')
   })
 
-  it('git.branches lists every remote with no remote set, and the room remote once one is', async () => {
-    const { h, room, repo } = await kernelOn({})
+  it('git.branches lists every remote with no remote set, and the project remote once one is', async () => {
+    const { h, project, repo } = await kernelOn({})
     for (const name of ['origin', 'upstream']) {
       await git(repo, 'remote', 'add', name, await tempRepo())
       await git(repo, 'fetch', '-q', name)
     }
-    expect(await h['git.branches']({ roomId: room.id })).toEqual(expect.arrayContaining(['origin/main', 'upstream/main']))
-    await h['settings.setRoom']({ roomId: room.id, patch: { workspace: { remote: 'upstream' } } })
-    const narrowed = await h['git.branches']({ roomId: room.id })
+    expect(await h['git.branches']({ projectId: project.id })).toEqual(expect.arrayContaining(['origin/main', 'upstream/main']))
+    await h['settings.setProject']({ projectId: project.id, patch: { workspace: { remote: 'upstream' } } })
+    const narrowed = await h['git.branches']({ projectId: project.id })
     expect(narrowed).toContain('upstream/main')
     expect(narrowed).not.toContain('origin/main')
   })
 
-  it('git.branchList gives the room remote\'s branches with commit times, newest first (KERNEL-776)', async () => {
-    const { h, room, repo } = await kernelOn({})
+  it('git.branchList gives the project remote\'s branches with commit times, newest first (KERNEL-776)', async () => {
+    const { h, project, repo } = await kernelOn({})
     const remote = await tempRepo()
     await git(remote, 'checkout', '-q', '-b', 'feat/new')
     await writeFile(join(remote, 'new.txt'), 'new\n')
@@ -403,10 +403,10 @@ describe('nits from the KERNEL-190 review (KERNEL-244)', () => {
     await git(remote, 'commit', '-q', '-m', 'new')
     await git(repo, 'remote', 'add', 'upstream', remote)
     await git(repo, 'fetch', '-q', 'upstream')
-    await h['settings.setRoom']({ roomId: room.id, patch: { workspace: { remote: 'upstream' } } })
-    const list = await h['git.branchList']({ roomId: room.id })
+    await h['settings.setProject']({ projectId: project.id, patch: { workspace: { remote: 'upstream' } } })
+    const list = await h['git.branchList']({ projectId: project.id })
     // The same names as git.branches, in the same order.
-    expect(list.map((b) => b.name)).toEqual(await h['git.branches']({ roomId: room.id }))
+    expect(list.map((b) => b.name)).toEqual(await h['git.branches']({ projectId: project.id }))
     expect(list.map((b) => b.name)).toEqual(expect.arrayContaining(['main', 'upstream/main', 'upstream/feat/new']))
     const at = (name: string) => list.find((b) => b.name === name)!.committedAt
     const committed = async (ref: string) => Number((await git(repo, 'log', '-1', '--format=%ct', ref)).trim()) * 1000
@@ -475,8 +475,8 @@ describe('scripts run in a terminal (KERNEL-655)', () => {
   })
 
   it("puts Kernel's own setup lines in the terminal output, after the script's", async () => {
-    const { k, room } = await kernelOn(scripts('[scripts]\nsetup = "echo installing; exit 1"\n'), { scripts: { setupOnCreate: true } })
-    const ws = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const { k, project } = await kernelOn(scripts('[scripts]\nsetup = "echo installing; exit 1"\n'), { scripts: { setupOnCreate: true } })
+    const ws = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
     expect(ws.status).toBe('failed')
     expect(dataOf(ws.id)).toMatch(/installing\r\n(.|\n|\r)*Setup failed with exit code 1\r\n$/)
     expect(linesOf(ws.id).at(-1)).toBe('Setup failed with exit code 1')

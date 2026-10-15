@@ -8,8 +8,8 @@ import type { PushEvent } from '@shared/ipc'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { git, run } from '../src/main/services/exec'
-import { roomWorktreeRoot } from '../src/main/services/worktrees'
-import { setUp, tempRepo, trustRoom, freePort } from './helpers'
+import { projectWorktreeRoot } from '../src/main/services/worktrees'
+import { setUp, tempRepo, trustProject, freePort } from './helpers'
 
 // KERNEL-542: lead.start answers once the chat, its tab and its workspace are saved. The fetch, the worktree and setup run
 // after, and the first message waits in the tab's queue until the worktree exists.
@@ -52,7 +52,7 @@ const REPO = {
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.'
 }
 
-/** A repo with an `origin`, as most rooms have. */
+/** A repo with an `origin`, as most projects have. */
 async function withOrigin(files: Record<string, string> = {}) {
   const repo = await tempRepo({ ...REPO, ...files })
   const bare = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
@@ -78,14 +78,14 @@ async function boot(where: { dataDir: string; home: string }) {
   return k
 }
 
-/** A started Kernel on a trusted room made from `files`, with `origin`, and `workspace` in its settings. */
-async function room(files: Record<string, string> = {}, workspace: Record<string, unknown> = {}) {
+/** A started Kernel on a trusted project made from `files`, with `origin`, and `workspace` in its settings. */
+async function project(files: Record<string, string> = {}, workspace: Record<string, unknown> = {}) {
   const where = await dirs(workspace)
   const k = await boot(where)
-  const r = await k.addRoom(await withOrigin(files))
-  await trustRoom(k, r.id)
+  const r = await k.addProject(await withOrigin(files))
+  await trustProject(k, r.id)
   sdk.calls.length = 0
-  return { k, room: r, where }
+  return { k, project: r, where }
 }
 
 const queuedText = (k: Kernel, chatId: string) => k.sessions.queued(chatId).map((q) => q.parts.map((p) => (p.type === 'text' ? p.text : '')).join(''))
@@ -93,13 +93,13 @@ const callIn = (path: string) => sdk.calls.filter((c) => c.options.cwd === path)
 const wsOf = (k: Kernel, chat: Chat) => k.store.workspace(chat.workspaceId)!
 
 describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
-  it('answers while the fetch is still held in a real room, with the branch and folder picked and the message held', async () => {
-    const { k, room: r, where } = await room()
+  it('answers while the fetch is still held in a real project, with the branch and folder picked and the message held', async () => {
+    const { k, project: r, where } = await project()
     const open = slowNetwork()
-    const chat = await k.handlers()['lead.start']({ roomId: r.id, prompt: 'Plan the PDF export' })
+    const chat = await k.handlers()['lead.start']({ projectId: r.id, prompt: 'Plan the PDF export' })
     const ws = wsOf(k, chat)
     expect(ws).toMatchObject({ lead: true, status: 'setup', worktreePending: {}, branch: 'kernel/plan-pdf-export', baseRef: 'origin/main' })
-    expect(ws.path).toBe(join(roomWorktreeRoot(join(where.home, 'wt'), r), 'kernel-plan-pdf-export'))
+    expect(ws.path).toBe(join(projectWorktreeRoot(join(where.home, 'wt'), r), 'kernel-plan-pdf-export'))
     expect(existsSync(ws.path)).toBe(false)
     expect(queuedText(k, chat.id)).toEqual(['Plan the PDF export'])
     expect(k.sessions.queueReason(chat.id)).toBe('setup')
@@ -112,7 +112,7 @@ describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
   })
 
   it('sends the held message once the worktree exists, while setup runs, with Wait for setup off', async () => {
-    const { k, room: r } = await room({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' })
+    const { k, project: r } = await project({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' })
     const open = slowNetwork()
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     await new Promise((res) => setTimeout(res, 50))
@@ -125,7 +125,7 @@ describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
   })
 
   it('keeps the message held through setup once the worktree exists, with Wait for setup on', async () => {
-    const { k, room: r } = await room({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' }, { leadWaitForSetup: true })
+    const { k, project: r } = await project({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' }, { leadWaitForSetup: true })
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     await k.workspaces.worktreeMade(chat.workspaceId)
     const ws = wsOf(k, chat)
@@ -139,20 +139,20 @@ describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
   })
 
   it('reuses the fetch New chat started when it opened', async () => {
-    const { k, room: r } = await room()
+    const { k, project: r } = await project()
     const before = fetches.count
-    expect(await k.handlers()['lead.prefetch']({ roomId: r.id })).toEqual({ ok: true })
+    expect(await k.handlers()['lead.prefetch']({ projectId: r.id })).toEqual({ ok: true })
     await vi.waitFor(() => expect(fetches.count - before).toBe(1))
-    const chat = await k.handlers()['lead.start']({ roomId: r.id, prompt: 'Plan it' })
+    const chat = await k.handlers()['lead.start']({ projectId: r.id, prompt: 'Plan it' })
     await k.workspaces.worktreeMade(chat.workspaceId)
     expect(wsOf(k, chat).worktreePending).toBeUndefined()
     expect(fetches.count - before).toBe(1)
-    // A room with no remote, or no room at all, fetches nothing and says nothing.
-    await expect(k.handlers()['lead.prefetch']({ roomId: 'gone' })).resolves.toEqual({ ok: true })
+    // A project with no remote, or no project at all, fetches nothing and says nothing.
+    await expect(k.handlers()['lead.prefetch']({ projectId: 'gone' })).resolves.toEqual({ ok: true })
   })
 
   it('gives two chats started together two branches and two folders before git makes either', async () => {
-    const { k, room: r } = await room()
+    const { k, project: r } = await project()
     const open = slowNetwork()
     const [a, b] = await Promise.all([k.lead.startLeadChat(r.id, { prompt: 'Plan the release' }), k.lead.startLeadChat(r.id, { prompt: 'Plan the release' })])
     expect([wsOf(k, a).branch, wsOf(k, b).branch].sort()).toEqual(['kernel/plan-release', 'kernel/plan-release-2'])
@@ -164,11 +164,11 @@ describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
   })
 
   it('reads nothing from the folder and logs nothing while the worktree is being made', async () => {
-    const { k, room: r } = await room()
+    const { k, project: r } = await project()
     const open = slowNetwork()
     const warn = vi.spyOn(console, 'warn')
     const error = vi.spyOn(console, 'error')
-    const chat = await k.handlers()['lead.start']({ roomId: r.id, prompt: 'Plan it' })
+    const chat = await k.handlers()['lead.start']({ projectId: r.id, prompt: 'Plan it' })
     const ws = wsOf(k, chat)
     const h = k.handlers()
     const id = { workspaceId: ws.id }
@@ -200,7 +200,7 @@ describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
     await k.lead.syncLead(r.id, { workspaceId: ws.id })
     await k.overlaps.check(r.id)
     // Kernel's own sends wait with the first message.
-    await k.handlers()['rooms.brief']({ roomId: r.id, text: 'And this' })
+    await k.handlers()['projects.brief']({ projectId: r.id, text: 'And this' })
     expect(queuedText(k, chat.id)).toEqual(['Plan it', 'And this'])
     expect(k.sessions.post(chat.id, [{ type: 'text', text: 'update' }])).toBe(false)
     expect(wsOf(k, chat)).toMatchObject({ path: ws.path, branch: ws.branch, status: 'setup', worktreePending: {} })
@@ -215,7 +215,7 @@ describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
   })
 
   it('archives a chat whose worktree is being made at once, and leaves no folder or branch behind', async () => {
-    const { k, room: r } = await room()
+    const { k, project: r } = await project()
     const open = slowNetwork()
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     const ws = wsOf(k, chat)
@@ -234,9 +234,9 @@ describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
 
 describe('a worktree git would not make (KERNEL-542)', () => {
   it('fails the workspace with git\'s reason, keeps the message queued, and Run again makes it and sends', async () => {
-    const { k, room: r, where } = await room()
+    const { k, project: r, where } = await project()
     // git can't make a folder in a worktree root it can't write to.
-    const root = roomWorktreeRoot(join(where.home, 'wt'), r)
+    const root = projectWorktreeRoot(join(where.home, 'wt'), r)
     await mkdir(root, { recursive: true })
     await chmod(root, 0o555)
     onTestFinished(() => chmod(root, 0o755))
@@ -272,7 +272,7 @@ describe('a worktree git would not make (KERNEL-542)', () => {
     const first = new Kernel(where)
     first.signedInReader = async () => true
     await first.start()
-    const r = await first.addRoom(await withOrigin())
+    const r = await first.addProject(await withOrigin())
     const open = slowNetwork()
     const chat = await first.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     await first.stop({ budgetMs: 0 })
@@ -296,8 +296,8 @@ describe('what New chat still hears about before anything is saved (KERNEL-542)'
     ['a base that is neither here nor on the remote', {}, { baseRef: 'release/v9' }, 'release/v9 is not on origin or in this repo'],
     ['a Lead branch pattern git refuses', { leadBranchPattern: 'bad..{slug}' }, {}, 'is not a valid branch name']
   ] as const)('throws for %s', async (_, workspace, o, message) => {
-    const { k, room: r } = await room({}, workspace)
-    await expect(k.handlers()['lead.start']({ roomId: r.id, prompt: 'Plan it', ...o })).rejects.toThrow(message)
+    const { k, project: r } = await project({}, workspace)
+    await expect(k.handlers()['lead.start']({ projectId: r.id, prompt: 'Plan it', ...o })).rejects.toThrow(message)
     expect(k.store.workspaces(r.id)).toEqual([])
     expect(k.store.threads(r.id)).toEqual([])
   })

@@ -74,7 +74,7 @@ export function HeroDemo() {
         <div ref={box} className="demo-screen relative aspect-16/10 overflow-hidden bg-surface-2">
           <Image
             src={leadPlan}
-            alt="Kernel open on a new chat in the Kernel room, with past chats and other rooms in the sidebar"
+            alt="Kernel open on a new chat in the Kernel project, with past chats and other projects in the sidebar"
             sizes="(max-width: 1328px) calc(100vw - 48px), 1280px"
             preload
             quality={90}

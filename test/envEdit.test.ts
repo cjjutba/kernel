@@ -36,7 +36,7 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('Edit 
   }
 
   it('opens with an empty value, and Show is what asks for the saved one', async () => {
-    const page = await launch('SettingsRoomEnvironment')
+    const page = await launch('SettingsProjectEnvironment')
     await page.getByRole('button', { name: 'Edit DATABASE_URL' }).click()
     const dialog = page.getByRole('dialog', { name: 'Edit DATABASE_URL' })
     await dialog.waitFor()
@@ -51,7 +51,7 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('Edit 
   }, 60_000)
 
   it('does not save an empty value over the saved one', async () => {
-    const page = await launch('SettingsRoomEnvironment')
+    const page = await launch('SettingsProjectEnvironment')
     await page.getByRole('button', { name: 'Edit DATABASE_URL' }).click()
     const dialog = page.getByRole('dialog', { name: 'Edit DATABASE_URL' })
     await dialog.getByRole('button', { name: 'Save', exact: true }).click()

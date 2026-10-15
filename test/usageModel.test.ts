@@ -31,19 +31,19 @@ describe('the footer chips (KERNEL-674)', () => {
 describe('the footer row with many accounts (KERNEL-697)', () => {
   const ids = ['a', 'b', 'c', 'd', 'e']
   const many = [account('cli', true), ...ids.map((id) => account(id, false))]
-  const room = ids.map((id, i) => window('five_hour', 0.1 * (i + 1), id))
+  const headroom = ids.map((id, i) => window('five_hour', 0.1 * (i + 1), id))
 
-  it('shows two others inline, most room first, and counts the rest as overflow', () => {
-    const [claude] = footerGroups(many, room, now)
+  it('shows two others inline, most headroom first, and counts the rest as overflow', () => {
+    const [claude] = footerGroups(many, headroom, now)
     expect(claude.chips.map((c) => c.id)).toEqual(['cli', 'a', 'b'])
     expect(claude.overflow.map((c) => c.id)).toEqual(['c', 'd', 'e'])
     expect(claude.others).toBe(5)
   })
 
   it('has no overflow at two others, and none at all with one account', () => {
-    const two = footerGroups(many.slice(0, 3), room, now)[0]
+    const two = footerGroups(many.slice(0, 3), headroom, now)[0]
     expect([two.chips.length, two.overflow.length, two.others]).toEqual([3, 0, 2])
-    const one = footerGroups([account('cli', true)], room, now)[0]
+    const one = footerGroups([account('cli', true)], headroom, now)[0]
     expect([one.chips.length, one.overflow.length, one.others]).toEqual([1, 0, 0])
   })
 

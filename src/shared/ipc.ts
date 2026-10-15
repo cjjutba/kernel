@@ -1,8 +1,8 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubAuth, GitHubStatus, HookStatus, Hunk,
-  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
-  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptSuggestion, ScriptTrust, ChatArchivePreview, MoveChoice, MoveNotice, MovePreview, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewProjectRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
+  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ScriptTrust, ChatArchivePreview, MoveChoice, MoveNotice, MovePreview, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -33,98 +33,98 @@ export interface KernelApi {
   /** CheckHooksOff "Turn hooks on": takes disableAllHooks out of Claude Code's user settings, after the first backup (KERNEL-461). */
   'hooks.turnOn': { req: void; res: HookStatus }
 
-  // rooms (KERNEL-20, 22, 24)
-  'rooms.list': { req: void; res: Room[] }
-  'rooms.add': { req: { path: string; name?: string }; res: Room }
-  /** New room modal. Progress arrives as `room.setup` push events. */
-  'rooms.create': { req: NewRoomRequest; res: Room }
+  // projects (KERNEL-20, 22, 24)
+  'projects.list': { req: void; res: Project[] }
+  'projects.add': { req: { path: string; name?: string }; res: Project }
+  /** New project modal. Progress arrives as `project.setup` push events. */
+  'projects.create': { req: NewProjectRequest; res: Project }
   /**
-   * Try again on a failed room setup: runs the first failed step and every step after it, and returns once it has started.
-   * Progress arrives as `room.setup` push events, as for `rooms.create`. Refused while setup runs and once nothing failed.
+   * Try again on a failed project setup: runs the first failed step and every step after it, and returns once it has started.
+   * Progress arrives as `project.setup` push events, as for `projects.create`. Refused while setup runs and once nothing failed.
    */
-  'rooms.retrySetup': { req: { roomId: string }; res: Ok }
-  'rooms.update': { req: { roomId: string; patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow' | 'allowTools' | 'permissionMode' | 'host'>> }; res: Room }
-  /** Sets the room icon. The letter clears it. When the GitHub avatar can't be fetched it throws a plain error and the room keeps its letter. */
-  'rooms.setIcon': { req: { roomId: string; icon: { kind: 'letter' } | { kind: 'github' } | { kind: 'image'; path: string } }; res: Room }
-  /** The room icon as a data URL, or null for the letter. */
-  'rooms.icon': { req: { roomId: string }; res: string | null }
-  'rooms.remove': { req: { roomId: string; deleteWorktrees: boolean }; res: Ok }
-  'rooms.setPaused': { req: { roomId: string; paused: boolean }; res: Room }
-  /** Send a brief to the room's Lead, or a message to one agent. `parts` is the message in order when it has chips inline; `text` is its plain words. */
-  'rooms.brief': { req: { roomId: string; text: string; parts?: ChatPart[]; agentId?: string }; res: { chatId: string; workspaceId: string } }
-  'rooms.overlaps': { req: { roomId: string }; res: Overlap[] }
-  /** By agent id, the time of each agent's newest event in the room, read from the whole log. */
-  'rooms.lastActivity': { req: { roomId: string }; res: Record<string, number> }
+  'projects.retrySetup': { req: { projectId: string }; res: Ok }
+  'projects.update': { req: { projectId: string; patch: Partial<Pick<Project, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow' | 'allowTools' | 'permissionMode' | 'host'>> }; res: Project }
+  /** Sets the project icon. The letter clears it. When the GitHub avatar can't be fetched it throws a plain error and the project keeps its letter. */
+  'projects.setIcon': { req: { projectId: string; icon: { kind: 'letter' } | { kind: 'github' } | { kind: 'image'; path: string } }; res: Project }
+  /** The project icon as a data URL, or null for the letter. */
+  'projects.icon': { req: { projectId: string }; res: string | null }
+  'projects.remove': { req: { projectId: string; deleteWorktrees: boolean }; res: Ok }
+  'projects.setPaused': { req: { projectId: string; paused: boolean }; res: Project }
+  /** Send a brief to the project's Lead, or a message to one agent. `parts` is the message in order when it has chips inline; `text` is its plain words. */
+  'projects.brief': { req: { projectId: string; text: string; parts?: ChatPart[]; agentId?: string }; res: { chatId: string; workspaceId: string } }
+  'projects.overlaps': { req: { projectId: string }; res: Overlap[] }
+  /** By agent id, the time of each agent's newest event in the project, read from the whole log. */
+  'projects.lastActivity': { req: { projectId: string }; res: Record<string, number> }
   /** "Let Kernel sort it": the Lead decides which worktree keeps the change. */
-  'rooms.resolveOverlap': { req: { overlapId: string }; res: Ok }
-  /** What the room's scripts and files.copy list wait on, or null when there is nothing to trust (KERNEL-209). */
-  'rooms.scriptTrust': { req: { roomId: string }; res: ScriptTrust | null }
-  /** Trust the text behind `hash` and release the room's workspaces held in `trust`. Rejects when the text changed since. */
-  'rooms.trust': { req: { roomId: string; hash: string }; res: Ok }
+  'projects.resolveOverlap': { req: { overlapId: string }; res: Ok }
+  /** What the project's scripts and files.copy list wait on, or null when there is nothing to trust (KERNEL-209). */
+  'projects.scriptTrust': { req: { projectId: string }; res: ScriptTrust | null }
+  /** Trust the text behind `hash` and release the project's workspaces held in `trust`. Rejects when the text changed since. */
+  'projects.trust': { req: { projectId: string; hash: string }; res: Ok }
   /**
-   * Whether git can push from the room's checkout (KERNEL-460): the last result, or a new one when there is none or `recheck`
-   * is set. Null when the room has no remote. A recheck also updates the room's Check push access step while setup shows.
+   * Whether git can push from the project's checkout (KERNEL-460): the last result, or a new one when there is none or `recheck`
+   * is set. Null when the project has no remote. A recheck also updates the project's Check push access step while setup shows.
    */
-  'rooms.pushCheck': { req: { roomId: string; recheck?: boolean }; res: PushCheck | null }
-  'rooms.inspectFolder': { req: { path: string }; res: FolderInfo }
-  'rooms.recentFolders': { req: void; res: FolderInfo[] }
+  'projects.pushCheck': { req: { projectId: string; recheck?: boolean }; res: PushCheck | null }
+  'projects.inspectFolder': { req: { path: string }; res: FolderInfo }
+  'projects.recentFolders': { req: void; res: FolderInfo[] }
   'github.repos': { req: { query?: string }; res: RepoSummary[] }
 
   // agents (KERNEL-19, 22)
-  'agents.list': { req: { roomId: string; retired?: boolean }; res: AgentDef[] }
-  'agents.status': { req: { roomId: string }; res: Record<string, AgentStatus> }
+  'agents.list': { req: { projectId: string; retired?: boolean }; res: AgentDef[] }
+  'agents.status': { req: { projectId: string }; res: Record<string, AgentStatus> }
   /**
    * AgentProfile > Save changes. `scope` says who gets the change (KERNEL-466): `me`, the default, keeps it on this Mac, and
    * `team` opens a pull request that changes the file, returned as `pr`, and the agent stays as it is until that merges.
    */
-  'agents.save': { req: { roomId: string; agentId: string; patch: AgentEdit; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
-  /** New agent > Describe: write a draft file from a description. Settings, Agents with no room leaves `roomId` out. */
-  'agents.draft': { req: { roomId?: string; description: string; name?: string; model?: string }; res: AgentDraft }
+  'agents.save': { req: { projectId: string; agentId: string; patch: AgentEdit; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
+  /** New agent > Describe: write a draft file from a description. Settings, Agents with no project leaves `projectId` out. */
+  'agents.draft': { req: { projectId?: string; description: string; name?: string; model?: string }; res: AgentDraft }
   /**
    * New agent > Create agent. `me`, the default, saves the file in ~/.claude/agents. `team` opens a pull request that adds it
-   * (KERNEL-466), so it needs `roomId`. Settings, Agents with no room leaves `roomId` out and creates only for `me`.
+   * (KERNEL-466), so it needs `projectId`. Settings, Agents with no project leaves `projectId` out and creates only for `me`.
    */
-  'agents.create': { req: { roomId?: string; draft: AgentDraft; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
+  'agents.create': { req: { projectId?: string; draft: AgentDraft; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
   /**
    * The agent leaves the team on this Mac now, and its open workspaces go to `handoffTo`, or the Lead. `me`, the default,
    * leaves the file as it is. `team` also opens a pull request that moves it to .claude/retired-agents (D-003, KERNEL-466).
    */
-  'agents.retire': { req: { roomId: string; agentId: string; handoffTo?: string; scope?: AgentScope }; res: Ok & { pr?: AgentChangePr } }
+  'agents.retire': { req: { projectId: string; agentId: string; handoffTo?: string; scope?: AgentScope }; res: Ok & { pr?: AgentChangePr } }
   /**
    * Brings back an agent retired on this Mac. A file in .claude/retired-agents comes back to ~/.claude/agents for `me`, the
    * default, or in a pull request that moves it back for `team` (KERNEL-466).
    */
-  'agents.restore': { req: { roomId: string; agentId: string; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
-  /** An empty room's team: add a starter team from a template. */
-  'agents.seed': { req: { roomId: string; template: TeamTemplate }; res: AgentDef[] }
+  'agents.restore': { req: { projectId: string; agentId: string; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
+  /** An empty project's team: add a starter team from a template. */
+  'agents.seed': { req: { projectId: string; template: TeamTemplate }; res: AgentDef[] }
   /**
    * Who leads, who reviews and who takes tasks: writes the `[team]` table in the shared .kernel/settings.toml and returns
    * the team as Kernel now resolves it (KERNEL-397). `from` says which screen asked.
    */
-  'agents.setTeam': { req: { roomId: string; team: TeamPatch; from?: 'setup' | 'settings' }; res: AgentDef[] }
+  'agents.setTeam': { req: { projectId: string; team: TeamPatch; from?: 'setup' | 'settings' }; res: AgentDef[] }
   /** Copies Kernel's own Lead or reviewer into .claude/agents so the user can edit it, and returns the new file's agent. */
-  'agents.customize': { req: { roomId: string; agentId: string }; res: AgentDef }
-  /** Deletes .claude/agents/kernel.md, so the room's Lead is Kernel as it ships again, and returns the team (KERNEL-692). */
-  'agents.resetLead': { req: { roomId: string }; res: AgentDef[] }
+  'agents.customize': { req: { projectId: string; agentId: string }; res: AgentDef }
+  /** Deletes .claude/agents/kernel.md, so the project's Lead is Kernel as it ships again, and returns the team (KERNEL-692). */
+  'agents.resetLead': { req: { projectId: string }; res: AgentDef[] }
   /**
    * Renames the file that customizes Kernel (an older Lead file, or the one `[team] lead` names) to .claude/agents/kernel.md,
    * keeping its content, and clears `[team] lead` when it named that file. Returns the team (KERNEL-741).
    */
-  'agents.moveLead': { req: { roomId: string }; res: AgentDef[] }
+  'agents.moveLead': { req: { projectId: string }; res: AgentDef[] }
   /** Team > Add a starter agent: copies one of Kernel's starter files into .claude/agents. Refuses one the team already has. */
-  'agents.addStarter': { req: { roomId: string; id: string }; res: AgentDef }
+  'agents.addStarter': { req: { projectId: string; id: string }; res: AgentDef }
   /**
-   * Settings, Agents with no room: the agents that join every room, the user's own in ~/.claude/agents then plugin agents, each
-   * with `origin` set and flagged like a room flags a file Kernel can't read (KERNEL-640).
+   * Settings, Agents with no project: the agents that join every project, the user's own in ~/.claude/agents then plugin agents, each
+   * with `origin` set and flagged like a project flags a file Kernel can't read (KERNEL-640).
    */
   'agents.listGlobal': { req: Record<string, never>; res: AgentDef[] }
-  /** Rewrites a personal agent's file in ~/.claude/agents, and every open room picks the change up. Refuses a plugin agent (KERNEL-640). */
+  /** Rewrites a personal agent's file in ~/.claude/agents, and every open project picks the change up. Refuses a plugin agent (KERNEL-640). */
   'agents.saveGlobal': { req: { agentId: string; patch: AgentEdit }; res: AgentDef }
 
   // workspaces (KERNEL-10, 11, 16, 21, 28)
-  'workspaces.list': { req: { roomId?: string }; res: Workspace[] }
+  'workspaces.list': { req: { projectId?: string }; res: Workspace[] }
   /** `prompt` names the workspace and its first checkpoint. `parts` is the first message in order when it has chips inline; without text in it, `prompt` goes first. */
-  'workspaces.create': { req: { roomId: string; prompt: string; parts?: ChatPart[]; agentId?: string; mode?: WorkspaceMode; baseRef?: string; source?: WorkspaceSource; provider?: Provider; model?: string; effort?: Effort; plan?: boolean }; res: Workspace }
+  'workspaces.create': { req: { projectId: string; prompt: string; parts?: ChatPart[]; agentId?: string; mode?: WorkspaceMode; baseRef?: string; source?: WorkspaceSource; provider?: Provider; model?: string; effort?: Effort; plan?: boolean }; res: Workspace }
   /**
    * Fork into new workspace (KERNEL-346): a new worktree workspace on a branch from the chat's workspace's HEAD, with its files as
    * they are now, and the chat up to `itemId` (the whole chat when unset). Answers once the workspace and its chat exist; setup goes on.
@@ -143,7 +143,7 @@ export interface KernelApi {
   'workspaces.diff': { req: { workspaceId: string; file?: string; target?: CompareTarget }; res: string }
   /** The commits on the workspace's branch since its base, newest first, as `git log <base>..HEAD` lists them (PanelCompare, KERNEL-516). */
   'workspaces.commits': { req: { workspaceId: string }; res: BranchCommit[] }
-  /** The Target branch picker (KERNEL-516): the workspace's base, then `<remote>/<default>`, then the room's other branches newest first. Never the workspace's own branch. */
+  /** The Target branch picker (KERNEL-516): the workspace's base, then `<remote>/<default>`, then the project's other branches newest first. Never the workspace's own branch. */
   'workspaces.compareBranches': { req: { workspaceId: string }; res: string[] }
   'workspaces.tree': { req: { workspaceId: string }; res: FileEntry[] }
   /** @ mentions: files matching the query, best first. */
@@ -158,29 +158,29 @@ export interface KernelApi {
   /** Commit only the picked hunks (WorkspaceHunks "Commit selected"). */
   'workspaces.commit': { req: { workspaceId: string; hunkIds: string[]; message?: string }; res: Ok }
   'workspaces.discard': { req: { workspaceId: string }; res: Ok }
-  'git.branches': { req: { roomId: string }; res: string[] }
+  'git.branches': { req: { projectId: string }; res: string[] }
   /** New chat's branch menu: the same branches as `git.branches`, newest commit first, each with its last commit's time in ms (KERNEL-776). */
-  'git.branchList': { req: { roomId: string }; res: { name: string; committedAt: number }[] }
-  'github.prs': { req: { roomId: string; query?: string }; res: PrSummary[] }
-  /** + > Link issue, GitHub tab: the room's open issues through gh. */
-  'github.issues': { req: { roomId: string; query?: string }; res: IssueSummary[] }
-  'issues.list': { req: { roomId: string; query?: string }; res: IssueSummary[] }
+  'git.branchList': { req: { projectId: string }; res: { name: string; committedAt: number }[] }
+  'github.prs': { req: { projectId: string; query?: string }; res: PrSummary[] }
+  /** + > Link issue, GitHub tab: the project's open issues through gh. */
+  'github.issues': { req: { projectId: string; query?: string }; res: IssueSummary[] }
+  'issues.list': { req: { projectId: string; query?: string }; res: IssueSummary[] }
   /**
-   * Up next in New chat: the room tracker's issues nobody has started, the most pressing first. Linear lists its Todo
+   * Up next in New chat: the project tracker's issues nobody has started, the most pressing first. Linear lists its Todo
    * issues by priority; a tracker with no such order lists its open issues as `issues.list` does.
    */
-  'issues.next': { req: { roomId: string }; res: IssueSummary[] }
+  'issues.next': { req: { projectId: string }; res: IssueSummary[] }
   /**
    * Before New workspace starts on an issue: a branch on the remote, an open PR or another assignee that says someone else may
    * be on it (ConfirmIssueTaken.png, KERNEL-479). A check that can't answer adds a note instead of holding the start up.
    */
-  'issues.taken': { req: { roomId: string; issue: string }; res: IssueTaken }
-  /** The room's issue tracker, which the Issues screen, the From popover and Link issue read to know whose issues to list (KERNEL-471). */
-  'issues.tracker': { req: { roomId: string }; res: RoomTracker }
-  /** The room's open GitHub issues with the fields the Issues screen shows, up to 100, through gh. */
-  'github.issueList': { req: { roomId: string; query?: string }; res: GithubIssue[] }
+  'issues.taken': { req: { projectId: string; issue: string }; res: IssueTaken }
+  /** The project's issue tracker, which the Issues screen, the From popover and Link issue read to know whose issues to list (KERNEL-471). */
+  'issues.tracker': { req: { projectId: string }; res: ProjectTracker }
+  /** The project's open GitHub issues with the fields the Issues screen shows, up to 100, through gh. */
+  'github.issueList': { req: { projectId: string; query?: string }; res: GithubIssue[] }
   /** One GitHub issue by key (`#41`), with its description and comments. */
-  'github.issue': { req: { roomId: string; id: string }; res: GithubIssueDetail }
+  'github.issue': { req: { projectId: string; id: string }; res: GithubIssueDetail }
 
   // Linear issues (KERNEL-159)
   /** Open issues, newest first, up to 100. */
@@ -189,7 +189,7 @@ export interface KernelApi {
   'linear.issue': { req: { id: string }; res: LinearIssueDetail }
   'linear.scope': { req: void; res: LinearScope }
   /** Plan with Kernel: a fresh Lead chat in plan mode, briefed with the issue. */
-  'linear.plan': { req: { id: string; roomId: string }; res: { chatId: string; workspaceId: string } }
+  'linear.plan': { req: { id: string; projectId: string }; res: { chatId: string; workspaceId: string } }
 
   // chats (KERNEL-10, 11, 12, 28)
   'chats.list': { req: { workspaceId: string }; res: Chat[] }
@@ -236,8 +236,8 @@ export interface KernelApi {
    * that loads while agents work reads them here, or every working agent would look stopped (KERNEL-340).
    */
   'chats.live': { req: void; res: { running: string[]; retry: Record<string, Retry> } }
-  'skills.list': { req: { roomId: string }; res: Skill[] }
-  /** Claude Code's own slash commands for the / menu. The same in every room, so it is read once. */
+  'skills.list': { req: { projectId: string }; res: Skill[] }
+  /** Claude Code's own slash commands for the / menu. The same in every project, so it is read once. */
   'commands.list': { req: void; res: BuiltinCommand[] }
   'terminal.write': { req: { chatId: string; data: string }; res: Ok }
   'terminal.resize': { req: { chatId: string; cols: number; rows: number }; res: Ok }
@@ -254,13 +254,13 @@ export interface KernelApi {
   'checkpoints.revert': { req: { workspaceId: string; checkpointId: string }; res: { backupBranch: string } }
 
   // approvals
-  'approvals.list': { req: { roomId?: string }; res: Approval[] }
+  'approvals.list': { req: { projectId?: string }; res: Approval[] }
   'approvals.decide': { req: { id: string; decision: Decision }; res: Approval }
   /** The plan's file, written again from the approval if it was deleted. `relative` is from the workspace folder. */
   'approvals.planFile': { req: { id: string }; res: { path: string; relative: string } }
 
   // tasks (KERNEL-18)
-  'tasks.list': { req: { roomId: string }; res: Task[] }
+  'tasks.list': { req: { projectId: string }; res: Task[] }
 
   // home and inbox (KERNEL-17)
   'notifications.list': { req: void; res: Notification[] }
@@ -268,30 +268,30 @@ export interface KernelApi {
   /** Settings, Notifications, Play: shows one macOS banner with the sound, so the user hears it (KERNEL-680). */
   'notifications.playSound': { req: { sound: AppSettings['notifications']['sound'] }; res: Ok }
   /**
-   * The workspace of the room's newest open Lead chat, for the sidebar row, Cmd+K and Cmd+Shift+L. Null when no chat
+   * The workspace of the project's newest open Lead chat, for the sidebar row, Cmd+K and Cmd+Shift+L. Null when no chat
    * is open: it never starts one (KERNEL-405).
    */
-  'lead.open': { req: { roomId: string }; res: Workspace | null }
+  'lead.open': { req: { projectId: string }; res: Workspace | null }
   /**
    * The new workspace modal: the prompt goes to the Lead in a new chat, which takes its title from the first message (KERNEL-148). The
    * chat gets its own worktree, on a branch from `baseRef` or the latest default branch (KERNEL-405). It answers once the chat, its
    * tab and its workspace are saved, before the fetch and the worktree, which the workspace's `worktreePending` covers. The prompt
    * waits in the tab's queue until the worktree exists, then for setup when Wait for setup says so (KERNEL-542).
    */
-  'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; leadMode?: LeadMode }; res: Chat }
+  'lead.start': { req: { projectId: string; prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; leadMode?: LeadMode }; res: Chat }
   /**
-   * Starts a fetch of the room's remote and answers without waiting for it, so the fetch Create needs is done or under way by
+   * Starts a fetch of the project's remote and answers without waiting for it, so the fetch Create needs is done or under way by
    * then. New chat calls it when it opens. A failed fetch says nothing (KERNEL-542).
    */
-  'lead.prefetch': { req: { roomId: string }; res: Ok }
+  'lead.prefetch': { req: { projectId: string }; res: Ok }
   /**
    * Switches a chat with Kernel to Hand off or Build here, by its workspace (KERNEL-770). It applies from the next turn: a running
    * turn finishes in the mode it started in. The chat's transcript gets a `leadMode` divider. Refuses a workspace that isn't a
    * chat with Kernel.
    */
   'lead.setMode': { req: { workspaceId: string; mode: LeadMode }; res: Workspace }
-  /** The Lead chats, each holding one or more Lead tabs, in every room or in `roomId`, oldest first (KERNEL-337). */
-  'threads.list': { req: { roomId?: string }; res: Thread[] }
+  /** The Lead chats, each holding one or more Lead tabs, in every project or in `projectId`, oldest first (KERNEL-337). */
+  'threads.list': { req: { projectId?: string }; res: Thread[] }
   /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */
   'threads.rename': { req: { threadId: string; title: string }; res: Thread }
   /** What archiving a Lead chat would stop, per workspace, its own last (KERNEL-405). */
@@ -337,13 +337,13 @@ export interface KernelApi {
   /** Resizes a running script's terminal. The next run of the same script starts at this size, and at `SCRIPT_COLS` by `SCRIPT_ROWS` before any (KERNEL-655). */
   'scripts.resize': { req: { workspaceId: string; kind: ScriptKind; name?: string; cols: number; rows: number }; res: Ok }
 
-  /** The scripts the room could take from Conductor, Superset or its lockfiles, without the ones it already runs. Reads only, and `settings.setRoom` saves one (KERNEL-682). */
-  'scripts.suggest': { req: { roomId: string }; res: ScriptSuggestion[] }
-  /** Ask Kernel: a new Lead chat in the room that reads the repo and proposes its scripts with set_room_scripts. Main writes the message, so the renderer sends none (KERNEL-683). */
-  'scripts.askLead': { req: { roomId: string }; res: Chat }
+  /** The scripts the project could take from Conductor, Superset or its lockfiles, without the ones it already runs. Reads only, and `settings.setProject` saves one (KERNEL-682). */
+  'scripts.suggest': { req: { projectId: string }; res: ScriptSuggestion[] }
+  /** Ask Kernel: a new Lead chat in the project that reads the repo and proposes its scripts with set_project_scripts. Main writes the message, so the renderer sends none (KERNEL-683). */
+  'scripts.askLead': { req: { projectId: string }; res: Chat }
 
   // activity, usage and account (KERNEL-21, 25, 28)
-  'activity.recent': { req: { roomId?: string; limit?: number }; res: ActivityEvent[] }
+  'activity.recent': { req: { projectId?: string; limit?: number }; res: ActivityEvent[] }
   /**
    * The usage windows Kernel has, at once, since the window waits on it at launch. It also starts a read of every
    * subscription account on both providers that Kernel didn't read in the last minute, and what that finds arrives as
@@ -459,44 +459,44 @@ export interface KernelApi {
   // settings (KERNEL-25, 26)
   'settings.get': { req: void; res: AppSettings }
   'settings.set': { req: { patch: DeepPartial<AppSettings> }; res: AppSettings }
-  'settings.room': { req: { roomId: string }; res: RoomSettings }
+  'settings.project': { req: { projectId: string }; res: ProjectSettings }
   /** Writes .kernel/settings.local.toml unless `shared` is set, then .kernel/settings.toml. A `null` removes that key from the file, which is "Use default". */
-  'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
+  'settings.setProject': { req: { projectId: string; patch: ProjectSettingsPatch; shared?: boolean }; res: ProjectSettings }
   /**
    * Writes `[review]` in the shared .kernel/settings.toml, the rest of the file as it was written (KERNEL-549). A `null` removes
    * that key, so its default applies again.
    */
-  'settings.setReview': { req: { roomId: string; review: ReviewPatch }; res: RoomSettings }
+  'settings.setReview': { req: { projectId: string; review: ReviewPatch }; res: ProjectSettings }
   /**
    * Writes `[merge] always_review` in the shared .kernel/settings.toml, the rest of the file as it was written (KERNEL-594).
    * `paths` is the whole list: an empty one removes the key. They add to Kernel's own list, never replace it.
    */
-  'settings.setAlwaysReview': { req: { roomId: string; paths: string[] }; res: RoomSettings }
+  'settings.setAlwaysReview': { req: { projectId: string; paths: string[] }; res: ProjectSettings }
   /**
    * Whether each provider can run Auto and Bypass permissions now, for Settings, Permissions, the composer and onboarding
    * (KERNEL-447). Reads admin policy and asks Claude Code which models run Auto, so the first call can take a few seconds.
    */
   'permissions.availability': { req: void; res: Record<Provider, ModeAvailability> }
-  /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
-  'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
+  /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the project's saved list (KERNEL-245). */
+  'files.preview': { req: { projectId: string; patterns?: string[] }; res: FileToCopy[] }
   /**
-   * The files to copy that look like production, one hint per file, without the ones the room chose Keep copying for. Names
+   * The files to copy that look like production, one hint per file, without the ones the project chose Keep copying for. Names
    * only, never values (KERNEL-449).
    */
-  'files.production': { req: { roomId: string }; res: ProductionHint[] }
-  /** Keep copying: the room stops warning about these files until another variable in them looks like production (KERNEL-449). */
-  'files.keepCopying': { req: { roomId: string; hints: ProductionHint[] }; res: Room }
-  // environment variables (KERNEL-247). Without `roomId` it is the app's, which has no env files. Values only leave
+  'files.production': { req: { projectId: string }; res: ProductionHint[] }
+  /** Keep copying: the project stops warning about these files until another variable in them looks like production (KERNEL-449). */
+  'files.keepCopying': { req: { projectId: string; hints: ProductionHint[] }; res: Project }
+  // environment variables (KERNEL-247). Without `projectId` it is the app's, which has no env files. Values only leave
   // main through `env.reveal`.
-  'env.get': { req: { roomId?: string }; res: { names: string[]; files: { path: string; missing: boolean }[] } }
+  'env.get': { req: { projectId?: string }; res: { names: string[]; files: { path: string; missing: boolean }[] } }
   /** A `null` value deletes the variable. Throws for a bad name, one of Kernel's own, or when values can't be encrypted. */
-  'env.set': { req: { roomId?: string; name: string; value: string | null }; res: Ok }
-  'env.reveal': { req: { roomId?: string; name: string }; res: string }
+  'env.set': { req: { projectId?: string; name: string; value: string | null }; res: Ok }
+  'env.reveal': { req: { projectId?: string; name: string }; res: string }
   /**
-   * The room's MCP servers for one provider, Claude's when `provider` is unset, with the last status Kernel heard. `probe`
-   * waits for a fresh check of Claude's servers. Without it, the first list for a room starts one (KERNEL-464).
+   * The project's MCP servers for one provider, Claude's when `provider` is unset, with the last status Kernel heard. `probe`
+   * waits for a fresh check of Claude's servers. Without it, the first list for a project starts one (KERNEL-464).
    */
-  'mcp.list': { req: { roomId?: string; provider?: Provider; probe?: boolean }; res: McpServer[] }
+  'mcp.list': { req: { projectId?: string; provider?: Provider; probe?: boolean }; res: McpServer[] }
   /**
    * Every signed-in subscription account of both providers with each MCP server's state on it (KERNEL-626): every server
    * any account of the provider has, on each of its accounts, in one of five states (KERNEL-646). Kernel keeps
@@ -538,7 +538,7 @@ export interface KernelApi {
    */
   'app.openApps': { req: void; res: { apps: OpenApp[]; defaultId?: string } }
   /**
-   * Opens a path inside a room or workspace in one of `app.openApps`, which becomes the default. Without `app`, the default
+   * Opens a path inside a project or workspace in one of `app.openApps`, which becomes the default. Without `app`, the default
    * editor opens it, or Finder shows it when there is none. Terminals and Finder get the folder, never the file.
    */
   'app.openIn': { req: { path: string; app?: string }; res: Ok }
@@ -548,12 +548,12 @@ export interface KernelApi {
   // usage data (KERNEL-397)
   /** The latest events, newest first, and whether each went out: Settings, Privacy's "See what's sent". */
   'telemetry.recent': { req: void; res: TelemetryRecord[] }
-  /** The renderer's own events: the answer in Room setup's team review. Main checks each before keeping it. */
+  /** The renderer's own events: the answer in Project setup's team review. Main checks each before keeping it. */
   'telemetry.track': { req: { event: TelemetryEvent }; res: Ok }
 
   // shared files (KERNEL-302)
-  /** Files agents shared, newest first: a room's (the Lead's panel) or one workspace's. */
-  'shared.list': { req: { roomId?: string; workspaceId?: string; limit?: number }; res: SharedFile[] }
+  /** Files agents shared, newest first: a project's (the Lead's panel) or one workspace's. */
+  'shared.list': { req: { projectId?: string; workspaceId?: string; limit?: number }; res: SharedFile[] }
   /** One version's contents: Markdown and HTML as text, images and PDFs as a data URL. */
   'shared.read': { req: { sharedId: string; version: number }; res: { kind: SharedKind; mime: string; text?: string; dataUrl?: string } }
   /** The version's thumbnail as a data URL, or null when none was captured. */
@@ -578,7 +578,7 @@ export interface KernelApi {
 
   // handled in src/main/index.ts, not by the kernel
   'system.pickFolder': { req: void; res: string | null }
-  /** An open dialog limited to PNG and JPEG, for a room icon. Null when cancelled. */
+  /** An open dialog limited to PNG and JPEG, for a project icon. Null when cancelled. */
   'system.pickImage': { req: void; res: string | null }
   'system.openExternal': { req: { url: string }; res: Ok }
   'system.openInEditor': { req: { path: string }; res: Ok }
@@ -635,7 +635,7 @@ export type PushEvent =
    */
   | { type: 'chat.queue'; chatId: string; queue: QueuedMessage[]; why?: QueueReason }
   /**
-   * What `chats.runMode` answers for the chat changed: the chat, its room, Settings, Permissions, what its provider can run,
+   * What `chats.runMode` answers for the chat changed: the chat, its project, Settings, Permissions, what its provider can run,
    * its agent file, or the end of the turn Bypass permissions waited for. Sent for chats with no process too (KERNEL-572).
    */
   | { type: 'chat.runMode'; chatId: string; mode: ChatRunMode }
@@ -646,23 +646,23 @@ export type PushEvent =
   /** A terminal's output from the last 50 ms as one string, so `pnpm install` is about 20 pushes a second (KERNEL-216). */
   | { type: 'terminal.data'; chatId: string; data: string; replace?: true }
   | { type: 'approval'; approval: Approval }
-  | { type: 'room'; room: Room }
-  | { type: 'room.setup'; roomId: string; steps: RoomSetupStep[] }
-  /** The room's scripts wait for the user to trust them. Null once they are trusted (KERNEL-209). */
-  | { type: 'room.trust'; roomId: string; trust: ScriptTrust | null }
+  | { type: 'project'; project: Project }
+  | { type: 'project.setup'; projectId: string; steps: ProjectSetupStep[] }
+  /** The project's scripts wait for the user to trust them. Null once they are trusted (KERNEL-209). */
+  | { type: 'project.trust'; projectId: string; trust: ScriptTrust | null }
   /**
-   * A room's .kernel/settings.toml or settings.local.toml changed on disk outside Kernel: by hand, from Open settings.toml or a
-   * git pull. `settings` is what `settings.room` reads now. Kernel's own saves and a file that stops parsing send none (KERNEL-723).
+   * A project's .kernel/settings.toml or settings.local.toml changed on disk outside Kernel: by hand, from Open settings.toml or a
+   * git pull. `settings` is what `settings.project` reads now. Kernel's own saves and a file that stops parsing send none (KERNEL-723).
    */
-  | { type: 'settings.roomChanged'; roomId: string; settings: RoomSettings }
+  | { type: 'settings.projectChanged'; projectId: string; settings: ProjectSettings }
   | { type: 'overlap'; overlap: Overlap }
-  | { type: 'agents'; roomId: string; agents: AgentDef[] }
-  /** The agents that join every room, as `agents.listGlobal` returns them, after ~/.claude/agents or the plugin list changed (KERNEL-640). */
+  | { type: 'agents'; projectId: string; agents: AgentDef[] }
+  /** The agents that join every project, as `agents.listGlobal` returns them, after ~/.claude/agents or the plugin list changed (KERNEL-640). */
   | { type: 'globalAgents'; agents: AgentDef[] }
-  /** A room's MCP servers for one provider, after a probe or a session reported a status that changed them (KERNEL-464). */
-  | { type: 'mcp'; roomId: string; provider: Provider; servers: McpServer[] }
+  /** A project's MCP servers for one provider, after a probe or a session reported a status that changed them (KERNEL-464). */
+  | { type: 'mcp'; projectId: string; provider: Provider; servers: McpServer[] }
   | { type: 'workspace'; workspace: Workspace }
-  | { type: 'agent.status'; roomId: string; agentId: string; status: AgentStatus }
+  | { type: 'agent.status'; projectId: string; agentId: string; status: AgentStatus }
   /** `name` is set for run scripts, so each keeps its own output and exit (KERNEL-244). */
   /** A script's lines from the last 50 ms, in order, so a chatty script is about 20 pushes a second (KERNEL-216). */
   | { type: 'script.output'; workspaceId: string; kind: ScriptKind; name?: string; lines: Pick<ScriptLine, 'line' | 'stream'>[] }

@@ -61,7 +61,7 @@ const BUILDERS: Record<PrTextKind, (c?: RepoConventions, ctx?: PrContext) => str
 
 /**
  * The PR text to send for the checkout at `dir`: Kernel's own text fitted to the repo and the workspace, or the user's or the
- * room's text as written (KERNEL-468). Kernel's texts from before, which older settings files saved, read as unset (`SAVED_BEFORE`).
+ * project's text as written (KERNEL-468). Kernel's texts from before, which older settings files saved, read as unset (`SAVED_BEFORE`).
  */
 export async function prTextFor(kind: PrTextKind, text: string, dir: string, ctx?: PrContext): Promise<string> {
   const build = BUILDERS[kind]

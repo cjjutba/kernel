@@ -151,7 +151,7 @@ export function ResizeHandle({ targetRef, edge, label, size, min, limit, default
     <div
       ref={handle} className="resize-handle nodrag" data-edge={edge} role="separator" aria-orientation={vertical ? 'horizontal' : 'vertical'} aria-label={label}
       aria-valuemin={min} aria-valuemax={Math.max(min, limit())} aria-valuenow={size} tabIndex={0}
-      // The room and the size can change without this rendering (the window, the sidebar), so both are read again as the handle gets focus.
+      // The project and the size can change without this rendering (the window, the sidebar), so both are read again as the handle gets focus.
       onFocus={(e) => {
         e.currentTarget.setAttribute('aria-valuemax', String(Math.max(min, limit())))
         e.currentTarget.setAttribute('aria-valuenow', String(Math.round(sizeNow())))

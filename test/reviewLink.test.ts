@@ -30,18 +30,18 @@ async function setup() {
   await k.start()
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
-  const room = await k.addRoom(repo)
-  const lead = await k.leadChat(room.id)
-  const author = await k.createWorkspace(room.id, { prompt: 'Remove the Try section', agentId: 'kai', title: 'Remove the Try section', leadChatId: lead.id })
+  const project = await k.addProject(repo)
+  const lead = await k.leadChat(project.id)
+  const author = await k.createWorkspace(project.id, { prompt: 'Remove the Try section', agentId: 'kai', title: 'Remove the Try section', leadChatId: lead.id })
   await writeFile(join(author.path, 'sidebar.txt'), 'no try\n')
   await git(author.path, 'add', '.')
   await git(author.path, 'commit', '-qm', 'remove try')
   const tip = (await git(author.path, 'rev-parse', 'HEAD')).trim()
-  const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #108', leadChatId: lead.id, reviewOf: author.id })
-  const agents = await k.agents(room.id)
+  const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #108', leadChatId: lead.id, reviewOf: author.id })
+  const agents = await k.agents(project.id)
   const agent = (id: string) => agents.find((a) => a.id === id) as AgentDef
   const deps = (k.sessions as unknown as { d: { mcpFor: (ws: Workspace, a: AgentDef, c: unknown) => unknown; rulesFor: (ws: Workspace, a: AgentDef) => string | undefined } }).d
-  return { k, room, lead, author, review, tip, agent, deps }
+  return { k, project, lead, author, review, tip, agent, deps }
 }
 
 describe('the review link (KERNEL-130)', () => {
@@ -84,35 +84,35 @@ describe('the review link (KERNEL-130)', () => {
   })
 
   it('starts a review from the branch the author is on now (KERNEL-136)', async () => {
-    const { k, room, lead, author } = await setup()
+    const { k, project, lead, author } = await setup()
     await git(author.path, 'checkout', '-qb', 'kernel-99-sidebar')
     await writeFile(join(author.path, 'rows.txt'), 'rows\n')
     await git(author.path, 'add', '.')
     await git(author.path, 'commit', '-qm', 'rows')
     const tip = (await git(author.path, 'rev-parse', 'HEAD')).trim()
-    const again = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review the rows', leadChatId: lead.id, reviewOf: author.id })
+    const again = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review the rows', leadChatId: lead.id, reviewOf: author.id })
     expect(again.branch).toBe('review/remove-try-section-2')
     expect((await git(again.path, 'rev-parse', 'HEAD')).trim()).toBe(tip)
   })
 
   it('names a review of an issue\'s work review/<key> (KERNEL-275)', async () => {
-    const { k, room, lead } = await setup()
+    const { k, project, lead } = await setup()
     const source = { kind: 'issue', id: 'KERNEL-242', title: 'Create in the New chat modal puts the brief in an empty Lead' } as const
-    const author = await k.createWorkspace(room.id, { prompt: 'Fix the tab', agentId: 'kai', source, labels: ['Bug'], leadChatId: lead.id })
+    const author = await k.createWorkspace(project.id, { prompt: 'Fix the tab', agentId: 'kai', source, labels: ['Bug'], leadChatId: lead.id })
     expect(author.branch).toBe('fix/kernel-242-create-in-new-chat-modal-puts-brief')
-    const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #173', leadChatId: lead.id, reviewOf: author.id })
+    const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #173', leadChatId: lead.id, reviewOf: author.id })
     expect(review.branch).toBe('review/kernel-242')
   })
 
   it('starts reviews of work on a long branch name, each in its own folder (KERNEL-267)', async () => {
-    const { k, room, lead } = await setup()
+    const { k, project, lead } = await setup()
     const asked = 'cjjutbaofficial/kernel-242-create-in-the-new-chat-modal-puts-the-brief-in-an-empty-lead'
-    const author = await k.createWorkspace(room.id, { prompt: 'Fix the tab', agentId: 'kai', title: 'Fix the tab', branch: asked, leadChatId: lead.id })
+    const author = await k.createWorkspace(project.id, { prompt: 'Fix the tab', agentId: 'kai', title: 'Fix the tab', branch: asked, leadChatId: lead.id })
     // A branch the Lead names is cut to 60 characters (KERNEL-275).
     const branch = 'cjjutbaofficial/kernel-242-create-in-the-new-chat-modal-puts'
     expect(author.branch).toBe(branch)
-    const first = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #173', leadChatId: lead.id, reviewOf: author.id })
-    const second = await k.createWorkspace(room.id, { prompt: 'Review it again', agentId: 'theo', title: 'Review PR #173', leadChatId: lead.id, reviewOf: author.id })
+    const first = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #173', leadChatId: lead.id, reviewOf: author.id })
+    const second = await k.createWorkspace(project.id, { prompt: 'Review it again', agentId: 'theo', title: 'Review PR #173', leadChatId: lead.id, reviewOf: author.id })
     expect([first.branch, second.branch]).toEqual(['review/fix-tab', 'review/fix-tab-2'])
     expect(new Set([author.path, first.path, second.path]).size).toBe(3)
     for (const ws of [first, second]) expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(ws.branch)
@@ -150,7 +150,7 @@ describe('the review link (KERNEL-130)', () => {
     k.store.saveWorkspace({ ...k.store.workspace(review.id)!, status: 'failed' })
     expect(state()).toMatchObject({ inProgress: false, open: { workspaceId: review.id, failed: true } })
     k.sessions.isRunning = running
-    // One waiting for the user to trust the room's scripts is still under way, as one setting up is (KERNEL-261).
+    // One waiting for the user to trust the project's scripts is still under way, as one setting up is (KERNEL-261).
     k.store.saveWorkspace({ ...k.store.workspace(review.id)!, status: 'trust' })
     expect(state()).toMatchObject({ inProgress: true, open: { workspaceId: review.id } })
     expect(state().open?.failed).toBeUndefined()
@@ -170,7 +170,7 @@ describe('the review rule (KERNEL-130)', () => {
     expect(rule).toContain('`gh pr view feat/x`')
   })
 
-  it("fetches from the room's remote when it isn't origin (KERNEL-190)", () => {
+  it("fetches from the project's remote when it isn't origin (KERNEL-190)", () => {
     const rule = reviewRule({ author: 'Kai', task: 'T', workspaceId: 'w', branch: 'feat/x', resetTo: 'upstream/feat/x', base: 'upstream/main' }, 'upstream')
     expect(rule).toContain('`git fetch upstream feat/x && git reset --hard upstream/feat/x`')
   })

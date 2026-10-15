@@ -130,7 +130,7 @@ export function localStatus(stand: LocalStand, base: string, changed = true): Pr
   }
 }
 
-/** The room's merge method, as the merge line says it at the right. */
+/** The project's merge method, as the merge line says it at the right. */
 export const METHOD_WORD: Record<AppSettings['pr']['mergeMethod'], string> = { squash: 'Squash merge', merge: 'Merge commit', rebase: 'Rebase' }
 
 /** The merge line and the chat row's wording for how a merge landed. Shared with the PR toast. */
@@ -300,7 +300,7 @@ export function prToast(before: PrState | undefined, ws: Workspace, o: { method?
 
 /**
  * The toast for a workspace Kernel archived on its own while it was on screen (KERNEL-132, KERNEL-114): one whose PR merged, or a review
- * whose work merged or closed. The screen has already gone to the room's front door (KERNEL-596), so the toast says what happened. An archive
+ * whose work merged or closed. The screen has already gone to the project's front door (KERNEL-596), so the toast says what happened. An archive
  * by hand has none (KERNEL-495), and neither has any other archive. `agent` is the workspace's agent and `reviewed` the work a review
  * looked at.
  */

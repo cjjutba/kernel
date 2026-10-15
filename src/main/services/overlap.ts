@@ -33,12 +33,12 @@ export async function lineRanges(cwd: string, since: string, file: string, added
 }
 
 export interface OverlapDeps {
-  /** Every workspace of the room. */
-  workspaces: (roomId: string) => Workspace[]
+  /** Every workspace of the project. */
+  workspaces: (projectId: string) => Workspace[]
   /** What to diff a workspace against: its merge-base for a worktree, its baseline for a current-branch workspace. */
   since: (ws: Workspace) => Promise<string>
   /** The Lead is who "flags" the overlap in the log. */
-  leadId: (roomId: string) => string | undefined
+  leadId: (projectId: string) => string | undefined
   /** Where overlaps are kept across restarts. Without it they last only as long as the app runs. */
   saved?: Pick<Store, 'overlaps' | 'saveOverlap' | 'deleteOverlap'>
 }
@@ -48,7 +48,7 @@ const base = (p: string) => p.split('/').pop() ?? p
 
 /**
  * Two workspaces changing the same file will conflict at merge, so the Inbox says so (KERNEL-24).
- * `check` runs after each turn and when a workspace merges or is archived: it compares the changed files of the room's open
+ * `check` runs after each turn and when a workspace merges or is archived: it compares the changed files of the project's open
  * workspaces, raises an Overlap for each shared file, and clears it when the overlap goes away. Dismissing one (`resolve`) keeps it
  * quiet until it clears and comes back.
  * Overlaps are saved as they change and read back on start, so a restart neither logs them again nor brings back a dismissed one.
@@ -61,18 +61,18 @@ export class Overlaps {
     for (const o of d.saved?.overlaps() ?? []) this.known.set(o.id, o)
   }
 
-  list(roomId: string): Overlap[] {
-    return [...this.known.values()].filter((o) => o.roomId === roomId).sort((a, b) => b.ts - a.ts)
+  list(projectId: string): Overlap[] {
+    return [...this.known.values()].filter((o) => o.projectId === projectId).sort((a, b) => b.ts - a.ts)
   }
 
   get(id: string): Overlap | undefined {
     return this.known.get(id)
   }
 
-  /** One check at a time per room, so two turns ending together cannot raise the same overlap twice. */
-  check(roomId: string): Promise<Overlap[]> {
-    const next = (this.chain.get(roomId) ?? Promise.resolve()).catch(() => undefined).then(() => this.run(roomId))
-    this.chain.set(roomId, next)
+  /** One check at a time per project, so two turns ending together cannot raise the same overlap twice. */
+  check(projectId: string): Promise<Overlap[]> {
+    const next = (this.chain.get(projectId) ?? Promise.resolve()).catch(() => undefined).then(() => this.run(projectId))
+    this.chain.set(projectId, next)
     return next
   }
 
@@ -86,8 +86,8 @@ export class Overlaps {
     return next
   }
 
-  forget(roomId: string) {
-    for (const [id, o] of this.known) if (o.roomId === roomId) this.drop(id)
+  forget(projectId: string) {
+    for (const [id, o] of this.known) if (o.projectId === projectId) this.drop(id)
   }
 
   private set(o: Overlap) {
@@ -100,8 +100,8 @@ export class Overlaps {
     this.d.saved?.deleteOverlap(id)
   }
 
-  private async run(roomId: string): Promise<Overlap[]> {
-    const open = this.d.workspaces(roomId).filter(live).sort((a, b) => a.createdAt - b.createdAt)
+  private async run(projectId: string): Promise<Overlap[]> {
+    const open = this.d.workspaces(projectId).filter(live).sort((a, b) => a.createdAt - b.createdAt)
     const files = new Map<string, Awaited<ReturnType<typeof changedFiles>>>()
     const since = new Map<string, string>()
     await Promise.all(open.map(async (w) => {
@@ -125,11 +125,11 @@ export class Overlaps {
 
     const now = new Set<string>()
     for (const [path, parties] of byPath) {
-      const id = `ov:${roomId}:${path}`
+      const id = `ov:${projectId}:${path}`
       now.add(id)
       const before = this.known.get(id)
       const overlap: Overlap = {
-        id, roomId, path, ts: before?.ts ?? Date.now(), resolved: before?.resolved,
+        id, projectId, path, ts: before?.ts ?? Date.now(), resolved: before?.resolved,
         parties: await Promise.all(parties.map(async (w) => ({
           agentId: w.agentId, workspaceId: w.id,
           lines: await lineRanges(w.path, since.get(w.id) ?? 'HEAD', path, files.get(w.id)?.find((f) => f.path === path)?.added)
@@ -141,7 +141,7 @@ export class Overlaps {
       bus.push({ type: 'overlap', overlap })
       if (!before) {
         bus.activity({
-          kind: 'overlap', roomId, agentId: this.d.leadId(roomId), text: 'flagged an overlap in', object: base(path), warn: true,
+          kind: 'overlap', projectId, agentId: this.d.leadId(projectId), text: 'flagged an overlap in', object: base(path), warn: true,
           data: { overlapId: id, path, workspaceIds: overlap.parties.map((p) => p.workspaceId) }
         })
       }
@@ -149,10 +149,10 @@ export class Overlaps {
 
     // Gone: a workspace merged or was archived, or the agents stopped touching the same file.
     for (const [id, o] of [...this.known]) {
-      if (o.roomId !== roomId || now.has(id)) continue
+      if (o.projectId !== projectId || now.has(id)) continue
       this.drop(id)
       bus.push({ type: 'overlap', overlap: { ...o, resolved: true } })
     }
-    return this.list(roomId)
+    return this.list(projectId)
   }
 }

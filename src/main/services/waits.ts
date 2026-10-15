@@ -52,7 +52,7 @@ export function waitBroken(wait: WaitsFor, workspaces: Workspace[]): string | un
 }
 
 export interface WaitCheck {
-  /** The room's workspaces, archived ones included. */
+  /** The project's workspaces, archived ones included. */
   workspaces: Workspace[]
   refs: string[]
   /** The workspace that would wait. Left out for a hand-off, where it doesn't exist yet. */
@@ -63,7 +63,7 @@ export interface WaitCheck {
   isLead: (w: Workspace) => boolean
   /** The waiter asks for itself (KERNEL-262), so the refusal speaks to a teammate, not the Lead. */
   teammate?: boolean
-  /** The room's remote, stripped from both bases before they are compared. */
+  /** The project's remote, stripped from both bases before they are compared. */
   remote?: string
   /** A hand-off's base, the one create_workspace will use. A waiter's own is used when it is given. */
   base?: string
@@ -79,7 +79,7 @@ export function waitRefusal(c: WaitCheck): string | undefined {
   }
   for (const ref of c.refs) {
     const t = resolveTarget(c.workspaces, ref)
-    if (!t) return `there is no workspace "${ref}" in this room to wait for. Pass ${c.teammate ? 'a PR number like #164, an issue key or a workspace id' : 'a workspace id from list_workspaces, a PR number like #164, or an issue key'}.`
+    if (!t) return `there is no workspace "${ref}" in this project to wait for. Pass ${c.teammate ? 'a PR number like #164, an issue key or a workspace id' : 'a workspace id from list_workspaces, a PR number like #164, or an issue key'}.`
     if (c.waiter && t.id === c.waiter.id) return `${t.name} can't wait for itself.`
     if (c.isLead(t)) return `${t.name} is ${c.teammate ? "the Lead's" : 'your own'} workspace, which never opens a pull request.`
     if (t.reviewOf) return `${t.name} is a review. Wait for the work it reviews instead (workspace ${t.reviewOf}).`

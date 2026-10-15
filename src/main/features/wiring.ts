@@ -13,14 +13,14 @@ import type { SettingsError } from '../services/settings'
 // What Kernel hands the services it builds, and its listeners on the shared bus (KERNEL-324).
 
 export function taskDeps(k: Kernel): ConstructorParameters<typeof Tasks>[0] {
-  return { store: k.store, agents: (roomId) => k.team.agentsSync(roomId) }
+  return { store: k.store, agents: (projectId) => k.team.agentsSync(projectId) }
 }
 
 export function notificationDeps(k: Kernel): ConstructorParameters<typeof Notifications>[0] {
   return {
     store: k.store,
     settings: () => k.settings,
-    agentName: (roomId, agentId) => (roomId && agentId ? k.team.agentOf(roomId, agentId)?.name : undefined),
+    agentName: (projectId, agentId) => (projectId && agentId ? k.team.agentOf(projectId, agentId)?.name : undefined),
     show: k.o.showNotification,
     inBackground: k.o.inBackground
   }
@@ -30,25 +30,25 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
   return {
     store: k.store,
     enabled: () => k.settings.models.leadUpdates !== false,
-    target: (roomId, owner) => k.lead.leadUpdateTarget(roomId, owner),
+    target: (projectId, owner) => k.lead.leadUpdateTarget(projectId, owner),
     // With no Lead tab open, an update that needs the Lead opens one rather than being dropped (KERNEL-365).
-    open: (roomId, owner) => k.lead.openUpdateTab(roomId, owner),
-    isLead: (ws) => !!k.team.agentOf(ws.roomId, ws.agentId)?.lead,
+    open: (projectId, owner) => k.lead.openUpdateTab(projectId, owner),
+    isLead: (ws) => !!k.team.agentOf(ws.projectId, ws.agentId)?.lead,
     // A Build here chat's PR reports to that chat (KERNEL-778).
     ownChat: (ws) => k.lead.buildTab(ws),
-    agentName: (roomId, agentId) => k.team.agentOf(roomId, agentId)?.name,
+    agentName: (projectId, agentId) => k.team.agentOf(projectId, agentId)?.name,
     post: (chatId, text, update) => k.sessions.post(chatId, [{ type: 'text', text }], { update }),
     holdOf: (chatId) => k.sessions.postHold(chatId),
     reviewState: (ws) => k.reviews.reviewState(ws),
     // The team's reviewer, for usage data and for telling its old workspaces from reviews (KERNEL-121, KERNEL-397).
-    reviewer: (roomId) => k.team.reviewerOf(roomId),
+    reviewer: (projectId) => k.team.reviewerOf(projectId),
     autoReview: () => k.settings.pr.autoReview !== false,
     // Logged as a note. `leadUpdate` marked it for the briefing sequence KERNEL-606 removed, and nothing reads it now.
-    delivered: (roomId, chat, update) => {
+    delivered: (projectId, chat, update) => {
       const ws = k.store.workspace(chat.workspaceId)
       const [one] = update.rows
       const object = update.rows.length > 1 ? `${update.rows.length} teammates` : one.prNumber ? `${one.name}'s PR #${one.prNumber}` : `${one.name}'s work`
-      bus.activity({ kind: 'note', roomId, workspaceId: chat.workspaceId, agentId: ws?.agentId, text: 'heard from Kernel about', object, data: { leadUpdate: true } })
+      bus.activity({ kind: 'note', projectId, workspaceId: chat.workspaceId, agentId: ws?.agentId, text: 'heard from Kernel about', object, data: { leadUpdate: true } })
     },
     opened: (chat, rows) => k.openItems.delivered(chat, rows),
     // Delivery timings reach Kernel's log, so Help, Copy diagnostics shows why an update was late. The log hears warnings
@@ -59,9 +59,9 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
 
 export function overlapDeps(k: Kernel): OverlapDeps {
   return {
-    workspaces: (roomId) => k.store.workspaces(roomId),
+    workspaces: (projectId) => k.store.workspaces(projectId),
     since: async (ws) => (ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef)),
-    leadId: (roomId) => k.team.agentsSync(roomId).find((a) => a.lead)?.id,
+    leadId: (projectId) => k.team.agentsSync(projectId).find((a) => a.lead)?.id,
     saved: k.store
   }
 }
@@ -73,7 +73,7 @@ export function overlapDeps(k: Kernel): OverlapDeps {
  */
 export function listen(k: Kernel): () => void {
   const onActivity = (e: Parameters<Store['saveActivity']>[0]) => k.store.saveActivity(e)
-  const onHook = (e: { hook_event_name: string }, ctx?: { roomId?: string; agentId?: string }) => k.hooks.onHook(e, ctx)
+  const onHook = (e: { hook_event_name: string }, ctx?: { projectId?: string; agentId?: string }) => k.hooks.onHook(e, ctx)
   const onPush = (e: PushEvent) => {
     // Script lines only go out as pushes, so Kernel keeps them for a window that loads later (KERNEL-340).
     keepScript(e)
@@ -82,8 +82,8 @@ export function listen(k: Kernel): () => void {
     // others. The update goes then, not at the next PR poll (KERNEL-637).
     if ((e.type === 'chat.running' && !e.running) || (e.type === 'chat.queue' && !e.queue.length)) k.leadUpdates.chatFreed()
     if (e.type === 'agent.status') k.team.onStatus(e)
-    // An archived room's settings files aren't watched (KERNEL-723).
-    if (e.type === 'room' && e.room.archived) k.config.unwatchRoom(e.room.id)
+    // An archived project's settings files aren't watched (KERNEL-723).
+    if (e.type === 'project' && e.project.archived) k.config.unwatchProject(e.project.id)
     // Someone signed in or out: Claude says so with `account`, Codex and account switches with `accounts`, so the next
     // team read checks pinned models again (KERNEL-634).
     if (e.type === 'account' || e.type === 'accounts') k.team.forgetOffers()
@@ -94,8 +94,8 @@ export function listen(k: Kernel): () => void {
     if (e.type === 'workspace') k.prs.considerAutoMerge(e.workspace)
     // The work merged, so the loop guard starts over for it and its reviews (KERNEL-125). Ready does too, in refreshPr.
     if (e.type === 'pr' && e.state === 'merged') k.nudges.reset(e.workspaceId, ...k.autoArchive.reviewsOf(e.workspaceId))
-    // Main moved, so each Lead chat's worktree follows it once the room fetches, once for them all (KERNEL-181, KERNEL-405).
-    const merged = e.type === 'pr' && e.state === 'merged' ? k.store.workspace(e.workspaceId)?.roomId : undefined
+    // Main moved, so each Lead chat's worktree follows it once the project fetches, once for them all (KERNEL-181, KERNEL-405).
+    const merged = e.type === 'pr' && e.state === 'merged' ? k.store.workspace(e.workspaceId)?.projectId : undefined
     if (merged) void k.lead.syncLead(merged, { fetch: true })
     if (e.type === 'pr' && e.state === 'merged') bus.track({ name: 'pr.merged' })
     // A PR that passed checks gets the reviews its base branch's `[review]` asks for, started by Kernel (KERNEL-549).
@@ -111,12 +111,12 @@ export function listen(k: Kernel): () => void {
       if (e.state === 'merged') void Promise.all([reviews, waits]).then(() => k.autoArchive.archiveMerged(e.workspaceId)).catch(() => undefined)
     }
   }
-  // A room's settings file that stopped parsing warns in the room (KERNEL-231).
+  // A project's settings file that stopped parsing warns in the project (KERNEL-231).
   const onSettingsError = (e: SettingsError) => k.config.settingsError(e)
   bus.on('activity', onActivity).on('hook', onHook).on('push', onPush).on('settingsError', onSettingsError)
   return () => {
     bus.off('activity', onActivity).off('hook', onHook).off('push', onPush).off('settingsError', onSettingsError)
-    // The rooms' settings watchers push too, so they stop with the rest (KERNEL-723).
+    // The projects' settings watchers push too, so they stop with the rest (KERNEL-723).
     k.config?.stopWatching()
   }
 }

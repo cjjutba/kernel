@@ -39,7 +39,7 @@ const openPlanFile = (a: Approval) =>
 
 /** The Lead's tasks as numbered rows, the agent's name muted beside each, with a way into its workspace once the plan is handed off. */
 export function PlanTasks({ a, agents }: { a: Approval; agents: AgentDef[] }) {
-  const tasks = useStore((s) => (a.roomId ? s.tasks[a.roomId] : undefined))
+  const tasks = useStore((s) => (a.projectId ? s.tasks[a.projectId] : undefined))
   return (
     <ol className="plan-tasks">
       {planSteps(a).map((s, i) => {
@@ -187,7 +187,7 @@ export function PlanBar({ a, closing, hasText, onApprove, onSendChanges, onBack,
   onBack: () => void
   onClosed: () => void
 }) {
-  const agents = useStore((s) => (a.roomId ? s.agents[a.roomId] : undefined)) ?? EMPTY
+  const agents = useStore((s) => (a.projectId ? s.agents[a.projectId] : undefined)) ?? EMPTY
   const [copied, copy] = useCopy(planCopyText(a, agents))
   const [asked, setAsked] = useState(false)
   // The question stays in the strip while it closes, so pressing Approve in it does not swap back to Copy and Approve for the length of the close (KERNEL-839).

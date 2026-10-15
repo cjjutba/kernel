@@ -104,7 +104,7 @@ describe('Lead requests', () => {
     const { mkdtemp } = await import('node:fs/promises'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path')
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-ap-')), 'kernel.db'))
     const approvals = new Approvals(store)
-    const { approval } = approvals.request({ kind: 'plan', source: 'sdk', roomId: 'r', title: 'Plan', steps: [{ title: 'A', agentId: 'kai' }] })
+    const { approval } = approvals.request({ kind: 'plan', source: 'sdk', projectId: 'r', title: 'Plan', steps: [{ title: 'A', agentId: 'kai' }] })
     approvals.update(approval.id, { steps: [{ title: 'A', agentId: 'kai', workspaceId: 'ws1' }] })
     expect(store.approvals().find((a) => a.id === approval.id)?.steps?.[0].workspaceId).toBe('ws1')
   })

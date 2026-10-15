@@ -13,8 +13,8 @@ Work is tracked in a private Linear workspace: team Kernel, project "Kernel v1".
 
 ## 3. Build (parallel lanes)
 - Workspace: KERNEL-10 layout and transcript, 11 composer, 12 tabs and big terminal, 13 checkpoints, 14 agent turn cards, 15 PR flow, 16 new workspace modal
-- Team: KERNEL-17 Home and Inbox, 18 Board and tasks, 19 Team and agents, 20 Rooms, 21 Search, account menu, Ask Kernel, History
-- Floor: KERNEL-22 renderer and room states, 23 briefing sequence and walking, 24 floor moments
+- Team: KERNEL-17 Home and Inbox, 18 Board and tasks, 19 Team and agents, 20 Projects, 21 Search, account menu, Ask Kernel, History
+- Floor: KERNEL-22 renderer and project states, 23 briefing sequence and walking, 24 floor moments
 - Platform: KERNEL-25 Settings app pages, 26 Settings project pages, 27 first run, 28 limits and confirmations, 29 light theme (last)
 
 ## 4. Integrate and ship

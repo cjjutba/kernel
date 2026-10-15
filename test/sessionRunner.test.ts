@@ -5,12 +5,12 @@ import { EventEmitter } from 'node:events'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, Chat, ChatItem, ChatPart, Decision, OpenItem, Room, TeamUpdate, Workspace } from '@shared/types'
+import type { AgentDef, Chat, ChatItem, ChatPart, Decision, OpenItem, Project, TeamUpdate, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { askReason, awaitDecision, HOLD_TIMEOUT_SEC, HOOK_ASK_MS, muteShadowedWarning, ROOM_TOOLS, SHADOWED_WARNING, type ClaudeRunner } from '../src/main/services/providers/claude'
+import { askReason, awaitDecision, HOLD_TIMEOUT_SEC, HOOK_ASK_MS, muteShadowedWarning, PROJECT_TOOLS, SHADOWED_WARNING, type ClaudeRunner } from '../src/main/services/providers/claude'
 import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
 import type { Ask } from '../src/main/services/providers/types'
 import { BYPASS_OFF_AGAIN, BYPASS_WAITS, CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
@@ -79,20 +79,20 @@ async function nextSent(call: Call): Promise<string> {
   return value.message.content[0].text
 }
 
-async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; aliasesFor?: SessionDeps['aliasesFor']; onMcp?: SessionDeps['onMcp']; agent?: AgentDef; agentFor?: (ws: Workspace) => AgentDef | undefined; models?: Partial<AppSettings['models']>; usage?: AppSettings['usage']; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit']; ws?: Partial<Workspace>; chat?: Partial<Chat>; room?: Partial<Room>; availability?: SessionDeps['availability']; permissions?: Partial<AppSettings['permissions']>; deps?: Partial<SessionDeps> } = {}) {
+async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; aliasesFor?: SessionDeps['aliasesFor']; onMcp?: SessionDeps['onMcp']; agent?: AgentDef; agentFor?: (ws: Workspace) => AgentDef | undefined; models?: Partial<AppSettings['models']>; usage?: AppSettings['usage']; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit']; ws?: Partial<Workspace>; chat?: Partial<Chat>; project?: Partial<Project>; availability?: SessionDeps['availability']; permissions?: Partial<AppSettings['permissions']>; deps?: Partial<SessionDeps> } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
-  const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...hooks.ws }
+  const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...hooks.ws }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1, ...hooks.chat }
   store.saveWorkspace(ws)
   store.saveChat(chat)
-  if (hooks.room) store.saveRoom({ id: 'room', name: 'invoices', path: '/tmp/room', kind: 'repo', createdAt: 1, ...hooks.room } as Room)
+  if (hooks.project) store.saveProject({ id: 'project', name: 'invoices', path: '/tmp/project', kind: 'repo', createdAt: 1, ...hooks.project } as Project)
   const allow: string[] = []
   const allowTools: string[] = []
   const approvals = new Approvals(store)
   const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300, ...hooks.permissions }, ...(hooks.models ? { models: hooks.models } : {}), ...(hooks.usage ? { usage: hooks.usage } : {}) } as unknown as AppSettings
   const sessions = new Sessions({
     store, approvals, settings: () => settings, agentFor: (ws) => (hooks.agentFor ? hooks.agentFor(ws) : hooks.agent), mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat), disabledFor: hooks.disabledFor, aliasesFor: hooks.aliasesFor, onMcp: hooks.onMcp,
-    roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, roomTools: () => allowTools, allowToolInRoom: (_room, rule) => { allowTools.push(rule) },
+    projectAllow: () => allow, allowInProject: (_project, rule) => { allow.push(rule) }, projectTools: () => allowTools, allowToolInProject: (_project, rule) => { allowTools.push(rule) },
     onTurnDone: hooks.onTurnDone, onExit: hooks.onExit, availability: hooks.availability, ...hooks.deps
   })
   await sessions.send(chat.id, [{ type: 'text', text: 'Add a pdf_url column' }])
@@ -123,7 +123,7 @@ describe('questions to the user', () => {
     expect(seen).toEqual([chat.id])
   })
 
-  it("starts the session without the room's switched-off skills and MCP servers, and never without Kernel's own server (KERNEL-226)", async () => {
+  it("starts the session without the project's switched-off skills and MCP servers, and never without Kernel's own server (KERNEL-226)", async () => {
     const kernel = { type: 'sdk', name: 'kernel', instance: {} } as never
     const { options } = await setup('acceptEdits', { mcpFor: () => ({ kernel }), disabledFor: () => ({ skills: ['impeccable', 'impeccable'], mcp: ['chrome-devtools', 'kernel'] }) })
     expect(options.mcpServers).toEqual({ kernel })
@@ -133,7 +133,7 @@ describe('questions to the user', () => {
     expect(options).not.toHaveProperty('skills')
   })
 
-  it("adds no settings when the room switched nothing off, and leaves the compact window to the model (context-window-follows-model)", async () => {
+  it("adds no settings when the project switched nothing off, and leaves the compact window to the model (context-window-follows-model)", async () => {
     const { options } = await setup('acceptEdits', { disabledFor: () => ({ skills: [], mcp: [] }) })
     expect(options).not.toHaveProperty('settings')
     expect(options.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW)
@@ -237,12 +237,12 @@ describe('session runner (SDK scripted)', () => {
     approvals.decide(card.id, { behavior: 'allow' })
     expect(await asked).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } })
     expect(await runGuard('t3', 'npm test')).toEqual({})
-    // A room rule answers in the hook, and beats Always ask (D-016, KERNEL-454).
+    // A project rule answers in the hook, and beats Always ask (D-016, KERNEL-454).
     allow.push('pnpm drizzle-kit push')
     expect(await runGuard('t4', 'pnpm drizzle-kit push')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } })
   })
 
-  it('asks about Always ask with the command the hook saw, and Always allow saves it on the room', async () => {
+  it('asks about Always ask with the command the hook saw, and Always allow saves it on the project', async () => {
     const { runGuard, approvals, store, allow } = await setup()
     const asked = runGuard('t5', 'pnpm drizzle-kit push')
     await flush()
@@ -418,15 +418,15 @@ describe('session runner (SDK scripted)', () => {
     expect(ok.store.items(ok.chat.id).filter((i) => i.kind === 'note')).toEqual([])
   })
 
-  // KERNEL-464: a server whose name matches but that can't be used says why, and every init's statuses reach the room.
-  it('says why a listed MCP server the session has can\'t be used, and tells the room each init\'s statuses', async () => {
+  // KERNEL-464: a server whose name matches but that can't be used says why, and every init's statuses reach the project.
+  it('says why a listed MCP server the session has can\'t be used, and tells the project each init\'s statuses', async () => {
     const agent = { id: 'noor', name: 'Noor', role: 'Backend', description: 'APIs.', lead: false, prompt: 'You build.', file: '/r/noor.md', tools: ['Read', 'mcp__neon', 'mcp__claude_ai_Notion__search', 'mcp__fal-ai', 'mcp__figma', 'mcp__linear__get_issue', 'mcp__claude_ai_Gmail'] } as AgentDef
     const reports: unknown[][] = []
-    // The room heard from a probe that the Gmail connector is up, before this session's first init lists it.
-    const room = [{ name: 'claude.ai Gmail', status: 'connected' as const, source: 'claudeai' }]
+    // The project heard from a probe that the Gmail connector is up, before this session's first init lists it.
+    const project = [{ name: 'claude.ai Gmail', status: 'connected' as const, source: 'claudeai' }]
     const { call, options, store, chat } = await setup('acceptEdits', {
       agent, disabledFor: () => ({ skills: [], mcp: ['figma'] }), aliasesFor: () => ({ linear: 'claude.ai Linear' }), deps: { accessFor: () => ({ unlisted: 'hide', allow: [] }) },
-      onMcp: (_ws, provider, list) => { reports.push([provider, list]); return [...room, ...list] }
+      onMcp: (_ws, provider, list) => { reports.push([provider, list]); return [...project, ...list] }
     })
     const servers = [
       { name: 'kernel', status: 'connected', source: 'sdk' }, { name: 'neon', status: 'failed', source: 'user' }, { name: 'claude.ai Notion', status: 'needs-auth', source: 'claudeai' },
@@ -438,12 +438,12 @@ describe('session runner (SDK scripted)', () => {
       "This agent's file lists mcp__neon, but the MCP server neon failed to connect.",
       "This agent's file lists mcp__claude_ai_Notion__search, but the MCP server claude.ai Notion needs you to sign in. Sign in with /mcp in Claude Code.",
       "This agent's file lists mcp__fal-ai, but the MCP server fal-ai is switched off in Claude Code. Turn it on with /mcp.",
-      "This agent's file lists mcp__figma, but the MCP server figma is switched off in this room. Turn it on in Settings, Skills and MCP."
+      "This agent's file lists mcp__figma, but the MCP server figma is switched off in this project. Turn it on in Settings, Skills and MCP."
     ].join(' ')])
     // Every init reports, with a status Kernel doesn't know left out.
     expect(reports).toHaveLength(2)
     expect(reports[0]).toEqual(['claude', servers.slice(0, 5)])
-    // The tools line reads through the room's aliases.
+    // The tools line reads through the project's aliases.
     const unmatched = options.hooks!.PreToolUse!.filter((m) => !m.matcher).flatMap((m) => m.hooks)
     const gate = unmatched[unmatched.length - 1] as HookCallback
     const use = (tool: string) => gate({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: {}, tool_use_id: 't', session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, 't', { signal: new AbortController().signal } as never)
@@ -601,9 +601,9 @@ describe('prompt suggestions (KERNEL-530)', () => {
     expect(saved(s)).toBeUndefined()
 
     await turn(2)
-    s.sessions.pause('room')
+    s.sessions.pause('project')
     expect(await s.sessions.send('chat', [{ type: 'text', text: 'Next' }])).toEqual({ queued: true, why: 'paused' })
-    s.sessions.resume('room')
+    s.sessions.resume('project')
     expect(s.sessions.isRunning('chat')).toBe(true)
     expect(saved(s)).toBeUndefined()
 
@@ -892,7 +892,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
     for (const tool of ['Read', 'Bash', 'mcp__linear__get_issue', 'mcp__kernel__submit_review', 'ExitPlanMode', 'ToolSearch']) expect(await use(gate, tool), tool).toEqual({})
   })
 
-  it('asks about an MCP server the file does not list, unless the room hides it or allows it (KERNEL-537)', async () => {
+  it('asks about an MCP server the file does not list, unless the project hides it or allows it (KERNEL-537)', async () => {
     const { options, store, approvals, allowTools } = await setup('acceptEdits', { agent: theo })
     const gate = gateOf(options)!
     const answer = use(gate, 'mcp__linear__save_issue')
@@ -904,7 +904,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
     expect(allowTools.length).toBe(1)
     // Built-in tools the file leaves out are still refused without asking.
     expect(await use(gate, 'Write')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
-    // A server the room's allow names counts as listed.
+    // A server the project's allow names counts as listed.
     const allowed = await setup('acceptEdits', { agent: theo, deps: { accessFor: () => ({ unlisted: 'hide', allow: ['github'] }) } })
     expect(await use(gateOf(allowed.options)!, 'mcp__github__merge_pull_request')).toEqual({})
   })
@@ -920,7 +920,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
     }
     const allowed = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
 
-    it('runs an MCP server the file does not list with no card, while the room asks about it', async () => {
+    it('runs an MCP server the file does not list with no card, while the project asks about it', async () => {
       for (const access of [undefined, { unlisted: 'ask' as const, allow: [] }]) {
         const t = await setup('bypassPermissions', { agent: theo, deps: access ? { accessFor: () => access } : {} })
         expect(await use(gateOf(t.options)!, 'mcp__linear__save_issue')).toEqual(allowed)
@@ -937,7 +937,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
       await asks(await setup('bypassPermissions', { agent: theo, chat: { plan: true } }), 'mcp__linear__save_issue')
     })
 
-    it('still refuses what the room hides and what disallowedTools takes away, with the same reasons', async () => {
+    it('still refuses what the project hides and what disallowedTools takes away, with the same reasons', async () => {
       const hidden = await setup('bypassPermissions', { agent: theo, deps: { accessFor: () => ({ unlisted: 'hide', allow: [] }) } })
       expect(await use(gateOf(hidden.options)!, 'mcp__linear__save_issue')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file doesn't list mcp__linear__save_issue. Use another tool, or ask the user to add mcp__linear__save_issue to the tools line in your agent file." } })
       const taken = await setup('bypassPermissions', { agent: { ...theo, disallowedTools: ['mcp__github'] } })
@@ -1192,7 +1192,7 @@ describe('who sent a message (KERNEL-116)', () => {
     await finish(s, 'r2')
     expect(users(s).at(-1)).toMatchObject({ from: 'lead', parts: [{ type: 'text', text: 'Use EmptyState' }] })
     await finish(s, 'r3')
-    s.sessions.pause('room')
+    s.sessions.pause('project')
     expect(await s.sessions.send('chat', [{ type: 'text', text: 'paused' }])).toEqual({ queued: true, why: 'paused' })
     s.sessions.holdAll('offline')
     expect(await s.sessions.send('chat', [{ type: 'text', text: 'offline' }])).toEqual({ queued: true, why: 'offline' })
@@ -1349,9 +1349,9 @@ describe('permission modes on Claude (KERNEL-447)', () => {
     expect(call.modes).toEqual(['acceptEdits'])
   })
 
-  it("takes the chat's mode over the room's, the room's over the app's, and an agent file's only when it is stricter", async () => {
-    expect((await setup('default', { room: { permissionMode: 'acceptEdits' } })).options.permissionMode).toBe('acceptEdits')
-    expect((await setup('default', { room: { permissionMode: 'acceptEdits' }, chat: { mode: 'bypassPermissions' } })).options.permissionMode).toBe('bypassPermissions')
+  it("takes the chat's mode over the project's, the project's over the app's, and an agent file's only when it is stricter", async () => {
+    expect((await setup('default', { project: { permissionMode: 'acceptEdits' } })).options.permissionMode).toBe('acceptEdits')
+    expect((await setup('default', { project: { permissionMode: 'acceptEdits' }, chat: { mode: 'bypassPermissions' } })).options.permissionMode).toBe('bypassPermissions')
     const careful = { id: 'noor', name: 'Noor', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/noor.md', permissionMode: 'acceptEdits' } as AgentDef
     const tightened = (await setup('bypassPermissions', { agent: careful })).options
     expect(tightened.permissionMode).toBe('acceptEdits')
@@ -1366,7 +1366,7 @@ describe('permission modes on Claude (KERNEL-447)', () => {
     const ended = (id: string) => { t.call.feed({ type: 'result', subtype: 'success', uuid: id, duration_ms: 1 }); return flush() }
     await ended('r0')
     await t.sessions.configure('chat', { mode: 'bypassPermissions' })
-    t.store.saveRoom({ id: 'room', name: 'invoices', path: '/tmp/room', permissionMode: 'bypassPermissions', createdAt: 1 } as Room)
+    t.store.saveProject({ id: 'project', name: 'invoices', path: '/tmp/project', permissionMode: 'bypassPermissions', createdAt: 1 } as Project)
     t.sessions.applyModes()
     t.sessions.applySettings()
     await flush()
@@ -1386,30 +1386,30 @@ describe('permission modes on Claude (KERNEL-447)', () => {
     expect(sdk.calls[sdk.calls.length - 1].options).toMatchObject({ permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true })
   })
 
-  it('moves a live session with setPermissionMode when the chat, plan mode, the room or Settings changes its mode', async () => {
-    const t = await setup('acceptEdits', { room: {} })
+  it('moves a live session with setPermissionMode when the chat, plan mode, the project or Settings changes its mode', async () => {
+    const t = await setup('acceptEdits', { project: {} })
     await t.sessions.configure('chat', { mode: 'default' })
     await t.sessions.configure('chat', { plan: true })
     await t.sessions.configure('chat', { plan: false })
     expect(t.call.modes).toEqual(['default', 'plan', 'default'])
-    // The chat's own mode wins over Settings and the room, so neither moves it.
+    // The chat's own mode wins over Settings and the project, so neither moves it.
     const before = structuredClone(t.settings)
     t.settings.permissions.mode = 'auto'
     t.sessions.applySettings(before)
-    t.store.saveRoom({ ...t.store.room('room')!, permissionMode: 'acceptEdits' })
+    t.store.saveProject({ ...t.store.project('project')!, permissionMode: 'acceptEdits' })
     t.sessions.applyModes()
     await flush()
     expect(t.call.modes).toEqual(['default', 'plan', 'default'])
 
-    const u = await setup('acceptEdits', { room: {} })
-    u.store.saveRoom({ ...u.store.room('room')!, permissionMode: 'default' })
+    const u = await setup('acceptEdits', { project: {} })
+    u.store.saveProject({ ...u.store.project('project')!, permissionMode: 'default' })
     u.sessions.applyModes()
     await flush()
     const was = structuredClone(u.settings)
     u.settings.permissions.mode = 'default'
     u.sessions.applySettings(was)
     await flush()
-    // Settings changed to the mode the room already gives, so only the room's change moved it.
+    // Settings changed to the mode the project already gives, so only the project's change moved it.
     expect(u.call.modes).toEqual(['default'])
   })
 
@@ -1718,15 +1718,15 @@ describe('turns that end without a reply on Claude (KERNEL-808)', () => {
   })
 })
 
-describe("a room's Always allow rules on Claude (KERNEL-454)", () => {
+describe("a project's Always allow rules on Claude (KERNEL-454)", () => {
   const autoWorks: SessionDeps['availability'] = () => ({ auto: true, bypass: true })
   const signal = () => new AbortController().signal
   const allowed = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
   const runTool = (options: Options, tool: string, input: Record<string, unknown>) =>
-    (options.hooks!.PreToolUse!.find((m) => m.matcher === ROOM_TOOLS)!.hooks[0] as HookCallback)({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, tool_use_id: 'm1', session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, 'm1', { signal: signal() } as never)
+    (options.hooks!.PreToolUse!.find((m) => m.matcher === PROJECT_TOOLS)!.hooks[0] as HookCallback)({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, tool_use_id: 'm1', session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, 'm1', { signal: signal() } as never)
   const linear = { type: 'addRules' as const, behavior: 'allow' as const, destination: 'localSettings' as const, rules: [{ toolName: 'mcp__linear__get_issue' }] }
 
-  it("answers a chain the room's rules cover with the hook's allow in Auto, so the classifier can't refuse it", async () => {
+  it("answers a chain the project's rules cover with the hook's allow in Auto, so the classifier can't refuse it", async () => {
     const t = await setup('auto', { availability: autoWorks })
     t.allow.push('pnpm build:*', 'pnpm test', 'curl:*', 'sh:*')
     expect(await t.runGuard('t1', 'cd web && pnpm build && pnpm test')).toEqual(allowed)
@@ -1742,7 +1742,7 @@ describe("a room's Always allow rules on Claude (KERNEL-454)", () => {
     await asked
   })
 
-  it("allows an MCP or web tool the room allows from its own hook, and Kernel's own tools stay as they were", async () => {
+  it("allows an MCP or web tool the project allows from its own hook, and Kernel's own tools stay as they were", async () => {
     const t = await setup('auto', { availability: autoWorks })
     t.allowTools.push('mcp__linear__get_issue', 'WebFetch(domain:docs.example.com)')
     expect(await runTool(t.options, 'mcp__linear__get_issue', { id: 'KERNEL-1' })).toEqual(allowed)
@@ -1752,7 +1752,7 @@ describe("a room's Always allow rules on Claude (KERNEL-454)", () => {
     expect(await runTool(t.options, 'mcp__kernel__say', { text: 'hi' })).toEqual({})
   })
 
-  it('leaves room rules to canUseTool in plan mode, and reads none in Bypass permissions', async () => {
+  it('leaves project rules to canUseTool in plan mode, and reads none in Bypass permissions', async () => {
     const plan = await setup('acceptEdits', { chat: { plan: true } })
     plan.allow.push('pnpm test')
     plan.allowTools.push('mcp__linear__get_issue')
@@ -1765,7 +1765,7 @@ describe("a room's Always allow rules on Claude (KERNEL-454)", () => {
     bypass.allowTools.push('mcp__linear__get_issue')
     expect(await bypass.runGuard('t2', 'pnpm test')).toEqual({})
     expect(await runTool(bypass.options, 'mcp__linear__get_issue', {})).toEqual({})
-    // What Claude Code still sends in Bypass permissions goes to the user, a room rule or not (KERNEL-433).
+    // What Claude Code still sends in Bypass permissions goes to the user, a project rule or not (KERNEL-433).
     void (bypass.options.canUseTool as CanUseTool)('mcp__linear__get_issue', {}, { signal: signal(), toolUseID: 'm3', requestId: 'r' })
     await flush()
     expect(bypass.store.approvals({ pendingOnly: true })).toHaveLength(1)
@@ -1786,24 +1786,24 @@ describe("a room's Always allow rules on Claude (KERNEL-454)", () => {
     expect(await gated.runGuard('t1', 'pnpm test')).toEqual({})
   })
 
-  it('checks the room in canUseTool before it asks about an MCP tool', async () => {
+  it('checks the project in canUseTool before it asks about an MCP tool', async () => {
     const t = await setup('default')
     t.allowTools.push('mcp__linear')
     expect(await (t.options.canUseTool as CanUseTool)('mcp__linear__get_issue', { id: 'KERNEL-1' }, { signal: signal(), toolUseID: 'm1', requestId: 'r', suggestions: [linear] })).toEqual({ behavior: 'allow', updatedInput: { id: 'KERNEL-1' } })
     expect(t.store.approvals({})).toEqual([])
   })
 
-  it("saves Always allow on an MCP tool on the room, not as Claude Code's suggestion in the worktree", async () => {
+  it("saves Always allow on an MCP tool on the project, not as Claude Code's suggestion in the worktree", async () => {
     const t = await setup('default')
     const answer = (t.options.canUseTool as CanUseTool)('mcp__linear__get_issue', { id: 'KERNEL-1' }, { signal: signal(), toolUseID: 'm1', requestId: 'r', suggestions: [linear] })
     await flush()
     t.approvals.decide(t.store.approvals({ pendingOnly: true })[0].id, { behavior: 'allow', always: true })
     expect(await answer).toEqual({ behavior: 'allow', updatedInput: { id: 'KERNEL-1' }, updatedPermissions: undefined })
     expect(t.allowTools).toEqual(['mcp__linear__get_issue'])
-    // The next call in this room, from any chat, goes through without a card.
+    // The next call in this project, from any chat, goes through without a card.
     expect(await (t.options.canUseTool as CanUseTool)('mcp__linear__get_issue', { id: 'KERNEL-2' }, { signal: signal(), toolUseID: 'm2', requestId: 'r' })).toMatchObject({ behavior: 'allow' })
 
-    // A tool no room rule covers keeps Claude Code's own suggestion.
+    // A tool no project rule covers keeps Claude Code's own suggestion.
     const dirs = [{ type: 'addDirectories' as const, directories: ['/etc'], destination: 'session' as const }]
     const read = (t.options.canUseTool as CanUseTool)('Read', { file_path: '/etc/hosts' }, { signal: signal(), toolUseID: 'r1', requestId: 'r', suggestions: dirs })
     await flush()
@@ -1987,9 +1987,9 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   })
 
   /** A teammate chat that finished a turn, and the Lead's chat in another workspace. Near-limit holds are on. */
-  async function room(usage: AppSettings['usage'] = { pauseNearLimit: true, warnBeforeWeekly: true }) {
+  async function project(usage: AppSettings['usage'] = { pauseNearLimit: true, warnBeforeWeekly: true }) {
     const s = await setup('acceptEdits', { usage, agentFor: (ws) => (ws.id === 'wsLead' ? kernel : undefined) })
-    s.store.saveWorkspace({ id: 'wsLead', roomId: 'room', name: 'lead', branch: 'HEAD', baseRef: 'main', path: '/tmp/wsLead', mode: 'worktree', agentId: 'kernel', lead: true, port: 4302, status: 'ready', prState: 'none', createdAt: 3 })
+    s.store.saveWorkspace({ id: 'wsLead', projectId: 'project', name: 'lead', branch: 'HEAD', baseRef: 'main', path: '/tmp/wsLead', mode: 'worktree', agentId: 'kernel', lead: true, port: 4302, status: 'ready', prState: 'none', createdAt: 3 })
     s.store.saveChat({ ...s.chat, id: 'leadChat', workspaceId: 'wsLead', title: 'Lead' })
     s.call.feed(result('r1'))
     await flush()
@@ -2002,7 +2002,7 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   }
 
   it('holds a teammate\'s new turn at 91% of the 5-hour window with reason limit, and lets the Lead\'s run', async () => {
-    const s = await room()
+    const s = await project()
     s.call.feed(event('five_hour', 0.91))
     await flush()
     const before = sdk.calls.length
@@ -2018,7 +2018,7 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   })
 
   it('goes out when usage drops, and when the window resets', async () => {
-    const s = await room()
+    const s = await project()
     s.call.feed(event('five_hour', 0.91))
     await flush()
     await s.sessions.send('chat', text('Next task'))
@@ -2042,7 +2042,7 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   })
 
   it('lets a running turn finish, and holds what comes after it', async () => {
-    const s = await room()
+    const s = await project()
     await s.sessions.send('chat', text('Working'))
     expect(s.sessions.isRunning('chat')).toBe(true)
     s.call.feed(event('five_hour', 0.92))
@@ -2057,7 +2057,7 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   })
 
   it('holds at 95% of the weekly window, and at neither 89% of the 5-hour window nor 94% of the weekly one', async () => {
-    const s = await room()
+    const s = await project()
     for (const [type, used] of [['five_hour', 0.89], ['seven_day', 0.94]] as const) {
       s.call.feed(event(type, used))
       await flush()
@@ -2072,7 +2072,7 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   })
 
   it('reads a warning with no number as close to the limit, and a number as the number', async () => {
-    const s = await room()
+    const s = await project()
     s.call.feed(event('five_hour', undefined, { status: 'allowed_warning' }))
     await flush()
     expect(s.sessions.waitsFor('chat')).toBe('limit')
@@ -2084,18 +2084,18 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   })
 
   it('holds nothing when the switch in Settings, Account is off, or when the window has already reset', async () => {
-    const off = await room({ pauseNearLimit: false, warnBeforeWeekly: true })
+    const off = await project({ pauseNearLimit: false, warnBeforeWeekly: true })
     off.call.feed(event('five_hour', 0.99))
     await flush()
     expect(off.sessions.waitsFor('chat')).toBeUndefined()
-    const past = await room()
+    const past = await project()
     past.call.feed(event('five_hour', 0.99, { resetsAt: secs(Date.now() - 60_000) }))
     await flush()
     expect(past.sessions.waitsFor('chat')).toBeUndefined()
   })
 
   it('releases what waited when the switch is turned off', async () => {
-    const s = await room()
+    const s = await project()
     s.call.feed(event('five_hour', 0.93))
     await flush()
     await s.sessions.send('chat', text('Next task'))
@@ -2107,7 +2107,7 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   })
 
   it("holds Kernel's own posts and a carried-on chat too, and Send now goes past it", async () => {
-    const s = await room()
+    const s = await project()
     s.call.feed(event('five_hour', 0.93))
     await flush()
     expect(s.sessions.post('chat', text('Team update from Kernel'))).toBe(false)
@@ -2130,10 +2130,10 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   })
 
   /** `count` teammate chats, c1 to cN, each in its own workspace, none running. */
-  function cutOffChats(s: Awaited<ReturnType<typeof room>>, count: number) {
+  function cutOffChats(s: Awaited<ReturnType<typeof project>>, count: number) {
     const ids = Array.from({ length: count }, (_, i) => `c${i + 1}`)
     ids.forEach((id, i) => {
-      s.store.saveWorkspace({ id: `w-${id}`, roomId: 'room', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/tmp/${id}`, mode: 'worktree', agentId: 'noor', port: 4400 + i, status: 'ready', prState: 'none', createdAt: 10 + i })
+      s.store.saveWorkspace({ id: `w-${id}`, projectId: 'project', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/tmp/${id}`, mode: 'worktree', agentId: 'noor', port: 4400 + i, status: 'ready', prState: 'none', createdAt: 10 + i })
       s.store.saveChat({ ...s.chat, id, workspaceId: `w-${id}`, title: id })
     })
     const runningNow = () => ids.filter((id) => s.sessions.isRunning(id))
@@ -2144,7 +2144,7 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   }
 
   it('resumes 5 chats a limit cut off two at a time, the next as one ends its turn', async () => {
-    const s = await room()
+    const s = await project()
     const { ids, runningNow, finish } = cutOffChats(s, 5)
     s.sessions.restore([], Object.fromEntries(ids.map((id) => [id, 'limit' as const])))
     expect(runningNow()).toEqual(['c1', 'c2'])
@@ -2162,13 +2162,13 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   })
 
   it('resumes chats with a message queued two at a time too, whichever way their queues are released', async () => {
-    const s = await room()
+    const s = await project()
     const { ids, runningNow, finish } = cutOffChats(s, 4)
-    s.sessions.pause('room')
+    s.sessions.pause('project')
     for (const id of ids) expect(await s.sessions.send(id, text(`Queued for ${id}`))).toEqual({ queued: true, why: 'paused' })
     s.sessions.restore([], Object.fromEntries(ids.map((id) => [id, 'limit' as const])))
     expect(runningNow()).toEqual([])
-    s.sessions.resume('room')
+    s.sessions.resume('project')
     expect(runningNow()).toEqual(['c1', 'c2'])
     await finish('c1')
     expect(runningNow()).toEqual(['c2', 'c3'])
@@ -2180,14 +2180,14 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   })
 
   it('does not stagger the chats a quit cut off', async () => {
-    const s = await room()
+    const s = await project()
     const { ids, runningNow } = cutOffChats(s, 5)
     s.sessions.restore([], Object.fromEntries(ids.map((id) => [id, 'quit' as const])))
     expect(runningNow()).toEqual(ids)
   })
 
   it('keeps the two slots when a resumed chat ends without a turn, so the rest still start', async () => {
-    const s = await room()
+    const s = await project()
     const { ids, runningNow, callOf } = cutOffChats(s, 3)
     s.sessions.restore([], Object.fromEntries(ids.map((id) => [id, 'limit' as const])))
     expect(runningNow()).toEqual(['c1', 'c2'])
@@ -2209,10 +2209,10 @@ describe('Send now past the agent limit, and why a queue waits (KERNEL-271)', ()
   const result = { type: 'result', subtype: 'success', is_error: false, uuid: 'r', duration_ms: 1, result: '', session_id: 's' }
   const text = (t: string) => [{ type: 'text' as const, text: t }]
 
-  /** The limit at 1 and `chat` running. `other` is a second teammate's chat in the same room, idle. */
+  /** The limit at 1 and `chat` running. `other` is a second teammate's chat in the same project, idle. */
   async function busy() {
     const s = await setup('acceptEdits', { models: { agentLimit: 1 } })
-    s.store.saveWorkspace({ id: 'ws2', roomId: 'room', name: 'pdf-export', branch: 'feat/pdf-export', baseRef: 'main', path: '/tmp/ws2', mode: 'worktree', agentId: 'kai', port: 4301, status: 'ready', prState: 'none', createdAt: 2 })
+    s.store.saveWorkspace({ id: 'ws2', projectId: 'project', name: 'pdf-export', branch: 'feat/pdf-export', baseRef: 'main', path: '/tmp/ws2', mode: 'worktree', agentId: 'kai', port: 4301, status: 'ready', prState: 'none', createdAt: 2 })
     s.store.saveChat({ ...s.chat, id: 'other', workspaceId: 'ws2', title: 'PDF export' })
     const why: Record<string, (string | undefined)[]> = {}
     const onPush = (e: PushEvent) => { if (e.type === 'chat.queue') (why[e.chatId] ??= []).push(e.why) }
@@ -2247,7 +2247,7 @@ describe('Send now past the agent limit, and why a queue waits (KERNEL-271)', ()
       await sessions.send('chat', text('Then add a test'))
       await flush()
       expect(why.chat).toEqual(['running'])
-      sessions.pause('room')
+      sessions.pause('project')
       await flush()
       expect(why.other.at(-1)).toBe('paused')
       expect(why.chat.at(-1)).toBe('running')
@@ -2257,13 +2257,13 @@ describe('Send now past the agent limit, and why a queue waits (KERNEL-271)', ()
       sessions.releaseAll('offline')
       await flush()
       expect(why.other.at(-1)).toBe('paused')
-      // The turn ends while the room is paused: the chat's own queue now waits for the pause, not the turn.
+      // The turn ends while the project is paused: the chat's own queue now waits for the pause, not the turn.
       call.feed(result)
       await flush()
       expect(sessions.isRunning('chat')).toBe(false)
       expect(why.chat.at(-1)).toBe('paused')
       // Resuming sends the chat's own message first, which takes the slot again.
-      sessions.resume('room')
+      sessions.resume('project')
       expect(sessions.isRunning('chat')).toBe(true)
       await flush()
       expect(why.other.at(-1)).toBe('capacity')
@@ -2281,7 +2281,7 @@ describe('Send now past the agent limit, and why a queue waits (KERNEL-271)', ()
     try {
       call.feed(result)
       await flush()
-      sessions.pause('room')
+      sessions.pause('project')
       await sessions.send('other', text('Export the invoice'))
       expect(sessions.queueReason('other')).toBe('paused')
       await sessions.sendNow('other', sessions.queued('other')[0].id)
@@ -2312,10 +2312,10 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     const exits: { reason: string; midTurn: boolean; resumed: boolean }[] = []
     let cutOff: Record<string, string> = {}
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: o.agentLimit ?? 0 } } as unknown as AppSettings
-    // As in Kernel: a sign-out a session reports holds every room until sign-in.
+    // As in Kernel: a sign-out a session reports holds every project until sign-in.
     const sessions: Sessions = new Sessions({
       store: s.store, approvals: new Approvals(s.store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined,
-      roomAllow: () => [], allowInRoom: () => {}, onExit: (_ws, _chat, reason, midTurn, resumed) => { exits.push({ reason, midTurn, resumed }) },
+      projectAllow: () => [], allowInProject: () => {}, onExit: (_ws, _chat, reason, midTurn, resumed) => { exits.push({ reason, midTurn, resumed }) },
       onFailure: (failure) => { if (failure === 'auth') sessions.holdAll('auth') },
       onCutOff: (c) => { cutOff = c }
     })
@@ -2433,21 +2433,21 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
   it('adds one nudge however many times Kernel quits before it goes', async () => {
     const s = await midTurn()
     await s.sessions.shutdown(0)
-    relaunch(s, { before: (sessions) => sessions.pause('room') }).sessions.shutdown(0)
-    const third = relaunch(s, { clean: true, before: (sessions) => sessions.pause('room') })
+    relaunch(s, { before: (sessions) => sessions.pause('project') }).sessions.shutdown(0)
+    const third = relaunch(s, { clean: true, before: (sessions) => sessions.pause('project') })
     expect(third.sessions.queued('chat').map((q) => q.parts[0].type === 'text' && q.parts[0].text)).toEqual(['Then add a test', RELAUNCH_NUDGE])
   })
 
-  it('waits for Resume in a paused room, for the connection when offline, and for a slot at the agent limit', async () => {
+  it('waits for Resume in a paused project, for the connection when offline, and for a slot at the agent limit', async () => {
     const s = await midTurn()
     s.store.saveWorkspace({ ...s.store.workspace('ws')!, id: 'ws2', name: 'invoice-export', path: '/tmp/ws2' })
     s.store.saveChat({ ...s.chat, id: 'other', workspaceId: 'ws2' })
     await s.sessions.shutdown(0)
 
-    const paused = relaunch(s, { before: (sessions) => sessions.pause('room') })
+    const paused = relaunch(s, { before: (sessions) => sessions.pause('project') })
     expect(paused.sessions.isRunning('chat')).toBe(false)
     expect(paused.started()).toHaveLength(0)
-    paused.sessions.resume('room')
+    paused.sessions.resume('project')
     expect(paused.sessions.isRunning('chat')).toBe(true)
     await paused.sessions.shutdown(0)
 
@@ -2472,7 +2472,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     s.call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
     await flush()
     const next = relaunch(s)
-    // The nudge goes out and meets a sign-out, which holds every room.
+    // The nudge goes out and meets a sign-out, which holds every project.
     const call = next.started()[0]
     call.feed({ type: 'assistant', uuid: 'a2', parent_tool_use_id: null, error: 'authentication_failed', message: { content: [] } })
     call.feed(result('r2', 'error_during_execution'))
@@ -2486,7 +2486,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     expect(texts(s.store).filter((t) => t === RELAUNCH_NUDGE)).toHaveLength(2)
   })
 
-  it('leaves a failed carry-on stopped when nothing holds the rooms, so it cannot loop', async () => {
+  it('leaves a failed carry-on stopped when nothing holds the projects, so it cannot loop', async () => {
     const s = await setup()
     s.call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
     await flush()

@@ -114,7 +114,7 @@ export function launch(to: FoundApp, path: string, dir: boolean): Launch {
   return { args: to.app.args(to.path, to.app.kind === 'editor' || dir ? path : dirname(path)) }
 }
 
-/** Refuses a path outside every room and workspace, so a page can't open the rest of the Mac. */
+/** Refuses a path outside every project and workspace, so a page can't open the rest of the Mac. */
 export function mustBeInside(path: string, roots: string[]) {
-  if (typeof path !== 'string' || !insideRoots(path, roots)) throw new Error('Kernel only opens files inside a room or workspace.')
+  if (typeof path !== 'string' || !insideRoots(path, roots)) throw new Error('Kernel only opens files inside a project or workspace.')
 }

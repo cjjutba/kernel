@@ -54,7 +54,7 @@ describe('GitHub issues for the Issues screen (KERNEL-471)', () => {
     expect(() => parseIssues('not json', null)).toThrow('Could not read the issues gh sent.')
   })
 
-  it('lists up to 100 open issues in the room folder, and takes a number without its #', async () => {
+  it('lists up to 100 open issues in the project folder, and takes a number without its #', async () => {
     const g = gh({ stdout: JSON.stringify([raw]) })
     expect(await listGithubIssues('/repo', '#31', 'cjjutba', g.cmd)).toHaveLength(1)
     await listGithubIssues('/repo', undefined, null, g.cmd)

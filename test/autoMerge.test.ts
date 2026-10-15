@@ -10,7 +10,7 @@ import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
 import { exec, git } from '../src/main/services/exec'
 import { BranchConflict, HEAD_MOVED } from '../src/main/services/github'
-import { applySettingsPatch, autoMergeInRoom, DEFAULT_SETTINGS, loadAppSettings, sharedMergeOf } from '../src/main/services/settings'
+import { applySettingsPatch, autoMergeInProject, DEFAULT_SETTINGS, loadAppSettings, sharedMergeOf } from '../src/main/services/settings'
 import { decide, LeadUpdates, type TeamEvent } from '../src/main/services/leadUpdates'
 import { tempRepo, freePort } from './helpers'
 
@@ -27,7 +27,7 @@ const GREEN: PrCheck[] = [{ name: 'Test', state: 'pass' }]
 const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i}`).join('\n') + '\n'
 
 /**
- * A room on a fake GitHub whose `main` holds `main` besides the agents, with the app's settings `app`. `pr` opens Kai's work on
+ * A project on a fake GitHub whose `main` holds `main` besides the agents, with the app's settings `app`. `pr` opens Kai's work on
  * a PR that passed `checks`, with the code review's approval of its head and the blockers of the kinds `blockers` names.
  */
 async function setup(o: { app?: object; main?: Record<string, string>; local?: boolean } = {}) {
@@ -46,10 +46,10 @@ async function setup(o: { app?: object; main?: Record<string, string>; local?: b
     ready: async () => undefined,
     reopen: async () => undefined
   }
-  let room = await k.addRoom(repo)
-  if (o.local) room = k.store.saveRoom({ ...room, host: 'local' })
+  let project = await k.addProject(repo)
+  if (o.local) project = k.store.saveProject({ ...project, host: 'local' })
   const buildChat = async () => {
-    const c = await k.lead.newLeadChat(room.id, { prompt: '' })
+    const c = await k.lead.newLeadChat(project.id, { prompt: '' })
     await vi.waitFor(() => expect(k.store.workspace(k.store.chat(c.id)!.workspaceId)?.status).toBe('ready'), { timeout: 10_000, interval: 10 })
     return k.lead.setMode(k.store.chat(c.id)!.workspaceId, 'build')
   }
@@ -59,7 +59,7 @@ async function setup(o: { app?: object; main?: Record<string, string>; local?: b
   onTestFinished(() => { bus.off('activity', onActivity) })
   /** `build`: the work is a chat with Kernel's own, in Build here (KERNEL-778). */
   const pr = async (files: Record<string, string>, r: { checks?: PrCheck[]; blockers?: ReviewKind[]; approved?: ReviewKind[]; build?: boolean } = {}) => {
-    const ws = r.build ? await buildChat() : await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Task' })
+    const ws = r.build ? await buildChat() : await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Task' })
     for (const [f, c] of Object.entries(files)) { await mkdir(dirname(join(ws.path, f)), { recursive: true }); await writeFile(join(ws.path, f), c) }
     await git(ws.path, 'add', '-A')
     await git(ws.path, 'commit', '-qm', 'work')
@@ -69,7 +69,7 @@ async function setup(o: { app?: object; main?: Record<string, string>; local?: b
     const reviews = [...(r.approved ?? ['code']).map((k, i) => verdict(k, 'approved', i + 1)), ...(r.blockers ?? []).map((k, i) => verdict(k, 'blockers', 10 + i))]
     return k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prNumber: 101, prUrl: gh.pr.url, prTitle: 'feat: task', prState: 'ready', prHead: head, reviews })
   }
-  return { k, repo, room, gh, pr, activity }
+  return { k, repo, project, gh, pr, activity }
 }
 
 type Row = [label: string, o: { app?: object; main?: Record<string, string>; local?: boolean; files?: Record<string, string>; checks?: PrCheck[]; blockers?: ReviewKind[] }, refused: string]
@@ -80,7 +80,7 @@ describe('which PRs merge by themselves', () => {
     ['a PR with no checks', { checks: [] }, 'It has no required checks, and auto-merge needs at least one to pass.'],
     ['a failing check', { checks: [{ name: 'Test', state: 'fail' }] }, 'Not every required check has passed.'],
     ['a PR over the line limit', { files: { 'big.txt': lines(401) } }, 'It changes 401 lines, more than the 400 auto-merge allows.'],
-    ["a PR that touches the room's settings file", { files: { '.kernel/settings.toml': '[merge]\nauto = true\n' } }, "It changes .kernel/settings.toml, which always needs a person's review."],
+    ["a PR that touches the project's settings file", { files: { '.kernel/settings.toml': '[merge]\nauto = true\n' } }, "It changes .kernel/settings.toml, which always needs a person's review."],
     ['a PR that touches it in another case, as the Mac reads it', { files: { '.KERNEL/settings.toml': '[merge]\nauto = true\n' } }, "It changes .KERNEL/settings.toml, which always needs a person's review."],
     // KERNEL-632: the agents' files and instructions count at the root and in any folder below it.
     ...['CLAUDE.md', 'AGENTS.md', '.claude/agents/x.md', 'src/CLAUDE.md', 'packages/x/AGENTS.md', 'apps/web/.claude/agents/x.md'].map((f): Row =>
@@ -88,7 +88,7 @@ describe('which PRs merge by themselves', () => {
     ["a path the base branch's [merge] always_review adds", { main: { '.kernel/settings.toml': '[merge]\nalways_review = ["migrations/**"]\n' }, files: { 'migrations/001.sql': 'select 1;\n' } }, "It changes migrations/001.sql, which always needs a person's review."],
     ['a shared settings file that turns it on', { app: OFF, main: { '.kernel/settings.toml': '[merge]\nauto = true\nmax_lines = 5000\n' } }, 'Auto-merge is off.'],
     ['a personal settings file the repo committed', { app: OFF, main: { '.kernel/settings.local.toml': '[merge]\nauto = true\n' } }, 'Auto-merge is off.'],
-    ['a local merge', { local: true }, 'This room merges on this Mac, and auto-merge only merges pull requests on GitHub.'],
+    ['a local merge', { local: true }, 'This project merges on this Mac, and auto-merge only merges pull requests on GitHub.'],
     ['a blocker on the head commit', { blockers: ['security'] }, 'The security review found blockers on the latest commit.']
   ]
 
@@ -164,7 +164,7 @@ describe('which PRs merge by themselves', () => {
     expect(activity.find((a) => a.text === 'merged automatically')).toMatchObject({ actor: 'kernel', object: 'PR #101' })
   })
 
-  it('warns once in the room that the shared settings file sets auto-merge, and ignores it', async () => {
+  it('warns once in the project that the shared settings file sets auto-merge, and ignores it', async () => {
     const { k, gh, pr, activity } = await setup({ app: {}, main: { '.kernel/settings.toml': '[merge]\nauto = true\n' } })
     const ws = await pr({ 'src/a.ts': 'export const a = 1\n' })
     k.prs.considerAutoMerge(ws)
@@ -359,7 +359,7 @@ describe('a PR behind its base', () => {
   type Setup = Awaited<ReturnType<typeof setup>>
 
   /**
-   * Kai's PRs from `files`, numbered from 101, on a fake GitHub that merges into the room's main and updates a branch the way
+   * Kai's PRs from `files`, numbered from 101, on a fake GitHub that merges into the project's main and updates a branch the way
    * GitHub does: a merge of the base into it, whose checks then run, or a BranchConflict. `pass` lets a PR's checks pass.
    */
   async function hub(s: Setup, ...files: Record<string, string>[]) {
@@ -617,14 +617,14 @@ describe('the settings', () => {
     expect(sharedMergeOf(undefined)).toEqual({ alwaysReview: [], ignored: [] })
   })
 
-  it("lets the personal file override the app's setting for its room, its paths adding to the app's", async () => {
+  it("lets the personal file override the app's setting for its project, its paths adding to the app's", async () => {
     const repo = await tempRepo()
     const app = { on: false, maxLines: 400, alwaysReview: ['infra/**'] }
-    expect(autoMergeInRoom(repo, app)).toEqual({ rules: app, personal: false, ignored: [] })
+    expect(autoMergeInProject(repo, app)).toEqual({ rules: app, personal: false, ignored: [] })
     await mkdir(join(repo, '.kernel'), { recursive: true })
     await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[merge]\nauto = true\nmax_lines = 150\nalways_review = ["db/**"]\n')
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[merge]\nauto = false\n')
-    expect(autoMergeInRoom(repo, app)).toEqual({ rules: { on: true, maxLines: 150, alwaysReview: ['infra/**', 'db/**'] }, personal: true, ignored: ['auto'] })
+    expect(autoMergeInProject(repo, app)).toEqual({ rules: { on: true, maxLines: 150, alwaysReview: ['infra/**', 'db/**'] }, personal: true, ignored: ['auto'] })
   })
 
   it("keeps a hand-edited settings.json's auto-merge off unless it says true", async () => {
@@ -640,7 +640,7 @@ describe('the settings', () => {
 describe('what Kernel hears', () => {
   const open: LeadUpdates[] = []
   afterEach(() => { open.forEach((u) => u.detach()); open.length = 0 })
-  const ws = (prState: Workspace['prState']) => ({ id: 'w1', roomId: 'r', name: 'w1', agentId: 'kai', prState, prNumber: 54, prUrl: 'https://github.com/o/shop/pull/54', status: 'ready' }) as Workspace
+  const ws = (prState: Workspace['prState']) => ({ id: 'w1', projectId: 'r', name: 'w1', agentId: 'kai', prState, prNumber: 54, prUrl: 'https://github.com/o/shop/pull/54', status: 'ready' }) as Workspace
   const ev = (kind: TeamEvent['kind'], o: Partial<TeamEvent> = {}): TeamEvent => ({ n: 1, workspaceId: 'w1', kind, pr: 54, ...o })
   const auto = { why: "the code review approved its latest commit, its check passed, it changes 12 lines, within the user's limit of 400, and it changes no path that always needs a person's review", card: 'Code approved, checks passed, 12 lines' }
 
@@ -671,8 +671,8 @@ describe('what Kernel hears', () => {
   /** Kai's ready PR #54 in w1, and Theo's review workspace of it, handed off in the Lead chat lc. */
   async function lead() {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-am-')), 'k.db'))
-    store.saveRoom({ id: 'r', name: 'Shop', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
-    const base = { roomId: 'r', baseRef: 'main', mode: 'worktree', port: 1, status: 'ready', leadChatId: 'lc', createdAt: 1 }
+    store.saveProject({ id: 'r', name: 'Shop', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
+    const base = { projectId: 'r', baseRef: 'main', mode: 'worktree', port: 1, status: 'ready', leadChatId: 'lc', createdAt: 1 }
     store.saveWorkspace({ ...base, id: 'w1', name: 'w1', branch: 'w1', path: '/x/w1', agentId: 'kai', prState: 'ready', prNumber: 54, prUrl: 'https://github.com/o/shop/pull/54', title: 'Task' } as Workspace)
     store.saveWorkspace({ ...base, id: 'rv', name: 'rv', branch: 'rv', path: '/x/rv', agentId: 'theo', prState: 'none', reviewOf: 'w1', title: 'Review PR #54' } as Workspace)
     store.saveChat({ id: 'lc', workspaceId: 'lead', title: 'lc', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 } as Chat)

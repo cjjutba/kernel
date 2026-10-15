@@ -2,7 +2,7 @@ import type { Tracker, TrackerIssue } from '@shared/types'
 import { exec, type ExecResult } from '../exec'
 import { ghErrorKind, GitHubError, ghUser, parseIssueList } from '../github'
 
-// GitHub Issues as a room's tracker, through the GitHub CLI, which already holds the user's auth (D-006, KERNEL-462).
+// GitHub Issues as a project's tracker, through the GitHub CLI, which already holds the user's auth (D-006, KERNEL-462).
 
 /** `#41` for "#41" or "41". A GitHub issue goes by its number, so any other key isn't one. */
 export function githubKey(key: string): string | undefined {

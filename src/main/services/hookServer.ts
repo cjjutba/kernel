@@ -7,14 +7,14 @@ import { bus } from '../bus'
 import { describeTool, needsUser, type Approvals } from './approvals'
 import { firstLine } from './text'
 
-export interface HookContext { roomId?: string; workspaceId?: string; agentId?: string }
+export interface HookContext { projectId?: string; workspaceId?: string; agentId?: string }
 
 export interface HookServerOptions {
   port: number
   /** The secret the installed hook command sends (KERNEL-206). A post without it gets a 401. */
   token: string
   approvals: Approvals
-  /** Map a session's cwd to the room and workspace it belongs to. */
+  /** Map a session's cwd to the project and workspace it belongs to. */
   resolve: (cwd: string, sessionId: string) => HookContext
   /** Sessions Kernel started itself report through in-process hooks, so their posts here are ignored. */
   isManaged: (sessionId: string) => boolean
@@ -26,7 +26,7 @@ export interface HookServerOptions {
 
 /**
  * Receives Claude Code hooks on localhost, posted by the curl command the installer writes (D-050). Most events are fire and forget.
- * PermissionRequest from a session in a room is held open until the user decides in Kernel, the timeout passes,
+ * PermissionRequest from a session in a project is held open until the user decides in Kernel, the timeout passes,
  * or Claude Code stops waiting. The empty response lets Claude Code show its normal prompt in the terminal.
  */
 export function startHookServer(o: HookServerOptions): Promise<Server> {
@@ -57,16 +57,16 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
 
     const ev = parsed.event as HookPayload
     if (ev.hook_event_name === 'PermissionRequest') {
-      // A session outside every room asks in its own window, as if Kernel weren't installed (D-138).
-      if (!ctx.roomId) return json(res, 200, permissionResponse(null))
+      // A session outside every project asks in its own window, as if Kernel weren't installed (D-138).
+      if (!ctx.projectId) return json(res, 200, permissionResponse(null))
       // A plan or a question belongs to the app that started the session, which answers it in its own window (KERNEL-285).
       if (needsUser(ev.tool_name)) return json(res, 200, permissionResponse(null))
       // Claude Code stops waiting when the user answers in the terminal or the session ends, so the approval ends too.
       const closed = new AbortController()
       res.on('close', () => { if (!res.writableFinished) closed.abort() })
       const { title, detail } = describeTool(ev.tool_name, ev.tool_input)
-      // Room only: Kernel can't tell which chat an outside session belongs to, so it asks in Inbox and Home, never in a workspace's chats.
-      const { decision } = o.approvals.request({ kind: 'tool', source: 'hook', roomId: ctx.roomId, toolName: ev.tool_name, input: ev.tool_input, title, detail }, { timeoutMs: typeof o.approvalTimeoutMs === 'function' ? o.approvalTimeoutMs() : o.approvalTimeoutMs, signal: closed.signal })
+      // Project only: Kernel can't tell which chat an outside session belongs to, so it asks in Inbox and Home, never in a workspace's chats.
+      const { decision } = o.approvals.request({ kind: 'tool', source: 'hook', projectId: ctx.projectId, toolName: ev.tool_name, input: ev.tool_input, title, detail }, { timeoutMs: typeof o.approvalTimeoutMs === 'function' ? o.approvalTimeoutMs() : o.approvalTimeoutMs, signal: closed.signal })
       const d = await decision
       if (!d) return json(res, 200, permissionResponse(null))
       if (d.behavior === 'allow') return json(res, 200, permissionResponse({ behavior: 'allow' }))
@@ -82,7 +82,7 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
   })
 }
 
-/** Translate a hook into a log line for the room. Returns null for events the logs do not show. */
+/** Translate a hook into a log line for the project. Returns null for events the logs do not show. */
 export function toActivity(e: HookPayload, ctx: HookContext): Omit<ActivityEvent, 'id' | 'ts'> | null {
   const base = { ...ctx, sessionId: e.session_id }
   switch (e.hook_event_name) {

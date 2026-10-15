@@ -55,9 +55,9 @@ const NEXT = `query NextIssues($filter: IssueFilter) {
 const urgency = (p: number) => (p > 0 ? p : 5)
 
 /**
- * Up next in New chat: the room's team's Todo issues, the ones in an unstarted state, urgent first. Linear only orders by date, so
- * the 50 last updated are sorted here, and issues of one priority keep that order. A room with no team lists nothing, since the token's
- * other teams belong to other projects, and listing them showed one room another's issues.
+ * Up next in New chat: the project's team's Todo issues, the ones in an unstarted state, urgent first. Linear only orders by date, so
+ * the 50 last updated are sorted here, and issues of one priority keep that order. A project with no team lists nothing, since the token's
+ * other teams belong to other projects, and listing them showed one project another's issues.
  */
 export async function nextIssues(token: string | undefined, team: string | undefined, fetchImpl: typeof fetch = fetch): Promise<IssueSummary[]> {
   if (!team) return []
@@ -211,11 +211,11 @@ export function planParts(issue: LinearIssueDetail): ChatPart[] {
 export const LINEAR_SIGNED_OUT = "Kernel isn't connected to Linear. The user can connect it in Settings, Integrations."
 
 /**
- * Linear as a room's tracker (KERNEL-450). `token` is read on every call, so a token saved in Settings > Integrations
+ * Linear as a project's tracker (KERNEL-450). `token` is read on every call, so a token saved in Settings > Integrations
  * applies at once. `start` without a token resolves to nothing: Linear isn't connected, so there is nothing to move (D-140).
  * `issue` says plainly when Kernel isn't connected or Linear has no such issue, since get_issue hands its error to an agent.
  */
-/** `team` is the room's Linear team key, which Up next lists from. Search and issue reads reach every team the token sees. */
+/** `team` is the project's Linear team key, which Up next lists from. Search and issue reads reach every team the token sees. */
 export function linearTracker(token: () => Promise<string | undefined>, fetchImpl: typeof fetch = fetch, team?: string): Tracker {
   return {
     kind: 'linear',

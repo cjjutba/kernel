@@ -239,13 +239,13 @@ describe('permission mode from the composer', () => {
     expect(html).toContain('cycles the modes')
   })
 
-  it('keeps the chat\'s own mode through Plan, and falls back to the room\'s and then the app\'s', () => {
+  it('keeps the chat\'s own mode through Plan, and falls back to the project\'s and then the app\'s', () => {
     const ws = { mode: 'worktree' } as const
     const on = { auto: true, bypass: true }
     const settings = { permissions: { mode: 'default', bypassOnlyInWorktrees: true } } as AppSettings
     expect(chatMode({ plan: true, mode: 'auto' }, ws, undefined, settings, on)).toMatchObject({ mode: 'plan', picked: 'auto', why: 'plan' })
     expect(chatMode({ plan: false, mode: 'auto' }, ws, { permissionMode: 'acceptEdits' }, settings, on)).toEqual({ mode: 'auto', picked: 'auto', pickedIn: 'chat' })
-    expect(chatMode({ plan: false }, ws, { permissionMode: 'acceptEdits' }, settings, on)).toEqual({ mode: 'acceptEdits', picked: 'acceptEdits', pickedIn: 'room' })
+    expect(chatMode({ plan: false }, ws, { permissionMode: 'acceptEdits' }, settings, on)).toEqual({ mode: 'acceptEdits', picked: 'acceptEdits', pickedIn: 'project' })
     expect(chatMode({ plan: false }, ws, undefined, settings, on)).toEqual({ mode: 'default', picked: 'default', pickedIn: 'app' })
   })
 

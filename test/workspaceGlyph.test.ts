@@ -40,7 +40,7 @@ describe('glyphs for pending approvals', () => {
 
 describe('glyphs for a workspace held for script trust (KERNEL-342)', () => {
   const held = (status: Workspace['status']): Workspace =>
-    ({ id: 'w', roomId: 'r', name: 'w', branch: 'feat/w', baseRef: 'main', path: '/w', mode: 'worktree', agentId: 'kai', port: 1, status, prState: 'none', createdAt: 1 })
+    ({ id: 'w', projectId: 'r', name: 'w', branch: 'feat/w', baseRef: 'main', path: '/w', mode: 'worktree', agentId: 'kai', port: 1, status, prState: 'none', createdAt: 1 })
   const idle = { waiting: [], running: false }
 
   it('reads as waiting on you, like an approval', () => {

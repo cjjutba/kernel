@@ -60,7 +60,7 @@ export async function processesIn(dir: string): Promise<number[]> {
 /**
  * Ends every process working inside a worktree that is about to be archived (KERNEL-810): a dev server or test run an
  * agent left, in its own group or started with `nohup` or `setsid`. Nothing happens unless `dir` is inside `root`, the
- * room's worktree folder, and does not hold one of `keep`, the room's own repo, where the user runs their own programs
+ * project's worktree folder, and does not hold one of `keep`, the project's own repo, where the user runs their own programs
  * such as `pnpm dev`. Kernel and the processes above it are never signalled. Returns the pids it signalled.
  */
 export async function endProcessesIn(dir: string, o: { root: string; keep: string[]; waitMs?: number }): Promise<number[]> {

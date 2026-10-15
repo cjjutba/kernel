@@ -34,13 +34,13 @@ const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partia
   }))
 
 /**
- * KERNEL-413: the header. Noor's PR #147 for KERNEL-155 in the room Kernel, with the issue's title where
+ * KERNEL-413: the header. Noor's PR #147 for KERNEL-155 in the project Kernel, with the issue's title where
  * the workspace's name was, in one PR state. The right panel is hidden unless `panel`, which puts the PR cluster in the panel head.
  */
 const HEADER_BRANCH = 'cjjutbaofficial/kernel-155-home-and-inbox-keep-asking-about-requests-and-prs'
 const headerScene = (prState: Workspace['prState'], note: ChatItem[], opts: { panel?: boolean; title?: string } = {}) =>
   scene((f) => ({
-    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, name: 'Kernel' } : r)),
+    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
     workspaces: withWorkspace(f, ids.table, {
       name: 'kernel-155-home-and-inbox-keep-asking-about-requests-and-prs', branch: HEADER_BRANCH, agentId: 'noor', prState,
       title: opts.title ?? 'KERNEL-155 Home and Inbox keep asking about requests and the PRs',
@@ -54,8 +54,8 @@ const headerScene = (prState: Workspace['prState'], note: ChatItem[], opts: { pa
   }))
 
 /**
- * KERNEL-478: a branch that merges on the Mac, as the PrLocal fixtures show it. Noor's discount code branch in the Shop room, a local
- * folder with no GitHub remote, 3 commits ahead of main. `behind`, `conflicts` and `dirty` are what git said about it. The room's merge
+ * KERNEL-478: a branch that merges on the Mac, as the PrLocal fixtures show it. Noor's discount code branch in the Shop project, a local
+ * folder with no GitHub remote, 3 commits ahead of main. `behind`, `conflicts` and `dirty` are what git said about it. The project's merge
  * method is a squash, and `merged` is the commit it left on main.
  */
 type LocalState = 'ready' | 'behind' | 'conflict' | 'merging' | 'merged' | 'dirty'
@@ -77,7 +77,7 @@ const localScene = (state: LocalState) => scene((f) => {
   const prState: Workspace['prState'] = state === 'behind' || state === 'dirty' ? 'ready' : state
   const merged = state === 'merged'
   return {
-    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, name: 'Shop', path: SHOP, repo: undefined, host: 'local' as const } : r)),
+    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Shop', path: SHOP, repo: undefined, host: 'local' as const } : r)),
     workspaces: withWorkspace(f, ids.table, {
       name: 'add-discount-code-checkout', branch: 'feat/add-discount-code-to-checkout', baseRef: 'main', agentId: 'noor', title: 'Add a discount code to checkout', prState,
       stat: { files: 8, added: 304, removed: 15 }, ...(merged ? { mergedAt: at(10, 44), mergeCommit: '4e1b9c2f0a7d3b5c8e1a9d6f2b4c7e0a3d5f8b1c' } : {})
@@ -92,7 +92,7 @@ const localScene = (state: LocalState) => scene((f) => {
     ] },
     changes: { [ids.table]: localFiles },
     // The Run tab before the script has run, as the PNGs draw it (WorkspaceRunEmpty).
-    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
     prs: { [ids.table]: {
       workspaceId: ids.table, number: 0, url: '', title: '', state: state === 'conflict' ? 'conflict' : 'ready', baseRef: 'main', checks: [], comments: [], conflicts, head: 'a'.repeat(40),
@@ -102,13 +102,13 @@ const localScene = (state: LocalState) => scene((f) => {
   }
 })
 
-/** KERNEL-249: the Run tab of an open PR's workspace, with the room's three run scripts and `frontend` running. The port is the workspace's first. */
+/** KERNEL-249: the Run tab of an open PR's workspace, with the project's three run scripts and `frontend` running. The port is the workspace's first. */
 function runScripts(): Fixture {
   const open = prScene('open', [], { prs: prInfo('open') })
   const frontend = ['$ pnpm --filter web dev --port $KERNEL_PORT', 'Next.js ready on http://localhost:4312', 'Studio ready on http://localhost:4314', 'Compiled /invoices', 'GET /invoices 200 in 84ms', 'GET /api/invoices 200 in 31ms']
   return {
     ...open,
-    roomSettings: { [ids.roomA]: {
+    projectSettings: { [ids.projectA]: {
       scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' },
       runScripts: [
         { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
@@ -127,7 +127,7 @@ function runScripts(): Fixture {
 }
 
 /**
- * KERNEL-250: the Checks tab of an open PR with the Open menu showing. The room has two preview URLs and `run` printed a third, so
+ * KERNEL-250: the Checks tab of an open PR with the Open menu showing. The project has two preview URLs and `run` printed a third, so
  * the menu lists the named ones, a hairline and Detected. The workspace's first port is 4312 and `run` prints 4314.
  */
 function preview(): Fixture {
@@ -137,7 +137,7 @@ function preview(): Fixture {
   const run = ['$ pnpm dev --port $KERNEL_PORT', 'Next.js ready on http://localhost:4314', 'Compiled /inbox', 'GET /inbox 200 in 84ms', 'GET /api/requests 200 in 31ms']
   return {
     ...open,
-    roomSettings: { [ids.roomA]: {
+    projectSettings: { [ids.projectA]: {
       scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' },
       runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }],
       files: { copy: [] }, workspace: {},
@@ -169,11 +169,11 @@ function terminalPresets(): Fixture {
 /** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
 const blocked = (f: Fixture): Fixture => ({ ...f, workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, prBlocked: 'review' as const } : w)) })
 
-/** A workspace whose room has a run script that hasn't run, so the Run tab shows its empty state with the Run button under the icon, and a collapsed bar keeps its Run (KERNEL-512). */
+/** A workspace whose project has a run script that hasn't run, so the Run tab shows its empty state with the Run button under the icon, and a collapsed bar keeps its Run (KERNEL-512). */
 const idleRun = (f: Fixture): Fixture => ({
   ...f,
   push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
-  roomSettings: { ...f.roomSettings, [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } }
+  projectSettings: { ...f.projectSettings, [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } }
 })
 
 /** The same fixture with the bottom pane folded to its tab bar, in Kernel's chats and in teammates' workspaces (KERNEL-513). */
@@ -220,7 +220,7 @@ const DOWNLOAD_QUESTIONS: AskedQuestion[] = [
 ]
 
 const pending = (kind: 'tool' | 'plan' | 'question' | 'agent', agentId: string, extra: object): Approval =>
-  ({ id: `ap-${kind}-${agentId}`, kind, source: 'sdk', roomId: ids.roomA, workspaceId: ids.table, agentId, status: 'pending', createdAt: at(10, 30), title: '', ...extra })
+  ({ id: `ap-${kind}-${agentId}`, kind, source: 'sdk', projectId: ids.projectA, workspaceId: ids.table, agentId, status: 'pending', createdAt: at(10, 30), title: '', ...extra })
 
 /** Codex's model list as `model/list` returns it, for a shot whose chat runs on Codex. */
 const codexModels = [...['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna'].map((label) => ({ label, legacy: false })), ...['GPT-5.5', 'GPT-5.4', 'GPT-5.3-Codex', 'GPT-5.2'].map((label) => ({ label, legacy: true }))].map(({ label, legacy }, i) => ({ provider: 'codex' as const, id: label.toLowerCase(), label, legacy, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as Effort[], defaultEffort: 'medium' as Effort, isDefault: i === 0 }))
@@ -304,7 +304,7 @@ const longRunningItems = (): ChatItem[] => {
 
 /** Ivy's turn with a long shell command in flight (WorkspaceRunningLongCommand). */
 const runningLongCommandItems = (): ChatItem[] => {
-  const command = "printf -- 'type: internal. A test of shared MCP sign-ins no longer leaking between rooms and the chats that open them' > .changes/unreleased/shared-mcp-sign-ins.md && git add -A && git commit -m 'test(mcp): shared sign-ins stay inside their room'"
+  const command = "printf -- 'type: internal. A test of shared MCP sign-ins no longer leaking between projects and the chats that open them' > .changes/unreleased/shared-mcp-sign-ins.md && git add -A && git commit -m 'test(mcp): shared sign-ins stay inside their project'"
   return [
     ...runningItems().slice(0, -1),
     tool('rt4', 'Run a command', command, { ts: Date.now() - 20_000, status: 'running', durationMs: undefined, input: { command } })
@@ -371,24 +371,24 @@ const leadSteps: ChatItem[] = [
   { kind: 'thinking', id: 'ls-th1', ts: at(10, 21), text: 'I should file the Linear issues first, so I need to check team and project names along with labels, then create the sub-issues.' },
   tool('ls-t1', 'ToolSearch', '{"query":"select:mcp__linear__save_issue,mcp__linear__list_issue_labels","max_results":2}', { name: 'ToolSearch', input: { query: 'select:mcp__linear__save_issue,mcp__linear__list_issue_labels', max_results: 2 }, output: 'Loaded 2 tools' }),
   mcpCall('ls-t2', 'linear', 'list_issue_labels', { team: 'Kernel' }, { output: 'Bug\nImprovement\nFeature\nWorkspace\nEngine\nPlatform\nTeam' }),
-  mcpCall('ls-t3', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings', updatedAt: '-P30D' }, { output: 'KERNEL-716 Room settings title misaligned and long Always allow commands overflow' }),
-  { kind: 'thinking', id: 'ls-th2', ts: at(10, 22), text: 'KERNEL-716 is already in review covering the room title misalignment and command overflow, which overlaps with the layout issue.' },
-  { kind: 'text', id: 'ls-x1', ts: at(10, 22), text: 'KERNEL-716, now in review, already fixes the room title alignment and the overflowing command tags, so I will leave both out of the layout issue. Filing the issues now.' },
+  mcpCall('ls-t3', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings', updatedAt: '-P30D' }, { output: 'KERNEL-716 Project settings title misaligned and long Always allow commands overflow' }),
+  { kind: 'thinking', id: 'ls-th2', ts: at(10, 22), text: 'KERNEL-716 is already in review covering the project title misalignment and command overflow, which overlaps with the layout issue.' },
+  { kind: 'text', id: 'ls-x1', ts: at(10, 22), text: 'KERNEL-716, now in review, already fixes the project title alignment and the overflowing command tags, so I will leave both out of the layout issue. Filing the issues now.' },
   mcpCall('ls-t4', 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', title: 'Settings: clear saving, scope and layout' }, { output: 'KERNEL-720' }),
   { kind: 'text', id: 'ls-x2', ts: at(10, 23), text: 'Now the sub-issues.' },
-  ...['Settings say Saving and Saved next to the control', 'Settings pages line up', 'Room settings update when the TOML changes', 'Record when each setting takes effect', 'Settings rows say Applies to new chats'].map((title, i) =>
+  ...['Settings say Saving and Saved next to the control', 'Settings pages line up', 'Project settings update when the TOML changes', 'Record when each setting takes effect', 'Settings rows say Applies to new chats'].map((title, i) =>
     mcpCall(`ls-s${i}`, 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', parentId: 'KERNEL-720', title }, { output: `KERNEL-72${i + 1}` })),
   { kind: 'thinking', id: 'ls-th3', ts: at(10, 24), text: 'Now I need to check list_workspaces for the limit and the KERNEL-716 workspace, then plan the new ones.' },
-  mcpCall('ls-t5', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Room settings title misaligned (in review)\nws-714 Replace the ring spinner (ready to merge)' }),
+  mcpCall('ls-t5', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Project settings title misaligned (in review)\nws-714 Replace the ring spinner (ready to merge)' }),
   { kind: 'thinking', id: 'ls-th4', ts: at(10, 25), text: 'KERNEL-721 and KERNEL-716 both touch kit.tsx and settings.css, since the title alignment logic lives in Page.' },
-  ...[['kai', 'KERNEL-721', 'Settings say Saving and Saved next to the control'], ['noor', 'KERNEL-723', 'Room settings update when the TOML changes'], ['noor', 'KERNEL-724', 'Record when each setting takes effect'], ['kai', 'KERNEL-722', 'Settings pages line up']].map(([agent, issue, title], i) =>
+  ...[['kai', 'KERNEL-721', 'Settings say Saving and Saved next to the control'], ['noor', 'KERNEL-723', 'Project settings update when the TOML changes'], ['noor', 'KERNEL-724', 'Record when each setting takes effect'], ['kai', 'KERNEL-722', 'Settings pages line up']].map(([agent, issue, title], i) =>
     mcpCall(`ls-w${i}`, 'kernel', 'create_workspace', { agent, issue, title, brief: `Build ${issue}.` }, { output: `Created a workspace for ${agent}.` }))
 ]
 
 /** A Lead turn in progress (WorkspaceStepRuns): a run of seven Linear issues with one failure, a run of five handoffs and the step in flight. Times count back from now so the clock reads 10m 49s. */
 const stepRunItems = (done: boolean): ChatItem[] => {
   const t = (secs: number) => Date.now() - secs * 1000
-  const titles = ['Settings say Saving and Saved next to the control', 'Settings pages line up', 'Room settings update when the TOML changes', 'Record when each setting takes effect', 'Settings rows say Applies to new chats', 'Settings tabs keep their scroll position', 'Settings search finds a row by its hint']
+  const titles = ['Settings say Saving and Saved next to the control', 'Settings pages line up', 'Project settings update when the TOML changes', 'Record when each setting takes effect', 'Settings rows say Applies to new chats', 'Settings tabs keep their scroll position', 'Settings search finds a row by its hint']
   const issues = titles.map((title, i) => mcpCall(`sr-s${i}`, 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', parentId: 'KERNEL-720', title }, i === 5
     ? { status: 'failed', output: 'Validation failed: title is a duplicate of KERNEL-731' } : { output: `KERNEL-72${i + 1}` }))
   const hands = [['kai', 'KERNEL-721'], ['noor', 'KERNEL-723'], ['noor', 'KERNEL-724'], ['kai', 'KERNEL-722'], ['kai', 'KERNEL-725']].map(([agent, issue], i) =>
@@ -398,16 +398,16 @@ const stepRunItems = (done: boolean): ChatItem[] => {
     { kind: 'thinking', id: 'sr-th1', ts: t(640), text: 'I should file the Linear issues first, so I need to check team and project names along with labels, then create the sub-issues.' },
     tool('sr-t1', 'ToolSearch', '{}', { name: 'ToolSearch', input: { query: 'select:mcp__linear__save_issue' }, output: 'Loaded 1 tool' }),
     mcpCall('sr-t2', 'linear', 'list_issue_labels', { team: 'Kernel' }, { output: 'Bug\nImprovement\nFeature' }),
-    mcpCall('sr-t3', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings' }, { output: 'KERNEL-716 Room settings title misaligned' }),
-    { kind: 'thinking', id: 'sr-th2', ts: t(600), text: 'KERNEL-716 is already in review covering the room title misalignment, so I will leave it out.' },
-    { kind: 'text', id: 'sr-x1', ts: t(590), text: 'KERNEL-716, now in review, already fixes the room title alignment, so I will leave it out of the layout issue. Filing the issues now.' },
+    mcpCall('sr-t3', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings' }, { output: 'KERNEL-716 Project settings title misaligned' }),
+    { kind: 'thinking', id: 'sr-th2', ts: t(600), text: 'KERNEL-716 is already in review covering the project title misalignment, so I will leave it out.' },
+    { kind: 'text', id: 'sr-x1', ts: t(590), text: 'KERNEL-716, now in review, already fixes the project title alignment, so I will leave it out of the layout issue. Filing the issues now.' },
     mcpCall('sr-t4', 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', title: 'Settings: clear saving, scope and layout' }, { output: 'KERNEL-720' }),
     { kind: 'text', id: 'sr-x2', ts: t(560), text: 'Now the sub-issues.' },
     ...issues.slice(0, 3),
     { kind: 'thinking', id: 'sr-th3', ts: t(540), text: 'Next the rest of the sub-issues.' },
     ...issues.slice(3),
     { kind: 'thinking', id: 'sr-th4', ts: t(500), text: 'Now I need to check list_workspaces for the limit, then plan the new ones.' },
-    mcpCall('sr-t5', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Room settings title misaligned (in review)' }),
+    mcpCall('sr-t5', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Project settings title misaligned (in review)' }),
     ...hands,
     ...(done
       ? [{ kind: 'text' as const, id: 'sr-x3', ts: t(20), text: 'Filed KERNEL-720 with six sub-issues, and handed five tasks to Kai and Noor. One issue was a duplicate of KERNEL-731, so I left it out.' }, { kind: 'result' as const, id: 'sr-res', ts: t(10), durationMs: 640_000, ok: true }]
@@ -519,9 +519,9 @@ const stepCardBashItems: ChatItem[] = [
 const stepCardMcpItems: ChatItem[] = [
   userMsg('sm-u', 'Check the Settings issues.'),
   mcpCall('sm1', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings', updatedAt: '-P30D' }, {
-    output: JSON.stringify({ issues: [{ id: 'KERNEL-716', title: 'Room settings title misaligned', state: 'In Review', labels: ['Bug', 'Workspace'] }, { id: 'KERNEL-721', title: 'Settings say Saving and Saved next to the control', state: 'In Progress', labels: ['Workspace'] }], total: 2 })
+    output: JSON.stringify({ issues: [{ id: 'KERNEL-716', title: 'Project settings title misaligned', state: 'In Review', labels: ['Bug', 'Workspace'] }, { id: 'KERNEL-721', title: 'Settings say Saving and Saved next to the control', state: 'In Progress', labels: ['Workspace'] }], total: 2 })
   }),
-  mcpCall('sm2', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Room settings title misaligned (in review)\nws-714 Replace the ring spinner (ready to merge)' }),
+  mcpCall('sm2', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Project settings title misaligned (in review)\nws-714 Replace the ring spinner (ready to merge)' }),
   ...tableItems.slice(-2)
 ]
 
@@ -723,13 +723,13 @@ const queuedItems = (): ChatItem[] => {
 }
 
 /** The invoice-table workspace (or the Lead's) retitled for one agent request: its name, chat title and transcript. */
-/** New chat with Kernel in a room with no open chat (KERNEL-366, KERNEL-405), with Todo issues for Up next and the remote's branches. */
+/** New chat with Kernel in a project with no open chat (KERNEL-366, KERNEL-405), with Todo issues for Up next and the remote's branches. */
 function leadNoChats(f: Fixture): Partial<Fixture> {
   const g = grouped(f, { running: [], threads: (t) => t.map((x) => ({ ...x, closedAt: at(10, 50) })) })
   const issue = (id: string, title: string, priority: number, project?: string): IssueSummary => ({ id, title, url: `https://linear.app/client-a/issue/${id}`, source: 'linear', priority, ...(project ? { project } : {}) })
   // Nothing is open, so no tab is stored and the archived chats keep no transcript here.
   return {
-    ...g, items: {}, ui: { ...g.ui!, route: { name: 'leadNew', roomId: ids.roomA }, tabs: {} },
+    ...g, items: {}, ui: { ...g.ui!, route: { name: 'leadNew', projectId: ids.projectA }, tabs: {} },
     issues: [issue('T-17', 'Email an invoice to the client from the row actions', 2, 'Invoicing'), issue('T-19', 'Overdue badge on unpaid invoices past their due date', 3, 'Invoicing'), issue('T-22', 'Remember the sort order on the invoices table', 0)],
     branches: ['origin/main', 'origin/invoice-pdf-renderer', 'origin/invoice-pdf-button', 'origin/invoice-table', 'origin/invoice-schema', 'origin/org-invites', 'origin/release/2.4', 'origin/hotfix/pdf-fonts']
   }
@@ -739,7 +739,7 @@ function leadNoChats(f: Fixture): Partial<Fixture> {
 const noPlan = (p: Partial<Fixture>): Partial<Fixture> => ({ ...p, settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } } })
 const newChatBranches = (f: Fixture): Partial<Fixture> => ({
   ...noPlan(leadNoChats(f)),
-  branches: ['origin/main', 'origin/feat/t-14-invoice-table', 'origin/feat/t-12-invoice-schema', 'origin/feat/t-09-org-invites', 'origin/fix/t-17-pdf-fonts', 'origin/feat/t-21-saving-saved', 'origin/feat/t-23-room-settings', 'spike/pdf-fonts']
+  branches: ['origin/main', 'origin/feat/t-14-invoice-table', 'origin/feat/t-12-invoice-schema', 'origin/feat/t-09-org-invites', 'origin/fix/t-17-pdf-fonts', 'origin/feat/t-21-saving-saved', 'origin/feat/t-23-project-settings', 'spike/pdf-fonts']
 })
 
 function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatItem[], extra: Partial<Fixture>, chat: Partial<Chat> = {}): Partial<Fixture> {
@@ -856,12 +856,12 @@ const leadUpdate = (f: Fixture): Partial<Fixture> => {
   const kai: TeamUpdateRow = {
     workspaceId: ids.table, agentId: 'kai', name: 'Kai', task: 'Remove the Try section from the sidebar', prNumber: 108,
     events: [{ kind: 'pr.opened', text: 'Opened PR #108', actionable: false }, { kind: 'pr.ready', text: 'Ready to merge', actionable: true }, { kind: 'pr.review', text: 'Not reviewed', actionable: false }],
-    reply: 'Removed the Try section from the sidebar. Connect a repo and Open a folder stay in the rooms plus menu and on Home\'s empty state, and Check hooks stays in the footer.\n\nOpened https://github.com/samrivera/client-a/pull/108'
+    reply: 'Removed the Try section from the sidebar. Connect a repo and Open a folder stay in the projects plus menu and on Home\'s empty state, and Check hooks stays in the footer.\n\nOpened https://github.com/samrivera/client-a/pull/108'
   }
   const theo: TeamUpdateRow = {
     workspaceId: 'ws-review-108', agentId: 'theo', name: 'Theo', task: 'Review PR #108',
     events: [{ kind: 'review', text: 'Approved PR #108', actionable: true }],
-    reply: 'The Try rows are gone and nothing else in the sidebar moved. Connect a repo and Open a folder are still reachable from the rooms plus menu. No blockers.'
+    reply: 'The Try rows are gone and nothing else in the sidebar moved. Connect a repo and Open a folder are still reachable from the projects plus menu. No blockers.'
   }
   const update = (id: string, m: number, row: TeamUpdateRow, todo: string): ChatItem => ({
     kind: 'user', id, ts: at(10, m), from: 'kernel', update: { rows: [row] },
@@ -879,7 +879,7 @@ const leadUpdate = (f: Fixture): Partial<Fixture> => {
     { kind: 'text', id: 'lu3-r', ts: at(10, 49), text: 'Theo approved PR #108. It is ready for you to merge.' },
     done('lu3-res', 49)
   ], {}, { model: 'claude-opus-5-5' })
-  const review: Workspace = { id: 'ws-review-108', roomId: ids.roomA, name: 'review-pr-108', title: 'Review PR #108', branch: 'feat/t-14-invoice-table-review', baseRef: 'feat/t-14-invoice-table', path: '/Users/you/kernel/worktrees/client-a/review-pr-108', mode: 'worktree', agentId: 'theo', port: 4316, status: 'ready', prState: 'none', reviewOf: ids.table, createdAt: at(10, 42) }
+  const review: Workspace = { id: 'ws-review-108', projectId: ids.projectA, name: 'review-pr-108', title: 'Review PR #108', branch: 'feat/t-14-invoice-table-review', baseRef: 'feat/t-14-invoice-table', path: '/Users/you/kernel/worktrees/client-a/review-pr-108', mode: 'worktree', agentId: 'theo', port: 4316, status: 'ready', prState: 'none', reviewOf: ids.table, createdAt: at(10, 42) }
   // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
   const { approvals: _none, ...rest } = s
   return { ...rest, workspaces: [...(s.workspaces ?? f.workspaces), review] }
@@ -894,7 +894,7 @@ const tuCard = (id: string, m: number, rows: TeamUpdateRow[], todo = 'Tell the u
 })
 const withOmitted = (item: ChatItem, omitted: number): ChatItem => (item.kind === 'user' && item.update ? { ...item, update: { ...item.update, omitted } } : item)
 const tuWork = (id: string, agentId: string, name: string, n: number, over: Partial<Workspace>): Workspace =>
-  ({ id, roomId: ids.roomA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4330 + n % 50, status: 'ready', prState: 'ready', prNumber: n, prUrl: `https://github.com/samrivera/client-a/pull/${n}`, createdAt: at(19, 40), ...over })
+  ({ id, projectId: ids.projectA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4330 + n % 50, status: 'ready', prState: 'ready', prNumber: n, prUrl: `https://github.com/samrivera/client-a/pull/${n}`, createdAt: at(19, 40), ...over })
 const tuVerdict = (workspaceId: string, prNumber: number, sha: string): ReviewVerdict => ({ workspaceId, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha, prNumber, ts: at(20, 12) })
 const tuChecks: PrInfo['checks'] = [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
 const tuInfo = (workspaceId: string, number: number, head: string): PrInfo => ({ workspaceId, number, url: `https://github.com/samrivera/client-a/pull/${number}`, title: '', state: 'ready', baseRef: 'main', checks: tuChecks, comments: [], conflicts: [], head })
@@ -969,7 +969,7 @@ const teamUpdateReview = (f: Fixture): Partial<Fixture> => {
     workspaces: [
       ...(s.workspaces ?? f.workspaces),
       tuWork('ws-182', 'kai', 'kernel-182-new-chats-focus', 162, { prState: 'merged', status: 'archived', mergedAt: at(20, 29), prHead: 'h162', ...issue('KERNEL-182', 0) }),
-      tuWork('ws-172', 'noor', 'kernel-172-duplicates', 158, { prHead: 'h158', reviews: [blocker('security', 'ws-review-158-security', 'The new route reads the issue id without checking the room'), blocker('code', 'ws-review-158-code', 'The retry in dedupe() has no test')], ...issue('KERNEL-172', 1) }),
+      tuWork('ws-172', 'noor', 'kernel-172-duplicates', 158, { prHead: 'h158', reviews: [blocker('security', 'ws-review-158-security', 'The new route reads the issue id without checking the project'), blocker('code', 'ws-review-158-code', 'The retry in dedupe() has no test')], ...issue('KERNEL-172', 1) }),
       tuWork('ws-176', 'ivy', 'kernel-176-kernel-asks', 161, { prHead: 'h161', reviews: [tuVerdict('ws-review-161', 161, 'h161')], ...issue('KERNEL-176', 2) })
     ],
     prs: { 'ws-172': tuInfo('ws-172', 158, 'h158'), 'ws-176': tuInfo('ws-176', 161, 'h161') }
@@ -1049,7 +1049,7 @@ const prFields = (p: OpenPr): Partial<Workspace> => {
 
 const openPrWorkspace = (p: OpenPr): Workspace => {
   const name = `${p.key.toLowerCase()}-${p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 18)}`
-  return { id: p.id, roomId: ids.roomA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId: p.agentId, port: 4330 + p.n % 50, status: 'ready', createdAt: at(19, 40), prState: 'open', ...prFields(p) }
+  return { id: p.id, projectId: ids.projectA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId: p.agentId, port: 4330 + p.n % 50, status: 'ready', createdAt: at(19, 40), prState: 'open', ...prFields(p) }
 }
 
 /** GitHub's read of each PR: its checks follow its state, and the head commit is the one the workspace saw. */
@@ -1058,7 +1058,7 @@ const openPrInfo = (p: OpenPr): PrInfo => ({
   checks: p.state === 'checks' ? [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'running' }] : p.state === 'cifail' ? [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'fail', meta: '48s' }] : [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
 })
 
-/** The PRs the room has open, as workspaces and as GitHub reads them. Kai's org-invites workspace of the seed gives way to them. */
+/** The PRs the project has open, as workspaces and as GitHub reads them. Kai's org-invites workspace of the seed gives way to them. */
 const openPrs = (f: Fixture, list: OpenPr[]): Pick<Fixture, 'workspaces' | 'prs'> => ({
   workspaces: [...withWorkspace(f, ids.invites, { prNumber: undefined, prUrl: undefined, prState: 'none' }), ...list.map(openPrWorkspace)],
   prs: Object.fromEntries(list.map((p) => [p.id, openPrInfo(p)]))
@@ -1078,7 +1078,7 @@ const leadPrsScene = (f: Fixture, list: OpenPr[], ask: string, reply: string, pu
   return {
     ...rest, ...openPrs(f, list),
     ...(push.length ? { push: [...(rest.push ?? f.push), ...push] } : {}),
-    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run' } }
   }
 }
@@ -1115,7 +1115,7 @@ const LEAD_RUN: PushEvent[] = ['$ pnpm dev --port 4303', 'VITE v6.3.5  ready in 
 /** Three open PRs (KERNEL-411): two ready, approved by Theo, and one still running checks. */
 const MERGE_A: OpenPr = { id: 'ws-395', agentId: 'kai', key: 'KERNEL-395', n: 331, title: 'Home and Inbox count a workspace waiting for script trust', state: 'ready', stat: [99, 16], review: 'approved' }
 const MERGE_B: OpenPr = { id: 'ws-398', agentId: 'noor', key: 'KERNEL-398', n: 330, title: 'Lead worktree tests call the features, not Kernel', state: 'ready', stat: [2, 2], review: 'approved' }
-const MERGE_C: OpenPr = { id: 'ws-400', agentId: 'noor', key: 'KERNEL-400', n: 333, title: "New workspaces start from the room's default branch", state: 'checks', stat: [125, 4], review: 'stale' }
+const MERGE_C: OpenPr = { id: 'ws-400', agentId: 'noor', key: 'KERNEL-400', n: 333, title: "New workspaces start from the project's default branch", state: 'checks', stat: [125, 4], review: 'stale' }
 
 /** Five PRs that can all merge, two of them not reviewed (KERNEL-757). */
 const ALL_READY: OpenPr[] = [LEAD_PRS[0], LEAD_PRS[1], MERGE_A, { ...MERGE_B, review: undefined }, { ...MERGE_C, state: 'ready', review: undefined }]
@@ -1216,7 +1216,7 @@ const teamUpdatePrStates = (f: Fixture): Partial<Fixture> => {
   const { approvals: _none, ...rest } = s
   return {
     ...rest, ...openPrs(f, PR_STATES),
-    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run' } }
   }
 }
@@ -1322,7 +1322,7 @@ const HOUR = 3_600_000
 const sharedVersion = (n: number, h: number, m: number, mime: string, extra: Partial<SharedVersion> = {}): SharedVersion =>
   ({ n, at: at(h, m), file: `v${n}`, mime, bytes: 48_000, sha256: `${mime}-${n}`, thumb: true, ...extra })
 const sharedFile = (id: string, agentId: string, workspaceId: string, title: string, kind: SharedFile['kind'], source: string, versions: SharedVersion[], ago: number): SharedFile =>
-  ({ id, roomId: ids.roomA, workspaceId, agentId, source, title, kind, versions, createdAt: versions[0].at, updatedAt: Date.now() - ago })
+  ({ id, projectId: ids.projectA, workspaceId, agentId, source, title, kind, versions, createdAt: versions[0].at, updatedAt: Date.now() - ago })
 
 /**
  * The five files the canvas shares, newest first. Noor shares four in the PDF renderer's workspace and Kai one in org-invites. `html` is
@@ -1450,7 +1450,7 @@ const commentArchived = (f: Fixture): Partial<Fixture> => {
   }
 }
 
-/** Kernel's workspace with the room's five files, the HTML open in a tab. The Lead's panel lists every file shared in the room. */
+/** Kernel's workspace with the project's five files, the HTML open in a tab. The Lead's panel lists every file shared in the project. */
 const sharedPanel = (f: Fixture): Partial<Fixture> => {
   // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
   const { approvals: _none, ...lead } = scene2(f, { id: ids.lead, name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', mode: 'worktree', lead: undefined, agentId: 'kernel-lead', stat: { files: 1, added: 64, removed: 0 } }, 'Export invoices as PDF', [
@@ -1603,7 +1603,7 @@ const railLead = (f: Fixture): Partial<Fixture> => {
   return {
     ...rest,
     ui: { ...rest.ui!, rightPanel: false, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } },
-    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, name: 'Kernel' } : r)),
+    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
     chats: [tab('chat-lead-week', 'Plan the week', 1), tab('chat-lead-inbox', 'Inbox rows', 2), tab('chat-lead-linear', 'Linear setup', 3), ...(s.chats ?? f.chats)],
     workspaces: [
       ...(s.workspaces ?? f.workspaces),
@@ -1643,7 +1643,7 @@ const lmPr = { prNumber: 171, prUrl: 'https://github.com/samrivera/client-a/pull
 // ---------- Lead chats that hold several tabs (KERNEL-338)
 
 const GROUPED = { export: 't-export', table: 't-table', login: 't-login', demo: 't-demo', csv: 't-csv' } as const
-const groupedThread = (id: string, title: string, m: number): Thread => ({ id, roomId: ids.roomA, title, createdAt: at(9, m) })
+const groupedThread = (id: string, title: string, m: number): Thread => ({ id, projectId: ids.projectA, title, createdAt: at(9, m) })
 /** Each chat with Kernel's own workspace (KERNEL-405). The export chat's is the seed's Lead workspace. */
 const CHAT_WS: Record<string, string> = { [GROUPED.export]: ids.lead, [GROUPED.table]: 'ws-chat-table', [GROUPED.login]: 'ws-chat-login', [GROUPED.demo]: 'ws-chat-demo', [GROUPED.csv]: 'ws-chat-csv' }
 /** A tab of the Lead chat `threadId`, in that chat's workspace. */
@@ -1652,12 +1652,12 @@ const leadTab = (id: string, threadId: string, title: string, m: number, over: P
 const chatSlug = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 /** A chat with Kernel's own worktree on `kernel/<a few words>` (KERNEL-405). Archived with its chat. */
 const chatWorkspace = (t: Thread, port: number, over: Partial<Workspace> = {}): Workspace => ({
-  id: CHAT_WS[t.id] ?? `ws-chat-${t.id}`, roomId: ids.roomA, name: chatSlug(t.title), branch: `kernel/${chatSlug(t.title)}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/kernel-${chatSlug(t.title)}`,
+  id: CHAT_WS[t.id] ?? `ws-chat-${t.id}`, projectId: ids.projectA, name: chatSlug(t.title), branch: `kernel/${chatSlug(t.title)}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/kernel-${chatSlug(t.title)}`,
   mode: 'worktree', agentId: 'kernel-lead', lead: true, threadId: t.id, port, status: t.closedAt ? 'archived' : 'ready', prState: 'none', createdAt: t.createdAt, ...(t.closedAt ? { archivedAt: t.closedAt } : {}), ...over
 })
 /** A workspace the Lead's chat `threadId` handed off, from its first tab. */
 const handedOff = (id: string, name: string, task: string, agentId: string, port: number, over: Partial<Workspace> = {}): Workspace =>
-  ({ id, roomId: ids.roomA, name, branch: `feat/${task}-${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port, status: 'ready', prState: 'none', createdAt: at(10, 2), threadId: GROUPED.export, leadChatId: ids.leadChat, ...over })
+  ({ id, projectId: ids.projectA, name, branch: `feat/${task}-${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port, status: 'ready', prState: 'none', createdAt: at(10, 2), threadId: GROUPED.export, leadChatId: ids.leadChat, ...over })
 
 const T15_STEPS = [
   { title: 'T-15a PDF renderer with embedded fonts', taskId: 'T-15a', agentId: 'noor' }, { title: 'T-15b Download PDF in the row actions', taskId: 'T-15b', agentId: 'kai' },
@@ -1730,14 +1730,14 @@ export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?:
  * so its row stays regular although its second tab is unread, and that tab is bold. Under it, invoice-schema is unread and invoice-table is read. The login chat
  * is unread in one tab and running in the other, so its row is bold and keeps its spinner. The export chat is folded over three workspaces, one of them unread,
  * so its row is bold. org-invites needs you and is unread, with the amber icon and the bold title together. Client B is collapsed over an unread workspace,
- * and the demo chat, the other rooms and invoice-table are read.
+ * and the demo chat, the other projects and invoice-table are read.
  */
 function sidebarUnread(f: Fixture): Partial<Fixture> {
   const unreadAt = at(10, 40)
   const unread = new Set(['chat-table-copy', 'chat-login-redirect', ids.schemaChat, ids.invitesChat, 'chat-pdf-button', 'chat-landing'])
   const owned = (id: string, workspaceId: string, title: string): Chat => ({ id, workspaceId, title, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 5) })
   const g = grouped(f, { tab: 'chat-table', running: ['chat-login'] })
-  const landing = handedOff('ws-landing-copy', 'landing-copy', 't-31', 'kai', 4330, { roomId: ids.roomB, threadId: undefined, leadChatId: undefined, branch: 'feat/t-31-landing-copy', path: '/Users/you/kernel/worktrees/client-b/landing-copy' })
+  const landing = handedOff('ws-landing-copy', 'landing-copy', 't-31', 'kai', 4330, { projectId: ids.projectB, threadId: undefined, leadChatId: undefined, branch: 'feat/t-31-landing-copy', path: '/Users/you/kernel/worktrees/client-b/landing-copy' })
   const question = pending('question', 'kai', { workspaceId: ids.invites, chatId: ids.invitesChat, title: 'Should invites expire after 7 days?', options: ['Yes, 7 days', 'No expiry'] })
   return {
     ...g,
@@ -1757,7 +1757,7 @@ function sidebarPlanChat(f: Fixture): Partial<Fixture> {
 
 /** WorkspaceLead with three open items on the Export chat: Noor's question, blockers in Kai's work and Ivy's proposed hand-off. */
 function leadOpenItems(f: Fixture): Partial<Fixture> {
-  const base = { roomId: ids.roomA, threadId: GROUPED.export, chatId: ids.leadChat, createdAt: at(10, 20) }
+  const base = { projectId: ids.projectA, threadId: GROUPED.export, chatId: ids.leadChat, createdAt: at(10, 20) }
   return {
     ...leadWaiting(f),
     openItems: [
@@ -1791,7 +1791,7 @@ const groupedTurn = (id: string, ago: number, ask: string, thought: string, tool
 
 /** What a freshly cloned repo's settings.toml and package.json ask the user to trust (KERNEL-209, KERNEL-218, KERNEL-260). */
 export const scriptTrust: ScriptTrust = {
-  roomId: ids.roomA, hash: 'a41f0c9e', workspaceIds: [ids.table],
+  projectId: ids.projectA, hash: 'a41f0c9e', workspaceIds: [ids.table],
   scripts: { setup: 'pnpm install --frozen-lockfile\ncp ../../.env.local .env.local', run: 'pnpm dev --port $KERNEL_PORT', archive: 'pnpm clean' },
   runScripts: [{ name: 'storybook', command: 'pnpm storybook --port $KERNEL_PORT' }],
   copy: ['.env.local', 'certs/*.pem'],
@@ -1887,7 +1887,7 @@ function startedFromNewChat(f: Fixture, opened: boolean): Partial<Fixture> {
     threads: (t) => t.map((x) => (x.id === GROUPED.export ? { ...x, title } : x)),
     ...(opened ? {} : { items: { [ids.leadChat]: [ask, tool('ns-t1', 'Reading the settings search code', 'rg search src/renderer/src/screens/settings', { name: 'Read', status: 'running', ts: Date.now() - 4000, durationMs: undefined })] } })
   })
-  // Just started, it has handed nothing off, so the room shows no PR yet. Opened, it has Kai's PRs the frame lists.
+  // Just started, it has handed nothing off, so the project shows no PR yet. Opened, it has Kai's PRs the frame lists.
   const own = g.workspaces!.map((w) => (w.id === ids.lead ? { ...w, title } : w)).filter((w) => opened || (!w.leadChatId && !w.prNumber))
   const kept = new Set(own.map((w) => w.id))
   return { ...g, workspaces: own, chats: g.chats!.filter((c) => kept.has(c.workspaceId)), ...(opened ? {} : { prs: {} }), ui: { ...g.ui!, rightPanel: true, panelHeld: opened ? [] : [ids.lead] } }
@@ -1910,14 +1910,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
     workspaces: withWorkspace(f, ids.table, { branch: 'feat/kernel-24-invoice-table', source: { kind: 'issue', id: 'KERNEL-24', title: 'Invoice table', url: 'https://linear.app/cj-jutba/issue/KERNEL-24' } }),
     ui: open
   })),
-  // KERNEL-218: KERNEL-209 holds the workspace until the room's scripts are trusted. The brief waits in the queue.
+  // KERNEL-218: KERNEL-209 holds the workspace until the project's scripts are trusted. The brief waits in the queue.
   WorkspaceTrustHeld: scene((f) => {
     const queue = [{ id: 'q-trust', chatId: ids.tableChat, parts: [{ type: 'text' as const, text: 'Build the invoice table.' }], ts: at(10, 2) }]
     return {
       workspaces: withWorkspace(f, ids.table, { status: 'trust' }),
       items: { [ids.tableChat]: [] },
       queue: { [ids.tableChat]: queue },
-      push: [...f.push, { type: 'room.trust', roomId: ids.roomA, trust: scriptTrust }, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'setup' }],
+      push: [...f.push, { type: 'project.trust', projectId: ids.projectA, trust: scriptTrust }, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'setup' }],
       ui: open
     }
   }),
@@ -2490,13 +2490,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
       approvals: [pending('question', 'noor', { title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
     })
   }),
-  // set_room_scripts' card: every script in full, as Save writes it, multi-line setup included (KERNEL-683).
+  // set_project_scripts' card: every script in full, as Save writes it, multi-line setup included (KERNEL-683).
   WorkspaceQuestionScripts: scene((f) => {
     const question = 'Save these scripts to .kernel/settings.local.toml?'
     const options = [{ label: 'Save', description: 'Write them to .kernel/settings.local.toml, on this Mac only' }, { label: 'Cancel', description: 'Write nothing' }]
     const detail = 'Setup script\npnpm install\ncp "$KERNEL_ROOT_PATH/.env" .env\n\nRun script\npnpm dev --port $KERNEL_PORT\n\nRun script "storybook"\npnpm storybook -p $((KERNEL_PORT + 1))\n\nRun mode\nOne at a time'
-    return scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Room scripts', [
-      userMsg('qs1', 'Here is our conductor.json, set this room up the same way.'),
+    return scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Project scripts', [
+      userMsg('qs1', 'Here is our conductor.json, set this project up the same way.'),
       tool('qs-t1', 'Read package.json', 'cat package.json', { name: 'Read' })
     ], {
       approvals: [pending('question', 'kernel-lead', { workspaceId: ids.lead, title: question, detail, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
@@ -2783,9 +2783,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
     })
     return { ...g, workspaces: g.workspaces!.map((w) => (w.threadId === GROUPED.table ? { ...w, status: 'archived' as const, archivedAt: at(10, 50) } : w)) }
   }),
-  // A room with no open chat (KERNEL-365): New chat with Kernel, with no workspace before the first message, and no chat row (KERNEL-366, KERNEL-405).
+  // A project with no open chat (KERNEL-365): New chat with Kernel, with no workspace before the first message, and no chat row (KERNEL-366, KERNEL-405).
   // The workspaces the archived chats handed off stay as unowned rows when Archive a chat's workspaces is off.
-  // The line under the title says what the room is doing, and Up next lists the tracker's Todo issues, urgent first.
+  // The line under the title says what the project is doing, and Up next lists the tracker's Todo issues, urgent first.
   LeadNoChats: scene(leadNoChats),
   // New branch from main opened: the remote's branches with the default checked. The menu is the composer's own, so the shot opens it (scripts/shots.ts).
   LeadNoChatsBranch: scene(leadNoChats),
@@ -2797,18 +2797,18 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const draft = ['Settings search should land on the setting, not only open its page. When I pick a result:', '1. Open the Settings page the setting belongs to.', '2. Scroll the matching row into view, centered when it fits.', '3. Outline the row for about a second, then let the outline fade.', '4. Put focus on the row\'s control so I can change it from the keyboard.', 'Enter in the search field opens the first match.', 'If I come back to search, my query is still in the field.'].join('\n')
     return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft } } } }
   }),
-  // KERNEL-869: the first visit to New chat in a room with no tracker. The tracker answers late, and nothing was held for Up next, so the box stays where it was.
-  NewChatNoTracker: { ...scene((f) => ({ ...noPlan(leadNoChats(f)), ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }, trackers: { [ids.roomA]: { kind: 'none' as const } }, lag: { 'issues.next': 700, 'issues.tracker': 700 } })), motion: { action: { click: 'New chat in Client A' }, ms: 1000, area: '.lead-new' } },
+  // KERNEL-869: the first visit to New chat in a project with no tracker. The tracker answers late, and nothing was held for Up next, so the box stays where it was.
+  NewChatNoTracker: { ...scene((f) => ({ ...noPlan(leadNoChats(f)), ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }, trackers: { [ids.projectA]: { kind: 'none' as const } }, lag: { 'issues.next': 700, 'issues.tracker': 700 } })), motion: { action: { click: 'New chat in Client A' }, ms: 1000, area: '.lead-new' } },
   NewChatPlan: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: true } } })),
   // KERNEL-786: the + menu with Run in and Branch, and each picker open (the shot opens them, scripts/shots.ts). NewChatLocal has Local picked by Settings' workspace mode, so the chip beside + says Local.
   // NewChatBranch lists branches with two that have an open workspace, one that is local only, and the default first. NewChatBranchChip picks one, so the chip says where the chat starts from.
   // NewChatLinked has an issue chip in the box.
-  NewChatRoomPicker: scene((f) => noPlan(leadNoChats(f))),
-  // New chat on a room that was archived under it: the title asks without a room, and Pick a room opens the same menu.
-  NewChatNoRoom: scene((f) => {
+  NewChatProjectPicker: scene((f) => noPlan(leadNoChats(f))),
+  // New chat on a project that was archived under it: the title asks without a project, and Pick a project opens the same menu.
+  NewChatNoProject: scene((f) => {
     const p = noPlan(leadNoChats(f))
-    const gone = { ...f.rooms[0], id: 'room-gone', name: 'Old app', archived: true }
-    return { ...p, rooms: [...(p.rooms ?? f.rooms), gone], ui: { ...p.ui!, route: { name: 'leadNew', roomId: gone.id } } }
+    const gone = { ...f.projects[0], id: 'project-gone', name: 'Old app', archived: true }
+    return { ...p, projects: [...(p.projects ?? f.projects), gone], ui: { ...p.ui!, route: { name: 'leadNew', projectId: gone.id } } }
   }),
   NewChatMode: scene((f) => noPlan(leadNoChats(f))),
   NewChatKeyboard: scene((f) => noPlan(leadNoChats(f))),
@@ -2816,7 +2816,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   NewChatBranchChip: scene(newChatBranches),
   NewChatLocal: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), workspace: { ...DEFAULT_SETTINGS('/Users/you').workspace, mode: 'current' }, models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } } })),
   NewChatPlus: scene((f) => noPlan(leadNoChats(f))),
-  NewChatLinkIssue: scene((f) => noPlan(leadNoChats(f))), // the + menu's Link issue picker over the room's Linear issues
+  NewChatLinkIssue: scene((f) => noPlan(leadNoChats(f))), // the + menu's Link issue picker over the project's Linear issues
   // KERNEL-805: New chat has the Hand off | Build here switch. NewChat is Hand off at rest and NewChatBuildHere has Build here picked on it (scripts/shots.ts).
   // New chat with the permission menu open from its own button (scripts/shots.ts).
   NewChatPermissionMenu: scene((f) => noPlan(leadNoChats(f))),
@@ -2915,25 +2915,25 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceRunScripts: runScripts(),
   // The Run tab before the script has run: the empty state's Run is the only button, and the strip's steps aside (KERNEL-423, KERNEL-512).
   WorkspaceRunEmpty: scene((f) => ({
-    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
     ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
-  // KERNEL-685: a room with no setup script. The Setup tab offers Kernel's suggestion, Ask Kernel and Add manually.
+  // KERNEL-685: a project with no setup script. The Setup tab offers Kernel's suggestion, Ask Kernel and Add manually.
   WorkspaceSetupAddConductor: scene((f) => ({
-    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
-    scriptSuggestions: { [ids.roomA]: [{ source: 'conductor', file: '.conductor/settings.toml', patch: { scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local' } }, notes: ['The archive script was left out because this room already has one.'] }] },
+    projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    scriptSuggestions: { [ids.projectA]: [{ source: 'conductor', file: '.conductor/settings.toml', patch: { scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local' } }, notes: ['The archive script was left out because this project already has one.'] }] },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
   WorkspaceSetupAddDetected: scene((f) => ({
-    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
-    scriptSuggestions: { [ids.roomA]: [{ source: 'detected', file: 'pnpm-lock.yaml', patch: { scripts: { setup: 'pnpm install' } }, notes: [] }] },
+    projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    scriptSuggestions: { [ids.projectA]: [{ source: 'detected', file: 'pnpm-lock.yaml', patch: { scripts: { setup: 'pnpm install' } }, notes: [] }] },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
   WorkspaceSetupAdd: scene((f) => ({
-    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
@@ -2950,7 +2950,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // A ready PR GitHub won't merge until someone approves it: the header reads Open, as PrOpen.png draws it (KERNEL-388).
   WorkspacePRBlocked: blocked(prScene('ready', [], { prs: prInfo('ready', { blocked: 'review' }) })),
   WorkspacePRMerging: prScene('merging', [], { prs: prInfo('merging') }),
-  // A branch that merges on the Mac, in a room with no GitHub (KERNEL-478).
+  // A branch that merges on the Mac, in a project with no GitHub (KERNEL-478).
   PrLocalReady: localScene('ready'),
   PrLocalBehind: localScene('behind'),
   PrLocalConflict: localScene('conflict'),
@@ -3070,7 +3070,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     models: { codex: codexModels },
     ui: { ...open, menu: 'model' }
   })),
-  // KERNEL-746: in the Lead's chat @ offers the room's teammates above Files. A teammate's chat (WorkspaceMention) lists files only.
+  // KERNEL-746: in the Lead's chat @ offers the project's teammates above Files. A teammate's chat (WorkspaceMention) lists files only.
   ComposerMentionAgent: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@no' } } } })),
   ComposerMentionAgentEmpty: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@zzz' } } } })),
   ComposerMentionAgentSent: scene((f) => ({

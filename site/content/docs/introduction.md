@@ -19,8 +19,8 @@ You brief **Kernel**, the lead, in a sentence or two. Kernel reads the repo, wri
 
 | Term | What it is |
 | --- | --- |
-| Room | One repo you added. It has a team, chats with Kernel and workspaces. |
-| Kernel | The lead in every room. It plans, hands off work and reports back. |
+| Project | One repo you added. It has a team, chats with Kernel and workspaces. |
+| Kernel | The lead in every project. It plans, hands off work and reports back. |
 | Agent | A teammate defined by a file in the repo or on your Mac, running on Claude Code or Codex. |
 | Workspace | One task's working copy: a git worktree on its own branch, with its own port. |
 | Approval | Anything waiting on you: a command, a plan or a question. |

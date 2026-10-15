@@ -33,6 +33,7 @@ export const EVENTS = {
   },
   /** The window's process went away, with Electron's reason. */
   'app.renderer_gone': { reason: { enum: ['abnormal-exit', 'killed', 'crashed', 'oom', 'launch-failed', 'integrity-failure', 'memory-eviction'] } },
+  /** A project was added. The event keeps its name from before rooms were renamed projects (KERNEL-880), so its counts carry on. */
   'room.created': { source: { enum: ['repo', 'folder', 'scratch'] } },
   'workspace.created': { by: { enum: ['lead', 'user'] }, review: { bool: true } },
   'pr.merged': {},
@@ -46,9 +47,9 @@ export const EVENTS = {
   'tool.blocked_by_agent_file': { tool: { enum: TOOL_KINDS } },
   /** A PR passed checks and nobody was there to review it. */
   'pr.ready_unreviewed': { hasReviewer: { bool: true } },
-  /** One kind of warning a room's agent files have, sent with `team.resolved`. */
+  /** One kind of warning a project's agent files have, sent with `team.resolved`. */
   'agent.warning': { kind: { enum: WARNING_KINDS } },
-  /** A room's team changed shape: where its Lead and reviewer come from, and how many agents it has. */
+  /** A project's team changed shape: where its Lead and reviewer come from, and how many agents it has. */
   'team.resolved': {
     leadFrom: { enum: ['file', 'setting', 'builtin', 'none'] },
     reviewerFrom: { enum: ['file', 'setting', 'builtin', 'none'] },
@@ -56,7 +57,7 @@ export const EVENTS = {
     helpers: { enum: COUNT },
     warnings: { enum: COUNT }
   },
-  /** What the user did with the team Room setup showed them. */
+  /** What the user did with the team Project setup showed them. */
   'setup.team_review': { choice: { enum: ['kept', 'changed'] } },
   /** The user copied Kernel's Lead or reviewer into the repo to edit it. */
   'builtin.customized': { which: { enum: ['lead', 'reviewer'] } }

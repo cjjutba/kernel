@@ -5,7 +5,7 @@ import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type RoomSettingSource, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
+import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { LEAD_MODES } from '@shared/leadMode'
 import { terminalSettingsOf } from './terminalPresets'
@@ -14,7 +14,7 @@ import { addressReviewText, createPrText, fixChecksText, resolveText } from './c
 // The shapes live in src/shared/types/settings.ts so the Settings screens can read them (KERNEL-8).
 export type { AppSettings }
 /** Per-repo settings in .kernel/settings.toml, with personal overrides in .kernel/settings.local.toml. */
-export type RepoSettings = RoomSettings
+export type RepoSettings = ProjectSettings
 
 /** The app's shipped base. The settings file is saved on every launch (D-094), so this value counts as unset (KERNEL-400). */
 export const DEFAULT_BASE_REF = 'origin/main'
@@ -44,7 +44,7 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   // Kernel moves accounts on its own only once the user turns it on (KERNEL-568).
   // Chats keep the account that holds their cache, and a long one is summarized before it moves (KERNEL-841).
   accounts: { switchAtLimit: { claude: false, codex: false }, keepChatsOnAccount: true, longChatMove: { claude: 'summarize', codex: 'summarize' }, longChatTokens: 50_000 },
-  workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true, leadBranchPattern: '{lead}/{slug}', leadWaitForSetup: false, archiveChatWorkspaces: true },
+  workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, baselineCurrentBranch: true, oneCurrentBranchPerProject: true, leadBranchPattern: '{lead}/{slug}', leadWaitForSetup: false, archiveChatWorkspaces: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true, timeoutMinutes: 15 },
   models: {
     roles: {
@@ -235,6 +235,11 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   if (workspace?.branchPattern === 'feat/{slug}') delete workspace.branchPattern
   // Nothing ever read setUpstream, so it went (KERNEL-460). A file that still has it loads without it.
   if (workspace) delete workspace.setUpstream
+  // Rooms are projects (KERNEL-880): the switch saved under its old name keeps its value, and the next save writes the new one.
+  if (workspace && 'oneCurrentBranchPerRoom' in workspace) {
+    workspace.oneCurrentBranchPerProject ??= workspace.oneCurrentBranchPerRoom
+    delete workspace.oneCurrentBranchPerRoom
+  }
   // Nothing read Show in menu bar or Show names instead of roles (KERNEL-536), or team.addNewAgents (KERNEL-540), so they went.
   // A file that still has them loads without them.
   if (general) delete general.menuBar
@@ -376,8 +381,8 @@ const tomlErrors = new Map<string, string>()
 export interface SettingsError { file: string; problem: TomlProblem }
 
 /**
- * A settings file's text as a table. A missing or unreadable file is empty. One that doesn't parse is empty too, so the room
- * runs on the other file and the app's defaults, and `settingsError` goes out on the bus for the room to warn (KERNEL-231).
+ * A settings file's text as a table. A missing or unreadable file is empty. One that doesn't parse is empty too, so the project
+ * runs on the other file and the app's defaults, and `settingsError` goes out on the bus for the project to warn (KERNEL-231).
  */
 function tomlOf(file: string, text: string | undefined): Record<string, any> {
   if (text === undefined) { tomlErrors.delete(file); return {} }
@@ -418,12 +423,12 @@ async function readTomlToSave(repo: string, file: string): Promise<Record<string
   }
 }
 
-/** The room's workspace keys as the app names them (`base_ref` in the file is `baseRef` here). Unknown keys are dropped. */
-function workspaceKeys(table: Record<string, any> | undefined): RoomSettings['workspace'] {
+/** The project's workspace keys as the app names them (`base_ref` in the file is `baseRef` here). Unknown keys are dropped. */
+function workspaceKeys(table: Record<string, any> | undefined): ProjectSettings['workspace'] {
   const out: Record<string, unknown> = {}
   const known = Object.keys(DEFAULT_SETTINGS('').workspace)
   for (const [k, v] of Object.entries(table ?? {})) if (known.includes(camel(k))) out[camel(k)] = v
-  return out as RoomSettings['workspace']
+  return out as ProjectSettings['workspace']
 }
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
@@ -437,11 +442,11 @@ const referencesOf = (doc: Record<string, unknown>): string[] => [...new Set(pat
 const isFolder = (path: string) => { try { return statSync(path).isDirectory() } catch { return false } }
 
 /**
- * A room's reference folders (KERNEL-748): the ones that are a folder on this Mac now, and the ones that aren't, which sessions
+ * A project's reference folders (KERNEL-748): the ones that are a folder on this Mac now, and the ones that aren't, which sessions
  * and the @ menu skip. Only `.kernel/settings.local.toml` sets them, since the paths differ per Mac. Read synchronously, as a
  * session starts.
  */
-export function referencesInRoom(repo: string): { present: string[]; missing: string[] } {
+export function referencesInProject(repo: string): { present: string[]; missing: string[] } {
   const all = referencesOf(readTomlSync(repoFile(repo, 'settings.local.toml')))
   const present = all.filter(isFolder)
   return { present, missing: all.filter((p) => !present.includes(p)) }
@@ -452,7 +457,7 @@ const DEFAULT_COPY = ['.env', '.env.local']
 
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
 
-/** The tables a room's settings files may hold. Anything else in a patch or a file is left alone. */
+/** The tables a project's settings files may hold. Anything else in a patch or a file is left alone. */
 const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env', 'tracker', 'mcp', 'agents'] as const
 type Group = (typeof GROUPS)[number]
 
@@ -499,7 +504,7 @@ function runScriptsOf(table: unknown): Map<string, string> {
 }
 
 /** A `[[preview.urls]]` list with the entries that have a name and an address. A blank name is kept, a blank address isn't (KERNEL-246). */
-export function previewUrlsOf(v: unknown): RoomSettings['preview']['urls'] {
+export function previewUrlsOf(v: unknown): ProjectSettings['preview']['urls'] {
   if (!Array.isArray(v)) return []
   return v.filter((e) => typeof e?.name === 'string' && typeof e?.url === 'string' && e.url.trim()).map((e) => ({ name: e.name, url: e.url }))
 }
@@ -512,7 +517,7 @@ function stored(g: Group, v: unknown): unknown {
 }
 
 /** One settings file's values by app-side name, with the same whitelist for both files. */
-function roomValues(doc: Record<string, any>): Record<Group, Record<string, unknown>> {
+function projectValues(doc: Record<string, any>): Record<Group, Record<string, unknown>> {
   const isString = (v: unknown) => typeof v === 'string'
   const aliases = aliasesOf(isTable(doc.mcp) ? doc.mcp.aliases : undefined)
   const allow = allowOf(doc.agents)
@@ -524,7 +529,7 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     workspace: workspaceKeys(doc.workspace) as Record<string, unknown>,
     disabled: Object.fromEntries(Object.entries(picked(doc.disabled, ['skills', 'mcp'])).map(([k, v]) => [k, strings(v)])),
     linear: picked(doc.linear, ['team'], isString),
-    // `[pr] optional_checks`: checks this room never counts in a repo that requires none (KERNEL-388). `merge_method` (KERNEL-432).
+    // `[pr] optional_checks`: checks this project never counts in a repo that requires none (KERNEL-388). `merge_method` (KERNEL-432).
     pr: {
       ...picked(doc.pr, PR_KEYS, isString),
       ...Object.fromEntries(Object.entries(picked(doc.pr, ['optionalChecks'], Array.isArray)).map(([k, v]) => [k, strings(v)])),
@@ -532,7 +537,7 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     },
     preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)])),
     env: Object.fromEntries(Object.entries(picked(doc.env, ['files'], Array.isArray)).map(([k, v]) => [k, strings(v)])),
-    // `kind = "jira"` from a room set up before Jira was removed reads as none, and a leftover `[jira]` table is no group.
+    // `kind = "jira"` from a project set up before Jira was removed reads as none, and a leftover `[jira]` table is no group.
     tracker: picked({ kind: doc.tracker?.kind === 'jira' ? 'none' : doc.tracker?.kind }, ['kind'], (v) => TRACKER_KINDS.includes(v as TrackerKind)),
     mcp: Object.keys(aliases).length ? { aliases } : {},
     // `open_workspaces` is a whole number from 0, no limit, to 12 (KERNEL-492).
@@ -547,7 +552,7 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
 }
 
 /**
- * The room's settings: the personal file, then `settings.toml`, key by key, with where each value came from (KERNEL-190).
+ * The project's settings: the personal file, then `settings.toml`, key by key, with where each value came from (KERNEL-190).
  * An array is one value, so a `files.copy` both files set is the personal one's and counts as `override`.
  */
 export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
@@ -555,7 +560,7 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
 }
 
 /**
- * A Cleanup switch with the room's own value first (KERNEL-114, KERNEL-370). The room's file keeps the raw TOML value,
+ * A Cleanup switch with the project's own value first (KERNEL-114, KERNEL-370). The project's file keeps the raw TOML value,
  * so only `true` or `false` counts, and anything else falls back to the app's.
  */
 export function cleanupSwitch(repo: RepoSettings | undefined, app: AppSettings['workspace'], key: 'archiveOnMerge' | 'deleteBranchOnArchive' | 'leadWaitForSetup' | 'archiveChatWorkspaces'): boolean {
@@ -563,17 +568,17 @@ export function cleanupSwitch(repo: RepoSettings | undefined, app: AppSettings['
   return typeof own === 'boolean' ? own : app[key]
 }
 
-/** The same, read synchronously, for a session that starts synchronously and needs the room's env files (KERNEL-247). */
+/** The same, read synchronously, for a session that starts synchronously and needs the project's env files (KERNEL-247). */
 export function loadRepoSettingsSync(repo: string): RepoSettings {
   return repoSettingsOf(readTomlSync(repoFile(repo, 'settings.toml')), readTomlSync(repoFile(repo, 'settings.local.toml')))
 }
 
 function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string, any>): RepoSettings {
-  const shared = roomValues(sharedDoc)
-  const local = roomValues(localDoc)
+  const shared = projectValues(sharedDoc)
+  const local = projectValues(localDoc)
   const merged = {} as Record<Group, Record<string, any>>
-  const sources: RoomSettings['sources'] = {}
-  const from = (a: object, b: object, k: string): RoomSettingSource => (k in a && k in b ? 'override' : k in b ? 'local' : 'shared')
+  const sources: ProjectSettings['sources'] = {}
+  const from = (a: object, b: object, k: string): ProjectSettingSource => (k in a && k in b ? 'override' : k in b ? 'local' : 'shared')
   for (const g of GROUPS) {
     merged[g] = { ...shared[g], ...local[g] }
     for (const k of Object.keys(merged[g])) {
@@ -640,7 +645,7 @@ const PROVIDER_IDS: readonly string[] = ['claude', 'codex']
 
 /**
  * A `[review]` table as Kernel reads it, the defaults filled in (KERNEL-549). The code review runs on every PR and is required
- * unless its table says otherwise. Security and UX run once a room adds their table, and are required too. A value of the
+ * unless its table says otherwise. Security and UX run once a project adds their table, and are required too. A value of the
  * wrong type is left out, so its default applies.
  */
 export function reviewOf(table: unknown): ReviewConfig {
@@ -696,12 +701,12 @@ export function sharedMergeOf(text: string | undefined): { alwaysReview: string[
 }
 
 /**
- * The user's auto-merge in one room (KERNEL-556): the app's `pr.autoMerge` with the personal file's `[merge]` over it. `auto`
+ * The user's auto-merge in one project (KERNEL-556): the app's `pr.autoMerge` with the personal file's `[merge]` over it. `auto`
  * and `max_lines` replace the app's, and `always_review` adds to its list. `personal` says the personal file has a `[merge]`,
  * which counts only once `localSettingsOwn` says the file is the user's own. `ignored` names what the shared file in the
- * room's folder sets that only the personal file may. Read synchronously, since every push of a ready PR asks.
+ * project's folder sets that only the personal file may. Read synchronously, since every push of a ready PR asks.
  */
-export function autoMergeInRoom(repo: string, app: AutoMerge): { rules: AutoMerge; personal: boolean; ignored: string[] } {
+export function autoMergeInProject(repo: string, app: AutoMerge): { rules: AutoMerge; personal: boolean; ignored: string[] } {
   const { ignored } = sharedMerge(readTomlSync(repoFile(repo, 'settings.toml')))
   const own = readTomlSync(repoFile(repo, 'settings.local.toml')).merge
   if (!isTable(own)) return { rules: app, personal: false, ignored }
@@ -853,12 +858,12 @@ export async function saveTeamSettings(repo: string, patch: TeamPatch): Promise<
   return loadRepoSettings(repo)
 }
 
-/** The text a room runs or copies on its own: the scripts, the files.copy list, the env files list and the repo's install scripts, as the room reads them (KERNEL-260). */
+/** The text a project runs or copies on its own: the scripts, the files.copy list, the env files list and the repo's install scripts, as the project reads them (KERNEL-260). */
 export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'runScripts' | 'copy' | 'envFiles' | 'installScripts' | 'install'>
 
 /**
  * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209): each script, the
- * files.copy list and the env files list (KERNEL-247) the room uses, where the value comes from the repo's text. That is `settings.toml`, and a personal
+ * files.copy list and the env files list (KERNEL-247) the project uses, where the value comes from the repo's text. That is `settings.toml`, and a personal
  * file the repo committed. A value from the user's own personal file (`localIsOwn`: git doesn't track it) is their
  * text, like a Settings save, and needs no trusting. Neither does Kernel's default copy list. A value the other file
  * hides never runs, so it isn't in here. Undefined when there is nothing to trust.
@@ -881,10 +886,10 @@ export function scriptsToTrust(repo: RepoSettings, o: { localIsOwn?: boolean } =
 }
 
 /**
- * Is the room's personal settings file the user's own, so its text runs without asking (KERNEL-209)? Only when every
+ * Is the project's personal settings file the user's own, so its text runs without asking (KERNEL-209)? Only when every
  * check below passes. Anything else, a git error included, means no, and its text needs trusting like the repo's.
  * - No link on the way: `.kernel` and the file are not symlinks, and the file's real path is this path.
- * - `.kernel` belongs to the room's own repo: git run inside it names the room as its top level, so a submodule or a
+ * - `.kernel` belongs to the project's own repo: git run inside it names the project as its top level, so a submodule or a
  *   repo nested there fails.
  * - Neither the index nor HEAD has an entry at `.kernel` itself (a gitlink, file or link), a gitlink anywhere under it,
  *   or the personal file, compared without case. A case-insensitive disk reads a committed `.Kernel/Settings.local.toml`
@@ -935,49 +940,49 @@ export async function localSettingsOwn(repo: string): Promise<boolean> {
 /** sha256 of the subject, in a fixed order, so the same text always gives the same hash. */
 export function trustHash(s: TrustSubject): string {
   const runs = s.runScripts?.length ? [s.runScripts.map((r) => [r.name, r.command])] : []
-  // Tagged and only when set, so a room without repo env files keeps the hash the user already trusted (KERNEL-247).
+  // Tagged and only when set, so a project without repo env files keeps the hash the user already trusted (KERNEL-247).
   const env = s.envFiles?.length ? [['env.files', s.envFiles]] : []
-  // The same for the repo's install scripts (KERNEL-260), so a room whose package.json has none keeps its hash.
+  // The same for the repo's install scripts (KERNEL-260), so a project whose package.json has none keeps its hash.
   const installs = s.installScripts?.length ? [['install.scripts', s.installScripts.map((i) => [i.name, i.command])]] : []
   // And for the Install step's own command (KERNEL-682).
   const install = s.install ? [['install.command', s.install]] : []
   return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy, ...runs, ...env, ...installs, ...install])).digest('hex')
 }
 
-/** How many trusted versions a room keeps. Going back to an older version doesn't ask again while it is in the list. */
-const TRUSTED_PER_ROOM = 20
+/** How many trusted versions a project keeps. Going back to an older version doesn't ask again while it is in the list. */
+const TRUSTED_PER_PROJECT = 20
 
 /**
- * The hashes the user trusted, per room, in Kernel's data folder (`trust.json`), never in the repo, so a commit can't
+ * The hashes the user trusted, per project, in Kernel's data folder (`trust.json`), never in the repo, so a commit can't
  * trust itself (KERNEL-209).
  */
 export class ScriptTrustStore {
-  private rooms?: Record<string, string[]>
+  private projects?: Record<string, string[]>
   private writing = Promise.resolve()
 
   constructor(private file: string) {}
 
   private async load(): Promise<Record<string, string[]>> {
-    if (this.rooms) return this.rooms
+    if (this.projects) return this.projects
     let saved: unknown
     try { saved = JSON.parse(await readFile(this.file, 'utf8')) } catch { saved = {} }
-    const rooms: Record<string, string[]> = {}
-    for (const [id, list] of Object.entries(saved && typeof saved === 'object' ? saved : {})) rooms[id] = strings(list)
-    return (this.rooms ??= rooms)
+    const projects: Record<string, string[]> = {}
+    for (const [id, list] of Object.entries(saved && typeof saved === 'object' ? saved : {})) projects[id] = strings(list)
+    return (this.projects ??= projects)
   }
 
-  async has(roomId: string, hash: string): Promise<boolean> { return (await this.load())[roomId]?.includes(hash) ?? false }
+  async has(projectId: string, hash: string): Promise<boolean> { return (await this.load())[projectId]?.includes(hash) ?? false }
 
-  async add(roomId: string, hash: string): Promise<void> {
-    const rooms = await this.load()
-    rooms[roomId] = [hash, ...(rooms[roomId] ?? []).filter((h) => h !== hash)].slice(0, TRUSTED_PER_ROOM)
+  async add(projectId: string, hash: string): Promise<void> {
+    const projects = await this.load()
+    projects[projectId] = [hash, ...(projects[projectId] ?? []).filter((h) => h !== hash)].slice(0, TRUSTED_PER_PROJECT)
     await this.save()
   }
 
-  async forget(roomId: string): Promise<void> {
-    const rooms = await this.load()
-    if (!(roomId in rooms)) return
-    delete rooms[roomId]
+  async forget(projectId: string): Promise<void> {
+    const projects = await this.load()
+    if (!(projectId in projects)) return
+    delete projects[projectId]
     await this.save()
   }
 
@@ -985,38 +990,38 @@ export class ScriptTrustStore {
   private save() {
     this.writing = this.writing.catch(() => undefined).then(async () => {
       await mkdir(dirname(this.file), { recursive: true })
-      await writeFile(this.file, JSON.stringify(this.rooms ?? {}, null, 2))
+      await writeFile(this.file, JSON.stringify(this.projects ?? {}, null, 2))
     })
     return this.writing
   }
 }
 
 /**
- * The room's switched-off skills and MCP servers, merged as `loadRepoSettings` merges them. Read as a session starts, which
+ * The project's switched-off skills and MCP servers, merged as `loadRepoSettings` merges them. Read as a session starts, which
  * can't wait, so a change in either file, from Settings or by hand, reaches the next session (KERNEL-226).
  */
-export function disabledInRoom(repo: string): NonNullable<RoomSettings['disabled']> {
+export function disabledInProject(repo: string): NonNullable<ProjectSettings['disabled']> {
   const read = (name: string) => readTomlSync(repoFile(repo, name))
-  const d = { ...roomValues(read('settings.toml')).disabled, ...roomValues(read('settings.local.toml')).disabled } as { skills?: string[]; mcp?: string[] }
+  const d = { ...projectValues(read('settings.toml')).disabled, ...projectValues(read('settings.local.toml')).disabled } as { skills?: string[]; mcp?: string[] }
   return { skills: d.skills ?? [], mcp: d.mcp ?? [] }
 }
 
 /**
- * The room's `[mcp.aliases]`, merged alias by alias as `loadRepoSettings` merges them, the personal file winning. Read as a
- * session starts, like `disabledInRoom`, so a confirmed alias reaches the next session (KERNEL-464).
+ * The project's `[mcp.aliases]`, merged alias by alias as `loadRepoSettings` merges them, the personal file winning. Read as a
+ * session starts, like `disabledInProject`, so a confirmed alias reaches the next session (KERNEL-464).
  */
-export function aliasesInRoom(repo: string): Record<string, string> {
-  const read = (name: string) => (roomValues(readTomlSync(repoFile(repo, name))).mcp as { aliases?: Record<string, string> }).aliases
+export function aliasesInProject(repo: string): Record<string, string> {
+  const read = (name: string) => (projectValues(readTomlSync(repoFile(repo, name))).mcp as { aliases?: Record<string, string> }).aliases
   return { ...read('settings.toml'), ...read('settings.local.toml') }
 }
 
 /**
- * What a room's `[agents]` table lets one agent reach past its file's tools line (KERNEL-537): `unlisted_tools`, the personal
+ * What a project's `[agents]` table lets one agent reach past its file's tools line (KERNEL-537): `unlisted_tools`, the personal
  * file winning and `ask` when neither sets it, and the MCP servers `[agents.<id>] allow` names, merged agent by agent as
- * `loadRepoSettings` merges them. Read as a session starts, like `aliasesInRoom`.
+ * `loadRepoSettings` merges them. Read as a session starts, like `aliasesInProject`.
  */
-export function agentAccessInRoom(repo: string, agentId?: string): { unlisted: UnlistedTools; allow: string[] } {
-  const read = (name: string) => roomValues(readTomlSync(repoFile(repo, name))).agents as { unlistedTools?: UnlistedTools; allow?: Record<string, string[]> }
+export function agentAccessInProject(repo: string, agentId?: string): { unlisted: UnlistedTools; allow: string[] } {
+  const read = (name: string) => projectValues(readTomlSync(repoFile(repo, name))).agents as { unlistedTools?: UnlistedTools; allow?: Record<string, string[]> }
   const shared = read('settings.toml')
   const own = read('settings.local.toml')
   const allow = agentId ? own.allow?.[agentId] ?? shared.allow?.[agentId] ?? [] : []
@@ -1024,13 +1029,13 @@ export function agentAccessInRoom(repo: string, agentId?: string): { unlisted: U
 }
 
 /**
- * Apply a patch to one of the repo's settings files (`settings.local.toml` unless `shared`) and return what the room now reads.
+ * Apply a patch to one of the repo's settings files (`settings.local.toml` unless `shared`) and return what the project now reads.
  * A `null` or a blank string removes the key, so the other file or the app default applies again. The other file is left alone.
  * `runScripts` writes the `[run_scripts]` table by name, and `run` writes `[scripts] run` (KERNEL-244).
  * `preview.urls` replaces the whole `[[preview.urls]]` list. A list with no entry that has an address removes the key, like
  * `null`, so the shared file's URLs show again (KERNEL-246). `references` replaces the personal file's list (KERNEL-748).
  */
-export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, shared = false): Promise<RepoSettings> {
+export async function saveRepoSettings(repo: string, patch: ProjectSettingsPatch, shared = false): Promise<RepoSettings> {
   const file = repoFile(repo, shared ? 'settings.toml' : 'settings.local.toml')
   const doc = await readTomlToSave(repo, file)
   const set = (table: string, key: string, value: unknown) => {
@@ -1080,24 +1085,24 @@ export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, s
   return loadRepoSettings(repo)
 }
 
-/** The PR instructions for a room: the room's text per action, else the app's, else the default (KERNEL-190). */
-export function prInstructions(app: PrInstructions, room?: Partial<PrInstructions>): PrInstructions {
+/** The PR instructions for a project: the project's text per action, else the app's, else the default (KERNEL-190). */
+export function prInstructions(app: PrInstructions, project?: Partial<PrInstructions>): PrInstructions {
   const defaults = DEFAULT_SETTINGS('').pr
-  const pick = (k: keyof PrInstructions) => [room?.[k], app[k]].find((t) => t?.trim()) ?? defaults[k]
+  const pick = (k: keyof PrInstructions) => [project?.[k], app[k]].find((t) => t?.trim()) ?? defaults[k]
   return { createInstructions: pick('createInstructions'), resolveInstructions: pick('resolveInstructions'), fixChecksInstructions: pick('fixChecksInstructions'), addressReviewInstructions: pick('addressReviewInstructions') }
 }
 
-/** The git remote a room fetches from and pushes to: the room's, then the app's, then `origin` (KERNEL-190). */
-export const remoteOf = (room: Pick<RoomSettings, 'workspace'>, app: Pick<AppSettings, 'workspace'> | undefined): string =>
-  room.workspace.remote?.trim() || app?.workspace.remote?.trim() || 'origin'
+/** The git remote a project fetches from and pushes to: the project's, then the app's, then `origin` (KERNEL-190). */
+export const remoteOf = (project: Pick<ProjectSettings, 'workspace'>, app: Pick<AppSettings, 'workspace'> | undefined): string =>
+  project.workspace.remote?.trim() || app?.workspace.remote?.trim() || 'origin'
 
 /**
- * The remote a room or the app names on purpose, else nothing. The app's `origin` is its default and can't be told apart from
+ * The remote a project or the app names on purpose, else nothing. The app's `origin` is its default and can't be told apart from
  * one nobody set, so it doesn't count. The branch list narrows to this remote only when there is one (KERNEL-244).
  */
-export function configuredRemote(room: Pick<RoomSettings, 'workspace'>, app: Pick<AppSettings, 'workspace'> | undefined): string | undefined {
+export function configuredRemote(project: Pick<ProjectSettings, 'workspace'>, app: Pick<AppSettings, 'workspace'> | undefined): string | undefined {
   const appRemote = app?.workspace.remote?.trim()
-  return room.workspace.remote?.trim() || (appRemote && appRemote !== 'origin' ? appRemote : undefined)
+  return project.workspace.remote?.trim() || (appRemote && appRemote !== 'origin' ? appRemote : undefined)
 }
 
 const LOCAL_SETTINGS = '.kernel/settings.local.toml'

@@ -15,7 +15,7 @@
 .hs-title svg { margin-right: 6px; vertical-align: -2px; color: var(--muted); }
 .hs-sub { font-size: 12px; color: var(--muted); }
 .hs-branch { font-size: 12.5px; color: var(--ink-2); padding-right: 16px; }
-.hs-room { color: var(--ink-2); padding-right: 12px; }
+.hs-project { color: var(--ink-2); padding-right: 12px; }
 .hs-pr { color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .hs-pr[data-merged='true'] { color: var(--merged); }
 .hs-when { color: var(--muted); }
@@ -26,7 +26,7 @@
 .hs-check input { width: 14px; height: 14px; margin: 0; accent-color: var(--ink); }
 .confirm-body .hs-error { color: var(--del); }
 
-/* Narrow screens drop the branch, then the room and the date (D-080). */
+/* Narrow screens drop the branch, then the project and the date (D-080). */
 @container panel (max-width: 1060px) {
   .hs-row { grid-template-columns: minmax(0, 1fr) 126px 136px 100px auto; }
   .hs-row > .hs-branch { display: none; }
@@ -34,6 +34,6 @@
 @container panel (max-width: 680px) {
   .hs-body { padding: 8px 12px 24px; }
   .hs-row { grid-template-columns: minmax(0, 1fr) 110px auto; }
-  .hs-row > .hs-room, .hs-row > .hs-when { display: none; }
+  .hs-row > .hs-project, .hs-row > .hs-when { display: none; }
 }
 .hs-row:focus-visible { outline-offset: -2px; }

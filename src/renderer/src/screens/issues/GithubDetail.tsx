@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { GithubIssue, GithubIssueDetail, Room } from '@shared/types'
+import type { GithubIssue, GithubIssueDetail, Project } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { useDetailLoad } from './useDetailLoad'
 import { actions, go, useStore } from '../../store'
@@ -12,26 +12,26 @@ import { DescriptionFailed } from './parts'
 import { githubPlanParts, issueAge, linkedWorkspaces, loginInitials } from './model'
 
 /** The selected GitHub issue: what GitHub says about it, the workspaces already working on it, and the buttons that start work (IssuesGitHub.png). */
-export function GithubDetail({ room, id, summary, tick }: { room: Room; id: string; summary?: GithubIssue; tick: number }) {
-  const { loaded, failure, retry } = useDetailLoad<GithubIssueDetail>(id, () => call('github.issue', { roomId: room.id, id }), [room.id, tick])
+export function GithubDetail({ project, id, summary, tick }: { project: Project; id: string; summary?: GithubIssue; tick: number }) {
+  const { loaded, failure, retry } = useDetailLoad<GithubIssueDetail>(id, () => call('github.issue', { projectId: project.id, id }), [project.id, tick])
   const failed = failure?.id === id ? failure.message : null
   const [busy, run] = useBusy<'plan'>()
   const workspaces = useStore((s) => s.workspaces)
-  const lead = useStore((s) => s.agents[room.id]?.find((a) => a.lead)?.name) || 'Kernel'
+  const lead = useStore((s) => s.agents[project.id]?.find((a) => a.lead)?.name) || 'Kernel'
 
   // The description and comments come from `github.issue`. The list already has the rest, so the header shows at once.
   const detail = loaded?.id === id ? loaded : null
   const issue: GithubIssue | undefined = detail ?? summary
-  const linked = useMemo(() => linkedWorkspaces(id, workspaces.filter((w) => w.roomId === room.id)), [id, workspaces, room.id])
+  const linked = useMemo(() => linkedWorkspaces(id, workspaces.filter((w) => w.projectId === project.id)), [id, workspaces, project.id])
 
   const plan = () => run('plan', async () => {
     try {
-      const d = detail ?? (await call('github.issue', { roomId: room.id, id }))
-      const chat = await call('lead.start', { roomId: room.id, prompt: '', parts: githubPlanParts(d), plan: true })
-      await openLeadChat(room.id, chat.id)
+      const d = detail ?? (await call('github.issue', { projectId: project.id, id }))
+      const chat = await call('lead.start', { projectId: project.id, prompt: '', parts: githubPlanParts(d), plan: true })
+      await openLeadChat(project.id, chat.id)
     } catch (e) { actions.ui.toast({ title: `Could not plan with ${lead}`, sub: cleanError(e) }) }
   })
-  const newChat = () => issue && openNewChat(room.id, { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url || undefined, tracker: 'github' } })
+  const newChat = () => issue && openNewChat(project.id, { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url || undefined, tracker: 'github' } })
 
   if (!issue) {
     return (

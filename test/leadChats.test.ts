@@ -10,7 +10,7 @@ import { Nudges } from '../src/main/services/nudges'
 import { approvalNotificationId } from '../src/main/services/notifications'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { setUp, tempRepo, trustRoom, freePort } from './helpers'
+import { setUp, tempRepo, trustProject, freePort } from './helpers'
 import { run as git } from '../src/main/services/exec'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
@@ -67,38 +67,38 @@ async function build(files: Record<string, string> = {}) {
   // What the next send answers, for the queue cases.
   const answer: { queued: boolean; why?: QueueReason } = { queued: false }
   k.sessions.send = async (chatId: string, parts: ChatPart[], o?: { from?: string }) => { sent.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), from: o?.from }); return { ...answer } }
-  const room = await k.addRoom(repo)
-  await trustRoom(k, room.id)
+  const project = await k.addProject(repo)
+  await trustProject(k, project.id)
   // Each chat with Kernel has its own workspace (KERNEL-405). Both are set up before the test talks to them.
   const named = async (title: string) => {
-    const c = await k.lead.newLeadChat(room.id, { prompt: '' })
-    // A room whose setup fails fails Kernel's chats too. The tests talk to their tools, which don't wait for it.
+    const c = await k.lead.newLeadChat(project.id, { prompt: '' })
+    // A project whose setup fails fails Kernel's chats too. The tests talk to their tools, which don't wait for it.
     await setUp(k, c.id, 'settled')
     k.store.saveThread({ ...k.store.thread(c.threadId!)!, title })
     return k.store.saveChat({ ...k.store.chat(c.id)!, title })
   }
   const first = await named('Lead')
   const icons = await named('Chat icons sizing')
-  const kernel = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
+  const kernel = (await k.agents(project.id)).find((a) => a.lead) as AgentDef
   /** `extra` is what the MCP server passes a handler, as the call's abort signal. */
   const run = async (chat: Chat, name: string, args: Record<string, unknown>, extra: { signal?: AbortSignal } = {}) => {
-    k.lead['leadTools'](room.id, kernel, chat)
+    k.lead['leadTools'](project.id, kernel, chat)
     // These chats are about tabs, so their hand-offs skip the go-ahead check, which handoff.test.ts covers (KERNEL-678).
     const tool = kernelTools({ ...wired!, userSaid: undefined }).find((t) => t.name === name)!
     const r = await tool.handler(args as never, extra)
     return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
   }
   const call = async (chat: Chat, name: string, args: Record<string, unknown>) => (await run(chat, name, args)).text
-  const byTitle = (title: string) => k.store.workspaces(room.id).find((w) => w.title === title)!
-  const target = (owner?: string) => k.lead['leadUpdateTarget'](room.id, owner) as { chat: Chat; from?: { title: string; tab?: boolean } } | undefined
+  const byTitle = (title: string) => k.store.workspaces(project.id).find((w) => w.title === title)!
+  const target = (owner?: string) => k.lead['leadUpdateTarget'](project.id, owner) as { chat: Chat; from?: { title: string; tab?: boolean } } | undefined
   /** A tab the + button opens in the chat `threadId`'s workspace, or with none a new chat in a workspace of its own (KERNEL-337, KERNEL-405). */
   const tab = async (threadId?: string) => {
-    if (!threadId) { const c = await k.lead.newLeadChat(room.id, { prompt: '' }); await setUp(k, c.id, 'settled'); return k.store.chat(c.id)! }
-    const ws = k.store.workspaces(room.id).find((w) => w.lead && w.threadId === threadId && w.status !== 'archived')
+    if (!threadId) { const c = await k.lead.newLeadChat(project.id, { prompt: '' }); await setUp(k, c.id, 'settled'); return k.store.chat(c.id)! }
+    const ws = k.store.workspaces(project.id).find((w) => w.lead && w.threadId === threadId && w.status !== 'archived')
     if (!ws) throw new Error('That chat no longer exists.')
     return k.handlers()['chats.create']({ workspaceId: ws.id })
   }
-  return { k, room, first, icons, call, run, byTitle, target, tab, named, sent, answer, where, kernel }
+  return { k, project, first, icons, call, run, byTitle, target, tab, named, sent, answer, where, kernel }
 }
 
 describe('Lead chats and the work they hand off (KERNEL-105)', () => {
@@ -114,19 +114,19 @@ describe('Lead chats and the work they hand off (KERNEL-105)', () => {
   })
 
   it("links the plan step and board task from the calling chat's plan, not a newer plan from another chat", async () => {
-    const { k, room, first, icons, call, byTitle } = await setup()
+    const { k, project, first, icons, call, byTitle } = await setup()
     const plan = (id: string, chat: Chat, createdAt: number) => k.store.saveApproval({
-      id, kind: 'plan', source: 'sdk', roomId: room.id, workspaceId: chat.workspaceId, chatId: chat.id, agentId: 'kernel', title: id,
+      id, kind: 'plan', source: 'sdk', projectId: project.id, workspaceId: chat.workspaceId, chatId: chat.id, agentId: 'kernel', title: id,
       steps: [{ title: `${id} step`, agentId: 'kai' }], status: 'allowed', createdAt
     } as Approval)
     k.tasks.fromPlan(plan('icons-plan', icons, Date.now() - 1000))
     k.tasks.fromPlan(plan('first-plan', first, Date.now()))
     await call(icons, 'create_workspace', { agent: 'kai', title: 'Chat tab state icons', brief: 'Go' })
     const ws = byTitle('Chat tab state icons')
-    const step = (id: string) => k.store.approvals({ roomId: room.id }).find((a) => a.id === id)!.steps![0].workspaceId
+    const step = (id: string) => k.store.approvals({ projectId: project.id }).find((a) => a.id === id)!.steps![0].workspaceId
     expect(step('icons-plan')).toBe(ws.id)
     expect(step('first-plan')).toBeUndefined()
-    const task = (id: string) => k.tasks.list(room.id).find((t) => t.approvalId === id)!
+    const task = (id: string) => k.tasks.list(project.id).find((t) => t.approvalId === id)!
     expect(task('icons-plan').workspaceId).toBe(ws.id)
     expect(task('first-plan').workspaceId).toBeUndefined()
     expect(ws.taskId).toBe(task('icons-plan').id)
@@ -150,10 +150,10 @@ describe('Lead chats and the work they hand off (KERNEL-105)', () => {
   })
 
   it("marks this chat's workspaces in list_workspaces, and says where another chat's workspace reports", async () => {
-    const { k, room, first, icons, call, byTitle } = await setup()
+    const { k, project, first, icons, call, byTitle } = await setup()
     await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
     await call(icons, 'create_workspace', { agent: 'kai', title: 'Chat tab state icons', brief: 'Go' })
-    const mine = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Made by hand' })
+    const mine = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Made by hand' })
     const drafts = byTitle('Drafts per chat')
     const iconsWs = byTitle('Chat tab state icons')
     const lines = (await call(first, 'list_workspaces', {})).split('\n')
@@ -167,12 +167,12 @@ describe('Lead chats and the work they hand off (KERNEL-105)', () => {
   })
 
   it('asks the chat that handed off the newer workspace to sort out an overlap, and names the other chat', async () => {
-    const { k, room, first, icons, call, byTitle, sent } = await setup()
+    const { k, project, first, icons, call, byTitle, sent } = await setup()
     await call(first, 'create_workspace', { agent: 'kai', title: 'Pasted text preview', brief: 'Go' })
     await call(icons, 'create_workspace', { agent: 'kai', title: 'Chat tab state icons', brief: 'Go' })
     const older = byTitle('Pasted text preview')
     const newer = byTitle('Chat tab state icons')
-    k['overlaps']['known'].set('o1', { id: 'o1', roomId: room.id, path: 'src/renderer/src/components/ChatTabs.tsx', ts: 1, parties: [
+    k['overlaps']['known'].set('o1', { id: 'o1', projectId: project.id, path: 'src/renderer/src/components/ChatTabs.tsx', ts: 1, parties: [
       { agentId: 'kai', workspaceId: older.id, lines: '+3 -1' }, { agentId: 'kai', workspaceId: newer.id, lines: '+5 -2' }
     ] })
     sent.length = 0
@@ -189,11 +189,11 @@ describe('backfilling the Lead chat on workspaces from before KERNEL-105', () =>
     const old = new Kernel(d)
     await old.start()
     old.sessions.send = async () => ({ queued: false })
-    const room = await old.addRoom(repo)
-    const lead = await old.leadChat(room.id)
-    const handed = await old.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Old hand-off' })
-    const stamped = await old.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Stamped', leadChatId: 'elsewhere' })
-    const failed = await old.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Failed call' })
+    const project = await old.addProject(repo)
+    const lead = await old.leadChat(project.id)
+    const handed = await old.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Old hand-off' })
+    const stamped = await old.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Stamped', leadChatId: 'elsewhere' })
+    const failed = await old.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Failed call' })
     const item = (id: string, wsId: string, status: 'done' | 'failed') => old.store.saveItem(lead.id, {
       kind: 'tool', id, ts: 1, toolUseId: id, name: 'mcp__kernel__create_workspace', label: '', detail: '', status, output: `Created ${wsId} on some-branch for kai.`
     })
@@ -213,22 +213,22 @@ describe('backfilling the Lead chat on workspaces from before KERNEL-105', () =>
 })
 
 describe("marking the Lead's workspace (KERNEL-353)", () => {
-  it('marks a new Lead workspace, and marks older ones once, by the Lead agent or by name in a room whose agents did not load', async () => {
+  it('marks a new Lead workspace, and marks older ones once, by the Lead agent or by name in a project whose agents did not load', async () => {
     const d = await dirs()
     const old = new Kernel(d)
     await old.start()
     old.sessions.send = async () => ({ queued: false })
-    const room = await old.addRoom(await tempRepo(REPO))
-    const shut = await old.addRoom(await tempRepo(REPO))
-    const lead = old.store.workspace((await old.lead.leadChat(room.id)).workspaceId)!
+    const project = await old.addProject(await tempRepo(REPO))
+    const shut = await old.addProject(await tempRepo(REPO))
+    const lead = old.store.workspace((await old.lead.leadChat(project.id)).workspaceId)!
     const shutLead = old.store.workspace((await old.lead.leadChat(shut.id)).workspaceId)!
     expect(lead.lead).toBe(true)
     // A worktree handed to the Lead when its agent retired is the Lead agent's too, and isn't the Lead's workspace.
-    const handed = await old.workspaces.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Handed over' })
+    const handed = await old.workspaces.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Handed over' })
     old.store.saveWorkspace({ ...old.store.workspace(handed.id)!, agentId: 'kernel' })
     // As if this database came from a version before the mark existed, when the Lead worked on the main checkout.
-    for (const ws of [lead, shutLead]) old.store.saveWorkspace({ ...ws, lead: undefined, threadId: undefined, name: 'lead', mode: 'current', path: old.store.room(ws.roomId)!.path, branch: 'main' })
-    old.store.saveRoom({ ...old.store.room(shut.id)!, archived: true })
+    for (const ws of [lead, shutLead]) old.store.saveWorkspace({ ...ws, lead: undefined, threadId: undefined, name: 'lead', mode: 'current', path: old.store.project(ws.projectId)!.path, branch: 'main' })
+    old.store.saveProject({ ...old.store.project(shut.id)!, archived: true })
     old.store.saveMeta('leadWorkspaceBackfill', false)
     await old.stop({ budgetMs: 0 })
 
@@ -264,7 +264,7 @@ describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL
     id: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/kernel/issue/KERNEL-83', description: 'List open issues with their labels.',
     comments: [{ author: 'CJ', body: 'Keep the filters.', createdAt: '2026-10-11T09:00:00Z' }], labels: ['Team']
   }
-  /** Makes the room's tracker a Linear that has `issue`, and returns the keys it is asked for. */
+  /** Makes the project's tracker a Linear that has `issue`, and returns the keys it is asked for. */
   const linear = (k: Kernel) => {
     const asked: string[] = []
     k.integrations.trackerFor = async () => ({
@@ -292,7 +292,7 @@ describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL
     expect(pasted.lines).toBe(pasted.text.split('\n').length)
   })
 
-  it('sends the brief alone when the room has no tracker', async () => {
+  it('sends the brief alone when the project has no tracker', async () => {
     const { k, first, call, byTitle } = await setup()
     const briefs = record(k)
     await call(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Build the Issues screen.', issue: 'KERNEL-83' })
@@ -302,12 +302,12 @@ describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL
 
   it("gives the Lead, a teammate and a reviewer get_issue, which reads the workspace's issue, or the reviewed work's", async () => {
     // Noor opens PRs, so Noor takes tasks and can review (KERNEL-465).
-    const { k, room, first, call, byTitle } = await setup({ '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor. Open a PR for each task.' })
+    const { k, project, first, call, byTitle } = await setup({ '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor. Open a PR for each task.' })
     const asked = linear(k)
     await call(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
     const work = byTitle('Issues screen')
     await call(first, 'create_workspace', { agent: 'noor', title: 'Review it', brief: 'Review', review_of: work.id })
-    const agents = await k.team.agents(room.id)
+    const agents = await k.team.agents(project.id)
     const read = async (ws: Workspace, args: { key?: string } = {}) => {
       const tools = k.tools.toolsFor(ws, agents.find((a) => a.id === ws.agentId), k.store.chats(ws.id)[0])
       const r = await tools.find((t) => t.name === 'get_issue')!.handler(args as never, {})
@@ -481,7 +481,7 @@ describe("a teammate's shared image passed on to another teammate (KERNEL-659)",
     expect(await send([{ shared: md.id, version: 1 }])).toBe('Not sent: "Notes" is Markdown. Only shared images can be passed on.')
     expect(await send([{ shared: pdf.id, version: 1 }])).toBe('Not sent: "spec.pdf" is a PDF. Only shared images can be passed on.')
     expect(await send([{ shared: svg.id, version: 1 }])).toBe('Not sent: "logo.svg" v1 isn\'t a PNG, JPEG, GIF or WebP image.')
-    expect(await send([{ shared: 'nope', version: 1 }])).toBe('Not sent: there is no shared file nope in this room. Use the id a Team update names.')
+    expect(await send([{ shared: 'nope', version: 1 }])).toBe('Not sent: there is no shared file nope in this project. Use the id a Team update names.')
     // A good image first doesn't send on its own when the next one is refused.
     expect(await send([{ shared: shot.id, version: 1 }, { shared: shot.id, version: 2 }])).toBe('Not sent: "login.png" has no v2. It has v1.')
     expect(await send(Array.from({ length: 4 }, () => ({ shared: shot.id, version: 1 })))).toBe('Not sent: 4 images is over the limit of 3. Send only the ones the teammate needs to act on.')
@@ -491,19 +491,19 @@ describe("a teammate's shared image passed on to another teammate (KERNEL-659)",
   })
 })
 
-describe("create_workspace when the room's scripts wait for trust (KERNEL-261)", () => {
+describe("create_workspace when the project's scripts wait for trust (KERNEL-261)", () => {
   it("says Kai hasn't started after the Created prefix, and the Lead hears once that trusting sent the brief", async () => {
-    const { k, room, first, call, byTitle, sent } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "true"\n' })
-    // A pull changed the script after the room was trusted, so the next workspace waits for another yes.
-    await writeFile(join(room.path, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo changed"\n')
+    const { k, project, first, call, byTitle, sent } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "true"\n' })
+    // A pull changed the script after the project was trusted, so the next workspace waits for another yes.
+    await writeFile(join(project.path, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo changed"\n')
     const told = vi.spyOn(k.leadUpdates, 'setup')
     const said = await call(first, 'create_workspace', { agent: 'kai', title: 'Invoice table', brief: 'Build T-14' })
     const ws = byTitle('Invoice table')
-    expect(said).toBe(`Created ${ws.id} on ${ws.branch} for kai. Kai's workspace waits for the user to trust this room's scripts, so Kai hasn't started. The brief goes out once they do.`)
+    expect(said).toBe(`Created ${ws.id} on ${ws.branch} for kai. Kai's workspace waits for the user to trust this project's scripts, so Kai hasn't started. The brief goes out once they do.`)
     expect(ws.status).toBe('trust')
     expect(sent.some((s) => s.text === 'Build T-14')).toBe(false)
 
-    await trustRoom(k, room.id)
+    await trustProject(k, project.id)
     await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
     // Nothing else holds Kai, so the release reaches the Lead as one setup.passed, the way Run again does.
     const passed = told.mock.calls.filter(([w, ok]) => w.id === ws.id && ok)
@@ -513,7 +513,7 @@ describe("create_workspace when the room's scripts wait for trust (KERNEL-261)",
 })
 
 describe('message_agent says what really happened (KERNEL-118)', () => {
-  it('refuses an archived workspace, an unknown id, a missing folder, the Lead\'s own workspace and another room\'s, sending nothing', async () => {
+  it('refuses an archived workspace, an unknown id, a missing folder, the Lead\'s own workspace and another project\'s, sending nothing', async () => {
     const { k, first, run, byTitle, sent } = await setup()
     const talks: unknown[] = []
     const onActivity = (e: { kind: string }) => { if (e.kind === 'agent.talk') talks.push(e) }
@@ -526,14 +526,14 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
     sent.length = 0
     k.store.saveWorkspace({ ...drafts, status: 'archived' })
     expect(await run(first, 'message_agent', { workspace_id: drafts.id, text: 'Rebase' })).toEqual({ isError: true, text: `Not sent: ${drafts.name} is archived. Ask the user to restore it from History, or hand the work out again with create_workspace.` })
-    expect(await run(first, 'message_agent', { workspace_id: 'nope', text: 'Rebase' })).toEqual({ isError: true, text: 'Not sent: there is no workspace nope in this room. Call list_workspaces for the ids.' })
+    expect(await run(first, 'message_agent', { workspace_id: 'nope', text: 'Rebase' })).toEqual({ isError: true, text: 'Not sent: there is no workspace nope in this project. Call list_workspaces for the ids.' })
     await rm(icons.path, { recursive: true, force: true })
     expect(await run(first, 'message_agent', { workspace_id: icons.id, text: 'Rebase' })).toEqual({ isError: true, text: `Not sent: ${icons.name}'s folder is gone. Ask the user to archive it, or hand the work out again with create_workspace.` })
     expect(await run(first, 'message_agent', { workspace_id: first.workspaceId, text: 'Rebase' })).toEqual({ isError: true, text: 'Not sent: that is your own workspace.' })
-    // A real workspace, but in another room.
-    const other = await k.addRoom(await tempRepo(REPO))
+    // A real workspace, but in another project.
+    const other = await k.addProject(await tempRepo(REPO))
     const elsewhere = await k.createWorkspace(other.id, { prompt: 'Go', agentId: 'kai', title: 'Elsewhere' })
-    expect(await run(first, 'message_agent', { workspace_id: elsewhere.id, text: 'Rebase' })).toEqual({ isError: true, text: `Not sent: there is no workspace ${elsewhere.id} in this room. Call list_workspaces for the ids.` })
+    expect(await run(first, 'message_agent', { workspace_id: elsewhere.id, text: 'Rebase' })).toEqual({ isError: true, text: `Not sent: there is no workspace ${elsewhere.id} in this project. Call list_workspaces for the ids.` })
     expect(sent.filter((x) => x.text === 'Rebase')).toEqual([])
     expect(talks).toEqual([])
   })
@@ -545,7 +545,7 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
     const said: [QueueReason, string][] = [
       ['running', 'Kai is mid-turn, so the message goes out when that turn ends.'],
       ['setup', "Setup failed in Kai's workspace, so the message waits until the user clicks Run again."],
-      ['paused', 'The room is paused, so the message goes out when the user resumes it.'],
+      ['paused', 'The project is paused, so the message goes out when the user resumes it.'],
       ['offline', 'Kernel is offline or signed out, so the message goes out once it is back.'],
       ['capacity', 'Every agent slot in Settings, Models is in use, so the message goes out when a slot frees up.']
     ]
@@ -569,12 +569,12 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
 
   it('sends a message the Lead wrote while setup ran with the brief, and holds both when setup fails', async () => {
     for (const [script, fails] of [['sleep 0.4', false], ['sleep 0.4 && false', true]] as const) {
-      const { k, room, first, call } = await setup({ '.kernel/settings.toml': `[scripts]\nsetup = "${script}"\n` })
+      const { k, project, first, call } = await setup({ '.kernel/settings.toml': `[scripts]\nsetup = "${script}"\n` })
       // The brief and the Lead's message come in one call, as the chat's first turn (KERNEL-393).
       const sentAll: { chatId: string; messages: (string | undefined)[][] }[] = []
       k.sessions.sendAll = async (chatId: string, messages: { parts: ChatPart[]; from?: string }[]) => { sentAll.push({ chatId, messages: messages.map((m) => [m.parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), m.from]) }); return { queued: false } }
-      const made = k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: first.id })
-      const ws = await vi.waitFor(() => { const w = k.store.workspaces(room.id).find((x) => x.title === 'Invoice table'); if (!w) throw new Error('not yet'); return w })
+      const made = k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: first.id })
+      const ws = await vi.waitFor(() => { const w = k.store.workspaces(project.id).find((x) => x.title === 'Invoice table'); if (!w) throw new Error('not yet'); return w })
       expect(ws.status).toBe('setup')
       expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Use EmptyState' })).toBe("Kai's workspace is still setting up, so the message goes out with the brief.")
       await made
@@ -679,7 +679,7 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
   })
 
   it('keeps the counts across a restart', async () => {
-    const { k, first, ws, spend, where, kernel, room } = await guarded()
+    const { k, first, ws, spend, where, kernel, project } = await guarded()
     k.sessions.kernelTurn = (id) => id === first.id
     await spend()
     await k.stop({ budgetMs: 0 })
@@ -688,7 +688,7 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
     onTestFinished(() => k2.stop({ budgetMs: 0 }))
     k2.sessions.send = async () => ({ queued: false })
     k2.sessions.kernelTurn = (id) => id === first.id
-    k2.lead['leadTools'](room.id, kernel, first)
+    k2.lead['leadTools'](project.id, kernel, first)
     const tool = kernelTools(wired!).find((t) => t.name === 'message_agent')!
     const r = await tool.handler({ workspace_id: ws.id, ...ASK } as never, {})
     expect((r as { isError?: boolean }).isError).toBe(true)
@@ -707,7 +707,7 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
   })
 
   it('starts over when the user answers the Lead\'s question or the PR merges, and not on a first message to another new chat', async () => {
-    const { k, room, first, ws, ask, spend, call } = await guarded()
+    const { k, project, first, ws, ask, spend, call } = await guarded()
     k.sessions.kernelTurn = (id) => id === first.id
     await spend()
     const asking = call(first, 'ask_user', { question: 'Checks keep failing on the snapshot test. Skip it?' })
@@ -717,7 +717,7 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
     expect(new Nudges(k.store).count(ws.id)).toBe(0)
     await spend()
     // A first message in a new chat of its own hears none of this workspace's updates.
-    const fresh = await k.startLeadChat(room.id, { prompt: 'How is Kai doing?' })
+    const fresh = await k.startLeadChat(project.id, { prompt: 'How is Kai doing?' })
     await setUp(k, fresh.id)
     expect(new Nudges(k.store).count(ws.id)).toBe(3)
     bus.push({ type: 'pr', workspaceId: ws.id, state: 'merged' })
@@ -866,11 +866,11 @@ describe('Lead tabs (KERNEL-145)', () => {
   })
 
   it('leaves an unused Lead tab alone, since the user may be typing a brief there', async () => {
-    const { k, room, icons } = await setup()
+    const { k, project, icons } = await setup()
     // Nothing sent yet, so the engine sees it as unused, but the composer may hold a draft.
     const drafting = k.store.saveChat({ ...k.newChat(icons.workspaceId, 'Lead', { model: 'claude-fable-5-1', effort: 'xhigh', plan: true }), threadId: icons.threadId })
     // The New chat modal leaves it alone and starts a chat of its own with the brief (KERNEL-242, KERNEL-405, KERNEL-490).
-    const brief = await k.startLeadChat(room.id, { prompt: 'Add PDF export' })
+    const brief = await k.startLeadChat(project.id, { prompt: 'Add PDF export' })
     expect(brief.id).not.toBe(drafting.id)
     expect(brief.workspaceId).not.toBe(icons.workspaceId)
     // It waits in the new chat's own queue until the chat's worktree exists (KERNEL-542).
@@ -882,12 +882,12 @@ describe('Lead tabs (KERNEL-145)', () => {
 
 describe('Lead chats with several tabs (KERNEL-337)', () => {
   it('starts a new Lead chat from lead.start, the + button and a first leadChat, and joins the one it is given', async () => {
-    const { k, room, first, icons, tab } = await setup()
+    const { k, project, first, icons, tab } = await setup()
     const h = k.handlers()
     const thread = (c: Chat) => k.store.thread(k.store.chat(c.id)!.threadId!)
     // The first leadChat starts a Lead chat named like its tab.
-    expect(thread(first)).toMatchObject({ roomId: room.id, title: 'Lead' })
-    const started = await h['lead.start']({ roomId: room.id, prompt: 'Plan the release' })
+    expect(thread(first)).toMatchObject({ projectId: project.id, title: 'Lead' })
+    const started = await h['lead.start']({ projectId: project.id, prompt: 'Plan the release' })
     expect(started.title).toBe('New tab')
     await setUp(k, started.id)
     const opened = await tab()
@@ -899,25 +899,25 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     // Given a Lead chat, a tab joins it.
     expect((await tab(started.threadId)).threadId).toBe(started.threadId)
     expect((await tab(first.threadId)).threadId).toBe(first.threadId)
-    expect((await h['threads.list']({ roomId: room.id })).map((t) => t.id)).toEqual(threads)
+    expect((await h['threads.list']({ projectId: project.id })).map((t) => t.id)).toEqual(threads)
     // A big terminal belongs to no Lead chat, and a tab in a chat's workspace joins that chat, whatever thread it names.
     expect((await h['chats.create']({ workspaceId: first.workspaceId, kind: 'terminal' })).threadId).toBeUndefined()
     expect((await h['chats.create']({ workspaceId: first.workspaceId, threadId: icons.threadId })).threadId).toBe(first.threadId)
   })
 
-  it('lead.start with a mode runs the first turn in it, and without one leaves the mode to the room and app (KERNEL-776)', async () => {
-    const { k, room } = await setup()
+  it('lead.start with a mode runs the first turn in it, and without one leaves the mode to the project and app (KERNEL-776)', async () => {
+    const { k, project } = await setup()
     const h = k.handlers()
     // Bypass waits on Claude Code's policy, read in the background, which allows it here.
     k.permissions.readPolicy = async () => ({})
     // As the composer's picker does, a mode comes with plan off, since plan mode wins over the chat's own mode.
-    const bypass = await h['lead.start']({ roomId: room.id, prompt: 'Ship it', mode: 'bypassPermissions', plan: false })
+    const bypass = await h['lead.start']({ projectId: project.id, prompt: 'Ship it', mode: 'bypassPermissions', plan: false })
     // Set before the held first message goes, so the turn it starts reads it.
     expect(k.sessions.queued(bypass.id)).toHaveLength(1)
     expect(k.store.chat(bypass.id)?.mode).toBe('bypassPermissions')
     await new Promise((r) => setTimeout(r, 10))
     expect(k.sessions.runMode(bypass.id)).toMatchObject({ mode: 'bypassPermissions', picked: 'bypassPermissions', pickedIn: 'chat' })
-    const plain = await h['lead.start']({ roomId: room.id, prompt: 'Plan it', plan: false })
+    const plain = await h['lead.start']({ projectId: project.id, prompt: 'Plan it', plan: false })
     expect(k.store.chat(plain.id)?.mode).toBeUndefined()
     expect(k.sessions.runMode(plain.id).pickedIn).not.toBe('chat')
     await setUp(k, bypass.id)
@@ -925,17 +925,17 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
   })
 
   it('keeps a fork of a Lead tab in its Lead chat, and leaves a workspace chat out of Lead chats', async () => {
-    const { k, room, first } = await setup()
+    const { k, project, first } = await setup()
     const h = k.handlers()
     const fork = await h['chats.fork']({ chatId: first.id })
     expect(fork.threadId).toBe(first.threadId)
-    const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
     expect((await h['chats.create']({ workspaceId: ws.id })).threadId).toBeUndefined()
     expect(k.store.chats(ws.id).every((c) => !c.threadId)).toBe(true)
   })
 
   it('archives a Lead chat with its last open tab, and Restore opens it again with its tabs (KERNEL-405)', async () => {
-    const { k, room, first, icons, tab } = await setup()
+    const { k, project, first, icons, tab } = await setup()
     const second = await tab(first.threadId)
     const pushed: string[] = []
     const listen = (e: { type: string; thread?: { id: string; closedAt?: number } }) => { if (e.type === 'thread') pushed.push(`${e.thread!.id}:${e.thread!.closedAt ? 'closed' : 'open'}`) }
@@ -954,8 +954,8 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     expect(k.store.chat(second.id)?.closed).toBeFalsy()
     // Closing the last chat starts nothing (KERNEL-365).
     await k.chats.closeChat(icons.id)
-    expect(k.lead.chatWorkspaces(room.id)).toEqual([])
-    expect(k.store.threads(room.id).map((t) => t.id)).toEqual([first.threadId, icons.threadId])
+    expect(k.lead.chatWorkspaces(project.id)).toEqual([])
+    expect(k.store.threads(project.id).map((t) => t.id)).toEqual([first.threadId, icons.threadId])
     // Restore opens the chat again, and it sets up before Kernel goes on.
     const back = await k.restoreWorkspace(first.workspaceId)
     expect(back.status).toBe('setup')
@@ -1020,11 +1020,11 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
   })
 
   it("links a plan step from a plan approved in another tab of the Lead chat, and read_plans reads only this chat's plans", async () => {
-    const { k, room, first, call, byTitle, tab } = await setup()
+    const { k, project, first, call, byTitle, tab } = await setup()
     const sibling = await tab(first.threadId)
     const elsewhere = await tab()
     const plan = (id: string, chat: Chat, createdAt: number, status: Approval['status'] = 'allowed') => k.store.saveApproval({
-      id, kind: 'plan', source: 'sdk', roomId: room.id, workspaceId: chat.workspaceId, chatId: chat.id, agentId: 'kernel', title: id, detail: `${id} text`,
+      id, kind: 'plan', source: 'sdk', projectId: project.id, workspaceId: chat.workspaceId, chatId: chat.id, agentId: 'kernel', title: id, detail: `${id} text`,
       steps: [{ title: `${id} step`, agentId: 'kai' }], status, createdAt
     } as Approval)
     const now = Date.now()
@@ -1040,7 +1040,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     // The step goes to the newest plan of the chat, approved in the other tab.
     await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
     const ws = byTitle('Drafts per chat')
-    const step = (id: string) => k.store.approvals({ roomId: room.id }).find((a) => a.id === id)!.steps![0].workspaceId
+    const step = (id: string) => k.store.approvals({ projectId: project.id }).find((a) => a.id === id)!.steps![0].workspaceId
     expect(step('sibling-plan')).toBe(ws.id)
     expect(step('first-plan')).toBeUndefined()
     expect(step('elsewhere-plan')).toBeUndefined()
@@ -1062,7 +1062,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
   })
 
   it('keeps a workspace with its Lead chat after the tab that handed it off closes and Kernel restarts', async () => {
-    const { k, room, first, call, byTitle, tab, where } = await setup()
+    const { k, project, first, call, byTitle, tab, where } = await setup()
     await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
     const ws = byTitle('Drafts per chat')
     expect(ws).toMatchObject({ leadChatId: first.id, threadId: first.threadId })
@@ -1075,13 +1075,13 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     // The renderer sees only open tabs, so the workspace has to name the Lead chat itself.
     const h = k2.handlers()
     expect((await h['chats.list']({ workspaceId: first.workspaceId })).map((c) => c.id)).not.toContain(first.id)
-    expect((await h['workspaces.list']({ roomId: room.id })).find((w) => w.id === ws.id)!.threadId).toBe(sibling.threadId)
-    expect((await h['threads.list']({ roomId: room.id })).find((t) => t.id === sibling.threadId)!.closedAt).toBeUndefined()
+    expect((await h['workspaces.list']({ projectId: project.id })).find((w) => w.id === ws.id)!.threadId).toBe(sibling.threadId)
+    expect((await h['threads.list']({ projectId: project.id })).find((t) => t.id === sibling.threadId)!.closedAt).toBeUndefined()
   })
 
   it('names other Lead chats in an overlap by their titles, and not other tabs of its own', async () => {
-    const { k, room, first, call, byTitle, tab, sent } = await setup()
-    // Four workspaces are open at once, more than the three a room may have with no agent limit (KERNEL-220).
+    const { k, project, first, call, byTitle, tab, sent } = await setup()
+    // Four workspaces are open at once, more than the three a project may have with no agent limit (KERNEL-220).
     k.settings = { ...k.settings, models: { ...k.settings.models, agentLimit: 8 } }
     const sibling = await tab(first.threadId)
     k.store.saveChat({ ...k.store.chat(sibling.id)!, title: 'Side question' })
@@ -1095,7 +1095,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     // The newest hand-off decides who hears about it, so they get apart in time.
     const age = (...titles: string[]) => titles.forEach((t, i) => k.store.saveWorkspace({ ...byTitle(t), createdAt: 1000 + i }))
     age('Pasted text preview', 'Chat tab state icons', 'Composer tests', 'Composer snapshots')
-    const overlap = (id: string, ...titles: string[]) => k['overlaps']['known'].set(id, { id, roomId: room.id, path: 'src/a.ts', ts: 1, parties: titles.map((t) => ({ agentId: 'kai', workspaceId: byTitle(t).id, lines: '+1 -1' })) })
+    const overlap = (id: string, ...titles: string[]) => k['overlaps']['known'].set(id, { id, projectId: project.id, path: 'src/a.ts', ts: 1, parties: titles.map((t) => ({ agentId: 'kai', workspaceId: byTitle(t).id, lines: '+1 -1' })) })
     overlap('o1', 'Pasted text preview', 'Chat tab state icons')
     overlap('o2', 'Pasted text preview', 'Composer tests')
     sent.length = 0
@@ -1156,10 +1156,10 @@ describe('the sidebar order of chats with Kernel (KERNEL-498)', () => {
   })
 })
 
-describe('a room with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
+describe('a project with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
   /**
    * Records Kernel's updates instead of running them, and closes every open tab of both chats, which archives them. The workspaces
-   * they handed off stay open at room level, so their updates have somewhere to come from.
+   * they handed off stay open at project level, so their updates have somewhere to come from.
    */
   const quiet = async (s: Awaited<ReturnType<typeof setup>>) => {
     const posts: { chatId: string; text: string }[] = []
@@ -1171,7 +1171,7 @@ describe('a room with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
     }
     s.k.settings = { ...s.k.settings, workspace: { ...s.k.settings.workspace, archiveChatWorkspaces: false } }
     for (const chat of [s.first, s.icons]) for (const c of s.k.chats['chatTabs'](chat.workspaceId)) await s.k.chats.closeChat(c.id)
-    expect(s.k.lead.chatWorkspaces(s.room.id)).toEqual([])
+    expect(s.k.lead.chatWorkspaces(s.project.id)).toEqual([])
     /** Sends what waits now, without the few seconds Kernel waits for more. */
     const flush = () => {
       const u = s.k.leadUpdates
@@ -1179,18 +1179,18 @@ describe('a room with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
       u['timers'].clear()
       u.flushAll()
     }
-    const open = () => s.k.lead.chatWorkspaces(s.room.id).flatMap((w) => s.k.chats['chatTabs'](w.id).filter((c) => c.kind !== 'terminal'))
+    const open = () => s.k.lead.chatWorkspaces(s.project.id).flatMap((w) => s.k.chats['chatTabs'](w.id).filter((c) => c.kind !== 'terminal'))
     return { posts, flush, open }
   }
 
   it('archives a chat with its last tab, and still replaces the last tab in a teammate workspace', async () => {
     const s = await setup()
-    const { k, room, first } = s
+    const { k, project, first } = s
     await quiet(s)
     expect(k.store.thread(first.threadId!)!.closedAt).toBeGreaterThan(0)
     expect(k.store.workspace(first.workspaceId)?.status).toBe('archived')
-    expect(k.store.threads(room.id)).toHaveLength(2)
-    const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
+    expect(k.store.threads(project.id)).toHaveLength(2)
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
     const [brief] = k.chats['chatTabs'](ws.id)
     await k.chats.closeChat(brief.id)
     const left = k.chats['chatTabs'](ws.id)
@@ -1201,13 +1201,13 @@ describe('a room with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
 
   it('finds nothing with lead.open, and adds no chat, thread or workspace', async () => {
     const s = await setup()
-    const { k, room } = s
+    const { k, project } = s
     await quiet(s)
-    const workspaces = k.store.workspaces(room.id).length
-    const threads = k.store.threads(room.id).length
-    expect(await k.handlers()['lead.open']({ roomId: room.id })).toBeNull()
-    expect(k.store.workspaces(room.id)).toHaveLength(workspaces)
-    expect(k.store.threads(room.id)).toHaveLength(threads)
+    const workspaces = k.store.workspaces(project.id).length
+    const threads = k.store.threads(project.id).length
+    expect(await k.handlers()['lead.open']({ projectId: project.id })).toBeNull()
+    expect(k.store.workspaces(project.id)).toHaveLength(workspaces)
+    expect(k.store.threads(project.id)).toHaveLength(threads)
   })
 
   it('delivers an update with no open chat into one new chat, and never restores the archived one', async () => {
@@ -1226,7 +1226,7 @@ describe('a room with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
     const tabs = open()
     expect(tabs).toHaveLength(1)
     expect(tabs[0].threadId).not.toBe(first.threadId)
-    // The room has no setup script, so nothing waits for its setup (KERNEL-490).
+    // The project has no setup script, so nothing waits for its setup (KERNEL-490).
     expect((await setUp(k, tabs[0].id)).status).toBe('ready')
     expect(k.store.thread(first.threadId!)!.closedAt).toBeGreaterThan(0)
     expect(k.store.workspace(first.workspaceId)?.status).toBe('archived')
@@ -1235,80 +1235,80 @@ describe('a room with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
     expect(k.leadUpdates['pending'].size).toBe(0)
   })
 
-  it('starts a new chat for work no chat handed off, and a room that was archived has nobody to tell', async () => {
+  it('starts a new chat for work no chat handed off, and a project that was archived has nobody to tell', async () => {
     const s = await setup()
-    const { k, room } = s
+    const { k, project } = s
     const { open } = await quiet(s)
-    expect(k.lead.openUpdateTab(room.id)).toBe('opening')
-    expect(k.lead.openUpdateTab(room.id)).toBe('opening')
+    expect(k.lead.openUpdateTab(project.id)).toBe('opening')
+    expect(k.lead.openUpdateTab(project.id)).toBe('opening')
     await vi.waitFor(() => expect(open()).toHaveLength(1), { timeout: 10_000 })
-    const unowned = k.lead.openUpdateTab(room.id) as { chat: Chat; from?: unknown }
+    const unowned = k.lead.openUpdateTab(project.id) as { chat: Chat; from?: unknown }
     expect(unowned.from).toBeUndefined()
     expect(open().map((c) => c.id)).toEqual([unowned.chat.id])
-    expect(k.lead.chatWorkspaces(room.id)).toHaveLength(1)
+    expect(k.lead.chatWorkspaces(project.id)).toHaveLength(1)
     await setUp(k, unowned.chat.id)
     await k.chats.closeChat(unowned.chat.id)
-    k.store.saveRoom({ ...k.store.room(room.id)!, archived: true })
-    expect(k.lead.openUpdateTab(room.id)).toBeUndefined()
+    k.store.saveProject({ ...k.store.project(project.id)!, archived: true })
+    expect(k.lead.openUpdateTab(project.id)).toBeUndefined()
   })
 
   it('opens no chat for an update that needs nothing from the Lead yet', async () => {
     const s = await setup()
-    const { k, room, first, call, byTitle } = s
+    const { k, project, first, call, byTitle } = s
     await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
     const { posts, flush, open } = await quiet(s)
-    const before = k.store.workspaces(room.id).length
+    const before = k.store.workspaces(project.id).length
     k.leadUpdates.crashed(byTitle('Drafts per chat'), 'Out of memory', { resumed: true })
     flush()
     expect(open()).toEqual([])
     expect(posts).toEqual([])
-    expect(k.store.workspaces(room.id)).toHaveLength(before)
+    expect(k.store.workspaces(project.id)).toHaveLength(before)
   })
 })
 
 describe('create_workspace when the task is already handed off (KERNEL-287)', () => {
   it('refuses a second hand-off of the same issue from any Lead chat, and hands it off again once the first is archived', async () => {
-    const { k, room, first, icons, run } = await setup()
+    const { k, project, first, icons, run } = await setup()
     const made = await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
     expect(made.text).toMatch(/^Created /)
-    const ws = k.store.workspaces(room.id).find((w) => w.title === 'Issues screen')!
+    const ws = k.store.workspaces(project.id).find((w) => w.title === 'Issues screen')!
     const again = { isError: true, text: `Not created: KERNEL-83 is already handed off to Kai (workspace ${ws.id}). Follow up with message_agent.` }
     expect(await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).toEqual(again)
     // Another title, another chat, the key in another case: still the same issue.
     expect(await run(icons, 'create_workspace', { agent: 'kai', title: 'Build the issues list', brief: 'Go', issue: 'kernel-83' })).toEqual({ ...again, text: again.text.replace('KERNEL-83 is', 'kernel-83 is') })
-    expect(k.store.workspaces(room.id).filter((w) => w.title === 'Issues screen' || w.title === 'Build the issues list')).toHaveLength(1)
+    expect(k.store.workspaces(project.id).filter((w) => w.title === 'Issues screen' || w.title === 'Build the issues list')).toHaveLength(1)
     await k.archiveWorkspace(ws.id)
     expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).text).toMatch(/^Created /)
   })
 
   it('refuses the same agent and title from the same Lead chat, but not from another chat or for another agent', async () => {
-    const { k, room, first, icons, run } = await setup({ '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor. Open a PR for each task.' })
+    const { k, project, first, icons, run } = await setup({ '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor. Open a PR for each task.' })
     expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
-    const ws = k.store.workspaces(room.id).find((w) => w.title === 'Drafts per chat')!
+    const ws = k.store.workspaces(project.id).find((w) => w.title === 'Drafts per chat')!
     expect(await run(first, 'create_workspace', { agent: 'kai', title: ' drafts per chat ', brief: 'Go again' })).toEqual({ isError: true, text: `Not created: this task is already handed off to Kai (workspace ${ws.id}). Follow up with message_agent.` })
     expect((await run(icons, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
     expect((await run(first, 'create_workspace', { agent: 'noor', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
-    expect(k.store.workspaces(room.id).filter((w) => w.title === 'Drafts per chat')).toHaveLength(3)
+    expect(k.store.workspaces(project.id).filter((w) => w.title === 'Drafts per chat')).toHaveLength(3)
   })
 
   it('lets a task whose PR merged or closed be handed off again', async () => {
-    const { k, room, first, run } = await setup()
+    const { k, project, first, run } = await setup()
     for (const [i, prState] of (['merged', 'closed'] as PrState[]).entries()) {
       const issue = `KERNEL-${90 + i}`
       expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Fix it', brief: 'Go', issue })).text).toMatch(/^Created /)
-      const ws = k.store.workspaces(room.id).find((w) => w.source?.kind === 'issue' && w.source.id === issue)!
+      const ws = k.store.workspaces(project.id).find((w) => w.source?.kind === 'issue' && w.source.id === issue)!
       k.store.saveWorkspace({ ...ws, prState })
       expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Fix it', brief: 'Go', issue })).text).toMatch(/^Created /)
     }
   })
 
   it('counts a task that waits for another PR as handed off', async () => {
-    const { k, room, first, run } = await setup()
+    const { k, project, first, run } = await setup()
     await run(first, 'create_workspace', { agent: 'kai', title: 'Base', brief: 'Go' })
-    const base = k.store.workspaces(room.id).find((w) => w.title === 'Base')!
+    const base = k.store.workspaces(project.id).find((w) => w.title === 'Base')!
     k.store.saveWorkspace({ ...base, prState: 'open', prNumber: 164 })
     expect((await run(first, 'create_workspace', { agent: 'kai', title: 'On top', brief: 'Go', wait_for: [base.id] })).text).toMatch(/^Created /)
-    const waiting = k.store.workspaces(room.id).find((w) => w.title === 'On top')!
+    const waiting = k.store.workspaces(project.id).find((w) => w.title === 'On top')!
     expect(waiting.waitsFor?.on).toEqual([base.id])
     expect(await run(first, 'create_workspace', { agent: 'kai', title: 'On top', brief: 'Go', wait_for: [base.id] })).toEqual({ isError: true, text: `Not created: this task is already handed off to Kai (workspace ${waiting.id}). Follow up with message_agent.` })
   })
@@ -1318,11 +1318,11 @@ describe('create_workspace when the handed-off task is a review, failed setup or
   const NOOR = { '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor. Open a PR for each task.' }
 
   it('says when the task is handed off but its setup failed, with or without an issue key', async () => {
-    const { k, room, first, run } = await setup()
+    const { k, project, first, run } = await setup()
     await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
     await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
-    const keyed = k.store.workspaces(room.id).find((w) => w.title === 'Issues screen')!
-    const plain = k.store.workspaces(room.id).find((w) => w.title === 'Drafts per chat')!
+    const keyed = k.store.workspaces(project.id).find((w) => w.title === 'Issues screen')!
+    const plain = k.store.workspaces(project.id).find((w) => w.title === 'Drafts per chat')!
     k.store.saveWorkspace({ ...keyed, status: 'failed' })
     k.store.saveWorkspace({ ...plain, status: 'failed' })
     expect(await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).toEqual({ isError: true, text: `Not created: KERNEL-83 is already handed off to Kai (workspace ${keyed.id}), and its setup failed. Tell the user to fix it and click Run again there.` })
@@ -1330,26 +1330,26 @@ describe('create_workspace when the handed-off task is a review, failed setup or
   })
 
   it('never lets an open review block a hand-off with the same issue, or the same agent and title', async () => {
-    const { k, room, first, run } = await setup(NOOR)
+    const { k, project, first, run } = await setup(NOOR)
     await run(first, 'create_workspace', { agent: 'kai', title: 'Base work', brief: 'Go' })
-    const base = k.store.workspaces(room.id).find((w) => w.title === 'Base work')!
+    const base = k.store.workspaces(project.id).find((w) => w.title === 'Base work')!
     expect((await run(first, 'create_workspace', { agent: 'noor', title: 'Review it', brief: 'Review', issue: 'KERNEL-83', review_of: base.id })).text).toMatch(/^Created /)
-    expect(k.store.workspaces(room.id).find((w) => w.title === 'Review it')).toMatchObject({ reviewOf: base.id, source: { kind: 'issue', id: 'KERNEL-83' } })
+    expect(k.store.workspaces(project.id).find((w) => w.title === 'Review it')).toMatchObject({ reviewOf: base.id, source: { kind: 'issue', id: 'KERNEL-83' } })
     expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).text).toMatch(/^Created /)
     expect((await run(first, 'create_workspace', { agent: 'noor', title: 'Review it', brief: 'Go' })).text).toMatch(/^Created /)
   })
 
   it('leaves a review to its own guard when open work has the same issue', async () => {
-    const { k, room, first, run } = await setup(NOOR)
+    const { k, project, first, run } = await setup(NOOR)
     await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
-    const work = k.store.workspaces(room.id).find((w) => w.title === 'Issues screen')!
+    const work = k.store.workspaces(project.id).find((w) => w.title === 'Issues screen')!
     expect((await run(first, 'create_workspace', { agent: 'noor', title: 'Review issues screen', brief: 'Review', issue: 'KERNEL-83', review_of: work.id })).text).toMatch(/^Created /)
   })
 
   it('never refuses a task without an issue key because of a workspace from before Lead chats', async () => {
-    const { k, room, first, run } = await setup()
+    const { k, project, first, run } = await setup()
     await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
-    const old = k.store.workspaces(room.id).find((w) => w.title === 'Drafts per chat')!
+    const old = k.store.workspaces(project.id).find((w) => w.title === 'Drafts per chat')!
     k.store.saveWorkspace({ ...old, leadChatId: undefined })
     expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
   })

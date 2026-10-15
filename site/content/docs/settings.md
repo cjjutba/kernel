@@ -5,7 +5,7 @@ description: Every page in Settings and what it holds. Search in Settings jumps 
 
 Open Settings with ⌘, or the gear at the bottom of the sidebar. The search box at the top finds a page or a single setting, and lands on its row.
 
-Personal settings live on your Mac. Each room's settings are on its own pages, described in [Room settings](/docs/room-settings).
+Personal settings live on your Mac. Each project's settings are on its own pages, described in [Project settings](/docs/project-settings).
 
 ## Personal
 
@@ -22,7 +22,7 @@ Personal settings live on your Mac. Each room's settings are on its own pages, d
 | Page | What it holds |
 | --- | --- |
 | Models and effort | Each role's provider, model, effort and compacting, plan mode for new chats, how many agents work at once, and Keep Kernel updated |
-| Agents | Your personal and plugin agents, and the agents new rooms start with |
+| Agents | Your personal and plugin agents, and the agents new projects start with |
 | MCP servers | Every MCP server, and which are ready on each account |
 | Permissions | The permission mode, Always ask before, Never allow, protected branches, network access and the approval timeout. See [Permissions](/docs/permissions) |
 | Environment | Variables every chat, script and terminal gets |

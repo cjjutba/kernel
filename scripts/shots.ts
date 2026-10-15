@@ -275,7 +275,7 @@ async function hoverSplitHandle(page: Page) {
   await page.waitForTimeout(400)
 }
 
-// PanelTabsOverflow is the right panel at its narrowest, 320px, where the tab strips run out of room (KERNEL-514). Home on the panel's handle takes it there, as it does from the keyboard.
+// PanelTabsOverflow is the right panel at its narrowest, 320px, where the tab strips run out of space (KERNEL-514). Home on the panel's handle takes it there, as it does from the keyboard.
 // The bottom strip has only Setup, Run and Terminal, which fit, so the canvas's two extra terminals are added here as stand-ins and the strip scrolled a little, to draw both arrows.
 async function narrowPanel(page: Page) {
   const handle = page.getByRole('separator', { name: 'Resize panel' })
@@ -317,7 +317,7 @@ async function openCompare(page: Page) {
 }
 
 
-// NewChatRoomPicker, NewChatMode, NewChatBranch and NewChatPlus are New chat with the room menu, the + menu or one of its Run in and Branch pickers open (KERNEL-786).
+// NewChatProjectPicker, NewChatMode, NewChatBranch and NewChatPlus are New chat with the project menu, the + menu or one of its Run in and Branch pickers open (KERNEL-786).
 // NewChatLocal has Local picked, which shows the chip beside +. NewChatBranchChip picks a branch from the + menu and shows its chip.
 async function openWhere(page: Page, name: string | RegExp, item?: string | RegExp) {
   await page.getByRole('button', { name }).click()
@@ -331,20 +331,20 @@ async function openPlusPicker(page: Page, row: RegExp, ready: RegExp) {
   await page.getByRole('menuitem', { name: row }).click()
   await page.getByRole('menuitemradio', { name: ready }).first().waitFor()
 }
-// NewChatKeyboard drives the room picker and the + menu's Run in row with the keyboard only and throws when a step does not do what it should: a picker opens on Enter,
-// Escape closes it and gives the focus back to its button, Enter on a row picks it, and the room pick moves the breadcrumb and the route.
+// NewChatKeyboard drives the project picker and the + menu's Run in row with the keyboard only and throws when a step does not do what it should: a picker opens on Enter,
+// Escape closes it and gives the focus back to its button, Enter on a row picks it, and the project pick moves the breadcrumb and the route.
 async function driveWhereByKeyboard(page: Page) {
   const key = (k: string) => page.keyboard.press(k)
-  const room = () => page.getByRole('button', { name: /^Room:/ })
+  const project = () => page.getByRole('button', { name: /^Project:/ })
   const must = async (ok: boolean, what: string) => { if (!ok) throw new Error(`NewChatKeyboard: ${what}`) }
   const crumb = () => page.locator('.ws-crumb, header').first().innerText()
-  const before = await room().getAttribute('aria-label')
+  const before = await project().getAttribute('aria-label')
 
-  await room().focus(); await key('Enter')
+  await project().focus(); await key('Enter')
   await page.getByRole('menuitemradio', { name: /Client B/ }).first().waitFor()
   await key('Escape')
-  await must(await page.getByRole('menuitemradio', { name: /Client B/ }).count() === 0, 'Escape did not close the room picker')
-  await must(await room().evaluate((el) => el === document.activeElement), 'Escape did not return focus to the room button')
+  await must(await page.getByRole('menuitemradio', { name: /Client B/ }).count() === 0, 'Escape did not close the project picker')
+  await must(await project().evaluate((el) => el === document.activeElement), 'Escape did not return focus to the project button')
 
   await key('Enter')
   await page.getByRole('menuitemradio', { name: /Client B/ }).first().waitFor()
@@ -353,8 +353,8 @@ async function driveWhereByKeyboard(page: Page) {
   await must(await page.getByRole('menuitemradio', { name: /Client B/ }).first().evaluate((el) => el === document.activeElement), 'ArrowDown did not reach Client B')
   await key('Enter')
   await page.waitForTimeout(200)
-  await must((await room().getAttribute('aria-label')) !== before, 'Enter did not pick the room')
-  await must((await crumb()).includes('Client B'), 'the breadcrumb did not follow the room pick')
+  await must((await project().getAttribute('aria-label')) !== before, 'Enter did not pick the project')
+  await must((await crumb()).includes('Client B'), 'the breadcrumb did not follow the project pick')
 
   // The + button opens its menu on Enter, ArrowDown walks to Run in, Enter opens the picker and Enter on Local picks it. Focus comes back to +, and the chip says Local.
   const plus = page.getByRole('button', { name: 'Add context' })
@@ -477,7 +477,7 @@ async function typeArchived(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// RoomSetupTeam is drawn with the Reviewer picker open. Its open state is local to the picker, so click it open.
+// ProjectSetupTeam is drawn with the Reviewer picker open. Its open state is local to the picker, so click it open.
 async function openReviewer(page: Page) {
   await page.getByRole('button', { name: 'Reviewer' }).click()
   await page.mouse.move(0, 0)
@@ -491,7 +491,7 @@ async function hoverRow(page: Page, row: string) {
   await page.waitForTimeout(300)
 }
 
-// WorkspaceHistoryButtonsNarrow is the sidebar at its 200px minimum, where Hide sidebar, Back and Forward have the least room (KERNEL-643).
+// WorkspaceHistoryButtonsNarrow is the sidebar at its 200px minimum, where Hide sidebar, Back and Forward have the least project (KERNEL-643).
 async function narrowSidebar(page: Page) {
   const handle = page.getByRole('separator', { name: 'Resize sidebar' })
   await handle.focus()
@@ -588,10 +588,10 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   AuditSidebarWide: async (page) => { const h = page.getByRole('separator', { name: 'Resize sidebar' }); await h.focus(); await page.keyboard.press('End'); await h.blur(); await page.waitForTimeout(300) },
   AccountSwitching: async (page) => { await page.locator('.ft-other').first().click(); await page.waitForTimeout(200) },
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
-  RoomSetupTeam: openReviewer,
+  ProjectSetupTeam: openReviewer,
   PanelCompare: openCompare,
   LeadNoChatsBranch: openBaseBranch,
-  NewChatRoomPicker: (page) => openWhere(page, /^Room:/, /Client B/),
+  NewChatProjectPicker: (page) => openWhere(page, /^Project:/, /Client B/),
   NewChatMode: (page) => openPlusPicker(page, /^Run in/, /Local/).then(() => page.mouse.move(0, 0)).then(() => page.waitForTimeout(300)),
   NewChatKeyboard: driveWhereByKeyboard,
   NewChatBranch: openBranchMenu,
@@ -621,7 +621,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   TurnFilesHover: hoverAndFocusRows,
   InboxRowFocused: focusListRow,
   IssuesRowFocused: focusListRow,
-  RoomsRowFocused: focusListRow,
+  ProjectsRowFocused: focusListRow,
   PullRequestsRowFocused: focusListRow,
   HistoryRowFocused: focusListRow,
   PanelResize: hoverSplitHandle,
@@ -683,7 +683,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsPRsSaved: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSavedLight: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsClamped: (page) => leaveSizeLimit(page, '999999'),
-  SettingsRoomPrsSaved: async (page) => { await page.getByRole('switch', { name: 'UX review' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  SettingsProjectPrsSaved: async (page) => { await page.getByRole('switch', { name: 'UX review' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsAccountsMoves: (page) => scrollToSection(page, 'Chats and accounts'),
   SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),
   SettingsTeamOwnAgents: (page) => scrollToSection(page, 'In this repo'),
@@ -858,7 +858,7 @@ async function capture(name: string): Promise<boolean> {
     // loads on mount, so wait for the chunk first and for the screen's data after.
     const lazyLoaded = () => page.waitForSelector('[data-lazy="pending"]', { state: 'detached', timeout: 15_000 })
     await lazyLoaded()
-    // Screens load their own data on mount (loadRoom, loadWorkspace, changes). Give those calls a moment to land.
+    // Screens load their own data on mount (loadProject, loadWorkspace, changes). Give those calls a moment to land.
     await page.waitForTimeout(500)
     await interactions[name]?.(page, app)
     await lazyLoaded()

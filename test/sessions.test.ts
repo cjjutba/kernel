@@ -10,7 +10,7 @@ import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { NO_PROMPTS } from '../src/main/services/exec'
-import { bashVerdict, matchesRoomRule, roomRule } from '../src/main/services/bashGuard'
+import { bashVerdict, matchesProjectRule, projectRule } from '../src/main/services/bashGuard'
 import { COMPACT_INSTRUCTIONS, IDLE_STOP_MS, LIMIT_LIFTED, limitsFromEvent, limitsFromUsage, mergeLimit, sessionEnv, SESSION_GONE_NOTE, Sessions, TOO_LONG_NOTE, type CutOffReason, type LimitPatch, type SessionDeps } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { ClaudeRunner, readUsage } from '../src/main/services/providers/claude'
@@ -59,34 +59,34 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
 const lists = { neverAllow: ['git push origin main'], alwaysAsk: ['rm -rf', 'drizzle-kit push'] }
 
 describe('Bash rules', () => {
-  it('blocks Never allow, lets room rules beat Always ask, and leaves everything else to Claude Code', () => {
+  it('blocks Never allow, lets project rules beat Always ask, and leaves everything else to Claude Code', () => {
     expect(bashVerdict('git push origin main', lists, ['git push origin main'])).toBe('deny')
     expect(bashVerdict('pnpm drizzle-kit push', lists, [])).toBe('ask')
     expect(bashVerdict('pnpm drizzle-kit push', lists, ['pnpm drizzle-kit push'])).toBe('allow')
     expect(bashVerdict('npm test', lists, [])).toBeUndefined()
   })
 
-  it('matches room rules the way Claude Code matches Bash rules', () => {
-    expect(matchesRoomRule('git log --oneline -1', ['git log --oneline -1'])).toBe(true)
-    expect(matchesRoomRule('git log --oneline -2', ['git log --oneline -1'])).toBe(false)
-    expect(matchesRoomRule('git log', ['git log:*'])).toBe(true)
-    expect(matchesRoomRule('git log -5', ['git log:*'])).toBe(true)
-    expect(matchesRoomRule('git logs', ['git log:*'])).toBe(false)
+  it('matches project rules the way Claude Code matches Bash rules', () => {
+    expect(matchesProjectRule('git log --oneline -1', ['git log --oneline -1'])).toBe(true)
+    expect(matchesProjectRule('git log --oneline -2', ['git log --oneline -1'])).toBe(false)
+    expect(matchesProjectRule('git log', ['git log:*'])).toBe(true)
+    expect(matchesProjectRule('git log -5', ['git log:*'])).toBe(true)
+    expect(matchesProjectRule('git logs', ['git log:*'])).toBe(false)
   })
 
   it('never lets a prefix rule cover a chain with a command it does not cover (KERNEL-454)', () => {
     for (const c of ['npm run build && pnpm db:reset', 'npm run build; rm -rf dist', 'npm run build | sh', 'npm run build\ndrizzle-kit push', 'npm run build $(curl x)'])
-      expect(matchesRoomRule(c, ['npm run build:*']), c).toBe(false)
+      expect(matchesProjectRule(c, ['npm run build:*']), c).toBe(false)
     expect(bashVerdict('npm run build && pnpm db:reset', { neverAllow: [], alwaysAsk: ['pnpm db:reset'] }, ['npm run build:*'])).toBe('ask')
   })
 
   it("saves Claude Code's own suggestion when it has one, else the exact command", () => {
-    expect(roomRule(' rm -rf dist ')).toBe('rm -rf dist')
+    expect(projectRule(' rm -rf dist ')).toBe('rm -rf dist')
     const one = [{ type: 'addRules' as const, behavior: 'allow' as const, destination: 'localSettings' as const, rules: [{ toolName: 'Bash', ruleContent: 'npm run build:*' }] }]
-    expect(roomRule('npm run build -- --watch', one)).toBe('npm run build:*')
-    expect(roomRule('npm run build -- --watch', one, true)).toBe('npm run build -- --watch')
+    expect(projectRule('npm run build -- --watch', one)).toBe('npm run build:*')
+    expect(projectRule('npm run build -- --watch', one, true)).toBe('npm run build -- --watch')
     const two = [{ ...one[0], rules: [{ toolName: 'Bash', ruleContent: 'cd:*' }, { toolName: 'Bash', ruleContent: 'npm run build:*' }] }]
-    expect(roomRule('cd web && npm run build', two)).toBe('cd web && npm run build')
+    expect(projectRule('cd web && npm run build', two)).toBe('cd web && npm run build')
   })
 })
 
@@ -159,7 +159,7 @@ describe('usage', () => {
     expect(mergeLimit(hit, { type: 'five_hour', utilization: 0.02 }, 1_000_001).status).toBe('allowed')
   })
 
-  it('lifts a rejection early when a reading shows clear room, and not on a reset time read back a second off', () => {
+  it('lifts a rejection early when a reading shows clear project, and not on a reset time read back a second off', () => {
     const hit = { type: 'five_hour' as const, status: 'rejected' as const, utilization: 1, resetsAt: 1000 }
     expect(mergeLimit(hit, { type: 'five_hour', utilization: 0 }, 999_000).status).toBe('allowed')
     expect(mergeLimit(hit, { type: 'five_hour', utilization: 1, resetsAt: 1001 }, 999_000).status).toBe('rejected')
@@ -254,22 +254,22 @@ describe('usage', () => {
   })
 })
 
-describe('Always allow in this room', () => {
-  it('saves the rule on the room once, and it survives a restart', async () => {
+describe('Always allow in this project', () => {
+  it('saves the rule on the project once, and it survives a restart', async () => {
     const repo = await tempRepo({ 'README.md': '# demo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     const open = () => new Kernel({ dataDir, home })
     const k = open()
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     const deps = (k.sessions as unknown as { d: SessionDeps }).d
-    deps.allowInRoom(room.id, 'git log --oneline -1')
-    deps.allowInRoom(room.id, 'git log --oneline -1')
-    expect(deps.roomAllow(room.id)).toEqual(['git log --oneline -1'])
+    deps.allowInProject(project.id, 'git log --oneline -1')
+    deps.allowInProject(project.id, 'git log --oneline -1')
+    expect(deps.projectAllow(project.id)).toEqual(['git log --oneline -1'])
     k.store.db.close()
 
     const again = open()
-    expect(again.store.room(room.id)?.allow).toEqual(['git log --oneline -1'])
+    expect(again.store.project(project.id)?.allow).toEqual(['git log --oneline -1'])
     again.store.db.close()
   })
 })
@@ -285,7 +285,7 @@ describe('idle stop (KERNEL-183)', () => {
   async function setup(o: { agent?: AgentDef; agentLimit?: number } = {}) {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-idle-')), 'kernel.db'))
-    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: (o.agent ?? noor).id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: (o.agent ?? noor).id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat(chat)
@@ -295,7 +295,7 @@ describe('idle stop (KERNEL-183)', () => {
     const cutOff: Record<string, CutOffReason>[] = []
     const sessions = new Sessions({
       store, approvals: new Approvals(store), settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined,
-      roomAllow: () => [], allowInRoom: () => {}, onExit: (_ws, c) => { exits.push(c.id) }, onCutOff: (ids) => { cutOff.push(ids) }
+      projectAllow: () => [], allowInProject: () => {}, onExit: (_ws, c) => { exits.push(c.id) }, onCutOff: (ids) => { cutOff.push(ids) }
     })
     const pushes: PushEvent[] = []
     const activity: { kind: string }[] = []
@@ -460,7 +460,7 @@ describe('idle stop (KERNEL-183)', () => {
     expect(stopped(call)).toBe(true)
   })
 
-  it('keeps the process while every room is held, offline or signed out, and stops it once the hold lifts', async () => {
+  it('keeps the process while every project is held, offline or signed out, and stops it once the hold lifts', async () => {
     const { sessions, turn, stopped } = await setup()
     const call = await turn()
     sessions.holdAll('offline')
@@ -471,13 +471,13 @@ describe('idle stop (KERNEL-183)', () => {
     expect(stopped(call)).toBe(true)
   })
 
-  it('keeps the process while the room is paused, and stops it after the room resumes', async () => {
+  it('keeps the process while the project is paused, and stops it after the project resumes', async () => {
     const { sessions, turn, stopped } = await setup()
     const call = await turn()
-    sessions.pause('room')
+    sessions.pause('project')
     await vi.advanceTimersByTimeAsync(3 * IDLE_STOP_MS)
     expect(stopped(call)).toBe(false)
-    sessions.resume('room')
+    sessions.resume('project')
     await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
     expect(stopped(call)).toBe(true)
   })
@@ -532,12 +532,12 @@ describe('a card whose turn or session is gone, on Claude (KERNEL-563)', () => {
 
   async function setup() {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-cards-')), 'kernel.db'))
-    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const approvals = new Approvals(store)
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
-    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {} })
+    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
     const statuses: string[] = []
     bus.on('push', (e: PushEvent) => { if (e.type === 'agent.status') statuses.push(e.status) })
     /** Sends a message and starts the turn it begins. */
@@ -642,14 +642,14 @@ describe("the user's answer to a card is their message, never the agent's prompt
 
   async function setup() {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-answers-')), 'kernel.db'))
-    store.saveWorkspace({ id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const approvals = new Approvals(store)
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
-    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {} })
+    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
     /** A card in the chat, placed as its process places one, then settled the way the user settles it. */
     const card = (kind: 'plan' | 'question' | 'agent' | 'tool') => {
-      const { approval } = approvals.request({ kind, source: 'sdk', roomId: 'room', workspaceId: 'ws', chatId: 'chat', title: kind })
+      const { approval } = approvals.request({ kind, source: 'sdk', projectId: 'project', workspaceId: 'ws', chatId: 'chat', title: kind })
       sessions.placeApproval('chat', approval.id)
       return approval
     }
@@ -728,7 +728,7 @@ describe('switching accounts while a chat waits on the user, on Claude (KERNEL-6
   /** A chat on Work, a Claude account whose folder each process gets, and `switchTo`, which does what `Providers.switchTo` asks of Sessions. */
   async function setup(o: { plan?: boolean } = {}) {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-switch-')), 'kernel.db'))
-    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: !!o.plan, createdAt: 1 })
     const approvals = new Approvals(store)
@@ -736,7 +736,7 @@ describe('switching accounts while a chat waits on the user, on Claude (KERNEL-6
     let active = 'work'
     const failures: { failure: string; account: string | undefined }[] = []
     const sessions = new Sessions({
-      store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {},
+      store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {},
       accountFor: () => active, claudeEnv: () => ({ CLAUDE_CONFIG_DIR: `/homes/${active}` }),
       moveNote: (chat, from) => `Moved from ${from} to ${chat.ranOn}${chat.lastTurn ? `, ${chat.lastTurn.cacheWrite} written` : ''}`,
       emailOf: (_p, id) => (id ? `${id}@example.com` : undefined),
@@ -897,14 +897,14 @@ describe('a limit cut-off and its carry-on, for the Lead (KERNEL-777)', () => {
 
   async function setup() {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-limit-')), 'kernel.db'))
-    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
     const turns: Parameters<NonNullable<SessionDeps['onTurnDone']>>[2][] = []
     const carried: [string, CutOffReason][] = []
     const sessions = new Sessions({
-      store, approvals: new Approvals(store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {},
+      store, approvals: new Approvals(store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {},
       onTurnDone: (_ws, _chat, t) => { turns.push(t) }, onCarriedOn: (id, reason) => { carried.push([id, reason]) }
     })
     /** A turn a 5-hour rejection cuts off. */
@@ -946,13 +946,13 @@ describe('a limit cut-off and its carry-on, for the Lead (KERNEL-777)', () => {
   it('reports the carry-on when what waited in the chat goes instead of the nudge', async () => {
     const { store, sessions, carried, cutOff } = await setup()
     await cutOff()
-    // The limit paused the room, as Kernel does, so the message waits in the chat.
-    sessions.pause('room')
+    // The limit paused the project, as Kernel does, so the message waits in the chat.
+    sessions.pause('project')
     expect(await sessions.send('chat', [{ type: 'text', text: 'Also add a test' }])).toMatchObject({ queued: true })
     sessions.resetLimit('five_hour')
     sessions.drainWaiting()
     expect(carried).toEqual([])
-    sessions.resume('room')
+    sessions.resume('project')
     expect(carried).toEqual([['chat', 'limit']])
     expect(store.items('chat').filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: 'Also add a test' }] })
   })
@@ -970,10 +970,10 @@ describe("what an agent started, on Stop, Close chat and archive (KERNEL-810)", 
 
   async function setup() {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-tree-')), 'kernel.db'))
-    store.saveWorkspace({ id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
-    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {} })
+    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
     /** Runs a turn whose process is a real shell, started through Kernel's spawn, that leaves a `sleep` running. */
     const turn = async () => {
       await sessions.send('chat', [{ type: 'text', text: 'Start the dev server' }])
@@ -1063,8 +1063,8 @@ describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
     vi.spyOn(k.providers, 'claudeEnv').mockImplementation((id): Record<string, string> => (id === key ? { ANTHROPIC_API_KEY: KEY, ACCOUNT: 'key' } : { ACCOUNT: id ?? 'cli' }))
     await h['accounts.switch']({ provider: 'claude', accountId: 'work' })
     const repo = await tempRepo()
-    const room = await k.addRoom(repo)
-    k.store.saveWorkspace({ id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    const project = await k.addProject(repo)
+    k.store.saveWorkspace({ id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     for (const id of ids) k.store.saveChat({ id, workspaceId: 'ws', title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 } satisfies Chat)
     const answered = new Map<(typeof sdk.calls)[number], number>()
     const sent: string[] = []
@@ -1102,7 +1102,7 @@ describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
     }
     const notes = (chatId: string) => k.store.items(chatId).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
     const moveAll = (to: string) => h['accounts.switch']({ provider: 'claude', accountId: to, move: 'all' })
-    return { k, h, key, room, run, settle, sent, long, notes, moveAll }
+    return { k, h, key, project, run, settle, sent, long, notes, moveAll }
   }
 
   it('summarizes a long chat on the account it leaves while its cache there is warm, then moves it', async () => {
@@ -1117,7 +1117,7 @@ describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
   })
 
   it('summarizes on the new account when the cache on the old one has gone cold, and continues or asks as Settings, Account says', async () => {
-    const { k, h, room, run, long, notes, moveAll } = await setUp(['a', 'b', 'c'])
+    const { k, h, project, run, long, notes, moveAll } = await setUp(['a', 'b', 'c'])
     for (const id of ['a', 'b', 'c']) { await run(id, 'Start'); long(id, 120_000, 2 * 60 * MIN) }
     await moveAll('side')
     expect((await run('a', 'Next')).sent).toEqual(['side: /compact', 'side: Next'])
@@ -1132,11 +1132,11 @@ describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
     // What the user sends meanwhile waits behind it.
     expect(await k.sessions.send('c', [{ type: 'text', text: 'And this' }])).toEqual({ queued: true, why: 'move' })
     expect(k.sessions.queued('c').map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Next' }], [{ type: 'text', text: 'And this' }]])
-    expect(k.store.notification(`n-move-ask-${room.id}`)).toMatchObject({ title: 'c waits to move to another account', needsYou: true, roomId: room.id })
+    expect(k.store.notification(`n-move-ask-${project.id}`)).toMatchObject({ title: 'c waits to move to another account', needsYou: true, projectId: project.id })
     await h['chats.moveChoice']({ chatId: 'c', choice: 'summarize' })
     // `run` with no message: what the choice released.
     expect((await run('c', 'Last')).sent).toEqual(['side: /compact', 'side: Next', 'side: And this', 'side: Last'])
-    expect(k.store.notification(`n-move-ask-${room.id}`)).toMatchObject({ needsYou: false })
+    expect(k.store.notification(`n-move-ask-${project.id}`)).toMatchObject({ needsYou: false })
     expect(k.store.chat('c')?.moveChoice).toBeUndefined()
     await k.stop({ budgetMs: 0 })
   })
@@ -1233,12 +1233,12 @@ describe('cold re-reads start two at a time (KERNEL-844)', () => {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-cold-')), 'kernel.db'))
     const sizes: Record<string, number> = { big: 300_000, mid: 200_000, small: 50_000, tiny: 40_000, lead: 500_000 }
     for (const id of Object.keys(sizes)) {
-      store.saveWorkspace({ id, roomId: 'room', name: id, branch: id, baseRef: 'main', path: `/tmp/${id}`, mode: 'worktree', agentId: id === 'lead' ? 'lead' : 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+      store.saveWorkspace({ id, projectId: 'project', name: id, branch: id, baseRef: 'main', path: `/tmp/${id}`, mode: 'worktree', agentId: id === 'lead' ? 'lead' : 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
       store.saveChat({ id, workspaceId: id, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, ranOn: 'work', createdAt: 1 })
     }
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
     const sessions = new Sessions({
-      store, approvals: new Approvals(store), settings: () => settings, agentFor: (ws) => (ws.agentId === 'lead' ? lead : noor), mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {},
+      store, approvals: new Approvals(store), settings: () => settings, agentFor: (ws) => (ws.agentId === 'lead' ? lead : noor), mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {},
       accountFor: () => 'side', coldSize: (chat) => sizes[chat.id]
     })
     const started = () => sdk.calls.map((c) => c.options.cwd)

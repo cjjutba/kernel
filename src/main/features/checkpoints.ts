@@ -106,7 +106,7 @@ export class Checkpoints extends Feature {
       this.store.saveItem(chat.id, item)
       bus.push({ type: 'chat.item', chatId: chat.id, item })
     }
-    bus.activity({ kind: 'checkpoint.reverted', actor: 'you', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `reverted files to ${time} in`, object: ws.name, data: { backupBranch: r.backupBranch } })
+    bus.activity({ kind: 'checkpoint.reverted', actor: 'you', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, text: `reverted files to ${time} in`, object: ws.name, data: { backupBranch: r.backupBranch } })
     return { backupBranch: r.backupBranch }
   }
 

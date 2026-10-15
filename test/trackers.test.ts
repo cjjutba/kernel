@@ -16,10 +16,10 @@ function gh(answer: (args: string[]) => Partial<ExecResult> = () => ({})) {
   return { calls, cmd }
 }
 
-describe('the tracker a room uses (KERNEL-462)', () => {
+describe('the tracker a project uses (KERNEL-462)', () => {
   const none = { linearToken: false, linearTeam: false, githubRemote: false }
 
-  it('takes the room\'s [tracker] kind over the token, the team and the remote', () => {
+  it('takes the project\'s [tracker] kind over the token, the team and the remote', () => {
     const all = { linearToken: true, linearTeam: true, githubRemote: true }
     expect(trackerKind({ ...all, kind: 'none' })).toBe('none')
     expect(trackerKind({ ...all, kind: 'github' })).toBe('github')
@@ -64,7 +64,7 @@ describe('GitHub Issues as a tracker (KERNEL-462)', () => {
     ]
   }
 
-  it('searches open issues in the room folder, and takes a number without its #', async () => {
+  it('searches open issues in the project folder, and takes a number without its #', async () => {
     const g = gh(() => ({ stdout: JSON.stringify([{ number: 41, title: 'Crash on save', url: view.url }]) }))
     const t = githubTracker('/repo', g.cmd)
     expect(t.kind).toBe('github')

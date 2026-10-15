@@ -88,15 +88,15 @@ async function kernel(plan = 'max') {
   return { k, h: k.handlers(), api, dataDir, home, reader }
 }
 
-/** A room with one Claude chat and one Codex chat in the same workspace. */
+/** A project with one Claude chat and one Codex chat in the same workspace. */
 async function chats(k: Kernel) {
   const repo = await tempRepo()
-  const room = await k.addRoom(repo)
-  const ws: Workspace = { id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+  const project = await k.addProject(repo)
+  const ws: Workspace = { id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   k.store.saveWorkspace(ws)
   const codex: Chat = { id: 'codex', workspaceId: 'ws', title: 'x', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'low', plan: false, createdAt: 1 }
   k.store.saveChat(codex)
-  return { repo, room, ws }
+  return { repo, project, ws }
 }
 
 describe('checking a key (KERNEL-523)', () => {
@@ -304,7 +304,7 @@ describe('Codex API key accounts (KERNEL-523)', () => {
     expect(log.find((m) => m.method === 'account/login/start')?.params).toEqual({ type: 'apiKey', apiKey: OPENAI_KEY })
     expect(existsSync(join(acctHome, 'auth.json'))).toBe(false)
     expect(await filesHolding(dataDir, OPENAI_KEY)).toEqual([])
-    // A key account has no usage windows, so a full one holds nothing and pauses no room.
+    // A key account has no usage windows, so a full one holds nothing and pauses no project.
     expect((await k.sessions.usage()).filter((l: RateLimit) => l.provider === 'codex')).toEqual([])
     await k.stop()
   })
@@ -401,9 +401,9 @@ describe('Kernel never switches to a key account on its own (KERNEL-523)', () =>
   it('pauses for a limit on the account in use, and moves back only to the CLI login when one is removed', async () => {
     const { k, h } = await kernel()
     const key = await h['accounts.addKey']({ provider: 'claude', label: 'Billing', key: CLAUDE_KEY })
-    const { room } = await chats(k)
+    const { project } = await chats(k)
     k.account.applyLimits([{ type: 'five_hour', status: 'rejected', resetsAt: Math.round(Date.now() / 1000) + 3600 }])
-    expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
+    expect(k.store.project(project.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     expect(k.providers.active('claude')).toBeUndefined()
     // Removing the subscription account in use goes back to the CLI login, not to the key.
     const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; label: string; createdAt: number }[] } }; save: () => Promise<void> }

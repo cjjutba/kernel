@@ -6,7 +6,7 @@ import { Icon } from '../../icons'
 import { Button, Spinner } from '../../ui'
 import { useStore } from '../../store'
 import { leadOf, useLeadWaiting } from '../../lead'
-import { agoShort } from '../../screens/rooms/roomInfo'
+import { agoShort } from '../../screens/projects/projectInfo'
 import { chatLine, chatSince } from './chatCard'
 import { chatWaits } from './chatWaits'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
@@ -164,10 +164,10 @@ function Card({ eyebrow, stat, state, title, line, wrap, onArchive, pr, when }: 
 
 const sum = (list: Workspace[]) => list.reduce((t, w) => ({ added: t.added + (w.stat?.added ?? 0), removed: t.removed + (w.stat?.removed ?? 0) }), { added: 0, removed: 0 })
 
-/** A workspace's card: its parent chat or room with the diff totals, its title, what the agent did last, and the PR and time. Every line comes from real events. */
+/** A workspace's card: its parent chat or project with the diff totals, its title, what the agent did last, and the PR and time. Every line comes from real events. */
 export function WorkspaceCard({ ws, parent, at, id, hold, onArchive }: { ws: Workspace; /** The chat that started it, when the row sits under one. */ parent?: string; at: DOMRect; id: string; hold: CardHold; onArchive: () => void }) {
-  const room = useStore((s) => s.rooms.find((r) => r.id === ws.roomId)?.name)
-  const agent = useStore((s) => s.agents[ws.roomId]?.find((a) => a.id === ws.agentId))
+  const project = useStore((s) => s.projects.find((r) => r.id === ws.projectId)?.name)
+  const agent = useStore((s) => s.agents[ws.projectId]?.find((a) => a.id === ws.agentId))
   const approvals = useStore((s) => s.approvals)
   const waiting = useMemo(() => approvals.filter((a) => a.workspaceId === ws.id && a.status === 'pending'), [approvals, ws.id])
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
@@ -177,7 +177,7 @@ export function WorkspaceCard({ ws, parent, at, id, hold, onArchive }: { ws: Wor
   return (
     <HoverCard at={at} id={id} hold={hold} label={title}>
       <Card
-        eyebrow={parent ?? room ?? ''} stat={ws.stat} state={<State g={g} merged={ws.prState === 'merged'} />}
+        eyebrow={parent ?? project ?? ''} stat={ws.stat} state={<State g={g} merged={ws.prState === 'merged'} />}
         title={title} line={last ? lineOf(last, agent?.name) : 'No recent activity'}
         onArchive={onArchive} pr={ws.prNumber ? { number: ws.prNumber, url: ws.prUrl, merged: ws.prState === 'merged' } : undefined}
         when={agoShort(last ? last.ts : ws.createdAt)}
@@ -186,29 +186,29 @@ export function WorkspaceCard({ ws, parent, at, id, hold, onArchive }: { ws: Wor
   )
 }
 
-/** The Lead's card: its room, what it did or said last, and how long ago. */
-export function LeadCard({ roomId, at, id, hold }: { roomId: string; at: DOMRect; id: string; hold: CardHold }) {
-  const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
-  const lead = useStore((s) => leadOf(s.agents, roomId))
-  const status = useStore((s) => (lead ? s.status[roomId]?.[lead.id] : undefined) ?? 'idle')
-  const waiting = useLeadWaiting(roomId)
-  const last = useStore((s) => (lead ? newest(s.activity, (e) => e.roomId === roomId && e.agentId === lead.id) : undefined))
-  if (!lead || !room) return null
+/** The Lead's card: its project, what it did or said last, and how long ago. */
+export function LeadCard({ projectId, at, id, hold }: { projectId: string; at: DOMRect; id: string; hold: CardHold }) {
+  const project = useStore((s) => s.projects.find((r) => r.id === projectId))
+  const lead = useStore((s) => leadOf(s.agents, projectId))
+  const status = useStore((s) => (lead ? s.status[projectId]?.[lead.id] : undefined) ?? 'idle')
+  const waiting = useLeadWaiting(projectId)
+  const last = useStore((s) => (lead ? newest(s.activity, (e) => e.projectId === projectId && e.agentId === lead.id) : undefined))
+  if (!lead || !project) return null
   const g = leadGlyph(status, waiting)
   return (
     <HoverCard at={at} id={id} hold={hold} label="New chat">
-      <Card eyebrow={room.name} state={<State g={g} />} title="New chat" line={last ? lineOf(last, lead.name) : 'No recent activity'} when={last && agoShort(last.ts)} />
+      <Card eyebrow={project.name} state={<State g={g} />} title="New chat" line={last ? lineOf(last, lead.name) : 'No recent activity'} when={last && agoShort(last.ts)} />
     </HoverCard>
   )
 }
 
 /**
- * A chat row's card: the room with the diff totals of the workspaces the chat started, the chat's title, and what waits on you, from the
+ * A chat row's card: the project with the diff totals of the workspaces the chat started, the chat's title, and what waits on you, from the
  * pending approval of the tab or workspace that has waited longest. With nothing waiting it says so. Archive shows where the row has it.
  */
-export function ChatCard({ roomId, thread, tabs, owned, at, id, hold, onArchive }: { roomId: string; thread: Thread; tabs: Chat[]; owned: Workspace[]; at: DOMRect; id: string; hold: CardHold; onArchive?: () => void }) {
-  const room = useStore((s) => s.rooms.find((r) => r.id === roomId)?.name)
-  const agents = useStore((s) => s.agents[roomId])
+export function ChatCard({ projectId, thread, tabs, owned, at, id, hold, onArchive }: { projectId: string; thread: Thread; tabs: Chat[]; owned: Workspace[]; at: DOMRect; id: string; hold: CardHold; onArchive?: () => void }) {
+  const project = useStore((s) => s.projects.find((r) => r.id === projectId)?.name)
+  const agents = useStore((s) => s.agents[projectId])
   const approvals = useStore((s) => s.approvals)
   const working = useStore((s) => tabs.filter((c) => s.running[c.id]).length)
   const lastItem = useStore((s) => tabs.reduce((t, c) => (s.items[c.id] ?? []).reduce((m, i) => Math.max(m, i.ts), t), 0))
@@ -218,7 +218,7 @@ export function ChatCard({ roomId, thread, tabs, owned, at, id, hold, onArchive 
   return (
     <HoverCard at={at} id={id} hold={hold} label={thread.title}>
       <Card
-        eyebrow={room ?? ''} stat={stat} state={<State g={g} />}
+        eyebrow={project ?? ''} stat={stat} state={<State g={g} />}
         title={thread.title} line={chatLine(waits, agents)} wrap onArchive={onArchive}
         when={agoShort(chatSince(waits, lastItem, thread.createdAt))}
       />

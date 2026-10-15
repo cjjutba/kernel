@@ -10,23 +10,23 @@ const listeners = new Set<() => Promise<void>>()
 export const envChanged = () => Promise.all([...listeners].map((l) => l()))
 
 /**
- * The names and env files of one scope: a room, or the app with no `roomId`. They sit in component state, not the store, and
+ * The names and env files of one scope: a project, or the app with no `projectId`. They sit in component state, not the store, and
  * `reload` runs again when the form or Delete saves. `env` is null until the first answer, and `error` is main's message
  * when the read failed.
  */
-export function useEnv(roomId?: string) {
+export function useEnv(projectId?: string) {
   const [env, setEnv] = useState<EnvList | null>(null)
   const [error, setError] = useState<string | null>(null)
   const latest = useRef(0)
   const reload = useCallback(async () => {
     const mine = ++latest.current
     try {
-      const next = await call('env.get', { roomId })
+      const next = await call('env.get', { projectId })
       if (mine === latest.current) { setEnv(next); setError(null) }
     } catch (e) {
       if (mine === latest.current) setError(cleanError(e))
     }
-  }, [roomId])
+  }, [projectId])
   useEffect(() => {
     setEnv(null)
     void reload()

@@ -27,7 +27,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   }
 }))
 
-const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, roomId: 'room', name: id, agentId: 'kai', mode: 'worktree', status: 'ready', prState: 'ready', ...o }) as Workspace
+const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, projectId: 'project', name: id, agentId: 'kai', mode: 'worktree', status: 'ready', prState: 'ready', ...o }) as Workspace
 
 /**
  * The Lead's merge_workspace over `list`, with the switch `on` and a user turn unless told otherwise. `blocked` ids'
@@ -47,7 +47,7 @@ function leadTools(list: Workspace[], o: { on?: boolean; userTurn?: boolean; blo
     return w
   })
   const deps: KernelToolDeps = {
-    roomId: 'room', lead: { id: 'kernel', lead: true } as AgentDef, agents: async () => [{ id: 'theo', name: 'Theo' } as AgentDef], workspaces: () => list,
+    projectId: 'project', lead: { id: 'kernel', lead: true } as AgentDef, agents: async () => [{ id: 'theo', name: 'Theo' } as AgentDef], workspaces: () => list,
     createWorkspace: async () => list[0], messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
     archiveWorkspace: async () => undefined, refreshPr, isRunning: () => false, unsaved: async () => false,
     mergeWorkspace, leadMerge: () => o.on ?? true, userTurn: () => o.userTurn ?? true
@@ -143,10 +143,10 @@ describe('merge_workspace (KERNEL-352)', () => {
     expect(await t.merge(['first', 'lead', 'missing', 'blocked', 'done', 'gone', 'review', 'first'])).toBe([
       'Merged #1 (One).',
       'Skipped lead: it is your own workspace.',
-      'Skipped missing: not an open workspace in this room.',
+      'Skipped missing: not an open workspace in this project.',
       'Skipped #3: Could not read the pull request from GitHub.',
       'Skipped #4: it already merged.',
-      'Skipped gone: not an open workspace in this room.',
+      'Skipped gone: not an open workspace in this project.',
       'Merged #6 (Six).',
       'Skipped #1: it already merged.'
     ].join('\n'))
@@ -158,7 +158,7 @@ describe('merge_workspace (KERNEL-352)', () => {
  * A started Kernel on a repo with a bare origin and a fake GitHub, Kernel as Lead, Kai and Noor. A merge lands a commit on
  * origin's main and marks the PR merged, as GitHub does.
  */
-async function kernelRoom() {
+async function kernelProject() {
   const agent = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.\n${extra}---\nYou are ${id}.`
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': agent('kernel', 'lead: true\n'), '.claude/agents/kai.md': agent('kai'), '.claude/agents/noor.md': agent('noor') })
   const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
@@ -178,28 +178,28 @@ async function kernelRoom() {
   }
   await k.start()
   onTestFinished(() => k.stop())
-  const room = await k.addRoom(repo)
-  const lead = await k.leadChat(room.id)
-  const kernel = (await k.agents(room.id)).find((a) => a.lead)!
-  const tool = kernelTools(k.lead.leadToolDeps(room.id, kernel, lead)).find((t) => t.name === 'merge_workspace')!
+  const project = await k.addProject(repo)
+  const lead = await k.leadChat(project.id)
+  const kernel = (await k.agents(project.id)).find((a) => a.lead)!
+  const tool = kernelTools(k.lead.leadToolDeps(project.id, kernel, lead)).find((t) => t.name === 'merge_workspace')!
   const merge = async (ids: string[]) => ((await tool.handler({ workspace_ids: ids } as never, {})).content[0] as { text: string }).text
   /** Noor's workspace with PR `number` open and green. */
   const target = async (number: number, title: string) => {
-    const w = await k.createWorkspace(room.id, { prompt: title, agentId: 'noor', title, leadChatId: lead.id })
+    const w = await k.createWorkspace(project.id, { prompt: title, agentId: 'noor', title, leadChatId: lead.id })
     prs.set(w.branch, { workspaceId: '', number, url: `https://github.com/x/y/pull/${number}`, title, state: 'ready', baseRef: 'main', checks: [{ name: 'test', state: 'pass' }], comments: [], conflicts: [] })
     return k.refreshPr(w.id)
   }
-  return { k, room, lead, merge, target, merged }
+  return { k, project, lead, merge, target, merged }
 }
 
 const result = (uuid: string) => ({ type: 'result', subtype: 'success', uuid, duration_ms: 1, session_id: 's' })
 
 describe('merge_workspace in the Kernel (KERNEL-352)', () => {
   it('reads the switch and the turn live, merges through the Merge button path and releases a teammate waiting on it', async () => {
-    const { k, room, lead, merge, target, merged } = await kernelRoom()
+    const { k, project, lead, merge, target, merged } = await kernelProject()
     const noor = await target(265, 'Trim the 0.1.0 changelog')
     expect(noor.prState).toBe('ready')
-    const kai = await k.createWorkspace(room.id, { prompt: 'Build on it', agentId: 'kai', title: 'Next step', leadChatId: lead.id, waitFor: [noor.id] })
+    const kai = await k.createWorkspace(project.id, { prompt: 'Build on it', agentId: 'kai', title: 'Next step', leadChatId: lead.id, waitFor: [noor.id] })
     expect(kai.waitsFor).toMatchObject({ on: [noor.id], held: true })
 
     // Off by default, and the Lead's tools were built before the switch changed.

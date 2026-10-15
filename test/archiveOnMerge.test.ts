@@ -28,11 +28,11 @@ const info = (state: PrInfo['state'], head?: string): PrInfo => ({ workspaceId: 
 
 
 /**
- * A room with the Lead, Kai's work and Theo's review of it, its PR open. `archiveOnMerge` and `deleteBranch` are the
- * app-wide switches, `room` and `roomDelete` the room's own values in `.kernel/settings.local.toml`, written as given, so
+ * A project with the Lead, Kai's work and Theo's review of it, its PR open. `archiveOnMerge` and `deleteBranch` are the
+ * app-wide switches, `project` and `projectDelete` the project's own values in `.kernel/settings.local.toml`, written as given, so
  * a string stays a string. `origin` gives the repo a bare remote before the work starts.
  */
-async function setup(o: { archiveOnMerge?: boolean; room?: boolean; deleteBranch?: boolean; roomDelete?: boolean | string; origin?: boolean } = {}) {
+async function setup(o: { archiveOnMerge?: boolean; project?: boolean; deleteBranch?: boolean; projectDelete?: boolean | string; origin?: boolean } = {}) {
   const repo = await tempRepo(REPO)
   if (o.origin) {
     const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
@@ -41,8 +41,8 @@ async function setup(o: { archiveOnMerge?: boolean; room?: boolean; deleteBranch
     await run('git', ['-C', repo, 'push', '-q', 'origin', 'main'])
   }
   const own = [
-    ...(o.room === undefined ? [] : [`archive_on_merge = ${o.room}`]),
-    ...(o.roomDelete === undefined ? [] : [`delete_branch_on_archive = ${JSON.stringify(o.roomDelete)}`])
+    ...(o.project === undefined ? [] : [`archive_on_merge = ${o.project}`]),
+    ...(o.projectDelete === undefined ? [] : [`delete_branch_on_archive = ${JSON.stringify(o.projectDelete)}`])
   ]
   if (own.length) {
     await mkdir(join(repo, '.kernel'), { recursive: true })
@@ -64,10 +64,10 @@ async function setup(o: { archiveOnMerge?: boolean; room?: boolean; deleteBranch
   }
   const gh = { pr: null as PrInfo | null }
   k.github = { info: async (_cwd, _ref, workspaceId) => (gh.pr ? { ...gh.pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
-  const room = await k.addRoom(repo)
-  const lead = await k.leadChat(room.id)
-  const author = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
-  const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
+  const project = await k.addProject(repo)
+  const lead = await k.leadChat(project.id)
+  const author = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+  const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
   const notes: string[] = []
   const onActivity = (e: { kind: string; text: string; workspaceId?: string; quote?: string }) => { if (e.kind === 'note' && e.text.startsWith('kept the')) notes.push(`${e.workspaceId}: ${e.quote}`) }
   bus.on('activity', onActivity)
@@ -84,7 +84,7 @@ async function setup(o: { archiveOnMerge?: boolean; room?: boolean; deleteBranch
     const deps = (k.sessions as unknown as { d: { onTurnDone: (ws: Workspace, chat: unknown, t: object) => void } }).d
     deps.onTurnDone(k.store.workspace(w.id)!, k.store.chats(w.id)[0], { ok: true, interrupted: false, by: 'lead' })
   }
-  return { k, gh, repo, room, lead, author, review, notes, status, land, settled, turnDone, where: k.o }
+  return { k, gh, repo, project, lead, author, review, notes, status, land, settled, turnDone, where: k.o }
 }
 
 /** Commits a file in the workspace and pushes its branch, as an agent opening a PR does. The commit pushed. */
@@ -113,13 +113,13 @@ describe('Archive on merge (KERNEL-114)', () => {
     expect(notes).toEqual([])
   })
 
-  it('reads the room\'s own value before the app-wide one', async () => {
-    const off = await setup({ room: false })
+  it('reads the project\'s own value before the app-wide one', async () => {
+    const off = await setup({ project: false })
     await off.land('merged')
     await off.settled()
     expect(off.status(off.author)).not.toBe('archived')
     expect(off.status(off.review)).not.toBe('archived')
-    const on = await setup({ archiveOnMerge: false, room: true })
+    const on = await setup({ archiveOnMerge: false, project: true })
     await on.land('merged')
     await vi.waitFor(() => expect([on.status(on.author), on.status(on.review)]).toEqual(['archived', 'archived']), SLOW)
   })
@@ -173,11 +173,11 @@ describe('Archive on merge (KERNEL-114)', () => {
     await vi.waitFor(() => expect(status(author)).toBe('archived'), SLOW)
   })
 
-  it('never archives merged work on the room\'s own checkout, where uncommitted changes can\'t be checked', async () => {
-    const { k, room, author, status, land, settled } = await setup()
-    // Work on the room's checkout, as a current-branch workspace is, with a file left uncommitted there.
-    k.store.saveWorkspace({ ...k.store.workspace(author.id)!, mode: 'current', path: room.path, branch: 'main' })
-    await writeFile(join(room.path, 'scratch.md'), 'notes\n')
+  it('never archives merged work on the project\'s own checkout, where uncommitted changes can\'t be checked', async () => {
+    const { k, project, author, status, land, settled } = await setup()
+    // Work on the project's checkout, as a current-branch workspace is, with a file left uncommitted there.
+    k.store.saveWorkspace({ ...k.store.workspace(author.id)!, mode: 'current', path: project.path, branch: 'main' })
+    await writeFile(join(project.path, 'scratch.md'), 'notes\n')
     await land('merged')
     await settled()
     expect(status(author)).not.toBe('archived')
@@ -251,7 +251,7 @@ describe('Archive on merge (KERNEL-114)', () => {
     const continueHeld = new Promise<void>((r) => { releaseContinue = r })
     const lock = k.workspaces.withBranchLock.bind(k.workspaces)
     const continueReached = vi.fn()
-    vi.spyOn(k.workspaces, 'withBranchLock').mockImplementation(async (roomId, pick) => { continueReached(); await continueHeld; return lock(roomId, pick) })
+    vi.spyOn(k.workspaces, 'withBranchLock').mockImplementation(async (projectId, pick) => { continueReached(); await continueHeld; return lock(projectId, pick) })
     await land('merged')
     await vi.waitFor(() => expect(archiveReached).toHaveBeenCalled(), SLOW)
     const continued = k.prs.continuePr(author.id)
@@ -269,9 +269,9 @@ describe('Archive on merge (KERNEL-114)', () => {
   })
 
   it('releases the workspaces waiting on the merge, and still tells the Lead the work merged', async () => {
-    const { k, room, lead, author, status, land } = await setup()
+    const { k, project, lead, author, status, land } = await setup()
     // Not handed off in the Lead's chat, so the merge is the last of that chat's work.
-    const waiter = await k.createWorkspace(room.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export' })
+    const waiter = await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export' })
     k.store.saveWorkspace({ ...k.store.workspace(waiter.id)!, waitsFor: { on: [author.id], held: false } })
     const posts: string[] = []
     k.sessions.post = (chatId: string, parts: ChatPart[]) => { posts.push(`${chatId}: ${parts.map((p) => (p.type === 'text' ? p.text : '')).join('')}`); return true }
@@ -285,42 +285,42 @@ describe('Archive on merge (KERNEL-114)', () => {
   })
 })
 
-/** Whether the room's repo still has the workspace's branch. */
+/** Whether the project's repo still has the workspace's branch. */
 const hasBranch = async (repo: string, ws: Workspace) => (await run('git', ['-C', repo, 'branch', '--list', ws.branch])).trim() !== ''
 
-describe('Delete branch on archive in a room (KERNEL-370)', () => {
-  it('deletes a pushed branch when the room turns it on and the app leaves it off', async () => {
-    const { k, repo, author } = await setup({ origin: true, roomDelete: true })
+describe('Delete branch on archive in a project (KERNEL-370)', () => {
+  it('deletes a pushed branch when the project turns it on and the app leaves it off', async () => {
+    const { k, repo, author } = await setup({ origin: true, projectDelete: true })
     await pushWork(author)
     await k.archive.archiveWorkspace(author.id)
     await k.archive.cleanedUp(author.id)
     expect(await hasBranch(repo, author)).toBe(false)
   })
 
-  it('keeps the branch when the room turns it off and the app turns it on', async () => {
-    const { k, repo, author } = await setup({ origin: true, deleteBranch: true, roomDelete: false })
+  it('keeps the branch when the project turns it off and the app turns it on', async () => {
+    const { k, repo, author } = await setup({ origin: true, deleteBranch: true, projectDelete: false })
     await pushWork(author)
     await k.archive.archiveWorkspace(author.id)
     await k.archive.cleanedUp(author.id)
     expect(await hasBranch(repo, author)).toBe(true)
   })
 
-  it('uses the app value when the room\'s is not true or false', async () => {
-    // Off in the app, so a truthy string read as the room's value would delete the branch.
-    const { k, repo, author } = await setup({ origin: true, deleteBranch: false, roomDelete: 'yes' })
+  it('uses the app value when the project\'s is not true or false', async () => {
+    // Off in the app, so a truthy string read as the project's value would delete the branch.
+    const { k, repo, author } = await setup({ origin: true, deleteBranch: false, projectDelete: 'yes' })
     await pushWork(author)
     await k.archive.archiveWorkspace(author.id)
     await k.archive.cleanedUp(author.id)
     expect(await hasBranch(repo, author)).toBe(true)
   })
 
-  it('lets the caller\'s choice win over the room and the app', async () => {
-    const keep = await setup({ origin: true, deleteBranch: true, roomDelete: true })
+  it('lets the caller\'s choice win over the project and the app', async () => {
+    const keep = await setup({ origin: true, deleteBranch: true, projectDelete: true })
     await pushWork(keep.author)
     await keep.k.archive.archiveWorkspace(keep.author.id, false)
     await keep.k.archive.cleanedUp(keep.author.id)
     expect(await hasBranch(keep.repo, keep.author)).toBe(true)
-    const drop = await setup({ origin: true, deleteBranch: false, roomDelete: false })
+    const drop = await setup({ origin: true, deleteBranch: false, projectDelete: false })
     await pushWork(drop.author)
     await drop.k.archive.archiveWorkspace(drop.author.id, true)
     await drop.k.archive.cleanedUp(drop.author.id)
@@ -328,7 +328,7 @@ describe('Delete branch on archive in a room (KERNEL-370)', () => {
   })
 
   it('still keeps a branch with a commit that never left the machine', async () => {
-    const { k, repo, author } = await setup({ origin: true, roomDelete: true })
+    const { k, repo, author } = await setup({ origin: true, projectDelete: true })
     await pushWork(author)
     await writeFile(join(author.path, 'more.ts'), 'export const more = 1\n')
     await run('git', ['-C', author.path, 'add', '-A'])
@@ -339,7 +339,7 @@ describe('Delete branch on archive in a room (KERNEL-370)', () => {
   })
 
   it('deletes the branch of work Kernel archives on merge', async () => {
-    const { k, repo, author, status, land } = await setup({ origin: true, roomDelete: true })
+    const { k, repo, author, status, land } = await setup({ origin: true, projectDelete: true })
     const head = await pushWork(author)
     await land('merged', head)
     await vi.waitFor(() => expect(status(author)).toBe('archived'), SLOW)
@@ -424,7 +424,7 @@ describe('Archive on merge at start (KERNEL-114)', () => {
 })
 
 describe('the toast for a workspace Kernel archives on merge while it is open (KERNEL-114)', () => {
-  const ws = (extra: Partial<Workspace>) => ({ id: 'w', roomId: 'r', name: 'w', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'archived', prState: 'none', createdAt: 1, ...extra }) as Workspace
+  const ws = (extra: Partial<Workspace>) => ({ id: 'w', projectId: 'r', name: 'w', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'archived', prState: 'none', createdAt: 1, ...extra }) as Workspace
 
   it('says what Kernel did when the PR merged', () => {
     expect(archiveToast(ws({ prState: 'merged', prNumber: 164 }), undefined, 'Kai')).toEqual({ title: "Archived Kai's workspace after PR #164 merged", sub: 'Restore it from History.' })

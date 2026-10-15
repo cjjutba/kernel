@@ -9,7 +9,7 @@ import { actions, go, useStore, type State } from '../../store'
 import { useRemembered } from '../../remember'
 import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, Spinner, useBusy, type MenuEntry } from '../../ui'
 import { stripRemote } from '../settings/remote'
-import { patchRoomSettings, useRemote, useRoomSettings } from '../settings/useSettings'
+import { patchProjectSettings, useRemote, useProjectSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
 import { LeadPrs } from './pr/LeadPrs'
 import { useLeadPrs } from './pr/leadPrList'
@@ -202,7 +202,7 @@ export function checkRow(c: PrCheck): CheckRow {
 }
 
 /**
- * `remote` is the room's git remote, which a base ref like `origin/main` names. `local` is set for a branch that merges on the Mac,
+ * `remote` is the project's git remote, which a base ref like `origin/main` names. `local` is set for a branch that merges on the Mac,
  * which has no PR and no checks: Git says how it stands against its base and CI reads "No checks reported", as it does for a PR with none (KERNEL-478).
  */
 export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo, remote = 'origin', local?: { stand: LocalStand; base: string }): { title: string; rows: CheckRow[] }[] {
@@ -233,7 +233,7 @@ export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo, 
 
 /** Open opens the first preview URL, or the one a run script printed. The caret lists them all (WorkspacePreview.png). */
 function OpenPreview({ ws }: { ws: Workspace }) {
-  const rs = useRoomSettings(ws.roomId)
+  const rs = useProjectSettings(ws.projectId)
   const configured = rs?.preview?.urls ?? []
   const detected = useStore((s) => detectedUrl(s.scriptUrl[ws.id], (rs?.runScripts ?? []).map((r) => r.name)))
   const menuOpen = useStore((s) => s.ui.menu === 'preview')
@@ -249,7 +249,7 @@ function OpenPreview({ ws }: { ws: Workspace }) {
         <button type="button" className="open-caret" aria-label="More preview URLs" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu('preview')}>
           <Icon name="chevron" size={12} />
         </button>
-        {/* The menu waits for the room's settings, so it opens with its first row focused and not the one row it had before they loaded. */}
+        {/* The menu waits for the project's settings, so it opens with its first row focused and not the one row it had before they loaded. */}
         {menuOpen && rs && <Menu label="Open preview" heading="Preview URLs" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ right: -10, top: 30, width: 300 }} items={items} />}
       </span>
     </span>
@@ -262,7 +262,7 @@ export const checksUrl = (prUrl?: string) => (prUrl ? `${prUrl.replace(/\/+$/, '
 function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
   const pr = useStore((s) => s.prs[ws.id])
   const local = useLocalMerge(ws)
-  const groups = checkGroups(ws, changes, pr, useRemote(ws.roomId), local)
+  const groups = checkGroups(ws, changes, pr, useRemote(ws.projectId), local)
   const url = checksUrl(pr?.url || ws.prUrl)
   return (
     <>
@@ -346,17 +346,17 @@ function TabStrip(props: ComponentProps<typeof Tabs>) {
 }
 
 /** The Team PRs tab's count: the PRs the Lead's list shows, plain and faint as on the Lead's own tabs. */
-function TeamPrsCount({ roomId }: { roomId: string }) {
-  return <span className="tab-count">{useLeadPrs(roomId).length}</span>
+function TeamPrsCount({ projectId }: { projectId: string }) {
+  return <span className="tab-count">{useLeadPrs(projectId).length}</span>
 }
 
 /** `filePath` and `diffPath` are the file and diff tabs showing in the center, drawn selected in All files and Changes. */
 export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diffPath }: { ws: Workspace; changes: ChangedFile[]; onOpenFile: (path: string) => void; onOpenDiff: (path: string) => void; filePath?: string; diffPath?: string }) {
   // The Lead's workspace keeps its own tab, and PRs is the one only it has: elsewhere `prs` falls back to Changes, the way Shared does (KERNEL-354).
-  const isLead = useStore((s) => isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id))
+  const isLead = useStore((s) => isLeadWorkspace(ws, ws.projectId, leadOf(s.agents, ws.projectId)?.id))
   const shown = useStore((s) => (isLead ? s.ui.workspace.leadRight ?? 'prs' : s.ui.workspace.right))
   const shared = useStore((s) => sharedHere(s, ws).length)
-  // The Shared tab is there once a file has been shared, or while sharing is on, so a room that never shares one sees nothing of it.
+  // The Shared tab is there once a file has been shared, or while sharing is on, so a project that never shares one sees nothing of it.
   const sharing = useStore((s) => !!s.settings?.experimental.sharing) || shared > 0
   // A chat with Kernel in Build here works like a teammate's workspace: its own PR, Changes and Checks, with the Lead's PR list as the Team PRs tab (KERNEL-780).
   const build = isLead && isLeadChatWorkspace(ws) && leadModeOf(ws) === 'build'
@@ -378,12 +378,12 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
             { id: 'files', label: 'All files' },
             { id: 'changes', label: <>Changes {count(changes.length)}</> },
             { id: 'checks', label: 'Checks' },
-            ...(build ? [{ id: 'prs', label: <>Team PRs <TeamPrsCount roomId={ws.roomId} /></> }] : []),
+            ...(build ? [{ id: 'prs', label: <>Team PRs <TeamPrsCount projectId={ws.projectId} /></> }] : []),
             ...(sharing ? [{ id: 'shared', label: <>Shared {count(shared)}</> }] : [])
           ]} />
           <div ref={setTools} className="panel-tools" role="toolbar" aria-label="Panel actions" />
         </div>
-        {right === 'prs' && <LeadPrs roomId={ws.roomId} />}
+        {right === 'prs' && <LeadPrs projectId={ws.projectId} />}
         {right === 'files' && <FilesTree key={ws.id} ws={ws} changes={changes} onOpenFile={onOpenFile} activePath={filePath} />}
         {right === 'changes' && <ChangesList key={ws.id} ws={ws} changes={changes} onOpenDiff={onOpenDiff} activePath={diffPath} />}
         {right === 'checks' && <Checks ws={ws} changes={changes} />}
@@ -400,28 +400,28 @@ function setupRunning(s: Pick<State, 'scripts' | 'scriptExit'>, workspaceId: str
   return (s.scripts[workspaceId] ?? []).some((l) => l.kind === 'setup') && s.scriptExit[workspaceId]?.setup === undefined
 }
 
-/** What `scripts.suggest` found for the room (KERNEL-682). Empty until the first answer, and on a failed read. */
-function useSuggestions(roomId: string) {
+/** What `scripts.suggest` found for the project (KERNEL-682). Empty until the first answer, and on a failed read. */
+function useSuggestions(projectId: string) {
   const [found, setFound] = useState<ScriptSuggestion[]>([])
   useEffect(() => {
     let live = true
     setFound([])
-    call('scripts.suggest', { roomId }).then((next) => { if (live) setFound(next) }, () => {})
+    call('scripts.suggest', { projectId }).then((next) => { if (live) setFound(next) }, () => {})
     return () => { live = false }
-  }, [roomId])
+  }, [projectId])
   return found
 }
 
-/** The Setup tab of a room with no setup script: take Kernel's suggestion, ask the Lead to write one, or type it in Settings (KERNEL-685). */
-function AddSetup({ roomId, onManual }: { roomId: string; onManual: () => void }) {
-  const found = useSuggestions(roomId)
-  const lead = useStore((s) => leadOf(s.agents, roomId)?.name ?? 'Kernel')
+/** The Setup tab of a project with no setup script: take Kernel's suggestion, ask the Lead to write one, or type it in Settings (KERNEL-685). */
+function AddSetup({ projectId, onManual }: { projectId: string; onManual: () => void }) {
+  const found = useSuggestions(projectId)
+  const lead = useStore((s) => leadOf(s.agents, projectId)?.name ?? 'Kernel')
   const [busy, doing] = useBusy<'use' | 'ask'>()
   // The first suggestion that has a setup script, in the order the engine returns them.
   const pick = found.find((s) => s.patch.scripts?.setup)
   const ask = () => doing('ask', () => attempt(`Could not ask ${lead}`, async () => {
-    const chat = await call('scripts.askLead', { roomId })
-    await openLeadChat(roomId, chat.id)
+    const chat = await call('scripts.askLead', { projectId })
+    await openLeadChat(projectId, chat.id)
   }))
   return (
     <div className="script-empty add-setup">
@@ -431,7 +431,7 @@ function AddSetup({ roomId, onManual }: { roomId: string; onManual: () => void }
         <div className="add-setup-pick">
           <div className="add-setup-head">
             <span>{pick.source === 'detected' ? `Detected from ${pick.file}` : `From ${pick.file}`}</span>
-            <Button className="small" aria-label="Use the suggested setup script" busy={busy === 'use'} busyLabel="Saving" disabled={busy !== null} onClick={() => void doing('use', () => patchRoomSettings(roomId, pick.patch))}>Use</Button>
+            <Button className="small" aria-label="Use the suggested setup script" busy={busy === 'use'} busyLabel="Saving" disabled={busy !== null} onClick={() => void doing('use', () => patchProjectSettings(projectId, pick.patch))}>Use</Button>
           </div>
           <pre className="add-setup-script">{pick.patch.scripts?.setup}</pre>
           {pick.notes.slice(0, 1).map((n) => <span key={n} className="add-setup-note" title={n}>{n}</span>)}
@@ -458,13 +458,13 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
     actions.ui.setWorkspaceView({ bottom: id as typeof bottom })
     if (collapsed) actions.ui.setBottomCollapsed(kind, false)
   }
-  const rs = useRoomSettings(ws.roomId)
+  const rs = useProjectSettings(ws.projectId)
   // A script that is running stays in the picker, so it can be stopped, even after Settings renamed or removed it or before they load.
   const runningNames = useStore((s) => runningRuns(s, ws.id).join('\n')).split('\n').filter(Boolean)
   const names = pickerNames((rs?.runScripts ?? []).map((r) => r.name), runningNames)
-  // The Run tab shows one run script at a time. Each keeps its own output and exit (KERNEL-249). The pick is the room's, since its
+  // The Run tab shows one run script at a time. Each keeps its own output and exit (KERNEL-249). The pick is the project's, since its
   // scripts are, and it stays when you leave the workspace (DESIGN.md, Remembered choices).
-  const [picked, setPicked] = useRemembered(`kernel.runScript:${ws.roomId}`, (raw) => raw ?? '')
+  const [picked, setPicked] = useRemembered(`kernel.runScript:${ws.projectId}`, (raw) => raw ?? '')
   // Until one is picked, or when the picked one is gone from Settings, the tab shows a script that is running, else the first.
   const selected = names.includes(picked) ? picked : names.find((n) => runningNames.includes(n)) ?? names[0] ?? 'run'
   const scriptName = bottom === 'run' ? selected : undefined
@@ -475,7 +475,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   const logLabel = bottom === 'run' && names.length > 1 ? `${selected} output` : `${bottom} output`
   const setupBusy = useStore((s) => setupRunning(s, ws.id))
   const selectedRunning = runningNames.includes(selected)
-  // A room without a setup script never runs one, so the tab says so instead of waiting for output that won't come.
+  // A project without a setup script never runs one, so the tab says so instead of waiting for output that won't come.
   const noSetup = !!rs && !rs.scripts.setup
   const noRun = !!rs && names.length === 0
   const [busy, doing] = useBusy<'setup' | 'run' | 'stop' | 'stopSetup'>()
@@ -485,7 +485,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   })
   const stopSetup = () => doing('stopSetup', () => attempt('Could not stop setup', () => call('scripts.stop', { workspaceId: ws.id, kind: 'setup' })))
   const stop = () => doing('stop', () => attempt(`Could not stop ${selected}`, () => call('scripts.stop', { workspaceId: ws.id, kind: 'run', name: selected })))
-  const addScript = () => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'setup' })
+  const addScript = () => go({ name: 'settings', page: 'project', projectId: ws.projectId, section: 'setup' })
   // The Run tab's empty state has the Run button, so the strip's steps aside while it shows and the word is never on screen twice (KERNEL-512).
   const onRunTab = !collapsed && bottom === 'run'
   const runEmpty = onRunTab && !noRun && !hasOutput
@@ -494,7 +494,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
     ? noRun ? (
       <div className="script-empty">
         <span className="ink2">No run script</span>
-        <span>This room has no run script. Add one to start the app from here, on its own port.</span>
+        <span>This project has no run script. Add one to start the app from here, on its own port.</span>
         <Button onClick={addScript}>Add run script</Button>
       </div>
     ) : (
@@ -505,7 +505,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       </div>
     )
     : noSetup ? (
-      <AddSetup roomId={ws.roomId} onManual={addScript} />
+      <AddSetup projectId={ws.projectId} onManual={addScript} />
     ) : (
       <div className="script-empty">
         <span className="ink2">No setup output yet</span>

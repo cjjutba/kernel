@@ -147,8 +147,8 @@ export interface SessionDeps {
   settings: () => AppSettings
   /** The agent a workspace runs. With `chat`, the one that chat runs, which a review chat picks by its kind (KERNEL-549). */
   agentFor: (ws: Workspace, chat?: Chat) => AgentDef | undefined
-  /** The room's team as Kernel last read it, for the agents a Lead message mentions (KERNEL-745). Undefined when unread. */
-  teamOf?: (roomId: string) => AgentDef[] | undefined
+  /** The project's team as Kernel last read it, for the agents a Lead message mentions (KERNEL-745). Undefined when unread. */
+  teamOf?: (projectId: string) => AgentDef[] | undefined
   /**
    * What a Lead chat owes until the Lead acts on it (`features/openItems.ts`, KERNEL-749): a message's mentions open items,
    * the user's own message closes the tab's mentions, and the Stop hook reads the reminder. Left out, nothing is held.
@@ -164,23 +164,23 @@ export interface SessionDeps {
    * it a Codex chat can't start.
    */
   codexFor?: (ws: Workspace, agent: AgentDef | undefined, chat: Chat, account?: string) => { bin?: string; home?: string; apiKey?: string; personality: CodexPersonality; tools: SdkMcpToolDefinition<any>[]; instructions?: string }
-  /** The skills and MCP servers switched off for the workspace's room in Settings, Skills and MCP (KERNEL-226). */
+  /** The skills and MCP servers switched off for the workspace's project in Settings, Skills and MCP (KERNEL-226). */
   disabledFor?: (ws: Workspace) => { skills: string[]; mcp: string[] } | undefined
-  /** The room's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
+  /** The project's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
   aliasesFor?: (ws: Workspace) => Record<string, string> | undefined
-  /** The room's `[agents]` table for the workspace's agent: `unlisted_tools` and its `allow` servers (KERNEL-537). */
+  /** The project's `[agents]` table for the workspace's agent: `unlisted_tools` and its `allow` servers (KERNEL-537). */
   accessFor?: (ws: Workspace) => { unlisted: UnlistedTools; allow: string[] } | undefined
-  /** The room's reference folders that are there now, which a chat may read but not edit (KERNEL-748, KERNEL-790). */
+  /** The project's reference folders that are there now, which a chat may read but not edit (KERNEL-748, KERNEL-790). */
   referencesFor?: (ws: Workspace) => string[] | undefined
   /**
-   * A session reported how its MCP servers are doing. Returns every report the room holds for that provider since, which
+   * A session reported how its MCP servers are doing. Returns every report the project holds for that provider since, which
    * may name servers this session's report doesn't yet, such as claude.ai connectors that join late (KERNEL-464).
    */
   onMcp?: (ws: Workspace, provider: Provider, servers: McpReport[]) => McpReport[]
   /** Kernel's own rule for this workspace, appended to the agent's prompt, such as a reviewer's (KERNEL-130). */
   rulesFor?: (ws: Workspace, agent: AgentDef | undefined, chat?: Chat) => string | undefined
-  /** Bash rules the user allowed for the whole room. */
-  roomAllow: (roomId: string) => string[]
+  /** Bash rules the user allowed for the whole project. */
+  projectAllow: (projectId: string) => string[]
   /**
    * What the chat can run now (KERNEL-447): Auto for its provider and model, and Bypass permissions under admin policy.
    * `wants` is the mode the chat asks for, so a read only starts when it matters. Without it, Bypass is allowed and Auto isn't.
@@ -213,7 +213,7 @@ export interface SessionDeps {
    * choice (`Moves.plan`, KERNEL-844). Without it every move just runs.
    */
   movePlan?: (chat: Chat, to: string) => MovePlan | undefined
-  /** A long chat started or stopped waiting for the user to choose how it moves (`ask`), for the room's Inbox item (KERNEL-844). */
+  /** A long chat started or stopped waiting for the user to choose how it moves (`ask`), for the project's Inbox item (KERNEL-844). */
   onMoveHold?: (chat: Chat, held: boolean) => void
   /**
    * The chat's size in tokens when its next turn re-reads its history cold, on another account or model, else undefined
@@ -229,10 +229,10 @@ export interface SessionDeps {
   turnNote?: (chat: Chat) => string | undefined
   /** The workspace's variables from `Kernel.envFor` (KERNEL-247). Without it a session gets the Mac's and Kernel's own. */
   envFor?: (ws: Workspace) => Record<string, string>
-  allowInRoom: (roomId: string, rule: string) => void
-  /** Rules the user allowed for the room's MCP and web tools (`Room.allowTools`), and saving one (KERNEL-454). Without them none apply. */
-  roomTools?: (roomId: string) => string[]
-  allowToolInRoom?: (roomId: string, rule: string) => void
+  allowInProject: (projectId: string, rule: string) => void
+  /** Rules the user allowed for the project's MCP and web tools (`Project.allowTools`), and saving one (KERNEL-454). Without them none apply. */
+  projectTools?: (projectId: string) => string[]
+  allowToolInProject?: (projectId: string, rule: string) => void
   /** The agent sent a message, its subagents' included. Kernel looks for the session's title then. */
   onReply?: (ws: Workspace, chat: Chat) => void
   /** Claude's API answered: a message with no `error`, or a `success` result without `is_error`. The network works, whatever DNS says (KERNEL-231). */
@@ -263,14 +263,14 @@ export interface SessionDeps {
    * left (feat-make-claude-account-credentials-and).
    */
   onFailure?: (failure: Failure, ws: Workspace, provider: Provider, account: string | undefined) => void
-  /** Usage windows changed. Kernel pauses rooms on an account-wide rejection and schedules the reset. */
+  /** Usage windows changed. Kernel pauses projects on an account-wide rejection and schedules the reset. */
   onLimits?: (limits: RateLimit[]) => void
   /** The chats a limit or a quit stopped changed. Kernel saves them, so they still carry on after a restart. */
   onCutOff?: (cutOff: Record<string, CutOffReason>) => void
   /** What chats held for setup are holding changed. Kernel saves it, so a brief survives a restart (KERNEL-128). */
   onHeld?: (held: Record<string, QueuedMessage[]>) => void
   /**
-   * A hold on every chat of a room or a provider lifted: a resume, back online or signed in, the launch checks done, a
+   * A hold on every chat of a project or a provider lifted: a resume, back online or signed in, the launch checks done, a
    * chat's setup hold released, or a slot opened (`drainWaiting`). A chat `post` refused may take Kernel's message now
    * (KERNEL-637, KERNEL-651).
    */
@@ -291,7 +291,7 @@ export type TurnBy = MessageFrom | 'user'
 
 /**
  * Why `post` refuses Kernel's message now (KERNEL-637): the chat runs a turn (`busy`), has messages queued, its session died
- * mid-turn, it waits for setup or a launch check, its room is paused, it is offline or signed out, it waits for the user to
+ * mid-turn, it waits for setup or a launch check, its project is paused, it is offline or signed out, it waits for the user to
  * choose how it moves to another account, it is held near a usage limit, over the agent limit or behind cold re-reads, or
  * Kernel is closing.
  */
@@ -316,7 +316,7 @@ export function mcpNote(m: MissingServer): string {
     case 'failed': return `${lists} the MCP server ${m.name} failed to connect.`
     case 'needs-auth': return `${lists} the MCP server ${m.name} needs you to sign in. Sign in with /mcp in Claude Code.`
     case 'disabled': return `${lists} the MCP server ${m.name} is switched off in Claude Code. Turn it on with /mcp.`
-    case 'off': return `${lists} the MCP server ${m.name} is switched off in this room. Turn it on in Settings, Skills and MCP.`
+    case 'off': return `${lists} the MCP server ${m.name} is switched off in this project. Turn it on in Settings, Skills and MCP.`
     default: return `${lists} no MCP server named ${m.server} is connected.${m.suggestion ? ` Did you mean mcp__${m.suggestion}?` : ''}`
   }
 }
@@ -354,10 +354,10 @@ export class Sessions {
   private billing = new Map<string, string>()
   /** Chats whose agent file's MCP servers were checked against a session's (once per chat). */
   private mcpChecked = new Set<string>()
-  /** Rooms the user (or a limit) paused. Their agents finish the step they are on, then wait at the next tool call. */
+  /** Projects the user (or a limit) paused. Their agents finish the step they are on, then wait at the next tool call. */
   private paused = new Map<string, { open: Promise<void>; release: () => void }>()
   /**
-   * Holds on every room at once: offline, or a provider signed out. Each reason holds one provider's chats, or every chat
+   * Holds on every project at once: offline, or a provider signed out. Each reason holds one provider's chats, or every chat
    * when it names none, with the same rules as a pause, while it stands (KERNEL-406). `gates` are what a held provider's
    * tool calls wait on.
    */
@@ -445,7 +445,7 @@ export class Sessions {
     const ws = this.mustWorkspace(chat.workspaceId)
     // A chat that was waiting on its plan card wasn't working, so it gets no note, and the tool that put the card up
     // finished: the plan is in the card.
-    const plan = this.d.approvals.waitingPlans(chatId, ws.roomId).length > 0
+    const plan = this.d.approvals.waitingPlans(chatId, ws.projectId).length > 0
     for (const it of this.d.store.items(chatId)) {
       if (it.kind !== 'tool' || it.status !== 'running') continue
       this.item(chat, plan && isPlanTool(it.name) ? { ...it, status: 'done' } : { ...it, status: 'failed', output: TOOL_STOPPED })
@@ -469,7 +469,7 @@ export class Sessions {
   }
 
   /**
-   * Hold every room, the way a pause holds one: agents finish their step and wait, sends queue. With `provider`, only that
+   * Hold every project, the way a pause holds one: agents finish their step and wait, sends queue. With `provider`, only that
    * provider's chats wait, as when it is signed out (KERNEL-406).
    */
   holdAll(reason: string, o: { provider?: Provider } = {}) {
@@ -591,27 +591,27 @@ export class Sessions {
     return { queued: false }
   }
 
-  isPaused(roomId: string) { return this.paused.has(roomId) }
+  isPaused(projectId: string) { return this.paused.has(projectId) }
 
   /**
-   * Freeze a room after its agents' current steps. Nothing is interrupted: a running turn carries on until its next tool call,
+   * Freeze a project after its agents' current steps. Nothing is interrupted: a running turn carries on until its next tool call,
    * where it waits. New sends are held in each chat's queue and go out, in order, on resume.
    */
-  pause(roomId: string) {
-    if (this.paused.has(roomId)) return
+  pause(projectId: string) {
+    if (this.paused.has(projectId)) return
     let release!: () => void
     const open = new Promise<void>((resolve) => { release = resolve })
-    this.paused.set(roomId, { open, release })
+    this.paused.set(projectId, { open, release })
     this.pushReasons()
   }
 
-  /** Let the room's agents go on and send what was held while it was paused. */
-  resume(roomId: string) {
-    const gate = this.paused.get(roomId)
+  /** Let the project's agents go on and send what was held while it was paused. */
+  resume(projectId: string) {
+    const gate = this.paused.get(projectId)
     if (!gate) return
-    this.paused.delete(roomId)
+    this.paused.delete(projectId)
     gate.release()
-    for (const ws of this.d.store.workspaces(roomId)) for (const c of this.d.store.chats(ws.id)) if (!this.live.get(c.id)?.running && !this.cutOff.has(c.id)) this.drain(c.id)
+    for (const ws of this.d.store.workspaces(projectId)) for (const c of this.d.store.chats(ws.id)) if (!this.live.get(c.id)?.running && !this.cutOff.has(c.id)) this.drain(c.id)
     this.carryOn()
     this.pushReasons()
     this.d.onFreed?.()
@@ -620,7 +620,7 @@ export class Sessions {
   private pausedChat(chat: Chat) {
     if (this.holding(chatProvider(chat)) || this.waiting.has(chat.id)) return true
     const ws = this.d.store.workspace(chat.workspaceId)
-    return !!ws && this.paused.has(ws.roomId)
+    return !!ws && this.paused.has(ws.projectId)
   }
 
   /** Session ids started by Kernel. The hook server ignores these because in-process hooks already report them. */
@@ -686,10 +686,10 @@ export class Sessions {
    * a Claude process needs from its start to take it (KERNEL-447). `shown` is `chatMode`'s answer, for the renderer.
    */
   private modes(chat: Chat, ws: Workspace): { mode: RunMode; bypass: boolean; shown: ChatRunMode } {
-    const room = this.d.store.room(ws.roomId)
+    const project = this.d.store.project(ws.projectId)
     const agent = this.d.agentFor(ws)
     const settings = this.d.settings()
-    const at = (avail: ChatAvailability, plan = chat.plan) => chatMode({ ...chat, plan }, ws, room, settings, avail, agent)
+    const at = (avail: ChatAvailability, plan = chat.plan) => chatMode({ ...chat, plan }, ws, project, settings, avail, agent)
     const avail = this.d.availability?.(chat, ws, at({ auto: true, bypass: true }, false).mode) ?? { auto: false, bypass: true }
     const shown = at(avail)
     return { mode: shown.mode, bypass: at(avail, false).mode === 'bypassPermissions', shown }
@@ -733,7 +733,7 @@ export class Sessions {
   }
 
   /**
-   * Puts every live chat in the mode it should run in now: Settings, a room or the chat changed it, or Kernel learned what a
+   * Puts every live chat in the mode it should run in now: Settings, a project or the chat changed it, or Kernel learned what a
    * provider can run (KERNEL-447). Then every chat's mode goes to the renderer, live or not (KERNEL-572).
    */
   applyModes() {
@@ -898,7 +898,7 @@ export class Sessions {
   /**
    * Move a queued message to the front and stop the running turn, so it goes out as soon as that turn ends. An idle chat
    * held only by the agent limit, or by a usage window close to its limit, sends it at once. `pastPause` sends it from an idle
-   * chat even though its room is paused, which Kernel asks for when a limit paused it.
+   * chat even though its project is paused, which Kernel asks for when a limit paused it.
    */
   async sendNow(chatId: string, id: string, o: { pastPause?: boolean } = {}): Promise<QueuedMessage[]> {
     const pick = this.queued(chatId).find((q) => q.id === id)
@@ -1130,7 +1130,7 @@ export class Sessions {
    */
   private withMentions(chat: Chat, ws: Workspace, sent: ChatPart[]): ChatPart[] {
     if (!sent.some((p) => p.type === 'agent') || !this.isLeadChat(chat.id)) return sent
-    const team = this.d.teamOf?.(ws.roomId)
+    const team = this.d.teamOf?.(ws.projectId)
     const note = mentionNote(sent, team)
     if (!note) return sent
     this.d.openItems?.mentioned(chat, mentionsOf(sent, team))
@@ -1268,14 +1268,14 @@ export class Sessions {
     return !!chat && !!nearLimit(this.limitsFor(chat))
   }
 
-  /** A slot opened (a turn ended or the limit went up): start held messages of idle chats, oldest queue first, while there is room. */
+  /** A slot opened (a turn ended or the limit went up): start held messages of idle chats, oldest queue first, while there is project. */
   drainWaiting() {
     this.recheckMoves()
     for (const id of this.coldLast([...this.queues.keys()])) if (!this.live.get(id)?.running && !this.cutOff.has(id)) this.drain(id)
     this.carryOn()
     // A lower limit in Settings, Models holds queues that waited for nothing a moment ago.
     this.pushReasons()
-    // A higher one frees room for Team updates that waited only for a slot (KERNEL-651).
+    // A higher one frees space for Team updates that waited only for a slot (KERNEL-651).
     this.d.onFreed?.()
   }
 
@@ -1429,7 +1429,7 @@ export class Sessions {
     // The agent has its plan in context, so the note is short. After a restart it names the plan's file, or carries its
     // text when the file is gone (plan-cards-survive-restart).
     const ws = o.restarted ? this.d.store.workspace(chat.workspaceId) : undefined
-    const plan = ws && this.d.store.approvals({ roomId: ws.roomId }).find((a) => a.chatId === chatId && a.kind === 'plan')
+    const plan = ws && this.d.store.approvals({ projectId: ws.projectId }).find((a) => a.chatId === chatId && a.kind === 'plan')
     const planFile = ws && plan?.planFile && existsSync(join(ws.path, plan.planFile)) ? plan.planFile : undefined
     const note = planApproval({ lead, planFile, plan: plan?.detail, restarted: o.restarted, queued: o.queue })
     const text = forProvider(note.text, chatProvider(chat))
@@ -1510,8 +1510,8 @@ export class Sessions {
   }
 
   /**
-   * Something still needs the idle chat's process: messages waiting to go, a brief held for setup, a paused room or a
-   * hold on every room, a usage limit it waits out, or a background task it runs.
+   * Something still needs the idle chat's process: messages waiting to go, a brief held for setup, a paused project or a
+   * hold on every project, a usage limit it waits out, or a background task it runs.
    */
   private keepsProcess(chatId: string, live: Live): boolean {
     const chat = this.d.store.chat(chatId)
@@ -1522,7 +1522,7 @@ export class Sessions {
   async restart(chatId: string): Promise<void> {
     this.mustChat(chatId)
     this.crashed.delete(chatId)
-    // Messages held while the session was down or the room was paused still go out, first, and the nudge follows them.
+    // Messages held while the session was down or the project was paused still go out, first, and the nudge follows them.
     const held = this.queued(chatId)
     this.stop(chatId)
     if (!held.length) { await this.send(chatId, [{ type: 'text', text: RESTART_NUDGE }], { from: 'kernel' }); return }
@@ -1653,12 +1653,12 @@ export class Sessions {
   /** Starts the chat's process on the account its next turn runs on, or on `o.account`, undefined for the CLI's own login. */
   private start(chat: Chat, ws: Workspace, o: { account?: string } = {}): Live {
     const agent = this.d.agentFor(ws, chat)
-    const root = this.d.store.room(ws.roomId)?.path
+    const root = this.d.store.project(ws.projectId)?.path
     const account = 'account' in o ? o.account : this.d.accountFor?.(chatProvider(chat), chat)
     const { mode, bypass } = this.modes(chat, ws)
     const live = { running: false, interrupted: false, tasks: new Set<string>(), cards: new Set<string>(), groups: new Set<number>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey', mode } as Live
     const host = this.hostFor(chat.id, ws, agent, live)
-    const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) })
+    const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.project(ws.projectId)) })
     const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent, chat))
     if (chatProvider(chat) === 'codex') {
       const c = this.d.codexFor?.(ws, agent, chat, account)
@@ -1681,11 +1681,11 @@ export class Sessions {
       chat: () => this.mustChat(chatId),
       settings: () => this.d.settings(),
       mode: () => this.modes(this.mustChat(chatId), ws).mode,
-      roomAllow: () => this.d.roomAllow(ws.roomId),
-      allowInRoom: (rule) => this.d.allowInRoom(ws.roomId, rule),
-      roomTools: () => this.d.roomTools?.(ws.roomId) ?? [],
-      allowToolInRoom: (rule) => this.d.allowToolInRoom?.(ws.roomId, rule),
-      held: () => this.paused.get(ws.roomId)?.open ?? this.gates.get(chatProvider(this.mustChat(chatId)))?.open,
+      projectAllow: () => this.d.projectAllow(ws.projectId),
+      allowInProject: (rule) => this.d.allowInProject(ws.projectId, rule),
+      projectTools: () => this.d.projectTools?.(ws.projectId) ?? [],
+      allowToolInProject: (rule) => this.d.allowToolInProject?.(ws.projectId, rule),
+      held: () => this.paused.get(ws.projectId)?.open ?? this.gates.get(chatProvider(this.mustChat(chatId)))?.open,
       spawn: (command, args, o, proc) => {
         const child = this.spawn(command, args, o, proc)
         if (child.pid) live.groups.add(child.pid)
@@ -1703,17 +1703,17 @@ export class Sessions {
           if (!this.billing.has(chatId) && source !== (live.onKey ? 'ANTHROPIC_API_KEY' : 'none')) {
             const by = source === 'none' ? 'your Claude plan' : source
             this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: `This session is billed through ${by}, not ${live.onKey ? 'the API key account you picked' : 'your Claude plan'}.` })
-            bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, sessionId, text: `is billed through ${source === 'none' ? 'the Claude plan' : source}, not ${live.onKey ? 'the API key account' : 'the Claude plan'}` })
+            bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, sessionId, text: `is billed through ${source === 'none' ? 'the Claude plan' : source}, not ${live.onKey ? 'the API key account' : 'the Claude plan'}` })
           }
           this.billing.set(chatId, source)
         }
         const servers = o.mcpServers
-        const room = servers && (this.d.onMcp?.(ws, chatProvider(chat), servers) ?? [])
-        if (servers && room && !this.mcpChecked.has(chatId)) {
+        const project = servers && (this.d.onMcp?.(ws, chatProvider(chat), servers) ?? [])
+        if (servers && project && !this.mcpChecked.has(chatId)) {
           this.mcpChecked.add(chatId)
-          // claude.ai's connectors can join after the first init, so the room's word on those counts too. The room's
-          // switched-off servers never start, so the room's settings alone know them. Every other server is as this session has it.
-          const late = room.filter((r) => r.source === 'claudeai' && !servers.some((s) => s.name === r.name))
+          // claude.ai's connectors can join after the first init, so the project's word on those counts too. The project's
+          // switched-off servers never start, so the project's settings alone know them. Every other server is as this session has it.
+          const late = project.filter((r) => r.source === 'claudeai' && !servers.some((s) => s.name === r.name))
           const off = (this.d.disabledFor?.(ws)?.mcp ?? []).map((name) => ({ name, enabled: false }))
           const text = missingServers(this.d.agentFor(ws)?.tools, [...late, ...servers, ...off], this.d.aliasesFor?.(ws)).map(mcpNote).join(' ')
           if (text) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text })
@@ -1731,7 +1731,7 @@ export class Sessions {
       failed: (failure, o = {}) => { live.failed = failure; if (o.notify) this.d.onFailure?.(failure, ws, chatProvider(this.mustChat(chatId)), live.account) },
       limited: (o = {}) => { if (o.always || live.running) live.limited = true },
       // A window is the provider's and the account's the process runs on. Claude's on the CLI login stay as they always were.
-      // An API key account has none, so nothing it reports holds a chat or pauses a room (KERNEL-523).
+      // An API key account has none, so nothing it reports holds a chat or pauses a project (KERNEL-523).
       mergeLimits: (patches) => { if (!live.onKey) this.mergeLimits(patches.map((p) => ({ ...p, ...(live.account ? { accountId: live.account } : {}) }))) },
       reset: (trigger) => {
         this.d.store.clearItems(chatId)
@@ -1893,18 +1893,18 @@ export class Sessions {
 
   /**
    * Put a runner's request in front of the user and wait: a tool to allow, a question, or a plan. The agent shows as
-   * needing the user meanwhile. Order: Never allow, the room's rules, Always ask and Bypass were the runner's to apply first.
+   * needing the user meanwhile. Order: Never allow, the project's rules, Always ask and Bypass were the runner's to apply first.
    */
   private async ask(chatId: string, ws: Workspace, agent: AgentDef | undefined, a: Ask, o: { signal?: AbortSignal; timeoutMs?: number; afterTurn?: boolean; placed?: (id: string) => void }, plan?: string): Promise<Decision | undefined> {
     // A turn that stopped before its card went up shows none: an abort that has already fired never fires again (KERNEL-563).
     if (o.signal?.aborted) return undefined
     this.setStatus(ws, agent, 'needs')
     const asker = this.live.get(chatId)
-    const reuse = plan !== undefined ? revisedPlanFile(this.d.store.approvals({ roomId: ws.roomId }), chatId) : undefined
+    const reuse = plan !== undefined ? revisedPlanFile(this.d.store.approvals({ projectId: ws.projectId }), chatId) : undefined
     // A new plan replaces one still waiting, as one a restart left up.
-    if (plan !== undefined) this.d.approvals.expireIds(this.d.approvals.waitingPlans(chatId, ws.roomId).map((p) => p.id), 'replaced')
+    if (plan !== undefined) this.d.approvals.expireIds(this.d.approvals.waitingPlans(chatId, ws.projectId).map((p) => p.id), 'replaced')
     const { approval, decision } = this.d.approvals.request({
-      kind: a.kind, source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId, agentId: agent?.id,
+      kind: a.kind, source: 'sdk', projectId: ws.projectId, workspaceId: ws.id, chatId, agentId: agent?.id,
       toolName: a.toolName, input: a.input, title: a.title, detail: a.detail, options: a.options, questions: a.questions, ...(a.reason ? { reason: a.reason } : {})
     } as Parameters<Approvals['request']>[0], { signal: o.signal, timeoutMs: o.timeoutMs })
     this.placeApproval(chatId, approval.id, { afterTurn: o.afterTurn })
@@ -1977,7 +1977,7 @@ export class Sessions {
     const limits = [...this.limits.values()]
     bus.push({ type: 'usage', limits })
     this.d.onLimits?.(limits)
-    // A model's own limit lifting pauses and resumes no room, so its chats carry on from here. So does what a usage window
+    // A model's own limit lifting pauses and resumes no project, so its chats carry on from here. So does what a usage window
     // close to its limit held: a drop in usage or a reset sends it, and a rise holds the queues again (KERNEL-220).
     this.drainWaiting()
   }
@@ -2038,17 +2038,17 @@ export class Sessions {
     return next
   }
 
-  /** A paused room shows everyone as paused, except an agent waiting on the user, blocked by a hook or offline. */
+  /** A paused project shows everyone as paused, except an agent waiting on the user, blocked by a hook or offline. */
   private setStatus(ws: Workspace, agent: AgentDef | undefined, status: AgentStatus) {
-    const shown = this.paused.has(ws.roomId) && !PAUSE_KEEPS.has(status) ? 'paused' : status
-    if (agent) bus.push({ type: 'agent.status', roomId: ws.roomId, agentId: agent.id, status: shown })
+    const shown = this.paused.has(ws.projectId) && !PAUSE_KEEPS.has(status) ? 'paused' : status
+    if (agent) bus.push({ type: 'agent.status', projectId: ws.projectId, agentId: agent.id, status: shown })
   }
 
   /** The session ended without being stopped: the agent goes offline and the logs say where and why. */
   private offline(ws: Workspace, reason: string) {
     const detail = `Claude Code exited in ${ws.name}${reason ? ` (${reason.slice(0, 120)})` : ''}. The worktree and chat are saved.`
     this.setStatus(ws, this.d.agentFor(ws), 'offline')
-    bus.activity({ kind: 'session.end', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: 'went offline in', object: ws.name, warn: true, data: { detail, crashed: true } })
+    bus.activity({ kind: 'session.end', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, text: 'went offline in', object: ws.name, warn: true, data: { detail, crashed: true } })
   }
 
   /** A hook exited with code 2: it refused the step. The agent shows as blocked with the hook's own words. */
@@ -2057,7 +2057,7 @@ export class Sessions {
     const lines = output.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 4)
     this.showBlocked(ws, chatId)
     bus.activity({
-      kind: 'agent.status', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: 'was blocked on', object: ws.name, warn: true,
+      kind: 'agent.status', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, text: 'was blocked on', object: ws.name, warn: true,
       data: { status: 'blocked', detail: `The ${event} hook refused the last step. Read its output, then fix it or ask the agent to.`, output: lines.length ? lines : undefined }
     })
   }

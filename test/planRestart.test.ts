@@ -66,14 +66,14 @@ async function kernel() {
   const where = { dataDir, home }
   const k = new Kernel(where)
   await k.start()
-  const room = await k.addRoom(repo)
-  return { k, where, room }
+  const project = await k.addProject(repo)
+  return { k, where, project }
 }
 
 /** Kai in plan mode, blocked on ExitPlanMode with its plan saved, and a Bash card waiting in the same chat. */
 async function planning() {
-  const { k, where, room } = await kernel()
-  const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+  const { k, where, project } = await kernel()
+  const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
   const kai = k.store.chats(ws.id)[0]
   await k.sessions.configure(kai.id, { plan: true })
   const call = callIn(ws.path)!
@@ -82,8 +82,8 @@ async function planning() {
   await flush()
   const answer = (call.options.canUseTool as CanUseTool)('ExitPlanMode', { plan: PLAN }, { signal: call.options.abortController.signal, toolUseID: 't1', suggestions: [] } as never)
   const card = await until(() => plans(k, kai).find((a) => a.planFile))
-  const tool = k.approvals.request({ kind: 'tool', source: 'sdk', roomId: room.id, workspaceId: ws.id, chatId: kai.id, title: 'Run pnpm db:reset' })
-  return { k, where, room, ws, kai, card, answer, tool: tool.approval }
+  const tool = k.approvals.request({ kind: 'tool', source: 'sdk', projectId: project.id, workspaceId: ws.id, chatId: kai.id, title: 'Run pnpm db:reset' })
+  return { k, where, project, ws, kai, card, answer, tool: tool.approval }
 }
 
 async function relaunch(where: { dataDir: string; home: string }) {
@@ -234,41 +234,41 @@ describe('plan cards outlive a restart', () => {
     expect(k2.store.workspace(ws.id)?.status).not.toBe('archived')
   }, 30000)
 
-  it('queues the note in a paused room and sends it when the room resumes', async () => {
-    const { k, where, room, kai, card } = await planning()
+  it('queues the note in a paused project and sends it when the project resumes', async () => {
+    const { k, where, project, kai, card } = await planning()
     await k.stop()
     const { k: k2 } = await relaunch(where)
-    k2.sessions.pause(room.id)
+    k2.sessions.pause(project.id)
     await k2.handlers()['approvals.decide']({ id: card.id, decision: { behavior: 'allow' } })
     const note = planApproval({ lead: false, planFile: card.planFile, restarted: true }).text
     expect(k2.sessions.queued(kai.id).map((q) => (q.parts[0] as { text: string }).text)).toEqual([note])
     expect(k2.sessions.isRunning(kai.id)).toBe(false)
-    k2.sessions.resume(room.id)
+    k2.sessions.resume(project.id)
     await flush()
     expect(k2.sessions.isRunning(kai.id)).toBe(true)
     expect(users(k2, kai).at(-1)).toBe(note)
   }, 30000)
 
   it("answers a Codex plan left from before the restart the same way, as Kernel's message", async () => {
-    const { k, where, room } = await kernel()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const { k, where, project } = await kernel()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     await until(() => callIn(ws.path))
     await k.stop()
     // What a Codex plan waiting after its turn leaves: a card on a Codex chat that isn't in the working journal.
     const store = new Store(join(where.dataDir, 'kernel.db'))
     const codex: Chat = { id: 'codex-chat', workspaceId: ws.id, title: 'Plan', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'medium', plan: true, createdAt: 2 }
     store.saveChat(codex)
-    store.saveApproval({ id: 'codex-plan', kind: 'plan', source: 'sdk', roomId: room.id, workspaceId: ws.id, chatId: codex.id, title: 'Plan for invoice-table', detail: PLAN, status: 'pending', createdAt: Date.now() })
+    store.saveApproval({ id: 'codex-plan', kind: 'plan', source: 'sdk', projectId: project.id, workspaceId: ws.id, chatId: codex.id, title: 'Plan for invoice-table', detail: PLAN, status: 'pending', createdAt: Date.now() })
     store.db.close()
     const { k: k2 } = await relaunch(where)
     expect(k2.store.approval('codex-plan')?.status).toBe('pending')
     // Paused, so the message waits instead of starting Codex.
-    k2.sessions.pause(room.id)
+    k2.sessions.pause(project.id)
     expect(await k2.handlers()['approvals.decide']({ id: 'codex-plan', decision: { behavior: 'allow' } })).toMatchObject({ status: 'allowed' })
     expect(k2.store.chat(codex.id)?.plan).toBe(false)
     expect(k2.sessions.queued(codex.id)).toEqual([expect.objectContaining({ from: 'kernel', approvalId: 'codex-plan', parts: text(planApproval({ lead: false, plan: PLAN, restarted: true }).text) })])
     // The queued message keeps the approval when it goes out.
-    k2.sessions.resume(room.id)
+    k2.sessions.resume(project.id)
     expect(answers(k2, codex.id).map((r) => r.item)).toEqual([expect.objectContaining({ id: 'answer-codex-plan', parts: text('Approved') })])
     await until(() => k2.store.items(codex.id).find((i) => i.kind === 'user' && i.from))
     expect(k2.store.items(codex.id).find((i) => i.kind === 'user' && i.from)).toMatchObject({ from: 'kernel', approvalId: 'codex-plan' })
@@ -276,14 +276,14 @@ describe('plan cards outlive a restart', () => {
   }, 30000)
 
   it("has the Lead hand off once after a restart, with the hand-off reminder armed", async () => {
-    const { k, where, room } = await kernel()
-    const lead = await k.leadChat(room.id)
+    const { k, where, project } = await kernel()
+    const lead = await k.leadChat(project.id)
     const leadWs = await setUp(k, lead.id)
     await k.sessions.configure(lead.id, { plan: true })
     await k.sessions.send(lead.id, text('Plan the invoice table'))
     callIn(leadWs.path)!.feed({ type: 'system', subtype: 'init', session_id: 'kernel-session', apiKeySource: 'none' })
-    const leadAgent = (await k.team.agents(room.id)).find((a) => a.lead)!
-    const tool = kernelTools(k.lead.leadToolDeps(room.id, leadAgent, k.store.chat(lead.id)!)).find((t) => t.name === 'request_plan_approval')!
+    const leadAgent = (await k.team.agents(project.id)).find((a) => a.lead)!
+    const tool = kernelTools(k.lead.leadToolDeps(project.id, leadAgent, k.store.chat(lead.id)!)).find((t) => t.name === 'request_plan_approval')!
     const asked = tool.handler({ title: 'Invoice table', plan: PLAN, steps: ['Build the table · Kai'] } as never, {})
     const card = await until(() => plans(k, lead).find((a) => a.planFile))
     await k.stop()
@@ -341,11 +341,11 @@ describe('plan answers while the agent waits', () => {
 
 describe("a live decision is the user's message in the chat (KERNEL-836)", () => {
   it('adds the answer under each plan, question and agent card decided in Kernel, and none for a tool or a timeout', async () => {
-    const { k, room, ws, kai, card, answer, tool } = await planning()
+    const { k, project, ws, kai, card, answer, tool } = await planning()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
     const decide = k.handlers()['approvals.decide']
     const ask = (kind: 'question' | 'agent', timeoutMs?: number) => {
-      const { approval } = k.approvals.request({ kind, source: 'sdk', roomId: room.id, workspaceId: ws.id, chatId: kai.id, title: kind }, { timeoutMs })
+      const { approval } = k.approvals.request({ kind, source: 'sdk', projectId: project.id, workspaceId: ws.id, chatId: kai.id, title: kind }, { timeoutMs })
       k.sessions.placeApproval(kai.id, approval.id)
       return approval
     }

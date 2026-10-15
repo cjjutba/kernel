@@ -39,7 +39,7 @@ function ownBase(base: NodeJS.ProcessEnv): Record<string, string> {
 
 /**
  * Every variable a process in a workspace gets, where a later layer wins: Kernel's defaults, the Mac's environment, the
- * app's variables, the room's env files in list order, the room's variables, what the workspace's setup wrote to
+ * app's variables, the project's env files in list order, the project's variables, what the workspace's setup wrote to
  * `$KERNEL_ENV` (KERNEL-405), then Kernel's own (KERNEL-247). A default is what Kernel picks unless the user sets the name,
  * like `COMPOSE_PROJECT_NAME`. Values the user wrote get `${KERNEL_*}` filled in (KERNEL-449). The Mac's are left alone.
  */
@@ -48,20 +48,20 @@ export function buildEnv(l: {
   defaults?: Record<string, string>
   app?: Record<string, string>
   files?: Record<string, string>[]
-  room?: Record<string, string>
+  project?: Record<string, string>
   setup?: Record<string, string>
   kernel: Record<string, string>
 }): Record<string, string> {
   const out: Record<string, string> = { ...l.defaults }
   for (const [k, v] of Object.entries(ownBase(l.base))) out[k] = v
-  for (const layer of [l.app ?? {}, ...(l.files ?? []), l.room ?? {}, l.setup ?? {}]) for (const [k, v] of Object.entries(layer)) out[k] = expandKernelVars(v, l.kernel)
+  for (const layer of [l.app ?? {}, ...(l.files ?? []), l.project ?? {}, l.setup ?? {}]) for (const [k, v] of Object.entries(layer)) out[k] = expandKernelVars(v, l.kernel)
   return Object.assign(out, l.kernel)
 }
 
 /** Kernel's own variables for a workspace. The same set for sessions, scripts and terminals. */
-export const kernelVars = (ws: { id: string; name: string; path: string; port: number; branch: string; baseRef: string }, room: { path: string; defaultBranch?: string } | undefined): Record<KernelVar, string> => ({
-  KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id, KERNEL_WORKSPACE: ws.path, KERNEL_ROOT_PATH: room?.path ?? ws.path,
-  KERNEL_WORKSPACE_NAME: ws.name, KERNEL_WORKSPACE_SLUG: workspaceSlug(ws), KERNEL_BRANCH: ws.branch, KERNEL_BASE_REF: ws.baseRef, KERNEL_DEFAULT_BRANCH: room?.defaultBranch ?? ''
+export const kernelVars = (ws: { id: string; name: string; path: string; port: number; branch: string; baseRef: string }, project: { path: string; defaultBranch?: string } | undefined): Record<KernelVar, string> => ({
+  KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id, KERNEL_WORKSPACE: ws.path, KERNEL_ROOT_PATH: project?.path ?? ws.path,
+  KERNEL_WORKSPACE_NAME: ws.name, KERNEL_WORKSPACE_SLUG: workspaceSlug(ws), KERNEL_BRANCH: ws.branch, KERNEL_BASE_REF: ws.baseRef, KERNEL_DEFAULT_BRANCH: project?.defaultBranch ?? ''
 })
 
 /** The file a workspace's setup writes NAME=value lines to, `$KERNEL_ENV` (KERNEL-405). Kept on archive, removed on Delete. */
@@ -104,7 +104,7 @@ export function readSetupEnv(file: string): { vars: Record<string, string>; drop
 /**
  * A layer without the names `isClaudeVar` matches: `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK`,
  * `CLAUDE_CODE_OAUTH_TOKEN` and the rest. Sessions and terminals take them from the Mac only, never from Kernel's
- * variables or a room's env files, so a project's `.env` can't send the plan's login to a proxy (KERNEL-247).
+ * variables or a project's env files, so a project's `.env` can't send the plan's login to a proxy (KERNEL-247).
  */
 export const withoutClaudeNames = (layer: Record<string, string>): Record<string, string> =>
   Object.fromEntries(Object.entries(layer).filter(([k]) => !isClaudeVar(k)))
@@ -119,7 +119,7 @@ const inside = (root: string, file: string) => {
 
 /**
  * The env file's real path when Kernel may read it, else null. It must sit inside `dir` once links are followed, so an
- * absolute path, `..` or a link out of the folder is refused: a room's settings can come from a repo nobody trusted yet,
+ * absolute path, `..` or a link out of the folder is refused: a project's settings can come from a repo nobody trusted yet,
  * and they mustn't read the rest of the Mac into a session (KERNEL-209). A link that stays inside is fine.
  */
 function envFilePath(dir: string, path: string): string | null {
@@ -162,7 +162,7 @@ export function envFileReadable(dir: string, path: string): boolean {
   } catch { return false }
 }
 
-/** A room's env files resolved against `dir`, in order. A file Kernel can't or won't read is missing and gives no variables. */
+/** A project's env files resolved against `dir`, in order. A file Kernel can't or won't read is missing and gives no variables. */
 export function readEnvFiles(dir: string, files: string[]): { path: string; missing: boolean; vars: Record<string, string> }[] {
   return files.map((path) => {
     const real = envFilePath(dir, path)
@@ -172,7 +172,7 @@ export function readEnvFiles(dir: string, files: string[]): { path: string; miss
 }
 
 /**
- * The env file a room's agents, scripts and terminals read when neither settings file sets `[env] files`: the user's own
+ * The env file a project's agents, scripts and terminals read when neither settings file sets `[env] files`: the user's own
  * file for Kernel, next to the `.env` they keep for themselves (KERNEL-449).
  */
 export const ENV_KERNEL = '.env.kernel'
@@ -258,8 +258,11 @@ export function checkName(name: string) {
   if (isKernelVar(name)) throw new Error(`${name} is one of Kernel's own variables. Pick another name.`)
 }
 
-/** What `env.json` holds: names in the clear, each value encrypted on its own. `app` is app-wide, `rooms` by room id. */
-interface EnvFile { app: Record<string, string>; rooms: Record<string, Record<string, string>> }
+/**
+ * What `env.json` holds: names in the clear, each value encrypted on its own. `app` is app-wide, `projects` by project id.
+ * The file names `projects` `rooms`, as it did before rooms were renamed projects (KERNEL-880), so saved variables stay.
+ */
+interface EnvFile { app: Record<string, string>; projects: Record<string, Record<string, string>> }
 
 const APP = ''
 
@@ -271,20 +274,20 @@ const isStrings = (v: unknown): v is Record<string, string> =>
 /** The file's contents when they have the right shape, else null. */
 function envFileOf(raw: unknown): EnvFile | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-  const { app = {}, rooms = {} } = raw as Record<string, unknown>
-  if (!isStrings(app) || !rooms || typeof rooms !== 'object' || Array.isArray(rooms) || !Object.values(rooms).every(isStrings)) return null
-  return { app, rooms: rooms as EnvFile['rooms'] }
+  const { app = {}, rooms: projects = {} } = raw as Record<string, unknown>
+  if (!isStrings(app) || !projects || typeof projects !== 'object' || Array.isArray(projects) || !Object.values(projects).every(isStrings)) return null
+  return { app, projects: projects as EnvFile['projects'] }
 }
 
 /**
- * App-wide and per-room variables, stored encrypted in `<dataDir>/env.json`. Values are decrypted once into memory, so a
+ * App-wide and per-project variables, stored encrypted in `<dataDir>/env.json`. Values are decrypted once into memory, so a
  * session, which starts synchronously, can read them without waiting. With no cipher nothing can be set, so no value is
  * ever written in plain text. A file Kernel can't read is moved aside, never written over.
  */
 export class EnvStore {
   /** The file as stored, encrypted. */
   private stored: EnvFile | null = null
-  /** Decrypted values by scope (`APP` or a room id), filled on first read. */
+  /** Decrypted values by scope (`APP` or a project id), filled on first read. */
   private plain = new Map<string, Record<string, string>>()
   /**
    * Set while the file exists but can't be read (EACCES, EMFILE), or couldn't be moved aside. Nothing is saved over it,
@@ -298,16 +301,16 @@ export class EnvStore {
     if (this.stored) return this.stored
     let text: string
     try { text = readFileSync(this.o.file, 'utf8') } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') { this.stuck = false; return (this.stored = { app: {}, rooms: {} }) }
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') { this.stuck = false; return (this.stored = { app: {}, projects: {} }) }
       // The file may be fine and only unreadable for now. It stays where it is, nothing is cached, and saves refuse.
       this.stuck = true
-      return { app: {}, rooms: {} }
+      return { app: {}, projects: {} }
     }
     this.stuck = false
     let parsed: EnvFile | null = null
     try { parsed = envFileOf(JSON.parse(text)) } catch { /* not JSON */ }
     if (!parsed) this.setAside()
-    return (this.stored = parsed ?? { app: {}, rooms: {} })
+    return (this.stored = parsed ?? { app: {}, projects: {} })
   }
 
   /** Moves an unreadable `env.json` to `env.json.corrupt-<time>`. It holds only names and ciphertext, so keeping it is safe. */
@@ -317,54 +320,54 @@ export class EnvStore {
     this.o.onSetAside?.(basename(to))
   }
 
-  private scope(roomId?: string): Record<string, string> {
+  private scope(projectId?: string): Record<string, string> {
     const f = this.file()
-    return roomId ? f.rooms[roomId] ?? {} : f.app
+    return projectId ? f.projects[projectId] ?? {} : f.app
   }
 
   /** The variables' names, sorted. */
-  names(roomId?: string): string[] { return Object.keys(this.scope(roomId)).sort() }
+  names(projectId?: string): string[] { return Object.keys(this.scope(projectId)).sort() }
 
   /** The decrypted values. A value the cipher can't read (a new Keychain, say) is left out. */
-  values(roomId?: string): Record<string, string> {
-    const key = roomId ?? APP
+  values(projectId?: string): Record<string, string> {
+    const key = projectId ?? APP
     const cached = this.plain.get(key)
     if (cached) return cached
     const out: Record<string, string> = {}
     const { cipher } = this.o
-    if (cipher) for (const [name, data] of Object.entries(this.scope(roomId))) { try { out[name] = cipher.decrypt(data) } catch { /* unreadable */ } }
+    if (cipher) for (const [name, data] of Object.entries(this.scope(projectId))) { try { out[name] = cipher.decrypt(data) } catch { /* unreadable */ } }
     if (!this.stuck) this.plain.set(key, out)
     return out
   }
 
-  reveal(roomId: string | undefined, name: string): string {
-    if (!Object.hasOwn(this.scope(roomId), name)) throw new Error(`There is no variable named ${name}.`)
+  reveal(projectId: string | undefined, name: string): string {
+    if (!Object.hasOwn(this.scope(projectId), name)) throw new Error(`There is no variable named ${name}.`)
     if (!this.o.cipher) throw new Error(NO_CIPHER)
-    const value = this.values(roomId)[name]
+    const value = this.values(projectId)[name]
     if (value === undefined) throw new Error(`Kernel can't decrypt ${name} on this Mac. Set it again.`)
     return value
   }
 
   /** Sets a variable, or deletes it when `value` is null. */
-  set(roomId: string | undefined, name: string, value: string | null) {
+  set(projectId: string | undefined, name: string, value: string | null) {
     checkName(name)
     const { cipher } = this.o
     if (value !== null && !cipher) throw new Error(`${NO_CIPHER} So it won't save them.`)
     const f = this.writable()
-    const scope = roomId ? (f.rooms[roomId] ??= {}) : f.app
-    const plain = this.values(roomId)
+    const scope = projectId ? (f.projects[projectId] ??= {}) : f.app
+    const plain = this.values(projectId)
     if (value === null) { delete scope[name]; delete plain[name] }
     else { scope[name] = cipher!.encrypt(value); plain[name] = value }
-    if (roomId && !Object.keys(scope).length) delete f.rooms[roomId]
+    if (projectId && !Object.keys(scope).length) delete f.projects[projectId]
     this.save(f)
   }
 
-  /** A removed room takes its variables with it. */
-  dropRoom(roomId: string) {
-    this.plain.delete(roomId)
-    if (!this.file().rooms[roomId]) return
+  /** A removed project takes its variables with it. */
+  dropProject(projectId: string) {
+    this.plain.delete(projectId)
+    if (!this.file().projects[projectId]) return
     const f = this.writable()
-    delete f.rooms[roomId]
+    delete f.projects[projectId]
     this.save(f)
   }
 
@@ -378,7 +381,7 @@ export class EnvStore {
   private save(f: EnvFile) {
     mkdirSync(dirname(this.o.file), { recursive: true })
     const tmp = `${this.o.file}.tmp`
-    writeFileSync(tmp, JSON.stringify(f, null, 2), { mode: 0o600 })
+    writeFileSync(tmp, JSON.stringify({ app: f.app, rooms: f.projects }, null, 2), { mode: 0o600 })
     // A temp file a crash left behind keeps its old mode through writeFileSync, and the rename would carry it over.
     chmodSync(tmp, 0o600)
     renameSync(tmp, this.o.file)

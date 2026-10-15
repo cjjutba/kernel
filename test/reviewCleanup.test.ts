@@ -39,13 +39,13 @@ async function setup(o: { other?: boolean } = {}) {
   const settled = () => Promise.all(passes.mock.results.map((r) => r.value))
   const gh = { pr: null as PrInfo | null }
   k.github = { info: async (_cwd, _ref, workspaceId) => (gh.pr ? { ...gh.pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
-  const room = await k.addRoom(repo)
-  const lead = await k.leadChat(room.id)
-  const author = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
-  const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
+  const project = await k.addProject(repo)
+  const lead = await k.leadChat(project.id)
+  const author = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+  const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
   // Other work and its own review, which a merge of the first PR must leave alone.
-  const other = o.other ? await k.createWorkspace(room.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id }) : undefined
-  const otherReview = other ? await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review the export', leadChatId: lead.id, reviewOf: other.id }) : undefined
+  const other = o.other ? await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id }) : undefined
+  const otherReview = other ? await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review the export', leadChatId: lead.id, reviewOf: other.id }) : undefined
   // The PR is open and adopted first, so a later merge or close counts.
   gh.pr = info('ready')
   await k.refreshPr(author.id)
@@ -57,7 +57,7 @@ async function setup(o: { other?: boolean } = {}) {
   const archived = () => vi.waitFor(() => expect(status(review)).toBe('archived'), SLOW)
   // A review Kernel will archive once its turn ends.
   const marked = () => k.autoArchive['reviewsToArchive'].has(review.id)
-  return { k, gh, room, lead, author, review, other, otherReview, notes, archived, marked, settled, status }
+  return { k, gh, project, lead, author, review, other, otherReview, notes, archived, marked, settled, status }
 }
 
 describe('review workspaces after the work they reviewed (KERNEL-131)', () => {

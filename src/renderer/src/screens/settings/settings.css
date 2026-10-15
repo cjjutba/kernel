@@ -64,7 +64,7 @@ html[data-density='compact'] .tree-row { height: 22px; }
 html:not([data-pointer='true']) button, html:not([data-pointer='true']) select, html:not([data-pointer='true']) summary { cursor: default; }
 html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, html[data-reduce-motion='true'] *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; }
 
-/* Project pages and room overrides (KERNEL-26) */
+/* Project pages and project overrides (KERNEL-26) */
 .set-row .set-lines.tight { padding: 8px 12px; }
 .set-line { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 8px 18px; border-top: 1px solid var(--panel-line); }
 .set-line:first-child { border-top: 0; }
@@ -76,9 +76,9 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .rm-kernel .set-text { flex-basis: 160px; }
 .rm-kernel .set-actions { margin-left: auto; }
 
-/* Room pages in the nav and the room page header (KERNEL-191). The hairline starts under the room avatar's center (8px pad + 8px) and the pages sit one step past it (KERNEL-534). */
-.set-room { gap: 10px; }
-.set-room .grow { text-align: left; }
+/* Project pages in the nav and the project page header (KERNEL-191). The hairline starts under the project avatar's center (8px pad + 8px) and the pages sit one step past it (KERNEL-534). */
+.set-project { gap: 10px; }
+.set-project .grow { text-align: left; }
 .set-pages { margin-left: 15px; padding-left: 4px; border-left: 1px solid var(--line-3); }
 .nav-item.set-sub { padding-left: 6px; }
 .nav-item.set-hit-item { height: 26px; padding-left: 34px; color: var(--muted); }

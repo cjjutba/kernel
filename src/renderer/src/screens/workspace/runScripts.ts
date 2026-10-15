@@ -7,7 +7,7 @@ export function runningRuns(s: Pick<State, 'scripts' | 'scriptExit'>, workspaceI
 }
 
 /**
- * The scripts the Run tab offers: the room's, then any that is running without being listed, so it can still be stopped
+ * The scripts the Run tab offers: the project's, then any that is running without being listed, so it can still be stopped
  * after Settings renamed or removed it, or before Settings load.
  */
 export const pickerNames = (listed: string[], running: string[]): string[] => [...listed, ...running.filter((n) => !listed.includes(n))]

@@ -120,7 +120,7 @@ export function workState(w: Workspace, running: boolean, pr?: PrInfo | null, lo
 export function rowState(linked: Workspace[], agents: Record<string, AgentDef[]>, runningOf: (w: Workspace) => boolean, prs: Record<string, PrInfo> = {}): (WorkState & { who?: string }) | null {
   const w = furthest(linked)
   if (!w) return null
-  const who = agents[w.roomId]?.find((a) => a.id === w.agentId)?.name
+  const who = agents[w.projectId]?.find((a) => a.id === w.agentId)?.name
   return { ...workState(w, runningOf(w), prs[w.id]), who }
 }
 
@@ -205,15 +205,15 @@ export function workspaceSlug(url: string | undefined): string | undefined {
 // ---------- GitHub Issues (KERNEL-471)
 
 /**
- * What narrows a GitHub list. It is kept per room, since a room's labels and milestones are its own and a leftover one would hide
- * issues in the next room with nothing saying why. A repo that never assigns issues has nothing under Mine, so the list opens on All.
+ * What narrows a GitHub list. It is kept per project, since a project's labels and milestones are its own and a leftover one would hide
+ * issues in the next project with nothing saying why. A repo that never assigns issues has nothing under Mine, so the list opens on All.
  */
 export interface GithubFilter { mine: boolean; label?: string; milestone?: string }
 
 export const DEFAULT_GITHUB_FILTER: GithubFilter = { mine: false }
 
-/** Where a room's GitHub filter is kept. */
-export const githubFilterKey = (roomId: string) => `kernel.githubFilter:${roomId}`
+/** Where a project's GitHub filter is kept. */
+export const githubFilterKey = (projectId: string) => `kernel.githubFilter:${projectId}`
 
 /** A stored GitHub filter, field by field: anything that isn't one reads as the default. */
 export function parseGithubFilter(v: unknown): GithubFilter {

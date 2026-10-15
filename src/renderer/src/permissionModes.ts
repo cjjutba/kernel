@@ -56,10 +56,10 @@ export async function saveAppMode(mode: PermissionMode): Promise<boolean> {
   return getState().settings?.permissions.mode === mode
 }
 
-/** Save a room's mode override, or drop it with no mode (Use app default). True when it was saved. */
-export async function saveRoomMode(roomId: string, mode?: PermissionMode): Promise<boolean> {
+/** Save a project's mode override, or drop it with no mode (Use app default). True when it was saved. */
+export async function saveProjectMode(projectId: string, mode?: PermissionMode): Promise<boolean> {
   try {
-    actions.rooms.upsert(await call('rooms.update', { roomId, patch: { permissionMode: mode } }))
+    actions.projects.upsert(await call('projects.update', { projectId, patch: { permissionMode: mode } }))
     return true
   } catch (e) {
     actions.ui.toast({ title: 'Could not save the mode', sub: cleanError(e) })
@@ -67,7 +67,7 @@ export async function saveRoomMode(roomId: string, mode?: PermissionMode): Promi
   }
 }
 
-/** Set one chat's own mode and take it out of plan mode, as the composer does. Nothing in Settings or the room changes. True when it was saved (KERNEL-456). */
+/** Set one chat's own mode and take it out of plan mode, as the composer does. Nothing in Settings or the project changes. True when it was saved (KERNEL-456). */
 export async function saveChatMode(chatId: string, mode: PermissionMode): Promise<boolean> {
   try {
     actions.chats.upsert(await call('chats.configure', { chatId, mode, plan: false }))
@@ -78,9 +78,9 @@ export async function saveChatMode(chatId: string, mode: PermissionMode): Promis
   }
 }
 
-/** Pick a mode for the app, or for `roomId`. Bypass permissions opens ConfirmBypass first the one time the user hasn't seen it. */
-export async function pickMode(mode: PermissionMode | undefined, roomId?: string): Promise<void> {
-  if (mode === 'bypassPermissions' && !bypassConfirmed()) return actions.ui.openModal({ name: 'confirm', kind: 'bypass', roomId })
-  if (roomId) await saveRoomMode(roomId, mode)
+/** Pick a mode for the app, or for `projectId`. Bypass permissions opens ConfirmBypass first the one time the user hasn't seen it. */
+export async function pickMode(mode: PermissionMode | undefined, projectId?: string): Promise<void> {
+  if (mode === 'bypassPermissions' && !bypassConfirmed()) return actions.ui.openModal({ name: 'confirm', kind: 'bypass', projectId })
+  if (projectId) await saveProjectMode(projectId, mode)
   else if (mode) await saveAppMode(mode)
 }

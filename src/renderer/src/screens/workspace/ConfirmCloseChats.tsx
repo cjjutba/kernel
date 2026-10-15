@@ -22,13 +22,13 @@ const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
  */
 export function closesThread(s: State, workspaceId: string, ids: string[]): Thread | undefined {
   const ws = s.workspaces.find((w) => w.id === workspaceId)
-  if (!ws || !isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id)) return undefined
+  if (!ws || !isLeadWorkspace(ws, ws.projectId, leadOf(s.agents, ws.projectId)?.id)) return undefined
   const open = (s.chats[workspaceId] ?? []).filter((c) => c.kind === 'chat' && !c.closed)
   const first = open.find((c) => ids.includes(c.id))
   if (!first) return undefined
   const id = threadIdOf(first)
   if (!open.filter((c) => threadIdOf(c) === id).every((c) => ids.includes(c.id))) return undefined
-  return s.threads[id] ?? { id, roomId: ws.roomId, title: first.title, createdAt: first.createdAt }
+  return s.threads[id] ?? { id, projectId: ws.projectId, title: first.title, createdAt: first.createdAt }
 }
 
 /** What the "Close this chat?" dialog says about the chat these tabs close. Flat, so a live read compares equal until something in it changes. */
@@ -36,18 +36,18 @@ export type WholeChat = { id: string; title: string; started: number }
 
 export function wholeChat(s: State, workspaceId: string, ids: string[]): WholeChat | undefined {
   const thread = closesThread(s, workspaceId, ids)
-  const roomId = s.workspaces.find((w) => w.id === workspaceId)?.roomId
-  if (!thread || !roomId) return undefined
-  return { id: thread.id, title: thread.title, started: chatRows(s, roomId).find((r) => r.thread.id === thread.id)?.owned.length ?? 0 }
+  const projectId = s.workspaces.find((w) => w.id === workspaceId)?.projectId
+  if (!thread || !projectId) return undefined
+  return { id: thread.id, title: thread.title, started: chatRows(s, projectId).find((r) => r.thread.id === thread.id)?.owned.length ?? 0 }
 }
 
 /** The first chat a live read finds, kept from then on, so the dialog does not change once its tabs close. */
 export const frozenWhole = (kept: WholeChat | undefined, live: WholeChat | undefined) => kept ?? live
 
 /** The Lead's chat rows as the sidebar lists them, top to bottom. */
-function chatRows(s: State, roomId: string) {
-  const room = s.rooms.find((r) => r.id === roomId)
-  return room ? sidebarRows(room, s.agents, s.workspaces, s.chats, s.threads, s.ui.foldedChats).filter((r): r is Extract<Slot, { kind: 'chat' }> => r.kind === 'chat') : []
+function chatRows(s: State, projectId: string) {
+  const project = s.projects.find((r) => r.id === projectId)
+  return project ? sidebarRows(project, s.agents, s.workspaces, s.chats, s.threads, s.ui.foldedChats).filter((r): r is Extract<Slot, { kind: 'chat' }> => r.kind === 'chat') : []
 }
 
 /**
@@ -55,7 +55,7 @@ function chatRows(s: State, roomId: string) {
  * new chat when no chat tab is left. When the open tab is one of them, the tab used before it opens (`nextTab`), like any other tab.
  * `order` is the tabs on screen left to right, so a file, diff or shared tab can be the one returned to; without it the chat tabs and the
  * store's file, diff and shared tabs are used. In the Lead's workspace that is the tabs of the same chat. Closing a chat's
- * last tab closes the chat, and the shared Lead workspace it was in sends you to the room's front door, as archiving any chat on screen does (KERNEL-596).
+ * last tab closes the chat, and the shared Lead workspace it was in sends you to the project's front door, as archiving any chat on screen does (KERNEL-596).
  */
 export async function closeChats(workspaceId: string, ids: string[], active: string | undefined, select: (id: string) => void, order?: string[]) {
   const s = getState()
@@ -87,7 +87,7 @@ export async function closeChats(workspaceId: string, ids: string[], active: str
 /** Asks before closing chats that are still running, since closing stops the agent mid-turn. `ChatTabs` closes idle chats without asking. */
 export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: string; chatIds: string[] }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
-  const agent = useStore((s) => (ws ? s.agents[ws.roomId]?.find((a) => a.id === ws.agentId)?.name : undefined)) ?? 'The agent'
+  const agent = useStore((s) => (ws ? s.agents[ws.projectId]?.find((a) => a.id === ws.agentId)?.name : undefined)) ?? 'The agent'
   const chats = useStore((s) => s.chats[workspaceId])?.filter((c) => chatIds.includes(c.id)) ?? []
   const working = useStore((s) => chatIds.filter((id) => s.running[id]))
   const queued = useStore((s) => chatIds.reduce((n, id) => n + (s.queue[id]?.length ?? 0), 0))

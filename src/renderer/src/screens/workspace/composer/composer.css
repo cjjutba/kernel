@@ -95,7 +95,7 @@
 .cmp-pop { left: 0; bottom: calc(100% + 8px); }
 /* Model and effort (D-093), drawn after Conductor's picker. The link pickers share the search field. */
 .model-pop { display: flex; flex-direction: column; width: 380px; padding: 0; background: var(--surface-2); }
-/* Taller than the room above the composer, the model list scrolls and the search, Effort and footer stay. */
+/* Taller than the project above the composer, the model list scrolls and the search, Effort and footer stay. */
 .model-pop > .pick-search, .model-pop > .pick-foot { flex-shrink: 0; }
 .model-pop > .pick-body { min-height: 0; }
 .model-pop .pick-split { flex: 1 1 auto; min-height: 0; }
@@ -333,7 +333,7 @@
 .where-pop { left: -8px; bottom: calc(100% + 8px); display: flex; flex-direction: column; max-height: min(420px, calc(100vh - 220px)); padding: 4px; background: var(--surface-2); z-index: 60; }
 .where-pop[data-align='end'] { left: auto; right: 0; }
 .where-pop > * { flex-shrink: 0; }
-/* New chat's room menu hangs centred under the title, the one where-row menu above the box. */
+/* New chat's project menu hangs centred under the title, the one where-row menu above the box. */
 .where-pop[data-drop='down'] { left: 50%; bottom: auto; top: calc(100% + 10px); transform: translateX(-50%); font-size: 13px; font-weight: 400; letter-spacing: normal; line-height: normal; text-align: left; }
 .where-search { height: 34px; margin: 0 0 4px; padding: 0 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
 .where-list { display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto; }

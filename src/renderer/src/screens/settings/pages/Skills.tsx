@@ -2,30 +2,30 @@ import { useEffect, useState } from 'react'
 import type { Skill } from '@shared/types'
 import { call } from '../../../api'
 import { Toggle } from '../../../ui'
-import { appliesTo, NoRoom, Row, RoomPage, Section, useRoomPage } from '../kit'
-import { patchRoomSettings } from '../useSettings'
-import { RoomMcp } from './RoomMcp'
+import { appliesTo, NoProject, Row, ProjectPage, Section, useProjectPage } from '../kit'
+import { patchProjectSettings } from '../useSettings'
+import { ProjectMcp } from './ProjectMcp'
 
 /**
- * Settings > a room > Skills and MCP (MorePage roomSkills, KERNEL-680): a switch for each skill and MCP server. What is off is kept per room in
- * its .kernel settings, so the same skill can be on in one room and off in another. Sign-ins live in Settings, MCP servers (KERNEL-661).
+ * Settings > a project > Skills and MCP (MorePage projectSkills, KERNEL-680): a switch for each skill and MCP server. What is off is kept per project in
+ * its .kernel settings, so the same skill can be on in one project and off in another. Sign-ins live in Settings, MCP servers (KERNEL-661).
  */
-export function Skills({ roomId }: { roomId?: string }) {
-  const { room, rs } = useRoomPage(roomId)
+export function Skills({ projectId }: { projectId?: string }) {
+  const { project, rs } = useProjectPage(projectId)
   const [skills, setSkills] = useState<Skill[]>([])
   const off = rs?.disabled
   useEffect(() => {
-    if (!roomId) return
-    void call('skills.list', { roomId }).then(setSkills).catch(() => setSkills([]))
-  }, [roomId, off?.skills.join('\n')])
-  if (!room || !roomId) return <NoRoom />
+    if (!projectId) return
+    void call('skills.list', { projectId }).then(setSkills).catch(() => setSkills([]))
+  }, [projectId, off?.skills.join('\n')])
+  if (!project || !projectId) return <NoProject />
   const flip = (kind: 'skills' | 'mcp', name: string, on: boolean) => {
     const list = off?.[kind] ?? []
-    void patchRoomSettings(roomId, { disabled: { [kind]: on ? list.filter((n) => n !== name) : [...new Set([...list, name])] } })
+    void patchProjectSettings(projectId, { disabled: { [kind]: on ? list.filter((n) => n !== name) : [...new Set([...list, name])] } })
   }
   const isOn = (kind: 'skills' | 'mcp', name: string) => !(off?.[kind] ?? []).includes(name)
   return (
-    <RoomPage room={room} rs={rs} title="Skills and MCP">
+    <ProjectPage project={project} rs={rs} title="Skills and MCP">
       <Section title="Skills" count={skills.length || undefined} footnote={appliesTo('disabled.skills')}>
         {skills.length === 0 && <p className="set-empty">No skills found in this repo or your user folders. Add one in <code>.claude/skills</code> and it shows up here.</p>}
         {skills.map((k) => (
@@ -34,7 +34,7 @@ export function Skills({ roomId }: { roomId?: string }) {
           </Row>
         ))}
       </Section>
-      <RoomMcp isOn={(name) => isOn('mcp', name)} flip={(name, on) => flip('mcp', name, on)} />
-    </RoomPage>
+      <ProjectMcp isOn={(name) => isOn('mcp', name)} flip={(name, on) => flip('mcp', name, on)} />
+    </ProjectPage>
   )
 }

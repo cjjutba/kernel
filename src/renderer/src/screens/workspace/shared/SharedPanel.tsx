@@ -6,15 +6,15 @@ import './shared.css'
 
 /**
  * The files shared in a workspace, newest first. A Lead chat lists its own and those of the teammates that chat handed work to
- * (KERNEL-511). The Lead workspace from before KERNEL-405 has no chat of its own and lists the whole room. Used by the count on the
+ * (KERNEL-511). The Lead workspace from before KERNEL-405 has no chat of its own and lists the whole project. Used by the count on the
  * panel's tab as well.
  */
 export function sharedHere(s: Pick<State, 'shared' | 'agents' | 'workspaces'>, ws: Workspace): SharedFile[] {
-  const lead = s.agents[ws.roomId]?.some((a) => a.lead && a.id === ws.agentId)
+  const lead = s.agents[ws.projectId]?.some((a) => a.lead && a.id === ws.agentId)
   const chat = lead ? ws.threadId : undefined
   const mine = new Set([ws.id])
   if (chat) for (const w of s.workspaces) if (w.threadId === chat) mine.add(w.id)
-  const wanted = (f: SharedFile) => (lead && !chat ? f.roomId === ws.roomId : mine.has(f.workspaceId))
+  const wanted = (f: SharedFile) => (lead && !chat ? f.projectId === ws.projectId : mine.has(f.workspaceId))
   return Object.values(s.shared).filter(wanted).sort((a, b) => b.updatedAt - a.updatedAt)
 }
 

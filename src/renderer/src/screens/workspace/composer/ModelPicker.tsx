@@ -84,7 +84,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const ref = useRef<HTMLDivElement>(null)
   useLayer({ onEscape: onClose, onOutside: onClose, ref, anchorRef })
   useEffect(() => { ref.current?.querySelector('input')?.focus() }, [])
-  // The popover opens upward from the composer, so it gets the room between its bottom and the window's top.
+  // The popover opens upward from the composer, so it gets the space between its bottom and the window's top.
   const [maxHeight, setMaxHeight] = useState<number>()
   useLayoutEffect(() => {
     const fit = () => { if (ref.current) setMaxHeight(Math.max(160, ref.current.getBoundingClientRect().bottom - 12)) }

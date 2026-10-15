@@ -94,7 +94,7 @@ function PresetList({ presets, selected, onlyInWorktrees, onPick, onEdit, onRemo
   )
 }
 
-/** Add or edit a custom command. It is saved in the app settings, so it is yours on this Mac and in every room. */
+/** Add or edit a custom command. It is saved in the app settings, so it is yours on this Mac and in every project. */
 function PresetForm({ s, presets, custom, onClose }: { s: AppSettings; presets: TerminalPreset[]; custom?: Custom; onClose: () => void }) {
   const [name, setName] = useState(custom?.name ?? '')
   const [command, setCommand] = useState(custom?.command ?? '')

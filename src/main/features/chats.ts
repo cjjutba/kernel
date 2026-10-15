@@ -28,8 +28,8 @@ export class Chats extends Feature {
   private readonly runningChats = new Set<string>()
 
   /**
-   * Send now in a room a limit paused sends the message anyway. If the limit is real, Claude Code answers with it and
-   * the room stays paused; if it lifted, the answer's rate_limit_event lifts it in Kernel too.
+   * Send now in a project a limit paused sends the message anyway. If the limit is real, Claude Code answers with it and
+   * the project stays paused; if it lifted, the answer's rate_limit_event lifts it in Kernel too.
    */
   private async sendNow(chatId: string, id: string) {
     const ws = this.mustWs(this.mustChat(chatId).workspaceId)
@@ -40,8 +40,8 @@ export class Chats extends Feature {
       await this.k.waits.releaseWait(ws.id, { now: true, keep: true })
       return this.sessions.queued(chatId)
     }
-    const room = this.store.room(ws.roomId)
-    return this.sessions.sendNow(chatId, id, { pastPause: room?.pausedBy === 'limit' })
+    const project = this.store.project(ws.projectId)
+    return this.sessions.sendNow(chatId, id, { pastPause: project?.pausedBy === 'limit' })
   }
 
   /**
@@ -230,7 +230,7 @@ export class Chats extends Feature {
     if (last && isLeadChatWorkspace(ws) && ws.status !== 'archived') return this.k.lead.archiveLeadChat(ws.threadId!)
     // Before `stop`, which would end a plan card without a reason. A card a restart left up has no session for `stop` to end
     // with at all (plan-cards-survive-restart).
-    this.approvals.expireIds(this.approvals.waitingPlans(chatId, ws.roomId).map((a) => a.id), 'closed')
+    this.approvals.expireIds(this.approvals.waitingPlans(chatId, ws.projectId).map((a) => a.id), 'closed')
     // Closing the tab ends what its agent started too (KERNEL-810).
     this.sessions.stop(chatId, { tree: true })
     this.ptys.kill(chatId)
@@ -246,7 +246,7 @@ export class Chats extends Feature {
    */
   private async newTabModel(ws: Workspace, provider?: Provider, model?: string): Promise<{ provider: Provider; model: string }> {
     const first = this.store.chats(ws.id)[0]
-    const agent = this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)
+    const agent = this.agentsSync(ws.projectId).find((a) => a.id === ws.agentId)
     const pick = agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers
     if (!provider) return first ? { provider: chatProvider(first), model: first.model } : { provider: pick.provider, model: pick.model }
     if (model) return { provider, model }
@@ -264,7 +264,7 @@ export class Chats extends Feature {
    */
   private openedEffort(workspaceId: string, model: string): Effort {
     const ws = this.mustWs(workspaceId)
-    const agent = this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)
+    const agent = this.agentsSync(ws.projectId).find((a) => a.id === ws.agentId)
     return effortFor(model, this.settings.models.effortByModel, agent ? this.k.team.pickFor(agent).effort : this.settings.models.roles.engineers.effort)
   }
 
@@ -382,7 +382,7 @@ export class Chats extends Feature {
         const ws = this.mustWs(workspaceId)
         const term = kind === 'terminal' ? await this.terminalFor(ws, preset) : undefined
         // Right after a restart nothing may have read the team yet, and the agent's effort is the fallback.
-        if (!this.k.team.agentCache.has(ws.roomId)) await this.k.team.agents(ws.roomId)
+        if (!this.k.team.agentCache.has(ws.projectId)) await this.k.team.agents(ws.projectId)
         const on = await this.newTabModel(ws, provider, asked)
         const pick = { provider: on.provider, model: on.model, effort: effort ?? this.openedEffort(workspaceId, on.model), plan: false }
         // A Lead tab joins the chat its workspace hosts (KERNEL-405), or in the shared Lead workspace from before, the Lead chat

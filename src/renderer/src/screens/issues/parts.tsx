@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { BannerKind, GitHubErrorKind, Room } from '@shared/types'
+import type { BannerKind, GitHubErrorKind, Project } from '@shared/types'
 import { go } from '../../store'
 import { Banner, Button, EmptyList, Select, Skeleton, useBusy } from '../../ui'
 
@@ -10,17 +10,17 @@ export function FilterChip({ label, value, options, onChange }: { label: string;
   return <Select variant="chip" prefix={label} label={label} value={value || (options[0]?.value ?? '')} options={options} onChange={onChange} />
 }
 
-/** The room the page lists and the rooms it can switch to. A page with no room at all has none. */
-export interface RoomHead { rooms: Room[]; room?: Room; onRoom: (id: string) => void }
+/** The project the page lists and the projects it can switch to. A page with no project at all has none. */
+export interface ProjectHead { projects: Project[]; project?: Project; onProject: (id: string) => void }
 
-/** Settings, the room, General: where the room's tracker is chosen. */
-export const chooseTracker = (roomId: string) => go({ name: 'settings', page: 'room', roomId, section: 'general' })
+/** Settings, the project, General: where the project's tracker is chosen. */
+export const chooseTracker = (projectId: string) => go({ name: 'settings', page: 'project', projectId, section: 'general' })
 
-/** A room with no tracker says so and points at where to choose one (IssuesNoTracker.png). */
-export function NoTracker({ room }: { room: Room }) {
+/** A project with no tracker says so and points at where to choose one (IssuesNoTracker.png). */
+export function NoTracker({ project }: { project: Project }) {
   return (
-    <EmptyList icon="plug" title={`${room.name} has no tracker yet`} action={<Button variant="primary" size="lg" onClick={() => chooseTracker(room.id)}>Choose a tracker</Button>}>
-      Connect Linear or GitHub Issues in the room's settings, and its issues show up here. Chats work without one.
+    <EmptyList icon="plug" title={`${project.name} has no tracker yet`} action={<Button variant="primary" size="lg" onClick={() => chooseTracker(project.id)}>Choose a tracker</Button>}>
+      Connect Linear or GitHub Issues in the project's settings, and its issues show up here. Chats work without one.
     </EmptyList>
   )
 }
@@ -57,7 +57,7 @@ export function CapNote({ children }: { children: ReactNode }) {
 /** What a failed GitHub read says and where it points, by the kind the engine gave it (KERNEL-861). */
 export function githubProblem(kind: GitHubErrorKind, message: string, where: string): { title: string; sub: string; banner: BannerKind } {
   if (kind === 'signed-out') return { title: "GitHub isn't signed in", sub: 'Run gh auth login in a terminal, then try again.', banner: 'auth' }
-  if (kind === 'not-found') return { title: `Can't find ${where}`, sub: 'The repo may have been renamed, deleted or made private. Choose another tracker for this room.', banner: 'setup' }
+  if (kind === 'not-found') return { title: `Can't find ${where}`, sub: 'The repo may have been renamed, deleted or made private. Choose another tracker for this project.', banner: 'setup' }
   if (kind === 'rate-limited') return { title: 'GitHub rate limit reached', sub: 'Wait a few minutes, then try again.', banner: 'limit' }
   if (kind === 'offline') return { title: "Can't reach GitHub", sub: 'Check your connection, then try again.', banner: 'offline' }
   return { title: "Can't load issues", sub: message, banner: 'offline' }

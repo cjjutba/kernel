@@ -39,8 +39,8 @@ async function workspace() {
   await k.start()
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
-  const room = await k.rooms.addRoom(repo)
-  const ws = await setUp(k, (await k.workspaces.createWorkspace(room.id, { prompt: 'Rename old', agentId: 'kai' })).id)
+  const project = await k.projects.addProject(repo)
+  const ws = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Rename old', agentId: 'kai' })).id)
   return { k, remote, repo, ws, h: k.handlers() }
 }
 

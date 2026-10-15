@@ -4,21 +4,21 @@
 //   node scripts/archive-frames.ts after       this checkout's code
 //   node scripts/archive-frames.ts before      the code this branch was cut from (origin/main at that time), built in a temporary git worktree that is removed afterwards
 //   node scripts/archive-frames.ts table       the before and after results of the last runs, as a markdown table
-//   node scripts/archive-frames.ts clean       removes the rooms and worktrees the runs made in the temp folder
+//   node scripts/archive-frames.ts clean       removes the projects and worktrees the runs made in the temp folder
 //
 //   --only chat-row,last-tab   run some paths (ids are in `paths` below)
 //   --where screen,chat,history   run some placements: the item on screen, another chat open, History open
 //   --no-build   reuse the last build in the folder being tested
-//   --rebuild-world   build the room again instead of reusing the one saved for this code
+//   --rebuild-world   build the project again instead of reusing the one saved for this code
 //
 // Nothing is simulated. It launches the built app headless (KERNEL_HEADLESS=1) with its own application-data folder, its own HOME and a
-// temp git repo with a bare origin, so it never touches the data or ~/.claude of a Kernel you run. The room, its chats with Kernel, its
+// temp git repo with a bare origin, so it never touches the data or ~/.claude of a Kernel you run. The project, its chats with Kernel, its
 // workspaces and their worktrees are made through the app's own IPC, and every archive is the app's own: main stops sessions and removes
 // worktrees, pushes each archived workspace, and answers when it is done. The one thing set by hand is which chat a workspace belongs to
 // (and a title for the row), because only Kernel's create_workspace tool sets that and it needs a Claude session. That is one UPDATE on
 // the app's database before the window loads. No Claude session ever starts: preflight passes on CLAUDE_CODE_USE_BEDROCK and no prompt is sent.
 //
-// The room is built once per code version and saved, then restored before each run, so every run archives the same untouched world.
+// The project is built once per code version and saved, then restored before each run, so every run archives the same untouched world.
 //
 // A requestAnimationFrame loop and a MutationObserver in the page read which screen the main area shows, from just before the click until
 // the destination has held for 20 frames. A frame is fine when it shows the screen the item was on, or the destination, in that order.
@@ -48,7 +48,7 @@ const BASE = join(realpathSync(tmpdir()), 'kernel-596-frames')
 
 export type Sig =
   | { kind: 'workspace'; title: string; tabs: number }
-  | { kind: 'new-chat'; room: string }
+  | { kind: 'new-chat'; project: string }
   | { kind: 'history' }
   | { kind: 'other'; text: string }
   | { kind: 'none' }
@@ -89,7 +89,7 @@ export function sampler(want: Expect, judge: (sig: Sig, want: Expect) => Seen) {
     const title = el.querySelector('.ws-title')
     if (title) return { kind: 'workspace', title: text(title), tabs: el.querySelectorAll('.ws-tabs [role="tab"]').length }
     const h1 = text(el.querySelector('h1'))
-    if (h1 === 'New chat' && (el.matches('.ws-panel') || el.querySelector('.ws-panel'))) return { kind: 'new-chat', room: text(el.querySelector('.crumb')) }
+    if (h1 === 'New chat' && (el.matches('.ws-panel') || el.querySelector('.ws-panel'))) return { kind: 'new-chat', project: text(el.querySelector('.crumb')) }
     if (h1 === 'History') return { kind: 'history' }
     return { kind: 'other', text: h1 || el.className || el.tagName }
   }
@@ -149,11 +149,11 @@ export const passes = (s: ReturnType<typeof summarize>, settled: boolean, moves:
 /** An image is BAD when a frame outside was on screen while capturePage took it. */
 export const caught = (shot: { from: number; to: number }, log: Sample[]) => log.some((s) => s.seen === 'other' && s.at >= shot.from - 20 && s.at <= shot.to + 20)
 
-// ---------- Making the room, with the app's own IPC
+// ---------- Making the project, with the app's own IPC
 
 type Ctx = { app: ElectronApplication; page: Page; dir: string; live: string }
 type Item = { id: string; title: string }
-type World = { roomId: string; chats: Record<string, { threadId: string; workspaceId: string; chatId: string }>; workspaces: Record<string, { id: string; path: string }>; repo: string }
+type World = { projectId: string; chats: Record<string, { threadId: string; workspaceId: string; chatId: string }>; workspaces: Record<string, { id: string; path: string }>; repo: string }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 const call = (page: Page, channel: string, req?: unknown) => page.evaluate(([c, r]) => (window as any).kernel.invoke(c, r), [channel, req] as const)
@@ -172,7 +172,7 @@ async function freePort(): Promise<number> {
   })
 }
 
-/** A repo with one commit and a bare origin, so Kernel's chats get worktrees and a room with no GitHub merges on the Mac. */
+/** A repo with one commit and a bare origin, so Kernel's chats get worktrees and a project with no GitHub merges on the Mac. */
 function makeRepo(live: string) {
   const repo = join(live, 'shop')
   const origin = join(live, 'origin.git')
@@ -262,7 +262,7 @@ export async function shutdown(app: ElectronApplication | undefined) {
   await reap()
 }
 
-/** Through the first-run screens, which a saved room has done already. */
+/** Through the first-run screens, which a saved project has done already. */
 async function pastOnboarding(page: Page) {
   const start = page.getByRole('button', { name: 'Get started' })
   if (await start.isVisible({ timeout: 4000 }).catch(() => false)) {
@@ -300,7 +300,7 @@ const listWs = (page: Page) => call(page, 'workspaces.list', {}) as Promise<any[
 const ready = (page: Page, id: string) => until(`workspace ${id} to be ready`, async () => (await listWs(page)).find((w) => w.id === id && w.status === 'ready' && !w.worktreePending))
 
 export const CHATS = ['Draft the changelog', 'Seed realistic demo data', 'Client portal login', 'Invoice table and empty states', 'Export invoices as PDF']
-/** Workspaces of the room: the title the sidebar shows, and the chat it was started by when it has one. */
+/** Workspaces of the project: the title the sidebar shows, and the chat it was started by when it has one. */
 export const WORKSPACES: { key: string; title: string; chat?: string }[] = [
   { key: 'redirect', title: 'fix-login-redirect' }, { key: 'nav', title: 'fix-nav-overflow' },
   { key: 'billing', title: 'billing-page' }, { key: 'csv', title: 'export-csv' }, { key: 'folder', title: 'seed-script' },
@@ -311,7 +311,7 @@ export const WORKSPACES: { key: string; title: string; chat?: string }[] = [
 /**
  * A workspace made through the app starts a Claude turn for its first chat, which has no credentials here and never ends by itself. Kernel keeps
  * a workspace with a turn running (it goes when the turn ends), and a Kernel that quits mid-turn starts it again. So the turns are stopped, and
- * the room is saved with none running.
+ * the project is saved with none running.
  */
 async function quiet(page: Page) {
   for (let calm = 0; calm < 4;) {
@@ -323,23 +323,23 @@ async function quiet(page: Page) {
   }
 }
 
-/** Makes the room: chats with Kernel, workspaces, a dirty tree, a merged branch and a branch ready to merge, all through the app. Returns what the paths need. */
+/** Makes the project: chats with Kernel, workspaces, a dirty tree, a merged branch and a branch ready to merge, all through the app. Returns what the paths need. */
 async function buildWorld(ctx: Ctx): Promise<World> {
   const { page } = ctx
   await pastOnboarding(page)
   const repo = join(ctx.live, 'shop')
-  const added: any = await call(page, 'rooms.add', { path: repo, name: 'Shop' })
-  // A room with no GitHub merges its branches on the Mac (KERNEL-478), which is the only merge a temp repo can have for real.
-  const room: any = await call(page, 'rooms.update', { roomId: added.id, patch: { host: 'local' } })
-  await until('the room team', async () => ((await call(page, 'agents.list', { roomId: room.id })) as any[]).some((a) => a.lead))
+  const added: any = await call(page, 'projects.add', { path: repo, name: 'Shop' })
+  // A project with no GitHub merges its branches on the Mac (KERNEL-478), which is the only merge a temp repo can have for real.
+  const project: any = await call(page, 'projects.update', { projectId: added.id, patch: { host: 'local' } })
+  await until('the project team', async () => ((await call(page, 'agents.list', { projectId: project.id })) as any[]).some((a) => a.lead))
   // Teammates for the workspaces: the Lead's own workspaces are never archived on merge, so a workspace made without one would stay.
-  for (const id of ['kai', 'theo']) await call(page, 'agents.addStarter', { roomId: room.id, id })
+  for (const id of ['kai', 'theo']) await call(page, 'agents.addStarter', { projectId: project.id, id })
   sh('git', ['add', '-A'], repo)
   sh('git', ['commit', '-m', 'Add the team'], repo)
   sh('git', ['push', 'origin', 'main'], repo)
   const chats: World['chats'] = {}
   for (const title of CHATS) {
-    const c: any = await call(page, 'lead.start', { roomId: room.id, prompt: '' })
+    const c: any = await call(page, 'lead.start', { projectId: project.id, prompt: '' })
     const ws = await ready(page, c.workspaceId)
     await call(page, 'threads.rename', { threadId: ws.threadId, title })
     chats[title] = { threadId: ws.threadId, workspaceId: ws.id, chatId: c.id }
@@ -347,7 +347,7 @@ async function buildWorld(ctx: Ctx): Promise<World> {
   }
   const workspaces: World['workspaces'] = {}
   const make = async (key: string) => {
-    const made: any = await call(page, 'workspaces.create', { roomId: room.id, prompt: '', agentId: 'kai' })
+    const made: any = await call(page, 'workspaces.create', { projectId: project.id, prompt: '', agentId: 'kai' })
     const ws = await ready(page, made.id)
     workspaces[key] = { id: ws.id, path: ws.path }
   }
@@ -357,7 +357,7 @@ async function buildWorld(ctx: Ctx): Promise<World> {
     sh('git', ['add', '.'], dirPath)
     sh('git', ['commit', '-m', `Add ${file}`], dirPath)
   }
-  // The merged branch goes first: a real local merge on the Mac, kept in the room until someone archives it. Branches cut after it start from the new main.
+  // The merged branch goes first: a real local merge on the Mac, kept in the project until someone archives it. Branches cut after it start from the new main.
   await call(page, 'settings.set', { patch: { workspace: { archiveOnMerge: false } } })
   await make('csv')
   commit('csv', 'export.ts')
@@ -388,7 +388,7 @@ async function buildWorld(ctx: Ctx): Promise<World> {
   // Folders deleted outside Kernel, which the window notices when the workspace opens.
   const gone = (await listWs(page)).find((w) => w.id === chats['Draft the changelog'].workspaceId)
   for (const path of [workspaces.folder.path, gone.path]) rmSync(path, { recursive: true, force: true })
-  return { roomId: room.id, chats, workspaces, repo }
+  return { projectId: project.id, chats, workspaces, repo }
 }
 
 // ---------- The paths
@@ -412,15 +412,15 @@ const chatRow = (page: Page, title: string) => page.locator(`.chat-row:has(butto
 const workspaceRow = (page: Page, name: string) => page.locator(`.ws-row:has(button[aria-label="Archive ${quote(name)}"])`)
 const dialog = (page: Page) => page.getByRole('alertdialog')
 const rowArchive = (page: Page, name: string) => page.locator(`button[aria-label="Archive ${quote(name)}"]`)
-const roomRow = (page: Page) => page.locator('.room-row .nav-item').first()
+const projectRow = (page: Page) => page.locator('.project-row .nav-item').first()
 
 /** Waits for the sidebar to mark a row current whose name starts with `label`. */
 const showing = (page: Page, label: string) =>
   page.waitForFunction((l) => [...document.querySelectorAll('[aria-current="page"]')].some((el) => (el.getAttribute('aria-label') || el.textContent || '').trim().startsWith(l)), label)
 
-/** The room open in the sidebar, so its rows can be clicked. */
+/** The project open in the sidebar, so its rows can be clicked. */
 async function expand(page: Page) {
-  if ((await page.locator('.chat-row').count()) === 0) await roomRow(page).click()
+  if ((await page.locator('.chat-row').count()) === 0) await projectRow(page).click()
   await page.locator('.chat-row').first().waitFor()
 }
 const openChat = async (page: Page, title: string) => { await expand(page); await chatRow(page, title).locator('button.nav-item').click(); await showing(page, title); await settleTabs(page) }
@@ -833,7 +833,7 @@ async function main() {
     if (!args.includes('--rebuild-world') && existsSync(stamp) && JSON.parse(readFileSync(stamp, 'utf8')).head === head) {
       world = JSON.parse(readFileSync(stamp, 'utf8')).world
     } else {
-      console.log('making the room ...')
+      console.log('making the project ...')
       rmSync(live, { recursive: true, force: true })
       mkdirSync(live, { recursive: true })
       makeRepo(live)

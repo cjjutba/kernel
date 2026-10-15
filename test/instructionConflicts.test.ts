@@ -3,7 +3,7 @@ import { mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PushEvent } from '../src/shared/ipc'
-import type { RoomSetupStep } from '../src/shared/types'
+import type { ProjectSetupStep } from '../src/shared/types'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { findConflicts, scanInstructions } from '../src/main/services/instructionConflicts'
@@ -13,7 +13,7 @@ const starter = join(__dirname, '..', 'docs', 'starter-agents')
 const opts = { branches: ['main', 'dev'], base: 'origin/main' }
 const kindOf = (line: string) => findConflicts(line, 'CLAUDE.md', opts).map((c) => c.kind)
 
-/** The three rules RoomSetupConflicts.png lists, each in the file and on the line it names. */
+/** The three rules ProjectSetupConflicts.png lists, each in the file and on the line it names. */
 const CLAUDE = ['# Rules', '', 'Never run `git pull` in the main checkout.', '', '- Commit straight to main. Skip the PR for small changes.', ''].join('\n')
 const AGENTS = ['# Agents', '', 'Never open pull requests. Push to the shared branch when tests pass.', ''].join('\n')
 const NESTED = ['Rebase onto `origin/main` before you open a PR.', '', 'Stack PRs: each branch builds on the one before it.', ''].join('\n')
@@ -27,11 +27,11 @@ async function kernel() {
   return k
 }
 
-/** Resolves with the last `room.setup` steps once none is waiting or running. */
-function setupDone(roomId: string): Promise<RoomSetupStep[]> {
+/** Resolves with the last `project.setup` steps once none is waiting or running. */
+function setupDone(projectId: string): Promise<ProjectSetupStep[]> {
   return new Promise((resolve) => {
     const on = (e: PushEvent) => {
-      if (e.type !== 'room.setup' || e.roomId !== roomId || e.steps.some((s) => s.state === 'wait' || s.state === 'run')) return
+      if (e.type !== 'project.setup' || e.projectId !== projectId || e.steps.some((s) => s.state === 'wait' || s.state === 'run')) return
       bus.off('push', on)
       resolve(e.steps)
     }
@@ -146,12 +146,12 @@ describe('repo instructions that fight Kernel', () => {
     expect(await scanInstructions(await tempRepo(), opts)).toEqual([])
   })
 
-  it('keeps what room setup found on the room, and never edits the files', async () => {
+  it('keeps what project setup found on the project, and never edits the files', async () => {
     const k = await kernel()
     const repo = await tempRepo({ 'CLAUDE.md': CLAUDE, 'AGENTS.md': AGENTS, '.claude/CLAUDE.md': NESTED })
-    const room = await k.rooms.createRoom({ source: 'folder', name: 'Rules app', from: repo, team: ['kai'], autostart: false })
-    await setupDone(room.id)
-    expect(k.store.room(room.id)?.instructionConflicts).toEqual([
+    const project = await k.projects.createProject({ source: 'folder', name: 'Rules app', from: repo, team: ['kai'], autostart: false })
+    await setupDone(project.id)
+    expect(k.store.project(project.id)?.instructionConflicts).toEqual([
       { kind: 'commit-to-main', text: 'Commit straight to main. Skip the PR for small changes.', file: 'CLAUDE.md', line: 5, kernel: 'Work on your own branch and open a pull request.' },
       { kind: 'stacked-prs', text: 'Stack PRs: each branch builds on the one before it.', file: '.claude/CLAUDE.md', line: 3, kernel: 'Start from origin/main. One task, one branch, one pull request.' },
       { kind: 'no-pull-requests', text: 'Never open pull requests. Push to the shared branch when tests pass.', file: 'AGENTS.md', line: 3, kernel: 'Every task ends in a pull request. Never push to a shared branch.' }
@@ -162,13 +162,13 @@ describe('repo instructions that fight Kernel', () => {
 
     // The base is where teammates' worktrees start, so a workspace base from Settings changes what Kernel says to stacked PRs.
     k.settings.workspace.baseRef = 'origin/release'
-    const again = await k.rooms.findInstructionConflicts(room.id)
+    const again = await k.projects.findInstructionConflicts(project.id)
     expect(again.instructionConflicts?.find((c) => c.kind === 'stacked-prs')?.kernel).toBe('Start from origin/release. One task, one branch, one pull request.')
 
     const plain = await tempRepo()
-    const quiet = await k.rooms.createRoom({ source: 'folder', name: 'Plain app', from: plain, team: ['kai'], autostart: false })
+    const quiet = await k.projects.createProject({ source: 'folder', name: 'Plain app', from: plain, team: ['kai'], autostart: false })
     await setupDone(quiet.id)
-    expect(k.store.room(quiet.id)?.instructionConflicts).toEqual([])
+    expect(k.store.project(quiet.id)?.instructionConflicts).toEqual([])
     await k.stop()
   })
 })

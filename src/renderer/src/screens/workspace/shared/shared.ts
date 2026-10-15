@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { SharedFile, SharedKind, SharedVersion } from '@shared/types'
 import { call } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { agoShort } from '../../rooms/roomInfo'
+import { agoShort } from '../../projects/projectInfo'
 import { fmtClock } from '../thread'
 
 /** A file name of each kind. A shared file's tab, card tile and panel row draw its VS Code icon (KERNEL-399). */
@@ -37,9 +37,9 @@ export const clock = (v: SharedVersion) => fmtClock(v.at)
 /** "2h", the time since the file last changed, for the panel's tight rows. */
 export const sinceShort = (ts: number) => agoShort(ts).replace(' ago', '')
 
-/** The name of the agent that shared the file, or its id while the room's agents haven't loaded. */
+/** The name of the agent that shared the file, or its id while the project's agents haven't loaded. */
 export function useSharer(file: SharedFile | undefined): string {
-  return useStore((s) => (file ? s.agents[file.roomId]?.find((a) => a.id === file.agentId)?.name ?? file.agentId : ''))
+  return useStore((s) => (file ? s.agents[file.projectId]?.find((a) => a.id === file.agentId)?.name ?? file.agentId : ''))
 }
 
 /** Opens the file's tab in the workspace on screen. The copy is Kernel's, so any workspace can show it. */

@@ -27,10 +27,10 @@ export function ageOf(ts: number, now = Date.now()): string {
  * A tag says why a branch is worth a look: it is the default, an open workspace is on it, or it lives on the remote. A local branch
  * nobody has a workspace on gets none.
  */
-export function branchRows({ list, fallback, remote, workspaces, roomId, now }: {
-  list: { name: string; committedAt: number }[]; fallback: string; remote: string; workspaces: Pick<Workspace, 'id' | 'roomId' | 'branch' | 'status'>[]; roomId: string; now?: number
+export function branchRows({ list, fallback, remote, workspaces, projectId, now }: {
+  list: { name: string; committedAt: number }[]; fallback: string; remote: string; workspaces: Pick<Workspace, 'id' | 'projectId' | 'branch' | 'status'>[]; projectId: string; now?: number
 }): BranchRow[] {
-  const open = workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived')
+  const open = workspaces.filter((w) => w.projectId === projectId && w.status !== 'archived')
   const rows = new Map<string, BranchRow>()
   const add = (ref: string, committedAt?: number) => {
     const name = stripRemote(ref, remote)

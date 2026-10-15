@@ -296,7 +296,7 @@ describe('preflight checks', () => {
     expect(byId(checks, 'gh')).toMatchObject({ detail: 'Signed in as samrivera', meta: 'gh 2.62.0' })
     expect(byId(checks, 'git').meta).toBe('git 2.39.5')
   })
-  it("leaves gh out, asking it nothing, when no room's PRs go to GitHub (KERNEL-477)", async () => {
+  it("leaves gh out, asking it nothing, when no project's PRs go to GitHub (KERNEL-477)", async () => {
     const asked: string[] = []
     const none = { 'gh auth status --hostname github.com --json hosts': missing, 'gh --version': missing }
     const checks = await preflight(none, { gh: false, asked })
@@ -435,7 +435,7 @@ describe('approvals', () => {
   it('resolves with the decision and records it', async () => {
     const store = new Store(':memory:')
     const a = new Approvals(store)
-    const { approval, decision } = a.request({ kind: 'plan', source: 'sdk', roomId: 'r', title: 'T-15 plan' })
+    const { approval, decision } = a.request({ kind: 'plan', source: 'sdk', projectId: 'r', title: 'T-15 plan' })
     expect(store.approvals({ pendingOnly: true })).toHaveLength(1)
     a.decide(approval.id, { behavior: 'allow' })
     expect(await decision).toEqual({ behavior: 'allow' })
@@ -560,7 +560,7 @@ describe('push check (KERNEL-460)', () => {
       expect(calls.find((c) => c.startsWith('git push'))).toMatch(/^git push --dry-run --no-verify --recurse-submodules=no origin HEAD:refs\/heads\/kernel-push-check-\d+$/)
     })
 
-    it("never asks gh for a room that merges locally, and reads the remote as git's alone (KERNEL-477)", async () => {
+    it("never asks gh for a project that merges locally, and reads the remote as git's alone (KERNEL-477)", async () => {
       const { check, calls } = await github({ gh: false })
       expect(check).toEqual({ remote: 'origin', at: 1_000, reach: { state: 'ok', detail: 'git ls-remote origin' }, push: { state: 'ok', detail: "From git's saved login" } })
       expect(calls.some((c) => c.startsWith('gh '))).toBe(false)
@@ -607,7 +607,7 @@ describe('push check (KERNEL-460)', () => {
     })
   })
 
-  it('turns a result into the room setup step, a failure warning instead of failing (RoomSetupWarnings.png)', () => {
+  it('turns a result into the project setup step, a failure warning instead of failing (ProjectSetupWarnings.png)', () => {
     const base: PushCheck = { remote: 'origin', repo: 'acme/app', login: 'sam', at: 0, reach: { state: 'ok', detail: 'git ls-remote origin' }, push: { state: 'ok', detail: 'From gh, signed in as sam' } }
     expect(pushStepOf(base)).toEqual({ state: 'ok', title: 'Check push access', detail: 'sam can push to acme/app', output: undefined, fix: undefined })
     expect(pushStepOf({ ...base, login: undefined, push: { state: 'ok', detail: 'From your SSH key' } }).detail).toBe('git can push to acme/app')

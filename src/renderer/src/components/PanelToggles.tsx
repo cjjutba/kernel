@@ -58,7 +58,7 @@ export function SidebarToggle() {
   return <IconButton className="sidebar-toggle" icon="sidebar" size={16} label={open ? 'Hide sidebar' : 'Show sidebar'} data-tip-kbd="⌘B" onClick={toggleSidebar} />
 }
 
-/** First in every screen header. The room the toggle sits over, right of the traffic lights, while the sidebar is hidden. Back and Forward follow it. */
+/** First in every screen header. The project the toggle sits over, right of the traffic lights, while the sidebar is hidden. Back and Forward follow it. */
 export function SidebarToggleSlot() {
   const open = useStore((s) => s.ui.sidebar)
   return open ? null : (
@@ -79,7 +79,7 @@ export function RightPanelToggle({ name }: { name: string }) {
   return <IconButton className="panel-toggle" icon="panelRight" size={16} label={`${open ? 'Hide' : 'Show'} ${name}`} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
 }
 
-/** The empty room the header or the PR band keeps for the toggle, which sits over it. */
+/** The empty project the header or the PR band keeps for the toggle, which sits over it. */
 export function PanelToggleSlot() {
   return <span className="panel-toggle-slot" aria-hidden="true" />
 }

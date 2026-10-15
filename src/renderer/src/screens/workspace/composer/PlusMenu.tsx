@@ -26,10 +26,10 @@ const ABOVE = { right: 0, bottom: 'calc(100% + 8px)' } as const
  * A chat's composer passes `onMode`, which opens its mode menu from the Permission mode row (KERNEL-456). The boxes that start a chat have
  * no mode menu, so they pass `plan` and `onPlan` and get the plan toggle.
  */
-export function PlusMenu({ panel, onPanel, anchorRef, roomId, workspaceId, plan, onPlan, onMode, where, disabled, onAttach, onInsert }: {
+export function PlusMenu({ panel, onPanel, anchorRef, projectId, workspaceId, plan, onPlan, onMode, where, disabled, onAttach, onInsert }: {
   panel: PlusPanel; onPanel: (p: PlusPanel) => void; anchorRef: React.RefObject<HTMLElement | null>
-  /** The room to search issues and workspaces in. Without one the link items are off. */
-  roomId?: string
+  /** The project to search issues and workspaces in. Without one the link items are off. */
+  projectId?: string
   /** This composer's own workspace, left out of Link workspaces. */
   workspaceId?: string
   plan?: boolean; onPlan?: () => void; onMode?: () => void; where?: PlusWhere; disabled?: boolean; onAttach: () => void; onInsert: (parts: ChatPart[]) => void
@@ -61,9 +61,9 @@ export function PlusMenu({ panel, onPanel, anchorRef, roomId, workspaceId, plan,
       <IconButton icon="plus" label="Add context" disabled={disabled && !!where} aria-haspopup="menu" aria-expanded={panel !== null} onClick={() => onPanel(panel ? null : 'plus')} />
       {panel === 'plus' && (
         <Menu label="Add" anchorRef={anchorRef} onClose={close} style={{ ...ABOVE, width: where ? 296 : 248 }} items={[
-          { id: 'issue', label: 'Link issue', icon: 'link', shortcut: '⌘I', disabled: !roomId, onSelect: () => { next.current = 'linkIssue' } },
-          { id: 'pr', label: 'Link pull request', icon: 'pr', disabled: !roomId, onSelect: () => { next.current = 'linkPr' } },
-          { id: 'workspaces', label: 'Link workspaces', icon: 'branch', disabled: !roomId, onSelect: () => { next.current = 'linkWorkspaces' } },
+          { id: 'issue', label: 'Link issue', icon: 'link', shortcut: '⌘I', disabled: !projectId, onSelect: () => { next.current = 'linkIssue' } },
+          { id: 'pr', label: 'Link pull request', icon: 'pr', disabled: !projectId, onSelect: () => { next.current = 'linkPr' } },
+          { id: 'workspaces', label: 'Link workspaces', icon: 'branch', disabled: !projectId, onSelect: () => { next.current = 'linkWorkspaces' } },
           ...(onMode
             ? [{ id: 'mode', label: 'Permission mode', icon: 'shield' as const, shortcut: '⇧Tab', onSelect: () => { next.current = 'mode' } }]
             : onPlan ? [{ id: 'plan', label: plan ? 'Exit plan mode' : 'Enter plan mode', icon: 'book' as const, shortcut: '⇧Tab', onSelect: onPlan }] : []),
@@ -80,10 +80,10 @@ export function PlusMenu({ panel, onPanel, anchorRef, roomId, workspaceId, plan,
         ]} />
       )}
       {panel === 'runIn' && where && <RunInMenu anchorRef={anchorRef} mode={where.place} onClose={reset} onPick={(m) => { where.onPlace(m); reset(true) }} />}
-      {panel === 'branch' && where && roomId && <BranchPanel roomId={roomId} picked={where.picked} anchorRef={anchorRef} onClose={reset} onPick={(ref) => { where.onBranch(ref); reset(true) }} />}
-      {panel === 'linkIssue' && roomId && <IssuePicker roomId={roomId} anchorRef={anchorRef} style={ABOVE} onClose={() => onPanel(null)} onPick={(p) => insert([p])} />}
-      {panel === 'linkPr' && roomId && <PrPicker roomId={roomId} anchorRef={anchorRef} style={ABOVE} onClose={() => onPanel(null)} onPick={(p) => insert([p])} />}
-      {panel === 'linkWorkspaces' && roomId && <WorkspacePicker roomId={roomId} exclude={workspaceId} anchorRef={anchorRef} style={ABOVE} onClose={() => onPanel(null)} onPick={insert} />}
+      {panel === 'branch' && where && projectId && <BranchPanel projectId={projectId} picked={where.picked} anchorRef={anchorRef} onClose={reset} onPick={(ref) => { where.onBranch(ref); reset(true) }} />}
+      {panel === 'linkIssue' && projectId && <IssuePicker projectId={projectId} anchorRef={anchorRef} style={ABOVE} onClose={() => onPanel(null)} onPick={(p) => insert([p])} />}
+      {panel === 'linkPr' && projectId && <PrPicker projectId={projectId} anchorRef={anchorRef} style={ABOVE} onClose={() => onPanel(null)} onPick={(p) => insert([p])} />}
+      {panel === 'linkWorkspaces' && projectId && <WorkspacePicker projectId={projectId} exclude={workspaceId} anchorRef={anchorRef} style={ABOVE} onClose={() => onPanel(null)} onPick={insert} />}
     </>
   )
 }

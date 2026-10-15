@@ -27,7 +27,7 @@ export function Privacy({ s }: { s: AppSettings }) {
       </Section>
       <Section title="What’s sent" collapsible defaultOpen>
         <Row label="Sent" desc="Kernel and macOS versions, your Mac’s chip, a random install id, event names and fixed values." />
-        <Row label="Never sent" desc="Code, diffs, prompts, chats, plans, file paths, and repo, room, branch or agent names." />
+        <Row label="Never sent" desc="Code, diffs, prompts, chats, plans, file paths, and repo, project, branch or agent names." />
       </Section>
       <Section title="Latest events" count={recent.length} note="Kept on this Mac either way." collapsible defaultOpen plain>
         <DataTable

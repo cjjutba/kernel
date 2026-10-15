@@ -26,24 +26,24 @@ export class Permissions extends Feature {
   /** Asks Claude Code for its models on the active account. Tests swap it. */
   readModels: () => Promise<ModelInfo[]> = () => this.sessions.claudeModels(this.home)
 
-  /** Policy by folder: a room's checkout, or '' for the app's. */
+  /** Policy by folder: a project's checkout, or '' for the app's. */
   private readonly policies = new Map<string, Read<ClaudePolicy>>()
   /** Claude Code's models by the account they were read on, '' for the CLI's own login. */
   private readonly models = new Map<string, Read<ModelInfo[]>>()
 
-  /** Reads the app's policy and every open room's, so the chats that carry on at launch start in their own mode. */
+  /** Reads the app's policy and every open project's, so the chats that carry on at launch start in their own mode. */
   start() {
     void this.load(this.policies, '', () => this.readPolicy())
-    for (const r of this.store.rooms()) if (!r.archived) void this.load(this.policies, r.path, () => this.readPolicy(r.path))
+    for (const r of this.store.projects()) if (!r.archived) void this.load(this.policies, r.path, () => this.readPolicy(r.path))
   }
 
   /**
    * What a chat can run now, from what Kernel has read. A mode the chat doesn't ask for needs nothing read. Bypass needs the
-   * room's policy. Auto on Claude needs Claude Code's models too, and the chat's model must run it.
+   * project's policy. Auto on Claude needs Claude Code's models too, and the chat's model must run it.
    */
   forChat(chat: Chat, ws: Workspace, wants: RunMode): ChatAvailability {
     if (wants !== 'auto' && wants !== 'bypassPermissions') return { auto: false, bypass: false }
-    const folder = this.store.room(ws.roomId)?.path ?? ws.path
+    const folder = this.store.project(ws.projectId)?.path ?? ws.path
     const policy = this.known(this.policies, folder, () => this.readPolicy(folder))
     if (!policy) return { auto: false, bypass: false }
     const bypass = !policy.bypass

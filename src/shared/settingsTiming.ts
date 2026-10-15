@@ -1,14 +1,14 @@
-import type { RoomSettings } from './types'
+import type { ProjectSettings } from './types'
 
 /**
  * When a settings change reaches Kernel and its agents (KERNEL-724). `now`: main reads the value each time it acts, so the
  * next tool call, send, merge or archive uses it. `nextTurn`: a running chat's process restarts, an idle one at once and a
  * busy one when its turn ends. `newChats`: main reads it when a chat starts, or when a chat's process starts, so a running
  * chat keeps the old value until its process ends (a 10 minute idle stop, a restart or an account switch). `newWorkspaces`:
- * main reads it when a workspace is made. `newRooms`: the renderer reads it when a room is added. `restart`: read once when
+ * main reads it when a workspace is made. `newProjects`: the renderer reads it when a project is added. `restart`: read once when
  * Kernel starts.
  */
-export type SettingTiming = 'now' | 'nextTurn' | 'newChats' | 'newWorkspaces' | 'newRooms' | 'restart'
+export type SettingTiming = 'now' | 'nextTurn' | 'newChats' | 'newWorkspaces' | 'newProjects' | 'restart'
 
 /**
  * App settings by dotted path. An entry covers every key under it (`models.roles` covers `models.roles.lead.model`).
@@ -17,7 +17,7 @@ export type SettingTiming = 'now' | 'nextTurn' | 'newChats' | 'newWorkspaces' | 
 export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   // features/hooks.ts listens on it once, in start().
   hookPort: 'restart',
-  // roomWorktreeRoot() in features/workspaces.ts, when a worktree is made.
+  // projectWorktreeRoot() in features/workspaces.ts, when a worktree is made.
   worktreeRoot: 'newWorkspaces',
   // store.ts picks the first route from it when the window opens.
   'general.openTo': 'restart',
@@ -57,7 +57,7 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   // features/autoArchive.ts, when a PR merges.
   'workspace.archiveOnMerge': 'now',
   'workspace.baselineCurrentBranch': 'newWorkspaces',
-  'workspace.oneCurrentBranchPerRoom': 'newWorkspaces',
+  'workspace.oneCurrentBranchPerProject': 'newWorkspaces',
   // The branch a new Lead chat starts on, in features/workspaces.ts and features/lead.ts.
   'workspace.leadBranchPattern': 'newChats',
   // features/lead.ts, when a Lead chat starts.
@@ -93,8 +93,8 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   'providers.codex.useSystem': 'nextTurn',
   // The Codex runner passes it to thread/start and thread/resume, when a chat's process starts.
   'providers.codex.personality': 'newChats',
-  // The renderer seeds a new room's agents with it (screens/rooms/draft.ts).
-  'team.defaultTemplate': 'newRooms',
+  // The renderer seeds a new project's agents with it (screens/projects/draft.ts).
+  'team.defaultTemplate': 'newProjects',
   // newLeadChat() in features/lead.ts, when a chat with Kernel starts. Open chats keep their mode (KERNEL-770).
   'team.leadMode': 'newChats',
   // applyModes() in services/sessions.ts moves live sessions. Crossing into or out of Bypass restarts the process after its turn,
@@ -139,18 +139,18 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   'privacy.telemetry': 'now'
 }
 
-type Room = Omit<Required<RoomSettings>, 'sources' | 'missingReferences'>
+type Project = Omit<Required<ProjectSettings>, 'sources' | 'missingReferences'>
 
-/** Every room setting by dotted path: a list or table of names by its own key, the rest one level down (`pr.mergeMethod`). */
-export type RoomSettingPath = {
-  [G in keyof Room]: NonNullable<Room[G]> extends readonly unknown[] ? G : `${G}.${Extract<keyof NonNullable<Room[G]>, string>}`
-}[keyof Room]
+/** Every project setting by dotted path: a list or table of names by its own key, the rest one level down (`pr.mergeMethod`). */
+export type ProjectSettingPath = {
+  [G in keyof Project]: NonNullable<Project[G]> extends readonly unknown[] ? G : `${G}.${Extract<keyof NonNullable<Project[G]>, string>}`
+}[keyof Project]
 
 /**
- * Room settings by dotted path. Main reads `.kernel/settings.toml` and `settings.local.toml` from disk each time it uses
- * them, so a room value has the timing of the code that reads it. `pnpm typecheck` fails when a path has no entry.
+ * Project settings by dotted path. Main reads `.kernel/settings.toml` and `settings.local.toml` from disk each time it uses
+ * them, so a project value has the timing of the code that reads it. `pnpm typecheck` fails when a path has no entry.
  */
-export const ROOM_SETTING_TIMING: Record<RoomSettingPath, SettingTiming> = {
+export const PROJECT_SETTING_TIMING: Record<ProjectSettingPath, SettingTiming> = {
   // features/setup.ts runs it when a workspace is made.
   'scripts.setup': 'newWorkspaces',
   'scripts.run': 'now',
@@ -168,7 +168,7 @@ export const ROOM_SETTING_TIMING: Record<RoomSettingPath, SettingTiming> = {
   'workspace.deleteBranchOnArchive': 'now',
   'workspace.archiveOnMerge': 'now',
   'workspace.baselineCurrentBranch': 'newWorkspaces',
-  'workspace.oneCurrentBranchPerRoom': 'newWorkspaces',
+  'workspace.oneCurrentBranchPerProject': 'newWorkspaces',
   'workspace.leadBranchPattern': 'newChats',
   'workspace.leadWaitForSetup': 'newChats',
   'workspace.archiveChatWorkspaces': 'now',

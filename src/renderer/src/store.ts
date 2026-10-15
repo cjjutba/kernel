@@ -1,8 +1,8 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile, MovePreview, Provider, SwitchMove,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
-  ForcedUi, GitHubStatus, HookStatus, LeadMode, MenuId, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, RateLimit, Room, RoomSettings,
-  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, ToolCalls, UiState, UsageView, Workspace, WorkspaceTabs, WorkspaceView
+  ForcedUi, GitHubStatus, HookStatus, LeadMode, MenuId, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, RateLimit, Project, ProjectSettings,
+  ProjectSettingsSection, ProjectSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, ToolCalls, UiState, UsageView, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
 import { PROVIDERS } from '@shared/types'
@@ -11,7 +11,7 @@ import { currentRoute } from '@shared/settingsRoutes'
 import { call, cleanError, onPush } from './api'
 import { startupTheme } from './ui/theme'
 import { closeAllLayers } from './ui/hooks'
-import { hasTab, isChatTab, landing, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
+import { hasTab, isChatTab, landing, nearest, placeToSave, restorePlace, projectHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
 
@@ -20,24 +20,24 @@ export const mcpRunKey = (provider: Provider, accountId: string) => `${provider}
 export { scriptKey }
 
 /**
- * The renderer's state: one top-level key per domain, plus `ui`. Keys stay flat so selectors read `s.rooms`, `s.items[chatId]`.
+ * The renderer's state: one top-level key per domain, plus `ui`. Keys stay flat so selectors read `s.projects`, `s.items[chatId]`.
  * Write through `actions` (typed, one group per slice) or push events; `setState` is the escape hatch.
  */
 export interface State {
-  // rooms
-  rooms: Room[]
-  /** By room id. Progress of a room being set up (RoomSetup.png). */
-  roomSetup: Record<string, RoomSetupStep[]>
-  /** By room id. The scripts and files.copy list a room waits on the user to trust. A room with nothing to trust has no entry (KERNEL-218). */
+  // projects
+  projects: Project[]
+  /** By project id. Progress of a project being set up (ProjectSetup.png). */
+  projectSetup: Record<string, ProjectSetupStep[]>
+  /** By project id. The scripts and files.copy list a project waits on the user to trust. A project with nothing to trust has no entry (KERNEL-218). */
   scriptTrust: Record<string, ScriptTrust>
-  /** By room id. */
+  /** By project id. */
   overlaps: Record<string, Overlap[]>
   // agents
-  /** By room id. */
+  /** By project id. */
   agents: Record<string, AgentDef[]>
-  /** By room id, then agent id. */
+  /** By project id, then agent id. */
   status: Record<string, Record<string, AgentStatus>>
-  /** The personal and plugin agents that join every room, with no room needed. Null until `agents.listGlobal` answers (KERNEL-641). */
+  /** The personal and plugin agents that join every project, with no project needed. Null until `agents.listGlobal` answers (KERNEL-641). */
   globalAgents: AgentDef[] | null
   // workspaces
   workspaces: Workspace[]
@@ -84,10 +84,10 @@ export interface State {
   retry: Record<string, Retry>
   // approvals, tasks, activity, notifications
   approvals: Approval[]
-  /** By room id. */
+  /** By project id. */
   tasks: Record<string, Task[]>
   activity: ActivityEvent[]
-  /** By room id, then agent id. When each agent's newest event in the room happened, from the whole log rather than the `activity` window. */
+  /** By project id, then agent id. When each agent's newest event in the project happened, from the whole log rather than the `activity` window. */
   lastActivity: Record<string, Record<string, number>>
   notifications: Notification[]
   // pull requests
@@ -105,8 +105,8 @@ export interface State {
   /** Where Sign in to all is on each account, by `mcpRunKey` (KERNEL-627, Codex since KERNEL-647). */
   mcpRuns: Record<string, McpSignInAll>
   settings: AppSettings | null
-  /** By room id. */
-  roomSettings: Record<string, RoomSettings>
+  /** By project id. */
+  projectSettings: Record<string, ProjectSettings>
   /** By shared id. Every file agents shared, from `shared.list` and the `shared` push (KERNEL-305). */
   shared: Record<string, SharedFile>
   system: { booted: boolean; online: boolean; preflight: PreflightCheck[] | null; hooks: HookStatus | null; update: AppUpdate | null; github: GitHubStatus }
@@ -208,13 +208,13 @@ function dropLastTabs(gone: (threadId: string) => boolean) {
 const folded = new Set<keyof typeof HIDDEN>()
 
 let state: State = {
-  rooms: [], roomSetup: {}, scriptTrust: {}, overlaps: {},
+  projects: [], projectSetup: {}, scriptTrust: {}, overlaps: {},
   agents: {}, status: {}, globalAgents: null,
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, scriptData: {}, scriptReplays: {}, checkpoints: {},
   chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, itemsLoaded: {}, itemsFailed: {}, running: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {}, prPending: {},
-  usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, roomSettings: {}, shared: {},
+  usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, projectSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
   ui: { route: { name: 'onboarding', step: 'loading' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), panelHeld: [], bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()) }
 }
@@ -253,21 +253,22 @@ export function useStore<T>(select: (s: State) => T): T {
 
 const upsert = <T extends { id: string }>(list: T[], item: T) => (list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item])
 const byRecent = <T extends { createdAt: number }>(list: T[]) => [...list].sort((a, b) => b.createdAt - a.createdAt)
-/** `all` with each of `times` written into the room's entry when it is later than what is there. Unchanged rooms keep their identity. */
-function newer(all: State['lastActivity'], roomId: string, times: Record<string, number>): State['lastActivity'] {
-  const room = all[roomId] ?? {}
-  const later = Object.entries(times).filter(([id, ts]) => ts > (room[id] ?? -Infinity))
-  return later.length ? { ...all, [roomId]: { ...room, ...Object.fromEntries(later) } } : all
+/** `all` with each of `times` written into the project's entry when it is later than what is there. Unchanged projects keep their identity. */
+function newer(all: State['lastActivity'], projectId: string, times: Record<string, number>): State['lastActivity'] {
+  const project = all[projectId] ?? {}
+  const later = Object.entries(times).filter(([id, ts]) => ts > (project[id] ?? -Infinity))
+  return later.length ? { ...all, [projectId]: { ...project, ...Object.fromEntries(later) } } : all
 }
-/** Settings > General > Last room: the room whose team page, chat or workspace was open last. localStorage may be missing or blocked, so every access is guarded. */
-const LAST_ROOM = 'kernel.lastRoom'
-function rememberRoom(route: Route) {
-  const id = 'roomId' in route && route.roomId ? route.roomId : route.name === 'workspace' ? state.workspaces.find((w) => w.id === route.workspaceId)?.roomId : undefined
+/** Settings > General > Last project: the project whose team page, chat or workspace was open last. localStorage may be missing or blocked, so every access is guarded. */
+// Rooms were renamed projects (KERNEL-880). The saved key keeps its old name, so the last project still opens after the update.
+const LAST_PROJECT = 'kernel.lastRoom'
+function rememberProject(route: Route) {
+  const id = 'projectId' in route && route.projectId ? route.projectId : route.name === 'workspace' ? state.workspaces.find((w) => w.id === route.workspaceId)?.projectId : undefined
   if (!id || route.name === 'settings') return
-  try { localStorage.setItem(LAST_ROOM, id) } catch { /* not remembered */ }
+  try { localStorage.setItem(LAST_PROJECT, id) } catch { /* not remembered */ }
 }
-export function lastRoom(): string | null {
-  try { return localStorage.getItem(LAST_ROOM) } catch { return null }
+export function lastProject(): string | null {
+  try { return localStorage.getItem(LAST_PROJECT) } catch { return null }
 }
 /** How many selected tabs a workspace remembers for closing the open one. */
 const RECENT_TABS = 20
@@ -301,7 +302,7 @@ const placeNow = (): Place => {
 }
 /** Where Settings was opened from, the last Settings page, and where the app opened. Module level like `folded`: none of it outlasts a restart. */
 let returnTo: Place | undefined
-let lastSettings: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection } | undefined
+let lastSettings: { page: SettingsPage; projectId?: string; section?: ProjectSettingsSection } | undefined
 let launch: Route = { name: 'onboarding', step: 'loading' }
 /**
  * The place a relaunch reopens (KERNEL-201), kept in localStorage like the other `kernel.*` keys, which may be missing or blocked.
@@ -343,7 +344,7 @@ function moved(from: Place, to: Place, history: HistoryMode = 'push') {
   closeAllLayers()
   if (to.route.name === 'settings') {
     if (from.route.name !== 'settings') returnTo = from
-    lastSettings = { page: to.route.page, ...(to.route.roomId ? { roomId: to.route.roomId } : {}), ...(to.route.section ? { section: to.route.section } : {}) }
+    lastSettings = { page: to.route.page, ...(to.route.projectId ? { projectId: to.route.projectId } : {}), ...(to.route.section ? { section: to.route.section } : {}) }
   }
   // Callers apply the move before calling this, so the state is already `to` with its tabs. Saved ahead of the history block, which returns early, and for Back and Forward too.
   savePlace()
@@ -447,14 +448,14 @@ export const actions = {
       const now = state.ui.route
       const entering = route.name === 'workspace' && !(now.name === 'workspace' && now.workspaceId === route.workspaceId)
       setUi({ route, modal: null, menu: null, ...(entering && { workspace: { ...state.ui.workspace, right: workspaceView.right, leadRight: workspaceView.leadRight } }) })
-      rememberRoom(route)
+      rememberProject(route)
       moved(from, placeNow(), opts?.history)
     },
     /** ⌘[ and the mouse's back button: the newest place you left that is still there. False when there is none. */
     back: () => step('back'),
     /** ⌘] and the mouse's forward button: undoes a Back. */
     forward: () => step('forward'),
-    /** ⌘, : the Settings page you were on last, or General when that page's room is gone. */
+    /** ⌘, : the Settings page you were on last, or General when that page's project is gone. */
     openSettings: () => {
       const last = lastSettings
       const route: Route = last && stillThere({ name: 'settings', ...last }, state) ? { name: 'settings', ...last } : { name: 'settings', page: 'general' }
@@ -466,7 +467,7 @@ export const actions = {
       const newest = past[past.length - 1]
       if (newest && newest.route.name !== 'settings' && reachable(newest, leaving())) actions.ui.back()
       else {
-        // A launch that opened on a room's Agents page would send Back to app to the page it is leaving.
+        // A launch that opened on a project's Agents page would send Back to app to the page it is leaving.
         const there = nearest((returnTo ?? { route: launch }).route, state)
         actions.ui.go(there.name === 'settings' ? landing(state) : there, { history: 'replace' })
       }
@@ -571,26 +572,26 @@ export const actions = {
       else if (!narrow && folded.delete(panel)) setUi(panel === 'sidebar' ? { sidebar: true } : { rightPanel: true })
     }
   },
-  rooms: {
-    set: (rooms: Room[]) => setState({ rooms }),
-    upsert: (room: Room) => setState((s) => ({ rooms: upsert(s.rooms, room) })),
-    remove: (roomId: string) => setState((s) => ({
-      rooms: s.rooms.filter((r) => r.id !== roomId), workspaces: s.workspaces.filter((w) => w.roomId !== roomId),
-      ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => s.workspaces.find((w) => w.id === id)?.roomId === roomId) }
+  projects: {
+    set: (projects: Project[]) => setState({ projects }),
+    upsert: (project: Project) => setState((s) => ({ projects: upsert(s.projects, project) })),
+    remove: (projectId: string) => setState((s) => ({
+      projects: s.projects.filter((r) => r.id !== projectId), workspaces: s.workspaces.filter((w) => w.projectId !== projectId),
+      ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => s.workspaces.find((w) => w.id === id)?.projectId === projectId) }
     })),
-    setSetup: (roomId: string, steps: RoomSetupStep[]) => setState((s) => ({ roomSetup: { ...s.roomSetup, [roomId]: steps } })),
-    setTrust: (roomId: string, trust: ScriptTrust | null) => setState((s) => {
-      const { [roomId]: _, ...rest } = s.scriptTrust
-      return { scriptTrust: trust ? { ...rest, [roomId]: trust } : rest }
+    setSetup: (projectId: string, steps: ProjectSetupStep[]) => setState((s) => ({ projectSetup: { ...s.projectSetup, [projectId]: steps } })),
+    setTrust: (projectId: string, trust: ScriptTrust | null) => setState((s) => {
+      const { [projectId]: _, ...rest } = s.scriptTrust
+      return { scriptTrust: trust ? { ...rest, [projectId]: trust } : rest }
     }),
-    setOverlaps: (roomId: string, list: Overlap[]) => setState((s) => ({ overlaps: { ...s.overlaps, [roomId]: list } })),
-    upsertOverlap: (o: Overlap) => setState((s) => ({ overlaps: { ...s.overlaps, [o.roomId]: upsert(s.overlaps[o.roomId] ?? [], o) } }))
+    setOverlaps: (projectId: string, list: Overlap[]) => setState((s) => ({ overlaps: { ...s.overlaps, [projectId]: list } })),
+    upsertOverlap: (o: Overlap) => setState((s) => ({ overlaps: { ...s.overlaps, [o.projectId]: upsert(s.overlaps[o.projectId] ?? [], o) } }))
   },
   agents: {
-    set: (roomId: string, list: AgentDef[]) => setState((s) => ({ agents: { ...s.agents, [roomId]: list } })),
+    set: (projectId: string, list: AgentDef[]) => setState((s) => ({ agents: { ...s.agents, [projectId]: list } })),
     setGlobal: (list: AgentDef[]) => setState({ globalAgents: list }),
-    setStatus: (roomId: string, agentId: string, status: AgentStatus) => setState((s) => ({
-      status: { ...s.status, [roomId]: { ...(s.status[roomId] ?? {}), [agentId]: status } }
+    setStatus: (projectId: string, agentId: string, status: AgentStatus) => setState((s) => ({
+      status: { ...s.status, [projectId]: { ...(s.status[projectId] ?? {}), [agentId]: status } }
     }))
   },
   workspaces: {
@@ -690,18 +691,18 @@ export const actions = {
     }
   },
   tasks: {
-    set: (roomId: string, list: Task[]) => setState((s) => ({ tasks: { ...s.tasks, [roomId]: list } })),
-    upsert: (t: Task) => setState((s) => ({ tasks: { ...s.tasks, [t.roomId]: upsert(s.tasks[t.roomId] ?? [], t) } }))
+    set: (projectId: string, list: Task[]) => setState((s) => ({ tasks: { ...s.tasks, [projectId]: list } })),
+    upsert: (t: Task) => setState((s) => ({ tasks: { ...s.tasks, [t.projectId]: upsert(s.tasks[t.projectId] ?? [], t) } }))
   },
   activity: {
     set: (list: ActivityEvent[]) => setState({ activity: list }),
     /** Also moves the agent's last activity forward, which outlasts the 200-event window. */
     add: (e: ActivityEvent) => setState((s) => ({
       activity: [e, ...s.activity].slice(0, 200),
-      lastActivity: e.roomId && e.agentId ? newer(s.lastActivity, e.roomId, { [e.agentId]: e.ts }) : s.lastActivity
+      lastActivity: e.projectId && e.agentId ? newer(s.lastActivity, e.projectId, { [e.agentId]: e.ts }) : s.lastActivity
     })),
-    /** A room's last activity by agent from `rooms.lastActivity`. Keeps any newer time an event already brought in. */
-    setLast: (roomId: string, times: Record<string, number>) => setState((s) => ({ lastActivity: newer(s.lastActivity, roomId, times) }))
+    /** A project's last activity by agent from `projects.lastActivity`. Keeps any newer time an event already brought in. */
+    setLast: (projectId: string, times: Record<string, number>) => setState((s) => ({ lastActivity: newer(s.lastActivity, projectId, times) }))
   },
   notifications: {
     set: (list: Notification[]) => setState({ notifications: byRecent(list) }),
@@ -749,7 +750,7 @@ export const actions = {
   },
   settings: {
     set: (settings: AppSettings) => setState({ settings }),
-    setRoom: (roomId: string, rs: RoomSettings) => setState((s) => ({ roomSettings: { ...s.roomSettings, [roomId]: rs } }))
+    setProject: (projectId: string, rs: ProjectSettings) => setState((s) => ({ projectSettings: { ...s.projectSettings, [projectId]: rs } }))
   },
   system: {
     booted: () => setState((s) => ({ system: { ...s.system, booted: true } })),
@@ -809,13 +810,13 @@ export function apply(e: PushEvent) {
     case 'terminal.data': return e.replace ? actions.chats.replaceTerminal(e.chatId, e.data) : actions.chats.appendTerminal(e.chatId, e.data)
     case 'retry': pushedLive?.retry.add(e.chatId); return actions.chats.setRetry(e.chatId, e.retry)
     case 'approval': return actions.approvals.upsert(e.approval)
-    case 'room': return actions.rooms.upsert(e.room)
-    case 'room.setup': return actions.rooms.setSetup(e.roomId, e.steps)
-    case 'room.trust': return actions.rooms.setTrust(e.roomId, e.trust)
-    case 'overlap': return actions.rooms.upsertOverlap(e.overlap)
-    case 'agents': return actions.agents.set(e.roomId, e.agents)
+    case 'project': return actions.projects.upsert(e.project)
+    case 'project.setup': return actions.projects.setSetup(e.projectId, e.steps)
+    case 'project.trust': return actions.projects.setTrust(e.projectId, e.trust)
+    case 'overlap': return actions.projects.upsertOverlap(e.overlap)
+    case 'agents': return actions.agents.set(e.projectId, e.agents)
     case 'globalAgents': return actions.agents.setGlobal(e.agents)
-    case 'agent.status': return actions.agents.setStatus(e.roomId, e.agentId, e.status)
+    case 'agent.status': return actions.agents.setStatus(e.projectId, e.agentId, e.status)
     case 'workspace': return actions.workspaces.upsert(e.workspace)
     case 'script.output': return actions.workspaces.appendScript(e.workspaceId, e.kind, e.name, e.lines)
     case 'script.data': return actions.workspaces.appendScriptData(e.workspaceId, e.kind, e.name, e.data)
@@ -842,14 +843,14 @@ export function apply(e: PushEvent) {
     case 'account.mcpSignInAll': return actions.accounts.mcpRun(e.run)
     case 'account.mcpNeeded': return mcpNeededToast(e.needed)
     case 'online': return actions.system.setOnline(e.online)
-    case 'settings.roomChanged': return actions.settings.setRoom(e.roomId, e.settings)
+    case 'settings.projectChanged': return actions.settings.setProject(e.projectId, e.settings)
     case 'toast': return void actions.ui.toast(e.toast)
   }
 }
 
 /**
  * Load everything once, then stay live on push events. Only built channels load here; a lane that builds
- * a channel adds its first load (for example `tasks.list` in loadRoom) in the same PR.
+ * a channel adds its first load (for example `tasks.list` in loadProject) in the same PR.
  */
 let listening = false
 
@@ -867,8 +868,8 @@ async function start() {
   // A PR action that started before this window loaded has no push to learn it from (KERNEL-519). An older main has no such channel.
   pushedPending = new Set()
   void call('pr.pendingAll', {}).then(applyPending, () => applyPending(null))
-  const [rooms, workspaces, approvals, notifications, activity, usage, settings, fixture, shared, threads] = await Promise.all([
-    call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
+  const [projects, workspaces, approvals, notifications, activity, usage, settings, fixture, shared, threads] = await Promise.all([
+    call('projects.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
     call('settings.get', undefined), call('system.fixture', undefined),
     // Cards and the Shared panel read these. A failed load only leaves them out until a push brings a file in.
     call('shared.list', {}).catch((): SharedFile[] => []),
@@ -878,7 +879,7 @@ async function start() {
   fixtureMode = !!fixture
   // A retry that works drops the error here, so the error screen keeps its busy button until the lists are in.
   actions.ui.setStartError(undefined)
-  setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings, shared: Object.fromEntries(shared.map((f) => [f.id, f])), threads: Object.fromEntries(threads.map((t) => [t.id, t])) })
+  setState({ projects, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings, shared: Object.fromEntries(shared.map((f) => [f.id, f])), threads: Object.fromEntries(threads.map((t) => [t.id, t])) })
   // Last tabs of chats closed since, or gone, would otherwise pile up in localStorage. A failed load leaves no threads to judge them by.
   if (threads.length) dropLastTabs((id) => !state.threads[id] || !!state.threads[id].closedAt)
   // The footer and the account menu read these. Neither blocks the first paint, and a failure leaves them empty.
@@ -893,9 +894,9 @@ async function start() {
   // A fresh install always starts at Welcome, whose Get started runs the checks.
   // Replace, so Back right after launch has nowhere to go.
   const replace = { history: 'replace' } as const
-  if (!rooms.length) go({ name: 'onboarding', step: 'welcome' }, replace)
+  if (!projects.length) go({ name: 'onboarding', step: 'welcome' }, replace)
   else go(opening, replace)
-  for (const r of rooms) void loadRoom(r.id).catch(() => undefined)
+  for (const r of projects) void loadProject(r.id).catch(() => undefined)
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)
   // The checks rerun on every launch, after the app is up: they run claude and gh one after another and can take a while on a slow Mac.
@@ -905,7 +906,7 @@ async function start() {
   void call('preflight.run', undefined).then((checks) => {
     actions.system.setPreflight(checks)
     const blocking = checks.find((c) => !c.ok && c.blocking)
-    if (!rooms.length || !blocking) return
+    if (!projects.length || !blocking) return
     if (state.ui.route === shown && !state.ui.modal) go({ name: 'onboarding', step: 'checks' }, replace)
     else actions.ui.toast({ title: blocking.title, sub: 'Kernel will show the checks the next time it starts.' })
   }).catch(() => undefined)
@@ -941,20 +942,20 @@ function applyPending(all: Record<string, PrPending> | null) {
  * Where the app opens once the checks pass: `boot` goes there, and so does Continue on the checks screen (call it with `go(..., { history: 'replace' })`),
  * so the two can't drift. Settings > General > Open to picks it. Where I left off reopens the saved place and brings back the tabs
  * of its workspaces that are still live (a tab already open wins, so asking twice changes nothing). Without a saved place (a first launch,
- * unreadable JSON, fixture mode) it opens the last room's Lead chat, found the way the sidebar does (the `lead` workspace on the main
- * checkout), since agents load after this. A room nobody has briefed opens its Agents page in Settings (D-104, KERNEL-642). Also the route Settings falls back to (`launch`).
+ * unreadable JSON, fixture mode) it opens the last project's Lead chat, found the way the sidebar does (the `lead` workspace on the main
+ * checkout), since agents load after this. A project nobody has briefed opens its Agents page in Settings (D-104, KERNEL-642). Also the route Settings falls back to (`launch`).
  */
 export function launchRoute(): Route {
   const openTo = state.settings?.general.openTo
-  let route: Route = landing(state, lastRoom() ?? undefined)
+  let route: Route = landing(state, lastProject() ?? undefined)
   if (openTo === 'inbox') route = { name: 'inbox' }
   else if (openTo === 'lastPlace') {
     const restored = fixtureMode ? undefined : restorePlace(savedPlace(), state)
-    const last = state.rooms.find((r) => r.id === lastRoom())
+    const last = state.projects.find((r) => r.id === lastProject())
     if (restored) {
       setState((s) => ({ ui: { ...s.ui, tabs: { ...restored.tabs, ...s.ui.tabs } } }))
       route = restored.route
-    } else if (last) route = nearest(roomHome(last.id, state), state)
+    } else if (last) route = nearest(projectHome(last.id, state), state)
   }
   return launch = route
 }
@@ -969,17 +970,17 @@ function applyFixture(ui: ForcedUi, push: PushEvent[]) {
   document.documentElement.dataset.fixture = 'ready'
 }
 
-export async function loadRoom(roomId: string) {
+export async function loadProject(projectId: string) {
   const [agents, status, tasks, last] = await Promise.all([
-    call('agents.list', { roomId }), call('agents.status', { roomId }), call('tasks.list', { roomId }), call('rooms.lastActivity', { roomId })
+    call('agents.list', { projectId }), call('agents.status', { projectId }), call('tasks.list', { projectId }), call('projects.lastActivity', { projectId })
   ])
-  actions.tasks.set(roomId, tasks)
-  actions.activity.setLast(roomId, last)
-  setState((s) => ({ agents: { ...s.agents, [roomId]: agents }, status: { ...s.status, [roomId]: { ...status, ...(s.status[roomId] ?? {}) } } }))
+  actions.tasks.set(projectId, tasks)
+  actions.activity.setLast(projectId, last)
+  setState((s) => ({ agents: { ...s.agents, [projectId]: agents }, status: { ...s.status, [projectId]: { ...status, ...(s.status[projectId] ?? {}) } } }))
   // The Inbox lists open overlaps (D-104). Pushes keep them current after this; a failed check only leaves them out.
-  void call('rooms.overlaps', { roomId }).then((list) => actions.rooms.setOverlaps(roomId, list)).catch(() => undefined)
-  // A workspace held in `trust` before this launch has no push to learn it from. Null isn't applied: a push may have landed first, and `room.trust` clears it (KERNEL-218).
-  void call('rooms.scriptTrust', { roomId }).then((trust) => { if (trust) actions.rooms.setTrust(roomId, trust) }).catch(() => undefined)
+  void call('projects.overlaps', { projectId }).then((list) => actions.projects.setOverlaps(projectId, list)).catch(() => undefined)
+  // A workspace held in `trust` before this launch has no push to learn it from. Null isn't applied: a push may have landed first, and `project.trust` clears it (KERNEL-218).
+  void call('projects.scriptTrust', { projectId }).then((trust) => { if (trust) actions.projects.setTrust(projectId, trust) }).catch(() => undefined)
 }
 
 /**

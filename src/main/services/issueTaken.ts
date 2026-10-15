@@ -36,17 +36,17 @@ export function keyInText(key: string, text: string): boolean {
 export interface OpenPr { number: number; title: string; url?: string; branch: string; body?: string }
 
 export interface TakenChecks {
-  /** The room's remote, which names the branches found: "origin". */
+  /** The project's remote, which names the branches found: "origin". */
   remote: string
-  /** The branch names on the remote. Nothing when the room has no such remote, which is no note. */
+  /** The branch names on the remote. Nothing when the project has no such remote, which is no note. */
   branches: () => Promise<string[] | undefined>
-  /** Open PRs that may name the key. Left out when the room's code host can't say: no GitHub repo, or it merges locally. */
+  /** Open PRs that may name the key. Left out when the project's code host can't say: no GitHub repo, or it merges locally. */
   prs?: () => Promise<OpenPr[]>
-  /** The issue's assignees. Left out when the room's tracker can't read this key. */
+  /** The issue's assignees. Left out when the project's tracker can't read this key. */
   assignees?: () => Promise<{ name: string; me?: boolean }[]>
   /** The tracker's name, for its note: "Linear". */
   tracker?: string
-  /** The branches and PR numbers of the room's own workspaces. Those are the user's work, not someone else's. */
+  /** The branches and PR numbers of the project's own workspaces. Those are the user's work, not someone else's. */
   own: { branches: Set<string>; prs: Set<number> }
   timeoutMs?: number
 }

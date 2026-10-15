@@ -62,10 +62,10 @@ const askBash: Options['hooks'] = {
 
 /** Kernel's Never allow guard, the same way. */
 const denyBash: Options['hooks'] = {
-  PreToolUse: [{ matcher: 'Bash', hooks: [async () => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Kernel blocks "${TOUCH}" in every room.` } })] }]
+  PreToolUse: [{ matcher: 'Bash', hooks: [async () => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Kernel blocks "${TOUCH}" in every project.` } })] }]
 }
 
-/** The same command as an ask rule, the way a room's Always ask list would reach the session through `Options.settings`. */
+/** The same command as an ask rule, the way a project's Always ask list would reach the session through `Options.settings`. */
 const askRule: Settings = { permissions: { ask: [`Bash(${TOUCH})`] } }
 
 // --- Claude Code ---
@@ -297,13 +297,13 @@ describe.skipIf(!liveCodex)("live Bypass permissions through Kernel's Codex runn
     await symlink(auth, join(home, 'auth.json'))
     const never = 'touch kernel-probe-447-never.txt'
     const store = new Store(join(data, 'kernel.db'))
-    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'probe', branch: 'feat/probe', baseRef: 'main', path: cwd, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'probe', branch: 'feat/probe', baseRef: 'main', path: cwd, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Probe', kind: 'chat', provider: 'codex', model: CODEX_MODEL, effort: 'low', plan: false, createdAt: 1 })
     const settings = { permissions: { mode: 'bypassPermissions', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['touch'], neverAllow: [never], protectedBranches: ['main'], approvalTimeoutSec: 300 }, providers: { codex: { path: bin, useSystem: false, personality: 'pragmatic' } } } as unknown as AppSettings
     const sessions = new Sessions({
       store, approvals: new Approvals(store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined, envFor: () => ({ ...process.env }) as Record<string, string>,
-      roomAllow: () => [], allowInRoom: () => undefined, codexFor: () => ({ bin: bin!, home, personality: 'pragmatic', tools: [] })
+      projectAllow: () => [], allowInProject: () => undefined, codexFor: () => ({ bin: bin!, home, personality: 'pragmatic', tools: [] })
     })
     try {
       await sessions.send('chat', [{ type: 'text', text: `Run these shell commands one at a time, each exactly once, and nothing else:\n1. touch ${join(outside, `${MARK}.txt`)}\n2. ${never}\n3. git push\nIf one is refused or fails, go on to the next. Then reply "done".` }])

@@ -7,13 +7,13 @@ This walks through one change from brief to merge. It takes a few minutes of you
 
 ## 1. Add a repo
 
-Open the menu next to **Your rooms** in the sidebar and pick **Connect a repo** for a folder you already have, or **New room** to start one. Each repo becomes a [room](/docs/rooms).
+Open the menu next to **Your projects** in the sidebar and pick **Connect a repo** for a folder you already have, or **New project** to start one. Each repo becomes a [project](/docs/projects).
 
-Room setup shows the team the repo brings, if any, so you can pick who leads and who reviews before the room opens. It also finds rules in the repo's `CLAUDE.md` or `AGENTS.md` that work against Kernel, such as committing straight to main, and shows what Kernel tells agents instead.
+Project setup shows the team the repo brings, if any, so you can pick who leads and who reviews before the project opens. It also finds rules in the repo's `CLAUDE.md` or `AGENTS.md` that work against Kernel, such as committing straight to main, and shows what Kernel tells agents instead.
 
 ## 2. Brief Kernel
 
-Press ⌘N for **New chat**, or open the room's chat with Kernel from the sidebar. Say what you want in a sentence or two:
+Press ⌘N for **New chat**, or open the project's chat with Kernel from the sidebar. Say what you want in a sentence or two:
 
 ```text
 Add PDF export to invoices. Spec first.

@@ -46,9 +46,9 @@ export function openReminder(items: OpenItem[]): string {
 export class OpenItems extends Feature {
   private threadOf(chatId: string) { return this.store.chat(chatId)?.threadId ?? chatId }
 
-  private open(chat: Chat, roomId: string, key: string, item: Pick<OpenItem, 'kind' | 'agentId' | 'name'> & Partial<OpenItem>) {
+  private open(chat: Chat, projectId: string, key: string, item: Pick<OpenItem, 'kind' | 'agentId' | 'name'> & Partial<OpenItem>) {
     const threadId = chat.threadId ?? chat.id
-    this.store.saveOpenItem({ ...item, id: randomUUID(), roomId, threadId, chatId: chat.id, createdAt: Date.now() }, key)
+    this.store.saveOpenItem({ ...item, id: randomUUID(), projectId, threadId, chatId: chat.id, createdAt: Date.now() }, key)
     this.changed(threadId)
   }
 
@@ -68,12 +68,12 @@ export class OpenItems extends Feature {
   delivered(chat: Chat, rows: Delivered[]) {
     for (const { ws, name, events } of rows) {
       for (const e of events) {
-        if (e.kind === 'question' && e.question) this.open(chat, ws.roomId, `question:${ws.id}`, { kind: 'question', workspaceId: ws.id, agentId: ws.agentId, name, text: e.question.text })
+        if (e.kind === 'question' && e.question) this.open(chat, ws.projectId, `question:${ws.id}`, { kind: 'question', workspaceId: ws.id, agentId: ws.agentId, name, text: e.question.text })
         else if (e.kind === 'handoff.proposed' && e.proposal) {
-          this.open(chat, ws.roomId, `handoff:${ws.id}:${e.proposal.agentId}`, { kind: 'handoff.proposed', workspaceId: ws.id, agentId: ws.agentId, name, text: e.proposal.task, proposed: { agentId: e.proposal.agentId, name: e.proposal.agent } })
+          this.open(chat, ws.projectId, `handoff:${ws.id}:${e.proposal.agentId}`, { kind: 'handoff.proposed', workspaceId: ws.id, agentId: ws.agentId, name, text: e.proposal.task, proposed: { agentId: e.proposal.agentId, name: e.proposal.agent } })
         } else if (e.kind === 'review' && e.review?.verdict === 'blockers' && e.review.current) {
           const of = this.store.workspace(e.review.of)
-          if (of) this.open(chat, ws.roomId, `blockers:${of.id}`, { kind: 'blockers', workspaceId: of.id, agentId: of.agentId, name: e.review.ofName, blockers: e.review.total ?? e.review.blockers?.length ?? 1 })
+          if (of) this.open(chat, ws.projectId, `blockers:${of.id}`, { kind: 'blockers', workspaceId: of.id, agentId: of.agentId, name: e.review.ofName, blockers: e.review.total ?? e.review.blockers?.length ?? 1 })
         }
       }
     }
@@ -81,9 +81,9 @@ export class OpenItems extends Feature {
 
   /** The user addressed `mentioned` in a message in the Lead tab `chat` (KERNEL-745). */
   mentioned(chat: Chat, mentioned: { agentId: string; name: string }[]) {
-    const roomId = this.store.workspace(chat.workspaceId)?.roomId
-    if (!roomId) return
-    for (const m of mentioned) this.open(chat, roomId, `mention:${chat.id}:${m.agentId}`, { kind: 'mention', agentId: m.agentId, name: m.name })
+    const projectId = this.store.workspace(chat.workspaceId)?.projectId
+    if (!projectId) return
+    for (const m of mentioned) this.open(chat, projectId, `mention:${chat.id}:${m.agentId}`, { kind: 'mention', agentId: m.agentId, name: m.name })
   }
 
   /** message_agent reached `ws`: what the chat owes that workspace, and a mention of its teammate. */

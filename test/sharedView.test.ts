@@ -5,10 +5,10 @@ import { sharedHere } from '../src/renderer/src/screens/workspace/shared/SharedP
 import type { AgentDef, SharedFile, Workspace } from '../src/shared/types'
 
 const file = (id: string, workspaceId: string, updatedAt: number, versions = [1], mime = 'text/html'): SharedFile => ({
-  id, roomId: 'r1', workspaceId, agentId: 'noor', source: `${id}.html`, title: id, kind: 'html', createdAt: 1, updatedAt,
+  id, projectId: 'r1', workspaceId, agentId: 'noor', source: `${id}.html`, title: id, kind: 'html', createdAt: 1, updatedAt,
   versions: versions.map((n) => ({ n, at: n, file: 'f', mime, bytes: 1, sha256: `${id}${n}` }))
 })
-const ws = (id: string, agentId: string, threadId?: string) => ({ id, roomId: 'r1', agentId, ...(threadId ? { threadId } : {}) }) as Workspace
+const ws = (id: string, agentId: string, threadId?: string) => ({ id, projectId: 'r1', agentId, ...(threadId ? { threadId } : {}) }) as Workspace
 const agents = { r1: [{ id: 'kernel', lead: true }, { id: 'noor' }] as AgentDef[] }
 
 describe('versionLine', () => {
@@ -29,14 +29,14 @@ describe('sharedHere', () => {
   it("lists a teammate's workspace's own files, newest first", () => {
     expect(ids(sharedHere({ shared, agents, workspaces: [] }, ws('w1', 'noor')))).toEqual(['c', 'a'])
   })
-  it('lists every file in the room in the Lead workspace from before each chat had its own', () => {
+  it('lists every file in the project in the Lead workspace from before each chat had its own', () => {
     expect(ids(sharedHere({ shared, agents, workspaces: [] }, ws('lead', 'kernel')))).toEqual(['b', 'c', 'a'])
   })
   it('lists nothing when nothing was shared', () => {
     expect(sharedHere({ shared: {}, agents, workspaces: [] }, ws('w1', 'noor'))).toEqual([])
   })
 
-  describe('with two chats with Kernel in one room', () => {
+  describe('with two chats with Kernel in one project', () => {
     const chat1 = ws('lead1', 'kernel', 't1')
     const chat2 = ws('lead2', 'kernel', 't2')
     const noor1 = ws('noor1', 'noor', 't1')
@@ -57,7 +57,7 @@ describe('sharedHere', () => {
       expect(here(noor1)).toEqual(['team1'])
       expect(here(noor2)).toEqual(['team2'])
     })
-    it("lists the whole room in the Lead workspace from before KERNEL-405, which has no chat", () => {
+    it("lists the whole project in the Lead workspace from before KERNEL-405, which has no chat", () => {
       expect(here(workspaces[4])).toEqual(['team2', 'team1', 'own2', 'own1', 'old'])
     })
     it('still lists a handed-off teammate after its chat tab closed, since threadId is kept', () => {

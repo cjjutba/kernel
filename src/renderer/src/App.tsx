@@ -27,16 +27,16 @@ import { Checks } from './screens/onboarding/Checks'
 import { Loading } from './screens/onboarding/Loading'
 import { Permissions } from './screens/onboarding/Permissions'
 import { Welcome } from './screens/onboarding/Welcome'
-import { ConfirmRemoveRoom } from './screens/rooms/ConfirmRemoveRoom'
-import { TrustScripts } from './screens/rooms/TrustScripts'
+import { ConfirmRemoveProject } from './screens/projects/ConfirmRemoveProject'
+import { TrustScripts } from './screens/projects/TrustScripts'
 import { ConfirmDeleteHistory } from './screens/history/ConfirmDeleteHistory'
-import { ConnectRepo } from './screens/rooms/ConnectRepo'
-import { NewRoom } from './screens/rooms/NewRoom'
-import { OpenFolder } from './screens/rooms/OpenFolder'
-import { Rooms } from './screens/rooms/Rooms'
-import { RoomSetup } from './screens/rooms/RoomSetup'
+import { ConnectRepo } from './screens/projects/ConnectRepo'
+import { NewProject } from './screens/projects/NewProject'
+import { OpenFolder } from './screens/projects/OpenFolder'
+import { Projects } from './screens/projects/Projects'
+import { ProjectSetup } from './screens/projects/ProjectSetup'
 import { CommandPalette } from './screens/search/CommandPalette'
-import { roomInView } from './screens/search/model'
+import { projectInView } from './screens/search/model'
 import './screens/settings/settings.css'
 import { useAppearance } from './screens/settings/appearance'
 import { ConfirmRetire } from './screens/agent/ConfirmRetire'
@@ -84,17 +84,17 @@ function Screen({ route }: { route: Route }): ReactNode {
   switch (route.name) {
     case 'onboarding':
       if (route.step === 'welcome') return <Welcome />
-      if (route.step === 'room') return <RoomSetup roomId={route.roomId} />
+      if (route.step === 'project') return <ProjectSetup projectId={route.projectId} />
       if (route.step === 'permissions') return <Permissions />
       return <Checks />
     case 'inbox': return <Inbox />
-    case 'issues': return <Issues issueId={route.issueId} roomId={route.roomId} />
+    case 'issues': return <Issues issueId={route.issueId} projectId={route.projectId} />
     case 'prs': return <PullRequests filter={route.filter} />
     case 'history': return <History />
-    case 'rooms': return <Rooms />
+    case 'projects': return <Projects />
     case 'workspace': return <Workspace workspaceId={route.workspaceId} />
-    case 'leadNew': return <LeadNewScreen roomId={route.roomId} source={route.source} picks={route.picks} />
-    case 'settings': return <Settings page={route.page} roomId={route.roomId} section={route.section} agentId={route.agentId} />
+    case 'leadNew': return <LeadNewScreen projectId={route.projectId} source={route.source} picks={route.picks} />
+    case 'settings': return <Settings page={route.page} projectId={route.projectId} section={route.section} agentId={route.agentId} />
     case 'devUi': return <DevUi page={route.page} />
   }
 }
@@ -103,38 +103,38 @@ function Screen({ route }: { route: Route }): ReactNode {
 function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
   switch (modal.name) {
     case 'search': return <CommandPalette />
-    case 'newRoom': return <NewRoom prefill={modal.prefill} />
+    case 'newProject': return <NewProject prefill={modal.prefill} />
     case 'connectRepo': return <ConnectRepo />
     case 'openFolder': return <OpenFolder />
     case 'checkHooks': return <CheckHooks />
-    case 'newAgent': return <NewAgent roomId={modal.roomId} step={modal.step} prefill={modal.prefill} />
+    case 'newAgent': return <NewAgent projectId={modal.projectId} step={modal.step} prefill={modal.prefill} />
     case 'whatsNew': return <WhatsNew update={modal.update} />
-    case 'envVar': return <EnvVarForm roomId={modal.roomId} editName={modal.editName} />
+    case 'envVar': return <EnvVarForm projectId={modal.projectId} editName={modal.editName} />
     case 'telemetryAsk': return <TelemetryAsk />
     case 'mcpSetUp': return <McpSetUp provider={modal.provider} accountId={modal.accountId} />
     case 'confirm':
       if (modal.kind === 'archive') return <ConfirmArchive workspaceId={modal.workspaceId} />
       if (modal.kind === 'discard') return <ConfirmDiscard workspaceId={modal.workspaceId} />
       if (modal.kind === 'revert') return <ConfirmRevert workspaceId={modal.workspaceId} checkpointId={modal.checkpointId} start={modal.start} />
-      if (modal.kind === 'removeRoom') return <ConfirmRemoveRoom roomId={modal.roomId} />
-      if (modal.kind === 'trust') return <TrustScripts roomId={modal.roomId} />
+      if (modal.kind === 'removeProject') return <ConfirmRemoveProject projectId={modal.projectId} />
+      if (modal.kind === 'trust') return <TrustScripts projectId={modal.projectId} />
       if (modal.kind === 'deleteHistory') return <ConfirmDeleteHistory workspaceIds={modal.workspaceIds} />
       if (modal.kind === 'closeChats') return <ConfirmCloseChats workspaceId={modal.workspaceId} chatIds={modal.chatIds} />
       if (modal.kind === 'archiveChat') return <ConfirmArchiveChat threadId={modal.threadId} />
       // New chat opens this when the issue it starts from has findings (KERNEL-500): Start anyway sends the held chat, Cancel brings the box back.
       if (modal.kind === 'issueTaken') return <ConfirmIssueTaken issue={modal.issue} findings={modal.findings} onStart={() => startHeld(modal.held)} onCancel={() => backToNewChat(modal.held)} />
       if (modal.kind === 'switchAccount') return <ConfirmSwitchAccount key={`${modal.provider}:${modal.accountId}`} provider={modal.provider} accountId={modal.accountId} preview={modal.preview} reason={modal.reason} onSwitched={modal.onSwitched} />
-      if (modal.kind === 'bypass') return <ConfirmBypass roomId={modal.roomId} chatId={modal.chatId} draftKey={modal.draftKey} />
-      return <ConfirmRetire roomId={modal.roomId} agentId={modal.agentId} />
+      if (modal.kind === 'bypass') return <ConfirmBypass projectId={modal.projectId} chatId={modal.chatId} draftKey={modal.draftKey} />
+      return <ConfirmRetire projectId={modal.projectId} agentId={modal.agentId} />
   }
 }
 
-/** The room the user is looking at, for shortcuts that act on "this room". */
-function currentRoom(): string | undefined {
+/** The project the user is looking at, for shortcuts that act on "this project". */
+function currentProject(): string | undefined {
   const s = getState()
   const r = s.ui.route
-  if ('roomId' in r) return r.roomId
-  if (r.name === 'workspace') return s.workspaces.find((w) => w.id === r.workspaceId)?.roomId
+  if ('projectId' in r) return r.projectId
+  if (r.name === 'workspace') return s.workspaces.find((w) => w.id === r.workspaceId)?.projectId
 }
 
 /** Dev builds only: `#/dev/ui` and `#/dev/ui/<page>` open the component gallery. Production has no way to reach it except a fixture forcing the route. */
@@ -181,9 +181,9 @@ export function App() {
     const id = requestIdleCallback(() => { settings.warm(); settingsNav.warm() })
     return () => cancelIdleCallback(id)
   }, [booted])
-  // Usage data is asked about once, after the first room, in a build that can send it (KERNEL-397).
-  const rooms = useStore((s) => s.rooms.length)
-  useEffect(() => { if (booted && route.name !== 'onboarding' && !modal) void askAboutTelemetry() }, [booted, rooms, route.name, modal])
+  // Usage data is asked about once, after the first project, in a build that can send it (KERNEL-397).
+  const projects = useStore((s) => s.projects.length)
+  useEffect(() => { if (booted && route.name !== 'onboarding' && !modal) void askAboutTelemetry() }, [booted, projects, route.name, modal])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // ⌃1 to ⌃9 open the workspaces of the chat in view (KERNEL-814). With no such chat they do nothing and are left to the page.
@@ -194,7 +194,7 @@ export function App() {
         return
       }
       if (!e.metaKey) return
-      // ⌘1 to ⌘9 open the room in view's Lead chats, not its workspaces (KERNEL-357). Ctrl is left out because ^⌘1 to 4 pick a model in the composer.
+      // ⌘1 to ⌘9 open the project in view's Lead chats, not its workspaces (KERNEL-357). Ctrl is left out because ^⌘1 to 4 pick a model in the composer.
       const digit = /^Digit([1-9])$/.exec(e.code)
       if (digit && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         const s = getState()
@@ -226,14 +226,14 @@ export function App() {
         const s = getState()
         if (s.ui.modal || s.ui.route.name === 'onboarding') return
         if (s.ui.route.name === 'leadNew') actions.ui.back()
-        else openNewChat(currentRoom())
+        else openNewChat(currentProject())
       }
-      // The Lead's chat in the room in view, or the first room when none is (Inbox, History).
+      // The Lead's chat in the project in view, or the first project when none is (Inbox, History).
       if (e.code === 'KeyL' && e.shiftKey && !e.altKey) {
         e.preventDefault()
         const s = getState()
-        const room = roomInView(s.ui.route, s.rooms, s.workspaces)
-        if (room) void openLead(room.id)
+        const project = projectInView(s.ui.route, s.projects, s.workspaces)
+        if (project) void openLead(project.id)
       }
     }
     // A mouse's back button is 3 and its forward button 4.
@@ -252,7 +252,7 @@ export function App() {
     <Suspense fallback={<div className="app" data-lazy="pending"><Loading /></div>}>
       <div className="app app-col" data-sidebar={hidden ? 'hidden' : undefined}>
         <div className="app-body">
-          {column && <Sidebar settingsList={route.name === 'settings' ? <SettingsNav page={route.page} roomId={route.roomId} section={route.section} /> : undefined} />}
+          {column && <Sidebar settingsList={route.name === 'settings' ? <SettingsNav page={route.page} projectId={route.projectId} section={route.section} /> : undefined} />}
           <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
             <Screen route={route} />
           </div>

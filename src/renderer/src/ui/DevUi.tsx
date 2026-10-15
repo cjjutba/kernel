@@ -43,7 +43,7 @@ function Controls() {
       </Section>
       <Section title="Pills, tabs, segmented control, toggle, select">
         <div className="devui-row">
-          <Pill pressed={pill} onClick={() => setPill(!pill)}>All rooms</Pill><Pill>Needs you</Pill>
+          <Pill pressed={pill} onClick={() => setPill(!pill)}>All projects</Pill><Pill>Needs you</Pill>
           <Tabs label="Panels" value={tab} onChange={setTab} tabs={[{ id: 'chat', label: 'Chat' }, { id: 'changes', label: 'Changes' }, { id: 'files', label: 'Files' }]} />
         </div>
         <div className="devui-row" style={{ marginTop: 10 }}>
@@ -123,7 +123,7 @@ function Dialogs() {
     <>
       <Section title="Modal shell and confirm dialog">
         <div className="devui-stage" style={{ minHeight: 330 }}>
-          <Modal title="New room" onClose={noop} width={420} top={14} footer={<><span className="grow" /><Button>Cancel</Button><Button variant="primary">Create</Button></>}>
+          <Modal title="New project" onClose={noop} width={420} top={14} footer={<><span className="grow" /><Button>Cancel</Button><Button variant="primary">Create</Button></>}>
             <div className="modal-body ink2">One shell for every dialog.</div>
           </Modal>
         </div>

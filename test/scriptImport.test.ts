@@ -7,11 +7,11 @@ import { loadRepoSettings } from '../src/main/services/settings'
 import { convertScriptVariables, MAX_IMPORT_BYTES, suggestScripts } from '../src/main/services/scriptImport'
 import { tempRepo, freePort } from './helpers'
 
-// KERNEL-682: Kernel offers a room the scripts Conductor, Superset or its lockfiles ask for, and applies none.
+// KERNEL-682: Kernel offers a project the scripts Conductor, Superset or its lockfiles ask for, and applies none.
 
 const NONE = { scripts: {}, runScripts: [] }
 const tempHome = () => mkdtemp(join(tmpdir(), 'kernel-home-'))
-/** What a repo with these files is offered, by a room that runs nothing yet. */
+/** What a repo with these files is offered, by a project that runs nothing yet. */
 const suggest = async (files: Record<string, string>, home?: string) => suggestScripts(await tempRepo({ 'README.md': '# demo\n', ...files }), NONE, home ?? await tempHome())
 
 describe('convertScriptVariables (KERNEL-682)', () => {
@@ -100,7 +100,7 @@ describe('scripts.suggest sources (KERNEL-682)', () => {
     }])
   })
 
-  it("puts Conductor's settings.local.toml over settings.toml, and takes the only run script or a run string as the room's run", async () => {
+  it("puts Conductor's settings.local.toml over settings.toml, and takes the only run script or a run string as the project's run", async () => {
     const [both] = await suggest({
       '.conductor/settings.toml': '[scripts]\nsetup = "pnpm install"\narchive = "rm -rf out"\nrun_mode = "concurrent"\n[scripts.run.dev]\ncommand = "pnpm dev"\n',
       '.conductor/settings.local.toml': '[scripts]\nsetup = "pnpm install --frozen-lockfile"\n[scripts.run.dev]\ncommand = "pnpm dev --port $CONDUCTOR_PORT"\n'
@@ -206,18 +206,18 @@ describe('scripts.suggest safety (KERNEL-682)', () => {
     expect((await suggest({ '.conductor/settings.toml': '[scripts', 'pnpm-lock.yaml': '' })).map((s) => s.source)).toEqual(['detected'])
   })
 
-  it('leaves out a suggestion for what the room already runs', async () => {
+  it('leaves out a suggestion for what the project already runs', async () => {
     const repo = await tempRepo({
       '.conductor/settings.toml': '[scripts]\nsetup = "pnpm install"\n[scripts.run.dev]\ncommand = "pnpm dev --port $CONDUCTOR_PORT"\ndefault = true\n[scripts.run.site]\ncommand = "pnpm site"\n',
       'pnpm-lock.yaml': '',
       '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n'
     })
     const home = await tempHome()
-    // The lockfile's install is the room's setup already. Conductor still has run scripts to offer.
+    // The lockfile's install is the project's setup already. Conductor still has run scripts to offer.
     expect((await suggestScripts(repo, await loadRepoSettings(repo), home)).map((s) => s.source)).toEqual(['conductor'])
     await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[scripts]\nrun = "pnpm dev --port $KERNEL_PORT"\n[run_scripts]\nsite = "pnpm site"\n')
     expect(await suggestScripts(repo, await loadRepoSettings(repo), home)).toEqual([])
-    // A script the room has under another command is the room's own, and stays out too (KERNEL-707).
+    // A script the project has under another command is the project's own, and stays out too (KERNEL-707).
     await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[scripts]\nrun = "my dev"\n[run_scripts]\nsite = "pnpm site --watch"\n')
     expect(await suggestScripts(repo, await loadRepoSettings(repo), home)).toEqual([])
     await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[scripts]\nrun = "my dev"\n')
@@ -225,8 +225,8 @@ describe('scripts.suggest safety (KERNEL-682)', () => {
   })
 })
 
-describe('scripts.suggest in a room (KERNEL-682)', () => {
-  async function roomWith(files: Record<string, string>) {
+describe('scripts.suggest in a project (KERNEL-682)', () => {
+  async function projectWith(files: Record<string, string>) {
     const repo = await tempRepo({
       'README.md': '# client\n',
       '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
@@ -240,32 +240,32 @@ describe('scripts.suggest in a room (KERNEL-682)', () => {
     await k.start()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
     k.sessions.send = async () => ({ queued: false })
-    return { k, repo, room: await k.addRoom(repo) }
+    return { k, repo, project: await k.addProject(repo) }
   }
 
   it('answers the channel without writing a file, and a saved suggestion is not offered again', async () => {
-    const { k, repo, room } = await roomWith({ 'conductor.json': '{"scripts":{"setup":"echo one > one.txt"}}' })
+    const { k, repo, project } = await projectWith({ 'conductor.json': '{"scripts":{"setup":"echo one > one.txt"}}' })
     const h = k.handlers()
-    const [found] = await h['scripts.suggest']({ roomId: room.id })
+    const [found] = await h['scripts.suggest']({ projectId: project.id })
     expect(found).toMatchObject({ source: 'conductor', file: 'conductor.json', patch: { scripts: { setup: 'echo one > one.txt' } } })
     await expect(readFile(join(repo, '.kernel', 'settings.local.toml'), 'utf8')).rejects.toThrow()
     expect((await loadRepoSettings(repo)).scripts.setup).toBeUndefined()
-    await h['settings.setRoom']({ roomId: room.id, patch: found.patch })
-    expect(await h['scripts.suggest']({ roomId: room.id })).toEqual([])
+    await h['settings.setProject']({ projectId: project.id, patch: found.patch })
+    expect(await h['scripts.suggest']({ projectId: project.id })).toEqual([])
   })
 
-  it('runs a setup script of several lines, saved through settings.setRoom, in a new workspace', async () => {
+  it('runs a setup script of several lines, saved through settings.setProject, in a new workspace', async () => {
     const toml = `[scripts]\nsetup = '''\n# Conductor's setup, line by line.\necho "$CONDUCTOR_WORKSPACE_NAME" > name.txt\nif [ -d "$CONDUCTOR_ROOT_PATH" ]; then\n  echo "port $((CONDUCTOR_PORT + 1))" > port.txt\nfi\n'''\n`
-    const { k, room } = await roomWith({ '.conductor/settings.toml': toml })
+    const { k, project } = await projectWith({ '.conductor/settings.toml': toml })
     const h = k.handlers()
-    const [found] = await h['scripts.suggest']({ roomId: room.id })
+    const [found] = await h['scripts.suggest']({ projectId: project.id })
     expect(found.patch.scripts?.setup?.split('\n')).toHaveLength(5)
-    const saved = await h['settings.setRoom']({ roomId: room.id, patch: found.patch })
+    const saved = await h['settings.setProject']({ projectId: project.id, patch: found.patch })
     expect(saved.scripts.setup).toBe(found.patch.scripts!.setup)
     expect(saved.sources['scripts.setup']).toBe('local')
     // The user's own file, so the script runs without a trust prompt.
-    expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
-    const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    expect(await h['projects.scriptTrust']({ projectId: project.id })).toBeNull()
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
     expect(ws.status).toBe('ready')
     expect(await readFile(join(ws.path, 'name.txt'), 'utf8')).toBe(`${ws.name}\n`)
     expect(await readFile(join(ws.path, 'port.txt'), 'utf8')).toBe(`port ${ws.port + 1}\n`)

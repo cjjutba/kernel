@@ -5,7 +5,7 @@ import type { Builtins } from './builtins'
 import { canOpenPr, toolName } from './agentTools'
 import { isUnreadable } from './agents'
 
-/** Room setup asks for a roster when a room has more agent files than this (KERNEL-465). */
+/** Project setup asks for a roster when a project has more agent files than this (KERNEL-465). */
 export const ROSTER_LIMIT = 12
 
 /** Words that say an agent works a task through to a pull request. "Merge request" is GitLab's name for one. */
@@ -26,7 +26,7 @@ export function takesTasksByDefault(a: Pick<AgentDef, 'tools' | 'disallowedTools
 }
 
 /**
- * What Room setup reads to ask for a roster (KERNEL-465), from the team resolved without one. Kernel suggests the agents
+ * What Project setup reads to ask for a roster (KERNEL-465), from the team resolved without one. Kernel suggests the agents
  * that take tasks. The Lead and the reviewer are on the team whatever the roster says.
  */
 export function adviseRoster(agents: AgentDef[], config?: TeamConfig): RosterAdvice {
@@ -35,8 +35,8 @@ export function adviseRoster(agents: AgentDef[], config?: TeamConfig): RosterAdv
 }
 
 /**
- * Where a room's Lead and reviewer came from, for `team.resolved` (KERNEL-397). The Lead is always Kernel: `file` when a
- * file customizes it, else `builtin` (KERNEL-692). A reviewer from `builtin` is no agent: the room has no reviewer of its
+ * Where a project's Lead and reviewer came from, for `team.resolved` (KERNEL-397). The Lead is always Kernel: `file` when a
+ * file customizes it, else `builtin` (KERNEL-692). A reviewer from `builtin` is no agent: the project has no reviewer of its
  * own, and Kernel's code review runs (KERNEL-553).
  */
 export interface Resolved {
@@ -46,7 +46,7 @@ export interface Resolved {
 }
 
 /**
- * A room's team (KERNEL-397): its agent files, what `[team]` overrides, and Kernel, the Lead (KERNEL-692).
+ * A project's team (KERNEL-397): its agent files, what `[team]` overrides, and Kernel, the Lead (KERNEL-692).
  * Exactly one agent leads, at most one reviews, and every file agent either takes tasks or doesn't.
  * - Lead: always Kernel, under `kernel-lead`. One file customizes it: .claude/agents/kernel.md, else the file `[team] lead`
  *   names, else the first file marked Lead by name. Its prompt, tools, model and effort replace the built-in's, and the file
@@ -60,7 +60,7 @@ export interface Resolved {
  *   file first, so a roster never changes who leads or reviews (KERNEL-465).
  * A file with a reserved id, or the same id as an earlier file, is left out with a warning. A file Kernel can't read stays
  * on the team with its error, but never leads, reviews or takes a task (KERNEL-451). A plugin agent customizes Kernel or
- * reviews only when `[team]` names it, since a plugin brings its agents to every room (KERNEL-463). The Lead comes first,
+ * reviews only when `[team]` names it, since a plugin brings its agents to every project (KERNEL-463). The Lead comes first,
  * then by name.
  */
 export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtins: Builtins }): Resolved {

@@ -47,7 +47,7 @@ const firstSentence = (reason: string) => reason.split(/(?<=\.)\s/)[0]
 export function MergeButton({ ws, short, icon }: { ws: Workspace; short?: boolean; icon?: boolean }) {
   const rules = useStore((s) => s.settings?.pr) ?? NO_RULES
   const pr = useStore((s) => s.prs[ws.id])
-  const reviewer = useStore((s) => s.agents[ws.roomId])
+  const reviewer = useStore((s) => s.agents[ws.projectId])
   const pending = useStore((s) => s.prPending[ws.id])
   const [busy, run] = useBusy()
   const [confirm, setConfirm] = useState<{ reviewer: string; count: number } | null>(null)

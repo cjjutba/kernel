@@ -29,8 +29,8 @@ describe('insideRoots', () => {
   const roots = ['/Users/you/code/app', '/Users/you/.kernel/worktrees/app/fix-login']
 
   it.each([
-    ['a room checkout', '/Users/you/code/app', true],
-    ['a file in a room', '/Users/you/code/app/src/index.ts', true],
+    ['a project checkout', '/Users/you/code/app', true],
+    ['a file in a project', '/Users/you/code/app/src/index.ts', true],
     ['a plan in a worktree', '/Users/you/.kernel/worktrees/app/fix-login/plans/login.md', true],
     ['a sibling with the same prefix', '/Users/you/code/app-secrets/run.command', false],
     ['a path that climbs out', '/Users/you/code/app/../../Downloads/run.command', false],
@@ -40,7 +40,7 @@ describe('insideRoots', () => {
     expect(insideRoots(path, roots)).toBe(expected)
   })
 
-  it('accepts nothing when Kernel knows no rooms', () => {
+  it('accepts nothing when Kernel knows no projects', () => {
     expect(insideRoots('/Users/you/code/app/a.ts', [])).toBe(false)
   })
 })

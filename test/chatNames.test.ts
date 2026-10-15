@@ -59,25 +59,25 @@ async function setup(o: { dataDir?: string; home?: string; repo?: string; answer
 
 /** The Lead workspace's first chat after a message: "New tab", auto-named, with a session. */
 async function leadChat(s: Awaited<ReturnType<typeof setup>>): Promise<Chat> {
-  const room = await s.k.addRoom(s.repo)
-  const c = await s.k.startLeadChat(room.id, { prompt: 'Fix the login bug' })
+  const project = await s.k.addProject(s.repo)
+  const c = await s.k.startLeadChat(project.id, { prompt: 'Fix the login bug' })
   return s.k.store.saveChat({ ...s.k.store.chat(c.id)!, sessionId: 'session-1' })
 }
 
 describe('chat names (KERNEL-202)', () => {
   it('auto-names placeholder chats only: not a workspace chat, a fork or a big terminal', async () => {
     const s = await setup()
-    const room = await s.k.addRoom(s.repo)
+    const project = await s.k.addProject(s.repo)
     // A chat Kernel starts opens on an auto-named "New tab" (KERNEL-405).
-    const first = await s.k.leadChat(room.id)
+    const first = await s.k.leadChat(project.id)
     expect(first).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
     // A brief starts a chat of its own and leaves the first as it was (KERNEL-242).
-    const started = await s.k.startLeadChat(room.id, { prompt: 'Plan the release' })
+    const started = await s.k.startLeadChat(project.id, { prompt: 'Plan the release' })
     expect(started.id).not.toBe(first.id)
     expect(s.chat(started.id)).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
     expect(s.chat(first.id)).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
 
-    const ws = await s.k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
+    const ws = await s.k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
     const h = s.k.handlers()
     const opened = await h['chats.create']({ workspaceId: ws.id })
     expect(opened).toMatchObject({ title: 'New chat', autoTitle: { turns: 0 } })
@@ -293,8 +293,8 @@ describe('chat names (KERNEL-202)', () => {
 
   it('names open chats stuck at "New chat" or "New tab" on start, one at a time', async () => {
     const s = await setup()
-    const room = await s.k.addRoom(s.repo)
-    const ws = (await s.k.leadChat(room.id)).workspaceId
+    const project = await s.k.addProject(s.repo)
+    const ws = (await s.k.leadChat(project.id)).workspaceId
     const h = s.k.handlers()
     // Chats from before KERNEL-202 have no autoTitle. `turns` is how many finished.
     const legacy = async (o: Partial<Chat>, turns: number) => {

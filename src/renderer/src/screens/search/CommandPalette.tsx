@@ -2,14 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Approval, Provider } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, go, useStore } from '../../store'
-import { isLeadWorkspace, leadOf, openLead, openNewChat, openRoom } from '../../lead'
+import { isLeadWorkspace, leadOf, openLead, openNewChat, openProject } from '../../lead'
 import { currentThread } from '../../nav'
 import { openRow, openThreads } from '../../components/sidebar/slots'
 import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
 import { focusComposerWhenOpen } from '../workspace/composer/bus'
 import { Icon, Kbd, Modal } from '../../ui'
 import { restoreArchived } from '../history/restore'
-import { buildItems, roomInView, visibleItems, type PaletteItem } from './model'
+import { buildItems, projectInView, visibleItems, type PaletteItem } from './model'
 import './search.css'
 
 const close = () => actions.ui.closeModal()
@@ -25,7 +25,7 @@ const switchAccount = (provider: Provider, accountId: string) => void actions.ac
 function newChat(workspaceId: string, kind?: 'terminal') {
   const s = getState()
   const ws = s.workspaces.find((w) => w.id === workspaceId)
-  const threadId = kind !== 'terminal' && ws && isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id) ? currentThread(s, workspaceId) : undefined
+  const threadId = kind !== 'terminal' && ws && isLeadWorkspace(ws, ws.projectId, leadOf(s.agents, ws.projectId)?.id) ? currentThread(s, workspaceId) : undefined
   void call('chats.create', { workspaceId, kind, ...(threadId ? { threadId } : {}) }).then((chat) => {
     actions.chats.upsert(chat)
     go({ name: 'workspace', workspaceId })
@@ -40,16 +40,16 @@ function openShared(workspaceId: string, sharedId: string) {
   actions.ui.openShared(workspaceId, sharedId)
 }
 
-/** The room has no open Lead chat: open the newest, then the file's tab, now that it is on screen. With none open there is nowhere to show it. */
-async function openSharedInLead(roomId: string, sharedId: string) {
-  const ws = await openLead(roomId)
+/** The project has no open Lead chat: open the newest, then the file's tab, now that it is on screen. With none open there is nowhere to show it. */
+async function openSharedInLead(projectId: string, sharedId: string) {
+  const ws = await openLead(projectId)
   if (ws) actions.ui.openShared(ws.id, sharedId)
 }
 
 /** CommandPalette.png: search and run anything, from the keyboard (⌘K). */
 export function CommandPalette() {
   const route = useStore((s) => s.ui.route)
-  const rooms = useStore((s) => s.rooms)
+  const projects = useStore((s) => s.projects)
   const workspaces = useStore((s) => s.workspaces)
   const approvals = useStore((s) => s.approvals)
   const agents = useStore((s) => s.agents)
@@ -64,15 +64,15 @@ export function CommandPalette() {
   const [at, setAt] = useState(0)
   const list = useRef<HTMLDivElement>(null)
 
-  // The open chats of the room in view, in the sidebar's order.
-  const roomChats = useMemo(() => {
-    const room = roomInView(route, rooms, workspaces)
-    return room ? openThreads(room, workspaces, chats, threads) : []
-  }, [route, rooms, workspaces, chats, threads])
+  // The open chats of the project in view, in the sidebar's order.
+  const projectChats = useMemo(() => {
+    const project = projectInView(route, projects, workspaces)
+    return project ? openThreads(project, workspaces, chats, threads) : []
+  }, [route, projects, workspaces, chats, threads])
   const { items, more } = useMemo(() => buildItems({
-    route, rooms, workspaces, approvals, agents, terminal, accounts, threads, chats: roomChats, shared: Object.values(shared),
-    act: { go, openNewChat, newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openChat: (roomId, thread, tabs, ws) => openRow(roomId, { kind: 'chat', thread, ws, tabs, owned: [], folded: false }), openLead: (roomId) => void openLead(roomId), openRoom: (roomId) => void openRoom(roomId), openShared, openSharedInLead: (roomId, sharedId) => void openSharedInLead(roomId, sharedId), toast: (title) => actions.ui.toast({ title }), restore: (w, name) => void restoreArchived(w, name), switchAccount }
-  }), [route, rooms, workspaces, approvals, agents, terminal, accounts, threads, roomChats, shared])
+    route, projects, workspaces, approvals, agents, terminal, accounts, threads, chats: projectChats, shared: Object.values(shared),
+    act: { go, openNewChat, newProject: () => actions.ui.openModal({ name: 'newProject' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openChat: (projectId, thread, tabs, ws) => openRow(projectId, { kind: 'chat', thread, ws, tabs, owned: [], folded: false }), openLead: (projectId) => void openLead(projectId), openProject: (projectId) => void openProject(projectId), openShared, openSharedInLead: (projectId, sharedId) => void openSharedInLead(projectId, sharedId), toast: (title) => actions.ui.toast({ title }), restore: (w, name) => void restoreArchived(w, name), switchAccount }
+  }), [route, projects, workspaces, approvals, agents, terminal, accounts, threads, projectChats, shared])
   const groups = useMemo(() => visibleItems(items, more, q), [items, more, q])
   const flat = groups.flatMap((g) => g.list)
   const cur = Math.min(at, Math.max(0, flat.length - 1))

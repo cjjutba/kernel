@@ -61,13 +61,13 @@ export interface RunnerHost {
   settings(): AppSettings
   /** The mode the chat runs in now (`effectiveMode`), read at every step, so a change applies at once (KERNEL-447). */
   mode(): RunMode
-  /** Bash rules the user allowed for the room, and saving one ("Always allow in this room"). */
-  roomAllow(): string[]
-  allowInRoom(rule: string): void
-  /** The same for MCP and web tools, as Claude Code writes a rule: `mcp__linear__get_issue` (`Room.allowTools`, KERNEL-454). */
-  roomTools(): string[]
-  allowToolInRoom(rule: string): void
-  /** The pause or the hold on every room that a tool call waits on, while one stands. */
+  /** Bash rules the user allowed for the project, and saving one ("Always allow in this project"). */
+  projectAllow(): string[]
+  allowInProject(rule: string): void
+  /** The same for MCP and web tools, as Claude Code writes a rule: `mcp__linear__get_issue` (`Project.allowTools`, KERNEL-454). */
+  projectTools(): string[]
+  allowToolInProject(rule: string): void
+  /** The pause or the hold on every project that a tool call waits on, while one stands. */
   held(): Promise<void> | undefined
   /** Starts the CLI as Kernel starts every agent process: its own process group, its pid saved until it exits. */
   spawn(command: string, args: string[], o: { cwd?: string; env?: Record<string, string | undefined>; signal?: AbortSignal }, proc: Proc): ChildProcess
@@ -79,11 +79,11 @@ export interface RunnerHost {
   /**
    * The session is up under `sessionId`, which the chat resumes by from now on. Starts the turn's working status.
    * `billedBy` is who pays, when the CLI says (Claude's `apiKeySource`, where 'none' means the plan). `mcpServers` are the
-   * session's MCP servers with their status, which the room keeps, checked once per chat against the agent file's tools
+   * session's MCP servers with their status, which the project keeps, checked once per chat against the agent file's tools
    * line (KERNEL-464).
    */
   sessionStarted(sessionId: string, o?: { billedBy?: string; mcpServers?: McpReport[] }): void
-  /** The provider reported how some of the session's MCP servers are doing, mid-session (Codex). The room keeps it (KERNEL-464). */
+  /** The provider reported how some of the session's MCP servers are doing, mid-session (Codex). The project keeps it (KERNEL-464). */
   mcpStatus(servers: McpReport[]): void
   /** A hook refused the step. */
   blocked(event: string, output: string): void

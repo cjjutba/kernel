@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import { migrate, refuseNewer } from './migrations'
-import type { ActivityEvent, Approval, Chat, ChatItem, Notification, OpenItem, Overlap, Room, SharedComment, SharedFile, Task, Thread, Workspace } from '@shared/types'
+import type { ActivityEvent, Approval, Chat, ChatItem, Notification, OpenItem, Overlap, Project, SharedComment, SharedFile, Task, Thread, Workspace } from '@shared/types'
 
 // One file, plain SQL. Rows keep a JSON column so the schema stays flat while the app is young. The schema lives in
 // migrations.ts, versioned with `PRAGMA user_version` (KERNEL-210).
@@ -87,34 +87,34 @@ export class Store {
     try { this.compact() } catch (err) { console.warn('[db] compact failed', err) }
   }
 
-  // rooms
-  rooms(): Room[] { return this.all('select data from rooms order by created_at') }
-  room(id: string): Room | undefined { return this.one('select data from rooms where id = ?', id) }
-  saveRoom(r: Room) { this.db.prepare('insert or replace into rooms (id, data, created_at) values (?, ?, ?)').run(r.id, JSON.stringify(r), r.createdAt); return r }
+  // projects
+  projects(): Project[] { return this.all('select data from projects order by created_at') }
+  project(id: string): Project | undefined { return this.one('select data from projects where id = ?', id) }
+  saveProject(r: Project) { this.db.prepare('insert or replace into projects (id, data, created_at) values (?, ?, ?)').run(r.id, JSON.stringify(r), r.createdAt); return r }
 
-  /** Kernel's record of a room: the room, its workspaces, chats, approvals, activity and shared files. Nothing on disk. */
-  deleteRoom(id: string) {
+  /** Kernel's record of a project: the project, its workspaces, chats, approvals, activity and shared files. Nothing on disk. */
+  deleteProject(id: string) {
     this.db.transaction(() => {
-      const ws = 'select id from workspaces where room_id = ?'
+      const ws = 'select id from workspaces where project_id = ?'
       this.db.prepare(`delete from chat_items where chat_id in (select id from chats where workspace_id in (${ws}))`).run(id)
       this.db.prepare(`delete from chats where workspace_id in (${ws})`).run(id)
-      this.db.prepare('delete from workspaces where room_id = ?').run(id)
-      this.db.prepare('delete from approvals where room_id = ?').run(id)
-      this.db.prepare('delete from activity where room_id = ?').run(id)
-      this.db.prepare('delete from notifications where room_id = ?').run(id)
-      this.db.prepare('delete from tasks where room_id = ?').run(id)
-      this.db.prepare('delete from overlaps where room_id = ?').run(id)
-      this.db.prepare('delete from shared_comments where shared_id in (select id from shared_files where room_id = ?)').run(id)
-      this.db.prepare('delete from shared_files where room_id = ?').run(id)
-      this.db.prepare('delete from threads where room_id = ?').run(id)
-      this.db.prepare('delete from open_items where room_id = ?').run(id)
-      this.db.prepare('delete from rooms where id = ?').run(id)
+      this.db.prepare('delete from workspaces where project_id = ?').run(id)
+      this.db.prepare('delete from approvals where project_id = ?').run(id)
+      this.db.prepare('delete from activity where project_id = ?').run(id)
+      this.db.prepare('delete from notifications where project_id = ?').run(id)
+      this.db.prepare('delete from tasks where project_id = ?').run(id)
+      this.db.prepare('delete from overlaps where project_id = ?').run(id)
+      this.db.prepare('delete from shared_comments where shared_id in (select id from shared_files where project_id = ?)').run(id)
+      this.db.prepare('delete from shared_files where project_id = ?').run(id)
+      this.db.prepare('delete from threads where project_id = ?').run(id)
+      this.db.prepare('delete from open_items where project_id = ?').run(id)
+      this.db.prepare('delete from projects where id = ?').run(id)
     })()
   }
 
   /**
    * Kernel's record of workspaces, for Delete in History (KERNEL-333): their chats and chat items, shared files, and the
-   * approvals, activity and notifications that name them. Nothing on disk, and nothing in the room. The ids go in once as
+   * approvals, activity and notifications that name them. Nothing on disk, and nothing in the project. The ids go in once as
    * JSON, so deleting many is one statement per table.
    */
   deleteWorkspaces(ids: string[]) {
@@ -134,7 +134,7 @@ export class Store {
   // notifications
   notifications(): Notification[] { return this.all('select data from notifications order by created_at desc limit 500') }
   notification(id: string): Notification | undefined { return this.one('select data from notifications where id = ?', id) }
-  saveNotification(n: Notification) { this.db.prepare('insert or replace into notifications (id, room_id, data, created_at) values (?, ?, ?, ?)').run(n.id, n.roomId ?? null, JSON.stringify(n), n.createdAt); return n }
+  saveNotification(n: Notification) { this.db.prepare('insert or replace into notifications (id, project_id, data, created_at) values (?, ?, ?, ?)').run(n.id, n.projectId ?? null, JSON.stringify(n), n.createdAt); return n }
   /** Approval rows that still ask for an answer, however old. `notifications()` stops at 500. */
   openApprovalNotifications(): Notification[] {
     return this.all(`select data from notifications where json_extract(data, '$.approvalId') is not null and json_extract(data, '$.needsYou') = 1`)
@@ -158,11 +158,11 @@ export class Store {
   }
 
   // workspaces
-  workspaces(roomId?: string): Workspace[] {
-    return roomId ? this.all('select data from workspaces where room_id = ? order by created_at', roomId) : this.all('select data from workspaces order by created_at')
+  workspaces(projectId?: string): Workspace[] {
+    return projectId ? this.all('select data from workspaces where project_id = ? order by created_at', projectId) : this.all('select data from workspaces order by created_at')
   }
   workspace(id: string): Workspace | undefined { return this.one('select data from workspaces where id = ?', id) }
-  saveWorkspace(w: Workspace) { this.db.prepare('insert or replace into workspaces (id, room_id, data, created_at) values (?, ?, ?, ?)').run(w.id, w.roomId, JSON.stringify(w), w.createdAt); return w }
+  saveWorkspace(w: Workspace) { this.db.prepare('insert or replace into workspaces (id, project_id, data, created_at) values (?, ?, ?, ?)').run(w.id, w.projectId, JSON.stringify(w), w.createdAt); return w }
 
   // chats
   chats(workspaceId: string): Chat[] { return this.all('select data from chats where workspace_id = ? order by created_at', workspaceId) }
@@ -179,8 +179,8 @@ export class Store {
   saveChat(c: Chat) { this.db.prepare('insert into chats (id, workspace_id, data, created_at) values (?, ?, ?, ?) on conflict(id) do update set workspace_id = excluded.workspace_id, data = excluded.data, created_at = excluded.created_at').run(c.id, c.workspaceId, JSON.stringify(c), c.createdAt); return c }
 
   // Lead chats, each holding one or more Lead tabs (KERNEL-337), oldest first
-  threads(roomId?: string): Thread[] {
-    return roomId ? this.all('select data from threads where room_id = ? order by created_at, rowid', roomId) : this.all('select data from threads order by created_at, rowid')
+  threads(projectId?: string): Thread[] {
+    return projectId ? this.all('select data from threads where project_id = ? order by created_at, rowid', projectId) : this.all('select data from threads order by created_at, rowid')
   }
   thread(id: string): Thread | undefined { return this.one('select data from threads where id = ?', id) }
   /**
@@ -193,13 +193,13 @@ export class Store {
       this.db.prepare('delete from threads where id = ?').run(id)
     })()
   }
-  saveThread(t: Thread) { this.db.prepare('insert or replace into threads (id, room_id, data, created_at) values (?, ?, ?, ?)').run(t.id, t.roomId, JSON.stringify(t), t.createdAt); return t }
+  saveThread(t: Thread) { this.db.prepare('insert or replace into threads (id, project_id, data, created_at) values (?, ?, ?, ?)').run(t.id, t.projectId, JSON.stringify(t), t.createdAt); return t }
   // open items (KERNEL-749)
   openItems(threadId: string): OpenItem[] { return this.all('select data from open_items where thread_id = ? order by created_at, rowid', threadId) }
   openItem(id: string): OpenItem | undefined { return this.one('select data from open_items where id = ?', id) }
   /** Saves the item, in place of the thread's item with the same `key`. */
   saveOpenItem(i: OpenItem, key: string) {
-    this.db.prepare('insert or replace into open_items (id, thread_id, room_id, key, data, created_at) values (?, ?, ?, ?, ?, ?)').run(i.id, i.threadId, i.roomId, key, JSON.stringify(i), i.createdAt)
+    this.db.prepare('insert or replace into open_items (id, thread_id, project_id, key, data, created_at) values (?, ?, ?, ?, ?, ?)').run(i.id, i.threadId, i.projectId, key, JSON.stringify(i), i.createdAt)
     return i
   }
   /** Updates items in place, keeping their keys. */
@@ -228,10 +228,10 @@ export class Store {
   clearItems(chatId: string) { this.db.prepare('delete from chat_items where chat_id = ?').run(chatId) }
 
   // approvals
-  approvals(filter: { roomId?: string; workspaceId?: string; pendingOnly?: boolean } = {}): Approval[] {
+  approvals(filter: { projectId?: string; workspaceId?: string; pendingOnly?: boolean } = {}): Approval[] {
     const where: string[] = []
     const args: unknown[] = []
-    if (filter.roomId) { where.push('room_id = ?'); args.push(filter.roomId) }
+    if (filter.projectId) { where.push('project_id = ?'); args.push(filter.projectId) }
     if (filter.pendingOnly) where.push("status = 'pending'")
     if (filter.workspaceId) { where.push("json_extract(data, '$.workspaceId') = ?"); args.push(filter.workspaceId) }
     return this.all(`select data from approvals ${where.length ? 'where ' + where.join(' and ') : ''} order by created_at desc`, ...args)
@@ -242,41 +242,41 @@ export class Store {
    * build saved has none, so pruning counts from `created_at` for it.
    */
   saveApproval(a: Approval) {
-    this.db.prepare(`insert into approvals (id, room_id, status, data, created_at, settled_at) values (?, ?, ?, ?, ?, ?)
-      on conflict (id) do update set room_id = excluded.room_id, status = excluded.status, data = excluded.data, created_at = excluded.created_at,
+    this.db.prepare(`insert into approvals (id, project_id, status, data, created_at, settled_at) values (?, ?, ?, ?, ?, ?)
+      on conflict (id) do update set project_id = excluded.project_id, status = excluded.status, data = excluded.data, created_at = excluded.created_at,
         settled_at = case when excluded.status = 'pending' then null else coalesce(approvals.settled_at, excluded.settled_at) end,
         pruned = case when excluded.status = 'pending' then 0 else approvals.pruned end`)
-      .run(a.id, a.roomId ?? null, a.status, JSON.stringify(a), a.createdAt, a.status === 'pending' ? null : Date.now())
+      .run(a.id, a.projectId ?? null, a.status, JSON.stringify(a), a.createdAt, a.status === 'pending' ? null : Date.now())
     return a
   }
 
   // tasks
-  tasks(roomId: string): Task[] { return this.all('select data from tasks where room_id = ? order by created_at, id', roomId) }
-  task(roomId: string, id: string): Task | undefined { return this.one('select data from tasks where room_id = ? and id = ?', roomId, id) }
-  saveTask(t: Task) { this.db.prepare('insert or replace into tasks (room_id, id, data, created_at) values (?, ?, ?, ?)').run(t.roomId, t.id, JSON.stringify(t), t.createdAt); return t }
+  tasks(projectId: string): Task[] { return this.all('select data from tasks where project_id = ? order by created_at, id', projectId) }
+  task(projectId: string, id: string): Task | undefined { return this.one('select data from tasks where project_id = ? and id = ?', projectId, id) }
+  saveTask(t: Task) { this.db.prepare('insert or replace into tasks (project_id, id, data, created_at) values (?, ?, ?, ?)').run(t.projectId, t.id, JSON.stringify(t), t.createdAt); return t }
 
   // activity
-  activity(roomId?: string, limit = 50): ActivityEvent[] {
-    return roomId ? this.all('select data from activity where room_id = ? order by ts desc limit ?', roomId, limit) : this.all('select data from activity order by ts desc limit ?', limit)
+  activity(projectId?: string, limit = 50): ActivityEvent[] {
+    return projectId ? this.all('select data from activity where project_id = ? order by ts desc limit ?', projectId, limit) : this.all('select data from activity order by ts desc limit ?', limit)
   }
-  /** By agent id, the time of each agent's newest event in the room, over the whole log. */
-  lastActivity(roomId: string): Record<string, number> {
+  /** By agent id, the time of each agent's newest event in the project, over the whole log. */
+  lastActivity(projectId: string): Record<string, number> {
     const rows = this.db.prepare(`select json_extract(data, '$.agentId') as agent, max(ts) as ts from activity
-      where room_id = ? and json_extract(data, '$.agentId') is not null group by agent`).all(roomId) as { agent: string; ts: number }[]
+      where project_id = ? and json_extract(data, '$.agentId') is not null group by agent`).all(projectId) as { agent: string; ts: number }[]
     return Object.fromEntries(rows.map((r) => [r.agent, r.ts]))
   }
-  saveActivity(e: ActivityEvent) { this.db.prepare('insert or ignore into activity (id, room_id, ts, data) values (?, ?, ?, ?)').run(e.id, e.roomId ?? null, e.ts, JSON.stringify(e)); return e }
+  saveActivity(e: ActivityEvent) { this.db.prepare('insert or ignore into activity (id, project_id, ts, data) values (?, ?, ?, ?)').run(e.id, e.projectId ?? null, e.ts, JSON.stringify(e)); return e }
 
   // overlaps the Inbox already raised, so a restart doesn't raise them again
   overlaps(): Overlap[] { return this.all('select data from overlaps') }
-  saveOverlap(o: Overlap) { this.db.prepare('insert or replace into overlaps (id, room_id, data) values (?, ?, ?)').run(o.id, o.roomId, JSON.stringify(o)); return o }
+  saveOverlap(o: Overlap) { this.db.prepare('insert or replace into overlaps (id, project_id, data) values (?, ?, ?)').run(o.id, o.projectId, JSON.stringify(o)); return o }
   deleteOverlap(id: string) { this.db.prepare('delete from overlaps where id = ?').run(id) }
 
   // files agents shared (KERNEL-302), newest first
-  sharedFiles(f: { roomId?: string; workspaceId?: string; limit?: number } = {}): SharedFile[] {
+  sharedFiles(f: { projectId?: string; workspaceId?: string; limit?: number } = {}): SharedFile[] {
     const where: string[] = []
     const args: unknown[] = []
-    if (f.roomId) { where.push('room_id = ?'); args.push(f.roomId) }
+    if (f.projectId) { where.push('project_id = ?'); args.push(f.projectId) }
     if (f.workspaceId) { where.push('workspace_id = ?'); args.push(f.workspaceId) }
     return this.all(`select data from shared_files ${where.length ? 'where ' + where.join(' and ') : ''} order by updated_at desc, rowid desc limit ?`, ...args, f.limit ?? -1)
   }
@@ -284,8 +284,8 @@ export class Store {
   /** The file shared from this path in the workspace, relative to it. */
   sharedFileAt(workspaceId: string, source: string): SharedFile | undefined { return this.one('select data from shared_files where workspace_id = ? and source = ?', workspaceId, source) }
   saveSharedFile(f: SharedFile) {
-    this.db.prepare('insert or replace into shared_files (id, room_id, workspace_id, source, data, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)')
-      .run(f.id, f.roomId, f.workspaceId, f.source, JSON.stringify(f), f.createdAt, f.updatedAt)
+    this.db.prepare('insert or replace into shared_files (id, project_id, workspace_id, source, data, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)')
+      .run(f.id, f.projectId, f.workspaceId, f.source, JSON.stringify(f), f.createdAt, f.updatedAt)
     return f
   }
 

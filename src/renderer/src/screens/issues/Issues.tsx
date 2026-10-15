@@ -1,35 +1,35 @@
 import { useMemo, useState } from 'react'
-import { go, lastRoom, useStore } from '../../store'
+import { go, lastProject, useStore } from '../../store'
 import { Banner, Button } from '../../ui'
 import { GithubIssues } from './GithubIssues'
 import { LinearIssues } from './LinearIssues'
-import { IssueSkeleton, NoTracker, type RoomHead } from './parts'
+import { IssueSkeleton, NoTracker, type ProjectHead } from './parts'
 import { WorkHeader } from '../work/WorkHeader'
 import { useOpenPrCount } from '../prs/model'
-import { useRoomTracker } from './useRoomTracker'
+import { useProjectTracker } from './useProjectTracker'
 import './issues.css'
 
 /**
- * The Issues tab of Work for one room (KERNEL-471). The room's tracker decides what it lists: Linear's list (the account's, as it always
- * was), the room's GitHub Issues, or a line saying the room has no tracker. The route's `roomId` picks the room, else the one used
- * last. The room menu in the header switches to another room's tracker.
+ * The Issues tab of Work for one project (KERNEL-471). The project's tracker decides what it lists: Linear's list (the account's, as it always
+ * was), the project's GitHub Issues, or a line saying the project has no tracker. The route's `projectId` picks the project, else the one used
+ * last. The project menu in the header switches to another project's tracker.
  */
-export function Issues({ issueId, roomId }: { issueId?: string; roomId?: string }) {
-  const rooms = useStore((s) => s.rooms)
-  const choices = useMemo(() => rooms.filter((r) => !r.archived && !r.hidden), [rooms])
-  // The room opened last, read once. A store selector runs on every change and must not touch localStorage.
-  const [lastRoomId] = useState(lastRoom)
-  const room = choices.find((r) => r.id === roomId) ?? choices.find((r) => r.id === lastRoomId) ?? choices[0]
-  // Another room is another route, so the sidebar follows it and Back returns to the room before.
-  const head: RoomHead = { rooms: choices, room, onRoom: (id) => go({ name: 'issues', roomId: id }) }
+export function Issues({ issueId, projectId }: { issueId?: string; projectId?: string }) {
+  const projects = useStore((s) => s.projects)
+  const choices = useMemo(() => projects.filter((r) => !r.archived && !r.hidden), [projects])
+  // The project opened last, read once. A store selector runs on every change and must not touch localStorage.
+  const [lastProjectId] = useState(lastProject)
+  const project = choices.find((r) => r.id === projectId) ?? choices.find((r) => r.id === lastProjectId) ?? choices[0]
+  // Another project is another route, so the sidebar follows it and Back returns to the project before.
+  const head: ProjectHead = { projects: choices, project, onProject: (id) => go({ name: 'issues', projectId: id }) }
 
-  const { read, retry } = useRoomTracker(room?.id)
+  const { read, retry } = useProjectTracker(project?.id)
   const prCount = useOpenPrCount()
 
-  // With no room there is no tracker to read, and Linear's list needs none.
-  if (!room) return <LinearIssues issueId={issueId} head={head} />
-  if (read.kind === 'ready' && read.tracker.kind === 'linear') return <LinearIssues key={room.id} issueId={issueId} head={head} />
-  if (read.kind === 'ready' && read.tracker.kind === 'github') return <GithubIssues key={room.id} room={room} where={read.tracker.where} issueId={issueId} head={head} />
+  // With no project there is no tracker to read, and Linear's list needs none.
+  if (!project) return <LinearIssues issueId={issueId} head={head} />
+  if (read.kind === 'ready' && read.tracker.kind === 'linear') return <LinearIssues key={project.id} issueId={issueId} head={head} />
+  if (read.kind === 'ready' && read.tracker.kind === 'github') return <GithubIssues key={project.id} project={project} where={read.tracker.where} issueId={issueId} head={head} />
 
   return (
     <div className="panel">
@@ -42,7 +42,7 @@ export function Issues({ issueId, roomId }: { issueId?: string; roomId?: string 
           </div>
         </div>
       )}
-      {read.kind === 'ready' && read.tracker.kind === 'none' && <NoTracker room={room} />}
+      {read.kind === 'ready' && read.tracker.kind === 'none' && <NoTracker project={project} />}
     </div>
   )
 }

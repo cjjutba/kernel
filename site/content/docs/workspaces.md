@@ -13,7 +13,7 @@ A workspace is one task. It's usually a git worktree on its own branch, so agent
 - **A big terminal.** ⌘⇧T opens a terminal tab in the worktree. It runs `claude` by default, and Kernel still follows the session. Settings, Big terminal sets what a new tab runs.
 - **Files to copy.** Gitignored files the work needs, such as `.env` files, are copied in when the workspace is created. See [Scripts and environment](/docs/scripts).
 
-A room can instead run workspaces on the current branch of the main checkout, with **Workspace type** in its Git settings.
+A project can instead run workspaces on the current branch of the main checkout, with **Workspace type** in its Git settings.
 
 ## The right panel
 

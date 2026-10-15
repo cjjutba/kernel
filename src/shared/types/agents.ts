@@ -40,20 +40,20 @@ export interface AgentDef {
   prompt: string
   file: string
   look?: AgentLook
-  /** When the file first appeared in the room. Drives "Joined today" and the new hire moment. */
+  /** When the file first appeared in the project. Drives "Joined today" and the new hire moment. */
   joinedAt?: number
   /** Retired agents live in .claude/retired-agents (D-003) and stay listable so they can come back. */
   retired?: boolean
   /**
-   * Kernel, the Lead in every room (KERNEL-692), or one of Kernel's own reviews (KERNEL-549). The Lead's `file` is the repo
+   * Kernel, the Lead in every project (KERNEL-692), or one of Kernel's own reviews (KERNEL-549). The Lead's `file` is the repo
    * file that customizes it, or '' when it runs as it ships, which the UI shows as Customized or Default.
    */
   builtIn?: 'lead' | 'reviewer'
-  /** The room's reviewer. Left out on agents Kernel didn't resolve, so read it with `isReviewer` (`@shared/team`). */
+  /** The project's reviewer. Left out on agents Kernel didn't resolve, so read it with `isReviewer` (`@shared/team`). */
   reviewer?: boolean
   /** Whether the Lead can hand this agent a task. Left out on agents Kernel didn't resolve, so read it with `takesTasks`. */
   member?: boolean
-  /** What Team and Room setup flag about the file. */
+  /** What Team and Project setup flag about the file. */
   warnings?: AgentWarning[]
 }
 
@@ -81,7 +81,7 @@ export type AgentOrigin = 'project' | 'personal' | 'plugin'
  * - `mcp-missing`: the file lists a server this Mac doesn't have.
  * - `mcp-failed`: a server it lists failed to start.
  * - `mcp-needs-auth`: a server it lists needs the user to sign in.
- * - `mcp-off`: a server it lists is switched off in this room.
+ * - `mcp-off`: a server it lists is switched off in this project.
  *
  * And since KERNEL-465:
  * - `looks-like-subagent`: it reads as a subagent with no pull request workflow (its file names neither Edit nor Write, and
@@ -108,18 +108,18 @@ export interface AgentWarning {
   /** Shown on Team. Never sent anywhere. */
   detail?: string
   /**
-   * For `mcp-missing`: a server the room has whose name contains the one the file lists. Kernel only offers it. The user
-   * confirms it as `[mcp.aliases]` with `settings.setRoom` (KERNEL-464).
+   * For `mcp-missing`: a server the project has whose name contains the one the file lists. Kernel only offers it. The user
+   * confirms it as `[mcp.aliases]` with `settings.setProject` (KERNEL-464).
    */
   suggestion?: string
 }
 
 /**
- * The MCP servers an agent's tools line reaches in a room, for the new agent card's servers row and create_agent's result
- * (KERNEL-476). `reach` holds the servers it may use that are connected, starting or not reported on yet, by the room's
+ * The MCP servers an agent's tools line reaches in a project, for the new agent card's servers row and create_agent's result
+ * (KERNEL-476). `reach` holds the servers it may use that are connected, starting or not reported on yet, by the project's
  * name for each. `blocked` holds the ones its line names that it can't use: the server `failed`, `needs-auth`, is
- * `disabled` in Claude Code or Codex, is switched `off` in the room, or is `missing` from the room, with `suggestion` a
- * working server whose name contains the missing one. A server is only called missing once the room's list is whole.
+ * `disabled` in Claude Code or Codex, is switched `off` in the project, or is `missing` from the project, with `suggestion` a
+ * working server whose name contains the missing one. A server is only called missing once the project's list is whole.
  */
 export interface AgentReach {
   reach: string[]
@@ -128,10 +128,10 @@ export interface AgentReach {
 
 /**
  * The `[team]` table in .kernel/settings.toml (KERNEL-397). Each key overrides what Kernel works out from the agent files,
- * so a room without one needs nothing written.
+ * so a project without one needs nothing written.
  */
 export interface TeamConfig {
-  /** The agent file that customizes Kernel, the Lead, when the room has no kernel.md (KERNEL-692). Settings no longer writes it. */
+  /** The agent file that customizes Kernel, the Lead, when the project has no kernel.md (KERNEL-692). Settings no longer writes it. */
   lead?: string
   /** An agent id, `kernel-reviewer` for Kernel's code review, or `none` for no reviewer (KERNEL-553). */
   reviewer?: string
@@ -140,17 +140,17 @@ export interface TeamConfig {
   /** Agents that never take tasks. */
   helpers?: string[]
   /**
-   * The agents on this room's team, for a repo with more agent files than one team needs. Unset, every agent is on it
+   * The agents on this project's team, for a repo with more agent files than one team needs. Unset, every agent is on it
    * (KERNEL-432). The Lead and the reviewer are on it either way (KERNEL-465).
    */
   roster?: string[]
 }
 
-/** What Room setup reads to ask for a roster (KERNEL-465). */
+/** What Project setup reads to ask for a roster (KERNEL-465). */
 export interface RosterAdvice {
-  /** The room's agent files, Kernel's own Lead and reviewer left out. */
+  /** The project's agent files, Kernel's own Lead and reviewer left out. */
   agents: number
-  /** More than about a dozen of them and no `[team] roster` yet, so Room setup asks who joins. */
+  /** More than about a dozen of them and no `[team] roster` yet, so Project setup asks who joins. */
   needed: boolean
   /** The ids Kernel picks to start with: the agents that take tasks. */
   suggested: string[]
@@ -201,5 +201,5 @@ export interface AgentDraft {
   file: string
 }
 
-/** Team templates offered on Team when the room has no agents yet. */
-export type TeamTemplate = { kind: 'starter' } | { kind: 'pair' } | { kind: 'copy'; fromRoomId: string }
+/** Team templates offered on Team when the project has no agents yet. */
+export type TeamTemplate = { kind: 'starter' } | { kind: 'pair' } | { kind: 'copy'; fromProjectId: string }

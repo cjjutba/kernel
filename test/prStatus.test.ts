@@ -13,7 +13,7 @@ import { MergeSlot, PrStatusTag, mergeView } from '../src/renderer/src/screens/w
 Object.assign(globalThis, { React })
 
 const rules = { requireGreen: false, requireReviewer: false }
-const ws = (prState: PrState): Workspace => ({ id: 'w1', roomId: 'room', agentId: 'kai', status: 'ready', prState, prNumber: 7 }) as Workspace
+const ws = (prState: PrState): Workspace => ({ id: 'w1', projectId: 'project', agentId: 'kai', status: 'ready', prState, prNumber: 7 }) as Workspace
 const states = Object.keys(PR_STATUS) as (keyof typeof PR_STATUS)[]
 const html = (el: React.ReactElement) => renderToStaticMarkup(el)
 
@@ -32,7 +32,7 @@ describe("a PR's state in every place it shows", () => {
     expect(glyph.icon === 'spin').toBe(s.spin)
     // A Team update row draws the Merge place, and the PRs tab draws the same place for a ready row, else the row's state.
     const team = html(React.createElement(MergeSlot, { ws: w, view: mergeView(w, undefined, rules), onMerge: () => undefined }))
-    const [row] = leadPrs([w], { leadId: undefined, roomId: 'room', prs: {}, rules, agents: [] })
+    const [row] = leadPrs([w], { leadId: undefined, projectId: 'project', prs: {}, rules, agents: [] })
     const tab = row.ready ? team : html(React.createElement(PrStatusTag, { status: row.state!, why: row.state!.why }))
     expect(tab).toBe(team)
     expect(team).toContain(`>${s.label}<`)
@@ -58,7 +58,7 @@ describe('a PR action pending (KERNEL-520)', () => {
   it('spins a ready PR as Merging in the band, the sidebar, a Team update row and the PRs tab, and returns them together', () => {
     const w = ws('ready')
     // The PRs tab draws a ready row with the same Merge place as a Team update row.
-    const [row] = leadPrs([w], { leadId: undefined, roomId: 'room', prs: {}, rules, agents: [] })
+    const [row] = leadPrs([w], { leadId: undefined, projectId: 'project', prs: {}, rules, agents: [] })
     expect(row.ready).toBe(true)
     expect(headerView('ready', true, false, undefined, false, 'merge')).toMatchObject({ state: { label: 'Ready to merge', tone: 'ready' }, button: { label: 'Merging', kind: 'busy' } })
     expect(workspaceGlyph(w, { ...idle, pending: 'merge' })).toEqual({ icon: 'spin', tone: 'muted', label: 'Merging' })

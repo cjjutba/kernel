@@ -82,7 +82,7 @@ export const HANDOFF_NO_EDIT = "This chat is in Hand off, so you don't edit file
 const isPlanFile = (path: unknown, plans: string) => typeof path === 'string' && path.endsWith('.md') && dirname(resolve(path)) === plans && !!basename(path)
 
 /**
- * The room's `[mcp.aliases]` as tool names: each name agent files use, and the server's name as its tools carry it. An
+ * The project's `[mcp.aliases]` as tool names: each name agent files use, and the server's name as its tools carry it. An
  * alias to or from Kernel's own server, or `*`, is left out (KERNEL-464).
  */
 function aliasMap(aliases: Record<string, string> | undefined): Map<string, string> {
@@ -95,7 +95,7 @@ function aliasMap(aliases: Record<string, string> | undefined): Map<string, stri
   return out
 }
 
-/** A line's entries, each MCP one followed by the same entry on the server its name stands for in this room (KERNEL-464). */
+/** A line's entries, each MCP one followed by the same entry on the server its name stands for in this project (KERNEL-464). */
 function withAliases(entries: string[], aliases: Map<string, string>): string[] {
   return entries.flatMap((entry) => {
     const name = toolName(entry)
@@ -117,8 +117,8 @@ function readLine(entries: string[]) {
  * as Bash, and `mcp__linear` or `mcp__linear__*` for every tool of that server, where `mcp__*` names nothing. With no tools
  * line every tool is in. disallowedTools then takes away what it names, the same way, and there `mcp__*` takes every MCP
  * server. Kernel's own tools and the session's stay whatever the file says. Nothing for a file that limits nothing.
- * `aliases` is the room's `[mcp.aliases]`: an entry naming `linear` names the server it stands for as well, in both lines
- * (KERNEL-464). `allow` is the room's `[agents.<id>] allow`: MCP servers the user let this agent use though its tools line
+ * `aliases` is the project's `[mcp.aliases]`: an entry naming `linear` names the server it stands for as well, in both lines
+ * (KERNEL-464). `allow` is the project's `[agents.<id>] allow`: MCP servers the user let this agent use though its tools line
  * doesn't name them, which count as named unless disallowedTools takes them away (KERNEL-537). `readOnly` is a review chat's
  * (KERNEL-549): Edit, Write and NotebookEdit are out whatever the lines say, a plan file included. Bash stays, for git and gh.
  * `lead` is a chat with Kernel's mode (KERNEL-770). In Hand off, Edit, Write and NotebookEdit are out whatever the tools line
@@ -164,13 +164,13 @@ export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string
 
 /**
  * A server the tools line names that the session can't use. With no `status`, no server by its name, or by the name it
- * stands for in this room, is there, and `suggestion` is a usable one whose name contains it, as its tools name it.
+ * stands for in this project, is there, and `suggestion` is a usable one whose name contains it, as its tools name it.
  * Otherwise `name` is the server that is there and `status` why it can't be used: it `failed`, `needs-auth`, Claude Code or
- * Codex has it `disabled`, or the room switched it `off` (KERNEL-464).
+ * Codex has it `disabled`, or the project switched it `off` (KERNEL-464).
  */
 export interface MissingServer { server: string; entry: string; status?: 'failed' | 'needs-auth' | 'disabled' | 'off'; name?: string; suggestion?: string }
 
-/** A server as `missingServers` reads it: its name, what its provider said, and whether the room has it on. */
+/** A server as `missingServers` reads it: its name, what its provider said, and whether the project has it on. */
 export type KnownServer = { name: string; status?: McpStatus | string; enabled?: boolean }
 
 /** Why a server can't be used, or undefined when it can. Pending and unknown servers count as there. */
@@ -181,7 +181,7 @@ const unusable = (s: KnownServer): MissingServer['status'] =>
  * The MCP servers a tools line names (`mcp__linear`, `mcp__linear__*`, `mcp__linear__get_issue`) that the session can't
  * use. `servers` are the ones it knows of, by their names or their tools', a later entry for the same server winning.
  * Kernel's own server is always there. A server that failed, needs sign-in or is switched off no longer counts as there,
- * since its tools fail in the same way a missing one's do (amends KERNEL-397). `aliases` is the room's `[mcp.aliases]`.
+ * since its tools fail in the same way a missing one's do (amends KERNEL-397). `aliases` is the project's `[mcp.aliases]`.
  */
 export function missingServers(tools: string[] | undefined, servers: KnownServer[], aliases?: Record<string, string>): MissingServer[] {
   const known = new Map(servers.map((s) => [toolServerName(s.name), s]))
@@ -201,7 +201,7 @@ export function missingServers(tools: string[] | undefined, servers: KnownServer
 }
 
 /**
- * What an agent's tools line needs from the room's MCP servers that it doesn't have, as warnings for Team (KERNEL-464). A
+ * What an agent's tools line needs from the project's MCP servers that it doesn't have, as warnings for Team (KERNEL-464). A
  * missing server's `detail` is the name its file uses, else the server's own name. `complete` says the list holds every
  * server the agent could reach, so one it lacks is missing. Claude's isn't until a probe or a session has reported, since
  * claude.ai's connectors are in no file.
@@ -215,7 +215,7 @@ export function mcpWarnings(tools: string[] | undefined, servers: KnownServer[],
 }
 
 /**
- * The MCP servers an agent's tools line and disallowedTools reach in the room, and the ones the line names that it can't
+ * The MCP servers an agent's tools line and disallowedTools reach in the project, and the ones the line names that it can't
  * use, for the new agent card and create_agent's result (KERNEL-476). A server is reached when the agent may use any of its tools
  * and nothing says it can't be used, so pending and unreported servers count, as in `missingServers`. A missing server is
  * only named once `complete` says the list is whole, as in `mcpWarnings`. Kernel's own server is never listed.

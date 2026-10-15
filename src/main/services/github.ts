@@ -65,7 +65,7 @@ export function checkOf(c: RollupItem): PrCheck {
   return { name, state: 'running', ...(url ? { url } : {}) }
 }
 
-/** `*` in a room's `optionalChecks` matches any run of characters, and names compare without case (KERNEL-388). */
+/** `*` in a project's `optionalChecks` matches any run of characters, and names compare without case (KERNEL-388). */
 export function matchesCheck(patterns: string[], name: string): boolean {
   const escape = (t: string) => t.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
   return patterns.some((p) => p.trim() && new RegExp(`^${p.trim().split('*').map(escape).join('.*')}$`, 'i').test(name))
@@ -73,7 +73,7 @@ export function matchesCheck(patterns: string[], name: string): boolean {
 
 /**
  * The PR's checks, each marked optional when it doesn't decide the PR. When the repo requires some checks, those decide and
- * the rest are optional. When it requires none, every check decides except the ones the room's `optionalChecks` names. A
+ * the rest are optional. When it requires none, every check decides except the ones the project's `optionalChecks` names. A
  * check the repo requires is never optional (KERNEL-388).
  */
 export function checksOf(items: RollupItem[], optional: string[] = []): PrCheck[] {
@@ -87,7 +87,7 @@ export function checksOf(items: RollupItem[], optional: string[] = []): PrCheck[
 
 /**
  * Collapse GitHub's PR fields into the one state the workspace header shows. Only the checks that decide the PR fail it: a
- * failing check the repo doesn't require leaves it ready (KERNEL-388). Any check still running reads `checks` (KERNEL-703). `optional` is the room's list of checks to ignore.
+ * failing check the repo doesn't require leaves it ready (KERNEL-388). Any check still running reads `checks` (KERNEL-703). `optional` is the project's list of checks to ignore.
  */
 export function prStateOf(pr: PrView | null, o: { optional?: string[] } = {}): PrState {
   if (!pr) return 'none'
@@ -323,7 +323,7 @@ export async function conflictFiles(cwd: string, base: string, remote = 'origin'
 const reviewDecision = (d: PrView['reviewDecision']): PrInfo['reviewDecision'] =>
   d === 'APPROVED' ? 'approved' : d === 'CHANGES_REQUESTED' ? 'changes' : d === 'REVIEW_REQUIRED' ? 'pending' : undefined
 
-/** What the header, the Checks tab and the review card show. `optional` is the room's list of checks to ignore. */
+/** What the header, the Checks tab and the review card show. `optional` is the project's list of checks to ignore. */
 export function infoOf(workspaceId: string, view: PrView, comments: ReviewComment[], conflicts: string[], o: { optional?: string[] } = {}): PrInfo {
   const decision = reviewDecision(view.reviewDecision)
   const state = prStateOf(view, o)
@@ -348,8 +348,8 @@ export function fingerprintOf(info: PrInfo): string {
 /**
  * The PR for `ref` with its checks, review comments and conflicting files. Null when there is no PR; rejects with
  * GhReadError when GitHub couldn't be read, so a caller never takes a failed read for a missing PR (KERNEL-388).
- * `conflicts: false` is for a cwd that isn't the PR's checkout (the room, when the worktree is gone): `conflictFiles`
- * merges against cwd's HEAD, which would be main. `optional` is the room's list of checks to ignore.
+ * `conflicts: false` is for a cwd that isn't the PR's checkout (the project, when the worktree is gone): `conflictFiles`
+ * merges against cwd's HEAD, which would be main. `optional` is the project's list of checks to ignore.
  */
 export async function prInfo(cwd: string, ref: string, workspaceId: string, o: { conflicts?: boolean; remote?: string; optional?: string[] } = {}): Promise<PrInfo | null> {
   const read = await readPr(cwd, ref)
@@ -415,8 +415,8 @@ export async function repoMergeMethods(cwd: string): Promise<MergeMethod[]> {
 }
 
 /**
- * The calls Kernel makes for a workspace's PR, wherever the room's code is hosted (KERNEL-432). `gh` is GitHub's, and tests
- * swap it for a stub. A room with no GitHub gets the local one from `CodeHosts.hostFor` (KERNEL-467).
+ * The calls Kernel makes for a workspace's PR, wherever the project's code is hosted (KERNEL-432). `gh` is GitHub's, and tests
+ * swap it for a stub. A project with no GitHub gets the local one from `CodeHosts.hostFor` (KERNEL-467).
  */
 export interface CodeHost {
   /**
@@ -491,7 +491,7 @@ export const REPLY_FOOTER = "Reply in a thread with `gh api graphql -f query='mu
 
 /**
  * The instruction file the agent gets for a conflict, failing checks or a review, with what GitHub reported. The texts come
- * from Settings > Pull requests or the room's own (`prInstructions`, KERNEL-190). Everything GitHub reported sits in a marked
+ * from Settings > Pull requests or the project's own (`prInstructions`, KERNEL-190). Everything GitHub reported sits in a marked
  * block, and the review lists only the comments of people who belong to the repo (KERNEL-222), each with its thread and the
  * command that replies in it (KERNEL-564).
  */

@@ -8,7 +8,7 @@ const NAMES: Record<TrackerKind, string> = { linear: 'Linear', github: 'GitHub' 
 /**
  * The tracker an issue source came from, by its tag (KERNEL-470). A source saved before KERNEL-462 has none, and its id
  * tells, as it did then: `#41` is a GitHub issue, anything else Linear. A tag Kernel no longer has, like the `jira` of an
- * issue saved before Jira was removed, names no tracker, so no room's tracker is asked about it.
+ * issue saved before Jira was removed, names no tracker, so no project's tracker is asked about it.
  */
 export function issueTracker(source: { id: string; tracker?: TrackerKind }): TrackerKind | undefined {
   if (!source.tracker) return source.id.startsWith('#') ? 'github' : 'linear'

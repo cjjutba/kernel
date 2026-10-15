@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from 'node:fs/p
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { PushEvent } from '../src/shared/ipc'
-import type { RoomSetupStep } from '../src/shared/types'
+import type { ProjectSetupStep } from '../src/shared/types'
 import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
@@ -102,7 +102,7 @@ describe('Files to copy patterns (KERNEL-245)', () => {
     expect(await paths(dir, ['.env*', '.env'])).toEqual(['.env'])
   })
 
-  it('gives a folder room inside a parent repo its exact paths only', async () => {
+  it('gives a folder project inside a parent repo its exact paths only', async () => {
     const parent = await tempRepo({ '.gitignore': '*.env\n', 'app/index.ts': '' })
     await put(parent, { 'app/local.env': 'a\n' })
     expect(await paths(join(parent, 'app'), ['*.env'])).toEqual([])
@@ -173,7 +173,7 @@ describe('Files to copy exclusions and the production warning (KERNEL-449)', () 
     expect(await productionInCopy(repo, ['.env*'], ['.env', '.env.production'])).toEqual([])
   })
 
-  it('warns in room setup and on Files to copy until the user stops copying the files or keeps them', async () => {
+  it('warns in project setup and on Files to copy until the user stops copying the files or keeps them', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
@@ -182,33 +182,33 @@ describe('Files to copy exclusions and the production warning (KERNEL-449)', () 
     onTestFinished(() => k.stop({ budgetMs: 0 }))
     const repo = await tempRepo({ '.gitignore': '.env*\ncerts/\n', 'README.md': '', '.kernel/settings.toml': '[files]\ncopy = [".env*"]\n' })
     await put(repo, PROD)
-    const steps = new Promise<RoomSetupStep[]>((resolve) => {
-      const on = (e: PushEvent) => { if (e.type === 'room.setup' && !e.steps.some((s) => s.state === 'wait' || s.state === 'run')) { bus.off('push', on); resolve(e.steps) } }
+    const steps = new Promise<ProjectSetupStep[]>((resolve) => {
+      const on = (e: PushEvent) => { if (e.type === 'project.setup' && !e.steps.some((s) => s.state === 'wait' || s.state === 'run')) { bus.off('push', on); resolve(e.steps) } }
       bus.on('push', on)
     })
-    const room = await k.rooms.createRoom({ source: 'folder', name: 'Prod', from: repo, team: ['kai'], autostart: false })
+    const project = await k.projects.createProject({ source: 'folder', name: 'Prod', from: repo, team: ['kai'], autostart: false })
     expect((await steps).find((s) => s.id === 'copy')).toMatchObject({ state: 'warn', detail: '.env, .env.local, .env.production', production: ['.env', '.env.production'] })
 
     const h = k.handlers()
-    expect(await h['files.production']({ roomId: room.id })).toEqual([
+    expect(await h['files.production']({ projectId: project.id })).toEqual([
       { path: '.env', name: 'DATABASE_URL', why: 'remote-database' },
       { path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }
     ])
     // One Keep copying covers the whole file, though the banner names one variable of the three.
     await writeFile(join(repo, '.env.production'), 'NODE_ENV=production\nDATABASE_URL=postgres://db.prod.example.com/app\nSTRIPE_SECRET_KEY=sk_live_abc123\n')
-    await h['files.keepCopying']({ roomId: room.id, hints: [{ path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }] })
-    expect(k.store.room(room.id)?.keepCopying).toEqual(['.env.production:STRIPE_SECRET_KEY', '.env.production:DATABASE_URL', '.env.production:NODE_ENV'])
-    expect(await h['files.production']({ roomId: room.id })).toEqual([{ path: '.env', name: 'DATABASE_URL', why: 'remote-database' }])
+    await h['files.keepCopying']({ projectId: project.id, hints: [{ path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }] })
+    expect(k.store.project(project.id)?.keepCopying).toEqual(['.env.production:STRIPE_SECRET_KEY', '.env.production:DATABASE_URL', '.env.production:NODE_ENV'])
+    expect(await h['files.production']({ projectId: project.id })).toEqual([{ path: '.env', name: 'DATABASE_URL', why: 'remote-database' }])
     // A variable added to a kept file warns again.
     await writeFile(join(repo, '.env.production'), 'NODE_ENV=production\nDATABASE_URL=postgres://db.prod.example.com/app\nSTRIPE_SECRET_KEY=sk_live_abc123\nSTRIPE_RESTRICTED_KEY=rk_live_def456\n')
-    expect(await h['files.production']({ roomId: room.id })).toEqual([
+    expect(await h['files.production']({ projectId: project.id })).toEqual([
       { path: '.env', name: 'DATABASE_URL', why: 'remote-database' },
       { path: '.env.production', name: 'STRIPE_RESTRICTED_KEY', why: 'live-key' }
     ])
-    // Don't copy these files saves them to the room's exclusions, so neither the preview nor a new worktree gets them.
-    await h['settings.setRoom']({ roomId: room.id, patch: { files: { exclude: ['.env', '.env.production'] } } })
-    expect(await h['files.production']({ roomId: room.id })).toEqual([])
-    expect((await h['files.preview']({ roomId: room.id })).map((f) => f.path)).toEqual(['.env.local'])
+    // Don't copy these files saves them to the project's exclusions, so neither the preview nor a new worktree gets them.
+    await h['settings.setProject']({ projectId: project.id, patch: { files: { exclude: ['.env', '.env.production'] } } })
+    expect(await h['files.production']({ projectId: project.id })).toEqual([])
+    expect((await h['files.preview']({ projectId: project.id })).map((f) => f.path)).toEqual(['.env.local'])
   }, 60000)
 })
 

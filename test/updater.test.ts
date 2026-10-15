@@ -21,7 +21,7 @@ class FakeEngine extends EventEmitter implements UpdateEngine {
   quitAndInstall() { this.installs++ }
 }
 
-const notes = '### Checkpoints\nEvery turn saves the worktree.\n\n### Pause room\nFreeze every agent in a room.'
+const notes = '### Checkpoints\nEvery turn saves the worktree.\n\n### Pause project\nFreeze every agent in a project.'
 const info: UpdateInfo = { version: '0.2.0', releaseNotes: notes }
 const download = (e: FakeEngine) => { e.emit('update-available', info); e.emit('download-progress', { percent: 41.6 }); e.emit('update-downloaded', info) }
 const dir = () => mkdtemp(join(tmpdir(), 'kernel-update-'))
@@ -32,7 +32,7 @@ describe('parseNotes', () => {
   it('reads markdown headings as titles and the text under them as the body', () => {
     expect(parseNotes(notes)).toEqual([
       { title: 'Checkpoints', body: 'Every turn saves the worktree.' },
-      { title: 'Pause room', body: 'Freeze every agent in a room.' }
+      { title: 'Pause project', body: 'Freeze every agent in a project.' }
     ])
   })
 

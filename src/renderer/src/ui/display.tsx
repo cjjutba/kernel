@@ -77,7 +77,7 @@ export function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="kbd">{children}</kbd>
 }
 
-/** The letter square used for rooms, agents and people. */
+/** The letter square used for projects, agents and people. */
 export function Avatar({ name, size = 20, solid }: { name: string; size?: number; solid?: boolean }) {
   return <span className="avatar" data-solid={solid ? 'true' : undefined} aria-hidden="true" style={{ width: size, height: size, fontSize: Math.round(size * 0.48) }}>{name.trim()[0]?.toUpperCase()}</span>
 }
