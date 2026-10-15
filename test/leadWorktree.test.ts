@@ -281,6 +281,20 @@ describe('what waits for setup (KERNEL-490)', () => {
     expect(k.sessions.queued(chat.id)).toEqual([])
   })
 
+  it("keeps the window's id on the prompt through setup and on what the chat's handlers send next (KERNEL-894)", async () => {
+    const { k, project: r } = await project(SETUP, { leadWaitForSetup: true })
+    const h = k.handlers()
+    const chat = await h['lead.start']({ projectId: r.id, prompt: 'Plan it', clientId: 'c-start' })
+    expect(k.sessions.queued(chat.id).map((q) => q.id)).toEqual(['c-start'])
+    await setUp(k, chat.id)
+    await vi.waitFor(() => expect(k.store.items(chat.id).filter((i) => i.kind === 'user').map((i) => i.id)).toEqual(['c-start']))
+    // The mocked turn never ends, so each of these waits behind it under its id.
+    expect(await h['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'And the tests' }], clientId: 'c-send' })).toMatchObject({ queued: true })
+    await h['chats.sendNow']({ chatId: chat.id, id: 'c-send', clientId: 'c-now' })
+    await h['chats.retry']({ chatId: chat.id, itemId: 'c-start', clientId: 'c-retry' })
+    expect(k.sessions.queued(chat.id).map((q) => q.id)).toEqual(['c-now', 'c-retry'])
+  })
+
   it.each([
     ['the project has no setup script', {}, true],
     ['Run setup on create is off', SETUP, false]

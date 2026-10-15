@@ -96,7 +96,7 @@ export class Lead extends Feature {
    * Lead, a base that isn't here and isn't on the remote, a branch name git won't take. A project with no commit keeps the Lead on the
    * checkout with no setup, as before KERNEL-355. A `mode` picked in New chat is the chat's own before its first turn (KERNEL-776), and so is a `leadMode` (KERNEL-805).
    */
-  async newLeadChat(projectId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; leadMode?: LeadMode }): Promise<Chat> {
+  async newLeadChat(projectId: string, o: { prompt: string; parts?: ChatPart[]; clientId?: string; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; leadMode?: LeadMode }): Promise<Chat> {
     const lead = await this.leadOf(projectId)
     const role = this.k.team.pickFor(lead)
     // A model picked in New Lead chat runs on its own provider. Otherwise the Lead's pin or its role decides (KERNEL-406).
@@ -116,10 +116,10 @@ export class Lead extends Feature {
     const parts = messageOf(o.prompt, o.parts)
     if (ws.mode === 'current') {
       this.updateWs(ws.id, { status: 'ready' })
-      if (parts.length) await this.sessions.send(chat.id, parts)
+      if (parts.length) await this.sessions.send(chat.id, parts, { clientId: o.clientId })
       return chat
     }
-    this.sessions.hold(chat.id, parts.length ? parts : undefined)
+    this.sessions.hold(chat.id, parts.length ? parts : undefined, { clientId: o.clientId })
     void this.buildChat(ws.id).catch((e) => {
       // A Kernel that stopped meanwhile has closed its database. The next launch finds the workspace in setup and fails it.
       if (this.stopped) return
