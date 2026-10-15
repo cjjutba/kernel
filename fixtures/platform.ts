@@ -726,12 +726,12 @@ export const platformFixtures: Record<string, Fixture> = {
     agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
     ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
   })),
-  SettingsSkills: projectPage('agents', { ...clientA(), agents: { [ids.projectA]: sixAgents }, skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts }),
+  SettingsSkills: projectPage('agents', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts }),
   // KERNEL-893: the skills read is slow, so three skeleton rows stand in, and it fails, so the page says so and offers Try again.
-  SettingsSkillsLoading: projectPage('agents', { ...clientA(), agents: { [ids.projectA]: sixAgents }, skills: ['setup', 'plan'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, lag: { 'skills.list': 60000 } }),
-  SettingsSkillsFailed: projectPage('agents', { ...clientA(), agents: { [ids.projectA]: sixAgents }, mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, fails: { 'skills.list': 'Could not read the skills folder.' } }),
+  SettingsSkillsLoading: projectPage('agents', { ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, lag: { 'skills.list': 60000 } }),
+  SettingsSkillsFailed: projectPage('agents', { ...clientA(), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, fails: { 'skills.list': 'Could not read the skills folder.' } }),
   // KERNEL-661: twenty-seven servers as switches in a project, each with one word of status and the link to the global page.
-  SettingsSkillsMany: projectPage('agents', { ...clientA(), agents: { [ids.projectA]: sixAgents }, skills: ['setup', 'plan'].map(skill), mcp: mcpAcrossServers, mcpAccounts: manyServers() }),
+  SettingsSkillsMany: projectPage('agents', { ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpAcrossServers, mcpAccounts: manyServers() }),
   // KERNEL-661: Settings, MCP servers opens on the active account, Work, with every server ready and folded into one line per group.
   SettingsMcpServersReady: mcpPage({}, {}),
   // KERNEL-661: the notice or Providers opens the page on Personal: sign-ins, a failure, connectors not set up and one ignored.
