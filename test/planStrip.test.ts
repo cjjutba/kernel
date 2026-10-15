@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getState } from '../src/renderer/src/store'
 import type { Approval } from '../src/shared/types'
 
-// KERNEL-789: Approve closes the plan strip with no spinner, and the strip stays until its close animation ends.
-// KERNEL-833: the box holds plan mode with it, a slow approval or a hidden window can't leave it behind, and Approve asks first when the box has text.
+// KERNEL-789: Approve closes the plan strip with no spinner. KERNEL-895: it leaves in the frame of the press, with no close animation.
+// KERNEL-833: Approve asks first when the box has text.
 
 Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -30,7 +30,7 @@ describe('the plan strip', () => {
   })
   afterEach(() => { act(() => root?.unmount()); root = null; host.remove(); vi.restoreAllMocks() })
 
-  // What the composer does: it owns the strip's state and reads `holding` for the placeholder, the chip and the glow.
+  // What the composer does: it owns the strip's state.
   let Harness: (p: { plan: Approval | undefined; text: boolean }) => React.ReactElement
   const mount = async (a: Approval | undefined, hasText = false) => {
     const { PlanStrip, usePlanStrip } = await import('../src/renderer/src/screens/workspace/cards/plan')
@@ -49,94 +49,51 @@ describe('the plan strip', () => {
   const button = (name: string) => [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith(name))!
   const click = (el: HTMLElement) => act(() => { el.click() })
   const settle = () => act(async () => { await Promise.resolve() })
-  const fire = (el: HTMLElement, type: 'animationend' | 'animationcancel') => act(() => { const e = new Event(type, { bubbles: true }); Object.assign(e, { animationName: 'planbar-out' }); el.dispatchEvent(e) })
-  const end = (el: HTMLElement) => fire(el, 'animationend')
-  const meta = () => act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, metaKey: true })) })
+    const meta = () => act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, metaKey: true })) })
 
-  it('closes at once on Approve, with no Approving label, and ignores a second press', async () => {
+  it('leaves in the frame of Approve, with no Approving label and no animation, and ignores a second press', async () => {
     call.mockResolvedValue(undefined)
     await mount(plan)
-    expect(strip()?.hasAttribute('data-closing')).toBe(false)
+    expect(strip()).not.toBeNull()
     click(button('Approve'))
-    expect(strip()?.hasAttribute('data-closing')).toBe(true)
+    expect(strip()).toBeNull()
+    expect(holding()).toBe(false)
     expect(host.textContent).not.toContain('Approving')
-    click(button('Approve'))
     meta()
     await settle()
     expect(call).toHaveBeenCalledTimes(1)
     expect(call).toHaveBeenCalledWith('approvals.decide', { id: 'a1', decision: { behavior: 'allow' } })
   })
 
-  it('stays mounted after the plan stops waiting, and the box holds plan mode until the close animation ends', async () => {
+  it('is gone the moment its plan stops waiting, and a new plan opens at once', async () => {
     await mount(plan)
     await mount(undefined)
-    expect(strip()?.hasAttribute('data-closing')).toBe(true)
-    expect(holding()).toBe(true)
-    end(strip()!)
     expect(strip()).toBeNull()
-    expect(holding()).toBe(false)
+    await mount(next)
+    expect(strip()).not.toBeNull()
   })
 
-  it('is removed when its animation ends even though the plan still waits, and stays gone', async () => {
-    call.mockReturnValue(new Promise(() => undefined))
-    await mount(plan)
-    click(button('Approve'))
-    end(strip()!)
-    expect(strip()).toBeNull()
-    expect(holding()).toBe(false)
-    await mount({ ...plan })
-    expect(strip()).toBeNull()
-  })
-
-  it('is removed when its animation is cancelled', async () => {
-    await mount(plan)
-    await mount(undefined)
-    fire(strip()!, 'animationcancel')
-    expect(strip()).toBeNull()
-  })
-
-  it('is removed at once in a hidden window, where no animation runs', async () => {
-    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
-    await mount(plan)
-    click(button('Approve'))
-    await settle()
-    expect(strip()).toBeNull()
-  })
-
-  it('opens again when the approval fails, as a new strip if the old one had gone', async () => {
-    call.mockRejectedValue(new Error('no'))
-    await mount(plan)
-    click(button('Approve'))
-    expect(strip()?.hasAttribute('data-closing')).toBe(true)
-    await settle()
-    expect(strip()?.hasAttribute('data-closing')).toBe(false)
-    expect(getState().ui.toasts.map((t) => t.title)).toContain('Could not approve the plan')
-    click(button('Approve'))
-    await settle()
-    expect(call).toHaveBeenCalledTimes(2)
-  })
-
-  it('mounts a strip that had gone again when a slow approval fails', async () => {
+  it('stays gone while a slow approval is in flight, and comes back when it fails', async () => {
     let fail: (e: Error) => void = () => undefined
     call.mockReturnValue(new Promise((_, no) => { fail = no }))
     await mount(plan)
     click(button('Approve'))
-    end(strip()!)
+    await mount({ ...plan })
     expect(strip()).toBeNull()
     fail(new Error('no'))
     await settle()
     expect(strip()).not.toBeNull()
-    expect(strip()?.hasAttribute('data-closing')).toBe(false)
+    expect(getState().ui.toasts.map((t) => t.title)).toContain('Could not approve the plan')
   })
 
-  it('lets the old strip finish before a new plan opens its own', async () => {
+  it('can be approved again after a failed approval', async () => {
+    call.mockRejectedValueOnce(new Error('no')).mockResolvedValue(undefined)
     await mount(plan)
-    await mount(next)
-    expect(strip()?.hasAttribute('data-closing')).toBe(true)
-    expect(holding()).toBe(true)
-    end(strip()!)
-    expect(strip()).not.toBeNull()
-    expect(strip()?.hasAttribute('data-closing')).toBe(false)
+    click(button('Approve'))
+    await settle()
+    click(button('Approve'))
+    await settle()
+    expect(call).toHaveBeenCalledTimes(2)
   })
 
   it('moves the caret to the box and says "Plan approved" once the approval went through', async () => {
@@ -156,7 +113,7 @@ describe('the plan strip', () => {
       click(button('Approve'))
       expect(host.textContent).toContain('Approve without your changes?')
       expect(call).not.toHaveBeenCalled()
-      expect(strip()?.hasAttribute('data-closing')).toBe(false)
+      expect(strip()).not.toBeNull()
       expect(document.activeElement?.textContent).toBe('Send changes')
     })
 
@@ -188,7 +145,7 @@ describe('the plan strip', () => {
       await settle()
       expect(call).toHaveBeenCalledWith('approvals.decide', { id: 'a1', decision: { behavior: 'allow' } })
       expect(calls.send).toBe(0)
-      expect(strip()?.hasAttribute('data-closing')).toBe(true)
+      expect(strip()).toBeNull()
     })
 
     it('backs out on Escape and hands the caret back to the box', async () => {

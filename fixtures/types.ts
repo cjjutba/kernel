@@ -6,8 +6,8 @@ import type { AccountProfile, MoveNotice, MovePreview, Provider, ProviderModel, 
 import type { Channel, PushEvent } from '@shared/ipc'
 import type { TelemetryRecord } from '@shared/telemetry'
 
-/** What `pnpm shots <Screen> --motion` does: a click on a button by its accessible name, key presses in Playwright's names (`Meta+Shift+Enter`), or `hold`, which hovers a button and keeps the mouse down on it. */
-export type MotionAction = { click: string } | { press: string[] } | { hold: string }
+/** What `pnpm shots <Screen> --motion` does: a click on a button by its accessible name, key presses in Playwright's names (`Meta+Shift+Enter`), or `hold`, which hovers a button and keeps the mouse down on it. `push` is no click: main pushes these events, as when a turn ends by itself (KERNEL-895). */
+export type MotionAction = { click: string } | { press: string[] } | { hold: string } | { push: PushEvent[] }
 
 /** Everything one screen needs. `KERNEL_FIXTURES=<key>` serves it in place of the kernel. */
 export interface Fixture {
@@ -148,6 +148,11 @@ export interface Fixture {
   lag?: Partial<Record<Channel, number>>
   /** Events `chats.send` pushes after the given delays, so a `motion` that clicks Send can step a running turn through more calls. */
   afterSend?: { afterMs: number; events: PushEvent[] }[]
+  /**
+   * Events a call pushes after it answers, by channel, after the given delays: a fixture's stand-in for main reacting to the call. In them `$id` is the id the window gave
+   * the message (`clientId`, or `id` for Send now), `$parts` its parts and `$now` the time, so main's row replaces the window's by id as it does for real (KERNEL-895).
+   */
+  after?: Partial<Record<Channel, { afterMs: number; events: PushEvent[] }[]>>
   /** Events `projects.retrySetup` pushes after the given delays, so a `motion` that clicks Try again can step a setup through its steps. */
   afterRetry?: { afterMs: number; events: PushEvent[] }[]
   /**

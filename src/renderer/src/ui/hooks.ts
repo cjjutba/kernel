@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
  */
 interface Layer { escape?: () => void; outside?: () => void; blocking?: boolean; ref?: RefObject<HTMLElement | null>; anchorRef?: RefObject<HTMLElement | null> }
 
-/** A handler for the screen's own Escape or the toast's. It returns true when it took the key. `inField` says the key came from a text field that was not the composer. */
+/** A handler for the screen's own Escape or the toast's. It returns true only when it did something with the key; a screen with nothing to do returns false, and the key goes on to the next tier. `inField` says the key came from a text field that was not the composer. */
 type EscapeHandler = (e: KeyboardEvent, inField: boolean) => boolean | void
 const screenHandlers: EscapeHandler[] = []
 const toastHandlers: EscapeHandler[] = []

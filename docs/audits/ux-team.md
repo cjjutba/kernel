@@ -62,7 +62,7 @@ No blocker: nothing loses data or locks the app. The majors are dead ends where 
 
 **M6. Project setup failed: no retry, and the page still says "This takes a minute".** Shot: `ProjectSetupFailed`. The failed step has red text, the later steps stay as dashes, "Open the project" is disabled, and the footer still says "Kernel keeps going". Fails 1, 2, 4. Direction: change the heading and footer on failure, add Try again on the failed step, and use the neutral banner style for the error.
 
-**Status: fixed.** The heading and footer say "did not finish setting up" and "A step stopped. Its error is below.", the error uses the neutral box, and the failed step has a Try again button. Walked live: Try again shows "Trying again" while it waits and cannot be pressed twice, then the project opens. When the retry fails again the page stays on the failed state with Try again. A failed clone and a restart both leave Try again available. After: `ProjectSetupFailed`, `ProjectSetupRetryFailed`.
+**Status: fixed.** The heading and footer say "did not finish setting up" and "A step stopped. Its error is below.", the error uses the neutral box, and the failed step has a Try again button. Walked live on the final states: after Try again the project opens, and when the retry fails again the page stays on the failed state with Try again. A failed clone and a restart both leave Try again available. The "Trying again" label while the call waits was not captured, so it is read from code, not walked. After: `ProjectSetupFailed`, `ProjectSetupRetryFailed`.
 
 **M7. Delete from History: if the preview call fails, the dialog sits on "Counting" forever.** Fixture: none (needs a failing `deletePreview`). Source: code, `history/ConfirmDeleteHistory.tsx`. Fails 1, 2, 5. Direction: show the error and a Try again button, and keep Delete disabled.
 
@@ -144,7 +144,7 @@ These need a way to fail a call or answer late, which `fixtures/` does not have 
 
 ## New fixtures in this PR
 
-`HistoryEmpty`, `InboxMany`, `ProjectsEmpty`, `ConnectRepoLoading`, `ConnectRepoEmpty`, `OpenFolderLoading`, `OpenFolderEmpty`, `ProjectSetupFailed`, `IssuesDetailLoading`, `IssuesMany`, `IssuesGitHubLoading`, `IssuesGitHubEmpty`, `IssuesGitHubOffline`, `IssuesGitHubDetailLoading`. Existing fixtures reused: `Inbox`, `InboxEmpty`, `Projects`, `NewProject`, `ProjectSetupWarnings`, `ConnectRepo`, `OpenFolder`, `Issues`, `IssuesLoading`, `IssuesEmpty`, `IssuesConnect`, `IssuesError`, `IssuesNoRoom`, `IssuesNoTracker`, `IssuesJira`, `IssuesGitHub`, `PullRequests`, `PullRequestsEmpty`, `PullRequestsNoMerged`, `History`, `NewAgent`, `NewAgentNoRoom`, `NewAgentDraft`, `CommandPalette`, `SearchArchived`.
+`HistoryEmpty`, `InboxMany`, `ProjectsEmpty`, `ConnectRepoLoading`, `ConnectRepoEmpty`, `OpenFolderLoading`, `OpenFolderEmpty`, `ProjectSetupFailed`, `IssuesDetailLoading`, `IssuesMany`, `IssuesGitHubLoading`, `IssuesGitHubEmpty`, `IssuesGitHubOffline`, `IssuesGitHubDetailLoading`. Existing fixtures reused: `Inbox`, `InboxEmpty`, `Projects`, `NewProject`, `ProjectSetupWarnings`, `ConnectRepo`, `OpenFolder`, `Issues`, `IssuesLoading`, `IssuesEmpty`, `IssuesConnect`, `IssuesError`, `IssuesNoProject`, `IssuesNoTracker`, `IssuesJira`, `IssuesGitHub`, `PullRequests`, `PullRequestsEmpty`, `PullRequestsNoMerged`, `History`, `NewAgent`, `NewAgentNoProject`, `NewAgentDraft`, `CommandPalette`, `SearchArchived`.
 
 `InboxMany` (80 rows) looked fine: the list scrolls and the detail pane keeps its place. No finding.
 
@@ -154,5 +154,5 @@ These need a way to fail a call or answer late, which `fixtures/` does not have 
 - **Command palette.** Enter on Search opens it with focus on the combobox. Tab stays on the combobox, which is right for a combobox. Escape closes it and focus returns to the Search button (n1, fixed). Same from ⌘K.
 - **Project setup Try again.** Enter on Try again runs it. When it works the app leaves setup for the project. When it fails again the failed state stays with Try again (M6, fixed).
 - **Busy retries.** Try again in Connect a repo and Open a folder shows its busy label and settles (M5, fixed).
-- **Escape, toast up.** A field keeps Escape, then the screen, then the toast. On Settings, Escape leaves Settings and the toast stays (see the platform audit for the follow-on case).
+- **Escape, toast up.** A field keeps Escape, then the screen, then the toast. On Settings, Escape leaves Settings and the next Escape clears the toast (KERNEL-896, see the platform audit).
 - **Cap notes.** `IssuesGitHubCapped` and `PullRequestsMergedCapped` show the note that the list is cut at its cap.

@@ -237,10 +237,10 @@ describe('the answer row an approval shows at once (KERNEL-838)', () => {
     expect(answerRow({ id: 'h1', kind: 'agent', status: 'pending', chatId: 'c1' }, { behavior: 'deny' })).toMatchObject({ parts: [{ type: 'text', text: 'Not now' }] })
   })
 
-  it('adds nothing for a tool permission or a change request with images', async () => {
+  it('adds nothing for a tool permission, and draws a change request with its images', async () => {
     const { answerRow } = await load()
     expect(answerRow({ id: 'p1', kind: 'tool', toolName: 'Bash', status: 'pending', chatId: 'c1' }, { behavior: 'allow' })).toBeUndefined()
-    expect(answerRow(plan, { behavior: 'deny', message: 'x', images: [{ name: 'a.png', dataUrl: 'data:' }] })).toBeUndefined()
+    expect(answerRow(plan, { behavior: 'deny', message: 'x', images: [{ name: 'a.png', dataUrl: 'data:' }] })).toMatchObject({ parts: [{ type: 'text', text: 'x' }, { type: 'image', name: 'a.png' }] })
   })
 })
 

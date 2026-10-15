@@ -27,6 +27,7 @@ import { TeamUpdateCard } from './cards/TeamUpdateCard'
 import { LocalMergeRow } from './pr/LocalMerge'
 import { ReviewCard } from './pr/ReviewCard'
 import { LEAD_MODE_ICON } from './composer/modes'
+import { retryMessage, sendMessage } from './composer/sendMessage'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
 import { opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
@@ -781,8 +782,8 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorks
   if (block.kind === 'error') {
     return (
       <ErrorCard message={block.message} output={block.output} agentName={agentName} onTerminal={onTerminal}
-        onFix={() => attempt('Could not send', () => call('chats.send', { chatId, parts: [{ type: 'text', text: `Fix this: ${block.message}` }] }))}
-        onRetry={() => attempt('Could not retry', () => call('chats.retry', { chatId, itemId: block.id }))} />
+        onFix={() => sendMessage(chatId, [{ type: 'text', text: `Fix this: ${block.message}` }])}
+        onRetry={() => retryMessage(chatId, block.id)} />
     )
   }
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
@@ -1040,8 +1041,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const queuedAt = useRef(0)
   const prevQueued = useRef(queued)
   useEffect(() => { if (queued > 0 || prevQueued.current > 0) queuedAt.current = Date.now(); prevQueued.current = queued }, [queued])
-  useEffect(() => {
-    // The first run is the chat opening, which the effect above has placed already.
+  useLayoutEffect(() => {
+    // Before paint, so the frame that draws the new row is already at the end (KERNEL-895). The first run is the chat opening, which the effect above has placed already.
     const step = sendFollow(last, sentId.current, arrived.current, postedFromQueue(queuedAt.current, Date.now()), pinned.current)
     if (step === 'follow') {
       release()
@@ -1113,7 +1114,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         )}
         {empty && (
           <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
-            onPick={(text) => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))} />
+            onPick={(text) => sendMessage(chat.id, [{ type: 'text', text }])} />
         )}
         <TranscriptGlide.Provider value={reveal}>
         <TranscriptWorkspace.Provider value={workspaceId}>
