@@ -149,19 +149,6 @@ describe('the plan strip', () => {
     expect(host.querySelector('.said')?.textContent).toBe('Plan approved')
   })
 
-  it('tells the transcript of this chat to scroll to its end', async () => {
-    call.mockResolvedValue(undefined)
-    const seen: unknown[] = []
-    const on = (e: Event) => seen.push((e as CustomEvent).detail)
-    const { PLAN_APPROVE_EVENT } = await import('../src/renderer/src/screens/workspace/cards/plan')
-    window.addEventListener(PLAN_APPROVE_EVENT, on)
-    await mount(plan)
-    click(button('Approve'))
-    window.removeEventListener(PLAN_APPROVE_EVENT, on)
-    await settle()
-    expect(seen).toEqual([{ chatId: 'c1' }])
-  })
-
   describe('with text in the box', () => {
     it('asks before approving, from the button and from ⌘⇧↵, and approves nothing yet', async () => {
       call.mockResolvedValue(undefined)

@@ -64,14 +64,14 @@ async function scrollUp(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// WorkspaceJustSent: a send arrives while the chat is open, which is what anchors the message at the top (KERNEL-803).
+// WorkspaceJustSent: a send arrives while the chat is open, and the view stays at its end (KERNEL-891).
 async function sendMessage(page: Page, app: ElectronApplication) {
   await page.waitForTimeout(300)
   await app.evaluate(({ BrowserWindow }, item) => BrowserWindow.getAllWindows()[0]?.webContents.send('kernel:event', { type: 'chat.item', chatId: 'chat-invoice-table', item }), { kind: 'user', id: 'js-u', ts: Date.now() - 2000, parts: [{ type: 'text', text: 'Now add a CSV export for the filtered rows.' }] })
   await page.waitForTimeout(1200)
 }
 
-// WorkspaceJustSentDone: the send, a short reply and the end of the turn arrive, and the message stays at the top (KERNEL-837).
+// WorkspaceJustSentDone: the send, a short reply and the end of the turn arrive, and the view stays at its end (KERNEL-891).
 async function sendAndFinish(page: Page, app: ElectronApplication) {
   const push = (event: object) => app.evaluate(({ BrowserWindow }, e) => BrowserWindow.getAllWindows()[0]?.webContents.send('kernel:event', e), event)
   await page.waitForTimeout(300)
@@ -83,7 +83,7 @@ async function sendAndFinish(page: Page, app: ElectronApplication) {
   await page.waitForTimeout(1200)
 }
 
-// WorkspaceNewChatJustSent: the first message is typed on New chat and sent, and the chat that opens anchors it like any send (KERNEL-825).
+// WorkspaceNewChatJustSent: the first message is typed on New chat and sent, and the chat that opens shows it at the top (KERNEL-891).
 async function sendFromNewChat(page: Page) {
   await page.waitForTimeout(300)
   await page.getByRole('textbox').first().fill('Add a CSV export for the filtered invoice rows.')
@@ -91,7 +91,7 @@ async function sendFromNewChat(page: Page) {
   await page.waitForTimeout(1500)
 }
 
-// WorkspaceLeaveAndReturn: a send and its short reply, then another tab and back. The message must sit where it did, and the padding is back before the view is (leaving and coming back).
+// WorkspaceLeaveAndReturn: a send and its short reply, then another tab and back. The chat must open at its end, where it was left (KERNEL-765).
 async function leaveAndReturn(page: Page, app: ElectronApplication) {
   const push = (event: object) => app.evaluate(({ BrowserWindow }, e) => BrowserWindow.getAllWindows()[0]?.webContents.send('kernel:event', e), event)
   await page.waitForTimeout(300)

@@ -101,7 +101,7 @@ export interface Glider {
 }
 
 /**
- * The one engine for every scroll Kernel makes on its own (KERNEL-862): a send, Scroll to bottom, the chat rail, Approve and a plan revealing itself. It is time-based, so
+ * The one engine for the scrolls Kernel glides on its own (KERNEL-862, KERNEL-891): Scroll to bottom, the chat rail and a plan revealing itself. A send does not glide, it follows the end. It is time-based, so
  * a 120Hz screen takes the same time as a 60Hz one. It follows its goal from where the view is, never restarts, eases into the end with no snap, and places the view at once
  * under reduced motion. When a glide has run its length and the goal has moved on, the view eases on to it in a new, shorter glide that starts at rest.
  */

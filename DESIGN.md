@@ -200,12 +200,12 @@ Every screen draws a state with one of these components from `ui`, never its own
 | `--dur-base` | 160ms | Reveals: the scrim in, the queue row leaving, a toast's gap, Send changes color. |
 | `--dur-glide` | 180ms | Folds: a group collapsing, the nearest thing to a glide with no distance. |
 | `--ease-out` | `ease-out` | Everything that appears or leaves. |
-| `--ease-glide` | `cubic-bezier(0.45, 0, 0.05, 1)` | Every scroll Kernel makes itself. `GLIDE_EASING` in `Transcript.tsx` is the same curve. |
+| `--ease-glide` | `cubic-bezier(0.45, 0, 0.05, 1)` | Scroll to bottom and the chat rail jump. `GLIDE_EASING` in `scrollGlide.ts` is the same curve. |
 
 The three kinds of motion:
 
-- Place is instant. Opening a chat, a new chat's first message and anything under reduced motion put the view where it belongs with no motion.
-- Glide is one curve, `--ease-glide`, for every scroll Kernel makes itself: the send glide, the lift, Approve, the rail jump. Its duration comes from the distance (120 to 700ms), not a token.
+- Place is instant. Opening a chat, a sent message, a plan or question answer, a new chat's first message and anything under reduced motion put the view where it belongs with no motion. A send never glides, lifts or moves to the top: the new row appears at the end and the view stays there while the reply streams. A reader scrolled up jumps straight to the end on a send. A new chat's first message sits at the top because the short thread is top-aligned.
+- Glide is one curve, `--ease-glide`, for the two scrolls Kernel makes itself: Scroll to bottom and the chat rail jump. It is time-based, so 60Hz and 120Hz take the same time, it follows a moving target without restarting, and it eases out into the end with no snap. Its duration grows with the distance, 120ms to a 700ms cap, and is not a token.
 - Reveal is one duration for folds, chips and the queue, so they read as one family and are tuned together.
 
 ## Motion

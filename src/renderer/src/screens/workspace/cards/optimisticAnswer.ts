@@ -7,7 +7,7 @@ import { isPlanApproval } from './steps'
 
 /**
  * The row the engine will place for a decision made in the chat (`placeAnswer`), built from the decision before the call returns. A typed send shows at
- * once, so an answer does too, and it anchors the same way. The id is the engine's, so its row replaces this one in place and the answer is never drawn twice.
+ * once, so an answer does too. The id is the engine's, so its row replaces this one in place and the answer is never drawn twice.
  * Nothing when the card has no answer (a tool permission), or for a plan's change request with images, which main saves first and words itself.
  */
 export function answerRow(a: Approval, decision: Decision, ts = Date.now()): ChatItem | undefined {

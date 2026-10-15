@@ -153,91 +153,36 @@ describe('the reader\'s input letting go when no scroll follows it (KERNEL-629)'
   })
 })
 
-describe('the padding under a sent message (KERNEL-803)', () => {
-  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ anchorPad: (clientHeight: number, anchorTop: number, endBottom: number) => number; ANCHOR_GAP: number }>
+describe('a send takes the view to the end at once (KERNEL-891)', () => {
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ sendFollow: (last: ChatItem | undefined, seenId: string | null, open?: boolean, fromQueue?: boolean, pinned?: boolean) => 'follow' | 'keep'; postedFromQueue: (queuedAt: number, now: number) => boolean; QUEUE_POST_MS: number }>
 
-  it('fills the view under the message, so a short chat anchors too', async () => {
-    const { anchorPad, ANCHOR_GAP } = await load()
-    // A 100px message on its own in a 700px view: the rest of the view, less the gap above the message.
-    expect(anchorPad(700, 300, 400)).toBe(700 - ANCHOR_GAP - 100)
+  it('follows a new message, then leaves the view alone while the turn runs, ends or an approval arrives', async () => {
+    const { sendFollow } = await load()
+    expect(sendFollow(user(), null)).toBe('follow')
+    expect(sendFollow(user(), 'u1')).toBe('keep')
+    expect(sendFollow({ kind: 'text', id: 't1', ts: 2, text: 'Done.' }, 'u1')).toBe('keep')
   })
 
-  it('shrinks by exactly what the reply grows', async () => {
-    const { anchorPad } = await load()
-    const empty = anchorPad(700, 300, 400)
-    expect(anchorPad(700, 300, 460)).toBe(empty - 60)
+  it('follows the next message after the first, from wherever the reader is', async () => {
+    const { sendFollow } = await load()
+    expect(sendFollow(user({ id: 'u2' }), 'u1', true, false, false)).toBe('follow')
   })
 
-  it('is gone once the message and its reply fill the view, and never negative', async () => {
-    const { anchorPad, ANCHOR_GAP } = await load()
-    expect(anchorPad(700, 300, 300 + 700 - ANCHOR_GAP)).toBe(0)
-    expect(anchorPad(700, 300, 2000)).toBe(0)
-  })
-})
-
-describe('a message that travels more than a screen lands at its gap (KERNEL-825)', () => {
-  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ anchorGoal: (scrollTop: number, markTop: number, viewTop: number) => number; anchorPad: (clientHeight: number, anchorTop: number, endBottom: number) => number; ANCHOR_GAP: number }>
-
-  it('aims at a position more than a view away, and the padding keeps that position inside the range', async () => {
-    const { anchorGoal, anchorPad } = await load()
-    const view = 700
-    // The reader is 1500px above the end of 2000px of rows when the 90px message is added at the bottom of them.
-    const scrollTop = 400
-    const markTop = 2000 - 90 - scrollTop
-    const goal = anchorGoal(scrollTop, markTop, 0)
-    expect(goal - scrollTop).toBeGreaterThan(view)
-    const pad = anchorPad(view, markTop, 2000 - scrollTop)
-    expect(2000 + pad - view).toBeGreaterThanOrEqual(goal)
+  it('never follows what is not the reader\'s own message', async () => {
+    const { sendFollow } = await load()
+    expect(sendFollow(user({ from: 'lead' }), null)).toBe('keep')
+    expect(sendFollow(undefined, null)).toBe('keep')
   })
 
-  it('moves the aim by what the rows above the message shift mid-glide', async () => {
-    const { anchorGoal, ANCHOR_GAP } = await load()
-    const before = anchorGoal(800, 900, 0)
-    // Rows measured a frame after the glide passed them grew by 12px, so the message sits 12px lower at the same scroll position.
-    expect(anchorGoal(800, 912, 0)).toBe(before + 12)
-    // Once there, the message sits exactly at the gap.
-    expect(anchorGoal(before + 12, ANCHOR_GAP, 0)).toBe(before + 12)
-  })
-})
-
-describe('what a send anchors (KERNEL-803)', () => {
-  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ followsSend: (item: ChatItem | undefined) => boolean }>
-
-  it('anchors the reader\'s own message only, never a team update, a hand-off or a note', async () => {
-    const { followsSend } = await load()
-    expect(followsSend(user())).toBe(true)
-    expect(followsSend(user({ from: 'lead' }))).toBe(false)
-    expect(followsSend(user({ from: 'kernel' }))).toBe(false)
-    expect(followsSend({ kind: 'note', id: 'n1', ts: 1, text: 'PR #12 merged' } as ChatItem)).toBe(false)
-  })
-})
-
-describe('a send anchors once and the padding outlives its turn (KERNEL-837)', () => {
-  type View = { scrollTop: number; scrollHeight: number; clientHeight: number }
-  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ sendAnchor: (last: ChatItem | undefined, anchoredId: string | null, open?: boolean, readerAway?: boolean) => 'anchor' | 'keep'; postedFromQueue: (queuedAt: number, now: number) => boolean; QUEUE_POST_MS: number }>
-
-  it('anchors a new message, then leaves the reader alone while the turn runs, ends or an approval arrives', async () => {
-    const { sendAnchor } = await load()
-    expect(sendAnchor(user(), null)).toBe('anchor')
-    expect(sendAnchor(user(), 'u1')).toBe('keep')
-    expect(sendAnchor({ kind: 'text', id: 't1', ts: 2, text: 'Done.' }, 'u1')).toBe('keep')
+  it('leaves a reopened chat whose last item is the reader\'s message alone', async () => {
+    const { sendFollow } = await load()
+    expect(sendFollow(user(), null, false)).toBe('keep')
   })
 
-  it('anchors the next message after the first', async () => {
-    const { sendAnchor } = await load()
-    expect(sendAnchor(user({ id: 'u2' }), 'u1')).toBe('anchor')
-  })
-
-  it('never anchors what is not the reader\'s own message', async () => {
-    const { sendAnchor } = await load()
-    expect(sendAnchor(user({ from: 'lead' }), null)).toBe('keep')
-    expect(sendAnchor(undefined, null)).toBe('keep')
-  })
-
-  it('anchors a queued message when it posts, unless the reader scrolled by hand since the last anchor', async () => {
-    const { sendAnchor } = await load()
-    expect(sendAnchor(user({ id: 'u2' }), 'u1', true, false)).toBe('anchor')
-    expect(sendAnchor(user({ id: 'u2' }), 'u1', true, true)).toBe('keep')
+  it('follows a queued message when it posts, unless the reader has scrolled up since', async () => {
+    const { sendFollow } = await load()
+    expect(sendFollow(user({ id: 'u2' }), 'u1', true, true, true)).toBe('follow')
+    expect(sendFollow(user({ id: 'u2' }), 'u1', true, true, false)).toBe('keep')
   })
 
   it('counts a message as posted from the queue for a moment after the queue held one', async () => {
@@ -248,144 +193,26 @@ describe('a send anchors once and the padding outlives its turn (KERNEL-837)', (
   })
 })
 
-describe('a tall message and the padding (KERNEL-837)', () => {
-  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ anchorGoal: (scrollTop: number, markTop: number, viewTop: number) => number; anchorPad: (clientHeight: number, anchorTop: number, endBottom: number) => number; ANCHOR_GAP: number }>
-
-  it('anchors the top of a message taller than the view, with no padding to scroll into', async () => {
-    const { anchorGoal, anchorPad, ANCHOR_GAP } = await load()
-    const view = 700
-    const tall = 1500
-    expect(anchorPad(view, 300, 300 + tall)).toBe(0)
-    const goal = anchorGoal(0, 300, 0)
-    expect(goal).toBe(300 - ANCHOR_GAP)
-    expect(300 + tall - view).toBeGreaterThanOrEqual(goal)
-  })
-})
-
-describe('the first message of a new chat anchors, a reopened chat does not (KERNEL-825, KERNEL-837)', () => {
-  const load = async () => {
-    const t = await import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as { sendAnchor: (last: ChatItem | undefined, anchoredId: string | null, open?: boolean, readerAway?: boolean) => 'anchor' | 'keep' }
-    const p = await import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as { markJustSent: (id: string, now?: number) => void; peekJustSent: (id: string, now?: number) => boolean; takeJustSent: (id: string) => boolean; JUST_SENT_MS: number }
-    return { ...t, ...p }
-  }
-  const mine = { kind: 'user', id: 'u1', ts: 1, parts: [{ type: 'text', text: 'Build it' }] } as ChatItem
-
-  it('anchors the message a chat was created with, through the same step a later send takes', async () => {
-    const { sendAnchor, markJustSent, peekJustSent } = await load()
-    markJustSent('new-chat')
-    expect(peekJustSent('new-chat')).toBe(true)
-    expect(sendAnchor(mine, null, true)).toBe('anchor')
-  })
-
-  it('survives every mount until the anchor has settled, so a second mount anchors too', async () => {
-    const { markJustSent, peekJustSent, takeJustSent } = await load()
-    markJustSent('c1')
-    expect(peekJustSent('c1')).toBe(true)
-    expect(peekJustSent('c1')).toBe(true)
-    expect(takeJustSent('c1')).toBe(true)
-    expect(peekJustSent('c1')).toBe(false)
-    expect(takeJustSent('never-sent')).toBe(false)
-  })
-
-  it('keeps the mark through a place being saved and taken, so a chat that mounts twice places its message both times', async () => {
-    const { markJustSent, peekJustSent, takeJustSent, savePlace, takePlace } = await import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as { markJustSent: (id: string) => void; peekJustSent: (id: string) => boolean; takeJustSent: (id: string) => boolean; savePlace: (id: string, p: unknown) => void; takePlace: (id: string) => unknown }
-    markJustSent('twice')
-    expect(peekJustSent('twice')).toBe(true)
-    savePlace('twice', { pinned: false, anchors: [], scrollTop: 0, anchoredId: 'u1', anchoredTop: 24 })
-    expect(takePlace('twice')).toBeDefined()
-    expect(peekJustSent('twice')).toBe(true)
-    takeJustSent('twice')
-  })
-
-  it('is dropped when nothing used it, so a chat opened much later is just a chat', async () => {
-    const { markJustSent, peekJustSent, JUST_SENT_MS } = await load()
-    markJustSent('old', 1000)
-    expect(peekJustSent('old', 1000 + JUST_SENT_MS)).toBe(true)
-    markJustSent('older', 1000)
-    expect(peekJustSent('older', 1000 + JUST_SENT_MS + 1)).toBe(false)
-    expect(peekJustSent('older', 1000)).toBe(false)
-  })
-
-  it('leaves a reopened chat whose last item is the reader\'s message alone', async () => {
-    const { sendAnchor } = await load()
-    expect(sendAnchor(mine, null, false)).toBe('keep')
-  })
-})
-
-describe('a jump ends the send aim (KERNEL-825)', () => {
-  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ aimOver: (anchoredId: string | null, id: string, byHand: boolean, pinned: boolean) => boolean }>
-
-  it('keeps aiming while the message is anchored and nobody has taken the view', async () => {
-    const { aimOver } = await load()
-    expect(aimOver('u1', 'u1', false, false)).toBe(false)
-  })
-
-  it('stops when Scroll to bottom pins the view, when the reader or the chat rail takes it, and when another message is anchored', async () => {
-    const { aimOver } = await load()
-    expect(aimOver('u1', 'u1', false, true)).toBe(true)
-    expect(aimOver('u1', 'u1', true, false)).toBe(true)
-    expect(aimOver('u2', 'u1', false, false)).toBe(true)
-    expect(aimOver(null, 'u1', false, false)).toBe(true)
-  })
-})
-
-describe('a place keeps the anchored message, running or not (KERNEL-837)', () => {
-  type P = { anchoredId?: string; anchoredTop?: number; pinned: boolean }
-  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as Promise<{ readPlace: (rows: { id: string; top: number; height: number }[], scrollTop: number, pinned: boolean, lastUserId?: string, anchoredId?: string) => P; keptAnchor: (place: P | undefined, lastSentId: string | undefined) => string | undefined; placeTop: (place: P & { anchors: { id: string; offset: number }[]; scrollTop: number }, rowTop: (id: string) => number | undefined, range: number) => number; opensAtEnd: (place: P & { lastUserId?: string } | undefined, lastSentId: string | undefined) => boolean }>
+describe('a place keeps where a chat was left (KERNEL-765)', () => {
+  type P = { pinned: boolean; anchors: { id: string; offset: number }[]; scrollTop: number; lastUserId?: string }
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as Promise<{ readPlace: (rows: { id: string; top: number; height: number }[], scrollTop: number, pinned: boolean, lastUserId?: string) => P; placeTop: (place: P, rowTop: (id: string) => number | undefined, range: number) => number; opensAtEnd: (place: P | undefined, lastSentId: string | undefined) => boolean }>
   const rows = [{ id: 'a1', top: 0, height: 200 }, { id: 'u1', top: 212, height: 80 }]
 
-  it('keeps it after the turn ends and for a reader at the end of the rows, where the padding still stands', async () => {
-    const { readPlace } = await load()
-    expect(readPlace(rows, 188, false, 'u1', 'u1').anchoredId).toBe('u1')
-    expect(readPlace(rows, 188, true, 'u1', 'u1').anchoredId).toBe('u1')
-    expect(readPlace(rows, 0, false, 'u1').anchoredId).toBeUndefined()
-  })
-
-  it('brings the message back only while it is still the last one the reader sent', async () => {
-    const { readPlace, keptAnchor } = await load()
-    const place = readPlace(rows, 188, false, 'u1', 'u1')
-    expect(keptAnchor(place, 'u1')).toBe('u1')
-    expect(keptAnchor(place, 'u2')).toBeUndefined()
-    expect(keptAnchor(undefined, 'u1')).toBeUndefined()
-  })
-
-  it('opens where it was left, not at the end, when the anchor is kept, even for a pinned reader', async () => {
+  it('opens at the end when it was left there, and where it was left otherwise', async () => {
     const { readPlace, opensAtEnd } = await load()
-    expect(opensAtEnd(readPlace(rows, 188, true, 'u1', 'u1'), 'u1')).toBe(false)
     expect(opensAtEnd(readPlace(rows, 188, true, 'u1'), 'u1')).toBe(true)
+    expect(opensAtEnd(readPlace(rows, 0, false, 'u1'), 'u1')).toBe(false)
+    expect(opensAtEnd(undefined, 'u1')).toBe(true)
   })
 
-  it('puts the view back by the message itself, 24px down or wherever the reader had moved it', async () => {
+  it('opens at the end when the reader sent something since', async () => {
+    const { readPlace, opensAtEnd } = await load()
+    expect(opensAtEnd(readPlace(rows, 0, false, 'u1'), 'u2')).toBe(true)
+  })
+
+  it('puts the view back by the row it started in', async () => {
     const { readPlace, placeTop } = await load()
-    expect(placeTop({ ...readPlace(rows, 188, false, 'u1', 'u1'), anchors: [], scrollTop: 0 }, (id) => (id === 'u1' ? 212 : undefined), 900)).toBe(188)
-    // Scrolled up 300px and left: the message was 300px lower in the view.
-    expect(placeTop({ ...readPlace(rows, 0, false, 'u1', 'u1'), anchors: [], scrollTop: 0 }, (id) => (id === 'u1' ? 212 : undefined), 900)).toBe(0)
-  })
-})
-
-describe('scrolling into the padding under a sent message (KERNEL-837)', () => {
-  type View = { scrollTop: number; scrollHeight: number; clientHeight: number }
-  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ followsAfterScroll: (pinned: boolean, view: View, before: View, byHand: boolean) => boolean; anchorPad: (clientHeight: number, anchorTop: number, endBottom: number) => number }>
-  // The rows end 700px down in an 800px view. The measured height is the rows', as the thread's flat view reads it.
-  const flat = (scrollTop: number): View => ({ scrollTop, scrollHeight: 1500, clientHeight: 800 })
-
-  it('keeps following when the reader scrolls down past the end of the rows, and never pulls the view back up', async () => {
-    const { followsAfterScroll } = await load()
-    expect(followsAfterScroll(true, flat(760), flat(700), true)).toBe(true)
-    expect(followsAfterScroll(true, flat(900), flat(760), true)).toBe(true)
-  })
-
-  it('pins at the end of the rows on the way down, and not before', async () => {
-    const { followsAfterScroll } = await load()
-    expect(followsAfterScroll(false, flat(300), flat(200), true)).toBe(false)
-    expect(followsAfterScroll(false, flat(680), flat(600), true)).toBe(true)
-  })
-
-  it('makes the padding from the layout alone, so no scroll position can change it', async () => {
-    const { anchorPad } = await load()
-    expect(anchorPad(800, 24, 24 + 300)).toBe(800 - 24 - 300)
-    expect(anchorPad(800, 24, 24 + 300)).toBe(anchorPad(800, 24, 24 + 300))
-    expect(anchorPad(800, 24, 24 + 2000)).toBe(0)
+    expect(placeTop(readPlace(rows, 188, false, 'u1'), (id) => (id === 'a1' ? 0 : id === 'u1' ? 212 : undefined), 900)).toBe(188)
   })
 })
 
