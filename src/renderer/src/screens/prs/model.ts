@@ -46,6 +46,33 @@ export function conflictsCell(ws: Workspace, pr: PrInfo | null | undefined): Cel
   return { text: 'None', tone: 'plain' }
 }
 
+/** The Open list's groups, top to bottom: what can merge, what needs a person, and what is on its way. */
+export type OpenGroup = 'ready' | 'needs' | 'progress'
+export const OPEN_GROUPS: { id: OpenGroup; label: string }[] = [{ id: 'ready', label: 'Ready to merge' }, { id: 'needs', label: 'Needs you' }, { id: 'progress', label: 'In progress' }]
+
+/**
+ * The group a row sits in. A PR that can merge is ready. One with failing checks, changes requested or conflicts needs a person, as does
+ * any the Lead's list already counts in its own needs-a-person list. The rest are in progress.
+ */
+export function openGroup(row: LeadPr, pr: PrInfo | null | undefined): OpenGroup {
+  if (row.ready) return 'ready'
+  const bad = row.group === 'attention' || [checksCell(row.ws, pr), reviewCell(row, pr), conflictsCell(row.ws, pr)].some((c) => c.tone === 'bad')
+  return bad ? 'needs' : 'progress'
+}
+
+/** The open rows in their groups, in the order the page lists them. Within a group the rows keep the order the Lead's tab gives. Empty groups are left out. */
+export function groupOpen(rows: LeadPr[], prs: Record<string, PrInfo>): { id: OpenGroup; label: string; rows: LeadPr[] }[] {
+  const by = new Map<OpenGroup, LeadPr[]>()
+  for (const r of rows) {
+    const g = openGroup(r, prs[r.ws.id])
+    by.set(g, [...(by.get(g) ?? []), r])
+  }
+  return OPEN_GROUPS.flatMap((g) => (by.get(g.id)?.length ? [{ ...g, rows: by.get(g.id)! }] : []))
+}
+
+/** The issue a workspace came from, for a row's sub line: "KERNEL-859". */
+export const issueKey = (ws: Workspace): string | undefined => (ws.source?.kind === 'issue' ? ws.source.id : undefined)
+
 /** A merged PR is one with a number, whose workspace may have been archived since. Review workspaces never carry the PR. */
 export const isMerged = (ws: Workspace) => ws.prState === 'merged' && !ws.reviewOf && !!ws.prNumber
 

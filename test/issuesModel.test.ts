@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GithubIssue, GithubIssueDetail, LinearIssue, LinearScope, Workspace } from '../src/shared/types'
-import { byUpdated, clearedFilter, describeFilter, describeGithub, githubPlanParts, labelsOf, loginInitials, milestonesOf, narrowGithub, rowLabels, stateShape, fitFilter, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces, parseFilter, rowStatus, workspaceSlug, workspaceState } from '../src/renderer/src/screens/issues/model'
+import { byUpdated, clearedFilter, describeFilter, describeGithub, githubPlanParts, labelsOf, loginInitials, milestonesOf, narrowGithub, rowLabels, stateShape, fitFilter, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces, parseFilter, rowState, rowStatus, workspaceSlug, workspaceState } from '../src/renderer/src/screens/issues/model'
 
 const NOW = Date.parse('2026-10-10T12:00:00Z')
 const ago = (ms: number) => new Date(NOW - ms).toISOString()
@@ -109,6 +109,15 @@ describe('linked workspaces', () => {
     const list = [ws('tests', { agentId: 'ivy', createdAt: 9 }), ws('table', { prState: 'open', createdAt: 1 })]
     expect(rowStatus(list, agents, (w) => w.id === 'tests')).toBe('Kai · PR open')
     expect(rowStatus([], agents, () => false)).toBeNull()
+  })
+
+  it('reads a PR that can merge green and one with failing checks red, with the count from GitHub', () => {
+    const agents = { r: [{ id: 'kai', name: 'Kai' }] } as never
+    expect(rowState([ws('a', { prState: 'ready' })], agents, () => false)).toMatchObject({ who: 'Kai', word: 'Ready to merge', tone: 'ready' })
+    const failing = ws('b', { prState: 'cifail' })
+    const pr = { checks: [{ name: 'lint', state: 'fail' }, { name: 'vitest', state: 'fail' }, { name: 'e2e', state: 'fail', optional: true }, { name: 'build', state: 'pass' }] } as never
+    expect(rowState([failing], agents, () => false, { b: pr })).toMatchObject({ word: '2 checks failing', tone: 'bad' })
+    expect(rowState([failing], agents, () => false)).toMatchObject({ word: 'Checks failing', tone: 'bad' })
   })
 })
 

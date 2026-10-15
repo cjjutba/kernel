@@ -4,14 +4,15 @@ import { githubErrorKind } from '@shared/githubError'
 import { call, cleanError } from '../../api'
 import { getState, useStore } from '../../store'
 import { readSavedJson, writeSavedJson } from '../../remember'
-import { Button, EmptyList, FailedState, Icon, Pill, Spinner, useListKeys } from '../../ui'
+import { Button, EmptyList, FailedState, Icon, Pill, useListKeys } from '../../ui'
 import { IssueState } from '../../icons'
 import { GithubDetail } from './GithubDetail'
 import {
-  byUpdated, DEFAULT_GITHUB_FILTER, githubFilterKey, parseGithubFilter, describeGithub, issueAge, joinFits, labelsOf, linkedWorkspaces, loginInitials, milestonesOf, narrowGithub, rowLabels, rowStatus,
+  byUpdated, DEFAULT_GITHUB_FILTER, githubFilterKey, parseGithubFilter, describeGithub, issueAge, joinFits, labelsOf, linkedWorkspaces, loginInitials, milestonesOf, narrowGithub, rowLabels, rowState,
   type GithubFilter
 } from './model'
-import { CapNote, chooseTracker, FilterChip, githubProblem, RefreshNotice, type RoomHead } from './parts'
+import { CapNote, chooseTracker, FilterChip, githubProblem, IssueSkeleton, RefreshNotice, type RoomHead } from './parts'
+import { RowStatus, useReadPrs } from './WorkCard'
 import { WorkHeader } from '../work/WorkHeader'
 import { useOpenPrCount } from '../prs/model'
 import './issues.css'
@@ -36,6 +37,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
   const agents = useStore((s) => s.agents)
   const chats = useStore((s) => s.chats)
   const running = useStore((s) => s.running)
+  const prs = useStore((s) => s.prs)
   const [view, setView] = useState<View>({ kind: 'loading' })
   const [problem, setProblem] = useState<Failure | null>(null)
   const [issues, setIssues] = useState<GithubIssue[]>([])
@@ -107,10 +109,12 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
   const count = (n: number) => (n >= 100 ? '100+' : String(n))
 
   const roomWorkspaces = useMemo(() => workspaces.filter((w) => w.roomId === room.id), [workspaces, room.id])
+  const rowLinked = useMemo(() => flat.flatMap((i) => linkedWorkspaces(i.id, roomWorkspaces)), [flat, roomWorkspaces])
+  useReadPrs(rowLinked)
   const status = useMemo(() => {
     const runningOf = (w: { id: string }) => (chats[w.id] ?? []).some((c) => running[c.id])
-    return new Map(flat.map((i) => [i.id, rowStatus(linkedWorkspaces(i.id, roomWorkspaces), agents, runningOf)]))
-  }, [flat, roomWorkspaces, agents, chats, running])
+    return new Map(flat.map((i) => [i.id, rowState(linkedWorkspaces(i.id, roomWorkspaces), agents, runningOf, prs)]))
+  }, [flat, roomWorkspaces, agents, chats, running, prs])
 
   const keys = useListKeys({
     ids: useMemo(() => flat.map((i) => i.id), [flat]),
@@ -152,7 +156,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
         </div>
       )}
 
-      {shown.kind === 'loading' && <div className="is-center is-loading" role="status"><Spinner label={null} pattern="arrow-down" />Loading issues</div>}
+      {shown.kind === 'loading' && <IssueSkeleton />}
 
       {shown.kind === 'error' && (() => {
         const p = githubProblem(shown.why, shown.message, where ?? 'this repo')
@@ -172,12 +176,15 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
       {ready && flat.length === 0 && (() => {
         const d = describeGithub(filter, query, where ?? 'this repo')
         const none = d.fits.length === 0
+        const showAll = filter.mine && !filter.label && !filter.milestone && !query.trim() && issues.length > 0
         return (
-          <div className="is-center is-state">
-            <h2>{none ? 'No open issues' : 'No issues match'}</h2>
-            <p>{none ? `Nothing is open in ${d.where}.` : `Nothing in ${d.where} fits ${joinFits(d.fits)}. ${filter.mine ? 'Try All instead of Mine, or clear the filters.' : 'Try clearing the filters.'}`}</p>
-            {!none && <Button size="lg" onClick={() => { setQuery(''); setFilter(DEFAULT_GITHUB_FILTER) }}>Clear filters</Button>}
-          </div>
+          <EmptyList
+            icon="search"
+            title={none ? 'No open issues' : 'No issues match'}
+            action={showAll ? <Button size="lg" onClick={() => setFilter({ ...filter, mine: false })}>Show all issues</Button> : !none ? <Button size="lg" onClick={() => { setQuery(''); setFilter(DEFAULT_GITHUB_FILTER) }}>Clear filters</Button> : undefined}
+          >
+            {none ? `Nothing is open in ${d.where}.` : `Nothing in ${d.where} fits ${joinFits(d.fits)}. ${filter.mine ? 'Try All instead of Mine, or clear the filters.' : 'Try clearing the filters.'}`}
+          </EmptyList>
         )
       })()}
 
@@ -203,11 +210,11 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
                             {labels.more && <span className="is-more">{labels.more}</span>}
                           </span>
                         </span>
-                        <span className="is-right" data-live={live ? 'true' : undefined}>
+                        <span className="is-right">
                           {!filter.mine && (who
                             ? <span className="is-av is-av-row" role="img" aria-label={`Assigned to ${i.assignees.join(', ')}`}>{loginInitials(who)}</span>
                             : <span className="is-av-none" role="img" aria-label="Unassigned" />)}
-                          <span className="is-age">{live ?? issueAge(i.updatedAt)}</span>
+                          {live ? <RowStatus who={live.who} state={live} /> : <span className="is-age">{issueAge(i.updatedAt)}</span>}
                         </span>
                       </button>
                     </li>

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { go, lastRoom, useStore } from '../../store'
-import { Banner, Button, Spinner } from '../../ui'
+import { Banner, Button } from '../../ui'
 import { GithubIssues } from './GithubIssues'
 import { LinearIssues } from './LinearIssues'
-import { NoTracker, type RoomHead } from './parts'
+import { IssueSkeleton, NoTracker, type RoomHead } from './parts'
 import { WorkHeader } from '../work/WorkHeader'
 import { useOpenPrCount } from '../prs/model'
 import { useRoomTracker } from './useRoomTracker'
@@ -34,7 +34,7 @@ export function Issues({ issueId, roomId }: { issueId?: string; roomId?: string 
   return (
     <div className="panel">
       <WorkHeader tab="issues" head={head} counts={{ prs: prCount }} />
-      {read.kind === 'loading' && <div className="is-center is-loading" role="status"><Spinner label={null} pattern="arrow-down" />Loading issues</div>}
+      {read.kind === 'loading' && <IssueSkeleton />}
       {read.kind === 'error' && (
         <div className="is-center">
           <div className="is-fail">

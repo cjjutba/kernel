@@ -554,10 +554,31 @@ const issuesTrackerScene = (f: Fixture, route: { issueId?: string; roomId: strin
   ui: { route: { name: 'issues', ...route } }
 })
 
+/**
+ * The Work page's Issues tab with work linked (KERNEL-875): KERNEL-24 has Kai's PR ready to merge and Ivy's tests, KERNEL-27 has Noor's PR
+ * with two checks failing, and the rest have none, so they keep their age.
+ */
+const workIssuesScene = (f: Fixture): Partial<Fixture> => {
+  const s = issuesScene(f, { issueId: 'KERNEL-24', working: true })
+  const info = (id: string, n: number, checks: PrInfo['checks'], extra: Partial<PrInfo> = {}): PrInfo => ({ workspaceId: id, number: n, url: `https://github.com/samrivera/client-a/pull/${n}`, title: 'Invoice work', state: 'open', baseRef: 'main', comments: [], conflicts: [], head: `h${n}`, checks, ...extra })
+  const pass: PrInfo['checks'] = [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
+  return {
+    ...s,
+    workspaces: s.workspaces!.map((w) =>
+      w.id === ids.table ? { ...w, prState: 'ready' as const, prNumber: 41, prHead: 'h41' }
+      : w.id === ids.schema ? { ...w, prState: 'cifail' as const, prNumber: 42, prUrl: 'https://github.com/samrivera/client-a/pull/42', prHead: 'h42' }
+      : w),
+    prs: {
+      [ids.table]: info(ids.table, 41, pass, { state: 'ready', reviewDecision: 'approved' }),
+      [ids.schema]: info(ids.schema, 42, [{ name: 'lint', state: 'fail', meta: '9s' }, { name: 'vitest', state: 'fail', meta: '51s' }])
+    }
+  }
+}
+
 // ---------- Pull requests
 
 /** The Pull requests page: seven open PRs across the four rooms, one of each state, and the five merged ones from `homeScene`. `open` and `merged` pick the filter, `none` leaves out every open PR. */
-const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'merged'; failed?: boolean; manyMerged?: number }): Partial<Fixture> => {
+const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'merged'; failed?: boolean | 'signed-out'; loading?: boolean; manyMerged?: number }): Partial<Fixture> => {
   const home = homeScene(f)
   const mk = (n: number, roomId: string, agentId: string, title: string, state: Workspace['prState'], stat: [number, number], extra: Partial<Workspace> = {}, info: Partial<PrInfo> = {}) => {
     const id = `ws-prs-${n}`
@@ -570,9 +591,9 @@ const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'm
   }
   const approved = (n: number) => ({ reviews: [{ workspaceId: `ws-prs-${n}-review`, agentId: 'theo', verdict: 'approved' as const, summary: 'No blockers.', sha: `h${n}`, prNumber: n, ts: at(10, 30) }] })
   const rows = [
-    mk(61, ids.roomA, 'kai', 'feat(invoices): PDF export for a single invoice', 'ready', [212, 18], approved(61), { reviewDecision: 'approved' }),
+    mk(61, ids.roomA, 'kai', 'feat(invoices): PDF export for a single invoice', 'ready', [212, 18], { ...approved(61), source: { kind: 'issue' as const, id: 'KERNEL-31', title: 'Export invoices as PDF' } }, { reviewDecision: 'approved' }),
     mk(58, ids.roomB, 'kai', 'fix(portal): keep the session after a refresh', 'ready', [34, 6], approved(58)),
-    mk(60, ids.roomA, 'noor', 'feat(billing): proration for mid-cycle upgrades', 'cifail', [305, 41], {}, { checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'fail', meta: '51s' }] }),
+    mk(60, ids.roomA, 'noor', 'feat(billing): proration for mid-cycle upgrades', 'cifail', [305, 41], { source: { kind: 'issue' as const, id: 'KERNEL-27', title: 'Rate limit the invite endpoint' } }, { checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'fail', meta: '51s' }] }),
     mk(57, ids.roomOwn, 'ivy', 'test(auth): cover the invite expiry', 'changes', [96, 3], {}, { reviewDecision: 'changes' }),
     mk(55, ids.roomPortfolio, 'kai', 'Landing page: new case study layout', 'conflict', [188, 77], {}, { conflicts: ['src/pages/index.tsx', 'src/styles/home.css'] }),
     mk(62, ids.roomA, 'kai', 'refactor(table): share the sort hook', 'checks', [64, 52], {}, { checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'running' }] }),
@@ -580,7 +601,7 @@ const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'm
   ]
   const none = o.none === 'open'
   const minutes = (n: number) => Date.now() - n * 60_000
-  const reads = Object.fromEntries([ids.roomA, ids.roomB, ids.roomPortfolio].map((id, i) => [id, o.failed ? { at: minutes(14 + i), failed: 'rate-limited' as const } : { at: minutes(2 + i) }]))
+  const reads = Object.fromEntries([ids.roomA, ids.roomB, ids.roomPortfolio].map((id, i) => [id, o.loading ? {} : o.failed ? (o.failed === 'signed-out' ? { failed: 'signed-out' as const } : { at: minutes(14 + i), failed: 'rate-limited' as const }) : { at: minutes(2 + i) }]))
   const more = Array.from({ length: o.manyMerged ?? 0 }, (_, i): Workspace => {
     const n = 100 + i
     return { id: `ws-prs-m${n}`, roomId: ids.roomA, name: `merged-${n}`, branch: `feat/merged-${n}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/merged-${n}`, mode: 'worktree', agentId: 'kai', port: 4700 + i, status: 'archived', createdAt: at(8, 0) - i * 3_600_000, mergedAt: at(8, 30) - i * 3_600_000, title: `chore: change ${n}`, prTitle: `chore: change ${n}`, prState: 'merged', prNumber: n, prUrl: `https://github.com/cjjutba/pr/pull/${n}`, stat: { files: 2, added: 20 + i, removed: i } }
@@ -594,7 +615,8 @@ const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'm
       ...(none ? [] : rows.map(([w]) => w)),
       ...more
     ].filter((w) => o.none !== 'merged' || w.prState !== 'merged'),
-    prs: Object.fromEntries(rows.map(([w, pr]) => [w.id, pr])),
+    prs: o.loading ? {} : Object.fromEntries(rows.map(([w, pr]) => [w.id, pr])),
+    ...(o.loading ? { hold: ['pr.get'] } : {}),
     ui: { route: { name: 'prs', filter: o.filter } }
   }
 }
@@ -795,11 +817,19 @@ export const teamFixtures: Record<string, Fixture> = {
   Issues: scene((f) => issuesScene(f)),
   IssuesRowFocused: scene((f) => issuesScene(f)),
   // KERNEL-874: the Work page's header over each tab.
-  WorkIssues: scene((f) => issuesScene(f)),
+  WorkIssues: scene((f) => workIssuesScene(f)),
+  // KERNEL-875: the Issues tab's states. Loading rows, Mine with nothing in it (Show all issues), and a room with no tracker.
+  WorkIssuesLoading: scene((f) => ({ ...workIssuesScene(f), hold: ['issues.tracker'] })),
+  WorkIssuesEmpty: scene((f) => ({ ...workIssuesScene(f), linear: { issues: linearIssues().map((i) => ({ ...i, assignee: maya })), scope: linearScope } })),
+  WorkIssuesNoTracker: scene((f) => issuesTrackerScene(f, { roomId: ids.roomPortfolio })),
   // The Pull requests page: open PRs across the rooms, the merged ones, and each empty.
   PullRequests: scene((f) => prsScene(f, { filter: 'open' })),
   PullRequestsRowFocused: scene((f) => prsScene(f, { filter: 'open' })),
   WorkPullRequests: scene((f) => prsScene(f, { filter: 'open' })),
+  // KERNEL-875: the Pull requests tab's states. The first GitHub read is out, nothing is open, and gh is signed out.
+  WorkPullRequestsLoading: scene((f) => prsScene(f, { filter: 'open', loading: true })),
+  WorkPullRequestsEmpty: scene((f) => prsScene(f, { filter: 'open', none: 'open' })),
+  WorkPullRequestsNotConnected: scene((f) => prsScene(f, { filter: 'open', none: 'open', failed: 'signed-out' })),
   PullRequestsMerged: scene((f) => prsScene(f, { filter: 'merged' })),
   // No PNG (KERNEL-868): the last status read failed on a rate limit, with the read from before it kept. The cap note shows past 50 merged.
   PullRequestsReadFailed: scene((f) => prsScene(f, { filter: 'open', failed: true })),

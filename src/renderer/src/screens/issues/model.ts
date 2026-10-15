@@ -1,4 +1,4 @@
-import type { AgentDef, ChatPart, GithubIssue, GithubIssueDetail, LinearFilter, LinearIssue, LinearScope, LinearStateType, Workspace } from '@shared/types'
+import type { AgentDef, ChatPart, GithubIssue, GithubIssueDetail, LinearFilter, LinearIssue, LinearScope, LinearStateType, PrInfo, Workspace } from '@shared/types'
 import type { IssueStateShape } from '../../icons'
 
 /**
@@ -91,13 +91,43 @@ export function workspaceState(w: Workspace, running: boolean, long = false): st
   }
 }
 
-/** The row's right end for a linked workspace: "Kai · PR open". The one furthest along wins: an open PR before a workspace still working. */
-export function rowStatus(linked: Workspace[], agents: Record<string, AgentDef[]>, runningOf: (w: Workspace) => boolean): string | null {
-  const w = [...linked].sort((a, b) => Number(b.prState !== 'none') - Number(a.prState !== 'none') || b.createdAt - a.createdAt)[0]
+/** The state's words and the tone they are drawn in: `bad` is red for what needs a person, `ready` is the green of a PR that can merge. */
+export interface WorkState { word: string; tone: 'plain' | 'bad' | 'ready' }
+
+/** The workspace furthest along: an open PR before a workspace still working, then the newest. */
+const furthest = (linked: Workspace[]): Workspace | undefined =>
+  [...linked].sort((a, b) => Number(b.prState !== 'none') - Number(a.prState !== 'none') || b.createdAt - a.createdAt)[0]
+
+/**
+ * `workspaceState` with the PR's own reads laid over it: how many checks fail, changes requested and conflicts read red, and a PR that can
+ * merge reads green. `pr` is GitHub's read of the PR, when there is one. Real events only, never a timer.
+ */
+export function workState(w: Workspace, running: boolean, pr?: PrInfo | null, long = false): WorkState {
+  switch (w.prState) {
+    case 'ready': return { word: 'Ready to merge', tone: 'ready' }
+    case 'cifail': {
+      const n = pr?.checks.filter((c) => c.state === 'fail' && !c.optional).length ?? 0
+      return { word: n > 1 ? `${n} checks failing` : n === 1 ? '1 check failing' : 'Checks failing', tone: 'bad' }
+    }
+    case 'changes': return { word: 'Changes requested', tone: 'bad' }
+    case 'conflict': return { word: 'Merge conflicts', tone: 'bad' }
+    case 'checks': return { word: 'Checks running', tone: 'plain' }
+    default: return { word: workspaceState(w, running, long), tone: w.status === 'failed' ? 'bad' : 'plain' }
+  }
+}
+
+/** The row's right end for a linked workspace: the agent and what its work is doing. The one furthest along wins. */
+export function rowState(linked: Workspace[], agents: Record<string, AgentDef[]>, runningOf: (w: Workspace) => boolean, prs: Record<string, PrInfo> = {}): (WorkState & { who?: string }) | null {
+  const w = furthest(linked)
   if (!w) return null
   const who = agents[w.roomId]?.find((a) => a.id === w.agentId)?.name
-  const state = workspaceState(w, runningOf(w))
-  return who ? `${who} · ${state}` : state
+  return { ...workState(w, runningOf(w), prs[w.id]), who }
+}
+
+/** `rowState` as one line, "Kai · PR open", for a screen reader and for tests. */
+export function rowStatus(linked: Workspace[], agents: Record<string, AgentDef[]>, runningOf: (w: Workspace) => boolean, prs: Record<string, PrInfo> = {}): string | null {
+  const s = rowState(linked, agents, runningOf, prs)
+  return s ? (s.who ? `${s.who} · ${s.word}` : s.word) : null
 }
 
 // ---------- filters
