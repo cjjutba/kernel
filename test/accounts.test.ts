@@ -1875,6 +1875,7 @@ describe('One login, one row (KERNEL-701)', () => {
 
 describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => {
   const MIN = 60_000
+  afterEach(() => { vi.unstubAllEnvs() })
   /**
    * A Kernel whose Claude CLI login is cj@example.com, with Side, a subscription login, and Key, an API key account, added,
    * and a Codex account. `chat` saves a chat in one workspace, `turn` a last turn on the CLI login that read the chat from the cache.
@@ -1986,10 +1987,11 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
   })
 
   it("tells a long chat what its next turn re-reads before it runs: a move, another model or the cache gone by, and nothing once it's answered", async () => {
-    const { k, chat, turn: ran, place } = await setUp()
+    const { k, chat, turn, place } = await setUp()
     const h = k.handlers()
-    // A switch reads the CLI's login again, which is the Mac's own here, so these turns carry no email to compare.
-    const turn = (o: Partial<LastTurn> = {}) => ran({ email: undefined, ...o })
+    // A switch reads the CLI's login again. A fake Claude signed in as the turns' email keeps that read off the machine's own login.
+    vi.stubEnv('FAKE_EMAIL', 'cj@example.com')
+    await k.providers.setPath('claude', { path: (await fakeClaude()).bin })
     const notice = (id: string) => h['chats.moveNotice']({ chatId: id })
     chat('a', { lastTurn: turn() })
     expect(await notice('a')).toBeNull()
