@@ -247,8 +247,8 @@ describe('open items go with their Lead chat (KERNEL-791)', () => {
   it('the migration deletes the items of Lead chats deleted before', () => {
     const db = new Database(':memory:')
     migrate(db, ':memory:', Date.now(), migrations.filter((m) => m.version <= 6))
-    db.prepare('insert into threads (id, project_id, data, created_at) values (?, ?, ?, ?)').run('kept', 'r', '{}', 1)
-    const item = db.prepare('insert into open_items (id, thread_id, project_id, key, data, created_at) values (?, ?, ?, ?, ?, ?)')
+    db.prepare('insert into threads (id, room_id, data, created_at) values (?, ?, ?, ?)').run('kept', 'r', '{}', 1)
+    const item = db.prepare('insert into open_items (id, thread_id, room_id, key, data, created_at) values (?, ?, ?, ?, ?, ?)')
     item.run('a', 'kept', 'r', 'k', '{}', 1)
     item.run('b', 'gone', 'r', 'k', '{}', 1)
     migrate(db, ':memory:')
