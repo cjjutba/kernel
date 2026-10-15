@@ -290,19 +290,19 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
     expect(createPrText()).toBe([
       '# Create a pull request', opening,
       '1. Commit any uncommitted work.',
-      '2. Rebase onto the base branch if it has moved.',
+      '2. If the base branch has moved, rebase onto it while the branch has never been pushed, and merge it in once the branch is on the remote.',
       '3. Run the checks the repo asks for before a push. If it names none, run the tests that cover what you changed.',
-      '4. Push the branch and set its upstream. Use `--force-with-lease` if you rebased commits that were already pushed.',
+      '4. Push the branch and set its upstream.',
       "5. Title it in the style of the repo's recent commits.",
       "6. Write the body about every change on the branch, not only this chat's. Fill in summary, scope and risk.",
       '7. Open it with `gh pr create` and print the URL.', last
     ].join('\n'))
     expect(resolveText()).toBe([
       '# Resolve conflicts', opening,
-      '1. Bring in the base branch the way the repo does: rebase, unless its docs say to merge.',
+      "1. Merge the base branch into this branch. It is already pushed, so don't rebase it.",
       "2. Keep both sides where they don't overlap. Where they do, keep what each side meant and say what you chose.",
       '3. Run the checks the repo asks for before a push. If it names none, run the tests that cover the files that conflicted.',
-      '4. Push. After a rebase, use `git push --force-with-lease`.',
+      '4. Push as usual.',
       '5. Say what you changed in each file.', last
     ].join('\n'))
     expect(fixChecksText()).toBe([
@@ -329,9 +329,9 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
     expect(createPrText({ template: '.github/pull_request_template.md', contributing: 'CONTRIBUTING.md', commitlint: 'commitlint.config.js' }).split('\n').slice(2)).toEqual([
       '1. Read `CONTRIBUTING.md` and follow what it says about pull requests.',
       '2. Commit any uncommitted work.',
-      '3. Rebase onto the base branch if it has moved.',
+      '3. If the base branch has moved, rebase onto it while the branch has never been pushed, and merge it in once the branch is on the remote.',
       '4. Run the checks the repo asks for before a push. If it names none, run the tests that cover what you changed.',
-      '5. Push the branch and set its upstream. Use `--force-with-lease` if you rebased commits that were already pushed.',
+      '5. Push the branch and set its upstream.',
       '6. Title it and write its commits as Conventional Commits. The repo checks them with commitlint (`commitlint.config.js`).',
       "7. Write the body about every change on the branch, not only this chat's. Write the body from the repo's PR template, `.github/pull_request_template.md`, filling in each of its sections.",
       '8. Open it with `gh pr create` and print the URL.',
@@ -349,17 +349,17 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
     ]
     const create = createPrText(c, ctx).split('\n')
     expect(create.slice(0, 5)).toEqual(['# Create a pull request', 'Branch `feat/invoice-table` into `main` on `upstream`.', createPrText().split('\n')[1], ...read])
-    expect(create).toContain('4. Push the branch and set its upstream with `git push -u upstream feat/invoice-table`. Use `--force-with-lease` if you rebased commits that were already pushed.')
+    expect(create).toContain('4. Push the branch and set its upstream with `git push -u upstream feat/invoice-table`.')
     expect(create).toContain('7. Open it with `gh pr create --base main` and print the URL.')
     expect(createPrText(c, { ...ctx, draft: true })).toContain('7. Open it with `gh pr create --base main --draft` and print the URL.')
-    // The fix buttons name the PR, and Resolve conflicts the branch to rebase onto. Their steps are otherwise the defaults.
+    // The fix buttons name the PR, and Resolve conflicts the branch to merge. Their steps are otherwise the defaults.
     const pr = { ...ctx, prNumber: 42 }
     for (const [build, heading] of [[resolveText, '# Resolve conflicts'], [fixChecksText, '# Fix failing checks'], [addressReviewText, '# Address review']] as const) {
       const lines = build(c, pr).split('\n')
       expect(lines.slice(0, 5), heading).toEqual([heading, 'Branch `feat/invoice-table` into `main` on `upstream`, PR #42.', build().split('\n')[1], ...read])
-      expect(lines.slice(5), heading).toEqual(build().split('\n').slice(2).map((l) => l.replace('rebase, unless', 'rebase onto `upstream/main`, unless')))
+      expect(lines.slice(5), heading).toEqual(build().split('\n').slice(2).map((l) => l.replace('Merge the base branch into', 'Merge the base branch, `upstream/main`, into')))
     }
-    expect(resolveText({}, pr)).toContain('1. Bring in the base branch the way the repo does: rebase onto `upstream/main`, unless its docs say to merge.')
+    expect(resolveText({}, pr)).toContain("1. Merge the base branch, `upstream/main`, into this branch. It is already pushed, so don't rebase it.")
     // Without a workspace, conventions alone change only the lines they own.
     expect(fixChecksText(c).split('\n').slice(0, 4)).toEqual(['# Fix failing checks', fixChecksText().split('\n')[1], ...read])
   })

@@ -442,7 +442,7 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
   const ws = (prState: PrState): Workspace => ({ id: 'w1', projectId: 'r', name: 'w1', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'noor', port: 1, status: 'ready', prState, createdAt: 1, leadChatId: 'lc' })
   const ev = (kind: TeamEventKind, extra: Partial<TeamEvent> = {}): TeamEvent => ({ n: 1, workspaceId: 'w1', kind, pr: 54, ...extra })
   const at = '(workspace w1)'
-  const BEHIND = "Ask Noor to update PR #54: fetch, rebase onto main, re-run the tests and force push, with message_agent (workspace w1). GitHub won't merge it while its branch is behind."
+  const BEHIND = "Ask Noor to update PR #54: fetch, merge main into the branch, re-run the tests and push as usual, with message_agent (workspace w1). GitHub won't merge it while its branch is behind."
 
   const rows: [string, TeamEvent[], PrState, Partial<WakeContext>, string[]][] = [
     ['an error in a turn Kernel started', [ev('error', { by: 'lead' })], 'none', {}, [`Noor stopped with an error. Ask Noor what happened with message_agent ${at}, or tell the user.`]],
@@ -543,7 +543,7 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     expect(decide({ ws: ws('none'), name: 'Noor', events: [approval] }, { allMerged: () => false, workspace: () => ({ ...blocked('rules'), id: 'w2', prNumber: 60 }) }).todo)
       .toEqual(["GitHub's branch rules block PR #60. Tell the user."])
     expect(decide({ ws: ws('none'), name: 'Noor', events: [approval] }, { allMerged: () => false, workspace: () => ({ ...blocked('behind'), id: 'w2', prNumber: 60 }) }).todo)
-      .toEqual(['Ask Kai to update PR #60: fetch, rebase onto main, re-run the tests and force push, with message_agent (workspace w2). GitHub won\'t merge it while its branch is behind.'])
+      .toEqual(['Ask Kai to update PR #60: fetch, merge main into the branch, re-run the tests and push as usual, with message_agent (workspace w2). GitHub won\'t merge it while its branch is behind.'])
     // The review flow itself goes on as for any ready PR, except on a branch that is behind.
     expect(decide({ ws: blocked('review'), name: 'Noor', events: [ev('pr.ready')] }, { allMerged: () => false, reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } }) }).todo).toEqual(['PR #54 needs a review. Ask Theo to review it with message_agent (workspace rv).'])
     expect(decide({ ws: blocked('behind'), name: 'Noor', events: [ev('pr.ready')] }, { allMerged: () => false, reviewer: THEO }).todo).toEqual([BEHIND])
@@ -751,9 +751,20 @@ describe('a teammate that waits for another PR (KERNEL-259)', () => {
     expect(s.posts).toHaveLength(1)
     expect(parts(s.posts[0])).toEqual({
       header: UPDATE_HEADER,
-      body: [NOOR, '- Waits for PR #60 by Kai to merge. Noor says: It needs the inbox actions. Kernel tells Noor to rebase onto it when it does.', ...QUOTED],
+      body: [NOOR, '- Waits for PR #60 by Kai to merge. Noor says: It needs the inbox actions. Kernel tells Noor to bring its branch up to date with it when it does.', ...QUOTED],
       todo: ['- Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.']
     })
+  })
+
+  it('asks the Lead to get a missing rebase, or a merge for a branch on the remote (KERNEL-691, KERNEL-886)', async () => {
+    for (const pushed of [false, true]) {
+      const { u, s, w1 } = await setup()
+      u.waits(w1, 'wait.rebase_missing', { on: ['w2'], label: 'PR #60 by Kai', held: false, onto: 'origin/main', ...(pushed ? { pushed } : {}) })
+      await wait()
+      const take = pushed ? 'merge origin/main into the branch' : 'rebase onto origin/main'
+      expect(parts(s.posts[0]).todo).toEqual([`- Ask Noor with message_agent (workspace w1) to fetch, ${take} and re-run the tests. Kernel ends the wait when a turn ends with the branch containing it.`])
+      expect(parts(s.posts[0]).body).toContain("- PR #60 by Kai merged and Kernel asked Noor to bring in origin/main, but the turn ended with Noor's branch still missing it.")
+    }
   })
 
   it("doesn't hold a teammate's wait, or the Lead chat's other updates, past a turn stopped by archive or close (KERNEL-262)", async () => {
@@ -797,7 +808,7 @@ describe("a Build here chat's own PR (KERNEL-778)", () => {
     const said: [PrState, string][] = [
       ['cifail', "- Fix the failed checks on PR #54 in this chat's worktree, then push."],
       ['changes', "- Make the changes requested on PR #54 in this chat's worktree, then push."],
-      ['conflict', "- Resolve the conflicts on PR #54 in this chat's worktree: fetch, rebase onto main, re-run the tests and force push."],
+      ['conflict', "- Resolve the conflicts on PR #54 in this chat's worktree: fetch, merge main into the branch, re-run the tests and push as usual."],
       ['merged', '- PR #54 merged. Tell the user in one line that the next change in this chat starts a new branch from main.']
     ]
     for (const [state, todo] of said) {
@@ -1415,7 +1426,7 @@ describe('shared files in Team updates (KERNEL-302)', () => {
 
 describe("GitHub's merge block on a ready PR (KERNEL-401)", () => {
   const BEHIND_LINE = "- GitHub won't merge PR #54 yet: the branch is behind its base."
-  const BEHIND_TODO = "- Ask Noor to update PR #54: fetch, rebase onto main, re-run the tests and force push, with message_agent (workspace w1). GitHub won't merge it while its branch is behind."
+  const BEHIND_TODO = "- Ask Noor to update PR #54: fetch, merge main into the branch, re-run the tests and push as usual, with message_agent (workspace w1). GitHub won't merge it while its branch is behind."
   const UNBLOCKED_TODO = '- GitHub no longer blocks PR #54, so it is ready to merge. Tell the user.'
   const blocked = (store: Store, id: string, prBlocked?: Workspace['prBlocked']) => {
     store.saveWorkspace({ ...store.workspace(id)!, prBlocked })
@@ -1503,7 +1514,7 @@ describe("GitHub's merge block on a ready PR (KERNEL-401)", () => {
     const fromReview = decide({ ws: { ...of, id: 'rv', agentId: 'theo', prState: 'none', prBlocked: undefined }, name: 'Theo', events: [approval] }, { allMerged: () => false, workspace: () => of }).todo
     const fromAuthor = decide({ ws: of, name: 'Kai', events: [{ n: 2, workspaceId: 'w2', kind: 'pr.blocked', pr: 60, blocked: 'behind' }] }, { allMerged: () => false }).todo
     expect(fromReview).toEqual(fromAuthor)
-    expect(fromAuthor).toEqual(["Ask Kai to update PR #60: fetch, rebase onto main, re-run the tests and force push, with message_agent (workspace w2). GitHub won't merge it while its branch is behind."])
+    expect(fromAuthor).toEqual(["Ask Kai to update PR #60: fetch, merge main into the branch, re-run the tests and push as usual, with message_agent (workspace w2). GitHub won't merge it while its branch is behind."])
   })
 })
 

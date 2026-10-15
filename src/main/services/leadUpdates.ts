@@ -149,9 +149,10 @@ export interface AutoMerged { why: string; card: string }
  * What a wait event says (KERNEL-259). `label` names the PRs ("PR #164 by Noor"). `held`: the brief hasn't gone out, as
  * opposed to a teammate that already started. `target` and `gone`: the PR that broke the wait and how. `told`: the Lead
  * read it in its own tool's result, so it rides along. `why`: what a teammate that set its own wait said it needs (KERNEL-262).
- * `onto`: the base Kernel asked the teammate to rebase onto, which its branch doesn't contain yet (KERNEL-691).
+ * `onto`: the base Kernel asked the teammate to bring in, which its branch doesn't contain yet (KERNEL-691). `pushed`: the
+ * branch is on the remote, so it takes `onto` by a merge rather than a rebase (KERNEL-886).
  */
-export interface WaitNews { on: string[]; label: string; held?: boolean; target?: string; gone?: 'closed' | 'archived'; told?: boolean; why?: string; onto?: string }
+export interface WaitNews { on: string[]; label: string; held?: boolean; target?: string; gone?: 'closed' | 'archived'; told?: boolean; why?: string; onto?: string; pushed?: boolean }
 
 /** Events waiting for one Lead chat, or for a project's first Lead chat when `owner` is unset. */
 interface Pending { projectId: string; owner?: string; events: TeamEvent[] }
@@ -295,10 +296,10 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
       const how = e.trusted ? "The user trusted this project's scripts and setup passed" : 'Setup passed on Run again'
       return e.wait ? `${how}. ${name} still waits for ${e.wait.label} to merge, and Kernel sends the brief then.` : `${how}, and ${name}'s brief was released.`
     }
-    case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'} to merge.${e.wait?.why ? ` ${name} says: ${e.wait.why}` : ''} Kernel ${e.wait?.held === false ? `tells ${name} to rebase onto it` : `sends ${name} the brief`} when it does.`
-    case 'wait.released': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged, so Kernel ${e.wait?.held === false ? `told ${name} to rebase onto it and carry on` : `sent ${name} the brief`}.`
+    case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'} to merge.${e.wait?.why ? ` ${name} says: ${e.wait.why}` : ''} Kernel ${e.wait?.held === false ? `tells ${name} to bring its branch up to date with it` : `sends ${name} the brief`} when it does.`
+    case 'wait.released': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged, so Kernel ${e.wait?.held === false ? `told ${name} to bring its branch up to date with it and carry on` : `sent ${name} the brief`}.`
     case 'wait.broken': return `${name} is waiting for ${e.wait?.label ?? 'a PR'}, which was ${e.wait?.gone ?? 'closed'} without merging.`
-    case 'wait.rebase_missing': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged and Kernel asked ${name} to rebase onto ${e.wait?.onto ?? 'it'}, but the turn ended with ${name}'s branch still missing it.`
+    case 'wait.rebase_missing': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged and Kernel asked ${name} to bring in ${e.wait?.onto ?? 'it'}, but the turn ended with ${name}'s branch still missing it.`
     case 'question': {
       const q = e.question
       if (!q) return `Asked you a question. ${name} ended the turn and waits for your answer.`
@@ -360,7 +361,7 @@ function cardText(e: TeamEvent, held = false): string {
     case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'}`
     case 'wait.released': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged`
     case 'wait.broken': return `${upper(e.wait?.label ?? 'the PR it waited for')} ${e.wait?.gone ?? 'closed'} without merging`
-    case 'wait.rebase_missing': return `Didn't rebase onto ${e.wait?.label ?? 'the PR it waited for'}`
+    case 'wait.rebase_missing': return `Didn't bring in ${e.wait?.label ?? 'the PR it waited for'}`
     case 'shared': return e.shared ? `Shared "${e.shared.title}"` : 'Shared a file'
     case 'question': return e.question ? `Asks: ${capText(e.question.text, CARD_MAX)}` : 'Asked a question'
     case 'handoff.proposed': return e.proposal ? `Proposes ${e.proposal.agent} for: ${capText(e.proposal.task, CARD_MAX)}` : 'Proposed a hand-off'
@@ -1234,18 +1235,19 @@ function blockersTodo(kinds: ReviewKind[], author: string | undefined, at: strin
 
 /**
  * The To do line for a ready PR GitHub won't merge, in the same words from every event that meets it, so it shows once
- * (KERNEL-401). A branch behind its base is its agent's to update, onto `base`, the way a released wait asks (KERNEL-259).
+ * (KERNEL-401). A branch behind its base is its agent's to update by merging `base` in: a PR's branch is pushed, and a rebase
+ * would need the force push the guard denies (KERNEL-886).
  * A required review, or another rule, is the user's to know.
  */
 export function blockedTodo(pr: string, name: string, at: string, blocked: PrBlocked, base: string, self = false): string {
-  if (blocked === 'behind' && self) return `${selfRebase(`Update ${pr}`, base)} GitHub won't merge it while its branch is behind.`
-  if (blocked === 'behind') return `Ask ${name} to update ${pr}: fetch, rebase onto ${base}, re-run the tests and force push, with message_agent ${at}. GitHub won't merge it while its branch is behind.`
+  if (blocked === 'behind' && self) return `${selfUpdate(`Update ${pr}`, base)} GitHub won't merge it while its branch is behind.`
+  if (blocked === 'behind') return `Ask ${name} to update ${pr}: fetch, merge ${base} into the branch, re-run the tests and push as usual, with message_agent ${at}. GitHub won't merge it while its branch is behind.`
   if (blocked === 'review') return `${upper(pr)} can't merge until someone approves it on GitHub. Tell the user.`
   return `GitHub's branch rules block ${pr}. Tell the user.`
 }
 
-/** How the Build here chat brings its own PR up to date with `base` (KERNEL-778). */
-const selfRebase = (what: string, base: string) => `${what} in this chat's worktree: fetch, rebase onto ${base}, re-run the tests and force push.`
+/** How the Build here chat brings its own PR up to date with `base` (KERNEL-778), by a merge since the PR's branch is pushed (KERNEL-886). */
+const selfUpdate = (what: string, base: string) => `${what} in this chat's worktree: fetch, merge ${base} into the branch, re-run the tests and push as usual.`
 
 /**
  * What a review workspace's verdicts said, as the reply its update quotes. With more than one kind of review, each summary
@@ -1337,7 +1339,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
       }
       case 'pr.cifail': wake(self ? `Fix the failed checks on ${pr} in this chat's worktree, then push.` : `Tell ${name} about the failed checks on ${pr} with message_agent ${at}.`); break
       case 'pr.changes': wake(self ? `Make the changes requested on ${pr} in this chat's worktree, then push.` : `Tell ${name} about the changes requested on ${pr} with message_agent ${at}.`); break
-      case 'pr.conflict': wake(self ? selfRebase(`Resolve the conflicts on ${pr}`, ws.baseRef) : `Ask ${name} to resolve the conflicts on ${pr} with message_agent ${at}.`); break
+      case 'pr.conflict': wake(self ? selfUpdate(`Resolve the conflicts on ${pr}`, ws.baseRef) : `Ask ${name} to resolve the conflicts on ${pr} with message_agent ${at}.`); break
       case 'pr.closed': if (ws.prState === 'closed') wake(`${upper(pr)} was closed without merging. Ask the user whether ${self ? 'the work' : `${name}'s work`} is still wanted.`); break
       case 'wait.broken':
         if (stillBroken(ws, e, c.workspace)) {
@@ -1351,9 +1353,9 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         break
       // The wait stays until a turn ends with the merge in the branch, and only a new message to the teammate gets it there (KERNEL-691).
       case 'wait.rebase_missing':
-        wake(`Ask ${name} with message_agent ${at} to fetch, rebase onto ${e.wait?.onto ?? 'the base'} and re-run the tests. Kernel ends the wait when a turn ends with the branch containing it.`)
+        wake(`Ask ${name} with message_agent ${at} to fetch, ${e.wait?.pushed ? `merge ${e.wait.onto ?? 'the base'} into the branch` : `rebase onto ${e.wait?.onto ?? 'the base'}`} and re-run the tests. Kernel ends the wait when a turn ends with the branch containing it.`)
         break
-      // Kernel already sent the brief or the rebase, so the Lead has nothing to do.
+      // Kernel already sent the brief or the rebase or merge message, so the Lead has nothing to do.
       case 'wait.released': break
       // A limit wakes the Lead only when nothing carries the teammate on before the reset. A carry-on, or a limit and its carry-on
       // in one update, wakes it only to correct a pause it heard about (KERNEL-777).

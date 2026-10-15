@@ -633,7 +633,7 @@ export function kernelTools(d: KernelToolDeps) {
       const left = review_of ? '' : await leftBehind(ws.baseRef)
       return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${failed}${trust}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued || !!trust)}${unchecked}${left ? ` ${left} Tell the user.` : ''}`)
     }),
-    tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to rebase onto them. An empty list ends the wait and sends a held brief now.", {
+    tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to bring its branch up to date with them. An empty list ends the wait and sends a held brief now.", {
       workspace_id: z.string().describe('The workspace that waits, from list_workspaces'),
       on: z.array(z.string()).describe('The ids of the workspaces whose PRs it waits for (a PR number like "#164" or an issue key works too). Empty to stop waiting')
     }, async ({ workspace_id, on }) => {
@@ -658,7 +658,7 @@ export function kernelTools(d: KernelToolDeps) {
         return text(`${already}${name} no longer waits.${was.held && ws.status === 'ready' ? ` Kernel sent the brief, so ${name} starts now.` : ''}`)
       }
       const label = labels(left, team)
-      return text(`${already}${after.waitsFor?.held ? `${name} waits for ${label} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${name}.` : `${name} waits for ${label} to merge, and Kernel tells ${name} to rebase onto it then. Tell the user that merging it moves ${name} on.`}`)
+      return text(`${already}${after.waitsFor?.held ? `${name} waits for ${label} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${name}.` : `${name} waits for ${label} to merge, and Kernel tells ${name} to bring its branch up to date with it then. Tell the user that merging it moves ${name} on.`}`)
     }),
     tool('message_agent', 'Send a follow-up message into an existing workspace chat. In a review workspace that runs more than one kind of review, name the kind in review.', {
       workspace_id: z.string(), text: z.string(),

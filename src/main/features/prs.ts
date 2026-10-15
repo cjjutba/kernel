@@ -1,7 +1,7 @@
 import type { AutoMerge, GitHubErrorKind, GitHubStatus, MergeMethod, PrInfo, PrReads, PrPending, PrState, Project, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { type AppSettings, autoMergeInProject, loadRepoSettings, localSettingsOwn, prInstructions, sharedMergeOf } from '../services/settings'
-import { branchExists, currentBranch, fastForward, fetchOrigin, folderGone, freeBranch, isAncestor, stripRemote } from '../services/worktrees'
+import { branchExists, currentBranch, fastForward, fetchOrigin, folderGone, freeBranch, isAncestor, isPushed, stripRemote } from '../services/worktrees'
 import { exec, git } from '../services/exec'
 import { BranchConflict, type CodeHost, fingerprintOf, GhReadError, HEAD_MOVED, prNote, resolveFile } from '../services/github'
 import { type PrContext, prTextFor } from '../services/conventions'
@@ -188,8 +188,9 @@ export class Prs extends Feature {
   }
 
   /**
-   * Update branch, for a branch that merges on this Mac and has fallen behind its base (KERNEL-478): asks the agent to rebase
-   * onto it and re-run the tests. GitHub has its own button for a PR, so a project on GitHub refuses. Nothing changes state, so the
+   * Update branch, for a branch that merges on this Mac and has fallen behind its base (KERNEL-478): asks the agent to merge
+   * the base in and re-run the tests. A merge, not a rebase, since a pushed branch could only take a rebase with the force push
+   * the guard denies (KERNEL-886). One the remote has is pushed as usual. GitHub has its own button for a PR, so a project on GitHub refuses. Nothing changes state, so the
    * band keeps reading Behind until the next read finds the branch caught up.
    */
   updateBranch(id: string) { return this.running(id, 'update', () => this.update(id)) }
@@ -203,8 +204,13 @@ export class Prs extends Feature {
     const behind = info?.local?.behind ?? 0
     const base = info?.baseRef ?? ws.baseRef
     if (!behind) throw new Error(`This branch is up to date with ${base}.`)
+    const remote = await this.k.config.remoteOfWs(ws)
+    const pushed = await isPushed(ws.path, ws.branch, remote)
     this.k.lead.userSpoke(chat.id)
-    await this.sessions.send(chat.id, [{ type: 'text', text: `${base} has ${behind} new ${behind === 1 ? 'commit' : 'commits'} that this branch doesn't have. Commit your work, rebase onto ${base}, resolve any conflicts and re-run the tests. Then say what you changed.` }])
+    const steps = pushed
+      ? `run git merge ${base}, resolve any conflicts, re-run the tests and push as usual. The branch is on ${remote}, so merge rather than rebase.`
+      : `run git merge ${base}, resolve any conflicts and re-run the tests.`
+    await this.sessions.send(chat.id, [{ type: 'text', text: `${base} has ${behind} new ${behind === 1 ? 'commit' : 'commits'} that this branch doesn't have. Commit your work, ${steps} Then say what you changed.` }])
   }
 
   /** Each PR's last full read and when, so opening a workspace again within `infoMs` doesn't read GitHub again. */

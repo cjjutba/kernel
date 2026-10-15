@@ -228,6 +228,15 @@ export async function isAncestor(path: string, commit: string, ref: string): Pro
   return r.code === 0 ? true : r.code === 1 ? false : undefined
 }
 
+/**
+ * The branch is on `remote` as far as its remote-tracking ref says, which a push sets. Such a branch takes its base by a
+ * merge, since a rebase needs a force push and the guard denies every one (D-023, KERNEL-886). A ref git can't read counts
+ * as pushed: a merge is never wrong, a rebase of a pushed branch is.
+ */
+export async function isPushed(repo: string, branch: string, remote = 'origin'): Promise<boolean> {
+  return (await refState(repo, `refs/remotes/${remote}/${branch}`)) !== 'missing'
+}
+
 /** The commit `ref` points at, or undefined when it doesn't name one. */
 export async function revParse(path: string, ref: string): Promise<string | undefined> {
   const r = await exec('git', ['-C', path, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`])

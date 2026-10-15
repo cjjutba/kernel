@@ -316,7 +316,7 @@ export interface KernelApi {
   'reviews.overrule': { req: { workspaceId: string; note?: string; clear?: boolean }; res: Workspace }
   /** One button for conflicts, failing checks and review comments. Sends the matching instructions to the agent. */
   'pr.resolve': { req: { workspaceId: string }; res: Ok }
-  /** Update branch: asks the agent to rebase a local branch that fell behind its base onto it (KERNEL-478). */
+  /** Update branch: asks the agent to merge the base into a local branch that fell behind it, never to rebase, since a pushed branch would need a force push (KERNEL-478, KERNEL-886). */
   'pr.update': { req: { workspaceId: string }; res: Ok }
   'pr.ready': { req: { workspaceId: string }; res: Workspace }
   'pr.reopen': { req: { workspaceId: string }; res: Workspace }

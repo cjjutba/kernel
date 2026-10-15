@@ -2,7 +2,7 @@ import type { Workspace } from '@shared/types'
 import { buildsHere } from '@shared/leadMode'
 import { bus } from '../bus'
 import { exec, git } from '../services/exec'
-import { behindCount, fastForward, fetchOrigin, folderGone, mergeTreeConflicts, snapshotCommit } from '../services/worktrees'
+import { behindCount, fastForward, fetchOrigin, folderGone, isPushed, mergeTreeConflicts, snapshotCommit } from '../services/worktrees'
 import { Feature } from './feature'
 
 /** Store meta: what the last check found for each workspace it watches (KERNEL-180). */
@@ -23,21 +23,28 @@ export function listFiles(files: string[], max = SHOWN): string {
   return `${files.slice(0, max).join(', ')} and ${files.length - max} more`
 }
 
+/**
+ * How a teammate takes the base: a rebase while the branch has never been pushed, a merge once `pushedTo` has it, since
+ * that rebase would need the force push the guard denies (KERNEL-886).
+ */
+const takeBase = (baseRef: string, pushedTo?: string) => (pushedTo ? `merge ${baseRef} into your branch` : `rebase onto ${baseRef}`)
+const mergeWhy = (pushedTo?: string) => (pushedTo ? ` Your branch is on ${pushedTo}, so merge rather than rebase.` : '')
+
 /** What Kernel tells a teammate whose branch main has moved away from in a way that would conflict (KERNEL-180). */
-export function baseMessage(baseRef: string, behind: number, files: string[]): string {
+export function baseMessage(baseRef: string, behind: number, files: string[], pushedTo?: string): string {
   return `${baseRef} moved ${behind} ${behind === 1 ? 'commit' : 'commits'} since your branch started, and merging it now would conflict in ${listFiles(files)}. `
-    + `At a stopping point, commit your work, rebase onto ${baseRef}, resolve the conflicts and re-run the tests. Then carry on with your task.`
+    + `At a stopping point, commit your work, ${takeBase(baseRef, pushedTo)}, resolve the conflicts and re-run the tests.${mergeWhy(pushedTo)} Then carry on with your task.`
 }
 
 /** What Kernel tells a teammate whose branch started from a stale base, once a fetch works, when it has work of its own (KERNEL-653). */
-export function catchUpMessage(baseRef: string, behind: number): string {
+export function catchUpMessage(baseRef: string, behind: number, pushedTo?: string): string {
   return `Kernel couldn't fetch when your workspace started, so your branch began from ${baseRef} as last fetched. The fetch works now, and ${baseRef} has ${behind} ${behind === 1 ? 'commit' : 'commits'} your branch doesn't. `
-    + `At a stopping point, commit your work, rebase onto ${baseRef} and re-run the tests. Then carry on with your task.`
+    + `At a stopping point, commit your work, ${takeBase(baseRef, pushedTo)} and re-run the tests.${mergeWhy(pushedTo)} Then carry on with your task.`
 }
 
 /**
  * Tells a teammate when its base branch moves under it in a way that would conflict, before it opens a pull request, so it
- * rebases early (KERNEL-180). GitHub says so only once the PR exists. The check is local: `behind` counts the base's new
+ * takes the base early (KERNEL-180). GitHub says so only once the PR exists. The check is local: `behind` counts the base's new
  * commits, and `git merge-tree` merges the worktree's committed and uncommitted work with the base in memory. It changes
  * no file, index or stash list, and takes no lock on the index. The teammate hears it through a Kernel message, only when it is idle, once per base commit.
  * The Lead isn't woken.
@@ -101,11 +108,11 @@ export class BaseWatch extends Feature {
       // Just moved, or just asked to rebase: one message is enough.
       if (caughtUp.has(ws.id)) continue
       if (!this.watched(ws)) { this.put(ws.id); continue }
-      await this.watch(ws).catch(() => undefined)
+      await this.watch(ws, remote).catch(() => undefined)
     }
   }
 
-  private async watch(ws: Workspace) {
+  private async watch(ws: Workspace, remote: string) {
     if (this.stopped || await folderGone(ws.path)) return
     const base = await exec('git', ['-C', ws.path, 'rev-parse', '--verify', '--quiet', `${ws.baseRef}^{commit}`])
     const sha = base.code === 0 ? base.stdout.trim() : ''
@@ -120,7 +127,9 @@ export class BaseWatch extends Feature {
     const before = this.store.meta<Record<string, Watched>>(META)?.[ws.id]
     const state: Watched = { sha, behind, conflicts, ...(before?.told ? { told: before.told } : {}) }
     this.put(ws.id, state)
-    if (conflicts.length && state.told !== sha && this.tell(this.store.workspace(ws.id) ?? ws, state)) this.put(ws.id, { ...state, told: sha })
+    if (!conflicts.length || state.told === sha) return
+    const pushedTo = await isPushed(ws.path, ws.branch, remote) ? remote : undefined
+    if (this.tell(this.store.workspace(ws.id) ?? ws, state, pushedTo)) this.put(ws.id, { ...state, told: sha })
   }
 
   /** A turn runs in the workspace or a message waits to go, so its files mustn't move. */
@@ -130,7 +139,7 @@ export class BaseWatch extends Feature {
 
   /**
    * After a fetch of the project's remote passed: each idle teammate workspace with `fetchFailed` moves to its base when it has
-   * no work of its own, or is told once to rebase when it has, and loses `fetchFailed` (KERNEL-653). A busy one waits for its
+   * no work of its own, or is told once to take the base when it has, and loses `fetchFailed` (KERNEL-653). A busy one waits for its
    * turn end. Returns the workspaces it moved or told.
    */
   private async catchUp(projectId: string, remote: string): Promise<Set<string>> {
@@ -150,16 +159,17 @@ export class BaseWatch extends Feature {
     const behind = await count(`HEAD..${ws.baseRef}`)
     const own = await count(`${ws.baseRef}..HEAD`)
     const changed = (await git(ws.path, 'status', '--porcelain', '--untracked-files=no')).trim() !== ''
+    const pushedTo = await isPushed(ws.path, ws.branch, remote) ? remote : undefined
     if (held()) return false
     const agent = this.k.team.agentOf(ws.projectId, ws.agentId)?.name ?? 'the teammate'
     if (behind && (own || changed || !(await fastForward(ws.path, ws.baseRef)))) {
       const chat = this.prChat(ws.id)
       if (held() || !chat) return false
       let sent = false
-      try { sent = this.sessions.post(chat.id, [{ type: 'text', text: catchUpMessage(ws.baseRef, behind) }]) } catch { return false }
+      try { sent = this.sessions.post(chat.id, [{ type: 'text', text: catchUpMessage(ws.baseRef, behind, pushedTo) }]) } catch { return false }
       if (!sent) return false
       this.updateWs(ws.id, { fetchFailed: undefined })
-      bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `told ${agent} to rebase onto ${ws.baseRef}, since its workspace started from it as last fetched` })
+      bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `told ${agent} to ${pushedTo ? `merge ${ws.baseRef} in` : `rebase onto ${ws.baseRef}`}, since its workspace started from it as last fetched` })
       return true
     }
     if (this.stopped) return false
@@ -176,14 +186,14 @@ export class BaseWatch extends Feature {
    * The message goes through `Sessions.post`, which sends nothing while the teammate is mid-turn, has messages queued, or
    * is held. The next check tells it then. True when it went, with a line in the project's log.
    */
-  private tell(ws: Workspace, state: Watched): boolean {
+  private tell(ws: Workspace, state: Watched, pushedTo?: string): boolean {
     const chat = this.prChat(ws.id)
     if (!chat || !this.watched(ws)) return false
     let sent = false
-    try { sent = this.sessions.post(chat.id, [{ type: 'text', text: baseMessage(ws.baseRef, state.behind, state.conflicts) }]) } catch { return false }
+    try { sent = this.sessions.post(chat.id, [{ type: 'text', text: baseMessage(ws.baseRef, state.behind, state.conflicts, pushedTo) }]) } catch { return false }
     if (!sent) return false
     const agent = this.k.team.agentOf(ws.projectId, ws.agentId)
-    bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `told ${agent?.name ?? 'the teammate'} to rebase, since ${ws.baseRef} moved ${state.behind} ${state.behind === 1 ? 'commit' : 'commits'} and would conflict in`, object: listFiles(state.conflicts, 3) })
+    bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `told ${agent?.name ?? 'the teammate'} to ${pushedTo ? `merge ${ws.baseRef} in` : 'rebase'}, since ${ws.baseRef} moved ${state.behind} ${state.behind === 1 ? 'commit' : 'commits'} and would conflict in`, object: listFiles(state.conflicts, 3) })
     return true
   }
 }

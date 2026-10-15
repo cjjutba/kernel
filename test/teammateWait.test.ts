@@ -141,6 +141,9 @@ describe("a teammate's wait_for_merge", () => {
     await mergeOnGitHub(noor)
     expect(await call(kai, { on: '#164' })).toEqual({ isError: false, text: 'PR #164 already merged, so there is nothing to wait for. Rebase onto it and carry on.' })
     expect(k.store.workspace(kai.id)!.waitsFor).toBeUndefined()
+    // A branch on origin takes the base by a merge, since its rebase would need a force push (KERNEL-886).
+    await run('git', ['-C', kai.path, 'push', '-q', '-u', 'origin', 'HEAD'])
+    expect(await call(kai, { on: '#164' })).toEqual({ isError: false, text: 'PR #164 already merged, so there is nothing to wait for. Merge origin/main into your branch and carry on.' })
     await k.stop({ budgetMs: 0 })
   })
 
