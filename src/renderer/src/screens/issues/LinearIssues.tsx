@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LinearIssue, LinearScope } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { getState, go, useStore } from '../../store'
 import { readSaved as readStored, writeSaved } from '../../remember'
-import { Button, FailedState, Icon, IconButton, NotConnectedState, Pill, Spinner } from '../../ui'
+import { Button, FailedState, Icon, IconButton, NotConnectedState, Pill, Spinner, useListKeys } from '../../ui'
 import { IssuePriority, IssueState } from '../../icons'
 import { IssueDetail } from './IssueDetail'
-import { CapNote, FilterChip, IssuesHeader, RefreshNotice, typing, type RoomHead } from './parts'
+import { CapNote, FilterChip, IssuesHeader, RefreshNotice, type RoomHead } from './parts'
 import {
   clearedFilter, cyclesFor, cycleLabel, describeFilter, fitFilter, FILTER_KEY, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces,
   parseFilter, projectsFor, rowStatus, serializeFilter, stateShape, workspaceSlug, type SavedFilter
@@ -133,33 +133,23 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
   const flat = useMemo(() => flatIssues(groups), [groups])
   const selId = sel ?? flat[0]?.id
   const cur = flat.find((i) => i.id === selId)
-  // One row is in the tab order, the selected one, or the first when the selected issue is filtered out.
-  const tabbable = cur?.id ?? flat[0]?.id
 
   const status = useMemo(() => {
     const runningOf = (w: { id: string }) => (chats[w.id] ?? []).some((c) => running[c.id])
     return new Map(flat.map((i) => [i.id, rowStatus(linkedWorkspaces(i.id, workspaces), agents, runningOf)]))
   }, [flat, workspaces, agents, chats, running])
 
-  // Up and down move through the list, Enter hands focus to the issue's buttons. It listens on the list, so a modal or a field elsewhere never moves the selection.
-  const onListKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || typing(e.target as HTMLElement) || getState().ui.modal) return
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      if (!flat.length) return
-      e.preventDefault()
-      const at = flat.findIndex((i) => i.id === selId)
-      const next = flat[Math.max(0, Math.min(flat.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))]
-      setSel(next.id)
-      const row = document.getElementById(`is-${next.id}`)
-      row?.focus()
-      row?.scrollIntoView({ block: 'nearest' })
-    } else if (e.key === 'Enter') {
-      const id = (e.target as HTMLElement).closest('.is-row')?.id.replace(/^is-/, '')
-      if (id) setSel(id)
-      e.preventDefault()
+  const keys = useListKeys({
+    ids: useMemo(() => flat.map((i) => i.id), [flat]),
+    rowId: (id) => `is-${id}`,
+    current: selId,
+    onCurrent: setSel,
+    blocked: () => !!getState().ui.modal,
+    onOpen: (id) => {
+      setSel(id)
       detail.current?.querySelector<HTMLElement>('.is-actions a, .is-actions button')?.focus()
-    }
-  }
+    },
+  })
 
   const failed: View | null = view.kind === 'ready' ? (!online ? UNREACHABLE : problem) : null
   const shown: View = !online && (view.kind === 'rejected' || view.kind === 'error') ? UNREACHABLE : view
@@ -229,7 +219,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
 
       {ready && flat.length > 0 && (
         <div className="is-body">
-          <div className="is-list" aria-label="Issues" onKeyDown={onListKey}>
+          <div className="is-list" aria-label="Issues" onKeyDown={keys.onKeyDown}>
             {groups.map((g) => (
               <section key={`${g.type}:${g.name}`} aria-label={g.name}>
                 <h3 className="is-group"><span className="is-slot"><IssueState shape={stateShape(g.type)} /></span><span>{g.name}</span><span className="muted">{g.issues.length}</span></h3>
@@ -238,7 +228,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
                     const live = status.get(i.id)
                     return (
                       <li key={i.id}>
-                        <button type="button" id={`is-${i.id}`} className="is-row" aria-current={i.id === selId ? 'true' : undefined} tabIndex={i.id === tabbable ? 0 : -1} onClick={() => setSel(i.id)}>
+                        <button type="button" {...keys.rowProps(i.id)} className="is-row" aria-current={i.id === selId ? 'true' : undefined} onClick={() => setSel(i.id)}>
                           <span className="is-slot"><IssueState shape={stateShape(i.state.type)} /></span>
                           <span className="col grow">
                             <span className="is-title ellipsis">{i.title}</span>

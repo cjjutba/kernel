@@ -650,6 +650,8 @@ export const teamFixtures: Record<string, Fixture> = {
   // No PNG: Lead chat 3, then Settings and back, then another workspace and back (KERNEL-199). The test opens it in Electron.
   NavMemory: scene(navMemory),
   History: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history' } } })),
+  // No PNG (KERNEL-871): the second row focused from the keyboard.
+  HistoryRowFocused: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history' } } })),
   // Audit (docs/audits/ux-team.md): nothing archived yet.
   HistoryEmpty: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'history' } } })),
   // Archived in a room's menu: History for Client A alone.
@@ -689,6 +691,7 @@ export const teamFixtures: Record<string, Fixture> = {
   // The update pill stays in the footer while the sidebar is hidden (KERNEL-588).
   UpdateReadyNoSidebar: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: { ...home, sidebar: false } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
+  InboxRowFocused: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
   InboxApprovalFold: { ...scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })), motion: { action: { click: 'Approve' }, ms: 700, area: '.ib-body-wrap' } },
   // KERNEL-785: an MCP call's approval is titled as the chat's row says it, the newest row, so the detail pane opens on it.
   InboxMcp: scene((f) => {
@@ -720,6 +723,7 @@ export const teamFixtures: Record<string, Fixture> = {
     return { ...home, workspaces: home.workspaces!.map((w) => (w.id === ids.table ? { ...w, status: 'trust' as const, createdAt: Date.now() } : w)), ui: { route: { name: 'inbox' } } }
   }),
   Rooms: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'rooms' } } })),
+  RoomsRowFocused: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'rooms' } } })),
   // Audit: no room added yet, and the Rooms page on its own.
   RoomsEmpty: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'rooms' } } })),
   NewRoom: scene((f) => ({
@@ -789,8 +793,10 @@ export const teamFixtures: Record<string, Fixture> = {
   // KERNEL-590: the repo's `[team] reviewer = "none"` turned review off, so the picker says No reviewer and no line claims a review.
   RoomSetupTeamNoReviewer: scene((f) => roomSetupTeam(f, { reviewer: 'none' })),
   Issues: scene((f) => issuesScene(f)),
+  IssuesRowFocused: scene((f) => issuesScene(f)),
   // The Pull requests page: open PRs across the rooms, the merged ones, and each empty.
   PullRequests: scene((f) => prsScene(f, { filter: 'open' })),
+  PullRequestsRowFocused: scene((f) => prsScene(f, { filter: 'open' })),
   PullRequestsMerged: scene((f) => prsScene(f, { filter: 'merged' })),
   // No PNG (KERNEL-868): the last status read failed on a rate limit, with the read from before it kept. The cap note shows past 50 merged.
   PullRequestsReadFailed: scene((f) => prsScene(f, { filter: 'open', failed: true })),

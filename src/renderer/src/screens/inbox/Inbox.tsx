@@ -5,7 +5,7 @@ import { call } from '../../api'
 import { FileLabel } from '../../components/FileIcon'
 import { actions, go, useStore } from '../../store'
 import { oneOf, useRemembered } from '../../remember'
-import { Button, EmptyList, Icon, Pill, useBusy } from '../../ui'
+import { Button, EmptyList, Icon, Pill, useBusy, useListKeys, listKeyAction } from '../../ui'
 import { ApprovalCard } from '../workspace/cards/ApprovalCard'
 import { outcome } from '../workspace/cards/steps'
 import { attempt } from '../workspace/MessageActions'
@@ -147,7 +147,18 @@ export function Inbox() {
   const markRead = (ids: string[] | 'all') => void call('notifications.read', { ids }).then((rows) => rows.forEach(actions.notifications.upsert)).catch(() => undefined)
   const open = (i: InboxItem) => { setSel(i.n.id); if (!i.n.read) markRead([i.n.id]) }
 
-  // Keyboard: j and k move, Enter jumps into the detail, a approves, d denies. Typing in a field is left alone.
+  // Keyboard: the list keys come from useListKeys, j and k also work from anywhere on the screen, a approves, d denies. Typing in a field is left alone.
+  const keys = useListKeys({
+    ids: list.map((i) => i.n.id),
+    rowId: (id) => `ib-${id}`,
+    current: cur?.n.id,
+    onCurrent: (id) => { const i = list.find((x) => x.n.id === id); if (i) open(i) },
+    onOpen: (id) => {
+      const i = list.find((x) => x.n.id === id)
+      if (i) flushSync(() => open(i))
+      detail.current?.querySelector<HTMLElement>('button, input')?.focus()
+    },
+  })
   const state = useRef({ list, cur, sel })
   state.current = { list, cur, sel }
   useEffect(() => {
@@ -157,15 +168,10 @@ export function Inbox() {
       const { list, cur, sel } = state.current
       // Nothing chosen yet: the first row only looks selected, so the first j or k lands on it.
       const at = cur && sel ? list.findIndex((i) => i.n.id === cur.n.id) : -1
-      if (e.key === 'j' || e.key === 'k') {
-        const next = list[Math.max(0, Math.min(list.length - 1, at + (e.key === 'j' ? 1 : at < 0 ? 0 : -1)))]
+      if ((e.key === 'j' || e.key === 'k') && !t?.closest('[data-list-row]')) {
+        const move = listKeyAction(e, at, list.length)
+        const next = move?.kind === 'move' ? list[move.to] : undefined
         if (next) { e.preventDefault(); open(next); const row = document.getElementById(`ib-${next.n.id}`); row?.focus(); row?.scrollIntoView({ block: 'nearest' }) }
-      } else if (e.key === 'Enter' && t?.closest('.ib-list') && cur) {
-        e.preventDefault()
-        // Open the row that has focus first, so Enter acts on what was tabbed to and not on the old selection.
-        const focused = list.find((i) => `ib-${i.n.id}` === t.closest('.ib-row')?.id)
-        if (focused) flushSync(() => open(focused))
-        detail.current?.querySelector<HTMLElement>('button, input')?.focus()
       } else if ((e.key === 'a' || e.key === 'd') && cur?.approval?.status === 'pending' && cur.approval.kind !== 'question') {
         e.preventDefault()
         decideAtOnce(cur.approval, e.key === 'a' ? { behavior: 'allow' } : { behavior: 'deny', message: 'Denied in Kernel.' })
@@ -188,9 +194,9 @@ export function Inbox() {
         {tabs.map(([id, label]) => <Pill key={id} pressed={tab === id} onClick={() => setTab(id)}>{label}<span className="ib-n">{count(id)}</span></Pill>)}
       </div>
       <div className="ib-body-wrap">
-        <div className="ib-list" role="group" aria-label="Inbox items">
+        <div className="ib-list" role="group" aria-label="Inbox items" onKeyDown={keys.onKeyDown}>
           {shownRows.map(({ item: i, held }) => (
-            <button key={i.n.id} id={`ib-${i.n.id}`} type="button" tabIndex={held ? -1 : undefined} className={`ib-row${held ? ' decide-fold' : ''}`} aria-current={i.n.id === cur?.n.id ? 'true' : undefined} data-unread={!i.n.read ? 'true' : undefined} onClick={() => open(i)}>
+            <button key={i.n.id} type="button" {...keys.rowProps(i.n.id)} className={`ib-row${held ? ' decide-fold' : ''}`} aria-current={i.n.id === cur?.n.id ? 'true' : undefined} data-unread={!i.n.read ? 'true' : undefined} onClick={() => open(i)}>
               <Letter item={i} agents={agentOf(i.n, agents)} />
               <span className="col grow" style={{ minWidth: 0 }}>
                 <span className="ib-title ellipsis">{i.n.title}</span>

@@ -37,6 +37,7 @@
 .is-slot { width: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
 .is-row { display: flex; align-items: center; gap: 12px; width: 100%; height: 62px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; }
 .is-row:hover { background: var(--nav-hover); }
+.is-row:focus-visible { outline-offset: -2px; }
 .is-row[aria-current='true'] { background: var(--surface-3); color: var(--ink); }
 .is-title { font-size: 13px; font-weight: 500; }
 .is-sub { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 2px; font-size: 12px; color: var(--muted); white-space: nowrap; }

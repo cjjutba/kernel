@@ -247,6 +247,16 @@ The three kinds of motion:
 - Approvals (KERNEL-834): pressing a decide button in the Inbox or on a chat's card folds the approval away the way an archived row does, over --archive-fold with the fade over --archive-fade, `ease-out`. In the Inbox the list row folds when it leaves its tab, and the detail's buttons fold, then the outcome stands in their place. In a chat the card's buttons fold and the result line takes their place, since the card stays as the record. Nothing spins. A failed call ends the fold and the approval comes back, with the "Could not send your answer" toast. Reduced motion changes it in place, with no fold and no fade.
 - Respect reduced motion: jump instead of walk, the dot loader holds a still frame of its pattern, no breathing glow, toasts that appear and vanish in place, archived rows that change in place.
 
+## List keys (KERNEL-871)
+
+Inbox, Issues, Rooms, Pull requests and History share one keyboard model, `useListKeys` in `ui/listKeys.ts`. A new list uses it, and doesn't add keys of its own.
+
+- Down arrow and j move to the next row, Up arrow and k to the previous one. Home goes to the first row and End to the last. The ends stop the cursor, they don't wrap. Shift, Ctrl, Alt and Cmd with a key leave it alone.
+- Enter opens the focused row: Inbox and Issues select it and hand focus to the detail, Rooms opens the room, Pull requests opens the workspace, and History restores the workspace.
+- Roving focus: one row is in the tab order, so Tab enters the list once and leaves it again. It is the chosen row where a list has a selection (Inbox, Issues), and otherwise the row focused last, or the first.
+- The keys act on a focused row only. Typing in a field, a modal over the list, and the buttons inside a row (Merge, Restore, Delete) are never read as list keys. Inbox keeps j and k from anywhere on the screen, and its a and d decide.
+- The focus ring is the global `--focus` ring, drawn inset on the whole row (`outline-offset: -2px`). Where the focusable element is a link inside the row, the row draws the ring with `:has(:focus-visible)`.
+
 ## Accessibility
 
 Real `<button>`, `<a>`, `<input>` with labels; focus rings visible; every icon-only control has `aria-label`.

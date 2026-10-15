@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Workspace } from '@shared/types'
 import { actions, go, useStore } from '../../store'
 import { oneOf, useRemembered } from '../../remember'
-import { Button, EmptyState, Icon, IconButton, Pill, useBusy } from '../../ui'
+import { Button, EmptyState, Icon, IconButton, Pill, useBusy, useListKeys } from '../../ui'
 import { archivedList, historyName, deleteAllLabel, endedAt, groupOf, inTab, matches, prGlyph, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
 import { restoreArchived } from './restore'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
@@ -36,6 +36,9 @@ export function History() {
 
   const restore = (w: Workspace) => run(w.id, () => restoreArchived(w, nameOf(w)))
 
+  const order = groups.flatMap((g) => rows.filter((w) => groupOf(endedAt(w)) === g))
+  const keys = useListKeys({ ids: order.map((w) => w.id), rowId: (id) => `hs-${id}`, onOpen: (id) => { const w = order.find((x) => x.id === id); if (w && busy === null) void restore(w) } })
+
   const confirmDelete = (workspaceIds: string[]) => actions.ui.openModal({ name: 'confirm', kind: 'deleteHistory', workspaceIds })
 
   return (
@@ -59,9 +62,9 @@ export function History() {
           return (
             <section key={g} aria-label={g}>
               <h2 className="hs-group">{g}</h2>
-              <ul className="hs-list">
+              <ul className="hs-list" onKeyDown={keys.onKeyDown}>
                 {list.map((w) => (
-                  <li key={w.id} className="hs-row">
+                  <li key={w.id} {...keys.rowProps(w.id)} className="hs-row">
                     <span className="col hs-name"><span className="ellipsis hs-title">{isLeadChatWorkspace(w) && <Icon name="chat" size={14} />}{nameOf(w)}</span><span className="ellipsis hs-sub">{agentName(w)}</span></span>
                     <span className="mono ellipsis hs-branch">{w.branch}</span>
                     <span className="ellipsis hs-room">{roomName(w)}</span>
