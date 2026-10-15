@@ -21,7 +21,7 @@ export function tildify(p: string, home = homedir()): string {
 }
 
 const isDir = async (p: string) => (await stat(p).catch(() => null))?.isDirectory() ?? false
-const exists = async (p: string) => !!(await stat(p).catch(() => null))
+export const exists = async (p: string) => !!(await stat(p).catch(() => null))
 
 /** Is this folder a git checkout, which branch is it on, and how many files have uncommitted changes. */
 export async function inspectFolder(path: string, home = homedir()): Promise<FolderInfo> {

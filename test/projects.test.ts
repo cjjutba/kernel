@@ -15,20 +15,25 @@ import { tempRepo, trustProject, freePort } from './helpers'
 
 const starter = join(__dirname, '..', 'docs', 'starter-agents')
 
-async function kernel(settings: Record<string, unknown> = {}) {
-  const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-  const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+/** A Kernel in new folders, or, with `dirs`, again on the folders of one that stopped, as after a restart. */
+async function kernel(settings: Record<string, unknown> = {}, dirs?: { dataDir: string; home: string }) {
+  const dataDir = dirs?.dataDir ?? await mkdtemp(join(tmpdir(), 'kernel-data-'))
+  const home = dirs?.home ?? await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), ...settings }))
   const k = new Kernel({ dataDir, home, starterDir: starter, claudeSettingsFile: join(home, 'claude-settings.json') })
   await k.start()
-  return { k, home }
+  return { k, home, dataDir }
 }
 
-/** Resolves with the last `project.setup` steps once none is waiting or running. */
+/**
+ * Resolves with the last `project.setup` steps once none is running, and none is waiting unless the checkout failed, since
+ * the steps after a failed checkout never run.
+ */
 function setupDone(projectId: string): Promise<ProjectSetupStep[]> {
   return new Promise((resolve) => {
     const on = (e: PushEvent) => {
-      if (e.type !== 'project.setup' || e.projectId !== projectId || e.steps.some((s) => s.state === 'wait' || s.state === 'run')) return
+      const cloneFailed = e.type === 'project.setup' && e.steps.some((s) => s.id === 'clone' && s.state === 'fail')
+      if (e.type !== 'project.setup' || e.projectId !== projectId || e.steps.some((s) => s.state === 'run' || (s.state === 'wait' && !cloneFailed))) return
       bus.off('push', on)
       resolve(e.steps)
     }
@@ -207,6 +212,110 @@ describe('Kernel projects', () => {
     const again = setupDone(project.id)
     k.projects.retrySetup(project.id)
     expect((await again).find((s) => s.id === 'hooks')).toMatchObject({ state: 'fail', error: expect.stringContaining('Check hooks') })
+    await k.stop({ budgetMs: 0 })
+  })
+
+  /**
+   * Runs `fn` with a `gh` first on the PATH whose first `gh repo clone` leaves a partial folder and fails, and whose later
+   * ones clone `src`. Returns how many clones it was asked for.
+   */
+  async function withFlakyClone(src: string, fn: () => Promise<void>): Promise<number> {
+    const bin = await mkdtemp(join(tmpdir(), 'kernel-bin-'))
+    const count = join(bin, 'count')
+    await writeFile(join(bin, 'gh'), [
+      '#!/bin/sh',
+      '[ "$1 $2" = "repo clone" ] || exit 1',
+      `n=$(cat "${count}" 2>/dev/null || echo 0); echo $((n + 1)) > "${count}"`,
+      'if [ "$n" = 0 ]; then mkdir -p "$4"; echo half > "$4/half.txt"; echo "fatal: early EOF" >&2; exit 128; fi',
+      `exec git clone -q "${src}" "$4"`
+    ].join('\n') + '\n', { mode: 0o755 })
+    const path = process.env.PATH
+    process.env.PATH = `${bin}:${path}`
+    try { await fn() } finally { process.env.PATH = path }
+    return Number((await readFile(count, 'utf8').catch(() => '0')).trim())
+  }
+
+  it('clears what a failed clone left in the folder Kernel made, and the retry clones into it (KERNEL-883)', async () => {
+    const { k, home } = await kernel()
+    const src = await tempRepo({ 'README.md': '# x\n' })
+    const clones = await withFlakyClone(src, async () => {
+      const project = await k.createProject({ source: 'repo', name: 'Clone app', from: 'me/clone-app', cloneTo: join(home, 'Projects', 'clone-app'), team: ['kai'], autostart: false })
+      const first = await setupDone(project.id)
+      expect(first.find((s) => s.id === 'clone')).toMatchObject({ state: 'fail', error: expect.stringContaining('early EOF') })
+      expect(existsSync(join(project.path, 'half.txt'))).toBe(true)
+
+      const done = setupDone(project.id)
+      k.projects.retrySetup(project.id)
+      const steps = await done
+      expect(steps.find((s) => s.id === 'clone')).toMatchObject({ state: 'ok' })
+      expect(existsSync(join(project.path, 'half.txt'))).toBe(false)
+      expect(await readFile(join(project.path, 'README.md'), 'utf8')).toBe('# x\n')
+    })
+    expect(clones).toBe(2)
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('never clears a folder that was there before setup, and says why the retry stops (KERNEL-883)', async () => {
+    const { k, home } = await kernel()
+    const picked = join(home, 'Picked')
+    await mkdir(picked)
+    const clones = await withFlakyClone(await tempRepo(), async () => {
+      const project = await k.createProject({ source: 'repo', name: 'Picked app', from: 'me/picked-app', cloneTo: picked, team: ['kai'], autostart: false })
+      expect((await setupDone(project.id)).find((s) => s.id === 'clone')?.state).toBe('fail')
+
+      const done = setupDone(project.id)
+      k.projects.retrySetup(project.id)
+      expect((await done).find((s) => s.id === 'clone')).toMatchObject({ state: 'fail', error: '~/Picked is not empty, and Kernel didn\'t make it, so Kernel leaves it as it is. Empty it, then try again.' })
+    })
+    expect(clones).toBe(1)
+    expect(await readFile(join(picked, 'half.txt'), 'utf8')).toBe('half\n')
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('tries a setup that failed before a restart again after it (KERNEL-883)', async () => {
+    const first = await kernel()
+    const project = await first.k.createProject({ source: 'folder', name: 'Restart app', from: await tempRepo(), team: ['kai'], autostart: false })
+    expect((await setupDone(project.id)).find((s) => s.id === 'hooks')?.state).toBe('fail')
+    await first.k.stop({ budgetMs: 0 })
+
+    const { k } = await kernel({}, first)
+    await k.handlers()['hooks.install']({ port: (await k.hooks.hooksStatus()).port })
+    // A window that loads asks for the projects, and gets the failed setup on the events Project setup reads.
+    const published: ProjectSetupStep[][] = []
+    const on = (e: PushEvent) => { if (e.type === 'project.setup' && e.projectId === project.id) published.push(e.steps) }
+    bus.on('push', on)
+    await k.handlers()['projects.list'](undefined)
+    bus.off('push', on)
+    expect(published.at(-1)?.find((s) => s.id === 'hooks')).toMatchObject({ state: 'fail', error: expect.stringContaining('Check hooks') })
+
+    const done = setupDone(project.id)
+    await k.handlers()['projects.retrySetup']({ projectId: project.id })
+    const steps = await done
+    expect(steps.map((s) => s.state)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok'])
+    // The starter agents the first launch seated are still Kernel's.
+    expect(steps.find((s) => s.id === 'agents')?.brought).toBeUndefined()
+    await k.stop({ budgetMs: 0 })
+
+    // Finished, it is no longer saved, so the next launch has nothing to try again.
+    const { k: third } = await kernel({}, first)
+    await expect(third.handlers()['projects.retrySetup']({ projectId: project.id })).rejects.toThrow('Restart app has no setup to try again.')
+    await third.stop({ budgetMs: 0 })
+  })
+
+  it('fails the step a quit cut short, so it can be tried again (KERNEL-883)', async () => {
+    const first = await kernel()
+    const project = await first.k.addProject(await tempRepo())
+    const step = (id: ProjectSetupStep['id'], state: ProjectSetupStep['state']): ProjectSetupStep => ({ id, title: id, detail: '', state })
+    first.k.store.saveMeta('projectSetups', { [project.id]: { steps: [step('clone', 'ok'), step('host', 'ok'), step('worktrees', 'run'), step('install', 'wait')], req: { source: 'folder', name: project.name, from: project.path, team: [], autostart: false } } })
+    await first.k.stop({ budgetMs: 0 })
+
+    const { k } = await kernel({}, first)
+    const published: ProjectSetupStep[][] = []
+    const on = (e: PushEvent) => { if (e.type === 'project.setup' && e.projectId === project.id) published.push(e.steps) }
+    bus.on('push', on)
+    await k.handlers()['projects.list'](undefined)
+    bus.off('push', on)
+    expect(published.at(-1)?.map((s) => [s.id, s.state, s.error])).toEqual([['clone', 'ok', undefined], ['host', 'ok', undefined], ['worktrees', 'fail', 'Setup stopped when Kernel quit.'], ['install', 'wait', undefined]])
     await k.stop({ budgetMs: 0 })
   })
 
