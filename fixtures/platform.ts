@@ -884,11 +884,11 @@ export const platformFixtures: Record<string, Fixture> = {
   ConfirmBypass: scene(() => ({ ui: { ...open, modal: { name: 'confirm', kind: 'bypass' } } })),
   // UX audit (app shell and platform): states the screens above leave out. See docs/audits/ux-platform.md.
   AuditAboutChecking: settingsPage('about', { preflight: [], update: { status: 'checking', current: '0.1.0' } }),
-  AuditAboutDownloading: settingsPage('about', { preflight: [], update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 0.42 } }),
+  AuditAboutDownloading: settingsPage('about', { preflight: [], update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } }),
   AuditAboutUpdateError: settingsPage('about', { preflight: [], update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } }),
   AuditAboutUpdateBlocked: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.1.0', blocked: 'Kernel is running from outside Applications, so it does not check for updates.' } }),
-  // The home screen while an update downloads or fails: the footer and the stack say nothing.
-  AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 0.42 } },
+  // The home screen while an update downloads or fails: a quiet footer line.
+  AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } },
   AuditHomeUpdateError: { ...teamFixtures.UpdateReady, update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } },
   // Toasts: three at once, and one with a long title and sub, over Home.
   AuditToastsStacked: { ...teamFixtures.UpdateReady, ui: { ...teamFixtures.UpdateReady.ui, toasts: [

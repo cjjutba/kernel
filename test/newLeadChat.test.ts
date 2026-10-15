@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentDef, ChatPart, RoleModel } from '../src/shared/types'
-import { leadHasNoChat, newChatOnScreen, newChatTab, showsNewChat, tabInFront, tabStop } from '../src/renderer/src/screens/workspace/leadNoChat'
+import { leadHasNoChat, newChatOnScreen, newChatTab, showsNewChat, tabAfterKey, tabInFront, tabStop } from '../src/renderer/src/screens/workspace/leadNoChat'
 
 // KERNEL-366: a room with no chats opens on New chat with Kernel, and + and ⌘T there start no chat.
 
@@ -104,6 +104,12 @@ describe('focusComposerIn', () => {
 
 describe('the tab order while the New chat box is on screen', () => {
   it('puts the first tab in it when none is active, and the active tab otherwise', () => {
+    const ids = ['t1', 'file:a.ts', 'shared:x']
+    expect(tabAfterKey(ids, 'file:a.ts', 'Home')).toBe('t1')
+    expect(tabAfterKey(ids, 't1', 'End')).toBe('shared:x')
+    expect(tabAfterKey(ids, 'shared:x', 'ArrowRight')).toBe('t1')
+    expect(tabAfterKey(ids, 't1', 'ArrowLeft')).toBe('shared:x')
+    expect(tabAfterKey(ids, 't1', 'a')).toBeUndefined()
     expect(tabStop(['t1', 'file:a.ts'], undefined)).toBe('t1')
     expect(tabStop(['t1', 'file:a.ts'], 'gone')).toBe('t1')
     expect(tabStop(['t1', 'file:a.ts'], 'file:a.ts')).toBe('file:a.ts')
