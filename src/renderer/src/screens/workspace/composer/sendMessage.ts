@@ -50,10 +50,13 @@ async function place(chatId: string, parts: ChatPart[], o: Placed): Promise<bool
     const now = getState()
     const mainQueued = (now.queue[chatId] ?? []).find((q) => q.id === id && q !== held)
     const mainItem = (now.items[chatId] ?? []).find((i) => i.id === id && i !== row)
-    if (!to.queued && (sent?.queued || mainQueued)) {
+    // Main says it held the message when it answers queued, and also when it answers not queued with no row: a message sent now always comes back with its row
+    // (`chats.send`), so none means main queued it under this id without starting a turn (an account move waits for a choice). Retry answers nothing, so the queue tells.
+    const heldByMain = sent ? sent.queued || !sent.item : to.queued ? !mainItem : !!mainQueued
+    if (!to.queued && heldByMain) {
       actions.chats.undraw(chatId, { item: row, running: wasRunning })
       actions.chats.draw(chatId, { queue: [...(now.queue[chatId] ?? []).filter((q) => q.id !== id), mainQueued ?? held], why: sent?.why })
-    } else if (to.queued && (sent ? !sent.queued : !!mainItem)) {
+    } else if (to.queued && !heldByMain) {
       actions.chats.undraw(chatId, { queued: id })
       actions.chats.draw(chatId, { item: sent?.item ?? mainItem ?? row, running: true })
     } else if (sent?.item) actions.chats.draw(chatId, { item: sent.item })

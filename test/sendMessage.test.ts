@@ -109,6 +109,41 @@ describe('one send path', () => {
     expect(getState().running.c1).toBe(false)
   })
 
+  it('moves the drawn bubble to the tray, and ends the starting state, when main holds the message for an account move', async () => {
+    // Main queues the message under the window's id, pushes the queue with its reason, and answers not queued with no row.
+    call.mockImplementation(async (_: string, req: { clientId: string }) => {
+      apply({ type: 'chat.queue', chatId: 'c1', queue: [{ id: req.clientId, chatId: 'c1', parts: text('hi'), ts: 1, clientId: req.clientId }], why: 'move' })
+      return { queued: false }
+    })
+    expect(await send.sendMessage('c1', text('hi'))).toBe(true)
+    expect(items()).toHaveLength(0)
+    expect(queue()).toHaveLength(1)
+    expect(getState().queueWhy.c1).toBe('move')
+    expect(getState().running.c1).toBe(false)
+    expect(getState().assumed.c1).toBeUndefined()
+  })
+
+  it('treats an answer with no row as held even when the queue event is not in yet', async () => {
+    call.mockResolvedValue({ queued: false })
+    await send.sendMessage('c1', text('hi'))
+    expect(items()).toHaveLength(0)
+    expect(queue()).toHaveLength(1)
+    expect(getState().running.c1).toBe(false)
+    expect(getState().assumed.c1).toBeUndefined()
+  })
+
+  it('moves a retried copy to the tray when main queues it, though Retry answers nothing', async () => {
+    actions.chats.setItems('c1', [{ kind: 'user', id: 'u0', ts: 1, parts: text('first') }, { kind: 'result', id: 'r0', ts: 2, durationMs: 1, ok: false, error: 'x' }])
+    call.mockImplementation(async (_: string, req: { clientId: string }) => {
+      apply({ type: 'chat.queue', chatId: 'c1', queue: [{ id: req.clientId, chatId: 'c1', parts: text('first'), ts: 3, clientId: req.clientId }], why: 'move' })
+      return { ok: true }
+    })
+    await send.retryMessage('c1', 'r0')
+    expect(ids()).toEqual(['u0', 'r0'])
+    expect(queue()).toHaveLength(1)
+    expect(getState().running.c1).toBe(false)
+  })
+
   it('shows as queued while the Mac is offline', async () => {
     actions.system.setOnline(false)
     call.mockReturnValue(new Promise(() => undefined))
@@ -154,9 +189,6 @@ describe('one send path', () => {
     const done = send.sendQueuedNow('c1', q)
     expect(queue()).toHaveLength(0)
     expect(ids()).toEqual(['q1'])
-    // Main still lists it until the interrupted turn ends: it stays out of the tray.
-    actions.chats.setQueue('c1', [q])
-    expect(queue()).toHaveLength(0)
     actions.chats.setQueue('c1', [])
     fail(new Error('no'))
     await expect(done).rejects.toThrow('no')

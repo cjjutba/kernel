@@ -210,9 +210,10 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     // What the engine saved: the fixture's items, then the rows its `after` events pushed, so a reload keeps them.
     'chats.items': async ({ chatId }) => [...(f.items[chatId] ?? []), ...(saved.get(chatId) ?? [])],
-    'chats.send': async () => {
+    'chats.send': async ({ parts, clientId }) => {
       for (const step of f.afterSend ?? []) setTimeout(() => step.events.forEach((e) => bus.push(e)), step.afterMs)
-      return { queued: false }
+      // A message sent now comes back with its row, as the engine's does (KERNEL-894).
+      return { queued: false, item: { kind: 'user', id: clientId ?? `fixture-${Date.now()}`, ts: Date.now(), parts } }
     },
     'chats.interrupt': async ({ chatId }) => {
       bus.push({ type: 'chat.running', chatId, running: false })

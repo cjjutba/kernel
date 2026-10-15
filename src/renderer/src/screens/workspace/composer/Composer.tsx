@@ -58,7 +58,7 @@ type MenuName = 'model' | 'context' | 'mode' | PlusPanel
 export function Composer({ chat, agent, blocked, running, prefill, banner }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode; }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
   const waiting = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
-  // The messages Stop took out of the tray leave it in the frame of the press, whatever main's queue events say while it takes them out one by one.
+  // The messages Stop took out of the tray, and the one Send now drew as a bubble, leave it in the frame of the press, whatever main's queue events say while it takes them out one by one or still lists the one it is about to send.
   const [taken, setTaken] = useState<string[]>([])
   const queue = useMemo(() => (taken.length ? waiting.filter((q) => !taken.includes(q.id)) : waiting), [waiting, taken])
   useEffect(() => { if (taken.length && !waiting.some((q) => taken.includes(q.id))) setTaken([]) }, [waiting, taken])
@@ -235,7 +235,10 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const suggested = provider === 'claude' && !d.parts.length && !running && !chat.plan && !plan && !blocked && !queue.length && queueWhy !== 'setup' && !acOpen ? chat.suggestion : undefined
   const sendWith = useSendWith()
   const [sendingNow, runNow] = useBusy<string>()
-  const sendNow = (q: QueuedMessage) => void runNow(q.id, () => attempt('Could not send now', () => sendQueuedNow(chat.id, q)))
+  const sendNow = (q: QueuedMessage) => void runNow(q.id, () => attempt('Could not send now', async () => {
+    setTaken((t) => [...t, q.id])
+    try { await sendQueuedNow(chat.id, q) } catch (e) { setTaken((t) => t.filter((x) => x !== q.id)); throw e }
+  }))
   const [stopping, runStop] = useBusy<'stop'>()
   /**
    * Stop clears the queue (D-030), so the messages it drops go back into the box, in order, after what was typed. All of it happens in the frame of the press (KERNEL-895): the

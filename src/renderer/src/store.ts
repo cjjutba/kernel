@@ -420,14 +420,6 @@ function dropTabs(tabs: UiState['tabs'], gone: (workspaceId: string) => boolean)
   return out
 }
 /** `record` without the keys in `keys`. A record with nothing to drop keeps its identity. */
-/** The queued messages that are not already a row in the chat. A message is a row or a queued message under its id, never both (KERNEL-894), so a row drawn for one leaves the tray with it. */
-function unsent(list: QueuedMessage[], items: ChatItem[] | undefined): QueuedMessage[] {
-  if (!items?.length || !list.length) return list
-  const ids = new Set(items.map((i) => i.id))
-  const waiting = list.filter((q) => !ids.has(q.id))
-  return waiting.length === list.length ? list : waiting
-}
-
 function omit<T>(record: Record<string, T>, keys: string[]): Record<string, T> {
   if (!keys.some((k) => k in record)) return record
   const out = { ...record }
@@ -672,15 +664,12 @@ export const actions = {
      */
     draw: (chatId: string, d: { item?: ChatItem; queue?: QueuedMessage[]; why?: QueueReason | null; running?: boolean }) => setState((s) => {
       const out: Partial<State> = {}
-      const items = d.item ? upsert(s.items[chatId] ?? [], d.item) : s.items[chatId]
-      if (d.item) out.items = { ...s.items, [chatId]: items }
-      const queue = d.queue ?? (d.item ? s.queue[chatId] : undefined)
-      if (queue) {
+      if (d.item) out.items = { ...s.items, [chatId]: upsert(s.items[chatId] ?? [], d.item) }
+      if (d.queue) {
         const queueWhy = { ...s.queueWhy }
-        const waiting = unsent(queue, items)
-        if (!waiting.length || d.why === null) delete queueWhy[chatId]
+        if (!d.queue.length || d.why === null) delete queueWhy[chatId]
         else if (d.why) queueWhy[chatId] = d.why
-        out.queue = { ...s.queue, [chatId]: waiting }
+        out.queue = { ...s.queue, [chatId]: d.queue }
         out.queueWhy = queueWhy
       }
       if (d.running !== undefined && s.running[chatId] !== d.running) { out.running = { ...s.running, [chatId]: d.running }; out.assumed = { ...s.assumed, [chatId]: true } }
@@ -703,10 +692,9 @@ export const actions = {
     /** A `chat.queue` event passes its reason, or null when nothing holds the queue. A list handed back by a call passes none (undefined), so the last reason stays until the next event. An empty queue has none. */
     setQueue: (chatId: string, list: QueuedMessage[], why?: QueueReason | null) => setState((s) => {
       const queueWhy = { ...s.queueWhy }
-      const waiting = unsent(list, s.items[chatId])
-      if (!waiting.length || why === null) delete queueWhy[chatId]
+      if (!list.length || why === null) delete queueWhy[chatId]
       else if (why) queueWhy[chatId] = why
-      return { queue: { ...s.queue, [chatId]: waiting }, queueWhy }
+      return { queue: { ...s.queue, [chatId]: list }, queueWhy }
     }),
     setQueueWhy: (chatId: string, why: QueueReason) => setState((s) => ({ queueWhy: { ...s.queueWhy, [chatId]: why } })),
     setRunMode: (chatId: string, mode: ChatRunMode) => setState((s) => ({ runModes: { ...s.runModes, [chatId]: mode } })),
