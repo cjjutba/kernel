@@ -16,7 +16,7 @@ const root = resolve(import.meta.dirname, '..')
 const built = join(root, 'out/scenes')
 const outDir = join(root, 'site/public/clips')
 const work = join(root, 'out/clips-work')
-const ORIGIN = 'http://scenes.local'
+const ORIGIN = 'http://localhost:4360'
 const SCALE = 2
 const MIME: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' }
 
@@ -311,7 +311,7 @@ const CLIPS: Record<string, Clip> = {
       await d.wait(1200)
       await d.unzoom(1300, 0.4)
       await d.wait(800)
-      await d.click(p.getByText('Issues', { exact: true }).first(), 800)
+      await d.click(p.getByText('Work', { exact: true }).first(), 800)
       await d.wait(900)
       await d.click(p.getByText('Export invoices as PDF', { exact: true }).first(), 800)
       await p.getByRole('heading', { name: 'Export invoices as PDF' }).waitFor()
