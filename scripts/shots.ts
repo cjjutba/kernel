@@ -534,8 +534,32 @@ async function dropWhileReading(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// The model picker's states that take a click: the legacy models folded under their row, the stars and the Favorites tab, and the dimmed provider's tooltip.
+async function openLegacyModels(page: Page) {
+  await page.getByRole('button', { name: /Legacy models/ }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+async function starModels(page: Page) {
+  for (const name of ['Opus 5.5', 'Haiku 5.5']) {
+    const row = page.getByRole('option', { name: new RegExp(name) })
+    await row.hover()
+    await row.locator('xpath=following-sibling::button').click()
+  }
+  await page.getByRole('tab', { name: 'Favorites' }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+async function hoverLockedProvider(page: Page) {
+  await page.getByRole('tab', { name: 'Codex' }).hover()
+  await page.waitForTimeout(900)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   ComposerDragOver: dragOverPane,
+  WorkspaceModelPickerCodex: openLegacyModels,
+  WorkspaceModelPickerFavorites: starModels,
+  WorkspaceModelPickerLocked: hoverLockedProvider,
   ComposerAttaching: dropWhileReading,
   ConfirmOverrule: openOverrule,
   UsageFooterNarrow: narrowWindow,
