@@ -221,6 +221,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.restart': async () => ok,
     'chats.queue': async ({ chatId }) => queue(chatId),
     'chats.queueReason': async () => null,
+    'chats.moveNotice': async ({ chatId }) => f.moveNotices?.[chatId] ?? null,
     'chats.moveChoice': async ({ chatId, choice }) => ({ ...chat(chatId), moveChoice: { choice, at: Date.now() } }),
     // A fixture has no process and reads no policy, so every mode is available and nothing waits for a turn.
     'chats.runMode': async ({ chatId }) => {

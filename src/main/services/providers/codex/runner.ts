@@ -182,6 +182,8 @@ export class CodexRunner implements Runner {
   private planAsked = false
   /** The running turn's first and last model calls, from `thread/tokenUsage/updated`, for the turn's facts (KERNEL-842). */
   private calls: { first?: TokenUsageBreakdown; last?: TokenUsageBreakdown } = {}
+  /** The id of the last turn that completed, so a start answered after its turn ended doesn't leave it as the current turn. */
+  private endedTurn?: string
   /**
    * A compaction under way (`compact`): Codex runs it as a turn of its own, whose id `turn/started` gives. Its end resolves
    * `compact` and isn't one of Kernel's turns (KERNEL-844).
@@ -391,7 +393,8 @@ export class CodexRunner implements Runner {
     try { turnId = await this.startTurn(parts) } finally { current = this.starting === start; if (current) this.starting = undefined }
     // A turn queued while this one's start was answered is the chat's turn now, so this one's id and Stop are stale.
     if (!current) return
-    if (turnId) this.turnId = turnId
+    // The turn's own notifications can be handled before its start is answered here, so one that already ended must not become the current turn again.
+    if (turnId && turnId !== this.endedTurn) this.turnId = turnId
     if (start.stopAsked) await this.interrupt()
   }
 
@@ -531,6 +534,7 @@ export class CodexRunner implements Runner {
   private async turnCompleted(turn: Turn) {
     if (turn.id && this.turnId && turn.id !== this.turnId) return
     this.turnId = undefined
+    this.endedTurn = turn.id
     // Codex clears a request still open when a turn ends, so a card the turn left ends with it.
     this.turnStop.abort()
     const ok = turn.status === 'completed'
