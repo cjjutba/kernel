@@ -1726,19 +1726,19 @@ describe('a teammate a usage limit stopped (KERNEL-777)', () => {
     expect(s.updates[0].rows[0].events[0]).toEqual({ kind: 'limit', text: 'Hit its 5-hour limit, now on Account 2', actionable: false })
   })
 
-  it('wakes the Lead once with the earliest reset when no account has project, and once more when the teammate carries on', async () => {
+  it('wakes the Lead once with the earliest reset when no account has headroom, and once more when the teammate carries on', async () => {
     const { u, s, w1, nc, restart } = await setup()
     u.turnDone(w1, nc, limited, { ...L, switching: {} })
     await wait()
     expect(s.posts).toEqual([])
-    // Kernel read every account and none had project. The earliest reset across them is sooner than this account's.
+    // Kernel read every account and none had headroom. The earliest reset across them is sooner than this account's.
     const earliest = S(Date.now() + 1800_000)
     u.limitStuck('claude', { stuck: 'full', resetsAt: earliest })
     await wait()
     expect(s.posts).toHaveLength(1)
     expect(parts(s.posts[0]).body).toEqual([NOOR, `- Hit its 5-hour limit on Account 3. Every account is at its limit, so it is paused until ${until(earliest)}.`])
     expect(parts(s.posts[0]).todo).toEqual([`- ${PAUSED(earliest)}`])
-    // A second reading that still finds no project says nothing new.
+    // A second reading that still finds no headroom says nothing new.
     u.limitStuck('claude', { stuck: 'full', resetsAt: earliest })
     await wait()
     expect(s.posts).toHaveLength(1)

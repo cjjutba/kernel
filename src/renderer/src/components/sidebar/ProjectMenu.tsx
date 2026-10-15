@@ -12,7 +12,7 @@ const EDGE = 8
 
 /**
  * A project's `...` (SidebarProjectMenu.png). It renders in a portal at a fixed spot, because the projects list scrolls and would
- * clip it. It drops under the row, or opens above it when the window has no project below. The sidebar closes it when the
+ * clip it. It drops under the row, or opens above it when the window has no space below. The sidebar closes it when the
  * list scrolls, since it is placed once.
  */
 export function ProjectMenu({ project, anchorRef }: { project: Project; anchorRef: RefObject<HTMLElement | null> }) {

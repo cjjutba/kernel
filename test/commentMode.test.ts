@@ -48,7 +48,7 @@ describe('popoverPlace', () => {
     expect(popoverPlace({ x: 20, y: 100 }, layer, pop).x).toBe(8)
     expect(popoverPlace({ x: 740, y: 100 }, layer, pop).x).toBe(755 - 380 - 8)
   })
-  it('goes above the pin where there is no project below', () => {
+  it('goes above the pin where there is no space below', () => {
     expect(popoverPlace({ x: 300, y: 480 }, layer, pop).y).toBeLessThan(480)
   })
 })

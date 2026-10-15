@@ -22,7 +22,7 @@ const KEYCHAIN = 'keychain'
 
 /**
  * A rejection Kernel moves a provider off, and how far it got (`Account.moving`, KERNEL-568). `to` is the account it picked
- * and `switched` that the switch went through. A move that waits says why and until when nothing has project, the earliest
+ * and `switched` that the switch went through. A move that waits says why and until when nothing has headroom, the earliest
  * reset across the provider's accounts in seconds, for the Lead (KERNEL-777).
  */
 interface Move { at?: number; state: 'reading' | 'waiting' | 'done'; to?: string; switched?: boolean; why?: 'full' | 'signIn'; until?: number; told?: string }
@@ -54,7 +54,7 @@ export class Account extends Feature {
   /**
    * Rejections Kernel moves a provider off, by `limitKey`, with the reset time that tells one rejection from the next, so each
    * moves it once (KERNEL-568). A reading can put the reset a second off, so times a minute apart count as the same. `reading`
-   * while every account of the provider is read, `waiting` when none had project, which each new reading looks at again, and
+   * while every account of the provider is read, `waiting` when none had headroom, which each new reading looks at again, and
    * `done` once it switched.
    */
   private moving = new Map<string, Move>()
@@ -391,7 +391,7 @@ export class Account extends Feature {
   }
 
   /**
-   * Nothing moves `p` off the limit for now: no account has project, which counts accounts that need a sign-in or wait on a
+   * Nothing moves `p` off the limit for now: no account has headroom, which counts accounts that need a sign-in or wait on a
    * Keychain prompt (`spareFor`), or the switch failed.
    * The Lead hears it once, with the earliest reset across the provider's accounts, for the teammates the limit cut off
    * (KERNEL-777). A later reading that finds project still moves it.
@@ -413,7 +413,7 @@ export class Account extends Feature {
    * What Kernel does about the usage limit that cut off a chat of `provider` running `model` on `account`, undefined for the
    * CLI's own login, for the Lead's Team update (KERNEL-777). A switch is under way while "switch at a limit" is on and the
    * move reads accounts or switches, or once the provider runs on another account. Otherwise the chat waits for the reset:
-   * the earliest across accounts when none has project, else the account's own.
+   * the earliest across accounts when none has headroom, else the account's own.
    */
   limitNews(provider: Provider, account: string | undefined, model?: string): LimitNews {
     const now = Date.now()

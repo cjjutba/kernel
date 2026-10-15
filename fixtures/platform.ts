@@ -764,7 +764,7 @@ export const platformFixtures: Record<string, Fixture> = {
   SetupPermissionsNoAuto: scene(() => ({ ...empty, settings: withRoles({ lead: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }), ui: permissionStep })),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
-  // KERNEL-406: Kai on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has project.
+  // KERNEL-406: Kai on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has headroom.
   WorkspaceProviderLimit: scene(() => ({
     settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
     accounts: claudeAccounts,
@@ -785,7 +785,7 @@ export const platformFixtures: Record<string, Fixture> = {
     usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }],
     ui: open
   })),
-  // KERNEL-569: Work is at 90% of its 5-hour window and Personal has project, so the banner offers the move before the limit. Switching at a limit is off.
+  // KERNEL-569: Work is at 90% of its 5-hour window and Personal has headroom, so the banner offers the move before the limit. Switching at a limit is off.
   WorkspaceProviderNearLimit: scene(() => ({
     accounts: [workClaude, personalClaude],
     usage: [window5('claude', 'cli', 90, next(15, 40)), window5('claude', 'personal', 8, next(17, 10))],

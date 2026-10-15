@@ -769,7 +769,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await k.stop({ budgetMs: 0 })
   })
 
-  it('never moves to an API key account, keeps the projects paused while every other account is at its limit, and moves once one has project', async () => {
+  it('never moves to an API key account, keeps the projects paused while every other account is at its limit, and moves once one has headroom', async () => {
     const { k, ids, project, folder } = await setUp(['Personal'])
     const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; label: string; auth?: 'apiKey'; createdAt: number }[] } }; save: () => Promise<void> }
     p.load().claude.accounts.push({ id: 'key', label: 'Key', auth: 'apiKey', createdAt: 1 })
@@ -806,7 +806,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
     k.account.applyLimits(k.store.meta<RateLimit[]>('limits') ?? [])
     await until(() => moving(k).includes('waiting'))
-    // No account has project: the Lead hears it once, with the reset that comes first across them.
+    // No account has headroom: the Lead hears it once, with the reset that comes first across them.
     const sooner = Math.min(...(k.store.meta<RateLimit[]>('limits') ?? []).filter((l) => l.type === 'five_hour' && l.status === 'rejected').map((l) => l.resetsAt!))
     expect(stuck.mock.calls).toEqual([['claude', { stuck: 'full', resetsAt: sooner }]])
     expect(k.account.limitNews('claude', undefined, 'claude-sonnet-5-5')).toMatchObject({ account: 'Work', stuck: 'full', resetsAt: sooner })
@@ -908,7 +908,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await k.stop({ budgetMs: 0 })
   })
 
-  it("prefers an account that offers the models agents start on, and moves to one that doesn't only when no other has project (KERNEL-616)", async () => {
+  it("prefers an account that offers the models agents start on, and moves to one that doesn't only when no other has headroom (KERNEL-616)", async () => {
     // Every account is on Max, so the Lead stays on Opus 5.5 wherever it runs.
     const plan = process.env.FAKE_PLAN
     process.env.FAKE_PLAN = 'max'
@@ -926,7 +926,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
       await until(() => k.providers.active('claude') === ids.Personal)
       expect(read).toEqual([ids.Side, ids.Personal])
       expect(k.store.notifications().filter((n) => n.id.startsWith('n-models-'))).toEqual([])
-      // Personal hits its limit too, and only Side has project: Kernel moves there and says who can't run. The switch to Personal
+      // Personal hits its limit too, and only Side has headroom: Kernel moves there and says who can't run. The switch to Personal
       // was over 30 minutes ago, so Kernel still switches by itself (KERNEL-844).
       ;(k.account as unknown as { selfSwitched: Map<string, { at: number }> }).selfSwitched.get('claude')!.at -= 31 * 60_000
       sdk.usage[folder('Personal')] = 100
@@ -1249,7 +1249,7 @@ describe('MCP servers added on an account, Keychain prompts and shared organizat
     await k.stop({ budgetMs: 0 })
   })
 
-  it('names the accounts in one organization on each row, and moves at a limit to one of them only once its own windows say it has project', async () => {
+  it('names the accounts in one organization on each row, and moves at a limit to one of them only once its own windows say it has headroom', async () => {
     const { k, claude, h, side, folder, row } = await setUp()
     // The CLI login is a Team seat, and a second seat in the same organization is added.
     await claude.setLogin('cli', { email: 'cj@example.com', plan: 'team', org: 'org-team' })

@@ -118,13 +118,13 @@ export function bannerFor(i: BannerInput): BannerView | null {
   const named = (what: string) => (i.codexInUse ? `${providerName} ${what}` : what)
   // Where the provider can go: the same answer Kernel's own switch at a limit uses (`switchChoices`, KERNEL-618). The other signed-in accounts with no rejected
   // window take over with one click, a subscription before an API key, which a switch starts paying for (KERNEL-524), and the one with the most 5-hour project first
-  // (KERNEL-569). One waiting on a Keychain prompt never is, and one in the active account's organization only when its own windows say it has project.
+  // (KERNEL-569). One waiting on a Keychain prompt never is, and one in the active account's organization only when its own windows say it has headroom.
   const choices = switchChoices(provider, accounts, i.usage, now)
   const subscriptions = choices.project.filter((a) => a.auth !== 'apiKey')
   const alt = choices.project[0]
   const switchAccount = alt ? { provider, accountId: alt.id, label: alt.label } : undefined
   const switchAction = alt ? [{ id: 'switchAccount' as const, label: `Switch to ${alt.label}`, primary: true }] : []
-  // No account has project and one that would is signed out: the banner says so and offers its sign-in, which is how a limit gets past (KERNEL-618, KERNEL-619).
+  // No account has headroom and one that would is signed out: the banner says so and offers its sign-in, which is how a limit gets past (KERNEL-618, KERNEL-619).
   const signedOut = choices.signedOut
   const signIn = signedOut ? { provider, accountId: signedOut.id, label: signedOut.label, cli: signedOut.cli } : undefined
   const signInAction = signedOut ? [{ id: 'signInAccount' as const, label: 'Sign in', primary: true }] : []
@@ -214,7 +214,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
     }
   }
 
-  // The account in use is close to a window's limit and another subscription account has project: the user can move first. A key never
+  // The account in use is close to a window's limit and another subscription account has headroom: the user can move first. A key never
   // is offered, and with Kernel switching at a limit on its own the offer would only nag. Closed per account and window, and a
   // switch from it closes it too, so it comes at most once per window (KERNEL-569).
   const near = nearLimit(usage, now)
@@ -224,7 +224,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
     if (!i.dismissed?.has(key)) return {
       id: 'accountNearLimit', kind: 'limit',
       title: `${current.label} is ${near.utilization === undefined ? 'close to' : `at ${Math.round(near.utilization * 100)}% of`} its ${named(near.type === 'five_hour' ? '5-hour limit' : 'weekly limit')}`,
-      sub: `${roomy.label} has project.`,
+      sub: `${roomy.label} has usage left.`,
       actions: [{ id: 'switchAccount', label: `Switch to ${roomy.label}`, primary: true }],
       blocks: false, switchAccount: { provider, accountId: roomy.id, label: roomy.label }, dismissKey: key
     }

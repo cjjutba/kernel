@@ -126,8 +126,8 @@ export interface TeamEvent {
  * A usage limit that cut a teammate off, as `Account.limitNews` reads it (KERNEL-777). `window` names it as the limit banner
  * does ("5-hour limit"), `model` the model on a limit of that model alone, and `account` the account that ran out, or on
  * `limit.lifted` the one the teammate runs on now. `resetsAt` is in seconds (KERNEL-50), the earliest across accounts when
- * none has project. `switching`: Kernel is moving the provider to another account, `to` once it picked one. `stuck`: nothing
- * carries the teammate on before the reset. `full`: no account has project, and one that is signed out or waits on a Keychain
+ * none has headroom. `switching`: Kernel is moving the provider to another account, `to` once it picked one. `stuck`: nothing
+ * carries the teammate on before the reset. `full`: no account has headroom, and one that is signed out or waits on a Keychain
  * prompt counts as having none. `off`: the switch is off or was undone. `signIn`: the switch failed. `model`: the limit is on
  * its model alone. `carried`: the `limit.lifted` that followed in the same update, by its account (`foldLimits`).
  */
@@ -237,7 +237,7 @@ function pausedTodo(name: string, l?: LimitNews): string {
   const why = l?.stuck === 'full' ? ' because every account is at its limit'
     : l?.stuck === 'model' ? ` because ${l.model ?? 'its model'} is at its limit${l.account ? ` on ${l.account}` : ''}`
     : ` by ${limitName(l)}${l?.account ? ` on ${l.account}` : ''}`
-  // Kernel counts an account that is signed out or waits on a Keychain prompt as one without project, so the user may free one.
+  // Kernel counts an account that is signed out or waits on a Keychain prompt as one without headroom, so the user may free one.
   const signIn = l?.stuck === 'full' || l?.stuck === 'signIn' ? ` If an account is signed out or waits for Keychain access, tell the user to sign in or allow it, and Kernel moves ${name} there.` : ''
   return `${name} is paused${when}${why}.${signIn} Kernel carries ${name} on by itself ${when ? 'then' : 'once the limit resets'}, and any message you sent waits in its chat, so don't send it again.`
 }
@@ -822,7 +822,7 @@ export class LeadUpdates {
   }
 
   /**
-   * Kernel's move of `provider` off a limit waits: no account has project, or the one that does needs a sign-in or Keychain
+   * Kernel's move of `provider` off a limit waits: no account has headroom, or the one that does needs a sign-in or Keychain
    * access, or the switch failed (KERNEL-777). Limits held back while it moved now wake the Lead with the paused line.
    */
   /**

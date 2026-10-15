@@ -35,7 +35,7 @@ export function pageCropRect(anchor: SharedAnchor, at: Spot): Rect {
   return anchor.element?.rect ?? { x: at.x, y: at.y, width: 1, height: 1 }
 }
 
-/** Where the popover goes: below and a little left of its pin, kept inside the layer, and above the pin when there is no project below. */
+/** Where the popover goes: below and a little left of its pin, kept inside the layer, and above the pin when there is no space below. */
 export function popoverPlace(pin: Spot, layer: Size, pop: Size, gap = 28, inset = 8): Spot {
   const left = Math.min(Math.max(pin.x - 64, inset), Math.max(layer.width - pop.width - inset, inset))
   const below = pin.y + gap

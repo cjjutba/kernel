@@ -23,7 +23,7 @@ describe('switchChoices', () => {
     expect(switchChoices('codex', accounts, usage, NOW).project).toEqual([])
   })
 
-  it('counts an account in the same organization as the one in use only when its own windows say it has project', () => {
+  it('counts an account in the same organization as the one in use only when its own windows say it has headroom', () => {
     const accounts = [account('cli', { active: true, sameOrg: ['seat'] }), account('seat', { sameOrg: ['cli'] }), account('other')]
     expect(ids(switchChoices('claude', accounts, [window(undefined, 1)], NOW)).project).toEqual(['other'])
     expect(ids(switchChoices('claude', accounts, [window(undefined, 1), window('seat', 0.1)], NOW)).project).toEqual(['seat', 'other'])
@@ -41,7 +41,7 @@ describe('switchChoices', () => {
   it('names the signed-out account that would have project when none signed in does, for "Personal is signed out. Sign in to switch to it."', () => {
     const accounts = [account('cli', { active: true }), account('personal', { signedIn: false }), account('key', { auth: 'apiKey', signedIn: false })]
     expect(ids(switchChoices('claude', accounts, [window(undefined, 1)], NOW))).toEqual({ project: [], signedOut: 'personal' })
-    // Not when it was at its limit when last read, or when a signed-in account has project.
+    // Not when it was at its limit when last read, or when a signed-in account has headroom.
     expect(switchChoices('claude', accounts, [window(undefined, 1), window('personal', 1)], NOW).signedOut).toBeUndefined()
     expect(ids(switchChoices('claude', [...accounts, account('side')], [window(undefined, 1)], NOW))).toEqual({ project: ['side'], signedOut: undefined })
     // A signed-in API key account is somewhere to go, so the banner offers it instead.

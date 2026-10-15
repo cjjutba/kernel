@@ -58,7 +58,7 @@ export type SwitchAccount = Pick<AccountProfile, 'id' | 'provider' | 'active' | 
  * 5-hour or weekly window, and none waiting for Keychain access: subscriptions first, the most 5-hour project first (a window past its reset has all of it, and one
  * never read goes last), then API key accounts, which Kernel never moves to on its own. Seats in one claude.ai organization
  * can share limits, so an account in the same organization as the one in use counts only when its own windows say so: a
- * 5-hour or weekly window read on it, and none rejected. When none has project, `signedOut` is the signed-out subscription
+ * 5-hour or weekly window read on it, and none rejected. When none has headroom, `signedOut` is the signed-out subscription
  * account that would have project by the same rules, for "Personal is signed out. Sign in to switch to it." `now` is in ms.
  */
 export function switchChoices<A extends SwitchAccount>(provider: Provider, accounts: A[], usage: RateLimit[], now = Date.now()): { project: A[]; signedOut?: A } {

@@ -100,7 +100,7 @@ export interface AccountProfile {
   missingModels?: MissingModel[]
   /**
    * Claude only: the provider's other accounts signed in to the same claude.ai organization, by id (KERNEL-618). Seats in one
-   * Team or Enterprise organization can share limits, so Kernel counts such an account as having project only when its own
+   * Team or Enterprise organization can share limits, so Kernel counts such an account as having headroom only when its own
    * windows say so (`switchChoices`). Settings, Providers says "Same organization as Work". Undefined when it shares none.
    */
   sameOrg?: string[]

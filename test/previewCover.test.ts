@@ -35,7 +35,7 @@ describe('overlayBoxes', () => {
   it('takes the box of each overlay outside the stage', () => {
     expect(scan([probe(box(0, 0, 10, 10)), probe(box(5, 5, 20, 20))])).toEqual([expect.objectContaining(box(0, 0, 10, 10)), expect.objectContaining(box(5, 5, 20, 20))])
   })
-  it("skips what sits in the view's own stage and what takes up no project", () => {
+  it("skips what sits in the view's own stage and what takes up no space", () => {
     expect(scan([probe(box(0, 0, 10, 10), { inStage: true }), probe(box(0, 0, 10, 10), { empty: true })])).toEqual([])
   })
   it('skips what is hidden by display, visibility or opacity', () => {

@@ -37,7 +37,7 @@ const TYPE_MS = 500
 
 /**
  * The one dropdown (KERNEL-680; native selects are banned, see test/noNativeSelect.test.ts). A button shows the value; its list is a
- * `.menu` listbox under it, or above it when there is no project below. Arrow keys, Home and End move and skip disabled rows, typing jumps
+ * `.menu` listbox under it, or above it when there is no space below. Arrow keys, Home and End move and skip disabled rows, typing jumps
  * to a row, Enter or Space picks, Escape closes and returns to the button, Tab closes. The list opens on the row that is picked.
  */
 export function Select({ value, onChange, options, label, labelledBy, placeholder, disabled, prefix, leading, actions = [], align = 'left', variant = 'field', className, open: openProp, onOpenChange }: SelectProps) {

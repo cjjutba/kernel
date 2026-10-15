@@ -1275,7 +1275,7 @@ export class Sessions {
     this.carryOn()
     // A lower limit in Settings, Models holds queues that waited for nothing a moment ago.
     this.pushReasons()
-    // A higher one frees project for Team updates that waited only for a slot (KERNEL-651).
+    // A higher one frees space for Team updates that waited only for a slot (KERNEL-651).
     this.d.onFreed?.()
   }
 

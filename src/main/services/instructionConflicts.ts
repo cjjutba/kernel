@@ -92,7 +92,7 @@ function sentence(line: string, from: number, to: number) {
  * No negation in the sentence before the match or in the rest of its clause, and no condition in the clause before it.
  * The rest of the clause runs past a colon, which gives the verdict ("Commit to main: never"), and a question takes its
  * answer with it ("Commit to main? Never."). "Only" after it makes the rule an exception ("work in main only if the user
- * asks"), which Kernel has project for, and a habit the repo dropped ("we used to stack PRs, but no longer") is no rule.
+ * asks"), which Kernel allows for, and a habit the repo dropped ("we used to stack PRs, but no longer") is no rule.
  */
 function stands(line: string, from: number, to: number): boolean {
   const { start, end } = sentence(line, from, to)

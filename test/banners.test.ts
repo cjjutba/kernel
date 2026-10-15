@@ -50,7 +50,7 @@ describe('workspace banners', () => {
     expect(bannerFor(input({ chat: { ...chat, context: 92 } }))).toMatchObject({ id: 'context', actions: [{ id: 'newChat' }, { id: 'compact', primary: true }] })
   })
 
-  it('shows no banner for a long chat while the window has project, and the next one still shows (KERNEL-488)', () => {
+  it('shows no banner for a long chat while the window has headroom, and the next one still shows (KERNEL-488)', () => {
     const used = (tokens: number, max = 1_000_000, context = Math.round((tokens / max) * 100)) => ({ ...chat, context, contextUsage: { used: tokens, max, rows: [] } })
     // 160k and 336k in a 1M window are far under 90%, and the context popover already shows how much is free.
     expect(bannerFor(input({ chat: used(160_000) }))).toBeNull()
