@@ -443,7 +443,6 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .diff-line[data-mark='-'] .src { color: var(--ink-3); }
 .diff-line[data-mark='hunk'] .src { color: var(--muted); }
 .diff-file { display: flex; justify-content: space-between; margin: 8px 0 4px; padding: 6px 16px; border-block: 1px solid var(--line); color: var(--ink-2); }
-.caret-down { display: inline-flex; transform: rotate(90deg); }
 
 /* terminals */
 .term { flex: 1; min-height: 0; display: flex; background: var(--code-bg); padding: 12px 0 8px 18px; }

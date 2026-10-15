@@ -27,8 +27,3 @@ export function NumberField({ label, value, unit, min = 1, disabled, onSave }: {
     </div>
   )
 }
-
-/** Fixed pills that can't be edited, such as the paths that always come to you. `mono` sets a file name in mono. */
-export function Pills({ label, items }: { label: string; items: { text: string; mono?: boolean }[] }) {
-  return <ul className="rv-pills" aria-label={label}>{items.map((i) => <li key={i.text} data-mono={i.mono || undefined}>{i.text}</li>)}</ul>
-}

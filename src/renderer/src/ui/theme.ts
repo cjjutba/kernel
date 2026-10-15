@@ -34,16 +34,3 @@ export function applyStartupAppearance() {
   d.pointer = String(a.pointerCursors)
   d.reduceMotion = String(a.reduceMotion)
 }
-
-/**
- * Put the resolved theme on <html data-theme>. With 'system' it follows the OS until called again.
- * Returns a function that stops following. Settings (KERNEL-25) calls this when `appearance.theme` changes.
- */
-export function applyTheme(pref: ThemePref): () => void {
-  const mq = query()
-  const set = () => { document.documentElement.dataset.theme = resolveTheme(pref, mq?.matches ?? true) }
-  set()
-  if (pref !== 'system' || !mq) return () => undefined
-  mq.addEventListener('change', set)
-  return () => mq.removeEventListener('change', set)
-}

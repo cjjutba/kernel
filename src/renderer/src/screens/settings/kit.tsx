@@ -328,59 +328,6 @@ export function Keys({ keys }: { keys: string[] }) {
   return <span className="set-keys">{keys.map((k, i) => <Kbd key={i}>{k}</Kbd>)}</span>
 }
 
-/** A list with one entry per line (Always ask before, Never allow). Saved when the field loses focus. */
-export function LinesField({ label, value, onSave }: { label: string; value: string[]; onSave: (lines: string[]) => SaveResult }) {
-  const [text, setText] = useState(value.join('\n'))
-  const ref = useRef<HTMLTextAreaElement>(null)
-  const note = useSaveNote()
-  useEffect(() => { setText(value.join('\n')) }, [value.join('\n')])
-  useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px` } }, [text])
-  const save = useBlurSave({
-    text, setText, saved: value.join('\n'),
-    commit: (t) => { const next = t.split('\n').map((l) => l.trim()).filter(Boolean); if (next.join('\n') !== value.join('\n')) void note.track(onSave(next)) }
-  })
-  return (
-    <div className="set-field">
-      <textarea ref={ref} className="set-lines" aria-label={label} rows={Math.max(2, value.length)} spellCheck={false} value={text} onChange={(e) => { note.reset(); setText(e.target.value) }} {...save} />
-      <SaveNote state={note.state} />
-    </div>
-  )
-}
-
-/** A short list on one line, comma separated (Protected branches). */
-export function ListField({ label, value, onSave }: { label: string; value: string[]; onSave: (items: string[]) => SaveResult }) {
-  const [text, setText] = useState(value.join(', '))
-  const note = useSaveNote()
-  useEffect(() => { setText(value.join(', ')) }, [value.join(',')])
-  const save = useBlurSave({
-    text, setText, saved: value.join(', '),
-    commit: (t) => { const next = t.split(',').map((l) => l.trim()).filter(Boolean); if (next.join(',') !== value.join(',')) void note.track(onSave(next)) }
-  })
-  return (
-    <span className="set-field-inline">
-      <SaveNote state={note.state} />
-      <input className="set-inline" aria-label={label} spellCheck={false} value={text} onChange={(e) => { note.reset(); setText(e.target.value) }} {...save}
-        onKeyDown={(e) => { save.onKeyDown(e); if (e.key === 'Enter') e.currentTarget.blur() }} />
-    </span>
-  )
-}
-
-/** Free text, kept as typed (blank lines and all): instructions and scripts. Saved when the field loses focus. */
-export function TextField({ label, value, onSave, placeholder }: { label: string; value: string; onSave: (text: string) => SaveResult; placeholder?: string }) {
-  const [text, setText] = useState(value)
-  const ref = useRef<HTMLTextAreaElement>(null)
-  const note = useSaveNote()
-  useEffect(() => { setText(value) }, [value])
-  useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px` } }, [text])
-  const save = useBlurSave({ text, setText, saved: value, commit: (t) => void note.track(onSave(t)) })
-  return (
-    <div className="set-field">
-      <textarea ref={ref} className="set-lines" aria-label={label} placeholder={placeholder} rows={Math.max(1, text.split('\n').length)} spellCheck={false} value={text} onChange={(e) => { note.reset(); setText(e.target.value) }} {...save} />
-      <SaveNote state={note.state} />
-    </div>
-  )
-}
-
 /** A page for a repo's settings when there is no repo to read them from yet. */
 export function NoRoom() {
   return (
