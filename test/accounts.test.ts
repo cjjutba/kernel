@@ -919,7 +919,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
       expect(lead.length).toBeGreaterThan(0)
       const read: string[] = []
       k.providers.readModels = async (_p, id) => { read.push(id); return id === ids.Side ? ['claude-sonnet-5-5', 'claude-haiku-4-5-20251001'] : ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5-20251001'] }
-      // Side has the most project, but no Opus.
+      // Side has the most headroom, but no Opus.
       sdk.usage = { '': 100, [folder('Side')]: 10, [folder('Personal')]: 50 }
       await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
       reject(k)
@@ -1832,7 +1832,7 @@ describe('One login, one row (KERNEL-701)', () => {
     await runLogin('side@example.com', 'org-team')
     const at = Math.round(Date.now() / 1000) + 3600
     const window = (accountId: string | undefined, status: 'rejected' | 'allowed', utilization: number, provider?: 'codex'): RateLimit => ({ type: 'five_hour', status, utilization, resetsAt: at, ...(accountId ? { accountId } : {}), ...(provider ? { provider } : {}) } as RateLimit)
-    // The twin has the most project by its own windows, and is still never picked.
+    // The twin has the most headroom by its own windows, and is still never picked.
     const limits = [window(undefined, 'rejected', 1), window(side.id, 'allowed', 0.1), window(other.id, 'allowed', 0.5)]
     expect(k.providers.spareAccount('claude', limits)).toBe(other.id)
     // On the twin itself, the CLI's own login isn't picked either.

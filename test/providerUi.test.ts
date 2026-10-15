@@ -73,7 +73,7 @@ describe('the account the banners offer (KERNEL-569)', () => {
   describe('the limit banner', () => {
     const hit = [claudeLimit]
 
-    it('offers the subscription account with the most 5-hour project, not the first in the list', () => {
+    it('offers the subscription account with the most 5-hour headroom, not the first in the list', () => {
       const usage = [...hit, five('personal', 0.6), five('spare', 0.1)]
       expect(bannerFor(input({ usage, accounts: [work, personal, spare] }))?.switchAccount).toEqual({ provider: 'claude', accountId: 'spare', label: 'Spare' })
       expect(bannerFor(input({ usage, accounts: [work, spare, personal] }))?.actions.at(-1)).toEqual({ id: 'switchAccount', label: 'Switch to Spare', primary: true })
@@ -127,7 +127,7 @@ describe('the account the banners offer (KERNEL-569)', () => {
       expect(offered({ usage: [five(undefined, 0.99, { resetsAt: now / 1000 - 1 })] })).toBe(false)
     })
 
-    it('offers the account with the most 5-hour project, and never an API key', () => {
+    it('offers the account with the most 5-hour headroom, and never an API key', () => {
       expect(offer({ accounts: [work, personal, spare], usage: [...usage, five('spare', 0.02)] })?.switchAccount?.accountId).toBe('spare')
       expect(offered({ accounts: [work, key] })).toBe(false)
       expect(offer({ accounts: [work, key, personal] })?.switchAccount?.accountId).toBe('personal')

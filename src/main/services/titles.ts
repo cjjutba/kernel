@@ -41,7 +41,7 @@ export function titleText(items: ChatItem[], max = 8000): string {
   const cap = Math.min(1500, Math.floor(max / 4))
   const head = lines[first].slice(0, cap)
   const tail: string[] = []
-  // Project for the "..." that marks the lines left out, and its separator.
+  // Space for the "..." that marks the lines left out, and its separator.
   let project = max - head.length - 5
   for (let n = lines.length - 1; n > first; n--) {
     const line = lines[n].slice(0, cap)

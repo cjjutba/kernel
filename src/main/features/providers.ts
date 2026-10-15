@@ -967,8 +967,8 @@ export class Providers extends Feature {
 
   /**
    * The account a switch at a limit moves `provider` to (KERNEL-616): `spareAccount`'s pick, unless it doesn't offer a model
-   * agents on the provider start on and another account with project does. Each account's models are read once per login. An
-   * account Kernel can't read counts as offering them. When none with project offers them all, the pick stands.
+   * agents on the provider start on and another account with headroom does. Each account's models are read once per login. An
+   * account Kernel can't read counts as offering them. When none with headroom offers them all, the pick stands.
    */
   async spareFor(provider: Provider, limits: RateLimit[], now = Date.now()): Promise<string | undefined> {
     const ids = this.spares(provider, limits, now)
@@ -992,7 +992,7 @@ export class Providers extends Feature {
     const accounts = [{ id: CLI_ACCOUNT, signedIn: file.cli?.signedIn !== false, login: file.cli }, ...file.accounts.filter((a) => a.auth !== 'apiKey').map((a) => ({ id: a.id, signedIn: this.storedSignedIn(provider, a), login: a }))]
       .filter((a) => a.id === active || !sameLogin(inUse, a.login))
       .map(({ login: _, ...a }) => ({ ...a, provider, active: a.id === active, auth: 'subscription' as const, sameOrg: this.sameOrg(provider, a.id), keychainWait: this.keychain.has(a.id) }))
-    return switchChoices(provider, accounts, limits, now).project.map((a) => a.id)
+    return switchChoices(provider, accounts, limits, now).headroom.map((a) => a.id)
   }
 
   /**

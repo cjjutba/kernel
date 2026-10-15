@@ -312,7 +312,7 @@ export class Account extends Feature {
   }
 
   /**
-   * Moves `p` off the rejection on `from` to the account `spareFor` picks: the most project, among the accounts that offer the
+   * Moves `p` off the rejection on `from` to the account `spareFor` picks: the most headroom, among the accounts that offer the
    * models its agents start on when one does (KERNEL-616). Reading those models can take a moment, so the move reads as
    * `reading` meanwhile, and nothing happens when the rejection went, the user moved it or turned the switch off.
    */
@@ -394,7 +394,7 @@ export class Account extends Feature {
    * Nothing moves `p` off the limit for now: no account has headroom, which counts accounts that need a sign-in or wait on a
    * Keychain prompt (`spareFor`), or the switch failed.
    * The Lead hears it once, with the earliest reset across the provider's accounts, for the teammates the limit cut off
-   * (KERNEL-777). A later reading that finds project still moves it.
+   * (KERNEL-777). A later reading that finds headroom still moves it.
    */
   private moveWaits(p: Provider, move: Move, limits: RateLimit[], why: 'full' | 'signIn') {
     const mine = limits.filter((l) => limitProvider(l) === p)

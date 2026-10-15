@@ -59,7 +59,7 @@ const fableOf = (usage: RateLimit[], a: AccountProfile, now: number): number | u
 
 /**
  * Claude Code, then Codex. A provider whose accounts haven't loaded is left out. The active account comes first, then the other signed-in
- * subscriptions in the order Kernel's own switch would pick them (`switchChoices`, most 5-hour project first), with any it wouldn't pick after them.
+ * subscriptions in the order Kernel's own switch would pick them (`switchChoices`, most 5-hour headroom first), with any it wouldn't pick after them.
  * An account waiting for Keychain access is left out, since a turn on it would wait too (KERNEL-618), and so is a key that isn't in use, which has no number.
  */
 export function footerGroups(accounts: AccountProfile[], usage: RateLimit[], now: number): FooterGroup[] {
@@ -77,7 +77,7 @@ export function footerGroups(accounts: AccountProfile[], usage: RateLimit[], now
       const shares = a.sameOrg?.flatMap((id) => mine.find((o) => o.id === id)?.label ?? [])
       return { id: a.id, name: a.label, active: a.active, billed, ...(limit ? { limited: true, ...(limit.until ? { limitedUntil: limit.until } : {}) } : {}), ...(missing?.length ? { missing } : {}), ...(shares?.length ? { shares } : {}), ...(five === undefined ? {} : { five }), ...(week === undefined ? {} : { week }), ...(fable === undefined ? {} : { fable }) }
     }
-    const order = switchChoices(p.id, mine, usage, now).project.map((a) => a.id)
+    const order = switchChoices(p.id, mine, usage, now).headroom.map((a) => a.id)
     const rank = (a: AccountProfile) => { const i = order.indexOf(a.id); return i < 0 ? order.length : i }
     const others = mine.filter((a) => !a.active && a.signedIn && !a.keychainWait && a.auth !== 'apiKey').sort((a, b) => rank(a) - rank(b))
     const rest = others.map(chip)
