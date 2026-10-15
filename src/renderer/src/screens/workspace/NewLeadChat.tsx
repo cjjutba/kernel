@@ -14,7 +14,7 @@ import { startChat } from '../new-workspace/start'
 import { takenFindings } from '../new-workspace/taken'
 import { issueTracker } from './issueKey'
 import { onComposerFocusAsked, takeComposerFocus } from './composer/bus'
-import { BranchPicker, readBranches, useBaseBranch, useBranches } from './composer/BranchPicker'
+import { readBranches, useBaseBranch, useBranches } from './composer/BranchPicker'
 import { useDraft } from './composer/draft'
 import { ComposerInput } from './composer/ComposerInput'
 import { ComposerShell } from './composer/ComposerShell'
@@ -24,8 +24,8 @@ import { cyclePatch, cycleRun, leadDefaultLine, leadPlaceholder, modePatch, next
 import { useLeadBox } from './composer/modelPrefs'
 import type { PlusPanel } from './composer/PlusMenu'
 import { sendsOn, useSendWith } from './composer/sendKey'
-import { WhereLocalBranch, WhereRow } from './composer/WhereRow'
-import { ModePicker, RoomPicker } from './composer/WherePickers'
+import { RoomPicker } from './composer/WherePickers'
+import { useModelKeys } from './composer/useModelKeys'
 import { newChatLeadMode } from '@shared/leadMode'
 import { useRoomSettings } from '../settings/useSettings'
 import { stripRemote } from '../settings/remote'
@@ -51,8 +51,8 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
   const draftKey = newChatDraftOf(roomId)
   // Model, effort and plan mode are the Lead's until picked here, and a pick stays with the room's draft (KERNEL-544).
   const { model, effort, plan, mode, fallback, pickModel, pickEffort, savePick } = useLeadBox(draftKey, lead, picks && { model: picks.model, effort: picks.effort, plan: picks.plan })
-  const [menu, setMenu] = useState<'model' | 'effort' | 'branch' | 'mode' | 'leadMode' | 'room' | 'place' | PlusPanel>(null)
-  const plusPanel: PlusPanel = menu === 'plus' || menu === 'linkIssue' || menu === 'linkPr' || menu === 'linkWorkspaces' ? menu : null
+  const [menu, setMenu] = useState<'model' | 'effort' | 'mode' | 'room' | PlusPanel>(null)
+  const plusPanel: PlusPanel = menu === 'plus' || menu === 'linkIssue' || menu === 'linkPr' || menu === 'linkWorkspaces' || menu === 'runIn' || menu === 'branch' ? menu : null
   // The rooms the title's menu offers: the active ones, and a hidden room only while it is the one on show.
   const allRooms = useStore((s) => s.rooms)
   const rooms = allRooms.filter((r) => !r.archived && (!r.hidden || r.id === roomId))
@@ -99,6 +99,8 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
   const appMode = useStore((s) => s.settings?.permissions.mode)
   const shown = shownMode(plan, undefined, mode ?? roomMode ?? appMode ?? 'default')
   const cycle = useRef<CycleRun | null>(null)
+  // ^⌘1 to 9 and ⌘⇧/ work here as in a chat, with the picker closed. The open picker takes them itself.
+  useModelKeys({ provider, model, effort, fallback, onModel: pickModel, onEffort: pickEffort, enabled: !busy })
 
   // The sidebar's Lead row, ⌘⇧L, + and ⌘T ask for the caret in the workspace's composer. This box is it while no chat is open.
   const focusAsked = () => { if (takeComposerFocus({ id: '', workspaceId: focusIn ?? leadNewKey(routeRoom) })) d.focus() }
@@ -235,21 +237,13 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
         input={<ComposerInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(leadMode, name)} onKeyDown={onKey} />}
         box={{ 'data-plan': plan ? 'true' : undefined, 'data-drop': d.over || undefined }}
         foot={<ComposerToolbar disabled={busy}
-          lead={{ mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), open: menu === 'leadMode', onOpen: (o) => setMenu(o ? 'leadMode' : null), onPick: (m) => { setMenu(null); pickLeadMode(m); d.focus() } }}
+          lead={{ mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), onPick: (m) => { pickLeadMode(m); d.focus() } }}
           model={{ label: modelLabelOf(model, codexModels), provider: providerOf(model), open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider: providerOf(model), grouped: codexInUse, model, effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: pickEffort } }}
           effort={{ value: effort, open: menu === 'effort', onOpen: (o) => setMenu(o ? 'effort' : null), onPick: pickEffort }}
           mode={{ provider: providerOf(model), availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
-          plus={{ panel: plusPanel, onPanel: setMenu, roomId, onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
-          onAttach={() => filePick.current?.click()}
+          plus={{ panel: plusPanel, onPanel: setMenu, roomId, disabled: busy || !usable, where: { place, picked, branch: stripRemote(base.target, base.remote), local: stripRemote(base.fallback, base.remote), onPlace: pickPlace, onBranch: (ref) => savePicks(draftKey, { baseRef: ref || undefined }) }, onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
           send={{ label: 'Send', ready: hasDraft && usable, busy: busy || d.pending > 0, busyLabel: d.pending > 0 ? 'Attaching' : checking ? 'Checking' : 'Sending', onSend: start }} />}
         hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
-        where={<WhereRow mode={place}
-          modePicker={<ModePicker mode={place} open={menu === 'place'} disabled={busy} onToggle={() => setMenu(menu === 'place' ? null : 'place')} onClose={() => setMenu((m) => (m === 'place' ? null : m))} onPick={pickPlace} />}
-          branch={!usable ? null : place === 'current'
-            ? <WhereLocalBranch branch={stripRemote(base.fallback, base.remote)} />
-            : <BranchPicker roomId={roomId} picked={picked} open={menu === 'branch'} disabled={busy} onToggle={() => setMenu(menu === 'branch' ? null : 'branch')} onClose={() => setMenu((m) => (m === 'branch' ? null : m))}
-              onPick={(ref) => savePicks(draftKey, { baseRef: ref || undefined })} />
-          } />}
       />
     </div>
   )

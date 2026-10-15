@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { AgentDef, BuiltinCommand, Chat, ChatPart, Effort, FileEntry, ModelId, PermissionMode, QueuedMessage, Skill, Workspace } from '@shared/types'
-import { MODELS, type LeadMode, type Provider } from '@shared/types'
+import type { LeadMode } from '@shared/types'
 import { chatProvider } from '@shared/providers'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
@@ -23,8 +23,8 @@ import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
 import { ComposerToolbar } from './ComposerToolbar'
 import { SWITCH_TOAST, SWITCH_TOAST_MS, lastRanOn, noteOpened, noteSent, warnsOnSwitch } from './modelSwitch'
-import { effortFor } from '@shared/effort'
-import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMemory } from './modelPrefs'
+import { rememberEffort, useDefaultEffort } from './modelPrefs'
+import { useModelKeys } from './useModelKeys'
 import { cyclePatch, cycleRun, leadDefaultLine, leadPlaceholder, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
 import { ComposerShell } from './ComposerShell'
 import type { PlusPanel } from './PlusMenu'
@@ -43,7 +43,7 @@ const EMPTY_WS: Workspace[] = []
  */
 let appliedPrefill = 0
 
-type MenuName = 'model' | 'effort' | 'context' | 'mode' | 'leadMode' | PlusPanel
+type MenuName = 'model' | 'effort' | 'context' | 'mode' | PlusPanel
 
 /**
  * The message box under the transcript. The message is a list of parts: typed text and chips (pasted text, images,
@@ -51,7 +51,7 @@ type MenuName = 'model' | 'effort' | 'context' | 'mode' | 'leadMode' | PlusPanel
  * permission mode, which the dropdown after the model button shows and picks (KERNEL-456), Backspace takes a chip like a
  * character. While the agent works, a sent message waits in the queue above the box.
  */
-export function Composer({ chat, agent, blocked, running, prefill, banner, where }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode; /** The where row under the box (KERNEL-781). */ where?: ReactNode }) {
+export function Composer({ chat, agent, blocked, running, prefill, banner }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode; }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
   const queue = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
   const queueWhy = useStore((s) => s.queueWhy[chat.id])
@@ -83,7 +83,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
   if (wasHolding !== holding) { setWasHolding(holding); if (!holding) { setSwap((x) => (x === 'a' ? 'b' : 'a')); setSwapFrom(lastShown.current) } }
   // Fixtures open the model picker and the mode menu the same way, through the app's menu, for a shot (WorkspaceModelPicker, KERNEL-406).
   // In a chat with Kernel the mode menu is Hand off and Build here (KERNEL-780).
-  const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : getState().ui.menu === 'model' ? 'model' : getState().ui.menu === 'effort' ? 'effort' : getState().ui.menu === 'mode' ? (ws && isLeadChatWorkspace(ws) ? 'leadMode' : 'mode') : null)
+  const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : getState().ui.menu === 'model' ? 'model' : getState().ui.menu === 'effort' ? 'effort' : getState().ui.menu === 'mode' ? 'mode' : null)
   const [skills, setSkills] = useState<Skill[]>([])
   const [commands, setCommands] = useState<BuiltinCommand[]>([])
   const [files, setFiles] = useState<FileEntry[]>([])
@@ -98,7 +98,6 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
   const roomLeadMode = useRoomSettings(withKernel ? ws.roomId : undefined)?.agents?.leadMode
   const appLeadMode = useStore((s) => s.settings?.team.leadMode)
   const pickLeadMode = (mode: LeadMode) => {
-    setMenu(null)
     d.focus()
     if (!ws || mode === leadMode) return
     void attempt('Could not switch', async () => {
@@ -235,7 +234,6 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
   const providerModels = useProviderModels(provider)
   const efforts = effortsOf(chat.model, providerModels)
   const setEffort = (effort: Effort) => { rememberEffort(chat.model, effort); void configure({ effort }) }
-  const memory = useEffortMemory()
   const fallback = useDefaultEffort(agent?.effort)
   // Claude's guess at the next message (KERNEL-530) stands in for the placeholder of an empty box, and Tab or → takes it. Only a key does: Enter on an empty box sends nothing.
   const suggested = provider === 'claude' && !d.parts.length && !running && !chat.plan && !plan && !holding && !blocked && !queue.length && queueWhy !== 'setup' && !acOpen ? chat.suggestion : undefined
@@ -277,8 +275,9 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
   const placeholder = blocked ? 'Paused until this is resolved' : plan || holding ? 'Enter your plan adjustments here' : running || queueWhy === 'setup' ? 'Add a follow up' : suggested || (withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`)
   useEffect(() => { lastShown.current = { placeholder, shown } })
 
-  // ^⌘1 to 4 pick a model (at the effort it last ran at) and ⌘⇧/ cycles the effort, with the picker open or not.
-  // The open picker handles them itself and marks the event handled. ⌘L puts the caret in the box. ⌘⇧L is the Lead chat (App.tsx).
+  // ^⌘1 to 9 pick the Nth current model of the chat's provider and ⌘⇧/ cycles the effort, with the picker open or not (useModelKeys).
+  useModelKeys({ provider, model: chat.model, effort: chat.effort, fallback, onModel: pickModel, onEffort: setEffort })
+  // ⌘L puts the caret in the box. ⌘⇧L is the Lead chat (App.tsx).
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.defaultPrevented || getState().ui.modal) return
@@ -286,14 +285,6 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
         if (blocked) return
         e.preventDefault()
         d.focus()
-      } else if (e.ctrlKey && e.metaKey && /^[1-4]$/.test(e.key) && provider === 'claude') {
-        const m = MODELS[Number(e.key) - 1]
-        if (!m) return
-        e.preventDefault()
-        pickModel(m.id, m.id === chat.model ? chat.effort : effortFor(m.id, memory, fallback))
-      } else if (e.metaKey && e.shiftKey && (e.key === '/' || e.key === '?')) {
-        e.preventDefault()
-        setEffort(nextEffort(chat.effort, efforts))
       }
     }
     window.addEventListener('keydown', onKey)
@@ -375,17 +366,15 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
       top={<PlanStrip strip={strip} hasText={hasDraft} onSendChanges={() => void send()} onBack={d.focus} />}
       input={<ComposerInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} data-from={swapFrom && swapFrom.placeholder !== placeholder ? swapFrom.placeholder : undefined} onInput={() => setDismissed('')} onKeyDown={onKey} />}
       foot={<ComposerToolbar
-        lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), open: menu === 'leadMode', onOpen: (o) => setMenu(o ? 'leadMode' : null), onPick: pickLeadMode } : undefined}
+        lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), onPick: pickLeadMode } : undefined}
         agent={!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
         model={{ label: model, provider, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: setEffort } }}
         effort={{ value: chat.effort, open: menu === 'effort', onOpen: (o) => setMenu(o ? 'effort' : null), onPick: setEffort }}
         mode={{ provider, availability, shown, from: swapFrom?.shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
         context={chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
-        plus={{ panel: menu === 'model' || menu === 'effort' || menu === 'context' || menu === 'mode' || menu === 'leadMode' ? null : menu, onPanel: setMenu, roomId, workspaceId: chat.workspaceId, onMode: () => setMenu('mode'), onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
-        onAttach={() => filePick.current?.click()}
+        plus={{ panel: menu === 'model' || menu === 'effort' || menu === 'context' || menu === 'mode' || menu === 'runIn' || menu === 'branch' ? null : menu, onPanel: setMenu, roomId, workspaceId: chat.workspaceId, onMode: () => setMenu('mode'), onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
         send={{ label: plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send', ready: hasDraft && !blocked && !d.pending, disabled: blocked, busy: d.pending > 0, busyLabel: 'Attaching', stop: running && !hasDraft, onSend: () => void send(), onStop: () => void call('chats.interrupt', { chatId: chat.id }) }} />}
       hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
-      where={where}
     />
   )
 }

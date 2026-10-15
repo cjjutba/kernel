@@ -23,9 +23,16 @@
 .cmp-foot .cmp-model:hover, .cmp-foot .cmp-model[aria-expanded='true'] { color: var(--ink); }
 .cmp-foot .cmp-model-name { color: var(--ink-2); flex-shrink: 0; }
 .cmp-foot .cmp-model-name > span { white-space: nowrap; }
-/* Hand off and Build here keep their pill. */
-.cmp-foot .cmp-lead { padding: 0 9px 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-pill); color: var(--ink-2); }
-.cmp-foot .cmp-lead:hover { background: var(--surface-3); }
+/* Hand off | Build here: two sides in one hairline pill, the picked side filled with a surface and drawn in ink, the other muted. */
+.cmp-switch { display: inline-flex; flex-shrink: 0; align-items: center; gap: 2px; height: 28px; padding: 2px; border: 1px solid var(--line-3); border-radius: var(--r-pill); }
+.cmp-switch-side { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px 0 8px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.cmp-switch-side:hover { color: var(--ink); }
+.cmp-switch-side[aria-pressed='true'] { background: var(--surface-3); color: var(--ink); }
+/* The + button, and the chip beside it when New chat's Run in or Branch differs from the default. */
+.cmp-plus { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+.cmp-where-chip { max-width: 180px; font-size: 12.5px; }
+.cmp-where-chip > svg:first-child { color: var(--muted); }
+.cmp-foot .menu-note { min-width: 0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .eff-pop { width: 232px; background: var(--surface-2); }
 .eff-row { height: 32px; gap: 10px; padding: 0 10px; font-size: 13px; }
 .eff-row + .eff-row { margin-top: 1px; }
@@ -41,9 +48,6 @@
 .cmp-model[aria-expanded='true'] { background: var(--card-line); }
 /* New branch from main, in New chat: drawn like the mode button, its branch icon muted, and its name gives way first. */
 .cmp-branch-anchor { position: relative; display: inline-flex; min-width: 0; }
-.cmp-branch { min-width: 0; max-width: 280px; }
-.cmp-branch > svg:first-child { color: var(--muted); }
-.cmp-branch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The mode is a second button drawn like the model's (ComposerModes.png, KERNEL-573): its icon at 14px in muted before the name, then the same chevron. Plan keeps its blue, as the box does. */
 .cmp-mode > svg:first-child { color: var(--muted); }
 .cmp-mode[data-mode='plan'], .cmp-mode[data-mode='plan'] > svg { color: var(--plan); }
@@ -215,9 +219,9 @@
 /* A narrow chat column: the composer pulls in, and labels give way to icons. The permission name goes first, then the Hand off label, then the carets. The model name stays whole (D-080).
    The agent's role, then its whole pill, give way too. The widths are the mock's composer widths plus the 48px of padding. */
 @container chat (max-width: 720px) { .cmp-foot .cmp-mode .cmp-mode-name { display: none; } .cmp-foot .cmp-mode { padding: 0 6px; } }
-@container chat (max-width: 620px) { .cmp-lead-name { display: none; } .cmp-foot .cmp-lead { padding: 0 8px; } }
+@container chat (max-width: 620px) { .cmp-switch-name { display: none; } .cmp-switch-side { padding: 0 8px; } .cmp-where-text { max-width: 84px; } }
 @container chat (max-width: 520px) { .composer-wrap { padding: 4px 12px 12px; } .cmp-role { display: none; } }
-@container chat (max-width: 470px) { .cmp-foot { gap: 4px; } .cmp-foot .cmp-model { padding: 0 5px; gap: 5px; } .cmp-run .cmp-mode > svg:last-child, .cmp-lead > svg:last-child { display: none; } }
+@container chat (max-width: 470px) { .cmp-foot { gap: 4px; } .cmp-foot .cmp-model { padding: 0 5px; gap: 5px; } .cmp-run .cmp-mode > svg:last-child { display: none; } }
 @container chat (max-width: 420px) { .cmp-agent { display: none; } }
 
 /* Plan mode is a blue box with no chip or label (D-093, KERNEL-274): a `--plan` border, a soft glow rising from the bottom
@@ -276,8 +280,8 @@
 .cmp-ghost > svg:first-child { color: var(--muted); }
 .cmp-ghost > svg:last-child { margin: 0 -3px 0 -1.5px; color: var(--muted); }
 .cmp-ghost[data-mode='plan'], .cmp-ghost[data-mode='plan'] > svg { color: var(--plan); }
-.cmp[data-swap='a'] .cmp-input[data-empty]::before, .cmp[data-swap='a'] .cmp-mode:not(.cmp-lead) > :not(.cmp-ghost) { animation: cmp-swap-in-a 160ms ease-out; }
-.cmp[data-swap='b'] .cmp-input[data-empty]::before, .cmp[data-swap='b'] .cmp-mode:not(.cmp-lead) > :not(.cmp-ghost) { animation: cmp-swap-in-b 160ms ease-out; }
+.cmp[data-swap='a'] .cmp-input[data-empty]::before, .cmp[data-swap='a'] .cmp-mode > :not(.cmp-ghost) { animation: cmp-swap-in-a 160ms ease-out; }
+.cmp[data-swap='b'] .cmp-input[data-empty]::before, .cmp[data-swap='b'] .cmp-mode > :not(.cmp-ghost) { animation: cmp-swap-in-b 160ms ease-out; }
 .cmp[data-swap='a'] .cmp-input[data-empty][data-from]::after, .cmp[data-swap='a'] .cmp-ghost { animation: cmp-swap-out-a 160ms ease-out; }
 .cmp[data-swap='b'] .cmp-input[data-empty][data-from]::after, .cmp[data-swap='b'] .cmp-ghost { animation: cmp-swap-out-b 160ms ease-out; }
 @keyframes cmp-swap-in-a { from { opacity: 0; } to { opacity: 1; } }
@@ -333,15 +337,9 @@
 .pick-group { display: flex; align-items: center; gap: 6px; margin: 0; padding: 10px 8px 4px; font-size: 12px; color: var(--muted); }
 .pick-list > div:first-child .pick-group { padding-top: 4px; }
 
-/* The where row: under the box and outside its border, in line with the box's left edge. Every item is 28px tall, as the branch picker's button is. */
-.cmp-where { display: flex; align-items: center; gap: 14px; min-width: 0; height: 28px; margin-top: -2px; padding: 0 12px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
-.cmp-where-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 28px; }
-.cmp-where-item > svg { flex-shrink: 0; }
-.cmp-where-branch { font-size: 12px; }
-.cmp-where .cmp-model { margin-left: -8px; color: var(--muted); font-size: 12.5px; }
-
-/* The where row's menus (KERNEL-786). They open upward from their own button and may cover the box (KERNEL-805). */
+/* New chat's Run in and Branch menus (KERNEL-786). They open upward from the + button, lined up with its right edge, and may cover the box (KERNEL-805). */
 .where-pop { left: -8px; bottom: calc(100% + 8px); display: flex; flex-direction: column; max-height: min(420px, calc(100vh - 220px)); padding: 4px; background: var(--surface-2); z-index: 60; }
+.where-pop[data-align='end'] { left: auto; right: 0; }
 .where-pop > * { flex-shrink: 0; }
 /* New chat's room menu hangs centred under the title, the one where-row menu above the box. */
 .where-pop[data-drop='down'] { left: 50%; bottom: auto; top: calc(100% + 10px); transform: translateX(-50%); font-size: 13px; font-weight: 400; letter-spacing: normal; line-height: normal; text-align: left; }
@@ -362,10 +360,6 @@
 .where-open { position: absolute; top: 50%; right: 36px; display: none; align-items: center; gap: 8px; height: 26px; padding: 0 8px; transform: translateY(-50%); border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink); font-size: 12.5px; }
 .where-open .kbd { border: 0; background: transparent; }
 .where-branch:hover .where-open, .where-branch:focus-within .where-open { display: inline-flex; }
-/* Local: the branch is flat text. Its tooltip opens to the right in the row, never above it where the box's toolbar is. */
-.cmp-where-local { position: relative; padding: 0 0 0 4px; font-size: 12px; outline: 0; }
-.where-tip { position: absolute; top: 50%; left: calc(100% + 8px); display: none; transform: translateY(-50%); padding: 4px 8px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-2); color: var(--ink-2); font: 12px/16px var(--font); white-space: nowrap; pointer-events: none; z-index: 60; }
-.cmp-where-local:hover .where-tip, .cmp-where-local:focus-visible .where-tip { display: block; }
 /* An issue or pull request chip: its key in mono, its title in the normal font. */
 .cmp-chip[data-kind='issue'] .chip-meta, .cmp-chip[data-kind='pr'] .chip-meta { font: 12px var(--font); }
 
