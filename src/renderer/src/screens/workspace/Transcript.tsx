@@ -44,8 +44,11 @@ export const followsSend = (item: ChatItem | undefined) => item?.kind === 'user'
 /** The numbers a scroll position is read from, so the rule below runs without a layout engine. */
 export interface ScrollView { scrollTop: number; scrollHeight: number; clientHeight: number }
 
-/** The gap between the top of the view and the message a send anchors there (KERNEL-803). */
-export const ANCHOR_GAP = 16
+/** The gap between the top of the view and the message a send anchors there (KERNEL-803). It is the height of the fade over the top edge, so the message sits right below it. */
+export const ANCHOR_GAP = 24
+
+/** Whether rows are scrolled off the top, which is when the top edge fades. At the very top nothing is above, so nothing fades. */
+export const scrolledOff = (scrollTop: number) => scrollTop > 0
 
 /** Frames the anchored message must sit at its gap before the aim ends, and the most frames it keeps aiming (KERNEL-825). */
 const AIM_CALM = 12
@@ -879,9 +882,18 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const letGo = useRef<ReturnType<typeof lapse> | undefined>(undefined)
   letGo.current ??= lapse(HAND_MS, () => { byHand.current = false })
   useEffect(() => () => letGo.current?.cancel(), [])
+  // The top fade shows only with rows above. The attribute is set on the element and only when it flips, so scrolling never renders the transcript.
+  const fade = () => {
+    const el = scroller.current
+    if (!el) return
+    const on = scrolledOff(el.scrollTop)
+    if (el.hasAttribute('data-scrolled') !== on) el.toggleAttribute('data-scrolled', on)
+  }
+  useLayoutEffect(fade)
   const onScroll = () => {
     const el = scroller.current
     if (!el) return
+    fade()
     if (byHand.current) letGo.current?.()
     const view = flat(el)
     const next = followsAfterScroll(pinned.current, view, seen.current, byHand.current)
@@ -1053,6 +1065,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
       const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
       if (!el || !mark || aimOver(anchored.current, id, byHand.current, pinned.current)) { aimLive.current = false; release(); return }
       padReply()
+      fade()
       const goal = anchorGoal(el.scrollTop, mark.getBoundingClientRect().top, el.getBoundingClientRect().top)
       if (goal !== aimed) {
         aimed = goal
@@ -1073,7 +1086,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
     if (!mark) return
     const goal = anchorGoal(el.scrollTop, mark.getBoundingClientRect().top, el.getBoundingClientRect().top)
-    if (Math.abs(goal - el.scrollTop) >= 1) el.scrollTop = goal
+    if (Math.abs(goal - el.scrollTop) >= 1) { el.scrollTop = goal; fade() }
   }
   // A send puts the message at the top of the view and lets the reply fill in under it (KERNEL-803). Nothing follows the reply from here; the Scroll to bottom button shows once it passes the bottom edge.
   const anchorSend = (id: string) => {
