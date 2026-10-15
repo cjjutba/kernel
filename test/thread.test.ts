@@ -422,3 +422,75 @@ describe('workspace views', () => {
     })
   })
 })
+
+describe('a fold shows its steps while the turn works and folds them when it ends', () => {
+  const group = (blocks: ReturnType<typeof buildThread>, n = 0) => {
+    const g = blocks.filter((b) => b.kind === 'group')[n]
+    if (!g || g.kind !== 'group') throw new Error('expected a group')
+    return g
+  }
+  const ok = (durationMs: number): ChatItem => ({ kind: 'result', id: `rs${++n}`, ts: at + durationMs, durationMs, ok: true })
+  const stopped = (afterMs: number): ChatItem => ({ kind: 'interrupted', id: `in${++n}`, ts: at + afterMs })
+  const approval: ChatItem = { kind: 'approval', id: 'ap1', ts: at, approvalId: 'a1' }
+
+  it('marks a running turn live and a finished one not, with the turn start for the clock', () => {
+    const running = group(buildThread([ask(), read('a'), bash('x', 'running')], true))
+    expect(running.turn).toMatchObject({ live: true, timer: true, startedAt: at })
+    const finished = group(buildThread([ask(), read('a'), bash('x'), say('Done.'), ok(134_000)], false))
+    expect(finished.turn).toMatchObject({ live: false, timer: true, durationMs: 134_000, short: false })
+  })
+
+  it('puts the duration on the first fold only, across stretches split by an approval', () => {
+    const blocks = buildThread([ask(), read('a'), bash('x'), approval, bash('y'), bash('z'), say('Done.'), ok(90_000)], false)
+    expect(group(blocks, 0).turn.timer).toBe(true)
+    expect(group(blocks, 1).turn.timer).toBe(false)
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'group', 'reply'])
+    const live = buildThread([ask(), read('a'), bash('x'), approval, bash('y', 'running')], true)
+    expect(group(live, 0).turn).toMatchObject({ live: true, timer: true })
+    expect(group(live, 1).turn).toMatchObject({ live: true, timer: false })
+  })
+
+  it('flags a turn under 3 seconds, or of one step, as short', () => {
+    expect(group(buildThread([ask(), read('a'), bash('x'), ok(2900)], false)).turn.short).toBe(true)
+    expect(group(buildThread([ask(), read('a'), bash('x'), ok(3000)], false)).turn.short).toBe(false)
+    expect(group(buildThread([ask(), bash('x'), ok(60_000)], false)).turn.short).toBe(true)
+  })
+
+  it('keeps a failed turn expanded, and folds a stopped or cut-off one', () => {
+    const failed: ChatItem = { kind: 'result', id: 'rf', ts: at, durationMs: 5000, ok: false, error: 'Boom' }
+    expect(buildThread([ask(), read('a'), bash('x', 'failed'), failed], false).map((b) => b.kind)).toEqual(['item', 'item', 'item', 'error'])
+    const stop = buildThread([ask(), read('a'), bash('x'), stopped(12_000)], false)
+    expect(group(stop).turn).toMatchObject({ live: false, durationMs: 12_000 })
+    const cut = buildThread([ask(), read('a'), bash('x')], false)
+    expect(group(cut).turn).toMatchObject({ live: false, durationMs: undefined })
+  })
+
+  it('keeps a recovered failure in the finished fold as a red tail', () => {
+    const g = group(buildThread([ask(), read('a'), bash('x', 'failed'), bash('y'), say('Fixed.'), ok(20_000)], false))
+    expect(g.summary.bad).toBe('1 failed')
+    expect(g.turn.live).toBe(false)
+  })
+
+  it('moves the streaming reply from the list to the reply block, never both', () => {
+    const reply = say('All done.')
+    const running = buildThread([ask(), read('a'), bash('x'), reply], true)
+    expect(running.map((b) => b.kind)).toEqual(['item', 'group'])
+    expect(group(running).items).toContain(reply)
+    const ended = buildThread([ask(), read('a'), bash('x'), reply, ok(30_000)], false)
+    expect(ended.map((b) => b.kind)).toEqual(['item', 'group', 'reply'])
+    expect(group(ended).items).not.toContain(reply)
+    expect(ended.filter((b) => b.kind === 'reply' && b.item === reply)).toHaveLength(1)
+  })
+
+  it('leaves a turn waiting on an approval open', () => {
+    const waiting = buildThread([ask(), read('a'), bash('x'), approval], true)
+    expect(waiting.map((b) => b.kind)).toEqual(['item', 'group', 'item'])
+    expect(group(waiting).turn.live).toBe(true)
+  })
+
+  it('reads a running hidden tool as Working', () => {
+    const hidden: ChatItem = { kind: 'tool', id: `h${++n}`, ts: at, toolUseId: 'h', name: 'TodoWrite', label: '', detail: '', status: 'running' }
+    const g = group(buildThread([ask(), hidden], true))
+    expect(g.summary.text).toBe('Working')
+  })
+})

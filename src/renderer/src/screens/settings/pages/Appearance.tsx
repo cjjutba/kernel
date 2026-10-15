@@ -1,10 +1,12 @@
-import type { AppSettings } from '@shared/types'
+import type { AppSettings, ToolCalls } from '@shared/types'
 import { SegmentedControl, Toggle } from '../../../ui'
+import { actions, useStore } from '../../../store'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 import './personal.css'
 
 type Appearance = AppSettings['appearance']
+const TOOL_CALLS: { value: ToolCalls; label: string }[] = [{ value: 'auto', label: 'Show while working, fold when done' }, { value: 'closed', label: 'Always folded' }, { value: 'open', label: 'Always show' }]
 const THEMES: { value: Appearance['theme']; label: string }[] = [{ value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }, { value: 'system', label: 'System' }]
 
 /** One drawing of the app in a theme. It carries its own `data-theme`, so it keeps that theme whatever the window shows. */
@@ -20,6 +22,7 @@ function Sketch({ theme }: { theme: 'dark' | 'light' }) {
 /** Settings > Appearance (SettingsPage.png, page appearance): three theme cards, text and layout, accessibility (KERNEL-680). Changes apply at once through appearance.ts. */
 export function Appearance({ s }: { s: AppSettings }) {
   const a = s.appearance
+  const toolCalls = useStore((st) => st.ui.workspace.toolCalls ?? 'auto')
   const set = (patch: Partial<Appearance>) => void patchSettings({ appearance: patch })
   const pick = (i: number, step: number) => {
     const next = THEMES[(i + step + THEMES.length) % THEMES.length]
@@ -44,6 +47,9 @@ export function Appearance({ s }: { s: AppSettings }) {
       <Section title="Text and layout">
         <Row id="font-size" label="Font size"><SegmentedControl label="Font size" value={a.fontSize} onChange={(v) => set({ fontSize: v as Appearance['fontSize'] })} options={[{ value: 'small', label: 'Small' }, { value: 'default', label: 'Default' }, { value: 'large', label: 'Large' }]} /></Row>
         <Row id="density" label="Density"><SegmentedControl label="Density" value={a.density} onChange={(v) => set({ density: v as Appearance['density'] })} options={[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]} /></Row>
+      </Section>
+      <Section title="Chat">
+        <Row id="tool-calls" label="Tool calls" desc="How a turn's steps show in a chat."><SegmentedControl label="Tool calls" value={toolCalls} onChange={(v) => actions.ui.setToolCalls(v as ToolCalls)} options={TOOL_CALLS} /></Row>
       </Section>
       <Section title="Accessibility">
         <Row id="reduce-motion" label="Reduce motion"><Toggle label="Reduce motion" checked={a.reduceMotion} onChange={(v) => set({ reduceMotion: v })} /></Row>

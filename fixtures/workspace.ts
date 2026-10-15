@@ -256,6 +256,32 @@ const runningItems = (): ChatItem[] => {
   ]
 }
 
+/** Ivy's turn after its tests ran: the same steps, a reply and a result that took 2m 14s (WorkspaceFoldDone). */
+const finishedFoldItems = (): ChatItem[] => {
+  const items = runningItems()
+  const last = items[items.length - 1]
+  const now = Date.now()
+  return [
+    ...items.slice(0, -1),
+    last.kind === 'tool' ? { ...last, status: 'done', durationMs: 4100 } : last,
+    { kind: 'text', id: 'rx2', ts: now - 8000, text: 'All three invoice types now have snapshot tests with frozen dates.' },
+    { kind: 'result', id: 'rres', ts: now - 5000, durationMs: 134_000, ok: true }
+  ]
+}
+
+/** A turn 20 steps in (WorkspaceFoldWorkingLong): reads, edits and checks, with the last command in flight. */
+const longRunningItems = (): ChatItem[] => {
+  const now = Date.now()
+  const steps: ChatItem[] = Array.from({ length: 19 }, (_, i) => i % 3 === 0
+    ? tool(`lr${i}`, `Read file ${i + 1}`, `src/pdf/part${i + 1}.ts`, { name: 'Read', ts: now - (260 - i * 10) * 1000, input: { file_path: `src/pdf/part${i + 1}.ts` } })
+    : tool(`lr${i}`, `Check step ${i + 1}`, `pnpm vitest run part${i + 1}`, { ts: now - (260 - i * 10) * 1000, input: { command: `pnpm vitest run part${i + 1}` } }))
+  return [
+    { kind: 'user', id: 'lru1', ts: now - 270_000, parts: [{ type: 'text', text: 'T-15c: snapshot tests for three invoice types. Use stable fixture dates.' }] },
+    ...steps,
+    tool('lr19', 'Run the full suite', 'pnpm test', { ts: now - 20_000, status: 'running', durationMs: undefined, input: { command: 'pnpm test' } })
+  ]
+}
+
 /** Ivy's turn with a long shell command in flight (WorkspaceRunningLongCommand). */
 const runningLongCommandItems = (): ChatItem[] => {
   const command = "printf -- 'type: internal. A test of shared MCP sign-ins no longer leaking between rooms and the chats that open them' > .changes/unreleased/shared-mcp-sign-ins.md && git add -A && git commit -m 'test(mcp): shared sign-ins stay inside their room'"
@@ -2251,6 +2277,44 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { afterMs: 500, events: [{ type: 'chat.item', chatId: ids.tableChat, item: tool('rt5', 'Lint the tests', 'pnpm lint tests', { status: 'done', durationMs: 900, input: { command: 'pnpm lint tests' } }) }, { type: 'chat.item', chatId: ids.tableChat, item: tool('rt6', 'Typecheck', 'pnpm typecheck', { status: 'running', durationMs: undefined, input: { command: 'pnpm typecheck' } }) }] }
     ]
   })), motion: { action: { click: 'Queue message' }, ms: 900, area: '.ws-main' } },
+  /** A running turn with its fold open and the live header: "Working · 2m 14s · ..." with every step listed, the newest at the bottom. */
+  WorkspaceFoldWorking: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
+    items: { [ids.tableChat]: runningItems() },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
+  })),
+  /** A long running turn: the fold lists its last 8 steps, with "12 earlier steps" at the top. */
+  WorkspaceFoldWorkingLong: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
+    items: { [ids.tableChat]: longRunningItems() },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
+  })),
+  /** The same turn finished: one folded line, "Worked for 2m 14s · ...", and the reply right under it. */
+  WorkspaceFoldDone: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
+    items: { [ids.tableChat]: finishedFoldItems() },
+    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
+  })),
+  /** A turn ending: Queue message steps it from running to done, and the open fold closes to its "Worked for" line with the reply under it. */
+  WorkspaceFoldEnding: { ...scene((f) => ({
+    ...withDraft({
+      workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+      chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
+      items: { [ids.tableChat]: runningItems() },
+      push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+      ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
+    }, 'Keep going.'),
+    afterSend: [
+      { afterMs: 300, events: [{ type: 'chat.item', chatId: ids.tableChat, item: tool('rt4', 'Run the new tests', 'pnpm vitest run tests/invoice-pdf.spec.ts', { status: 'done', durationMs: 4100, input: { command: 'pnpm vitest run tests/invoice-pdf.spec.ts' } }) }] },
+      { afterMs: 700, events: [{ type: 'chat.item', chatId: ids.tableChat, item: { kind: 'text', id: 'rx2', ts: Date.now(), text: 'All three invoice types now have snapshot tests with frozen dates.' } }] },
+      { afterMs: 1100, events: [{ type: 'chat.item', chatId: ids.tableChat, item: { kind: 'result', id: 'rres', ts: Date.now(), durationMs: 134_000, ok: true } }, { type: 'chat.running', chatId: ids.tableChat, running: false }] }
+    ]
+  })), motion: { action: { click: 'Queue message' }, ms: 1900, area: '.ws-main' } },
   /** A long command in flight: the step stays one row and the clock sits on its own row under it (KERNEL-823). */
   WorkspaceRunningLongCommand: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
