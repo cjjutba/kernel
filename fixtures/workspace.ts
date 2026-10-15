@@ -2583,6 +2583,45 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ] },
     ui: open
   })),
+  // UX audit states (docs/audits/ux-chat-workspace.md). An existing chat whose items have not loaded yet: the answer to chats.items never comes.
+  AuditItemsLoading: scene(() => ({ items: { [ids.tableChat]: tableItems }, hold: ['chats.items'], ui: open })),
+  // A command that printed 200 lines, with the tool calls open.
+  AuditLongOutput: scene(() => ({
+    items: { [ids.tableChat]: [
+      userMsg('lo0', 'Run the whole suite and show me what it prints.'),
+      tool('lo-t1', 'Run unit tests', 'pnpm vitest run --reporter=verbose', { durationMs: 41_000, input: { command: 'pnpm vitest run --reporter=verbose' }, output: Array.from({ length: 200 }, (_, i) => ` PASS  tests/invoices-${i + 1}.spec.ts > renders row ${i + 1} with a very long description that keeps going past the edge of the transcript column`).join('\n') }),
+      { kind: 'result', id: 'lo-res', ts: at(10, 30), durationMs: 44_000, ok: true }
+    ] },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
+  })),
+  // One message with ten images, whose data loads late in a real run.
+  AuditTenImages: scene(() => ({
+    items: { [ids.tableChat]: [
+      { kind: 'user', id: 'ti0', ts: at(10, 27), parts: [{ type: 'text', text: 'These are the ten screens that still look wrong.' }, ...Array.from({ length: 10 }, (_, i) => ({ type: 'image' as const, name: i ? `image-${i + 1}.png` : 'image.png', dataUrl: imageAfter, width: 640, height: 400 }))] },
+      { kind: 'text', id: 'ti1', ts: at(10, 28), text: 'I looked at all ten. Seven share the same header spacing bug, the other three are separate.' }
+    ] },
+    ui: open
+  })),
+  // The same chat as WorkspaceScrolledUp, then a click on Scroll to bottom (scripts/shots.ts scrolls it up first).
+  AuditScrollToBottomMotion: { ...scene(() => ({ items: { [ids.tableChat]: longChat }, ui: open })), motion: { action: { click: 'Scroll to bottom' }, ms: 1000, area: '.ws-main' } },
+  // Answering a question: the first option is picked by scripts/shots.ts, the answer is not sent.
+  AuditQuestionPicked: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    userMsg('qa1', 'Build T-15b from the approved plan.', true),
+    ...folded('qa', 6, 0),
+    { kind: 'result', id: 'qa-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+  ], {
+    approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
+  })),
+  /** The answer sent as motion: the option is ticked first, then Send is pressed. The call is answered by the fixture, so the card folds the way a real answer does. */
+  AuditQuestionAnswerMotion: { ...scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    userMsg('qm1', 'Build T-15b from the approved plan.', true),
+    ...folded('qm', 6, 0),
+    { kind: 'result', id: 'qm-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+  ], {
+    approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
+  })), motion: { action: { press: ['Enter'] }, ms: 1000, area: '.ws-main' } },
+  /** A jump from the chat rail as motion: the list is opened from the keyboard on the chat's end, Home picks the first message and Enter jumps to it. */
+  AuditRailJumpMotion: { ...railScene(), motion: { action: { press: ['Home', 'Enter'] }, ms: 1400, area: '.ws-main' } },
   // Kernel's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
   WorkspaceLead: scene((f) => leadWaiting(f)),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'kernel-lead' })),
