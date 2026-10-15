@@ -646,6 +646,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   AuditQuestionPicked: async (page) => { await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click(); await page.mouse.move(0, 0) },
   AuditQuestionAnswerMotion: async (page) => { await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click({ force: true }); await page.locator('.tcard').getByRole('button', { name: 'Send', exact: true }).focus() },
   AuditRailJumpMotion: async (page) => { await page.getByRole('button', { name: 'Jump to message' }).focus() },
+  AuditRailJumpSendMotion: async (page) => { await page.getByRole('button', { name: 'Jump to message' }).focus() },
+  AuditGroupCollapseMotion: async (page) => { await page.locator('.group-btn').first().focus() },
   WorkspacePlanApproveDraft: askApprove,
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
@@ -770,7 +772,10 @@ async function stepTo(page: Page, t: number): Promise<boolean> {
 
 async function runMotionAction(page: Page, action: MotionAction) {
   if ('click' in action) await page.getByRole('button', { name: action.click, exact: true }).click()
-  else for (const key of action.press) await page.keyboard.press(key)
+  else for (const key of action.press) {
+    if (key.startsWith('click:')) await page.getByRole('button', { name: key.slice(6), exact: true }).click()
+    else await page.keyboard.press(key)
+  }
 }
 
 // The contact sheet is a page of its own in a hidden window of the same app: the frames in a grid, each with its number and time.

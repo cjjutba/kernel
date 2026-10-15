@@ -213,9 +213,9 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .group-collapse > .group-list { min-height: 0; }
 .group-collapse[data-open='false'] { grid-template-rows: 0fr; }
 .group-collapse[data-open='false'] > .group-list { overflow: hidden; }
-.group-collapse[data-animate] { transition: grid-template-rows 180ms ease; }
-.group-collapse[data-animate][data-open='true'] { animation: group-open 180ms ease; }
-.group-collapse[data-animate][data-open='true'] > .group-list { animation: group-clip 180ms ease; }
+.group-collapse[data-animate] { transition: grid-template-rows var(--dur-glide) var(--ease-out); }
+.group-collapse[data-animate][data-open='true'] { animation: group-open var(--dur-glide) var(--ease-out); }
+.group-collapse[data-animate][data-open='true'] > .group-list { animation: group-clip var(--dur-glide) var(--ease-out); }
 @keyframes group-open { from { grid-template-rows: 0fr; } to { grid-template-rows: 1fr; } }
 @keyframes group-clip { from, to { overflow: hidden; } }
 .group-earlier { align-self: flex-start; height: 26px; margin: 4px 0 0 21px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
