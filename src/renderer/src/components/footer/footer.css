@@ -21,7 +21,7 @@
 .ft-sep { color: var(--faint); }
 .ft-num:first-child .ft-sep { display: none; }
 .ft-helpbox { position: relative; display: inline-flex; margin-left: 4px; }
-.ft-help { flex-shrink: 0; }
+.ft-help, .ft-history { flex-shrink: 0; }
 .ft-refresh { margin-left: 4px; flex-shrink: 0; }
 .ft-wl { color: var(--muted); }
 .ft-bar { display: inline-flex; }
