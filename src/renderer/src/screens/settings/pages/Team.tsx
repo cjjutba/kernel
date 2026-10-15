@@ -13,6 +13,8 @@ import { STARTER_TEAMMATES } from '../../projects/draft'
 import { NoProject, Row, ProjectPage, projectValue, Section, SettingsLink, useProjectPage } from '../kit'
 import { patchProjectSettings } from '../useSettings'
 import { agentGroup, cleanDescription, shownRole } from './agentRows'
+import { TeamPermissions } from './TeamPermissions'
+import { TeamSkills } from './TeamSkills'
 
 const NO_AGENTS: AgentDef[] = []
 
@@ -38,7 +40,7 @@ function rowDesc(a: AgentDef) {
 
 /**
  * Settings > a project > Agents (MorePage projectAgents, KERNEL-680): who leads and reviews, the project's agent files with a takes-tasks switch on each,
- * how many workspaces the Lead keeps open, and Retired. Edit opens the agent's editor (KERNEL-397, KERNEL-641). A change to roles or switches
+ * how many workspaces the Lead keeps open, and Retired. Permissions, Skills and MCP servers follow them (KERNEL-914). Edit opens the agent's editor (KERNEL-397, KERNEL-641). A change to roles or switches
  * goes to `[team]` in the shared settings.toml, and the open-workspaces cap to the personal file (KERNEL-493). Your own and plugin agents are
  * listed on Settings, Agents, not here.
  */
@@ -208,6 +210,8 @@ export function Team({ projectId, s }: { projectId?: string; s: AppSettings }) {
           </Row>
         </Section>
       )}
+      <TeamPermissions projectId={projectId} />
+      <TeamSkills projectId={projectId} rs={rs} />
       {!!retired.length && (
         <Section title="Retired" count={retired.length} collapsible>
           {retired.map((a) => (

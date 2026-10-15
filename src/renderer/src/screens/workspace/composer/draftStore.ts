@@ -82,6 +82,9 @@ function load() {
   } catch { /* nothing restored */ }
 }
 
+/** An attached file is kept by its path and size: whatever the window held of it is not written, so a draft with a large file stays small. */
+const byPath = (p: ChatPart): ChatPart => (p.type === 'file' && p.src ? { type: 'file', name: p.name, src: p.src, ...(p.size !== undefined ? { size: p.size } : {}) } : p)
+
 /** Writes the drafts that can be written now. Image chips hold a whole screenshot and are never written. A draft with picks and no parts is still written. */
 function flush() {
   if (timer) clearTimeout(timer)
@@ -92,7 +95,7 @@ function flush() {
   for (const [chatId, d] of saved) {
     const parts = d.parts.filter((p) => p.type !== 'image')
     if (!lasting(chatId, d.workspaceId) || (!parts.length && !d.picks)) continue
-    const draft: Draft = { workspaceId: d.workspaceId, parts, ...(d.picks ? { picks: d.picks } : {}) }
+    const draft: Draft = { workspaceId: d.workspaceId, parts: parts.map(byPath), ...(d.picks ? { picks: d.picks } : {}) }
     if (JSON.stringify(draft).length > MAX_DRAFT_BYTES) continue
     drafts[chatId] = draft
   }

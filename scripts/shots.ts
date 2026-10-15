@@ -491,6 +491,11 @@ async function hoverRow(page: Page, row: string) {
   await page.waitForTimeout(300)
 }
 
+async function hoverFileChip(page: Page) {
+  await page.locator('.cmp-chip[data-tip]').first().hover()
+  await page.waitForTimeout(800)
+}
+
 // WorkspaceHistoryButtonsNarrow is the sidebar at its 200px minimum, where Hide sidebar, Back and Forward have the least project (KERNEL-643).
 async function narrowSidebar(page: Page) {
   const handle = page.getByRole('separator', { name: 'Resize sidebar' })
@@ -583,6 +588,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceModelPickerEffort: openEffortFlyout,
   WorkspaceModelPickerLocked: hoverLockedProvider,
   ComposerAttaching: dropWhileReading,
+  ComposerFileTip: hoverFileChip,
   ConfirmOverrule: openOverrule,
   UsageFooterNarrow: narrowWindow,
   AuditSidebarWide: async (page) => { const h = page.getByRole('separator', { name: 'Resize sidebar' }); await h.focus(); await page.keyboard.press('End'); await h.blur(); await page.waitForTimeout(300) },
@@ -686,6 +692,9 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsPRsSaved: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSavedLight: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsClamped: (page) => leaveSizeLimit(page, '999999'),
+  SettingsProjectScriptsRuns: (page) => scrollToSection(page, 'Archive script'),
+  SettingsProjectAgents: (page) => scrollToSection(page, 'Permissions'),
+  SettingsRunScriptAdd: async (page) => { await page.getByRole('button', { name: 'Add', exact: true }).click(); await page.getByRole('dialog', { name: 'Add run script' }).waitFor(); await page.getByRole('textbox', { name: 'Name' }).fill('run'); await page.waitForTimeout(300) },
   SettingsProjectPrsSaved: async (page) => { await page.getByRole('switch', { name: 'UX review' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsAccountsMoves: (page) => scrollToSection(page, 'Chats and accounts'),
   SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),

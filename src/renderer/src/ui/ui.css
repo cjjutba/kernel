@@ -68,7 +68,7 @@
 .tooltip-kbd { margin-left: 8px; font: 11.5px var(--mono); color: var(--muted); }
 /* With a hint: the text is a mono line (a branch, which can be long) and the hint a muted line under it (HeaderBranchTooltip). */
 .tooltip[data-hint] { display: flex; flex-direction: column; gap: 2px; width: max-content; max-width: min(560px, calc(100vw - 12px)); padding: 6px 9px; overflow-wrap: anywhere; font: 11.5px/16px var(--mono); color: var(--ink-2); }
-.tooltip-hint { font: 11.5px/16px var(--font); color: var(--muted); }
+.tooltip-hint { font: 11.5px/16px var(--font); color: var(--muted); white-space: pre-line; }
 
 /* modal */
 .confirm-body { display: flex; flex-direction: column; gap: 10px; padding: 20px 20px 16px; }
@@ -172,3 +172,13 @@
 .devui .toast-stack { position: static; }
 
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } .toggle span { transition: none; } .toast-slot, .toast-slot > .toast { animation: none !important; transition: none !important; } .toast-slot[data-leaving] { visibility: hidden; } }
+
+/* CodeLines: a script field with a line-number gutter (KERNEL-914) */
+.code-lines { display: flex; width: 100%; min-width: 0; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--code-bg); overflow: hidden; }
+.code-lines:focus-within { border-color: var(--ink-3); }
+.code-lines[data-invalid='true'] { border-color: var(--ink); }
+.code-lines[data-disabled='true'] { opacity: 0.6; }
+.code-gutter { flex: 0 0 auto; min-width: 40px; box-sizing: border-box; padding: 8px 10px 8px 12px; border-right: 1px solid var(--line-2); overflow: hidden; font: 12.5px/20px var(--mono); color: var(--muted); text-align: right; user-select: none; }
+.code-gutter span { display: block; height: 20px; }
+.code-text { flex: 1 1 auto; min-width: 0; box-sizing: border-box; margin: 0; padding: 8px 12px; border: 0; background: transparent; color: var(--ink); font: 12.5px/20px var(--mono); white-space: pre; overflow: auto; resize: none; outline: none; user-select: text; tab-size: 2; }
+.code-text::placeholder { color: var(--muted); }
