@@ -108,7 +108,7 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
   it("lists Claude's models with their efforts, the current ones first and the older ones marked legacy", async () => {
     const { k } = await kernel()
     const models = await k.handlers()['models.list']({ provider: 'claude' })
-    expect(models.filter((m) => !m.legacy).map((m) => m.id)).toEqual(['claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5-20251001'])
+    expect(models.filter((m) => !m.legacy).map((m) => m.id)).toEqual(['claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'])
     expect(models.slice(0, 4).every((m) => !m.legacy)).toBe(true)
     expect(models.find((m) => m.id === 'claude-opus-4-8')).toMatchObject({ label: 'Opus 4.8', legacy: true })
     expect(models[0]).toMatchObject({ provider: 'claude', label: 'Fable 5.1', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'high' })

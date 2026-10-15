@@ -9,7 +9,7 @@ import type { Turn } from './providers/codex/protocol/v2/Turn'
 import type { TurnStartParams } from './providers/codex/protocol/v2/TurnStartParams'
 
 /** The model that names chats. Small and fast: a name is a few words (KERNEL-202). */
-export const TITLE_MODEL = 'claude-haiku-4-5-20251001'
+export const TITLE_MODEL = 'claude-haiku-5-5'
 
 const PROMPT = [
   'You name chats in a coding app. Read the conversation and reply with a name for it and nothing else.',
