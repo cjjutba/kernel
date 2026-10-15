@@ -28,7 +28,7 @@ export type DocPage = {
   editUrl: string
 }
 
-export const docHref = (slug: string) => (slug === 'introduction' ? '/docs' : `/docs/${slug}`)
+export const docHref = (slug: string) => `/docs/${slug}`
 
 /** Every slug in sidebar order. */
 export const DOC_SLUGS = DOCS_NAV.flatMap((s) => s.pages)
@@ -78,7 +78,9 @@ function render(md: string): { html: string; headings: DocHeading[] } {
       },
       code({ text, lang }: Tokens.Code) {
         const label = lang ? `<span class="doc-code-lang">${escape(lang)}</span>` : ''
-        return `<div class="doc-code">${label}<pre><code>${escape(text)}</code></pre></div>`
+        // The copy button works through one listener on the page (components/docs/CodeCopy.tsx), so it needs no hydration.
+        const copy = '<button type="button" class="doc-copy" aria-label="Copy code">Copy</button>'
+        return `<div class="doc-code">${label}${copy}<pre><code>${escape(text)}</code></pre></div>`
       },
       table(token: Tokens.Table) {
         const cell = (c: Tokens.TableCell) => this.parser.parseInline(c.tokens)
@@ -135,7 +137,13 @@ export function neighbors(slug: string) {
 
 /** The sidebar, with each page's title. */
 export function docsNav() {
-  return DOCS_NAV.map((s) => ({ title: s.title, pages: s.pages.map((slug) => ({ slug, href: docHref(slug), title: getDoc(slug)!.title })) }))
+  return DOCS_NAV.map((s) => ({
+    title: s.title,
+    pages: s.pages.map((slug) => {
+      const doc = getDoc(slug)!
+      return { slug, href: docHref(slug), title: doc.title, description: doc.description }
+    })
+  }))
 }
 
 /** What search reads: each page's title, section, headings and text. */

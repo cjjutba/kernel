@@ -11,6 +11,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/changelog`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
     ...Array.from({ length: pages - 1 }, (_, i) => ({ url: `${SITE_URL}${changelogPageHref(i + 2)}`, lastModified, changeFrequency: 'monthly' as const, priority: 0.4 })),
     { url: `${SITE_URL}/pricing`, lastModified, changeFrequency: 'monthly', priority: 0.7 },
-    ...DOC_SLUGS.map((slug) => ({ url: `${SITE_URL}${docHref(slug)}`, lastModified, changeFrequency: 'monthly' as const, priority: slug === 'introduction' ? 0.8 : 0.6 }))
+    { url: `${SITE_URL}/docs`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
+    ...DOC_SLUGS.map((slug) => ({ url: `${SITE_URL}${docHref(slug)}`, lastModified, changeFrequency: 'monthly' as const, priority: slug === 'introduction' ? 0.7 : 0.6 }))
   ]
 }

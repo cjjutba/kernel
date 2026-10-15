@@ -1,4 +1,4 @@
-// The docs sidebar, in order. Each page is <slug>.md in this folder. `introduction` is /docs, the rest /docs/<slug>.
+// The docs sidebar, in order. Each page is <slug>.md in this folder, served at /docs/<slug>. /docs itself is the docs home (app/docs/page.tsx).
 // A page missing from this list doesn't show, and a slug here with no file fails the build.
 
 export const DOCS_NAV: { title: string; pages: string[] }[] = [

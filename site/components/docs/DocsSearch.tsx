@@ -45,19 +45,23 @@ function search(index: SearchEntry[], query: string): Result[] {
 }
 
 /** A search button. Any number can sit on the page: they all open the one dialog. */
-export function SearchButton() {
+/** Opens search. `lg` is the docs home's wide field. */
+export function SearchButton({ size = 'md' }: { size?: 'md' | 'lg' }) {
+  const lg = size === 'lg'
   return (
     <button
       type="button"
       onClick={() => window.dispatchEvent(new Event(OPEN))}
-      className="flex h-9 w-full items-center gap-2 rounded-lg border border-line-strong bg-surface-1 px-3 text-left text-ui text-faint transition-colors hover:border-edge-hover hover:text-muted"
+      className={`flex w-full items-center rounded-lg border border-line-strong bg-surface-1 text-left text-faint transition-colors hover:border-edge-hover hover:text-muted ${
+        lg ? 'h-12 gap-3 px-4 text-body' : 'h-9 gap-2 px-3 text-ui'
+      }`}
     >
-      <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+      <svg width={lg ? 15 : 13} height={lg ? 15 : 13} viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
         <circle cx="7" cy="7" r="4.5" />
         <path d="M10.5 10.5 14 14" />
       </svg>
       <span className="flex-1">Search docs</span>
-      <kbd className="font-mono text-badge text-faint">⌘K</kbd>
+      <kbd className={`font-mono text-badge text-faint ${lg ? 'rounded-chip border border-line-strong px-1.5 py-0.5' : ''}`}>⌘K</kbd>
     </button>
   )
 }

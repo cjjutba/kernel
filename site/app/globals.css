@@ -256,11 +256,11 @@
   grid-template-columns: minmax(0, 1fr);
 
   @media (width >= 961px) {
-    grid-template-columns: 224px minmax(0, 1fr);
+    grid-template-columns: 248px minmax(0, 1fr);
   }
 
   @media (width >= 1201px) {
-    grid-template-columns: 224px minmax(0, 1fr) 208px;
+    grid-template-columns: 248px minmax(0, 1fr) 208px;
   }
 }
 
@@ -631,23 +631,76 @@
   & .doc-code pre {
     overflow-x: auto;
     padding: 14px 16px;
+    padding-right: 72px;
     font-family: var(--font-mono);
     font-size: 13px;
     line-height: 1.65;
     color: var(--color-ink);
   }
 
+  /* The language sits in the corner until the block is hovered or focused, when Copy takes its place. */
   & .doc-code-lang {
     position: absolute;
-    top: 8px;
+    top: 10px;
     right: 12px;
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--color-faint);
+    transition: opacity 150ms;
   }
 
+  & .doc-copy {
+    position: absolute;
+    top: 7px;
+    right: 8px;
+    height: 24px;
+    padding: 0 8px;
+    border: 1px solid var(--color-edge);
+    border-radius: var(--radius-chip);
+    background: var(--color-surface-3);
+    color: var(--color-ink-2);
+    font-size: 12px;
+    font-weight: 500;
+    opacity: 0;
+    cursor: pointer;
+    transition:
+      opacity 150ms,
+      color 150ms,
+      border-color 150ms;
+  }
+
+  & .doc-code:hover .doc-copy,
+  & .doc-copy:focus-visible,
+  & .doc-copy[data-copied] {
+    opacity: 1;
+  }
+
+  & .doc-code:hover .doc-code-lang,
+  & .doc-code:focus-within .doc-code-lang {
+    opacity: 0;
+  }
+
+  & .doc-copy:hover {
+    color: var(--color-ink);
+    border-color: var(--color-edge-hover);
+  }
+
+  /* Touch screens have no hover, so Copy always shows there. */
+  @media (hover: none) {
+    & .doc-copy {
+      opacity: 1;
+    }
+
+    & .doc-code-lang {
+      display: none;
+    }
+  }
+
+  /* Tables sit in a frame with a raised header row. */
   & .doc-table {
     overflow-x: auto;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
   }
 
   & table {
@@ -661,23 +714,46 @@
     text-align: left;
     font-weight: 500;
     color: var(--color-ink);
-    border-bottom: 1px solid var(--color-line-strong);
-    padding: 0 16px 10px 0;
+    background: var(--color-surface-1);
+    border-bottom: 1px solid var(--color-line);
+    padding: 10px 16px;
+    white-space: nowrap;
   }
 
   & td {
     vertical-align: top;
     border-bottom: 1px solid var(--color-line-soft);
-    padding: 10px 16px 10px 0;
+    padding: 11px 16px;
   }
 
+  & td:first-child {
+    color: var(--color-ink);
+    white-space: nowrap;
+  }
+
+  & tr:last-child td {
+    border-bottom: 0;
+  }
+
+  /* A note: an info mark, then the text, in a quiet panel. */
   & .doc-note {
+    position: relative;
     border: 1px solid var(--color-line);
-    border-left: 2px solid var(--color-edge);
-    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    border-radius: var(--radius-lg);
     background: var(--color-surface-1);
-    padding: 12px 16px;
+    padding: 12px 16px 12px 42px;
     font-size: 14.5px;
+  }
+
+  & .doc-note::before {
+    content: '';
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    width: 15px;
+    height: 15px;
+    background: var(--color-muted);
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6.25'/%3E%3Cpath d='M8 7.25v3.75M8 5h.01'/%3E%3C/svg%3E") center / contain no-repeat;
   }
 
   & .doc-note > * + * {
