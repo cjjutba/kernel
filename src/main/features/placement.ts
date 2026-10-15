@@ -296,7 +296,8 @@ export class Placement extends Feature {
   /**
    * What the chat's next turn re-reads and why, for the notice above the composer (KERNEL-841), read only. Nothing for a
    * chat under the Long chat size, a chat that never ran, one the user chose Summarize or Continue for, or a warm one. Keep hides it only while the kept account can still run the chat. A cache gone cold
-   * from idling alone is an `idle` hint, since it would re-read wherever it ran.
+   * from idling alone is an `idle` hint only on a Claude API key, where it has a price. On a plan or Codex it would re-read
+   * wherever it ran and there is nothing to do about it, so it says nothing (KERNEL-917).
    */
   moveNotice(chatId: string, now = Date.now()): MoveNotice | null {
     const chat = this.store.chat(chatId)
@@ -310,6 +311,7 @@ export class Placement extends Feature {
     if (!reason) return null
     const cost = this.moveCost(chat, { account: to })
     if (cost.tokens < (this.settings?.accounts?.longChatTokens ?? 50_000)) return null
+    if (reason === 'idle' && cost.price === undefined) return null
     const model = reason === 'model' ? MODELS.find((m) => m.id === bareModel(chat.model))?.label ?? chat.model : undefined
     return {
       kind: reason === 'idle' ? 'idle' : 'move', reason, from, to, ...(model ? { model } : {}), tokens: cost.tokens,

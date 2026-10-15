@@ -2024,11 +2024,11 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
     await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
     chat('m', { model: 'claude-sonnet-5-5', lastTurn: turn({ model: 'claude-opus-5-5' }) })
     expect(await notice('m')).toEqual({ kind: 'move', reason: 'model', from: 'cli', to: 'cli', model: 'Sonnet 5.5', tokens: 200_000, keep: false })
-    // An hour idle on a Claude plan, 5 minutes on a key or Codex: only an idle hint, since it re-reads wherever it runs.
+    // An hour idle on a Claude plan, or 5 minutes on Codex, re-reads wherever it runs with nothing to pay or pick, so nothing is said.
     chat('i', { lastTurn: turn({ at: Date.now() - 61 * MIN }) })
-    expect(await notice('i')).toEqual({ kind: 'idle', reason: 'idle', from: 'cli', to: 'cli', tokens: 200_000, keep: false })
+    expect(await notice('i')).toBeNull()
     chat('c', { provider: 'codex', model: 'gpt-6-astra', lastTurn: turn({ model: 'gpt-6-astra', email: undefined, at: Date.now() - 6 * MIN }) })
-    expect(await notice('c')).toMatchObject({ kind: 'idle', reason: 'idle' })
+    expect(await notice('c')).toBeNull()
     chat('c2', { provider: 'codex', model: 'gpt-6-astra', lastTurn: turn({ model: 'gpt-6-astra', email: undefined, at: Date.now() - 2 * MIN }) })
     expect(await notice('c2')).toBeNull()
     // The size is a guess for a chat from before, and says so.
@@ -2042,11 +2042,16 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
 
   it("gives a long chat's move notice for a move, another model or an idle cache, none once answered, and again once a kept account can't run it", async () => {
     const { k, file, chat, turn, place } = await setUp()
-    // On the account it ran on: another model re-reads it there, and an hour idle on a plan is only a hint.
+    // On the account it ran on: another model re-reads it there. An hour idle on a plan says nothing, since there is nothing
+    // to do about it, while 5 minutes idle on an API key is a hint with its price (KERNEL-917).
     chat('m', { model: 'claude-sonnet-5-5', lastTurn: turn() })
     expect(place.moveNotice('m')).toEqual({ kind: 'move', reason: 'model', from: 'cli', to: 'cli', model: 'Sonnet 5.5', tokens: 200_000, keep: false })
     chat('i', { lastTurn: turn({ at: Date.now() - 61 * MIN }) })
-    expect(place.moveNotice('i')).toEqual({ kind: 'idle', reason: 'idle', from: 'cli', to: 'cli', tokens: 200_000, keep: false })
+    expect(place.moveNotice('i')).toBeNull()
+    chat('k', { ranOn: 'key', lastTurn: turn({ account: 'key', email: undefined, at: Date.now() - 6 * MIN }) })
+    file.claude.active = 'key'
+    expect(place.moveNotice('k')).toEqual({ kind: 'idle', reason: 'idle', from: 'key', to: 'key', tokens: 200_000, price: 1, keep: false })
+    file.claude.active = 'cli'
     chat('small', { lastTurn: turn({ context: 10_000 }) })
     expect(place.moveNotice('small')).toBeNull()
 
