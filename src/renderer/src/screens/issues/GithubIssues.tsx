@@ -7,6 +7,7 @@ import { readSavedJson, writeSavedJson } from '../../remember'
 import { Button, EmptyList, FailedState, Icon, Pill, useListKeys } from '../../ui'
 import { IssueState } from '../../icons'
 import { GithubDetail } from './GithubDetail'
+import { generation, getGithubList, getSelected, isFresh, setGithubList, setSelected } from './cache'
 import {
   byUpdated, DEFAULT_GITHUB_FILTER, githubFilterKey, parseGithubFilter, describeGithub, issueAge, joinFits, labelsOf, linkedWorkspaces, loginInitials, milestonesOf, narrowGithub, rowLabels, rowState,
   type GithubFilter
@@ -38,28 +39,35 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
   const chats = useStore((s) => s.chats)
   const running = useStore((s) => s.running)
   const prs = useStore((s) => s.prs)
-  const [view, setView] = useState<View>({ kind: 'loading' })
+  const [seed] = useState(() => {
+    const hit = getGithubList(project.id)
+    const last = getSelected(`github|${project.id}`)
+    return { issues: hit?.value ?? null, fresh: !!hit && isFresh(hit.at), sel: hit && last && hit.value.some((i) => i.id === last) ? last : undefined }
+  })
+  const [view, setView] = useState<View>(seed.issues ? { kind: 'ready' } : { kind: 'loading' })
   const [problem, setProblem] = useState<Failure | null>(null)
-  const [issues, setIssues] = useState<GithubIssue[]>([])
+  const [issues, setIssues] = useState<GithubIssue[]>(seed.issues ?? [])
   const [filter, setFilter] = useState<GithubFilter>(() => readSavedJson(githubFilterKey(project.id), parseGithubFilter))
   const [query, setQuery] = useState('')
-  const [sel, setSel] = useState<string | undefined>(issueId)
+  const [sel, setSel] = useState<string | undefined>(issueId ?? seed.sel)
   const [tick, setTick] = useState(0)
-  const [refreshing, setRefreshing] = useState(false)
+  const [refreshing, setRefreshing] = useState(!!seed.issues && !seed.fresh)
   const detail = useRef<HTMLDivElement>(null)
 
   // The newest load wins, so a slow answer for an old search can't replace a newer list.
   const seq = useRef(0)
-  const loadedQuery = useRef<string | null>(null)
-  const hasRows = useRef(false)
+  const loadedQuery = useRef<string | null>(seed.issues ? '' : null)
+  const hasRows = useRef(!!seed.issues)
   const queryNow = useRef(query)
   queryNow.current = query
 
   const load = useCallback(async () => {
     const n = ++seq.current
     const q = queryNow.current.trim()
+    const gen = generation()
     try {
       const rows = await call('github.issueList', { projectId: project.id, query: q || undefined })
+      if (!q) setGithubList(project.id, rows, gen)
       if (n !== seq.current) return
       loadedQuery.current = q
       hasRows.current = true
@@ -74,7 +82,11 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
   }, [project.id])
 
   // Read when the page opens, when the window gets focus while it shows, when the connection comes back and on Refresh. No interval. Another project is another mount.
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    if (seed.issues && seed.fresh) return
+    if (seed.issues) void load().finally(() => setRefreshing(false))
+    else void load()
+  }, [load])
   useEffect(() => {
     const focus = () => { setTick((t) => t + 1); void load() }
     window.addEventListener('focus', focus)
@@ -104,8 +116,14 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
   const narrowed = useMemo(() => narrowGithub(issues, filter), [issues, filter])
   const mineCount = narrowed.filter((i) => i.mine).length
   const flat = useMemo(() => byUpdated(filter.mine ? narrowed.filter((i) => i.mine) : narrowed), [narrowed, filter.mine])
-  const selId = sel ?? flat[0]?.id
+  const picked = sel !== undefined && (sel === issueId || flat.some((i) => i.id === sel))
+  const selId = picked ? sel : flat[0]?.id
   const cur = flat.find((i) => i.id === selId)
+  useEffect(() => {
+    if (!selId) return
+    if (selId !== sel) setSel(selId)
+    setSelected(`github|${project.id}`, selId)
+  }, [selId, sel, project.id])
   const count = (n: number) => (n >= 100 ? '100+' : String(n))
 
   const projectWorkspaces = useMemo(() => workspaces.filter((w) => w.projectId === project.id), [workspaces, project.id])

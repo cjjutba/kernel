@@ -6,6 +6,7 @@ import { actions } from '../../../store'
 import { ServiceMark } from '../../../icons'
 import { Button, useBusy } from '../../../ui'
 import { Page, Row, Section, SettingsLink } from '../kit'
+import { forgetLinear, forgetTrackers } from '../../issues/cache'
 
 const Mark = ({ name }: { name: 'github' | 'linear' }) => <span className="sys-logo" aria-hidden="true"><ServiceMark name={name} size={17} /></span>
 
@@ -26,10 +27,10 @@ export function Integrations() {
   const linear = rows.find((r) => r.id === 'linear')
 
   const saveLinear = () => run('linear', async () => {
-    try { swap(await call('integrations.connect', { id: 'linear', token })); close() } catch (e) { fail('Could not connect Linear', e) }
+    try { swap(await call('integrations.connect', { id: 'linear', token })); forgetLinear(); forgetTrackers(); close() } catch (e) { fail('Could not connect Linear', e) }
   })
   const disconnectLinear = () => run('linear', async () => {
-    try { swap(await call('integrations.connect', { id: 'linear', token: '' })) } catch (e) { fail('Could not disconnect Linear', e) }
+    try { swap(await call('integrations.connect', { id: 'linear', token: '' })); forgetLinear(); forgetTrackers() } catch (e) { fail('Could not disconnect Linear', e) }
   })
   const manageGithub = () => run('github', async () => {
     try { await call('app.openTerminal', { cwd: (await call('app.info', undefined)).dataDir, command: 'gh auth status' }) } catch (e) { fail('Could not open a terminal', e) }

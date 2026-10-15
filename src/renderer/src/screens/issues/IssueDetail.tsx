@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import type { LinearIssue, LinearIssueDetail } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { useDetailLoad } from './useDetailLoad'
-import { actions, go, lastProject, useStore } from '../../store'
+import { detailKey, forgetTracker } from './cache'
+import { actions, getState, go, lastProject, useStore } from '../../store'
 import { Button, FailedState, Icon, Select, Skeleton, useBusy } from '../../ui'
 import { IssuePriority, IssueState, PRIORITIES } from '../../icons'
 import { openLeadChat, openNewChat } from '../../lead'
@@ -14,11 +15,10 @@ import { WorkCard } from './WorkCard'
 
 /** The selected issue: what Linear says about it, the workspaces already working on it, and the buttons that start work. */
 export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summary?: LinearIssue; tick: number; onPlanned: () => void }) {
-  const { loaded, failure, retry } = useDetailLoad<LinearIssueDetail>(id, () => call('linear.issue', { id }), [tick])
+  const { loaded, failure, retry } = useDetailLoad<LinearIssueDetail>(id, detailKey('linear', '', id), () => call('linear.issue', { id }), [tick])
   const failed = failure?.id === id ? failure.message : null
   const [busy, run] = useBusy<'plan' | 'link'>()
   const [picked, setPicked] = useState<{ issue: string; project: string } | null>(null)
-  const [settled, setSettled] = useState(false)
   const projects = useStore((s) => s.projects)
   const projectSettings = useStore((s) => s.projectSettings)
   const agents = useStore((s) => s.agents)
@@ -32,11 +32,14 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
 
   const choices = useMemo(() => projects.filter((r) => !r.archived && !r.hidden), [projects])
   const ids = choices.map((r) => r.id).join(',')
-  // Each project's Linear team is in its settings file, so read them all before saying a team has no project.
+  const [settled, setSettled] = useState(() => choices.every((r) => !!getState().projectSettings[r.id]))
+  // Each project's Linear team is in its settings file, so read the ones the store doesn't have before saying a team has no project.
   useEffect(() => {
+    const missing = choices.filter((r) => !getState().projectSettings[r.id])
+    if (missing.length === 0) { setSettled(true); return }
     let live = true
     setSettled(false)
-    void Promise.allSettled(choices.map((r) => call('settings.project', { projectId: r.id }).then((rs) => actions.settings.setProject(r.id, rs)))).then(() => live && setSettled(true))
+    void Promise.allSettled(missing.map((r) => call('settings.project', { projectId: r.id }).then((rs) => actions.settings.setProject(r.id, rs)))).then(() => live && setSettled(true))
     return () => { live = false }
   }, [ids])
 
@@ -57,7 +60,7 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
     } catch (e) { actions.ui.toast({ title: `Could not plan with ${lead}`, sub: cleanError(e) }) }
   })
   const link = () => project && team && run('link', async () => {
-    try { actions.settings.setProject(project.id, await call('settings.setProject', { projectId: project.id, patch: { linear: { team } } })) }
+    try { actions.settings.setProject(project.id, await call('settings.setProject', { projectId: project.id, patch: { linear: { team } } })); forgetTracker(project.id) }
     catch (e) { actions.ui.toast({ title: `Could not link ${team} to ${project.name}`, sub: cleanError(e) }) }
   })
   const newChat = () => issue && openNewChat(project?.id, { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url } })
