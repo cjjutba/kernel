@@ -138,13 +138,15 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
   const nameOf = (projectId?: string, agentId?: string) => (projectId ? i.agents[projectId]?.find((a) => a.id === agentId)?.name : undefined)
   const leadAgent = project ? i.agents[project.id]?.find((a) => a.lead) : undefined
   const lead = leadAgent?.name || 'the Lead'
+  // In the Lead's own chat there is nothing to open and no other workspace to go to, as in GroupedPalette (KERNEL-364).
+  const inLead = !!(current && project && leadAgent && isLeadWorkspace(current, project.id, leadAgent.id))
   const item = (id: string, section: PaletteItem['section'], glyph: string, label: string, run: () => void, extra: Partial<PaletteItem> = {}): PaletteItem => ({ id, section, glyph, label, run, ...extra })
 
   const suggested: PaletteItem[] = [
     item('new-ws', 'Suggested', '+', project ? `New chat in ${project.name}` : 'New chat', () => act.openNewChat(project?.id), { keys: ['⌘', 'N'] }),
     ...(forPr ? [item('create-pr', 'Suggested', '↗', `Create PR for ${workspaceRowLabel(forPr)}`, () => act.go({ name: 'workspace', workspaceId: forPr.id }), { keys: ['⌘', '⇧', 'P'], also: `pull request ${forPr.name} ${forPr.branch}` })] : []),
     ...(pending ? [item('approve', 'Suggested', '✓', approvalLabel(pending, nameOf(pending.projectId, pending.agentId)), () => act.approve(pending), { keys: ['⌘', '↵'], also: 'allow permission' })] : []),
-    ...(project && leadAgent ? [item('lead-chat', 'Suggested', '›', `Open ${lead}'s chat`, () => act.openLead(project.id), { keys: ['⌘', '⇧', 'L'], also: 'lead chat workspace brief ask' })] : []),
+    ...(project && leadAgent && !inLead ? [item('lead-chat', 'Suggested', '›', `Open ${lead}'s chat`, () => act.openLead(project.id), { keys: ['⌘', '⇧', 'L'], also: 'lead chat workspace brief ask' })] : []),
     ...(current ? [
       item('new-tab', 'Suggested', '+', 'New tab', () => act.newChat(current.id), { keys: ['⌘', 'T'] }),
       // Main refuses a terminal tab while the big terminal is off, so the palette leaves the entry out until the settings say it is on. A new tab runs the settings' preset.
@@ -157,7 +159,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     ? (i.chats ?? []).map(({ thread, tabs, ws }) => item(`chat-${thread.id}`, 'Chats', '◇', thread.title, () => act.openChat(project.id, thread, tabs, ws), { meta: `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`, group: `Chats in ${project.name}`, also: 'chat tabs' }))
     : []
 
-  const shown = current ?? workspaces.filter((w) => live(w) && (!project || w.projectId === project.id)).sort((a, b) => b.createdAt - a.createdAt)[0]
+  const shown = inLead ? undefined : current ?? workspaces.filter((w) => live(w) && (!project || w.projectId === project.id)).sort((a, b) => b.createdAt - a.createdAt)[0]
   const goto = (id: string, label: string, route: Route, extra: Partial<PaletteItem> = {}) => item(id, 'Go to', '◇', label, () => act.go(route), extra)
   const goDefault: PaletteItem[] = [
     goto('go-inbox', 'Inbox', { name: 'inbox' }, { keys: ['G', 'I'] }),

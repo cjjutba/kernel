@@ -246,4 +246,28 @@ describe('command palette chats (KERNEL-339)', () => {
     // ⌘N keeps starting a chat.
     expect(items.find((i) => i.id === 'new-ws')?.label).toBe('New chat in Client A')
   })
+
+  describe('the Lead items (KERNEL-364)', () => {
+    const agent = ws('agent-ws')
+    const ids = (route: Parameters<typeof buildItems>[0]['route'], workspaces = [lead, agent]) => buildItems({ ...input, workspaces, route }).items.map((i) => i.id)
+
+    it('leaves out Open the Lead\'s chat and the lead workspace in the Lead\'s own chat, and keeps New tab', () => {
+      const got = ids({ name: 'workspace', workspaceId: 'lead' })
+      expect(got).not.toContain('lead-chat')
+      expect(got).not.toContain('go-ws')
+      expect(got).toContain('new-tab')
+    })
+
+    it('lists both from Home', () => {
+      const got = ids({ name: 'projects' })
+      expect(got).toContain('lead-chat')
+      expect(got).toContain('go-ws')
+    })
+
+    it('lists both from an Agent workspace, and Go to names that workspace', () => {
+      const { items } = buildItems({ ...input, workspaces: [lead, agent], route: { name: 'workspace', workspaceId: 'agent-ws' } })
+      expect(items.map((i) => i.id)).toContain('lead-chat')
+      expect(items.find((i) => i.id === 'go-ws')?.label).toContain('agent-ws')
+    })
+  })
 })

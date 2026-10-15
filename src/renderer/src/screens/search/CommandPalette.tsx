@@ -25,7 +25,9 @@ const switchAccount = (provider: Provider, accountId: string) => void actions.ac
 function newChat(workspaceId: string, kind?: 'terminal') {
   const s = getState()
   const ws = s.workspaces.find((w) => w.id === workspaceId)
-  const threadId = kind !== 'terminal' && ws && isLeadWorkspace(ws, ws.projectId, leadOf(s.agents, ws.projectId)?.id) ? currentThread(s, workspaceId) : undefined
+  const current = kind !== 'terminal' && ws && isLeadWorkspace(ws, ws.projectId, leadOf(s.agents, ws.projectId)?.id) ? currentThread(s, workspaceId) : undefined
+  // currentThread falls back to a tab's own id, which is no thread: send only an id some tab really has as its threadId (KERNEL-364).
+  const threadId = current && s.chats[workspaceId]?.some((c) => c.threadId === current) ? current : undefined
   void call('chats.create', { workspaceId, kind, ...(threadId ? { threadId } : {}) }).then((chat) => {
     actions.chats.upsert(chat)
     go({ name: 'workspace', workspaceId })
