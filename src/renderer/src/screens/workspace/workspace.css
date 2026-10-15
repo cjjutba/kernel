@@ -195,12 +195,11 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .step-copy { position: absolute; top: -2px; right: 0; opacity: 0; transition: opacity 0.12s; }
 .step-msg:hover .step-copy, .step-msg:focus-within .step-copy { opacity: 1; }
 .step-copy .icon-btn { width: 22px; height: 22px; border-radius: var(--r-sm); }
-.live-row { min-height: 22px; }
-.group-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
+.group-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; height: 26px; max-width: 100%; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
 .group-btn:hover { color: var(--ink-2); }
-.chev { display: inline-flex; width: 12px; transition: transform 0.12s; }
+.chev { display: inline-flex; flex-shrink: 0; width: 12px; transition: transform 0.12s; }
 .chev[data-open='true'] { transform: rotate(90deg); }
-.group-text { min-width: 0; text-align: left; }
+.group-text { min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* What went wrong in a run or a summary, after its sentence. */
 .step-bad { color: var(--del); }
 /* Steps in a fold keep their icons, joined by a thin rail in line-2 through the icons' centres. Each item draws the stretch from under its

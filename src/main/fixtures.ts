@@ -203,7 +203,10 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return { ...base, kind: 'terminal', title: terminalTitle(term.preset), terminal: term.terminal }
     },
     'chats.items': async ({ chatId }) => f.items[chatId] ?? [],
-    'chats.send': async () => ({ queued: false }),
+    'chats.send': async () => {
+      for (const step of f.afterSend ?? []) setTimeout(() => step.events.forEach((e) => bus.push(e)), step.afterMs)
+      return { queued: false }
+    },
     'chats.interrupt': async () => ok,
     'chats.configure': async ({ chatId, ...patch }) => ({ ...chat(chatId), ...patch }),
     'chats.rename': async ({ chatId, title }) => ({ ...chat(chatId), title }),

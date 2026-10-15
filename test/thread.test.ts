@@ -49,11 +49,9 @@ describe('transcript thread', () => {
     expect(buildThread([tableItems[0], note, ...reply]).map((b) => b.kind)).toEqual(['item', 'item', 'reply'])
   })
 
-  it('shows every item of a turn that has no result and is not running, as a crashed or stopped turn does', () => {
-    const running = tableItems.filter((i) => i.kind !== 'result' && i.id !== 'x1')
-    const blocks = buildThread(running)
-    expect(blocks.every((b) => b.kind === 'item')).toBe(true)
-    expect(blocks).toHaveLength(running.length)
+  it('folds a turn that has no result and is not running, as a crashed or stopped turn is', () => {
+    const cut = tableItems.filter((i) => i.kind !== 'result' && i.id !== 'x1')
+    expect(buildThread(cut).map((b) => b.kind)).toEqual(['item', 'group', 'item', 'group'])
   })
 })
 
@@ -157,16 +155,49 @@ describe('tools the labels do not know (KERNEL-800)', () => {
 })
 
 describe('a turn that is still running folds its finished steps (KERNEL-784)', () => {
-  it('folds the steps before the current one into a row, with the current one as the live line', () => {
+  it('folds the step in flight with the finished ones, and words the running call in the present tense', () => {
     const items = [ask(), think(), read('a'), bash('x'), bash('y'), bash('z', 'running')]
     const blocks = buildThread(items, true)
-    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'live'])
-    const live = blocks[2]
-    expect(live.kind === 'live' && live.item.id).toBe(items[5].id)
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group'])
     const group = blocks[1]
     if (group.kind !== 'group') throw new Error('expected a group')
-    expect(group.entries.map((e) => e.kind)).toEqual(['item', 'item', 'item', 'item'])
-    expect(group.summary.text).toBe('Read 1 file, ran 2 commands')
+    expect(group.entries.map((e) => e.kind)).toEqual(['item', 'item', 'item', 'item', 'item'])
+    expect(group.items).toContain(items[5])
+    expect(group.summary.text).toBe('Read 1 file, ran 2 commands, running 1 more')
+  })
+
+  it('reads "Running a command" for a first step alone, and counts up as steps arrive', () => {
+    const first = buildThread([ask(), bash('x', 'running')], true)
+    expect(first.map((b) => b.kind)).toEqual(['item', 'group'])
+    expect(first[1].kind === 'group' && first[1].summary.text).toBe('Running a command')
+    expect(summarize([bash('x')]).text).toBe('Ran a command')
+    expect(summarize([bash('x'), bash('y', 'running')]).text).toBe('Ran 1 command, running 1 more')
+    expect(summarize([bash('x', 'running'), bash('y', 'running')]).text).toBe('Running 2 commands')
+    expect(summarize([bash('a'), bash('b'), bash('c'), bash('d'), bash('e', 'running'), think()]).text).toBe('Ran 4 commands, running 1 more')
+    expect(summarize([read('a'), bash('x', 'running'), bash('y', 'failed')]).text).toBe("Read 1 file, couldn't run 1 command, running 1 more")
+  })
+
+  it('keeps the fold id through the turn as an empty thinking fills in and steps arrive', () => {
+    const idOf = (items: ChatItem[]) => { const g = buildThread(items, true)[1]; return g.kind === 'group' ? g.id : undefined }
+    const q = ask()
+    const t = think()
+    const empty = { ...t, text: '' }
+    const filled = { ...t, text: 'Reading the table.' }
+    const r = read('a')
+    expect(idOf([q, empty, r])).toBe(idOf([q, filled, r]))
+    expect(idOf([q, filled, r, bash('x', 'running')])).toBe(idOf([q, empty, r]))
+  })
+
+  it('keeps a message in flight inside the fold once the turn has a call', () => {
+    const blocks = buildThread([ask(), read('a'), say('Now the tests.')], true)
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group'])
+    const group = blocks[1]
+    expect(group.kind === 'group' && group.entries.map((e) => e.kind === 'item' && e.item.kind)).toEqual(['tool', 'text'])
+    expect(group.kind === 'group' && group.summary.text).toBe('Read a file')
+    // After a note or approval, text alone is a fold too, so none of it shows.
+    const note: ChatItem = { kind: 'note', id: 'nt2', ts: at, text: 'PR #1 opened.' }
+    const after = buildThread([ask(), read('a'), note, say('Waiting on checks.')], true)
+    expect(after.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'group'])
   })
 
   it('never nests a run inside a fold, and lists same-kind calls as plain rows in one flat list (KERNEL-800)', () => {
@@ -176,8 +207,8 @@ describe('a turn that is still running folds its finished steps (KERNEL-784)', (
     expect(group.entries.every((e) => e.kind === 'item')).toBe(true)
     expect(group.entries.map((e) => e.kind === 'item' && e.item.id)).toEqual(items.slice(1, 8).map((i) => i.id))
     expect(group.summary.text).toBe('Read 3 files, ran 3 commands')
-    const lone = buildThread([ask(), bash('x'), bash('y'), bash('z'), say('Done.'), done()])
-    expect(lone.map((b) => b.kind)).toEqual(['item', 'run', 'reply'])
+    const same = buildThread([ask(), bash('x'), bash('y'), bash('z'), say('Done.'), done()])
+    expect(same.map((b) => b.kind)).toEqual(['item', 'group', 'reply'])
   })
 
   it('drops thinking with no text from folds and runs, and keeps thinking with text (KERNEL-800)', () => {
@@ -189,12 +220,7 @@ describe('a turn that is still running folds its finished steps (KERNEL-784)', (
     expect(group.items).toHaveLength(3)
     expect(group.entries.map((e) => e.kind === 'item' && e.item.kind)).toEqual(['tool', 'thinking', 'tool'])
     expect(buildThread([ask(), empty(), empty(), say('Done.'), done()]).map((b) => b.kind)).toEqual(['item', 'reply'])
-    expect(buildThread([ask(), read('a'), empty(), read('b')], true).map((b) => b.kind)).toEqual(['item', 'run'])
-  })
-
-  it('shows a lone run as the run, not as a fold of one row', () => {
-    const blocks = buildThread([ask(), ...['A', 'B', 'C', 'D'].map((t) => linear(t)), linear('E', 'done'), handoff('kai')].slice(0, 5).concat(bash('x', 'running')), true)
-    expect(blocks.map((b) => b.kind)).toEqual(['item', 'run', 'live'])
+    expect(buildThread([ask(), read('a'), empty(), read('b')], true).map((b) => b.kind)).toEqual(['item', 'group'])
   })
 
   it('folds messages with the steps, and still breaks the fold at notes and approvals (KERNEL-840)', () => {
@@ -202,23 +228,11 @@ describe('a turn that is still running folds its finished steps (KERNEL-784)', (
     const approval: ChatItem = { kind: 'approval', id: 'ap', ts: at, approvalId: 'a1' } as ChatItem
     const items = [ask(), read('a'), bash('x'), say('Filing now.'), note, linear('A'), linear('B'), approval]
     const blocks = buildThread(items, true)
-    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'run', 'item'])
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'group', 'item'])
     const group = blocks[1]
     expect(group.kind === 'group' && group.entries.map((e) => e.kind === 'item' && e.item.kind)).toEqual(['tool', 'tool', 'text'])
     expect(group.kind === 'group' && group.summary.text).toBe('Read 1 file, ran 1 command')
     expect(blocks.filter((b) => b.kind === 'item').map((b) => b.kind === 'item' && b.item.kind)).toEqual(['user', 'note', 'approval'])
-  })
-
-  it('shows the newest message as the live line while the turn runs (KERNEL-840)', () => {
-    const blocks = buildThread([ask(), read('a'), bash('x'), say('Now the tests.')], true)
-    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'live'])
-    const live = blocks[2]
-    expect(live.kind === 'live' && live.item.kind).toBe('text')
-    // Once a call starts, the message joins the fold.
-    const next = buildThread([ask(), read('a'), bash('x'), say('Now the tests.'), bash('t', 'running')], true)
-    expect(next.map((b) => b.kind)).toEqual(['item', 'group', 'live'])
-    const group = next[1]
-    expect(group.kind === 'group' && group.entries.map((e) => e.kind === 'item' && e.item.kind)).toEqual(['tool', 'tool', 'text'])
   })
 
   it('streams the first message of a turn in full until the turn has a call (KERNEL-840)', () => {
@@ -241,10 +255,12 @@ describe('a turn that is still running folds its finished steps (KERNEL-784)', (
     expect(buildThread([ask(), say('One.'), say('Two.'), done()]).map((b) => b.kind)).toEqual(['item', 'item', 'reply'])
   })
 
-  it('leaves the messages of a stopped or cut-off turn as they are (KERNEL-840)', () => {
+  it('folds a stopped or cut-off turn, with the stop note and the last message under the fold', () => {
     const stopped: ChatItem = { kind: 'interrupted', id: 'in', ts: at }
-    expect(buildThread([ask(), say('First.'), read('a'), say('Second.'), stopped]).every((b) => b.kind === 'item')).toBe(true)
-    expect(buildThread([ask(), say('First.'), read('a'), say('Second.')]).every((b) => b.kind === 'item')).toBe(true)
+    expect(buildThread([ask(), say('First.'), read('a'), say('Second.'), stopped]).map((b) => b.kind)).toEqual(['item', 'group', 'item', 'item'])
+    expect(buildThread([ask(), say('First.'), read('a'), say('Second.')]).map((b) => b.kind)).toEqual(['item', 'group', 'item'])
+    const last = buildThread([ask(), say('First.'), read('a'), say('Second.'), stopped])[2]
+    expect(last.kind === 'item' && last.actions).toBe(true)
   })
 
   it('labels a message with its first line, Markdown taken off (KERNEL-840)', () => {
@@ -254,9 +270,20 @@ describe('a turn that is still running folds its finished steps (KERNEL-784)', (
     expect(messageLabel('```\ncode\n```')).toBe('code')
   })
 
-  it('has no live line when the last step is done, and one when the agent is thinking', () => {
+  it('keeps thinking in flight inside the fold, and adds nothing to the summary', () => {
     expect(buildThread([ask(), read('a'), bash('x')], true).map((b) => b.kind)).toEqual(['item', 'group'])
-    expect(buildThread([ask(), read('a'), bash('x'), think()], true).map((b) => b.kind)).toEqual(['item', 'group', 'live'])
+    const blocks = buildThread([ask(), read('a'), bash('x'), think()], true)
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group'])
+    expect(blocks[1].kind === 'group' && blocks[1].summary.text).toBe('Read 1 file, ran 1 command')
+  })
+
+  it('never returns a live block, and keeps notes and approvals outside the folds', () => {
+    const approval: ChatItem = { kind: 'approval', id: 'ap2', ts: at, approvalId: 'a2' } as ChatItem
+    const blocks = buildThread([ask(), read('a'), bash('x', 'running'), approval], true)
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item'])
+    const between = buildThread([ask(), read('a'), approval, bash('y', 'running')], true)
+    expect(between.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'group'])
+    expect(between.some((b) => (b.kind as string) === 'live')).toBe(false)
   })
 
   it('keeps the fold, and what is in it, when the turn ends', () => {
@@ -268,10 +295,12 @@ describe('a turn that is still running folds its finished steps (KERNEL-784)', (
     expect(a.kind === 'group' && b.kind === 'group' && a.id === b.id).toBe(true)
   })
 
-  it('leaves a stopped or failed turn as it is', () => {
+  it('folds a stopped turn and leaves a failed one expanded with its error card', () => {
     const stopped: ChatItem = { kind: 'interrupted', id: 'in', ts: at }
-    const blocks = buildThread([ask(), read('a'), bash('x'), bash('y'), stopped], true)
-    expect(blocks.every((b) => b.kind === 'item')).toBe(true)
+    expect(buildThread([ask(), read('a'), bash('x'), bash('y'), stopped], true).map((b) => b.kind)).toEqual(['item', 'group', 'item'])
+    const failed: ChatItem = { kind: 'result', id: 'rf', ts: at, durationMs: 1000, ok: false, error: 'Boom' }
+    const blocks = buildThread([ask(), read('a'), bash('x', 'failed'), failed])
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'item', 'item', 'error'])
   })
 
   it('stays fast for a 500-step turn', () => {
@@ -281,7 +310,7 @@ describe('a turn that is still running folds its finished steps (KERNEL-784)', (
     buildThread(items, true)
     for (let i = 0; i < 20; i++) buildThread(items, true)
     expect((performance.now() - t) / 21).toBeLessThan(25)
-    expect(buildThread(items, true).map((b) => b.kind)).toEqual(['item', 'group', 'live'])
+    expect(buildThread(items, true).map((b) => b.kind)).toEqual(['item', 'group'])
   })
 })
 
