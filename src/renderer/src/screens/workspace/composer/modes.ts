@@ -9,7 +9,7 @@ export type ComposerMode = PermissionMode | 'plan'
 /** The order of the menu and of Shift+Tab (ComposerModes.png, KERNEL-435). */
 export const MODE_ORDER: readonly ComposerMode[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions']
 
-export const MODE_ICON: Record<ComposerMode, IconName> = { default: 'shield', acceptEdits: 'pen', plan: 'plan', auto: 'sparkle', bypassPermissions: 'forward' }
+export const MODE_ICON: Record<ComposerMode, IconName> = { default: 'lock', acceptEdits: 'filePen', plan: 'plan', auto: 'shieldCheck', bypassPermissions: 'unlock' }
 
 /** One line a mode, shorter than Settings' sentences (ComposerModeMenu.png). */
 export const MODE_DESC: Record<ComposerMode, string> = {
@@ -110,7 +110,7 @@ export function modeAria(shown: Shown): string {
 }
 
 /** How a chat with Kernel works, in the order of its menu (KERNEL-780). */
-export const LEAD_MODE_ICON: Record<LeadMode, IconName> = { handoff: 'team', build: 'pen' }
+export const LEAD_MODE_ICON: Record<LeadMode, IconName> = { handoff: 'team', build: 'hammer' }
 
 export const LEAD_MODE_DESC: Record<LeadMode, string> = {
   handoff: 'Kernel plans with you and gives each task to a teammate. It doesn’t edit files.',

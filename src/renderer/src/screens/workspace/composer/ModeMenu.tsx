@@ -124,7 +124,7 @@ export function LeadModeButton({ mode, footer, open, onOpen, onPick }: { mode: L
   return (
     <span ref={anchor} style={{ position: 'relative' }}>
       <Button variant="ghost" className="cmp-model cmp-mode cmp-lead" aria-label={`How Kernel works: ${leadModeName(mode)}`} aria-haspopup="menu" aria-expanded={open} onClick={() => onOpen(!open)}>
-        <Icon name={LEAD_MODE_ICON[mode]} size={14} /><span className="cmp-mode-name">{leadModeName(mode)}</span><Icon name="chevron" size={12} />
+        <Icon name={LEAD_MODE_ICON[mode]} size={14} /><span className="cmp-lead-name">{leadModeName(mode)}</span><Icon name="chevron" size={12} />
       </Button>
       {open && <LeadModeMenu anchorRef={anchor} mode={mode} footer={footer} onPick={onPick} onClose={() => onOpen(false)} />}
     </span>
