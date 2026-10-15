@@ -8,7 +8,7 @@ import { ProviderTiles } from './ProviderTiles'
 /** `version` is the newest release's label, such as "0.1". */
 export function Hero({ version }: { version: string }) {
   return (
-    <section id="top" aria-labelledby="hero-title" className="relative pt-32 text-center">
+    <section id="top" aria-labelledby="hero-title" className="relative pt-32 text-center max-nav:pt-20">
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-245 bg-dots-hero" />
       <div
         aria-hidden="true"
@@ -24,9 +24,10 @@ export function Hero({ version }: { version: string }) {
           Kernel {version} is here
           <ArrowIcon className="text-muted" />
         </Link>
-        <h1 id="hero-title" className="mt-8 text-display">
-          Your coding agents,
-          <br />
+        {/* Two set lines on wider screens. On phones the break goes and the heading balances instead of leaving "team." alone. */}
+        <h1 id="hero-title" className="mt-8 text-display text-balance max-nav:mt-6">
+          Your coding agents,{' '}
+          <br className="max-nav:hidden" />
           working as a team.
         </h1>
         <p className="mx-auto mt-6 max-w-150 text-hero-lead text-balance text-muted">
@@ -46,7 +47,7 @@ export function Hero({ version }: { version: string }) {
           </span>
         </p>
       </div>
-      <div className="relative mt-16 px-6">
+      <div className="relative mt-16 px-6 max-nav:mt-12">
         <HeroDemo />
       </div>
     </section>

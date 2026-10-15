@@ -41,7 +41,7 @@ export default async function Home() {
         <Hero version={latestVersionLabel(latest.version)} />
         <Features />
         <Privacy />
-        <Waitlist className="pt-32" />
+        <Waitlist className="pt-32 max-nav:pt-24" />
         <Faq />
         <FinalCta />
       </main>

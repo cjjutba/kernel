@@ -37,7 +37,7 @@ export function Faq() {
   // One answer open at a time. Opening a question closes the one before it, and clicking the open one closes it.
   const [open, setOpen] = useState(0)
   return (
-    <section id="faq" aria-labelledby="faq-title" className="mx-auto grid max-w-312 grid-faq items-start gap-16 px-6 pt-40 max-faq:grid-cols-1 max-faq:gap-10">
+    <section id="faq" aria-labelledby="faq-title" className="mx-auto grid max-w-312 grid-faq items-start gap-16 px-6 pt-40 max-nav:pt-24 max-faq:grid-cols-1 max-faq:gap-10">
       <div>
         <h2 id="faq-title" className="text-h2 text-balance">
           Questions,

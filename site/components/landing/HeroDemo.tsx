@@ -91,11 +91,11 @@ export function HeroDemo() {
           )}
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-1 text-small text-faint">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-1 text-small text-faint max-nav:justify-center max-nav:text-center">
         <p>
           {wide
             ? "This is the real app on sample data. Brief Kernel, switch to Plan, approve the plan and watch the team build."
-            : 'Open this page on a larger screen to try Kernel right here.'}
+            : 'Try it live on a larger screen.'}
         </p>
         {wide && (
           <button

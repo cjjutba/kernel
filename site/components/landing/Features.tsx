@@ -85,12 +85,12 @@ function Tile({ f }: { f: Feature }) {
 
 export function Features() {
   return (
-    <section id="features" aria-labelledby="features-title" className="mx-auto max-w-312 px-6 pt-40">
+    <section id="features" aria-labelledby="features-title" className="mx-auto max-w-312 px-6 pt-40 max-nav:pt-24">
       <SectionHead
         title="The whole team, in one window."
         titleId="features-title"
       />
-      <div className="mt-14 grid grid-cols-2 gap-4 max-faq:grid-cols-1">
+      <div className="mt-14 grid grid-cols-2 gap-4 max-faq:grid-cols-1 max-nav:mt-10 max-nav:gap-3">
         {FEATURES.map((f) => (
           <Tile key={f.id} f={f} />
         ))}
