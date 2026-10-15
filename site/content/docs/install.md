@@ -6,11 +6,11 @@ description: What Kernel needs, how to install it, and what the first launch che
 ## Requirements
 
 - A Mac with Apple silicon, on macOS 13 or later
-- A Claude plan, a ChatGPT plan, or both. Agents run on Claude Code or Codex with the plan you already have.
+- A Claude plan for Claude Code, a ChatGPT plan for Codex, or both. Either one is enough. Agents run on the plan you already have.
 - git 2.38 or later
 - The [GitHub CLI](https://cli.github.com) (`gh`), signed in, for pull requests. Everything else works without it.
 
-Kernel brings its own copy of Claude Code, so you don't need to install it first. Codex is only needed if you set a role to run on it.
+Kernel brings its own copy of Claude Code and of Codex, so you don't need to install either first. Codex is only checked if you set a role to run on it.
 
 ## Download and install
 
@@ -29,7 +29,7 @@ On first launch Kernel checks your Mac and tells you how to fix anything missing
 | Claude Code | Kernel's own copy, version 2.1.80 or later | Reinstall or update Kernel |
 | Signed in | A Claude sign-in for agents on Claude Code | `claude auth login` |
 | Hook server | Kernel listening for Claude Code's events | Settings, Hooks |
-| Codex | Only if a role runs on Codex | `codex login`, or Settings, Accounts |
+| Codex | Only if a role runs on Codex, signed in with a ChatGPT plan | `codex login`, or Settings, Accounts |
 | Git | git 2.38 or later | `xcode-select --install` or `brew install git` |
 | GitHub CLI | `gh`, signed in, for pull requests | `brew install gh`, then `gh auth login` |
 
