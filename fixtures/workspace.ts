@@ -2148,6 +2148,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
     lag: { 'chats.retry': 500 }, after: { 'chats.retry': sentAfter(ids.tableChat, [{ type: 'text', text: 'Run the full test suite before I open the PR.' }]) },
     ui: open
   })), motion: { action: { click: 'Retry' }, ms: 1500, area: '.ws-main' } },
+  /** A send whose call fails: the bubble and Working line are drawn at once, then everything goes and the text is back in the box. */
+  WorkspaceSendFailsMotion: { ...scene(() => ({
+    ...withDraft({ items: { [ids.tableChat]: tableItems.slice(0, 1) }, ui: open }, 'Now add a CSV export for the filtered rows.'),
+    lag: { 'chats.send': 500 }, fails: { 'chats.send': 'Kernel did not answer.' }
+  })), motion: { action: { click: 'Send' }, ms: 1500, area: '.ws-main' } },
   /** Send now on a queued message: the row leaves the tray and the bubble appears in the same frame. */
   WorkspaceSendNowMotion: { ...scene((f) => ({
     items: { [ids.tableChat]: queuedItems() },
