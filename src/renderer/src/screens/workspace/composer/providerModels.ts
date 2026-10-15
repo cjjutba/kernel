@@ -6,7 +6,7 @@ import { useStore } from '../../../store'
 // Each provider's models for the pickers (KERNEL-406). Claude's are Kernel's own list, so they show at once. Codex's come
 // from its model/list, read once per launch in main and once per window here.
 
-const CLAUDE: ProviderModel[] = MODELS.map((m) => ({ provider: 'claude', id: m.id, label: m.label, efforts: EFFORTS.map((e) => e.id), defaultEffort: 'high' }))
+const CLAUDE: ProviderModel[] = MODELS.map((m) => ({ provider: 'claude', id: m.id, label: m.label, legacy: !!m.legacy, efforts: EFFORTS.map((e) => e.id), defaultEffort: 'high' }))
 const cache = new Map<Provider, Promise<ProviderModel[]>>()
 
 /** A provider's models. Codex's arrive after a read, and the list is empty until then, or when Codex can't be read. */

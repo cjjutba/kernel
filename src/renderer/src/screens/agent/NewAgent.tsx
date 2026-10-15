@@ -17,7 +17,7 @@ const PRESETS: { label: string; description: string }[] = [
   { label: 'Docs writer', description: 'A docs writer who keeps the README and docs in step with every merged change.' },
   { label: 'Data engineer', description: 'A data engineer who writes schema changes and migrations and checks them against real data.' }
 ]
-const MODEL_CHOICES = [{ value: 'sonnet', label: 'Sonnet 5.5' }, { value: 'opus', label: 'Opus 5.5' }, { value: 'haiku', label: 'Haiku 4.5' }]
+const MODEL_CHOICES = [{ value: 'sonnet', label: 'Sonnet 5.5' }, { value: 'opus', label: 'Opus 5.5' }, { value: 'haiku', label: 'Haiku 5.5' }]
 
 /**
  * New agent in three steps (NewAgent.png, NewAgentDraft.png, NewAgentDone.png): describe it, review and edit the file Kernel drafted,

@@ -90,10 +90,10 @@ const names = (list: string[]) => (list.length < 2 ? list.join('') : `${list.sli
 /** "3:40 PM" today, else "tomorrow at 4:00 AM", "Monday at 9:00 AM" or "Oct 21 at 9:00 AM": the time something waits until. */
 const untilPhrase = (resetsAt: number, now: number) => resetPhrase(resetsAt, now).replace(/^at /, '')
 
-/** The model to offer when `current` hits its own limit: the first one, in picker order, that is not limited. */
+/** The model to offer when `current` hits its own limit: the first current one, in picker order, that is not limited. */
 export function fallbackModel(current: string, usage: RateLimit[], now: number): ModelId | undefined {
   const limited = new Set(usage.filter((l) => rejected(l, now) && l.model).map((l) => l.model))
-  return MODELS.map((m) => m.id).find((m) => m !== current && !limited.has(m))
+  return MODELS.filter((m) => !m.legacy).map((m) => m.id).find((m) => m !== current && !limited.has(m))
 }
 
 /** "pnpm install" from the script's "$ pnpm install --frozen-lockfile && cp …" line. */

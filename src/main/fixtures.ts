@@ -352,7 +352,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'accounts.mcpIgnore': async () => f.mcpAccounts ?? [],
     'accounts.mcpSetUp': async ({ accountId }) => ({ accountId, servers: [], done: [], failed: [], finished: true }),
     'accounts.rename': async ({ accountId, label }) => (f.accounts ?? []).map((a) => (a.id === accountId ? { ...a, label: label.trim() || a.email || a.label } : a)),
-    'models.list': async ({ provider }) => f.models?.[provider] ?? (provider === 'claude' ? MODELS.map((m) => ({ provider, id: m.id, label: m.label, efforts: EFFORTS.map((e) => e.id), defaultEffort: 'high' as const })) : []),
+    'models.list': async ({ provider }) => f.models?.[provider] ?? (provider === 'claude' ? MODELS.map((m) => ({ provider, id: m.id, label: m.label, legacy: !!m.legacy, efforts: EFFORTS.map((e) => e.id), defaultEffort: 'high' as const })) : []),
     'terminal.presets': async () => presetList(settings.terminal, f.terminalClis ?? []),
     'settings.get': async () => settings,
     'settings.set': async ({ patch }) => {

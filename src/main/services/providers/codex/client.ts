@@ -107,6 +107,16 @@ export async function readCodexModels(bin: string, home: string | undefined, api
   }, { apiKey })
 }
 
+/**
+ * The ids of Codex's older models, which `model/list` doesn't mark: a `gpt-<version>-<name>` model is older when a model of
+ * a higher major version is listed, or the same name at a higher version. Ids of another shape are never older.
+ */
+export function legacyCodexModels(ids: string[]): Set<string> {
+  const parsed = ids.flatMap((id) => { const m = /^gpt-(\d+(?:\.\d+)?)-(\w+)$/.exec(id); return m ? [{ id, version: Number(m[1]), name: m[2] }] : [] })
+  const major = Math.max(...parsed.map((m) => Math.floor(m.version)))
+  return new Set(parsed.filter((m) => Math.floor(m.version) < major || parsed.some((o) => o.name === m.name && o.version > m.version)).map((m) => m.id))
+}
+
 /** What Kernel reads of one server in `mcpServerStatus/list`: its tools by name, not what they take, and its plugin. */
 export interface CodexMcpServer { name: string; authStatus: McpAuthStatus; runtimeStatus: McpServerConnectionStatus | null; pluginId?: string | null; tools: Record<string, unknown> }
 

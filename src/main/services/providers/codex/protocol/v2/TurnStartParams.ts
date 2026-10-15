@@ -17,12 +17,34 @@ import type { TurnEnvironmentParams } from "./TurnEnvironmentParams";
 import type { TurnToolOutput } from "./TurnToolOutput";
 import type { UserInput } from "./UserInput";
 
-export type TurnStartParams = { threadId: string, clientUserMessageId?: string | null, input: Array<UserInput>,
+export type TurnStartParams = { threadId: string,
+/**
+ * Replace this thread's disabled plugin IDs.
+ * Omitted/null preserves the list; [] clears it.
+ */
+disabledPluginIds?: Array<string> | null, clientUserMessageId?: string | null, input: Array<UserInput>,
 /**
  * Optional source classification for the caller that starts this turn.
  * Ignored when this request steers an already-active turn.
  */
-turnTrigger?: string | null, toolOutput?: TurnToolOutput | null,
+turnTrigger?: string | null,
+/**
+ * ID of the turn that caused this new turn to start.
+ *
+ * Set this when starting work on behalf of another turn, such as delegated
+ * work in a different thread. Leave unset for work started directly by the
+ * user. Ignored when this request adds input to an active turn.
+ */
+parentTurnId?: string | null,
+/**
+ * ID of the first turn in the chain of work that led to this new turn.
+ *
+ * When setting `parentTurnId`, set this to the parent turn's `rootTurnId`
+ * when known. This keeps descendant work attributed to the original turn.
+ * If omitted, the new turn becomes its own root. Ignored when this request
+ * adds input to an active turn.
+ */
+rootTurnId?: string | null, toolOutput?: TurnToolOutput | null,
 /**
  * Optional metadata to enrich Codex's ResponsesAPI turn metadata.
  *
@@ -95,7 +117,8 @@ effort?: ReasoningEffort | null,
  */
 summary?: ReasoningSummary | null,
 /**
- * Override the personality for this turn and subsequent turns.
+ * @deprecated `friendly` and `pragmatic` no longer select a style.
+ * Changing this does not rewrite the thread's existing instructions.
  */
 personality?: Personality | null,
 /**
@@ -116,7 +139,7 @@ collaborationMode?: CollaborationMode | null,
  */
 multiAgentMode?: MultiAgentMode | null,
 /**
- * EXPERIMENTAL - Request a workspace-authorized cyber program for this
+ * EXPERIMENTAL - Request an authorized cyber program for this
  * turn. Omission preserves automatic behavior. This does not grant access.
  */
 cyberAccessProgram?: CyberAccessProgram | null, };

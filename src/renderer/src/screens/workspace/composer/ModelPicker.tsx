@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { EFFORT_LABELS, EFFORTS, MODELS, type Effort, type Provider } from '@shared/types'
 import { actions } from '../../../store'
 import { Icon, ProviderMark } from '../../../ui'
@@ -48,7 +48,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const efforts = effortsOf(model, own)
   const [q, setQ] = useState('')
   const all: Row[] = useMemo(() => [
-    ...MODELS.map((m, i) => ({ provider: 'claude' as const, id: m.id, label: m.label, n: i + 1 })),
+    ...MODELS.map((m, i) => ({ provider: 'claude' as const, id: m.id, label: m.label, ...(m.legacy ? {} : { n: i + 1 }) })),
     ...(grouped || provider === 'codex' ? codex.map((m) => ({ provider: 'codex' as const, id: m.id, label: m.label })) : [])
   ], [codex, grouped, provider])
   const rows = useMemo(() => {
@@ -62,6 +62,15 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const ref = useRef<HTMLDivElement>(null)
   useLayer({ onEscape: onClose, onOutside: onClose, ref, anchorRef })
   useEffect(() => { ref.current?.querySelector('input')?.focus() }, [])
+  // The popover opens upward from the composer, so it gets the room between its bottom and the window's top.
+  const [maxHeight, setMaxHeight] = useState<number>()
+  useLayoutEffect(() => {
+    const fit = () => { if (ref.current) setMaxHeight(Math.max(160, ref.current.getBoundingClientRect().bottom - 12)) }
+    fit()
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [])
+  useEffect(() => { ref.current?.querySelector('.pick-list [data-active="true"]')?.scrollIntoView({ block: 'nearest' }) }, [at, rows])
 
   const effortRow = rows.length
   const rowEffort = (m: Row) => (m.id === model ? effort : fitEffort(effortFor(m.id, memory, fallback), m.id, listOf(m.provider)))
@@ -89,7 +98,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   }
 
   return (
-    <div ref={ref} className="menu cmp-pop model-pop" role="dialog" aria-label="Model and effort" onKeyDown={onKey}>
+    <div ref={ref} className="menu cmp-pop model-pop" role="dialog" aria-label="Model and effort" onKeyDown={onKey} style={{ maxHeight }}>
       <label className="pick-search">
         <Icon name="search" size={14} />
         <input aria-label="Search models" placeholder="Search models" autoComplete="off" spellCheck={false} value={q} onChange={(e) => { setQ(e.target.value); setAt(0); setSub(false) }} />

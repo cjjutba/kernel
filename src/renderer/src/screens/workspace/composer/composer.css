@@ -93,7 +93,11 @@
 .cmp-ac-row .sub { flex: 1; min-width: 0; color: var(--muted); }
 .cmp-pop { left: 0; bottom: calc(100% + 8px); }
 /* Model and effort (D-093), drawn after Conductor's picker. The link pickers share the search field. */
-.model-pop { width: 360px; padding: 0; background: var(--surface-2); }
+.model-pop { display: flex; flex-direction: column; width: 360px; padding: 0; background: var(--surface-2); }
+/* Taller than the room above the composer, the model list scrolls and the search, Effort and footer stay. */
+.model-pop > .pick-search, .model-pop > .pick-foot { flex-shrink: 0; }
+.model-pop > .pick-body { min-height: 0; }
+.model-pop .pick-list { min-height: 0; overflow-y: auto; }
 .pick-search { display: flex; align-items: center; gap: 9px; height: 42px; padding: 0 14px; border-bottom: 1px solid var(--card-line); color: var(--muted); cursor: text; }
 .pick-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: 13.5px; }
 .pick-search input::placeholder { color: var(--muted); }

@@ -9,7 +9,7 @@ import type { Turn } from './providers/codex/protocol/v2/Turn'
 import type { TurnStartParams } from './providers/codex/protocol/v2/TurnStartParams'
 
 /** The model that names chats. Small and fast: a name is a few words (KERNEL-202). */
-export const TITLE_MODEL = 'claude-haiku-4-5-20251001'
+export const TITLE_MODEL = 'claude-haiku-5-5'
 
 const PROMPT = [
   'You name chats in a coding app. Read the conversation and reply with a name for it and nothing else.',
@@ -101,7 +101,7 @@ export async function askTitle(text: string, o: { cwd: string; current?: string;
 }
 
 /** The Codex model that names chats when Claude can't: Codex's small, fast one. An account without it uses its default. */
-export const CODEX_TITLE_MODEL = 'gpt-5.6-luna'
+export const CODEX_TITLE_MODEL = 'gpt-6-luna'
 
 /**
  * A name for a conversation from Codex, for when no Claude account can name it (KERNEL-624). `codex app-server` starts on

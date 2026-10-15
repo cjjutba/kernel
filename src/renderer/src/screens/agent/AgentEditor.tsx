@@ -109,7 +109,7 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
         <div className="ap-two">
           <div className="ap-field">
             <span className="ap-label" id="ap-model">Model</span>
-            <SegmentedControl label="Model" value={modelId} onChange={(id) => set({ model: modelAlias(id) })} options={['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-4-5-20251001', 'claude-fable-5-1'].map((id) => ({ value: id, label: MODELS.find((m) => m.id === id)?.label ?? id }))} />
+            <SegmentedControl label="Model" value={modelId} onChange={(id) => set({ model: modelAlias(id) })} options={['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'].map((id) => ({ value: id, label: MODELS.find((m) => m.id === id)?.label ?? id }))} />
             {builtIn ? <span className="hint">From <SettingsLink to={{ page: 'models' }}>Models and effort</SettingsLink></span> : <PinHint agent={agent} model={form.model} disabled={locked} onClear={() => set({ model: '' })} />}
           </div>
           <div className="ap-field">

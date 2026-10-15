@@ -1851,11 +1851,11 @@ describe('Agent rows name the subagent model (KERNEL-158)', () => {
     const { call, store } = await setup()
     call.feed(agent('ag1', { description: 'Explore engine for Linear plan', model: 'haiku' }))
     await flush()
-    expect(row(store, 'ag1')).toMatchObject({ label: 'Run agent: Explore engine for Linear plan · Haiku 4.5', detail: 'Explore engine for Linear plan', status: 'running' })
+    expect(row(store, 'ag1')).toMatchObject({ label: 'Run agent: Explore engine for Linear plan · Haiku 5.5', detail: 'Explore engine for Linear plan', status: 'running' })
     call.feed(sub('ag1', 'claude-sonnet-5-5', 1))
     call.feed(result('ag1'))
     await flush()
-    expect(row(store, 'ag1')).toMatchObject({ label: 'Run agent: Explore engine for Linear plan · Haiku 4.5', detail: 'Explore engine for Linear plan', status: 'done' })
+    expect(row(store, 'ag1')).toMatchObject({ label: 'Run agent: Explore engine for Linear plan · Haiku 5.5', detail: 'Explore engine for Linear plan', status: 'done' })
   })
 
   it("names the subagent's real model from its first message and keeps it on the saved done row", async () => {
