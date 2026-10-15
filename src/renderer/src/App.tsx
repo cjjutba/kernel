@@ -21,6 +21,7 @@ import { Inbox } from './screens/inbox/Inbox'
 import { ConfirmIssueTaken } from './screens/issues/ConfirmIssueTaken'
 import { backToNewChat, startHeld } from './screens/new-workspace/start'
 import { Issues } from './screens/issues/Issues'
+import { PullRequests } from './screens/prs/PullRequests'
 import { CheckHooks } from './screens/onboarding/CheckHooks'
 import { Checks } from './screens/onboarding/Checks'
 import { Loading } from './screens/onboarding/Loading'
@@ -88,6 +89,7 @@ function Screen({ route }: { route: Route }): ReactNode {
       return <Checks />
     case 'inbox': return <Inbox />
     case 'issues': return <Issues issueId={route.issueId} roomId={route.roomId} />
+    case 'prs': return <PullRequests filter={route.filter} />
     case 'history': return <History />
     case 'rooms': return <Rooms />
     case 'workspace': return <Workspace workspaceId={route.workspaceId} />

@@ -75,8 +75,8 @@ const restIcon = (g: WorkspaceGlyph, rest: WorkspaceGlyph, fallback: IconName): 
 }
 
 function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen, leaving }: { route: Route; icon: IconName | ReactElement; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; slot?: RowKey; /** The row's name when it has something new: its title goes bold and its label ends in Unread (KERNEL-508). */ unread?: string; /** In place of going to `route`. */ onOpen?: () => void; /** The row's workspace was archived. It folds away, keeping the fill it had on the screen the archive left (`from`), or `held` waits for its chat to fold. */ leaving?: Gone }) {
-  // Issues opens on an issue too, so any issue is the Issues row's page.
-  const current = useStore((s) => { const r = leaving ? leaving.from ?? s.ui.route : s.ui.route; return same(r, route) || (route.name === 'issues' && r.name === 'issues') })
+  // Issues opens on an issue too, so any issue is the Issues row's page. Pull requests opens on a filter, which is still its page.
+  const current = useStore((s) => { const r = leaving ? leaving.from ?? s.ui.route : s.ui.route; return same(r, route) || (route.name === 'issues' && r.name === 'issues') || (route.name === 'prs' && r.name === 'prs') })
   const arrive = useArriving(current && !leaving)
   return (
     <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current && !leaving ? 'page' : undefined} data-was-current={current && leaving ? '' : undefined} data-arrive={arrive ? '' : undefined} aria-label={unread === undefined ? undefined : `${unread}, Unread`} data-unread={unread === undefined ? undefined : ''} aria-keyshortcuts={slot && `${slot.ctrl ? 'Control' : 'Meta'}+${slot.n}`} onClick={onOpen ?? (() => go(route))}>
@@ -454,6 +454,7 @@ export function AppSidebar() {
         <button className="nav-item" onClick={() => openNewChat(openRoom)}><Icon name="pen" /><span className="grow">New chat</span><span className="muted" style={{ fontSize: 11.5 }}>⌘N</span></button>
         <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="nav-count">{inbox}</span> : null} />
         <NavItem route={{ name: 'issues' }} icon="issues" label="Issues" />
+        <NavItem route={{ name: 'prs' }} icon="pr" label="Pull requests" />
       </div>
       <div className="sb-rule" role="separator" />
       <div ref={roomsAnchor} className="section-label hv" style={{ position: 'relative', marginTop: 8, flexShrink: 0 }}>

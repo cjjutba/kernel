@@ -554,6 +554,43 @@ const issuesTrackerScene = (f: Fixture, route: { issueId?: string; roomId: strin
   ui: { route: { name: 'issues', ...route } }
 })
 
+// ---------- Pull requests
+
+/** The Pull requests page: seven open PRs across the four rooms, one of each state, and the five merged ones from `homeScene`. `open` and `merged` pick the filter, `none` leaves out every open PR. */
+const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'merged' }): Partial<Fixture> => {
+  const home = homeScene(f)
+  const mk = (n: number, roomId: string, agentId: string, title: string, state: Workspace['prState'], stat: [number, number], extra: Partial<Workspace> = {}, info: Partial<PrInfo> = {}) => {
+    const id = `ws-prs-${n}`
+    const w: Workspace = {
+      id, roomId, name: `pr-${n}`, branch: `feat/pr-${n}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/pr-${n}`, mode: 'worktree', agentId, port: 4600 + n,
+      status: 'ready', createdAt: at(10, 12), title, prTitle: title, prState: state, prNumber: n, prUrl: `https://github.com/cjjutba/pr/pull/${n}`, prHead: `h${n}`, stat: { files: 3, added: stat[0], removed: stat[1] }, ...extra
+    }
+    const pr: PrInfo = { workspaceId: id, number: n, url: w.prUrl!, title, state, baseRef: 'main', comments: [], conflicts: [], head: `h${n}`, checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }], ...info }
+    return [w, pr] as const
+  }
+  const approved = (n: number) => ({ reviews: [{ workspaceId: `ws-prs-${n}-review`, agentId: 'theo', verdict: 'approved' as const, summary: 'No blockers.', sha: `h${n}`, prNumber: n, ts: at(10, 30) }] })
+  const rows = [
+    mk(61, ids.roomA, 'kai', 'feat(invoices): PDF export for a single invoice', 'ready', [212, 18], approved(61), { reviewDecision: 'approved' }),
+    mk(58, ids.roomB, 'kai', 'fix(portal): keep the session after a refresh', 'ready', [34, 6], approved(58)),
+    mk(60, ids.roomA, 'noor', 'feat(billing): proration for mid-cycle upgrades', 'cifail', [305, 41], {}, { checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'fail', meta: '51s' }] }),
+    mk(57, ids.roomOwn, 'ivy', 'test(auth): cover the invite expiry', 'changes', [96, 3], {}, { reviewDecision: 'changes' }),
+    mk(55, ids.roomPortfolio, 'kai', 'Landing page: new case study layout', 'conflict', [188, 77], {}, { conflicts: ['src/pages/index.tsx', 'src/styles/home.css'] }),
+    mk(62, ids.roomA, 'kai', 'refactor(table): share the sort hook', 'checks', [64, 52], {}, { checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'running' }] }),
+    mk(59, ids.roomOwn, 'kai', 'chore(db): index invoice lookups', 'draft', [12, 0], {}, { checks: [] })
+  ]
+  const none = o.none === 'open'
+  return {
+    ...home,
+    // The base workspaces keep their own PRs in the list, except where the page is to be empty.
+    workspaces: [
+      ...home.workspaces!.map((w, i) => (w.prState === 'merged' ? { ...w, prNumber: 56 - i } : none && w.prNumber ? { ...w, prState: 'none' as const } : w)),
+      ...(none ? [] : rows.map(([w]) => w))
+    ].filter((w) => o.none !== 'merged' || w.prState !== 'merged'),
+    prs: Object.fromEntries(rows.map(([w, pr]) => [w.id, pr])),
+    ui: { route: { name: 'prs', filter: o.filter } }
+  }
+}
+
 /** The New chat the issue check held back in ConfirmIssueTaken (KERNEL-500). */
 const invoicePdfPrompt = 'KERNEL-31: Export invoices as PDF'
 const invoicePdfChat: HeldChat = {
@@ -699,6 +736,11 @@ export const teamFixtures: Record<string, Fixture> = {
   // KERNEL-590: the repo's `[team] reviewer = "none"` turned review off, so the picker says No reviewer and no line claims a review.
   RoomSetupTeamNoReviewer: scene((f) => roomSetupTeam(f, { reviewer: 'none' })),
   Issues: scene((f) => issuesScene(f)),
+  // The Pull requests page: open PRs across the rooms, the merged ones, and each empty.
+  PullRequests: scene((f) => prsScene(f, { filter: 'open' })),
+  PullRequestsMerged: scene((f) => prsScene(f, { filter: 'merged' })),
+  PullRequestsEmpty: scene((f) => prsScene(f, { filter: 'open', none: 'open' })),
+  PullRequestsNoMerged: scene((f) => prsScene(f, { filter: 'merged', none: 'merged' })),
   // KERNEL-759: the tracker read never answers, so the page shows Loading issues with the load loader.
   IssuesLoading: scene((f) => ({ ...issuesScene(f), hold: ['issues.tracker'] })),
   IssuesWorking: scene((f) => issuesScene(f, { issueId: 'KERNEL-24', working: true })),

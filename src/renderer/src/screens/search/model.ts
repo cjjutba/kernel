@@ -162,6 +162,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
   const goDefault: PaletteItem[] = [
     goto('go-inbox', 'Inbox', { name: 'inbox' }, { keys: ['G', 'I'] }),
     goto('go-issues', 'Issues', room ? { name: 'issues', roomId: room.id } : { name: 'issues' }, { also: 'linear github tickets' }),
+    goto('go-prs', 'Pull requests', { name: 'prs' }, { also: 'prs merge merged checks review' }),
     ...(shown ? [goto('go-ws', `${workspaceRowLabel(shown)} workspace`, { name: 'workspace', workspaceId: shown.id }, { also: `${shown.name} ${shown.branch}` })] : []),
     goto('go-settings', 'Settings', { name: 'settings', page: 'general' }, { keys: ['⌘', ','], also: 'preferences' }),
     ...(room ? [goto('go-agents', 'Agents', roomAgents(room.id), { also: 'team subagents' })] : []),

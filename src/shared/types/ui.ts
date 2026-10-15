@@ -28,6 +28,8 @@ export type Route =
   /** Linear issues. `issueId` is the identifier of the open issue. */
   /** `roomId` is the room whose tracker the screen lists. Without it the screen opens on the room used last (KERNEL-471). */
   | { name: 'issues'; issueId?: string; roomId?: string }
+  /** Pull requests across every room. `filter` is the list it opens on, Open when unset. */
+  | { name: 'prs'; filter?: 'open' | 'merged' }
   /** `section` is for `page: 'room'`, and none means General. */
   /** `tab` puts that provider's accounts in view on Settings, Accounts (KERNEL-406). */
   /** `account` is the id of the account Skills and MCP puts first in view (KERNEL-627). */
