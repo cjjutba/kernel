@@ -9,6 +9,7 @@ import { HireServers, hireName } from './HireServers'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt, useCopy } from '../MessageActions'
 import { decideAtOnce, useFoldPhase } from './decideFold'
+import { decideInChat } from './optimisticAnswer'
 import { PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
 import { AnswerBubble } from './AnswerBubble'
 import { answerItemId } from '@shared/approvalAnswer'
@@ -156,7 +157,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
   }
   const primary = () => {
     if (!pickReady(p) || busy !== null) return
-    if (done) return void run('send', () => decide(a, answerDecision(qs, picks)))
+    if (done) return void run('send', () => decideInChat(a, answerDecision(qs, picks)))
     const to = nextUnanswered(picks, step)
     if (to >= 0) move(to)
   }
@@ -389,7 +390,8 @@ function PlanCard({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead: 
   return isStepList(a) ? <PlanSteps a={a} agents={agents} lead={lead} /> : <PlanDoc a={a} agents={agents} lead={lead} />
 }
 
-function HireCard({ a, lead }: { a: Approval; lead: string }) {
+function HireCard({ a, lead, inChat }: { a: Approval; lead: string; inChat?: boolean }) {
+  const decideHere = inChat ? decideInChat : decide
   const [asking, setAsking] = useState(false)
   const [busy, run] = useBusy()
   const file = a.agentFile
@@ -401,11 +403,11 @@ function HireCard({ a, lead }: { a: Approval; lead: string }) {
       <HireServers servers={file.servers} agent={hireName(file)} lead={lead} />
       <p className="hire-scope">{file.scope === 'team' ? 'Proposed to the team as a pull request' : 'Saved just for you'}</p>
       {a.status !== 'pending' ? <Result a={a} /> : asking ? (
-        <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decide(a, { behavior: 'deny', message: note || 'Please change the agent file.' })} />
+        <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decideHere(a, { behavior: 'deny', message: note || 'Please change the agent file.' })} />
       ) : (
         <div className="acts">
           <Button disabled={!!busy} onClick={() => setAsking(true)}>Edit file</Button>
-          <Button variant="primary" busy={!!busy} busyPattern="pulse" busyLabel="Creating" onClick={() => void run('create', () => decide(a, { behavior: 'allow' }))}>Create agent</Button>
+          <Button variant="primary" busy={!!busy} busyPattern="pulse" busyLabel="Creating" onClick={() => void run('create', () => decideHere(a, { behavior: 'allow' }))}>Create agent</Button>
         </div>
       )}
     </section>
@@ -418,7 +420,7 @@ export function ApprovalCard({ approval: a, inChat }: { approval: Approval; inCh
   const agent = agents.find((x) => x.id === a.agentId)
   const who = agent?.name ?? 'An agent'
   const hasItem = useStore((s) => !!a.chatId && !!s.items[a.chatId]?.some((i) => i.id === answerItemId(a.id)))
-  if (a.kind === 'agent' || a.agentFile) return <HireCard a={a} lead={agent?.name ?? 'the Lead'} />
+  if (a.kind === 'agent' || a.agentFile) return <HireCard a={a} lead={agent?.name ?? 'the Lead'} inChat={inChat} />
   if (isPlanApproval(a)) return inChat ? <PlanInline a={a} agents={agents} hasItem={hasItem} /> : <PlanCard a={a} agents={agents} lead={!!agent?.lead} />
   if (a.kind === 'question') return <QuestionCard a={a} who={who} inChat={inChat} hasItem={hasItem} />
   return <PermCard a={a} who={who} />

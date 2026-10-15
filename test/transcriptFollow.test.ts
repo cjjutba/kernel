@@ -214,7 +214,7 @@ describe('what a send anchors (KERNEL-803)', () => {
 
 describe('a send anchors once and the padding outlives its turn (KERNEL-837)', () => {
   type View = { scrollTop: number; scrollHeight: number; clientHeight: number }
-  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ sendAnchor: (last: ChatItem | undefined, anchoredId: string | null, open?: boolean, readerAway?: boolean) => 'anchor' | 'keep'; padDroppable: (v: View, pad: number) => boolean; postedFromQueue: (queuedAt: number, now: number) => boolean; QUEUE_POST_MS: number }>
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ sendAnchor: (last: ChatItem | undefined, anchoredId: string | null, open?: boolean, readerAway?: boolean) => 'anchor' | 'keep'; postedFromQueue: (queuedAt: number, now: number) => boolean; QUEUE_POST_MS: number }>
 
   it('anchors a new message, then leaves the reader alone while the turn runs, ends or an approval arrives', async () => {
     const { sendAnchor } = await load()
@@ -245,14 +245,6 @@ describe('a send anchors once and the padding outlives its turn (KERNEL-837)', (
     expect(postedFromQueue(10_000, 10_000 + QUEUE_POST_MS - 1)).toBe(true)
     expect(postedFromQueue(10_000, 10_000 + QUEUE_POST_MS)).toBe(false)
     expect(postedFromQueue(0, 60_000)).toBe(false)
-  })
-
-  it('drops the padding only once the view sits clear of it, so dropping it moves nothing', async () => {
-    const { padDroppable } = await load()
-    // 700px of rows and 300px of padding under a 700px view.
-    expect(padDroppable({ scrollTop: 1, scrollHeight: 1000, clientHeight: 700 }, 300)).toBe(false)
-    expect(padDroppable({ scrollTop: 0, scrollHeight: 1000, clientHeight: 700 }, 300)).toBe(true)
-    expect(padDroppable({ scrollTop: 250, scrollHeight: 1000, clientHeight: 400 }, 300)).toBe(true)
   })
 })
 
@@ -327,19 +319,118 @@ describe('a jump ends the send aim (KERNEL-825)', () => {
   })
 })
 
-describe('a place remembers the anchored message while a turn runs (KERNEL-837)', () => {
-  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as Promise<{ readPlace: (rows: { id: string; top: number; height: number }[], scrollTop: number, pinned: boolean, lastUserId?: string, anchoredId?: string) => { anchoredId?: string } }>
-  const rows = [{ id: 'u1', top: 0, height: 80 }]
+describe('a place keeps the anchored message, running or not (KERNEL-837)', () => {
+  type P = { anchoredId?: string; anchoredTop?: number; pinned: boolean }
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as Promise<{ readPlace: (rows: { id: string; top: number; height: number }[], scrollTop: number, pinned: boolean, lastUserId?: string, anchoredId?: string) => P; keptAnchor: (place: P | undefined, lastSentId: string | undefined) => string | undefined; placeTop: (place: P & { anchors: { id: string; offset: number }[]; scrollTop: number }, rowTop: (id: string) => number | undefined, range: number) => number; opensAtEnd: (place: P & { lastUserId?: string } | undefined, lastSentId: string | undefined) => boolean }>
+  const rows = [{ id: 'a1', top: 0, height: 200 }, { id: 'u1', top: 212, height: 80 }]
 
-  it('keeps it for a reader who is not at the end, so switching tabs mid-turn and back keeps the message at the top', async () => {
+  it('keeps it after the turn ends and for a reader at the end of the rows, where the padding still stands', async () => {
     const { readPlace } = await load()
-    expect(readPlace(rows, 0, false, 'u1', 'u1').anchoredId).toBe('u1')
+    expect(readPlace(rows, 188, false, 'u1', 'u1').anchoredId).toBe('u1')
+    expect(readPlace(rows, 188, true, 'u1', 'u1').anchoredId).toBe('u1')
+    expect(readPlace(rows, 0, false, 'u1').anchoredId).toBeUndefined()
   })
 
-  it('leaves it out for a view at the end and when nothing was anchored', async () => {
-    const { readPlace } = await load()
-    expect(readPlace(rows, 0, true, 'u1', 'u1').anchoredId).toBeUndefined()
-    expect(readPlace(rows, 0, false, 'u1').anchoredId).toBeUndefined()
+  it('brings the message back only while it is still the last one the reader sent', async () => {
+    const { readPlace, keptAnchor } = await load()
+    const place = readPlace(rows, 188, false, 'u1', 'u1')
+    expect(keptAnchor(place, 'u1')).toBe('u1')
+    expect(keptAnchor(place, 'u2')).toBeUndefined()
+    expect(keptAnchor(undefined, 'u1')).toBeUndefined()
+  })
+
+  it('opens where it was left, not at the end, when the anchor is kept, even for a pinned reader', async () => {
+    const { readPlace, opensAtEnd } = await load()
+    expect(opensAtEnd(readPlace(rows, 188, true, 'u1', 'u1'), 'u1')).toBe(false)
+    expect(opensAtEnd(readPlace(rows, 188, true, 'u1'), 'u1')).toBe(true)
+  })
+
+  it('puts the view back by the message itself, 24px down or wherever the reader had moved it', async () => {
+    const { readPlace, placeTop } = await load()
+    expect(placeTop({ ...readPlace(rows, 188, false, 'u1', 'u1'), anchors: [], scrollTop: 0 }, (id) => (id === 'u1' ? 212 : undefined), 900)).toBe(188)
+    // Scrolled up 300px and left: the message was 300px lower in the view.
+    expect(placeTop({ ...readPlace(rows, 0, false, 'u1', 'u1'), anchors: [], scrollTop: 0 }, (id) => (id === 'u1' ? 212 : undefined), 900)).toBe(0)
+  })
+})
+
+describe('scrolling into the padding under a sent message (KERNEL-837)', () => {
+  type View = { scrollTop: number; scrollHeight: number; clientHeight: number }
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ followsAfterScroll: (pinned: boolean, view: View, before: View, byHand: boolean) => boolean; anchorPad: (clientHeight: number, anchorTop: number, endBottom: number) => number }>
+  // The rows end 700px down in an 800px view. The measured height is the rows', as the thread's flat view reads it.
+  const flat = (scrollTop: number): View => ({ scrollTop, scrollHeight: 1500, clientHeight: 800 })
+
+  it('keeps following when the reader scrolls down past the end of the rows, and never pulls the view back up', async () => {
+    const { followsAfterScroll } = await load()
+    expect(followsAfterScroll(true, flat(760), flat(700), true)).toBe(true)
+    expect(followsAfterScroll(true, flat(900), flat(760), true)).toBe(true)
+  })
+
+  it('pins at the end of the rows on the way down, and not before', async () => {
+    const { followsAfterScroll } = await load()
+    expect(followsAfterScroll(false, flat(300), flat(200), true)).toBe(false)
+    expect(followsAfterScroll(false, flat(680), flat(600), true)).toBe(true)
+  })
+
+  it('makes the padding from the layout alone, so no scroll position can change it', async () => {
+    const { anchorPad } = await load()
+    expect(anchorPad(800, 24, 24 + 300)).toBe(800 - 24 - 300)
+    expect(anchorPad(800, 24, 24 + 300)).toBe(anchorPad(800, 24, 24 + 300))
+    expect(anchorPad(800, 24, 24 + 2000)).toBe(0)
+  })
+})
+
+describe('the answer row an approval shows at once (KERNEL-838)', () => {
+  type A = Record<string, unknown>
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/cards/optimisticAnswer' as string) as Promise<{ answerRow: (a: A, d: A, ts?: number) => ChatItem | undefined }>
+  const plan = { id: 'ap1', kind: 'plan', toolName: 'ExitPlanMode', status: 'pending', chatId: 'c1' }
+
+  it('has the id and the words the engine will give it, so its row replaces this one', async () => {
+    const { answerRow } = await load()
+    const { answerItemId, answerParts } = await import('../src/shared/approvalAnswer')
+    const row = answerRow(plan, { behavior: 'allow' }, 5)
+    expect(row).toMatchObject({ kind: 'user', id: answerItemId('ap1'), approvalId: 'ap1', parts: [{ type: 'text', text: 'Approved' }] })
+    expect(row && 'approvalId' in row && !('from' in row && row.from)).toBe(true)
+    expect(answerParts({ ...plan, status: 'allowed' } as never)).toEqual((row as { parts: unknown }).parts)
+  })
+
+  it('words a plan change request, a question and an agent proposal as the engine does', async () => {
+    const { answerRow } = await load()
+    expect(answerRow(plan, { behavior: 'deny', message: ' Split step 2. ' })).toMatchObject({ parts: [{ type: 'text', text: 'Split step 2.' }] })
+    expect(answerRow({ id: 'q1', kind: 'question', status: 'pending', chatId: 'c1' }, { behavior: 'answer', text: 'Yes' })).toMatchObject({ parts: [{ type: 'text', text: 'Yes' }] })
+    expect(answerRow({ id: 'h1', kind: 'agent', status: 'pending', chatId: 'c1' }, { behavior: 'deny' })).toMatchObject({ parts: [{ type: 'text', text: 'Not now' }] })
+  })
+
+  it('adds nothing for a tool permission or a change request with images', async () => {
+    const { answerRow } = await load()
+    expect(answerRow({ id: 'p1', kind: 'tool', toolName: 'Bash', status: 'pending', chatId: 'c1' }, { behavior: 'allow' })).toBeUndefined()
+    expect(answerRow(plan, { behavior: 'deny', message: 'x', images: [{ name: 'a.png', dataUrl: 'data:' }] })).toBeUndefined()
+  })
+})
+
+describe('the optimistic answer row in the store (KERNEL-838)', () => {
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/store' as string) as Promise<{ actions: { chats: { upsertItem: (c: string, i: ChatItem) => void; dropItem: (c: string, i: ChatItem) => void } }; getState: () => { items: Record<string, ChatItem[]> } }>
+  const row = (ts: number, text: string): ChatItem => ({ kind: 'user', id: 'answer-ap1', ts, parts: [{ type: 'text', text }], approvalId: 'ap1' })
+
+  it("is replaced by the engine's row of the same id, in place, and never drawn twice", async () => {
+    const { actions, getState } = await load()
+    const mine = row(1, 'Approved')
+    actions.chats.upsertItem('oc1', { kind: 'text', id: 't0', ts: 0, text: 'Plan.' })
+    actions.chats.upsertItem('oc1', mine)
+    actions.chats.upsertItem('oc1', row(2, 'Approved'))
+    expect(getState().items['oc1'].map((i) => i.id)).toEqual(['t0', 'answer-ap1'])
+    expect(getState().items['oc1'][1].ts).toBe(2)
+  })
+
+  it('is taken out when the call fails, but an engine row that replaced it stays', async () => {
+    const { actions, getState } = await load()
+    const mine = row(1, 'Approved')
+    actions.chats.upsertItem('oc2', mine)
+    actions.chats.dropItem('oc2', mine)
+    expect(getState().items['oc2']).toEqual([])
+    actions.chats.upsertItem('oc3', mine)
+    actions.chats.upsertItem('oc3', row(2, 'Approved'))
+    actions.chats.dropItem('oc3', mine)
+    expect(getState().items['oc3']).toHaveLength(1)
   })
 })
 

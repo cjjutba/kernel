@@ -58,7 +58,8 @@ button.ws-issue:hover { background: var(--surface-3); }
 /* The scroll area sits in a frame, so the Scroll to bottom button floats over it instead of scrolling away with the thread (KERNEL-532). */
 .ws-chat { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .icon-btn.ws-jump { position: absolute; left: 0; right: 0; bottom: 12px; z-index: 1; margin: 0 auto; width: 32px; height: 32px; border: 1px solid var(--line-3); border-radius: 50%; background: var(--surface); }
-.ws-scroll { --ws-fade: 24px; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 16px 32px 8px; }
+/* The top padding is the anchor gap (ANCHOR_GAP): a first message that no scroll can move sits as far down as an anchored one. */
+.ws-scroll { --ws-fade: 24px; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: var(--ws-fade) 32px 8px; }
 /* Rows scrolled off the top fade over --ws-fade instead of being cut, and a sent message anchors that far down (ANCHOR_GAP). Nothing fades at the very top, and the mask is visual only. The rail and the Scroll to bottom button are siblings, so they stay solid. */
 .ws-scroll[data-scrolled] { -webkit-mask-image: linear-gradient(to bottom, transparent, var(--canvas) var(--ws-fade)); mask-image: linear-gradient(to bottom, transparent, var(--canvas) var(--ws-fade)); }
 /* The chat rail (KERNEL-599): a 22px button 6px in from the column's right edge, one 2px mark per message (12px) and Team update (6px). With the right panel open it takes the 32px side padding. */
@@ -490,7 +491,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 
 /* A narrow chat column: the transcript and composer pull in from the edges (D-080). */
 @container chat (max-width: 520px) {
-  .ws-scroll { padding: 16px 16px 8px; }
+  .ws-scroll { padding: var(--ws-fade) 16px 8px; }
   .ws-chat[data-rail] .ws-scroll { padding-right: 32px; }
 }
 
