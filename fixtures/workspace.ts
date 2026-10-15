@@ -2915,7 +2915,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   NewChatLinked: scene((f) => {
     const g = noPlan(leadNoChats(f))
     const issue = { type: 'issue' as const, name: 'T-17', title: 'Email an invoice to the client from the row actions', url: 'https://linear.app/client-a/issue/T-17', source: 'linear' as const }
-    return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [issue, { type: 'text', text: ' ' }], draft: '' } } } }
+    return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [issue, { type: 'text', text: ' ' }], draft: '' } } }, motion: { action: { hold: 'Open issue T-17, Email an invoice to the client from the row actions' }, ms: 500 } }
   }),
   ChatComposer: scene(() => ({ ui: open })),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
@@ -3068,6 +3068,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
     prs: prInfo('merged'),
     ui: { toasts: [{ id: 't1', title: 'Switching models mid-chat makes the next reply slower and uses more tokens.' }] }
   }),
+  /** KERNEL-898: a sent message with a Linear chip that opens in Issues, a GitHub chip from another repo that opens the browser, and a chip with nowhere to open. The motion hovers the first. */
+  WorkspaceIssueChip: scene(() => ({
+    items: { [ids.tableChat]: [{ kind: 'user', id: 'ic-u1', ts: at(10, 27), parts: [
+      { type: 'text', text: 'Start from ' },
+      { type: 'issue', name: 'T-17', title: 'Email an invoice to the client from the row actions', url: 'https://linear.app/client-a/issue/T-17', source: 'linear' },
+      { type: 'text', text: ', and see ' },
+      { type: 'issue', name: '#9', title: 'Row actions menu clips on small screens', url: 'https://github.com/other/thing/issues/9', source: 'github' },
+      { type: 'text', text: ' and ' },
+      { type: 'issue', name: 'T-3', title: 'Old export bug', source: 'github' }
+    ] }] },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } },
+    motion: { action: { hold: 'Open issue T-17, Email an invoice to the client from the row actions' }, ms: 500 }
+  })),
   WorkspacePaste: composing({
     parts: [
       { type: 'text', text: 'Staging breaks on the invoices page. Here is the log ' },

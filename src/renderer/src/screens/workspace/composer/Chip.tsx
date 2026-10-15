@@ -1,6 +1,9 @@
 import { createContext, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
-import type { ChatPart } from '@shared/types'
+import type { ChatPart, Project, ProjectTracker } from '@shared/types'
+import { call } from '../../../api'
+import { actions } from '../../../store'
+import { issueFromPart, issueOpen, issueUrl, type IssueTarget } from '../issueKey'
 import { FileIcon } from '../../../components/FileIcon'
 import { Icon, Modal, Spinner, type IconName } from '../../../ui'
 
@@ -56,8 +59,10 @@ const head = (text: string) => text.slice(0, PREVIEW_CHARS).split('\n').slice(0,
  * A chip's name and icon as a button, as in Conductor: hovering or focusing it shows a preview, clicking opens it.
  * The chip itself still shows an icon, never a thumbnail (D-062).
  */
-function PreviewButton({ name, preview, previewClass, modal, modalWidth, onOpen, children, ...rest }: {
-  name: string; preview: React.ReactNode; previewClass: string; modal: React.ReactNode; modalWidth: number; onOpen: (() => void) | null
+function PreviewButton({ name, preview, previewClass, modal, modalWidth, onOpen, plain, children, ...rest }: {
+  name: string; preview: React.ReactNode; previewClass: string; modal?: React.ReactNode; modalWidth?: number; onOpen: ((e: React.MouseEvent) => void) | null
+  /** Nothing to open: a focusable span that still previews, not a button. */
+  plain?: boolean
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   const ref = useRef<HTMLButtonElement>(null)
   const [at, setAt] = useState<DOMRect | null>(null)
@@ -70,19 +75,26 @@ function PreviewButton({ name, preview, previewClass, modal, modalWidth, onOpen,
     window.addEventListener('scroll', hide, true)
     return () => window.removeEventListener('scroll', hide, true)
   }, [at])
+  // Focus shows it from the keyboard only, so a click or a closing modal doesn't bring it back.
+  const shared = {
+    ref, onMouseEnter: show, onMouseLeave: hide, onBlur: hide,
+    onFocus: (e: React.FocusEvent<HTMLElement>) => { if (e.currentTarget.matches(':focus-visible')) show() },
+    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Escape' && at) { e.stopPropagation(); hide() } }
+  }
   return (
     <>
-      <button
-        ref={ref} type="button" aria-label={`Open ${name}`} {...rest}
-        // Focus shows it from the keyboard only, so a click or a closing modal doesn't bring it back.
-        onMouseEnter={show} onMouseLeave={hide} onFocus={(e) => { if (e.currentTarget.matches(':focus-visible')) show() }} onBlur={hide}
-        onKeyDown={(e) => { if (e.key === 'Escape' && at) { e.stopPropagation(); hide() } }}
-        onClick={() => { hide(); if (onOpen) onOpen(); else setBig(true) }}
-      >
-        {children}
-      </button>
+      {plain
+        ? <span role="group" tabIndex={0} aria-label={name} {...(rest as React.HTMLAttributes<HTMLSpanElement>)} {...shared} ref={ref as React.RefObject<HTMLSpanElement>}>{children}</span>
+        : (
+          <button
+            type="button" aria-label={`Open ${name}`} {...rest} {...shared}
+            onClick={(e) => { hide(); if (onOpen) onOpen(e); else if (modal) setBig(true) }}
+          >
+            {children}
+          </button>
+        )}
       {at && createPortal(<div className={previewClass} style={previewPlace(at)} aria-hidden="true">{preview}</div>, document.body)}
-      {big && createPortal(<Modal title={name} width={modalWidth} onClose={() => setBig(false)}>{modal}</Modal>, document.body)}
+      {big && modal && createPortal(<Modal title={name} width={modalWidth ?? 720} onClose={() => setBig(false)}>{modal}</Modal>, document.body)}
     </>
   )
 }
@@ -115,6 +127,39 @@ export function TextButton({ paste, children, ...rest }: { paste: TextPart } & B
   )
 }
 
+export type IssuePart = Extract<ChatPart, { type: 'issue' }>
+
+/** The project a chat belongs to and what its tracker answered, so an issue chip knows whether Issues can show its issue (KERNEL-898). */
+export const OpenIssue = createContext<{ project?: Pick<Project, 'id' | 'kind' | 'repo'>; tracker?: ProjectTracker }>({})
+
+/** Does what an issue's click rules picked: opens Issues on it or the browser on its page, and ⌘ always the browser when there is a page. */
+export function followIssue(target: IssueTarget, url: string | undefined, e: { metaKey: boolean }, issueId: string) {
+  if (e.metaKey && url) void call('system.openExternal', { url })
+  else if (target.kind === 'issues') actions.ui.go({ name: 'issues', issueId, projectId: target.projectId })
+  else if (target.kind === 'url') void call('system.openExternal', { url: target.url })
+}
+
+/** An issue chip as a preview button: hovering shows its key and title, clicking opens it in Issues or the browser. With nowhere to open it is a span that still previews. */
+export function IssueButton({ issue, children, ...rest }: { issue: IssuePart } & ButtonHTMLAttributes<HTMLButtonElement>) {
+  const { project, tracker } = useContext(OpenIssue)
+  const ref = issueFromPart(issue)
+  const target = issueOpen(ref, project, tracker)
+  const hint = target.kind === 'issues' ? 'Click to open in Issues' : target.kind === 'url' ? 'Click to open in your browser' : ''
+  return (
+    <PreviewButton
+      name={issue.name} aria-label={`${target.kind === 'none' ? 'Issue' : 'Open issue'} ${issue.name}, ${issue.title}`} previewClass="issue-preview" plain={target.kind === 'none'}
+      preview={<>
+        <div className="issue-preview-head"><span className="issue-preview-key">{issue.name}</span><span>{issue.source === 'github' ? 'GitHub issue' : 'Linear issue'}</span></div>
+        <p className="issue-preview-title">{issue.title}</p>
+        {hint && <p className="issue-preview-hint">{hint}</p>}
+      </>}
+      onOpen={target.kind === 'none' ? null : (e) => followIssue(target, issueUrl(ref, project), e, issue.name)} {...rest}
+    >
+      {children}
+    </PreviewButton>
+  )
+}
+
 /** One attachment in a composer: pasted text, an image, a file, a skill, or a linked issue or workspace. Every composer draws them the same way, with an icon for the kind. */
 export function ComposerChip({ part, pending, entering, onRemove }: { part: ChatPart; /** A file still being read: its name with the dot loader where the icon goes. */ pending?: boolean; /** A chip that just landed, which fades in. */ entering?: boolean; onRemove: () => void }) {
   if (part.type === 'text') return null
@@ -139,7 +184,8 @@ export function ComposerChip({ part, pending, entering, onRemove }: { part: Chat
   return (
     <span className="chip cmp-chip" data-entering={entering || undefined} data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'pr' || part.type === 'workspace' || part.type === 'agent' ? part.type : 'file'}>
       {part.type === 'image' && part.dataUrl ? <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="chip-open">{body}</ImageButton>
-        : isPastedText(part) ? <TextButton paste={part} className="chip-open">{body}</TextButton> : body}
+        : isPastedText(part) ? <TextButton paste={part} className="chip-open">{body}</TextButton>
+        : part.type === 'issue' ? <IssueButton issue={part} className="chip-open">{body}</IssueButton> : body}
       <button type="button" className="chip-x" aria-label={`Remove ${label}`} onClick={onRemove}><Icon name="close" size={12} /></button>
     </span>
   )

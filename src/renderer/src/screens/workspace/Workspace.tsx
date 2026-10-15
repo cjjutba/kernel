@@ -16,7 +16,7 @@ import { NewChatHeader, NewChatTab } from './NewChatBar'
 import { NewLeadChat } from './NewLeadChat'
 import { nextTab } from './nextTab'
 import { OpenIn } from './OpenIn'
-import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
+import { followIssue, OpenImage, OpenIssue, OpenText, type ImagePart, type TextPart } from './composer/Chip'
 import { Composer } from './composer/Composer'
 import { OpenItems } from './composer/OpenItems'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
@@ -34,7 +34,8 @@ import { Transcript } from './Transcript'
 import { useBanner, WorkspaceBanner } from './banners/Banners'
 import { ChatMoveNotice, useMoveNotice } from './banners/ChatMoveNotice'
 import { onRefreshChanges } from './changesBus'
-import { githubIssueUrl, issueTracker } from './issueKey'
+import { issueOpen, issueUrl } from './issueKey'
+import { useProjectTracker } from '../issues/useProjectTracker'
 import { useWorkspaceShortcuts } from './shortcuts'
 import './workspace.css'
 
@@ -87,6 +88,8 @@ export function headerTitle(ws: Pick<WorkspaceModel, 'title' | 'name' | 'source'
 export function Workspace({ workspaceId }: { workspaceId: string }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const project = useStore((s) => s.projects.find((r) => r.id === ws?.projectId))
+  const { read: trackerRead } = useProjectTracker(ws?.projectId)
+  const issueCtx = useMemo(() => ({ project, tracker: trackerRead.kind === 'ready' ? trackerRead.tracker : undefined }), [project, trackerRead])
   const agent = useStore((s) => (ws ? s.agents[ws.projectId]?.find((a) => a.id === ws.agentId) : undefined))
   const everyChat = useStore((s) => s.chats[workspaceId] ?? EMPTY_CHATS)
   // The Lead's workspace shows one chat at a time: that chat's tabs, then the files. Its other chats' tabs are rows in the sidebar (KERNEL-338).
@@ -266,6 +269,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       </header>}
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
+      <OpenIssue.Provider value={issueCtx}>
         <section aria-label="Agent" className="ws-main">
           {alone ? <NewChatTab /> : <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />}
           <div className="col grow" style={{ minHeight: 0 }}>
@@ -292,6 +296,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
           </div>
           {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner ? <WorkspaceBanner view={banner} ws={ws} chat={chat} /> : moveNotice && <ChatMoveNotice chat={chat} notice={moveNotice} />}</>} />}
         </section>
+      </OpenIssue.Provider>
       </OpenText.Provider>
       </OpenImage.Provider>
       {panels && !newChatShown && (
@@ -346,14 +351,13 @@ function WorkspaceTitle({ branch, title }: { branch: string; title: string }) {
 
 /**
  * The issue a workspace started on, after the branch (WorkspaceIssue.png). A Linear key opens the Issues screen on it, in the workspace's
- * project, and a GitHub issue opens its page. A key with no page to open is plain text.
+ * project when its tracker is the issue's, else its page in the browser (KERNEL-898). A key with no page to open is plain text.
  */
 function IssueKey({ ws, project }: { ws: WorkspaceModel; project?: Project }) {
+  const { read } = useProjectTracker(ws.projectId)
   const source = ws.source
   if (source?.kind !== 'issue') return null
-  const tracker = issueTracker(source)
-  if (tracker === 'linear') return <button type="button" className="ws-issue" aria-label={`Open issue ${source.id}`} title={source.title} onClick={() => actions.ui.go({ name: 'issues', issueId: source.id, projectId: ws.projectId })}>{source.id}</button>
-  const url = tracker === 'github' ? githubIssueUrl(source, project) : source.url
-  if (!url) return <span className="ws-issue" title={source.title}>{source.id}</span>
-  return <button type="button" className="ws-issue" aria-label={`Open issue ${source.id}`} title={source.title} onClick={() => void call('system.openExternal', { url })}>{source.id}</button>
+  const target = issueOpen(source, project, read.kind === 'ready' ? read.tracker : undefined)
+  if (target.kind === 'none') return <span className="ws-issue" title={source.title}>{source.id}</span>
+  return <button type="button" className="ws-issue" aria-label={`Open issue ${source.id}`} title={source.title} onClick={(e) => followIssue(target, issueUrl(source, project), e, source.id)}>{source.id}</button>
 }
