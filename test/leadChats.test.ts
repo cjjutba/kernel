@@ -384,6 +384,19 @@ describe("the user's screenshots passed on to a teammate (KERNEL-658)", () => {
     expect(said?.kind === 'user' && said.parts).toEqual([{ type: 'text', text: 'Fix the login layout in the screenshot' }, image])
   }, 30000)
 
+  it("copies an attached PDF into the teammate's worktree, out of git (KERNEL-907)", async () => {
+    const { k, first, call, byTitle } = await attached()
+    delete (k.sessions as { send?: unknown }).send
+    const lead = k.store.workspace(first.workspaceId)!.path
+    await writeFile(join(lead, '.kernel/attachments/spec.pdf'), '%PDF-1.4\n<< /Type /Pages /Count 4 >>\n%%EOF\n')
+    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Spec', brief: 'Build what the spec says', images: [{ path: '.kernel/attachments/spec.pdf' }] })).toMatch(/^Created /)
+    const ws = byTitle('Spec')
+    const file = join(ws.path, '.kernel/attachments/1/spec.pdf')
+    await vi.waitFor(() => access(file), { timeout: 10_000 })
+    expect(await readFile(file, 'utf8')).toContain('/Count 4')
+    expect((await git('git', ['-C', ws.path, 'status', '--porcelain', '--untracked-files=all'])).trim()).toBe('')
+  }, 30000)
+
   it('keeps the image with a brief that waits for a free agent slot', async () => {
     const { k, first, call, byTitle } = await attached()
     delete (k.sessions as { send?: unknown }).send
@@ -406,11 +419,11 @@ describe("the user's screenshots passed on to a teammate (KERNEL-658)", () => {
     expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Still off', images: [{ path: '.kernel/attachments/login.png' }] })).toBe('Sent.')
     expect(parts).toEqual([[{ type: 'text', text: 'Still off' }, image]])
     const four = Array.from({ length: 4 }, () => ({ path: '.kernel/attachments/login.png' }))
-    expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'x', images: four })).toBe('Not sent: 4 images is over the limit of 3. Send only the ones the teammate needs to act on.')
-    expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'x', images: [{ path: 'notes.png' }] })).toBe("Not sent: notes.png isn't in .kernel/attachments/ of your workspace. Send only images the user attached in this chat.")
+    expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'x', images: four })).toBe('Not sent: 4 files is over the limit of 3. Send only the ones the teammate needs to act on.')
+    expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'x', images: [{ path: 'notes.png' }] })).toBe("Not sent: notes.png isn't in .kernel/attachments/ of your workspace. Send only files the user attached in this chat.")
     expect(parts).toHaveLength(1)
     // create_workspace refuses the same way, and no workspace is made.
-    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Too many', brief: 'x', images: four })).toBe('Not created: 4 images is over the limit of 3. Send only the ones the teammate needs to act on.')
+    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Too many', brief: 'x', images: four })).toBe('Not created: 4 files is over the limit of 3. Send only the ones the teammate needs to act on.')
     expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Gone', brief: 'x', images: [{ path: '.kernel/attachments/gone.png' }] })).toBe('Not created: there is no file at .kernel/attachments/gone.png.')
     expect(byTitle('Too many')).toBeUndefined()
     expect(byTitle('Gone')).toBeUndefined()
@@ -484,7 +497,7 @@ describe("a teammate's shared image passed on to another teammate (KERNEL-659)",
     expect(await send([{ shared: 'nope', version: 1 }])).toBe('Not sent: there is no shared file nope in this project. Use the id a Team update names.')
     // A good image first doesn't send on its own when the next one is refused.
     expect(await send([{ shared: shot.id, version: 1 }, { shared: shot.id, version: 2 }])).toBe('Not sent: "login.png" has no v2. It has v1.')
-    expect(await send(Array.from({ length: 4 }, () => ({ shared: shot.id, version: 1 })))).toBe('Not sent: 4 images is over the limit of 3. Send only the ones the teammate needs to act on.')
+    expect(await send(Array.from({ length: 4 }, () => ({ shared: shot.id, version: 1 })))).toBe('Not sent: 4 files is over the limit of 3. Send only the ones the teammate needs to act on.')
     expect(parts).toEqual([])
     expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Mock', brief: 'x', images: [{ shared: html.id, version: 1 }] })).toBe('Not created: "mock.html" is HTML. Only shared images can be passed on.')
     expect(byTitle('Mock')).toBeUndefined()

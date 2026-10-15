@@ -56,8 +56,9 @@ export interface KernelToolDeps {
    */
   reviewKinds?: (workspaceId: string) => { kind: string; agent: string; verdict?: 'approved' | 'blockers'; current?: boolean }[]
   /**
-   * The images the user attached in the Lead's chat that the Lead named, by path, as chat parts scaled down for the model.
-   * Rejects with the reason one can't go. Left out, create_workspace and message_agent refuse images (KERNEL-658).
+   * The files the user attached in the Lead's chat that the Lead named, by path, as chat parts: an image scaled down for the
+   * model, any other file by its path for the teammate's send to copy (KERNEL-907). Rejects with the reason one can't go.
+   * Left out, create_workspace and message_agent refuse them (KERNEL-658).
    */
   attachedImages?: (paths: string[]) => Promise<ChatPart[]>
   /**
@@ -149,14 +150,14 @@ export const IMAGES_MAX = 3
 
 /** The `images` argument of create_workspace and message_agent (KERNEL-658). */
 const imagesArg = z.array(z.union([
-  z.object({ path: z.string().describe('The image\'s path in .kernel/attachments/, as the user\'s message names it') }),
+  z.object({ path: z.string().describe('The file\'s path in .kernel/attachments/, as the user\'s message names it') }),
   // An image a teammate shared, at the version the Team update names (KERNEL-659).
   z.object({ shared: z.string().describe('The id of an image a teammate shared, as the Team update names it'), version: z.number().int().describe('Which version of it to pass on') })
 ])).optional()
 type ImageArg = { path: string } | { shared: string; version: number }
 
 /** What the `images` argument says, for both tools. */
-const IMAGES_DESCRIBE = 'Images the teammate needs to act on, at most 3 in all: a screenshot the user attached in this chat by its path in .kernel/attachments/, or an image a teammate shared by its id and version from the Team update. Kernel copies each into the teammate\'s workspace and shows it in their chat. Leave out images that don\'t change what the teammate does'
+const IMAGES_DESCRIBE = 'Images and files the teammate needs to act on, at most 3 in all: a screenshot, PDF or any other file the user attached in this chat by its path in .kernel/attachments/, or an image a teammate shared by its id and version from the Team update. Kernel copies each into the teammate\'s workspace and names it in their chat. Leave out files that don\'t change what the teammate does'
 
 /**
  * The images a create_workspace or message_agent call passes on, in the order given, or why one can't go (KERNEL-658,
@@ -165,9 +166,9 @@ const IMAGES_DESCRIBE = 'Images the teammate needs to act on, at most 3 in all: 
  */
 async function loadImages(d: KernelToolDeps, images: ImageArg[] | undefined): Promise<{ parts: ChatPart[] } | { refusal: string }> {
   if (!images?.length) return { parts: [] }
-  if (images.length > IMAGES_MAX) return { refusal: `${images.length} images is over the limit of ${IMAGES_MAX}. Send only the ones the teammate needs to act on.` }
+  if (images.length > IMAGES_MAX) return { refusal: `${images.length} files is over the limit of ${IMAGES_MAX}. Send only the ones the teammate needs to act on.` }
   const paths = images.flatMap((i) => ('path' in i ? [i.path] : []))
-  if (paths.length && !d.attachedImages) return { refusal: 'images can\'t be passed on here.' }
+  if (paths.length && !d.attachedImages) return { refusal: 'attached files can\'t be passed on here.' }
   if (paths.length < images.length && !d.sharedImage) return { refusal: 'shared images can\'t be passed on here.' }
   try {
     const attached = paths.length ? await d.attachedImages!(paths) : []

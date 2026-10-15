@@ -1,5 +1,5 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdtemp, readdir, readFile, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import { execFileSync, spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { homedir, tmpdir } from 'node:os'
@@ -2829,6 +2829,33 @@ describe('images in a chat message (KERNEL-545)', () => {
     expect(await nextBlocks(fresh)).toEqual(sentText)
     expect(await readdir(join(repo, '.kernel/attachments'))).toEqual(['1'])
     expect((await readdir(join(repo, '.kernel/attachments/1'))).sort()).toEqual(['image-2.png', 'image.png'])
+  })
+
+  it('copies an attached file into the workspace before the message goes, and names it with its kind (KERNEL-907)', async () => {
+    const repo = await tempRepo()
+    const dl = await mkdtemp(join(tmpdir(), 'kernel-downloads-'))
+    await writeFile(join(dl, 'Spec.pdf'), '%PDF-1.4\n<< /Type /Pages /Count 2 >>\n%%EOF\n')
+    const s = await setup('acceptEdits', { ws: { path: repo } })
+    await s.sessions.send('chat', [{ type: 'text', text: 'read this' }, { type: 'file', name: 'Spec.pdf', src: join(dl, 'Spec.pdf') }])
+    expect(await nextSent(s.call)).toBe('Add a pdf_url column')
+    s.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 5 })
+    expect((await nextBlocks(s.call)).slice(0, 2)).toEqual(['read this', '[File 1: .kernel/attachments/1/spec.pdf, pdf, 43 bytes, 2 pages]'])
+    expect(await readFile(join(repo, '.kernel/attachments/1/spec.pdf'), 'utf8')).toContain('%PDF')
+  })
+
+  it("doesn't send a message whose file can't be saved, and ends the turn with the reason", async () => {
+    const repo = await tempRepo()
+    const dl = await mkdtemp(join(tmpdir(), 'kernel-downloads-'))
+    await mkdir(join(dl, 'Designs'))
+    const s = await setup('acceptEdits', { ws: { path: repo } })
+    await s.sessions.send('chat', [{ type: 'text', text: 'look' }, { type: 'file', name: 'Designs', src: join(dl, 'Designs') }])
+    expect(await nextSent(s.call)).toBe('Add a pdf_url column')
+    s.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 5 })
+    await vi.waitFor(() => expect(s.store.items('chat').filter((i) => i.kind === 'result').at(-1)).toMatchObject({ ok: false, error: 'Not sent: Designs is a folder. Attach the files inside instead.' }))
+    expect(s.sessions.isRunning('chat')).toBe(false)
+    const next = s.call.prompt[Symbol.asyncIterator]().next()
+    expect(await Promise.race([next, flush().then(() => 'nothing')])).toBe('nothing')
+    await expect(readdir(join(repo, '.kernel/attachments'))).rejects.toThrow()
   })
 })
 

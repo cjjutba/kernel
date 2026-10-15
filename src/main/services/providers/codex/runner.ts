@@ -8,7 +8,7 @@ import { leadModeOf } from '@shared/leadMode'
 import { describeTool } from '../../approvals'
 import { planChanges } from '../../handoff'
 import { exec } from '../../exec'
-import { IMAGE_DATA_URL, imageMarker, imagesNote } from '../../plans'
+import { fileMarker, filesNote, IMAGE_DATA_URL, imageMarker, imagesNote, isAttached } from '../../attachments'
 import { ALWAYS_ASK, decide, referenceWrite, REFERENCE_READ_ONLY, rulesOf, saveAlwaysAllow, type Rules, type RunMode, type Step } from '../../permissions'
 import { toolPolicy } from '../../agentTools'
 import { codexStatus } from '../../mcp'
@@ -116,8 +116,9 @@ export function toCodexInput(parts: ChatPart[]): UserInput[] {
   const input: UserInput[] = []
   let text: string[] = []
   let images = 0
-  const flush = (end?: string) => {
-    const t = [text.join(' '), end].filter(Boolean).join('\n\n')
+  const files: Parameters<typeof filesNote>[0] = []
+  const flush = (...end: (string | undefined)[]) => {
+    const t = [text.join(' '), ...end].filter(Boolean).join('\n\n')
     if (t) input.push({ type: 'text', text: t, text_elements: [] })
     text = []
   }
@@ -125,13 +126,14 @@ export function toCodexInput(parts: ChatPart[]): UserInput[] {
     if (p.type === 'text' && p.text.trim()) text.push(p.text)
     // Codex names a skill with `$`, where Claude Code takes a slash command.
     else if (p.type === 'skill') text.push(`$${p.name}`)
+    else if (isAttached(p)) { files.push(p); text.push(fileMarker(files.length, p)) }
     else if (p.type === 'file') text.push(p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}`)
     else if (p.type === 'issue' || p.type === 'pr' || p.type === 'workspace') text.push(linkText(p))
     else if (p.type === 'agent') text.push(`@${p.name}`)
     else if (p.type === 'image' && p.path) text.push(imageMarker(++images, { ...p, path: p.path }))
     else if (p.type === 'image' && p.dataUrl && IMAGE_DATA_URL.test(p.dataUrl)) { flush(); input.push({ type: 'image', url: p.dataUrl }) }
   }
-  flush(images ? imagesNote(images, 'view_image') : undefined)
+  flush(images ? imagesNote(images, 'view_image') : undefined, files.length ? filesNote(files, 'codex') : undefined)
   return input
 }
 

@@ -13,7 +13,7 @@ import { toActivity } from '../hookServer'
 import { failureOf } from '../health'
 import { toolKind, toolPolicy, type ToolPolicy } from '../agentTools'
 import { mcpStatus, type McpReport } from '../mcp'
-import { IMAGE_DATA_URL, imageMarker, imagesNote } from '../plans'
+import { fileMarker, filesNote, IMAGE_DATA_URL, imageMarker, imagesNote, isAttached } from '../attachments'
 import { decide, hookVerdict, MODE_NAMES, NETWORK_OFF, referenceWrite, rulesOf, saveAlwaysAllow, stricter, type Rules, type RunMode, type Verdict } from '../permissions'
 import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
@@ -603,10 +603,12 @@ export function toUserMessage(parts: ChatPart[]): SDKUserMessage {
   // A skill chip is a slash command, and Claude Code only reads one at the start of a text block, so the text after it joins it.
   let lead = ''
   let images = 0
+  const files: Parameters<typeof filesNote>[0] = []
   const text = (t: string) => { content.push({ type: 'text', text: [lead, t].filter(Boolean).join(' ') }); lead = '' }
   for (const p of parts) {
     if (p.type === 'text' && p.text.trim()) text(p.text)
     else if (p.type === 'skill') { if (lead) text(''); lead = `/${p.name}` }
+    else if (isAttached(p)) { files.push(p); text(fileMarker(files.length, p)) }
     else if (p.type === 'file') text(p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}`)
     else if (p.type === 'issue' || p.type === 'pr' || p.type === 'workspace') text(linkText(p))
     else if (p.type === 'agent') text(`@${p.name}`)
@@ -618,6 +620,7 @@ export function toUserMessage(parts: ChatPart[]): SDKUserMessage {
   }
   if (lead) text('')
   if (images) text(imagesNote(images, 'the Read tool'))
+  if (files.length) text(filesNote(files, 'claude'))
   return { type: 'user', message: { role: 'user', content: content.length ? content : [{ type: 'text', text: '' }] }, parent_tool_use_id: null } as SDKUserMessage
 }
 
