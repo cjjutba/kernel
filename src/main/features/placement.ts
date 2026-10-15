@@ -295,12 +295,13 @@ export class Placement extends Feature {
 
   /**
    * What the chat's next turn re-reads and why, for the notice above the composer (KERNEL-841), read only. Nothing for a
-   * chat under the Long chat size, a chat that never ran, one the user already chose for, or a warm one. A cache gone cold
+   * chat under the Long chat size, a chat that never ran, one the user chose Summarize or Continue for, or a warm one. Keep hides it only while the kept account can still run the chat. A cache gone cold
    * from idling alone is an `idle` hint, since it would re-read wherever it ran.
    */
   moveNotice(chatId: string, now = Date.now()): MoveNotice | null {
     const chat = this.store.chat(chatId)
-    if (!chat || chat.kind !== 'chat' || chat.moveChoice) return null
+    // Summarize and Continue are answers to this move. Keep is one only while the kept account can run the chat, which `accountFor` checks.
+    if (!chat || chat.kind !== 'chat' || (chat.moveChoice && chat.moveChoice.choice !== 'keep')) return null
     const provider = chatProvider(chat)
     const from = chat.ranOn ?? chat.lastTurn?.account
     if (!from) return null

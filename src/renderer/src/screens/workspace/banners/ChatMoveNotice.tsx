@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { Chat, MoveChoice, MoveNotice } from '@shared/types'
+import type { Chat, MoveChoice, MoveNotice, Provider, RateLimit } from '@shared/types'
+import { chatProvider } from '@shared/providers'
 import { accountLabel, dollars, kTokens } from '../../../accountChats'
 import { call } from '../../../api'
 import { actions, useStore } from '../../../store'
@@ -8,23 +9,34 @@ import { attempt } from '../MessageActions'
 import './banners.css'
 
 /**
- * What the chat's next turn re-reads, asked from main whenever something it depends on changes: the chat's last turn,
- * model and choice, the accounts, and whether a message waits on the choice. Null while nothing needs saying.
+ * The parts of the provider's usage windows that change whether an account can run a chat: which window, whether it was
+ * rejected, and whether it crossed the move threshold (5 hour 90%, weekly 95%). Every rate-limit event pushes new usage,
+ * and most change none of these, so the notice doesn't ask again for them.
+ */
+const windowsKey = (usage: RateLimit[], provider: Provider) => usage
+  .filter((l) => (l.provider ?? 'claude') === provider)
+  .map((l) => `${l.type}:${l.accountId ?? ''}:${l.model ?? ''}:${l.status}:${(l.utilization ?? 0) >= 0.9 ? 'hi' : 'lo'}${(l.utilization ?? 0) >= 0.95 ? 'hi' : ''}`)
+  .join('|')
+
+/**
+ * What the chat's next turn re-reads, asked from main when something it depends on changes: the chat's last turn, model and
+ * choice, the accounts, and the provider's windows as `windowsKey` reads them. The last notice stays on screen while the next
+ * one loads, so it doesn't flicker; another chat starts with none. Null while nothing needs saying.
  */
 export function useMoveNotice(chat: Chat | undefined): MoveNotice | null {
   const accounts = useStore((s) => s.accounts)
-  const usage = useStore((s) => s.usage)
-  const [notice, setNotice] = useState<MoveNotice | null>(null)
+  const provider = chat ? chatProvider(chat) : 'claude'
+  const windows = useStore((s) => windowsKey(s.usage, provider))
+  const [shown, setShown] = useState<{ chatId: string; notice: MoveNotice | null } | null>(null)
   const id = chat?.id
   const stamp = chat ? `${chat.ranOn}|${chat.model}|${chat.lastTurn?.at}|${chat.moveChoice?.choice}` : ''
   useEffect(() => {
     let live = true
-    setNotice(null)
     if (!id) return
-    void call('chats.moveNotice', { chatId: id }).then((n) => { if (live) setNotice(n) }).catch(() => undefined)
+    void call('chats.moveNotice', { chatId: id }).then((notice) => { if (live) setShown({ chatId: id, notice }) }).catch(() => undefined)
     return () => { live = false }
-  }, [id, stamp, accounts, usage])
-  return notice
+  }, [id, stamp, accounts, windows])
+  return shown?.chatId === id ? shown.notice : null
 }
 
 const CHOICES: { choice: MoveChoice; label: string; busy: string }[] = [
@@ -41,7 +53,7 @@ export function ChatMoveNotice({ chat, notice }: { chat: Chat; notice: MoveNotic
   const accounts = useStore((s) => s.accounts)
   const queueWhy = useStore((s) => s.queueWhy[chat.id])
   const [busy, track] = useBusy<MoveChoice>()
-  const provider = chat.provider ?? 'claude'
+  const provider = chatProvider(chat)
   const from = accountLabel(accounts, provider, notice.from)
   const to = accountLabel(accounts, provider, notice.to)
   const read = `${notice.estimated ? 'about ' : ''}${kTokens(notice.tokens)} tokens`
