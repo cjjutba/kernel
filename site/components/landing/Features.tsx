@@ -68,7 +68,8 @@ const FEATURES: Feature[] = [
 function Tile({ f }: { f: Feature }) {
   return (
     <article aria-labelledby={f.id} className={`flex flex-col overflow-hidden rounded-frame border border-line bg-surface-1 ${f.wide ? 'col-span-full' : ''}`}>
-      <div className={`px-8 pt-8 pb-7 max-nav:px-5 max-nav:pt-6 ${f.wide ? 'grid grid-cols-2 items-end gap-x-12 gap-y-3 max-faq:grid-cols-1' : ''}`}>
+      {/* A fixed floor for the text, so a line more or less (fonts measure a little differently across systems) never moves the clip or anything below. */}
+      <div className={`px-8 pt-8 pb-7 max-nav:px-5 max-nav:pt-6 ${f.wide ? 'grid grid-cols-2 items-end gap-x-12 gap-y-3 faq:min-h-38 max-faq:grid-cols-1' : 'faq:min-h-58'}`}>
         <h3 id={f.id} className={`text-balance ${f.wide ? 'text-h3' : 'text-entry-title max-nav:text-h3'}`}>
           {f.title}
         </h3>
