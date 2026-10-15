@@ -70,6 +70,8 @@ export interface State {
   itemsFailed: Record<string, boolean>
   /** By chat id. */
   running: Record<string, boolean>
+  /** By chat id. True while `running` holds what the user's own action drew (a send, Stop) and main has not said it yet. Main's `chat.running` ends it, as does the call failing (KERNEL-895). */
+  assumed: Record<string, boolean>
   /** By chat id. */
   queue: Record<string, QueuedMessage[]>
   /** By chat id. What the queue waits for, absent while it is empty (KERNEL-273). */
@@ -211,7 +213,7 @@ let state: State = {
   projects: [], projectSetup: {}, scriptTrust: {}, overlaps: {},
   agents: {}, status: {}, globalAgents: null,
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, scriptData: {}, scriptReplays: {}, checkpoints: {},
-  chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, itemsLoaded: {}, itemsFailed: {}, running: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
+  chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, itemsLoaded: {}, itemsFailed: {}, running: {}, assumed: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, projectSettings: {}, shared: {},
@@ -655,7 +657,38 @@ export const actions = {
     upsertItem: (chatId: string, item: ChatItem) => setState((s) => ({ items: { ...s.items, [chatId]: upsert(s.items[chatId] ?? [], item) } })),
     /** Takes an item out when it is still `item` itself: a row the engine has since replaced by id stays. For an optimistic row whose call failed. */
     dropItem: (chatId: string, item: ChatItem) => setState((s) => (s.items[chatId]?.includes(item) ? { items: { ...s.items, [chatId]: s.items[chatId].filter((i) => i !== item) } } : s)),
-    setRunning: (chatId: string, running: boolean) => setState((s) => ({ running: { ...s.running, [chatId]: running } })),
+    setRunning: (chatId: string, running: boolean) => setState((s) => ({ running: { ...s.running, [chatId]: running }, assumed: omit(s.assumed, [chatId]) })),
+    /**
+     * What a user action draws in one render (KERNEL-895): a row in the chat, the queue with its message, and whether the chat is running, so the bubble, the tray and the Working line
+     * arrive together. Main confirms each in place, by the row's id and by `chat.running`, and never redraws it.
+     */
+    draw: (chatId: string, d: { item?: ChatItem; queue?: QueuedMessage[]; why?: QueueReason | null; running?: boolean }) => setState((s) => {
+      const out: Partial<State> = {}
+      if (d.item) out.items = { ...s.items, [chatId]: upsert(s.items[chatId] ?? [], d.item) }
+      if (d.queue) {
+        const queueWhy = { ...s.queueWhy }
+        if (!d.queue.length || d.why === null) delete queueWhy[chatId]
+        else if (d.why) queueWhy[chatId] = d.why
+        out.queue = { ...s.queue, [chatId]: d.queue }
+        out.queueWhy = queueWhy
+      }
+      if (d.running !== undefined && s.running[chatId] !== d.running) { out.running = { ...s.running, [chatId]: d.running }; out.assumed = { ...s.assumed, [chatId]: true } }
+      return out
+    }),
+    /** The state a call that failed, or did something else, leaves behind: the row (only while it is still the one drawn, so an engine row that replaced it stays), the queued message by id, and a running state main never confirmed. */
+    undraw: (chatId: string, d: { item?: ChatItem; queued?: string; running?: boolean }) => setState((s) => {
+      const out: Partial<State> = {}
+      if (d.item && s.items[chatId]?.includes(d.item)) out.items = { ...s.items, [chatId]: s.items[chatId].filter((i) => i !== d.item) }
+      if (d.queued && s.queue[chatId]?.some((q) => q.id === d.queued)) {
+        const list = s.queue[chatId].filter((q) => q.id !== d.queued)
+        const queueWhy = { ...s.queueWhy }
+        if (!list.length) delete queueWhy[chatId]
+        out.queue = { ...s.queue, [chatId]: list }
+        out.queueWhy = queueWhy
+      }
+      if (d.running !== undefined && s.assumed[chatId]) { out.running = { ...s.running, [chatId]: d.running }; out.assumed = omit(s.assumed, [chatId]) }
+      return out
+    }),
     /** A `chat.queue` event passes its reason, or null when nothing holds the queue. A list handed back by a call passes none (undefined), so the last reason stays until the next event. An empty queue has none. */
     setQueue: (chatId: string, list: QueuedMessage[], why?: QueueReason | null) => setState((s) => {
       const queueWhy = { ...s.queueWhy }
