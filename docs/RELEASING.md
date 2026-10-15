@@ -55,6 +55,8 @@ Run `/release` in Claude Code. It does the steps below, stops for you where a pe
    pnpm version <version> --no-git-tag-version --no-git-checks
    ```
 
+   Then run `pnpm demo:refresh` on the release branch and commit what it writes with the release. It rebuilds the landing page demo (`site/public/demo`) and retakes the fallback image (`site/public/images/lead-plan.png`), so the site shows what the release ships. It also lists the clips in `site/public/clips` older than a change to what they show, with the `pnpm demo:clips <name>` command for each. Re-recording takes minutes and needs ffmpeg, so it is the releaser's call. The demo is not rebuilt on deploy (Vercel deploys `site/` alone) or on every push (hashed bundle names would conflict between PRs, and the site would show unreleased features). `pnpm typecheck` covers `demo/`, so a renderer change that breaks it fails its own PR (KERNEL-900).
+
    `pnpm version` changes only `package.json`. It needs `--no-git-checks` because the new release file isn't committed yet. For a minor version, replace `TITLE: write me` in `site/content/releases/<version>.md` with a title, and add an `intro:` line if you like. The site build and the release script both refuse the placeholder. Open the PR as `chore(release): <version>`. Release branches skip the Release note check. The release PR runs the full suite on macOS ("Test on macOS") and must be green before it merges, because Kernel ships for Mac only.
 3. After it merges, tag the merge commit and publish:
 

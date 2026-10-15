@@ -7,7 +7,9 @@ pnpm demo:build   # writes site/public/demo, which the site serves at /demo/inde
 pnpm demo:clips   # builds demo/scenes and records the feature clips into site/public/clips (needs ffmpeg)
 ```
 
-Both outputs are committed, so the site deploys from `site/` alone, without the Electron app's dependencies. Run them again after a change to the renderer that the hero or a clip shows, and commit what they write.
+Both outputs are committed, so the site deploys from `site/` alone, without the Electron app's dependencies.
+
+The release refreshes the demo (`/release`, `docs/RELEASING.md`): the release branch runs `pnpm demo:refresh`, which type-checks `demo/`, rebuilds it, retakes `site/public/images/lead-plan.png` and lists the clips that are older than a change to what they show. To refresh by hand, run it and commit what it writes. Re-record a listed clip with `pnpm demo:clips <name>`. `pnpm typecheck` also covers `demo/`, so a renderer change that breaks the demo fails its own PR.
 
 - `bridge.ts` plays the preload's part. It installs `window.kernel` before the renderer boots, and answers every call from the story first and then from the fixture handlers that `KERNEL_FIXTURES=<Screen> pnpm dev` uses.
 - `story.ts` is the whole loop from a blank chat, on sample data. It opens on New chat in a project called Kernel. Your brief gets a reply in Accept edits mode that says the demo plans one sample change and to switch to Plan. In plan mode, asking for the plan gets the full write-up (Why, Behavior, Files, Checks, Tracker) and three tasks. Approving it hands them to Noor, Kai and Ivy, whose workspaces appear under the chat and build on their own. Each opens a PR, a team update reaches Kernel, Theo reviews it in a workspace of his own, and the PR is ready to merge. Each click changes the fixture and pushes the same events the engine would. Two test accounts on Claude Code and two on Codex fill the usage footer and the account menu, and switching between them works.
