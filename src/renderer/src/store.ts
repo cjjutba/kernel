@@ -2,7 +2,7 @@ import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile, MovePreview, Provider, SwitchMove,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
   ForcedUi, GitHubStatus, HookStatus, LeadMode, MenuId, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, RateLimit, Room, RoomSettings,
-  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, UsageView, Workspace, WorkspaceTabs, WorkspaceView
+  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, ToolCalls, UiState, UsageView, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
 import { PROVIDERS } from '@shared/types'
@@ -122,7 +122,13 @@ function usageView(): UsageView {
 }
 const usageOpenAtFirst = (view: UsageView): Provider[] => (view === 'detailed' ? ['claude'] : [])
 
-const workspaceView: WorkspaceView = { right: 'changes', leadRight: 'prs', bottom: 'run', toolsOpen: false, changesView: changesView() }
+/** How a turn's folds behave, kept across launches. localStorage may be missing or blocked. */
+const TOOL_CALLS = 'kernel.toolCalls'
+function toolCalls(): ToolCalls {
+  try { const v = localStorage.getItem(TOOL_CALLS); return v === 'closed' || v === 'open' ? v : 'auto' } catch { return 'auto' }
+}
+
+const workspaceView: WorkspaceView = { right: 'changes', leadRight: 'prs', bottom: 'run', toolCalls: toolCalls(), changesView: changesView() }
 
 /** The sidebar and right panel toggles outlast a restart. A key is stored only while its panel is hidden, and localStorage may be missing or blocked. */
 const HIDDEN = { sidebar: 'kernel.sidebarHidden', rightPanel: 'kernel.rightPanelHidden' } as const
@@ -484,6 +490,10 @@ export const actions = {
     setStage: (stage: string | undefined) => setUi({ stage }),
     setStartError: (startError: string | undefined) => setUi({ startError }),
     setWorkspaceView: (patch: Partial<WorkspaceView>) => setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, ...patch } } })),
+    setToolCalls: (mode: ToolCalls) => {
+      setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, toolCalls: mode } } }))
+      try { localStorage.setItem(TOOL_CALLS, mode) } catch { /* not remembered */ }
+    },
     setChangesView: (view: 'list' | 'tree') => {
       setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, changesView: view } } }))
       try { localStorage.setItem(CHANGES_VIEW, view) } catch { /* not remembered */ }

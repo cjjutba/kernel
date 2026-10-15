@@ -30,7 +30,7 @@ const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partia
     workspaces: withWorkspace(f, ids.table, { ...pr, prTitle, prState }),
     items: { [ids.tableChat]: [...tableItems, ...items] },
     ...extra,
-    ui: { ...open, workspace: { right, bottom: 'run', toolsOpen: false }, ...extra.ui }
+    ui: { ...open, workspace: { right, bottom: 'run' }, ...extra.ui }
   }))
 
 /**
@@ -50,7 +50,7 @@ const headerScene = (prState: Workspace['prState'], note: ChatItem[], opts: { pa
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'KERNEL-155 Home and Inbox' } : c)),
     items: { [ids.tableChat]: [...tableItems, ...note] },
     prs: prInfo(prState, { number: 147, url: 'https://github.com/samrivera/client-a/pull/147', title: 'feat(home): ask about requests and PRs' }),
-    ui: { ...open, rightPanel: !!opts.panel, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, rightPanel: !!opts.panel, workspace: { right: 'changes', bottom: 'run' } }
   }))
 
 /**
@@ -98,7 +98,7 @@ const localScene = (state: LocalState) => scene((f) => {
       workspaceId: ids.table, number: 0, url: '', title: '', state: state === 'conflict' ? 'conflict' : 'ready', baseRef: 'main', checks: [], comments: [], conflicts, head: 'a'.repeat(40),
       local: { ahead: 3, behind, stat: { files: 8, added: 304, removed: 15 }, method: 'squash', checkout: { path: SHOP, dirty } }
     } },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   }
 })
 
@@ -570,13 +570,13 @@ function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[
     items: { [ids.tableChat]: [] },
     queue: { [ids.tableChat]: queue },
     push: [...f.push, ...(o.pending ? [] : setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed')), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'setup' as const }] : [])],
-    ui: { ...open, rightPanel: o.panel ?? true, ...(o.collapsed ? { bottomCollapsed: { lead: true, teammate: true } } : {}), workspace: { right: o.right ?? 'changes', bottom: 'setup', toolsOpen: false, ...(o.composer ? { composer: o.composer } : {}) } }
+    ui: { ...open, rightPanel: o.panel ?? true, ...(o.collapsed ? { bottomCollapsed: { lead: true, teammate: true } } : {}), workspace: { right: o.right ?? 'changes', bottom: 'setup', ...(o.composer ? { composer: o.composer } : {}) } }
   }
 }
 
 /** Composer shots: the same screen, with the composer already holding something. */
 const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft: string }, extra: Partial<Fixture> = {}) =>
-  scene(() => ({ ...extra, ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer } } }))
+  scene(() => ({ ...extra, ui: { ...open, workspace: { right: 'changes', bottom: 'run', composer } } }))
 
 /**
  * Kernel's chat picked Bypass permissions on the current branch while Only in worktrees is on, so it runs as Accept edits (KERNEL-456).
@@ -637,7 +637,7 @@ const deepTree: FileEntry[] = [
 const treeScene = (right: 'files' | 'changes', tab: string, changesView?: 'list' | 'tree') => scene((f) => ({
   tree: { ...f.tree, [ids.table]: deepTree },
   changes: { ...f.changes, [ids.table]: treeChanges },
-  ui: { ...open, workspace: { right, bottom: 'run', toolsOpen: false, changesView }, tabs: { [ids.table]: { tab, files: tab.startsWith('file:') ? [tab.slice(5), 'package.json'] : [], diffs: tab.startsWith('diff:') ? [tab.slice(5)] : [] } } }
+  ui: { ...open, workspace: { right, bottom: 'run', changesView }, tabs: { [ids.table]: { tab, files: tab.startsWith('file:') ? [tab.slice(5), 'package.json'] : [], diffs: tab.startsWith('diff:') ? [tab.slice(5)] : [] } } }
 }))
 
 const imageBefore = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAABkCAIAAACO1KzYAAAA2klEQVR42u3coREAMAgEQapDpH+NSCXpIQIBO3MV/PqPqqvBhQkAC7AAC7AAC7AAAxZgARZgARZgAQYswAIswAIswAIswIAF+K/MsyrAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDlkt/ARZgARZgAQYswAIswAIswAIMWIAFWIAFWIAFGLAAC7AAq7cHvsLF6uuQAxcAAAAASUVORK5CYII='
@@ -646,7 +646,7 @@ const imageDiffScene = (status: 'A' | 'M') => scene((f) => ({
   changes: { ...f.changes, [ids.table]: [{ path: 'public/logo.png', status, added: 0, removed: 0 }, ...(f.changes[ids.table] ?? [])] },
   diffs: { ...f.diffs, [ids.table]: '' },
   images: { [ids.table]: { 'worktree:public/logo.png': { dataUrl: imageAfter }, ...(status === 'M' ? { 'base:public/logo.png': { dataUrl: imageBefore } } : {}) } },
-  ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false }, tabs: { [ids.table]: { tab: 'diff:public/logo.png', files: [], diffs: ['public/logo.png'] } } }
+  ui: { ...open, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.table]: { tab: 'diff:public/logo.png', files: [], diffs: ['public/logo.png'] } } }
 }))
 
 /** What @inv finds, in the order the canvas lists it. */
@@ -798,7 +798,7 @@ const planMode = (f: Fixture): Partial<Fixture> => {
 
 /** A fixture with a draft in the box. */
 const withDraft = (p: Partial<Fixture>, draft: string): Partial<Fixture> =>
-  ({ ...p, ui: { ...p.ui, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [], draft } } } })
+  ({ ...p, ui: { ...p.ui, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft } } } })
 
 /** Two team updates in Kernel's chat after a hand-off: Kai's PR passed checks, then Theo approved it (KERNEL-127). */
 const leadUpdate = (f: Fixture): Partial<Fixture> => {
@@ -1029,7 +1029,7 @@ const leadPrsScene = (f: Fixture, list: OpenPr[], ask: string, reply: string, pu
     ...rest, ...openPrs(f, list),
     ...(push.length ? { push: [...(rest.push ?? f.push), ...push] } : {}),
     roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', toolsOpen: false } }
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run' } }
   }
 }
 
@@ -1167,7 +1167,7 @@ const teamUpdatePrStates = (f: Fixture): Partial<Fixture> => {
   return {
     ...rest, ...openPrs(f, PR_STATES),
     roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', toolsOpen: false } }
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run' } }
   }
 }
 
@@ -1251,10 +1251,10 @@ const revertScene = (ui: Partial<Fixture['ui']>, prState?: Workspace['prState'])
   items: { [ids.tableChat]: revertItems },
   checkpoints: { [ids.table]: checkpoints },
   checkpointPreviews: { [ids.table]: revertPreviews },
-  ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false }, ...ui }
+  ui: { ...open, workspace: { right: 'changes', bottom: 'run' }, ...ui }
 }))
 
-const tabsView = (tab: string) => ({ ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false }, tabs: { [ids.table]: { tab, files: [] as string[], diffs: [] as string[] } } } as const)
+const tabsView = (tab: string) => ({ ...open, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.table]: { tab, files: [] as string[], diffs: [] as string[] } } } as const)
 const extraChat = (id: string, title: string, kind: 'chat' | 'terminal' = 'chat'): Chat =>
   ({ id, workspaceId: ids.table, title, kind, model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 30) })
 
@@ -1320,7 +1320,7 @@ const sharedTab = (file?: string, htmlLatest = 3) => scene((f) => ({
   shared: sharedFiles(htmlLatest).filter((x) => x.workspaceId === ids.table),
   ui: {
     ...open,
-    workspace: { right: 'changes', bottom: 'run', toolsOpen: false },
+    workspace: { right: 'changes', bottom: 'run' },
     ...(file ? { tabs: { [ids.table]: { tab: `shared:${file}`, lastChat: ids.tableChat, files: [], diffs: [], shared: [file] } } } : {})
   }
 }))
@@ -1358,7 +1358,7 @@ const commentTab = (file: 'sh-pricing' | 'sh-image', latest = 2, picked?: number
   sharedHits: pricingHits,
   ui: {
     ...open,
-    workspace: { right: 'changes', bottom: 'run', toolsOpen: false },
+    workspace: { right: 'changes', bottom: 'run' },
     tabs: { [ids.table]: { tab: `shared:${file}`, lastChat: ids.tableChat, files: [], diffs: [], shared: [file], ...(picked ? { sharedVersion: { [file]: picked } } : {}) } }
   }
 }))
@@ -1380,7 +1380,7 @@ const commentSent = scene((f) => ({
   sharedData: commentData,
   ui: {
     ...open,
-    workspace: { right: 'changes', bottom: 'run', toolsOpen: false },
+    workspace: { right: 'changes', bottom: 'run' },
     tabs: { [ids.table]: { tab: ids.tableChat, lastChat: ids.tableChat, files: [], diffs: [], shared: ['sh-pricing'] } },
     toasts: [{ id: 'cs-toast', title: 'Sent to Noor', action: { label: 'Open chat', tab: { workspaceId: ids.table, id: ids.tableChat } } }]
   }
@@ -1413,7 +1413,7 @@ const sharedPanel = (f: Fixture): Partial<Fixture> => {
     shared: sharedFiles(),
     sharedData: sharedStills,
     ui: {
-      route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'shared', bottom: 'run', toolsOpen: false },
+      route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'shared', bottom: 'run' },
       tabs: { [ids.lead]: { tab: 'shared:sh-html', lastChat: ids.leadChat, files: [], diffs: [], shared: ['sh-html'] } }
     }
   }
@@ -1577,7 +1577,7 @@ const leadModeScene = (f: Fixture, o: { mode: 'handoff' | 'build'; items?: ChatI
   return {
     ...rest,
     changes: { ...f.changes, [ids.lead]: o.changes ?? [] },
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: o.right ?? 'prs', bottom: 'run', toolsOpen: false }, ...(o.menu ? { menu: o.menu } : {}), tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } }
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: o.right ?? 'prs', bottom: 'run' }, ...(o.menu ? { menu: o.menu } : {}), tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } }
   }
 }
 const lmReply = (id: string, text: string, m: number): ChatItem[] => [
@@ -1669,7 +1669,7 @@ export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?:
     tree: { ...f.tree, ...Object.fromEntries(own.map((w) => [w.id, tree])) },
     fileText: { ...f.fileText, ...Object.fromEntries(own.map((w) => [w.id, f.fileText?.[ids.table] ?? {}])) },
     ui: {
-      route: { name: 'workspace', workspaceId: shown }, workspace: { right: 'changes', leadRight: o.right ?? 'prs', bottom: 'run', toolsOpen: false },
+      route: { name: 'workspace', workspaceId: shown }, workspace: { right: 'changes', leadRight: o.right ?? 'prs', bottom: 'run' },
       tabs: { [shown]: { tab, lastChat: tab.startsWith('file:') ? undefined : tab, files: o.files ?? [], diffs: [] } }
     }
   }
@@ -1892,13 +1892,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
     workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 8), end: 1 } }),
     items: { [ids.tableChat]: [{ kind: 'note', id: 'sw-note', ts: at(10, 2), text: 'Setup failed, sent anyway' }, { kind: 'user', id: 'sw-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
     push: [...f.push, ...setupLog('failed'), { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'changes', bottom: 'setup', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
   SetupDone: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
     items: { [ids.tableChat]: [{ kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
   /** Every row of a Lead turn reads as a sentence with its service's mark (KERNEL-782). The turn has no result, so nothing folds and every step shows. */
   WorkspaceLeadSteps: scene((f) => {
@@ -1909,96 +1909,96 @@ export const workspaceFixtures: Record<string, Fixture> = {
   /** Running, done, failed and denied steps of Bash with and without a description, Edit, Read and an MCP tool the app has no mark for, and a command with tokens in it (KERNEL-782). */
   WorkspaceStepStates: scene(() => ({
     items: { [ids.tableChat]: stepStates },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false } }
   })),
   /** Reply actions per turn state (KERNEL-828): Copy alone under in-between lines, and Retry only once the turn is over. */
   WorkspaceTurnRunning: scene((f) => ({
     items: { [ids.tableChat]: runningNarrated() },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
   /** A finished turn with in-between messages and thinking: one fold, then the reply (KERNEL-840). The second shot has the message and thinking rows opened. */
   WorkspaceTurnFolded: scene(() => ({
     items: { [ids.tableChat]: foldedMessages },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   WorkspaceTurnFoldedOpen: scene(() => ({
     items: { [ids.tableChat]: foldedMessages },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   /** The same fold read by keyboard: a message row opened with Enter and its Copy reached with Tab (KERNEL-840). */
   WorkspaceTurnFoldedCopy: scene(() => ({
     items: { [ids.tableChat]: foldedMessages },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   WorkspaceTurnEndsOnText: scene(() => ({
     items: { [ids.tableChat]: endsOnText },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
   WorkspaceTurnEndsOnTool: scene(() => ({
     items: { [ids.tableChat]: endsOnTool },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
   WorkspaceTurnStopped: scene(() => ({
     items: { [ids.tableChat]: stoppedNarrated },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
   WorkspaceTurnFailed: scene(() => ({
     items: { [ids.tableChat]: failedNarrated },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
   WorkspaceTurnOrphaned: scene(() => ({
     items: { [ids.tableChat]: orphanedNarrated },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
   WorkspaceToolCalls: scene(() => ({
     items: { [ids.tableChat]: toolCalls },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   /** The four opened cards (KERNEL-802), each with its rows opened by scripts/shots.ts: Bash, MCP, Codex diffs and a MultiEdit, and a Write. */
   WorkspaceStepCardBash: scene(() => ({
     items: { [ids.tableChat]: stepCardBashItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   WorkspaceStepCardMcp: scene(() => ({
     items: { [ids.tableChat]: stepCardMcpItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   WorkspaceStepCardCodexDiff: scene(() => ({
     items: { [ids.tableChat]: stepCardCodexItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   WorkspaceStepCardWrite: scene(() => ({
     items: { [ids.tableChat]: stepCardWriteItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   /** Rows opened in place (KERNEL-198). Local open state can't be set from a fixture, so scripts/shots.ts clicks the rows named there. */
   WorkspaceRowsOpen: scene(() => ({
     items: { [ids.tableChat]: rowsOpenItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
   /** The folded list with a Thinking and an Edit row opened inside it (KERNEL-198). */
   WorkspaceRowsFolded: scene(() => ({
     items: { [ids.tableChat]: foldedRowsItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   /** Read rows on image files say "Read image" with the image chip, in the folded list and in the turn in progress (KERNEL-546). */
   WorkspaceReadImage: scene(() => ({
     items: { [ids.tableChat]: readImageItems },
     // image.png loads, so its row opens a tab. image-2.png was deleted, so its row opens to the path (KERNEL-671).
     images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   /** The same transcript after a click on the Read image row whose file loads (an image tab opens, headed by its path) and on the one whose file is gone (the row opens to the path). scripts/shots.ts does the click (KERNEL-671). */
   WorkspaceReadImageTab: scene(() => ({
     items: { [ids.tableChat]: readImageItems },
     images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   WorkspaceReadImageMissing: scene(() => ({
     items: { [ids.tableChat]: readImageItems },
     images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   /** A long chat read from higher up, with the Scroll to bottom button over it (KERNEL-532). Scroll position is local to the transcript, so scripts/shots.ts scrolls it up before the shot. */
   WorkspaceScrolledUp: scene(() => ({
@@ -2044,7 +2044,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
       leadStart: ids.leadChat,
       items: { [ids.leadChat]: [{ kind: 'user' as const, id: 'nc-u1', ts: Date.now() - 2000, parts: [{ type: 'text' as const, text: 'hi this is a test prompt' }] }] },
       push: [...f.push, { type: 'chat.running', chatId: ids.leadChat, running: true }],
-      ui: { ...base.ui!, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [], draft: 'hi this is a test prompt' } } }
+      ui: { ...base.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'hi this is a test prompt' } } }
     }
   }), motion: { action: { click: 'Send' }, ms: 1000, area: '.ws-main' } },
   /** A typed send in a short chat as motion: the message arrives at the bottom and the padding under it lifts it to 24px from the top, by layout, so it is animated like a scroll. */
@@ -2183,7 +2183,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: tabsView('chat-term')
   })),
   WorkspaceFile: scene(() => ({
-    ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false }, tabs: { [ids.table]: { tab: 'file:src/app/invoices/table.tsx', files: ['src/app/invoices/table.tsx'], diffs: [] } } }
+    ui: { ...open, workspace: { right: 'files', bottom: 'run' }, tabs: { [ids.table]: { tab: 'file:src/app/invoices/table.tsx', files: ['src/app/invoices/table.tsx'], diffs: [] } } }
   })),
   // All files drawn like VS Code's explorer (KERNEL-399): Material icons, compact folders, indent guides, git colors, the open file selected.
   WorkspaceFilesTree: treeScene('files', 'file:src/app/invoices/table.tsx'),
@@ -2192,7 +2192,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceChangesTree: treeScene('changes', 'diff:', 'tree'),
   // No PNG draws a diff tab (KERNEL-144). The diff opens in a tab of its own next to the chat, with the composer below it.
   WorkspaceDiffTab: scene(() => ({
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false }, tabs: { [ids.table]: { tab: 'diff:src/app/invoices/page.tsx', files: [], diffs: ['src/app/invoices/page.tsx'] } } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.table]: { tab: 'diff:src/app/invoices/page.tsx', files: [], diffs: ['src/app/invoices/page.tsx'] } } }
   })),
   // No PNG draws an image in a diff tab (KERNEL-410). Git only says a binary file differs, so the tab shows the pictures: an added one as it is in the worktree, a changed one as Before and After.
   WorkspaceDiffImageAdded: imageDiffScene('A'),
@@ -2202,21 +2202,21 @@ export const workspaceFixtures: Record<string, Fixture> = {
     changes: { ...f.changes, [ids.table]: [{ path: 'public/logo.png', status: 'A', added: 0, removed: 0 }] },
     diffs: { ...f.diffs, [ids.table]: 'diff --git a/public/logo.png b/public/logo.png\nnew file mode 100644\nBinary files /dev/null and b/public/logo.png differ\n' },
     images: { [ids.table]: { 'worktree:public/logo.png': { dataUrl: imageAfter } } },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false }, tabs: { [ids.table]: { tab: 'diff:', files: [], diffs: [''] } } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.table]: { tab: 'diff:', files: [], diffs: [''] } } }
   })),
   // Focus mode hides both sides the way Conductor does (D-063), so this shot has no rail where the PNG draws one.
   WorkspaceFocus: scene(() => ({
-    ui: { ...open, sidebar: false, rightPanel: false, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, sidebar: false, rightPanel: false, workspace: { right: 'changes', bottom: 'run' } }
   })),
   // No PNG draws Back and Forward (KERNEL-643). The sidebar is open with Back lit and Forward disabled, and the hidden twin shows the pair after Show sidebar.
   WorkspaceHistoryButtons: scene(() => ({
-    ui: { ...open, nav: { canBack: true, canForward: false }, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, nav: { canBack: true, canForward: false }, workspace: { right: 'changes', bottom: 'run' } }
   })),
   WorkspaceHistoryButtonsNarrow: scene(() => ({
-    ui: { ...open, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run' } }
   })),
   WorkspaceHistoryButtonsHidden: scene(() => ({
-    ui: { ...open, sidebar: false, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, sidebar: false, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run' } }
   })),
   WorkspaceRunning: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
@@ -2227,7 +2227,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { path: 'tests/fixtures/invoices.ts', status: 'A', added: 42, removed: 0 }
     ] },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
   })),
   /** A running turn with a command in flight: one summary line and the clock, and nothing from inside the fold (the fold-of-everything change). */
   WorkspaceRunningFold: scene((f) => ({
@@ -2235,7 +2235,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
     items: { [ids.tableChat]: runningItems() },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
   })),
   /** The same turn stepped through two more calls after Send: the summary grows, the command text never shows. */
   WorkspaceRunningFoldSteps: { ...scene((f) => ({
@@ -2244,7 +2244,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
       chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
       items: { [ids.tableChat]: runningItems() },
       push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-      ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+      ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
     }, 'Keep going.'),
     afterSend: [
       { afterMs: 250, events: [{ type: 'chat.item', chatId: ids.tableChat, item: tool('rt4', 'Run the new tests', 'pnpm vitest run tests/invoice-pdf.spec.ts', { status: 'done', durationMs: 4100, input: { command: 'pnpm vitest run tests/invoice-pdf.spec.ts' } }) }, { type: 'chat.item', chatId: ids.tableChat, item: tool('rt5', 'Lint the tests', 'pnpm lint tests', { status: 'running', durationMs: undefined, input: { command: 'pnpm lint tests' } }) }] },
@@ -2257,7 +2257,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
     items: { [ids.tableChat]: runningLongCommandItems() },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
   })),
   /** The moment between two steps: the last one is done and the next has not started, so only the clock row shows (KERNEL-823). */
   WorkspaceRunningBetweenSteps: scene((f) => ({
@@ -2265,22 +2265,22 @@ export const workspaceFixtures: Record<string, Fixture> = {
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
     items: { [ids.tableChat]: runningItems().map((i) => (i.kind === 'tool' && i.status === 'running' ? { ...i, status: 'done' as const, durationMs: 6200 } : i)) },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
   })),
   /** The Lead's turn from KERNEL-784: seven issues filed with one failure and five handoffs fold into rows, and the step in flight sits under them with the clock. */
   WorkspaceStepRuns: scene((f) => ({
     ...leadRunning(f, stepRunItems(false)),
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false } }
   })),
   /** The same turn finished: its summary names what happened, and with the fold open the run with a failure is open too. */
   WorkspaceStepRunsDone: scene((f) => ({
     ...leadRunning(f, stepRunItems(true), false),
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: true } }
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolCalls: 'open' } }
   })),
   /** A running turn of 500 steps stays one fold and a live line. */
   WorkspaceStepsLong: scene((f) => ({
     ...leadRunning(f, longSteps()),
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false } }
   })),
   WorkspacePerm: scene(permWaiting),
   WorkspacePermAllowOnce: { ...scene(permWaiting), motion: { action: { click: 'Allow once' }, ms: 700, area: '.ws-main' } },
@@ -2636,7 +2636,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   NewChatLongDraft: scene((f) => {
     const g = noPlan(leadNoChats(f))
     const draft = ['Settings search should land on the setting, not only open its page. When I pick a result:', '1. Open the Settings page the setting belongs to.', '2. Scroll the matching row into view, centered when it fits.', '3. Outline the row for about a second, then let the outline fade.', '4. Put focus on the row\'s control so I can change it from the keyboard.', 'Enter in the search field opens the first match.', 'If I come back to search, my query is still in the field.'].join('\n')
-    return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [], draft } } } }
+    return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft } } } }
   }),
   NewChatPlan: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: true } } })),
   // KERNEL-786: the where row's pickers and the + menu, each open (the shot opens them, scripts/shots.ts). NewChatLocal has Local picked by Settings' workspace mode.
@@ -2666,7 +2666,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   NewChatLinked: scene((f) => {
     const g = noPlan(leadNoChats(f))
     const issue = { type: 'issue' as const, name: 'T-17', title: 'Email an invoice to the client from the row actions', url: 'https://linear.app/client-a/issue/T-17', source: 'linear' as const }
-    return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [issue, { type: 'text', text: ' ' }], draft: '' } } } }
+    return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [issue, { type: 'text', text: ' ' }], draft: '' } } } }
   }),
   ChatWhereRow: scene(() => ({ ui: open })),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
@@ -2689,7 +2689,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceSharedPanel: scene((f) => sharedPanel(f)),
   WorkspaceSharedPanelEmpty: scene((f) => ({
     settings: { ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: true } },
-    ui: { ...open, workspace: { right: 'shared', bottom: 'run', toolsOpen: false } },
+    ui: { ...open, workspace: { right: 'shared', bottom: 'run' } },
     shared: sharedFiles().filter((x) => x.workspaceId !== ids.table), sharedData: sharedStills
   })),
   TeamUpdateShared: scene((f) => teamUpdateShared(f)),
@@ -2742,7 +2742,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePRNoChanges: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { prState: 'none', stat: { files: 0, added: 0, removed: 0 } }),
     changes: { [ids.table]: [] },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
   WorkspacePRNone: prScene('none', []),
   WorkspacePRCreating: prScene('creating', []),
@@ -2752,25 +2752,25 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceRunEmpty: scene((f) => ({
     roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
   // KERNEL-685: a room with no setup script. The Setup tab offers Kernel's suggestion, Ask Kernel and Add manually.
   WorkspaceSetupAddConductor: scene((f) => ({
     roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     scriptSuggestions: { [ids.roomA]: [{ source: 'conductor', file: '.conductor/settings.toml', patch: { scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local' } }, notes: ['The archive script was left out because this room already has one.'] }] },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
-    ui: { ...open, workspace: { right: 'changes', bottom: 'setup', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
   WorkspaceSetupAddDetected: scene((f) => ({
     roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     scriptSuggestions: { [ids.roomA]: [{ source: 'detected', file: 'pnpm-lock.yaml', patch: { scripts: { setup: 'pnpm install' } }, notes: [] }] },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
-    ui: { ...open, workspace: { right: 'changes', bottom: 'setup', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
   WorkspaceSetupAdd: scene((f) => ({
     roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
-    ui: { ...open, workspace: { right: 'changes', bottom: 'setup', toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
   WorkspaceTerminalPresets: terminalPresets(),
   WorkspacePreview: preview(),
@@ -2852,11 +2852,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   /** KERNEL-815: three files dropped on the box while they read. scripts/shots.ts slows the read down so the placeholders show. */
   ComposerAttaching: composing({ parts: [], draft: 'Can you check the invoice table against ' }),
   WorkspaceContextRing: scene((f) => ({ chats: contextChat(f), ui: open })),
-  WorkspaceContextPopover: scene((f) => ({ chats: contextChat(f), ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, contextOpen: true } } })),
+  WorkspaceContextPopover: scene((f) => ({ chats: contextChat(f), ui: { ...open, workspace: { right: 'changes', bottom: 'run', contextOpen: true } } })),
   /** KERNEL-334: the ring from 75% is amber. Not on the canvas, see docs/decisions/KERNEL-334.md. */
   WorkspaceContextRingNear: scene((f) => ({ chats: contextChat(f, 132_000), ui: open })),
   /** KERNEL-334: from 90% the ring and the popover's top meter are red. */
-  WorkspaceContextPopoverFull: scene((f) => ({ chats: contextChat(f, 160_000), ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, contextOpen: true } } })),
+  WorkspaceContextPopoverFull: scene((f) => ({ chats: contextChat(f, 160_000), ui: { ...open, workspace: { right: 'changes', bottom: 'run', contextOpen: true } } })),
   WorkspaceMention: composing({ parts: [], draft: '@inv' }, { tree: { [ids.table]: mentionTree } }),
   WorkspaceSlash: composing({ parts: [], draft: '/' }, { skills }),
   /** KERNEL-531: Claude's guess at the next message stands in for the placeholder of an empty box. Not on the canvas, see docs/decisions/KERNEL-530.md. */
@@ -2872,8 +2872,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     }
   }),
   // KERNEL-746: in the Lead's chat @ offers the room's teammates above Files. A teammate's chat (WorkspaceMention) lists files only.
-  ComposerMentionAgent: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [], draft: '@no' } } } })),
-  ComposerMentionAgentEmpty: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [], draft: '@zzz' } } } })),
+  ComposerMentionAgent: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@no' } } } })),
+  ComposerMentionAgentEmpty: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@zzz' } } } })),
   ComposerMentionAgentSent: scene((f) => ({
     items: { [ids.leadChat]: [{ kind: 'user', id: 'u-agent', ts: at(10, 41), parts: [{ type: 'agent', name: 'Noor', agentId: 'noor' }, { type: 'text', text: 'take the invoice export, and ask Kai for the table first' }] }] },
     chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)),

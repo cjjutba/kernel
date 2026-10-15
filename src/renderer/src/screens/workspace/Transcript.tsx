@@ -678,7 +678,7 @@ const GroupEntry = memo(function GroupEntry({ entry, changes }: { entry: Entry; 
 
 function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'group' }>; changes: ChangedFile[] }) {
   // Each group opens on its own. The view's flag only sets how a group starts, which is how WorkspaceToolCalls shows them open.
-  const [open, setOpen] = useRowOpen(useContext(TranscriptChat), block.id, getState().ui.workspace.toolsOpen)
+  const [open, setOpen] = useRowOpen(useContext(TranscriptChat), block.id, getState().ui.workspace.toolCalls === 'open')
   const id = `${block.id}-list`
   const { text, bad } = block.summary
   return (
