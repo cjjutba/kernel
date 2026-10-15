@@ -39,9 +39,7 @@ export function Hero({ version }: { version: string }) {
         </div>
         <p className="mt-4 text-small text-faint">
           Free · For Macs with Apple silicon
-          <span className="max-nav:hidden"> · </span>
-          {/* On phones the link takes its own line rather than breaking in the middle. */}
-          <span className="max-nav:mt-1.5 max-nav:block">
+          <span className="mt-1.5 block">
             <a href="#waitlist" className="text-muted underline decoration-rule underline-offset-3 transition-colors hover:text-ink">
               Not on one? Join the waitlist
             </a>
