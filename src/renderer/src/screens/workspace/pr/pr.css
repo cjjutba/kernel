@@ -19,6 +19,14 @@
 .ws-aside-head > .pr-tone .panel-toggle-slot, .pr-r1 .panel-toggle-slot { margin-right: -2px; }
 .ws-aside-head > .pr-tone .icon-btn, .pr-r1 .icon-btn { margin-right: -6px; color: var(--b-text); }
 .ws-aside-head > .pr-tone .icon-btn:hover, .pr-r1 .icon-btn:hover { color: var(--b-fg); }
+/* The floating toggle takes the band's tone while the panel is open, as the icon buttons in the band do. With the panel hidden there is no
+   band in the panel, so it stays neutral whatever the capsule's tone (KERNEL-911). */
+.ws-panel:has(> .ws-aside .ws-aside-head > .pr-tone[data-tone='ready']) > .panel-toggle { color: var(--pr-ready-text); }
+.ws-panel:has(> .ws-aside .ws-aside-head > .pr-tone[data-tone='ready']) > .panel-toggle:hover { color: var(--pr-ready-fg); }
+.ws-panel:has(> .ws-aside .ws-aside-head > .pr-tone[data-tone='merged']) > .panel-toggle { color: var(--pr-merged-text); }
+.ws-panel:has(> .ws-aside .ws-aside-head > .pr-tone[data-tone='merged']) > .panel-toggle:hover { color: var(--pr-merged-fg); }
+.ws-panel:has(> .ws-aside .ws-aside-head > .pr-tone[data-tone='fail']) > .panel-toggle { color: var(--pr-fail-text); }
+.ws-panel:has(> .ws-aside .ws-aside-head > .pr-tone[data-tone='fail']) > .panel-toggle:hover { color: var(--pr-fail-fg); }
 
 .pr-tone > :not(.pr-state):not(.grow) { flex-shrink: 0; }
 .pr-cap > .pr-state { flex-shrink: 0; }
