@@ -1,0 +1,38 @@
+name: CLA
+
+# Outside contributors sign CLA.md once, by commenting on their first PR (KERNEL-890).
+# The check is "CLA" and is required on main. Signatures live on the cla-signatures
+# branch, because main only takes changes through PRs.
+#
+# pull_request_target runs the workflow from main with a write token, and the job never
+# checks out or runs code from the PR. Keep it that way.
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize, reopened]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla:
+    name: CLA
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The action reads the sign phrase and "recheck" from PR comments only.
+    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
+    steps:
+      - uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-document: https://github.com/${{ github.repository }}/blob/main/CLA.md
+          path-to-signatures: signatures/cla.json
+          branch: cla-signatures
+          # Kernel workspaces push as cjjutba, so agent PRs pass here.
+          allowlist: cjjutba,dependabot[bot],github-actions[bot],renovate[bot]
+          lock-pullrequest-aftermerge: false
