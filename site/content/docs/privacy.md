@@ -37,4 +37,4 @@ The website's waitlist for Windows, Linux and Intel Macs, on the home page and P
 - **Confirmation first:** we send one email to confirm the address, and add you to the list only once you confirm. Without a confirmation, you aren't added.
 - **Who handles it:** the list is kept with Resend, the email service that sends the confirmation and the one announcement.
 - **What we send:** one email if Kernel comes to a platform you picked. Nothing else.
-- **Leaving:** the announcement has an unsubscribe link. To be removed sooner, [open an issue](https://github.com/cjjutba/kernel/issues) and we will delete your address.
+- **Leaving:** the announcement has an unsubscribe link, run by Resend, that takes you off the list in one click. To be removed sooner, [open an issue](https://github.com/cjjutba/kernel/issues) and we will delete your address.

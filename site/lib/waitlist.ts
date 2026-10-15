@@ -7,10 +7,16 @@ import { confirmEmail } from './waitlistEmail'
 // signed link, the link opens a confirm page, and only its button adds the contact to the waitlist segment. Mail scanners
 // that open every link in an email never confirm anyone, since opening the page changes nothing.
 //
+// The announcement is the Resend template "Kernel waitlist announcement" (alias kernel-waitlist-announcement), sent as a
+// broadcast to the segment with the topic. Its footer holds Resend's {{{RESEND_UNSUBSCRIBE_URL}}}, which docs/privacy promises.
+//
 // Environment, server side only:
 //   RESEND_API_KEY              required in production. Without it, development runs dry: nothing is sent, and the confirm
 //                               link comes back in the response and the server log so the flow can be tried locally.
 //   RESEND_WAITLIST_SEGMENT_ID  the "Kernel waitlist" segment. Defaults to the one made for it.
+//   RESEND_WAITLIST_TOPIC_ID    the "Kernel platform news" topic, opt-out by default, which a confirmed signup opts into.
+//                               A broadcast sent with it carries Resend's unsubscribe link ({{{RESEND_UNSUBSCRIBE_URL}}}),
+//                               and unsubscribing there opts the contact out. Defaults to the one made for it.
 //   WAITLIST_FROM               the sender. Defaults to Kernel <kernel@cjjutba.dev>, a verified domain.
 //   WAITLIST_SECRET             signs confirm links. Defaults to a hash of the API key, so rotating the key expires old links.
 
@@ -19,6 +25,7 @@ export type Platform = (typeof PLATFORMS)[number]
 export const PLATFORM_LABELS: Record<Platform, string> = { windows: 'Windows', linux: 'Linux', 'intel-mac': 'Intel Mac' }
 
 const DEFAULT_SEGMENT = 'd6015dc3-85e0-40ca-929c-acc55d952af5'
+const DEFAULT_TOPIC = '1016ca5e-a534-4476-a602-e1ab41077f7a'
 const DEFAULT_FROM = 'Kernel <kernel@cjjutba.dev>'
 const LINK_TTL_MS = 3 * 24 * 60 * 60 * 1000
 const API = 'https://api.resend.com'
@@ -48,6 +55,7 @@ export function waitlistConfig() {
     apiKey,
     secret,
     segmentId: process.env.RESEND_WAITLIST_SEGMENT_ID?.trim() || DEFAULT_SEGMENT,
+    topicId: process.env.RESEND_WAITLIST_TOPIC_ID?.trim() || DEFAULT_TOPIC,
     from: process.env.WAITLIST_FROM?.trim() || DEFAULT_FROM,
     /** Development without a key: nothing leaves the machine. */
     dryRun: !apiKey && !production
@@ -133,7 +141,17 @@ export async function sendConfirm(signup: Pick<Signup, 'email' | 'platforms'>, o
   return { link, sent: true }
 }
 
-/** Adds a confirmed signup to the waitlist segment, or updates the contact if it's there already. */
+/** Opts a contact into the announcement topic. Resend's docs show both a bare array and a `topics` field, so it tries both. */
+async function optIn(apiKey: string, who: string, topicId: string): Promise<boolean> {
+  const topics = [{ id: topicId, subscription: 'opt_in' }]
+  const bare = await resend(apiKey, `/contacts/${who}/topics`, { method: 'PATCH', body: topics })
+  if (bare.ok) return true
+  const wrapped = await resend(apiKey, `/contacts/${who}/topics`, { method: 'PATCH', body: { topics } })
+  if (!wrapped.ok) console.error('waitlist: Resend refused the topic', bare.status, wrapped.status, wrapped.data?.message ?? bare.data?.message)
+  return wrapped.ok
+}
+
+/** Adds a confirmed signup to the waitlist segment and the announcement topic, or updates the contact if it's there already. */
 export async function addToWaitlist(claim: Pick<Claim, 'email' | 'platforms'>): Promise<{ stored: boolean }> {
   const cfg = waitlistConfig()
   if (cfg.dryRun) {
@@ -146,11 +164,15 @@ export async function addToWaitlist(claim: Pick<Claim, 'email' | 'platforms'>): 
   const existing = await resend(key, `/contacts/${who}`, { method: 'GET' })
   if (existing.ok) {
     // Someone signing up again keeps the platforms they picked before.
-    const before = String((existing.data?.properties as Record<string, unknown> | undefined)?.platforms ?? '').split(',').filter(Boolean)
+    // Resend returns a property as { value, type }, and older contacts may have none.
+    const stored = (existing.data?.properties as Record<string, unknown> | undefined)?.platforms
+    const value = stored && typeof stored === 'object' && 'value' in stored ? (stored as { value: unknown }).value : stored
+    const before = (typeof value === 'string' ? value : '').split(',').filter((p): p is Platform => (PLATFORMS as readonly string[]).includes(p))
     const platforms = [...new Set([...before, ...claim.platforms])].join(',')
     const patched = await resend(key, `/contacts/${who}`, { method: 'PATCH', body: { unsubscribed: false, properties: { platforms } } })
     const joined = await resend(key, `/contacts/${who}/segments/${cfg.segmentId}`, { method: 'POST' })
-    if (!patched.ok || (!joined.ok && joined.status !== 409)) {
+    const subscribed = await optIn(key, who, cfg.topicId)
+    if (!patched.ok || (!joined.ok && joined.status !== 409) || !subscribed) {
       console.error('waitlist: Resend refused the update', patched.status, joined.status, joined.data?.message)
       throw new WaitlistError("We couldn't save that. Try the link again in a minute.", 502)
     }
@@ -158,7 +180,13 @@ export async function addToWaitlist(claim: Pick<Claim, 'email' | 'platforms'>): 
   }
   const created = await resend(key, '/contacts', {
     method: 'POST',
-    body: { email: claim.email, unsubscribed: false, properties: { platforms: claim.platforms.join(',') }, segments: [{ id: cfg.segmentId }] }
+    body: {
+      email: claim.email,
+      unsubscribed: false,
+      properties: { platforms: claim.platforms.join(',') },
+      segments: [{ id: cfg.segmentId }],
+      topics: [{ id: cfg.topicId, subscription: 'opt_in' }]
+    }
   })
   if (!created.ok) {
     console.error('waitlist: Resend refused the contact', created.status, created.data?.message ?? created.data?.name)
