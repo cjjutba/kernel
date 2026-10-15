@@ -36,24 +36,35 @@ export const toggleFocus = () => {
   actions.ui.setRightPanel(!sidebar && !rightPanel)
 }
 
-/** Back and Forward (⌘[ and ⌘]), each disabled when the history has nowhere reachable to go. In the sidebar's top strip, and in the screen header while the sidebar is hidden (KERNEL-643). */
-export function HistoryButtons() {
+/** Back and Forward (⌘[ and ⌘]), each disabled when the history has nowhere reachable to go. In the sidebar's top strip, and in the screen header while the sidebar is hidden (KERNEL-643). In the header they sit 1px lower, which puts them on the strip's row: the header's content area is 43px (its border), the strip's 44px. */
+export function HistoryButtons({ inHeader }: { inHeader?: boolean }) {
   const { canBack, canForward } = useStore((s) => s.ui.nav)
+  const cls = inHeader ? 'nodrag hist-in-header' : 'nodrag'
   return (
     <>
-      <IconButton className="nodrag" icon="arrowLeft" size={16} label="Back" data-tip-kbd="⌘[" disabled={!canBack} onClick={() => actions.ui.back()} />
-      <IconButton className="nodrag" icon="arrowRight" size={16} label="Forward" data-tip-kbd="⌘]" disabled={!canForward} onClick={() => actions.ui.forward()} />
+      <IconButton className={cls} icon="arrowLeft" size={16} label="Back" data-tip-kbd="⌘[" disabled={!canBack} onClick={() => actions.ui.back()} />
+      <IconButton className={cls} icon="arrowRight" size={16} label="Forward" data-tip-kbd="⌘]" disabled={!canForward} onClick={() => actions.ui.forward()} />
     </>
   )
 }
 
-/** First in every screen header. Shows only while the sidebar is hidden, right of the traffic lights, and brings it back (Cmd+B). Back and Forward follow it. */
+/**
+ * The sidebar toggle (Cmd+B), rendered once by App at a fixed spot in the window (`.sidebar-toggle` in tokens.css): x 87, centered on the header row (y 9 to 53).
+ * It is the same element with the sidebar open or hidden, so its position never changes and hover survives a click. The sidebar's strip and the screen headers keep
+ * an empty slot under it (`SidebarToggleSlot`), as the right panel's toggle does (KERNEL-769).
+ */
 export function SidebarToggle() {
+  const open = useStore((s) => s.ui.sidebar)
+  return <IconButton className="sidebar-toggle" icon="sidebar" size={16} label={open ? 'Hide sidebar' : 'Show sidebar'} data-tip-kbd="⌘B" onClick={toggleSidebar} />
+}
+
+/** First in every screen header. The room the toggle sits over, right of the traffic lights, while the sidebar is hidden. Back and Forward follow it. */
+export function SidebarToggleSlot() {
   const open = useStore((s) => s.ui.sidebar)
   return open ? null : (
     <>
-      <IconButton icon="sidebar" size={16} label="Show sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(true)} />
-      <HistoryButtons />
+      <span className="sidebar-toggle-slot" aria-hidden="true" />
+      <HistoryButtons inHeader />
     </>
   )
 }
