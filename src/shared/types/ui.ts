@@ -12,7 +12,7 @@ import type { LeadMode, WorkspaceMode, WorkspaceSource } from './workspaces'
 export type OnboardingStep = 'welcome' | 'checks' | 'permissions' | 'room' | 'loading'
 
 /** Where the renderer is. Lives here so fixtures can open any screen. One entry per screen family. */
-export type DevUiPage = 'components' | 'display' | 'overlays' | 'dialogs'
+export type DevUiPage = 'components' | 'display' | 'states' | 'overlays' | 'dialogs'
 
 export type Route =
   | { name: 'onboarding'; step: OnboardingStep; roomId?: string }
