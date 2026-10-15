@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LinearIssue, LinearIssueDetail } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, lastRoom, useStore } from '../../store'
@@ -14,7 +14,9 @@ import { WorkCard } from './WorkCard'
 /** The selected issue: what Linear says about it, the workspaces already working on it, and the buttons that start work. */
 export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summary?: LinearIssue; tick: number; onPlanned: () => void }) {
   const [loaded, setLoaded] = useState<LinearIssueDetail | null>(null)
-  const [failed, setFailed] = useState<string | null>(null)
+  const [failure, setFailure] = useState<{ id: string; message: string } | null>(null)
+  const failed = failure?.id === id ? failure.message : null
+  const waiting = useRef<(() => void)[]>([])
   const [attempt, setAttempt] = useState(0)
   const [busy, run] = useBusy<'plan' | 'link'>()
   const [picked, setPicked] = useState<{ issue: string; room: string } | null>(null)
@@ -29,11 +31,13 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
   // The description and comments come from `linear.issue`. The list already has the rest, so the header shows at once.
   useEffect(() => {
     let live = true
-    setFailed(null)
-    call('linear.issue', { id }).then((d) => live && setLoaded(d)).catch((e: Error) => live && setFailed(cleanError(e)))
+    call('linear.issue', { id }).then((d) => { if (live) { setLoaded(d); setFailure(null) } }).catch((e: Error) => { if (live) setFailure({ id, message: cleanError(e) }) }).finally(() => waiting.current.splice(0).forEach((done) => done()))
     return () => { live = false }
   }, [id, tick, attempt])
-  const retry = () => { setFailed(null); setAttempt((a) => a + 1) }
+  const retry = () => {
+    setAttempt((a) => a + 1)
+    return new Promise<void>((done) => waiting.current.push(done))
+  }
   const issue: LinearIssue | undefined = loaded?.id === id ? loaded : summary
   const detail = loaded?.id === id ? loaded : null
 

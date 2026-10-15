@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import type { Workspace } from '@shared/types'
 import { go, useStore } from '../../store'
 import { Banner, Button, EmptyList, Icon, NotConnectedState, Pill, Skeleton, Spinner, useListKeys } from '../../ui'
@@ -98,6 +98,11 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   const open = room ? all.open.filter((r) => r.ws.roomId === room.id) : all.open
   const merged = room ? all.merged.filter((w) => w.roomId === room.id) : all.merged
   const [refreshing, setRefreshing] = useState(false)
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 60_000)
+    return () => window.clearInterval(t)
+  }, [])
   const prs = useStore((s) => s.prs)
   const groups = useMemo(() => groupOpen(open, prs), [open, prs])
   // A folded group's rows are out of reach of the keys. A fold lasts while the screen is open.
@@ -111,7 +116,7 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   // Nothing read yet while GitHub is asked: the first read is still out. Signed out in every room: there is nothing to read until gh signs in.
   const loading = filter === 'open' && reading && readAt === undefined
   const signedOut = reads.length > 0 && reads.every((r) => r.failed === 'signed-out')
-  const readAgo = readAt === undefined ? undefined : age(readAt) === 'now' ? 'just now' : `${age(readAt)} ago`
+  const readAgo = readAt === undefined ? undefined : age(readAt, now) === 'now' ? 'just now' : `${age(readAt, now)} ago`
   return (
     <div className="panel">
       <WorkHeader tab="prs" allRooms head={{ rooms: choices, room, onRoom: setRoomId }} counts={{ prs: open.length }} where="GitHub" refreshing={refreshing}
@@ -156,8 +161,8 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
         )
       ) : merged.length ? (
         <div className="prs-scroll">
-          <ul className="prs-list" aria-label="Merged pull requests" onKeyDown={keys.onKeyDown}>{merged.map((w) => <MergedRow key={w.id} ws={w} nav={keys.rowProps} />)}</ul>
           {mergedTotal > MERGED_LIMIT && <p className="prs-cap">Showing the {MERGED_LIMIT} most recent of {mergedTotal} merged pull requests.</p>}
+          <ul className="prs-list" aria-label="Merged pull requests" onKeyDown={keys.onKeyDown}>{merged.map((w) => <MergedRow key={w.id} ws={w} nav={keys.rowProps} />)}</ul>
         </div>
       ) : (
         <EmptyList icon="merged" title="Nothing merged yet">Pull requests you merge show up here.</EmptyList>

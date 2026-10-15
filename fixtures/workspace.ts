@@ -2631,6 +2631,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })), motion: { action: { press: ['Enter'] }, ms: 1000, area: '.ws-main' } },
   /** A jump from the chat rail as motion: the list is opened from the keyboard on the chat's end, Home picks the first message and Enter jumps to it. */
   AuditRailJumpMotion: { ...railScene(), motion: { action: { press: ['Home', 'Enter'] }, ms: 1400, area: '.ws-main' } },
+  /** A rail jump interrupted by a send as motion: Home and Enter start the jump, then Send is pressed while it glides. The jumped-to message still rings (KERNEL-881). */
+  AuditRailJumpSendMotion: { ...scene(() => ({
+    ...withDraft({ items: { [ids.tableChat]: railChat() }, ui: open }, 'Now add a CSV export for the filtered rows.'),
+    afterSend: [{ afterMs: 40, events: [{ type: 'chat.running', chatId: ids.tableChat, running: true }, { type: 'chat.item', chatId: ids.tableChat, item: { kind: 'user', id: 'rs-u', ts: Date.now(), parts: [{ type: 'text', text: 'Now add a CSV export for the filtered rows.' }] } }] }]
+  })), motion: { action: { press: ['Home', 'Enter', 'click:Send'] }, ms: 1400, area: '.ws-main' } },
+  /** A group of steps collapsing as motion: its header is focused and Enter folds it (KERNEL-881). */
+  AuditGroupCollapseMotion: { ...scene(() => ({
+    items: { [ids.tableChat]: foldedMessages },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
+  })), motion: { action: { press: ['Enter'] }, ms: 600, area: '.ws-main' } },
   // Kernel's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
   WorkspaceLead: scene((f) => leadWaiting(f)),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'kernel-lead' })),

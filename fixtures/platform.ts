@@ -391,6 +391,8 @@ function leadSetup(f: Fixture, lines: Omit<ScriptLine, 'kind'>[], code?: number)
   }
 }
 
+const roomGitToast: Fixture = (() => { const f = roomPage('git', { ...clientA({}), branches: ['origin/main'], ...pushCheck('ok') }); return { ...f, ui: { ...f.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } } })()
+
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
   WhatsNewCurrent: whatsNewCurrent,
@@ -901,6 +903,10 @@ export const platformFixtures: Record<string, Fixture> = {
   AuditToastLong: { ...teamFixtures.UpdateReady, ui: { ...teamFixtures.UpdateReady.ui, toasts: [
     { id: 'long', title: 'Could not archive the Client portal login workspace because its worktree has uncommitted changes in 14 files', sub: 'Commit or discard them in the Changes tab, then try again. The folder is /Users/you/kernel/worktrees/client-portal/feat-login-with-a-very-long-branch-name-that-keeps-going', action: { label: 'Open workspace', route: { name: 'workspace', workspaceId: ids.table } } }
   ] } },
+  // A turn running and a toast up, and Settings with a toast up: Escape goes to the open thing first, the screen next, the toast last (KERNEL-878).
+  AuditEscapeTurnToast: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } },
+  AuditEscapeSettingsFieldToast: roomGitToast,
+  AuditEscapeSettingsToast: { ...settingsPage('general'), ui: { ...settingsPage('general').ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } },
   // First launch: no room, no chat, no workspace, on Home and in the checks that hang.
   AuditFirstLaunchHome: scene(() => ({ ...empty, ui: { route: { name: 'inbox' } } })),
   AuditSetupChecksWaiting: { ...setup([]), hold: ['preflight.run'] },

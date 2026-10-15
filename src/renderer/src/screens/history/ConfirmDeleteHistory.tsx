@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DeletePreview } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
@@ -18,15 +18,20 @@ export function ConfirmDeleteHistory({ workspaceIds }: { workspaceIds: string[] 
   const [preview, setPreview] = useState<DeletePreview | null>(null)
   const [unpushed, setUnpushed] = useState(false)
   const [busy, run] = useBusy()
+  const [reading, read] = useBusy<'preview'>()
   const [error, setError] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [tries, setTries] = useState(0)
+  const settle = useRef<(() => void)[]>([])
   useEffect(() => {
     let live = true
-    void call('workspaces.deletePreview', { workspaceIds }).then((p) => { if (live) setPreview(p) }, (e) => { if (live) setPreviewError(cleanError(e)) })
+    void call('workspaces.deletePreview', { workspaceIds }).then((p) => { if (live) { setPreview(p); setPreviewError(null) } }, (e) => { if (live) setPreviewError(cleanError(e)) }).finally(() => settle.current.splice(0).forEach((done) => done()))
     return () => { live = false }
   }, [workspaceIds, tries])
-  const retry = () => { setPreviewError(null); setTries((n) => n + 1) }
+  const retry = () => read('preview', () => {
+    setTries((n) => n + 1)
+    return new Promise<void>((done) => settle.current.push(done))
+  })
 
   const count = preview?.workspaces ?? workspaceIds.length
   const one = count === 1
@@ -64,7 +69,7 @@ export function ConfirmDeleteHistory({ workspaceIds }: { workspaceIds: string[] 
     <ConfirmDialog
       title={workspaceIds.length === 1 ? `Delete ${first?.name ?? 'workspace'}?` : `Delete ${plural(count, 'workspace')}?`} danger busy={!!busy} busyPattern="scatter" busyLabel="Deleting"
       confirmLabel={one ? 'Delete workspace' : 'Delete workspaces'} disabled={!preview || preview.workspaces === 0}
-      extra={previewError ? <Button variant="ghost" size="lg" onClick={retry}>Try again</Button> : undefined}
+      extra={previewError ? <Button variant="ghost" size="lg" busy={reading === 'preview'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void retry()}>Try again</Button> : undefined}
       onConfirm={() => void remove()} onCancel={actions.ui.closeModal} body={body}
     >
       {preview && preview.unpushedBranches > 0 && (

@@ -653,6 +653,19 @@ const manyIssues = (): LinearIssueDetail[] => {
 /** Setup that stopped on its install step. */
 const failedSteps: RoomSetupStep[] = setupSteps.map((s) => (s.id === 'install' ? { ...s, state: 'fail' as const, meta: '38s', error: 'pnpm install exited with code 1' } : s.id === 'clone' || s.id === 'worktrees' ? s : { ...s, state: 'wait' as const }))
 
+/** KERNEL-877: what the engine pushes after Try again: the failed step and the rest back to wait, then each step runs and ends. */
+const retryEvents = (end: 'ok' | 'fail'): { afterMs: number; events: PushEvent[] }[] => {
+  const order = ['install', 'copy', 'hooks', 'push', 'agents']
+  const failure = 'pnpm install exited with code 1: ERR_PNPM_FETCH_503, the registry did not answer'
+  const frame = (i: number, states: Record<string, Partial<RoomSetupStep>>) => ({
+    afterMs: 150 + i * 350,
+    events: [{ type: 'room.setup' as const, roomId: clientC.id, steps: failedSteps.map((s) => (order.includes(s.id) ? { ...s, state: 'wait' as const, meta: undefined, error: undefined, ...states[s.id] } : s)) }]
+  })
+  const done = (n: number) => Object.fromEntries(order.slice(0, n).map((id) => [id, { state: 'ok' as const }]))
+  const running = (n: number, id: string) => ({ ...done(n), [id]: { state: 'run' as const, meta: 'running' } })
+  if (end === 'fail') return [frame(0, {}), frame(1, { install: { state: 'run', meta: 'running' } }), frame(2, { install: { state: 'fail', meta: '9s', error: failure } })]
+  return [frame(0, {}), frame(1, running(0, 'install')), frame(2, done(1)), frame(3, running(1, 'copy')), frame(4, done(4)), frame(5, running(4, 'agents')), frame(6, done(5))]
+}
 export const teamFixtures: Record<string, Fixture> = {
   // KERNEL-253: Client B has its GitHub avatar, in grayscale, in the sidebar and on its card in the Rooms list.
   SidebarRoomIcon: scene((f) => {
@@ -791,12 +804,24 @@ export const teamFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'onboarding', step: 'room', roomId: clientC.id } }
   })),
   // Audit: the install step failed and the later steps never ran.
-  RoomSetupFailed: scene((f) => ({
+  RoomSetupFailed: { ...scene((f) => ({
     ...roomsScene(f),
     rooms: [...f.rooms, clientC],
     push: [{ type: 'room.setup', roomId: clientC.id, steps: failedSteps }],
+    afterRetry: retryEvents('ok'),
     ui: { route: { name: 'onboarding', step: 'room', roomId: clientC.id } }
-  })),
+  })), motion: { action: { click: 'Try again' }, ms: 3000, area: '.ob-col' } },
+  // KERNEL-877: the motion presses Try again, and setup runs the failed step and the rest and finishes. The retry in the next one fails again, with a new reason.
+  RoomSetupRetryFailed: {
+    ...scene((f) => ({
+      ...roomsScene(f),
+      rooms: [...f.rooms, clientC],
+      push: [{ type: 'room.setup', roomId: clientC.id, steps: failedSteps }],
+      afterRetry: retryEvents('fail'),
+      ui: { route: { name: 'onboarding', step: 'room', roomId: clientC.id } }
+    })),
+    motion: { action: { click: 'Try again' }, ms: 1800, area: '.ob-col' }
+  },
   RoomSetupGitHub: scene((f) => ({
     ...roomsScene(f),
     rooms: [...f.rooms, { ...clientC, host: 'github' }],
@@ -861,6 +886,8 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesError: scene((f) => ({ ...issuesScene(f), push: [{ type: 'online', online: false }] })),
   // KERNEL-438: a room on GitHub Issues lists its own issues, with the room in the header. Linear's list is the account's and has no room.
   IssuesGitHub: scene((f) => issuesTrackerScene(f, { issueId: '#31', roomId: ids.roomB })),
+  // The newest 100 is all GitHub returns, so the list ends with a note saying so.
+  IssuesGitHubCapped: scene((f) => ({ ...issuesTrackerScene(f, { roomId: ids.roomB }), githubIssues: { [ids.roomB]: Array.from({ length: 100 }, (_, i) => ({ ...githubIssues()[0], number: 200 - i, id: `#${200 - i}`, title: `Invoice follow-up ${200 - i}` })) } })),
   // A room with no tracker says so and points at its settings, where the tracker is chosen.
   IssuesNoTracker: scene((f) => issuesTrackerScene(f, { roomId: ids.roomPortfolio })),
   // The From popover's Issues tab for each: the room's GitHub issues with their assignees, and the line for a room with none.

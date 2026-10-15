@@ -142,15 +142,13 @@ export function Modal({ title, onClose, children, footer, width, top, bare, role
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) latest.current()
     else setClosing(true)
   }, [])
-  useLayer({ onEscape: dismiss, blocking: true })
+  useLayer({ onEscape: dismiss, blocking: true, ref })
   useEffect(() => {
     if (closing) ref.current?.setAttribute('inert', '')
   }, [closing])
   useEffect(() => {
-    const before = document.activeElement as HTMLElement | null
     const first = ref.current?.querySelector<HTMLElement>('[data-autofocus]') ?? ref.current?.querySelector<HTMLElement>('[autofocus], input, textarea, select, button:not([data-close])')
     ;(first ?? ref.current)?.focus({ preventScroll: true })
-    return () => before?.focus?.()
   }, [])
   const trap = (e: KeyboardEvent) => {
     if (e.key !== 'Tab' || !ref.current) return

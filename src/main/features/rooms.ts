@@ -20,14 +20,23 @@ import { Feature } from './feature'
 /** Where Room setup says a room's agents came from, when it asks for a roster (RoomSetupRoster.png). */
 const AGENT_PLACES: Record<AgentOrigin, string> = { project: '.claude/agents', personal: '~/.claude/agents', plugin: 'Claude Code plugins' }
 
+/** The order setup runs its steps in, so a retry knows which come after the failed one (KERNEL-876). */
+const STEP_ORDER: RoomSetupStep['id'][] = ['clone', 'host', 'worktrees', 'install', 'copy', 'hooks', 'push', 'agents']
+
+/**
+ * A room's setup while Kernel runs: the steps last published, the request that started it, the run going now, and
+ * whether Kernel seated the starter team, so a retry still counts those agents as Kernel's rather than the repo's.
+ */
+interface Setup { steps: RoomSetupStep[]; publish: () => void; req: NewRoomRequest; running?: Promise<void>; seated?: boolean }
+
 /** Adding, creating, pausing, changing and removing rooms (KERNEL-326). */
 export class Rooms extends Feature {
   /** By room id, the last push check, null for a room that had no remote (KERNEL-460). */
   private readonly pushChecks = new Map<string, PushCheck | null>()
   /** By room id, the push check running now, so a second ask waits for it. */
   private readonly checking = new Map<string, Promise<PushCheck | null>>()
-  /** By room id, the setup steps last published, so Check again on room setup can update its step. */
-  private readonly setups = new Map<string, { steps: RoomSetupStep[]; publish: () => void }>()
+  /** By room id, the room's setup, so Check again can update its step and Try again can run it again. */
+  private readonly setups = new Map<string, Setup>()
 
   async addRoom(path: string, name?: string): Promise<Room> {
     const existing = this.store.rooms().find((r) => r.path === path)
@@ -74,16 +83,12 @@ export class Rooms extends Feature {
     this.store.saveRoom(room)
     bus.push({ type: 'room', room })
     bus.track({ name: 'room.created', source: req.source })
-    void this.setupRoom(room, req).catch(() => undefined)
+    this.startSetup(room, req)
     return room
   }
 
-  /**
-   * The steps of RoomSetup.png. A failed step records its error and the next ones still run, except when there is no
-   * checkout. Check push access joins them once the checkout has a remote (KERNEL-460). Code host follows the checkout
-   * (RoomSetupGitHub.png, RoomSetupLocal.png, KERNEL-477).
-   */
-  private async setupRoom(room: Room, req: NewRoomRequest) {
+  /** Builds the steps of RoomSetup.png and runs them all. */
+  private startSetup(room: Room, req: NewRoomRequest) {
     const worktrees = roomWorktreeRoot(this.settings.worktreeRoot, room)
     const steps: RoomSetupStep[] = [
       { id: 'clone', title: req.source === 'repo' ? `Clone ${req.from}` : req.source === 'scratch' ? `Copy ${req.from}` : 'Use your folder', detail: tildify(room.path, this.home), state: 'wait' },
@@ -94,22 +99,63 @@ export class Rooms extends Feature {
       { id: 'hooks', title: 'Install hooks', detail: `${KERNEL_HOOK_EVENTS.length} events to localhost:${this.settings.hookPort}`, state: 'wait' },
       { id: 'agents', title: 'Seat agents', detail: '', state: 'wait' }
     ]
-    const publish = () => bus.push({ type: 'room.setup', roomId: room.id, steps: steps.map((s) => ({ ...s })) })
-    this.setups.set(room.id, { steps, publish })
+    const setup: Setup = { steps, req, publish: () => bus.push({ type: 'room.setup', roomId: room.id, steps: steps.map((s) => ({ ...s })) }) }
+    this.setups.set(room.id, setup)
+    setup.publish()
+    this.run(room.id, setup, 'clone')
+  }
+
+  /**
+   * Try again on a failed room setup (KERNEL-876): the first failed step and every step after it go back to waiting and run
+   * again, on the same `room.setup` events. The steps before it keep what they found. Returns once the run has started.
+   */
+  retrySetup(roomId: string) {
+    const room = this.mustRoom(roomId)
+    const setup = this.setups.get(roomId)
+    // The steps live only while Kernel runs, so a setup from before a restart can't be tried again.
+    if (!setup) throw new Error(`${room.name} has no setup to try again.`)
+    if (setup.running) throw new Error(`${room.name} is still being set up.`)
+    const failed = setup.steps.find((s) => s.state === 'fail')
+    if (!failed) throw new Error(`${room.name} is already set up.`)
+    for (const s of setup.steps.slice(setup.steps.indexOf(failed))) Object.assign(s, { state: 'wait', meta: undefined, error: undefined, output: undefined, fix: undefined, production: undefined })
+    setup.publish()
+    this.run(roomId, setup, failed.id)
+  }
+
+  private run(roomId: string, setup: Setup, from: RoomSetupStep['id']) {
+    const running: Promise<void> = this.setupRoom(this.mustRoom(roomId), setup, from).catch(() => undefined).finally(() => { if (setup.running === running) setup.running = undefined })
+    setup.running = running
+  }
+
+  /**
+   * The steps of RoomSetup.png. A failed step records its error and the next ones still run, except when there is no
+   * checkout. Check push access joins them once the checkout has a remote (KERNEL-460). Code host follows the checkout
+   * (RoomSetupGitHub.png, RoomSetupLocal.png, KERNEL-477). `from` is the first step to run: the steps before it already
+   * finished, on the first run or an earlier try (KERNEL-876).
+   */
+  private async setupRoom(room: Room, setup: Setup, from: RoomSetupStep['id']) {
+    const { steps, publish, req } = setup
+    const worktrees = roomWorktreeRoot(this.settings.worktreeRoot, room)
+    const due = (id: RoomSetupStep['id']) => STEP_ORDER.indexOf(id) >= STEP_ORDER.indexOf(from)
     const update = (id: RoomSetupStep['id'], patch: Partial<RoomSetupStep>) => { Object.assign(steps.find((s) => s.id === id)!, patch); publish() }
     const step = async (id: RoomSetupStep['id'], fn: () => Promise<Partial<RoomSetupStep> | void>) => {
+      if (!due(id)) return true
       const started = Date.now()
       update(id, { state: 'run', meta: 'running', error: undefined })
+      // Setup stops running as its last result is published, so Try again on that result is never refused. The last is the
+      // agents step, or a checkout that failed.
+      const end = (ok: boolean) => { if (id === 'agents' || (id === 'clone' && !ok)) setup.running = undefined }
       try {
         const done = (await fn()) ?? {}
+        end(true)
         update(id, { state: 'ok', meta: Date.now() - started >= 1500 ? `${Math.round((Date.now() - started) / 1000)}s` : undefined, ...done })
         return true
       } catch (e) {
+        end(false)
         update(id, { state: 'fail', meta: undefined, error: (e as Error).message })
         return false
       }
     }
-    publish()
 
     const checkedOut = await step('clone', async () => {
       let inited = false
@@ -131,13 +177,15 @@ export class Rooms extends Feature {
       bus.push({ type: 'room', room: next })
       return { detail: this.k.codeHost.line(next) }
     })
-    const remote = await this.k.config.remoteFor(room.path)
-    if ((await exec('git', ['-C', room.path, 'remote', 'get-url', '--push', remote])).code === 0) {
-      steps.splice(steps.findIndex((s) => s.id === 'agents'), 0, { id: 'push', title: 'Check push access', detail: '', state: 'wait' })
-      publish()
+    if (due('host')) {
+      const remote = await this.k.config.remoteFor(room.path)
+      if (!steps.some((s) => s.id === 'push') && (await exec('git', ['-C', room.path, 'remote', 'get-url', '--push', remote])).code === 0) {
+        steps.splice(steps.findIndex((s) => s.id === 'agents'), 0, { id: 'push', title: 'Check push access', detail: '', state: 'wait' })
+        publish()
+      }
+      // Not a step of its own: reading two files can't fail setup, and Room setup lists what it found under the team.
+      await this.findInstructionConflicts(room.id).catch(() => undefined)
     }
-    // Not a step of its own: reading two files can't fail setup, and Room setup lists what it found under the team.
-    await this.findInstructionConflicts(room.id).catch(() => undefined)
 
     await step('worktrees', async () => {
       await mkdir(worktrees, { recursive: true })
@@ -181,10 +229,12 @@ export class Rooms extends Feature {
     // a missing reviewer (KERNEL-553).
     // A repo with more agents than one team needs asks who joins (KERNEL-465, RoomSetupRoster.png).
     await step('agents', async () => {
-      const brought = (await agentFiles(room.path)).length
+      // The starter agents an earlier try seated are Kernel's, not the repo's.
+      const brought = setup.seated ? 0 : (await agentFiles(room.path)).length
       if (!brought) {
         if (!this.o.starterDir) throw new Error('No starter team found. Add agent files to .claude/agents.')
         await seatStarterTeam(this.o.starterDir, room.path, req.team)
+        setup.seated = true
       }
       const list = await this.k.team.agents(room.id)
       bus.push({ type: 'agents', roomId: room.id, agents: this.k.team.listed(room.id, list) })
@@ -367,6 +417,7 @@ export class Rooms extends Feature {
       'rooms.list': async () => this.store.rooms(),
       'rooms.add': async ({ path, name }) => this.addRoom(path, name),
       'rooms.create': async (req) => this.createRoom(req),
+      'rooms.retrySetup': async ({ roomId }) => { this.retrySetup(roomId); return { ok: true } },
       'rooms.update': async ({ roomId, patch }) => this.updateRoom(roomId, patch),
       'rooms.setIcon': async ({ roomId, icon }) => this.setRoomIcon(roomId, icon),
       'rooms.icon': async ({ roomId }) => this.k.roomIcons.dataUrl(this.mustRoom(roomId).icon),

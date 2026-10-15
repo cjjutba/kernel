@@ -970,18 +970,18 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const goalOf = () => Math.max(0, rangeOf(flat(el)))
     // Already at the end, nothing would run.
     if (goalOf() - el.scrollTop <= 0) return
-    gliding.current = true
     glider.current.start({
       goal: goalOf,
       far: true,
       done: (landed) => { gliding.current = false; if (!landed) return; pin(true); followNow() }
     })
+    gliding.current = glider.current.live()
   }
   // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
-  const glideFor = useCallback((goal: () => number, done: (landed: boolean) => void) => {
+  const glideFor = useCallback((goal: () => number, done: (landed: boolean, replaced?: boolean) => void) => {
     glider.current.start({
       goal,
-      done: (landed) => { gliding.current = false; done(landed) }
+      done: (landed, replaced) => { gliding.current = false; done(landed, replaced) }
     })
     gliding.current = glider.current.live()
     byHand.current = true
@@ -1090,7 +1090,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   // The glider asks for the goal again every frame, so it follows the message to its gap without restarting, until the message has held it for a moment. The reader's own scrolling ends it.
   const aim = (id: string, instant: boolean) => {
     const markOf = () => thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
-    gliding.current = !instant && !matchMedia('(prefers-reduced-motion: reduce)').matches
+    const walks = !instant && !matchMedia('(prefers-reduced-motion: reduce)').matches
     glider.current.start({
       instant,
       far: true,
@@ -1103,8 +1103,9 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         return anchorGoal(el.scrollTop, mark.getBoundingClientRect().top, el.getBoundingClientRect().top)
       },
       over: () => !markOf() || aimOver(anchored.current, id, byHand.current || handSince.current, pinned.current),
-      done: (landed) => { gliding.current = false; if (landed) takeJustSent(chat.id) }
+      done: (landed, replaced) => { gliding.current = false; if (landed || replaced) takeJustSent(chat.id) }
     })
+    gliding.current = walks && glider.current.live()
   }
   useEffect(() => () => glider.current.cancel(), [])
   // Content under the message changing size (the Working line leaving when the turn ends) can clamp the view before the padding is recomputed. Until the reader scrolls, the message stays at its gap.
@@ -1166,8 +1167,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
       const at = el.getBoundingClientRect()
       return Math.round(el.offsetHeight > box.clientHeight ? box.scrollTop + at.top - view.top - 8 : box.scrollTop + at.bottom - view.bottom + 14)
     }
-    gliding.current = true
     glider.current.start({ goal, instant: Date.now() - openedAt.current < OPEN_MS, holdMs, over: () => approving.current || byHand.current, done: () => { gliding.current = false } })
+    gliding.current = glider.current.live()
   }, [])
   // Approve in sequence (KERNEL-862): the strip and plan bar close, the card folds, then the answer is glided into place once. Nothing scrolls before that, and a failed approval lets go at once.
   useEffect(() => {

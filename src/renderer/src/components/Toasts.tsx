@@ -3,6 +3,7 @@ import type { Toast as ToastType } from '@shared/types'
 import { actions, useStore } from '../store'
 import { useUsageActions } from './footer/useUsageActions'
 import { Toast, ToastStack } from '../ui'
+import { useToastEscape } from '../ui/hooks'
 import { usePrToasts } from '../screens/workspace/pr/usePrToasts'
 import { runToastAction } from './toastAction'
 import { UpdateCard } from './UpdateCard'
@@ -12,7 +13,7 @@ const UNDO_KBD = '⌘⌥Z'
 
 /**
  * `ui.toasts`, bottom right of the main panel (WorkspaceToast.png). Each one leaves after 5s, or stays while hovered. Swiping
- * it right or down, pressing its action, or Escape (newest first, when nothing else is open) dismisses it sooner. ⌘⌥Z presses
+ * it right or down, pressing its action, or Escape (newest first, after anything else open and the screen's own Escape) dismisses it sooner. ⌘⌥Z presses
  * the newest toast's action, such as Undo after an account switch. The stack holds three.
  * The update card sits last, under them (KERNEL-164). The stack stays mounted so a closed card stays closed.
  */
@@ -29,16 +30,17 @@ export function Toasts() {
   const keys = useRef({ live, undoable, press })
   keys.current = { live, undoable, press }
   const actionable = [...live].reverse().find((t) => t.action && undoable(t.action))
+  useToastEscape((e, inField) => {
+    if (inField || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false
+    const newest = keys.current.live[keys.current.live.length - 1]
+    if (!newest) return false
+    setClosing((c) => [...c, newest.id])
+    return true
+  })
   useEffect(() => {
-    // Bubble phase: a menu, popover or modal takes Escape first (useLayer listens in the capture phase and stops it).
     const onKey = (e: KeyboardEvent) => {
       const { live: now, undoable: can, press: go } = keys.current
-      if (e.key === 'Escape' && !e.defaultPrevented && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-        const newest = now[now.length - 1]
-        if (!newest) return
-        e.preventDefault()
-        setClosing((c) => [...c, newest.id])
-      } else if (e.code === 'KeyZ' && e.metaKey && e.altKey && !e.shiftKey && !e.ctrlKey) {
+      if (e.code === 'KeyZ' && e.metaKey && e.altKey && !e.shiftKey && !e.ctrlKey) {
         const target = [...now].reverse().find((t) => t.action && can(t.action))
         if (!target?.action) return
         e.preventDefault()

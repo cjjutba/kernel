@@ -88,7 +88,8 @@ export interface GlideRun {
   holdMs?: number
   /** True when the glide is no longer wanted (the reader took over, the target is gone). It ends without calling `done(true)`. */
   over?: () => boolean
-  done?: (landed: boolean) => void
+  /** Called once when the run ends. `replaced` is true when another `start` took over mid-run, so its cleanup still runs. `cancel` calls nothing. */
+  done?: (landed: boolean, replaced?: boolean) => void
 }
 
 export interface Glider {
@@ -118,7 +119,9 @@ export function createGlider(view: () => GlideView | null, env: GlideEnv = brows
   }
 
   const start = (next: GlideRun) => {
+    const replaced = run
     cancel()
+    replaced?.done?.(false, true)
     const mine = token
     const el = view()
     if (!el) { next.done?.(false); return }
