@@ -4,15 +4,6 @@ import { RoomIcon } from '../../../components/RoomIcon'
 import { Button, Icon } from '../../../ui'
 import { PopSearch, WherePop } from './WherePop'
 
-/** A where-row button: the picker's label, drawn muted with the chevron after it. */
-function WhereButton({ label, open, disabled, onClick, children }: { label: string; open: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <Button variant="ghost" className="cmp-model cmp-where-btn" disabled={disabled} aria-label={label} aria-haspopup="menu" aria-expanded={open} onClick={onClick}>
-      {children}<Icon name="chevron" size={12} />
-    </Button>
-  )
-}
-
 /**
  * The room New chat starts in, opened from the title: the room's name, underlined, in "What's next for Kernel?", or a Pick a room button
  * when the page has no room. Search, the rooms with a check on the current one, then New room. There is no "No project" row.
@@ -54,35 +45,25 @@ export function RoomPicker({ variant, rooms, room, open, disabled, onToggle, onC
   )
 }
 
-const MODES: { id: WorkspaceMode; label: string; hint: string; icon: 'fork' | 'computer' }[] = [
+export const RUN_IN: { id: WorkspaceMode; label: string; hint: string; icon: 'fork' | 'computer' }[] = [
   { id: 'worktree', label: 'Worktree', hint: 'Its own branch and copy of the files', icon: 'fork' },
   { id: 'current', label: 'Local', hint: 'Works in your checkout, files and branch are shared', icon: 'computer' }
 ]
 
 /**
- * Worktree or Local, two rows with a line under each. The Lead's own chat is always a worktree (KERNEL-405), so this tells Kernel how its
- * teammates should run. The default is Settings, Workspaces' mode.
+ * Worktree or Local, two rows with a line under each, opened from the + menu's Run in row or the chip beside + (KERNEL-786). The Lead's own chat
+ * is always a worktree (KERNEL-405), so this tells Kernel how its teammates should run. The default is Settings, Workspaces' mode.
  */
-export function ModePicker({ mode, open, disabled, onToggle, onClose, onPick }: { mode: WorkspaceMode; open: boolean; disabled?: boolean; onToggle: () => void; onClose: () => void; onPick: (m: WorkspaceMode) => void }) {
-  const anchor = useRef<HTMLSpanElement>(null)
-  const close = (refocus?: boolean) => { onClose(); if (refocus) anchor.current?.querySelector('button')?.focus() }
-  const now = MODES.find((m) => m.id === mode) ?? MODES[0]
+export function RunInMenu({ anchorRef, mode, onPick, onClose }: { anchorRef: React.RefObject<HTMLElement | null>; mode: WorkspaceMode; onPick: (m: WorkspaceMode) => void; onClose: (refocus?: boolean) => void }) {
   return (
-    <span ref={anchor} className="cmp-branch-anchor">
-      <WhereButton label={`Work as: ${now.label}`} open={open} disabled={disabled} onClick={onToggle}>
-        <Icon name={now.icon} size={14} />{now.label}
-      </WhereButton>
-      {open && (
-        <WherePop anchorRef={anchor} label="Worktree or Local" width={340} onClose={close}>
-          {MODES.map((m) => (
-            <button key={m.id} type="button" role="menuitemradio" aria-checked={m.id === mode} className="menu-item where-row where-mode" onClick={() => { onPick(m.id); close(true) }}>
-              <Icon name={m.icon} size={16} />
-              <span className="where-tx"><span className="where-t">{m.label}</span><span className="where-d">{m.hint}</span></span>
-              {m.id === mode && <Icon name="check" size={14} />}
-            </button>
-          ))}
-        </WherePop>
-      )}
-    </span>
+    <WherePop anchorRef={anchorRef} label="Worktree or Local" width={340} align="end" onClose={onClose}>
+      {RUN_IN.map((m) => (
+        <button key={m.id} type="button" role="menuitemradio" aria-checked={m.id === mode} className="menu-item where-row where-mode" onClick={() => onPick(m.id)}>
+          <Icon name={m.icon} size={16} />
+          <span className="where-tx"><span className="where-t">{m.label}</span><span className="where-d">{m.hint}</span></span>
+          {m.id === mode && <Icon name="check" size={14} />}
+        </button>
+      ))}
+    </WherePop>
   )
 }
