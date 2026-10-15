@@ -421,13 +421,10 @@ function omit<T>(record: Record<string, T>, keys: string[]): Record<string, T> {
 }
 const setUi = (patch: Partial<UiState>) => setState((s) => ({ ui: { ...s.ui, ...patch } }))
 let toastSeq = 0
-let afterSwitch: (() => void) | undefined
 
-async function performSwitch(provider: Provider, accountId: string, reason?: 'banner', move?: SwitchMove) {
+async function performSwitch(provider: Provider, accountId: string, reason?: 'banner', move?: SwitchMove, done?: () => void) {
   actions.accounts.set(await call('accounts.switch', { provider, accountId, ...(reason ? { reason } : {}), ...(move ? { move } : {}) }))
   void call('usage.get', undefined).then(actions.usage.set).catch(() => undefined)
-  const done = afterSwitch
-  afterSwitch = undefined
   done?.()
 }
 
@@ -719,17 +716,17 @@ export const actions = {
     /**
      * The one way every switch starts (KERNEL-845). It reads what the switch would move and opens the confirmation only when a long
      * chat would read its history again. Otherwise it switches at once. `onSwitched` runs once the switch is done, from the modal's
-     * button when one opened. A failed switch throws, so each entry point keeps its own error toast.
+     * button when one opened. The modal carries its own target and callback, so a second request replaces it and the buttons never
+     * run the old one. A failed switch throws, so each entry point keeps its own error toast.
      */
     requestSwitch: async (provider: Provider, accountId: string, opts: { reason?: 'banner'; onSwitched?: () => void } = {}) => {
-      afterSwitch = opts.onSwitched
       let preview: MovePreview | undefined
       try { preview = await call('accounts.previewSwitch', { provider, accountId }) } catch { preview = undefined }
-      if (preview?.chats.some((c) => c.coldReason)) return actions.ui.openModal({ name: 'confirm', kind: 'switchAccount', provider, accountId, preview, ...(opts.reason ? { reason: opts.reason } : {}) })
-      await performSwitch(provider, accountId, opts.reason)
+      if (preview?.chats.some((c) => c.coldReason)) return actions.ui.openModal({ name: 'confirm', kind: 'switchAccount', provider, accountId, preview, ...(opts.reason ? { reason: opts.reason } : {}), ...(opts.onSwitched ? { onSwitched: opts.onSwitched } : {}) })
+      await performSwitch(provider, accountId, opts.reason, undefined, opts.onSwitched)
     },
     /** The confirmation's buttons: `keep` leaves chats on the account that holds their cache, `all` moves them now. */
-    confirmSwitch: (provider: Provider, accountId: string, move: SwitchMove, reason?: 'banner') => performSwitch(provider, accountId, reason, move),
+    confirmSwitch: (provider: Provider, accountId: string, move: SwitchMove, reason?: 'banner', onSwitched?: () => void) => performSwitch(provider, accountId, reason, move, onSwitched),
     mcpRun: (run: McpSignInAll) => setState((s) => ({ mcpRuns: { ...s.mcpRuns, [mcpRunKey(run.provider ?? 'claude', run.accountId)]: run } })),
     clearMcpRun: (provider: Provider, accountId: string) => setState(({ mcpRuns: { [mcpRunKey(provider, accountId)]: _gone, ...mcpRuns } }) => ({ mcpRuns }))
   },

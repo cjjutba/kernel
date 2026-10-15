@@ -232,9 +232,9 @@ export interface KernelApi {
   'chats.queue': { req: { chatId: string }; res: QueuedMessage[] }
   /** What the chat's queue waits for, null when it is empty. `chat.queue` events carry each change (KERNEL-271). */
   'chats.queueReason': { req: { chatId: string }; res: QueueReason | null }
-  /** What the user picked for a long chat a switch would move to another account. Kernel records it on the chat, which it pushes (KERNEL-842). */
   /** What the chat's next turn re-reads and why, or null when nothing needs saying (KERNEL-841). */
   'chats.moveNotice': { req: { chatId: string }; res: MoveNotice | null }
+  /** What the user picked for a long chat a switch would move to another account. Kernel records it on the chat, which it pushes (KERNEL-842). */
   'chats.moveChoice': { req: { chatId: string; choice: MoveChoice }; res: Chat }
   /** The permission mode the chat runs in, the mode picked for it and why they differ. `chat.runMode` events carry each change (KERNEL-572). */
   'chats.runMode': { req: { chatId: string }; res: ChatRunMode }

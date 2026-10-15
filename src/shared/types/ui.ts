@@ -100,7 +100,7 @@ export type Modal =
   /** The one-time question about usage data, after the first room (KERNEL-397). */
   | { name: 'telemetryAsk' }
   /** A switch that would make long chats read their history again on `accountId`: what it costs, and whether to keep them or move them (KERNEL-845). `reason` is the banner's. */
-  | { name: 'confirm'; kind: 'switchAccount'; provider: Provider; accountId: string; preview: MovePreview; reason?: 'banner' }
+  | { name: 'confirm'; kind: 'switchAccount'; provider: Provider; accountId: string; preview: MovePreview; reason?: 'banner'; /** Runs once the switch is done. It belongs to this request, so a newer one replaces it. */ onSwitched?: () => void }
   /** Set up this account: the checklist of the MCP servers that need the user on one account (KERNEL-661). */
   | { name: 'mcpSetUp'; provider: Provider; accountId: string }
 
