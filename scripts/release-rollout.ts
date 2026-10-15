@@ -1,12 +1,14 @@
 // pnpm release:rollout <version> <percent>         set how many installs a published release reaches. 0 pauses it.
 // pnpm release:rollout --check [<version> [<percent>]]  read-only: check the live feed and the zip it points at.
 //
+// At 100 it also updates the Homebrew cask, which release.sh skips below 100 (KERNEL-904).
 // A rollout change re-uploads only latest-mac.yml on the release (KERNEL-712). The tag, the release and the other
 // assets never change. scripts/release.sh runs --check after it publishes.
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { updateCask } from './update-cask.ts'
 import { FEED_URL, feedProblems, parsePercent, readFeed, REPO, setStagingPercentage, sha512OfStream, zipUrl, type Feed } from './rollout.ts'
 
 const args = process.argv.slice(2)
@@ -60,6 +62,14 @@ async function rollout(version: string, percent: number) {
     rmSync(dir, { recursive: true, force: true })
   }
   await check({ version, percent })
+  // Homebrew installs the latest DMG, so the cask follows only a release that every install is offered (KERNEL-904).
+  if (percent === 100) {
+    try {
+      await updateCask(version)
+    } catch (e) {
+      console.error(`release:rollout: WARNING: the Homebrew cask was NOT updated: ${(e as Error).message}\nrelease:rollout: Rerun: node scripts/update-cask.ts ${version}`)
+    }
+  }
 }
 
 const version = (text: string | undefined) => {

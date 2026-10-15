@@ -32,6 +32,8 @@ You need an active Apple Developer Program membership, Xcode command line tools,
 
    `KERNEL_TELEMETRY_HOST` picks the PostHog region, and the default is `https://us.i.posthog.com`. The build reads both and never commits them. Without the key the release still builds, the script warns, and the build sends nothing even when a user turns sharing on. Dev builds, fixture runs, headless runs and the smoke test never send, and neither does a Mac with `DO_NOT_TRACK=1` or `KERNEL_TELEMETRY=0`.
 
+5. **Homebrew tap (KERNEL-904).** `brew install --cask cjjutba/tap/kernel` installs from the public repo `cjjutba/homebrew-tap`, whose `Casks/kernel.rb` points at the release's `Kernel-arm64.dmg`. The repo exists, so there is nothing to create. The release script updates the cask with the `gh` login from step 3, which needs write access to that repo. Nothing else to configure. If the macOS minimum of a build changes (`LSMinimumSystemVersion`), edit `depends_on macos:` in the cask by hand.
+
 ## Release notes
 
 Every PR that changes the app adds a fragment in `.changes/unreleased/`: one sentence about what users will notice, with a type (new, improved, fixed or internal) and an optional Linear key. The Release note check in CI fails a PR that changes app files without one. `.changes/README.md` has the format and the writing rules.
@@ -64,9 +66,9 @@ Run `/release` in Claude Code. It does the steps below, stops for you where a pe
    pnpm release
    ```
 
-   The script checks the tag (on HEAD and on origin), the release notes file, the certificate and the notary profile. It builds, signs with the hardened runtime, notarizes and staples the app, and verifies it with `codesign`, `spctl` and `stapler`. It adds `minimumSystemVersion` to `latest-mac.yml`, so a Mac older than the build needs isn't offered the update (KERNEL-223). It also writes `stagingPercentage`, 100 unless you pass `--rollout` (see Staged rollout). Only then does it create the GitHub release with `gh`, uploading `Kernel-arm64.dmg`, `Kernel-arm64.zip`, their blockmaps and `latest-mac.yml`. Last, it checks the live feed against the zip (see Checking the live feed).
+   The script checks the tag (on HEAD and on origin), the release notes file, the certificate and the notary profile. It builds, signs with the hardened runtime, notarizes and staples the app, and verifies it with `codesign`, `spctl` and `stapler`. It adds `minimumSystemVersion` to `latest-mac.yml`, so a Mac older than the build needs isn't offered the update (KERNEL-223). It also writes `stagingPercentage`, 100 unless you pass `--rollout` (see Staged rollout). Only then does it create the GitHub release with `gh`, uploading `Kernel-arm64.dmg`, `Kernel-arm64.zip`, their blockmaps and `latest-mac.yml`. Then it checks the live feed against the zip (see Checking the live feed). Last, at a rollout of 100, it updates the Homebrew cask (see Homebrew).
 
-`pnpm release --dry` does everything except publish, skips the tag check, and writes the release body to `dist/release-body.md`. `pnpm dist:mac` makes an unsigned local build with no certificate needed.
+`pnpm release --dry` does everything except publish, skips the tag check, writes the release body to `dist/release-body.md`, and prints the cask change it would push. `pnpm dist:mac` makes an unsigned local build with no certificate needed.
 
 When the release PR merges, Vercel redeploys the site, because the release file is inside `site/`. The Ignored Build Step compares with the last successful deployment (D-057), so the deploy happens even when later commits skip `site/`. Vercel deploys only from main (KERNEL-233), so a release that merges while Vercel is rate limited deploys on the next push to main after the limit resets, and the release file is still in that diff because the step compares with the last successful deployment.
 
@@ -105,6 +107,17 @@ Two things to know before going below 100:
 - Pausing at 0 stops new downloads. It can't undo an update already installed, so a broken release still needs a patch.
 
 Your own copy is one of the installs, and a partial rollout may leave it out. So step 7 of `/release`, updating your installed copy, happens at 100, or through the end-to-end update test (KERNEL-715) instead.
+
+## Homebrew
+
+`Casks/kernel.rb` in `cjjutba/homebrew-tap` carries the `version` and the `sha256` of that release's DMG. Everything else in it (arm64 only, the macOS minimum, `auto_updates true`, the `zap` paths) is edited by hand.
+
+- `scripts/update-cask.ts` does the update: it hashes the published DMG, changes the two lines and commits the file to the tap through the contents API with `gh`. Run it alone with `node scripts/update-cask.ts <version> [--dry]`.
+- `pnpm release` runs it after the live feed check passes, only at a rollout of 100. Below 100 the script says the cask stays put, because `brew install` fetches the latest DMG whatever the rollout is, and a partial rollout means not everyone should get it yet.
+- `pnpm release:rollout <version> 100` runs it after raising a release to 100, so a release published at 10% reaches Homebrew when it reaches everyone. It also fixes a cask that an earlier run skipped. It does nothing for other percentages.
+- A failed push prints a loud warning with the command to rerun and doesn't fail a release that is already public. Until it is rerun, brew installs the previous version, and the app updates itself either way.
+
+After a release, check with `brew update && brew info --cask cjjutba/tap/kernel`. To try an install without touching your own copy, use `brew install --cask cjjutba/tap/kernel --appdir=<temp folder>`, never `/Applications`, then `brew uninstall --cask cjjutba/tap/kernel`.
 
 ## Checking the live feed
 
