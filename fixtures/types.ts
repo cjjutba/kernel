@@ -148,6 +148,8 @@ export interface Fixture {
   lag?: Partial<Record<Channel, number>>
   /** Events `chats.send` pushes after the given delays, so a `motion` that clicks Send can step a running turn through more calls. */
   afterSend?: { afterMs: number; events: PushEvent[] }[]
+  /** Events `rooms.retrySetup` pushes after the given delays, so a `motion` that clicks Try again can step a setup through its steps. */
+  afterRetry?: { afterMs: number; events: PushEvent[] }[]
   /**
    * Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). A run
    * script that prints a local URL here gets its `script.url` too, as in the engine (KERNEL-246).
