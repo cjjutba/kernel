@@ -9,14 +9,14 @@ import { Tasks, derive, nextTaskId } from '../src/main/services/tasks'
 
 const agent = (id: string, name: string, role: string, lead = false): AgentDef => ({ id, name, role, description: '', lead, prompt: '', file: `.claude/agents/${id}.md` })
 const agents = [agent('kernel', 'Kernel', 'Lead', true), agent('kai', 'Kai', 'Frontend'), agent('ivy', 'Ivy', 'QA')]
-const ws = (extra: Partial<Workspace> = {}): Workspace => ({ id: 'w1', roomId: 'r', name: 'invoice-table', branch: 'wt/t-14', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...extra })
+const ws = (extra: Partial<Workspace> = {}): Workspace => ({ id: 'w1', projectId: 'r', name: 'invoice-table', branch: 'wt/t-14', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...extra })
 
 const open: Tasks[] = []
 afterEach(() => { open.forEach((t) => t.detach()); open.length = 0 })
 
 async function setup() {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-t-')), 'k.db'))
-  store.saveRoom({ id: 'r', name: 'Client A', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
+  store.saveProject({ id: 'r', name: 'Client A', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
   const tasks = new Tasks({ store, agents: () => agents })
   tasks.attach()
   open.push(tasks)
@@ -24,7 +24,7 @@ async function setup() {
 }
 
 const plan = (extra: Partial<Approval> = {}): Approval => ({
-  id: 'p1', kind: 'plan', source: 'sdk', roomId: 'r', agentId: 'kernel', title: 'T-15 Export invoices as PDF', status: 'allowed', createdAt: 1,
+  id: 'p1', kind: 'plan', source: 'sdk', projectId: 'r', agentId: 'kernel', title: 'T-15 Export invoices as PDF', status: 'allowed', createdAt: 1,
   steps: [{ title: 'T-15a PDF renderer', taskId: 'T-15a', agentId: 'kai' }, { title: 'T-15b Snapshot tests', taskId: 'T-15b', agentId: 'ivy' }, { title: 'Write the release note', agentId: 'kai' }], ...extra
 })
 
@@ -52,7 +52,7 @@ describe('task status', () => {
   it('goes back to Building when its PR is closed without merging', () => {
     expect(derive(t, { workspace: ws({ prState: 'closed' }), approvalPending: false })).toEqual({ column: 'build', state: 'working' })
   })
-  it('numbers tasks per room', () => {
+  it('numbers tasks per project', () => {
     expect(nextTaskId([])).toBe('T-01')
     expect(nextTaskId([{ id: 'T-14' }, { id: 'T-15a' }, { id: 'T-09' }])).toBe('T-16')
   })
@@ -101,7 +101,7 @@ describe('tasks service', () => {
     bus.push({ type: 'approval', approval: plan() })
     store.saveWorkspace(ws())
     tasks.link('r', 'kai', 'w1')
-    const ask: Approval = { id: 'a1', kind: 'tool', source: 'sdk', roomId: 'r', workspaceId: 'w1', agentId: 'kai', title: 'Run pnpm install', status: 'pending', createdAt: 2 }
+    const ask: Approval = { id: 'a1', kind: 'tool', source: 'sdk', projectId: 'r', workspaceId: 'w1', agentId: 'kai', title: 'Run pnpm install', status: 'pending', createdAt: 2 }
     store.saveApproval(ask)
     bus.push({ type: 'approval', approval: ask })
     expect(store.task('r', 'T-15a')?.state).toBe('needs')
@@ -128,7 +128,7 @@ describe('tasks service', () => {
 
   it('makes and closes tasks from hooks of sessions outside Kernel', async () => {
     const { tasks, store } = await setup()
-    const ctx = { roomId: 'r', workspaceId: undefined, agentId: undefined }
+    const ctx = { projectId: 'r', workspaceId: undefined, agentId: undefined }
     bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: 'abc', session_id: 's1', task_subject: 'Fix the login redirect', teammate_name: 'kai' }, ctx)
     expect(tasks.list('r')).toMatchObject([{ id: 'T-01', title: 'Fix the login redirect', column: 'build', state: 'working', agentId: 'kai', externalId: 's1/abc' }])
     bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: 'abc', session_id: 's1', task_subject: 'Fix the login redirect' }, ctx)
@@ -140,7 +140,7 @@ describe('tasks service', () => {
 
   it('keeps tasks from different sessions and teams apart when they reuse an id', async () => {
     const { tasks, store } = await setup()
-    const ctx = { roomId: 'r' }
+    const ctx = { projectId: 'r' }
     bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: '1', task_subject: 'First', session_id: 's1' }, ctx)
     bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: '1', task_subject: 'Second', session_id: 's2' }, ctx)
     bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: '1', task_subject: 'Third', session_id: 's3', team_name: 'blue' }, ctx)
@@ -150,9 +150,9 @@ describe('tasks service', () => {
     expect(store.task('r', 'T-01')?.completedAt).toBeUndefined()
   })
 
-  it('opens a task for a completion it never saw created, and ignores hooks without a room', async () => {
+  it('opens a task for a completion it never saw created, and ignores hooks without a project', async () => {
     const { tasks } = await setup()
-    bus.emit('hook', { hook_event_name: 'TaskCompleted', task_id: 'x1', task_subject: 'Tidy imports' }, { roomId: 'r' })
+    bus.emit('hook', { hook_event_name: 'TaskCompleted', task_id: 'x1', task_subject: 'Tidy imports' }, { projectId: 'r' })
     bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: 'x2', task_subject: 'Elsewhere' }, {})
     expect(tasks.list('r')).toMatchObject([{ title: 'Tidy imports', column: 'done' }])
   })

@@ -20,7 +20,7 @@ import { KERNEL_LEAD, RESERVED_AGENT_IDS } from '@shared/team'
 //   lead: false             (optional, Kernel only)
 //   skills: /feature, /verify  (optional, Kernel only)
 //   ---
-//   You are Kai, the frontend engineer in this room...
+//   You are Kai, the frontend engineer in this project...
 
 /** Claude Code's frontmatter: the first `---` line, then everything up to the next `---`, wherever it falls. */
 const FRONTMATTER = /^---\s*\n([\s\S]*?)---\s*\n?/
@@ -202,8 +202,8 @@ export function loadPersonalAgents(home: string): Promise<AgentDef[]> {
 }
 
 /**
- * The agents a room runs (KERNEL-463): its own files, the user's personal ones, then plugin agents. A personal file with the
- * id of a room file Kernel can read is left out, as Claude Code leaves it out. Plugin agents' ids hold a colon, which no file's can.
+ * The agents a project runs (KERNEL-463): its own files, the user's personal ones, then plugin agents. A personal file with the
+ * id of a project file Kernel can read is left out, as Claude Code leaves it out. Plugin agents' ids hold a colon, which no file's can.
  */
 export function teamFiles(project: AgentDef[], personal: AgentDef[], plugins: AgentDef[] = []): AgentDef[] {
   const ids = new Set(project.filter((a) => !isUnreadable(a)).map((a) => a.id))
@@ -296,7 +296,7 @@ async function fileOf(repoPath: string, id: string, o: { retired?: boolean } = {
 }
 
 /**
- * Kernel's own agents and the files a room already has keep their names (KERNEL-397). `repoPath` is any folder with a
+ * Kernel's own agents and the files a project already has keep their names (KERNEL-397). `repoPath` is any folder with a
  * `.claude/agents`, the home folder too (KERNEL-466).
  */
 export async function freeId(repoPath: string, id: string) {
@@ -439,12 +439,12 @@ export function watchAgents(repoPath: string, onChange: () => void, delay = 150)
   return watchFolder(join(repoPath, '.claude', 'agents'), onChange, { delay })
 }
 
-/** The same for `~/.claude/agents`, whose files join every room's team (KERNEL-463). */
+/** The same for `~/.claude/agents`, whose files join every project's team (KERNEL-463). */
 export function watchPersonalAgents(home: string, onChange: () => void, delay = 150): () => void {
   return watchFolder(join(home, '.claude', 'agents'), onChange, { delay })
 }
 
-/** The same for the room's `.kernel/settings*.toml`, whose `[team]` decides who leads and reviews (KERNEL-397). */
+/** The same for the project's `.kernel/settings*.toml`, whose `[team]` decides who leads and reviews (KERNEL-397). */
 export function watchTeamSettings(repoPath: string, onChange: () => void, delay = 150): () => void {
   return watchFolder(join(repoPath, '.kernel'), onChange, { delay, only: (name) => /^settings(\.local)?\.toml$/.test(name) })
 }

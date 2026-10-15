@@ -18,9 +18,9 @@ export function usePrToasts() {
       prev = new Map(seen.map((w) => [w.id, w.prState]))
       if (!before) return
       for (const w of seen) {
-        const agent = s.agents[w.roomId]?.find((a) => a.id === w.agentId)?.name
-        // The method Kernel's merge used, which is the room's and can differ from the app's (KERNEL-468).
-        const t = prToast(before.get(w.id), w, { method: w.mergedWith ?? s.settings?.pr.mergeMethod, agent, remote: remoteOf(s.roomSettings[w.roomId], s.settings) })
+        const agent = s.agents[w.projectId]?.find((a) => a.id === w.agentId)?.name
+        // The method Kernel's merge used, which is the project's and can differ from the app's (KERNEL-468).
+        const t = prToast(before.get(w.id), w, { method: w.mergedWith ?? s.settings?.pr.mergeMethod, agent, remote: remoteOf(s.projectSettings[w.projectId], s.settings) })
         if (t) actions.ui.toast(t)
       }
     }

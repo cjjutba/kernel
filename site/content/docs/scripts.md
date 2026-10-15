@@ -3,7 +3,7 @@ title: Scripts and environment
 description: Setup, run and archive scripts, ports, preview URLs, files to copy and environment variables.
 ---
 
-Each room's **Setup and scripts** page in Settings decides what happens when a workspace is created, how its app runs, and what happens when it's archived.
+Each project's **Setup and scripts** page in Settings decides what happens when a workspace is created, how its app runs, and what happens when it's archived.
 
 ## Setup script
 
@@ -44,4 +44,4 @@ Gitignored files the work needs, such as `.env.local`, are copied into each new 
 
 ## Environment variables
 
-Settings, Environment holds variables every chat, script and terminal gets. Each room's Environment page adds the room's own, and lists its env files. Values are shown only when you ask.
+Settings, Environment holds variables every chat, script and terminal gets. Each project's Environment page adds the project's own, and lists its env files. Values are shown only when you ask.

@@ -1,22 +1,22 @@
-import type { AccountProfile, AgentDef, Approval, Chat, Provider, Room, Route, SettingsPage, SharedFile, Thread, Workspace } from '@shared/types'
+import type { AccountProfile, AgentDef, Approval, Chat, Provider, Project, Route, SettingsPage, SharedFile, Thread, Workspace } from '@shared/types'
 
 import { workspaceRowLabel } from '../../components/sidebar/workspaceRowLabel'
 import { PROVIDER_NAME } from '../../accountRows'
 import { isLeadWorkspace } from '../../lead'
-import { roomAgents } from '../../nav'
+import { projectAgents } from '../../nav'
 import { archivedList, endedAt, historyName, whenLabel } from '../history/model'
-import { roomLetter } from '../rooms/roomInfo'
-import { NAV_PAGES, ROOM_PAGES } from '../settings/nav'
+import { projectLetter } from '../projects/projectInfo'
+import { NAV_PAGES, PROJECT_PAGES } from '../settings/nav'
 import { hasChanges } from '../workspace/pr/model'
 import { kindLabel, latestOf, sinceShort } from '../workspace/shared/shared'
 
-export type Section = 'Suggested' | 'Chats' | 'Shared' | 'Go to' | 'Rooms' | 'Accounts' | 'Archived' | 'Results'
+export type Section = 'Suggested' | 'Chats' | 'Shared' | 'Go to' | 'Projects' | 'Accounts' | 'Archived' | 'Results'
 
 export interface PaletteItem {
   id: string
   section: Exclude<Section, 'Results'>
   label: string
-  /** The small mark on the left: a glyph from the canvas, or a room's letter. */
+  /** The small mark on the left: a glyph from the canvas, or a project's letter. */
   glyph: string
   /** Shortcut caps shown on the right, one string per key. */
   keys?: string[]
@@ -68,14 +68,14 @@ export function rank<T extends { label: string; also?: string }>(items: T[], que
 
 export interface PaletteInput {
   route: Route
-  rooms: Room[]
+  projects: Project[]
   workspaces: Workspace[]
   approvals: Approval[]
   /** Every shared file, from the store. */
   shared: SharedFile[]
-  /** By room id. */
+  /** By project id. */
   agents: Record<string, AgentDef[]>
-  /** The open Lead chats of the room in view, in sidebar order, each with its open tabs (KERNEL-339). */
+  /** The open Lead chats of the project in view, in sidebar order, each with its open tabs (KERNEL-339). */
   chats?: { thread: Thread; tabs: Chat[]; ws?: Workspace }[]
   /** The big terminal's switch and the preset a new tab runs. Unset reads as off, like settings that haven't loaded (KERNEL-251). */
   terminal?: { enabled: boolean; preset?: string }
@@ -85,22 +85,22 @@ export interface PaletteInput {
   accounts?: AccountProfile[]
   act: {
     go: (route: Route) => void
-    openNewChat: (roomId?: string) => void
-    newRoom: () => void
+    openNewChat: (projectId?: string) => void
+    newProject: () => void
     whatsNew: () => void
     approve: (a: Approval) => void
     /** A tab in the workspace you are in. In the Lead's workspace it joins the chat on screen. */
     newChat: (workspaceId: string, kind?: 'terminal') => void
-    /** A chat of the room, on the tab last shown in it, in its own workspace (KERNEL-405). */
-    openChat: (roomId: string, thread: Thread, tabs: Chat[], ws?: Workspace) => void
-    /** The room's newest Lead chat, or New chat when none is open (`lead.open`, KERNEL-405). */
-    openLead: (roomId: string) => void
-    /** Where a room opens: its Lead chat, or Team when it has no Lead (D-104). */
-    openRoom: (roomId: string) => void
+    /** A chat of the project, on the tab last shown in it, in its own workspace (KERNEL-405). */
+    openChat: (projectId: string, thread: Thread, tabs: Chat[], ws?: Workspace) => void
+    /** The project's newest Lead chat, or New chat when none is open (`lead.open`, KERNEL-405). */
+    openLead: (projectId: string) => void
+    /** Where a project opens: its Lead chat, or Team when it has no Lead (D-104). */
+    openProject: (projectId: string) => void
     /** Opens a shared file's tab in a workspace and shows that workspace. */
     openShared: (workspaceId: string, sharedId: string) => void
-    /** Opens the room's newest Lead chat, then the file's tab in it. */
-    openSharedInLead: (roomId: string, sharedId: string) => void
+    /** Opens the project's newest Lead chat, then the file's tab in it. */
+    openSharedInLead: (projectId: string, sharedId: string) => void
     /** An archived workspace comes back and opens, as Restore does in History. */
     restore?: (w: Workspace, name: string) => void
     /** A toast with only a title. */
@@ -110,10 +110,10 @@ export interface PaletteInput {
   }
 }
 
-/** The room the user is looking at, falling back to the first visible one. */
-export function roomInView(route: Route, rooms: Room[], workspaces: Workspace[]): Room | undefined {
-  const id = 'roomId' in route ? route.roomId : route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId)?.roomId : undefined
-  return rooms.find((r) => r.id === id) ?? rooms.find((r) => !r.hidden && !r.archived)
+/** The project the user is looking at, falling back to the first visible one. */
+export function projectInView(route: Route, projects: Project[], workspaces: Workspace[]): Project | undefined {
+  const id = 'projectId' in route ? route.projectId : route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId)?.projectId : undefined
+  return projects.find((r) => r.id === id) ?? projects.find((r) => !r.hidden && !r.archived)
 }
 
 /** How many shared files the palette lists before you type. */
@@ -125,26 +125,26 @@ const live = (w: Workspace) => w.status !== 'archived' && !w.lead
 /** "Run pnpm drizzle-kit push" becomes "pnpm drizzle-kit push", for "Approve Noor: pnpm drizzle-kit push". */
 const approvalLabel = (a: Approval, who?: string) => `Approve ${who ? `${who}: ` : ''}${a.title.replace(/^Run (?:(?:pnpm|npm|yarn|npx) )?/, '')}`
 
-/** Everything the palette can run. Suggested depends on where you are; Go to and Rooms are the same everywhere. */
+/** Everything the palette can run. Suggested depends on where you are; Go to and Projects are the same everywhere. */
 export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: PaletteItem[] } {
-  const { route, rooms, workspaces, approvals, act } = i
-  const room = roomInView(route, rooms, workspaces)
-  const visible = rooms.filter((r) => !r.archived)
+  const { route, projects, workspaces, approvals, act } = i
+  const project = projectInView(route, projects, workspaces)
+  const visible = projects.filter((r) => !r.archived)
   const current = route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId) : undefined
   // Same rule as the PR header: a workspace with no changes has nothing to open a PR for.
   const canPr = (w: Workspace) => w.prState === 'none' && hasChanges(w)
-  const forPr = current && canPr(current) ? current : workspaces.filter((w) => live(w) && canPr(w) && (!room || w.roomId === room.id)).sort((a, b) => b.createdAt - a.createdAt)[0]
+  const forPr = current && canPr(current) ? current : workspaces.filter((w) => live(w) && canPr(w) && (!project || w.projectId === project.id)).sort((a, b) => b.createdAt - a.createdAt)[0]
   const pending = approvals.find((a) => a.status === 'pending' && a.kind === 'tool')
-  const nameOf = (roomId?: string, agentId?: string) => (roomId ? i.agents[roomId]?.find((a) => a.id === agentId)?.name : undefined)
-  const leadAgent = room ? i.agents[room.id]?.find((a) => a.lead) : undefined
+  const nameOf = (projectId?: string, agentId?: string) => (projectId ? i.agents[projectId]?.find((a) => a.id === agentId)?.name : undefined)
+  const leadAgent = project ? i.agents[project.id]?.find((a) => a.lead) : undefined
   const lead = leadAgent?.name || 'the Lead'
   const item = (id: string, section: PaletteItem['section'], glyph: string, label: string, run: () => void, extra: Partial<PaletteItem> = {}): PaletteItem => ({ id, section, glyph, label, run, ...extra })
 
   const suggested: PaletteItem[] = [
-    item('new-ws', 'Suggested', '+', room ? `New chat in ${room.name}` : 'New chat', () => act.openNewChat(room?.id), { keys: ['⌘', 'N'] }),
+    item('new-ws', 'Suggested', '+', project ? `New chat in ${project.name}` : 'New chat', () => act.openNewChat(project?.id), { keys: ['⌘', 'N'] }),
     ...(forPr ? [item('create-pr', 'Suggested', '↗', `Create PR for ${workspaceRowLabel(forPr)}`, () => act.go({ name: 'workspace', workspaceId: forPr.id }), { keys: ['⌘', '⇧', 'P'], also: `pull request ${forPr.name} ${forPr.branch}` })] : []),
-    ...(pending ? [item('approve', 'Suggested', '✓', approvalLabel(pending, nameOf(pending.roomId, pending.agentId)), () => act.approve(pending), { keys: ['⌘', '↵'], also: 'allow permission' })] : []),
-    ...(room && leadAgent ? [item('lead-chat', 'Suggested', '›', `Open ${lead}'s chat`, () => act.openLead(room.id), { keys: ['⌘', '⇧', 'L'], also: 'lead chat workspace brief ask' })] : []),
+    ...(pending ? [item('approve', 'Suggested', '✓', approvalLabel(pending, nameOf(pending.projectId, pending.agentId)), () => act.approve(pending), { keys: ['⌘', '↵'], also: 'allow permission' })] : []),
+    ...(project && leadAgent ? [item('lead-chat', 'Suggested', '›', `Open ${lead}'s chat`, () => act.openLead(project.id), { keys: ['⌘', '⇧', 'L'], also: 'lead chat workspace brief ask' })] : []),
     ...(current ? [
       item('new-tab', 'Suggested', '+', 'New tab', () => act.newChat(current.id), { keys: ['⌘', 'T'] }),
       // Main refuses a terminal tab while the big terminal is off, so the palette leaves the entry out until the settings say it is on. A new tab runs the settings' preset.
@@ -152,42 +152,42 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     ] : [])
   ]
 
-  // The room's open chats, each with its tab count. Typing searches them with everything else.
-  const chatItems: PaletteItem[] = room
-    ? (i.chats ?? []).map(({ thread, tabs, ws }) => item(`chat-${thread.id}`, 'Chats', '◇', thread.title, () => act.openChat(room.id, thread, tabs, ws), { meta: `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`, group: `Chats in ${room.name}`, also: 'chat tabs' }))
+  // The project's open chats, each with its tab count. Typing searches them with everything else.
+  const chatItems: PaletteItem[] = project
+    ? (i.chats ?? []).map(({ thread, tabs, ws }) => item(`chat-${thread.id}`, 'Chats', '◇', thread.title, () => act.openChat(project.id, thread, tabs, ws), { meta: `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`, group: `Chats in ${project.name}`, also: 'chat tabs' }))
     : []
 
-  const shown = current ?? workspaces.filter((w) => live(w) && (!room || w.roomId === room.id)).sort((a, b) => b.createdAt - a.createdAt)[0]
+  const shown = current ?? workspaces.filter((w) => live(w) && (!project || w.projectId === project.id)).sort((a, b) => b.createdAt - a.createdAt)[0]
   const goto = (id: string, label: string, route: Route, extra: Partial<PaletteItem> = {}) => item(id, 'Go to', '◇', label, () => act.go(route), extra)
   const goDefault: PaletteItem[] = [
     goto('go-inbox', 'Inbox', { name: 'inbox' }, { keys: ['G', 'I'] }),
-    goto('go-work', 'Work', { name: 'issues', ...(room ? { roomId: room.id } : {}) }, { also: 'issues linear github tickets pull requests prs merge merged checks review' }),
+    goto('go-work', 'Work', { name: 'issues', ...(project ? { projectId: project.id } : {}) }, { also: 'issues linear github tickets pull requests prs merge merged checks review' }),
     ...(shown ? [goto('go-ws', `${workspaceRowLabel(shown)} workspace`, { name: 'workspace', workspaceId: shown.id }, { also: `${shown.name} ${shown.branch}` })] : []),
     goto('go-settings', 'Settings', { name: 'settings', page: 'general' }, { keys: ['⌘', ','], also: 'preferences' }),
-    ...(room ? [goto('go-agents', 'Agents', roomAgents(room.id), { also: 'team subagents' })] : []),
+    ...(project ? [goto('go-agents', 'Agents', projectAgents(project.id), { also: 'team subagents' })] : []),
     goto('go-history', 'History', { name: 'history' }, { also: 'archived restore old finished' }),
     item('go-new', 'Go to', '◇', "What's new", act.whatsNew, { also: 'update release notes' })
   ]
 
-  const roomItems: PaletteItem[] = [
-    ...visible.map((r) => item(`room-${r.id}`, 'Rooms', roomLetter(r.name), r.name, () => act.openRoom(r.id))),
-    item('room-new', 'Rooms', '+', 'New room', act.newRoom, { also: 'add connect repo' })
+  const projectItems: PaletteItem[] = [
+    ...visible.map((r) => item(`project-${r.id}`, 'Projects', projectLetter(r.name), r.name, () => act.openProject(r.id))),
+    item('project-new', 'Projects', '+', 'New project', act.newProject, { also: 'add connect repo' })
   ]
 
   // Where a shared file opens is worked out when it is picked, so a file is always listed: the sharing workspace if it is still open, else the
-  // workspace on screen, else the room's Lead (made on first use), else the room's first open workspace (KERNEL-307).
+  // workspace on screen, else the project's Lead (made on first use), else the project's first open workspace (KERNEL-307).
   const openSharedFile = (f: SharedFile) => {
     const open = (w?: Workspace) => (w && w.status !== 'archived' ? w : undefined)
     const target = open(workspaces.find((w) => w.id === f.workspaceId)) ?? open(current)
     if (target) return act.openShared(target.id, f.id)
-    const leadId = i.agents[f.roomId]?.find((a) => a.lead)?.id
+    const leadId = i.agents[f.projectId]?.find((a) => a.lead)?.id
     if (leadId) {
-      const leadWs = workspaces.filter((w) => isLeadWorkspace(w, f.roomId, leadId)).at(-1)
-      return leadWs ? act.openShared(leadWs.id, f.id) : act.openSharedInLead(f.roomId, f.id)
+      const leadWs = workspaces.filter((w) => isLeadWorkspace(w, f.projectId, leadId)).at(-1)
+      return leadWs ? act.openShared(leadWs.id, f.id) : act.openSharedInLead(f.projectId, f.id)
     }
-    const any = workspaces.find((w) => w.roomId === f.roomId && w.status !== 'archived')
+    const any = workspaces.find((w) => w.projectId === f.projectId && w.status !== 'archived')
     if (any) return act.openShared(any.id, f.id)
-    act.toast(`Open a workspace in ${rooms.find((r) => r.id === f.roomId)?.name ?? 'this room'} to view this file`)
+    act.toast(`Open a workspace in ${projects.find((r) => r.id === f.projectId)?.name ?? 'this project'} to view this file`)
   }
   const sharedItems = i.shared
     .slice()
@@ -195,13 +195,13 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     .flatMap((f) => {
       if (!f.versions.length) return []
       const latest = latestOf(f)
-      const by = nameOf(f.roomId, f.agentId) ?? f.agentId
+      const by = nameOf(f.projectId, f.agentId) ?? f.agentId
       const kind = kindLabel(f.kind, latest.mime)
       const it = item(`shared-${f.id}`, 'Shared', '◇', f.title, () => openSharedFile(f), { also: `${kind} ${f.kind} ${f.source} ${by}`, meta: `${kind} · v${latest.n} · ${by} · ${sinceShort(f.updatedAt)}` })
-      return [{ roomId: f.roomId, it }]
+      return [{ projectId: f.projectId, it }]
     })
-  // With nothing typed: the five newest in the room in view. Typing searches the rest as well.
-  const sharedNow = sharedItems.filter((x) => x.roomId === room?.id).slice(0, SHARED_DEFAULT).map((x) => x.it)
+  // With nothing typed: the five newest in the project in view. Typing searches the rest as well.
+  const sharedNow = sharedItems.filter((x) => x.projectId === project?.id).slice(0, SHARED_DEFAULT).map((x) => x.it)
   const sharedRest = sharedItems.map((x) => x.it).filter((x) => !sharedNow.includes(x))
 
   // "Switch Claude Code to Personal". A search that finds only these keeps Claude Code before Codex, not the shorter label first.
@@ -216,35 +216,35 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     // Typing "archived" lists them all. Picking one restores it and opens it, the way Restore does in History.
     ...archivedList(workspaces).map((w) => {
       const name = historyName(w, i.threads ?? {})
-      return item(`archived-${w.id}`, 'Archived', '◇', name, () => act.restore?.(w, name), { meta: `Archived · ${rooms.find((r) => r.id === w.roomId)?.name ?? ''} · ${whenLabel(endedAt(w))}`, also: `archived history restore ${w.branch}` })
+      return item(`archived-${w.id}`, 'Archived', '◇', name, () => act.restore?.(w, name), { meta: `Archived · ${projects.find((r) => r.id === w.projectId)?.name ?? ''} · ${whenLabel(endedAt(w))}`, also: `archived history restore ${w.branch}` })
     }),
-    goto('go-rooms', 'All rooms', { name: 'rooms' }),
+    goto('go-projects', 'All projects', { name: 'projects' }),
     ...visible.flatMap((r) => {
-      const roomLead = i.agents[r.id]?.find((a) => a.lead)
+      const projectLead = i.agents[r.id]?.find((a) => a.lead)
       return [
-        goto(`go-agents-${r.id}`, `${r.name} agents`, roomAgents(r.id), { also: 'team subagents' }),
-        // The room in view has "Open the Lead's chat" above, which "lead chat" finds first. These say whose chat, not "lead chat",
-        // so a shorter room name can't outrank it.
-        ...(roomLead && r.id !== room?.id ? [item(`go-lead-${r.id}`, 'Go to', '◇', `${roomLead.name}'s chat in ${r.name}`, () => act.openLead(r.id), { also: 'lead workspace' })] : [])
+        goto(`go-agents-${r.id}`, `${r.name} agents`, projectAgents(r.id), { also: 'team subagents' }),
+        // The project in view has "Open the Lead's chat" above, which "lead chat" finds first. These say whose chat, not "lead chat",
+        // so a shorter project name can't outrank it.
+        ...(projectLead && r.id !== project?.id ? [item(`go-lead-${r.id}`, 'Go to', '◇', `${projectLead.name}'s chat in ${r.name}`, () => act.openLead(r.id), { also: 'lead workspace' })] : [])
       ]
     }),
     ...workspaces.filter(live).map((w) => goto(`go-ws-${w.id}`, `${workspaceRowLabel(w)} workspace`, { name: 'workspace', workspaceId: w.id }, { also: `${w.name} ${w.branch}` })),
     ...settingsPages.map(([p, label]) => goto(`go-set-${p}`, `Settings: ${label}`, { name: 'settings', page: p }, { also: 'preferences' })),
-    // Each room's own pages, named after the room: "Settings: Client A, Scripts".
+    // Each project's own pages, named after the project: "Settings: Client A, Scripts".
     ...settingsRows.map((k) => goto(`go-set-${k.page}-${k.rowId}`, `Settings: ${k.pageLabel}, ${k.label}`, { name: 'settings', page: k.page, row: k.rowId }, { also: 'preferences' })),
-    ...visible.filter((r) => !r.hidden).flatMap((r) => ROOM_PAGES.flatMap((p) => [
-      goto(`go-set-${r.id}-${p.section}`, `Settings: ${r.name}, ${p.label}`, { name: 'settings', page: 'room', roomId: r.id, section: p.section }, { also: 'preferences room' }),
-      ...p.keywords.map((k) => goto(`go-set-${r.id}-${p.section}-${k.rowId}`, `Settings: ${r.name}, ${p.label}, ${k.label}`, { name: 'settings', page: 'room', roomId: r.id, section: p.section, row: k.rowId }, { also: 'preferences room' }))
+    ...visible.filter((r) => !r.hidden).flatMap((r) => PROJECT_PAGES.flatMap((p) => [
+      goto(`go-set-${r.id}-${p.section}`, `Settings: ${r.name}, ${p.label}`, { name: 'settings', page: 'project', projectId: r.id, section: p.section }, { also: 'preferences project' }),
+      ...p.keywords.map((k) => goto(`go-set-${r.id}-${p.section}-${k.rowId}`, `Settings: ${r.name}, ${p.label}, ${k.label}`, { name: 'settings', page: 'project', projectId: r.id, section: p.section, row: k.rowId }, { also: 'preferences project' }))
     ]))
   ]
 
-  return { items: [...suggested, ...chatItems, ...sharedNow, ...goDefault, ...roomItems], more }
+  return { items: [...suggested, ...chatItems, ...sharedNow, ...goDefault, ...projectItems], more }
 }
 
 /** What the list shows for a query. No query: the three sections. A query: one ranked list over everything. */
 export function visibleItems(items: PaletteItem[], more: PaletteItem[], query: string): { section: Section; title: string; list: PaletteItem[] }[] {
   if (!query.trim()) {
-    return (['Suggested', 'Chats', 'Shared', 'Go to', 'Rooms'] as const)
+    return (['Suggested', 'Chats', 'Shared', 'Go to', 'Projects'] as const)
       .map((section) => { const list = items.filter((x) => x.section === section); return { section, title: list[0]?.group ?? section, list } })
       .filter((g) => g.list.length)
   }

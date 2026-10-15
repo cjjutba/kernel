@@ -2,11 +2,11 @@ import { readFile, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, sep } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
-import { isRunName, RUN_SCRIPT_NAME, type RoomSettings, type RoomSettingsPatch, type ScriptSuggestion } from '@shared/types'
-import { installOf, stacksOf, tildify } from './rooms'
+import { isRunName, RUN_SCRIPT_NAME, type ProjectSettings, type ProjectSettingsPatch, type ScriptSuggestion } from '@shared/types'
+import { installOf, stacksOf, tildify } from './projects'
 
-// Scripts a room could take from another tool's files, or from its lockfiles (KERNEL-682). Everything here reads. A
-// suggestion is saved by `settings.setRoom`, like text typed into Settings, Scripts.
+// Scripts a project could take from another tool's files, or from its lockfiles (KERNEL-682). Everything here reads. A
+// suggestion is saved by `settings.setProject`, like text typed into Settings, Scripts.
 
 /** Conductor's and Superset's variables that Kernel has under another name. Any other `CONDUCTOR_*` or `SUPERSET_*` name has none. */
 export const SCRIPT_VARIABLES: Record<string, string> = {
@@ -102,7 +102,7 @@ interface Found {
 function suggestion(source: ScriptSuggestion['source'], file: string, found: Found): ScriptSuggestion | undefined {
   const unknown = new Set<string>()
   const kernel = (script: string) => { const c = convertScriptVariables(script); for (const n of c.unknown) unknown.add(n); return c.script }
-  const scripts: NonNullable<RoomSettingsPatch['scripts']> = {}
+  const scripts: NonNullable<ProjectSettingsPatch['scripts']> = {}
   for (const k of ['setup', 'run', 'archive'] as const) if (found[k]) scripts[k] = kernel(found[k])
   const runScripts = Object.fromEntries(Object.entries(found.runScripts ?? {}).map(([name, command]) => [name, kernel(command)]))
   if (!Object.keys(scripts).length && !Object.keys(runScripts).length) return undefined
@@ -123,7 +123,7 @@ function conductorCommand(entry: Table): string | undefined {
 
 /**
  * Conductor's run scripts. A string is the one run script. A table holds one per id: the one with `default = true`, or
- * the only one, is the room's `run`, and the rest keep their ids. One with `hide`, or one that runs in the cloud only
+ * the only one, is the project's `run`, and the rest keep their ids. One with `hide`, or one that runs in the cloud only
  * (`available_in` without `local`), is left out.
  */
 function conductorRuns(run: unknown): Pick<Found, 'run' | 'runScripts' | 'notes'> {
@@ -219,23 +219,23 @@ async function fromLockfiles(repo: string): Promise<ScriptSuggestion | undefined
 }
 
 /**
- * The suggestion with only what the room doesn't have yet: setup, run, archive, run mode and each named run script the
- * room has stay out, so saving it never replaces one (KERNEL-707). None when no script is left, as a run mode alone runs nothing.
+ * The suggestion with only what the project doesn't have yet: setup, run, archive, run mode and each named run script the
+ * project has stay out, so saving it never replaces one (KERNEL-707). None when no script is left, as a run mode alone runs nothing.
  */
-function missingOnly(s: ScriptSuggestion, current: Pick<RoomSettings, 'scripts' | 'runScripts'>): ScriptSuggestion | undefined {
+function missingOnly(s: ScriptSuggestion, current: Pick<ProjectSettings, 'scripts' | 'runScripts'>): ScriptSuggestion | undefined {
   const has = (v: unknown) => (typeof v === 'string' ? !!v.trim() : v !== undefined && v !== null)
-  const scripts = Object.fromEntries(Object.entries(s.patch.scripts ?? {}).filter(([k]) => !has(current.scripts[k as keyof RoomSettings['scripts']])))
+  const scripts = Object.fromEntries(Object.entries(s.patch.scripts ?? {}).filter(([k]) => !has(current.scripts[k as keyof ProjectSettings['scripts']])))
   const runScripts = Object.fromEntries(Object.entries(s.patch.runScripts ?? {}).filter(([name]) => !current.runScripts.some((r) => r.name === name)))
   if (!Object.keys(scripts).some((k) => k !== 'runMode') && !Object.keys(runScripts).length) return undefined
   return { ...s, patch: { ...(Object.keys(scripts).length ? { scripts } : {}), ...(Object.keys(runScripts).length ? { runScripts } : {}) } }
 }
 
 /**
- * The scripts a room could take: Conductor's, Superset's, then the lockfiles' install. A source whose file is missing,
- * unreadable or broken offers nothing and raises nothing. Each offers only the scripts the room (`current`) doesn't
+ * The scripts a project could take: Conductor's, Superset's, then the lockfiles' install. A source whose file is missing,
+ * unreadable or broken offers nothing and raises nothing. Each offers only the scripts the project (`current`) doesn't
  * have, and one with none left is left out. Nothing is written.
  */
-export async function suggestScripts(repo: string, current: Pick<RoomSettings, 'scripts' | 'runScripts'>, home = homedir()): Promise<ScriptSuggestion[]> {
+export async function suggestScripts(repo: string, current: Pick<ProjectSettings, 'scripts' | 'runScripts'>, home = homedir()): Promise<ScriptSuggestion[]> {
   const found = await Promise.all([fromConductor(repo), fromSuperset(repo, home), fromLockfiles(repo)].map((p) => p.catch(() => undefined)))
   return found.flatMap((s) => (s && missingOnly(s, current)) || [])
 }

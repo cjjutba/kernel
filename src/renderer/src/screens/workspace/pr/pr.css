@@ -71,7 +71,7 @@
 .pr-sent-body { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; font: 12px/1.5 var(--mono); color: var(--ink-3); }
 .pr-sent-body span { white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* The Lead's PRs tab (KERNEL-354): a header that counts what can merge, then the room's open PRs, ready ones first. */
+/* The Lead's PRs tab (KERNEL-354): a header that counts what can merge, then the project's open PRs, ready ones first. */
 .lp-summary { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
 .lp-summary[data-spread] { align-self: stretch; }
 .lp-go { margin-left: auto; display: inline-flex; color: var(--b-text); }

@@ -21,13 +21,13 @@ Settings, Models and effort sets each role's provider, model and effort: Kernel,
 
 The footer shows usage for the accounts in use, Claude Code and Codex together: the 5-hour window, the weekly window and per-model limits. Click it for every account, with the time each limit resets. Meters turn amber and then red near a limit.
 
-A banner warns before an account reaches its limit and offers to switch to one with room. A weekly warning comes at 80%, if **Weekly limit warning** is on.
+A banner warns before an account reaches its limit and offers to switch to one with project. A weekly warning comes at 80%, if **Weekly limit warning** is on.
 
 ## Switching at a limit
 
-With **Switch accounts at a limit** on, in Settings, Accounts, Kernel moves agents to the account with the most room when one hits its limit. The chat notes where the account changed, and a notice offers **Undo**.
+With **Switch accounts at a limit** on, in Settings, Accounts, Kernel moves agents to the account with the most headroom when one hits its limit. The chat notes where the account changed, and a notice offers **Undo**.
 
-**Pause new work near a limit** holds new tasks so running ones can finish. When no account has room, Kernel pauses the room and resumes it on its own once the limit resets.
+**Pause new work near a limit** holds new tasks so running ones can finish. When no account has headroom, Kernel pauses the project and resumes it on its own once the limit resets.
 
 ## MCP servers
 

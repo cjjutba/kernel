@@ -62,7 +62,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 
 ## Writing tests
 
-- Extend the feature's existing test file. Reuse its setup instead of starting a new Kernel, room and worktree for each test, unless the test needs a clean one. Tests that don't change shared state can share one built in `beforeAll`.
+- Extend the feature's existing test file. Reuse its setup instead of starting a new Kernel, project and worktree for each test, unless the test needs a clean one. Tests that don't change shared state can share one built in `beforeAll`.
 - Test each behavior once, at the level where it lives. Don't repeat an engine rule in a screen or IPC test.
 - Get a Kernel's `hookPort` from `freePort()` in `test/helpers.ts`, never a random pick: files run side by side, and two that pick the same port leave one hook server unbound.
 - `tempRepo` copies a repo built once per worker, so call it freely. End a test's Kernel with `k.stop({ budgetMs: 0 })`: the default waits up to 3 seconds for a scripted turn that never ends.

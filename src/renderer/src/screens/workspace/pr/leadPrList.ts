@@ -39,7 +39,7 @@ const groupOf = (r: Omit<LeadPr, 'group'>): PrGroup => (r.ready ? 'ready' : !r.s
 
 /** A workspace with a PR that is not merged or closed. Reviews, the Lead's own and archived workspaces never count. */
 export const listsPr = (ws: Workspace, leadId: string | undefined) =>
-  !ws.reviewOf && ws.status !== 'archived' && !!ws.prNumber && !['none', 'merged', 'closed'].includes(ws.prState) && !isLeadWorkspace(ws, ws.roomId, leadId)
+  !ws.reviewOf && ws.status !== 'archived' && !!ws.prNumber && !['none', 'merged', 'closed'].includes(ws.prState) && !isLeadWorkspace(ws, ws.projectId, leadId)
 
 /**
  * "Code approved", "Security found 2 blockers" or "Not reviewed", from the verdicts on the PR's head commit (KERNEL-349), by
@@ -50,13 +50,13 @@ export function reviewLine(ws: Workspace, pr: PrInfo | null | undefined): LeadPr
 }
 
 /**
- * The room's open PRs in the tab's three lists, ready ones first, then what needs a person, then what is on its way, each in
+ * The project's open PRs in the tab's three lists, ready ones first, then what needs a person, then what is on its way, each in
  * the order the workspaces came in (KERNEL-757). Ready is the rule every Merge button uses (`mergeBlock`), so the tab never
  * offers a Merge the header would refuse.
  */
-export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined; roomId: string; prs: Record<string, PrInfo>; rules: Rules; agents: AgentDef[] }): LeadPr[] {
+export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined; projectId: string; prs: Record<string, PrInfo>; rules: Rules; agents: AgentDef[] }): LeadPr[] {
   const name = (id: string) => o.agents.find((a) => a.id === id)?.name ?? id
-  const rows = workspaces.filter((w) => w.roomId === o.roomId && listsPr(w, o.leadId)).map((ws): Omit<LeadPr, 'group'> => {
+  const rows = workspaces.filter((w) => w.projectId === o.projectId && listsPr(w, o.leadId)).map((ws): Omit<LeadPr, 'group'> => {
     const pr = o.prs[ws.id]
     const why = mergeBlock(ws, pr, o.rules, name)
     const base = { ws, name: name(ws.agentId), review: reviewLine(ws, pr) }
@@ -109,16 +109,16 @@ export function rowState(row: LeadPr): RowState {
 const NO_AGENTS: AgentDef[] = []
 
 /**
- * The Lead's PRs for the room, redrawn when a workspace, a PR read, a rule or an agent changes. The rule may need a PR GitHub
+ * The Lead's PRs for the project, redrawn when a workspace, a PR read, a rule or an agent changes. The rule may need a PR GitHub
  * hasn't been asked about yet, so each such PR is read once: until then it would count as blocked and never show Merge.
  */
-export function useLeadPrs(roomId: string): LeadPr[] {
+export function useLeadPrs(projectId: string): LeadPr[] {
   const workspaces = useStore((s) => s.workspaces)
   const prs = useStore((s) => s.prs)
-  const agents = useStore((s) => s.agents[roomId]) ?? NO_AGENTS
+  const agents = useStore((s) => s.agents[projectId]) ?? NO_AGENTS
   const rules = useStore((s) => s.settings?.pr) ?? NO_RULES
-  const leadId = useStore((s) => leadOf(s.agents, roomId)?.id)
-  const rows = useMemo(() => leadPrs(workspaces, { leadId, roomId, prs, rules, agents }), [workspaces, leadId, roomId, prs, rules, agents])
+  const leadId = useStore((s) => leadOf(s.agents, projectId)?.id)
+  const rows = useMemo(() => leadPrs(workspaces, { leadId, projectId, prs, rules, agents }), [workspaces, leadId, projectId, prs, rules, agents])
   const asked = useRef(new Set<string>())
   useEffect(() => {
     for (const { ws } of rows) {

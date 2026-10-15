@@ -181,10 +181,10 @@ describe('checkpoints', () => {
 })
 
 /**
- * A room cloned from a bare remote, with a worktree on its own branch from origin/main. `land` pushes a commit to main from
- * another clone, as a merged PR does; `fetch` is Kernel's fetch in the room.
+ * A project cloned from a bare remote, with a worktree on its own branch from origin/main. `land` pushes a commit to main from
+ * another clone, as a merged PR does; `fetch` is Kernel's fetch in the project.
  */
-async function remoteRoom(files: Record<string, string>) {
+async function remoteProject(files: Record<string, string>) {
   const repo = await tempRepo(files)
   const bare = await mkdtemp(join(tmpdir(), 'kernel-bare-'))
   await run('git', ['init', '-q', '--bare', '-b', 'main', bare])
@@ -213,7 +213,7 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
   const message = (dir: string, ref: string) => git(dir, 'show', '-s', '--format=%B', ref)
 
   it('saves no files for a turn that edited nothing after Kernel fast-forwarded the worktree onto main', async () => {
-    const { path, land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n', 'gone.ts': 'g\n' })
+    const { path, land, fetch, ws } = await remoteProject({ 'a.ts': 'a\n', 'gone.ts': 'g\n' })
     const lead = ws('ws-ff')
     await snapshotWithFiles(lead, { chatId: 'c', title: 'Check the queue', start: true })
     await land({ 'a.ts': 'a\nmain\n', 'new.ts': 'n\n', 'gone.ts': null })
@@ -231,7 +231,7 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
   })
 
   it('saves no files for a turn that edited nothing after the branch was reset onto a newer main', async () => {
-    const { path, land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n' })
+    const { path, land, fetch, ws } = await remoteProject({ 'a.ts': 'a\n' })
     const w = ws('ws-reset-onto')
     await snapshotWithFiles(w, { chatId: 'c', title: 'Go', start: true })
     await land({ 'a.ts': 'a\nmain\n', 'n.ts': 'n\n' })
@@ -242,7 +242,7 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
   })
 
   it('saves no files for the turn after a fast-forward landed while the last checkpoint read the worktree (KERNEL-804)', async () => {
-    const { land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n' })
+    const { land, fetch, ws } = await remoteProject({ 'a.ts': 'a\n' })
     const lead = ws('ws-race')
     await snapshotWithFiles(lead, { chatId: 'c', title: 'Go', start: true })
     await land({ 'a.ts': 'a\nmain\n', 'n.ts': 'n\n' })
@@ -264,7 +264,7 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
   })
 
   it('lists only the files the agent touched in the first turn after a wait is released, and revert still restores them', async () => {
-    const { path, land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n', 'api.ts': 'v1\n' })
+    const { path, land, fetch, ws } = await remoteProject({ 'a.ts': 'a\n', 'api.ts': 'v1\n' })
     const w = ws('ws-wait')
     // The start checkpoint is saved while the brief waits for the PR.
     await snapshotWithFiles(w, { chatId: 'c', title: 'Build on the API', start: true })
@@ -289,7 +289,7 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
     ['rebase', [['fetch', '-q', 'origin'], ['rebase', '-q', 'origin/main']]],
     ['merge', [['fetch', '-q', 'origin'], ['merge', '-q', '--no-edit', 'origin/main']]]
   ])('lists only a.ts when the agent runs git %s from main and edits a.ts', async (how, steps) => {
-    const { path, land, ws } = await remoteRoom({ 'a.ts': 'a\n', 'm.ts': 'm\n', 'gone.ts': 'g\n' })
+    const { path, land, ws } = await remoteProject({ 'a.ts': 'a\n', 'm.ts': 'm\n', 'gone.ts': 'g\n' })
     const w = ws(`ws-${how}`)
     await snapshotWithFiles(w, { chatId: 'c', title: 'Go', start: true })
     // A commit of the agent's own from an earlier turn, so main can't simply fast-forward under it.
@@ -308,7 +308,7 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
   })
 
   it('lists an unpushed commit from the turn, and not again once it is pushed', async () => {
-    const { path, land, ws } = await remoteRoom({ 'a.ts': 'a\n', 'm.ts': 'm\n' })
+    const { path, land, ws } = await remoteProject({ 'a.ts': 'a\n', 'm.ts': 'm\n' })
     const w = ws('ws-push')
     await snapshotWithFiles(w, { chatId: 'c', title: 'Go', start: true })
     // In one turn main moves, the agent pulls it, then commits a fix.
@@ -329,7 +329,7 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
 
   it('lists a file main and the agent both changed, counted against the new base', async () => {
     const lines = Array.from({ length: 10 }, (_, i) => `${i + 1}\n`)
-    const { path, land, ws } = await remoteRoom({ 'a.ts': lines.join('') })
+    const { path, land, ws } = await remoteProject({ 'a.ts': lines.join('') })
     const w = ws('ws-both')
     await snapshotWithFiles(w, { chatId: 'c', title: 'Go', start: true })
     await land({ 'a.ts': ['one\n', ...lines.slice(1)].join('') })
@@ -363,7 +363,7 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
   })
 
   it("lists the commits a chat on the main checkout makes to the base branch itself, and leaves out the ones it pulls", async () => {
-    const { repo, land } = await remoteRoom({ 'a.ts': 'a\n', 'm.ts': 'm\n' })
+    const { repo, land } = await remoteProject({ 'a.ts': 'a\n', 'm.ts': 'm\n' })
     // A current-branch chat: its base is the local main it works on, which tracks origin/main.
     const w = { id: 'ws-current', name: 'lead', path: repo, baseRef: 'main' }
     await snapshotWithFiles(w, { chatId: 'c', title: 'Go', start: true })
@@ -376,7 +376,7 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
   })
 
   it('works out the base of a checkpoint saved before bases were recorded from its history', async () => {
-    const { path, land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n' })
+    const { path, land, fetch, ws } = await remoteProject({ 'a.ts': 'a\n' })
     // Saved by a Kernel that recorded no base.
     const old = await snapshotWithFiles({ id: 'ws-old', name: 'x', path }, { chatId: 'c', title: 'Go', start: true })
     expect(await message(path, old.checkpoint.ref)).not.toContain('Kernel-Base')
@@ -388,7 +388,7 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
   })
 
   it('lists what a reset back from the base undid, since nothing arrived from it', async () => {
-    const { path, land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n' })
+    const { path, land, fetch, ws } = await remoteProject({ 'a.ts': 'a\n' })
     const lead = ws('ws-reset')
     await land({ 'a.ts': 'a\nmain\n' })
     await fetch()
@@ -444,7 +444,7 @@ describe('a revert keeps what arrived from the base (KERNEL-797)', () => {
    * change, add and delete files, and `steps` to catch up with them.
    */
   async function caughtUp(id: string, steps: string[][]) {
-    const { path, land, ws } = await remoteRoom({ 'a.ts': 'a\n', 'm.ts': 'm\n', 'gone.ts': 'g\n' })
+    const { path, land, ws } = await remoteProject({ 'a.ts': 'a\n', 'm.ts': 'm\n', 'gone.ts': 'g\n' })
     const w = ws(id)
     await snapshot(w, { chatId: 'c', title: 'Go', start: true })
     await writeFile(join(path, 'own.ts'), 'own\n')
@@ -481,7 +481,7 @@ describe('a revert keeps what arrived from the base (KERNEL-797)', () => {
   })
 
   it('keeps the checkpoint\'s content of a file main changed too, and lists it in conflicts', async () => {
-    const { path, land, ws } = await remoteRoom({ 'a.ts': ten.join(''), 'm.ts': 'm\n' })
+    const { path, land, ws } = await remoteProject({ 'a.ts': ten.join(''), 'm.ts': 'm\n' })
     const w = ws('ws-797-both')
     await snapshot(w, { chatId: 'c', title: 'Go', start: true })
     const mine = [...ten.slice(0, 9), 'ten\n'].join('')
@@ -499,7 +499,7 @@ describe('a revert keeps what arrived from the base (KERNEL-797)', () => {
   })
 
   it('writes the checkpoint whole when the base never moved, as before', async () => {
-    const { path, ws } = await remoteRoom({ 'a.ts': 'a\n', 'b.ts': 'b\n' })
+    const { path, ws } = await remoteProject({ 'a.ts': 'a\n', 'b.ts': 'b\n' })
     const w = ws('ws-797-still')
     await snapshot(w, { chatId: 'c', title: 'Go', start: true })
     await writeFile(join(path, 'a.ts'), 'a\nmine\n')
@@ -525,8 +525,8 @@ describe('checkpoints in the kernel', () => {
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
-    const room = await k.addRoom(repo)
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14 from the plan', agentId: 'kai', title: 'Invoice table' })
+    const project = await k.addProject(repo)
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14 from the plan', agentId: 'kai', title: 'Invoice table' })
     const chat = k.store.chats(ws.id)[0]
     const h = k.handlers()
     expect((await h['checkpoints.list']({ workspaceId: ws.id })).map((c) => [c.title, !!c.start])).toEqual([['Build T-14 from the plan', true]])
@@ -567,8 +567,8 @@ describe('checkpoints in the kernel', () => {
     onTestFinished(() => k.stop())
     // The brief becomes the chat's first message, as a real send makes it.
     k.sessions.send = async (chatId, parts) => { k.store.saveItem(chatId, { kind: 'user', id: 'brief', ts: 1, parts }); return { queued: false } }
-    const room = await k.addRoom(repo)
-    const ws = await setUp(k, (await k.createWorkspace(room.id, { prompt: 'Build T-14 from the plan', agentId: 'kai', title: 'Invoice table' })).id)
+    const project = await k.addProject(repo)
+    const ws = await setUp(k, (await k.createWorkspace(project.id, { prompt: 'Build T-14 from the plan', agentId: 'kai', title: 'Invoice table' })).id)
     const chat = k.store.chats(ws.id)[0]
     const row = (id: string) => k.store.items(chat.id).find((i) => i.id === id)
     // Linked just after the workspace counts as ready.
@@ -603,8 +603,8 @@ describe('checkpoints in the kernel', () => {
     await k.start()
     onTestFinished(() => k.stop())
     k.sessions.send = async () => ({ queued: true })
-    const room = await k.addRoom(repo)
-    const ws = await setUp(k, (await k.createWorkspace(room.id, { prompt: 'Build T-14 from the plan', agentId: 'kai', title: 'Invoice table' })).id)
+    const project = await k.addProject(repo)
+    const ws = await setUp(k, (await k.createWorkspace(project.id, { prompt: 'Build T-14 from the plan', agentId: 'kai', title: 'Invoice table' })).id)
     const chat = k.store.chats(ws.id)[0]
     // The brief is still waiting, so the start checkpoint waits for it.
     await vi.waitFor(() => expect((k.checkpoints as unknown as { starts: Map<string, string> }).starts.get(chat.id)).toBe('0'))
@@ -627,11 +627,11 @@ describe('checkpoints of archived workspaces (KERNEL-221)', () => {
     await k.start()
     onTestFinished(() => k.stop().catch(() => undefined))
     k.sessions.send = async () => ({ queued: false })
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     const refs = async (prefix = 'refs/kernel/') => (await git(repo, 'for-each-ref', '--format=%(refname)', prefix)).trim().split('\n').filter(Boolean)
     /** A workspace with a turn that left a file only its checkpoint holds, archived `daysAgo` days ago by a faked clock. */
     async function archived(title: string, daysAgo: number) {
-      const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title })
+      const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title })
       await writeFile(join(ws.path, 'draft.md'), `only in a checkpoint of ${title}\n`)
       const c = await snapshot(ws, { chatId: k.store.chats(ws.id)[0].id, title: 'Draft' })
       const blob = (await git(repo, 'rev-parse', `${c.ref}:draft.md`)).trim()
@@ -641,7 +641,7 @@ describe('checkpoints of archived workspaces (KERNEL-221)', () => {
       return { ws: k.store.workspace(ws.id)!, blob }
     }
     const done = () => k.store.meta<Record<string, number>>('checkpointsDropped') ?? {}
-    return { repo, k, room, refs, archived, done }
+    return { repo, k, project, refs, archived, done }
   }
 
   it('drops the refs of a workspace archived 31 days ago, and git gc reclaims what only they held', async () => {
@@ -708,7 +708,7 @@ describe('checkpoints of archived workspaces (KERNEL-221)', () => {
     expect(await refs()).toEqual([])
   }, 30000)
 
-  it('skips a room whose folder is gone, and stops touching the store once Kernel stops', async () => {
+  it('skips a project whose folder is gone, and stops touching the store once Kernel stops', async () => {
     const { repo, k, refs, archived, done } = await setup()
     const { ws } = await archived('Moved', 31)
     await rename(repo, `${repo}-moved`)

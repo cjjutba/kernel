@@ -17,20 +17,20 @@ const groups: HistoryGroup[] = ['Today', 'This week', 'Earlier']
  * Delete is the way out (KERNEL-333): one row, or every row in view.
  */
 export function History() {
-  const only = useStore((s) => (s.ui.route.name === 'history' ? s.ui.route.roomId : undefined))
+  const only = useStore((s) => (s.ui.route.name === 'history' ? s.ui.route.projectId : undefined))
   const workspaces = useStore((s) => s.workspaces)
-  const rooms = useStore((s) => s.rooms)
+  const projects = useStore((s) => s.projects)
   const agents = useStore((s) => s.agents)
   const [tab, setTab] = useRemembered<HistoryTab>('kernel.historyTab', oneOf<HistoryTab>(['all', 'merged', 'notMerged'], 'all'))
   const [q, setQ] = useState('')
   const [busy, run] = useBusy()
-  const roomName = (w: Workspace) => rooms.find((r) => r.id === w.roomId)?.name
-  const agentName = (w: Workspace) => agents[w.roomId]?.find((a) => a.id === w.agentId)?.name ?? w.agentId
+  const projectName = (w: Workspace) => projects.find((r) => r.id === w.projectId)?.name
+  const agentName = (w: Workspace) => agents[w.projectId]?.find((a) => a.id === w.agentId)?.name ?? w.agentId
   const threads = useStore((s) => s.threads)
   const nameOf = (w: Workspace) => historyName(w, threads)
 
-  const all = useMemo(() => archivedList(workspaces).filter((w) => !only || w.roomId === only), [workspaces, only])
-  const found = all.filter((w) => matches({ ...w, name: nameOf(w) }, q, roomName(w), agentName(w)))
+  const all = useMemo(() => archivedList(workspaces).filter((w) => !only || w.projectId === only), [workspaces, only])
+  const found = all.filter((w) => matches({ ...w, name: nameOf(w) }, q, projectName(w), agentName(w)))
   const rows = found.filter((w) => inTab(w, tab))
   const count = (t: HistoryTab) => found.filter((w) => inTab(w, t)).length
 
@@ -46,8 +46,8 @@ export function History() {
       <header className="header" style={{ paddingRight: 12 }}>
         <SidebarToggleSlot />
         <Icon name="history" />
-        <h1>{only ? `History, ${rooms.find((r) => r.id === only)?.name ?? 'room'}` : 'History'}</h1>
-        {only && <Button variant="ghost" onClick={() => go({ name: 'history' }, { history: 'replace' })}>All rooms</Button>}
+        <h1>{only ? `History, ${projects.find((r) => r.id === only)?.name ?? 'project'}` : 'History'}</h1>
+        {only && <Button variant="ghost" onClick={() => go({ name: 'history' }, { history: 'replace' })}>All projects</Button>}
         <span className="grow" />
         <input type="search" className="input hs-search" placeholder="Search workspaces" aria-label="Search workspaces" value={q} onChange={(e) => setQ(e.target.value)} />
       </header>
@@ -67,7 +67,7 @@ export function History() {
                   <li key={w.id} {...keys.rowProps(w.id)} className="hs-row">
                     <span className="col hs-name"><span className="ellipsis hs-title">{isLeadChatWorkspace(w) && <Icon name="chat" size={14} />}{nameOf(w)}</span><span className="ellipsis hs-sub">{agentName(w)}</span></span>
                     <span className="mono ellipsis hs-branch">{w.branch}</span>
-                    <span className="ellipsis hs-room">{roomName(w)}</span>
+                    <span className="ellipsis hs-project">{projectName(w)}</span>
                     <span className="hs-pr" data-merged={w.prState === 'merged' ? 'true' : undefined}>{w.prNumber ? <Icon name={prGlyph(w)} size={12} /> : null}{prLabel(w)}</span>
                     <span className="hs-when">{whenLabel(endedAt(w))}</span>
                     <span className="hs-actions">

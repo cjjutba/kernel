@@ -21,7 +21,7 @@ const AGENTS = {
 }
 const UX_ON = '[review.ux]\npaths = ["src/renderer/**"]\n'
 
-/** A room with no reviewer agent, its `[review]` committed on main, and Kai's PR on one commit that passed checks. */
+/** A project with no reviewer agent, its `[review]` committed on main, and Kai's PR on one commit that passed checks. */
 async function setup(o: { settings?: string; files?: Record<string, string> } = {}) {
   const repo = await tempRepo({ ...AGENTS, ...(o.settings ? { '.kernel/settings.toml': o.settings } : {}) })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -30,8 +30,8 @@ async function setup(o: { settings?: string; files?: Record<string, string> } = 
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))
-  const room = await k.addRoom(repo)
-  const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Task 1' })
+  const project = await k.addProject(repo)
+  const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Task 1' })
   /** Kai commits `files` and the PR passes checks on that commit. */
   const push = async (files: Record<string, string>) => {
     for (const [f, c] of Object.entries(files)) { await mkdir(dirname(join(ws.path, f)), { recursive: true }); await writeFile(join(ws.path, f), c) }
@@ -43,7 +43,7 @@ async function setup(o: { settings?: string; files?: Record<string, string> } = 
   }
   await push(o.files ?? { 'src/main/a.ts': 'a\n', 'src/renderer/App.tsx': 'export {}\n' })
   const of = () => k.store.workspace(ws.id)!
-  const rws = () => k.store.workspaces(room.id).filter((w) => w.reviewOf === ws.id)
+  const rws = () => k.store.workspaces(project.id).filter((w) => w.reviewOf === ws.id)
   const chatOf = (kind: ReviewKind) => k.store.chats(rws()[0].id).find((c) => c.lens?.kind === kind)!
   /** The kind's review chat sends its verdict on the PR's head, as a reviewer that reset to it would. */
   const verdict = async (kind: ReviewKind, v: 'approved' | 'blockers') => {
@@ -54,7 +54,7 @@ async function setup(o: { settings?: string; files?: Record<string, string> } = 
   /** What Kernel sends review chats from here on, by kind. */
   const sent: ReviewKind[] = []
   const record = () => { k.sessions.send = async (chatId) => { sent.push(k.store.chat(chatId)!.lens!.kind); return { queued: false } } }
-  return { k, repo, room, ws, push, of, rws, chatOf, verdict, sent, record }
+  return { k, repo, project, ws, push, of, rws, chatOf, verdict, sent, record }
 }
 
 const info = (ws: Workspace): PrInfo => ({ workspaceId: ws.id, number: ws.prNumber!, url: '', title: '', state: 'ready', baseRef: 'main', checks: [], comments: [], conflicts: [], head: ws.prHead! })
@@ -111,7 +111,7 @@ describe('review rounds', () => {
     await verdict('code', 'blockers')
     expect(k.reviews.reviewState(of())).toMatchObject({ blocking: ['code'], stillBlocked: { rounds: 2, kinds: ['code'] } })
     // The verdict of the last round Kernel runs goes to the user, not back to Kai.
-    const [r] = k.store.workspaces(of().roomId).filter((w) => w.reviewOf === of().id)
+    const [r] = k.store.workspaces(of().projectId).filter((w) => w.reviewOf === of().id)
     const review: TeamEvent = { n: 1, workspaceId: r.id, kind: 'review', pr: 101, review: { verdict: 'blockers', lens: 'code', summary: 'No.', blockers: [{ text: 'x' }], of: of().id, ofName: 'Kai', ofPr: 101, current: true } }
     const ctx = { allMerged: () => false, workspace: (id: string) => k.store.workspace(id), stateOf: (id: string) => k.reviews.reviewState(k.store.workspace(id)!) }
     expect(decide({ ws: r, name: 'Code review', events: [review] }, ctx).todo).toEqual([

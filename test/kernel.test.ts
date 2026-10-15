@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, writeFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { setUp, tempRepo, trustRoom, freePort } from './helpers'
+import { setUp, tempRepo, trustProject, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { PORT_BLOCK, type ActivityEvent, type ChatPart } from '../src/shared/types'
@@ -18,7 +18,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 }))
 
 describe('Kernel orchestration (Claude session stubbed)', () => {
-  it('adds a room, reads its team, creates and archives a worktree workspace', async () => {
+  it('adds a project, reads its team, creates and archives a worktree workspace', async () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
       '.gitignore': '.env.local\nnode_modules\n',
@@ -35,15 +35,15 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const sent: string[] = []
     k.sessions.send = async (_chatId, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
 
-    const room = await k.addRoom(repo)
-    await trustRoom(k, room.id)
-    const agents = await k.agents(room.id)
+    const project = await k.addProject(repo)
+    await trustProject(k, project.id)
+    const agents = await k.agents(project.id)
     expect(agents.map((a) => [a.id, a.lead])).toEqual([['kernel-lead', true], ['kai', false]])
-    // The preview reads the room's saved list, or the patterns the user is typing (KERNEL-245).
-    expect(await k.handlers()['files.preview']({ roomId: room.id })).toEqual([{ path: '.env.local', size: 9 }])
-    expect(await k.handlers()['files.preview']({ roomId: room.id, patterns: ['*.md', '.env*'] })).toEqual([{ path: '.env.local', size: 9 }])
+    // The preview reads the project's saved list, or the patterns the user is typing (KERNEL-245).
+    expect(await k.handlers()['files.preview']({ projectId: project.id })).toEqual([{ path: '.env.local', size: 9 }])
+    expect(await k.handlers()['files.preview']({ projectId: project.id, patterns: ['*.md', '.env*'] })).toEqual([{ path: '.env.local', size: 9 }])
 
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the invoice table with empty states', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the invoice table with empty states', agentId: 'kai', title: 'Invoice table' })
     expect(ws).toMatchObject({ status: 'ready', branch: 'feat/invoice-table', mode: 'worktree', agentId: 'kai' })
     expect(await readFile(join(ws.path, '.env.local'), 'utf8')).toBe('SECRET=1\n')
     expect(sent).toEqual(['Build the invoice table with empty states'])
@@ -52,7 +52,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     await writeFile(join(ws.path, 'table.tsx'), 'export {}\n')
     expect((await k.changes(ws.id)).map((f) => f.path)).toEqual(['table.tsx'])
 
-    const second = await k.createWorkspace(room.id, { prompt: 'Another pass', agentId: 'kai', title: 'Invoice table' })
+    const second = await k.createWorkspace(project.id, { prompt: 'Another pass', agentId: 'kai', title: 'Invoice table' })
     expect(second.branch).toBe('feat/invoice-table-2')
     // Each workspace gets its own block of ports, $KERNEL_PORT to $KERNEL_PORT + 9 (KERNEL-244).
     expect(second.port % PORT_BLOCK).toBe(0)
@@ -66,28 +66,28 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     // The sidebar row, Cmd+K and Cmd+Shift+L open the Lead before anyone briefs it. With no chat open, lead.open finds
     // nothing, makes nothing and sends nothing (KERNEL-365, KERNEL-405).
     const quiet = sent.length
-    expect(await k.handlers()['lead.open']({ roomId: room.id })).toBeNull()
-    expect(k.store.workspaces(room.id).filter((w) => w.lead)).toEqual([])
+    expect(await k.handlers()['lead.open']({ projectId: project.id })).toBeNull()
+    expect(k.store.workspaces(project.id).filter((w) => w.lead)).toEqual([])
     expect(sent).toHaveLength(quiet)
 
     // Kernel's own send starts a chat in its own worktree, on its own branch from the default branch, not the main checkout,
     // with files.copy and setup run like a teammate's (KERNEL-405).
-    const lead = await k.leadChat(room.id)
+    const lead = await k.leadChat(project.id)
     const opened = await setUp(k, lead.id)
     expect(opened).toMatchObject({ agentId: 'kernel-lead', mode: 'worktree', branch: 'kernel/chat', baseRef: 'main', lead: true, threadId: lead.threadId })
     expect(opened.path).not.toBe(repo)
     expect(await readFile(join(opened.path, '.env.local'), 'utf8')).toBe('SECRET=1\n')
-    expect((await k.handlers()['lead.open']({ roomId: room.id }))?.id).toBe(opened.id)
-    expect((await k.leadChat(room.id)).id).toBe(lead.id)
-    expect(k.statusOf(room.id)).toEqual({ 'kernel-lead': 'idle', kai: 'idle' })
+    expect((await k.handlers()['lead.open']({ projectId: project.id }))?.id).toBe(opened.id)
+    expect((await k.leadChat(project.id)).id).toBe(lead.id)
+    expect(k.statusOf(project.id)).toEqual({ 'kernel-lead': 'idle', kai: 'idle' })
 
     // A brief logs an activity line with the brief quoted.
     const logged: ActivityEvent[] = []
     const onActivity = (e: ActivityEvent) => logged.push(e)
     bus.on('activity', onActivity)
-    await k.handlers()['rooms.brief']({ roomId: room.id, text: 'Add PDF export to invoices. Spec first.' })
+    await k.handlers()['projects.brief']({ projectId: project.id, text: 'Add PDF export to invoices. Spec first.' })
     bus.off('activity', onActivity)
-    expect(logged.find((e) => e.kind === 'brief')).toMatchObject({ roomId: room.id, actor: 'you', agentId: 'kernel-lead', workspaceId: lead.workspaceId, text: 'briefed Kernel', quote: 'Add PDF export to invoices. Spec first.' })
+    expect(logged.find((e) => e.kind === 'brief')).toMatchObject({ projectId: project.id, actor: 'you', agentId: 'kernel-lead', workspaceId: lead.workspaceId, text: 'briefed Kernel', quote: 'Add PDF export to invoices. Spec first.' })
     expect(sent[sent.length - 1]).toBe('Add PDF export to invoices. Spec first.')
     await k.stop()
   })
@@ -114,15 +114,15 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     bus.on('push', onPush)
     const start = k.handlers()['lead.start']
 
-    const solo = await k.addRoom(leadless)
-    await expect(start({ roomId: solo.id, prompt: 'Hello' })).rejects.toThrow("Kernel can't lead in this build: its starter file is missing.")
+    const solo = await k.addProject(leadless)
+    await expect(start({ projectId: solo.id, prompt: 'Hello' })).rejects.toThrow("Kernel can't lead in this build: its starter file is missing.")
 
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     const chats = (wsId: string) => k.store.chats(wsId).filter((c) => c.kind !== 'terminal')
 
     // The first call makes a chat with its own workspace, on a branch named from the prompt, with the Lead's defaults, and sends
     // the prompt (KERNEL-405).
-    const first = await start({ roomId: room.id, prompt: 'Add PDF export to invoices' })
+    const first = await start({ projectId: project.id, prompt: 'Add PDF export to invoices' })
     const ws = k.store.workspace(first.workspaceId)!
     expect(ws).toMatchObject({ agentId: 'kernel-lead', mode: 'worktree', branch: 'kernel/add-pdf-export-to-invoices', lead: true, threadId: first.threadId })
     expect(chats(ws.id)).toHaveLength(1)
@@ -131,7 +131,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     expect(pushed).toContain(first.id)
 
     // A second call is a second chat, with its own workspace, branch and ports, and the request's model, effort and plan win.
-    const second = await start({ roomId: room.id, prompt: 'Look at the', parts: [{ type: 'text', text: 'Look at the flaky test' }], model: 'claude-sonnet-5-5', effort: 'low', plan: false })
+    const second = await start({ projectId: project.id, prompt: 'Look at the', parts: [{ type: 'text', text: 'Look at the flaky test' }], model: 'claude-sonnet-5-5', effort: 'low', plan: false })
     const other = k.store.workspace(second.workspaceId)!
     expect(other.id).not.toBe(ws.id)
     expect(other.branch).not.toBe(ws.branch)
@@ -143,7 +143,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     // A tab nobody used yet is left alone, since its composer may hold a draft. The brief starts a chat of its own (KERNEL-242).
     const blank = await k.handlers()['chats.create']({ workspaceId: ws.id })
     expect(blank.threadId).toBe(first.threadId)
-    const third = await start({ roomId: room.id, prompt: 'Plan the export', effort: 'xhigh' })
+    const third = await start({ projectId: project.id, prompt: 'Plan the export', effort: 'xhigh' })
     expect(third.workspaceId).not.toBe(ws.id)
     expect(chats(ws.id).map((c) => c.id)).toEqual([first.id, blank.id])
     expect(k.store.chat(third.id)).toMatchObject({ model: 'claude-opus-5-5', effort: 'xhigh', plan: true })
@@ -164,35 +164,35 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
 
-    // Opening the room finds no chat, and makes neither a chat nor a workspace.
-    expect(await k.handlers()['lead.open']({ roomId: room.id })).toBeNull()
-    expect(k.store.workspaces(room.id)).toEqual([])
-    expect(k.store.threads(room.id)).toEqual([])
-    const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Add PDF export' })
+    // Opening the project finds no chat, and makes neither a chat nor a workspace.
+    expect(await k.handlers()['lead.open']({ projectId: project.id })).toBeNull()
+    expect(k.store.workspaces(project.id)).toEqual([])
+    expect(k.store.threads(project.id)).toEqual([])
+    const chat = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Add PDF export' })
     const ws = await setUp(k, chat.id)
     expect(k.store.chats(ws.id).map((c) => c.id)).toEqual([chat.id])
     expect(chat).toMatchObject({ workspaceId: ws.id, title: 'New tab', model: 'claude-opus-5-5', effort: 'high', plan: true })
     await k.stop()
   })
 
-  it('lead.start in a room with no Lead workspace leaves exactly one Lead tab, with the brief (KERNEL-242)', async () => {
+  it('lead.start in a project with no Lead workspace leaves exactly one Lead tab, with the brief (KERNEL-242)', async () => {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
-    const room = await k.addRoom(repo)
-    expect(k.store.workspaces(room.id)).toEqual([])
+    const project = await k.addProject(repo)
+    expect(k.store.workspaces(project.id)).toEqual([])
 
-    const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Add PDF export' })
+    const chat = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Add PDF export' })
     // The brief waits for the chat's worktree, then goes while setup runs (KERNEL-490, KERNEL-542).
     expect(k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Add PDF export' }]])
     await vi.waitFor(() => expect(k.store.items(chat.id).map((i) => i.kind === 'user' && i.parts)).toEqual([[{ type: 'text', text: 'Add PDF export' }]]))
     // The modal then lands on the chat through lead.open, which must find the brief's tab rather than add a "Lead" one.
-    const ws = (await k.handlers()['lead.open']({ roomId: room.id }))!
+    const ws = (await k.handlers()['lead.open']({ projectId: project.id }))!
     expect(ws.id).toBe(chat.workspaceId)
     expect(k.store.chats(ws.id).map((c) => c.id)).toEqual([chat.id])
     await setUp(k, ws.id)

@@ -49,19 +49,19 @@ async function kernel(workspace: Record<string, string> = { baseRef: 'origin/mai
   return k
 }
 
-const task = (k: Kernel, roomId: string, o: { baseRef?: string } = {}) => k.workspaces.createWorkspace(roomId, { prompt: 'Change one line', agentId: 'kai', ...o })
+const task = (k: Kernel, projectId: string, o: { baseRef?: string } = {}) => k.workspaces.createWorkspace(projectId, { prompt: 'Change one line', agentId: 'kai', ...o })
 
 describe('the base of a new workspace (KERNEL-400)', () => {
-  it('starts from origin/dev in a dev room when no base was set, as the Lead does, and counts only its own change', async () => {
+  it('starts from origin/dev in a dev project when no base was set, as the Lead does, and counts only its own change', async () => {
     const repo = await clone('dev')
     const k = await kernel()
-    const room = await k.rooms.addRoom(repo)
-    expect(room.defaultBranch).toBe('dev')
-    const ws = await task(k, room.id)
+    const project = await k.projects.addProject(repo)
+    expect(project.defaultBranch).toBe('dev')
+    const ws = await task(k, project.id)
     expect(ws.baseRef).toBe('origin/dev')
     expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(repo, 'rev-parse', 'origin/dev'))
-    await k.lead.leadChat(room.id)
-    expect(k.store.workspaces(room.id).find((w) => w.lead)?.baseRef).toBe('origin/dev')
+    await k.lead.leadChat(project.id)
+    expect(k.store.workspaces(project.id).find((w) => w.lead)?.baseRef).toBe('origin/dev')
     await writeFile(join(ws.path, 'one.txt'), 'one line\n')
     await git(ws.path, 'add', '-A')
     await git(ws.path, 'commit', '-qm', 'one line')
@@ -69,46 +69,46 @@ describe('the base of a new workspace (KERNEL-400)', () => {
     expect(k.store.workspace(ws.id)?.stat).toEqual({ files: 1, added: 1, removed: 0 })
   })
 
-  it('keeps origin/main in a room whose default is main', async () => {
+  it('keeps origin/main in a project whose default is main', async () => {
     const k = await kernel()
-    const room = await k.rooms.addRoom(await clone('main'))
-    expect((await task(k, room.id)).baseRef).toBe('origin/main')
+    const project = await k.projects.addProject(await clone('main'))
+    expect((await task(k, project.id)).baseRef).toBe('origin/main')
   })
 
   it('takes a base set in Settings, Git and worktrees', async () => {
     const k = await kernel({ baseRef: 'main' })
-    const room = await k.rooms.addRoom(await clone('dev'))
-    expect((await task(k, room.id)).baseRef).toBe('main')
+    const project = await k.projects.addProject(await clone('dev'))
+    expect((await task(k, project.id)).baseRef).toBe('main')
   })
 
-  it("takes a base set in the room's settings files, even the app's shipped one", async () => {
+  it("takes a base set in the project's settings files, even the app's shipped one", async () => {
     const repo = await clone('dev')
     await mkdir(join(repo, '.kernel'), { recursive: true })
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[workspace]\nbase_ref = "origin/main"\n')
     const k = await kernel()
-    const room = await k.rooms.addRoom(repo)
-    expect((await task(k, room.id)).baseRef).toBe('origin/main')
+    const project = await k.projects.addProject(repo)
+    expect((await task(k, project.id)).baseRef).toBe('origin/main')
     await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[workspace]\nbase_ref = "main"\n')
-    expect((await task(k, room.id)).baseRef).toBe('main')
+    expect((await task(k, project.id)).baseRef).toBe('main')
   })
 
   it("takes the Lead's base_ref from create_workspace", async () => {
     const k = await kernel()
-    const room = await k.rooms.addRoom(await clone('dev'))
+    const project = await k.projects.addProject(await clone('dev'))
     const tool = kernelTools({
-      roomId: room.id, lead: undefined, agents: async () => [{ id: 'kai', name: 'Kai', role: 'Frontend', lead: false } as AgentDef], workspaces: () => [],
-      createWorkspace: (o) => k.workspaces.createWorkspace(room.id, o), messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null,
+      projectId: project.id, lead: undefined, agents: async () => [{ id: 'kai', name: 'Kai', role: 'Frontend', lead: false } as AgentDef], workspaces: () => [],
+      createWorkspace: (o) => k.workspaces.createWorkspace(project.id, o), messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null,
       hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
     }).find((t) => t.name === 'create_workspace')!
     await tool.handler({ agent: 'kai', title: 'Inbox actions', brief: 'Go', base_ref: 'origin/main' } as never, {})
-    expect(k.store.workspaces(room.id)[0].baseRef).toBe('origin/main')
+    expect(k.store.workspaces(project.id)[0].baseRef).toBe('origin/main')
   })
 
   it('starts a review from the work it reviews, not the default branch', async () => {
     const k = await kernel()
-    const room = await k.rooms.addRoom(await clone('dev'))
-    const author = await task(k, room.id)
-    const review = await k.workspaces.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', reviewOf: author.id })
+    const project = await k.projects.addProject(await clone('dev'))
+    const author = await task(k, project.id)
+    const review = await k.workspaces.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', reviewOf: author.id })
     expect(review.baseRef).toBe(author.branch)
   })
 })

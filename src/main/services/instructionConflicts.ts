@@ -4,7 +4,7 @@ import type { InstructionConflict, InstructionConflictKind } from '@shared/types
 
 /**
  * Rules in a repo's CLAUDE.md and AGENTS.md that fight how Kernel works (KERNEL-452). Agents read those files next to
- * Kernel's own rules, so "commit straight to main" pulls them the other way. Room setup lists each rule next to what Kernel
+ * Kernel's own rules, so "commit straight to main" pulls them the other way. Project setup lists each rule next to what Kernel
  * tells agents. Kernel only reads the files.
  *
  * The matcher is narrow on purpose: a false alarm teaches the user to ignore the list. Most rules that name main agree with
@@ -12,20 +12,20 @@ import type { InstructionConflict, InstructionConflictKind } from '@shared/types
  * only when the clause tells the agent to do it, with no negation or condition before it, and the branch ends the clause.
  */
 
-/** The files Claude Code and Codex read at a repo's root, in the order Room setup lists them. */
+/** The files Claude Code and Codex read at a repo's root, in the order Project setup lists them. */
 export const INSTRUCTION_FILES = ['CLAUDE.md', '.claude/CLAUDE.md', 'AGENTS.md']
 
 /** A line longer than this is quoted by the sentence that fights, not whole. */
 const LONG_LINE = 200
 
 export interface ScanOptions {
-  /** The room's default branch and the protected ones, which Kernel's agents never commit or push to. */
+  /** The project's default branch and the protected ones, which Kernel's agents never commit or push to. */
   branches: string[]
   /** Where teammates' worktrees start, `origin/main`, for what Kernel says to stacked PRs. */
   base: string
 }
 
-/** What Kernel tells agents instead, in RoomSetupConflicts.png's words. */
+/** What Kernel tells agents instead, in ProjectSetupConflicts.png's words. */
 export function kernelSays(kind: InstructionConflictKind, base: string): string {
   if (kind === 'no-pull-requests') return 'Every task ends in a pull request. Never push to a shared branch.'
   if (kind === 'push-to-protected') return 'Push your own branch and open a pull request.'
@@ -92,7 +92,7 @@ function sentence(line: string, from: number, to: number) {
  * No negation in the sentence before the match or in the rest of its clause, and no condition in the clause before it.
  * The rest of the clause runs past a colon, which gives the verdict ("Commit to main: never"), and a question takes its
  * answer with it ("Commit to main? Never."). "Only" after it makes the rule an exception ("work in main only if the user
- * asks"), which Kernel has room for, and a habit the repo dropped ("we used to stack PRs, but no longer") is no rule.
+ * asks"), which Kernel allows for, and a habit the repo dropped ("we used to stack PRs, but no longer") is no rule.
  */
 function stands(line: string, from: number, to: number): boolean {
   const { start, end } = sentence(line, from, to)

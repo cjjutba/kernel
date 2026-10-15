@@ -8,16 +8,16 @@ import { isMerged, resolveTarget, waitRefusal } from './waits'
 export interface TeammateToolDeps {
   /** The calling teammate's workspace, as it is now. */
   workspace: () => Workspace
-  /** The room's workspaces, archived ones included. */
+  /** The project's workspaces, archived ones included. */
   workspaces: () => Workspace[]
   isLead: (w: Workspace) => boolean
   /** The agent's name for a workspace: "Noor". */
   nameOf: (w: Workspace) => string
   /** Kernel's setWait on the caller's workspace, as a wait the teammate set itself, which the Lead hasn't heard about. */
   setWait: (on: string[], why?: string) => Promise<Workspace>
-  /** The room's remote, stripped from the bases a wait compares (KERNEL-693). */
+  /** The project's remote, stripped from the bases a wait compares (KERNEL-693). */
   remote?: () => Promise<string>
-  /** The room's team, as list_agents reads it, for propose_handoff (KERNEL-747). */
+  /** The project's team, as list_agents reads it, for propose_handoff (KERNEL-747). */
   team: () => AgentDef[]
   /** Records ask_lead's question for the Lead chat that handed the workspace off (`LeadUpdates.asked`). */
   ask: (question: string, options?: string[]) => void
@@ -36,7 +36,7 @@ export function proposalRefusal(team: AgentDef[], asked: string, self: string): 
   if ('refusal' in pick) return { refusal: pick.refusal.replace(/^Not created: /, '') }
   if (pick.id === self) return { refusal: 'that is you. Carry on with it yourself, or ask the Lead with ask_lead if it is outside your task.' }
   if (pick.lead) return { refusal: `${pick.name} is the Lead, who hands work out and builds none. Propose a teammate from list_agents.` }
-  if (!takesTasks(pick)) return { refusal: `${pick.name} is a helper in this room and doesn't take tasks.` }
+  if (!takesTasks(pick)) return { refusal: `${pick.name} is a helper in this project and doesn't take tasks.` }
   return pick
 }
 

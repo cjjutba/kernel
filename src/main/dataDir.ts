@@ -17,6 +17,7 @@ export const RUNS_FOLDER = 'Kernel Dev Runs'
  * What a dev run copies from `Kernel` besides the database. Caches, logs, telemetry and update.json stay behind, and so does
  * `hook-token`: each build has its own, so both can run at once (KERNEL-675).
  */
+// `room-icons` keeps its name from before rooms were renamed projects (KERNEL-880).
 export const MOVED = ['settings.json', 'trust.json', 'integrations.json', 'env.json', 'room-icons', 'shared', 'Local Storage']
 
 export interface DataDirs { own: string; other: string; name: string; otherName: string; run?: true }

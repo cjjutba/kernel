@@ -17,7 +17,7 @@ import { loadAppSettings, type AppSettings } from './services/settings'
 import { claudeSignedIn, readAccount } from './services/account'
 import { stopAllScripts } from './services/scripts'
 import { EnvStore } from './services/env'
-import { githubAvatar, RoomIcons } from './services/roomIcons'
+import { githubAvatar, ProjectIcons } from './services/projectIcons'
 import { gh, type CodeHost } from './services/github'
 import { Overlaps } from './services/overlap'
 import type { KernelOptions } from './features/options'
@@ -33,7 +33,7 @@ import { Hooks } from './features/hooks'
 import { Account } from './features/account'
 import { Integrations } from './features/integrations'
 import { Team } from './features/team'
-import { Rooms } from './features/rooms'
+import { Projects } from './features/projects'
 import { Setup } from './features/setup'
 import { Trust } from './features/trust'
 import { Env } from './features/env'
@@ -77,10 +77,10 @@ export class Kernel {
   readonly sessions: Sessions
   readonly overlaps: Overlaps
   readonly ptys = new Ptys()
-  readonly roomIcons: RoomIcons
+  readonly projectIcons: ProjectIcons
   /** Copies of the files agents shared, and their checks (KERNEL-302). */
   readonly shared: SharedFiles
-  /** App-wide and per-room variables, encrypted in `env.json` (KERNEL-247). */
+  /** App-wide and per-project variables, encrypted in `env.json` (KERNEL-247). */
   readonly envStore: EnvStore
   settings!: AppSettings
   private unlisten: () => void = () => undefined
@@ -96,7 +96,7 @@ export class Kernel {
   readonly integrations = new Integrations(this)
   readonly team = new Team(this)
   readonly agentChanges = new AgentChanges(this)
-  readonly rooms = new Rooms(this)
+  readonly projects = new Projects(this)
   readonly setup = new Setup(this)
   readonly trust = new Trust(this)
   readonly env = new Env(this)
@@ -125,7 +125,7 @@ export class Kernel {
   // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy
   // (KERNEL-324).
 
-  /** Fetches a GitHub owner's avatar for a room icon. Tests swap it for one with gh and fetch stubbed. */
+  /** Fetches a GitHub owner's avatar for a project icon. Tests swap it for one with gh and fetch stubbed. */
   avatar: (owner: string) => Promise<Buffer> = (owner) => githubAvatar(owner, { fetch: this.o.fetch })
   /** The SDK call behind a fork. Tests swap it for a stub. */
   forkSession: typeof ForkSession = async (id, o) => (await import('@anthropic-ai/claude-agent-sdk')).forkSession(id, o)
@@ -139,12 +139,12 @@ export class Kernel {
   accountReader: () => Promise<ClaudeAccount & { subscriptionType?: string }> = () => readAccount(this.providers.binary('claude').path)
   /** Whether Claude Code is signed in, read at launch before agents carry on (KERNEL-215). Tests swap it for a stub. */
   signedInReader: () => Promise<boolean> = () => claudeSignedIn(this.providers.binary('claude').path, this.providers.claudeEnv())
-  /** The GitHub calls behind the PR methods, for the rooms `codeHost.hostFor` sends to GitHub. Tests swap it for a stub. */
+  /** The GitHub calls behind the PR methods, for the projects `codeHost.hostFor` sends to GitHub. Tests swap it for a stub. */
   github: CodeHost = gh
 
   constructor(readonly o: KernelOptions) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
-    this.roomIcons = new RoomIcons(o.dataDir)
+    this.projectIcons = new ProjectIcons(o.dataDir)
     this.shared = new SharedFiles({ dataDir: o.dataDir, store: this.store })
     this.envStore = new EnvStore({
       file: join(o.dataDir, 'env.json'), cipher: o.cipher,
@@ -187,18 +187,18 @@ export class Kernel {
     this.leadUpdates.attach()
     this.account.start()
     this.tasks.attach()
-    for (const r of this.store.rooms()) void this.config.remoteFor(r.path)
+    for (const r of this.store.projects()) void this.config.remoteFor(r.path)
     // Claude Code processes a crash or a force quit left behind keep working in the worktrees the chats resume in.
     await this.sessions.endLeftovers()
     // Chats that carry on below need their agent's prompt, and a Lead chat its Kernel tools, which read the agents.
-    await Promise.all(this.store.rooms().filter((r) => !r.archived).map((r) => this.team.agents(r.id).catch(() => undefined)))
+    await Promise.all(this.store.projects().filter((r) => !r.archived).map((r) => this.team.agents(r.id).catch(() => undefined)))
     await this.lead.backfill()
-    // Before any session restarts, so a trusted room's env files reach it (KERNEL-247).
-    await Promise.all(this.store.rooms().map((r) => this.trust.untrusted(r).catch(() => null)))
-    // A room paused before the app quit is still paused: its agents wait and its sends are held. The saved limits decide
+    // Before any session restarts, so a trusted project's env files reach it (KERNEL-247).
+    await Promise.all(this.store.projects().map((r) => this.trust.untrusted(r).catch(() => null)))
+    // A project paused before the app quit is still paused: its agents wait and its sends are held. The saved limits decide
     // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on. So do the
     // chats that were working when Kernel quit or closed, after what was queued for them (KERNEL-215).
-    for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
+    for (const r of this.store.projects()) if (r.paused) this.sessions.pause(r.id)
     const cutOff = this.store.meta<string[] | Record<string, CutOffReason>>('cutOff') ?? {}
     // Offline or signed out, what carries on must wait instead of spending its turn on the failure, and nothing has run yet
     // to notice either. The chats that carry on wait while the network probe and a sign-in read run in the background, so
@@ -221,12 +221,12 @@ export class Kernel {
     this.trust.recoverTrust(held)
     this.setup.recoverSetups()
     this.autoArchive.start()
-    // After the waits, which read each room's team first, so the Lead's workspace is known.
+    // After the waits, which read each project's team first, so the Lead's workspace is known.
     void this.waits.sweepWaits().catch(() => undefined).then(() => this.autoArchive.sweepMerged()).catch(() => undefined)
     this.archive.start()
     this.reviews.start()
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
-    if (this.store.rooms().some((r) => r.pausedBy === 'limit')) void this.account.checkLimits()
+    if (this.store.projects().some((r) => r.pausedBy === 'limit')) void this.account.checkLimits()
   }
 
   /**
@@ -277,7 +277,7 @@ export class Kernel {
    */
   handlers(): Handlers {
     return channels(this.app.handlers(), this.inbox.handlers(), this.checkpoints.handlers(), this.config.handlers(),
-      this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.rooms.handlers(),
+      this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.projects.handlers(),
       this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
       this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers(),
       this.permissions.handlers(), this.mcp.handlers(), this.reviews.handlers(), this.openItems.handlers(),
@@ -298,12 +298,12 @@ export class Kernel {
   workingAgents(...a: Parameters<Chats['workingAgents']>): ReturnType<Chats['workingAgents']> { return this.chats.workingAgents(...a) }
   agents(...a: Parameters<Team['agents']>): ReturnType<Team['agents']> { return this.team.agents(...a) }
   statusOf(...a: Parameters<Team['statusOf']>): ReturnType<Team['statusOf']> { return this.team.statusOf(...a) }
-  addRoom(...a: Parameters<Rooms['addRoom']>): ReturnType<Rooms['addRoom']> { return this.rooms.addRoom(...a) }
-  createRoom(...a: Parameters<Rooms['createRoom']>): ReturnType<Rooms['createRoom']> { return this.rooms.createRoom(...a) }
-  updateRoom(...a: Parameters<Rooms['updateRoom']>): ReturnType<Rooms['updateRoom']> { return this.rooms.updateRoom(...a) }
-  removeRoom(...a: Parameters<Rooms['removeRoom']>): ReturnType<Rooms['removeRoom']> { return this.rooms.removeRoom(...a) }
-  pauseRoom(...a: Parameters<Rooms['pauseRoom']>): ReturnType<Rooms['pauseRoom']> { return this.rooms.pauseRoom(...a) }
-  resumeRoom(...a: Parameters<Rooms['resumeRoom']>): ReturnType<Rooms['resumeRoom']> { return this.rooms.resumeRoom(...a) }
+  addProject(...a: Parameters<Projects['addProject']>): ReturnType<Projects['addProject']> { return this.projects.addProject(...a) }
+  createProject(...a: Parameters<Projects['createProject']>): ReturnType<Projects['createProject']> { return this.projects.createProject(...a) }
+  updateProject(...a: Parameters<Projects['updateProject']>): ReturnType<Projects['updateProject']> { return this.projects.updateProject(...a) }
+  removeProject(...a: Parameters<Projects['removeProject']>): ReturnType<Projects['removeProject']> { return this.projects.removeProject(...a) }
+  pauseProject(...a: Parameters<Projects['pauseProject']>): ReturnType<Projects['pauseProject']> { return this.projects.pauseProject(...a) }
+  resumeProject(...a: Parameters<Projects['resumeProject']>): ReturnType<Projects['resumeProject']> { return this.projects.resumeProject(...a) }
   createWorkspace(...a: Parameters<Workspaces['createWorkspace']>): ReturnType<Workspaces['createWorkspace']> { return this.workspaces.createWorkspace(...a) }
   changes(...a: Parameters<Workspaces['changes']>): ReturnType<Workspaces['changes']> { return this.workspaces.changes(...a) }
   retrySetup(...a: Parameters<Setup['retrySetup']>): ReturnType<Setup['retrySetup']> { return this.setup.retrySetup(...a) }

@@ -3,8 +3,8 @@
 
 export const DOCS_NAV: { title: string; pages: string[] }[] = [
   { title: 'Get started', pages: ['introduction', 'install', 'first-brief', 'how-it-works'] },
-  { title: 'Concepts', pages: ['rooms', 'kernel', 'agents', 'plans', 'workspaces', 'pull-requests', 'reviews'] },
+  { title: 'Concepts', pages: ['projects', 'kernel', 'agents', 'plans', 'workspaces', 'pull-requests', 'reviews'] },
   { title: 'Features', pages: ['issues', 'shared-files', 'scripts', 'accounts', 'permissions', 'checkpoints', 'inbox'] },
-  { title: 'Configuration', pages: ['settings', 'room-settings', 'shortcuts'] },
+  { title: 'Configuration', pages: ['settings', 'project-settings', 'shortcuts'] },
   { title: 'Help', pages: ['troubleshooting', 'privacy'] }
 ]

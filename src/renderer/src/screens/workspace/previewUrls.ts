@@ -9,7 +9,7 @@ export interface PreviewTarget { id: string; label: string; address: string; url
 const bare = (url: string) => url.replace(/^https?:\/\//i, '')
 
 /**
- * The URL a run script printed. The room's scripts come first in their order, so the answer doesn't change while two scripts
+ * The URL a run script printed. The project's scripts come first in their order, so the answer doesn't change while two scripts
  * print; one that is no longer listed comes last.
  */
 export function detectedUrl(byScript: Record<string, string> | undefined, order: string[]): string | null {
@@ -18,7 +18,7 @@ export function detectedUrl(byScript: Record<string, string> | undefined, order:
   return name ? byScript[name] : null
 }
 
-/** The room's configured URLs for this workspace's port, in order. A row with no name shows its address. */
+/** The project's configured URLs for this workspace's port, in order. A row with no name shows its address. */
 export function configuredTargets(urls: PreviewUrls, port: number): PreviewTarget[] {
   return urls.map((u, i) => {
     const url = resolvePreviewUrl(u.url, port)

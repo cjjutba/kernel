@@ -162,7 +162,7 @@ describe('the Team update card', () => {
 
 describe('Merge on a Team update row (KERNEL-351)', () => {
   const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/cards/TeamUpdateCard' as string) as Promise<{ TeamUpdateView: (p: { item: ChatItem; workspaceOf: (id: string) => object | undefined; useNewest: (target: string, itemId: string, rowId: string) => boolean }) => React.ReactElement }>
-  const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, roomId: 'r', name: id, branch: id, baseRef: 'main', path: `/${id}`, mode: 'worktree', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 7, createdAt: 0, ...over } as Workspace)
+  const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, projectId: 'r', name: id, branch: id, baseRef: 'main', path: `/${id}`, mode: 'worktree', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 7, createdAt: 0, ...over } as Workspace)
   const card = (id: string, ...rows: [workspaceId: string, name?: string][]): ChatItem => ({
     kind: 'user', id, ts: 0, from: 'kernel', parts: [{ type: 'text', text: 'Team update' }],
     update: { rows: rows.map(([workspaceId, name]) => ({ workspaceId, agentId: 'kai', name: name ?? 'Kai', task: 'T', events: [] })) }

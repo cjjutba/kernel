@@ -40,14 +40,14 @@ export function useAgentForm(agent: AgentDef | undefined) {
   return { form, set, saved, adopt, dirty }
 }
 
-/** The skills a room offers as slash names. Without a room, such as on Settings, Agents, the first room's list stands in. */
-export function useSkillNames(roomId?: string): string[] {
-  const firstRoom = useStore((s) => s.rooms.find((r) => !r.hidden && !r.archived)?.id)
-  const id = roomId ?? firstRoom
+/** The skills a project offers as slash names. Without a project, such as on Settings, Agents, the first project's list stands in. */
+export function useSkillNames(projectId?: string): string[] {
+  const firstProject = useStore((s) => s.projects.find((r) => !r.hidden && !r.archived)?.id)
+  const id = projectId ?? firstProject
   const [names, setNames] = useState<string[]>([])
   useEffect(() => {
     if (!id) { setNames([]); return }
-    void call('skills.list', { roomId: id }).then((l) => setNames(l.map((s) => slash(s.name)))).catch(() => undefined)
+    void call('skills.list', { projectId: id }).then((l) => setNames(l.map((s) => slash(s.name)))).catch(() => undefined)
   }, [id])
   return names
 }
@@ -69,7 +69,7 @@ function PinHint({ agent, model, onClear, disabled }: { agent: AgentDef; model: 
  * The fields of an agent file, shared by the profile and Settings, Agents: description, model, effort, tools, skills and instructions.
  * `builtIn` is Kernel as it ships, or Theo, shown as it runs (a customized Kernel has a file and edits like any agent), and `readOnly` is a plugin's agent. Both disable every field.
  */
-export function AgentFields({ agent, form, set, skillNames, readOnly = false, noSkillsHint = 'No skills found in this room.' }: {
+export function AgentFields({ agent, form, set, skillNames, readOnly = false, noSkillsHint = 'No skills found in this project.' }: {
   agent: AgentDef; form: AgentForm; set: (patch: Partial<AgentForm>) => void; skillNames: string[]; readOnly?: boolean; noSkillsHint?: string
 }) {
   const defaultEffort = useStore((s) => s.settings?.models.roles.engineers.effort)
@@ -91,8 +91,8 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
       {builtIn && (
         <p className="ap-note" role="note">
           {agent.lead
-            ? <>Kernel leads every room and plans with you. It isn{'’'}t a file in this repo, so it can{'’'}t be edited here. Customize copies it to <span className="mono">.claude/agents/kernel.md</span>, where you can change it like any agent.</>
-            : <>{agent.name} is built into Kernel and reviews for this room because <span className="mono">.claude/agents</span> has no reviewer. It isn{'’'}t a file in this repo, so it can{'’'}t be edited here. Customize copies it to <span className="mono">.claude/agents/theo.md</span>, where you can change it like any agent.</>}
+            ? <>Kernel leads every project and plans with you. It isn{'’'}t a file in this repo, so it can{'’'}t be edited here. Customize copies it to <span className="mono">.claude/agents/kernel.md</span>, where you can change it like any agent.</>
+            : <>{agent.name} is built into Kernel and reviews for this project because <span className="mono">.claude/agents</span> has no reviewer. It isn{'’'}t a file in this repo, so it can{'’'}t be edited here. Customize copies it to <span className="mono">.claude/agents/theo.md</span>, where you can change it like any agent.</>}
         </p>
       )}
       {!locked && !!agent.warnings?.length && (

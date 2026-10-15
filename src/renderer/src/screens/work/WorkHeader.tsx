@@ -1,22 +1,22 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { go } from '../../store'
 import { Button, Icon, IconButton, Menu, isTyping } from '../../ui'
-import { RoomIcon } from '../../components/RoomIcon'
+import { ProjectIcon } from '../../components/ProjectIcon'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
-import type { RoomHead } from '../issues/parts'
+import type { ProjectHead } from '../issues/parts'
 import { WORK_TABS, useWorkTab, type WorkTab } from './tab'
 import './work.css'
 
 const labels: Record<WorkTab, string> = { issues: 'Issues', prs: 'Pull requests' }
 
-/** `onRoom('')` on the Pull requests tab means every room. */
-export const ALL_ROOMS = ''
+/** `onProject('')` on the Pull requests tab means every project. */
+export const ALL_PROJECTS = ''
 
 interface Props {
   tab: WorkTab
-  head: RoomHead
-  /** Pull requests only: adds "All rooms" to the picker, which is selected while `head.room` is empty. */
-  allRooms?: boolean
+  head: ProjectHead
+  /** Pull requests only: adds "All projects" to the picker, which is selected while `head.project` is empty. */
+  allProjects?: boolean
   /** How many each tab lists, when the page knows. */
   counts?: Partial<Record<WorkTab, string | number>>
   /** Where the list comes from: "Linear · cj-jutba". */
@@ -26,22 +26,22 @@ interface Props {
   refreshing?: boolean
 }
 
-/** The other tab's route. Issues keeps the room picked on it, and Pull requests lists every room unless one was picked. */
-const routeFor = (tab: WorkTab, roomId?: string) => (tab === 'issues' ? { name: 'issues' as const, roomId } : { name: 'prs' as const })
+/** The other tab's route. Issues keeps the project picked on it, and Pull requests lists every project unless one was picked. */
+const routeFor = (tab: WorkTab, projectId?: string) => (tab === 'issues' ? { name: 'issues' as const, projectId } : { name: 'prs' as const })
 
 /**
- * The header of the Work page (KERNEL-874): the title, the Issues and Pull requests tabs, the room picker and, on the right, where
+ * The header of the Work page (KERNEL-874): the title, the Issues and Pull requests tabs, the project picker and, on the right, where
  * the list comes from with Refresh. Keys 1 and 2 switch the tab while focus is not in a text field.
  */
-export function WorkHeader({ tab, head, allRooms, counts, where, onRefresh, refreshing }: Props) {
+export function WorkHeader({ tab, head, allProjects, counts, where, onRefresh, refreshing }: Props) {
   const [, remember] = useWorkTab()
   // The tab is the route's name. Saving it here is what makes the sidebar's Work open on it.
   useEffect(() => remember(tab), [tab])
   const [open, setOpen] = useState(false)
   const anchor = useRef<HTMLSpanElement>(null)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  const { rooms, room, onRoom } = head
-  const to = (next: WorkTab) => { if (next !== tab) go(routeFor(next, room?.id)) }
+  const { projects, project, onProject } = head
+  const to = (next: WorkTab) => { if (next !== tab) go(routeFor(next, project?.id)) }
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -61,7 +61,7 @@ export function WorkHeader({ tab, head, allRooms, counts, where, onRefresh, refr
     refs.current[next]?.focus()
   }
 
-  const pick = room ?? (allRooms ? { name: 'All rooms' } : undefined)
+  const pick = project ?? (allProjects ? { name: 'All projects' } : undefined)
   return (
     <header className="header wk-head">
       <SidebarToggleSlot />
@@ -77,15 +77,15 @@ export function WorkHeader({ tab, head, allRooms, counts, where, onRefresh, refr
       {pick && (
         <>
           <span className="wk-vr" aria-hidden="true" />
-          <span ref={anchor} className="wk-room">
-            <Button variant="ghost" className="wk-pick" aria-label={`Room: ${pick.name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-              {room ? <RoomIcon room={room} className="wk-letter" fallback="?" /> : <span className="wk-letter" aria-hidden="true">A</span>}{pick.name}<Icon name="chevron" size={12} />
+          <span ref={anchor} className="wk-project">
+            <Button variant="ghost" className="wk-pick" aria-label={`Project: ${pick.name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+              {project ? <ProjectIcon project={project} className="wk-letter" fallback="?" /> : <span className="wk-letter" aria-hidden="true">A</span>}{pick.name}<Icon name="chevron" size={12} />
             </Button>
             {open && (
-              <Menu label="Room" anchorRef={anchor} onClose={() => setOpen(false)} style={{ left: 0, top: 'calc(100% + 4px)' }}
+              <Menu label="Project" anchorRef={anchor} onClose={() => setOpen(false)} style={{ left: 0, top: 'calc(100% + 4px)' }}
                 items={[
-                  ...(allRooms ? [{ id: 'all', label: 'All rooms', checked: !room, onSelect: () => onRoom(ALL_ROOMS) }] : []),
-                  ...rooms.map((r) => ({ id: r.id, label: r.name, checked: r.id === room?.id, onSelect: () => onRoom(r.id) }))
+                  ...(allProjects ? [{ id: 'all', label: 'All projects', checked: !project, onSelect: () => onProject(ALL_PROJECTS) }] : []),
+                  ...projects.map((r) => ({ id: r.id, label: r.name, checked: r.id === project?.id, onSelect: () => onProject(r.id) }))
                 ]} />
             )}
           </span>

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { APP_SETTING_TIMING, ROOM_SETTING_TIMING } from '../src/shared/settingsTiming'
+import { APP_SETTING_TIMING, PROJECT_SETTING_TIMING } from '../src/shared/settingsTiming'
 import { appliesTo } from '../src/renderer/src/screens/settings/kit'
 
 const dir = 'src/renderer/src/screens/settings'
@@ -13,11 +13,11 @@ const lines = files.flatMap((f) => readFileSync(f, 'utf8').split('\n')).filter((
  */
 const NO_ROW = new Set(['hookPort', 'experimental.sharing', 'models.effortByModel', 'mcp.aliases', 'agents.unlistedTools', 'agents.allow'])
 
-const NOTED = new Set(['newChats', 'newWorkspaces', 'newRooms', 'restart'])
+const NOTED = new Set(['newChats', 'newWorkspaces', 'newProjects', 'restart'])
 const noted = (map: Record<string, string>) => Object.entries(map).filter(([, t]) => NOTED.has(t)).map(([k]) => k)
 
 describe('Applies to notes (KERNEL-725)', () => {
-  const keys = [...new Set([...noted(APP_SETTING_TIMING), ...noted(ROOM_SETTING_TIMING)])].filter((k) => !NO_ROW.has(k))
+  const keys = [...new Set([...noted(APP_SETTING_TIMING), ...noted(PROJECT_SETTING_TIMING)])].filter((k) => !NO_ROW.has(k))
 
   it.each(keys)('%s has a row that shows its note', (key) => {
     expect(lines.some((l) => l.includes(`'${key}'`) || l.includes(`"${key}"`))).toBe(true)
@@ -30,7 +30,7 @@ describe('Applies to notes (KERNEL-725)', () => {
   it('words each timing', () => {
     expect(appliesTo('models.leadPlanMode')).toBe('Applies to new chats')
     expect(appliesTo('workspace.mode')).toBe('Applies to new workspaces')
-    expect(appliesTo('team.defaultTemplate')).toBe('Applies to new rooms')
+    expect(appliesTo('team.defaultTemplate')).toBe('Applies to new projects')
     expect(appliesTo('general.openTo')).toBe('Applies the next time Kernel opens')
     expect(appliesTo('terminal.preset')).toBe('Applies to new terminal tabs')
     expect(appliesTo('terminal.onlyInWorktrees')).toBe('Applies to new terminal tabs')

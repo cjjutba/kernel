@@ -5,7 +5,7 @@ description: Where everything that needs you shows up, and how Kernel lets you k
 
 ## Home
 
-Home shows what needs you across every room: requests to answer, plans to review, questions, and pull requests ready to merge. Each item opens where it happened. Settings, General can open Home or the Inbox at launch instead of where you left off.
+Home shows what needs you across every project: requests to answer, plans to review, questions, and pull requests ready to merge. Each item opens where it happened. Settings, General can open Home or the Inbox at launch instead of where you left off.
 
 ## Inbox
 

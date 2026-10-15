@@ -40,7 +40,7 @@ export async function unpushedCommits(repo: string, branch: string, baseRef: str
   return count.code === 0 && count.stdout.trim() !== '' && Number.isInteger(n) ? n : null
 }
 
-/** Push the branch to the room's remote and track it. Throws with git's own words when it can't. */
+/** Push the branch to the project's remote and track it. Throws with git's own words when it can't. */
 export async function pushBranch(path: string, branch: string, remote = 'origin'): Promise<void> {
   await gitSlow(path, 'push', '-u', remote, branch)
 }

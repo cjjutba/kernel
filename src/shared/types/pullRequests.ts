@@ -10,7 +10,7 @@ export interface PrCheck {
   url?: string
   /**
    * The check doesn't decide the PR: the repo requires other checks but not this one, or the repo requires none and the
-   * room's `[pr] optionalChecks` lists it. Its failure leaves the PR ready (KERNEL-388).
+   * project's `[pr] optionalChecks` lists it. Its failure leaves the PR ready (KERNEL-388).
    */
   optional?: true
 }
@@ -54,7 +54,7 @@ export interface PrInfo {
   blocked?: PrBlocked
   /** When GitHub last saw the PR change: a push, a review, a comment. */
   updatedAt?: string
-  /** What git says before a local merge, in a room with no GitHub (KERNEL-467). Such a PR has no number or url. */
+  /** What git says before a local merge, in a project with no GitHub (KERNEL-467). Such a PR has no number or url. */
   local?: LocalMerge
 }
 
@@ -66,7 +66,7 @@ export interface LocalMerge {
   behind: number
   /** The branch's committed changes since it left the base, which is what merges. */
   stat: DiffStat
-  /** The room's merge method. */
+  /** The project's merge method. */
   method: MergeMethod
   /**
    * The folder that has the base branch checked out, if one does. `dirty` lists, with their `git status` letters, its tracked

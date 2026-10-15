@@ -36,24 +36,24 @@ export class AutoArchive extends Feature {
     if (!of || (of.prState !== 'merged' && of.prState !== 'closed')) { this.unmarkReviews(...reviews.map((r) => r.id)); return }
     // Archive on merge covers review cleanup too: off, nothing archives on its own (KERNEL-114).
     if (!reviews.length) return
-    if (!(await this.archiveOnMerge(of.roomId))) { this.unmarkReviews(...reviews.map((r) => r.id)); return }
+    if (!(await this.archiveOnMerge(of.projectId))) { this.unmarkReviews(...reviews.map((r) => r.id)); return }
     for (const r of reviews) this.markReview(r.id)
     for (const r of reviews) await this.archiveDone(r, 'kept the review workspace', 'The work it reviewed is done')
   }
 
   /**
-   * Settings, Git's Archive on merge, with the room's own value first (KERNEL-114). It covers the work whose PR merged and
+   * Settings, Git's Archive on merge, with the project's own value first (KERNEL-114). It covers the work whose PR merged and
    * the reviews of work that merged or closed.
    */
-  private async archiveOnMerge(roomId: string) {
-    const room = this.store.room(roomId)
-    const repo = room ? await loadRepoSettings(room.path).catch(() => undefined) : undefined
+  private async archiveOnMerge(projectId: string) {
+    const project = this.store.project(projectId)
+    const repo = project ? await loadRepoSettings(project.path).catch(() => undefined) : undefined
     return cleanupSwitch(repo, this.settings.workspace, 'archiveOnMerge')
   }
 
   /**
    * The workspace's PR merged, so with Archive on merge on it is done (KERNEL-114). It goes through the same checks as a
-   * review, and is also kept when its branch has commits GitHub doesn't. Only a worktree goes: a workspace on the room's
+   * review, and is also kept when its branch has commits GitHub doesn't. Only a worktree goes: a workspace on the project's
    * own checkout, as the Lead's is, can't be checked for uncommitted changes, and that holds even before the team is read.
    * A closed PR keeps its workspace, because its author may reopen it. Reviews go through `archiveReviews`.
    */
@@ -62,8 +62,8 @@ export class AutoArchive extends Feature {
     if (ws?.mode !== 'worktree') { this.unmarkReviews(id); return }
     if (ws.status === 'archived' || ws.reviewOf) return
     // The mark says so even before the team is read, now that the Lead has a worktree of its own (KERNEL-355).
-    const lead = !!ws.lead || !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
-    if (ws.prState !== 'merged' || lead || !(await this.archiveOnMerge(ws.roomId))) { this.unmarkReviews(id); return }
+    const lead = !!ws.lead || !!this.agentsSync(ws.projectId).find((a) => a.id === ws.agentId)?.lead
+    if (ws.prState !== 'merged' || lead || !(await this.archiveOnMerge(ws.projectId))) { this.unmarkReviews(id); return }
     this.markReview(id)
     await this.archiveDone(ws, 'kept the workspace', `Its PR${ws.prNumber ? ' #' + ws.prNumber : ''} merged`)
   }
@@ -84,7 +84,7 @@ export class AutoArchive extends Feature {
     if (this.k.archive.working(r.id)) return
     const keep = (reason: string) => {
       this.unmarkReviews(r.id)
-      bus.activity({ kind: 'note', roomId: r.roomId, workspaceId: r.id, agentId: r.agentId, actor: 'kernel', text, object: r.name, warn: true, quote: `${done}, but it wasn't archived: ${/[.!?…]$/.test(reason) ? reason : reason + '.'}` })
+      bus.activity({ kind: 'note', projectId: r.projectId, workspaceId: r.id, agentId: r.agentId, actor: 'kernel', text, object: r.name, warn: true, quote: `${done}, but it wasn't archived: ${/[.!?…]$/.test(reason) ? reason : reason + '.'}` })
     }
     let why = await archiveSkip(r, { isOwnLead: (w) => this.isLeadWorkspace(w), isRunning: (id) => this.k.archive.working(id), latestPr: async (w) => w, unsaved: (id) => this.k.archive.unsavedOf(id) })
     if (why === 'its agent is still working') return
@@ -112,11 +112,11 @@ export class AutoArchive extends Feature {
    * have deleted the branch.
    */
   private async unpushedOf(ws: Workspace): Promise<number | null> {
-    const room = this.store.room(ws.roomId)
-    if (!room) return null
-    const counted = await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.k.config.remoteFor(room.path))
+    const project = this.store.project(ws.projectId)
+    if (!project) return null
+    const counted = await unpushedCommits(project.path, ws.branch, ws.baseRef, await this.k.config.remoteFor(project.path))
     if (counted === 0 || !ws.prHead) return counted
-    const r = await exec('git', ['-C', room.path, 'rev-list', '--count', `refs/heads/${ws.branch}`, '--not', ws.prHead])
+    const r = await exec('git', ['-C', project.path, 'rev-list', '--count', `refs/heads/${ws.branch}`, '--not', ws.prHead])
     const n = Number(r.stdout.trim())
     if (r.code !== 0 || r.stdout.trim() === '' || !Number.isInteger(n)) return counted
     return counted === null ? n : Math.min(counted, n)
@@ -152,9 +152,9 @@ export class AutoArchive extends Feature {
   /** Links each open reviewer workspace with no `reviewOf` to the workspace whose branch its base names (KERNEL-299). */
   private async linkReviews() {
     const linked: Workspace[] = []
-    for (const room of this.store.rooms()) {
-      const agents = await this.k.team.agents(room.id).catch(() => [])
-      const all = this.store.workspaces(room.id)
+    for (const project of this.store.projects()) {
+      const agents = await this.k.team.agents(project.id).catch(() => [])
+      const all = this.store.workspaces(project.id)
       for (const w of all) {
         if (w.status === 'archived' || w.reviewOf) continue
         const of = reviewedByBase(agents.find((a) => a.id === w.agentId), w.baseRef, all, { self: w.id, done: true })

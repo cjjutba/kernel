@@ -24,7 +24,7 @@ export interface Approval {
   id: string
   kind: ApprovalKind
   source: 'sdk' | 'hook'
-  roomId?: string
+  projectId?: string
   workspaceId?: string
   chatId?: string
   agentId?: string

@@ -16,7 +16,7 @@ export const metadata: Metadata = pageMetadata({ title, description, path: '/pri
 
 const INCLUDED = [
   'Every feature from the first launch',
-  'Unlimited rooms and workspaces',
+  'Unlimited projects and workspaces',
   'Claude Code and Codex, several accounts each',
   'Plans, reviews and merges',
   'Issues from Linear, GitHub and Jira',

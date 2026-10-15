@@ -32,7 +32,7 @@ const AGENTS = {
   '.claude/agents/wren.md': '---\nname: wren\ndescription: Designer.\nrole: Designer\ntools: Read, Edit, Write, NotebookEdit, Bash\n---\nYou are Wren, and you look at screens.'
 }
 
-/** A room with no reviewer agent and no built-ins (no starter folder), its `[review]` committed on main. Automatic review is on unless `app` says otherwise. */
+/** A project with no reviewer agent and no built-ins (no starter folder), its `[review]` committed on main. Automatic review is on unless `app` says otherwise. */
 async function setup(o: { settings?: string; files?: Record<string, string>; app?: object } = {}) {
   const repo = await tempRepo({ ...AGENTS, ...(o.settings ? { '.kernel/settings.toml': o.settings } : {}), ...o.files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -41,11 +41,11 @@ async function setup(o: { settings?: string; files?: Record<string, string>; app
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))
-  const room = await k.addRoom(repo)
+  const project = await k.addProject(repo)
   let n = 0
   /** Kai's work in its own worktree, committed and on a PR that passed checks. */
   const pr = async (files: Record<string, string>, agentId = 'kai') => {
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId, title: `Task ${++n}` })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId, title: `Task ${++n}` })
     for (const [f, c] of Object.entries(files)) { await mkdir(dirname(join(ws.path, f)), { recursive: true }); await writeFile(join(ws.path, f), c) }
     await git(ws.path, 'add', '-A')
     await git(ws.path, 'commit', '-qm', 'work')
@@ -53,10 +53,10 @@ async function setup(o: { settings?: string; files?: Record<string, string>; app
     k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prNumber: 100 + n, prTitle: `Task ${n}`, prState: 'ready', prHead: head })
     return k.store.workspace(ws.id)!
   }
-  const reviewsOf = (id: string) => k.store.workspaces(room.id).filter((w) => w.reviewOf === id)
+  const reviewsOf = (id: string) => k.store.workspaces(project.id).filter((w) => w.reviewOf === id)
   const lenses = (rws: Workspace) => k.store.chats(rws.id).map((c) => c.lens)
   const chatOf = (rws: Workspace, kind: ReviewKind) => k.store.chats(rws.id).find((c) => c.lens?.kind === kind)!
-  return { k, repo, room, pr, reviewsOf, lenses, chatOf }
+  return { k, repo, project, pr, reviewsOf, lenses, chatOf }
 }
 
 const info = (ws: Workspace): PrInfo => ({ workspaceId: ws.id, number: ws.prNumber!, url: '', title: '', state: 'ready', baseRef: 'main', checks: [], comments: [], conflicts: [], head: ws.prHead! })
@@ -75,9 +75,9 @@ describe('which reviews a PR gets', () => {
   })
 
   it("reviews a Build here chat's own PR and reports to that chat, and leaves a chat in Hand off alone (KERNEL-778)", async () => {
-    const { k, room, reviewsOf, lenses } = await setup()
+    const { k, project, reviewsOf, lenses } = await setup()
     const lead = async (mode: 'build' | 'handoff') => {
-      const c = await k.lead.newLeadChat(room.id, { prompt: '' })
+      const c = await k.lead.newLeadChat(project.id, { prompt: '' })
       await vi.waitFor(() => expect(k.store.workspace(k.store.chat(c.id)!.workspaceId)?.status).toBe('ready'), { timeout: 10_000, interval: 10 })
       k.lead.setMode(k.store.chat(c.id)!.workspaceId, mode)
       const ws = k.store.workspace(k.store.chat(c.id)!.workspaceId)!
@@ -133,7 +133,7 @@ describe('which reviews a PR gets', () => {
     expect(sent).toHaveLength(2)
   })
 
-  it('gives a room with no reviewer agent a code review on every PR, from Kernel\'s own prompt', async () => {
+  it('gives a project with no reviewer agent a code review on every PR, from Kernel\'s own prompt', async () => {
     const { k, pr, reviewsOf, chatOf } = await setup()
     const ws = await pr({ 'a.txt': 'a\n' })
     await k.reviews.onReady(ws.id)
@@ -147,7 +147,7 @@ describe('which reviews a PR gets', () => {
     expect(rule).toContain('mcp__kernel__submit_review')
   })
 
-  it("runs the code review with the room's reviewer, as the base branch's [team] picks it, and none with reviewer = \"none\"", async () => {
+  it("runs the code review with the project's reviewer, as the base branch's [team] picks it, and none with reviewer = \"none\"", async () => {
     const theo = { '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer.\nrole: Reviewer\ntools: Read, Grep, Bash\n---\nYou are Theo.' }
     const own = await setup({ files: theo })
     const ws = await own.pr({ 'a.txt': 'a\n' })
@@ -301,9 +301,9 @@ describe('a message to a review workspace with several kinds', () => {
     await vi.waitFor(() => expect(t.k.store.workspace(rws.id)?.status).toBe('ready'), { timeout: 10_000, interval: 20 })
     const sent: { chatId: string; text: string; from?: string }[] = []
     t.k.sessions.send = async (chatId, parts, o) => { sent.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), from: o?.from }); return { queued: false } }
-    const chat = await t.k.leadChat(t.room.id)
-    const lead = (await t.k.agents(t.room.id)).find((a) => a.lead)!
-    const tool = (name: string) => kernelTools(t.k.lead.leadToolDeps(t.room.id, lead, chat)).find((x) => x.name === name)!
+    const chat = await t.k.leadChat(t.project.id)
+    const lead = (await t.k.agents(t.project.id)).find((a) => a.lead)!
+    const tool = (name: string) => kernelTools(t.k.lead.leadToolDeps(t.project.id, lead, chat)).find((x) => x.name === name)!
     const call = async (name: string, args: Record<string, unknown>) => {
       const r = await tool(name).handler(args as never, {})
       return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
@@ -411,9 +411,9 @@ describe('[review] in the shared settings file', () => {
   })
 
   it('writes [review] through settings.setReview, keeping comments and every other table as written', async () => {
-    const { k, repo, room } = await setup({ settings: '# Shared with the team.\n[pr]\nmerge_method = "rebase" # always\n\n[review.code]\n# Who reviews code.\npaths = [\n  "src/**",\n]\n' })
+    const { k, repo, project } = await setup({ settings: '# Shared with the team.\n[pr]\nmerge_method = "rebase" # always\n\n[review.code]\n# Who reviews code.\npaths = [\n  "src/**",\n]\n' })
     const file = join(repo, '.kernel', 'settings.toml')
-    const out = await k.handlers()['settings.setReview']({ roomId: room.id, review: { rounds: 3, kinds: { code: { paths: null, required: false }, ux: { enabled: true, paths: ['src/renderer/**'], agent: 'wren' } } } })
+    const out = await k.handlers()['settings.setReview']({ projectId: project.id, review: { rounds: 3, kinds: { code: { paths: null, required: false }, ux: { enabled: true, paths: ['src/renderer/**'], agent: 'wren' } } } })
     expect(await readFile(file, 'utf8')).toBe([
       '# Shared with the team.', '[pr]', 'merge_method = "rebase" # always', '',
       '[review.code]', '# Who reviews code.', 'required = false', '',
@@ -433,10 +433,10 @@ describe('[review] in the shared settings file', () => {
 
   it('writes [merge] always_review through settings.setAlwaysReview, keeping comments and every other key as written (KERNEL-594)', async () => {
     const original = '# Shared with the team.\n[merge]\nauto = true # Kernel ignores this here\n\n[review.code]\npaths = ["src/**"]\n'
-    const { k, repo, room } = await setup({ settings: original })
+    const { k, repo, project } = await setup({ settings: original })
     const file = join(repo, '.kernel', 'settings.toml')
     expect((await loadRepoSettings(repo)).merge).toEqual({ alwaysReview: [] })
-    const out = await k.handlers()['settings.setAlwaysReview']({ roomId: room.id, paths: [' src/billing/** ', '', 'db/migrations/**', 'src/billing/**'] })
+    const out = await k.handlers()['settings.setAlwaysReview']({ projectId: project.id, paths: [' src/billing/** ', '', 'db/migrations/**', 'src/billing/**'] })
     expect(await readFile(file, 'utf8')).toBe('# Shared with the team.\n[merge]\nauto = true # Kernel ignores this here\nalways_review = ["src/billing/**", "db/migrations/**"]\n\n[review.code]\npaths = ["src/**"]\n')
     expect(out.merge).toEqual({ alwaysReview: ['src/billing/**', 'db/migrations/**'] })
     // Auto-merge reads the same key, so what Settings writes is what a PR is held back by.
@@ -445,7 +445,7 @@ describe('[review] in the shared settings file', () => {
     await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[merge]\nalways_review = ["infra/**"]\n')
     expect((await loadRepoSettings(repo)).merge).toEqual({ alwaysReview: ['src/billing/**', 'db/migrations/**'] })
     // An empty list takes the key back out and leaves the rest.
-    expect((await k.handlers()['settings.setAlwaysReview']({ roomId: room.id, paths: [] })).merge).toEqual({ alwaysReview: [] })
+    expect((await k.handlers()['settings.setAlwaysReview']({ projectId: project.id, paths: [] })).merge).toEqual({ alwaysReview: [] })
     expect(await readFile(file, 'utf8')).toBe(original)
     // A file with no [merge] gets the table, and its last table goes untouched.
     await writeFile(file, '[review.code]\npaths = ["src/**"]\n')

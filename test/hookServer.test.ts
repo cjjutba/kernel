@@ -27,13 +27,13 @@ beforeAll(async () => {
   server = await startHookServer({
     port, token, approvals, approvalTimeoutMs: 400,
     isManaged: (id) => id === 'managed',
-    resolve: (cwd) => (cwd.startsWith('/repo') ? { roomId: 'room', workspaceId: 'ws', agentId: 'kai' } : {})
+    resolve: (cwd) => (cwd.startsWith('/repo') ? { projectId: 'project', workspaceId: 'ws', agentId: 'kai' } : {})
   })
 })
 afterAll(() => new Promise<void>((r) => server.close(() => r())))
 
 describe('hook server', () => {
-  it('turns tool events into room activity, starting the session on its first event', async () => {
+  it('turns tool events into project activity, starting the session on its first event', async () => {
     const seen: any[] = []
     const off = (e: any) => seen.push(e)
     bus.on('activity', off)
@@ -41,10 +41,10 @@ describe('hook server', () => {
     await post({ ...base, hook_event_name: 'Stop' })
     bus.off('activity', off)
     expect(seen.map((e) => e.kind)).toEqual(['session.start', 'tool.end', 'turn.done'])
-    expect(seen[1]).toMatchObject({ kind: 'tool.end', text: 'edited', object: 'table.tsx', roomId: 'room', agentId: 'kai', sessionId: 'outside' })
+    expect(seen[1]).toMatchObject({ kind: 'tool.end', text: 'edited', object: 'table.tsx', projectId: 'project', agentId: 'kai', sessionId: 'outside' })
   })
 
-  it('holds a permission request from a room until it is approved', async () => {
+  it('holds a permission request from a project until it is approved', async () => {
     let id = ''
     let answered = false
     const onPush = (e: any) => { if (e.type === 'approval' && e.approval.status === 'pending') id = e.approval.id }
@@ -55,8 +55,8 @@ describe('hook server', () => {
     bus.off('push', onPush)
     expect(id).not.toBe('')
     expect(answered).toBe(false)
-    expect(saved.get(id)).toMatchObject({ status: 'pending', roomId: 'room' })
-    // Room only, so no workspace's chats or composer pick it up (KERNEL-285).
+    expect(saved.get(id)).toMatchObject({ status: 'pending', projectId: 'project' })
+    // Project only, so no workspace's chats or composer pick it up (KERNEL-285).
     expect(saved.get(id)?.workspaceId).toBeUndefined()
     expect(saved.get(id)?.agentId).toBeUndefined()
     approvals.decide(id, { behavior: 'allow' })
@@ -74,7 +74,7 @@ describe('hook server', () => {
     expect(await pending).toEqual({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'Not on main' } } })
   })
 
-  it('leaves a plan or a question from a room to the app that started the session', async () => {
+  it('leaves a plan or a question from a project to the app that started the session', async () => {
     for (const tool_name of ['ExitPlanMode', 'AskUserQuestion']) {
       const pushes: any[] = []
       const onPush = (e: any) => { if (e.type === 'approval') pushes.push(e) }
@@ -95,7 +95,7 @@ describe('hook server', () => {
     expect(r).toEqual({})
   })
 
-  it('answers a permission request from outside every room at once, opening no approval', async () => {
+  it('answers a permission request from outside every project at once, opening no approval', async () => {
     const pushes: any[] = []
     const onPush = (e: any) => { if (e.type === 'approval') pushes.push(e) }
     bus.on('push', onPush)
@@ -227,7 +227,7 @@ describe('a session the other build started (KERNEL-675)', () => {
     onTestFinished(() => { bus.off('activity', onActivity) })
     const listen = async (build: 'dev' | 'run') => {
       const p = await closedPort()
-      const s = await startHookServer({ port: p, token, approvals, approvalTimeoutMs: 400, isManaged: () => false, build, resolve: () => ({ roomId: 'room-a' }) })
+      const s = await startHookServer({ port: p, token, approvals, approvalTimeoutMs: 400, isManaged: () => false, build, resolve: () => ({ projectId: 'project-a' }) })
       onTestFinished(() => { s.close() })
       return (from: string, id: string) => fetch(`http://127.0.0.1:${p}/hooks/${build}`, { method: 'POST', body: JSON.stringify({ ...base, session_id: id, hook_event_name: 'Stop' }), headers: { 'content-type': 'application/json', 'x-kernel-token': token, 'x-kernel-build': from } }).then((r) => r.json())
     }

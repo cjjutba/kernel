@@ -30,16 +30,16 @@ async function setup() {
   await k.start()
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
-  const room = await k.addRoom(repo)
-  const lead = await k.leadChat(room.id)
+  const project = await k.addProject(repo)
+  const lead = await k.leadChat(project.id)
   // The author moves its work onto a branch over 80 characters, which the review starts from (KERNEL-136).
-  const author = await k.createWorkspace(room.id, { prompt: 'Draw the card', agentId: 'kai', title: 'Draw a question card', leadChatId: lead.id })
+  const author = await k.createWorkspace(project.id, { prompt: 'Draw the card', agentId: 'kai', title: 'Draw a question card', leadChatId: lead.id })
   await git(author.path, 'checkout', '-qb', LONG)
   await writeFile(join(author.path, 'card.txt'), 'card\n')
   await git(author.path, 'add', '.')
   await git(author.path, 'commit', '-qm', 'card')
   const tip = (await git(author.path, 'rev-parse', 'HEAD')).trim()
-  const review = (branch?: string) => k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #213', leadChatId: lead.id, reviewOf: author.id, ...(branch ? { branch } : {}) })
+  const review = (branch?: string) => k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #213', leadChatId: lead.id, reviewOf: author.id, ...(branch ? { branch } : {}) })
   return { k, repo, author, tip, review }
 }
 

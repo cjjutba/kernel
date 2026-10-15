@@ -43,7 +43,7 @@ export function reviewWords(pr: PrInfo | null | undefined, ws: Workspace): { tex
 
 /** One workspace working on the issue: its agent, branch, state and the way in. */
 function WorkspaceRow({ ws }: { ws: Workspace }) {
-  const agent = useStore((s) => s.agents[ws.roomId]?.find((a) => a.id === ws.agentId))
+  const agent = useStore((s) => s.agents[ws.projectId]?.find((a) => a.id === ws.agentId))
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
   const pr = useStore((s) => s.prs[ws.id])
   const state = workState(ws, running, pr, true)
@@ -64,7 +64,7 @@ function WorkspaceRow({ ws }: { ws: Workspace }) {
 function PrRow({ ws }: { ws: Workspace }) {
   const pr = useStore((s) => s.prs[ws.id])
   const rules = useStore((s) => s.settings?.pr) ?? NO_RULES
-  const agents = useStore((s) => s.agents[ws.roomId])
+  const agents = useStore((s) => s.agents[ws.projectId])
   const checks = checksCell(ws, pr)
   const review = reviewWords(pr, ws)
   const view = mergeView(ws, pr, rules, (id) => agents?.find((a) => a.id === id)?.name ?? id)

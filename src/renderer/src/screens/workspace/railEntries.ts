@@ -108,15 +108,15 @@ export function railKey(key: string, s: { open: boolean; active: number; count: 
 /** Whether a scroll box is at its end, as far as the rail cares. */
 export const atEnd = (box: { scrollHeight: number; scrollTop: number; clientHeight: number }) => box.scrollHeight - box.scrollTop - box.clientHeight <= BOTTOM_PX
 
-/** Each mark is 2px with 6px between them, the 8px the canvas draws, until the stack would be taller than the room it has. */
+/** Each mark is 2px with 6px between them, the 8px the canvas draws, until the stack would be taller than the project it has. */
 const MARK = 2
 const GAP = 6
 
-/** The room a stack of `count` marks has left for itself in a column `height` tall: 12px of rail padding and 12px clear above and below. Returns the mark's height and the gap between marks, tightening the gap first and the marks only once they touch. */
+/** The project a stack of `count` marks has left for itself in a column `height` tall: 12px of rail padding and 12px clear above and below. Returns the mark's height and the gap between marks, tightening the gap first and the marks only once they touch. */
 export function markFit(count: number, height: number): { mark: number; gap: number } {
-  const room = height - 36
-  if (count < 2 || room <= 0) return { mark: MARK, gap: GAP }
-  const gap = (room - MARK * count) / (count - 1)
+  const project = height - 36
+  if (count < 2 || project <= 0) return { mark: MARK, gap: GAP }
+  const gap = (project - MARK * count) / (count - 1)
   if (gap >= GAP) return { mark: MARK, gap: GAP }
-  return gap >= 0 ? { mark: MARK, gap } : { mark: room / count, gap: 0 }
+  return gap >= 0 ? { mark: MARK, gap } : { mark: project / count, gap: 0 }
 }

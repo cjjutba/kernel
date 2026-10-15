@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { kernelHookMatcher, tokenArg } from '@shared/hookEntry'
 import type { HookBuild, HookProblem } from '@shared/types'
 import { shellQuote } from './health'
-import { tildify } from './rooms'
+import { tildify } from './projects'
 
 /**
  * Events Kernel installs a hook for. Tool events take a "*" matcher; the rest take none.

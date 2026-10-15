@@ -27,7 +27,7 @@ export function ratioFor(height: number, container: number) {
 }
 
 /** Lead chats and teammates' workspaces each remember whether the bottom pane is collapsed. */
-export const bottomKindOf = (s: Pick<State, 'agents'>, ws: Workspace): BottomKind => (isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id) ? 'lead' : 'teammate')
+export const bottomKindOf = (s: Pick<State, 'agents'>, ws: Workspace): BottomKind => (isLeadWorkspace(ws, ws.projectId, leadOf(s.agents, ws.projectId)?.id) ? 'lead' : 'teammate')
 
 /** ⌘J. On a workspace screen it collapses or opens the bottom pane; with the right panel hidden it brings the panel back with the pane open. */
 export function toggleBottomPanel() {

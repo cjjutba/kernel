@@ -74,7 +74,7 @@ export function taskBranch(pattern: string, title: string, task?: string, type?:
   return branchName(p, { slug: shortSlug(title), task, type })
 }
 
-/** `origin/main` -> `main` for the room's remote. Any other ref comes back as it is. */
+/** `origin/main` -> `main` for the project's remote. Any other ref comes back as it is. */
 export const stripRemote = (ref: string, remote = 'origin') => (ref.startsWith(`${remote}/`) ? ref.slice(remote.length + 1) : ref)
 
 /**
@@ -126,7 +126,7 @@ export async function defaultBranch(repo: string, remote = 'origin'): Promise<st
 
 /**
  * Where the Lead's worktree starts (KERNEL-355): `<remote>/<default>`, else the local default branch when the remote
- * doesn't have it. Nothing for a folder that isn't a git repo or has no commit yet: that room's Lead stays on the checkout.
+ * doesn't have it. Nothing for a folder that isn't a git repo or has no commit yet: that project's Lead stays on the checkout.
  * Reads the refs as they are, without fetching.
  */
 export async function leadBase(repo: string, remote = 'origin'): Promise<string | undefined> {
@@ -143,9 +143,9 @@ async function refExists(repo: string, ref: string): Promise<boolean> {
 
 /**
  * `git fetch <remote>`, with a 30 second limit. On failure: git's first line of stderr, or the timeout, and when the
- * room last fetched (FETCH_HEAD's mtime), so a caller can say how old `<remote>/<branch>` is (KERNEL-179). Git empties
+ * project last fetched (FETCH_HEAD's mtime), so a caller can say how old `<remote>/<branch>` is (KERNEL-179). Git empties
  * FETCH_HEAD as a fetch starts, even one that fails, so it is read before the fetch, and an empty one (a fetch that
- * failed) gives no time. Fetch from the room's folder, not a worktree: each worktree keeps its own FETCH_HEAD.
+ * failed) gives no time. Fetch from the project's folder, not a worktree: each worktree keeps its own FETCH_HEAD.
  * With `check`, a branch name, a fetch that passed in the last minute is reused only while `<remote>/<check>` still
  * matches the remote's, read with `git ls-remote` (KERNEL-653).
  */
@@ -246,11 +246,11 @@ export async function remoteRepo(repo: string, remote = 'origin'): Promise<strin
 }
 
 /**
- * The folder a room's new worktrees go in. A room made since KERNEL-231 uses its id, so two rooms named "app" get two
- * folders. An older room keeps the slug of its name. Workspaces made before keep their own paths either way.
+ * The folder a project's new worktrees go in. A project made since KERNEL-231 uses its id, so two projects named "app" get two
+ * folders. An older project keeps the slug of its name. Workspaces made before keep their own paths either way.
  */
-export function roomWorktreeRoot(worktreeRoot: string, room: { name: string; worktreeDir?: string }): string {
-  return join(worktreeRoot, room.worktreeDir ?? slugify(room.name))
+export function projectWorktreeRoot(worktreeRoot: string, project: { name: string; worktreeDir?: string }): string {
+  return join(worktreeRoot, project.worktreeDir ?? slugify(project.name))
 }
 
 /** Whether the repo has a commit to branch from. A fresh `git init` has none. */

@@ -5,7 +5,7 @@ import { setupGate, skipsSetup } from '../src/renderer/src/screens/workspace/set
 // KERNEL-490: a chat with Kernel that isn't held stays open and shows its transcript while setup runs. A teammate's chat keeps
 // KERNEL-430's rule: nothing goes out before its brief.
 
-const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-table', branch: 'feat/x', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kai', port: 4300, status: 'setup', prState: 'none', createdAt: 1 }
+const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-table', branch: 'feat/x', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kai', port: 4300, status: 'setup', prState: 'none', createdAt: 1 }
 const kernel: Workspace = { ...ws, agentId: 'kernel', lead: true, threadId: 'thread' }
 
 describe('a chat while its workspace sets up', () => {

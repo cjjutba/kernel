@@ -3,15 +3,15 @@ import type { AgentDef, AppSettings, LeadMode, TeamPatch } from '@shared/types'
 import { KERNEL_LEAD, reviewerChoice } from '@shared/team'
 import { leadModeName, newChatLeadMode } from '@shared/leadMode'
 import { call, cleanError } from '../../../api'
-import { actions, go, loadRoom, useStore } from '../../../store'
+import { actions, go, loadProject, useStore } from '../../../store'
 import { KernelMark } from '../../../icons'
 import { Button, ConfirmDialog, Icon, Menu, Select, Toggle, useBusy } from '../../../ui'
-import { ReviewerPicker } from '../../rooms/ReviewerPicker'
-import './rooms.css'
+import { ReviewerPicker } from '../../projects/ReviewerPicker'
+import './projects.css'
 import { shortFile, warningText } from '../../agent/model'
-import { STARTER_TEAMMATES } from '../../rooms/draft'
-import { NoRoom, Row, RoomPage, roomValue, Section, SettingsLink, useRoomPage } from '../kit'
-import { patchRoomSettings } from '../useSettings'
+import { STARTER_TEAMMATES } from '../../projects/draft'
+import { NoProject, Row, ProjectPage, projectValue, Section, SettingsLink, useProjectPage } from '../kit'
+import { patchProjectSettings } from '../useSettings'
 import { agentGroup, cleanDescription, shownRole } from './agentRows'
 
 const NO_AGENTS: AgentDef[] = []
@@ -37,14 +37,14 @@ function rowDesc(a: AgentDef) {
 }
 
 /**
- * Settings > a room > Agents (MorePage roomAgents, KERNEL-680): who leads and reviews, the room's agent files with a takes-tasks switch on each,
+ * Settings > a project > Agents (MorePage projectAgents, KERNEL-680): who leads and reviews, the project's agent files with a takes-tasks switch on each,
  * how many workspaces the Lead keeps open, and Retired. Edit opens the agent's editor (KERNEL-397, KERNEL-641). A change to roles or switches
  * goes to `[team]` in the shared settings.toml, and the open-workspaces cap to the personal file (KERNEL-493). Your own and plugin agents are
  * listed on Settings, Agents, not here.
  */
-export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
-  const { room, rs } = useRoomPage(roomId)
-  const agents = useStore((x) => (roomId ? x.agents[roomId] ?? NO_AGENTS : NO_AGENTS))
+export function Team({ projectId, s }: { projectId?: string; s: AppSettings }) {
+  const { project, rs } = useProjectPage(projectId)
+  const agents = useStore((x) => (projectId ? x.agents[projectId] ?? NO_AGENTS : NO_AGENTS))
   const [busy, run] = useBusy()
   const [retired, setRetired] = useState<AgentDef[]>(NO_AGENTS)
   const [adding, setAdding] = useState(false)
@@ -52,46 +52,46 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const [resetting, setResetting] = useState(false)
   const starterAnchor = useRef<HTMLSpanElement>(null)
   const copyAnchor = useRef<HTMLSpanElement>(null)
-  // Other rooms that are not archived and have an agent that is not retired: the ones this room can copy from.
-  const sources = useStore((x) => x.rooms.filter((r) => r.id !== roomId && !r.archived && (x.agents[r.id] ?? NO_AGENTS).some((a) => !a.retired)))
-  useEffect(() => { if (roomId) void loadRoom(roomId) }, [roomId])
+  // Other projects that are not archived and have an agent that is not retired: the ones this project can copy from.
+  const sources = useStore((x) => x.projects.filter((r) => r.id !== projectId && !r.archived && (x.agents[r.id] ?? NO_AGENTS).some((a) => !a.retired)))
+  useEffect(() => { if (projectId) void loadProject(projectId) }, [projectId])
   // Retired agents sit in .claude/retired-agents (D-003). The list is read again when the team changes, so a retire shows here at once.
   useEffect(() => {
-    if (roomId) void call('agents.list', { roomId, retired: true }).then(setRetired).catch(() => setRetired(NO_AGENTS))
-  }, [roomId, agents])
-  if (!room || !roomId) return <NoRoom />
+    if (projectId) void call('agents.list', { projectId, retired: true }).then(setRetired).catch(() => setRetired(NO_AGENTS))
+  }, [projectId, agents])
+  if (!project || !projectId) return <NoProject />
   const team = agents.filter((a) => !a.retired)
   const files = team.filter((a) => !a.builtIn)
   const lead = team.find((a) => a.lead)
   const preset = s.team.defaultTemplate === 'pair' ? 'pair' : 'starter team'
   const seed = () => run('seed', async () => {
     try {
-      const list = await call('agents.seed', { roomId, template: { kind: s.team.defaultTemplate } })
-      actions.agents.set(roomId, list)
+      const list = await call('agents.seed', { projectId, template: { kind: s.team.defaultTemplate } })
+      actions.agents.set(projectId, list)
     } catch (e) { actions.ui.toast({ title: 'Could not add the team', sub: cleanError(e) }) }
   })
-  const copyFrom = (fromRoomId: string) => run('copy', async () => {
+  const copyFrom = (fromProjectId: string) => run('copy', async () => {
     try {
-      await call('agents.seed', { roomId, template: { kind: 'copy', fromRoomId } })
-      await loadRoom(roomId)
+      await call('agents.seed', { projectId, template: { kind: 'copy', fromProjectId } })
+      await loadProject(projectId)
     } catch (e) { actions.ui.toast({ title: 'Could not copy the team', sub: cleanError(e) }) }
   })
-  const hire = () => actions.ui.openModal({ name: 'newAgent', roomId, step: 'describe' })
+  const hire = () => actions.ui.openModal({ name: 'newAgent', projectId, step: 'describe' })
   const starters = STARTER_TEAMMATES.filter((m) => !team.some((a) => a.id === m.id))
   const addStarter = (id: string) => run('starter', async () => {
-    try { await call('agents.addStarter', { roomId, id }) } catch (e) { actions.ui.toast({ title: 'Could not add the agent', sub: cleanError(e) }) }
+    try { await call('agents.addStarter', { projectId, id }) } catch (e) { actions.ui.toast({ title: 'Could not add the agent', sub: cleanError(e) }) }
   })
   const restore = (a: AgentDef) => run(a.id, async () => {
     try {
-      const def = await call('agents.restore', { roomId, agentId: a.id })
-      actions.agents.set(roomId, [...team.filter((x) => x.id !== def.id), def])
+      const def = await call('agents.restore', { projectId, agentId: a.id })
+      actions.agents.set(projectId, [...team.filter((x) => x.id !== def.id), def])
       setRetired((r) => r.filter((x) => x.id !== a.id))
     } catch (e) { actions.ui.toast({ title: 'Could not restore', sub: cleanError(e) }) }
   })
   const setTeam = (key: string, patch: TeamPatch) => run(key, async () => {
     try {
-      actions.agents.set(roomId, await call('agents.setTeam', { roomId, team: patch, from: 'settings' }))
-      actions.settings.setRoom(roomId, await call('settings.room', { roomId }))
+      actions.agents.set(projectId, await call('agents.setTeam', { projectId, team: patch, from: 'settings' }))
+      actions.settings.setProject(projectId, await call('settings.project', { projectId }))
     } catch (e) { actions.ui.toast({ title: 'Could not change the team', sub: cleanError(e) }) }
   })
   // The switches list every agent that takes tasks. Main keeps only the ones that differ from what their tools say.
@@ -105,21 +105,21 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const elsewhere = !!leadFile && leadFile !== 'kernel.md'
   const customize = () => run('customize', async () => {
     try {
-      const def = await call('agents.customize', { roomId, agentId: lead?.id ?? KERNEL_LEAD })
+      const def = await call('agents.customize', { projectId, agentId: lead?.id ?? KERNEL_LEAD })
       actions.ui.toast({ title: `Kernel is in ${shortFile(def.file)} now`, sub: 'Edit it like any agent.' })
-      await loadRoom(roomId)
+      await loadProject(projectId)
     } catch (e) { actions.ui.toast({ title: 'Could not customize Kernel', sub: cleanError(e) }) }
   })
   const openFile = () => lead?.file && void call('system.openInEditor', { path: lead.file }).catch((e) => actions.ui.toast({ title: 'Could not open the file', sub: cleanError(e) }))
   const reset = () => run('reset', async () => {
     try {
-      actions.agents.set(roomId, await call('agents.resetLead', { roomId }))
+      actions.agents.set(projectId, await call('agents.resetLead', { projectId }))
       setResetting(false)
     } catch (e) { actions.ui.toast({ title: 'Could not reset Kernel', sub: cleanError(e) }) }
   })
   const move = () => run('move', async () => {
     try {
-      actions.agents.set(roomId, await call('agents.moveLead', { roomId }))
+      actions.agents.set(projectId, await call('agents.moveLead', { projectId }))
       actions.ui.toast({ title: 'Kernel is in kernel.md now' })
     } catch (e) { actions.ui.toast({ title: 'Could not move Kernel’s file', sub: cleanError(e) }) }
   })
@@ -137,7 +137,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       <Button variant="primary" icon="plus" disabled={busy !== null} onClick={hire}>New agent</Button>
     </span>
   )
-  const edit = (a: AgentDef) => <Button aria-label={`Edit ${a.name}`} onClick={() => go({ name: 'settings', page: 'room', roomId, section: 'agents', agentId: a.id })}>Edit</Button>
+  const edit = (a: AgentDef) => <Button aria-label={`Edit ${a.name}`} onClick={() => go({ name: 'settings', page: 'project', projectId, section: 'agents', agentId: a.id })}>Edit</Button>
   const agentRow = (a: AgentDef) => {
     const reviewsOnly = a.id === reviewerPick && !a.member && !a.lead
     return (
@@ -152,7 +152,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
     )
   }
   return (
-    <RoomPage room={room} rs={rs} title="Agents" shared>
+    <ProjectPage project={project} rs={rs} title="Agents" shared>
       <Section title="Roles">
         <Row id="lead" lead={<span className="rm-avatar" aria-hidden="true"><KernelMark size={14} /></span>} label="Kernel" labelId="rm-lead" className="rm-kernel" desc="Plans with you and hands out tasks.">
         <span className="set-actions">
@@ -164,12 +164,12 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
             : <Button busy={busy === 'customize'} busyLabel="Copying" disabled={busy !== null} onClick={() => void customize()}>Customize</Button>}
         </span>
         </Row>
-        <Row id="lead-mode" setting="agents.leadMode" label="New chats with Kernel" labelId="rm-lead-mode" desc="Overrides Settings, Agents for this room.">
+        <Row id="lead-mode" setting="agents.leadMode" label="New chats with Kernel" labelId="rm-lead-mode" desc="Overrides Settings, Agents for this project.">
           <Select label="New chats with Kernel" align="right" value={rs?.agents?.leadMode ?? 'app'} disabled={busy !== null} options={[
             { value: 'app', label: `App default (${leadModeName(newChatLeadMode({ team: { leadMode: s.team.leadMode } }, undefined))})` },
             { value: 'handoff', label: leadModeName('handoff') },
             { value: 'build', label: leadModeName('build') }
-          ]} onChange={(v) => void patchRoomSettings(roomId, { agents: { leadMode: v === 'app' ? null : (v as LeadMode) } })} />
+          ]} onChange={(v) => void patchProjectSettings(projectId, { agents: { leadMode: v === 'app' ? null : (v as LeadMode) } })} />
         </Row>
         {!!files.length && (
           <Row id="reviewer" label="Reviewer" labelId="rm-reviewer" desc="Reviews each pull request.">
@@ -184,8 +184,8 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
               <Button busy={busy === 'seed'} busyLabel="Adding" disabled={busy !== null} onClick={() => void seed()}>Add the team</Button>
               {!!sources.length && (
                 <span className="set-starters" ref={copyAnchor}>
-                  <Button aria-haspopup="menu" aria-expanded={copying} busy={busy === 'copy'} busyLabel="Copying" disabled={busy !== null} onClick={() => setCopying((o) => !o)}>Copy from another room<Icon name="chevron" size={12} /></Button>
-                  {copying && <Menu label="Copy from another room" anchorRef={copyAnchor} onClose={() => setCopying(false)} style={{ right: 0, top: 34, width: 220 }} items={sources.map((r) => ({ id: r.id, label: r.name, onSelect: () => { setCopying(false); void copyFrom(r.id) } }))} />}
+                  <Button aria-haspopup="menu" aria-expanded={copying} busy={busy === 'copy'} busyLabel="Copying" disabled={busy !== null} onClick={() => setCopying((o) => !o)}>Copy from another project<Icon name="chevron" size={12} /></Button>
+                  {copying && <Menu label="Copy from another project" anchorRef={copyAnchor} onClose={() => setCopying(false)} style={{ right: 0, top: 34, width: 220 }} items={sources.map((r) => ({ id: r.id, label: r.name, onSelect: () => { setCopying(false); void copyFrom(r.id) } }))} />}
                 </span>
               )}
               <Button variant="primary" icon="plus" disabled={busy !== null} onClick={hire}>New agent</Button>
@@ -203,8 +203,8 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       )}
       {!!files.length && (
         <Section label="Limits">
-          <Row id="open-workspaces" label="Open workspaces" {...roomValue(rs, 'agents.openWorkspaces', () => void patchRoomSettings(roomId, { agents: { openWorkspaces: null } }), { to: { page: 'models' }, label: 'Settings, Models and effort' })} desc={`Workspaces ${lead?.name ?? 'Kernel'} keeps open here. Reviews don’t count.`}>
-            <Select label="Open workspaces" align="right" value={String(rs?.agents?.openWorkspaces ?? s.models.agentLimit)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(v) => void patchRoomSettings(roomId, { agents: { openWorkspaces: Number(v) } })} />
+          <Row id="open-workspaces" label="Open workspaces" {...projectValue(rs, 'agents.openWorkspaces', () => void patchProjectSettings(projectId, { agents: { openWorkspaces: null } }), { to: { page: 'models' }, label: 'Settings, Models and effort' })} desc={`Workspaces ${lead?.name ?? 'Kernel'} keeps open here. Reviews don’t count.`}>
+            <Select label="Open workspaces" align="right" value={String(rs?.agents?.openWorkspaces ?? s.models.agentLimit)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(v) => void patchProjectSettings(projectId, { agents: { openWorkspaces: Number(v) } })} />
           </Row>
         </Section>
       )}
@@ -223,6 +223,6 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
           confirmLabel="Reset to default" danger busy={busy === 'reset'} busyPattern="wave-back" busyLabel="Resetting" onConfirm={() => void reset()} onCancel={() => setResetting(false)}
         />
       )}
-    </RoomPage>
+    </ProjectPage>
   )
 }

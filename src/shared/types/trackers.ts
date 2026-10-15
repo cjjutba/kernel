@@ -1,6 +1,6 @@
 import type { IssueSummary } from './pullRequests'
 
-/** The issue trackers a room can use. A room's `[tracker] kind` can also be `none` (KERNEL-432). */
+/** The issue trackers a project can use. A project's `[tracker] kind` can also be `none` (KERNEL-432). */
 export type TrackerKind = 'linear' | 'github'
 
 /** One issue as every tracker gives it: what create_workspace and the brief need (KERNEL-432). */
@@ -25,7 +25,7 @@ export interface TrackerIssue {
 
 /** One sign that someone else may already be on an issue, found before Kernel starts a workspace for it (KERNEL-479). */
 export type IssueTakenFinding =
-  /** A branch on the room's remote whose name holds the issue key, with the remote: "origin/feat/kernel-31-export-pdf". */
+  /** A branch on the project's remote whose name holds the issue key, with the remote: "origin/feat/kernel-31-export-pdf". */
   | { kind: 'branch'; ref: string }
   /** An open pull request whose title, description or branch names the issue key. */
   | { kind: 'pr'; number: number; title: string; url?: string }
@@ -40,8 +40,8 @@ export interface IssueTaken {
 }
 
 /**
- * A room's issue tracker: Linear, GitHub Issues or none (KERNEL-432). Kernel builds one per room, so no call names
- * the room. A tracker that can't answer rejects, and the caller decides what that costs.
+ * A project's issue tracker: Linear, GitHub Issues or none (KERNEL-432). Kernel builds one per project, so no call names
+ * the project. A tracker that can't answer rejects, and the caller decides what that costs.
  */
 export interface Tracker {
   kind: TrackerKind | 'none'
@@ -55,8 +55,8 @@ export interface Tracker {
   start: (id: string) => Promise<string | undefined>
 }
 
-/** The tracker a room uses, for the screens that list its issues. `where` is GitHub's `owner/repo` (KERNEL-471). */
-export interface RoomTracker {
+/** The tracker a project uses, for the screens that list its issues. `where` is GitHub's `owner/repo` (KERNEL-471). */
+export interface ProjectTracker {
   kind: TrackerKind | 'none'
   where?: string
 }

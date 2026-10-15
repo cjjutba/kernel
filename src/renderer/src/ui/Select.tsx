@@ -20,7 +20,7 @@ export interface SelectProps {
   disabled?: boolean
   /** A muted word inside the button before the value ("Run by"). */
   prefix?: string
-  /** Drawn before the value in the button, such as a room's picture. */
+  /** Drawn before the value in the button, such as a project's picture. */
   leading?: ReactNode
   actions?: SelectAction[]
   /** Which edge the list lines up with. Controls at the right of a row open to the left. */
@@ -37,7 +37,7 @@ const TYPE_MS = 500
 
 /**
  * The one dropdown (KERNEL-680; native selects are banned, see test/noNativeSelect.test.ts). A button shows the value; its list is a
- * `.menu` listbox under it, or above it when there is no room below. Arrow keys, Home and End move and skip disabled rows, typing jumps
+ * `.menu` listbox under it, or above it when there is no space below. Arrow keys, Home and End move and skip disabled rows, typing jumps
  * to a row, Enter or Space picks, Escape closes and returns to the button, Tab closes. The list opens on the row that is picked.
  */
 export function Select({ value, onChange, options, label, labelledBy, placeholder, disabled, prefix, leading, actions = [], align = 'left', variant = 'field', className, open: openProp, onOpenChange }: SelectProps) {

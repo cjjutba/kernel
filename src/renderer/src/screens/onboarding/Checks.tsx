@@ -50,10 +50,10 @@ function Fix({ check, busy, onFix, onRecheck }: { check: PreflightCheck; busy: s
 /** Whether Continue opens Check hooks first: hooks aren't installed, and this isn't a workspace run, which never installs them (KERNEL-679). */
 export const needsHookCheck = (hooks: HookStatus | null) => !!hooks && !hooks.installed && hooks.problem?.kind !== 'workspace-run'
 
-/** Setup*.png: the readiness checks, then the first room once everything passes. */
+/** Setup*.png: the readiness checks, then the first project once everything passes. */
 export function Checks() {
   const checks = useStore((s) => s.system.preflight)
-  const rooms = useStore((s) => s.rooms)
+  const projects = useStore((s) => s.projects)
   // `recheck:<id>` or `fix:<id>` names the button that spins. The check on open has no button.
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -89,11 +89,11 @@ export function Checks() {
   const failing = checks?.filter((c) => !c.ok).length ?? 0
   const blocked = checks?.some((c) => !c.ok && c.blocking) ?? false
   const next = async () => {
-    // A first run with no hooks installed goes through Check hooks before the first room.
+    // A first run with no hooks installed goes through Check hooks before the first project.
     if (needsHookCheck(await call('hooks.status', undefined).catch(() => null))) { actions.ui.openModal({ name: 'checkHooks' }); return }
     // The place the app opens at launch, so Continue after a failed check doesn't land on Home over the place you left.
-    // A first run, with no room yet, picks its permission mode before the first room (KERNEL-457).
-    if (rooms.length) go(launchRoute(), { history: 'replace' }); else go({ name: 'onboarding', step: 'permissions' })
+    // A first run, with no project yet, picks its permission mode before the first project (KERNEL-457).
+    if (projects.length) go(launchRoute(), { history: 'replace' }); else go({ name: 'onboarding', step: 'permissions' })
   }
 
   return (

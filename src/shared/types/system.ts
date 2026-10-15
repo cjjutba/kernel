@@ -67,11 +67,11 @@ export type HookProblem =
 export interface GitHubStatus {
   pausedUntil?: number
   slowDown?: boolean
-  /** Each room's PR status reads from GitHub, by room id, for the Pull requests page (KERNEL-861). Local rooms have none. */
+  /** Each project's PR status reads from GitHub, by project id, for the Pull requests page (KERNEL-861). Local projects have none. */
   reads?: Record<string, PrReads>
 }
 
-/** How fresh a room's PR status is. `at` is the last read GitHub answered, kept when a later one fails; `failed` says why the last read failed. */
+/** How fresh a project's PR status is. `at` is the last read GitHub answered, kept when a later one fails; `failed` says why the last read failed. */
 export interface PrReads {
   at?: number
   failed?: GitHubErrorKind

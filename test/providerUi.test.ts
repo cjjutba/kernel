@@ -6,7 +6,7 @@ import { meterLevel } from '../src/renderer/src/ui/display'
 import { fitEffort } from '../src/renderer/src/screens/workspace/composer/providerModels'
 import { nextEffort } from '../src/renderer/src/screens/workspace/composer/modelPrefs'
 
-const ws = { id: 'ws', roomId: 'room', name: 'invoice-table', status: 'ready' } as Workspace
+const ws = { id: 'ws', projectId: 'project', name: 'invoice-table', status: 'ready' } as Workspace
 const claudeChat = { id: 'c', workspaceId: 'ws', model: 'claude-sonnet-5-5', effort: 'high' } as Chat
 const codexChat = { ...claudeChat, provider: 'codex', model: 'gpt-6-astra' } as Chat
 const now = 1_000_000_000_000
@@ -24,7 +24,7 @@ describe('the limit banner with two providers (KERNEL-406)', () => {
     expect(bannerFor(input({ usage: [claudeLimit] }))).toMatchObject({ id: 'session', title: "You've hit your 5-hour limit", actions: [{ id: 'queue' }, { id: 'notify', primary: true }] })
   })
 
-  it('names the provider, says the other keeps working, and offers an account with room', () => {
+  it('names the provider, says the other keeps working, and offers an account with project', () => {
     const v = bannerFor(input({ usage: [claudeLimit], accounts, codexInUse: true }))
     expect(v).toMatchObject({ title: "You've hit your Claude Code 5-hour limit", switchAccount: { provider: 'claude', accountId: 'work', label: 'Work' } })
     expect(v?.sub).toContain('Agents on Codex keep working.')
@@ -73,7 +73,7 @@ describe('the account the banners offer (KERNEL-569)', () => {
   describe('the limit banner', () => {
     const hit = [claudeLimit]
 
-    it('offers the subscription account with the most 5-hour room, not the first in the list', () => {
+    it('offers the subscription account with the most 5-hour headroom, not the first in the list', () => {
       const usage = [...hit, five('personal', 0.6), five('spare', 0.1)]
       expect(bannerFor(input({ usage, accounts: [work, personal, spare] }))?.switchAccount).toEqual({ provider: 'claude', accountId: 'spare', label: 'Spare' })
       expect(bannerFor(input({ usage, accounts: [work, spare, personal] }))?.actions.at(-1)).toEqual({ id: 'switchAccount', label: 'Switch to Spare', primary: true })
@@ -96,7 +96,7 @@ describe('the account the banners offer (KERNEL-569)', () => {
       expect(bannerFor(input({ usage, accounts: [work, personal, { ...spare, signedIn: false }] }))?.switchAccount).toBeUndefined()
     })
 
-    it('offers an API key only when no subscription account has room, whatever its place in the list', () => {
+    it('offers an API key only when no subscription account has headroom, whatever its place in the list', () => {
       expect(bannerFor(input({ usage: [...hit, five('personal', 0.99)], accounts: [work, key, personal] }))?.switchAccount?.accountId).toBe('personal')
       expect(bannerFor(input({ usage: [...hit, five('personal', 0.5, { status: 'rejected' })], accounts: [work, personal, key] }))?.switchAccount?.accountId).toBe('key')
     })
@@ -108,9 +108,9 @@ describe('the account the banners offer (KERNEL-569)', () => {
     const offer = (o: Partial<BannerInput> = {}) => bannerFor(input({ accounts, usage, ...o }))
     const offered = (o: Partial<BannerInput> = {}) => offer(o)?.id === 'accountNearLimit'
 
-    it('says how full the active account is and that another has room, with a one-click switch', () => {
+    it('says how full the active account is and that another has headroom, with a one-click switch', () => {
       expect(offer()).toMatchObject({
-        id: 'accountNearLimit', kind: 'limit', title: 'Work is at 90% of its 5-hour limit', sub: 'Personal has room.', blocks: false,
+        id: 'accountNearLimit', kind: 'limit', title: 'Work is at 90% of its 5-hour limit', sub: 'Personal has usage left.', blocks: false,
         actions: [{ id: 'switchAccount', label: 'Switch to Personal', primary: true }], switchAccount: { provider: 'claude', accountId: 'personal', label: 'Personal' }
       })
     })
@@ -127,13 +127,13 @@ describe('the account the banners offer (KERNEL-569)', () => {
       expect(offered({ usage: [five(undefined, 0.99, { resetsAt: now / 1000 - 1 })] })).toBe(false)
     })
 
-    it('offers the account with the most 5-hour room, and never an API key', () => {
+    it('offers the account with the most 5-hour headroom, and never an API key', () => {
       expect(offer({ accounts: [work, personal, spare], usage: [...usage, five('spare', 0.02)] })?.switchAccount?.accountId).toBe('spare')
       expect(offered({ accounts: [work, key] })).toBe(false)
       expect(offer({ accounts: [work, key, personal] })?.switchAccount?.accountId).toBe('personal')
     })
 
-    it('needs a signed-in account with room: not one signed out, rejected, or itself close to its limit', () => {
+    it('needs a signed-in account with project: not one signed out, rejected, or itself close to its limit', () => {
       expect(offered({ accounts: [work, { ...personal, signedIn: false }] })).toBe(false)
       expect(offered({ usage: [...usage, five('personal', 0.5, { status: 'rejected' })] })).toBe(false)
       expect(offered({ usage: [five(undefined, 0.9), five('personal', 0.92)] })).toBe(false)
@@ -142,7 +142,7 @@ describe('the account the banners offer (KERNEL-569)', () => {
       expect(offered({ accounts: undefined })).toBe(false)
     })
 
-    it('counts an account never read as having room', () => {
+    it('counts an account never read as having headroom', () => {
       expect(offer({ usage: [five(undefined, 0.9)] })?.switchAccount?.accountId).toBe('personal')
     })
 
@@ -155,7 +155,7 @@ describe('the account the banners offer (KERNEL-569)', () => {
       const codex = [sub('cli', 'cj@example.com', { provider: 'codex', cli: true, active: true }), sub('personal', 'Personal', { provider: 'codex' })]
       const both = [...accounts, ...codex]
       expect(bannerFor(input({ chat: codexChat, accounts: both, usage: [five(undefined, 0.96)], codexInUse: true }))).toBeNull()
-      expect(bannerFor(input({ chat: codexChat, accounts: both, usage: [{ ...five(undefined, 0.96), provider: 'codex' }], codexInUse: true }))).toMatchObject({ title: 'cj@example.com is at 96% of its Codex 5-hour limit', sub: 'Personal has room.', switchAccount: { provider: 'codex', accountId: 'personal' } })
+      expect(bannerFor(input({ chat: codexChat, accounts: both, usage: [{ ...five(undefined, 0.96), provider: 'codex' }], codexInUse: true }))).toMatchObject({ title: 'cj@example.com is at 96% of its Codex 5-hour limit', sub: 'Personal has usage left.', switchAccount: { provider: 'codex', accountId: 'personal' } })
       expect(offered({ accounts: accounts.map((a) => ({ ...a, active: a.id === 'personal' })), usage: [five(undefined, 0.95)] })).toBe(false)
     })
 

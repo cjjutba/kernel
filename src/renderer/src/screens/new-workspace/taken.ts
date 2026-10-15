@@ -10,10 +10,10 @@ export const TAKEN_WAIT_MS = 12_000
  * What Kernel found before a chat starts from `issue`, or nothing. Fails open: an error or no answer in `ms` is no findings,
  * since the check must never keep anyone from starting (KERNEL-500).
  */
-export async function takenFindings(ask: (req: { roomId: string; issue: string }) => Promise<IssueTaken>, roomId: string, issue: string, ms = TAKEN_WAIT_MS): Promise<IssueTakenFinding[]> {
+export async function takenFindings(ask: (req: { projectId: string; issue: string }) => Promise<IssueTaken>, projectId: string, issue: string, ms = TAKEN_WAIT_MS): Promise<IssueTakenFinding[]> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const late = new Promise<IssueTaken>((resolve) => { timer = setTimeout(() => resolve({ findings: [], notes: [] }), ms) })
-  try { return (await Promise.race([ask({ roomId, issue }), late])).findings }
+  try { return (await Promise.race([ask({ projectId, issue }), late])).findings }
   catch { return [] }
   finally { clearTimeout(timer) }
 }

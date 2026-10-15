@@ -86,7 +86,7 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('a sha
     // Nothing reached the network, CSS url() and sendBeacon included.
     expect(hits).toEqual([])
     expect(app.windows().length).toBe(before + 1)
-    expect(await invoke('rooms.list')).toEqual(expect.any(Array))
+    expect(await invoke('projects.list')).toEqual(expect.any(Array))
   })
 
   it('refuses downloads', async () => {
@@ -120,7 +120,7 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('a sha
   it('keeps Kernel responsive while a page loops forever', async () => {
     const { viewId } = await open('loop')
     await page.waitForTimeout(500)
-    expect(await invoke('rooms.list')).toEqual(expect.any(Array))
+    expect(await invoke('projects.list')).toEqual(expect.any(Array))
     expect(await page.evaluate(() => 1 + 1)).toBe(2)
     expect(await invoke('system.preview.close', { viewId })).toEqual({ ok: true })
   })
@@ -160,7 +160,7 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('a sha
     expect(r.windowsAfterHung).toBe(r.before)
     expect(r.next).toBeGreaterThan(1000)
     expect(r.after).toBe(r.before)
-    expect(await invoke('rooms.list')).toEqual(expect.any(Array))
+    expect(await invoke('projects.list')).toEqual(expect.any(Array))
   }, 30_000)
 })
 

@@ -12,7 +12,7 @@ import { Approvals } from '../src/main/services/approvals'
 import { Sessions } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { git, run } from '../src/main/services/exec'
-import { createWorktree, leadBranch, moveWorktree, roomWorktreeRoot, worktreeFolder } from '../src/main/services/worktrees'
+import { createWorktree, leadBranch, moveWorktree, projectWorktreeRoot, worktreeFolder } from '../src/main/services/worktrees'
 import { fakeCodex } from './helpers/fakeCodex'
 import { setUp, tempRepo, freePort } from './helpers'
 
@@ -47,7 +47,7 @@ const callIn = (path: string) => sdk.calls.filter((c) => c.options.cwd === path)
 const branchOf = async (path: string) => (await git(path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()
 
 /** A started Kernel on a repo with an `origin`, stopped when the test ends. Chat names come only from the test. */
-async function room() {
+async function project() {
   const repo = await tempRepo(REPO)
   const bare = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
   await run('git', ['init', '-q', '--bare', bare])
@@ -62,16 +62,16 @@ async function room() {
   k.sessionInfo = async () => undefined
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))
-  const r = await k.addRoom(repo)
-  return { k, repo, room: r, root: roomWorktreeRoot(join(home, 'wt'), r) }
+  const r = await k.addProject(repo)
+  return { k, repo, project: r, root: projectWorktreeRoot(join(home, 'wt'), r) }
 }
 
 /** Claude Code titles the tab, as Chats.autoName passes it on. */
 const titled = (k: Kernel, chat: Chat, title: string) => k.lead.tabNamed(k.store.saveChat({ ...k.store.chat(chat.id)!, title }))
 
 /** A new chat with Kernel that has sent nothing, so it is idle once setup passes. */
-async function idleChat(k: Kernel, roomId: string) {
-  const chat = await k.lead.startLeadChat(roomId, { prompt: '' })
+async function idleChat(k: Kernel, projectId: string) {
+  const chat = await k.lead.startLeadChat(projectId, { prompt: '' })
   return { chat, ws: await setUp(k, chat.id) }
 }
 
@@ -91,7 +91,7 @@ describe("a chat with Kernel's branch name (KERNEL-424)", () => {
 
 describe("naming a chat with Kernel's branch and folder once (KERNEL-424)", () => {
   it('renames the branch at the first title, moves the folder when the turn ends, and the next message resumes the session there', async () => {
-    const { k, repo, room: r, root } = await room()
+    const { k, repo, project: r, root } = await project()
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'in a setup script tab in the workspace the Run button does the same as Play' })
     const ws = await setUp(k, chat.id)
     expect(ws).toMatchObject({ branch: 'kernel/in-setup-script-tab-in', naming: 'branch' })
@@ -141,7 +141,7 @@ describe("naming a chat with Kernel's branch and folder once (KERNEL-424)", () =
   })
 
   it('takes the free-name suffix when the branch or the folder is taken', async () => {
-    const { k, repo, room: r, root } = await room()
+    const { k, repo, project: r, root } = await project()
     await run('git', ['-C', repo, 'branch', 'kernel/plan-the-release'])
     const a = await idleChat(k, r.id)
     titled(k, a.chat, 'Plan the release')
@@ -156,7 +156,7 @@ describe("naming a chat with Kernel's branch and folder once (KERNEL-424)", () =
   })
 
   it('leaves a pushed branch, one with a PR, and a chat from before alone', async () => {
-    const { k, room: r } = await room()
+    const { k, project: r } = await project()
     const pushed = await idleChat(k, r.id)
     await run('git', ['-C', pushed.ws.path, 'push', '-q', '-u', 'origin', pushed.ws.branch])
     titled(k, pushed.chat, 'Plan wave 3')
@@ -178,7 +178,7 @@ describe("naming a chat with Kernel's branch and folder once (KERNEL-424)", () =
   })
 
   it('waits for background tasks and a terminal command, and the terminal comes back in the new folder', async () => {
-    const { k, root, room: r } = await room()
+    const { k, root, project: r } = await project()
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Watch the build' })
     const ws = await setUp(k, chat.id)
     const turn = await vi.waitFor(() => { const c = callIn(ws.path)[0]; expect(c).toBeDefined(); return c })
@@ -223,7 +223,7 @@ describe("naming a chat with Kernel's branch and folder once (KERNEL-424)", () =
   })
 
   it('forks a moved chat from its transcript in the old folder', async () => {
-    const { k, room: r, root } = await room()
+    const { k, project: r, root } = await project()
     const { chat, ws } = await idleChat(k, r.id)
     k.store.saveChat({ ...k.store.chat(chat.id)!, sessionId: 'S3' })
     titled(k, chat, 'Plan the fork')
@@ -251,14 +251,14 @@ describe('a Codex chat whose worktree moved (KERNEL-424)', () => {
     const root = await mkdtemp(join(tmpdir(), 'kernel-wt-'))
     const path = await createWorktree({ repo, root, branch: 'kernel/chat', baseRef: 'main' })
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
-    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'chat', branch: 'kernel/chat', baseRef: 'main', path, mode: 'worktree', agentId: 'kernel', lead: true, threadId: 't', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'chat', branch: 'kernel/chat', baseRef: 'main', path, mode: 'worktree', agentId: 'kernel', lead: true, threadId: 't', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Plan', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'medium', plan: false, threadId: 't', createdAt: 1 })
     const settings = { permissions: { mode: 'acceptEdits', network: true, alwaysAsk: [], neverAllow: [], protectedBranches: ['main'], approvalTimeoutSec: 300 }, providers: { codex: { path: fake.bin, useSystem: false, personality: 'pragmatic' } } } as unknown as AppSettings
     const kernel = { id: 'kernel', name: 'Kernel', lead: true, prompt: 'You are Kernel.' } as AgentDef
     const sessions = open = new Sessions({
       store, approvals: new Approvals(store), settings: () => settings, agentFor: () => kernel, mcpFor: () => undefined, envFor: () => fake.env,
-      roomAllow: () => [], allowInRoom: () => undefined, codexFor: () => ({ bin: fake.bin, personality: 'pragmatic', tools: [] })
+      projectAllow: () => [], allowInProject: () => undefined, codexFor: () => ({ bin: fake.bin, personality: 'pragmatic', tools: [] })
     })
     const sent = async (method: string) => (await fake.messages()).filter((m) => m.method === method)
     await sessions.send('chat', [{ type: 'text', text: 'hello' }])

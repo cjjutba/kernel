@@ -5,7 +5,7 @@ import { rememberBypassConfirmed } from '../../bypassConfirm'
 import { MODE_INFO, saveAppMode } from '../../permissionModes'
 import { go, launchRoute, useStore } from '../../store'
 import { Button, Icon, Spinner, useBusy } from '../../ui'
-import { FirstRoom } from './FirstRoom'
+import { FirstProject } from './FirstProject'
 import './onboarding.css'
 
 interface ModeRow {
@@ -35,7 +35,7 @@ const UNKNOWN: ModeAvailability = { auto: false, bypass: false }
 /** SetupPermissions.png and SetupPermissionsNoAuto.png: the step after Checks. It picks the mode new chats start in and writes `permissions.mode`. */
 export function Permissions() {
   const settings = useStore((s) => s.settings)
-  const rooms = useStore((s) => s.rooms)
+  const projects = useStore((s) => s.projects)
   const lead: Provider = settings?.models.roles.lead.provider ?? 'claude'
   const [avail, setAvail] = useState<Record<Provider, ModeAvailability> | null>(null)
   const [picked, setPicked] = useState<PermissionMode | null>(null)
@@ -52,7 +52,7 @@ export function Permissions() {
     return () => { live = false }
   }, [])
 
-  if (done) return <FirstRoom />
+  if (done) return <FirstProject />
 
   const can = avail?.[lead]
   // Auto where the Lead's provider can run it, Accept edits otherwise. A choice the user made replaces it.
@@ -90,8 +90,8 @@ export function Permissions() {
     if (!(await saveAppMode(pick))) return
     // The step shows Bypass permissions with its warning, so choosing it here counts as answering ConfirmBypass (KERNEL-435).
     if (pick === 'bypassPermissions') rememberBypassConfirmed()
-    // Reached with a room already open, which only a launch route or a fixture does: carry on to where the app opens.
-    if (rooms.length) go(launchRoute(), { history: 'replace' }); else setDone(true)
+    // Reached with a project already open, which only a launch route or a fixture does: carry on to where the app opens.
+    if (projects.length) go(launchRoute(), { history: 'replace' }); else setDone(true)
   })
 
   return (
@@ -99,7 +99,7 @@ export function Permissions() {
       <div className="ob-page">
         <div className="ob-col">
           <h1 className="ob-h1">Choose how agents ask</h1>
-          <p className="ob-sub">Pick the mode new chats start in. You can change it later in Settings, Permissions, or for a room.</p>
+          <p className="ob-sub">Pick the mode new chats start in. You can change it later in Settings, Permissions, or for a project.</p>
           {avail ? (
             <div role="radiogroup" aria-label="Permission mode" className="ob-list ob-modes">
               {MODES.map((m, i) => {

@@ -1,10 +1,10 @@
 import { basename, dirname } from 'node:path'
 import { stat } from 'node:fs/promises'
-import type { Room, Thread, Workspace } from '@shared/types'
+import type { Project, Thread, Workspace } from '@shared/types'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { bus } from '../bus'
 import { cleanupSwitch, loadRepoSettings, type RepoSettings } from '../services/settings'
-import { branchExists, branchState, createWorktree, detachWorktree, dropBranch, folderGone, freeBranch, leadBase, restoreWorktree, roomWorktreeRoot } from '../services/worktrees'
+import { branchExists, branchState, createWorktree, detachWorktree, dropBranch, folderGone, freeBranch, leadBase, restoreWorktree, projectWorktreeRoot } from '../services/worktrees'
 import { blocksOverlap, linkNodeModules, runScript, scriptTimeout, stopRuns, stopScript, timeoutText } from '../services/scripts'
 import { dropCheckpoints, snapshot } from '../services/checkpoints'
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from '../services/archive'
@@ -51,22 +51,22 @@ export class Archive extends Feature {
     const chat = chats.find((c) => c.kind !== 'terminal')
     if (chat) await snapshot(ws, { chatId: chat.id, title: 'Before discarding changes' }).then((c) => bus.push({ type: 'checkpoint', checkpoint: c }))
     await discardChanges(ws.path)
-    bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId, agentId: ws.agentId, actor: 'you', text: 'discarded the changes in', object: ws.name })
+    bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId, agentId: ws.agentId, actor: 'you', text: 'discarded the changes in', object: ws.name })
   }
 
   /**
    * One archive per workspace at a time: a second call while one runs, its cleanup included, waits for it, instead of removing
    * the worktree twice. Its own choice to delete the branch still counts (KERNEL-139). Keeping it, or not saying, leaves the
    * running one's. A Lead chat's workspace archives like any other (KERNEL-405). The shared Lead workspace from before only
-   * goes with its room, or when its chats move out (`removingRoom`). `noScript` skips the archive script, for a workspace that
-   * never ran the room's scripts.
+   * goes with its project, or when its chats move out (`removingProject`). `noScript` skips the archive script, for a workspace that
+   * never ran the project's scripts.
    *
    * It resolves once the record says archived. The worktree, the archive script and the branch are dealt with after, in the
    * background, and `cleanedUp` says when that is done (KERNEL-702).
    */
-  async archiveWorkspace(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean; removingRoom?: boolean; noScript?: boolean } = {}): Promise<void> {
+  async archiveWorkspace(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean; removingProject?: boolean; noScript?: boolean } = {}): Promise<void> {
     const ws = this.store.workspace(id)
-    if (ws?.lead && !ws.threadId && !o.removingRoom) throw new Error("Kernel's workspace stays as long as its room. Archive its chats instead.")
+    if (ws?.lead && !ws.threadId && !o.removingProject) throw new Error("Kernel's workspace stays as long as its project. Archive its chats instead.")
     const running = this.archiving.get(id)
     if (running) {
       await running.done
@@ -103,16 +103,16 @@ export class Archive extends Feature {
     // Restored since, so its branch is checked out again.
     // The shared Lead worktree from before KERNEL-405 is detached, so it has no branch to delete (KERNEL-355).
     if (ws.status !== 'archived' || ws.mode !== 'worktree' || ws.branch === 'HEAD') return
-    const room = this.mustRoom(ws.roomId)
-    if (!(await branchExists(room.path, ws.branch))) return
-    const unpushed = await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.k.config.remoteFor(room.path, await loadRepoSettings(room.path)))
-    if (unpushed === 0) return dropBranch(room.path, ws.branch)
+    const project = this.mustProject(ws.projectId)
+    if (!(await branchExists(project.path, ws.branch))) return
+    const unpushed = await unpushedCommits(project.path, ws.branch, ws.baseRef, await this.k.config.remoteFor(project.path, await loadRepoSettings(project.path)))
+    if (unpushed === 0) return dropBranch(project.path, ws.branch)
     const why = unpushed === null ? 'kept the branch because its commits could not be counted:' : 'kept the branch because it has commits that were never pushed:'
-    bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: why, object: ws.branch, warn: true })
+    bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, text: why, object: ws.branch, warn: true })
   }
 
   /** The quick part of an archive: everything that stops work in the workspace, then the record says archived (KERNEL-702). */
-  private async archiveNow(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean; removingRoom?: boolean; noScript?: boolean } = {}) {
+  private async archiveNow(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean; removingProject?: boolean; noScript?: boolean } = {}) {
     this.k.setup.setupFailures.delete(id)
     // The branch the work is on now: archive deletes it, and restore brings it back. It is read here because `syncBranch`
     // leaves an archived workspace alone. A Lead chat whose worktree isn't made yet keeps the branch it picked (KERNEL-542).
@@ -140,7 +140,7 @@ export class Archive extends Feature {
     // Nothing in an archived workspace can still be answered or merged from the inbox (D-137).
     this.approvals.expireWorkspace(id)
     this.notifications.forgetWorkspace(id)
-    bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
+    bus.activity({ kind: 'workspace.archived', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
   }
 
   /**
@@ -158,7 +158,7 @@ export class Archive extends Feature {
       const ws = this.store.workspace(id)
       if (!ws) return
       console.warn(`[archive] cleaning up ${ws.name} failed`, e)
-      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: "couldn't finish cleaning up after archiving", object: ws.name, warn: true, quote: firstLine(e instanceof Error ? e.message : String(e)) })
+      bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: "couldn't finish cleaning up after archiving", object: ws.name, warn: true, quote: firstLine(e instanceof Error ? e.message : String(e)) })
     }).finally(() => {
       if (port !== undefined) this.k.workspaces.reservedPorts.delete(port)
       if (this.cleanups.get(id) === run) this.cleanups.delete(id)
@@ -180,24 +180,24 @@ export class Archive extends Feature {
     if (this.stopped) return
     const ws = this.store.workspace(id)
     if (ws?.status !== 'archived') return
-    const room = this.store.room(ws.roomId)
-    if (!room) return
+    const project = this.store.project(ws.projectId)
+    if (!project) return
     const unmade = !!ws.worktreePending
-    const repo = await loadRepoSettings(room.path)
+    const repo = await loadRepoSettings(project.path)
     // A folder deleted outside Kernel has nothing to run the script in, and counts as removed (KERNEL-109).
     const gone = unmade || await folderGone(ws.path)
-    if (!gone && !c.noScript && repo.scripts.archive && this.settings.scripts.archiveOnArchive) await this.archiveScript(ws, room, repo)
+    if (!gone && !c.noScript && repo.scripts.archive && this.settings.scripts.archiveOnArchive) await this.archiveScript(ws, project, repo)
     if (this.stopped) return
     // Commits that never left this machine live only on the branch, so it stays whatever was asked. So does a branch
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
     // A kept worktree still has its branch checked out, so the branch stays with it.
-    // The caller's choice wins, then the room's own value, then the app's (KERNEL-370).
+    // The caller's choice wins, then the project's own value, then the app's (KERNEL-370).
     // The shared Lead worktree from before KERNEL-405 is detached, so it has no branch to delete (KERNEL-355). A Lead chat's
     // branch with no commits of its own holds nothing, so it goes whatever the switch says (KERNEL-405).
-    const empty = !unmade && isLeadChatWorkspace(ws) && ws.mode === 'worktree' && await git(room.path, 'rev-list', '--count', `${ws.baseRef}..refs/heads/${ws.branch}`).then((n) => n.trim() === '0', () => false)
+    const empty = !unmade && isLeadChatWorkspace(ws) && ws.mode === 'worktree' && await git(project.path, 'rev-list', '--count', `${ws.baseRef}..refs/heads/${ws.branch}`).then((n) => n.trim() === '0', () => false)
     const wanted = !unmade && ws.mode === 'worktree' && ws.branch !== 'HEAD' && !c.keepWorktree && (empty || (c.deleteBranch ?? cleanupSwitch(repo, this.settings.workspace, 'deleteBranchOnArchive')))
-    const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.k.config.remoteFor(room.path, repo)) : 0
-    if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
+    const unpushed = wanted ? await unpushedCommits(project.path, ws.branch, ws.baseRef, await this.k.config.remoteFor(project.path, repo)) : 0
+    if (wanted && unpushed === null) bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
     // Work the Lead handed off that ends with no PR and no commit of its own: Kernel counts it (KERNEL-397).
     if (!gone && ws.mode === 'worktree' && ws.leadChatId && !ws.lead && !ws.reviewOf && ws.prState === 'none') {
       const ahead = await git(ws.path, 'rev-list', '--count', `${ws.baseRef}..HEAD`).then((n) => Number(n.trim()), () => NaN)
@@ -205,28 +205,28 @@ export class Archive extends Feature {
     }
     if (this.stopped) return
     // Whatever still runs in the folder ends first, a kept one too: a dev server or test run an agent left, in its own
-    // group or started with nohup (KERNEL-810). Only in a worktree of the room's own folder, never in the room's repo.
-    if (!gone && ws.mode === 'worktree') await endProcessesIn(ws.path, { root: roomWorktreeRoot(this.settings.worktreeRoot, room), keep: [room.path] })
+    // group or started with nohup (KERNEL-810). Only in a worktree of the project's own folder, never in the project's repo.
+    if (!gone && ws.mode === 'worktree') await endProcessesIn(ws.path, { root: projectWorktreeRoot(this.settings.worktreeRoot, project), keep: [project.path] })
     if (this.stopped) return
     // The folder only moves aside here, and is deleted after, without waiting (KERNEL-284).
-    const moved = ws.mode === 'worktree' && !c.keepWorktree && !unmade ? await detachWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined, moving: (p) => this.keepTrash(p) }) : undefined
+    const moved = ws.mode === 'worktree' && !c.keepWorktree && !unmade ? await detachWorktree(project.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined, moving: (p) => this.keepTrash(p) }) : undefined
     if (moved) this.throwAway(moved)
-    void this.overlaps.check(ws.roomId).catch(() => undefined)
+    void this.overlaps.check(ws.projectId).catch(() => undefined)
   }
 
   /**
-   * The room's archive script, in the workspace's folder. It never holds the cleanup: untrusted text is skipped (KERNEL-209),
+   * The project's archive script, in the workspace's folder. It never holds the cleanup: untrusted text is skipped (KERNEL-209),
    * a hung script is stopped at the script timeout (KERNEL-216), and one that fails or times out leaves a warning note (KERNEL-702).
    */
-  private async archiveScript(ws: Workspace, room: Room, repo: RepoSettings) {
+  private async archiveScript(ws: Workspace, project: Project, repo: RepoSettings) {
     const id = ws.id
-    if (await this.k.trust.untrusted(room, repo)) {
-      bus.push({ type: 'script.output', workspaceId: id, kind: 'archive', lines: [{ line: "Skipped the archive script: this room's scripts aren't trusted yet.", stream: 'stderr' }] })
+    if (await this.k.trust.untrusted(project, repo)) {
+      bus.push({ type: 'script.output', workspaceId: id, kind: 'archive', lines: [{ line: "Skipped the archive script: this project's scripts aren't trusted yet.", stream: 'stderr' }] })
       return
     }
     const end = await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive!, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) })
     if (this.stopped || end === 0) return
-    const warn = (text: string) => bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text, object: ws.name, warn: true })
+    const warn = (text: string) => bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text, object: ws.name, warn: true })
     if (end === 'timeout') {
       bus.push({ type: 'script.output', workspaceId: id, kind: 'archive', lines: [{ line: `The archive script didn't finish in ${timeoutText(this.settings)}, so Kernel stopped it.`, stream: 'stderr' }] })
       warn(`stopped the archive script after ${timeoutText(this.settings)} in`)
@@ -284,26 +284,26 @@ export class Archive extends Feature {
     await this.cleanedUp(id)
     const ws = this.mustWs(id)
     if (ws.status !== 'archived') return ws
-    const room = this.mustRoom(ws.roomId)
-    const repo = await loadRepoSettings(room.path)
+    const project = this.mustProject(ws.projectId)
+    const repo = await loadRepoSettings(project.path)
     let moved: Partial<Workspace> = {}
     if (ws.mode === 'worktree') {
       const path = await stat(ws.path).then(() => undefined, () => ws.path)
       if (!path) throw new Error(`The folder ${ws.path} is back in use, so ${ws.name} cannot be restored there.`)
-      const remote = await this.k.config.remoteFor(room.path, repo)
-      const kept = await branchState(room.path, ws.branch) === 'exists' || (await exec('git', ['-C', room.path, 'rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${ws.branch}`])).code === 0
-      const base = !kept && isLeadChatWorkspace(ws) ? await leadBase(room.path, remote) : undefined
+      const remote = await this.k.config.remoteFor(project.path, repo)
+      const kept = await branchState(project.path, ws.branch) === 'exists' || (await exec('git', ['-C', project.path, 'rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${ws.branch}`])).code === 0
+      const base = !kept && isLeadChatWorkspace(ws) ? await leadBase(project.path, remote) : undefined
       if (base) {
-        const branch = await this.k.workspaces.withBranchLock(room.id, async () => {
-          const free = await freeBranch(room.path, ws.branch, remote, this.k.workspaces.pendingNames(room.id).branches)
-          await createWorktree({ repo: room.path, root: dirname(path), branch: free, baseRef: base, path })
+        const branch = await this.k.workspaces.withBranchLock(project.id, async () => {
+          const free = await freeBranch(project.path, ws.branch, remote, this.k.workspaces.pendingNames(project.id).branches)
+          await createWorktree({ repo: project.path, root: dirname(path), branch: free, baseRef: base, path })
           return free
         })
         moved = { branch, baseRef: base }
-      } else await restoreWorktree({ repo: room.path, path, branch: ws.branch, remote })
-      if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
-    } else if (this.settings.workspace.oneCurrentBranchPerRoom && !ws.lead && this.store.workspaces(ws.roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
-      throw new Error('Another workspace is already working on the current branch in this room.')
+      } else await restoreWorktree({ repo: project.path, path, branch: ws.branch, remote })
+      if (repo.files.symlinkNodeModules) await linkNodeModules(project.path, path)
+    } else if (this.settings.workspace.oneCurrentBranchPerProject && !ws.lead && this.store.workspaces(ws.projectId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
+      throw new Error('Another workspace is already working on the current branch in this project.')
     }
     const status = ws.mode === 'worktree' ? 'setup' as const : 'ready' as const
     // A chat archived before its worktree was made has one now (KERNEL-542).
@@ -314,21 +314,21 @@ export class Archive extends Feature {
     if (isLeadChatWorkspace(back)) this.markThread(back.threadId!, undefined)
     // A review the user brings back stays, even though the work it reviewed is done (KERNEL-136).
     this.k.autoArchive.unmarkReviews(id)
-    bus.activity({ kind: 'workspace.restored', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'restored', object: ws.name })
-    if (status === 'setup') this.setUpRestored(back, room, repo)
+    bus.activity({ kind: 'workspace.restored', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, text: 'restored', object: ws.name })
+    if (status === 'setup') this.setUpRestored(back, project, repo)
     return back
   }
 
   /** A restored worktree's setup, in the background: its chats wait for it, as a new workspace's brief does (KERNEL-77). */
-  private setUpRestored(ws: Workspace, room: Room, repo: RepoSettings) {
+  private setUpRestored(ws: Workspace, project: Project, repo: RepoSettings) {
     let tabs = this.chatTabs(ws.id).filter((c) => c.kind !== 'terminal')
     if (!tabs.length) {
-      const agent = this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)
+      const agent = this.agentsSync(ws.projectId).find((a) => a.id === ws.agentId)
       const pick = { ...(agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers), plan: false }
       tabs = [this.saveChat(ws.lead ? this.k.lead.leadTab(ws, NEW_TAB, pick) : this.newChat(ws.id, NEW_CHAT, pick))]
     }
     for (const c of tabs) this.sessions.hold(c.id)
-    void this.k.workspaces.setUpWorkspace(ws, room, repo, tabs[0], { checkpoint: false }).catch((e) => {
+    void this.k.workspaces.setUpWorkspace(ws, project, repo, tabs[0], { checkpoint: false }).catch((e) => {
       if (this.stopped) return
       console.warn(`[restore] setting up ${ws.name} failed`, e)
       if (this.store.workspace(ws.id)?.status === 'setup') this.updateWs(ws.id, { status: 'failed' })
@@ -360,8 +360,8 @@ export class Archive extends Feature {
 
 
   /**
-   * Drops the checkpoint refs of every workspace archived more than 30 days ago, in its room's repo, so `.git` stops growing
-   * (KERNEL-221). One workspace at a time, each git call under the usual exec timeout. A room whose folder is gone is
+   * Drops the checkpoint refs of every workspace archived more than 30 days ago, in its project's repo, so `.git` stops growing
+   * (KERNEL-221). One workspace at a time, each git call under the usual exec timeout. A project whose folder is gone is
    * skipped. The meta key `checkpointsDropped` maps each workspace done to the `archivedAt` it was done for, so a daily run
    * makes no git calls for them, and one restored and archived again counts from its new archive.
    */
@@ -384,16 +384,16 @@ export class Archive extends Feature {
     this.store.saveMeta('checkpointsDropped', done)
     const gone = new Map<string, boolean>()
     for (const { ws, at } of due) {
-      const room = this.store.room(ws.roomId)
-      if (!room) continue
-      if (!gone.has(room.path)) gone.set(room.path, await folderGone(room.path).catch(() => true))
+      const project = this.store.project(ws.projectId)
+      if (!project) continue
+      if (!gone.has(project.path)) gone.set(project.path, await folderGone(project.path).catch(() => true))
       // A quit closes the database while the run waits on the disk or git.
       if (this.stopped) return
-      if (gone.get(room.path)) continue
+      if (gone.get(project.path)) continue
       // Restored while the run waited: it keeps what it has.
       const cur = this.store.workspace(ws.id)
       if (cur?.status !== 'archived' || cur.archivedAt !== at) continue
-      try { await dropCheckpoints(room.path, ws.id) } catch (e) { console.warn(`[archive] could not drop the checkpoints of ${ws.name}`, e); continue }
+      try { await dropCheckpoints(project.path, ws.id) } catch (e) { console.warn(`[archive] could not drop the checkpoints of ${ws.name}`, e); continue }
       // The workspace is done again at the next start, with no refs left to find.
       if (this.stopped) return
       done[ws.id] = at

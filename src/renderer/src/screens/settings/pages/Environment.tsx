@@ -1,31 +1,31 @@
 import './agents.css'
 import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { KERNEL_VARS, SCRIPT_VARS, SETUP_VARS } from '@shared/kernelVars'
-import type { Room, RoomSettings } from '@shared/types'
+import type { Project, ProjectSettings } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { FileLabel } from '../../../components/FileIcon'
 import { actions, getState } from '../../../store'
 import { Button, ConfirmDialog, Modal, useBusy } from '../../../ui'
-import { appliesTo, DataTable, isOverride, NoRoom, Page, RoomPage, Section, useRoomPage, type TableRow } from '../kit'
+import { appliesTo, DataTable, isOverride, NoProject, Page, ProjectPage, Section, useProjectPage, type TableRow } from '../kit'
 import { RowMenu } from './RowMenu'
 import { envChanged, useEnv, type EnvList } from '../env'
-import { patchRoomSettings } from '../useSettings'
+import { patchProjectSettings } from '../useSettings'
 
-/** Settings > Environment, and a room's Environment page (AgentsPage.dc.html, KERNEL-680). One page serves both. */
-export function Environment({ roomId }: { roomId?: string }) {
-  const { room, rs } = useRoomPage(roomId)
-  const { env, error } = useEnv(roomId)
-  if (roomId && !room) return <NoRoom />
-  const add = (primary: boolean) => <Button variant={primary ? 'primary' : 'secondary'} icon="plus" onClick={() => actions.ui.openModal({ name: 'envVar', roomId })}>Add variable</Button>
+/** Settings > Environment, and a project's Environment page (AgentsPage.dc.html, KERNEL-680). One page serves both. */
+export function Environment({ projectId }: { projectId?: string }) {
+  const { project, rs } = useProjectPage(projectId)
+  const { env, error } = useEnv(projectId)
+  if (projectId && !project) return <NoProject />
+  const add = (primary: boolean) => <Button variant={primary ? 'primary' : 'secondary'} icon="plus" onClick={() => actions.ui.openModal({ name: 'envVar', projectId })}>Add variable</Button>
   const sections = (
     <>
-      <Variables roomId={roomId} room={room} env={env} error={error} action={room ? add(false) : undefined} />
-      {room && roomId && <EnvFiles roomId={roomId} rs={rs} env={env} />}
-      {!room && <KernelVars />}
+      <Variables projectId={projectId} project={project} env={env} error={error} action={project ? add(false) : undefined} />
+      {project && projectId && <EnvFiles projectId={projectId} rs={rs} env={env} />}
+      {!project && <KernelVars />}
     </>
   )
-  return room
-    ? <RoomPage room={room} rs={rs} title="Environment">{sections}</RoomPage>
+  return project
+    ? <ProjectPage project={project} rs={rs} title="Environment">{sections}</ProjectPage>
     : <Page title="Environment" action={add(true)}>{sections}</Page>
 }
 
@@ -33,7 +33,7 @@ export function Environment({ roomId }: { roomId?: string }) {
  * Your variables as a table: the name, the value as a fixed run of dots, Show on hover and a menu with Edit and Remove. Show asks main for
  * the value, which lives only in this component's state while it is on screen. It hides again on a second press, or when focus leaves the row.
  */
-function Variables({ roomId, room, env, error, action }: { roomId?: string; room?: Room; env: EnvList | null; error: string | null; action?: ReactNode }) {
+function Variables({ projectId, project, env, error, action }: { projectId?: string; project?: Project; env: EnvList | null; error: string | null; action?: ReactNode }) {
   const [removing, setRemoving] = useState<string | null>(null)
   const [revealed, setRevealed] = useState<Record<string, string>>({})
   const [busy, run] = useBusy<string>()
@@ -45,7 +45,7 @@ function Variables({ roomId, room, env, error, action }: { roomId?: string; room
   const show = (name: string) => run(`show:${name}`, async () => {
     const mine = (request.current[name] = (request.current[name] ?? 0) + 1)
     try {
-      const v = await call('env.reveal', { roomId, name })
+      const v = await call('env.reveal', { projectId, name })
       if (mine === request.current[name]) setRevealed((r) => ({ ...r, [name]: v }))
     } catch (e) {
       if (mine === request.current[name]) actions.ui.toast({ title: `Could not show ${name}`, sub: cleanError(e) })
@@ -53,7 +53,7 @@ function Variables({ roomId, room, env, error, action }: { roomId?: string; room
   })
   const remove = (name: string) => run('remove', async () => {
     try {
-      await call('env.set', { roomId, name, value: null })
+      await call('env.set', { projectId, name, value: null })
       await envChanged()
     } catch (e) {
       actions.ui.toast({ title: `Could not remove ${name}`, sub: cleanError(e) })
@@ -72,7 +72,7 @@ function Variables({ roomId, room, env, error, action }: { roomId?: string; room
       actions: <>
         <Button variant="ghost" aria-label={busy === `show:${name}` ? `Showing ${name}` : `${shown ? 'Hide' : 'Show'} ${name}`} busy={busy === `show:${name}`} busyLabel="Showing" onClick={() => (shown ? hide(name) : void show(name))}>{shown ? 'Hide' : 'Show'}</Button>
         <RowMenu label={`More for ${name}`} items={[
-          { id: 'edit', label: 'Edit', icon: 'pen', onSelect: () => actions.ui.openModal({ name: 'envVar', roomId, editName: name }) },
+          { id: 'edit', label: 'Edit', icon: 'pen', onSelect: () => actions.ui.openModal({ name: 'envVar', projectId, editName: name }) },
           { id: 'remove', label: 'Remove', icon: 'trash', danger: true, onSelect: () => setRemoving(name) }
         ]} />
       </>
@@ -84,7 +84,7 @@ function Variables({ roomId, room, env, error, action }: { roomId?: string; room
       {removing && (
         <ConfirmDialog
           title={`Remove ${removing}?`}
-          body={`${room ? `Chats and scripts in ${room.name}` : 'Chats and scripts in every room'} stop getting ${removing} once they start afterwards. The ones already running keep it.`}
+          body={`${project ? `Chats and scripts in ${project.name}` : 'Chats and scripts in every project'} stop getting ${removing} once they start afterwards. The ones already running keep it.`}
           confirmLabel="Remove" danger busy={busy === 'remove'} busyPattern="scatter" busyLabel="Removing"
           onConfirm={() => void remove(removing)} onCancel={() => setRemoving(null)}
         />
@@ -94,18 +94,18 @@ function Variables({ roomId, room, env, error, action }: { roomId?: string; room
 }
 
 /**
- * The room's env files. The list is saved whole in the personal file, so Remove works on files settings.toml set too. Each save is
+ * The project's env files. The list is saved whole in the personal file, so Remove works on files settings.toml set too. Each save is
  * built from the saved list as it is now, and the page waits for the list to reload before another can start, so two quick Removes
  * can't bring a file back.
  */
-function EnvFiles({ roomId, rs, env }: { roomId: string; rs: RoomSettings | null; env: EnvList | null }) {
+function EnvFiles({ projectId, rs, env }: { projectId: string; rs: ProjectSettings | null; env: EnvList | null }) {
   const [adding, setAdding] = useState(false)
   const [busy, run] = useBusy()
   const files = env?.files ?? []
   const path = 'env.files'
-  const latest = () => getState().roomSettings[roomId]?.env?.files ?? files.map((f) => f.path)
+  const latest = () => getState().projectSettings[projectId]?.env?.files ?? files.map((f) => f.path)
   const save = (key: string, next: () => string[] | null) => run(key, async () => {
-    await patchRoomSettings(roomId, { env: { files: next() } })
+    await patchProjectSettings(projectId, { env: { files: next() } })
     await envChanged()
   })
   // The list is one value, so its source shows once, under the table. Reset only shows for a list that overrides settings.toml:
@@ -115,7 +115,7 @@ function EnvFiles({ roomId, rs, env }: { roomId: string; rs: RoomSettings | null
     cells: [<span className="mono"><FileLabel path={f.path} /></span>, f.missing ? 'Missing' : ''],
     actions: <Button variant="ghost" aria-label={`Remove ${f.path}`} busy={busy === `remove:${f.path}`} busyPattern="scatter" busyLabel="Removing" disabled={busy !== null} onClick={() => void save(`remove:${f.path}`, () => latest().filter((p) => p !== f.path))}>Remove</Button>
   }))
-  const source = isOverride(rs, path) ? 'Changed for this room' : undefined
+  const source = isOverride(rs, path) ? 'Changed for this project' : undefined
   return (
     <>
       <Section

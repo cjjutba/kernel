@@ -88,8 +88,8 @@ describe('Claude chats keep the account that holds their cache (KERNEL-843)', ()
     const work = (await h['accounts.addKey']({ provider: 'claude', label: 'Work', key: KEYS.work })).id
     const side = (await h['accounts.addKey']({ provider: 'claude', label: 'Side', key: KEYS.side })).id
     const repo = await tempRepo()
-    const room = await k.addRoom(repo)
-    const ws: Workspace = { id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const project = await k.addProject(repo)
+    const ws: Workspace = { id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     k.store.saveWorkspace(ws)
     for (const id of ids) k.store.saveChat({ id, workspaceId: 'ws', title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 } satisfies Chat)
     // The process each chat started last.

@@ -68,8 +68,8 @@ async function setup(provider: 'claude' | 'codex' = 'codex') {
   await k.providers.setPath('claude', { path: await fakeClaudeCli() })
   k.sessionInfo = (async () => undefined) as typeof k.sessionInfo
   const repo = await tempRepo()
-  const room = await k.addRoom(repo)
-  const ws: Workspace = { id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+  const project = await k.addProject(repo)
+  const ws: Workspace = { id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   k.store.saveWorkspace(ws)
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'New chat', autoTitle: { turns: 0 }, kind: 'chat', provider, model: provider === 'codex' ? 'gpt-6-astra' : 'claude-opus-4-8', effort: 'low', plan: false, sessionId: 'thread-9', createdAt: 1 }
   k.store.saveChat(chat)

@@ -11,24 +11,24 @@ Automatic review is off by default. Turn on **Review every pull request automati
 
 ## Who reviews
 
-The room's reviewer: the agent picked in the room's Agents page, an agent whose role says review, or Kernel's own code review when the repo has no reviewer agent. Theo is the starter reviewer you can add to any room.
+The project's reviewer: the agent picked in the project's Agents page, an agent whose role says review, or Kernel's own code review when the repo has no reviewer agent. Theo is the starter reviewer you can add to any project.
 
 ## Kinds of review
 
 | Review | Runs on |
 | --- | --- |
 | Code | Every pull request |
-| Security | The files a room chooses |
-| UX | The files a room chooses |
+| Security | The files a project chooses |
+| UX | The files a project chooses |
 
-The whole team chooses which reviews run, which agent runs them, and how many review rounds go by before a pull request comes to you, in the room's Pull requests page. Those choices live in the repo's settings, so everyone on the repo gets them.
+The whole team chooses which reviews run, which agent runs them, and how many review rounds go by before a pull request comes to you, in the project's Pull requests page. Those choices live in the repo's settings, so everyone on the repo gets them.
 
 ## Blockers
 
 - Blockers a reviewer found on a pull request's latest commit hold the merge.
 - A pull request with blockers doesn't count as ready to merge. **Merge anyway** merges it on purpose.
 - After a fix, Kernel reviews again only what found blockers or what the fix touched.
-- A pull request still blocked after the room's review rounds comes to you, and the Team update says so.
+- A pull request still blocked after the project's review rounds comes to you, and the Team update says so.
 - Reviews block only on real problems, and on the rules in the repo's own `CLAUDE.md` or `AGENTS.md`.
 
 ## Saving usage

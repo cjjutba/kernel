@@ -49,7 +49,7 @@ export class InputQueue<T> implements AsyncIterable<T> {
 export interface ClaudeStart {
   /** In-process MCP servers this agent may use (Kernel's own tools). */
   mcpServers: Options['mcpServers']
-  /** The skills and MCP servers switched off for the room (KERNEL-226). */
+  /** The skills and MCP servers switched off for the project (KERNEL-226). */
   disabled?: { skills: string[]; mcp: string[] }
   /** The agent's prompt with Kernel's rules, appended to Claude Code's own. */
   prompt: string
@@ -59,13 +59,13 @@ export interface ClaudeStart {
   credential?: Record<string, string>
   /** Where the chat compacts, from its role in Settings, Models (feat-compact-window-per-role-with-plan). Without it the variable stays as the Mac has it. */
   compact?: CompactWindow
-  /** The room's checkout, which a Lead worktree takes its `.claude` settings from. */
+  /** The project's checkout, which a Lead worktree takes its `.claude` settings from. */
   root?: string
-  /** The room's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
+  /** The project's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
   aliases?: Record<string, string>
-  /** The room's `[agents]` table for this agent: `unlisted_tools`, and the MCP servers `allow` adds to its tools line (KERNEL-537). */
+  /** The project's `[agents]` table for this agent: `unlisted_tools`, and the MCP servers `allow` adds to its tools line (KERNEL-537). */
   access?: { unlisted: UnlistedTools; allow: string[] }
-  /** The room's reference folders that are there now: Claude may read them, and Kernel denies edits under them (KERNEL-748). */
+  /** The project's reference folders that are there now: Claude may read them, and Kernel denies edits under them (KERNEL-748). */
   references?: string[]
   /** The mode the session starts in (`effectiveMode`). */
   mode: RunMode
@@ -108,14 +108,14 @@ export class ClaudeRunner implements Runner {
    * step in Bypass permissions whatever mode Kernel last asked for, until the process ends.
    */
   private readonly bypassable: boolean
-  /** The room's reference folders as the session started with them (KERNEL-748). */
+  /** The project's reference folders as the session started with them (KERNEL-748). */
   private readonly references: string[]
 
   constructor(private readonly host: RunnerHost, o: ClaudeStart) {
     const chat = host.chat()
     const ws = host.workspace
     const agent = host.agent
-    const ctx = { roomId: ws.roomId, workspaceId: ws.id, agentId: agent?.id }
+    const ctx = { projectId: ws.projectId, workspaceId: ws.id, agentId: agent?.id }
     // Known before the process starts, so the hook server never mistakes this session's first hooks for an outside one.
     const sessionId = chat.sessionId ?? randomUUID()
     host.managed(sessionId)
@@ -129,7 +129,7 @@ export class ClaudeRunner implements Runner {
     const options: Options = {
       cwd: ws.path,
       ...(o.references?.length ? { additionalDirectories: o.references } : {}),
-      // The Lead's worktree takes `.claude` settings, agents, hooks and `.mcp.json` from the room's checkout, as it did when
+      // The Lead's worktree takes `.claude` settings, agents, hooks and `.mcp.json` from the project's checkout, as it did when
       // it worked there, and loads each once (KERNEL-348, KERNEL-355).
       ...(ws.lead && ws.mode === 'worktree' && o.root ? { projectConfigRoot: o.root } : {}),
       model: chat.model,
@@ -148,7 +148,7 @@ export class ClaudeRunner implements Runner {
         ctx, commands: this.commands, cwds: this.cwds, tools,
         verdict: (command, cwd) => hookVerdict({ tool: 'Bash', command, cwd }, this.rules()),
         writeVerdict: (tool, input, cwd) => referenceWrite({ tool, input, cwd }, this.references),
-        roomAllows: (tool, input) => hookVerdict({ tool, input }, this.rules())?.behavior === 'allow',
+        projectAllows: (tool, input) => hookVerdict({ tool, input }, this.rules())?.behavior === 'allow',
         askUser: (command, reason, signal) => this.askFromHook(command, reason, signal),
         askTool: (tool, input, reason, signal) => this.askToolFromHook(tool, input, reason, signal),
         unlisted: o.access?.unlisted ?? 'ask',
@@ -255,7 +255,7 @@ export class ClaudeRunner implements Runner {
 
   /**
    * Always ask, from the Bash guard: the user answers inside the hook, in every mode it applies in, so no classifier and no
-   * rule of Claude Code's answers first (KERNEL-433, KERNEL-447). Always allow on the card saves the room rule, as canUseTool's does.
+   * rule of Claude Code's answers first (KERNEL-433, KERNEL-447). Always allow on the card saves the project rule, as canUseTool's does.
    */
   private askFromHook(command: string, reason: string, signal: AbortSignal): Promise<SyncHookJSONOutput> {
     const host = this.host
@@ -271,8 +271,8 @@ export class ClaudeRunner implements Runner {
   }
 
   /**
-   * An MCP tool from a server the agent file doesn't list, in a room whose `unlisted_tools` is `ask` (KERNEL-537). The user
-   * answers inside the hook as for Always ask, and Always allow on the card saves the room's tool rule.
+   * An MCP tool from a server the agent file doesn't list, in a project whose `unlisted_tools` is `ask` (KERNEL-537). The user
+   * answers inside the hook as for Always ask, and Always allow on the card saves the project's tool rule.
    */
   private askToolFromHook(tool: string, input: unknown, reason: string, signal: AbortSignal): Promise<SyncHookJSONOutput> {
     const host = this.host
@@ -313,7 +313,7 @@ export class ClaudeRunner implements Runner {
           this.report(msg.permissionMode)
           this.resume = undefined
           // Claude.ai connectors only show up here, so a tools line naming a server the session lacks is caught at init. Each
-          // init's statuses keep the room's fresh (KERNEL-464).
+          // init's statuses keep the project's fresh (KERNEL-464).
           host.sessionStarted(msg.session_id, { billedBy: msg.apiKeySource, mcpServers: mcpReports(msg.mcp_servers ?? []) })
         }
         if (msg.subtype === 'hook_response' && msg.exit_code === 2 && BLOCKING_HOOKS.has(msg.hook_event)) host.blocked(msg.hook_event, msg.stderr || msg.output || msg.stdout)
@@ -436,7 +436,7 @@ export class ClaudeRunner implements Runner {
         const info = msg.rate_limit_info
         if (info.status === 'rejected') host.limited()
         host.mergeLimits(limitsFromEvent(info))
-        if (info.status === 'rejected' && info.rateLimitType) bus.activity({ kind: 'limit', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `hit the ${info.rateLimitType.replace(/_/g, ' ')} limit`, data: { resetsAt: info.resetsAt } })
+        if (info.status === 'rejected' && info.rateLimitType) bus.activity({ kind: 'limit', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, text: `hit the ${info.rateLimitType.replace(/_/g, ' ')} limit`, data: { resetsAt: info.resetsAt } })
         return
       }
       default: return
@@ -466,7 +466,7 @@ export class ClaudeRunner implements Runner {
         ? await host.requestPlan(String((input as any).plan ?? ''), { signal, toolName, input: shown })
         : await host.ask({ kind: isQuestion ? 'question' : 'tool', toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : d.title, detail: d.detail, options, questions, ...(reason ? { reason } : {}) }, { signal })
       if (!result) return { behavior: 'deny', message: NO_DECISION }
-      // A rule Kernel saved on the room outlives the worktree. Claude Code's suggestions only go back for a tool it can't save.
+      // A rule Kernel saved on the project outlives the worktree. Claude Code's suggestions only go back for a tool it can't save.
       const saved = saveAlwaysAllow(host, step, result, { suggestions, suppressAlwaysAllowRule })
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command && !saved ? suggestions : undefined }
       // Answers go back in the tool's own `answers` field, one per question. A text-only answer fills a lone question.
@@ -533,7 +533,7 @@ export function mcpReports(list: { name: string; status: string; source?: string
 /**
  * Claude Code's MCP servers for a folder, each with its status, as a session there would load them (KERNEL-464). Claude
  * Code starts with the user's settings and no prompt, so it sends no message, and with every hook off, so nothing the
- * user's settings run at SessionStart fires and Kernel's own hooks never see an outside session. The room's switched-off
+ * user's settings run at SessionStart fires and Kernel's own hooks never see an outside session. The project's switched-off
  * servers (`denied`) never start. Servers connect on their own time, and claude.ai's connectors join a few seconds in, so
  * the list counts once two reads in a row agree and none is pending, or after `ms` as it stands.
  */
@@ -682,19 +682,19 @@ function toolDetail(name: string, input: any): string {
 }
 
 /**
- * In-process hooks. Every event feeds the room log the same way the installed hooks do for outside sessions.
+ * In-process hooks. Every event feeds the project log the same way the installed hooks do for outside sessions.
  * A Bash guard applies Kernel's Never allow and Always ask lists on top of the user's own Claude Code settings.
  */
 function kernelHooks(o: {
-  ctx: { roomId: string; workspaceId: string; agentId?: string }
+  ctx: { projectId: string; workspaceId: string; agentId?: string }
   commands: Map<string, string>
   cwds: Map<string, string>
   /** Kernel's answer about a command in the hook (`hookVerdict`), run in `cwd`. */
   verdict: (command: string, cwd?: string) => Verdict
   /** Kernel's answer about a file edit in the hook: a deny under a reference folder (`referenceWrite`, KERNEL-748). */
   writeVerdict?: (tool: string, input: unknown, cwd?: string) => Verdict
-  /** A room's tool rule lets an MCP or web tool call through from the hook (`hookVerdict`, KERNEL-454). */
-  roomAllows: (tool: string, input: unknown) => boolean
+  /** A project's tool rule lets an MCP or web tool call through from the hook (`hookVerdict`, KERNEL-454). */
+  projectAllows: (tool: string, input: unknown) => boolean
   /** Asks the user about an Always ask command and waits, for the hook's answer (`awaitDecision`). */
   askUser: (command: string, reason: string, signal: AbortSignal) => Promise<SyncHookJSONOutput>
   held: () => Promise<void> | undefined
@@ -706,7 +706,7 @@ function kernelHooks(o: {
   tools?: ToolPolicy
   /** Asks the user about an MCP tool the file doesn't list, for `unlisted_tools = "ask"` (KERNEL-537). */
   askTool?: (tool: string, input: unknown, reason: string, signal: AbortSignal) => Promise<SyncHookJSONOutput>
-  /** The room's `[agents] unlisted_tools`. `ask` when unset. */
+  /** The project's `[agents] unlisted_tools`. `ask` when unset. */
   unlisted?: UnlistedTools
   /**
    * Every mode Claude Code might run the step in is Bypass permissions (`rules()`), so an MCP tool `unlisted = "ask"` would ask
@@ -716,7 +716,7 @@ function kernelHooks(o: {
   /** Settings, Hooks, read each time a gate runs (KERNEL-537). */
   gates?: () => AppSettings['hooks'] | undefined
 }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, cwds, verdict, writeVerdict, roomAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
+  const { ctx, commands, cwds, verdict, writeVerdict, projectAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -733,17 +733,17 @@ function kernelHooks(o: {
     if (tools && !tools.allows('Bash', tool_input)) return {}
     // Always ask waits for the user here, in every mode but Bypass permissions, where the guard has no opinion on it.
     if (v?.behavior === 'ask') return askUser(command, v.reason, signal)
-    // A room's Always allow rule answers here, so Auto mode's classifier can't refuse it (KERNEL-454).
-    if (v?.behavior === 'allow') return ROOM_ALLOWS
+    // A project's Always allow rule answers here, so Auto mode's classifier can't refuse it (KERNEL-454).
+    if (v?.behavior === 'allow') return PROJECT_ALLOWS
     return {}
   }
-  // The same for an MCP or web tool the room allows. Network off and the tools line still deny it in their own hooks.
-  const roomTool: HookCallback = async (input) => {
+  // The same for an MCP or web tool the project allows. Network off and the tools line still deny it in their own hooks.
+  const projectTool: HookCallback = async (input) => {
     const { tool_name: tool, tool_input } = input as PreToolUseHookInput
     if (tools && !tools.allows(tool, tool_input)) return {}
-    return roomAllows(tool, tool_input) ? ROOM_ALLOWS : {}
+    return projectAllows(tool, tool_input) ? PROJECT_ALLOWS : {}
   }
-  // A paused room's agents wait here, so they stop at the next tool call and not in the middle of one.
+  // A paused project's agents wait here, so they stop at the next tool call and not in the middle of one.
   const hold: HookCallback = async (_input, _id, { signal }) => {
     const open = held()
     // A Stop ends the wait too, so no promise is left pending. A Resume takes the abort listener off again.
@@ -759,7 +759,7 @@ function kernelHooks(o: {
   const events: HookEvent[] = ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'TaskCreated', 'TaskCompleted', 'TeammateIdle']
   const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
   const web: HookCallback = async () => (networkAllowed() ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: NETWORK_OFF } })
-  hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'WebFetch|WebSearch', hooks: [web] }, { matcher: ROOM_TOOLS, hooks: [roomTool] })
+  hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'WebFetch|WebSearch', hooks: [web] }, { matcher: PROJECT_TOOLS, hooks: [projectTool] })
   // An edit under a reference folder is denied here, so Accept edits and Bypass permissions, which never ask, still refuse it (KERNEL-748).
   if (writeVerdict) {
     const write: HookCallback = async (input) => {
@@ -774,12 +774,12 @@ function kernelHooks(o: {
     const gate: HookCallback = async (input, _id, { signal }) => {
       const { tool_name: tool, tool_input } = input as PreToolUseHookInput
       if (tools.allows(tool, tool_input)) return {}
-      // An MCP server the file doesn't list, and disallowedTools doesn't take away: a room rule lets it through, and with
+      // An MCP server the file doesn't list, and disallowedTools doesn't take away: a project rule lets it through, and with
       // `unlisted_tools = "ask"` the user decides, or Bypass permissions does as it would with no tools line. `hide` refuses
       // it as before (KERNEL-537, bypass-allows-unlisted-mcp).
       if (tool.startsWith('mcp__') && !tools.disallows(tool)) {
-        if (roomAllows(tool, tool_input)) return ROOM_ALLOWS
-        if (unlisted === 'ask' && bypassing()) return ROOM_ALLOWS
+        if (projectAllows(tool, tool_input)) return PROJECT_ALLOWS
+        if (unlisted === 'ask' && bypassing()) return PROJECT_ALLOWS
         if (unlisted === 'ask' && askTool) return askTool(tool, tool_input, `Your agent file doesn't list ${tool.split('__')[1]}.`, signal)
       }
       // Hand off refuses an edit whatever the file says, and says so (KERNEL-770).
@@ -867,11 +867,11 @@ export function teamGates(gates: () => AppSettings['hooks'] | undefined): { onBa
   }
 }
 
-/** What a PreToolUse hook answers for a step a room's Always allow rule covers (KERNEL-454), or an unlisted MCP tool in Bypass permissions. */
-const ROOM_ALLOWS: SyncHookJSONOutput = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
+/** What a PreToolUse hook answers for a step a project's Always allow rule covers (KERNEL-454), or an unlisted MCP tool in Bypass permissions. */
+const PROJECT_ALLOWS: SyncHookJSONOutput = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
 
-/** The tools a room's tool rule can cover, as a hook matcher: every MCP tool, WebFetch and WebSearch. */
-export const ROOM_TOOLS = 'mcp__.*|WebFetch|WebSearch'
+/** The tools a project's tool rule can cover, as a hook matcher: every MCP tool, WebFetch and WebSearch. */
+export const PROJECT_TOOLS = 'mcp__.*|WebFetch|WebSearch'
 
 /** A Lead's hand-off hook: the Stop reminder. Returns the text to send, or nothing. */
 interface LeadHandoff { atStop: () => string | undefined }
@@ -882,7 +882,7 @@ interface LeadHandoff { atStop: () => string | undefined }
  */
 export const SESSION_GONE = 'No conversation found with session ID: '
 
-/** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
+/** How long a paused project's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
 export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600
 
 /** How long a hook that asks the user waits: a minute short of its matcher's timeout, so Kernel denies the call before the CLI stops waiting and lets it go. In milliseconds. */
@@ -964,7 +964,7 @@ export const AGENT_TEAMS = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'
 export const ARTIFACT = 'CLAUDE_CODE_ARTIFACT'
 
 /**
- * What the room switched off, as the session's flag settings: each skill hidden from the model and the / menu, each MCP
+ * What the project switched off, as the session's flag settings: each skill hidden from the model and the / menu, each MCP
  * server never started. Kernel's own servers (`own`) stay whatever their name. Nothing switched off adds nothing (KERNEL-226).
  */
 export function switchedOff(off: { skills: string[]; mcp: string[] } | undefined, own: string[] = []): Options['settings'] | undefined {

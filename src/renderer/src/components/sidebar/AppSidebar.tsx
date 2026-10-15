@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
-import type { Chat, Room, Thread, Workspace } from '@shared/types'
+import type { Chat, Project, Thread, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { Icon, type IconName } from '../../icons'
 import { IconButton, Spinner, useBusy } from '../../ui'
@@ -10,20 +10,20 @@ import { chatWorkspaces, isLeadWorkspace, leadOf, openNewChat, useLeadWaiting } 
 import { archiveChatFromSidebar, archivingChat } from '../../screens/workspace/archiveChat'
 import { reducedMotion, useArriving, useStage } from '../../screens/workspace/archiveMotion'
 import { currentThread } from '../../nav'
-import { RoomIcon } from '../RoomIcon'
-import { roomInView } from '../../screens/search/model'
+import { ProjectIcon } from '../ProjectIcon'
+import { projectInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
 import { HistoryButtons } from '../PanelToggles'
 import { AccountButton } from './AccountMenu'
 import { isPlanApproval } from '../../screens/workspace/cards/steps'
 import { chatTrusts, chatWaits } from './chatWaits'
 import { ChatCard, LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
-import { RoomMenu } from './RoomMenu'
-import { RoomsMenu } from './RoomsMenu'
+import { ProjectMenu } from './ProjectMenu'
+import { ProjectsMenu } from './ProjectsMenu'
 import { liveWorkspaces, mergeChatList, openRow, rowHolder, sidebarRows, slotKey, slotsFor, workspaceSlotsFor, type Slot } from './slots'
 import { useLocalMerge } from '../../screens/workspace/pr/useLocalMerge'
 import { useShown, type Fate, type Shown } from './leaving'
-import { chatUnread, roomUnread, workspaceRowUnread } from './unread'
+import { chatUnread, projectUnread, workspaceRowUnread } from './unread'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import { workspaceRowLabel } from './workspaceRowLabel'
 import { useWorkTab } from '../../screens/work/tab'
@@ -66,7 +66,7 @@ function useModHeld(mod: 'Meta' | 'Control'): boolean {
 /** A numbered row's ⌘N (a chat's) or ⌃N (a workspace's), shown at its right end while the key is held. The row's aria-keyshortcuts says the same to a screen reader. */
 const KeyHint = ({ n, ctrl }: { n: number; ctrl?: boolean }) => <span className="mono nav-key" aria-hidden="true">{ctrl ? '⌃' : '⌘'}{n}</span>
 
-/** A row's place in the room's ⌘1 to ⌘9 order, and whether ⌘ is held so it should show. Rows of other rooms get none. */
+/** A row's place in the project's ⌘1 to ⌘9 order, and whether ⌘ is held so it should show. Rows of other projects get none. */
 type RowKey = { n: number; hint: boolean; /** The row's number is a ⌃ one: a workspace of the current chat. */ ctrl?: boolean }
 
 /** The icon a row has at rest, which the loader takes the place of while it runs (`busy` on `Glyph`). `rest` is the glyph without the activity, `fallback` stands in when the rest state is a spinner too. */
@@ -98,14 +98,14 @@ function Glyph({ g, busy }: { g: WorkspaceGlyph & { icon: IconName }; busy?: boo
 }
 
 /**
- * The room's Lead, shown only while it has no open chat to list. It opens New chat, where the first message starts a chat in its
+ * The project's Lead, shown only while it has no open chat to list. It opens New chat, where the first message starts a chat in its
  * own workspace (KERNEL-405). Its icon shows what waits on you, and a working Lead swaps it for the loader.
  */
-function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
-  const lead = useStore((s) => leadOf(s.agents, roomId))
-  const status = useStore((s) => (lead ? s.status[roomId]?.[lead.id] : undefined) ?? 'idle')
-  const current = useStore((s) => { const r = s.ui.route; return (r.name === 'leadNew' && r.roomId === roomId) || (r.name === 'workspace' && s.workspaces.some((w) => w.id === r.workspaceId && isLeadWorkspace(w, roomId, lead?.id))) })
-  const waiting = useLeadWaiting(roomId)
+function LeadItem({ projectId, slot }: { projectId: string; slot?: RowKey }) {
+  const lead = useStore((s) => leadOf(s.agents, projectId))
+  const status = useStore((s) => (lead ? s.status[projectId]?.[lead.id] : undefined) ?? 'idle')
+  const current = useStore((s) => { const r = s.ui.route; return (r.name === 'leadNew' && r.projectId === projectId) || (r.name === 'workspace' && s.workspaces.some((w) => w.id === r.workspaceId && isLeadWorkspace(w, projectId, lead?.id))) })
+  const waiting = useLeadWaiting(projectId)
   const arrive = useArriving(current)
   const card = useHoverCard<HTMLButtonElement>()
   if (!lead) return null
@@ -113,12 +113,12 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
   const shown = restIcon(g, leadGlyph('idle', waiting), 'chat')
   return (
     <>
-      <button className="nav-item nav-sub" {...card.bind} aria-current={current ? 'page' : undefined} data-arrive={arrive ? '' : undefined} aria-label={`New chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'lead' })}>
+      <button className="nav-item nav-sub" {...card.bind} aria-current={current ? 'page' : undefined} data-arrive={arrive ? '' : undefined} aria-label={`New chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(projectId, { kind: 'lead' })}>
         <Glyph g={shown} busy={g.icon === 'spin'} />
         <span className="grow ellipsis">New chat</span>
         {slot?.hint ? <KeyHint n={slot.n} /> : null}
       </button>
-      {card.at && <LeadCard roomId={roomId} at={card.at} id={card.id} hold={card.hold} />}
+      {card.at && <LeadCard projectId={projectId} at={card.at} id={card.id} hold={card.hold} />}
     </>
   )
 }
@@ -127,11 +127,11 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
  * One of the Lead's open chats, however many tabs it holds (KERNEL-338). Its icon is the one a tab would show, for the whole chat: something that
  * needs you in any tab wins, then its own workspace's setup, trust, failed setup or missing folder (KERNEL-405), then a running turn in any tab, else
  * the chat icon. They read the same approvals and `running` flags as the tabs. It opens the chat's own workspace on the tab last shown in it. A chat
- * that handed off workspaces folds like a room: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the icon also shows what a
+ * that handed off workspaces folds like a project: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the icon also shows what a
  * hidden workspace needs from you, so nothing waits out of sight. Hover shows Archive, like a workspace row's (KERNEL-405). A running turn swaps
  * the icon for the loader, unless something waits on you, where the wait keeps the icon (KERNEL-601).
  */
-function ChatItemRow({ roomId, thread, ws, tabs, owned, folded, slot, leaving, onSettled }: { roomId: string; thread: Thread; ws?: Workspace; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey; leaving?: Gone; onSettled?: () => void }) {
+function ChatItemRow({ projectId, thread, ws, tabs, owned, folded, slot, leaving, onSettled }: { projectId: string; thread: Thread; ws?: Workspace; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey; leaving?: Gone; onSettled?: () => void }) {
   const approvals = useStore((s) => s.approvals)
   // A folded chat counts its workspaces: an unfolded one shows its own icon in its own row.
   const waits = useMemo(() => chatWaits({ tabs, owned: folded ? owned : [], approvals }), [approvals, tabs, folded, owned])
@@ -161,7 +161,7 @@ function ChatItemRow({ roomId, thread, ws, tabs, owned, folded, slot, leaving, o
     <div {...card.bind} className={`hv chat-row${archiving ? ' busy' : ''}${leaving && !leaving.held ? ' row-fold' : ''}`} data-key={slot?.hint || undefined} inert={leaving ? true : undefined} onAnimationEnd={(e) => { if (e.target === e.currentTarget && e.animationName === 'archive-fold') onSettled?.() }}>
       <button
         className="nav-item nav-sub" aria-current={current && !leaving ? 'page' : undefined} data-was-current={current && leaving ? '' : undefined} data-arrive={arrive ? '' : undefined} aria-label={unread ? `${name}, Unread` : name} data-unread={unread ? '' : undefined}
-        aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'chat', thread, tabs, owned, folded })}
+        aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(projectId, { kind: 'chat', thread, tabs, owned, folded })}
       >
         <span className="nav-glyph" data-tone={shown.tone} data-owned={owned.length ? '' : undefined} data-plan={planning ? '' : undefined} aria-hidden="true">{busy ? <Spinner label={null} /> : <Icon name={shown.icon} />}</span>
         <span className="grow ellipsis">{thread.title}</span>
@@ -178,7 +178,7 @@ function ChatItemRow({ roomId, thread, ws, tabs, owned, folded, slot, leaving, o
           <Icon name="right" size={14} />
         </button>
       )}
-      {card.at && <ChatCard roomId={roomId} thread={thread} tabs={tabs} owned={owned} at={card.at} id={card.id} hold={card.hold} onArchive={ws ? () => { card.close(); archive() } : undefined} />}
+      {card.at && <ChatCard projectId={projectId} thread={thread} tabs={tabs} owned={owned} at={card.at} id={card.id} hold={card.hold} onArchive={ws ? () => { card.close(); archive() } : undefined} />}
     </div>
   )
 }
@@ -192,7 +192,7 @@ const sameGone = (a?: Gone, b?: Gone) => a === b || (!!a && !!b && a.from === b.
  * event for one chat leaves the others alone. `onSettled` is left out: it only reports the row's own key back, which never changes for the same row.
  */
 const ChatItem = memo(ChatItemRow, (a, b) =>
-  a.roomId === b.roomId && a.thread === b.thread && a.ws === b.ws && a.folded === b.folded && sameList(a.tabs, b.tabs) && sameList(a.owned, b.owned) && sameSlot(a.slot, b.slot) && sameGone(a.leaving, b.leaving))
+  a.projectId === b.projectId && a.thread === b.thread && a.ws === b.ws && a.folded === b.folded && sameList(a.tabs, b.tabs) && sameList(a.owned, b.owned) && sameSlot(a.slot, b.slot) && sameGone(a.leaving, b.leaving))
 
 /**
  * The row's archive button archives in one click, like Conductor, when nothing would be lost. Uncommitted changes, commits
@@ -233,7 +233,7 @@ function WorkspaceItemRow({ ws, parent, slot, nested, leaving, onSettled }: { ws
     <div {...card.bind} className={`hv ws-row${archiving ? ' busy' : ''}${leaving && !leaving.held ? ' row-fold' : ''}`} data-key={slot?.hint || undefined} inert={leaving ? true : undefined} onAnimationEnd={(e) => { if (e.target === e.currentTarget && e.animationName === 'archive-fold') onSettled?.() }}>
       <NavItem
         sub nested={nested} leaving={leaving} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={shown} busy={g.icon === 'spin'} />} label={label} slot={slot} unread={unread ? (g.label ? `${label}, ${g.label}` : label) : undefined}
-        onOpen={() => openRow(ws.roomId, { kind: 'workspace', ws, nested: !!nested })}
+        onOpen={() => openRow(ws.projectId, { kind: 'workspace', ws, nested: !!nested })}
         right={<>
           {diff && ws.stat && <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>}
           {ws.prNumber ? <span className="mono muted ws-right ws-pr" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
@@ -273,7 +273,7 @@ function useChatLists(workspaceIds: string[]) {
 }
 
 /**
- * The rows of a room as the blocks they are drawn in (KERNEL-601): each open chat with the workspaces it started, the Lead's row alone, and the workspaces no open
+ * The rows of a project as the blocks they are drawn in (KERNEL-601): each open chat with the workspaces it started, the Lead's row alone, and the workspaces no open
  * chat owns together. A row folding away stays in its block until it settles.
  */
 function blocksOf(shown: Shown[]): Shown[][] {
@@ -288,20 +288,20 @@ function blocksOf(shown: Shown[]): Shown[][] {
 }
 
 /**
- * A room in the sidebar. Expanded, it lists the Lead's open chats with the workspaces each started under it (unless the chat is folded), then the workspaces
+ * A project in the sidebar. Expanded, it lists the Lead's open chats with the workspaces each started under it (unless the chat is folded), then the workspaces
  * no open chat owns (D-139). Pressing the row folds or unfolds it, as in Conductor, and hovering it
- * swaps the room's letter for a chevron and shows the menu button.
+ * swaps the project's letter for a chevron and shows the menu button.
  */
 const NO_KEYS: string[] = []
 
-function RoomItem({ room, current, expanded, numbered, hints, ctrlHints, onToggle }: { room: Room; current: boolean; expanded: boolean; numbered: boolean; hints: boolean; ctrlHints: boolean; onToggle: () => void }) {
-  // Only this room's slice of each: an event in another room, or for a chat that isn't a row here, leaves it alone.
-  const agents = useStore((s) => ({ [room.id]: s.agents[room.id] }))
-  const workspaces = useStore((s) => s.workspaces.filter((w) => w.roomId === room.id))
-  const chats = useStore((s) => { const out: State['chats'] = {}; for (const w of s.workspaces) if (w.roomId === room.id && s.chats[w.id]) out[w.id] = s.chats[w.id]; return out })
+function ProjectItem({ project, current, expanded, numbered, hints, ctrlHints, onToggle }: { project: Project; current: boolean; expanded: boolean; numbered: boolean; hints: boolean; ctrlHints: boolean; onToggle: () => void }) {
+  // Only this project's slice of each: an event in another project, or for a chat that isn't a row here, leaves it alone.
+  const agents = useStore((s) => ({ [project.id]: s.agents[project.id] }))
+  const workspaces = useStore((s) => s.workspaces.filter((w) => w.projectId === project.id))
+  const chats = useStore((s) => { const out: State['chats'] = {}; for (const w of s.workspaces) if (w.projectId === project.id && s.chats[w.id]) out[w.id] = s.chats[w.id]; return out })
   const threads = useStore((s) => s.threads)
   const foldedChats = useStore((s) => s.ui.foldedChats)
-  const rows = useMemo(() => sidebarRows(room, agents, workspaces, chats, threads, foldedChats), [room, agents, workspaces, chats, threads, foldedChats])
+  const rows = useMemo(() => sidebarRows(project, agents, workspaces, chats, threads, foldedChats), [project, agents, workspaces, chats, threads, foldedChats])
   // An archived row stays in the list while it folds away (DESIGN.md, Motion). The row on screen keeps its fill, which it had on the screen the archive left.
   const leftFrom = useStage()?.from
   const fate = (row: Slot): Fate => {
@@ -312,38 +312,38 @@ function RoomItem({ room, current, expanded, numbered, hints, ctrlHints, onToggl
     return waits && !(leftFrom?.name === 'workspace' && leftFrom.workspaceId === ws.id) ? 'hold' : 'fold'
   }
   const [shown, settle] = useShown(rows, expanded && !reducedMotion(), fate)
-  // Only the room in view is numbered. Its keys come from the same slots the shortcut reads.
-  const order = useMemo(() => (numbered ? slotsFor(room, agents, workspaces, chats, threads).map(slotKey) : NO_KEYS), [numbered, room, agents, workspaces, chats, threads])
+  // Only the project in view is numbered. Its keys come from the same slots the shortcut reads.
+  const order = useMemo(() => (numbered ? slotsFor(project, agents, workspaces, chats, threads).map(slotKey) : NO_KEYS), [numbered, project, agents, workspaces, chats, threads])
   // The workspaces of the chat in view get ⌃ numbers, from the same list ⌃1 to ⌃9 read (KERNEL-814).
   const route = useStore((s) => s.ui.route)
-  const mine = useMemo(() => workspaceSlotsFor(route, room, agents, workspaces, chats, threads).map((w) => w.id), [route, room, agents, workspaces, chats, threads])
+  const mine = useMemo(() => workspaceSlotsFor(route, project, agents, workspaces, chats, threads).map((w) => w.id), [route, project, agents, workspaces, chats, threads])
   const slotOf = (row: Slot): RowKey | undefined => {
     if (row.kind === 'workspace') { const j = mine.indexOf(row.ws.id); return j < 0 ? undefined : { n: j + 1, hint: ctrlHints, ctrl: true } }
     const i = order.indexOf(slotKey(row))
     return i < 0 ? undefined : { n: i + 1, hint: hints }
   }
-  const menuOpen = useStore((s) => s.ui.menu === `room:${room.id}`)
+  const menuOpen = useStore((s) => s.ui.menu === `project:${project.id}`)
   const anchor = useRef<HTMLDivElement>(null)
-  const homes = chatWorkspaces(workspaces, threads, room.id).map((w) => w.id)
-  // A collapsed room loads its chats too: ⌘1 to ⌘9 count the Lead's, and the room is bold when any of them is unread (KERNEL-508).
-  useChatLists([...homes, ...liveWorkspaces(workspaces, room.id).map((w) => w.id)])
-  const unread = roomUnread({ rows, chats, expanded })
+  const homes = chatWorkspaces(workspaces, threads, project.id).map((w) => w.id)
+  // A collapsed project loads its chats too: ⌘1 to ⌘9 count the Lead's, and the project is bold when any of them is unread (KERNEL-508).
+  useChatLists([...homes, ...liveWorkspaces(workspaces, project.id).map((w) => w.id)])
+  const unread = projectUnread({ rows, chats, expanded })
   return (
     <div className="nav-list">
-      <div ref={anchor} className="hv room-row" style={{ position: 'relative' }}>
-        <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} aria-label={unread ? `${room.name}, Unread` : undefined} data-unread={unread ? '' : undefined} onClick={onToggle}>
-          <span className="room-mark">
-            <RoomIcon room={room} className="room-letter" current={current} />
-            <span className="room-chev" data-open={expanded}><Icon name="right" size={14} /></span>
+      <div ref={anchor} className="hv project-row" style={{ position: 'relative' }}>
+        <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} aria-label={unread ? `${project.name}, Unread` : undefined} data-unread={unread ? '' : undefined} onClick={onToggle}>
+          <span className="project-mark">
+            <ProjectIcon project={project} className="project-letter" current={current} />
+            <span className="project-chev" data-open={expanded}><Icon name="right" size={14} /></span>
           </span>
-          <span className="grow ellipsis">{room.name}</span>
+          <span className="grow ellipsis">{project.name}</span>
         </button>
         {/* New chat stays visible, as in Conductor. The menu button shows on hover or keyboard focus, or while its menu is open. */}
         <div className="row" style={{ position: 'absolute', right: 4, top: 3, gap: 2 }}>
-          <button className="icon-btn more" style={{ width: 24, height: 24, opacity: menuOpen ? 1 : undefined }} aria-label={`${room.name} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu(`room:${room.id}`)}><Icon name="more" size={14} /></button>
-          <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New chat in ${room.name}`} onClick={() => openNewChat(room.id)}><Icon name="plus" size={14} /></button>
+          <button className="icon-btn more" style={{ width: 24, height: 24, opacity: menuOpen ? 1 : undefined }} aria-label={`${project.name} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu(`project:${project.id}`)}><Icon name="more" size={14} /></button>
+          <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New chat in ${project.name}`} onClick={() => openNewChat(project.id)}><Icon name="plus" size={14} /></button>
         </div>
-        {menuOpen && <RoomMenu room={room} anchorRef={anchor} />}
+        {menuOpen && <ProjectMenu project={project} anchorRef={anchor} />}
       </div>
       {expanded && blocksOf(shown).map((block) => (
         // A block that folds as one box, or the Lead's that opens, reports it here, since its rows carry no animation of their own then.
@@ -353,8 +353,8 @@ function RoomItem({ room, current, expanded, numbered, hints, ctrlHints, onToggl
         >
           {block.map(({ key, row, leaving, held }) => {
             const gone = leaving || held ? { from: leftFrom, held } : undefined
-            if (row.kind === 'lead') return <LeadItem key={key} roomId={room.id} slot={slotOf(row)} />
-            if (row.kind === 'chat') return <ChatItem key={key} roomId={room.id} thread={row.thread} ws={row.ws} tabs={row.tabs} owned={row.owned} folded={row.folded} slot={slotOf(row)} leaving={gone} onSettled={() => settle(key)} />
+            if (row.kind === 'lead') return <LeadItem key={key} projectId={project.id} slot={slotOf(row)} />
+            if (row.kind === 'chat') return <ChatItem key={key} projectId={project.id} thread={row.thread} ws={row.ws} tabs={row.tabs} owned={row.owned} folded={row.folded} slot={slotOf(row)} leaving={gone} onSettled={() => settle(key)} />
             return <WorkspaceItem key={key} ws={row.ws} parent={row.nested && block[0].row.kind === 'chat' ? block[0].row.thread.title : undefined} nested={row.nested} slot={slotOf(row)} leaving={gone} onSettled={() => settle(key)} />
           })}
         </div>
@@ -364,9 +364,10 @@ function RoomItem({ room, current, expanded, numbered, hints, ctrlHints, onToggl
 }
 
 /**
- * Rooms expanded (true) or collapsed (false) by hand, by id. A room left alone is expanded while it is the current one.
+ * Projects expanded (true) or collapsed (false) by hand, by id. A project left alone is expanded while it is the current one.
  * localStorage keeps them across launches, and may be missing or blocked.
  */
+// Rooms were renamed projects (KERNEL-880). The saved key keeps its old name, so each project stays expanded or collapsed.
 const EXPANDED = 'kernel.roomsExpanded'
 function readExpanded(): Record<string, boolean> {
   return readSavedJson(EXPANDED, (v) => (v && typeof v === 'object' ? v as Record<string, boolean> : {}))
@@ -379,30 +380,30 @@ function readExpanded(): Record<string, boolean> {
 let inboxFrom: unknown[] = []
 let inboxCountNow = 0
 function inboxCount(s: State): number {
-  const from = [s.notifications, s.approvals, s.rooms, s.overlaps, s.workspaces]
+  const from = [s.notifications, s.approvals, s.projects, s.overlaps, s.workspaces]
   if (from.every((x, i) => x === inboxFrom[i])) return inboxCountNow
   inboxFrom = from
-  inboxCountNow = inboxItems(s.notifications, s.approvals, s.rooms, allOverlaps(s.overlaps), s.workspaces).filter(needsYou).length
+  inboxCountNow = inboxItems(s.notifications, s.approvals, s.projects, allOverlaps(s.overlaps), s.workspaces).filter(needsYou).length
   return inboxCountNow
 }
 
 /**
- * What the sidebar frame holds in the app: the traffic-light strip with Hide sidebar, the account row, the nav items, the rooms and the footer.
+ * What the sidebar frame holds in the app: the traffic-light strip with Hide sidebar, the account row, the nav items, the projects and the footer.
  * The frame (Sidebar.tsx) owns the `<nav>`, the width and the resize edge, so these are its direct flex children.
  */
 export function AppSidebar() {
-  const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
+  const projects = useStore((s) => s.projects.filter((r) => !r.hidden && !r.archived))
   const inbox = useStore(inboxCount)
   const [workTab] = useWorkTab()
   const route = useStore((s) => s.ui.route)
-  const numberedRoom = useStore((s) => roomInView(s.ui.route, s.rooms, s.workspaces)?.id)
+  const numberedProject = useStore((s) => projectInView(s.ui.route, s.projects, s.workspaces)?.id)
   const hints = useModHeld('Meta')
   const ctrlHints = useModHeld('Control')
-  const roomsMenu = useStore((s) => s.ui.menu === 'rooms')
-  const roomsAnchor = useRef<HTMLDivElement>(null)
+  const projectsMenu = useStore((s) => s.ui.menu === 'projects')
+  const projectsAnchor = useRef<HTMLDivElement>(null)
   const [chosen, setChosen] = useState(readExpanded)
-  const openWorkspaceRoom = useStore((s) => (route.name === 'workspace' ? s.workspaces.find((w) => w.id === route.workspaceId)?.roomId : undefined))
-  const openRoom = 'roomId' in route ? route.roomId : route.name === 'workspace' ? openWorkspaceRoom : rooms[0]?.id
+  const openWorkspaceProject = useStore((s) => (route.name === 'workspace' ? s.workspaces.find((w) => w.id === route.workspaceId)?.projectId : undefined))
+  const openProject = 'projectId' in route ? route.projectId : route.name === 'workspace' ? openWorkspaceProject : projects[0]?.id
   const toggle = (id: string, expanded: boolean) => {
     const next = { ...chosen, [id]: !expanded }
     setChosen(next)
@@ -411,10 +412,10 @@ export function AppSidebar() {
 
   // Arriving on a workspace or chat from anywhere but the list (Open in the PRs list, the Inbox, search, the palette, a notification) brings its row into view.
   const list = useRef<HTMLDivElement>(null)
-  const here = route.name === 'workspace' ? `workspace:${route.workspaceId}` : route.name === 'leadNew' ? `lead:${route.roomId}` : ''
+  const here = route.name === 'workspace' ? `workspace:${route.workspaceId}` : route.name === 'leadNew' ? `lead:${route.projectId}` : ''
   // Set by a click in the list until that click is handled: its row is already there, so it never moves the list, even when the row is cut off by an edge.
   const clicking = useRef(false)
-  // Its room or chat was just opened, so the row isn't drawn yet. The next render that has it scrolls to it.
+  // Its project or chat was just opened, so the row isn't drawn yet. The next render that has it scrolls to it.
   const opening = useRef(false)
   const mounted = useRef(false)
   /** 'nearest' leaves a row that is fully in view where it is, and otherwise moves the list just far enough, never centering the row. */
@@ -426,12 +427,12 @@ export function AppSidebar() {
   useEffect(() => {
     opening.current = false
     if (!here || clicking.current) return
-    // Only a move opens anything. A launch, or Settings giving the sidebar back, keeps the rooms you closed (D-077).
+    // Only a move opens anything. A launch, or Settings giving the sidebar back, keeps the projects you closed (D-077).
     const s = getState()
-    const held = mounted.current ? rowHolder(s.ui.route, rooms, s.agents, s.workspaces, s.chats, s.threads, s.ui.foldedChats) : undefined
-    const closed = !!held && !(chosen[held.roomId] ?? held.roomId === openRoom)
-    // Only the row's own room and chat open: every other choice of D-077 stays.
-    if (held && closed) toggle(held.roomId, false)
+    const held = mounted.current ? rowHolder(s.ui.route, projects, s.agents, s.workspaces, s.chats, s.threads, s.ui.foldedChats) : undefined
+    const closed = !!held && !(chosen[held.projectId] ?? held.projectId === openProject)
+    // Only the row's own project and chat open: every other choice of D-077 stays.
+    if (held && closed) toggle(held.projectId, false)
     if (held?.unfold) actions.ui.foldChat(held.unfold.thread.id, false, held.unfold.tabs.map((c) => c.id))
     if (closed || held?.unfold) opening.current = true
     else showCurrent()
@@ -448,29 +449,29 @@ export function AppSidebar() {
         <HistoryButtons />
         <IconButton className="nodrag" icon="search" size={16} label="Search" data-tip-kbd="⌘K" onClick={() => actions.ui.openModal({ name: 'search' })} />
       </div>
-      {/* Only the rooms list gives up space when it outgrows the window, so the rows above it keep their height and y (flexShrink 0). */}
+      {/* Only the projects list gives up space when it outgrows the window, so the rows above it keep their height and y (flexShrink 0). */}
       <div className="row" style={{ height: 36, paddingLeft: 4, flexShrink: 0 }}>
         <AccountButton />
       </div>
       <div className="nav-list" style={{ marginTop: 10, flexShrink: 0 }}>
-        <button className="nav-item" onClick={() => openNewChat(openRoom)}><Icon name="pen" /><span className="grow">New chat</span><span className="muted" style={{ fontSize: 11.5 }}>⌘N</span></button>
+        <button className="nav-item" onClick={() => openNewChat(openProject)}><Icon name="pen" /><span className="grow">New chat</span><span className="muted" style={{ fontSize: 11.5 }}>⌘N</span></button>
         <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="nav-count">{inbox}</span> : null} />
         <NavItem route={{ name: workTab }} icon="issues" label="Work" />
       </div>
       <div className="sb-rule" role="separator" />
-      <div ref={roomsAnchor} className="section-label hv" style={{ position: 'relative', marginTop: 8, flexShrink: 0 }}>
-        <span>Your rooms</span>
-        <button className="icon-btn more" style={{ width: 24, height: 24, opacity: roomsMenu ? 1 : undefined }} aria-label="Rooms menu" aria-haspopup="menu" aria-expanded={roomsMenu} onClick={() => actions.ui.toggleMenu('rooms')}><Icon name="more" size={14} /></button>
-        {roomsMenu && <RoomsMenu anchorRef={roomsAnchor} />}
+      <div ref={projectsAnchor} className="section-label hv" style={{ position: 'relative', marginTop: 8, flexShrink: 0 }}>
+        <span>Your projects</span>
+        <button className="icon-btn more" style={{ width: 24, height: 24, opacity: projectsMenu ? 1 : undefined }} aria-label="Projects menu" aria-haspopup="menu" aria-expanded={projectsMenu} onClick={() => actions.ui.toggleMenu('projects')}><Icon name="more" size={14} /></button>
+        {projectsMenu && <ProjectsMenu anchorRef={projectsAnchor} />}
       </div>
-      {/* A room's menu is placed once, so scrolling the list closes it rather than leave it behind. */}
+      {/* A project's menu is placed once, so scrolling the list closes it rather than leave it behind. */}
       <div
-        ref={list} className="nav-list sb-scroll" onScroll={() => { if (getState().ui.menu?.startsWith('room:')) actions.ui.closeMenu() }}
+        ref={list} className="nav-list sb-scroll" onScroll={() => { if (getState().ui.menu?.startsWith('project:')) actions.ui.closeMenu() }}
         onClickCapture={() => { clicking.current = true; window.setTimeout(() => { clicking.current = false }) }}
       >
-        {rooms.map((r) => {
-          const expanded = chosen[r.id] ?? r.id === openRoom
-          return <RoomItem key={r.id} room={r} current={r.id === openRoom} expanded={expanded} numbered={r.id === numberedRoom} hints={hints} ctrlHints={ctrlHints} onToggle={() => toggle(r.id, expanded)} />
+        {projects.map((r) => {
+          const expanded = chosen[r.id] ?? r.id === openProject
+          return <ProjectItem key={r.id} project={r} current={r.id === openProject} expanded={expanded} numbered={r.id === numberedProject} hints={hints} ctrlHints={ctrlHints} onToggle={() => toggle(r.id, expanded)} />
         })}
       </div>
       <div style={{ flex: 1 }} />

@@ -5,15 +5,15 @@ description: Fixes for the problems people hit most, and how to report one.
 
 ## The first launch checks fail
 
-Each failed check shows the command that fixes it. See [Install](/docs/install#first-launch-checks) for the list. After you fix one, press **Check again**. GitHub CLI warnings only matter for pull requests, and a Mac with only local rooms doesn't get them.
+Each failed check shows the command that fixes it. See [Install](/docs/install#first-launch-checks) for the list. After you fix one, press **Check again**. GitHub CLI warnings only matter for pull requests, and a Mac with only local projects doesn't get them.
 
 ## Agents don't show as working
 
 Kernel follows Claude Code through its hooks. Open Settings, Hooks to see whether they're installed and whether the hook server is listening, and send a test event. The footer says when hooks are down.
 
-## A room is paused
+## A project is paused
 
-A usage limit pauses a room's agents. They resume on their own once the limit resets, or as soon as you switch to an account with room left in Settings, Accounts. Turn on **Switch accounts at a limit** to have Kernel do it for you.
+A usage limit pauses a project's agents. They resume on their own once the limit resets, or as soon as you switch to an account with usage left in Settings, Accounts. Turn on **Switch accounts at a limit** to have Kernel do it for you.
 
 ## A workspace is stuck setting up
 

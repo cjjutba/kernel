@@ -8,7 +8,7 @@ import { removeTree } from './removeTree'
 
 // Files agents share with share_file (KERNEL-302). Kernel checks each one, keeps a copy of every version in
 // `<dataDir>/shared/<id>/v<n>/<name>` and records it in `shared_files`. The copies outlive the workspace: archiving leaves
-// them, and only removing the room deletes them.
+// them, and only removing the project deletes them.
 
 /** Where agents save files to share. It goes in `info/exclude` like `.kernel/plans/`, so a shared file never lands in a PR. */
 export const SHARED_DIR = '.kernel/shared'
@@ -256,7 +256,7 @@ export class SharedFiles {
     }
     const file: SharedFile = old
       ? { ...old, title, kind: claim.kind, versions: [...old.versions, version], updatedAt: now }
-      : { id, roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, source, title, kind: claim.kind, versions: [version], createdAt: now, updatedAt: now }
+      : { id, projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, source, title, kind: claim.kind, versions: [version], createdAt: now, updatedAt: now }
     this.d.store.saveSharedFile(file)
     return { status: 'shared', file, version, label: claim.label }
   }
@@ -310,7 +310,7 @@ export class SharedFiles {
     return got.path
   }
 
-  /** Deletes the copies of these files, for a room that was removed. Their rows go with the room's. */
+  /** Deletes the copies of these files, for a project that was removed. Their rows go with the project's. */
   async remove(ids: string[]) {
     for (const id of ids) await removeTree(this.folder(id)).catch(() => undefined)
   }
@@ -321,7 +321,7 @@ export class SharedFiles {
     return got
   }
 
-  // Ids come from randomUUID and names from basename, so a hand-edited row can't point outside the folder (as RoomIcons).
+  // Ids come from randomUUID and names from basename, so a hand-edited row can't point outside the folder (as ProjectIcons).
   private folder(id: string) {
     if (!/^[A-Za-z0-9-]+$/.test(id)) throw new Error('That shared file is gone.')
     return join(this.dir, id)

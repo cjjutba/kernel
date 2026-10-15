@@ -53,9 +53,9 @@ export const prGlyph = (w: Workspace): IconName => {
 
 export const prLabel = (w: Workspace) => (w.prNumber ? `#${w.prNumber} ${w.prState === 'none' ? 'open' : w.prState}` : 'No PR')
 
-/** Matches the name, branch, room or agent, every word, any case. */
-export function matches(w: Workspace, query: string, room?: string, agent?: string): boolean {
-  const hay = [w.name, w.title, w.branch, room, agent].filter(Boolean).join(' ').toLowerCase()
+/** Matches the name, branch, project or agent, every word, any case. */
+export function matches(w: Workspace, query: string, project?: string, agent?: string): boolean {
+  const hay = [w.name, w.title, w.branch, project, agent].filter(Boolean).join(' ').toLowerCase()
   return query.toLowerCase().split(/\s+/).filter(Boolean).every((word) => hay.includes(word))
 }
 

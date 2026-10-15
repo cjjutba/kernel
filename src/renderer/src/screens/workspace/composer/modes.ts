@@ -27,7 +27,7 @@ export const buttonName = (mode: ComposerMode) => (mode === 'bypassPermissions' 
 
 /**
  * What a chat shows of its mode. `runs` is the mode it runs in, which the label names. `picked` is the mode its pick sits on, which the menu
- * checks: Plan while the chat plans, else the pick of the chat, its room or Settings. `why` is what keeps `runs` off the pick.
+ * checks: Plan while the chat plans, else the pick of the chat, its project or Settings. `why` is what keeps `runs` off the pick.
  */
 export interface Shown { runs: ComposerMode; picked: ComposerMode; why?: Exclude<ModeReason, 'plan'> }
 
@@ -58,7 +58,7 @@ export function offLine(mode: ComposerMode, provider: Provider, availability: Mo
 /** What `chats.configure` is given for a pick: Plan sets `plan` and leaves the chat's own `mode` where it is, so leaving Plan returns to it. The others set `mode` and clear `plan`. */
 export const modePatch = (mode: ComposerMode): { plan: true } | { mode: PermissionMode; plan: false } => (mode === 'plan' ? { plan: true } : { mode, plan: false })
 
-/** What a run of Shift+Tab presses saves where it lands. `before` is the chat's own `mode` from before the run, or undefined when it followed the room or Settings. A run that lands on Plan puts it back, so the plan's approval leaves the chat where it was (KERNEL-772). */
+/** What a run of Shift+Tab presses saves where it lands. `before` is the chat's own `mode` from before the run, or undefined when it followed the project or Settings. A run that lands on Plan puts it back, so the plan's approval leaves the chat where it was (KERNEL-772). */
 export const cyclePatch = (before: PermissionMode | undefined, landed: ComposerMode): { plan: true; mode: PermissionMode | undefined } | { mode: PermissionMode; plan: false } => (landed === 'plan' ? { plan: true, mode: before } : modePatch(landed) as { mode: PermissionMode; plan: false })
 
 /** A run of Shift+Tab presses belongs to one chat: a press in another chat starts a new run from that chat's own `mode`. */
@@ -120,10 +120,10 @@ export const LEAD_MODE_DESC: Record<LeadMode, string> = {
 /** Under the open composer's text, per mode. `name` is the Lead's name. */
 export const leadPlaceholder = (mode: LeadMode, name: string) => (mode === 'build' ? `Ask ${name} to make changes, @mention files, run /skills` : `Ask ${name} to plan work, @mention files, run /skills`)
 
-/** The menu's footer: where a new chat's mode comes from, the room's own pick or Settings, Agents. Both end on the mode a new chat starts in. */
-export function leadDefaultLine(room: LeadMode | undefined, app: LeadMode | undefined): string {
-  const mode = newChatLeadMode({ team: { leadMode: app } }, { agents: { leadMode: room } })
-  return `New chats start in ${leadModeName(mode)}, from ${room ? 'Room, Agents' : 'Settings, Agents'}.`
+/** The menu's footer: where a new chat's mode comes from, the project's own pick or Settings, Agents. Both end on the mode a new chat starts in. */
+export function leadDefaultLine(project: LeadMode | undefined, app: LeadMode | undefined): string {
+  const mode = newChatLeadMode({ team: { leadMode: app } }, { agents: { leadMode: project } })
+  return `New chats start in ${leadModeName(mode)}, from ${project ? 'Project, Agents' : 'Settings, Agents'}.`
 }
 
 export interface LeadModeRow { mode: LeadMode; name: string; desc: string; icon: IconName; checked: boolean }

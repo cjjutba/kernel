@@ -102,9 +102,9 @@ describe('createWorkspace from a source', () => {
     await k.start()
     const sent: string[][] = []
     k.sessions.send = async (_c, parts) => { sent.push(parts.map((p) => p.type)); return { queued: false } }
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     const source = { kind: 'issue', id: 'KERNEL-16', title: 'New workspace modal' } as const
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build it', source, parts: [{ type: 'file', name: 'spec.md', text: 'x' }] })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', source, parts: [{ type: 'file', name: 'spec.md', text: 'x' }] })
     expect(ws.branch).toBe('feat/kernel-16-new-workspace-modal')
     expect(ws.source).toEqual(source)
     expect(sent).toEqual([['text', 'file']])
@@ -120,7 +120,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
   }
   const crash = { number: 41, title: 'Crash on save', url: 'https://github.com/acme/app/issues/41', body: 'Steps', labels: [{ name: 'bug' }], comments: [] }
 
-  /** A kernel with one room, on GitHub when `repo` is set. Linear is offline and LINEAR_API_KEY is empty. */
+  /** A kernel with one project, on GitHub when `repo` is set. Linear is offline and LINEAR_API_KEY is empty. */
   async function kernel(repo?: string) {
     vi.stubEnv('LINEAR_API_KEY', '')
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -130,17 +130,17 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
     await k.start()
     onTestFinished(() => k.stop())
     k.sessions.send = async () => ({ queued: false })
-    const added = await k.rooms.addRoom(await tempRepo(team))
-    return { k, room: repo ? k.store.saveRoom({ ...added, repo }) : added }
+    const added = await k.projects.addProject(await tempRepo(team))
+    return { k, project: repo ? k.store.saveProject({ ...added, repo }) : added }
   }
 
   it("names the branch from the issue's number and labels when Kernel hands it off, and records GitHub as its tracker", async () => {
     const gh = await fakeGh({ view: crash })
-    const { k, room } = await kernel('acme/app')
-    const lead = (await k.team.agents(room.id)).find((a) => a.lead) as AgentDef
-    const deps = k.lead.leadToolDeps(room.id, lead, await k.lead.leadChat(room.id))
+    const { k, project } = await kernel('acme/app')
+    const lead = (await k.team.agents(project.id)).find((a) => a.lead) as AgentDef
+    const deps = k.lead.leadToolDeps(project.id, lead, await k.lead.leadChat(project.id))
     await kernelTools(deps).find((t) => t.name === 'create_workspace')!.handler({ agent: 'noor', title: 'Fix saving', brief: 'Go', issue: '41' } as never, {})
-    const ws = k.store.workspaces(room.id).find((w) => w.agentId === 'noor')!
+    const ws = k.store.workspaces(project.id).find((w) => w.agentId === 'noor')!
     expect(ws.source).toEqual({ kind: 'issue', id: '#41', title: 'Crash on save', url: crash.url, tracker: 'github' })
     expect(ws.branch).toBe('fix/41-crash-on-save')
     // Once to see whether someone else is on it, once to link it (KERNEL-479).
@@ -149,19 +149,19 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
 
   it('names the branch from the labels of a GitHub issue picked in New workspace (KERNEL-470)', async () => {
     const gh = await fakeGh({ view: crash })
-    const { k, room } = await kernel('acme/app')
-    const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Fix it', source: { kind: 'issue', id: '#41', title: 'Crash on save' } })
+    const { k, project } = await kernel('acme/app')
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Fix it', source: { kind: 'issue', id: '#41', title: 'Crash on save' } })
     expect(ws.branch).toBe('fix/41-crash-on-save')
     expect(await gh.calls()).toEqual(['issue view 41 --json number,title,url,body,labels,comments,assignees'])
   })
 
-  it('records the tracker of an issue picked in New workspace, and none in a room without one', async () => {
+  it('records the tracker of an issue picked in New workspace, and none in a project without one', async () => {
     await fakeGh({})
     const github = await kernel('acme/app')
-    const picked = await github.k.workspaces.createWorkspace(github.room.id, { prompt: 'Fix it', source: { kind: 'issue', id: '#41', title: 'Crash on save' } })
+    const picked = await github.k.workspaces.createWorkspace(github.project.id, { prompt: 'Fix it', source: { kind: 'issue', id: '#41', title: 'Crash on save' } })
     expect(picked.source).toEqual({ kind: 'issue', id: '#41', title: 'Crash on save', tracker: 'github' })
     const none = await kernel()
-    const own = await none.k.workspaces.createWorkspace(none.room.id, { prompt: 'Build it', source: { kind: 'issue', id: 'APP-7', title: 'Settings page' } })
+    const own = await none.k.workspaces.createWorkspace(none.project.id, { prompt: 'Build it', source: { kind: 'issue', id: 'APP-7', title: 'Settings page' } })
     expect(own.source).toEqual({ kind: 'issue', id: 'APP-7', title: 'Settings page' })
     expect(own.branch).toBe('feat/app-7-settings-page')
   })
@@ -172,18 +172,18 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
       { number: 52, title: 'Fix saving on slow disks', url: 'https://github.com/acme/app/pull/52', headRefName: 'mchen/save', body: 'Fixes #41' },
       { number: 53, title: 'Export rework', url: 'https://github.com/acme/app/pull/53', headRefName: 'feat/410-export', body: 'See #410' }
     ]
-    /** A GitHub room whose origin is `remote`, fetched, and Kernel's create_workspace in it. */
-    async function room(remote: string) {
-      const { k, room } = await kernel('acme/app')
-      await git(room.path, 'remote', 'add', 'origin', remote)
-      await exec('git', ['-C', room.path, 'fetch', '-q', 'origin'])
-      const lead = (await k.team.agents(room.id)).find((a) => a.lead) as AgentDef
-      const tool = kernelTools(k.lead.leadToolDeps(room.id, lead, await k.lead.leadChat(room.id))).find((t) => t.name === 'create_workspace')!
+    /** A GitHub project whose origin is `remote`, fetched, and Kernel's create_workspace in it. */
+    async function project(remote: string) {
+      const { k, project } = await kernel('acme/app')
+      await git(project.path, 'remote', 'add', 'origin', remote)
+      await exec('git', ['-C', project.path, 'fetch', '-q', 'origin'])
+      const lead = (await k.team.agents(project.id)).find((a) => a.lead) as AgentDef
+      const tool = kernelTools(k.lead.leadToolDeps(project.id, lead, await k.lead.leadChat(project.id))).find((t) => t.name === 'create_workspace')!
       const create = async (args: object) => {
         const r = await tool.handler({ agent: 'noor', title: 'Fix saving', brief: 'Go', issue: '41', ...args } as never, {})
         return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
       }
-      return { k, room, create }
+      return { k, project, create }
     }
 
     it('finds a pushed branch, an open PR and another assignee, and create_workspace starts only once the user confirms', async () => {
@@ -192,10 +192,10 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
       const remote = await tempRepo()
       await git(remote, 'branch', 'fix/41-crash-on-save')
       await git(remote, 'branch', 'feat/410-export')
-      const { k, room: r, create } = await room(remote)
+      const { k, project: r, create } = await project(remote)
       const taken = { findings: [{ kind: 'branch', ref: 'origin/fix/41-crash-on-save' }, { kind: 'pr', number: 52, title: 'Fix saving on slow disks', url: prs[0].url }, { kind: 'assignee', name: 'mchen' }], notes: [] }
       // New workspace reads the same, for ConfirmIssueTaken.png.
-      expect(await k.handlers()['issues.taken']({ roomId: r.id, issue: '41' })).toEqual(taken)
+      expect(await k.handlers()['issues.taken']({ projectId: r.id, issue: '41' })).toEqual(taken)
       // Named as Kernel passed it, as the refusal for a task already handed off does.
       expect(await create({})).toEqual({ isError: true, text: takenWarning('41', taken as IssueTaken) })
       expect(takenWarning('41', taken as IssueTaken)).toContain('Kernel found the branch origin/fix/41-crash-on-save, the open PR #52 (Fix saving on slow disks) and mchen assigned to it.')
@@ -206,10 +206,10 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
       expect(k.store.workspaces(r.id).find((w) => w.agentId === 'noor')?.branch).toBe('fix/41-crash-on-save-2')
     })
 
-    it("leaves out the user's own assignment and the room's own workspaces", async () => {
+    it("leaves out the user's own assignment and the project's own workspaces", async () => {
       await fakeGh({ view: { ...crash, assignees: [{ login: 'CJJutba' }] }, prs, login: 'cjjutba' })
       const remote = await tempRepo()
-      const { k, room: r } = await room(remote)
+      const { k, project: r } = await project(remote)
       const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Fix it', source: { kind: 'issue', id: '#41', title: 'Crash on save' } })
       await git(remote, 'branch', ws.branch)
       k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prNumber: 52 })
@@ -218,7 +218,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
 
     it("asks GitHub only about its own issues, so a Linear key adds no failed assignee check (KERNEL-504)", async () => {
       const gh = await fakeGh({ view: assigned, prs, login: 'cjjutba' })
-      const { k, room: r } = await room(await tempRepo())
+      const { k, project: r } = await project(await tempRepo())
       expect(await k.integrations.issueTaken(r.id, 'KERNEL-31')).toEqual({ findings: [], notes: [] })
       expect((await gh.calls()).filter((c) => c.startsWith('issue view'))).toEqual([])
       expect((await k.integrations.issueTaken(r.id, '#41')).findings).toContainEqual({ kind: 'assignee', name: 'mchen' })
@@ -227,7 +227,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
     it('starts anyway when no check can answer, and says which ones it skipped', async () => {
       // gh can't list PRs and isn't signed in, and origin is gone.
       await fakeGh({ view: assigned })
-      const { k, room: r, create } = await room(join(tmpdir(), 'kernel-no-such-remote'))
+      const { k, project: r, create } = await project(join(tmpdir(), 'kernel-no-such-remote'))
       const started = await create({})
       expect(started.isError).toBe(false)
       expect(started.text).toMatch(/^Created \S+ on fix\/41-crash-on-save for noor\./)
@@ -277,7 +277,7 @@ describe('what says someone else is on an issue (KERNEL-479)', () => {
     })
   })
 
-  it('reads no branches from a room without the remote, and says nothing about it', async () => {
+  it('reads no branches from a project without the remote, and says nothing about it', async () => {
     const taken = await issueTaken('KERNEL-31', { remote: 'origin', own: { branches: new Set(), prs: new Set() }, branches: async () => undefined })
     expect(taken).toEqual({ findings: [], notes: [] })
   })
@@ -324,17 +324,17 @@ describe('the base a workspace starts from', () => {
     const repo = await masterRepo()
     await expect(resolveBaseRef(repo, 'origin/fork-branch', { fetch: true, strict: true })).rejects.toThrow('fork-branch is not on origin or in this repo')
     const k = await kernel()
-    const room = await k.addRoom(repo)
-    await expect(k.createWorkspace(room.id, { prompt: 'Continue', baseRef: 'origin/gone', source: { kind: 'pr', number: 7, title: 'Gone' } })).rejects.toThrow('gone is not on origin')
-    expect(k.store.workspaces(room.id)).toEqual([])
+    const project = await k.addProject(repo)
+    await expect(k.createWorkspace(project.id, { prompt: 'Continue', baseRef: 'origin/gone', source: { kind: 'pr', number: 7, title: 'Gone' } })).rejects.toThrow('gone is not on origin')
+    expect(k.store.workspaces(project.id)).toEqual([])
     await k.stop()
   })
 
   it('starts a workspace from master in a master-only folder with no remote', async () => {
     const repo = await masterRepo()
     const k = await kernel()
-    const room = await k.addRoom(repo)
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+    const project = await k.addProject(repo)
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it' })
     expect(ws.baseRef).toBe('master')
     expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(repo, 'rev-parse', 'master'))
     await k.stop()
@@ -342,7 +342,7 @@ describe('the base a workspace starts from', () => {
 
   describe('when fetching origin fails (KERNEL-179)', () => {
     const team = { ...lead, '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' }
-    const warnings = (k: Kernel, roomId: string) => k.store.activity(roomId).filter((a) => a.warn)
+    const warnings = (k: Kernel, projectId: string) => k.store.activity(projectId).filter((a) => a.warn)
     const notes = (k: Kernel, wsId: string) => k.store.items(k.store.chats(wsId)[0].id).flatMap((i) => i.kind === 'note' ? [i.text] : [])
 
     it('says how a command that ran out of time ended', async () => {
@@ -364,13 +364,13 @@ describe('the base a workspace starts from', () => {
       await utimes(join(repo, '.git', 'FETCH_HEAD'), hoursAgo, hoursAgo)
       await git(repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote'))
       const k = await kernel()
-      const room = await k.addRoom(repo)
-      const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+      const project = await k.addProject(repo)
+      const ws = await k.createWorkspace(project.id, { prompt: 'Build it' })
       expect(ws.status).toBe('ready')
       expect(ws.baseRef).toBe('origin/main')
       expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(repo, 'rev-parse', 'origin/main'))
       expect(ws.fetchFailed).toMatch(/^Fetching origin failed \(fatal: .*does not appear to be a git repository\), so it started from origin\/main as of .+ \(3 hours ago\)\.$/)
-      const warned = warnings(k, room.id)
+      const warned = warnings(k, project.id)
       expect(warned).toHaveLength(1)
       expect(warned[0]).toMatchObject({ kind: 'note', workspaceId: ws.id, object: expect.stringContaining('does not appear to be a git repository') })
       expect(warned[0].text).toMatch(new RegExp(`^started ${ws.name} from origin/main as last fetched .+ \\(3 hours ago\\), because fetching origin failed:$`))
@@ -388,12 +388,12 @@ describe('the base a workspace starts from', () => {
       await git(remote, 'commit', '-q', '-m', 'merged')
       expect(await fetchOrigin(await cloneOf(remote))).toEqual({ ok: true })
       const k = await kernel()
-      const room = await k.addRoom(repo)
-      const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+      const project = await k.addProject(repo)
+      const ws = await k.createWorkspace(project.id, { prompt: 'Build it' })
       expect(ws.fetchFailed).toBeUndefined()
       // Create fetched: the commit merged after the clone is in the workspace.
       expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(remote, 'rev-parse', 'main'))
-      expect(warnings(k, room.id)).toEqual([])
+      expect(warnings(k, project.id)).toEqual([])
       expect(notes(k, ws.id)).toEqual([])
       await k.stop()
     })
@@ -433,8 +433,8 @@ describe('the base a workspace starts from', () => {
 
     // KERNEL-653: a workspace being made asks the remote before it reuses that fetch.
     describe('inside the minute a fetch is reused for', () => {
-      /** A room cloned from a bare remote, and a second clone that pushes to it as a merge on GitHub would. */
-      const remoteAndRoom = async () => {
+      /** A project cloned from a bare remote, and a second clone that pushes to it as a merge on GitHub would. */
+      const remoteAndProject = async () => {
         const bare = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
         await git(bare, 'init', '-q', '--bare')
         const source = await tempRepo(team)
@@ -445,16 +445,16 @@ describe('the base a workspace starts from', () => {
       }
 
       it('fetches when the remote moved, so a merge made a moment ago is in the new workspace', async () => {
-        const { source, repo } = await remoteAndRoom()
+        const { source, repo } = await remoteAndProject()
         const k = await kernel()
-        const room = await k.addRoom(repo)
+        const project = await k.addProject(repo)
         expect(await fetchOrigin(repo)).toEqual({ ok: true })
         await writeFile(join(source, 'MERGED.md'), 'merged\n')
         await git(source, 'add', '-A')
         await git(source, 'commit', '-q', '-m', 'merged')
         await git(source, 'push', '-q', 'origin', 'main')
         const before = { fetches: fetchTimesOut.fetches, lsRemotes: fetchTimesOut.lsRemotes }
-        const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+        const ws = await k.createWorkspace(project.id, { prompt: 'Build it' })
         expect(fetchTimesOut.lsRemotes - before.lsRemotes).toBe(1)
         expect(fetchTimesOut.fetches - before.fetches).toBe(1)
         expect(ws.baseRef).toBe('origin/main')
@@ -463,12 +463,12 @@ describe('the base a workspace starts from', () => {
       })
 
       it('only asks the remote when it has not moved', async () => {
-        const { source, repo } = await remoteAndRoom()
+        const { source, repo } = await remoteAndProject()
         const k = await kernel()
-        const room = await k.addRoom(repo)
+        const project = await k.addProject(repo)
         expect(await fetchOrigin(repo)).toEqual({ ok: true })
         const before = { fetches: fetchTimesOut.fetches, lsRemotes: fetchTimesOut.lsRemotes }
-        const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+        const ws = await k.createWorkspace(project.id, { prompt: 'Build it' })
         expect(fetchTimesOut.lsRemotes - before.lsRemotes).toBe(1)
         expect(fetchTimesOut.fetches - before.fetches).toBe(0)
         expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(source, 'rev-parse', 'main'))
@@ -479,7 +479,7 @@ describe('the base a workspace starts from', () => {
       })
 
       it('fetches when the remote can not be asked, and a fetch that failed is not reused after', async () => {
-        const { repo } = await remoteAndRoom()
+        const { repo } = await remoteAndProject()
         expect(await fetchOrigin(repo)).toEqual({ ok: true })
         await git(repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote'))
         const before = fetchTimesOut.fetches
@@ -494,11 +494,11 @@ describe('the base a workspace starts from', () => {
       const repo = await tempRepo(team)
       await git(repo, 'remote', 'add', 'origin', join(tmpdir(), 'kernel-no-such-remote'))
       const k = await kernel()
-      const room = await k.addRoom(repo)
-      const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+      const project = await k.addProject(repo)
+      const ws = await k.createWorkspace(project.id, { prompt: 'Build it' })
       expect(ws.baseRef).toBe('main')
       expect(ws.fetchFailed).toBeUndefined()
-      expect(warnings(k, room.id)).toEqual([])
+      expect(warnings(k, project.id)).toEqual([])
       expect(notes(k, ws.id)).toEqual([])
       await k.stop()
     })
@@ -509,17 +509,17 @@ describe('the base a workspace starts from', () => {
       onTestFinished(() => { fetchTimesOut.on = false })
       expect(await fetchOrigin(repo)).toEqual({ ok: false, error: 'timed out after 30 seconds' })
       const k = await kernel()
-      const room = await k.addRoom(repo)
+      const project = await k.addProject(repo)
       const tool = kernelTools({
-        roomId: room.id, lead: undefined, agents: async () => [{ id: 'kai', name: 'Kai', role: 'Frontend', lead: false } as AgentDef], workspaces: () => [],
-        createWorkspace: (o) => k.createWorkspace(room.id, o), messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null,
+        projectId: project.id, lead: undefined, agents: async () => [{ id: 'kai', name: 'Kai', role: 'Frontend', lead: false } as AgentDef], workspaces: () => [],
+        createWorkspace: (o) => k.createWorkspace(project.id, o), messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null,
         hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
       }).find((t) => t.name === 'create_workspace')!
       const r = await tool.handler({ agent: 'kai', title: 'Inbox actions', brief: 'Go' } as never, {})
-      const ws = k.store.workspaces(room.id)[0]
+      const ws = k.store.workspaces(project.id)[0]
       // A clone has no FETCH_HEAD, so the time is unknown.
       expect((r.content[0] as { text: string }).text).toBe(`Created ${ws.id} on ${ws.branch} for kai. Fetching origin failed (timed out after 30 seconds), so it started from origin/main as of its last fetch.`)
-      expect(warnings(k, room.id).map((a) => [a.text, a.object])).toEqual([[`started ${ws.name} from origin/main as last fetched, because fetching origin failed:`, 'timed out after 30 seconds']])
+      expect(warnings(k, project.id).map((a) => [a.text, a.object])).toEqual([[`started ${ws.name} from origin/main as last fetched, because fetching origin failed:`, 'timed out after 30 seconds']])
       expect(notes(k, ws.id)).toEqual(["Couldn't fetch origin (timed out after 30 seconds), so this workspace started from origin/main as of its last fetch. It may be missing recent merges."])
       await k.stop()
     })
@@ -528,8 +528,8 @@ describe('the base a workspace starts from', () => {
   it('starts a workspace from origin/master when the remote default is master', async () => {
     const repo = await cloneOf(await masterRepo())
     const k = await kernel()
-    const room = await k.addRoom(repo)
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+    const project = await k.addProject(repo)
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it' })
     expect(ws.baseRef).toBe('origin/master')
     expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(repo, 'rev-parse', 'origin/master'))
     await k.stop()
@@ -545,24 +545,24 @@ describe('plan mode for new workspaces (KERNEL-74)', () => {
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     const planOf = (id: string) => k.store.chats(id)[0].plan
-    return { k, room, h: k.handlers(), planOf }
+    return { k, project, h: k.handlers(), planOf }
   }
 
   it('starts workspaces from New workspace in plan mode with the setting on, unless the modal says otherwise', async () => {
-    const { k, room, h, planOf } = await kernel(true)
-    expect(planOf((await h['workspaces.create']({ roomId: room.id, prompt: 'Go', agentId: 'kai' })).id)).toBe(true)
-    expect(planOf((await h['workspaces.create']({ roomId: room.id, prompt: 'Go', agentId: 'kai', plan: false })).id)).toBe(false)
+    const { k, project, h, planOf } = await kernel(true)
+    expect(planOf((await h['workspaces.create']({ projectId: project.id, prompt: 'Go', agentId: 'kai' })).id)).toBe(true)
+    expect(planOf((await h['workspaces.create']({ projectId: project.id, prompt: 'Go', agentId: 'kai', plan: false })).id)).toBe(false)
     // The Lead's hand-offs call createWorkspace directly and start without it.
-    expect(planOf((await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Handed off' })).id)).toBe(false)
+    expect(planOf((await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Handed off' })).id)).toBe(false)
     await k.stop()
   })
 
   it('is off by default', async () => {
-    const { k, room, h, planOf } = await kernel()
+    const { k, project, h, planOf } = await kernel()
     expect(k.settings.models.workspacePlanMode).toBe(false)
-    expect(planOf((await h['workspaces.create']({ roomId: room.id, prompt: 'Go', agentId: 'kai' })).id)).toBe(false)
+    expect(planOf((await h['workspaces.create']({ projectId: project.id, prompt: 'Go', agentId: 'kai' })).id)).toBe(false)
     await k.stop()
   })
 })
@@ -596,12 +596,12 @@ describe('New chat message (KERNEL-147)', () => {
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: false } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     const start = k.handlers()['lead.start']
 
     // Each waits in its own chat's queue until that chat's worktree exists.
     const send = async (parts: ChatPart[]) => {
-      const chat = await start({ roomId: room.id, ...leadMessage(parts) })
+      const chat = await start({ projectId: project.id, ...leadMessage(parts) })
       expect(k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([parts])
       return chat
     }
@@ -636,19 +636,19 @@ describe('the New chat page starts a chat on its own picks (KERNEL-544, KERNEL-7
     onTestFinished(() => { vi.doUnmock('../src/renderer/src/api'); vi.useRealTimers() })
     const drafts = await import('../src/renderer/src/screens/workspace/composer/draftStore')
     const { startChat } = await import('../src/renderer/src/screens/new-workspace/start')
-    const send = () => startChat({ roomId: 'r1', parts: words('fix the login'), model: 'claude-sonnet-5-5', effort: 'low', plan: true, baseRef: '' })
+    const send = () => startChat({ projectId: 'r1', parts: words('fix the login'), model: 'claude-sonnet-5-5', effort: 'low', plan: true, baseRef: '' })
     return { calls, state, drafts, send }
   }
 
   it("sends the box's picks, then clears the text and the picks so the next box starts from the Lead", async () => {
     const { calls, drafts, send } = await renderer()
-    const room = drafts.newChatDraftOf('r1')
-    drafts.saveDraft(room, words('fix the login'), '')
-    drafts.savePicks(room, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+    const project = drafts.newChatDraftOf('r1')
+    drafts.saveDraft(project, words('fix the login'), '')
+    drafts.savePicks(project, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
     expect(await send()).toBeUndefined()
-    expect(calls.find((c) => c.channel === 'lead.start')?.req).toMatchObject({ roomId: 'r1', model: 'claude-sonnet-5-5', effort: 'low', plan: true })
-    expect(drafts.loadDraft(room)).toBeUndefined()
-    expect(drafts.loadPicks(room)).toBeUndefined()
+    expect(calls.find((c) => c.channel === 'lead.start')?.req).toMatchObject({ projectId: 'r1', model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+    expect(drafts.loadDraft(project)).toBeUndefined()
+    expect(drafts.loadPicks(project)).toBeUndefined()
   })
 
   it('opens the new chat with its right panel held closed, whatever the global setting says (KERNEL-788)', async () => {
@@ -689,41 +689,41 @@ describe('the New chat page starts a chat on its own picks (KERNEL-544, KERNEL-7
 
   it('keeps the text and the picks when the chat could not be sent', async () => {
     const { drafts, send, state } = await renderer()
-    const room = drafts.newChatDraftOf('r1')
-    drafts.saveDraft(room, words('fix the login'), '')
-    drafts.savePicks(room, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+    const project = drafts.newChatDraftOf('r1')
+    drafts.saveDraft(project, words('fix the login'), '')
+    drafts.savePicks(project, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
     state.fail = true
     expect(await send()).toBe('Kernel is busy')
-    expect(drafts.loadDraft(room)).toEqual(words('fix the login'))
-    expect(drafts.loadPicks(room)).toEqual({ model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+    expect(drafts.loadDraft(project)).toEqual(words('fix the login'))
+    expect(drafts.loadPicks(project)).toEqual({ model: 'claude-sonnet-5-5', effort: 'low', plan: true })
   })
 
-  it("leaves another room's New chat box alone when a chat starts", async () => {
+  it("leaves another project's New chat box alone when a chat starts", async () => {
     const { drafts, send } = await renderer()
     const other = drafts.newChatDraftOf('r2')
-    drafts.saveDraft(other, words('in the other room'), '')
+    drafts.saveDraft(other, words('in the other project'), '')
     drafts.savePicks(other, { plan: false })
     await send()
-    expect([drafts.loadDraft(other), drafts.loadPicks(other)]).toEqual([words('in the other room'), { plan: false }])
+    expect([drafts.loadDraft(other), drafts.loadPicks(other)]).toEqual([words('in the other project'), { plan: false }])
   })
 
   it("sends the box's permission mode with the chat", async () => {
     const { calls } = await renderer()
     const { startChat } = await import('../src/renderer/src/screens/new-workspace/start')
-    await startChat({ roomId: 'r1', parts: words('go'), model: 'claude-sonnet-5-5', effort: 'low', plan: false, mode: 'acceptEdits', baseRef: '' })
+    await startChat({ projectId: 'r1', parts: words('go'), model: 'claude-sonnet-5-5', effort: 'low', plan: false, mode: 'acceptEdits', baseRef: '' })
     expect(calls.find((c) => c.channel === 'lead.start')?.req).toMatchObject({ mode: 'acceptEdits' })
   })
 
   describe("the warning's way back", () => {
     const picks = { mode: 'worktree', model: 'claude-haiku-4-5-20251001', effort: 'medium', plan: true, baseRef: 'origin/dev' } as const
-    const held = { roomId: 'r1', source: { kind: 'issue', id: 'KERNEL-1', title: 'x' }, parts: words('go'), picks } as const
+    const held = { projectId: 'r1', source: { kind: 'issue', id: 'KERNEL-1', title: 'x' }, parts: words('go'), picks } as const
 
     it('opens the New chat page with the source and picks when you have gone elsewhere', async () => {
       await renderer()
       const { backToNewChat } = await import('../src/renderer/src/screens/new-workspace/start')
       const { getState } = await import('../src/renderer/src/store')
       backToNewChat(held)
-      expect(getState().ui.route).toMatchObject({ name: 'leadNew', roomId: 'r1', source: held.source, picks })
+      expect(getState().ui.route).toMatchObject({ name: 'leadNew', projectId: 'r1', source: held.source, picks })
       expect(getState().ui.modal).toBeNull()
     })
 
@@ -731,11 +731,11 @@ describe('the New chat page starts a chat on its own picks (KERNEL-544, KERNEL-7
       await renderer()
       const { backToNewChat } = await import('../src/renderer/src/screens/new-workspace/start')
       const { actions, getState } = await import('../src/renderer/src/store')
-      actions.ui.go({ name: 'leadNew', roomId: 'r1' })
+      actions.ui.go({ name: 'leadNew', projectId: 'r1' })
       actions.ui.openModal({ name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-1', findings: [], held })
       backToNewChat(held)
       expect(getState().ui.modal).toBeNull()
-      expect(getState().ui.route).toEqual({ name: 'leadNew', roomId: 'r1' })
+      expect(getState().ui.route).toEqual({ name: 'leadNew', projectId: 'r1' })
     })
 
     it('hands the picks to the box it reopens, where they win over the Lead and stay until it sends', async () => {

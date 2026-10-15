@@ -162,15 +162,15 @@ describe('what Kernel tells the agent and the chat', () => {
     expect(prNote({ ...ws, prState: 'closed' }, info())).toBe('PR #42 was closed without merging on GitHub.')
     expect(prNote({ ...ws, prState: 'cifail' }, info({ checks: [{ name: 'lint', state: 'fail' }, { name: 'playwright', state: 'fail' }] }))).toBe('lint and playwright failed on the PR.')
     expect(prNote({ ...ws, prState: 'ready' }, info())).toBeUndefined()
-    // The base names the room's remote (KERNEL-190).
+    // The base names the project's remote (KERNEL-190).
     expect(prNote({ ...ws, baseRef: 'upstream/main', prState: 'merged' }, { ...info(), baseRef: '' }, 'merge', 'upstream')).toBe('PR #42 was merged into main.')
   })
 
-  it("picks each PR instruction from the room, then the app, then the default (KERNEL-190)", () => {
+  it("picks each PR instruction from the project, then the app, then the default (KERNEL-190)", () => {
     const defaults = DEFAULT_SETTINGS('').pr
     const app = { ...defaults, createInstructions: '# App create', fixChecksInstructions: '' }
-    expect(prInstructions(app, { createInstructions: '# Room create', addressReviewInstructions: '  ' })).toEqual({
-      createInstructions: '# Room create', resolveInstructions: defaults.resolveInstructions,
+    expect(prInstructions(app, { createInstructions: '# Project create', addressReviewInstructions: '  ' })).toEqual({
+      createInstructions: '# Project create', resolveInstructions: defaults.resolveInstructions,
       fixChecksInstructions: defaults.fixChecksInstructions, addressReviewInstructions: defaults.addressReviewInstructions
     })
     expect(prInstructions(app).createInstructions).toBe('# App create')
@@ -299,8 +299,8 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
       ready: async () => undefined,
       reopen: async () => undefined
     }
-    const room = await k.addRoom(repo)
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const project = await k.addProject(repo)
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     sent.length = 0
     const notes = () => k.store.items(k.store.chats(ws.id)[0].id).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
     return { k, ws, sent, gh, notes, busy: (b: boolean) => { running = b } }
@@ -417,7 +417,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
 
   it('reads every PR GitHub is still checking on one shared timer (KERNEL-283)', async () => {
     const { k, ws, gh } = await setup()
-    const other = await k.workspaces.createWorkspace(ws.roomId, { prompt: 'Build the inbox', agentId: 'kai', title: 'Inbox' })
+    const other = await k.workspaces.createWorkspace(ws.projectId, { prompt: 'Build the inbox', agentId: 'kai', title: 'Inbox' })
     const read: string[] = []
     k.github = { ...k.github, info: async (_cwd, _ref, workspaceId) => { read.push(workspaceId); return gh.pr ? { ...gh.pr, workspaceId } : null } }
     // The shared timer is held back instead of run on a short real delay: the reads run real git before they reach the
@@ -767,11 +767,11 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
   })
 })
 
-describe('PR instructions per room (KERNEL-190)', () => {
+describe('PR instructions per project (KERNEL-190)', () => {
   const app = { createInstructions: '# App create', resolveInstructions: '# App resolve', fixChecksInstructions: '# App fix', addressReviewInstructions: '# App review' }
-  const room = { createInstructions: '# Room create', resolveInstructions: '# Room resolve', fixChecksInstructions: '# Room fix', addressReviewInstructions: '# Room review' }
+  const project = { createInstructions: '# Project create', resolveInstructions: '# Project resolve', fixChecksInstructions: '# Project fix', addressReviewInstructions: '# Project review' }
 
-  it.each(['room', 'app', 'default'] as const)('Create PR, Resolve conflicts, Fix checks and Address review send the %s instruction', async (from) => {
+  it.each(['project', 'app', 'default'] as const)('Create PR, Resolve conflicts, Fix checks and Address review send the %s instruction', async (from) => {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -783,13 +783,13 @@ describe('PR instructions per room (KERNEL-190)', () => {
     k.sessions.isRunning = () => false
     let pr: PrInfo | null = null
     k.github = { info: async (_cwd, _ref, workspaceId) => (pr ? { ...pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
-    const r = await k.addRoom(repo)
-    if (from === 'room') await k.handlers()['settings.setRoom']({ roomId: r.id, patch: { pr: room } })
+    const r = await k.addProject(repo)
+    if (from === 'project') await k.handlers()['settings.setProject']({ projectId: r.id, patch: { pr: project } })
     const ws = await k.createWorkspace(r.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     // Kernel's own texts go out fitted to the workspace (KERNEL-564).
     const ctx = { branch: ws.branch, base: 'main', remote: 'origin' }
     const fitted = { createInstructions: createPrText({}, ctx), resolveInstructions: resolveText({}, { ...ctx, prNumber: 42 }), fixChecksInstructions: fixChecksText({}, { ...ctx, prNumber: 42 }), addressReviewInstructions: addressReviewText({}, { ...ctx, prNumber: 42 }) }
-    const want = from === 'room' ? room : from === 'app' ? app : fitted
+    const want = from === 'project' ? project : from === 'app' ? app : fitted
     const last = () => { const p = sent.at(-1)!; return p.type === 'file' ? [p.name, p.text] : [] }
 
     await k.createPr(ws.id)
@@ -814,7 +814,7 @@ describe('PR instructions per room (KERNEL-190)', () => {
 describe("Kernel's PR texts fitted to the workspace (KERNEL-564)", () => {
   const SKILL = '---\nname: create-pr\ndescription: Our PR steps.\n---\nRun make check, then push.\n'
 
-  /** A room whose remote is `upstream`, with a PR skill and a skill that isn't one, and a workspace on `upstream/main`. */
+  /** A project whose remote is `upstream`, with a PR skill and a skill that isn't one, and a workspace on `upstream/main`. */
   async function setup() {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.', '.claude/skills/create-pr/SKILL.md': SKILL, '.claude/skills/issue/SKILL.md': SKILL })
     const bare = join(await mkdtemp(join(tmpdir(), 'kernel-upstream-')), 'u.git')
@@ -832,8 +832,8 @@ describe("Kernel's PR texts fitted to the workspace (KERNEL-564)", () => {
     k.sessions.isRunning = () => false
     const gh = { pr: null as PrInfo | null }
     k.github = { info: async (_cwd, _ref, workspaceId) => (gh.pr ? { ...gh.pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
-    const room = await k.addRoom(repo)
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const project = await k.addProject(repo)
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     const last = () => { const p = sent.at(-1)!; return p.type === 'file' ? p.text ?? '' : '' }
     const create = async (draft?: boolean) => { k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prState: 'none' }); await k.prs.createPr(ws.id, draft); return last() }
     return { k, ws, gh, last, create }
@@ -890,7 +890,7 @@ describe("Kernel's PR texts fitted to the workspace (KERNEL-564)", () => {
 })
 
 describe('the toast for a review Kernel archives while it is open (KERNEL-132)', () => {
-  const ws = (extra: Partial<Workspace>) => ({ id: 'w', roomId: 'r', name: 'w', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'theo', port: 1, status: 'archived', prState: 'none', createdAt: 1, ...extra }) as Workspace
+  const ws = (extra: Partial<Workspace>) => ({ id: 'w', projectId: 'r', name: 'w', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'theo', port: 1, status: 'archived', prState: 'none', createdAt: 1, ...extra }) as Workspace
 
   it('says what Kernel did for a review whose work merged or closed', () => {
     expect(archiveToast(ws({ reviewOf: 'k' }), ws({ id: 'k', prState: 'merged', prNumber: 108 }), 'Theo')).toEqual({ title: "Archived Theo's review after PR #108 merged", sub: 'Restore it from History.' })

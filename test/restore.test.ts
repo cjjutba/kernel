@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Chat, ChatItem, Workspace } from '@shared/types'
-import { setUp, tempRepo, trustRoom, freePort } from './helpers'
+import { setUp, tempRepo, trustProject, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { hookToken } from '../src/main/services/hookToken'
 import { Store } from '../src/main/db'
@@ -49,8 +49,8 @@ describe('restore', () => {
     await k.start()
     k.sessions.send = async () => ({ queued: false })
 
-    const room = await k.addRoom(repo)
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const project = await k.addProject(repo)
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     const chats = k.store.chats(ws.id).map((c) => c.id)
     // Archive keeps the branch, so Restore can find it again.
     await k.archiveWorkspace(ws.id, false)
@@ -68,7 +68,7 @@ describe('restore', () => {
     await setUp(k, ws.id)
 
     // A workspace made while this one was archived may take its port. Restore picks another.
-    const other = await k.createWorkspace(room.id, { prompt: 'Another', agentId: 'kai', title: 'Other' })
+    const other = await k.createWorkspace(project.id, { prompt: 'Another', agentId: 'kai', title: 'Other' })
     k.store.saveWorkspace({ ...other, port: ws.port })
     await k.archiveWorkspace(ws.id, false)
     await k.archive.cleanedUp(ws.id)
@@ -83,9 +83,9 @@ describe('restore', () => {
 
     // With no chat open, a new chat with Kernel starts with setup (KERNEL-405), and its first message waits only for the chat's worktree
     // (KERNEL-490, KERNEL-542).
-    const { id: chatId } = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Who is blocked?' })
+    const { id: chatId } = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Who is blocked?' })
     expect(k.sessions.queued(chatId).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Who is blocked?' }]])
-    expect(k.store.chat(chatId)?.workspaceId).toBe((await k.leadChat(room.id)).workspaceId)
+    expect(k.store.chat(chatId)?.workspaceId).toBe((await k.leadChat(project.id)).workspaceId)
   }, 30000)
 })
 
@@ -113,19 +113,19 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     const where = { dataDir, home }
     const k = new Kernel(where)
     await k.start()
-    const room = await k.addRoom(repo)
-    const lead = await k.leadChat(room.id)
+    const project = await k.addProject(repo)
+    const lead = await k.leadChat(project.id)
     const leadWs = await setUp(k, lead.id)
     await k.sessions.send(lead.id, text('Plan the invoice table'))
     callIn(leadWs.path).feed({ type: 'system', subtype: 'init', session_id: 'kernel-session', apiKeySource: 'none' })
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     const kai = k.store.chats(ws.id)[0]
     const call = callIn(ws.path)
     call.feed({ type: 'system', subtype: 'init', session_id: 'kai-session', apiKeySource: 'none' })
     call.feed({ type: 'assistant', uuid: 'a1', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'pnpm test' } }] } })
     await flush()
     expect(await k.sessions.send(kai.id, text('Then add a test'))).toMatchObject({ queued: true })
-    return { k, where, room, lead, leadWs, ws, kai }
+    return { k, where, project, lead, leadWs, ws, kai }
   }
 
   async function relaunch(where: { dataDir: string; home: string }, o: { signedIn?: () => Promise<boolean> } = {}) {
@@ -227,7 +227,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     expect(k2.sessions.isRunning(kai.id)).toBe(true)
   }, 30000)
 
-  it('carries on once the launch check finishes, and lets go of every room even when the check throws', async () => {
+  it('carries on once the launch check finishes, and lets go of every project even when the check throws', async () => {
     const { k, where, kai } = await working()
     await k.stop()
     const { k: k2 } = await relaunch(where, { signedIn: async () => { throw new Error('claude is not installed') } })
@@ -241,7 +241,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     // The sign-in read is slow, as `claude auth status` can be. start() doesn't wait for it.
     let answer!: (signedIn: boolean) => void
     const { k: k2, before } = await relaunch(where, { signedIn: () => new Promise((r) => { answer = r }) })
-    // Only the chats that carry on wait for it: no room is held, and nothing started.
+    // Only the chats that carry on wait for it: no project is held, and nothing started.
     expect(k2.sessions.heldFor()).toEqual([])
     expect(sdk.calls.length).toBe(before)
     // Signed out: the launch hold becomes a sign-in hold. Nothing started, the notes are there and both chats wait.
@@ -265,7 +265,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
   it("stops inside KERNEL-214's 5 second quit cap when a turn ignores the interrupt and an outside approval is waiting", async () => {
     const { k, where, kai } = await working()
     const port = JSON.parse(await readFile(join(where.dataDir, 'settings.json'), 'utf8')).hookPort
-    const repo = k.store.rooms()[0].path
+    const repo = k.store.projects()[0].path
     // A Claude Code session outside Kernel waits on an approval in the Inbox, which holds its request to the hook server open.
     const outside = fetch(`http://127.0.0.1:${port}/hooks`, {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-kernel-token': hookToken(where.dataDir) },
@@ -325,7 +325,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
 
 describe('restoring a workspace sets it up again (KERNEL-77)', () => {
   const text = (t: string) => [{ type: 'text' as const, text: t }]
-  /** A trusted room whose setup logs each run and fails while `fail.txt` was copied in, with Kai's workspace set up once. */
+  /** A trusted project whose setup logs each run and fails while `fail.txt` was copied in, with Kai's workspace set up once. */
   async function restorable(mode: 'worktree' | 'current' = 'worktree') {
     const log = join(await mkdtemp(join(tmpdir(), 'kernel-log-')), 'setup.txt')
     const repo = await tempRepo({
@@ -343,13 +343,13 @@ describe('restoring a workspace sets it up again (KERNEL-77)', () => {
     k.signedInReader = async () => true
     await k.start()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
-    const room = await k.addRoom(repo)
-    await trustRoom(k, room.id)
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', mode })
+    const project = await k.addProject(repo)
+    await trustProject(k, project.id)
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', mode })
     const chat = k.store.chats(ws.id)[0]
     const runs = async () => (await readFile(log, 'utf8')).trim().split('\n').length
     const starts = async () => (await k.handlers()['checkpoints.list']({ workspaceId: ws.id })).filter((c) => c.start).length
-    return { k, repo, room, ws, chat, runs, starts }
+    return { k, repo, project, ws, chat, runs, starts }
   }
 
   it('reruns files.copy and setup with the chats held, takes no start checkpoint, and sends what waited once it passes', async () => {
@@ -387,14 +387,14 @@ describe('restoring a workspace sets it up again (KERNEL-77)', () => {
   }, 30000)
 
   it('waits for trust when the scripts changed while it was archived', async () => {
-    const { k, repo, room, ws, chat } = await restorable()
+    const { k, repo, project, ws, chat } = await restorable()
     await k.archiveWorkspace(ws.id, false)
     await k.archive.cleanedUp(ws.id)
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo changed"\n')
     await k.restoreWorkspace(ws.id)
     await setUp(k, ws.id, 'trust')
     expect(k.sessions.isHeld(chat.id)).toBe(true)
-    await trustRoom(k, room.id)
+    await trustProject(k, project.id)
     await setUp(k, ws.id)
     expect(k.sessions.isHeld(chat.id)).toBe(false)
   }, 30000)

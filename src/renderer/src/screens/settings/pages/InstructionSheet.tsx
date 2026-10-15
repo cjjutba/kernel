@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { PrInstructions } from '@shared/types'
 import { Button, Modal } from '../../../ui'
 
-/** The four instructions a PR button sends, with their names and the button that sends each (Settings, Pull requests and a room's). */
+/** The four instructions a PR button sends, with their names and the button that sends each (Settings, Pull requests and a project's). */
 export const INSTRUCTIONS: { key: keyof PrInstructions; label: string; file: string; desc: string }[] = [
   { key: 'createInstructions', label: 'Create PR', file: 'create-pr.md', desc: 'Sent when you press Create PR' },
   { key: 'resolveInstructions', label: 'Resolve conflicts', file: 'resolve-conflicts.md', desc: 'Sent when you press Resolve conflicts' },
@@ -12,7 +12,7 @@ export const INSTRUCTIONS: { key: keyof PrInstructions; label: string; file: str
 
 /**
  * Edits one PR instruction in the one modal shell (KERNEL-680), so the page lists four short rows instead of four long text boxes.
- * `fallback` is the text used when this one is left empty: the app's default, or for a room the app's text. Use default puts it back,
+ * `fallback` is the text used when this one is left empty: the app's default, or for a project the app's text. Use default puts it back,
  * sending `null`. Save sends the text, or `null` when it is the fallback.
  */
 export function InstructionSheet({ title, value, fallback, fallbackLabel = 'Use default', onSave, onClose }: {

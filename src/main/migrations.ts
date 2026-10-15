@@ -106,8 +106,49 @@ export const migrations: Migration[] = [
     // Deleting a Lead chat left its open items behind (KERNEL-791). Its items go now, and with the chat from here on.
     version: 7,
     up: (db) => db.exec('delete from open_items where thread_id not in (select id from threads)')
+  },
+  {
+    // Rooms are projects (KERNEL-880). The table, each room_id column and the indexes named after rooms take the new name,
+    // and so do `roomId` in each row's data, the room.paused and room.resumed activity kinds, and `roomId` anywhere in meta.
+    version: 8,
+    up: (db) => {
+      db.exec(`
+        drop index if exists activity_by_room;
+        drop index if exists approvals_by_room_status;
+        drop index if exists shared_files_by_room;
+        drop index if exists threads_by_room;
+        alter table rooms rename to projects;
+        ${PROJECT_TABLES.map((t) => `alter table ${t} rename column room_id to project_id;`).join('\n')}
+        create index if not exists activity_by_project on activity (project_id, ts);
+        create index if not exists approvals_by_project_status on approvals (project_id, status);
+        create index if not exists shared_files_by_project on shared_files (project_id, updated_at);
+        create index if not exists threads_by_project on threads (project_id, created_at);
+      `)
+      for (const t of PROJECT_TABLES) {
+        db.exec(`update ${t} set data = json_remove(json_set(data, '$.projectId', json_extract(data, '$.roomId')), '$.roomId') where json_valid(data) and json_type(data, '$.roomId') is not null`)
+      }
+      db.exec(`update activity set data = json_set(data, '$.kind', 'project.' || substr(json_extract(data, '$.kind'), 6)) where json_valid(data) and json_extract(data, '$.kind') in ('room.paused', 'room.resumed')`)
+      // Meta holds roomId deeper down, as in leadUpdates' pending entries, so each row that has one is rewritten whole.
+      const rows = db.prepare(`select key, data from meta where data like '%"roomId"%'`).all() as { key: string; data: string }[]
+      const save = db.prepare('update meta set data = ? where key = ?')
+      for (const r of rows) {
+        let v: unknown
+        try { v = JSON.parse(r.data) } catch { continue }
+        save.run(JSON.stringify(renameKey(v, 'roomId', 'projectId')), r.key)
+      }
+    }
   }
 ]
+
+/** The tables with a room_id column before version 8. */
+const PROJECT_TABLES = ['workspaces', 'threads', 'open_items', 'approvals', 'notifications', 'activity', 'tasks', 'overlaps', 'shared_files']
+
+/** `v` with every object key `from` renamed `to`, at any depth. */
+function renameKey(v: unknown, from: string, to: string): unknown {
+  if (Array.isArray(v)) return v.map((x) => renameKey(x, from, to))
+  if (!v || typeof v !== 'object') return v
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k === from ? to : k, renameKey(x, from, to)]))
+}
 
 export const LATEST = migrations[migrations.length - 1].version
 

@@ -2,10 +2,10 @@ import { stat } from 'node:fs/promises'
 import type { DiffStat, LocalMerge, MergeMethod } from '@shared/types'
 import { exec, type ExecResult, SLOW_MS } from './exec'
 import { MIN_GIT } from './preflight'
-import { tildify } from './rooms'
+import { tildify } from './projects'
 import { listWorktrees } from './worktrees'
 
-// A room with no GitHub merges its branches on the Mac (KERNEL-467). Reading and preparing a merge only writes git objects,
+// A project with no GitHub merges its branches on the Mac (KERNEL-467). Reading and preparing a merge only writes git objects,
 // which nothing refers to until `land` moves the base branch with a compare-and-swap and brings along the folder that has it
 // checked out. Nothing here touches a file with uncommitted changes.
 
@@ -60,7 +60,7 @@ function named(files: string[], max = 5): string {
 const count = (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`
 
 /**
- * The branch in this repo that `baseRef` names. A workspace's base can be `origin/main` in a room whose remote isn't on
+ * The branch in this repo that `baseRef` names. A workspace's base can be `origin/main` in a project whose remote isn't on
  * GitHub, and a local merge goes into `main`, never into a remote's ref.
  */
 export async function localBase(repo: string, baseRef: string): Promise<string> {
@@ -190,7 +190,7 @@ async function replay(repo: string, s: LocalStatus): Promise<string> {
 }
 
 /**
- * The commit that `branch` merging into `baseRef` leaves on the base, made with the room's method and not landed. It refuses
+ * The commit that `branch` merging into `baseRef` leaves on the base, made with the project's method and not landed. It refuses
  * a branch with nothing to merge and one that conflicts. A branch that is behind merges when nothing conflicts, as GitHub
  * merges one when the repo doesn't require it to be up to date.
  */

@@ -107,7 +107,7 @@ export async function readImage(root: string, path: string, since?: string): Pro
  * of the listed files, scored the same way, and one whose name is the query ranks above the files inside it. Saved plans are
  * listed too, though git ignores them, so a new chat can build from one (D-092).
  *
- * Each of the room's `references` is searched the same way, as `<folder name>/<path>`, and its rows carry an absolute path
+ * Each of the project's `references` is searched the same way, as `<folder name>/<path>`, and its rows carry an absolute path
  * and the folder's name (KERNEL-748). One that can't be listed is skipped.
  */
 export async function searchFiles(root: string, query: string, limit = 8, references: string[] = []): Promise<FileEntry[]> {

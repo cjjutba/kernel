@@ -7,13 +7,13 @@ import type { Chat, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { git, run } from '../src/main/services/exec'
 import { agentPrompt } from '../src/main/services/sessions'
-import { roomWorktreeRoot, slugify } from '../src/main/services/worktrees'
+import { projectWorktreeRoot, slugify } from '../src/main/services/worktrees'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
-import { setUp, tempRepo, trustRoom, freePort } from './helpers'
+import { setUp, tempRepo, trustProject, freePort } from './helpers'
 
 // KERNEL-405: each chat with Kernel is its own workspace, with its own worktree, branch, ports and setup. It replaces KERNEL-355's
-// one Lead worktree per room, and KERNEL-181's sync now runs per chat.
+// one Lead worktree per project, and KERNEL-181's sync now runs per chat.
 
 const sdk = vi.hoisted(() => ({ calls: [] as { options: any }[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
@@ -56,7 +56,7 @@ const branchOf = async (path: string) => (await git(path, 'rev-parse', '--abbrev
 const queuedText = (k: Kernel, chatId: string) => k.sessions.queued(chatId).map((q) => q.parts.map((p) => (p.type === 'text' ? p.text : '')).join(''))
 const callIn = (path: string) => sdk.calls.filter((c) => c.options.cwd === path)
 
-/** A repo with an `origin`, as most rooms have. */
+/** A repo with an `origin`, as most projects have. */
 async function withOrigin(files: Record<string, string> = {}) {
   const repo = await tempRepo({ ...REPO, ...files })
   const bare = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
@@ -66,7 +66,7 @@ async function withOrigin(files: Record<string, string> = {}) {
   return { repo, bare }
 }
 
-/** Someone else pushes a commit to `branch` on the remote, which the room hasn't fetched. Its sha. */
+/** Someone else pushes a commit to `branch` on the remote, which the project hasn't fetched. Its sha. */
 async function pushElsewhere(bare: string, file: string, branch = 'main') {
   const other = await mkdtemp(join(tmpdir(), 'kernel-clone-'))
   await run('git', ['clone', '-q', bare, other])
@@ -84,15 +84,15 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
     const { repo, bare } = await withOrigin()
     const where = await dirs()
     const k = await boot(where)
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     // Merged on GitHub and not fetched yet: ⌘N fetches first.
     const merged = await pushElsewhere(bare, 'merged')
     await writeFile(join(repo, 'notes.txt'), 'mine\n')
     sdk.calls.length = 0
-    const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Plan wave 3 of the invoices work' })
+    const chat = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Plan wave 3 of the invoices work' })
     const ws = k.store.workspace(chat.workspaceId)!
     expect(ws).toMatchObject({ lead: true, threadId: chat.threadId, agentId: 'kernel-lead', mode: 'worktree', branch: 'kernel/plan-wave-3-of-invoices', baseRef: 'origin/main', status: 'setup' })
-    expect(ws.path).toBe(join(roomWorktreeRoot(join(where.home, 'wt'), room), 'kernel-plan-wave-3-of-invoices'))
+    expect(ws.path).toBe(join(projectWorktreeRoot(join(where.home, 'wt'), project), 'kernel-plan-wave-3-of-invoices'))
     // lead.start answers before the fetch and the worktree, and the message waits for them (KERNEL-542).
     await k.workspaces.worktreeMade(ws.id)
     expect(await sha(ws.path, 'HEAD')).toBe(merged)
@@ -111,9 +111,9 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
   it('gives two chats two worktrees, two branches and two port blocks, and a + tab joins its own chat', async () => {
     const { repo } = await withOrigin()
     const k = await boot(await dirs())
-    const room = await k.addRoom(repo)
-    const a = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Plan the release' })
-    const b = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Plan the release' })
+    const project = await k.addProject(repo)
+    const a = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Plan the release' })
+    const b = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Plan the release' })
     const [wa, wb] = [await setUp(k, a.id), await setUp(k, b.id)]
     expect(wa.id).not.toBe(wb.id)
     expect([wa.branch, wb.branch]).toEqual(['kernel/plan-release', 'kernel/plan-release-2'])
@@ -123,15 +123,15 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
     const tab = await k.handlers()['chats.create']({ workspaceId: wb.id })
     expect(tab).toMatchObject({ workspaceId: wb.id, threadId: b.threadId, title: 'New tab' })
     expect(k.chatTabs(wa.id).map((c) => c.id)).toEqual([a.id])
-    expect((await k.handlers()['lead.open']({ roomId: room.id }))?.id).toBe(wb.id)
+    expect((await k.handlers()['lead.open']({ projectId: project.id }))?.id).toBe(wb.id)
   })
 
   it('starts from the target branch picked in New chat, after a fetch', async () => {
     const { repo, bare } = await withOrigin()
     const k = await boot(await dirs())
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     const release = await pushElsewhere(bare, 'release-fix', 'release/v2')
-    const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Check the release', baseRef: 'origin/release/v2' })
+    const chat = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Check the release', baseRef: 'origin/release/v2' })
     const ws = await setUp(k, chat.id)
     expect(ws).toMatchObject({ baseRef: 'origin/release/v2', branch: 'kernel/check-release' })
     expect(await sha(ws.path, 'HEAD')).toBe(release)
@@ -141,10 +141,10 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
     const repo = await tempRepo({ ...REPO, '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt && echo set up"\n' })
     await writeFile(join(repo, '.env.local'), 'SECRET=1\n')
     const k = await boot(await dirs({ leadWaitForSetup: true }))
-    const room = await k.addRoom(repo)
-    await trustRoom(k, room.id)
+    const project = await k.addProject(repo)
+    await trustProject(k, project.id)
     sdk.calls.length = 0
-    const chat = await k.lead.startLeadChat(room.id, { prompt: 'Plan it' })
+    const chat = await k.lead.startLeadChat(project.id, { prompt: 'Plan it' })
     const ws = await setUp(k, chat.id, 'failed')
     expect(await readFile(join(ws.path, '.env.local'), 'utf8')).toBe('SECRET=1\n')
     expect(queuedText(k, chat.id)).toEqual(['Plan it'])
@@ -160,26 +160,26 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
     expect(k.sessions.queued(tab.id)).toEqual([])
   })
 
-  it("waits for the room's scripts to be trusted with Wait for setup on, then sets up and sends", async () => {
+  it("waits for the project's scripts to be trusted with Wait for setup on, then sets up and sends", async () => {
     const repo = await tempRepo({ ...REPO, '.kernel/settings.toml': '[scripts]\nsetup = "echo set up"\n' })
     const k = await boot(await dirs({ leadWaitForSetup: true }))
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     sdk.calls.length = 0
-    const chat = await k.lead.startLeadChat(room.id, { prompt: 'Plan it' })
+    const chat = await k.lead.startLeadChat(project.id, { prompt: 'Plan it' })
     const ws = await setUp(k, chat.id, 'trust')
     expect(queuedText(k, chat.id)).toEqual(['Plan it'])
-    await trustRoom(k, room.id)
+    await trustProject(k, project.id)
     await setUp(k, ws.id)
     await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
   })
 
   // Naming the branch and folder from the chat's title: leadNaming.test.ts (KERNEL-424).
 
-  it('follows its own branch pattern, from Settings or the room', async () => {
+  it('follows its own branch pattern, from Settings or the project', async () => {
     const repo = await tempRepo({ ...REPO, '.kernel/settings.local.toml': '[workspace]\nlead_branch_pattern = "plans/{lead}-{slug}"\n' })
     const k = await boot(await dirs({ leadBranchPattern: 'lead/{slug}' }))
-    const room = await k.addRoom(repo)
-    const ws = await setUp(k, (await k.lead.startLeadChat(room.id, { prompt: 'Release notes' })).id)
+    const project = await k.addProject(repo)
+    const ws = await setUp(k, (await k.lead.startLeadChat(project.id, { prompt: 'Release notes' })).id)
     expect(ws.branch).toBe('plans/kernel-release-notes')
   })
 
@@ -188,9 +188,9 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
     await run('git', ['init', '-q', '-b', 'main', repo])
     for (const [f, c] of Object.entries(REPO)) { await mkdir(join(repo, f, '..'), { recursive: true }); await writeFile(join(repo, f), c) }
     const k = await boot(await dirs())
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     sdk.calls.length = 0
-    const chat = await k.lead.startLeadChat(room.id, { prompt: 'Plan it' })
+    const chat = await k.lead.startLeadChat(project.id, { prompt: 'Plan it' })
     expect(k.store.workspace(chat.workspaceId)).toMatchObject({ mode: 'current', path: repo, lead: true, status: 'ready' })
     await vi.waitFor(() => expect(callIn(repo)).toHaveLength(1))
   })
@@ -198,28 +198,28 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
   it("runs Kernel in its worktree with the checkout's project config, and tells it its branch and that the checkout isn't its", async () => {
     const repo = await tempRepo(REPO)
     const k = await boot(await dirs())
-    const room = await k.addRoom(repo)
+    const project = await k.addProject(repo)
     sdk.calls.length = 0
-    const chat = await k.lead.startLeadChat(room.id, { prompt: 'Plan the PDF export' })
+    const chat = await k.lead.startLeadChat(project.id, { prompt: 'Plan the PDF export' })
     const ws = await setUp(k, chat.id)
     await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
     const options = callIn(ws.path)[0].options
     expect(options).toMatchObject({ cwd: ws.path, projectConfigRoot: repo })
     expect(options.systemPrompt.append).toContain(`You are working in a git worktree at ${ws.path} on branch ${ws.branch}, created from main. It is not the main checkout, which the user may be running.`)
-    const kai = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    const kai = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
     await vi.waitFor(() => expect(callIn(kai.path)).toHaveLength(1))
     expect(callIn(kai.path)[0].options).not.toHaveProperty('projectConfigRoot')
     expect(agentPrompt(undefined, kai)).not.toContain('It is not the main checkout')
     expect(agentPrompt(undefined, kai)).toContain(`Push with \`git push -u origin ${kai.branch}\` (or \`HEAD\`), never a bare \`git push\`.`)
   })
 
-  it("reads the room's env files from the chat's own worktree, where files.copy put them", async () => {
+  it("reads the project's env files from the chat's own worktree, where files.copy put them", async () => {
     const repo = await tempRepo({ ...REPO, '.kernel/settings.toml': '[env]\nfiles = [".env.local"]\n' })
     await writeFile(join(repo, '.env.local'), 'FROM_COPY=1\n')
     const k = await boot(await dirs())
-    const room = await k.addRoom(repo)
-    await trustRoom(k, room.id)
-    const ws = await setUp(k, (await k.lead.leadChat(room.id)).id)
+    const project = await k.addProject(repo)
+    await trustProject(k, project.id)
+    const ws = await setUp(k, (await k.lead.leadChat(project.id)).id)
     expect(await readFile(join(ws.path, '.env.local'), 'utf8')).toBe('FROM_COPY=1\n')
     expect(k.env.envFor(ws)).toMatchObject({ FROM_COPY: '1', KERNEL_WORKSPACE: ws.path, KERNEL_ROOT_PATH: repo })
   })
@@ -227,8 +227,8 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
   it('refuses Fork into new workspace for a chat with Kernel, and lets Create PR run on its branch', async () => {
     const repo = await tempRepo(REPO)
     const k = await boot(await dirs())
-    const room = await k.addRoom(repo)
-    const chat = await k.lead.leadChat(room.id)
+    const project = await k.addProject(repo)
+    const chat = await k.lead.leadChat(project.id)
     await setUp(k, chat.id)
     await expect(k.workspaces.forkWorkspace(chat.id)).rejects.toThrow("A chat with Kernel can't fork")
     expect(k.team.isLeadWorkspace(k.store.workspace(chat.workspaceId)!)).toBe(true)
@@ -240,14 +240,14 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
 describe('what waits for setup (KERNEL-490)', () => {
   const SETUP = { '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' }
 
-  /** A started Kernel on a trusted room made of `files`, with `workspace` in its settings. */
-  async function room(files: Record<string, string>, workspace: Record<string, unknown> = {}) {
+  /** A started Kernel on a trusted project made of `files`, with `workspace` in its settings. */
+  async function project(files: Record<string, string>, workspace: Record<string, unknown> = {}) {
     const repo = await tempRepo({ ...REPO, ...files })
     const k = await boot(await dirs(workspace))
-    const r = await k.addRoom(repo)
-    await trustRoom(k, r.id)
+    const r = await k.addProject(repo)
+    await trustProject(k, r.id)
     sdk.calls.length = 0
-    return { k, room: r }
+    return { k, project: r }
   }
 
   /**
@@ -262,7 +262,7 @@ describe('what waits for setup (KERNEL-490)', () => {
   }
 
   it("sends Kernel's first message at once by default, while the setup script runs", async () => {
-    const { k, room: r } = await room(SETUP)
+    const { k, project: r } = await project(SETUP)
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     await sentAtOnce(k, chat)
     expect(k.store.workspace(chat.workspaceId)!.status).toBe('setup')
@@ -270,7 +270,7 @@ describe('what waits for setup (KERNEL-490)', () => {
   })
 
   it('holds it until setup passes with Wait for setup on and a setup script', async () => {
-    const { k, room: r } = await room(SETUP, { leadWaitForSetup: true })
+    const { k, project: r } = await project(SETUP, { leadWaitForSetup: true })
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     const ws = k.store.workspace(chat.workspaceId)!
     expect(queuedText(k, chat.id)).toEqual(['Plan it'])
@@ -282,25 +282,25 @@ describe('what waits for setup (KERNEL-490)', () => {
   })
 
   it.each([
-    ['the room has no setup script', {}, true],
+    ['the project has no setup script', {}, true],
     ['Run setup on create is off', SETUP, false]
   ] as const)('sends it at once with Wait for setup on when %s, and runs no setup', async (_, files, setupOnCreate) => {
-    const { k, room: r } = await room(files, { leadWaitForSetup: true })
+    const { k, project: r } = await project(files, { leadWaitForSetup: true })
     if (!setupOnCreate) await k.config.setSettings({ scripts: { setupOnCreate } })
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     await sentAtOnce(k, chat)
     expect((await setUp(k, chat.id)).setupRun).toBeUndefined()
   })
 
-  it("sends it at once when the room's own file turns Wait for setup off", async () => {
-    const { k, room: r } = await room({ ...SETUP, '.kernel/settings.local.toml': '[workspace]\nlead_wait_for_setup = false\n' }, { leadWaitForSetup: true })
+  it("sends it at once when the project's own file turns Wait for setup off", async () => {
+    const { k, project: r } = await project({ ...SETUP, '.kernel/settings.local.toml': '[workspace]\nlead_wait_for_setup = false\n' }, { leadWaitForSetup: true })
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     await sentAtOnce(k, chat)
     await setUp(k, chat.id)
   })
 
   it.each([false, true])("holds a teammate's brief through a failed setup, with Wait for setup %s", async (leadWaitForSetup) => {
-    const { k, room: r } = await room({ '.kernel/settings.toml': '[scripts]\nsetup = "exit 3"\n' }, { leadWaitForSetup })
+    const { k, project: r } = await project({ '.kernel/settings.toml': '[scripts]\nsetup = "exit 3"\n' }, { leadWaitForSetup })
     const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'kai' })
     expect(ws.status).toBe('failed')
     const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
@@ -312,25 +312,25 @@ describe('what waits for setup (KERNEL-490)', () => {
 
 /**
  * The shared Lead workspace from before KERNEL-405, as a database from 0.2.0 holds it: open chats with tabs, one of them closed,
- * one closed chat, a session on each tab. `mode` puts it on the checkout, as CJ's is, or in `<root>/<room>/lead`.
+ * one closed chat, a session on each tab. `mode` puts it on the checkout, as CJ's is, or in `<root>/<project>/lead`.
  */
 async function legacy(mode: 'current' | 'worktree') {
   const { repo } = await withOrigin()
   const where = await dirs()
   const k = await boot(where)
-  const room = await k.addRoom(repo)
+  const project = await k.addProject(repo)
   await k.stop()
   const store = new Store(join(where.dataDir, 'kernel.db'))
-  const root = join(where.home, 'wt', slugify(room.name))
+  const root = join(where.home, 'wt', slugify(project.name))
   let path = repo
   if (mode === 'worktree') {
     path = join(root, 'lead')
     await mkdir(root, { recursive: true })
     await run('git', ['-C', repo, 'worktree', 'add', '-q', '--detach', path, 'origin/main'])
   }
-  const old: Workspace = { id: 'old-lead', roomId: room.id, name: 'lead', branch: mode === 'current' ? 'main' : 'HEAD', baseRef: mode === 'current' ? 'main' : 'origin/main', path, mode, agentId: 'kernel-lead', lead: true, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+  const old: Workspace = { id: 'old-lead', projectId: project.id, name: 'lead', branch: mode === 'current' ? 'main' : 'HEAD', baseRef: mode === 'current' ? 'main' : 'origin/main', path, mode, agentId: 'kernel-lead', lead: true, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   store.saveWorkspace(old)
-  const t = (id: string, title: string, at: number, closedAt?: number) => store.saveThread({ id, roomId: room.id, title, createdAt: at, ...(closedAt ? { closedAt } : {}) })
+  const t = (id: string, title: string, at: number, closedAt?: number) => store.saveThread({ id, projectId: project.id, title, createdAt: at, ...(closedAt ? { closedAt } : {}) })
   t('plan', 'Plan wave 3', 1)
   t('icons', 'Chat icons sizing', 2)
   t('done', 'Old question', 3, 5)
@@ -351,16 +351,16 @@ async function legacy(mode: 'current' | 'worktree') {
   await mkdir(join(path, '.kernel', 'plans'), { recursive: true })
   await writeFile(join(path, '.kernel', 'plans', 'wave-3.md'), '# Wave 3\n')
   await writeFile(join(repo, 'untracked.txt'), 'the user is working here\n')
-  return { repo, where, room, old, path }
+  return { repo, where, project, old, path }
 }
 
 describe('moving the open chats out of the shared Lead workspace at startup (KERNEL-405)', () => {
   for (const mode of ['current', 'worktree'] as const) {
     it(`gives each open chat its own worktree with its tabs and sessions, and archives the old record (${mode})`, async () => {
-      const { repo, where, room, old, path } = await legacy(mode)
+      const { repo, where, project, old, path } = await legacy(mode)
       const headBefore = await sha(repo, 'HEAD')
       const k = await boot(where)
-      const moved = k.lead.chatWorkspaces(room.id)
+      const moved = k.lead.chatWorkspaces(project.id)
       expect(moved.map((w) => [w.threadId, w.branch, w.mode, w.lead])).toEqual([['plan', 'kernel/plan-wave-3', 'worktree', true], ['icons', 'kernel/chat-icons-sizing', 'worktree', true]])
       // Every tab of each open chat moves with it, a closed one too, and keeps its session (KERNEL-348).
       const plan = moved[0]
@@ -396,12 +396,12 @@ describe('moving the open chats out of the shared Lead workspace at startup (KER
       expect(k.store.meta('leadChatsMoved')).toBe(true)
       // The old record can't be deleted from History, and lead.open finds the newest chat.
       expect((await k.history.deletePreview([old.id])).skipped).toEqual([{ id: old.id, name: 'lead', reason: "It is Kernel's workspace." }])
-      expect((await k.handlers()['lead.open']({ roomId: room.id }))?.id).toBe(moved[1].id)
+      expect((await k.handlers()['lead.open']({ projectId: project.id }))?.id).toBe(moved[1].id)
       await k.stop()
 
       // A second start moves nothing.
       const again = await boot(where)
-      expect(again.store.workspaces(room.id).filter((w) => w.lead).map((w) => w.id).sort()).toEqual([old.id, ...moved.map((w) => w.id)].sort())
+      expect(again.store.workspaces(project.id).filter((w) => w.lead).map((w) => w.id).sort()).toEqual([old.id, ...moved.map((w) => w.id)].sort())
     })
   }
 })
@@ -418,65 +418,65 @@ async function landOnMain(repo: string, file: string, n = 1) {
   await run('git', ['-C', repo, 'push', '-q', 'origin', 'main'])
 }
 
-/** A room with an origin and two chats with Kernel, set up and idle. Sends are recorded, not run. */
-async function syncedRoom() {
+/** A project with an origin and two chats with Kernel, set up and idle. Sends are recorded, not run. */
+async function syncedProject() {
   const { repo, bare } = await withOrigin()
   const k = await boot(await dirs())
   k.sessions.send = async () => ({ queued: false })
-  const room = await k.rooms.addRoom(repo)
-  const a = await k.lead.newLeadChat(room.id, { prompt: '' })
-  const b = await k.lead.newLeadChat(room.id, { prompt: '' })
+  const project = await k.projects.addProject(repo)
+  const a = await k.lead.newLeadChat(project.id, { prompt: '' })
+  const b = await k.lead.newLeadChat(project.id, { prompt: '' })
   const [wa, wb] = [await setUp(k, a.id), await setUp(k, b.id)]
-  return { k, repo, bare, room, a, b, wa, wb }
+  return { k, repo, bare, project, a, b, wa, wb }
 }
 
-const syncNotes = (k: Kernel, roomId: string) => k.store.activity(roomId, 500).filter((x) => x.actor === 'kernel' && /^(updated|didn't update) Kernel's worktree/.test(x.text)).reverse()
+const syncNotes = (k: Kernel, projectId: string) => k.store.activity(projectId, 500).filter((x) => x.actor === 'kernel' && /^(updated|didn't update) Kernel's worktree/.test(x.text)).reverse()
 
 describe("keeping each chat's worktree on the latest main (KERNEL-181, KERNEL-405)", () => {
   it('fast-forwards each idle chat on its own branch, logs one line each, and does nothing once it is current', async () => {
-    const { k, repo, room, wa, wb } = await syncedRoom()
+    const { k, repo, project, wa, wb } = await syncedProject()
     await landOnMain(repo, 'merged', 3)
-    await k.lead.syncLead(room.id)
+    await k.lead.syncLead(project.id)
     for (const w of [wa, wb]) {
       expect(await sha(w.path, 'HEAD')).toBe(await sha(repo, 'origin/main'))
       expect(await branchOf(w.path)).toBe(w.branch)
     }
-    await k.lead.syncLead(room.id)
-    expect(syncNotes(k, room.id).map((x) => [x.workspaceId, x.text]).sort()).toEqual([wa.id, wb.id].map((id) => [id, "updated Kernel's worktree to origin/main, 3 new commits"]).sort())
+    await k.lead.syncLead(project.id)
+    expect(syncNotes(k, project.id).map((x) => [x.workspaceId, x.text]).sort()).toEqual([wa.id, wb.id].map((id) => [id, "updated Kernel's worktree to origin/main, 3 new commits"]).sort())
   })
 
   it('moves only the chat that is idle, and a turn that ends syncs only its own chat', async () => {
-    const { k, repo, room, a, b, wa, wb } = await syncedRoom()
+    const { k, repo, project, a, b, wa, wb } = await syncedProject()
     const was = await sha(wa.path, 'HEAD')
     await landOnMain(repo, 'while-running')
     const isRunning = k.sessions.isRunning.bind(k.sessions)
     k.sessions.isRunning = (id) => id === a.id || isRunning(id)
-    await k.lead.syncLead(room.id)
+    await k.lead.syncLead(project.id)
     expect(await sha(wa.path, 'HEAD')).toBe(was)
     expect(await sha(wb.path, 'HEAD')).toBe(await sha(repo, 'origin/main'))
     k.sessions.isRunning = isRunning
     const sync = vi.spyOn(k.lead, 'syncLead')
     ;(k.sessions as unknown as { d: { onTurnDone: (...x: unknown[]) => void } }).d.onTurnDone(wa, a, { ok: true, interrupted: false, by: 'user' })
-    expect(sync).toHaveBeenCalledWith(room.id, { workspaceId: wa.id })
+    expect(sync).toHaveBeenCalledWith(project.id, { workspaceId: wa.id })
     await Promise.all(sync.mock.results.map((r) => r.value))
     expect(await sha(wa.path, 'HEAD')).toBe(await sha(repo, 'origin/main'))
     expect(b.id).toBeTruthy()
   })
 
-  it('fetches once when a PR in the room merges, then moves every chat', async () => {
-    const { k, bare, room, wa, wb } = await syncedRoom()
-    const kai = await k.workspaces.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+  it('fetches once when a PR in the project merges, then moves every chat', async () => {
+    const { k, bare, project, wa, wb } = await syncedProject()
+    const kai = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
     const merged = await pushElsewhere(bare, 'merged')
     const sync = vi.spyOn(k.lead, 'syncLead')
     bus.push({ type: 'pr', workspaceId: kai.id, state: 'merged' })
-    expect(sync.mock.calls).toEqual([[room.id, { fetch: true }]])
+    expect(sync.mock.calls).toEqual([[project.id, { fetch: true }]])
     await Promise.all(sync.mock.results.map((r) => r.value))
     expect(await sha(wa.path, 'HEAD')).toBe(merged)
     expect(await sha(wb.path, 'HEAD')).toBe(merged)
   })
 
   it('moves nothing when tracked files have changes or the chat has commits of its own, and logs each once per sha', async () => {
-    const { k, repo, room, wa, wb } = await syncedRoom()
+    const { k, repo, project, wa, wb } = await syncedProject()
     const was = await sha(wa.path, 'HEAD')
     await writeFile(join(wa.path, 'README.md'), '# edited by Kernel\n')
     await writeFile(join(wb.path, 'kernel.txt'), 'Kernel committed\n')
@@ -484,22 +484,22 @@ describe("keeping each chat's worktree on the latest main (KERNEL-181, KERNEL-40
     await run('git', ['-C', wb.path, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-m', 'own'])
     const own = await sha(wb.path, 'HEAD')
     await landOnMain(repo, 'first')
-    await k.lead.syncLead(room.id)
-    await k.lead.syncLead(room.id)
+    await k.lead.syncLead(project.id)
+    await k.lead.syncLead(project.id)
     expect(await sha(wa.path, 'HEAD')).toBe(was)
     expect(await sha(wb.path, 'HEAD')).toBe(own)
-    expect(syncNotes(k, room.id).map((x) => [x.workspaceId, x.object]).sort()).toEqual([[wa.id, 'tracked files have changes'], [wb.id, 'it has a commit of its own']].sort())
+    expect(syncNotes(k, project.id).map((x) => [x.workspaceId, x.object]).sort()).toEqual([[wa.id, 'tracked files have changes'], [wb.id, 'it has a commit of its own']].sort())
     await landOnMain(repo, 'second')
-    await k.lead.syncLead(room.id)
-    expect(syncNotes(k, room.id)).toHaveLength(4)
+    await k.lead.syncLead(project.id)
+    expect(syncNotes(k, project.id)).toHaveLength(4)
   })
 
   it('leaves a chat that is setting up, or whose setup failed, where it is', async () => {
-    const { k, repo, room, wa } = await syncedRoom()
+    const { k, repo, project, wa } = await syncedProject()
     const was = await sha(wa.path, 'HEAD')
     k.store.saveWorkspace({ ...k.store.workspace(wa.id)!, status: 'failed' })
     await landOnMain(repo, 'merged')
-    await k.lead.syncLead(room.id, { workspaceId: wa.id })
+    await k.lead.syncLead(project.id, { workspaceId: wa.id })
     expect(await sha(wa.path, 'HEAD')).toBe(was)
     await rm(join(repo, 'merged-0.txt'))
   })

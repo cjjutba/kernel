@@ -2,18 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatPart } from '../src/shared/types'
 import { ageOf, branchLine, branchRows } from '../src/renderer/src/screens/workspace/composer/branchRows'
 
-// KERNEL-786: New chat's where row. Moving the typed draft between rooms, and the branch menu's tags.
+// KERNEL-786: New chat's where row. Moving the typed draft between projects, and the branch menu's tags.
 
 const words = (t: string): ChatPart[] => [{ type: 'text', text: t }]
 
-describe('picking another room under the box', () => {
+describe('picking another project under the box', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined, removeItem: () => undefined })
   })
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
-  it('moves the typed draft to the picked room and leaves the first room empty', async () => {
+  it('moves the typed draft to the picked project and leaves the first project empty', async () => {
     vi.resetModules()
     const { loadDraft, moveDraft, newChatDraftOf, saveDraft } = await import('../src/renderer/src/screens/workspace/composer/draftStore')
     saveDraft(newChatDraftOf('a'), words('add a retry'), '')
@@ -22,7 +22,7 @@ describe('picking another room under the box', () => {
     expect(loadDraft(newChatDraftOf('a'))).toBeUndefined()
   })
 
-  it('keeps each room\'s model picks where they were made, and replaces the other room\'s text', async () => {
+  it('keeps each project\'s model picks where they were made, and replaces the other project\'s text', async () => {
     vi.resetModules()
     const { loadDraft, loadPicks, moveDraft, newChatDraftOf, savePicks, saveDraft } = await import('../src/renderer/src/screens/workspace/composer/draftStore')
     saveDraft(newChatDraftOf('a'), words('from a'), '')
@@ -35,7 +35,7 @@ describe('picking another room under the box', () => {
     expect(loadPicks(newChatDraftOf('a'))).toEqual({ model: 'opus-a' })
   })
 
-  it('moves nothing from an empty box, or to the same room', async () => {
+  it('moves nothing from an empty box, or to the same project', async () => {
     vi.resetModules()
     const { loadDraft, moveDraft, newChatDraftOf, saveDraft } = await import('../src/renderer/src/screens/workspace/composer/draftStore')
     saveDraft(newChatDraftOf('b'), words('keep me'), '')
@@ -58,17 +58,17 @@ describe('the branch menu', () => {
     { name: 'origin/HEAD', committedAt: minutes(1) }
   ]
   const workspaces = [
-    { id: 'w1', roomId: 'r', branch: 'feat/kernel-713', status: 'ready' as const },
-    { id: 'w2', roomId: 'other', branch: 'fix/kernel-717', status: 'ready' as const },
-    { id: 'w3', roomId: 'r', branch: 'spike/local-only', status: 'archived' as const }
+    { id: 'w1', projectId: 'r', branch: 'feat/kernel-713', status: 'ready' as const },
+    { id: 'w2', projectId: 'other', branch: 'fix/kernel-717', status: 'ready' as const },
+    { id: 'w3', projectId: 'r', branch: 'spike/local-only', status: 'archived' as const }
   ]
-  const rows = branchRows({ list, fallback: 'origin/main', remote: 'origin', workspaces, roomId: 'r', now })
+  const rows = branchRows({ list, fallback: 'origin/main', remote: 'origin', workspaces, projectId: 'r', now })
 
   it('lists the default first, then the repo\'s branches once each, without the remote HEAD', () => {
     expect(rows.map((r) => r.name)).toEqual(['main', 'feat/kernel-713', 'fix/kernel-717', 'spike/local-only'])
   })
 
-  it('tags the default, a branch with an open workspace in this room, a remote branch, and nothing for a local one', () => {
+  it('tags the default, a branch with an open workspace in this project, a remote branch, and nothing for a local one', () => {
     expect(rows.map((r) => r.tag)).toEqual(['default', 'has a workspace', 'remote', ''])
     expect(rows[1].workspaceId).toBe('w1')
     expect(rows[2].workspaceId).toBeUndefined()
@@ -81,7 +81,7 @@ describe('the branch menu', () => {
   })
 
   it('gives the default the tag even when a workspace is on it', () => {
-    const r = branchRows({ list, fallback: 'origin/main', remote: 'origin', workspaces: [{ id: 'w', roomId: 'r', branch: 'main', status: 'ready' }], roomId: 'r', now })
+    const r = branchRows({ list, fallback: 'origin/main', remote: 'origin', workspaces: [{ id: 'w', projectId: 'r', branch: 'main', status: 'ready' }], projectId: 'r', now })
     expect(r[0]).toMatchObject({ tag: 'default', workspaceId: 'w' })
   })
 

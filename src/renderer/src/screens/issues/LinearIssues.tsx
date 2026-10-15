@@ -6,7 +6,7 @@ import { readSaved as readStored, writeSaved } from '../../remember'
 import { Button, EmptyList, FailedState, Icon, NotConnectedState, Pill, useListKeys } from '../../ui'
 import { IssuePriority, IssueState } from '../../icons'
 import { IssueDetail } from './IssueDetail'
-import { CapNote, FilterChip, IssueSkeleton, RefreshNotice, type RoomHead } from './parts'
+import { CapNote, FilterChip, IssueSkeleton, RefreshNotice, type ProjectHead } from './parts'
 import { RowStatus, useReadPrs } from './WorkCard'
 import { WorkHeader } from '../work/WorkHeader'
 import { useOpenPrCount } from '../prs/model'
@@ -38,9 +38,9 @@ let knownSlug: string | undefined
 
 /**
  * Issues.png and its states: your open Linear issues in a list, the selected one on the right (KERNEL-160). The route's `issueId` opens with
- * that issue selected. Linear's list is the account's, so the room in the header only says which room's page this is (KERNEL-471).
+ * that issue selected. Linear's list is the account's, so the project in the header only says which project's page this is (KERNEL-471).
  */
-export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHead }) {
+export function LinearIssues({ issueId, head }: { issueId?: string; head: ProjectHead }) {
   const prCount = useOpenPrCount()
   const online = useStore((s) => s.system.online)
   const workspaces = useStore((s) => s.workspaces)
@@ -190,7 +190,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
           <span className="is-sep" aria-hidden="true" />
           {scope.teams.length > 1 && <FilterChip label="Team" value={filter.teamId ?? ''} options={[{ value: '', label: 'All' }, ...scope.teams.map((t) => ({ value: t.id, label: t.key }))]} onChange={(v) => set({ teamId: v || undefined })} />}
           {scope.teams.length === 1 && <FilterChip label="Team" value={scope.teams[0].id} options={[{ value: scope.teams[0].id, label: scope.teams[0].key }]} onChange={() => undefined} />}
-          <FilterChip label="Project" value={filter.projectId ?? ''} options={[{ value: '', label: 'All' }, ...projectsFor(scope, filter.teamId).map((p) => ({ value: p.id, label: p.name }))]} onChange={(v) => set({ projectId: v || undefined })} />
+          <FilterChip label="Linear project" value={filter.projectId ?? ''} options={[{ value: '', label: 'All' }, ...projectsFor(scope, filter.teamId).map((p) => ({ value: p.id, label: p.name }))]} onChange={(v) => set({ projectId: v || undefined })} />
           <FilterChip label="Cycle" value={filter.cycleId ?? ''} options={[{ value: '', label: 'All' }, ...cyclesFor(scope, filter.teamId).map((c) => ({ value: c.id, label: cycleLabel(c, scope, filter.teamId) }))]} onChange={(v) => set({ cycleId: v || undefined })} />
           <span className="grow" />
           <span className="is-search">
@@ -261,7 +261,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
                             <span className="is-sub">
                               <IssuePriority priority={i.priority} size={14} />
                               <span className="mono">{i.id}</span>
-                              {i.project && <span className="ellipsis">{i.project.name}</span>}
+                              {i.project && <span className="ellipsis" title={`Linear project: ${i.project.name}`}>{i.project.name}</span>}
                             </span>
                           </span>
                           <span className="is-right">
@@ -276,7 +276,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
               </section>
               )
             })}
-            {list.length >= 100 && <CapNote>Showing the 100 issues updated most recently. Narrow by project, cycle or search to find the rest.</CapNote>}
+            {list.length >= 100 && <CapNote>Showing the 100 issues updated most recently. Narrow by Linear project, cycle or search to find the rest.</CapNote>}
           </div>
           <div className="is-pane" ref={detail}>
             {selId && <IssueDetail id={selId} summary={cur} tick={tick} onPlanned={() => { setTick((t) => t + 1); void load(true) }} />}

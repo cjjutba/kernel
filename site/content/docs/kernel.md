@@ -3,13 +3,13 @@ title: Kernel, the lead
 description: Kernel plans with you, hands work to the team, and reports back as it lands.
 ---
 
-Kernel is the lead in every room. You talk to Kernel the way you would brief a tech lead: what you want, and anything it should know. Kernel works out the plan, hands each task to the right teammate, and keeps track of every task until it merges.
+Kernel is the lead in every project. You talk to Kernel the way you would brief a tech lead: what you want, and anything it should know. Kernel works out the plan, hands each task to the right teammate, and keeps track of every task until it merges.
 
 ## Talking to Kernel
 
-- ⌘N opens **New chat**, which names the room and remembers your picks. Press it again to close the window.
-- ⌘⇧L opens the room's chat with Kernel.
-- The sidebar lists every chat with Kernel under its room.
+- ⌘N opens **New chat**, which names the project and remembers your picks. Press it again to close the window.
+- ⌘⇧L opens the project's chat with Kernel.
+- The sidebar lists every chat with Kernel under its project.
 
 New chat shows how many agents are working, what waits on you, which pull requests are ready to merge, and the next issues from your tracker with a **Plan** button.
 
@@ -27,7 +27,7 @@ Kernel only starts a turn of its own for an update when something needs attentio
 
 ## The PRs tab
 
-The right panel in a chat with Kernel lists every open pull request in the room. Merge ready ones from there, or use **Merge all**, which merges them one at a time and stops at the first that can't merge.
+The right panel in a chat with Kernel lists every open pull request in the project. Merge ready ones from there, or use **Merge all**, which merges them one at a time and stops at the first that can't merge.
 
 ## Asking Kernel to do housekeeping
 
@@ -39,4 +39,4 @@ You can ask Kernel in plain words to:
 
 ## Customizing Kernel
 
-Kernel is the only agent built into the app. To change its instructions or tools for a repo, use **Customize** in Settings, Agents, which copies Kernel into the repo as `.claude/agents/kernel.md` for you to edit. A repo that brings its own lead can pick it in the room's Agents page.
+Kernel is the only agent built into the app. To change its instructions or tools for a repo, use **Customize** in Settings, Agents, which copies Kernel into the repo as `.claude/agents/kernel.md` for you to edit. A repo that brings its own lead can pick it in the project's Agents page.

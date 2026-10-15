@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PushEvent } from '../src/shared/ipc'
-import type { AgentDef, Chat, Room, Route, Thread, Workspace } from '../src/shared/types'
+import type { AgentDef, Chat, Project, Route, Thread, Workspace } from '../src/shared/types'
 
-// KERNEL-578, KERNEL-596: archiving a chat with Kernel that is on screen moves the route once, straight to the room's front door, in the step that
+// KERNEL-578, KERNEL-596: archiving a chat with Kernel that is on screen moves the route once, straight to the project's front door, in the step that
 // stores the archived workspace, whatever main takes to answer. Main's archive is a script of pushes here, in the order archiveLeadChat sends
 // them: the workspaces the chat handed off one by one, then its own, then the closed thread.
 let main: (threadId: string) => Promise<void> = async () => undefined
@@ -21,12 +21,12 @@ const { apply, getState, setState, subscribe } = await import('../src/renderer/s
 const { archiveChatNow } = await import('../src/renderer/src/screens/workspace/archiveChat')
 const { followArchives } = await import('../src/renderer/src/screens/workspace/archiveLanding')
 
-const room: Room = { id: 'r1', name: 'Client A', path: '/r/r1', defaultBranch: 'main', paused: false, createdAt: 1 }
+const project: Project = { id: 'r1', name: 'Client A', path: '/r/r1', defaultBranch: 'main', paused: false, createdAt: 1 }
 const kernel = { id: 'kernel', lead: true } as AgentDef
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace =>
-  ({ id, roomId: 'r1', name: id, branch: `kernel/${id}`, baseRef: 'origin/main', path: `/w/${id}`, mode: 'worktree', agentId: 'kernel', lead: true, port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
+  ({ id, projectId: 'r1', name: id, branch: `kernel/${id}`, baseRef: 'origin/main', path: `/w/${id}`, mode: 'worktree', agentId: 'kernel', lead: true, port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
 const kai = (id: string, threadId: string) => ws(id, { lead: undefined, agentId: 'kai', threadId, prState: 'ready', prNumber: 7 })
-const thread = (id: string, at: number): Thread => ({ id, roomId: 'r1', title: `Chat ${id}`, createdAt: at })
+const thread = (id: string, at: number): Thread => ({ id, projectId: 'r1', title: `Chat ${id}`, createdAt: at })
 const tab = (id: string, workspaceId: string, threadId: string): Chat => ({ id, workspaceId, threadId, title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1 })
 
 // Newest first in the sidebar: c, b, a.
@@ -67,7 +67,7 @@ beforeEach(() => {
   routes = []
   exposed = []
   setState({
-    rooms: [room], agents: { r1: [kernel] }, workspaces: workspaces(),
+    projects: [project], agents: { r1: [kernel] }, workspaces: workspaces(),
     threads: { t1: thread('t1', 1), t2: thread('t2', 2), t3: thread('t3', 3) },
     chats: { a: [tab('a1', 'a', 't1')], b: [tab('b1', 'b', 't2')], c: [tab('c1', 'c', 't3')] }
   })
@@ -78,7 +78,7 @@ beforeEach(() => {
 })
 afterEach(() => follow?.())
 
-const door: Route = { name: 'leadNew', roomId: 'r1' }
+const door: Route = { name: 'leadNew', projectId: 'r1' }
 
 describe('archiving the chat on screen (KERNEL-596)', () => {
   it('moves once, to the front door, in the step that stores the archived workspace, and never to the chat above', async () => {

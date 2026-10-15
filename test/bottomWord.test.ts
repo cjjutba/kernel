@@ -11,7 +11,7 @@ describe('the collapsed bottom panel', () => {
     expect(collapsedWord({ ...idle, scripts: 0, noRun: true })).toBe('No run script')
   })
 
-  it('says running, naming the scripts when the room has several', () => {
+  it('says running, naming the scripts when the project has several', () => {
     expect(collapsedWord({ ...idle, running: ['run'] })).toBe('Running')
     expect(collapsedWord({ ...idle, scripts: 3, running: ['web'] })).toBe('Running web')
     expect(collapsedWord({ ...idle, scripts: 3, running: ['web', 'api'] })).toBe('Running web, api')

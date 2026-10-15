@@ -12,7 +12,7 @@
 .crumb { flex-shrink: 0; max-width: 30%; overflow: hidden; text-overflow: ellipsis; padding: 0; border: 0; background: transparent; color: var(--ink-2); }
 .crumb:hover { color: var(--ink); }
 /* The title is the only thing in the header that shrinks, and it cuts off with an ellipsis. Its hover box reaches 6px into the gaps on
-   both sides, as on the canvas. The room, chip, editor icon, PR capsule and panel toggle keep their size. */
+   both sides, as on the canvas. The project, chip, editor icon, PR capsule and panel toggle keep their size. */
 .header .ws-title { display: flex; flex: 0 1 auto; min-width: 0; margin: 0 -6px; }
 .ws-title-btn { display: flex; min-width: 0; padding: 3px 6px; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--ink); font: inherit; text-align: left; white-space: nowrap; cursor: pointer; }
 .ws-title-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -21,7 +21,7 @@
 .ws-label { flex-shrink: 4; min-width: 0; font-size: 12px; }
 .header .icon-btn, .ws-aside-head .icon-btn { flex-shrink: 0; }
 /* The one panel toggle, fixed 10px from the screen's right edge (the header's padding) and 8px from its top, whole pixels so it can't
-   round differently in the header and the band. The slots hold its room and are never a drag region or a click target. */
+   round differently in the header and the band. The slots hold its project and are never a drag region or a click target. */
 .ws-panel > .panel-toggle { position: absolute; top: 8px; right: 10px; z-index: 2; -webkit-app-region: no-drag; }
 .panel-toggle-slot { flex: none; width: 28px; height: 28px; }
 .ws-issue { flex-shrink: 0; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: var(--r-xs); background: transparent; color: var(--ink-2); font-family: var(--mono); font-size: 11.5px; }
@@ -175,11 +175,11 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .trow { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .trow-btn { width: calc(100% + 16px); margin: -4px -8px; padding: 4px 8px; border: 0; border-radius: var(--r-sm); background: transparent; text-align: left; cursor: default; transition: background 0.12s; }
 .trow-btn:not(:disabled) { cursor: pointer; }
-/* A row with something to open fills under the pointer and on focus (KERNEL-375). The padding gives the fill room and the margin
+/* A row with something to open fills under the pointer and on focus (KERNEL-375). The padding gives the fill project and the margin
    cancels it, so text and icons stay where they were. The fill is the button only, never the opened body under it. */
 .trow-btn:not(:disabled):hover, .trow-btn:not(:disabled):focus-visible { background: var(--surface-3); }
 /* The icon slot is 15px wide. On hover and focus a row that can open swaps its icon for the chevron in that slot, as the sidebar does
-   for rooms (KERNEL-562, KERNEL-207), and an open row keeps the chevron. Opacity rather than display, so the slot keeps its size and
+   for projects (KERNEL-562, KERNEL-207), and an open row keeps the chevron. Opacity rather than display, so the slot keeps its size and
    nothing moves. The chevron spans the slot's full height and centers in it, so it lines up with the label. An inert row has no chevron, so its icon stays. */
 .step-slot { position: relative; flex-shrink: 0; width: 15px; }
 /* A 16px glyph in the 15px slot, with the extra pixel taken from below so the row keeps the height it had at 15 (icon-sizes-and-stroke). */
@@ -458,17 +458,17 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .lead-new { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .lead-top { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; padding: 0 24px; text-align: center; }
 .lead-title { flex-shrink: 0; }
-/* The room menu hangs below the title, past the block's edge, so the block lets it out while it is open. */
-.lead-top:has(.lead-room-anchor [aria-expanded='true'], .lead-sub [aria-expanded='true']) { position: relative; overflow: visible; z-index: 2; }
+/* The project menu hangs below the title, past the block's edge, so the block lets it out while it is open. */
+.lead-top:has(.lead-project-anchor [aria-expanded='true'], .lead-sub [aria-expanded='true']) { position: relative; overflow: visible; z-index: 2; }
 .lead-title h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
-/* The title asks what's next and names the room. The name is the room menu's button: underlined, dotted until hovered or opened. */
+/* The title asks what's next and names the project. The name is the project menu's button: underlined, dotted until hovered or opened. */
 .lead-title h2.lead-ask { font-size: 24px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.3; }
-.lead-room-anchor { position: relative; display: inline-flex; min-width: 0; max-width: 20ch; vertical-align: bottom; }
-.lead-room { display: inline-flex; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; letter-spacing: inherit; text-decoration: underline dotted var(--ink-3); text-decoration-thickness: 1.5px; text-underline-offset: 6px; cursor: pointer; }
-.lead-room:hover, .lead-room[aria-expanded='true'] { text-decoration-style: solid; text-decoration-color: var(--ink-2); }
-.lead-room:focus-visible { outline: 1px solid var(--ink-3); outline-offset: 4px; border-radius: var(--r-2xs); }
-.lead-room:disabled { cursor: default; }
-.lead-room .ellipsis { text-decoration: inherit; }
+.lead-project-anchor { position: relative; display: inline-flex; min-width: 0; max-width: 20ch; vertical-align: bottom; }
+.lead-project { display: inline-flex; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; letter-spacing: inherit; text-decoration: underline dotted var(--ink-3); text-decoration-thickness: 1.5px; text-underline-offset: 6px; cursor: pointer; }
+.lead-project:hover, .lead-project[aria-expanded='true'] { text-decoration-style: solid; text-decoration-color: var(--ink-2); }
+.lead-project:focus-visible { outline: 1px solid var(--ink-3); outline-offset: 4px; border-radius: var(--r-2xs); }
+.lead-project:disabled { cursor: default; }
+.lead-project .ellipsis { text-decoration: inherit; }
 .lead-sub { display: flex; justify-content: center; margin-top: 14px; }
 .lead-sub .cmp-branch-anchor { position: relative; }
 .lead-up { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 0 24px 16px; }

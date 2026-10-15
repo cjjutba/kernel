@@ -1,6 +1,6 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import { isRunName, RUN_SCRIPT_NAME, type AgentChangePr, type AgentDef, type AgentReach, type AgentScope, type Approval, type AskedQuestion, type ChatPart, type Decision, type IssueTaken, type LeadMode, type PrState, type QueueReason, type RoomSettingsPatch, type Workspace, type WorkspaceMode } from '@shared/types'
+import { isRunName, RUN_SCRIPT_NAME, type AgentChangePr, type AgentDef, type AgentReach, type AgentScope, type Approval, type AskedQuestion, type ChatPart, type Decision, type IssueTaken, type LeadMode, type PrState, type QueueReason, type ProjectSettingsPatch, type Workspace, type WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { blockedWhy, headBlockers, notMergeable, reviewsText } from '@shared/merge'
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
@@ -16,7 +16,7 @@ import { trackerName } from './trackers'
 import { convertScriptVariables, SCRIPT_VARIABLES } from './scriptImport'
 
 export interface KernelToolDeps {
-  roomId: string
+  projectId: string
   lead: AgentDef | undefined
   /** The Lead tab these tools belong to. Workspaces it hands off report back to it (KERNEL-105). */
   chatId?: string
@@ -34,7 +34,7 @@ export interface KernelToolDeps {
    */
   createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[]; images?: ChatPart[]; goAhead?: string }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
   /**
-   * How many teammate workspaces may be open in the room at once, read on each call: the room's own limit when it sets one,
+   * How many teammate workspaces may be open in the project at once, read on each call: the project's own limit when it sets one,
    * else Settings, Models' agent limit. 0 is no cap, and so is leaving it out (KERNEL-220, KERNEL-492).
    */
   agentCap?: () => Promise<OpenCap>
@@ -74,8 +74,8 @@ export interface KernelToolDeps {
   /** Saves the Lead's new agent: the file it wrote for `me`, or the pull request that adds it for `team` (KERNEL-466). */
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }, scope?: AgentScope) => Promise<string | AgentChangePr>
   /**
-   * The MCP servers an agent can reach in the room, and the ones its tools line names that it can't use. `wait` waits for
-   * the room's first check. Left out, create_agent says nothing about servers (KERNEL-476).
+   * The MCP servers an agent can reach in the project, and the ones its tools line names that it can't use. `wait` waits for
+   * the project's first check. Left out, create_agent says nothing about servers (KERNEL-476).
    */
   reach?: (agent: AgentDef, o?: { wait?: boolean }) => Promise<AgentReach>
   /** Archives with the user's Settings for the branch, as the sidebar does (KERNEL-93). */
@@ -95,7 +95,7 @@ export interface KernelToolDeps {
   userSaid?: () => { text: string; at: number } | undefined
   /** Sets what the workspace waits for, by workspace id; an empty list ends the wait and starts a held brief (KERNEL-259). */
   setWait?: (workspaceId: string, on: string[]) => Promise<Workspace>
-  /** The room's remote and the base a hand-off from `baseRef` starts from, so a wait across bases is refused (KERNEL-693). Left out, bases aren't compared. */
+  /** The project's remote and the base a hand-off from `baseRef` starts from, so a wait across bases is refused (KERNEL-693). Left out, bases aren't compared. */
   handoffBase?: (baseRef?: string) => Promise<{ remote: string; base: string }>
   /** Reads the PR from GitHub and saves its state, so a merge Kernel missed doesn't block archive (KERNEL-109). Left out, the saved state decides. */
   refreshPr?: (workspaceId: string) => Promise<Workspace>
@@ -132,8 +132,8 @@ export interface KernelToolDeps {
   acted?: (a: { messaged: Workspace } | { created: string } | { asked: string[] }) => void
   /** What list_workspaces adds after each workspace this chat owes something, by id (KERNEL-749). Left out, nothing. */
   openMarks?: () => Map<string, string>
-  /** Saves set_room_scripts' patch to the room's `.kernel/settings.local.toml` as Settings does. Left out, the tool refuses (KERNEL-683). */
-  saveRoomScripts?: (patch: RoomSettingsPatch) => Promise<unknown>
+  /** Saves set_project_scripts' patch to the project's `.kernel/settings.local.toml` as Settings does. Left out, the tool refuses (KERNEL-683). */
+  saveProjectScripts?: (patch: ProjectSettingsPatch) => Promise<unknown>
 }
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
@@ -178,28 +178,28 @@ async function loadImages(d: KernelToolDeps, images: ImageArg[] | undefined): Pr
 }
 
 /**
- * The open-workspace cap create_workspace checks, 0 for none. `own` is true when the room's `[agents] open_workspaces` sets
- * it, and `room` is the room's name, so the refusal can say where to change it (KERNEL-492).
+ * The open-workspace cap create_workspace checks, 0 for none. `own` is true when the project's `[agents] open_workspaces` sets
+ * it, and `project` is the project's name, so the refusal can say where to change it (KERNEL-492).
  */
-export interface OpenCap { cap: number; own: boolean; room: string }
+export interface OpenCap { cap: number; own: boolean; project: string }
 
 /** create_workspace's refusal at the cap, naming the setting that gave it. `user_asked` is the way past it, for a user who asked for more. */
-export function capRefusal(open: number, { cap, own, room }: OpenCap): string {
-  const count = `${open} teammate ${open === 1 ? 'workspace is' : 'workspaces are'} open in this room`
-  const where = own ? `change it in Settings, ${room}, Agents` : `raise Agents working at once in Settings, Models and effort, or set this room's own limit in Settings, ${room}, Agents`
+export function capRefusal(open: number, { cap, own, project }: OpenCap): string {
+  const count = `${open} teammate ${open === 1 ? 'workspace is' : 'workspaces are'} open in this project`
+  const where = own ? `change it in Settings, ${project}, Agents` : `raise Agents working at once in Settings, Models and effort, or set this project's own limit in Settings, ${project}, Agents`
   return `${count}${open === cap ? ', the limit' : `, over the limit of ${cap}`}. Archive one, or the user can ${where}.`
 }
 
 /** Why a brief or message waits, and when it goes out, for the reasons that hold a whole chat rather than one turn. */
 const WAITS: Partial<Record<QueueReason, { because: string; until: string }>> = {
   capacity: { because: 'Every agent slot in Settings, Models is in use', until: 'when a slot frees up' },
-  paused: { because: 'The room is paused', until: 'when the user resumes it' },
+  paused: { because: 'The project is paused', until: 'when the user resumes it' },
   offline: { because: 'Kernel is offline or signed out', until: 'once it is back' },
   limit: { because: 'Usage is close to the limit', until: 'when it resets or usage drops' }
 }
 
 /**
- * What create_workspace and message_agent tell the Lead when the agent limit, a paused room or being offline holds what
+ * What create_workspace and message_agent tell the Lead when the agent limit, a paused project or being offline holds what
  * they sent, so both tools use the same words (KERNEL-272). A brief also says the teammate hasn't started. Nothing for
  * other reasons, which each tool words itself.
  */
@@ -282,7 +282,7 @@ export function pickAgent(team: AgentDef[], asked: string): AgentDef | { refusal
 /** The agents the Lead can hand a task to, as refusals list them. */
 const takers = (team: AgentDef[]) => team.filter((a) => !a.lead && takesTasks(a)).map((a) => `${a.id} (${a.name}, ${a.role})`).join(', ')
 
-/** create_workspace's refusal in a room where nobody takes tasks (KERNEL-554). */
+/** create_workspace's refusal in a project where nobody takes tasks (KERNEL-554). */
 export const NO_TEAMMATES = 'Not created: this team has no teammates yet. Ask the user whether to create one with create_agent or to add a starter agent in Team, and build nothing yourself.'
 
 /** What list_agents adds after an agent's role: who leads and who reviews (KERNEL-397). */
@@ -293,7 +293,7 @@ function roleTag(a: AgentDef): string {
 }
 
 /**
- * list_agents' answer: the Lead, the reviewer and every member in full, then the helpers as one line of names, so a room with
+ * list_agents' answer: the Lead, the reviewer and every member in full, then the helpers as one line of names, so a project with
  * 30 plugin agents doesn't fill the Lead's prompt (KERNEL-554). With no member it says how to get one.
  */
 export function agentList(team: AgentDef[]): string {
@@ -305,7 +305,7 @@ export function agentList(team: AgentDef[]): string {
   return lines.join('\n')
 }
 
-/** Where create_agent's new agent landed on the team, as the room resolved it (KERNEL-476). */
+/** Where create_agent's new agent landed on the team, as the project resolved it (KERNEL-476). */
 function joinedNote(a: AgentDef | undefined, id: string): string {
   if (!a) return `${id} joins the team.`
   if (isReviewer(a)) return `${a.name} joins the team and reviews PRs${takesTasks(a) ? ' and takes tasks' : ''}.`
@@ -318,8 +318,8 @@ const BLOCKED: Record<AgentReach['blocked'][number]['why'], string> = {
   failed: 'failed to connect',
   'needs-auth': 'needs the user to sign in with /mcp in Claude Code',
   disabled: 'is switched off in Claude Code, and /mcp turns it on',
-  off: 'is switched off in this room, in Settings, under the room, Skills and MCP',
-  missing: 'is not a server in this room'
+  off: 'is switched off in this project, in Settings, under the project, Skills and MCP',
+  missing: 'is not a server in this project'
 }
 
 /** The MCP servers create_agent's new agent can reach, and the ones its file names that it can't use (KERNEL-476). */
@@ -334,15 +334,15 @@ function reachNote(name: string, r: AgentReach): string {
   return out.join(' ')
 }
 
-/** Kernel's variables and the Conductor and Superset names that become each, for set_room_scripts' description. */
+/** Kernel's variables and the Conductor and Superset names that become each, for set_project_scripts' description. */
 const VARIABLE_TABLE = [...new Set(Object.values(SCRIPT_VARIABLES))].map((to) => {
   const from = Object.keys(SCRIPT_VARIABLES).filter((name) => SCRIPT_VARIABLES[name] === to)
   return `${joinLabels(from.map((name) => `$${name}`))} ${from.length > 1 ? 'become' : 'becomes'} $${to}`
 }).join(', ')
 
-/** set_room_scripts' description, which holds how to read a pasted Conductor or Superset config (KERNEL-683). */
-export const SET_ROOM_SCRIPTS_DESCRIBE = [
-  "Save this room's scripts to .kernel/settings.local.toml on the user's Mac. The user sees every script in full on a card, after Kernel renames variables, and nothing is written unless they press Save.",
+/** set_project_scripts' description, which holds how to read a pasted Conductor or Superset config (KERNEL-683). */
+export const SET_PROJECT_SCRIPTS_DESCRIBE = [
+  "Save this project's scripts to .kernel/settings.local.toml on the user's Mac. The user sees every script in full on a card, after Kernel renames variables, and nothing is written unless they press Save.",
   'Pass only what changes. setup runs once when a workspace is made, run starts the app, archive runs when a workspace is archived, run_scripts adds run scripts by name, and run_mode says whether run scripts run in every workspace at once (concurrent) or in one workspace at a time (single).',
   'Commands are non-interactive, non-destructive and safe in a git worktree. A run script takes its port from $KERNEL_PORT.',
   `Kernel renames Conductor's and Superset's variables: ${VARIABLE_TABLE}. Any other CONDUCTOR_* or SUPERSET_* name stays as written, and the result names it.`,
@@ -351,19 +351,19 @@ export const SET_ROOM_SCRIPTS_DESCRIBE = [
   "Superset's .superset/config.json has setup, teardown and run as lists of commands: join each list with &&, put cd <cwd> && first when it has a cwd, and teardown is archive."
 ].join(' ')
 
-/** The patch set_room_scripts saves, and what its card shows: each script after conversion, exactly as saved. */
-function roomScripts(a: { setup?: string; run?: string; archive?: string; run_scripts?: Record<string, string>; run_mode?: 'concurrent' | 'single' }): { refusal: string } | { patch: RoomSettingsPatch; card: string; saved: string[]; renamed: string[]; unknown: string[] } {
+/** The patch set_project_scripts saves, and what its card shows: each script after conversion, exactly as saved. */
+function projectScripts(a: { setup?: string; run?: string; archive?: string; run_scripts?: Record<string, string>; run_mode?: 'concurrent' | 'single' }): { refusal: string } | { patch: ProjectSettingsPatch; card: string; saved: string[]; renamed: string[]; unknown: string[] } {
   const named = Object.entries(a.run_scripts ?? {})
   const bad = named.find(([name]) => isRunName(name) || !RUN_SCRIPT_NAME.test(name))
   if (bad) return { refusal: isRunName(bad[0]) ? 'pass the main run script as run, not in run_scripts.' : `"${bad[0]}" can't name a run script. Use up to 32 letters, digits, - and _, starting with a letter or digit.` }
-  const asked: { label: string; text: string; put: (patch: RoomSettingsPatch, text: string) => void }[] = [
-    ...(['setup', 'run', 'archive'] as const).flatMap((key) => (a[key] === undefined ? [] : [{ label: `${key[0].toUpperCase()}${key.slice(1)} script`, text: a[key]!, put: (p: RoomSettingsPatch, t: string) => { p.scripts = { ...p.scripts, [key]: t } } }])),
-    ...named.map(([name, text]) => ({ label: `Run script "${name}"`, text, put: (p: RoomSettingsPatch, t: string) => { p.runScripts = { ...p.runScripts, [name]: t } } }))
+  const asked: { label: string; text: string; put: (patch: ProjectSettingsPatch, text: string) => void }[] = [
+    ...(['setup', 'run', 'archive'] as const).flatMap((key) => (a[key] === undefined ? [] : [{ label: `${key[0].toUpperCase()}${key.slice(1)} script`, text: a[key]!, put: (p: ProjectSettingsPatch, t: string) => { p.scripts = { ...p.scripts, [key]: t } } }])),
+    ...named.map(([name, text]) => ({ label: `Run script "${name}"`, text, put: (p: ProjectSettingsPatch, t: string) => { p.runScripts = { ...p.runScripts, [name]: t } } }))
   ]
   const empty = asked.find((s) => !s.text.trim())
   if (empty) return { refusal: `${empty.label} is empty. Leave out a script you don't change.` }
   if (!asked.length && !a.run_mode) return { refusal: 'pass at least one script, or run_mode.' }
-  const patch: RoomSettingsPatch = {}
+  const patch: ProjectSettingsPatch = {}
   const renamed = new Set<string>()
   const unknown = new Set<string>()
   const card: string[] = []
@@ -382,7 +382,7 @@ function roomScripts(a: { setup?: string; run?: string; archive?: string; run_sc
   return { patch, card: card.join('\n\n'), saved, renamed: [...renamed].sort(), unknown: [...unknown].sort() }
 }
 
-/** The question on set_room_scripts' card, and its answers (KERNEL-683). */
+/** The question on set_project_scripts' card, and its answers (KERNEL-683). */
 export const SAVE_SCRIPTS_QUESTION = 'Save these scripts to .kernel/settings.local.toml?'
 const SAVE = 'Save'
 
@@ -476,8 +476,8 @@ export function kernelTools(d: KernelToolDeps) {
     return uncommittedNote(files, base ?? (await d.handoffBase?.().catch(() => undefined))?.base ?? 'the default branch')
   }
   return [
-    tool('list_agents', 'List the agents in this room with their roles. Helpers, which don\'t take tasks, come as one line of names.', {}, async () => text(agentList(await d.agents()))),
-    tool('list_workspaces', 'List open workspaces in this room: id, agent, branch, PR state, "yours" for the ones you handed off in this chat, and "open" for a question, blockers or a proposed hand-off you haven\'t acted on.', {}, async () => {
+    tool('list_agents', 'List the agents in this project with their roles. Helpers, which don\'t take tasks, come as one line of names.', {}, async () => text(agentList(await d.agents()))),
+    tool('list_workspaces', 'List open workspaces in this project: id, agent, branch, PR state, "yours" for the ones you handed off in this chat, and "open" for a question, blockers or a proposed hand-off you haven\'t acted on.', {}, async () => {
       const all = d.workspaces()
       const list = all.filter((w) => w.status !== 'archived')
       const marks = d.openMarks?.()
@@ -492,7 +492,7 @@ export function kernelTools(d: KernelToolDeps) {
       if (!d.planMode?.()) return { ...text(build ? BUILD_PLAN_MODE_OFF : PLAN_MODE_OFF), isError: true }
       // Task lines alone hide the write-up, which then never reaches the chat or .kernel/plans/ (KERNEL-373).
       if (!plan?.trim()) return { ...text(NO_PLAN), isError: true }
-      bus.activity({ kind: 'approval.requested', roomId: d.roomId, agentId: d.lead?.id, text: 'asked you to review', object: title })
+      bus.activity({ kind: 'approval.requested', projectId: d.projectId, agentId: d.lead?.id, text: 'asked you to review', object: title })
       // A plan to hand off says when this chat's own edits stay behind, since teammates start from the base (KERNEL-770).
       const left = build ? '' : await leftBehind()
       const decision = await d.askUser({ kind: 'plan', title, detail: left ? `${plan.trimEnd()}\n\n${left}` : plan, steps }, signalOf(extra))
@@ -525,10 +525,10 @@ export function kernelTools(d: KernelToolDeps) {
       mode: z.enum(['worktree', 'current']).optional(),
       base_ref: z.string().optional(),
       branch: z.string().optional().describe('Only when the user asked for a particular branch name. Left out, Kernel names it from the issue key and title, for example fix/kernel-267-review-cant-start-reviewed-branch'),
-      issue: z.string().optional().describe('The key of the issue this task builds, as the room\'s tracker shows it, for example "PROJ-83" or "#41". Kernel links the workspace to it, names the branch after it unless you pass branch, puts the issue in the brief, and moves it to In Progress where the tracker has that state'),
+      issue: z.string().optional().describe('The key of the issue this task builds, as the project\'s tracker shows it, for example "PROJ-83" or "#41". Kernel links the workspace to it, names the branch after it unless you pass branch, puts the issue in the brief, and moves it to In Progress where the tracker has that state'),
       review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review"),
       wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or an issue key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged'),
-      user_asked: z.boolean().optional().describe("Set to true only when the user explicitly asked for more teammate workspaces than the room's limit allows. Left out, create_workspace refuses once the limit is reached"),
+      user_asked: z.boolean().optional().describe("Set to true only when the user explicitly asked for more teammate workspaces than the project's limit allows. Left out, create_workspace refuses once the limit is reached"),
       confirm: z.boolean().optional().describe('Set to true only after the user said to start anyway, when create_workspace warned that someone else may already be on the issue. Left out, Kernel checks for a branch on the remote, an open PR or another assignee first'),
       go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved this hand-off, quoted from their latest message, for example \"hand it to Noor\". Kernel refuses the hand-off when they aren't in it. Not needed after an approved plan, for a review, or for a follow-up on approved work"),
       images: imagesArg.describe(IMAGES_DESCRIBE)
@@ -548,10 +548,10 @@ export function kernelTools(d: KernelToolDeps) {
       if (!takesTasks(pick) && !(review_of && isReviewer(pick))) {
         bus.track({ name: 'handoff.refused', reason: 'helper' })
         const list = takers(team)
-        return refuse(`${pick.name} is a helper in this room and doesn't take tasks${isReviewer(pick) ? ', only reviews with review_of' : ''}.${list ? ` Use an id from list_agents: ${list}.` : ' No one on this team takes tasks yet, so ask the user whether to create a teammate with create_agent or to add a starter agent in Team.'}`)
+        return refuse(`${pick.name} is a helper in this project and doesn't take tasks${isReviewer(pick) ? ', only reviews with review_of' : ''}.${list ? ` Use an id from list_agents: ${list}.` : ' No one on this team takes tasks yet, so ask the user whether to create a teammate with create_agent or to add a starter agent in Team.'}`)
       }
       // A Lead that carries on after a quit may call this again for a task it already handed off (KERNEL-287). The same
-      // issue anywhere in the room, or the same agent and title from this chat, is that task while its PR is still open.
+      // issue anywhere in the project, or the same agent and title from this chat, is that task while its PR is still open.
       if (!review_of) {
         const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
         const open = d.workspaces().find((w) => w.status !== 'archived' && !w.reviewOf && w.prState !== 'merged' && w.prState !== 'closed' && (issue
@@ -576,7 +576,7 @@ export function kernelTools(d: KernelToolDeps) {
         bus.track({ name: 'handoff.refused', reason: 'go-ahead' })
         return { ...text(NO_GO_AHEAD), isError: true }
       }
-      // A room keeps a limited number of teammate workspaces open at once, so a Lead can't fan out without end. A review is no
+      // A project keeps a limited number of teammate workspaces open at once, so a Lead can't fan out without end. A review is no
       // build workspace and doesn't count, and a user who asked for more goes past it (KERNEL-220). A cap of 0 is none (KERNEL-492).
       const limit = !review_of && !user_asked ? await d.agentCap?.() : undefined
       if (limit?.cap) {
@@ -586,7 +586,7 @@ export function kernelTools(d: KernelToolDeps) {
       // A review starts from the work it reviews, and only one per reviewer is open at a time (KERNEL-130).
       if (review_of) {
         const target = d.workspaces().find((w) => w.id === review_of)
-        if (!target) return refuse(`there is no workspace ${review_of} in this room to review. Call list_workspaces for the ids.`)
+        if (!target) return refuse(`there is no workspace ${review_of} in this project to review. Call list_workspaces for the ids.`)
         if (target.status === 'archived') return refuse(`${target.name} is archived. Ask the user to restore it from History first.`)
         if (team.find((a) => a.id === target.agentId)?.lead) return refuse('that is your own workspace.')
         if (target.reviewOf) return refuse(`${target.name} is itself a review. Review the work it reviews instead (workspace ${target.reviewOf}).`)
@@ -614,16 +614,16 @@ export function kernelTools(d: KernelToolDeps) {
       const taken = key && !review_of && !confirm ? await d.issueTaken?.(key).catch(() => undefined) : undefined
       if (key && taken?.findings.length) return { ...text(takenWarning(key, taken)), isError: true }
       const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(askedReview ? { reviewOf: askedReview } : review_of ? { linkReviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}), ...(attached.parts.length ? { images: attached.parts } : {}), ...(goAhead ? { goAhead } : {}) })
-      bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
+      bus.activity({ kind: 'workspace.created', projectId: d.projectId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
       d.handedOff?.()
       d.acted?.({ created: pick.id })
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.
       const failed = ws.status === 'failed' ? ` Setup failed (${ws.setupFailed ?? 'it did not pass'}), so ${pick.name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.` : ''
       const stale = ws.fetchFailed ? ` ${ws.fetchFailed}` : ''
       const waiting = ws.waitsFor?.held && ws.waitsFor.on.length ? ` ${pick.name} waits for ${labels(targets.filter((t) => ws.waitsFor!.on.includes(t.id)), team)} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${pick.name}.` : ''
-      // A room whose scripts the user hasn't trusted holds the brief too (KERNEL-209, KERNEL-261). A merge it also waits
+      // A project whose scripts the user hasn't trusted holds the brief too (KERNEL-209, KERNEL-261). A merge it also waits
       // for says when the brief goes out instead.
-      const trust = ws.status === 'trust' ? ` ${pick.name}'s workspace waits for the user to trust this room's scripts, so ${pick.name} hasn't started.${waiting ? '' : ' The brief goes out once they do.'}` : ''
+      const trust = ws.status === 'trust' ? ` ${pick.name}'s workspace waits for the user to trust this project's scripts, so ${pick.name} hasn't started.${waiting ? '' : ' The brief goes out once they do.'}` : ''
       // A brief held for a slot, a pause or the connection isn't the teammate starting either (KERNEL-272). A brief held
       // for a merge or for trust says so above instead.
       const queued = failed || waiting || trust ? undefined : queuedNote(ws.queued, { name: pick.name, brief: true })
@@ -641,7 +641,7 @@ export function kernelTools(d: KernelToolDeps) {
       if (!d.setWait) return refuse('waiting is not available here.')
       const all = d.workspaces()
       const ws = all.find((w) => w.id === workspace_id && w.status !== 'archived')
-      if (!ws) return refuse(`there is no open workspace ${workspace_id} in this room. Call list_workspaces for the ids.`)
+      if (!ws) return refuse(`there is no open workspace ${workspace_id} in this project. Call list_workspaces for the ids.`)
       const team = await d.agents()
       const isLead = (w: Workspace) => !!team.find((a) => a.id === w.agentId)?.lead
       if (isLead(ws)) return refuse('that is your own workspace.')
@@ -674,7 +674,7 @@ export function kernelTools(d: KernelToolDeps) {
       if (ws) d.acted?.({ messaged: ws })
       // The log shows who the Lead messaged and its first line (KERNEL-24), once the message has gone out.
       // A review kind's chat runs its own agent, which the log names (feat-review-messages-reach-named).
-      if (ws && d.lead && r.sent !== false) bus.activity({ kind: 'agent.talk', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: r.agentId ?? ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
+      if (ws && d.lead && r.sent !== false) bus.activity({ kind: 'agent.talk', projectId: d.projectId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: r.agentId ?? ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
       // Its updates still go to the chat that handed it off, so say so rather than leave this chat waiting (KERNEL-105).
       const from = ws?.leadChatId && d.chatId && !mine(ws) ? d.chatTitle?.(ws.leadChatId) : undefined
       return text(from ? `${r.note} This workspace was handed off in the Lead chat "${from}", so its updates go there, not here.` : r.note)
@@ -686,7 +686,7 @@ export function kernelTools(d: KernelToolDeps) {
       // One id at a time, so a skip or a failed archive doesn't stop the rest (D-090).
       for (const id of workspace_ids) {
         const ws = d.workspaces().find((w) => w.id === id && w.status !== 'archived')
-        if (!ws) { lines.push(`Skipped ${id}: not an open workspace in this room.`); continue }
+        if (!ws) { lines.push(`Skipped ${id}: not an open workspace in this project.`); continue }
         const reason = await archiveSkip(ws, {
           // Only the Lead's own workspace. One handed to the Lead when an agent retired can go.
           isOwnLead: (w) => isLeadWorkspace(w, d.lead?.id),
@@ -713,7 +713,7 @@ export function kernelTools(d: KernelToolDeps) {
       // One id at a time, so a skip or a failed merge doesn't stop the rest, as archive_workspace does.
       for (const id of workspace_ids) {
         const asked = d.workspaces().find((w) => w.id === id && w.status !== 'archived')
-        if (!asked) { lines.push(`Skipped ${id}: not an open workspace in this room.`); continue }
+        if (!asked) { lines.push(`Skipped ${id}: not an open workspace in this project.`); continue }
         // A review has no PR of its own: merging it means merging the work it reviewed.
         const target = asked.reviewOf ? d.workspaces().find((w) => w.id === asked.reviewOf) : asked
         if (!target || target.status === 'archived') { lines.push(`Skipped ${asked.name}: the work it reviewed is no longer open.`); continue }
@@ -752,7 +752,7 @@ export function kernelTools(d: KernelToolDeps) {
       // The same check as create_workspace's go_ahead (KERNEL-678), and only in a turn the user started, as merge_workspace.
       if (!d.userTurn?.() || !quotesUser(go_ahead, d.userSaid?.()?.text)) return refuse(NO_OVERRULE)
       const asked = d.workspaces().find((w) => w.id === workspace_id && w.status !== 'archived')
-      if (!asked) return refuse(`Not overruled: ${workspace_id} is not an open workspace in this room.`)
+      if (!asked) return refuse(`Not overruled: ${workspace_id} is not an open workspace in this project.`)
       // A review has no PR of its own: its blockers are on the work it reviewed, as merge_workspace reads it.
       const target = asked.reviewOf ? d.workspaces().find((w) => w.id === asked.reviewOf) : asked
       if (!target || target.status === 'archived') return refuse(`Not overruled: the work ${asked.name} reviewed is no longer open.`)
@@ -791,11 +791,11 @@ export function kernelTools(d: KernelToolDeps) {
       }
     }),
     tool('say', 'Post one short status line. It shows on your card in the sidebar.', { text: z.string().max(140) }, async ({ text: t }) => {
-      if (d.lead) bus.push({ type: 'agent.status', roomId: d.roomId, agentId: d.lead.id, status: 'working' })
-      bus.activity({ kind: 'agent.say', roomId: d.roomId, agentId: d.lead?.id, text: t })
+      if (d.lead) bus.push({ type: 'agent.status', projectId: d.projectId, agentId: d.lead.id, status: 'working' })
+      bus.activity({ kind: 'agent.say', projectId: d.projectId, agentId: d.lead?.id, text: t })
       return text('ok')
     }),
-    tool('set_room_scripts', SET_ROOM_SCRIPTS_DESCRIBE, {
+    tool('set_project_scripts', SET_PROJECT_SCRIPTS_DESCRIBE, {
       setup: z.string().optional().describe('The setup script, for example "pnpm install"'),
       run: z.string().optional().describe('The main run script, for example "pnpm dev --port $KERNEL_PORT"'),
       archive: z.string().optional().describe('The archive script, for example "docker compose down"'),
@@ -803,15 +803,15 @@ export function kernelTools(d: KernelToolDeps) {
       run_mode: z.enum(['concurrent', 'single']).optional()
     }, async (args, extra) => {
       const refuse = (why: string) => ({ ...text(`Not saved: ${why}`), isError: true })
-      if (!d.saveRoomScripts) return refuse('saving scripts is not available here.')
-      const asked = roomScripts(args)
+      if (!d.saveProjectScripts) return refuse('saving scripts is not available here.')
+      const asked = projectScripts(args)
       if ('refusal' in asked) return refuse(asked.refusal)
       // The card's text is the converted text, exactly what Save writes (KERNEL-683).
       const options = [{ label: SAVE, description: 'Write them to .kernel/settings.local.toml, on this Mac only' }, { label: 'Cancel', description: 'Write nothing' }]
       const decision = await d.askUser({ kind: 'question', title: SAVE_SCRIPTS_QUESTION, detail: asked.card, options: options.map((o) => o.label), questions: [{ question: SAVE_SCRIPTS_QUESTION, options }] }, signalOf(extra))
       if (!decision) return text('Not saved: the card closed without an answer.')
       if (decision.behavior !== 'answer' || decision.text !== SAVE) return text(decision.behavior === 'answer' && decision.text !== 'Cancel' ? `Not saved. The user answered: ${decision.text}` : 'Not saved: the user canceled.')
-      try { await d.saveRoomScripts(asked.patch) } catch (e) { return refuse((e as Error).message) }
+      try { await d.saveProjectScripts(asked.patch) } catch (e) { return refuse((e as Error).message) }
       const renamed = asked.renamed.map((n) => `$${n} to $${SCRIPT_VARIABLES[n]}`)
       const unknown = asked.unknown.map((n) => `$${n}`)
       return text([
@@ -821,7 +821,7 @@ export function kernelTools(d: KernelToolDeps) {
         asked.patch.scripts?.setup ? 'Workspaces already open keep the old setup until the user clicks Run setup in each.' : ''
       ].filter(Boolean).join(' '))
     }),
-    tool('create_agent', 'Create a new agent by proposing its file. The user approves it and picks who gets it: just them (~/.claude/agents on their Mac, in every room) or the team (a pull request that adds .claude/agents/<id>.md). Set scope only when the user said which. Leave tools out for the role\'s defaults: Read, Grep and Glob for a reviewer, and Read, Edit, Write, Bash, Grep and Glob for everyone else. An agent takes tasks only when its tools include Bash, and Edit or Write. Name each MCP server it needs in tools, as mcp__<server>.', {
+    tool('create_agent', 'Create a new agent by proposing its file. The user approves it and picks who gets it: just them (~/.claude/agents on their Mac, in every project) or the team (a pull request that adds .claude/agents/<id>.md). Set scope only when the user said which. Leave tools out for the role\'s defaults: Read, Grep and Glob for a reviewer, and Read, Edit, Write, Bash, Grep and Glob for everyone else. An agent takes tasks only when its tools include Bash, and Edit or Write. Name each MCP server it needs in tools, as mcp__<server>.', {
       id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),
       model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional(),
       scope: z.enum(['me', 'team']).optional()
@@ -846,7 +846,7 @@ export function kernelTools(d: KernelToolDeps) {
         return text(`Opened ${done.number ? `PR #${done.number}` : 'a pull request'}${done.url ? ` (${done.url})` : ''} that adds ${path}, from workspace ${done.workspaceId}. ${a.id} joins the team once it merges.`)
       }
       const joined = await d.agents().then((list) => list.find((x) => x.id === a.id), () => undefined)
-      // Asked again, since the room's first check may have finished while the card was up.
+      // Asked again, since the project's first check may have finished while the card was up.
       const reach = await d.reach?.(joined ?? agentFromFile(path, body), { wait: true }).catch(() => undefined)
       return text([`Saved ${done}, just for the user on this Mac.`, joinedNote(joined, a.id), reach ? reachNote(joined?.name ?? a.id, reach) : ''].filter(Boolean).join(' '))
     })

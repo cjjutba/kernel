@@ -29,7 +29,7 @@ const literalPrefix = (pattern: string) => {
  * What Files to copy resolves to in `repo`, sorted by path and capped at MAX_FILES_TO_COPY (KERNEL-245).
  * Exact paths copy whatever file is there, following symlinks, as they always did. Patterns match the main checkout's
  * ignored files, listed by git, so a tracked file never matches and a wholly ignored folder is only walked when a
- * pattern names it. The room setup step, workspace create and restore, and `files.preview` all read this.
+ * pattern names it. The project setup step, workspace create and restore, and `files.preview` all read this.
  */
 export async function resolveFilesToCopy(repo: string, entries: string[], refused?: string[], exclude?: string[]): Promise<FileToCopy[]> {
   return (await resolveCopySources(repo, entries, refused, exclude)).map(({ path, size }) => ({ path, size }))
@@ -114,7 +114,7 @@ export async function productionInCopy(repo: string, entries: string[], exclude:
  * `dir/` entry without listing what is inside it. When a pattern's literal prefix is inside one, like `secrets/*.env`
  * with `secrets/` ignored, git lists that prefix file by file. node_modules and .git are never expanded, even when named,
  * and nothing under them is returned. Only a folder with its own `.git` has candidates, the test `inspectFolder` uses,
- * so a folder room inside a parent repo doesn't match the parent's ignored files.
+ * so a folder project inside a parent repo doesn't match the parent's ignored files.
  */
 async function candidates(repo: string, patterns: string[]): Promise<string[]> {
   if (!(await stat(join(repo, '.git')).then(() => true, () => false))) return []

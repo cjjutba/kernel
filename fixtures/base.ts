@@ -1,4 +1,4 @@
-import type { AgentDef, Approval, ChatItem, FileEntry, Room, Workspace } from '@shared/types'
+import type { AgentDef, Approval, ChatItem, FileEntry, Project, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 
 // The seed every fixture starts from. Names, branches and times follow the canvas (Home.png, Workspace.png).
@@ -7,18 +7,18 @@ import type { Fixture } from './types'
 export const at = (h: number, m: number, s = 0) => new Date(2026, 9, 7, h, m, s).getTime()
 
 export const ids = {
-  roomA: 'room-a', roomB: 'room-b', roomOwn: 'room-own', roomPortfolio: 'room-portfolio',
+  projectA: 'project-a', projectB: 'project-b', projectOwn: 'project-own', projectPortfolio: 'project-portfolio',
   lead: 'ws-lead', table: 'ws-invoice-table', schema: 'ws-invoice-schema', invites: 'ws-org-invites',
   leadChat: 'chat-lead', tableChat: 'chat-invoice-table', schemaChat: 'chat-invoice-schema', invitesChat: 'chat-org-invites'
 } as const
 
-const room = (id: string, name: string, path: string, repo?: string): Room => ({ id, name, path, repo, defaultBranch: 'main', paused: false, createdAt: at(9, 0) })
+const project = (id: string, name: string, path: string, repo?: string): Project => ({ id, name, path, repo, defaultBranch: 'main', paused: false, createdAt: at(9, 0) })
 
-/** A small pixel-art avatar PNG, mid gray on dark gray, for rooms whose picture a shot shows (KERNEL-253). */
+/** A small pixel-art avatar PNG, mid gray on dark gray, for projects whose picture a shot shows (KERNEL-253). */
 export const invaderIcon = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAIAAAAn5KxJAAAAYUlEQVR42u3ZsQ3AIAxFQeaKqLI0DSWDsUIKo4ivk15p4atNe/p7RQ0UFBQ0BDrmKgkUFBQ0HVq1uOodUFBQ0BToX/OgoKCgKdDTgYKCgqZDqw6zoKCgoOlQP3egoKCgn9qfdyqiBNJgiwAAAABJRU5ErkJggg=='
 
 export const agent = (id: string, name: string, role: string, model: string, lead = false): AgentDef => ({
-  id, name, role, description: `${role} for this room.`, model, lead, prompt: '', ...(lead ? { builtIn: 'lead' as const, file: '' } : { file: `.claude/agents/${id}.md` })
+  id, name, role, description: `${role} for this project.`, model, lead, prompt: '', ...(lead ? { builtIn: 'lead' as const, file: '' } : { file: `.claude/agents/${id}.md` })
 })
 
 export const team: AgentDef[] = [
@@ -30,7 +30,7 @@ export const team: AgentDef[] = [
 ]
 
 const ws = (id: string, name: string, branch: string, agentId: string, port: number, extra: Partial<Workspace> = {}): Workspace => ({
-  id, roomId: ids.roomA, name, branch, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree',
+  id, projectId: ids.projectA, name, branch, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree',
   agentId, port, status: 'ready', prState: 'none', createdAt: at(10, 2), ...extra
 })
 
@@ -89,23 +89,23 @@ const tableSource = [
   '  return (', '    <table className="w-full text-sm" aria-label="Invoices">'
 ].join('\n') + '\n'
 
-/** Pending in other rooms, so the Inbox shows 3 while Client A shows nothing waiting (Inbox.png). */
+/** Pending in other projects, so the Inbox shows 3 while Client A shows nothing waiting (Inbox.png). */
 const waiting: Approval[] = [
-  { id: 'ap-migrate', kind: 'tool', source: 'sdk', roomId: ids.roomB, agentId: 'noor', toolName: 'Bash', input: { command: 'pnpm db:migrate' }, title: 'Run pnpm db:migrate', detail: 'Applies 2 pending migrations to the local database.', status: 'pending', createdAt: at(10, 48) },
-  { id: 'ap-plan', kind: 'plan', source: 'sdk', roomId: ids.roomOwn, agentId: 'kernel-lead', title: 'Plan for the settings page', detail: '1. Kai builds the form\n2. Noor adds the settings table\n3. Ivy covers both with tests', status: 'pending', createdAt: at(10, 44) },
-  { id: 'ap-question', kind: 'question', source: 'sdk', roomId: ids.roomPortfolio, agentId: 'kai', title: 'Should the case studies page keep the old URLs?', options: ['Keep them with redirects', 'Use the new URLs only'], status: 'pending', createdAt: at(10, 40) }
+  { id: 'ap-migrate', kind: 'tool', source: 'sdk', projectId: ids.projectB, agentId: 'noor', toolName: 'Bash', input: { command: 'pnpm db:migrate' }, title: 'Run pnpm db:migrate', detail: 'Applies 2 pending migrations to the local database.', status: 'pending', createdAt: at(10, 48) },
+  { id: 'ap-plan', kind: 'plan', source: 'sdk', projectId: ids.projectOwn, agentId: 'kernel-lead', title: 'Plan for the settings page', detail: '1. Kai builds the form\n2. Noor adds the settings table\n3. Ivy covers both with tests', status: 'pending', createdAt: at(10, 44) },
+  { id: 'ap-question', kind: 'question', source: 'sdk', projectId: ids.projectPortfolio, agentId: 'kai', title: 'Should the case studies page keep the old URLs?', options: ['Keep them with redirects', 'Use the new URLs only'], status: 'pending', createdAt: at(10, 40) }
 ]
 
 export const base: Fixture = {
-  rooms: [
-    room(ids.roomA, 'Client A', '/Users/you/code/client-a', 'samrivera/client-a'),
-    room(ids.roomB, 'Client B', '/Users/you/code/client-b', 'samrivera/client-b'),
-    room(ids.roomOwn, 'Own app', '/Users/you/code/own-app', 'samrivera/own-app'),
-    room(ids.roomPortfolio, 'Portfolio', '/Users/you/code/portfolio', 'samrivera/portfolio')
+  projects: [
+    project(ids.projectA, 'Client A', '/Users/you/code/client-a', 'samrivera/client-a'),
+    project(ids.projectB, 'Client B', '/Users/you/code/client-b', 'samrivera/client-b'),
+    project(ids.projectOwn, 'Own app', '/Users/you/code/own-app', 'samrivera/own-app'),
+    project(ids.projectPortfolio, 'Portfolio', '/Users/you/code/portfolio', 'samrivera/portfolio')
   ],
-  agents: { [ids.roomA]: team, [ids.roomB]: team, [ids.roomOwn]: team, [ids.roomPortfolio]: team },
+  agents: { [ids.projectA]: team, [ids.projectB]: team, [ids.projectOwn]: team, [ids.projectPortfolio]: team },
   status: {
-    [ids.roomA]: { 'kernel-lead': 'idle', kai: 'working', noor: 'working', theo: 'working', ivy: 'idle' }
+    [ids.projectA]: { 'kernel-lead': 'idle', kai: 'working', noor: 'working', theo: 'working', ivy: 'idle' }
   },
   workspaces: [
     // Kernel's chat, in a workspace of its own (KERNEL-405).
@@ -120,14 +120,14 @@ export const base: Fixture = {
     { id: ids.schemaChat, workspaceId: ids.schema, title: 'Invoice schema', kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: at(10, 3) },
     { id: ids.invitesChat, workspaceId: ids.invites, title: 'Org invites', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 4) }
   ],
-  threads: [{ id: 't-lead', roomId: ids.roomA, title: 'Lead', createdAt: at(9, 5) }],
+  threads: [{ id: 't-lead', projectId: ids.projectA, title: 'Lead', createdAt: at(9, 5) }],
   items: { [ids.tableChat]: tableItems },
   approvals: waiting,
   activity: [
-    { id: 'ev4', ts: at(11, 1), roomId: ids.roomA, workspaceId: ids.invites, agentId: 'theo', kind: 'tool.end', text: 'opened the diff for', object: 'T-09' },
-    { id: 'ev3', ts: at(10, 59), roomId: ids.roomA, workspaceId: ids.schema, agentId: 'noor', kind: 'tool.end', text: 'edited', object: 'schema.ts' },
-    { id: 'ev2', ts: at(10, 57), roomId: ids.roomA, workspaceId: ids.table, agentId: 'kai', kind: 'tool.end', text: 'edited', object: 'table.tsx' },
-    { id: 'ev1', ts: at(10, 55), roomId: ids.roomA, agentId: 'ivy', kind: 'task.completed', text: 'passed', object: 'T-11' }
+    { id: 'ev4', ts: at(11, 1), projectId: ids.projectA, workspaceId: ids.invites, agentId: 'theo', kind: 'tool.end', text: 'opened the diff for', object: 'T-09' },
+    { id: 'ev3', ts: at(10, 59), projectId: ids.projectA, workspaceId: ids.schema, agentId: 'noor', kind: 'tool.end', text: 'edited', object: 'schema.ts' },
+    { id: 'ev2', ts: at(10, 57), projectId: ids.projectA, workspaceId: ids.table, agentId: 'kai', kind: 'tool.end', text: 'edited', object: 'table.tsx' },
+    { id: 'ev1', ts: at(10, 55), projectId: ids.projectA, agentId: 'ivy', kind: 'task.completed', text: 'passed', object: 'T-11' }
   ],
   usage: [],
   preflight: [

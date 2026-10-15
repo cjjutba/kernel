@@ -21,7 +21,7 @@ export const notMergeable: Partial<Record<PrState, string>> = {
 /** Every check passed or was skipped. A PR with no checks counts as green. */
 export const allGreen = (checks: PrCheck[]) => checks.every((c) => c.state === 'pass' || c.state === 'skipped')
 
-/** The checks that decide a PR: all but the optional ones, which the repo doesn't require or the room lists (KERNEL-388). */
+/** The checks that decide a PR: all but the optional ones, which the repo doesn't require or the project lists (KERNEL-388). */
 export const gatingChecks = (checks: PrCheck[]) => checks.filter((c) => !c.optional)
 
 /**
@@ -250,14 +250,14 @@ export const ALWAYS_REVIEW: readonly string[] = ['.kernel/**', '**/.claude/agent
 
 /**
  * What Kernel weighs before it merges a PR by itself (KERNEL-556). Main gathers it, and `autoMergeBlock` decides. `rules` is the
- * user's own `pr.autoMerge` for the room. `pr` is GitHub's read of the PR now, null when there was none. `reviews`: the kinds
+ * user's own `pr.autoMerge` for the project. `pr` is GitHub's read of the PR now, null when there was none. `reviews`: the kinds
  * of review its base branch's `[review]` requires of it, the kinds that approved its head commit or found blockers on it, and
  * whether a review of it is still running. `diff`: the lines it adds and removes together, and the always-review paths among
  * its files. Either one is missing when Kernel couldn't read it.
  */
 export interface AutoMergeFacts {
   rules: AutoMerge
-  /** The room merges on this Mac (KERNEL-467). */
+  /** The project merges on this Mac (KERNEL-467). */
   local: boolean
   /** Settings, Pull requests' "Require green checks to merge". */
   requireGreen: boolean
@@ -276,7 +276,7 @@ export interface AutoMergeFacts {
  */
 export function autoMergeBlock(f: AutoMergeFacts): string | undefined {
   if (!f.rules.on) return 'Auto-merge is off.'
-  if (f.local) return 'This room merges on this Mac, and auto-merge only merges pull requests on GitHub.'
+  if (f.local) return 'This project merges on this Mac, and auto-merge only merges pull requests on GitHub.'
   const pr = f.pr
   if (!pr) return "Kernel couldn't read the pull request from GitHub."
   if (!f.requireGreen) return 'Require green checks to merge is off in Settings, Pull requests, and auto-merge needs it on.'
@@ -309,7 +309,7 @@ export function autoMergeBlock(f: AutoMergeFacts): string | undefined {
  * Whether Kernel weighs the PR again soon after `autoMergeBlock` refused it, or merged nothing (KERNEL-768). True when the
  * refusal is GitHub or Kernel not having settled yet: no read of the PR or its head, GitHub still working out whether it
  * merges, a check or a review still running, its reviews or changes unread. A refusal from the user's own rules is false:
- * auto-merge off, a local room, green checks off, a failed or missing check, GitHub's block, missing approvals, blockers,
+ * auto-merge off, a local project, green checks off, a failed or missing check, GitHub's block, missing approvals, blockers,
  * overrules, the line limit and the always-review paths. Their facts change the PR, which weighs it again anyway.
  */
 export function autoMergeRetry(f: AutoMergeFacts): boolean {

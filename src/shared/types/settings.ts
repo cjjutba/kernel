@@ -10,13 +10,13 @@ export type SettingsPage =
   | 'models' | 'permissions' | 'env'
   /** Every account's MCP servers, one account at a time (KERNEL-661). */
   | 'mcp'
-  /** The personal and plugin agents that join every room, and the editor for one (KERNEL-641). */
+  /** The personal and plugin agents that join every project, and the editor for one (KERNEL-641). */
   | 'agents'
   /** `git` also holds the setup and archive switches the Scripts page had (KERNEL-680). */
   | 'git' | 'prs' | 'bigterm'
   | 'hooks' | 'integrations' | 'privacy' | 'about'
-  /** A room's own pages. `section` on the route picks one, and none means General. */
-  | 'room'
+  /** A project's own pages. `section` on the route picks one, and none means General. */
+  | 'project'
 
 /** The Claude plan the account is on, from `subscriptionType`. `unknown` covers a sign-out and a type Kernel doesn't know (KERNEL-225). */
 export type ClaudePlan = 'pro' | 'max' | 'team' | 'enterprise' | 'unknown'
@@ -50,7 +50,7 @@ export interface AppSettings {
    */
   accounts: { switchAtLimit: Record<Provider, boolean>; keepChatsOnAccount: boolean; longChatMove: Record<Provider, LongChatMove>; longChatTokens: number }
   workspace: {
-    mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerRoom: boolean
+    mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerProject: boolean
     /** The branch a new Lead chat starts on. `{lead}` is the Lead's name and `{slug}` the chat's title (KERNEL-405). */
     leadBranchPattern: string
     /** A Lead chat holds its first message until files.copy and setup pass (KERNEL-405). */
@@ -80,12 +80,12 @@ export interface AppSettings {
   /** Settings, Accounts, Advanced (KERNEL-406, KERNEL-680). Accounts and their credentials live apart from this file. */
   providers: { claude: ProviderBinary; codex: ProviderBinary & { personality: CodexPersonality } }
   /**
-   * `defaultTemplate` seeds an empty room (Settings, Agents, New rooms start with). `leadMode` is how a new chat with Kernel
-   * works, Hand off or Build here, where the room's `[agents] lead_mode` doesn't say (KERNEL-770).
+   * `defaultTemplate` seeds an empty project (Settings, Agents, New projects start with). `leadMode` is how a new chat with Kernel
+   * works, Hand off or Build here, where the project's `[agents] lead_mode` doesn't say (KERNEL-770).
    */
   team: { defaultTemplate: 'starter' | 'pair'; leadMode: LeadMode }
   /**
-   * `mode` is the app's permission mode, which a room and a chat can override. `bypassOnlyInWorktrees` keeps Bypass
+   * `mode` is the app's permission mode, which a project and a chat can override. `bypassOnlyInWorktrees` keeps Bypass
    * permissions off a current-branch workspace. The modes were `ask`, `acceptEdits` and `bypassInWorktrees` before
    * KERNEL-432, and `loadAppSettings` moves them over.
    */
@@ -93,7 +93,7 @@ export interface AppSettings {
   /**
    * `requireReviewer` holds a merge until a reviewer approves the PR's latest commit, on PRs a reviewer looked at and, from the
    * ready event on, on PRs `autoReview` plans a required review for (KERNEL-717).
-   * `autoReview` has Kernel start the reviews a room's `[review]` asks for when a PR passes checks (KERNEL-115, KERNEL-549).
+   * `autoReview` has Kernel start the reviews a project's `[review]` asks for when a PR passes checks (KERNEL-115, KERNEL-549).
    * Off until the user turns it on, on every plan (feat-automatic-review-off-by-default).
    * `leadMerge` lets the Lead merge ready PRs with merge_workspace, only in a turn the user started (KERNEL-352).
    * `autoMerge` has Kernel merge a PR every review approved by itself, off until the user turns it on (KERNEL-556). Settings, Pull requests has its switch, size limit and paths (KERNEL-557).
@@ -156,15 +156,15 @@ export interface ModeAvailability { auto: boolean; bypass: boolean; reason?: str
 /**
  * Kernel merging a PR by itself, a person's own setting that is off by default (KERNEL-556). `maxLines` is the most lines a PR
  * may add and remove together. `alwaysReview` lists globs of repo paths: a PR that changes one never merges by itself. They
- * add to Kernel's own list and the base branch's `[merge] always_review`. A room's `.kernel/settings.local.toml` `[merge]`
- * (`auto`, `max_lines`, `always_review`) overrides it for that room. The shared `.kernel/settings.toml` can't.
+ * add to Kernel's own list and the base branch's `[merge] always_review`. A project's `.kernel/settings.local.toml` `[merge]`
+ * (`auto`, `max_lines`, `always_review`) overrides it for that project. The shared `.kernel/settings.toml` can't.
  */
 export interface AutoMerge { on: boolean; maxLines: number; alwaysReview: string[] }
 
-/** How a PR merges: the app's `pr.mergeMethod`, or a room's `[pr] merge_method`. */
+/** How a PR merges: the app's `pr.mergeMethod`, or a project's `[pr] merge_method`. */
 export type MergeMethod = 'squash' | 'merge' | 'rebase'
 
-/** What a room does when an agent reaches for an MCP server its file doesn't list: ask the user, or hide the server as Claude Code does. */
+/** What a project does when an agent reaches for an MCP server its file doesn't list: ask the user, or hide the server as Claude Code does. */
 export type UnlistedTools = 'ask' | 'hide'
 
 /**
@@ -191,11 +191,11 @@ export const KNOWN_CLIS: readonly { id: string; name: string }[] = [
   { id: 'gemini', name: 'Gemini' }
 ]
 
-/** Per-room settings from .kernel/settings.toml, with personal overrides from .kernel/settings.local.toml (SettingsRoom.png). */
-export interface RoomSettings {
+/** Per-project settings from .kernel/settings.toml, with personal overrides from .kernel/settings.local.toml (SettingsProject.png). */
+export interface ProjectSettings {
   scripts: { setup?: string; run?: string; archive?: string; runMode?: 'concurrent' | 'single' }
   /**
-   * The room's run scripts in file order: `run` (from `[scripts] run`) first when set, then the `[run_scripts]` table.
+   * The project's run scripts in file order: `run` (from `[scripts] run`) first when set, then the `[run_scripts]` table.
    * Their sources are keyed `runScripts.<name>` (KERNEL-244).
    */
   runScripts: { name: string; command: string }[]
@@ -205,16 +205,16 @@ export interface RoomSettings {
    */
   files: { copy: string[]; exclude?: string[]; symlinkNodeModules?: boolean }
   workspace: Partial<AppSettings['workspace']>
-  /** Skills and MCP servers switched off for this room, by name. */
+  /** Skills and MCP servers switched off for this project, by name. */
   disabled?: { skills: string[]; mcp: string[] }
-  /** The room's Linear team, by key ("KERNEL"). The Issues screen opens on it. */
+  /** The project's Linear team, by key ("KERNEL"). The Issues screen opens on it. */
   linear?: { team?: string }
-  /** The room's issue tracker, `[tracker] kind`. Without it Kernel works the tracker out from the Linear token and the remote (KERNEL-432). */
+  /** The project's issue tracker, `[tracker] kind`. Without it Kernel works the tracker out from the Linear token and the remote (KERNEL-432). */
   tracker?: { kind?: TrackerKind | 'none' }
   /**
-   * The room's PR instructions, a `[pr]` table. A missing key uses the app's (KERNEL-190). `optionalChecks` names checks
+   * The project's PR instructions, a `[pr]` table. A missing key uses the app's (KERNEL-190). `optionalChecks` names checks
    * that never fail a PR in a repo that requires none, `*` matching any run of characters ("Vercel*"). A check the repo
-   * requires always counts (KERNEL-388). `mergeMethod` (`merge_method`) is this room's over the app's (KERNEL-432).
+   * requires always counts (KERNEL-388). `mergeMethod` (`merge_method`) is this project's over the app's (KERNEL-432).
    */
   pr?: Partial<PrInstructions> & { optionalChecks?: string[]; mergeMethod?: MergeMethod }
   /**
@@ -224,25 +224,25 @@ export interface RoomSettings {
   mcp?: { aliases?: Record<string, string> }
   /**
    * The `[agents]` table (KERNEL-432). `unlistedTools` (`unlisted_tools`) is `ask` when unset. `allow` is each agent's
-   * `[agents.<id>] allow`: by agent id, the MCP servers the user let it use in this room though its file doesn't list them.
+   * `[agents.<id>] allow`: by agent id, the MCP servers the user let it use in this project though its file doesn't list them.
    * Both files merge agent by agent. `openWorkspaces` (`open_workspaces`) is how many teammate workspaces the Lead may have
-   * open in the room, 0 to 12, and 0 is no limit. Unset, the room follows Settings, Models' `agentLimit` (KERNEL-492).
-   * `leadMode` (`lead_mode`) is how a new chat with Kernel works in this room, over the app's `team.leadMode` (KERNEL-770).
+   * open in the project, 0 to 12, and 0 is no limit. Unset, the project follows Settings, Models' `agentLimit` (KERNEL-492).
+   * `leadMode` (`lead_mode`) is how a new chat with Kernel works in this project, over the app's `team.leadMode` (KERNEL-770).
    */
   agents?: { unlistedTools?: UnlistedTools; allow?: Record<string, string[]>; openWorkspaces?: number; leadMode?: LeadMode }
   /**
-   * The room's preview URLs, a `[[preview.urls]]` array of tables, in order. `url` may use `$KERNEL_PORT` forms that
+   * The project's preview URLs, a `[[preview.urls]]` array of tables, in order. `url` may use `$KERNEL_PORT` forms that
    * `resolvePreviewUrl` fills in. A patch replaces the whole list (KERNEL-246).
    */
   preview: { urls: { name: string; url: string }[] }
   /**
-   * The room's env files, an `[env] files` key, read in order and resolved against the workspace folder. A later file
-   * wins over an earlier one, and the room's own variables win over them all (KERNEL-247). When neither settings file
-   * sets the key, the room reads `.env.kernel` (KERNEL-449).
+   * The project's env files, an `[env] files` key, read in order and resolved against the workspace folder. A later file
+   * wins over an earlier one, and the project's own variables win over them all (KERNEL-247). When neither settings file
+   * sets the key, the project reads `.env.kernel` (KERNEL-449).
    */
   env: { files: string[] }
   /**
-   * Folders outside the repo the room's agents may read but not change, as absolute paths (KERNEL-748): a backend next to a UI.
+   * Folders outside the repo the project's agents may read but not change, as absolute paths (KERNEL-748): a backend next to a UI.
    * Claude sessions get them as `additionalDirectories`, and the @ menu searches them. Only the personal file's top-level
    * `references` key sets them, since the paths differ per Mac. A patch replaces the whole list.
    */
@@ -251,24 +251,24 @@ export interface RoomSettings {
   missingReferences?: string[]
   /**
    * Who leads, who reviews and who takes tasks, where it differs from what Kernel works out from the agent files (KERNEL-397).
-   * Written to the shared file with `agents.setTeam`, not `settings.setRoom`.
+   * Written to the shared file with `agents.setTeam`, not `settings.setProject`.
    */
   team?: TeamConfig
   /**
    * The shared file's `[review]` with the defaults filled in (KERNEL-549). The personal file can't change it. Written with
-   * `settings.setReview`, not `settings.setRoom`. A PR's own reviews read it from the PR's base branch, not from here.
+   * `settings.setReview`, not `settings.setProject`. A PR's own reviews read it from the PR's base branch, not from here.
    */
   review?: ReviewConfig
   /**
    * The shared file's `[merge] always_review`: paths a PR never merges by itself through, for everyone on the repo (KERNEL-594).
-   * The personal file's list is the user's own and isn't here. Written with `settings.setAlwaysReview`, not `settings.setRoom`.
+   * The personal file's list is the user's own and isn't here. Written with `settings.setAlwaysReview`, not `settings.setProject`.
    */
   merge?: { alwaysReview: string[] }
   /**
    * Which file set each value, by app-side dotted path (`scripts.setup`, `workspace.remote`, `pr.createInstructions`).
    * A path missing here means the app default applies (KERNEL-190).
    */
-  sources: Record<string, RoomSettingSource>
+  sources: Record<string, ProjectSettingSource>
 }
 
 /**
@@ -288,14 +288,14 @@ export const REVIEW_KINDS: readonly { id: ReviewKind; label: string }[] = [
  * One kind in `[review.<kind>]` (KERNEL-549). `enabled`: the code review runs unless its table says `enabled = false`, and
  * the others run once their table is there, unless it says `enabled = false`. `paths`: globs of repo paths, and a PR that
  * changes a matching file gets this review. Empty is every PR. `required`: its approval of the PR's latest commit counts
- * toward "require Reviewer approval". Its blockers hold a merge either way. `agent`: a room agent that runs it with its own
- * prompt, else Kernel's prompt for the kind does (the code review's is the room's reviewer). `model` and `provider`: what its
+ * toward "require Reviewer approval". Its blockers hold a merge either way. `agent`: a project agent that runs it with its own
+ * prompt, else Kernel's prompt for the kind does (the code review's is the project's reviewer). `model` and `provider`: what its
  * chat runs on, else the agent's model or the reviewer role's from Settings, Models.
  */
 export interface ReviewKindConfig { enabled: boolean; paths: string[]; required: boolean; agent?: string; model?: string; provider?: Provider }
 
 /**
- * A room's `[review]` table in the shared settings file (KERNEL-549). `rounds` is how many review rounds a PR gets before
+ * A project's `[review]` table in the shared settings file (KERNEL-549). `rounds` is how many review rounds a PR gets before
  * Kernel stops sending it back (2 by default, KERNEL-552).
  */
 export interface ReviewConfig { rounds: number; kinds: Record<ReviewKind, ReviewKindConfig> }
@@ -306,19 +306,19 @@ export interface ReviewPatch {
   kinds?: Partial<Record<ReviewKind, { [K in keyof ReviewKindConfig]?: ReviewKindConfig[K] | null }>>
 }
 
-/** The text Kernel sends the agent for each PR action (Settings > Pull requests, and per room). */
+/** The text Kernel sends the agent for each PR action (Settings > Pull requests, and per project). */
 export interface PrInstructions { createInstructions: string; resolveInstructions: string; fixChecksInstructions: string; addressReviewInstructions: string }
 
 /** `shared`: only `.kernel/settings.toml` sets the value. `local`: only `.kernel/settings.local.toml`. `override`: both, and the personal one wins. */
-export type RoomSettingSource = 'shared' | 'local' | 'override'
+export type ProjectSettingSource = 'shared' | 'local' | 'override'
 
 /**
- * The sections of a room's settings page. A route without one opens General. `setup` holds the files to copy, the workspace scripts,
+ * The sections of a project's settings page. A route without one opens General. `setup` holds the files to copy, the workspace scripts,
  * run scripts and preview URLs; `prs` holds reviews, merge rules and PR instructions (KERNEL-680).
  */
-export type RoomSettingsSection = 'general' | 'git' | 'setup' | 'environment' | 'agents' | 'prs' | 'permissions' | 'skills'
+export type ProjectSettingsSection = 'general' | 'git' | 'setup' | 'environment' | 'agents' | 'prs' | 'permissions' | 'skills'
 
-/** One file a new worktree gets from the main checkout. `path` is relative to the room's folder, `size` is in bytes. */
+/** One file a new worktree gets from the main checkout. `path` is relative to the project's folder, `size` is in bytes. */
 export interface FileToCopy {
   path: string
   size: number
@@ -336,12 +336,12 @@ export interface ProductionHint {
 }
 
 /**
- * A patch to a room's settings file. `null` removes the key so the app default applies again.
+ * A patch to a project's settings file. `null` removes the key so the app default applies again.
  * `runScripts` maps a name to its command, and `run` is `[scripts] run`. `mcp.aliases` and `agents.allow` change only the
  * names they list, and `null` removes one (KERNEL-432).
  */
-export type RoomSettingsPatch = {
-  [K in Exclude<keyof RoomSettings, 'sources' | 'runScripts' | 'team' | 'review' | 'mcp' | 'agents' | 'references' | 'missingReferences'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
+export type ProjectSettingsPatch = {
+  [K in Exclude<keyof ProjectSettings, 'sources' | 'runScripts' | 'team' | 'review' | 'mcp' | 'agents' | 'references' | 'missingReferences'>]?: { [P in keyof NonNullable<ProjectSettings[K]>]?: NonNullable<ProjectSettings[K]>[P] | null }
 } & {
   runScripts?: Record<string, string | null>
   /** Only the personal file takes it, so a `shared` save that sets it is refused. An empty list or `null` removes the key (KERNEL-748). */
@@ -351,15 +351,15 @@ export type RoomSettingsPatch = {
 }
 
 /**
- * Scripts Kernel found for a room and offers, never applies (KERNEL-682). `source` is where they came from: Conductor's
+ * Scripts Kernel found for a project and offers, never applies (KERNEL-682). `source` is where they came from: Conductor's
  * or Superset's files in the repo, or `detected` from the repo's lockfiles. `file` is the one to show, as a path in the
- * repo (".conductor/settings.toml", "pnpm-lock.yaml"). `patch` goes to `settings.setRoom` as it is. `notes` say what
+ * repo (".conductor/settings.toml", "pnpm-lock.yaml"). `patch` goes to `settings.setProject` as it is. `notes` say what
  * the patch leaves out or left as written, one sentence each.
  */
 export interface ScriptSuggestion {
   source: 'conductor' | 'superset' | 'detected'
   file: string
-  patch: RoomSettingsPatch
+  patch: ProjectSettingsPatch
   notes: string[]
 }
 

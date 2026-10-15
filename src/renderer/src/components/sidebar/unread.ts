@@ -33,10 +33,10 @@ export function chatUnread({ tabs, owned, chats, folded, current }: ChatUnreadIn
 export const workspaceRowUnread = (chats: Chat[] | undefined, current: boolean): boolean => !current && workspaceUnread(chats)
 
 /**
- * Whether a room's row shows a bold title. Only a collapsed room does, since an open one shows its own rows. Anything inside it counts:
+ * Whether a project's row shows a bold title. Only a collapsed project does, since an open one shows its own rows. Anything inside it counts:
  * a Lead chat's tab, a workspace it started (folded or not) or a workspace of its own.
  */
-export function roomUnread({ rows, chats, expanded }: { rows: Slot[]; chats: Record<string, Chat[]>; expanded: boolean }): boolean {
+export function projectUnread({ rows, chats, expanded }: { rows: Slot[]; chats: Record<string, Chat[]>; expanded: boolean }): boolean {
   if (expanded) return false
   return rows.some((row) => {
     if (row.kind === 'lead') return false

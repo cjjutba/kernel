@@ -83,8 +83,8 @@ describe('chat tabs', () => {
     k.sessions.send = async () => ({ queued: false })
     const forks: unknown[] = []
     k.forkSession = (async (id: string, o: unknown) => { forks.push([id, o]); return { sessionId: 'forked-session' } }) as typeof k.forkSession
-    const room = await k.addRoom(repo)
-    const ws = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
+    const project = await k.addProject(repo)
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
     const h = k.handlers()
     const first = k.store.chats(ws.id)[0]
     k.store.saveChat({ ...first, sessionId: 'src-session' })
@@ -163,9 +163,9 @@ describe('chat tabs', () => {
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
-    const room = await k.addRoom(repo)
-    const kai = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Kai' })
-    const noor = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'noor', title: 'Noor' })
+    const project = await k.addProject(repo)
+    const kai = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Kai' })
+    const noor = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'noor', title: 'Noor' })
     const h = k.handlers()
     const sonnet = 'claude-sonnet-5-5'
     expect(k.store.chats(kai.id)[0]).toMatchObject({ model: sonnet, effort: 'medium' })
@@ -187,7 +187,7 @@ describe('chat tabs', () => {
     expect(left[0]).toMatchObject({ model: sonnet, effort: 'xhigh' })
 
     // The Lead's hand-offs follow the agent file, not the last effort picked by hand.
-    const handoff = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Kai again' })
+    const handoff = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Kai again' })
     expect(k.store.chats(handoff.id)[0]).toMatchObject({ model: sonnet, effort: 'medium' })
     await k.stop()
 

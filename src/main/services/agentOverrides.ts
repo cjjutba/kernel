@@ -6,7 +6,7 @@ import type { AgentDef, AgentEdit } from '@shared/types'
 export type OwnEdit = Omit<AgentEdit, 'name'>
 
 /**
- * What the user changed about one of a room's agents on this Mac only (KERNEL-466). Kernel keeps it in its data folder, never
+ * What the user changed about one of a project's agents on this Mac only (KERNEL-466). Kernel keeps it in its data folder, never
  * in the repo, and lays it over the file each time it reads the team.
  */
 export interface AgentOverride {
@@ -14,7 +14,7 @@ export interface AgentOverride {
   /** Retired on this Mac. The file stays where it is. */
   retired?: boolean
   /**
-   * Hired or brought back for the user in this room, so it is on their team here even when `[team] roster` leaves it out
+   * Hired or brought back for the user in this project, so it is on their team here even when `[team] roster` leaves it out
    * (KERNEL-465), without writing the shared roster for an agent only they have.
    */
   joined?: boolean
@@ -91,57 +91,57 @@ export function editedFields(cur: AgentDef, patch: AgentEdit): AgentEdit {
 }
 
 /**
- * Each room's changes for me, by agent id, in `agent-overrides.json` in Kernel's data folder (KERNEL-466). One write at a time,
+ * Each project's changes for me, by agent id, in `agent-overrides.json` in Kernel's data folder (KERNEL-466). One write at a time,
  * each with the whole map as it is then, like `ScriptTrustStore`.
  */
 export class AgentOverrides {
-  private rooms?: Record<string, Record<string, AgentOverride>>
+  private projects?: Record<string, Record<string, AgentOverride>>
   private writing = Promise.resolve()
 
   constructor(private file: string) {}
 
   private async load(): Promise<Record<string, Record<string, AgentOverride>>> {
-    if (this.rooms) return this.rooms
+    if (this.projects) return this.projects
     let saved: unknown
     try { saved = JSON.parse(await readFile(this.file, 'utf8')) } catch { saved = {} }
-    const rooms: Record<string, Record<string, AgentOverride>> = {}
+    const projects: Record<string, Record<string, AgentOverride>> = {}
     const isTable = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
-    for (const [roomId, agents] of Object.entries(isTable(saved) ? saved : {})) {
+    for (const [projectId, agents] of Object.entries(isTable(saved) ? saved : {})) {
       if (!isTable(agents)) continue
       for (const [id, o] of Object.entries(agents)) {
         if (!isTable(o)) continue
         const own: AgentOverride = { ...(isTable(o.edit) ? { edit: o.edit as OwnEdit } : {}), ...(o.retired === true ? { retired: true } : {}), ...(o.joined === true ? { joined: true } : {}) }
-        if (own.edit || own.retired || own.joined) (rooms[roomId] ??= {})[id] = own
+        if (own.edit || own.retired || own.joined) (projects[projectId] ??= {})[id] = own
       }
     }
-    return (this.rooms ??= rooms)
+    return (this.projects ??= projects)
   }
 
-  /** The room's changes, by agent id. */
-  async of(roomId: string): Promise<Record<string, AgentOverride>> { return { ...(await this.load())[roomId] } }
+  /** The project's changes, by agent id. */
+  async of(projectId: string): Promise<Record<string, AgentOverride>> { return { ...(await this.load())[projectId] } }
 
-  /** Sets one agent's changes in a room. Nothing left to keep removes the agent, and a room left with none goes. */
-  async set(roomId: string, agentId: string, next: AgentOverride): Promise<void> {
-    const rooms = await this.load()
-    const room = { ...rooms[roomId] }
-    if (next.edit || next.retired || next.joined) room[agentId] = { ...(next.edit ? { edit: next.edit } : {}), ...(next.retired ? { retired: true } : {}), ...(next.joined ? { joined: true } : {}) }
-    else delete room[agentId]
-    if (Object.keys(room).length) rooms[roomId] = room
-    else delete rooms[roomId]
+  /** Sets one agent's changes in a project. Nothing left to keep removes the agent, and a project left with none goes. */
+  async set(projectId: string, agentId: string, next: AgentOverride): Promise<void> {
+    const projects = await this.load()
+    const project = { ...projects[projectId] }
+    if (next.edit || next.retired || next.joined) project[agentId] = { ...(next.edit ? { edit: next.edit } : {}), ...(next.retired ? { retired: true } : {}), ...(next.joined ? { joined: true } : {}) }
+    else delete project[agentId]
+    if (Object.keys(project).length) projects[projectId] = project
+    else delete projects[projectId]
     await this.save()
   }
 
-  async forget(roomId: string): Promise<void> {
-    const rooms = await this.load()
-    if (!(roomId in rooms)) return
-    delete rooms[roomId]
+  async forget(projectId: string): Promise<void> {
+    const projects = await this.load()
+    if (!(projectId in projects)) return
+    delete projects[projectId]
     await this.save()
   }
 
   private save() {
     this.writing = this.writing.catch(() => undefined).then(async () => {
       await mkdir(dirname(this.file), { recursive: true })
-      await writeFile(this.file, JSON.stringify(this.rooms ?? {}, null, 2))
+      await writeFile(this.file, JSON.stringify(this.projects ?? {}, null, 2))
     })
     return this.writing
   }

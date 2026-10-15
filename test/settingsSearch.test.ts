@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { NAV_PAGES, ROOM_PAGES, keywordHits, navMatch, type Keyword } from '../src/renderer/src/screens/settings/nav'
+import { NAV_PAGES, PROJECT_PAGES, keywordHits, navMatch, type Keyword } from '../src/renderer/src/screens/settings/nav'
 
 const dir = 'src/renderer/src/screens/settings'
 const read = (f: string) => readFileSync(join(dir, f), 'utf8')
@@ -11,8 +11,8 @@ const APP_FILES: Record<string, string[]> = {
   general: ['General'], appearance: ['Appearance'], notifications: ['Notifications'], accounts: ['Accounts'], models: ['Models'], agents: ['Agents'],
   permissions: ['Permissions'], git: ['Git'], prs: ['PRs'], bigterm: ['BigTerminal'], integrations: ['Integrations'], hooks: ['Hooks'], privacy: ['Privacy'], about: ['About']
 }
-const ROOM_FILES: Record<string, string[]> = {
-  general: ['Room', 'RoomIconRow', 'RoomTrackerRow'], git: ['RoomGit'], setup: ['RoomSetup', 'RunScripts', 'PreviewUrls'], agents: ['Team'], prs: ['RoomPrs'], permissions: ['RoomPermissions']
+const PROJECT_FILES: Record<string, string[]> = {
+  general: ['Project', 'ProjectIconRow', 'ProjectTrackerRow'], git: ['ProjectGit'], setup: ['ProjectSetup', 'RunScripts', 'PreviewUrls'], agents: ['Team'], prs: ['ProjectPrs'], permissions: ['ProjectPermissions']
 }
 
 /** Does a Row or Section in these files have this id: written out, or as a template that starts the way the id does (`review-${id}`)? */
@@ -27,9 +27,9 @@ const cases = (pages: { label: string; keywords: Keyword[]; key: string }[], fil
 
 describe('Settings search (KERNEL-727)', () => {
   const app = NAV_PAGES.map((p) => ({ label: p.label, keywords: p.keywords, key: p.page }))
-  const room = ROOM_PAGES.map((p) => ({ label: `Room ${p.label}`, keywords: p.keywords, key: p.section }))
+  const project = PROJECT_PAGES.map((p) => ({ label: `Project ${p.label}`, keywords: p.keywords, key: p.section }))
 
-  it.each([...cases(app, APP_FILES), ...cases(room, ROOM_FILES)])('%s: "%s" lands on a Row with id %s', (_page, _label, rowId, files) => {
+  it.each([...cases(app, APP_FILES), ...cases(project, PROJECT_FILES)])('%s: "%s" lands on a Row with id %s', (_page, _label, rowId, files) => {
     expect(files, 'add the page to the file list in this test').toBeDefined()
     expect(hasRow(files, rowId)).toBe(true)
   })
@@ -42,7 +42,7 @@ describe('Settings search (KERNEL-727)', () => {
   })
 
   it('names no row twice on a page', () => {
-    for (const p of [...NAV_PAGES, ...ROOM_PAGES]) {
+    for (const p of [...NAV_PAGES, ...PROJECT_PAGES]) {
       const ids = p.keywords.map((k) => k.rowId)
       expect(new Set(ids).size).toBe(ids.length)
     }

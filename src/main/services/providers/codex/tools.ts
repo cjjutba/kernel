@@ -16,9 +16,10 @@ const codexNames = (text: string) => text.replace(/mcp__kernel__/g, CODEX_TOOL_P
 
 /**
  * Kernel's tools under an old name. A resumed thread keeps the tools it started with, so a Lead thread from before the
- * rename still calls the old one, and its card has to show and save all the same (KERNEL-554).
+ * rename still calls the old one, and its card has to show and save all the same (KERNEL-554). set_room_scripts goes in the
+ * release after next (KERNEL-880).
  */
-const RENAMED: Record<string, string> = { hire_agent: 'create_agent' }
+const RENAMED: Record<string, string> = { hire_agent: 'create_agent', set_room_scripts: 'set_project_scripts' }
 
 /** The dynamic tool specs for Kernel's tools, their input as JSON Schema. */
 export function toolSpecs(tools: SdkMcpToolDefinition<any>[]): DynamicToolSpec[] {
@@ -60,7 +61,7 @@ const KEY = /^[A-Za-z0-9_-]+$/
  * subagent's MCP tools (KERNEL-451). A server the file doesn't reach is switched off, and one it reaches in part keeps
  * only the tools it may use. `servers` is Codex's own `mcp_servers` from config/read: an override that names a server
  * Codex doesn't have fails the thread. Kernel's tools are dynamic tools on Codex, not a server, and every agent keeps them.
- * A server the room switched off (`off`) is off whatever the file says, as on Claude (KERNEL-464). With `unlisted`, a server
+ * A server the project switched off (`off`) is off whatever the file says, as on Claude (KERNEL-464). With `unlisted`, a server
  * the tools line leaves out stays on, for Bypass permissions with `unlisted_tools = "ask"` (bypass-allows-unlisted-mcp).
  */
 export function mcpOverrides(policy: ToolPolicy | undefined, servers: Record<string, unknown>, off: string[] = [], o: { unlisted?: boolean } = {}): Record<string, JsonValue> {

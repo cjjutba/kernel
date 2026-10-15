@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentDef, ChatPart, RoleModel } from '../src/shared/types'
 import { leadHasNoChat, newChatOnScreen, newChatTab, showsNewChat, tabAfterKey, tabInFront, tabStop } from '../src/renderer/src/screens/workspace/leadNoChat'
 
-// KERNEL-366: a room with no chats opens on New chat with Kernel, and + and ⌘T there start no chat.
+// KERNEL-366: a project with no chats opens on New chat with Kernel, and + and ⌘T there start no chat.
 
 describe('the Lead workspace with no chat', () => {
   it('picks the New chat state when no chat tab is open, and not for a chat, a closed chat or another agent', () => {
@@ -33,7 +33,7 @@ describe('+ and ⌘T', () => {
   })
 })
 
-describe('a big terminal open in a room with no chat', () => {
+describe('a big terminal open in a project with no chat', () => {
   const terminal = { id: 't1', kind: 'terminal' as const }
 
   it('still counts as no chat, so + and ⌘T focus the box and never call chats.create', async () => {
@@ -57,21 +57,21 @@ describe('a big terminal open in a room with no chat', () => {
   })
 })
 
-describe("a room's New chat box draft", () => {
+describe("a project's New chat box draft", () => {
   const words = (t: string): ChatPart[] => [{ type: 'text', text: t }]
 
-  it('is its own per room, survives a prune', async () => {
+  it('is its own per project, survives a prune', async () => {
     vi.resetModules()
     const { loadDraft, newChatDraftOf, pruneDrafts, saveDraft } = await import('../src/renderer/src/screens/workspace/composer/draftStore')
-    saveDraft(newChatDraftOf('room-a'), words('plan the week'), '')
-    expect(loadDraft(newChatDraftOf('room-a'))).toEqual(words('plan the week'))
-    expect(loadDraft(newChatDraftOf('room-b'))).toBeUndefined()
+    saveDraft(newChatDraftOf('project-a'), words('plan the week'), '')
+    expect(loadDraft(newChatDraftOf('project-a'))).toEqual(words('plan the week'))
+    expect(loadDraft(newChatDraftOf('project-b'))).toBeUndefined()
     pruneDrafts({ workspaces: [], chats: {} }, () => true)
-    expect(loadDraft(newChatDraftOf('room-a'))).toEqual(words('plan the week'))
+    expect(loadDraft(newChatDraftOf('project-a'))).toEqual(words('plan the week'))
   })
 })
 
-describe('the tab row in a room with no chat', () => {
+describe('the tab row in a project with no chat', () => {
   const terminal = { id: 't1' }
 
   it('selects no tab only while the box is what is on screen, and keeps a file, diff, shared or terminal tab selected in front', () => {
@@ -226,14 +226,14 @@ describe("a New chat box opens on the Lead's pick (KERNEL-544)", () => {
     try {
       const { boxPick, leadStart } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
       const drafts = await import('../src/renderer/src/screens/workspace/composer/draftStore')
-      const key = drafts.newChatDraftOf('room-a')
+      const key = drafts.newChatDraftOf('project-a')
       const start = leadStart(kernel(), settings(opusMedium), true)
       drafts.savePicks(key, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
       // The box unmounts, and the next one to mount reads the same picks, with no text in the box.
       expect(boxPick(start, drafts.loadPicks(key))).toEqual({ model: 'claude-sonnet-5-5', effort: 'low', plan: true })
       expect(drafts.loadDraft(key)).toBeUndefined()
-      // Another room's box is its own.
-      expect(boxPick(start, drafts.loadPicks(drafts.newChatDraftOf('room-b')))).toEqual({ model: 'claude-opus-5-5', effort: 'medium', plan: false })
+      // Another project's box is its own.
+      expect(boxPick(start, drafts.loadPicks(drafts.newChatDraftOf('project-b')))).toEqual({ model: 'claude-opus-5-5', effort: 'medium', plan: false })
       vi.advanceTimersByTime(500)
       vi.resetModules()
       const again = await import('../src/renderer/src/screens/workspace/composer/draftStore')
@@ -248,7 +248,7 @@ describe("a New chat box opens on the Lead's pick (KERNEL-544)", () => {
     vi.resetModules()
     const { boxPick, leadStart } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
     const drafts = await import('../src/renderer/src/screens/workspace/composer/draftStore')
-    const key = drafts.newChatDraftOf('room-a')
+    const key = drafts.newChatDraftOf('project-a')
     const start = leadStart(kernel(), settings(opusMedium), true)
     drafts.saveDraft(key, words('plan the week'), '')
     drafts.savePicks(key, { model: 'claude-haiku-4-5-20251001', effort: 'low', plan: true })

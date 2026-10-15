@@ -3,19 +3,19 @@ import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { HookCallback, HookCallbackMatcher, Options } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, Chat, Room, Workspace } from '@shared/types'
+import type { AgentDef, Chat, Project, Workspace } from '@shared/types'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { Sessions } from '../src/main/services/sessions'
-import { loadRepoSettings, referencesInRoom, saveRepoSettings, type AppSettings } from '../src/main/services/settings'
+import { loadRepoSettings, referencesInProject, saveRepoSettings, type AppSettings } from '../src/main/services/settings'
 import { decide, referenceWrite, REFERENCE_READ_ONLY } from '../src/main/services/permissions'
 import { searchFiles } from '../src/main/services/files'
 import { sessionDeps } from '../src/main/features/sessionDeps'
 import type { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
 
-// KERNEL-748: a room pins folders outside its repo as read-only references. Claude reads them, Kernel denies edits under
+// KERNEL-748: a project pins folders outside its repo as read-only references. Claude reads them, Kernel denies edits under
 // them, and the @ menu searches them.
 
 const sdk = vi.hoisted(() => ({ calls: [] as { options: Options; feed: (m: unknown) => void }[] }))
@@ -48,7 +48,7 @@ const writeLocal = async (repo: string, text: string) => {
   await writeFile(join(repo, '.kernel', 'settings.local.toml'), text)
 }
 
-describe('reference folders in room settings (KERNEL-748)', () => {
+describe('reference folders in project settings (KERNEL-748)', () => {
   it('reads them from the personal file only, and names the ones that are missing', async () => {
     const repo = await tempRepo({ '.kernel/settings.toml': 'references = ["/shared/is/ignored"]\n' })
     const api = await folder()
@@ -57,7 +57,7 @@ describe('reference folders in room settings (KERNEL-748)', () => {
     expect(rs.references).toEqual([api, '/nowhere/kernel-748'])
     expect(rs.missingReferences).toEqual(['/nowhere/kernel-748'])
     expect(rs.sources.references).toBe('local')
-    expect(referencesInRoom(repo)).toEqual({ present: [api], missing: ['/nowhere/kernel-748'] })
+    expect(referencesInProject(repo)).toEqual({ present: [api], missing: ['/nowhere/kernel-748'] })
   })
 
   it('saves the list to the personal file, refuses the shared one, and removes the key when emptied', async () => {
@@ -89,7 +89,7 @@ describe('edits under a reference folder (KERNEL-748)', () => {
     const api = await folder({ 'a.ts': '' })
     const ui = await folder()
     await symlink(api, join(ui, 'api'))
-    const rules = { permissions: { mode: 'bypassPermissions', alwaysAsk: [], neverAllow: [], protectedBranches: [] } as unknown as AppSettings['permissions'], mode: 'bypassPermissions' as const, roomAllow: () => [], roomTools: () => [], references: [api] }
+    const rules = { permissions: { mode: 'bypassPermissions', alwaysAsk: [], neverAllow: [], protectedBranches: [] } as unknown as AppSettings['permissions'], mode: 'bypassPermissions' as const, projectAllow: () => [], projectTools: () => [], references: [api] }
     expect(decide({ tool: 'Edit', input: { file_path: join(ui, 'api', 'a.ts') } }, rules)).toEqual({ behavior: 'deny', message: REFERENCE_READ_ONLY })
     expect(decide({ tool: 'Edit', input: { file_path: join(ui, 'b.ts') } }, rules)).toBeUndefined()
   })
@@ -100,12 +100,12 @@ describe('Claude sessions with reference folders (KERNEL-748)', () => {
 
   async function start(references: string[] | undefined) {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-ref-db-')), 'kernel.db'))
-    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'ui', branch: 'feat/ui', baseRef: 'main', path: await folder(), mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'ui', branch: 'feat/ui', baseRef: 'main', path: await folder(), mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'UI', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat(chat)
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
-    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {}, referencesFor: () => references })
+    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {}, referencesFor: () => references })
     await sessions.send(chat.id, [{ type: 'text', text: 'Match the API' }])
     return sdk.calls.at(-1)!.options
   }
@@ -123,20 +123,20 @@ describe('Claude sessions with reference folders (KERNEL-748)', () => {
     expect(await ask(join(options.cwd!, 'app.ts'))).toEqual({})
   })
 
-  it('starts with no additionalDirectories when the room has none', async () => {
+  it('starts with no additionalDirectories when the project has none', async () => {
     const options = await start(undefined)
     expect(options.additionalDirectories).toBeUndefined()
   })
 
-  it('skips a missing folder, so the session still starts, and warns in the room log once', async () => {
+  it('skips a missing folder, so the session still starts, and warns in the project log once', async () => {
     const repo = await tempRepo({ 'README.md': '# ui\n' })
     const api = await folder()
     await writeLocal(repo, `references = ["${api}", "/nowhere/kernel-748"]\n`)
-    const room = { id: 'room', path: repo } as Room
-    const deps = sessionDeps({ store: { room: () => room } } as unknown as Kernel)
+    const project = { id: 'project', path: repo } as Project
+    const deps = sessionDeps({ store: { project: () => project } } as unknown as Kernel)
     const notes: { text: string; object?: string; warn?: boolean }[] = []
     bus.on('activity', (a) => notes.push(a))
-    const ws = { roomId: 'room' } as Workspace
+    const ws = { projectId: 'project' } as Workspace
     expect(deps.referencesFor!(ws)).toEqual([api])
     expect(deps.referencesFor!(ws)).toEqual([api])
     expect(notes).toEqual([expect.objectContaining({ object: '/nowhere/kernel-748', warn: true })])

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
-import { tempRepo, trustRoom, freePort } from './helpers'
+import { tempRepo, trustProject, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { exec, MAX_OUTPUT, run } from '../src/main/services/exec'
 import { runScript, scriptEndOf, timeoutText } from '../src/main/services/scripts'
@@ -73,9 +73,9 @@ describe('setup and archive scripts', () => {
     k.sessions.send = async () => ({ queued: false })
     // Below the setting's one minute floor, so the test doesn't wait one.
     k.settings.scripts.timeoutMinutes = minutes
-    const room = await k.addRoom(repo)
-    await trustRoom(k, room.id)
-    return { k, room }
+    const project = await k.addProject(repo)
+    await trustProject(k, project.id)
+    return { k, project }
   }
 
   it('has 15 minutes by default', () => {
@@ -84,9 +84,9 @@ describe('setup and archive scripts', () => {
   })
 
   it('fails a setup that never exits, says why, and leaves none of its processes', async () => {
-    const { k, room } = await kernelWith('[scripts]\nsetup = "sleep 600 & echo pid-$!; wait"\n', 0.01)
+    const { k, project } = await kernelWith('[scripts]\nsetup = "sleep 600 & echo pid-$!; wait"\n', 0.01)
     const started = Date.now()
-    const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
     expect(Date.now() - started).toBeLessThan(10_000)
     expect(ws.status).toBe('failed')
     const lines = linesOf(ws.id)
@@ -98,8 +98,8 @@ describe('setup and archive scripts', () => {
   })
 
   it('stops an archive script that never exits and archives anyway', async () => {
-    const { k, room } = await kernelWith('[scripts]\narchive = "sleep 600"\n', 0.01)
-    const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
+    const { k, project } = await kernelWith('[scripts]\narchive = "sleep 600"\n', 0.01)
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
     await k.archive.archiveWorkspace(ws.id)
     await k.archive.cleanedUp(ws.id)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')

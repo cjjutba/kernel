@@ -18,8 +18,8 @@ afterEach(() => { open.forEach((n) => n.detach()); open.length = 0 })
 
 async function setup(o: { background?: boolean; sound?: 'none' | 'subtle' | 'chime'; quiet?: { from: string; to: string } | null; off?: 'permission' | 'merge' | 'finished'; idle?: boolean } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-n-')), 'k.db'))
-  store.saveRoom({ id: 'r', name: 'Client A', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
-  store.saveWorkspace({ id: 'w', roomId: 'r', name: 'org-invites', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'open', prNumber: 41, createdAt: 1 } as Workspace)
+  store.saveProject({ id: 'r', name: 'Client A', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
+  store.saveWorkspace({ id: 'w', projectId: 'r', name: 'org-invites', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'open', prNumber: 41, createdAt: 1 } as Workspace)
   const settings = DEFAULT_SETTINGS('/h')
   settings.notifications = { ...settings.notifications, quietHours: o.quiet ?? null, sound: o.sound ?? 'subtle', idle: o.idle ?? false, ...(o.off ? { [o.off]: false } : {}) }
   const shown: Notification[] = []
@@ -31,7 +31,7 @@ async function setup(o: { background?: boolean; sound?: 'none' | 'subtle' | 'chi
   return { store, n, shown, silent, sounds }
 }
 
-const approval = (extra: Partial<Approval> = {}): Approval => ({ id: 'a1', kind: 'tool', source: 'sdk', roomId: 'r', agentId: 'noor', toolName: 'Bash', title: 'Run pnpm drizzle-kit push', status: 'pending', createdAt: Date.now(), ...extra })
+const approval = (extra: Partial<Approval> = {}): Approval => ({ id: 'a1', kind: 'tool', source: 'sdk', projectId: 'r', agentId: 'noor', toolName: 'Bash', title: 'Run pnpm drizzle-kit push', status: 'pending', createdAt: Date.now(), ...extra })
 
 describe('notifications service', () => {
   it('lands a pending approval in the inbox and shows a banner in the background', async () => {
@@ -165,7 +165,7 @@ describe('finished and idle rows (KERNEL-71)', () => {
 
   async function teammate(o: Parameters<typeof setup>[0] = {}) {
     const t = await setup(o)
-    const ws = { id: 'w2', roomId: 'r', name: 'symlink-node-modules', title: 'Symlink node_modules', branch: 'b2', baseRef: 'main', path: '/y', mode: 'worktree', agentId: 'noor', port: 2, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
+    const ws = { id: 'w2', projectId: 'r', name: 'symlink-node-modules', title: 'Symlink node_modules', branch: 'b2', baseRef: 'main', path: '/y', mode: 'worktree', agentId: 'noor', port: 2, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
     const chat = { id: 'c2', workspaceId: 'w2', title: 'Symlink node_modules', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 } as Chat
     t.store.saveWorkspace(ws)
     t.store.saveChat(chat)
@@ -238,7 +238,7 @@ describe('finished and idle rows (KERNEL-71)', () => {
 describe('rows that are over (KERNEL-155)', () => {
   const NOW = new Date(2026, 0, 1, 12, 0).getTime()
   const DAY = 24 * 60 * 60_000
-  const row = (id: string, extra: Partial<Notification> = {}): Notification => ({ id, kind: 'finished', roomId: 'r', workspaceId: 'w', title: id, sub: '', needsYou: false, read: true, createdAt: NOW, ...extra })
+  const row = (id: string, extra: Partial<Notification> = {}): Notification => ({ id, kind: 'finished', projectId: 'r', workspaceId: 'w', title: id, sub: '', needsYou: false, read: true, createdAt: NOW, ...extra })
   const removedIds = () => {
     const ids: string[] = []
     const on = (e: PushEvent) => { if (e.type === 'notification.removed') ids.push(...e.ids) }
@@ -273,7 +273,7 @@ describe('rows that are over (KERNEL-155)', () => {
     const { store } = await setup()
     const approvals = new Approvals(store)
     // A hook can land between the hook server starting and the expiry.
-    const live = approvals.request({ kind: 'tool', source: 'hook', roomId: 'r', workspaceId: 'w', title: 'Run pnpm build' })
+    const live = approvals.request({ kind: 'tool', source: 'hook', projectId: 'r', workspaceId: 'w', title: 'Run pnpm build' })
     expect(approvals.expireStale()).toEqual([])
     expect(approvals.isPending(live.approval.id)).toBe(true)
     expect(store.approvals({ pendingOnly: true }).map((a) => a.id)).toEqual([live.approval.id])
@@ -283,7 +283,7 @@ describe('rows that are over (KERNEL-155)', () => {
     const { store } = await setup()
     const approvals = new Approvals(store)
     const port = await freePort()
-    const server = await startHookServer({ port, token: 'ab'.repeat(32), approvals, approvalTimeoutMs: 60_000, isManaged: () => false, resolve: () => ({ roomId: 'r', workspaceId: 'w', agentId: 'kai' }) })
+    const server = await startHookServer({ port, token: 'ab'.repeat(32), approvals, approvalTimeoutMs: 60_000, isManaged: () => false, resolve: () => ({ projectId: 'r', workspaceId: 'w', agentId: 'kai' }) })
     try {
       const started = Date.now()
       const held = fetch(`http://127.0.0.1:${port}/hooks`, {
@@ -292,13 +292,13 @@ describe('rows that are over (KERNEL-155)', () => {
       }).then((r) => r.json())
       while (!store.approvals({ pendingOnly: true }).length) await new Promise((r) => setTimeout(r, 10))
       const hookId = store.approvals({ pendingOnly: true })[0].id
-      const sdk = approvals.request({ kind: 'tool', source: 'sdk', roomId: 'r', workspaceId: 'w', title: 'Run pnpm test' })
-      const elsewhere = approvals.request({ kind: 'tool', source: 'sdk', roomId: 'r', workspaceId: 'other', title: 'Run pnpm lint' })
+      const sdk = approvals.request({ kind: 'tool', source: 'sdk', projectId: 'r', workspaceId: 'w', title: 'Run pnpm test' })
+      const elsewhere = approvals.request({ kind: 'tool', source: 'sdk', projectId: 'r', workspaceId: 'other', title: 'Run pnpm lint' })
 
       expect(approvals.expireWorkspace('w').map((a) => a.status)).toEqual(['expired'])
       expect(await sdk.decision).toBeNull()
       expect(approvals.isPending(elsewhere.approval.id)).toBe(true)
-      // A session Kernel didn't start asks with its room only (KERNEL-285), so archiving a workspace leaves it waiting.
+      // A session Kernel didn't start asks with its project only (KERNEL-285), so archiving a workspace leaves it waiting.
       expect(approvals.isPending(hookId)).toBe(true)
       expect(store.approvals({ pendingOnly: true }).map((a) => a.id).sort()).toEqual([hookId, elsewhere.approval.id].sort())
       approvals.decide(hookId, { behavior: 'allow' })
@@ -337,10 +337,10 @@ describe('rows that are over (KERNEL-155)', () => {
       row('archived', { workspaceId: 'w-archived', needsYou: true, kind: 'merge' }),
       row('gone', { workspaceId: 'w-gone' }),
       row('old-settled', { createdAt: old }),
-      row('old-room-only', { workspaceId: undefined, createdAt: old }),
+      row('old-project-only', { workspaceId: undefined, createdAt: old }),
       row('old-needs-you', { createdAt: old, needsYou: true, read: false, kind: 'check' }),
       row('recent-settled', { createdAt: NOW - DAY }),
-      row('recent-room-only', { workspaceId: undefined, createdAt: NOW - 2 * DAY })
+      row('recent-project-only', { workspaceId: undefined, createdAt: NOW - 2 * DAY })
     ]) store.saveNotification(r)
     // A row the inbox already marked done whose approval is still waiting stays: the approval decides.
     store.saveApproval(approval({ id: 'still-waiting', workspaceId: 'w', createdAt: old }))
@@ -349,8 +349,8 @@ describe('rows that are over (KERNEL-155)', () => {
     const ids = removedIds()
     const again = restart(store)
     again.attach()
-    expect(ids.sort()).toEqual(['archived', 'gone', 'old-room-only', 'old-settled'])
-    expect(again.list().map((x) => x.id).sort()).toEqual([approvalNotificationId('still-waiting'), 'old-needs-you', 'recent-room-only', 'recent-settled'])
+    expect(ids.sort()).toEqual(['archived', 'gone', 'old-project-only', 'old-settled'])
+    expect(again.list().map((x) => x.id).sort()).toEqual([approvalNotificationId('still-waiting'), 'old-needs-you', 'recent-project-only', 'recent-settled'])
     // Run again a week later: only what still needs you, or waits on an approval, survives.
     const later = new Notifications({ store, settings: () => DEFAULT_SETTINGS('/h'), agentName: () => undefined, now: () => NOW + KEEP_SETTLED_MS + 3 * DAY })
     later.prune()
@@ -367,7 +367,7 @@ describe('Kernel start (KERNEL-155)', () => {
     const before = new Store(join(dataDir, 'kernel.db'))
     const plan = approval({ id: 'plan', kind: 'plan', toolName: undefined, title: 'Plan for the Ulat release' })
     before.saveApproval(plan)
-    before.saveNotification({ id: approvalNotificationId('plan'), kind: 'approval', roomId: 'r', agentId: 'noor', approvalId: 'plan', title: 'Plan ready: the Ulat release', sub: 'Plan review', needsYou: true, read: false, createdAt: plan.createdAt })
+    before.saveNotification({ id: approvalNotificationId('plan'), kind: 'approval', projectId: 'r', agentId: 'noor', approvalId: 'plan', title: 'Plan ready: the Ulat release', sub: 'Plan review', needsYou: true, read: false, createdAt: plan.createdAt })
     before.db.close()
 
     const k = new Kernel({ dataDir, home })

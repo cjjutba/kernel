@@ -9,7 +9,7 @@ import { bus } from '../src/main/bus'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
-import { setUp, tempRepo, trustRoom, freePort } from './helpers'
+import { setUp, tempRepo, trustProject, freePort } from './helpers'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -21,7 +21,7 @@ vi.mock('../src/main/services/kernelMcp', async (original) => {
   return { ...m, kernelMcpServer: (d: KernelToolDeps) => { wired = d; return m.kernelMcpServer(d) } }
 })
 
-const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, roomId: 'room', name: id, agentId: 'kai', mode: 'worktree', status: 'ready', prState: 'merged', ...o }) as Workspace
+const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, projectId: 'project', name: id, agentId: 'kai', mode: 'worktree', status: 'ready', prState: 'merged', ...o }) as Workspace
 
 /**
  * The Lead's tools over `list`, with `running` workspaces mid-turn, `unsaved` ones git reports on, `failing` ones whose
@@ -42,7 +42,7 @@ function leadTools(list: Workspace[], o: { running?: string[]; unsaved?: Record<
   })
   const handedOff = vi.fn()
   const deps: KernelToolDeps = {
-    roomId: 'room', lead: { id: 'kernel', lead: true } as AgentDef, agents: async () => [], workspaces: () => list,
+    projectId: 'project', lead: { id: 'kernel', lead: true } as AgentDef, agents: async () => [], workspaces: () => list,
     createWorkspace: async () => list[0], messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
     archiveWorkspace, refreshPr, isRunning: (id) => o.running?.includes(id) ?? false, unsaved: async (id) => o.unsaved?.[id] ?? false, handedOff
   }
@@ -64,9 +64,9 @@ describe('archive_workspace (KERNEL-93)', () => {
     expect(await t.archive(['spike', 'dropped'])).toBe('Archived spike.\nArchived dropped.')
   })
 
-  it('skips an id that is not an open workspace in this room', async () => {
+  it('skips an id that is not an open workspace in this project', async () => {
     const t = leadTools([ws('done', { status: 'archived' })])
-    expect(await t.archive(['done', 'nope'])).toBe('Skipped done: not an open workspace in this room.\nSkipped nope: not an open workspace in this room.')
+    expect(await t.archive(['done', 'nope'])).toBe('Skipped done: not an open workspace in this project.\nSkipped nope: not an open workspace in this project.')
     expect(t.archiveWorkspace).not.toHaveBeenCalled()
   })
 
@@ -137,20 +137,20 @@ describe('archive_workspace (KERNEL-93)', () => {
     expect(await t.archive(['first', 'lead', 'missing', 'broken', 'open-pr', 'busy', 'dirty', 'last', 'first'])).toBe([
       'Archived first.',
       'Skipped lead: it is your own workspace.',
-      'Skipped missing: not an open workspace in this room.',
+      'Skipped missing: not an open workspace in this project.',
       'Skipped broken: The folder is locked.',
       'Skipped open-pr: its PR is open and not merged.',
       'Skipped busy: its agent is still working.',
       'Skipped dirty: it has uncommitted changes.',
       'Archived last.',
-      'Skipped first: not an open workspace in this room.'
+      'Skipped first: not an open workspace in this project.'
     ].join('\n'))
     expect(t.archiveWorkspace.mock.calls.map(([id]) => id)).toEqual(['first', 'broken', 'last'])
   })
 })
 
 /** A started Kernel over a temp repo with Kernel as Lead and Kai, plus any `files`. Sessions never start a real turn. */
-async function kernelRoom(files: Record<string, string> = {}) {
+async function kernelProject(files: Record<string, string> = {}) {
   const repo = await tempRepo({
     'README.md': '# client\n',
     '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
@@ -164,22 +164,22 @@ async function kernelRoom(files: Record<string, string> = {}) {
   await k.start()
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
-  const room = await k.addRoom(repo)
-  return { k, repo, room }
+  const project = await k.addProject(repo)
+  return { k, repo, project }
 }
 
 describe('archive_workspace in the Kernel (KERNEL-93)', () => {
   it('archives through the sidebar path on a real repo, and skips the Lead, a running agent and uncommitted work', async () => {
-    const { k, repo, room } = await kernelRoom()
-    const done = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
-    const busy = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Still going' })
-    const dirty = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Half done' })
+    const { k, repo, project } = await kernelProject()
+    const done = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const busy = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Still going' })
+    const dirty = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Half done' })
     await writeFile(join(dirty.path, 'draft.ts'), 'export {}\n')
     const busyChat = k.chatTabs(busy.id)[0].id
     k.sessions.isRunning = (chatId) => chatId === busyChat
-    const lead = await k.leadChat(room.id)
-    const agents = await k.agents(room.id)
-    k.lead['leadTools'](room.id, agents.find((a) => a.lead)!, lead)
+    const lead = await k.leadChat(project.id)
+    const agents = await k.agents(project.id)
+    k.lead['leadTools'](project.id, agents.find((a) => a.lead)!, lead)
 
     const tool = kernelTools(wired!).find((t) => t.name === 'archive_workspace')!
     const result = await tool.handler({ workspace_ids: [lead.workspaceId, busy.id, dirty.id, done.id] } as never, {})
@@ -198,12 +198,12 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     expect(k.store.workspace(busy.id)?.status).not.toBe('archived')
     expect(await readFile(join(dirty.path, 'draft.ts'), 'utf8')).toBe('export {}\n')
     expect(k.store.workspace(lead.workspaceId)?.status).not.toBe('archived')
-    expect(k.store.activity(room.id).filter((a) => a.kind === 'workspace.archived').map((a) => a.workspaceId)).toEqual([done.id])
+    expect(k.store.activity(project.id).filter((a) => a.kind === 'workspace.archived').map((a) => a.workspaceId)).toEqual([done.id])
   })
 
   it('archives a workspace whose folder was deleted and whose saved PR state is stale (KERNEL-109)', async () => {
-    const { k, repo, room } = await kernelRoom()
-    const made = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const { k, repo, project } = await kernelProject()
+    const made = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
     // The PR merged on GitHub while Kernel still had it failing checks, and the folder was deleted by hand.
     const gone = k.store.saveWorkspace({ ...k.store.workspace(made.id)!, prState: 'cifail', prNumber: 12 })
     await rm(gone.path, { recursive: true, force: true })
@@ -217,35 +217,35 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
         return { workspaceId, number: 12, url: 'https://github.com/o/r/pull/12', title: 'feat: table', state: 'merged', baseRef: 'main', checks: [], comments: [], conflicts: [] }
       }
     }
-    const lead = await k.leadChat(room.id)
-    const agents = await k.agents(room.id)
-    k.lead['leadTools'](room.id, agents.find((a) => a.lead)!, lead)
+    const lead = await k.leadChat(project.id)
+    const agents = await k.agents(project.id)
+    k.lead['leadTools'](project.id, agents.find((a) => a.lead)!, lead)
 
     expect(await wired!.unsaved(gone.id)).toBe(false)
     const tool = kernelTools(wired!).find((t) => t.name === 'archive_workspace')!
     const result = await tool.handler({ workspace_ids: [gone.id] } as never, {})
     expect((result.content[0] as { text: string }).text).toBe(`Archived ${gone.name}.`)
-    // gh ran in the room, asked for the PR by number, and left conflicts alone: the room's HEAD is main, not the PR.
-    expect(asked).toEqual([[room.path, '12', { conflicts: false }]])
+    // gh ran in the project, asked for the PR by number, and left conflicts alone: the project's HEAD is main, not the PR.
+    expect(asked).toEqual([[project.path, '12', { conflicts: false }]])
     expect(k.store.workspace(gone.id)).toMatchObject({ status: 'archived', prState: 'merged' })
     expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain(basename(gone.path))
   })
 
   it('reports unknown, not gone, for a worktree whose folder it cannot read', async () => {
-    const { k, room } = await kernelRoom()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
-    const lead = await k.leadChat(room.id)
-    const agents = await k.agents(room.id)
-    k.lead['leadTools'](room.id, agents.find((a) => a.lead)!, lead)
+    const { k, project } = await kernelProject()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const lead = await k.leadChat(project.id)
+    const agents = await k.agents(project.id)
+    k.lead['leadTools'](project.id, agents.find((a) => a.lead)!, lead)
     await chmod(dirname(ws.path), 0o000)
     onTestFinished(() => chmod(dirname(ws.path), 0o755))
     expect(await wired!.unsaved(ws.id)).toBe('unknown')
   })
 
   it("skips the repo's archive script for a workspace whose folder is gone, and still runs it for one that is there", async () => {
-    const { k, room } = await kernelRoom({ '.kernel/settings.toml': '[scripts]\narchive = "echo tearing down"\n' })
-    const gone = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
-    const there = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Export button' })
+    const { k, project } = await kernelProject({ '.kernel/settings.toml': '[scripts]\narchive = "echo tearing down"\n' })
+    const gone = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const there = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Export button' })
     await rm(gone.path, { recursive: true, force: true })
     const ran: string[] = []
     const on = (e: PushEvent) => { if ((e.type === 'script.output' || e.type === 'script.exit') && e.kind === 'archive') ran.push(e.workspaceId) }
@@ -262,9 +262,9 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     expect(ran).toContain(there.id)
   })
 
-  it('looks a PR up by branch from the room when the folder is gone and there is no PR number yet', async () => {
-    const { k, room } = await kernelRoom()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+  it('looks a PR up by branch from the project when the folder is gone and there is no PR number yet', async () => {
+    const { k, project } = await kernelProject()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
     await rm(ws.path, { recursive: true, force: true })
     const asked: [string, string, { conflicts?: boolean } | undefined][] = []
     k.github = {
@@ -276,15 +276,15 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     }
 
     const next = await k.refreshPr(ws.id, { settle: true })
-    expect(asked).toEqual([[room.path, ws.branch, { conflicts: false }]])
+    expect(asked).toEqual([[project.path, ws.branch, { conflicts: false }]])
     expect(next).toMatchObject({ prState: 'open', prNumber: 31 })
   })
 })
 
 describe('archiving clears the inbox, on every path (KERNEL-155)', () => {
   /** A pending approval with a live waiter and a "ready to merge" row, both for `workspaceId`. */
-  function seed(k: Kernel, workspaceId: string, roomId: string) {
-    const { approval, decision } = k.approvals.request({ kind: 'tool', source: 'sdk', roomId, workspaceId, agentId: 'kai', toolName: 'Bash', title: 'Run pnpm build' })
+  function seed(k: Kernel, workspaceId: string, projectId: string) {
+    const { approval, decision } = k.approvals.request({ kind: 'tool', source: 'sdk', projectId, workspaceId, agentId: 'kai', toolName: 'Bash', title: 'Run pnpm build' })
     bus.push({ type: 'pr', workspaceId, state: 'ready' })
     const rows = () => k.store.notifications().filter((n) => n.workspaceId === workspaceId)
     expect(rows().map((n) => n.kind).sort()).toEqual(['approval', 'merge'])
@@ -308,36 +308,36 @@ describe('archiving clears the inbox, on every path (KERNEL-155)', () => {
   }
 
   it('by hand, from the sidebar or the archive dialog', async () => {
-    const { k, room } = await kernelRoom()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
-    const s = seed(k, ws.id, room.id)
+    const { k, project } = await kernelProject()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const s = seed(k, ws.id, project.id)
     await k.handlers()['workspaces.archive']({ workspaceId: ws.id })
     await s.check()
   })
 
   it("through the Lead's archive_workspace", async () => {
-    const { k, room } = await kernelRoom()
-    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const { k, project } = await kernelProject()
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
     k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prState: 'merged', prNumber: 3 })
-    const lead = await k.leadChat(room.id)
-    const agents = await k.agents(room.id)
-    k.lead['leadTools'](room.id, agents.find((a) => a.lead)!, lead)
+    const lead = await k.leadChat(project.id)
+    const agents = await k.agents(project.id)
+    k.lead['leadTools'](project.id, agents.find((a) => a.lead)!, lead)
     // The PR merged on GitHub, but the "ready to merge" row never heard: the stale row this issue found.
-    const s = seed(k, ws.id, room.id)
+    const s = seed(k, ws.id, project.id)
     const tool = kernelTools(wired!).find((t) => t.name === 'archive_workspace')!
     expect(((await tool.handler({ workspace_ids: [ws.id] } as never, {})).content[0] as { text: string }).text).toBe(`Archived ${ws.name}.`)
     await s.check()
   })
 
   it('after the work a review looked at merged', async () => {
-    const { k, room } = await kernelRoom({ '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.' })
+    const { k, project } = await kernelProject({ '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.' })
     let state: 'ready' | 'merged' = 'ready'
     k.github = { ...k.github, info: async (_cwd, _ref, workspaceId) => ({ workspaceId, number: 42, url: 'https://github.com/o/r/pull/42', title: 'feat: table', state, baseRef: 'main', checks: [], comments: [], conflicts: [] }) }
-    const lead = await k.leadChat(room.id)
-    const author = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
-    const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
+    const lead = await k.leadChat(project.id)
+    const author = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
     await k.refreshPr(author.id)
-    const s = seed(k, review.id, room.id)
+    const s = seed(k, review.id, project.id)
     const archived = new Promise<void>((resolve) => {
       const done = (e: PushEvent) => { if (e.type === 'notification.removed') { bus.off('push', done); resolve() } }
       bus.on('push', done)
@@ -350,7 +350,7 @@ describe('archiving clears the inbox, on every path (KERNEL-155)', () => {
 })
 
 describe('archiving a chat with Kernel (KERNEL-405)', () => {
-  /** A room whose archive script logs each workspace it runs in, with Kernel's chat and a teammate it handed off. */
+  /** A project whose archive script logs each workspace it runs in, with Kernel's chat and a teammate it handed off. */
   async function chatWithWork(workspace: Record<string, unknown> = {}) {
     const log = join(await mkdtemp(join(tmpdir(), 'kernel-log-')), 'archived.txt')
     const repo = await tempRepo({
@@ -366,15 +366,15 @@ describe('archiving a chat with Kernel (KERNEL-405)', () => {
     await k.start()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
     k.sessions.send = async () => ({ queued: false })
-    const room = await k.addRoom(repo)
-    await trustRoom(k, room.id)
+    const project = await k.addProject(repo)
+    await trustProject(k, project.id)
     // No first message, so nothing runs in it once setup passes.
-    const chat = await k.lead.newLeadChat(room.id, { prompt: '' })
+    const chat = await k.lead.newLeadChat(project.id, { prompt: '' })
     const own = await setUp(k, chat.id)
-    const kai = await k.workspaces.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build', leadChatId: chat.id })
-    const loose = await k.workspaces.createWorkspace(room.id, { prompt: 'Other', agentId: 'kai', title: 'Loose' })
+    const kai = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build', leadChatId: chat.id })
+    const loose = await k.workspaces.createWorkspace(project.id, { prompt: 'Other', agentId: 'kai', title: 'Loose' })
     const lines = async () => (await readFile(log, 'utf8').catch(() => '')).trim().split('\n').filter(Boolean)
-    return { k, repo, room, chat, own, kai, loose, lines, dataDir }
+    return { k, repo, project, chat, own, kai, loose, lines, dataDir }
   }
 
   it('archives the workspaces the chat handed off, then its own, each with the archive script, and the chat goes to History', async () => {
@@ -393,7 +393,7 @@ describe('archiving a chat with Kernel (KERNEL-405)', () => {
     expect((await lines()).sort()).toEqual([kai.name, own.name].sort())
     expect(k.store.thread(chat.threadId!)!.closedAt).toBeGreaterThan(0)
     expect(pushed).toEqual([`${chat.threadId}:closed`])
-    expect(await k.handlers()['lead.open']({ roomId: own.roomId })).toBeNull()
+    expect(await k.handlers()['lead.open']({ projectId: own.projectId })).toBeNull()
   })
 
   it('leaves the workspaces it handed off open when Archive a chat\'s workspaces is off', async () => {
@@ -405,11 +405,11 @@ describe('archiving a chat with Kernel (KERNEL-405)', () => {
   })
 
   it("deletes Kernel's branch when it has no commits of its own, whatever Delete branch on archive says, and keeps one with commits", async () => {
-    const { k, repo, room, chat, own } = await chatWithWork()
+    const { k, repo, project, chat, own } = await chatWithWork()
     await k.lead.archiveLeadChat(chat.threadId!)
     await k.archive.cleanedUp(own.id)
     expect(await git(repo, 'branch', '--list', own.branch)).toBe('')
-    const other = await k.lead.newLeadChat(room.id, { prompt: 'Write the plan down' })
+    const other = await k.lead.newLeadChat(project.id, { prompt: 'Write the plan down' })
     const ws = await setUp(k, other.id)
     await writeFile(join(ws.path, 'plan.md'), '# Plan\n')
     await git(ws.path, 'add', '-A')
@@ -465,7 +465,7 @@ describe('archiving a chat with Kernel (KERNEL-405)', () => {
     expect(k.chatTabs(own.id).map((c) => c.id)).toEqual([chat.id])
     await setUp(k, own.id)
     expect((await git(back.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(own.branch)
-    expect((await k.handlers()['lead.open']({ roomId: own.roomId }))?.id).toBe(own.id)
+    expect((await k.handlers()['lead.open']({ projectId: own.projectId }))?.id).toBe(own.id)
   })
 
   it('never archives a chat with Kernel when its PR merges, and Delete removes the chat with its workspace', async () => {

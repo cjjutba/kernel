@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { PrInfo, Room } from '@shared/types'
+import type { PrInfo, Project } from '@shared/types'
 import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { exec } from '../src/main/services/exec'
 import { gh, type CodeHost } from '../src/main/services/github'
 
-// KERNEL-453: the PR feature asks each room's code host, and a room that merges locally never reaches GitHub.
+// KERNEL-453: the PR feature asks each project's code host, and a project that merges locally never reaches GitHub.
 
 const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
 
@@ -26,11 +26,11 @@ async function kernel() {
   return k
 }
 
-/** A room with one workspace whose PR #42 reads ready, on the host given. A local one has no number. */
-async function roomWithPr(k: Kernel, host?: Room['host']) {
-  const room = await k.addRoom(await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': KAI }))
-  if (host) k.store.saveRoom({ ...room, host })
-  const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+/** A project with one workspace whose PR #42 reads ready, on the host given. A local one has no number. */
+async function projectWithPr(k: Kernel, host?: Project['host']) {
+  const project = await k.addProject(await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': KAI }))
+  if (host) k.store.saveProject({ ...project, host })
+  const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
   k.store.saveWorkspace({ ...ws, prState: 'ready', ...(host === 'local' ? {} : { prNumber: 42 }) })
   return k.store.workspace(ws.id)!
 }
@@ -50,7 +50,7 @@ function stub(k: Kernel) {
 }
 
 describe('hostFor', () => {
-  it('sends a room with no host, or GitHub, to k.github, read when asked so a swapped stub is the one used', async () => {
+  it('sends a project with no host, or GitHub, to k.github, read when asked so a swapped stub is the one used', async () => {
     const k = await kernel()
     expect(k.codeHost.hostFor({ path: '/repo' })).toBe(gh)
     expect(k.codeHost.hostFor({ host: 'github', path: '/repo' })).toBe(gh)
@@ -59,17 +59,17 @@ describe('hostFor', () => {
     expect(k.codeHost.hostFor({ host: 'github', path: '/repo' })).toBe(host)
   })
 
-  it('gives a room that merges locally its own host, never GitHub (KERNEL-467)', async () => {
+  it('gives a project that merges locally its own host, never GitHub (KERNEL-467)', async () => {
     const k = await kernel()
     const { host } = stub(k)
     const local = k.codeHost.hostFor({ host: 'local', path: '/repo' })
     expect(local).not.toBe(host)
     expect(local).not.toBe(gh)
-    await expect(local.ready('/repo', 'feat/x')).rejects.toThrow('This room merges on this Mac, so it has no pull request.')
+    await expect(local.ready('/repo', 'feat/x')).rejects.toThrow('This project merges on this Mac, so it has no pull request.')
   })
 })
 
-describe('the host a room gets at setup (KERNEL-477)', () => {
+describe('the host a project gets at setup (KERNEL-477)', () => {
   /** A real checkout with origin at `url`, or no remote. */
   const checkout = async (url?: string) => {
     const repo = await tempRepo()
@@ -88,7 +88,7 @@ describe('the host a room gets at setup (KERNEL-477)', () => {
     expect(await k.codeHost.detect(await checkout())).toEqual({ host: 'local' })
   })
 
-  it("reads the remote the room's settings name, not origin", async () => {
+  it("reads the remote the project's settings name, not origin", async () => {
     const k = await kernel()
     const repo = await checkout('https://gitlab.com/samrivera/client-c.git')
     await exec('git', ['-C', repo, 'remote', 'add', 'upstream', 'git@github.com:samrivera/client-c.git'])
@@ -105,29 +105,29 @@ describe('the host a room gets at setup (KERNEL-477)', () => {
 })
 
 describe('gh in preflight (KERNEL-477)', () => {
-  it('is checked with no room yet, or while an open room is on GitHub or older than hosts, and not when every open room merges locally', async () => {
+  it('is checked with no project yet, or while an open project is on GitHub or older than hosts, and not when every open project merges locally', async () => {
     const k = await kernel()
     expect(k.codeHost.usesGitHub()).toBe(true)
-    // A room from before KERNEL-477 has no host, keeps none, and stays a GitHub room.
-    const old = await k.addRoom(await tempRepo())
-    expect(k.store.room(old.id)?.host).toBeUndefined()
+    // A project from before KERNEL-477 has no host, keeps none, and stays a GitHub project.
+    const old = await k.addProject(await tempRepo())
+    expect(k.store.project(old.id)?.host).toBeUndefined()
     expect(k.codeHost.usesGitHub()).toBe(true)
-    k.store.saveRoom({ ...old, host: 'local' })
+    k.store.saveProject({ ...old, host: 'local' })
     expect(k.codeHost.usesGitHub()).toBe(false)
-    const github = await k.addRoom(await tempRepo())
-    k.store.saveRoom({ ...github, host: 'github' })
+    const github = await k.addProject(await tempRepo())
+    k.store.saveProject({ ...github, host: 'github' })
     expect(k.codeHost.usesGitHub()).toBe(true)
-    k.store.saveRoom({ ...k.store.room(github.id)!, archived: true })
+    k.store.saveProject({ ...k.store.project(github.id)!, archived: true })
     expect(k.codeHost.usesGitHub()).toBe(false)
   })
 })
 
 describe('the PR feature through hostFor', () => {
-  it('merges a GitHub room on GitHub, and never sends a local room to it', async () => {
+  it('merges a GitHub project on GitHub, and never sends a local project to it', async () => {
     const k = await kernel()
     const { calls } = stub(k)
-    const github = await roomWithPr(k)
-    const local = await roomWithPr(k, 'local')
+    const github = await projectWithPr(k)
+    const local = await projectWithPr(k, 'local')
 
     // The local branch has no commits of its own, so git finds nothing to merge.
     await expect(k.prs.mergePr(local.id)).rejects.toThrow('so there is nothing to merge')
@@ -138,11 +138,11 @@ describe('the PR feature through hostFor', () => {
     expect(calls).not.toContain(`info ${local.id}`)
   })
 
-  it('reads a local room with git and the GitHub room on GitHub in the same poll', async () => {
+  it('reads a local project with git and the GitHub project on GitHub in the same poll', async () => {
     const k = await kernel()
     const { calls } = stub(k)
-    const local = await roomWithPr(k, 'local')
-    const github = await roomWithPr(k)
+    const local = await projectWithPr(k, 'local')
+    const github = await projectWithPr(k)
 
     await k.prs.pollPrs({ chores: false })
     expect(calls).toEqual([`info ${github.id}`])

@@ -70,7 +70,7 @@ const H = {
   inbox: InboxIcon,
   issues: Task01Icon,
   refresh: RefreshIcon,
-  rooms: GridViewIcon,
+  projects: GridViewIcon,
   history: HistoryIcon,
   layers: Layers01Icon,
   team: UserGroupIcon,
