@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FolderInfo } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions } from '../../store'
-import { Button, Icon, Modal } from '../../ui'
+import { Banner, Button, Icon, LoadingRow, Modal, useBusy } from '../../ui'
 import { baseName, getDraft, patchDraft, tilde, titleOf } from './draft'
 import './rooms.css'
 
@@ -14,9 +14,22 @@ export function OpenFolder() {
   const [picked, setPicked] = useState(getDraft().source === 'folder' ? getDraft().from : '')
   const [init, setInit] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [tries, setTries] = useState(0)
+  const [busy, run] = useBusy<'retry'>()
 
   useEffect(() => { const t = setTimeout(() => document.querySelector<HTMLElement>('[role=dialog]')?.focus(), 0); return () => clearTimeout(t) }, [])
-  useEffect(() => { void call('rooms.recentFolders', undefined).then(setFolders, () => setFolders([])) }, [])
+  useEffect(() => {
+    let live = true
+    call('rooms.recentFolders', undefined).then((list) => { if (live) { setFolders(list); setLoadError(null) } }, (e: unknown) => { if (live) { setFolders([]); setLoadError(cleanError(e)) } })
+    return () => { live = false }
+  }, [tries])
+  const retry = () => run('retry', async () => {
+    setFolders(null)
+    setLoadError(null)
+    setTries((n) => n + 1)
+    await new Promise<void>((done) => setTimeout(done, 400))
+  })
 
   const add = (f: FolderInfo) => { setFolders((list) => [f, ...(list ?? []).filter((x) => x.path !== f.path)]); setPicked(f.path); setError(null) }
   const choose = async () => {
@@ -47,9 +60,9 @@ export function OpenFolder() {
     >
       <p className="rm-sub">Point a room at a project that already lives on your Mac.</p>
       <div className="rm-pad" style={{ gap: 14 }}>
-        <div className="of-drop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); setError('Kernel cannot read a dropped folder yet. Use Choose folder.') }}>
+        <div className="of-drop">
           <Icon name="folder" size={20} />
-          <span style={{ color: 'var(--ink-2)' }}>Drop a project folder here</span>
+          <span style={{ color: 'var(--ink-2)' }}>Choose a project folder on this Mac</span>
           <Button onClick={() => void choose()}>Choose folder</Button>
         </div>
         {error && <p role="alert" className="del" style={{ margin: 0, fontSize: 12.5 }}>{error}</p>}
@@ -67,7 +80,11 @@ export function OpenFolder() {
               {!f.git && <button type="button" className="of-init" aria-pressed={init === f.path} onClick={() => { setPicked(f.path); setInit(init === f.path ? null : f.path) }}>{init === f.path ? 'Will initialize git' : 'Initialize git'}</button>}
             </div>
           ))}
-          {folders && !folders.length && <p className="muted" style={{ margin: 0, padding: '10px 12px' }}>No recent folders. Use Choose folder.</p>}
+          {!folders && <LoadingRow what="recent folders" />}
+          {folders && !folders.length && loadError && (
+            <Banner kind="setup" title="Could not read your recent folders" actions={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void retry()}>Try again</Button>}>{loadError}</Banner>
+          )}
+          {folders && !folders.length && !loadError && <p className="muted" style={{ margin: 0, padding: '10px 12px' }}>No recent folders. Use Choose folder.</p>}
         </div>
         {!!current?.dirty && <p className="of-note">The {current.dirty} uncommitted {current.dirty === 1 ? 'change stays' : 'changes stay'}. Current-branch workspaces treat them as the baseline.</p>}
       </div>
