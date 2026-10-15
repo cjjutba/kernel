@@ -56,7 +56,7 @@ const placeOf = (box: HTMLElement, el: HTMLElement) => box.scrollTop + el.getBou
  * the rail, so the rows are options named by `aria-activedescendant`.
  */
 /** The transcript's glider, which every scroll Kernel makes itself goes through (KERNEL-862). `glide` runs one toward a goal asked again each frame, `stop` ends it. */
-export interface RailGlide { glide: (goal: () => number, done: (landed: boolean) => void) => void; stop: () => void }
+export interface RailGlide { glide: (goal: () => number, done: (landed: boolean, replaced?: boolean) => void) => void; stop: () => void }
 
 export function ChatRail({ entries, scroller, glide: glider }: { entries: RailEntry[]; scroller: RefObject<HTMLElement | null>; glide?: RailGlide }) {
   const id = useId()
@@ -167,9 +167,9 @@ export function ChatRail({ entries, scroller, glide: glider }: { entries: RailEn
     if (Math.abs(goal() - box.scrollTop) < 1) { glide.current = undefined; light(el); return }
     const run = glideNow.current
     if (!run) { box.scrollTop = goal(); glide.current = undefined; light(el); return }
-    run.glide(goal, (landed) => {
+    run.glide(goal, (landed, replaced) => {
       if (glide.current === stop) glide.current = undefined
-      if (landed) light(el)
+      if (landed || replaced) light(el)
     })
   }
 

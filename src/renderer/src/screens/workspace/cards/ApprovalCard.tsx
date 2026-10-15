@@ -14,6 +14,7 @@ import { PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
 import { AnswerBubble } from './AnswerBubble'
 import { answerItemId } from '@shared/approvalAnswer'
 import { questionAnswer } from '@shared/approvalAnswer'
+import { activeRow, rowStep } from './questionRows'
 import { allAnswered, answerDecision, emptyPick, isPlanApproval, isStepList, nextUnanswered, outcome, permissionTitle, pickReady, planSteps, planText, type Picked } from './steps'
 import './cards.css'
 
@@ -138,6 +139,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
   const group = useRef<HTMLDivElement>(null)
   const tabs = useRef<HTMLDivElement>(null)
   const focusNext = useFocusNext()
+  const [cursor, setCursor] = useState<{ step: number; at: number } | null>(null)
   const q = qs[step]
   if (!q) return null
   const p = picks[step] ?? emptyPick()
@@ -161,7 +163,17 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
     const to = nextUnanswered(picks, step)
     if (to >= 0) move(to)
   }
-  const row = (i: number) => group.current?.querySelectorAll<HTMLElement>('.qrow')[i]
+  const rowButtons = () => [...(group.current?.querySelectorAll<HTMLElement>('button.qrow') ?? [])]
+  const row = (i: number) => rowButtons()[i]
+  const rowArrows = (e: KeyboardEvent<HTMLDivElement>) => {
+    const el = e.target as HTMLElement
+    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || !el.matches('button.qrow')) return
+    const all = rowButtons()
+    const to = rowStep(e.key, all.indexOf(el), all.length)
+    if (to < 0) return
+    e.preventDefault()
+    all[to]?.focus()
+  }
   const choose = (label: string, i: number) => {
     if (multi) return setPicks(change({ sel: p.sel.includes(label) ? p.sel.filter((l) => l !== label) : [...p.sel, label] }))
     const ps = change({ sel: [label], other: false })
@@ -208,6 +220,9 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
   }
   const title = many ? `${who} has ${qs.length} questions` : `${who} has a question`
   const rows = q.options.length
+  const rowCount = rows + (p.other ? 0 : 1)
+  const active = activeRow(cursor?.step === step ? cursor.at : null, q.options.findIndex((o) => p.sel.includes(o.label)), rowCount)
+  const rowFocus = (at: number) => () => setCursor({ step, at })
 
   return (
     <section aria-label={title} className="card tcard" onKeyDown={keys}>
@@ -227,7 +242,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
       )}
       <span className="sub">{q.question}{multi ? ' Choose all that apply.' : ''}</span>
       {!many && a.detail && <div className="code">{a.detail}</div>}
-      <div ref={group} role={multi ? 'group' : 'radiogroup'} aria-label={many ? `Question ${step + 1} of ${qs.length}: ${q.question}` : q.question} className="qrows">
+      <div ref={group} role={multi ? 'group' : 'radiogroup'} aria-label={many ? `Question ${step + 1} of ${qs.length}: ${q.question}` : q.question} className="qrows" onKeyDown={rowArrows}>
         {q.options.map((o, i) => {
           const on = p.sel.includes(o.label)
           const body = (
@@ -237,11 +252,11 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
             </span>
           )
           return multi ? (
-            <button key={o.label} type="button" role="checkbox" aria-checked={on} className="qrow" data-desc={!!o.description} disabled={busy !== null} onClick={() => choose(o.label, i)}>
+            <button key={o.label} type="button" role="checkbox" aria-checked={on} className="qrow" tabIndex={i === active ? 0 : -1} onFocus={rowFocus(i)} data-desc={!!o.description} disabled={busy !== null} onClick={() => choose(o.label, i)}>
               <span className="qbox" aria-hidden="true">{on && <Icon name="check" size={12} />}</span>{body}
             </button>
           ) : (
-            <button key={o.label} type="button" role="radio" aria-checked={on} className="qrow" data-desc={!!o.description} disabled={busy !== null} onClick={() => choose(o.label, i)}>
+            <button key={o.label} type="button" role="radio" aria-checked={on} className="qrow" tabIndex={i === active ? 0 : -1} onFocus={rowFocus(i)} data-desc={!!o.description} disabled={busy !== null} onClick={() => choose(o.label, i)}>
               <span className="n mono">{i + 1}</span>{body}
             </button>
           )
@@ -252,11 +267,11 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
             value={p.text} disabled={busy !== null} onChange={(text) => setPicks(change({ text }))} onEnter={primary} onEscape={closeOther}
           />
         ) : multi ? (
-          <button type="button" role="checkbox" aria-checked={false} className="qrow" data-other disabled={busy !== null} onClick={openOther}>
+          <button type="button" role="checkbox" aria-checked={false} className="qrow" tabIndex={rows === active ? 0 : -1} onFocus={rowFocus(rows)} data-other disabled={busy !== null} onClick={openOther}>
             <span className="qbox" aria-hidden="true" /><span className="qtext"><span>Something else</span></span>
           </button>
         ) : (
-          <button type="button" role="radio" aria-checked={false} className="qrow" data-other disabled={busy !== null} onClick={openOther}>
+          <button type="button" role="radio" aria-checked={false} className="qrow" tabIndex={rows === active ? 0 : -1} onFocus={rowFocus(rows)} data-other disabled={busy !== null} onClick={openOther}>
             <span className="n mono">{rows + 1}</span><span className="qtext"><span>Something else</span></span>
           </button>
         )}

@@ -19,33 +19,47 @@ Three kinds of evidence, tagged on every line that depends on one:
 - **motion**: a `--motion` contact sheet and GIF.
 - **code**: read from source, not run. Each has a file and line, and repro steps for whoever fixes it. A code tag means "I did not see this happen".
 
-The keyboard and focus walk is a code read. Question 6 (restart, chat switch, resize) is graded from shots at 1440x900 and the narrow fixtures, and from code for restart. No state was run through a real restart.
+The first pass read the keyboard walk from code. The re-audit at the end of this section ran it live. Question 6 (restart, chat switch, resize) is graded from shots at 1440x900 and the narrow fixtures, and from code for restart. No state was run through a real restart.
 
-Counts: blocker 0, major 4, minor 7, polish 1.
+Counts at the first audit: blocker 0, major 4, minor 7, polish 1.
+
+## Re-audit after the UX pass (KERNEL-872)
+
+Rechecked on `a9e880daf`, after KERNEL-859 to 871 merged. Every fixture named in the findings was shot again, and the seven motion paths were rerun. The before and after sheets sit side by side in the PR. The keyboard and focus paths were driven in a hidden Electron window. Motion sheets were read at contact-sheet scale only, so M2, m1 and m2 rest on that and on the PR's changes. "Fixed (code)" means the fix is in the source and no fixture can draw it.
+
+Result: 11 of the 12 findings fixed, and m2 fixed in part (the fold, group collapse, tray and scrim durations still differ). New since the audit: n1 and n2 below, both still open.
+
+**n1. Focus is lost when the link-issue menu closes.** Status: still open, KERNEL-878. ⌘I opens the menu with focus in "Search issues". Escape closes it, but focus falls to the body, so a second Escape does not stop the running turn. Direction: return focus to the composer when the menu closes. Fails 3.
+
+**n2. The question card's choices are separate Tab stops.** Status: still open, polish, KERNEL-882. In `WorkspaceQuestion` ArrowDown does not move between the radios. Space selects, Tab reaches Send, and Enter answers, so it works with the keyboard alone. Direction: make the choices one roving radio group.
 
 ## Findings
 
 ### Major
 
 **M1. An existing chat shows the new chat welcome while its items load.** (shot)
+**Status: fixed.** The thread stays blank until the items load, with no new chat welcome. After: `AuditItemsLoading`.
 State: opening a chat whose `chats.items` call is slow. Fixture: `AuditItemsLoading` (`hold: ['chats.items']`). Shot: `shots/AuditItemsLoading.png`.
 The transcript says "New tab with Kai, Same worktree and branch, fresh context" with three starter buttons, over a chat that has a full history. `loadWorkspace` in `store.ts` sets the chat list first and loads items one chat at a time after, and `Transcript.tsx:1229` treats `!items.length && !running` as empty. Suspect (a) confirmed.
 Fails 1 and 5. The welcome is wrong, and it only goes away when the load answers, so a failed load leaves it up for good.
 Direction: keep a per chat "items loaded" flag and show a blank or skeleton thread until it is true. Show an error with Retry if the load fails.
 
 **M2. Plan approve moves four things at once.** (motion)
+**Status: fixed.** KERNEL-862 sequences the approve. In the after motion sheet the card collapses and the thread settles without the jump. I read the sheet at contact-sheet scale only. After: `WorkspacePlanApprove-motion`.
 Fixture: `WorkspacePlanApprove --motion`. Sheet: `shots/WorkspacePlanApprove-motion.png`.
 Frames 0 to 3: the plan card collapses to an "Approved" pill, the pill jumps about 110px up the view, the uncommitted file note and composer shift about 14px as the plan bar closes, and the mode chip flips from Plan to Auto around frame 7. The thread is left mostly empty under the pill. Suspect (d) confirmed. `plan.tsx:91` also uses an instant `scrollIntoView` while the transcript aim runs, so smooth scroll restarts when the goal moves 48px or more.
 Fails 4.
 Direction: sequence it. Close the strip first, then collapse the card, and let the aim settle once at the end.
 
 **M3. The composer swallows load failures.** (code)
+**Status: fixed.** The composer says "Couldn't load this chat's queue and mode" with Retry. After: `WorkspaceComposerLoadFailed`.
 `composer/Composer.tsx:137`, `:138` and `:221` end in `.catch(() => undefined)` for `chats.queue`, `chats.queueReason` and `chats.runMode`. No fixture can fail an IPC call. Suspect (f) confirmed.
 Repro: in devtools, make `chats.queue` reject (or block it in the main handler), then open a chat that has a queued message. The tray is empty and nothing says why, so the person can send it twice. A failed `chats.runMode` shows the default mode as if it were the chat's.
 Fails 1, 2 and 5.
 Direction: one line note above the box with Retry, and retry on reconnect. **May change with the composer redesign.**
 
 **M4. No way to stop a turn from the keyboard, and Stop has no busy state.** (code)
+**Status: fixed.** Walked live: Escape closes the autocomplete first, then calls `chats.interrupt` and keeps the draft. Shift+Esc and ⌘Esc do not stop. After Escape the Stop button is gone. After: `WorkspaceStop`.
 `composer/Composer.tsx` `onKey` handles Escape only for the autocomplete. `composer/ComposerToolbar.tsx:54` renders Stop only when the box is empty, and the Stop handler (`Composer.tsx:391`, `chats.interrupt`) does not spin or say "Stopping".
 Repro: start a turn, type a few characters. The Stop button is gone, and Escape does nothing. Clear the box and press Stop twice quickly: both presses fire.
 Fails 3 and 4 (busy buttons).
@@ -54,33 +68,40 @@ Direction: Escape stops the turn after the picker and chips have had theirs, and
 ### Minor
 
 **m1. A new chat's first message paints low, then glides up.** (motion)
+**Status: fixed.** The first message lands at the top with no glide (KERNEL-860). After: `WorkspaceNewChatSendMotion-motion`.
 Fixture: `WorkspaceNewChatSendMotion --motion`. Suspect (b) confirmed: the first frames show the message near the bottom, then it moves to the top anchor. The anchor is set in an effect, after the first paint. One motion, right end point.
 Fails 4. Direction: set the anchor in a layout effect.
 
 **m2. Five timing systems, none shared.** (motion and code)
+**Status: fixed in part, KERNEL-881.** One scroll engine now drives the send, lift, rail and approve moves (KERNEL-862). The fold, group collapse, tray row and scrim durations are still separate. Open, minor.
 Suspect (c) confirmed. The send glide and the lift are 120 to 700ms, set by distance (`Transcript.tsx:65`, `glideMs`, ease `cubic-bezier(0.45,0,0.05,1)`). The rail jump is native smooth scroll with a 1000ms fallback and a 1.2s ring (`ChatRail.tsx`). The approval fold is 200ms with a 120ms fade (`archiveMotion.css`). Group collapse is 180ms ease. The queue tray row leaves in 160ms (`QueueList.tsx:34`), and the scrim is 160ms.
 Each one looks fine alone. They collide only in plan approve (M2). Recorded paths: send in a long chat is one glide of about 4 frames (`WorkspaceSendLongMotion`); send in a short chat is already at rest at frame 0 (`WorkspaceSendShortMotion`, see "Can't be reached"); question answer shows the answer bubble at once and the card folds in about 4 frames, one motion (`AuditQuestionAnswerMotion`); rail jump is one glide from the end to the first message that lands in about 400ms and retakes the aim once (`AuditRailJumpMotion`); first message and plan approve are m1 and M2; Scroll to bottom is three frames.
 Direction: put the durations in tokens so they can be tuned together. Not urgent.
 
 **m3. A failed answer leaves the view jumping.** (code)
+**Status: fixed (code).** A dropped anchored row releases the anchor and the padding holds the scroll position (KERNEL-862). No fixture can fail the call.
 Suspect (h). A composer send has no optimistic row, so a failed send leaves no padding behind (ruled out for typing). An answer does: `decideInChat` places a row (`cards/optimisticAnswer.ts:33-38`) and anchors it, `padReply` pads below it. When the call fails, `undo()` drops the row, `anchored.current` points at a row that is gone, `padReply` sets padding to 0 (`Transcript.tsx:1083`), and the view clamps and jumps.
 Repro: make `approvals.decide` reject, then answer a question card or approve a plan. The answer appears, the card folds, then the answer vanishes, the card comes back and the view shifts by the padding.
 Fails 4 and 6.
 Direction: when the anchored row is dropped, release the anchor and keep the scroll position.
 
 **m4. Up next can move the composer on first visit.** (code)
+**Status: fixed (code).** `UpNext.tsx` no longer holds a spacer, and it renders cached rows first. Not shot.
 `UpNext.tsx` holds a three row spacer until the tracker call settles, then returns null for a room with no tracker. The composer, docked under it, moves by the spacer height. Failures are swallowed on purpose.
 Repro: open the New chat page of a room with no tracker with `trackers.issues` slow (or held in a fixture with `hold`). Fails 4.
 
 **m5. After a failed first send, nothing takes focus.** (code)
+**Status: fixed (code).** `NewLeadChat.tsx` refocuses the box after a failed first send. Not walked live.
 `NewLeadChat.tsx`: `ComposerInput disabled={busy}` blurs the box while the first message goes out. On failure the toast says "Could not send" and the text stays, but nothing focuses the box again. `start()` on an empty draft or an unusable room focuses it silently, with no word on why.
 Repro: make `leads.start` reject, type, press Enter, then press a key. Nothing is typed. Fails 3 and 2.
 
 **m6. A shared file card vanishes when the file is not in the store.** (code)
+**Status: fixed.** The card shows "A shared file, This file is no longer available". After: `WorkspaceSharedMissing`.
 `SharedCard.tsx`: `if (!file || !v) return null`. A message that points at a shared file the store doesn't have (an archived workspace, a failed list load) loses the card and the message reads as if it was never attached.
 Repro: remove the file from `shared` in a fixture and render `WorkspaceSharedCard`. Fails 1 and 5.
 
 **m7. Stop clears the queue without a word.** (code)
+**Status: fixed.** Walked live in `WorkspaceQueued`: Escape on an empty box unqueues both messages, interrupts, and puts the queued text back in the box.
 `sessions.ts:1889`: `if (stopped) this.setQueue(chatId, [])`. This is deliberate (D-030, "Stopping a chat clears its queue"). The tray rows fade out and nothing says the messages were dropped, so someone who queued three messages and pressed Stop loses all three with no way back. Send now keeps them.
 Repro: run a turn, queue two messages, press Stop. Fails 1.
 Direction: keep the rule, add a toast with Undo, or put the dropped text back in the box.
@@ -88,6 +109,7 @@ Direction: keep the rule, add a toast with Undo, or put the dropped text back in
 ### Polish
 
 **p1. Chat tabs take no Home and End.** (code)
+**Status: fixed.** Walked live in `GroupedTabs`: ArrowRight, ArrowLeft, Home and End move focus, with wrap.
 `ChatTabs.tsx`: arrows wrap and focus is roving, but Home and End do nothing. The ChatRail has both. Fails 3 for the last tab of a long strip.
 
 ## State inventory and grades by surface
@@ -150,13 +172,17 @@ Grades: 1 P ("INTERRUPTED BY YOU", "Couldn't run a command", "The turn failed"),
 - **Archiving a running chat.** (code) `archiveChatFromSidebar` reads `threads.archivePreview`, and a workspace with `running` opens `ConfirmArchiveChat`, which says "still running" and "Archiving removes the worktrees" (`archiveChat.ts:38-40`, `ConfirmArchiveChat.tsx:20`). A failed preview says "Kernel couldn't read what this chat would stop." and still archives on confirm. Ruled out as a finding.
 - **An approval answered elsewhere.** (code) `store.ts:798` upserts the approval on the push, so a pending card flips to answered where it sits. No toast, the card just resolves. An answer sent from here at the same moment would see the engine's row replace the optimistic one by id (`optimisticAnswer.ts:1-10`). Ruled out.
 
-## Keyboard and focus walk (code read, not run)
+## Keyboard and focus walk (live)
 
-- **Send and newline.** Enter sends, Shift+Enter inserts a newline, ⌘⇧Enter sends a queued message now, Shift+Tab cycles the mode. ArrowUp in an empty box edits the last queued message.
-- **Escape order.** The autocomplete closes first. Nothing else handles Escape in the composer, so a running turn can't be stopped from the keyboard (M4). Escape never discards a draft, which is correct. The rail and the tab rename handle their own Escape.
-- **Moving around.** Composer, thread, cards and tabs are all real buttons and inputs. Tab strip arrows are `tabIndex={-1}` and the strip is a roving `tablist`, so Tab enters it once. Home and End are missing (p1).
-- **Approve a plan, answer a question.** Both cards are radios and buttons, so Tab and Enter work. `AuditQuestionAnswerMotion` does exactly that (focus the card's Send, press Enter) and records 31 frames.
-- **Where focus lands.** After send, the box keeps focus (`d.reset()`, no remount). After approve or answer, the card folds and focus falls to the body if the button was inside it (code, unverified). After a failed first send on the New chat page, nothing is focused (m5). After a modal closes, focus returns to the trigger through the one modal shell. After an error toast, focus stays where it was.
+Run in a hidden Electron window against the current build.
+
+- **Escape order.** In `WorkspaceRunning` with "@ hello" typed: Escape #1 closes the autocomplete, Escape #2 calls `chats.interrupt` and the draft stays, Escape #3 does nothing more. Shift+Esc and ⌘Esc do not stop. In `WorkspaceQueued`, Escape on an empty box unqueues both messages, interrupts, and puts the queued text back in the box. `WorkspaceTurnRunning` and `WorkspaceFoldWorking` lose their Stop button after Escape.
+- **Link-issue menu.** ⌘I opens it, Escape closes it, focus falls to the body (n1).
+- **Chat tabs.** ArrowRight and ArrowLeft move and wrap, Home and End go to the first and last tab.
+- **Approve a plan.** In `WorkspacePlan`, Enter on "Approve ⌘⇧↵" calls `approvals.decide` with allow, and focus returns to the composer.
+- **Answer a question.** In `WorkspaceQuestion`, Space picks a choice, Tab reaches Send, Enter calls `approvals.decide` with the answer. Choices are not arrow-navigable (n2).
+- **Toasts.** In `AuditToastsStacked`, Escape dismisses the newest and ⌘⌥Z runs Undo on the next.
+- **Not run.** Return of focus to the New chat box after a failed first send (code only).
 
 ## Fixtures added
 

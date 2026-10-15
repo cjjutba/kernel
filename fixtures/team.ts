@@ -861,6 +861,8 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesError: scene((f) => ({ ...issuesScene(f), push: [{ type: 'online', online: false }] })),
   // KERNEL-438: a room on GitHub Issues lists its own issues, with the room in the header. Linear's list is the account's and has no room.
   IssuesGitHub: scene((f) => issuesTrackerScene(f, { issueId: '#31', roomId: ids.roomB })),
+  // The newest 100 is all GitHub returns, so the list ends with a note saying so.
+  IssuesGitHubCapped: scene((f) => ({ ...issuesTrackerScene(f, { roomId: ids.roomB }), githubIssues: { [ids.roomB]: Array.from({ length: 100 }, (_, i) => ({ ...githubIssues()[0], number: 200 - i, id: `#${200 - i}`, title: `Invoice follow-up ${200 - i}` })) } })),
   // A room with no tracker says so and points at its settings, where the tracker is chosen.
   IssuesNoTracker: scene((f) => issuesTrackerScene(f, { roomId: ids.roomPortfolio })),
   // The From popover's Issues tab for each: the room's GitHub issues with their assignees, and the line for a room with none.
