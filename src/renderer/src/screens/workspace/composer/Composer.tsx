@@ -74,7 +74,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const contextForced = useStore((s) => s.ui.workspace.contextOpen)
   // A plan waiting on you here puts Copy and Approve on the box, and what you send goes back as changes to it.
   const plan = useStore((s) => waitingPlan(s.approvals, chat))
-  const d = useDraft(forced, chat.id)
+  const d = useDraft(forced, chat.id, { textOnly: !!plan })
   // Approve is a user action, so the strip, the placeholder, the chip and the glow all change in the frame it is pressed (KERNEL-895). After it the caret goes to the box, where the Approve button had the focus.
   const strip = usePlanStrip(plan, () => d.focus())
   // Fixtures open the model picker and the mode menu the same way, through the app's menu, for a shot (WorkspaceModelPicker, KERNEL-406).

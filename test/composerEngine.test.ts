@@ -7,14 +7,14 @@ import { discoverSkills, searchFiles } from '../src/main/services/files'
 import { commitHunks, listHunks } from '../src/main/services/hunks'
 import { git } from '../src/main/services/exec'
 import { chatMode } from '../src/main/services/permissions'
-import { attachFiles, Held, numberImages } from '../src/renderer/src/screens/workspace/composer/attach'
+import { attachFiles, Held, numberImages, partOf, PLAN_FILES_ONLY } from '../src/renderer/src/screens/workspace/composer/attach'
 import { mentionMenu, mentionPart } from '../src/renderer/src/screens/workspace/composer/autocomplete'
 import { noteFromParts } from '../src/renderer/src/screens/workspace/cards/steps'
 import { toUserMessage } from '../src/main/services/providers/claude'
 import { ModeMenu } from '../src/renderer/src/screens/workspace/composer/ModeMenu'
 import { MODE_ORDER, buttonName, modeAria, modePatch, modeRows, nextMode, offLine, shownMode, whyLine, type ComposerMode } from '../src/renderer/src/screens/workspace/composer/modes'
 import { apply, getState } from '../src/renderer/src/store'
-import type { AppSettings, ChatPart, ChatRunMode } from '../src/shared/types'
+import { INLINE_TEXT_MAX, type AppSettings, type ChatPart, type ChatRunMode } from '../src/shared/types'
 import { tempRepo } from './helpers'
 
 describe('@ file search', () => {
@@ -277,6 +277,18 @@ describe('attaching files', () => {
     expect(named.map((f) => f.name)).toEqual(['image.png', 'notes.txt', 'image-2.jpg'])
     expect(await named[0].text()).toBe('x')
     expect(numberImages([shot('a.png', 'image/png')], ['image.png', 'image-3.webp', 'pasted_text_1.txt']).map((f) => f.name)).toEqual(['image-4.png'])
+  })
+
+  it('reads a text file and refuses any other in a plan change request, which carries no files by path', async () => {
+    const text = new File(['a\nb\n'], 'notes.md', { type: 'text/markdown' })
+    expect(await partOf(text, true)).toMatchObject({ type: 'file', name: 'notes.md', text: 'a\nb\n' })
+    await expect(partOf(new File(['a\0b'], 'data.bin'), true)).rejects.toThrow(PLAN_FILES_ONLY)
+    await expect(partOf(new File([new Uint8Array(INLINE_TEXT_MAX + 1)], 'big.txt'), true)).rejects.toThrow(PLAN_FILES_ONLY)
+    const log: string[] = []
+    const before = getState().ui.toasts.length
+    await attachFiles([new File(['a\0b'], 'data.bin')], { ...host(log), textOnly: true })
+    expect(log).toEqual(['hold data.bin', 'drop id-data.bin'])
+    expect(getState().ui.toasts[before].sub).toBe(PLAN_FILES_ONLY)
   })
 
   it('removes the place of a file that cannot be attached, toasts, and still attaches the rest', async () => {

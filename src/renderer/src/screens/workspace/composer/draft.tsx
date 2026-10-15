@@ -167,7 +167,9 @@ const atEnd = (parts: ChatPart[]) => {
  * With a `key` (a chat id) the draft is kept per key outside the component: it comes back after a tab switch or a remount,
  * and a key change swaps in that key's own draft. Without a key nothing is kept.
  */
-export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: string) {
+export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: string, opts: { textOnly?: boolean } = {}) {
+  const textOnly = useRef(false)
+  textOnly.current = !!opts.textOnly
   const input = useRef<HTMLDivElement>(null)
   const chips = useRef(new Map<string, ChatPart>())
   /** The last caret in the box, so a chip added from elsewhere (a diff hunk, the + menu) lands there. */
@@ -298,7 +300,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     const taken = [...read().flatMap((p) => (p.type === 'image' ? [p.name] : [])), ...pending.current.all()]
     const held = read().filter((p) => p.type === 'image' || (p.type === 'file' && p.src))
     const bytes = held.reduce((n, p) => n + (p.type === 'file' ? p.size ?? 0 : p.type === 'image' && p.dataUrl ? Math.round(p.dataUrl.length * 0.75) : 0), 0)
-    void attachFiles(files, { hold, settle, drop: release, taken, used: { count: held.length + pending.current.size, bytes } })
+    void attachFiles(files, { hold, settle, drop: release, taken, textOnly: textOnly.current, used: { count: held.length + pending.current.size, bytes } })
   }
 
   /**

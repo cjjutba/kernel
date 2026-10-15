@@ -26,16 +26,22 @@ const imageSize = (src: string) => new Promise<{ width: number; height: number }
 const pathOf = (file: File) => { try { return window.kernel.pathOf(file) } catch { return '' } }
 
 /** An image, a file on disk by its path, or a text file made in the page, as a message part. Throws a plain sentence when it can't be attached. */
-export async function partOf(file: File): Promise<ChatPart> {
+export const PLAN_FILES_ONLY = 'Plan change requests take images and text files only.'
+
+/**
+ * `textOnly` is a plan's change request, which carries images and text and no files on disk: a text file under the inline cap is read here,
+ * and anything else is refused.
+ */
+export async function partOf(file: File, textOnly = false): Promise<ChatPart> {
   if (file.type.startsWith('image/')) {
     const dataUrl = await readAsDataUrl(file)
     return { type: 'image', name: file.name || 'image.png', dataUrl, ...(await imageSize(dataUrl)) }
   }
-  const src = pathOf(file)
+  const src = textOnly ? '' : pathOf(file)
   if (src) return { type: 'file', name: file.name, src, size: file.size }
-  if (file.size > MAX_ATTACH_BYTES) throw new Error(`${file.name} is too large to attach (${Math.round(file.size / 1024)} KB).`)
-  const text = await file.text()
-  if (text.includes('\0')) throw new Error(`${file.name} is a binary file. Attach an image or a text file.`)
+  if (file.size > MAX_ATTACH_BYTES) throw new Error(textOnly ? PLAN_FILES_ONLY : `${file.name} is too large to attach (${Math.round(file.size / 1024)} KB).`)
+  const text = await file.text().catch(() => { throw new Error(textOnly ? PLAN_FILES_ONLY : `Could not read ${file.name}.`) })
+  if (text.includes('\0')) throw new Error(textOnly ? PLAN_FILES_ONLY : `${file.name} is a binary file. Attach an image or a text file.`)
   return { type: 'file', name: file.name, lines: pasteLines(text), text }
 }
 
@@ -64,6 +70,8 @@ export interface AttachHost {
   taken?: string[]
   /** What the message already holds, files and images, which the count and size caps add to. */
   used?: { count: number; bytes: number }
+  /** A plan's change request: files are read as text here, not sent by path. */
+  textOnly?: boolean
 }
 
 const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`
@@ -71,14 +79,14 @@ const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`
 const isFolder = (file: File) => file.slice(0, 1).arrayBuffer().then(() => false, () => true)
 
 /** The files the caps allow, in order. Each refusal gets its own toast naming the cap, and the rest still go. */
-async function allowed(files: File[], used = { count: 0, bytes: 0 }): Promise<File[]> {
+async function allowed(files: File[], used = { count: 0, bytes: 0 }, textOnly = false): Promise<File[]> {
   const ok: File[] = []
   let count = used.count
   let bytes = used.bytes
   let full = false
   let over = false
   for (const f of files) {
-    const onDisk = !f.type?.startsWith('image/') && !!pathOf(f)
+    const onDisk = !textOnly && !f.type?.startsWith('image/') && !!pathOf(f)
     if (!onDisk && !f.type?.startsWith('image/')) { ok.push(f); continue }
     if (count >= ATTACH_FILES_MAX) { full = true; continue }
     if (f.size > ATTACH_FILE_MAX) {
@@ -117,8 +125,8 @@ export function numberImages(files: File[], taken: string[] = []): File[] {
  * Files as parts, in order. Every file gets its placeholder before the first is read, so the chips show at once and keep the order the
  * files came in. One that can't be attached loses its placeholder and gets a toast, and the rest still go.
  */
-export async function attachFiles(files: File[], host: AttachHost, read: (file: File) => Promise<ChatPart> = partOf) {
-  const held = numberImages(await allowed(files, host.used), host.taken).map((f) => ({ file: f, id: host.hold(f.name || 'image.png') }))
+export async function attachFiles(files: File[], host: AttachHost, read: (file: File) => Promise<ChatPart> = (f) => partOf(f, host.textOnly)) {
+  const held = numberImages(await allowed(files, host.used, host.textOnly), host.taken).map((f) => ({ file: f, id: host.hold(f.name || 'image.png') }))
   for (const { file, id } of held) {
     try { host.settle(id, await read(file)) } catch (e) {
       host.drop(id)
