@@ -1,10 +1,10 @@
-import { useState } from 'react'
 import type { Room } from '@shared/types'
 import { actions, useStore } from '../../store'
 import { openRoom } from '../../lead'
 import { KernelMark } from '../../icons'
 import { Button, Icon, Pill } from '../../ui'
 import { call } from '../../api'
+import { oneOf, useRemembered } from '../../remember'
 import { openNewRoom } from './draft'
 import { ago, initial, roomState, sourceOf, stateLabel, teamOf } from './roomInfo'
 import './rooms.css'
@@ -51,7 +51,7 @@ function RoomRow({ room }: { room: Room }) {
 /** Rooms.png: every room with its source, team and live status. */
 export function Rooms() {
   const rooms = useStore((s) => s.rooms)
-  const [tab, setTab] = useState<Tab>('all')
+  const [tab, setTab] = useRemembered<Tab>('kernel.roomsTab', oneOf<Tab>(['all', 'active', 'archived'], 'all'))
   const active = rooms.filter((r) => !r.archived)
   const shown = tab === 'all' ? rooms : tab === 'active' ? active : rooms.filter((r) => r.archived)
   const tabs: [Tab, string, number][] = [['all', 'All rooms', rooms.length], ['active', 'Active', active.length], ['archived', 'Archived', rooms.length - active.length]]

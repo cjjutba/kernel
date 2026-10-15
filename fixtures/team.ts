@@ -557,7 +557,7 @@ const issuesTrackerScene = (f: Fixture, route: { issueId?: string; roomId: strin
 // ---------- Pull requests
 
 /** The Pull requests page: seven open PRs across the four rooms, one of each state, and the five merged ones from `homeScene`. `open` and `merged` pick the filter, `none` leaves out every open PR. */
-const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'merged' }): Partial<Fixture> => {
+const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'merged'; failed?: boolean; manyMerged?: number }): Partial<Fixture> => {
   const home = homeScene(f)
   const mk = (n: number, roomId: string, agentId: string, title: string, state: Workspace['prState'], stat: [number, number], extra: Partial<Workspace> = {}, info: Partial<PrInfo> = {}) => {
     const id = `ws-prs-${n}`
@@ -579,12 +579,20 @@ const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'm
     mk(59, ids.roomOwn, 'kai', 'chore(db): index invoice lookups', 'draft', [12, 0], {}, { checks: [] })
   ]
   const none = o.none === 'open'
+  const minutes = (n: number) => Date.now() - n * 60_000
+  const reads = Object.fromEntries([ids.roomA, ids.roomB, ids.roomPortfolio].map((id, i) => [id, o.failed ? { at: minutes(14 + i), failed: 'rate-limited' as const } : { at: minutes(2 + i) }]))
+  const more = Array.from({ length: o.manyMerged ?? 0 }, (_, i): Workspace => {
+    const n = 100 + i
+    return { id: `ws-prs-m${n}`, roomId: ids.roomA, name: `merged-${n}`, branch: `feat/merged-${n}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/merged-${n}`, mode: 'worktree', agentId: 'kai', port: 4700 + i, status: 'archived', createdAt: at(8, 0) - i * 3_600_000, mergedAt: at(8, 30) - i * 3_600_000, title: `chore: change ${n}`, prTitle: `chore: change ${n}`, prState: 'merged', prNumber: n, prUrl: `https://github.com/cjjutba/pr/pull/${n}`, stat: { files: 2, added: 20 + i, removed: i } }
+  })
   return {
     ...home,
+    github: { reads },
     // The base workspaces keep their own PRs in the list, except where the page is to be empty.
     workspaces: [
       ...home.workspaces!.map((w, i) => (w.prState === 'merged' ? { ...w, prNumber: 56 - i } : none && w.prNumber ? { ...w, prState: 'none' as const } : w)),
-      ...(none ? [] : rows.map(([w]) => w))
+      ...(none ? [] : rows.map(([w]) => w)),
+      ...more
     ].filter((w) => o.none !== 'merged' || w.prState !== 'merged'),
     prs: Object.fromEntries(rows.map(([w, pr]) => [w.id, pr])),
     ui: { route: { name: 'prs', filter: o.filter } }
@@ -654,6 +662,11 @@ export const teamFixtures: Record<string, Fixture> = {
     return { ...h, deletePreview: { workspaces: 6, skipped: [], unpushedBranches: 2, transcriptBytes: 640 * 1048576 }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: h.workspaces!.filter((w) => w.status === 'archived').map((w) => w.id) } } }
   }),
   // No PNG: the same confirm from one row.
+  // No PNG: the same confirm when the count fails (KERNEL-868). Delete stays off, and Try again counts once more.
+  HistoryConfirmDeleteFailed: scene((f) => {
+    const h = historyScene(f)
+    return { ...h, fails: { 'workspaces.deletePreview': 'The database is busy.' }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: h.workspaces!.filter((w) => w.status === 'archived').map((w) => w.id) } } }
+  }),
   HistoryConfirmDeleteOne: scene((f) => ({ ...historyScene(f), deletePreview: { workspaces: 1, skipped: [], unpushedBranches: 1, transcriptBytes: 3_460_300 }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: ['ws-h3'] } } })),
   NewAgent: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } })),
   // No PNG: New agent from Settings, Agents with no room added. NewAgent.png without a room, so Kernel and the room's team are not named.
@@ -779,6 +792,9 @@ export const teamFixtures: Record<string, Fixture> = {
   // The Pull requests page: open PRs across the rooms, the merged ones, and each empty.
   PullRequests: scene((f) => prsScene(f, { filter: 'open' })),
   PullRequestsMerged: scene((f) => prsScene(f, { filter: 'merged' })),
+  // No PNG (KERNEL-868): the last status read failed on a rate limit, with the read from before it kept. The cap note shows past 50 merged.
+  PullRequestsReadFailed: scene((f) => prsScene(f, { filter: 'open', failed: true })),
+  PullRequestsMergedCapped: scene((f) => prsScene(f, { filter: 'merged', manyMerged: 48 })),
   PullRequestsEmpty: scene((f) => prsScene(f, { filter: 'open', none: 'open' })),
   PullRequestsNoMerged: scene((f) => prsScene(f, { filter: 'merged', none: 'merged' })),
   // KERNEL-759: the tracker read never answers, so the page shows Loading issues with the load loader.
