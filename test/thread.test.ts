@@ -198,6 +198,8 @@ describe('a turn that is still running folds its finished steps (KERNEL-784)', (
     const note: ChatItem = { kind: 'note', id: 'nt2', ts: at, text: 'PR #1 opened.' }
     const after = buildThread([ask(), read('a'), note, say('Waiting on checks.')], true)
     expect(after.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'group'])
+    expect(after[3].kind === 'group' && after[3].summary.text).toBe('Working')
+    expect(buildThread([ask(), read('a'), note, think()], true)[3]).toMatchObject({ kind: 'group', summary: { text: 'Working' } })
   })
 
   it('never nests a run inside a fold, and lists same-kind calls as plain rows in one flat list (KERNEL-800)', () => {

@@ -229,7 +229,8 @@ function foldBlocks(all: ChatItem[], blocks: ThreadBlock[], inFold: boolean) {
   const worked = steps.some((i) => i.kind === 'tool' && !viewOf(i).hidden)
   if (worked || (inFold && steps.length)) {
     const rows = steps.filter((i) => i.kind !== 'tool' || !viewOf(i).hidden)
-    blocks.push({ kind: 'group', id: `group-${all[0].id}`, items: steps, entries: rows.map((item): Entry => ({ kind: 'item', item })), summary: summarize(steps) || { text: 'Working', bad: '' } })
+    const summary = summarize(steps)
+    blocks.push({ kind: 'group', id: `group-${all[0].id}`, items: steps, entries: rows.map((item): Entry => ({ kind: 'item', item })), summary: summary.text ? summary : { text: 'Working', bad: '' } })
     return
   }
   for (const item of steps) blocks.push({ kind: 'item', item })
