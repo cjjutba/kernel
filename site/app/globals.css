@@ -43,7 +43,29 @@
   --color-merged-edge: #4b3d86;
   --color-merged-fill: #7c5ce0;
 
-  --color-wordmark-top: #1b1c1f;
+
+  /* Claude's own orange, for its mark in the hero only (the app's --claude). */
+  --color-claude: #d97757;
+
+  /* Plan mode, as the app draws it (src/renderer/src/tokens.css --plan, --on-plan). Blue means plan mode, nothing else. */
+  --color-plan: #5aa2ff;
+  --color-on-plan: #06101e;
+
+  /* The app's PR header tones (DESIGN.md pr-ready-*, pr-merged-*): green while a PR is ready or merging, purple once merged. */
+  --color-ready-band: #15281f;
+  --color-ready-line: #22432f;
+  --color-ready-soft: #1d3b2c;
+  --color-ready-edge: #33704f;
+  --color-ready-fg: #a3e8c3;
+  --color-ready-text: #62d69d;
+  --color-ready-solid: #1b7f50;
+  --color-merged-band: #2a2140;
+  --color-merged-line: #3c2f5c;
+  --color-merged-soft: #372b55;
+  --color-merged-tone-edge: #64509c;
+  --color-merged-fg: #d4c2ff;
+  --color-merged-text: #b88fff;
+  --color-merged-solid: #8b45f5;
 
   --text-*: initial;
   --text-display: clamp(44px, 5.6vw, 80px);
@@ -58,6 +80,10 @@
   --text-h2--line-height: 1.08;
   --text-h2--letter-spacing: -0.04em;
   --text-h2--font-weight: 600;
+  --text-h3: clamp(28px, 2.6vw, 36px);
+  --text-h3--line-height: 1.1;
+  --text-h3--letter-spacing: -0.035em;
+  --text-h3--font-weight: 600;
   --text-changelog-title: clamp(40px, 4vw, 56px);
   --text-changelog-title--line-height: 1.04;
   --text-changelog-title--letter-spacing: -0.04em;
@@ -70,18 +96,10 @@
   --text-brand--line-height: 1;
   --text-brand--letter-spacing: -0.02em;
   --text-brand--font-weight: 600;
-  --text-wordmark: clamp(120px, 16vw, 232px);
-  --text-wordmark--line-height: 0.78;
-  --text-wordmark--letter-spacing: -0.043em;
-  --text-wordmark--font-weight: 600;
   --text-hero-lead: 19px;
   --text-hero-lead--line-height: 1.55;
   --text-lead: 17px;
   --text-lead--line-height: 1.6;
-  --text-step-title: 17px;
-  --text-step-title--line-height: 1.55;
-  --text-step-title--letter-spacing: -0.2px;
-  --text-step-title--font-weight: 600;
   --text-callout: 16.5px;
   --text-callout--line-height: 1.55;
   --text-intro: 16.5px;
@@ -142,6 +160,9 @@
   --breakpoint-*: initial;
   --breakpoint-nav: 761px;
   --breakpoint-faq: 881px;
+  /* Docs: the sidebar shows from docs, and On this page from toc. */
+  --breakpoint-docs: 961px;
+  --breakpoint-toc: 1201px;
 
   --default-transition-duration: 150ms;
   --default-font-feature-settings: 'cv01', 'ss03';
@@ -150,6 +171,56 @@
 @theme inline {
   --font-sans: var(--font-inter), -apple-system, 'SF Pro Text', system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* Scrollbars, as in the app (tokens.css, KERNEL-597, KERNEL-602). Every scroll area, the page included, draws one thin
+   thumb: 6px, rounded, no track, on the area's edge. It is invisible until the area scrolls (ScrollIdle sets
+   data-scrolling while it scrolls or its scrollbar is held, and for 800ms after), and fades in over 150ms and out over
+   200ms. Hovering an area doesn't show it. Chromium can't transition a scrollbar part, so the colour is a registered
+   custom property on the scroller, which it can, and the thumb reads it. It inherits, since a scrollbar part takes its
+   style from its scroller as a child does. ::-webkit-scrollbar only: scrollbar-width or scrollbar-color would switch
+   these rules off in Chromium, so Firefox gets its thin, always-on scrollbar from the @supports block alone. An element
+   that scrolls and declares its own transition must list --scroll-thumb too. Reduced motion drops the fade with every
+   other transition (@layer base). */
+@property --scroll-thumb {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: var(--radius-pill);
+  background: var(--scroll-thumb);
+}
+
+/* In the base layer, so Tailwind's transition utilities still win on the elements that use them. */
+@layer base {
+  :where(*) {
+    --scroll-thumb: transparent;
+    transition: --scroll-thumb 200ms ease-out;
+  }
+
+  :where([data-scrolling]) {
+    --scroll-thumb: var(--color-rule);
+    transition-duration: 150ms;
+  }
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-edge) transparent;
+  }
 }
 
 @layer base {
@@ -183,6 +254,11 @@
     list-style: none;
   }
 
+  /* Search fields clear with Esc, so the browser's own clear button stays hidden. */
+  input[type='search']::-webkit-search-cancel-button {
+    appearance: none;
+  }
+
   summary::-webkit-details-marker {
     display: none;
   }
@@ -197,18 +273,201 @@
   }
 }
 
-/* Layouts that are not a single utility. */
+/* The footer: the brand, then a column per group of links. Two columns of links on phones. */
+@utility grid-footer {
+  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
 
-@utility grid-auto-fit {
-  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  @media (width < 761px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+    & > :first-child {
+      grid-column: 1 / -1;
+    }
+  }
 }
 
-@utility grid-plan-rows {
-  grid-template-columns: 52px 1fr auto;
+/* A docs page: the sidebar, the page, and On this page, dropping the outer columns as the window narrows. */
+@utility grid-docs {
+  grid-template-columns: minmax(0, 1fr);
+
+  @media (width >= 961px) {
+    grid-template-columns: 248px minmax(0, 1fr);
+  }
+
+  @media (width >= 1201px) {
+    grid-template-columns: 248px minmax(0, 1fr) 208px;
+  }
+}
+
+/* The docs sidebars stay in view under the sticky nav, and scroll on their own when they run long. */
+@utility docs-rail {
+  position: sticky;
+  top: calc(var(--spacing) * 16);
+  align-self: start;
+  max-height: calc(100vh - var(--spacing) * 16);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  /* Scrolling past the rail's end doesn't carry on into the page. */
+  overscroll-behavior: contain;
+}
+
+/* The page menu on the phone bar: as tall as the screen allows under the nav and the bar, scrolling on its own. */
+@utility docs-menu {
+  max-height: calc(100dvh - var(--spacing) * 36);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The bar on the On this page rail slides to the section you're reading. */
+@utility toc-bar {
+  top: 0;
+  transition:
+    transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    height 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@utility docs-search {
+  &::backdrop {
+    background: color-mix(in srgb, var(--color-canvas) 70%, transparent);
+    backdrop-filter: blur(4px);
+  }
+}
+
+/* The privacy map (components/landing/Privacy.tsx). Wide: nodes, a wire, the Mac, a wire, nodes, with the map a fixed
+   height so the nodes' centers sit where the wires expect them. Below the FAQ's breakpoint it is one column: the Mac,
+   then each group hanging from it on a rail, its label at the top. */
+@utility privacy-map {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 1fr) 18rem minmax(0, 1fr) minmax(0, 3fr);
+  height: 360px;
+
+  @media (width < 881px) {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    gap: 0;
+  }
+}
+
+/* A group's label sits above its column on wide screens, out of the column's height. */
+@utility map-label {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  padding-bottom: 14px;
+
+  @media (width < 881px) {
+    position: static;
+    padding: 20px 0 10px;
+  }
+}
+
+@utility map-group {
+  @media (width < 881px) {
+    margin-left: 22px;
+    padding-left: 22px;
+    border-left: 1px solid var(--color-line-strong);
+  }
+}
+
+@utility map-line {
+  stroke: var(--color-edge);
+  stroke-width: 1;
+}
+
+@utility map-line-optional {
+  stroke: var(--color-line-strong);
+  stroke-dasharray: 3 4;
+}
+
+/* A short bead of light that travels a solid line from the Mac outward, then rests before the next. */
+@utility map-pulse {
+  stroke: color-mix(in oklab, var(--color-ink) 75%, transparent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 0.1 2;
+  stroke-dashoffset: 0.1;
+  animation: map-flow 3.9s cubic-bezier(0.45, 0, 0.3, 1) infinite;
+}
+
+@keyframes map-flow {
+  0% {
+    stroke-dashoffset: 0.1;
+    opacity: 0;
+  }
+
+  8% {
+    opacity: 1;
+  }
+
+  55% {
+    stroke-dashoffset: -1;
+    opacity: 1;
+  }
+
+  56%,
+  100% {
+    stroke-dashoffset: -1;
+    opacity: 0;
+  }
+}
+
+/* A port: the small ring where a line meets a card. */
+@utility map-port {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-rule);
+  background: var(--color-canvas);
+}
+
+@utility map-port-optional {
+  border-style: dashed;
+  border-color: var(--color-edge);
+}
+
+/* A node on the rail, on narrow screens: a short tick from the rail to its card. */
+@utility map-node {
+  position: relative;
+
+  @media (width < 881px) {
+    &::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: -22px;
+      width: 22px;
+      border-top: 1px solid var(--color-line-strong);
+    }
+  }
+}
+
+/* The Mac: lifted off the map, with the hero bezel's lit top edge. */
+@utility map-mac {
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, var(--color-ink) 12%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--color-ink) 3%, transparent),
+    0 24px 50px -20px rgb(0 0 0 / 0.85);
+}
+
+/* A row that opens from nothing (components/landing/WaitlistReveal.tsx): its single grid track eases from 0 to its
+   content's height. Reduced motion opens it at once (@layer base). */
+@utility reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 200ms ease-out;
+
+  &[data-open] {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
 }
 
 @utility grid-faq {
-  grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
 }
 
 @utility grid-entry {
@@ -223,46 +482,198 @@
   background: linear-gradient(180deg, var(--color-rule) 0%, var(--color-line) 45%, var(--color-line-faint) 100%);
 }
 
+/* The dot grid behind page headers: square dots the size of the dither fields' and quieter, so the two read as one and
+   neither pulls the eye from the text. */
 @utility bg-dots-hero {
-  background-image: radial-gradient(color-mix(in srgb, var(--color-white) 10%, transparent) 1px, transparent 1px);
-  background-size: 24px 24px;
+  background-image: conic-gradient(at 3px 3px, transparent 75%, color-mix(in oklab, var(--color-line-strong) 70%, transparent) 0);
+  background-size: 12px 12px;
   mask-image: radial-gradient(ellipse 62% 58% at 50% 22%, #000 15%, transparent 75%);
 }
 
-@utility bg-dots-card {
-  background-image: radial-gradient(color-mix(in srgb, var(--color-white) 5%, transparent) 1px, transparent 1px);
-  background-size: 16px 16px;
-}
-
-@utility bg-dots-final {
-  background-image: radial-gradient(color-mix(in srgb, var(--color-white) 9%, transparent) 1px, transparent 1px);
-  background-size: 24px 24px;
-  mask-image: radial-gradient(ellipse 48% 75% at 50% 100%, #000 10%, transparent 70%);
-}
-
-@utility glow-hero {
-  background: radial-gradient(
-    ellipse at center,
-    color-mix(in srgb, var(--color-ink) 8.5%, transparent),
-    color-mix(in srgb, var(--color-ink) 0%, transparent) 62%
-  );
-}
-
-@utility glow-final {
-  background: radial-gradient(
-    ellipse at center,
-    color-mix(in srgb, var(--color-ink) 8%, transparent),
-    color-mix(in srgb, var(--color-ink) 0%, transparent) 62%
-  );
-}
-
-@utility text-wordmark-fade {
-  background: linear-gradient(180deg, var(--color-wordmark-top) 0%, var(--color-surface-1) 85%);
-  background-clip: text;
-  color: transparent;
-}
-
 /* A soft band of light that crosses the hero pill every few seconds. The pill clips it. */
+/* Dither fields (components/ui/Dither.tsx): each box fades its field in and out with a mask, so it has no edges. */
+
+/* The hero's wave: rises out of the dark above the demo and clears an oval at its top middle, so no dots sit under
+   the hero's last lines of text. Below the frame's top it thins out steadily, so its densest, grayest rows never show,
+   and it is gone well before the frame's bottom. The frame covers the middle. */
+@utility dither-hero {
+  mask-image:
+    linear-gradient(to bottom, transparent, #000 34%, rgb(0 0 0 / 0.75) 46%, rgb(0 0 0 / 0.25) 72%, transparent 92%),
+    radial-gradient(ellipse 24% 36% at 50% 4%, transparent 55%, #000 100%);
+  mask-composite: intersect;
+
+  @media (width < 761px) {
+    mask-image:
+      linear-gradient(to bottom, transparent, #000 40%, rgb(0 0 0 / 0.6) 55%, transparent 92%),
+      radial-gradient(ellipse 48% 40% at 50% 4%, transparent 55%, #000 100%);
+  }
+}
+
+/* The closing panel's sphere: soft at its rim so it sits in the panel's dark rather than on it. */
+@utility dither-sphere {
+  mask-image: radial-gradient(circle at 50% 50%, #000 45%, transparent 72%);
+}
+
+/* The waitlist confirm page: the stage fills the screen under the nav, so the card sits in its middle. Over its ripple,
+   a veil in the page's color hides the dots at the card and at the stage's edges, leaving a soft ring around the card. */
+@utility confirm-stage {
+  min-height: calc(100dvh - var(--spacing) * 16);
+}
+
+@utility ripple-veil {
+  background: radial-gradient(
+    ellipse 50% 58% at 50% 50%,
+    var(--color-canvas) 20%,
+    transparent 42%,
+    var(--color-canvas) 78%
+  );
+}
+
+/* The footer's noise: rises from the page's bottom edge and is gone by the footer's links. */
+@utility dither-footer {
+  mask-image: linear-gradient(to top, #000, rgb(0 0 0 / 0.55) 35%, transparent);
+}
+
+/* Demo bezel: the hero's app in a laptop-like frame, built from layers rather than effects:
+   - an outer edge like machined metal, a hairline lit from above that dims down the sides
+   - the bezel itself, near-black glass with a faint lift toward the top
+   - a thin dark gasket where the screen sits in the bezel
+   - three stacked shadows below it, tight to soft, so it sits above the page and shades the dots behind it
+   No sheen and no motion: it reads as an object, not an effect. */
+@utility demo-bezel {
+  position: relative;
+  padding: 10px;
+  border-radius: calc(var(--radius-track) + 10px);
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--color-ink) 5%, transparent), transparent 22%),
+    linear-gradient(180deg, var(--color-surface-2), var(--color-surface-1) 40%, var(--color-canvas));
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, var(--color-ink) 16%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, var(--color-ink) 4%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--color-ink) 5%, transparent),
+    0 2px 3px rgb(0 0 0 / 0.5),
+    0 18px 40px -12px rgb(0 0 0 / 0.75),
+    0 48px 120px -24px rgb(0 0 0 / 0.9);
+
+  @media (width < 761px) {
+    padding: 5px;
+    border-radius: calc(var(--radius-track) + 5px);
+  }
+
+  /* The outer edge: bright along the top like metal catching the light, fading to a hairline down the sides. */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--color-ink) 34%, transparent),
+      color-mix(in oklab, var(--color-ink) 12%, transparent) 14%,
+      var(--color-line-strong) 50%,
+      var(--color-line) 100%
+    );
+    mask:
+      linear-gradient(#000 0 0) content-box exclude,
+      linear-gradient(#000 0 0);
+    pointer-events: none;
+  }
+}
+
+/* The glow along the bezel's top edge, always on: the app's panel-edge glow (src/renderer/src/components/resize.css),
+   a 3px line centered on the edge that fades out toward both ends. */
+@utility demo-edge {
+  position: absolute;
+  top: -2px;
+  left: 24px;
+  right: 24px;
+  z-index: 3;
+  height: 3px;
+  background: radial-gradient(ellipse closest-side at 50% 50%, color-mix(in srgb, var(--color-ink) 45%, transparent) 0%, color-mix(in srgb, var(--color-ink) 45%, transparent) 25%, transparent 100%);
+  pointer-events: none;
+}
+
+/* The screen: set into the bezel behind a thin dark gasket, with a soft shade along its top where the bezel overhangs. */
+@utility demo-screen {
+  border-radius: var(--radius-track);
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.85),
+    0 0 0 2px color-mix(in oklab, var(--color-ink) 4%, transparent);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 2;
+    height: 10px;
+    background: linear-gradient(180deg, rgb(0 0 0 / 0.35), transparent);
+    pointer-events: none;
+  }
+}
+
+/* The bezel at the bento's size: thinner, with its corners following the clip's, and shadows only as deep as a card
+   allows. */
+@utility bezel-sm {
+  padding: 6px;
+  border-radius: calc(var(--radius-lg) + 6px);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, var(--color-ink) 14%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, var(--color-ink) 4%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--color-ink) 5%, transparent),
+    0 2px 3px rgb(0 0 0 / 0.45),
+    0 14px 32px -12px rgb(0 0 0 / 0.7);
+
+  @media (width < 761px) {
+    padding: 4px;
+    border-radius: calc(var(--radius-lg) + 4px);
+  }
+
+  & .demo-screen {
+    border-radius: var(--radius-lg);
+  }
+
+  & .demo-edge {
+    left: 18px;
+    right: 18px;
+  }
+}
+
+/* Spotlight cards (components/landing/SpotlightGrid.tsx): while the pointer is over a group of cards, each card's
+   border brightens around it. Only the edge lights up; the card's surface stays as it is. The border is a 1px ring masked to the
+   card's edge, so the light only shows on the edge itself. It fades in and out with the pointer entering and leaving
+   the grid. */
+@utility spot-grid {
+  --spot: 0;
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      --spot: 1;
+    }
+  }
+}
+
+@utility spot-card {
+  position: relative;
+  isolation: isolate;
+
+  &::before {
+    content: '';
+    position: absolute;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: var(--spot, 0);
+    transition: opacity 300ms ease-out;
+    inset: -1px;
+    z-index: 1;
+    padding: 1px;
+    background: radial-gradient(560px circle at var(--mx, -999px) var(--my, -999px), color-mix(in oklab, var(--color-ink) 55%, transparent), transparent 70%);
+    mask:
+      linear-gradient(#000 0 0) content-box exclude,
+      linear-gradient(#000 0 0);
+  }
+}
+
 @utility shimmer-pill {
   position: relative;
   overflow: hidden;
@@ -297,14 +708,6 @@
   }
 }
 
-@utility stop-wordmark-top {
-  stop-color: var(--color-wordmark-top);
-}
-
-@utility stop-wordmark-bottom {
-  stop-color: var(--color-track);
-}
-
 /* The wordmark K stands in for the K: Inter's cap height (1490 of 2048 units), sitting on the baseline. */
 @utility wordmark-k {
   height: 0.7275em;
@@ -317,12 +720,6 @@
    sr-only would not do: an absolute box counts as a block, which puts a space or a line break after the K. */
 @utility wordmark-k-text {
   font-size: 0;
-}
-
-/* The large footer wordmark is cropped by the page edge. */
-@utility wordmark-crop {
-  height: 0.72em;
-  overflow: hidden;
 }
 
 /* The FAQ plus turns into a minus when its row is open. */
@@ -370,6 +767,45 @@
   }
 }
 
+/* A busy button's spinner, as the app's .spin. The color comes from the text. */
+@utility spinner {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The hero demo is the app at 1440x900, scaled to the frame. The frame keeps its 16:10 box while the app loads. */
+@utility demo-stage {
+  width: 1440px;
+  height: 900px;
+  transform-origin: 0 0;
+  border: 0;
+}
+
+/* The provider tiles beside the hero's headline: a raised face lit from above, and a slow drift. */
+@utility fade-in {
+  animation: fade-in 0.5s ease both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* PR chips sit a pixel above the text baseline. */
 @utility align-nudge {
   vertical-align: 1px;
@@ -386,5 +822,254 @@
     left: calc(var(--spacing) * 6);
     right: calc(var(--spacing) * 6);
     border-top: 1px solid var(--color-line-faint);
+  }
+}
+
+/* A docs page's text, rendered from Markdown by lib/docs.ts. */
+.doc-prose {
+  color: var(--color-ink-2);
+  font-size: 15.5px;
+  line-height: 1.7;
+
+  & > * + * {
+    margin-top: 1.1rem;
+  }
+
+  /* A page that opens on a heading sits right under the hairline above it. */
+  & > :first-child {
+    margin-top: 0;
+  }
+
+  & h2,
+  & h3 {
+    color: var(--color-ink);
+    font-weight: 600;
+    /* The page's scroll padding already clears the sticky nav. This is the breathing room under it. */
+    scroll-margin-top: calc(var(--spacing) * 6);
+  }
+
+  & h2 {
+    margin-top: 3.25rem;
+    font-size: 23px;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+  }
+
+  & h3 {
+    margin-top: 2.25rem;
+    font-size: 17.5px;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+  }
+
+  & h2 + *,
+  & h3 + * {
+    margin-top: 0.75rem;
+  }
+
+  & .doc-anchor {
+    color: inherit;
+  }
+
+  & .doc-anchor:hover::after {
+    content: ' #';
+    color: var(--color-faint);
+  }
+
+  & a:not(.doc-anchor) {
+    color: var(--color-ink);
+    text-decoration: underline;
+    text-decoration-color: var(--color-rule);
+    text-underline-offset: 3px;
+  }
+
+  & a:not(.doc-anchor):hover {
+    text-decoration-color: var(--color-ink-3);
+  }
+
+  & strong {
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  & ul,
+  & ol {
+    padding-left: 1.3rem;
+  }
+
+  & ul {
+    list-style: disc;
+  }
+
+  & ol {
+    list-style: decimal;
+  }
+
+  & li + li {
+    margin-top: 0.45rem;
+  }
+
+  & li::marker {
+    color: var(--color-faint);
+  }
+
+  & :not(pre) > code {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    color: var(--color-ink);
+    background: var(--color-surface-3);
+    border: 1px solid var(--color-line-soft);
+    border-radius: 5px;
+    padding: 0.08em 0.36em;
+  }
+
+  & .doc-code {
+    position: relative;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-1);
+  }
+
+  & .doc-code pre {
+    overflow-x: auto;
+    padding: 14px 16px;
+    padding-right: 72px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--color-ink);
+  }
+
+  /* The language sits in the corner until the block is hovered or focused, when Copy takes its place. */
+  & .doc-code-lang {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-faint);
+    transition: opacity 150ms;
+  }
+
+  & .doc-copy {
+    position: absolute;
+    top: 7px;
+    right: 8px;
+    height: 24px;
+    padding: 0 8px;
+    border: 1px solid var(--color-edge);
+    border-radius: var(--radius-chip);
+    background: var(--color-surface-3);
+    color: var(--color-ink-2);
+    font-size: 12px;
+    font-weight: 500;
+    opacity: 0;
+    cursor: pointer;
+    transition:
+      opacity 150ms,
+      color 150ms,
+      border-color 150ms;
+  }
+
+  & .doc-code:hover .doc-copy,
+  & .doc-copy:focus-visible,
+  & .doc-copy[data-copied] {
+    opacity: 1;
+  }
+
+  & .doc-code:hover .doc-code-lang,
+  & .doc-code:focus-within .doc-code-lang {
+    opacity: 0;
+  }
+
+  & .doc-copy:hover {
+    color: var(--color-ink);
+    border-color: var(--color-edge-hover);
+  }
+
+  /* Touch screens have no hover, so Copy always shows there. */
+  @media (hover: none) {
+    & .doc-copy {
+      opacity: 1;
+    }
+
+    & .doc-code-lang {
+      display: none;
+    }
+  }
+
+  /* Tables sit in a frame with a raised header row. */
+  & .doc-table {
+    overflow-x: auto;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+  }
+
+  & table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  & th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--color-ink);
+    background: var(--color-surface-1);
+    border-bottom: 1px solid var(--color-line);
+    padding: 10px 16px;
+  }
+
+  & td {
+    vertical-align: top;
+    border-bottom: 1px solid var(--color-line-soft);
+    padding: 11px 16px;
+  }
+
+  & td:first-child {
+    color: var(--color-ink);
+  }
+
+  /* On wider screens a row's name stays on one line. On phones it wraps, so the table fits without scrolling. */
+  @media (width >= 761px) {
+    & td:first-child {
+      white-space: nowrap;
+    }
+  }
+
+  & tr:last-child td {
+    border-bottom: 0;
+  }
+
+  /* A note: an info mark, then the text, in a quiet panel. */
+  & .doc-note {
+    position: relative;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-1);
+    padding: 12px 16px 12px 42px;
+    font-size: 14.5px;
+  }
+
+  & .doc-note::before {
+    content: '';
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    width: 15px;
+    height: 15px;
+    background: var(--color-muted);
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6.25'/%3E%3Cpath d='M8 7.25v3.75M8 5h.01'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+
+  & .doc-note > * + * {
+    margin-top: 0.6rem;
+  }
+
+  & hr {
+    border: 0;
+    border-top: 1px solid var(--color-line);
+    margin: 2.5rem 0;
   }
 }

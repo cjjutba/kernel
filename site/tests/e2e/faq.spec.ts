@@ -9,5 +9,5 @@ test('the first question is open and a closed one opens on click', async ({ page
   await expect(second).not.toHaveAttribute('open')
   await second.locator('summary').click()
   await expect(second).toHaveAttribute('open', '')
-  await expect(second).toContainText('Claude Code today.')
+  await expect(second).toContainText('Claude Code and Codex.')
 })
