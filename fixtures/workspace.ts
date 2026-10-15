@@ -1948,6 +1948,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: foldedMessages },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
+  /** The same turn with its fold closed: a short chat starts at the top of the view, not the bottom. */
+  WorkspaceTurnFoldedClosed: scene(() => ({
+    items: { [ids.tableChat]: foldedMessages },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'closed' } }
+  })),
   WorkspaceTurnFoldedOpen: scene(() => ({
     items: { [ids.tableChat]: foldedMessages },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }

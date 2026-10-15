@@ -59,7 +59,7 @@ const AIM_RETAKE = 48
 
 /**
  * How long the browser's smooth scroll takes for `distance` pixels, and its curve, fitted to Chromium's own (about 420ms for 600px, 165ms for 110px). A message that an
- * anchor moves by layout, not by scroll (a short thread is bottom-aligned and the padding under it lifts it), is animated with these, so New chat, a short chat, a long chat
+ * anchor moves by layout, not by scroll, is animated with these, so New chat, a short chat, a long chat
  * and Approve all look the same (KERNEL-803).
  */
 export const glideMs = (distance: number) => Math.round(Math.min(700, Math.max(120, Math.sqrt(Math.abs(distance)) * 17)))
@@ -1168,7 +1168,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     padReply()
     if (!scroller.current || !mark) return
     const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
-    // The padding can move the message by layout, where a scroll has nothing to glide: a short thread is bottom-aligned and the padding lifts it.
+    // The padding can move the message by layout, where a scroll has nothing to glide.
     if (smooth && was !== undefined) {
       const moved = was - mark.getBoundingClientRect().top
       if (moved >= 1) lift(moved)
