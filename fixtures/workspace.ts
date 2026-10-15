@@ -176,6 +176,8 @@ const idleRun = (f: Fixture): Fixture => ({
   projectSettings: { ...f.projectSettings, [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } }
 })
 
+const withSetup = { [ids.projectA]: { scripts: { setup: 'pnpm install', run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' as const }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } }
+
 /** The same fixture with the bottom pane folded to its tab bar, in Kernel's chats and in teammates' workspaces (KERNEL-513). */
 const bottomFolded = (f: Fixture): Fixture => ({ ...f, ui: { ...f.ui, bottomCollapsed: { lead: true, teammate: true } } })
 
@@ -3001,6 +3003,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // The Run tab before the script has run: the empty state's Run is the only button, and the strip's steps aside (KERNEL-423, KERNEL-512).
   WorkspaceRunEmpty: scene((f) => ({
     projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
+  })),
+  // KERNEL-915: the split Run button at the right of the bottom panel's tab strip. `frontend` runs, so the play part is a stop square.
+  BottomPanelRunSplit: scene(() => ({ ...runScripts(), ui: { ...open, rightPanel: true, workspace: { right: 'changes', bottom: 'run' } } })),
+  BottomPanelRunMenu: { ...scene(() => ({ ...runScripts(), ui: { ...open, rightPanel: true, workspace: { right: 'changes', bottom: 'run' } } })), motion: { action: { click: 'Run scripts' }, ms: 600, area: '.bottom-panel' } },
+  BottomPanelSetupRunning: scene((f) => ({ ...setupWait(f, 'setup', []), projectSettings: withSetup })),
+  BottomPanelSetupDone: scene((f) => {
+    const w = setupWait(f, 'setup', [])
+    return { ...w, projectSettings: withSetup, push: [...(w.push ?? []), { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 0 }] }
+  }),
+  BottomPanelNoRun: scene((f) => ({
+    projectSettings: { [ids.projectA]: { scripts: { setup: 'pnpm install' }, runScripts: [], files: { copy: [] }, workspace: {} } },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
     ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),

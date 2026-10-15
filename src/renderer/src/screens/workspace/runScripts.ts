@@ -11,3 +11,6 @@ export function runningRuns(s: Pick<State, 'scripts' | 'scriptExit'>, workspaceI
  * after Settings renamed or removed it, or before Settings load.
  */
 export const pickerNames = (listed: string[], running: string[]): string[] => [...listed, ...running.filter((n) => !listed.includes(n))]
+
+/** What Run all starts: every script that isn't running. */
+export const runAllNames = (names: string[], running: string[]): string[] => names.filter((n) => !running.includes(n))

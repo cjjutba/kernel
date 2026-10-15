@@ -17,7 +17,7 @@ import { OUTSIDE_THE_REPO, type LocalStand } from './pr/model'
 import { useLocalMerge } from './pr/useLocalMerge'
 import { SharedPanel, sharedHere } from './shared/SharedPanel'
 import { configuredTargets, detectedTarget, detectedUrl, openTarget, type PreviewTarget } from './previewUrls'
-import { pickerNames, runningRuns } from './runScripts'
+import { pickerNames, runAllNames, runningRuns } from './runScripts'
 import { TerminalView } from './terminal/Terminal'
 import { ScriptView } from './ScriptView'
 import { scriptKey } from '@shared/scriptLog'
@@ -455,6 +455,38 @@ function AddSetup({ projectId, onManual }: { projectId: string; onManual: () => 
   )
 }
 
+/** Conductor's split Run button, always at the right of the tab strip: the play part runs or stops the picked script, the chevron lists every script, Run all and Configure. */
+function RunSplit({ label, none, running, names, runningNames, busy, onPlay, onToggle, onAll, onConfigure }: {
+  label: string; none: boolean; running: boolean; names: string[]; runningNames: string[]; busy: string | null
+  onPlay: () => void; onToggle: (name: string) => void; onAll: () => void; onConfigure: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const anchor = useRef<HTMLSpanElement>(null)
+  const playing = busy === 'play'
+  const items: (MenuEntry | typeof MENU_SEPARATOR)[] = [
+    ...names.map((n): MenuEntry => {
+      const on = runningNames.includes(n)
+      return { id: n, label: n, icon: on ? 'stop' : 'play', note: on ? 'Running' : undefined, onSelect: () => onToggle(n) }
+    }),
+    ...(names.length > 1 ? [{ id: 'all', label: 'Run all', icon: 'forward' as const, disabled: runAllNames(names, runningNames).length === 0, onSelect: onAll }] : []),
+    ...(names.length ? [MENU_SEPARATOR] : []),
+    { id: 'configure', label: 'Configure', icon: 'settings', onSelect: onConfigure }
+  ]
+  return (
+    <span className="run-split">
+      <button type="button" className="run-main" disabled={none || (busy !== null && !playing)} aria-busy={playing || undefined} aria-label={playing ? (running ? 'Stopping' : 'Starting') : none ? 'Run' : `${running ? 'Stop' : 'Run'} ${label}`} onClick={onPlay}>
+        {playing ? <Spinner label={null} pattern="snake" /> : <Icon name={running ? 'stop' : 'play'} size={14} />}
+      </button>
+      <span ref={anchor} className="run-caret-anchor">
+        <button type="button" className="run-caret" aria-label="Run scripts" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          <Icon name="chevron" size={12} />
+        </button>
+        {open && <Menu label="Run scripts" anchorRef={anchor} onClose={() => setOpen(false)} style={{ right: 0, top: 30, width: 220 }} items={items} />}
+      </span>
+    </span>
+  )
+}
+
 /**
  * The bottom pane: Setup, Run and Terminal under the files, a third of the panel until it is dragged (KERNEL-513). The chevron folds it to its tab bar, and
  * pressing a tab opens it again. Lead chats and teammates' workspaces each remember whether it is folded.
@@ -488,17 +520,35 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   // A project without a setup script never runs one, so the tab says so instead of waiting for output that won't come.
   const noSetup = !!rs && !rs.scripts.setup
   const noRun = !!rs && names.length === 0
-  const [busy, doing] = useBusy<'setup' | 'run' | 'stop' | 'stopSetup'>()
-  const start = (kind: 'setup' | 'run') => doing(kind, async () => {
-    actions.workspaces.clearScriptExit(ws.id, kind, kind === 'run' ? selected : undefined)
-    await attempt(`Could not start ${kind === 'run' ? selected : kind}`, () => call('scripts.run', { workspaceId: ws.id, kind, ...(kind === 'run' && { name: selected }) }))
+  const [busy, doing] = useBusy<'setup' | 'play' | 'menu' | 'stopSetup'>()
+  const startRun = async (name: string) => {
+    actions.workspaces.clearScriptExit(ws.id, 'run', name)
+    await attempt(`Could not start ${name}`, () => call('scripts.run', { workspaceId: ws.id, kind: 'run', name }))
+  }
+  const stopRun = (name: string) => attempt(`Could not stop ${name}`, () => call('scripts.stop', { workspaceId: ws.id, kind: 'run', name }))
+  const startSetup = () => doing('setup', async () => {
+    actions.workspaces.clearScriptExit(ws.id, 'setup')
+    await attempt('Could not start setup', () => call('scripts.run', { workspaceId: ws.id, kind: 'setup' }))
   })
   const stopSetup = () => doing('stopSetup', () => attempt('Could not stop setup', () => call('scripts.stop', { workspaceId: ws.id, kind: 'setup' })))
-  const stop = () => doing('stop', () => attempt(`Could not stop ${selected}`, () => call('scripts.stop', { workspaceId: ws.id, kind: 'run', name: selected })))
+  const showRun = (name?: string) => {
+    if (name) setPicked(name)
+    actions.ui.setWorkspaceView({ bottom: 'run' })
+    if (collapsed) actions.ui.setBottomCollapsed(kind, false)
+  }
+  const play = () => doing('play', async () => {
+    showRun()
+    await (selectedRunning ? stopRun(selected) : startRun(selected))
+  })
+  const toggleScript = (name: string) => doing('menu', async () => {
+    showRun(name)
+    await (runningNames.includes(name) ? stopRun(name) : startRun(name))
+  })
+  const runAll = () => doing('menu', async () => {
+    showRun()
+    await Promise.all(runAllNames(names, runningNames).map(startRun))
+  })
   const addScript = () => go({ name: 'settings', page: 'project', projectId: ws.projectId, section: 'setup' })
-  // The Run tab's empty state has the Run button, so the strip's steps aside while it shows and the word is never on screen twice (KERNEL-512).
-  const onRunTab = !collapsed && bottom === 'run'
-  const runEmpty = onRunTab && !noRun && !hasOutput
   // The log stays mounted, so its first lines are announced; an empty one shows what to do instead (KERNEL-274).
   const empty = bottom === 'run'
     ? noRun ? (
@@ -510,7 +560,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
     ) : (
       <div className="script-empty">
         <span className="script-empty-icon"><Icon name="play" size={20} /></span>
-        {!selectedRunning && <Button className="idle-run" busy={busy === 'run'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>}
+        {!selectedRunning && <Button className="idle-run" busy={busy === 'play'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void play()}>Run</Button>}
         <span>Runs on port {ws.port}. Output shows here.</span>
       </div>
     )
@@ -520,7 +570,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       <div className="script-empty">
         <span className="ink2">No setup output yet</span>
         <span>Setup output appears here after it runs.</span>
-        <Button icon="play" busy={busy === 'setup'} busyPattern="snake" busyLabel="Starting" disabled={setupBusy || busy !== null} onClick={() => void start('setup')}>Run setup</Button>
+        <Button icon="play" busy={busy === 'setup'} busyPattern="snake" busyLabel="Starting" disabled={setupBusy || busy !== null} onClick={() => void startSetup()}>Run setup</Button>
       </div>
     )
   const word = collapsedWord({ setupRunning: setupBusy, setupFailed: ws.status === 'failed', running: runningNames, scripts: names.length, noRun })
@@ -529,16 +579,10 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       {!collapsed && <BottomResize panel={panel} />}
       <div className="bottom-tabs">
         <IconButton icon="chevron" size={14} label={collapsed ? 'Expand bottom panel' : 'Collapse bottom panel'} aria-expanded={!collapsed} data-tip-kbd="⌘J" onClick={() => actions.ui.setBottomCollapsed(kind, !collapsed)} />
-        <TabStrip label="Scripts" value={collapsed ? '' : bottom} onChange={pick} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
+        <TabStrip label="Scripts" value={collapsed ? '' : bottom} onChange={pick} tabs={[{ id: 'setup', label: 'Setup', busy: setupBusy }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
         {/* Folded, the bar says what the scripts are doing, so you can tell the app is up without opening it (KERNEL-529). */}
         {collapsed && word && <span className="bottom-word" role="status">{word}</span>}
-        {/* Running, setup can be stopped. Failed, the chat's card has Run again, so the tab doesn't repeat it (KERNEL-430). */}
-        {!collapsed && bottom === 'setup' && setupBusy && <Button className="small" busy={busy === 'stopSetup'} busyPattern="snake" busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
-        {!collapsed && bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && hasOutput && <Button className="small" busy={busy === 'setup'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
-        {/* Run and Stop are the one action for the script picked on the Run tab. Its empty state has a Run button of its own, so the strip's Run steps aside while that shows (KERNEL-512). A collapsed bar has no empty state, so it keeps Run and Stop. Setup has its own Run setup, so it shows neither. Off the Run tab, Stop names the script, so it can't read as stopping setup. */}
-        {(collapsed || bottom !== 'setup') && (selectedRunning
-          ? <Button className="small" busy={busy === 'stop'} busyPattern="snake" busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>{onRunTab ? 'Stop' : names.length > 1 ? `Stop ${selected}` : 'Stop run'}</Button>
-          : !noRun && !runEmpty && <Button className="small" icon="play" busy={busy === 'run'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>)}
+        <RunSplit label={selected} none={names.length === 0} running={selectedRunning} names={names} runningNames={runningNames} busy={busy} onPlay={() => void play()} onToggle={(n) => void toggleScript(n)} onAll={() => void runAll()} onConfigure={addScript} />
       </div>
       {!collapsed && bottom === 'run' && names.length > 1 && (
         <div className="run-picker">
@@ -549,6 +593,13 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       {!collapsed && bottom !== 'terminal' && (hasOutput
         ? <ScriptView key={`${ws.id}:${dataKey}`} workspaceId={ws.id} kind={bottom === 'run' ? 'run' : 'setup'} name={scriptName} label={logLabel} fallback={fallback} />
         : <div className="log selectable mono" role="log" aria-label={logLabel} data-empty="true">{empty}</div>)}
+      {!collapsed && bottom === 'setup' && !noSetup && hasOutput && (
+        <div className="script-actions">
+          {setupBusy
+            ? <Button className="small" busy={busy === 'stopSetup'} busyPattern="snake" busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>
+            : <Button className="small" icon="refresh" busy={busy === 'setup'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void startSetup()}>Rerun setup</Button>}
+        </div>
+      )}
     </div>
   )
 }

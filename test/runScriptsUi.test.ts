@@ -6,7 +6,7 @@ import type { ProjectSettings } from '@shared/types'
 vi.mock('../src/renderer/src/api', () => ({ call: vi.fn() }))
 const { actions, apply, getState, scriptKey, setState } = await import('../src/renderer/src/store')
 const { applyRunScripts } = await import('../src/renderer/src/screens/settings/useSettings')
-const { pickerNames, runningRuns } = await import('../src/renderer/src/screens/workspace/runScripts')
+const { pickerNames, runAllNames, runningRuns } = await import('../src/renderer/src/screens/workspace/runScripts')
 
 const add = (name: string | undefined, text: string, kind: 'run' | 'setup' = 'run') => actions.workspaces.appendScript('w1', kind, name, [{ line: text, stream: 'stdout' }])
 const out = (name: string) => getState().scripts.w1.filter((l) => l.name === name).map((l) => l.line)
@@ -155,5 +155,10 @@ describe('applyRunScripts', () => {
     expect(next).toEqual([{ name: 'run', command: 'pnpm dev' }, { name: 'web', command: 'pnpm web' }])
     expect(s['runScripts.run']).toBe('override')
     expect(s['runScripts.RUN']).toBeUndefined()
+  })
+
+  it('Run all starts only the scripts that are not running', () => {
+    expect(runAllNames(['run', 'frontend', 'backend'], ['frontend'])).toEqual(['run', 'backend'])
+    expect(runAllNames(['run', 'frontend'], ['run', 'frontend'])).toEqual([])
   })
 })
