@@ -7,7 +7,7 @@ import { discoverSkills, searchFiles } from '../src/main/services/files'
 import { commitHunks, listHunks } from '../src/main/services/hunks'
 import { git } from '../src/main/services/exec'
 import { chatMode } from '../src/main/services/permissions'
-import { attachFiles, Held, numberImages, partOf, PLAN_FILES_ONLY } from '../src/renderer/src/screens/workspace/composer/attach'
+import { attachFiles, Held, numberImages, partOf, pathOnlyFiles, PLAN_FILES_ONLY, PLAN_SEND_BLOCKED } from '../src/renderer/src/screens/workspace/composer/attach'
 import { mentionMenu, mentionPart } from '../src/renderer/src/screens/workspace/composer/autocomplete'
 import { noteFromParts } from '../src/renderer/src/screens/workspace/cards/steps'
 import { toUserMessage } from '../src/main/services/providers/claude'
@@ -289,6 +289,10 @@ describe('attaching files', () => {
     await attachFiles([new File(['a\0b'], 'data.bin')], { ...host(log), textOnly: true })
     expect(log).toEqual(['hold data.bin', 'drop id-data.bin'])
     expect(getState().ui.toasts[before].sub).toBe(PLAN_FILES_ONLY)
+    const byPath: ChatPart = { type: 'file', name: 'brief.pdf', src: '/Users/cj/brief.pdf', size: 10 }
+    const inlined: ChatPart = { type: 'file', name: 'notes.md', src: '/Users/cj/notes.md', text: 'a', lines: 1 }
+    expect(pathOnlyFiles([{ type: 'text', text: 'x' }, byPath, inlined, { type: 'file', name: 'a.ts', path: 'src/a.ts' }])).toEqual([byPath])
+    expect(PLAN_SEND_BLOCKED).toBe('Plan change requests take images and text files only. Remove the other files to send.')
   })
 
   it('removes the place of a file that cannot be attached, toasts, and still attaches the rest', async () => {

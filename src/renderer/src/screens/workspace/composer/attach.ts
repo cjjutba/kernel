@@ -28,6 +28,11 @@ const pathOf = (file: File) => { try { return window.kernel.pathOf(file) } catch
 /** An image, a file on disk by its path, or a text file made in the page, as a message part. Throws a plain sentence when it can't be attached. */
 export const PLAN_FILES_ONLY = 'Plan change requests take images and text files only.'
 
+export const PLAN_SEND_BLOCKED = `${PLAN_FILES_ONLY} Remove the other files to send.`
+
+/** The files a plan's change request can't carry: attached by path, with no text of their own. */
+export const pathOnlyFiles = (parts: ChatPart[]) => parts.filter((p) => p.type === 'file' && !!p.src && p.text === undefined)
+
 /**
  * `textOnly` is a plan's change request, which carries images and text and no files on disk: a text file under the inline cap is read here,
  * and anything else is refused.

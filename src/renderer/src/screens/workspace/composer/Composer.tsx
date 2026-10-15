@@ -21,6 +21,7 @@ import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued,
 import { useDraft } from './draft'
 import { escapeStops, queueBackInBox } from './stop'
 import { loadFailureLine, useComposerLoads } from './useComposerLoads'
+import { pathOnlyFiles, PLAN_SEND_BLOCKED } from './attach'
 import { ComposerInput } from './ComposerInput'
 import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
@@ -176,6 +177,10 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const send = async (picked?: ChatPart[]) => {
     const parts = picked ?? d.message()
     if (!parts.length || blocked) return
+    if (plan && !picked && pathOnlyFiles(parts).length) {
+      actions.ui.toast({ title: 'Could not send', sub: PLAN_SEND_BLOCKED })
+      return
+    }
     const id = chat.id
     const kept = d.snapshot()
     d.reset()
