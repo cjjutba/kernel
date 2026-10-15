@@ -325,6 +325,11 @@ describe('restorePlace', () => {
       expect(restorePlace(saved(route), getState())?.route).toEqual(route)
     }
   })
+  it('reads a place saved before rooms were renamed projects (KERNEL-880)', () => {
+    expect(restorePlace(saved({ name: 'rooms' }), getState())?.route).toEqual({ name: 'projects' })
+    expect(restorePlace(saved({ name: 'leadNew', roomId: 'r1' }), getState())?.route).toEqual({ name: 'leadNew', projectId: 'r1' })
+    expect(restorePlace(saved({ name: 'issues', issueId: 'KERNEL-9', roomId: 'r1' }), getState())?.route).toEqual({ name: 'issues', issueId: 'KERNEL-9', projectId: 'r1' })
+  })
   it('keeps the source and picks of the New chat page, and drops ones that are not whole (KERNEL-788)', () => {
     const source = { kind: 'issue', id: 'KERNEL-9', title: 'Toast says which account', url: 'https://linear.app/x/KERNEL-9', tracker: 'linear' }
     const picks = { mode: 'worktree', model: 'claude-opus-5-5', effort: 'high', plan: true, baseRef: 'origin/dev' }

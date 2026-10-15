@@ -260,6 +260,7 @@ function newer(all: State['lastActivity'], projectId: string, times: Record<stri
   return later.length ? { ...all, [projectId]: { ...project, ...Object.fromEntries(later) } } : all
 }
 /** Settings > General > Last project: the project whose team page, chat or workspace was open last. localStorage may be missing or blocked, so every access is guarded. */
+// Rooms were renamed projects (KERNEL-880). The saved key keeps its old name, so the last project still opens after the update.
 const LAST_PROJECT = 'kernel.lastRoom'
 function rememberProject(route: Route) {
   const id = 'projectId' in route && route.projectId ? route.projectId : route.name === 'workspace' ? state.workspaces.find((w) => w.id === route.workspaceId)?.projectId : undefined

@@ -73,10 +73,11 @@ export async function readImage(path: string): Promise<Buffer> {
   return buf
 }
 
-/** The icon files in `<dataDir>/project-icons`, one per project, named `<projectId>-<at>.<ext>`. */
+/** The icon files in `<dataDir>/room-icons`, one per project, named `<projectId>-<at>.<ext>`. */
 export class ProjectIcons {
   readonly dir: string
-  constructor(dataDir: string) { this.dir = join(dataDir, 'project-icons') }
+  // The folder keeps its name from before rooms were renamed projects (KERNEL-880), so the icons already saved still show.
+  constructor(dataDir: string) { this.dir = join(dataDir, 'room-icons') }
 
   /** Writes the image and returns the icon for the project. `at` is always past the old icon's, so the new file never overwrites it. */
   async save(projectId: string, kind: 'github' | 'image', buf: Buffer, old?: Project['icon']): Promise<NonNullable<Project['icon']>> {

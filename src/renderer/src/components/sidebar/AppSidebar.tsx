@@ -367,6 +367,7 @@ function ProjectItem({ project, current, expanded, numbered, hints, ctrlHints, o
  * Projects expanded (true) or collapsed (false) by hand, by id. A project left alone is expanded while it is the current one.
  * localStorage keeps them across launches, and may be missing or blocked.
  */
+// Rooms were renamed projects (KERNEL-880). The saved key keeps its old name, so each project stays expanded or collapsed.
 const EXPANDED = 'kernel.roomsExpanded'
 function readExpanded(): Record<string, boolean> {
   return readSavedJson(EXPANDED, (v) => (v && typeof v === 'object' ? v as Record<string, boolean> : {}))

@@ -93,6 +93,7 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   // The project the list is narrowed to, or none for every project. A project that was archived or hidden since reads as none.
   const projects = useStore((s) => s.projects)
   const choices = useMemo(() => projects.filter((r) => !r.archived && !r.hidden), [projects])
+  // Rooms were renamed projects (KERNEL-880). The saved key keeps its old name, so the project picked before the update stays.
   const [projectId, setProjectId] = useRemembered<string>('kernel.prsRoom', (raw) => raw ?? ALL_PROJECTS)
   const project = choices.find((r) => r.id === projectId)
   const open = project ? all.open.filter((r) => r.ws.projectId === project.id) : all.open

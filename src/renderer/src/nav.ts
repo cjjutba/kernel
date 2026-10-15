@@ -168,8 +168,12 @@ function soundPicks(v: any): NewChatPicks | undefined {
   return ok ? { mode: v.mode, model: v.model, effort: v.effort, plan: v.plan, baseRef: v.baseRef } : undefined
 }
 
-/** A saved route made sound, or nothing. Missing ids would open a screen with no project or workspace, so they are rejected here. */
-function soundRoute(r: any): Route | undefined {
+/**
+ * A saved route made sound, or nothing. Missing ids would open a screen with no project or workspace, so they are rejected here. A
+ * route saved before rooms were renamed projects (KERNEL-880) says `rooms` and `roomId`, and reads as `projects` and `projectId`.
+ */
+function soundRoute(saved: any): Route | undefined {
+  const r = saved && typeof saved === 'object' ? { ...saved, name: saved.name === 'rooms' ? 'projects' : saved.name, projectId: saved.projectId ?? saved.roomId } : saved
   switch (r?.name) {
     case 'inbox': case 'projects': return { name: r.name }
     case 'history': return { name: 'history', ...(isText(r.projectId) ? { projectId: r.projectId } : {}) }

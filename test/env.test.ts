@@ -118,7 +118,7 @@ describe('EnvStore', () => {
 
     again.set('project-1', 'DATABASE_URL', null)
     expect(again.names('project-1')).toEqual([])
-    expect(JSON.parse(readFileSync(file, 'utf8')).projects).toEqual({})
+    expect(JSON.parse(readFileSync(file, 'utf8')).rooms).toEqual({})
     again.dropProject('project-1')
   })
 
@@ -137,7 +137,7 @@ describe('EnvStore', () => {
   })
 
   it('moves a file it can\'t read aside, keeps its bytes, and starts empty instead of writing over it', async () => {
-    for (const bad of ['{not json', '{"app":["A"],"projects":{}}', '{"app":{},"projects":{"r":"x"}}', '[]']) {
+    for (const bad of ['{not json', '{"app":["A"],"rooms":{}}', '{"app":{},"rooms":{"r":"x"}}', '[]']) {
       const dir = await mkdtemp(join(tmpdir(), 'kernel-env-'))
       const file = join(dir, 'env.json')
       await writeFile(file, bad)
@@ -374,7 +374,7 @@ describe('Kernel env', () => {
     const project = await k.addProject(repo)
     await k.handlers()['env.set']({ projectId: project.id, name: 'GONE_SOON', value: 'v' })
     await k.removeProject(project.id, false)
-    expect(JSON.parse(readFileSync(join(dataDir, 'env.json'), 'utf8')).projects).toEqual({})
+    expect(JSON.parse(readFileSync(join(dataDir, 'env.json'), 'utf8')).rooms).toEqual({})
     await k.stop()
   })
 })

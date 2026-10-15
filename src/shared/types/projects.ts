@@ -40,7 +40,7 @@ export interface Project {
    */
   instructionConflicts?: InstructionConflict[]
   /**
-   * The project's picture: the GitHub owner's avatar or a picked PNG or JPEG, saved as `file` in the data folder's project-icons.
+   * The project's picture: the GitHub owner's avatar or a picked PNG or JPEG, saved as `file` in the data folder's room-icons.
    * No icon means the letter. The image itself comes from `projects.icon`, so project pushes stay small (KERNEL-241).
    */
   icon?: { kind: 'github' | 'image'; file: string; at: number }

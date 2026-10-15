@@ -33,6 +33,7 @@ export const EVENTS = {
   },
   /** The window's process went away, with Electron's reason. */
   'app.renderer_gone': { reason: { enum: ['abnormal-exit', 'killed', 'crashed', 'oom', 'launch-failed', 'integrity-failure', 'memory-eviction'] } },
+  /** A project was added. The event keeps its name from before rooms were renamed projects (KERNEL-880), so its counts carry on. */
   'room.created': { source: { enum: ['repo', 'folder', 'scratch'] } },
   'workspace.created': { by: { enum: ['lead', 'user'] }, review: { bool: true } },
   'pr.merged': {},

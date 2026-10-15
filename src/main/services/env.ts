@@ -258,7 +258,10 @@ export function checkName(name: string) {
   if (isKernelVar(name)) throw new Error(`${name} is one of Kernel's own variables. Pick another name.`)
 }
 
-/** What `env.json` holds: names in the clear, each value encrypted on its own. `app` is app-wide, `projects` by project id. */
+/**
+ * What `env.json` holds: names in the clear, each value encrypted on its own. `app` is app-wide, `projects` by project id.
+ * The file names `projects` `rooms`, as it did before rooms were renamed projects (KERNEL-880), so saved variables stay.
+ */
 interface EnvFile { app: Record<string, string>; projects: Record<string, Record<string, string>> }
 
 const APP = ''
@@ -271,7 +274,7 @@ const isStrings = (v: unknown): v is Record<string, string> =>
 /** The file's contents when they have the right shape, else null. */
 function envFileOf(raw: unknown): EnvFile | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-  const { app = {}, projects = {} } = raw as Record<string, unknown>
+  const { app = {}, rooms: projects = {} } = raw as Record<string, unknown>
   if (!isStrings(app) || !projects || typeof projects !== 'object' || Array.isArray(projects) || !Object.values(projects).every(isStrings)) return null
   return { app, projects: projects as EnvFile['projects'] }
 }
@@ -378,7 +381,7 @@ export class EnvStore {
   private save(f: EnvFile) {
     mkdirSync(dirname(this.o.file), { recursive: true })
     const tmp = `${this.o.file}.tmp`
-    writeFileSync(tmp, JSON.stringify(f, null, 2), { mode: 0o600 })
+    writeFileSync(tmp, JSON.stringify({ app: f.app, rooms: f.projects }, null, 2), { mode: 0o600 })
     // A temp file a crash left behind keeps its old mode through writeFileSync, and the rename would carry it over.
     chmodSync(tmp, 0o600)
     renameSync(tmp, this.o.file)

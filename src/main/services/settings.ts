@@ -235,6 +235,11 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   if (workspace?.branchPattern === 'feat/{slug}') delete workspace.branchPattern
   // Nothing ever read setUpstream, so it went (KERNEL-460). A file that still has it loads without it.
   if (workspace) delete workspace.setUpstream
+  // Rooms are projects (KERNEL-880): the switch saved under its old name keeps its value, and the next save writes the new one.
+  if (workspace && 'oneCurrentBranchPerRoom' in workspace) {
+    workspace.oneCurrentBranchPerProject ??= workspace.oneCurrentBranchPerRoom
+    delete workspace.oneCurrentBranchPerRoom
+  }
   // Nothing read Show in menu bar or Show names instead of roles (KERNEL-536), or team.addNewAgents (KERNEL-540), so they went.
   // A file that still has them loads without them.
   if (general) delete general.menuBar

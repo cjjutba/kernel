@@ -91,7 +91,7 @@ describe('project icons in the kernel', () => {
     const listen = (e: PushEvent) => { if (e.type === 'project' && e.project.id === project.id) pushes.push(e) }
     bus.on('push', listen)
     listeners.push(listen)
-    const files = async () => (await readdir(join(dataDir, 'project-icons')).catch(() => [])).sort()
+    const files = async () => (await readdir(join(dataDir, 'room-icons')).catch(() => [])).sort()
     const pick = async (name: string, body: Buffer) => { const p = join(dataDir, name); await writeFile(p, body); return p }
     return { k, h: k.handlers(), project, gh, pushes, files, pick, goOffline: () => { fetchImpl = offline } }
   }

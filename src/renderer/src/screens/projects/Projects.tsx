@@ -51,6 +51,7 @@ function ProjectRow({ project, nav }: { project: Project; nav: ReturnType<typeof
 /** Projects.png: every project with its source, team and live status. */
 export function Projects() {
   const projects = useStore((s) => s.projects)
+  // Rooms were renamed projects (KERNEL-880). The saved key keeps its old name, so the tab picked before the update stays.
   const [tab, setTab] = useRemembered<Tab>('kernel.roomsTab', oneOf<Tab>(['all', 'active', 'archived'], 'all'))
   const active = projects.filter((r) => !r.archived)
   const shown = tab === 'all' ? projects : tab === 'active' ? active : projects.filter((r) => r.archived)
