@@ -21,7 +21,7 @@ export class Tools extends Feature {
     const own = agent?.lead ? kernelTools(this.k.lead.leadToolDeps(ws.projectId, agent, chat))
       : ws.reviewOf ? reviewTools({ submit: (review) => this.k.reviews.submitReview(ws.id, review, chat.id) })
       : teammateTools(this.k.waits.teammateToolDeps(ws.id))
-    const issue = issueTools({ issueKey: () => this.issueKey(ws.id), tracker: () => this.k.integrations.trackerFor(ws.projectId) })
+    const issue = issueTools({ issueKey: () => this.issueKey(ws.id), tracker: (key) => this.k.integrations.trackerOf(ws.projectId, { id: key }) })
     return [...own, ...issue, ...(this.sharing ? sharedTools({ share: (o) => this.k.sharing.shareFile(ws.id, chat.id, o) }) : [])]
   }
 

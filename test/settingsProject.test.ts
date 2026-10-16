@@ -762,7 +762,7 @@ describe("a project's issue tracker (KERNEL-462)", () => {
 describe("a project's tracker for the Issues screen (KERNEL-471)", () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
-  it('issues.tracker names the tracker each project reads, and the repo of a GitHub one', async () => {
+  it('issues.tracker names the tracker each project reads, the repo of a GitHub one, and the trackers it can list (KERNEL-933)', async () => {
     vi.stubEnv('LINEAR_API_KEY', 'lin_key')
     const { k, project } = await startKernel({ 'README.md': '# a\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n' })
     const github = await k.projects.addProject(await tempRepo())
@@ -770,22 +770,26 @@ describe("a project's tracker for the Issues screen (KERNEL-471)", () => {
     const elsewhere = await k.projects.addProject(await tempRepo())
     await git(elsewhere.path, 'remote', 'add', 'origin', 'https://gitlab.com/acme/app.git')
     const tracker = (projectId: string) => k.integrations.handlers()['issues.tracker']({ projectId })
-    expect(await tracker(project.id)).toEqual({ kind: 'linear' })
-    expect(await tracker(github.id)).toEqual({ kind: 'github', where: 'acme/app' })
-    expect(await tracker(elsewhere.id)).toEqual({ kind: 'none' })
+    // Linear only, GitHub only (a token but no team), and neither.
+    expect(await tracker(project.id)).toEqual({ kind: 'linear', available: { linear: true } })
+    expect(await tracker(github.id)).toEqual({ kind: 'github', where: 'acme/app', available: { linear: false, github: { where: 'acme/app' } } })
+    expect(await tracker(elsewhere.id)).toEqual({ kind: 'none', available: { linear: false } })
+    vi.stubEnv('LINEAR_API_KEY', '')
+    expect(await tracker(project.id)).toEqual({ kind: 'none', available: { linear: false } })
     await k.stop()
   })
 
-  it("follows the project's [tracker] kind", async () => {
+  it("follows the project's [tracker] kind, which leaves both trackers available unless it is none (KERNEL-933)", async () => {
     vi.stubEnv('LINEAR_API_KEY', 'lin_key')
     const { k, repo, project } = await startKernel({ 'README.md': '# a\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n' })
     await git(repo, 'remote', 'add', 'origin', 'git@github.com:acme/app.git')
     const tracker = () => k.integrations.handlers()['issues.tracker']({ projectId: project.id })
-    expect(await tracker()).toEqual({ kind: 'linear' })
+    const both = { linear: true, github: { where: 'acme/app' } }
+    expect(await tracker()).toEqual({ kind: 'linear', available: both })
     await saveRepoSettings(repo, { tracker: { kind: 'github' } })
-    expect(await tracker()).toEqual({ kind: 'github', where: 'acme/app' })
+    expect(await tracker()).toEqual({ kind: 'github', where: 'acme/app', available: both })
     await saveRepoSettings(repo, { tracker: { kind: 'none' } })
-    expect(await tracker()).toEqual({ kind: 'none' })
+    expect(await tracker()).toEqual({ kind: 'none', available: { linear: false } })
     await k.stop()
   })
 
@@ -797,7 +801,7 @@ describe("a project's tracker for the Issues screen (KERNEL-471)", () => {
     expect(settings.tracker).toEqual({ kind: 'none' })
     expect(settings).not.toHaveProperty('jira')
     expect(Object.keys(settings.sources).filter((s) => s.startsWith('jira'))).toEqual([])
-    expect(await k.integrations.handlers()['issues.tracker']({ projectId: project.id })).toEqual({ kind: 'none' })
+    expect(await k.integrations.handlers()['issues.tracker']({ projectId: project.id })).toEqual({ kind: 'none', available: { linear: false } })
     // Saving another setting keeps the file's other tables as they were.
     await saveRepoSettings(repo, { linear: { team: 'APP' } }, true)
     expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('[jira]')
