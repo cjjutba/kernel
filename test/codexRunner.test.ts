@@ -14,7 +14,7 @@ import { SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/servi
 import { mentionNote } from '../src/main/services/mentions'
 import { OpenItems, openReminder } from '../src/main/features/openItems'
 import type { Kernel } from '../src/main/kernel'
-import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch, REFERENCE_READ_ONLY } from '../src/main/services/permissions'
+import { ALWAYS_ASK, LEAD_GH_ISSUE, NETWORK_OFF, neverAllowed, pushOwnBranch, REFERENCE_READ_ONLY } from '../src/main/services/permissions'
 import type { AppSettings } from '../src/main/services/settings'
 import { codexLimits, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
 
@@ -553,6 +553,25 @@ describe("an agent file's tools on Codex (KERNEL-451)", () => {
     expect(mcpOverrides(undefined, user)).toEqual({})
     expect(mcpOverrides(undefined, user, ['notion', 'my.server', 'absent'])).toEqual({ 'mcp_servers.notion.enabled': false })
     expect(mcpOverrides(policy, user, ['linear'])).toEqual({ 'mcp_servers.linear.enabled': false, 'mcp_servers.figma.enabled': false, 'mcp_servers.notion.enabled': false })
+  })
+
+  it("turns off a Lead's tracker issue writes and declines its gh issue create, in Bypass permissions too (feat-lead-files-tracker-issues-only-with)", async () => {
+    const lead = { ...noor, id: 'kernel', name: 'Kernel', lead: true } as AgentDef
+    const t = track(await setup({ mode: 'bypassPermissions', agent: lead, mcp: JSON.stringify(servers) }))
+    const ask = (id: string, command: string) => ({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1, environmentId: 'local', command } })
+    await t.sessions.send('chat', [{ type: 'text', text: script(ask('c1', '/bin/zsh -lc "gh issue create --title Crash"'), ask('c2', 'gh issue view 41')) }])
+    await t.idle()
+    expect((await t.sent('thread/start'))[0].params.config).toEqual({
+      'mcp_servers.linear.disabled_tools': ['save_issue', 'create_issue', 'update_issue', 'save_comment', 'create_comment', 'delete_comment'],
+      'mcp_servers.github.disabled_tools': ['delete_repo', 'issue_write', 'create_issue', 'update_issue', 'add_issue_comment', 'update_issue_comment', 'sub_issue_write']
+    })
+    expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'accept' }])
+    expect(t.of('note').map((n) => n.text)).toEqual([LEAD_GH_ISSUE])
+    // A teammate keeps them.
+    const mate = track(await setup({ mode: 'bypassPermissions', agent: noor, mcp: JSON.stringify(servers) }))
+    await mate.sessions.send('chat', [{ type: 'text', text: script(ask('c1', 'gh issue create --title Crash')) }])
+    await mate.idle()
+    expect(await mate.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'accept' }])
   })
 
   describe('in Bypass permissions (bypass-allows-unlisted-mcp)', () => {

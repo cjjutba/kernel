@@ -769,6 +769,10 @@ function kernelHooks(o: {
     const gate: HookCallback = async (input, _id, { signal }) => {
       const { tool_name: tool, tool_input } = input as PreToolUseHookInput
       if (tools.allows(tool, tool_input)) return {}
+      // Hand off refuses an edit whatever the file says, and a Lead's tracker issue writes go through file_issue, whatever a
+      // project rule or the user would allow (KERNEL-770, feat-lead-files-tracker-issues-only-with).
+      const mode = tools.modeRefuses(tool)
+      if (mode) return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: mode } }
       // An MCP server the file doesn't list, and disallowedTools doesn't take away: a project rule lets it through, and with
       // `unlisted_tools = "ask"` the user decides, or Bypass permissions does as it would with no tools line. `hide` refuses
       // it as before (KERNEL-537, bypass-allows-unlisted-mcp).
@@ -777,9 +781,6 @@ function kernelHooks(o: {
         if (unlisted === 'ask' && bypassing()) return PROJECT_ALLOWS
         if (unlisted === 'ask' && askTool) return askTool(tool, tool_input, `Your agent file doesn't list ${tool.split('__')[1]}.`, signal)
       }
-      // Hand off refuses an edit whatever the file says, and says so (KERNEL-770).
-      const mode = tools.modeRefuses(tool)
-      if (mode) return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: mode } }
       bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
       const why = tools.disallows(tool)
         ? `Your agent file's disallowedTools takes away ${tool}. Use another tool, or ask the user to take ${tool} off disallowedTools in your agent file.`

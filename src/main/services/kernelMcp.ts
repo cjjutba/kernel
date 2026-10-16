@@ -1,6 +1,6 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import { isRunName, RUN_SCRIPT_NAME, type AgentChangePr, type AgentDef, type AgentReach, type AgentScope, type Approval, type AskedQuestion, type ChatPart, type Decision, type IssueTaken, type LeadMode, type PrState, type QueueReason, type ProjectSettingsPatch, type Workspace, type WorkspaceMode } from '@shared/types'
+import { isRunName, RUN_SCRIPT_NAME, type AgentChangePr, type AgentDef, type AgentReach, type AgentScope, type Approval, type AskedQuestion, type ChatPart, type Decision, type IssueTaken, type LeadMode, type PrState, type QueueReason, type ProjectSettingsPatch, type Tracker, type Workspace, type WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { blockedWhy, headBlockers, notMergeable, reviewsText } from '@shared/merge'
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
@@ -122,6 +122,8 @@ export interface KernelToolDeps {
    * yet. Left out, link_issue refuses.
    */
   linkIssue?: (issue: string) => Promise<{ id: string; title: string; branch?: string }>
+  /** The project's own issue tracker, read on each call, which file_issue writes to. Left out, file_issue refuses. */
+  tracker?: () => Promise<Tracker>
 
   /** Whether the Lead chat is in plan mode now. Read on each call, since the toggle can change mid-session. Left out, it counts as off (KERNEL-176). */
   planMode?: () => boolean
@@ -260,6 +262,9 @@ export const uncommittedNote = (files: number, base: string) =>
 
 /** create_workspace's refusal with plan mode off when go_ahead is missing or isn't in the user's latest message (KERNEL-678). */
 export const NO_GO_AHEAD = "Not handed off: quote the user's go-ahead from their latest message, or ask them first."
+
+/** file_issue's refusal with plan mode off, worded and checked as create_workspace's NO_GO_AHEAD. */
+export const NO_FILE_GO_AHEAD = "Not filed: quote the user's go-ahead from their latest message, or ask them first."
 
 /** Whether `quote` appears in what the user said, ignoring case and whitespace (KERNEL-678). An empty quote never does. */
 export function quotesUser(quote: string | undefined, said: string | undefined): boolean {
@@ -410,10 +415,10 @@ export const SAVE_SCRIPTS_QUESTION = 'Save these scripts to .kernel/settings.loc
 const SAVE = 'Save'
 
 /** What the Lead's server tells the model, next to the tools. */
-export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, answer a question, opinion or report and stop, with no closing offer or question. For a request for work, propose who gets what in one yes-or-no question, and call create_workspace only on a go-ahead that raises nothing new, quoted in go_ahead. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Filing tracker issues needs the same go-ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off. When the user says to go past a review\'s blockers, call overrule_blockers with their words in go_ahead.'
+export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, answer a question, opinion or report and stop, with no closing offer or question. For a request for work, propose who gets what in one yes-or-no question, and call create_workspace only on a go-ahead that raises nothing new, quoted in go_ahead. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Filing or editing tracker issues with file_issue needs the same go-ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off. When the user says to go past a review\'s blockers, call overrule_blockers with their words in go_ahead.'
 
 /** What the Lead's server tells the model in a Build here chat (KERNEL-770). */
-export const LEAD_BUILD_INSTRUCTIONS = 'You lead a team of agents in Kernel, and this chat is in Build here: you make the change yourself in this chat\'s worktree and open the pull request. While the chat is in plan mode, ask for approval with request_plan_approval first, then build it. With plan mode off, build what the user asked for, and answer a question, opinion or report without changing anything or ending on an offer. create_workspace only starts a review, with review_of. When the work is for a tracker issue, call link_issue before the first push. When the work is bigger than one PR or spans lanes, call suggest_hand_off with the reason. Follow up on teammates\' work with message_agent. Use say for a short status line people see on your card in the sidebar.'
+export const LEAD_BUILD_INSTRUCTIONS = 'You lead a team of agents in Kernel, and this chat is in Build here: you make the change yourself in this chat\'s worktree and open the pull request. While the chat is in plan mode, ask for approval with request_plan_approval first, then build it. With plan mode off, build what the user asked for, and answer a question, opinion or report without changing anything or ending on an offer. create_workspace only starts a review, with review_of. When the work is for a tracker issue, call link_issue before the first push. File or edit tracker issues with file_issue, quoting the user\'s go-ahead in go_ahead. When the work is bigger than one PR or spans lanes, call suggest_hand_off with the reason. Follow up on teammates\' work with message_agent. Use say for a short status line people see on your card in the sidebar.'
 
 /**
  * The workspace a reviewer's base names: the Lead sometimes starts a review from the reviewed branch with base_ref instead
@@ -502,6 +507,21 @@ export function kernelTools(d: KernelToolDeps) {
   const signInLine = async (agent: AgentDef | undefined, starts: boolean): Promise<string> => {
     const needs = agent && await d.signIns?.(agent).catch(() => undefined)
     return needs ? ` ${signInNote(agent.name, needs.account, needs.servers, starts)}` : ''
+  }
+  /**
+   * The user's go-ahead for work with plan mode off, quoted from their latest message (KERNEL-678): the trimmed quote, false when
+   * it is missing or isn't in that message, undefined when none is needed. None is needed in plan mode, after a plan approved
+   * since the user last wrote, or in a turn Kernel started in a chat that already had an approved plan or a hand-off, which is
+   * a follow-up on approved work. create_workspace and file_issue both check it.
+   */
+  const goAheadOf = (quote: string | undefined): string | false | undefined => {
+    if (!d.userSaid || d.planMode?.()) return undefined
+    const plans = d.plans?.() ?? []
+    if (!d.userTurn?.() && (plans.length > 0 || d.workspaces().some((w) => mine(w) && !w.reviewOf))) return undefined
+    const said = d.userSaid()
+    if (plans.some((p) => p.at > (said?.at ?? 0))) return undefined
+    const q = quote?.trim() ?? ''
+    return quotesUser(q, said?.text) ? q : false
   }
   return [
     tool('list_agents', 'List the agents in this project with their roles. Helpers, which don\'t take tasks, come as one line of names.', {}, async () => text(agentList(await d.agents()))),
@@ -592,15 +612,9 @@ export function kernelTools(d: KernelToolDeps) {
           return refuse(`${what} to ${name} (workspace ${open.id}). Follow up with message_agent.`)
         }
       }
-      // With plan mode off, a hand-off needs the user's go-ahead, quoted from their latest message (KERNEL-678). A review needs
-      // none, and neither does plan mode, a plan approved since the user last wrote, or a turn Kernel started in a chat that
-      // already had an approved plan or a hand-off, which is a follow-up on approved work.
-      const guarded = !!d.userSaid && !review_of && !d.planMode?.()
-      const plans = guarded ? d.plans?.() ?? [] : []
-      const followUp = guarded && !d.userTurn?.() && (plans.length > 0 || d.workspaces().some((w) => mine(w) && !w.reviewOf))
-      const said = guarded && !followUp ? d.userSaid!() : undefined
-      const goAhead = guarded && !followUp && !plans.some((p) => p.at > (said?.at ?? 0)) ? go_ahead?.trim() ?? '' : undefined
-      if (goAhead !== undefined && !quotesUser(goAhead, said?.text)) {
+      // With plan mode off, a hand-off needs the user's go-ahead, quoted from their latest message (KERNEL-678). A review needs none.
+      const goAhead = review_of ? undefined : goAheadOf(go_ahead)
+      if (goAhead === false) {
         bus.track({ name: 'handoff.refused', reason: 'go-ahead' })
         return { ...text(NO_GO_AHEAD), isError: true }
       }
@@ -817,6 +831,28 @@ export function kernelTools(d: KernelToolDeps) {
         return text(`Linked ${r.id}, "${r.title}".${r.branch ? ` The branch is now ${r.branch}.` : ' The branch keeps its name, since it was pushed.'} Write "Closes ${r.id}" in the PR body.`)
       } catch (e) {
         return { ...text(`Not linked: ${firstLine(e instanceof Error ? e.message : String(e))}`), isError: true }
+      }
+    }),
+    tool('file_issue', "File a new issue in this project's tracker, or change the title or description of one by its key in issue. This is how you file and edit tracker issues. With plan mode off it needs the user's go-ahead, quoted in go_ahead.", {
+      issue: z.string().optional().describe('The key of the issue to change, for example "PROJ-83" or "#41". Left out, a new issue is filed'),
+      title: z.string().optional().describe('The title. A new issue needs one'),
+      description: z.string().optional().describe('The description in markdown. On an existing issue it replaces the old one'),
+      go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved filing or changing it, quoted from their latest message, for example \"file it\". Kernel refuses when they aren't in it. Not needed after an approved plan")
+    }, async ({ issue, title, description, go_ahead }) => {
+      const refuse = (why: string) => ({ ...text(`Not filed: ${why}`), isError: true })
+      if (!d.tracker) return refuse('filing issues is not available here.')
+      const key = issue?.trim()
+      if (!key && !title?.trim()) return refuse('a new issue needs a title.')
+      if (key && title === undefined && description === undefined) return refuse(`pass the title or description to change on ${key}.`)
+      // The same go-ahead as a hand-off, since filing an issue is work the user asked for (KERNEL-678).
+      if (goAheadOf(go_ahead) === false) return { ...text(NO_FILE_GO_AHEAD), isError: true }
+      try {
+        const tracker = await d.tracker()
+        const change = { ...(title !== undefined ? { title: title.trim() } : {}), ...(description !== undefined ? { description } : {}) }
+        const r = key ? await tracker.edit(key, change) : await tracker.create({ title: title!.trim(), description })
+        return text(`${key ? 'Changed' : 'Filed'} ${r.id}${r.title ? `, "${r.title}"` : ''}${r.url ? `: ${r.url}` : ''}.`)
+      } catch (e) {
+        return refuse(firstLine(e instanceof Error ? e.message : String(e)))
       }
     }),
     tool('say', 'Post one short status line. It shows on your card in the sidebar.', { text: z.string().max(140) }, async ({ text: t }) => {

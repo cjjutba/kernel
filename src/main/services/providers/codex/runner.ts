@@ -353,7 +353,8 @@ export class CodexRunner implements Runner {
    */
   private async mcpConfig(cwd: string): Promise<Record<string, JsonValue> | undefined> {
     const agent = this.host.agent
-    const policy = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: this.o.aliases, allow: this.o.access?.allow })
+    // A Lead's tracker issue writes go through file_issue, so Codex turns them off on the Linear and GitHub servers (feat-lead-files-tracker-issues-only-with).
+    const policy = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: this.o.aliases, allow: this.o.access?.allow, lead: agent?.lead ? leadModeOf(this.host.workspace) : undefined })
     const unlisted = !!this.o.bypass && (this.o.access?.unlisted ?? 'ask') === 'ask'
     const off = this.o.disabled ?? []
     if (!policy && !off.length) return undefined

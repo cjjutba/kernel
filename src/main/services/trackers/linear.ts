@@ -1,4 +1,4 @@
-import type { ChatPart, IssueSummary, LinearComment, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, LinearStateType, Tracker } from '@shared/types'
+import type { ChatPart, IssueDraft, IssueSummary, LinearComment, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, LinearStateType, Tracker } from '@shared/types'
 
 // Linear issues: the new workspace modal's search, the Issues screen, Plan with Kernel and the move to In Progress (D-140).
 // The token comes from Settings > Integrations (KERNEL-26), else LINEAR_API_KEY in the environment.
@@ -204,6 +204,41 @@ export async function moveToStarted(token: string | undefined, id: string, fetch
   return target.name
 }
 
+/** Filing an issue in a Linear project that names no team, which file_issue passes on. */
+export const NO_LINEAR_TEAM = "This project names no Linear team to file in. The user can set [linear] team in the project's .kernel/settings.toml."
+
+const TEAM = `query Team($key: String!) { teams(filter: { key: { eq: $key } }) { nodes { id } } }`
+
+const WRITTEN = 'success issue { identifier title url }'
+const CREATE = `mutation Create($input: IssueCreateInput!) { issueCreate(input: $input) { ${WRITTEN} } }`
+const UPDATE = `mutation Update($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { ${WRITTEN} } }`
+
+type Written = { success: boolean; issue: { identifier: string; title: string; url?: string } | null }
+
+const writtenIssue = (w: Written, verb: string): IssueSummary => {
+  if (!w.success || !w.issue) throw new Error(`Linear did not ${verb} the issue.`)
+  return { id: w.issue.identifier, title: w.issue.title, url: w.issue.url, source: 'linear' }
+}
+
+/** A new issue in the team with key `team` ("KERNEL"). Linear takes the team by its id, so the key is looked up first. */
+export async function createIssue(token: string | undefined, team: string | undefined, draft: IssueDraft, fetchImpl: typeof fetch = fetch): Promise<IssueSummary> {
+  if (!team) throw new Error(NO_LINEAR_TEAM)
+  const { teams } = await linearRequest<{ teams: { nodes: { id: string }[] } }>(token, TEAM, { key: team }, fetchImpl)
+  const teamId = teams.nodes[0]?.id
+  if (!teamId) throw new Error(`Linear has no team ${team}, or this token can't see it.`)
+  const input = { teamId, title: draft.title, ...(draft.description !== undefined ? { description: draft.description } : {}) }
+  const { issueCreate } = await linearRequest<{ issueCreate: Written }>(token, CREATE, { input }, fetchImpl)
+  return writtenIssue(issueCreate, 'file')
+}
+
+/** Changes the title or description of an issue, by identifier ("KERNEL-83"), which `issueUpdate` takes as well as the uuid. */
+export async function updateIssue(token: string | undefined, id: string, change: Partial<IssueDraft>, fetchImpl: typeof fetch = fetch): Promise<IssueSummary> {
+  const input = { ...(change.title !== undefined ? { title: change.title } : {}), ...(change.description !== undefined ? { description: change.description } : {}) }
+  if (!Object.keys(input).length) throw new Error('Nothing to change: pass a title or a description.')
+  const { issueUpdate } = await linearRequest<{ issueUpdate: Written }>(token, UPDATE, { id, input }, fetchImpl)
+  return writtenIssue(issueUpdate, 'change')
+}
+
 /** Plan with Kernel's first message: the issue chip, its description, and how to hand it off. */
 export function planParts(issue: LinearIssueDetail): ChatPart[] {
   const description = issue.description.trim() || 'The issue has no description.'
@@ -221,7 +256,10 @@ export const LINEAR_SIGNED_OUT = "Kernel isn't connected to Linear. The user can
  * applies at once. `start` without a token resolves to nothing: Linear isn't connected, so there is nothing to move (D-140).
  * `issue` says plainly when Kernel isn't connected or Linear has no such issue, since get_issue hands its error to an agent.
  */
-/** `team` is the project's Linear team key, which Up next lists from. Search and issue reads reach every team the token sees. */
+/**
+ * `team` is the project's Linear team key, which Up next lists from and `create` files in. Search, issue reads and edits reach
+ * every team the token sees.
+ */
 export function linearTracker(token: () => Promise<string | undefined>, fetchImpl: typeof fetch = fetch, team?: string): Tracker {
   return {
     kind: 'linear',
@@ -243,6 +281,21 @@ export function linearTracker(token: () => Promise<string | undefined>, fetchImp
     start: async (id) => {
       const key = await token()
       return key ? moveToStarted(key, id, fetchImpl) : undefined
+    },
+    create: async (draft) => {
+      const key = await token()
+      if (!key) throw new Error(LINEAR_SIGNED_OUT)
+      return createIssue(key, team, draft, fetchImpl)
+    },
+    edit: async (id, change) => {
+      const key = await token()
+      if (!key) throw new Error(LINEAR_SIGNED_OUT)
+      try {
+        return await updateIssue(key, id, change, fetchImpl)
+      } catch (e) {
+        if (/not found|could not find/i.test((e as Error).message)) throw new Error(`Linear has no issue ${id}, or this token can't see it.`)
+        throw e
+      }
     }
   }
 }

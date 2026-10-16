@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bashVerdict, matchesProjectRule, matchesRule, parse, pushesTo, pushMightReach, unwrap, usesNetwork } from '../src/main/services/bashGuard'
+import { bashVerdict, matchesProjectRule, matchesRule, parse, pushesTo, pushMightReach, unwrap, usesNetwork, writesGhIssue } from '../src/main/services/bashGuard'
 
 // KERNEL-230: the guard reads a command the way a shell does, so quoting, wrappers, aliases, flag order and redirections
 // don't get past Never allow, Always ask or a project rule.
@@ -580,5 +580,26 @@ describe('network access', () => {
     const off = { neverAllow: [], alwaysAsk: [], network: false }
     expect(bashVerdict('bash -c "curl https://x.dev"', off, [])).toBe('deny')
     expect(bashVerdict('bash -c "curl https://x.dev"', { ...off, network: true }, [])).toBeUndefined()
+  })
+})
+
+describe('gh issue writes (feat-lead-files-tracker-issues-only-with)', () => {
+  it('finds gh issue create and edit, with their aliases, wrappers, global options and in a chain', () => {
+    for (const c of [
+      'gh issue create --title Crash --body x',
+      'gh issue new -t Crash',
+      'gh issue edit 41 --title y',
+      'gh issue update 41 --body y',
+      'gh -R acme/app issue create -t x',
+      'cd web && gh issue create -t x',
+      'sudo gh issue edit 41 -b y',
+      'bash -c "gh issue create -t x"',
+      '/opt/homebrew/bin/gh issue create -t x',
+      'gh $CMD create -t x'
+    ]) expect(writesGhIssue(c), c).toBe(true)
+  })
+
+  it('leaves reads and other gh commands alone', () => {
+    for (const c of ['gh issue view 41', 'gh issue list --state open', 'gh issue comment 41 -b x', 'gh pr create', 'gh pr edit 3 --title x', 'echo gh issue create', 'gh issue view $N']) expect(writesGhIssue(c), c).toBe(false)
   })
 })

@@ -808,6 +808,24 @@ export function usesNetwork(command: string): boolean {
   })
 }
 
+/** Options of `gh` itself that take the next word, which can come before its command: `gh -R owner/repo issue create`. */
+const GH_ARGS = new Set(['-R', '--repo', '--hostname'])
+
+/**
+ * Whether a command files or edits a GitHub issue with gh: `gh issue create`, `gh issue edit`, or their aliases `new` and
+ * `update`, through any wrapper `unwrap` reads. A Lead files them with file_issue instead (feat-lead-files-tracker-issues-only-with). A `gh`
+ * whose words are only known at run time counts too, since it may be one.
+ */
+export function writesGhIssue(command: string): boolean {
+  return analyze(command.trim()).effective.some((s) => {
+    if (base(s.words[0] ?? '') !== 'gh') return false
+    let j = 1
+    while (j < s.words.length && s.words[j].startsWith('-')) j += GH_ARGS.has(s.words[j]) ? 2 : 1
+    if (s.dynamic.slice(j, j + 2).some(Boolean)) return true
+    return s.words[j] === 'issue' && ['create', 'new', 'edit', 'update'].includes(s.words[j + 1] ?? '')
+  })
+}
+
 /** The simple commands only: no operators, redirections, process substitution, heredoc, expansion or unknown words. */
 const isPlain = (s: Simple) => !s.unknown && !s.redirects.length && !s.procSub && !s.heredoc && !s.dynamic.some(Boolean)
 

@@ -1,4 +1,4 @@
-import type { Tracker, TrackerIssue } from '@shared/types'
+import type { IssueSummary, Tracker, TrackerIssue } from '@shared/types'
 import { exec, type ExecResult } from '../exec'
 import { ghErrorKind, GitHubError, ghUser, parseIssueList } from '../github'
 
@@ -10,13 +10,16 @@ export function githubKey(key: string): string | undefined {
   return n ? `#${n}` : undefined
 }
 
-/** What gh said when it failed, in a sentence the From popover can show, with the kind of failure it was (KERNEL-861). */
-export function ghFailed(r: ExecResult): GitHubError {
+/**
+ * What gh said when it failed, in a sentence the From popover can show, with the kind of failure it was (KERNEL-861). `doing`
+ * is what Kernel asked gh for, "file the GitHub issue" for a write.
+ */
+export function ghFailed(r: ExecResult, doing = 'read GitHub issues'): GitHubError {
   const kind = ghErrorKind(r)
-  if (r.code === 127) return new GitHubError('Install the GitHub CLI (gh) to read GitHub issues.', kind)
+  if (r.code === 127) return new GitHubError(`Install the GitHub CLI (gh) to ${doing}.`, kind)
   if (r.timedOut) return new GitHubError('GitHub took too long to answer. Try again.', kind)
   const said = r.stderr.trim().split('\n')[0] || r.stdout.trim().split('\n')[0]
-  return new GitHubError(said ? `Could not read GitHub issues: ${said}` : 'Could not read GitHub issues.', kind)
+  return new GitHubError(said ? `Could not ${doing}: ${said}` : `Could not ${doing}.`, kind)
 }
 
 interface IssueView {
@@ -50,17 +53,25 @@ export function parseIssueView(json: string): TrackerIssue {
 /** Reading an issue with gh signed out, which an agent's get_issue passes on (KERNEL-473). */
 export const GH_SIGNED_OUT = "The GitHub CLI isn't signed in. The user can run gh auth login in a terminal."
 
-/** Why `gh issue view` failed: signed out and no such issue in plain words, anything else as ghFailed says it. */
-function viewFailed(r: ExecResult, key: string): Error {
+/** Why `gh issue view` or a write failed: signed out and no such issue in plain words, anything else as ghFailed says it. */
+function viewFailed(r: ExecResult, key: string | undefined, doing?: string): Error {
   const said = `${r.stderr}\n${r.stdout}`
   if (!r.timedOut && /gh auth login/.test(said)) return new GitHubError(GH_SIGNED_OUT, 'signed-out')
-  if (!r.timedOut && /could not resolve to an issue/i.test(said)) return new GitHubError(`GitHub has no issue ${key} in this repo.`, 'not-found')
-  return ghFailed(r)
+  if (key && !r.timedOut && /could not resolve to an issue/i.test(said)) return new GitHubError(`GitHub has no issue ${key} in this repo.`, 'not-found')
+  return ghFailed(r, doing)
+}
+
+/** The issue whose URL `gh issue create` or `gh issue edit` printed, on its last line. */
+function writtenIssue(stdout: string, title: string): IssueSummary {
+  const url = stdout.trim().split('\n').reverse().map((l) => l.trim()).find((l) => /\/issues\/\d+$/.test(l))
+  const n = url && /\/issues\/(\d+)$/.exec(url)?.[1]
+  if (!n) throw new Error('Could not read the issue gh filed.')
+  return { id: `#${n}`, title, url, source: 'github' }
 }
 
 /**
  * The GitHub issues of the repo at `cwd`, as gh resolves it there. GitHub records no blockers Kernel reads, and an issue has
- * no started state, so `start` moves nothing (KERNEL-462).
+ * no started state, so `start` moves nothing (KERNEL-462). `create` and `edit` write through gh as well, for file_issue.
  */
 export function githubTracker(cwd: string, cmd: typeof exec = exec): Tracker {
   return {
@@ -83,6 +94,21 @@ export function githubTracker(cwd: string, cmd: typeof exec = exec): Tracker {
       const login = (await ghUser(cmd).catch(() => null))?.toLowerCase()
       return login ? { ...issue, assignees: issue.assignees.map((a) => ({ ...a, me: a.name.toLowerCase() === login })) } : issue
     },
-    start: async () => undefined
+    start: async () => undefined,
+    create: async ({ title, description }) => {
+      const r = await cmd('gh', ['issue', 'create', '--title', title, '--body', description ?? ''], { cwd, timeoutMs: 30000 })
+      if (r.code !== 0 || r.timedOut) throw viewFailed(r, undefined, 'file the GitHub issue')
+      return writtenIssue(r.stdout, title)
+    },
+    edit: async (id, change) => {
+      const key = githubKey(id)
+      if (!key) throw new Error(`${id} is not a GitHub issue. GitHub issues go by number, like #41.`)
+      const args = [...(change.title !== undefined ? ['--title', change.title] : []), ...(change.description !== undefined ? ['--body', change.description] : [])]
+      if (!args.length) throw new Error('Nothing to change: pass a title or a description.')
+      const r = await cmd('gh', ['issue', 'edit', key.slice(1), ...args], { cwd, timeoutMs: 30000 })
+      if (r.code !== 0 || r.timedOut) throw viewFailed(r, key, 'edit the GitHub issue')
+      // gh prints only the URL, so an edit that leaves the title gives none.
+      return writtenIssue(r.stdout, change.title ?? '')
+    }
   }
 }
