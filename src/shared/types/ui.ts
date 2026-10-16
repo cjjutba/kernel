@@ -6,10 +6,10 @@ import type { AppUpdate } from './system'
 import type { LeadMode, WorkspaceMode, WorkspaceSource } from './workspaces'
 
 /**
- * `loading` is LoadingApp.png: the app shell while the main process boots or reconnects. `permissions` comes after `checks`
- * and picks the permission mode. Nothing opens it until its screen is built (KERNEL-432).
+ * `loading` is LoadingApp.png: the app shell while the main process boots or reconnects. `splash` is the wordmark a fresh install
+ * sees before New chat (KERNEL-942). The checks run behind it and show inside the app, so there is no checks or permissions step.
  */
-export type OnboardingStep = 'welcome' | 'checks' | 'permissions' | 'project' | 'loading'
+export type OnboardingStep = 'splash' | 'project' | 'loading'
 
 /** Where the renderer is. Lives here so fixtures can open any screen. One entry per screen family. */
 export type DevUiPage = 'components' | 'display' | 'states' | 'overlays' | 'dialogs'
@@ -26,8 +26,11 @@ export type Route =
    */
   | { name: 'leadNew'; projectId: string; source?: WorkspaceSource; picks?: NewChatPicks }
   /** Linear issues. `issueId` is the identifier of the open issue. */
-  /** `projectId` is the project whose tracker the screen lists. Without it the screen opens on the project used last (KERNEL-471). */
-  | { name: 'issues'; issueId?: string; projectId?: string }
+  /**
+   * `projectId` is the project whose tracker the screen lists. Without it the screen opens on the project used last (KERNEL-471).
+   * `tracker` opens that tracker's list. Without it an `issueId` starting with `#` opens GitHub, else the project's saved choice (KERNEL-938).
+   */
+  | { name: 'issues'; issueId?: string; projectId?: string; tracker?: 'linear' | 'github' }
   /** Pull requests across every project. `filter` is the list it opens on, Open when unset. */
   | { name: 'prs'; filter?: 'open' | 'merged' }
   /** `section` is for `page: 'project'`, and none means General. */

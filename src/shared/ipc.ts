@@ -2,7 +2,7 @@ import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubAuth, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewProjectRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
-  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ChatArchivePreview, MoveChoice, MoveNotice, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, GitHubOwner, RepoSummary, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ChatArchivePreview, MoveChoice, MoveNotice, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -65,6 +65,12 @@ export interface KernelApi {
   'projects.inspectFolder': { req: { path: string }; res: FolderInfo }
   'projects.recentFolders': { req: void; res: FolderInfo[] }
   'github.repos': { req: { query?: string }; res: RepoSummary[] }
+  /** A GitHub user's or org's avatar as a data URL, or null when it can't be had. The window can't load remote images (KERNEL-945). */
+  'github.avatar': { req: { owner: string }; res: string | null }
+  /** Who a new repo can belong to: the signed-in user first, then their orgs (KERNEL-944). */
+  'github.owners': { req: void; res: GitHubOwner[] }
+  /** Whether `owner/name` is free for a new repo. `reason` says why not: taken, or a name GitHub won't take. */
+  'github.repoAvailable': { req: { owner: string; name: string }; res: { available: boolean; reason?: string } }
 
   // agents (KERNEL-19, 22)
   'agents.list': { req: { projectId: string; retired?: boolean }; res: AgentDef[] }
@@ -171,7 +177,7 @@ export interface KernelApi {
    * be on it (ConfirmIssueTaken.png, KERNEL-479). A check that can't answer adds a note instead of holding the start up.
    */
   'issues.taken': { req: { projectId: string; issue: string }; res: IssueTaken }
-  /** The project's issue tracker, which the Issues screen, the From popover and Link issue read to know whose issues to list (KERNEL-471). */
+  /** The project's issue tracker, which the Issues screen, the From popover and Link issue read to know whose issues to list (KERNEL-471), and the trackers the Issues screen can switch between (KERNEL-933). */
   'issues.tracker': { req: { projectId: string }; res: ProjectTracker }
   /** The project's open GitHub issues with the fields the Issues screen shows, up to 100, through gh. */
   'github.issueList': { req: { projectId: string; query?: string }; res: GithubIssue[] }
@@ -507,15 +513,17 @@ export interface KernelApi {
   /**
    * Every signed-in subscription account of both providers with each MCP server's state on it (KERNEL-626): every server
    * any account of the provider has, on each of its accounts, in one of five states (KERNEL-646). Kernel keeps
-   * what it last found: only an account it hasn't checked yet is checked, and the call waits for it. `refresh` checks again,
+   * what it last found, saved across restarts, and answers at once with it (KERNEL-936). An account it hasn't checked since
+   * launch is checked in the background, `checking` while it runs, and pushed as `mcp.accounts` when its check ends. `refresh` checks again,
    * every account or only `provider`'s, or only `accountId`. A Claude check starts Claude Code on the account and stops it,
    * as `accounts.checkMcp` does. A Codex check lists the servers in the account's home. Changes arrive as `mcp.accounts`.
    */
   'mcp.accounts': { req: { refresh?: boolean; provider?: Provider; accountId?: string } | void; res: McpAccount[] }
   /**
-   * Re-check on return (KERNEL-660): the renderer calls it when Kernel's window gets focus. Checks again only the accounts
-   * with something pending (`needsYou`, or a check that failed), at most once every 10 seconds, and resolves with
-   * `mcp.accounts` as it reads then. Changes arrive as `mcp.accounts` too. Kernel also re-checks an account after each sign-in.
+   * Re-check on return (KERNEL-660): the renderer calls it when Kernel's window gets focus. Checks again the accounts with
+   * something pending (`needsYou`, or a check that failed), and every account last checked 5 minutes ago or more (KERNEL-936),
+   * at most once every 10 seconds. Resolves at once with `mcp.accounts` as it reads then, and each account's result arrives as
+   * an `mcp.accounts` push. Kernel also re-checks an account after each sign-in.
    */
   'mcp.recheck': { req: void; res: McpAccount[] }
   'integrations.list': { req: void; res: Integration[] }

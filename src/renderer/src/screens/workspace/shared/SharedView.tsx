@@ -27,7 +27,7 @@ export function SharedView({ workspaceId, sharedId }: { workspaceId: string; sha
   const file = useStore((s) => s.shared[sharedId])
   const picked = useStore((s) => s.ui.tabs[workspaceId]?.sharedVersion?.[sharedId])
   if (!file) {
-    return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>This file isn't available</span><span>Kernel has no copy of it.</span></div>
+    return <div className="panel-empty"><span className="ink2 t-medium">This file isn't available</span><span>Kernel has no copy of it.</span></div>
   }
   return <Loaded key={file.id} workspaceId={workspaceId} file={file} version={versionOf(file, picked)} />
 }

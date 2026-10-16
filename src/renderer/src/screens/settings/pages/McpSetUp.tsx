@@ -3,7 +3,7 @@ import type { McpAccountServer, McpConnect, Provider } from '@shared/types'
 import { mcpNeedsYou } from '@shared/mcpCounts'
 import { call, cleanError, onPush } from '../../../api'
 import { actions, getState, mcpRunKey, useStore } from '../../../store'
-import { Button, Modal, useBusy } from '../../../ui'
+import { Button, Checkbox, Modal, useBusy } from '../../../ui'
 import { joinNames, serverName, useMcpAccounts, useSignInAll } from './mcpAccounts'
 import { MCP_GROUPS, mcpStatus } from './mcpGroups'
 
@@ -69,10 +69,9 @@ export function McpSetUp({ provider, accountId }: { provider: Provider; accountI
             <fieldset key={g.kind} className="mcp-su-group">
               <legend className="set-group">{g.title}</legend>
               {list.map((s) => (
-                <label key={s.name} className="mcp-su-item">
-                  <input type="checkbox" checked={!skipped.includes(s.name)} onChange={(e) => setSkipped(e.target.checked ? skipped.filter((n) => n !== s.name) : [...skipped, s.name])} />
+                <Checkbox key={s.name} align="top" className="mcp-su-item" checked={!skipped.includes(s.name)} onChange={(on) => setSkipped(on ? skipped.filter((n) => n !== s.name) : [...skipped, s.name])}>
                   <span><span className="set-label">{serverName(s.name)}</span><span className="set-desc">{mcpStatus(s)}</span></span>
-                </label>
+                </Checkbox>
               ))}
             </fieldset>
           )

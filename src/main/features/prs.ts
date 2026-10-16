@@ -633,7 +633,6 @@ export class Prs extends Feature {
       await this.pullUpdate(this.mustWs(id), to, base, pr.number).catch(() => undefined)
     }
     this.leadUpdates.branchUpdated(ws, base)
-    this.note(id, `Brought ${object} up to date with ${base}. Kernel merges it once its checks pass.`)
     bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: `brought it up to date with ${base}, waiting for checks`, object })
     return { updated: to ?? pr.head }
   }

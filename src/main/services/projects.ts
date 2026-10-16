@@ -1,10 +1,11 @@
 import { copyFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import type { FolderInfo, RepoSummary } from '@shared/types'
+import type { FolderInfo, GitHubOwner, RepoSummary } from '@shared/types'
 import { exec, git, gitSlow, run } from './exec'
 import { ghError } from './github'
 import { removeTree } from './removeTree'
+import { githubRepoOf } from './worktrees'
 
 // Everything a new project needs from the outside world: reading folders, GitHub through `gh`, the starter team and settings.toml.
 
@@ -29,9 +30,12 @@ export async function inspectFolder(path: string, home = homedir()): Promise<Fol
   if (!(await exists(join(abs, '.git')))) return { path: abs, git: false }
   const branch = await exec('git', ['-C', abs, 'rev-parse', '--abbrev-ref', 'HEAD'])
   const status = await exec('git', ['-C', abs, 'status', '--porcelain'])
+  const origin = await exec('git', ['-C', abs, 'remote', 'get-url', 'origin'])
+  const remote = origin.code === 0 ? githubRepoOf(origin.stdout) : undefined
   return {
     path: abs,
     git: true,
+    ...(remote ? { remote } : {}),
     // A repo with no commits has no HEAD yet. Say so with the name git will use for the first branch.
     branch: branch.code === 0 ? branch.stdout.trim() : (await exec('git', ['-C', abs, 'symbolic-ref', '--short', 'HEAD'])).stdout.trim() || 'main',
     dirty: status.code === 0 ? status.stdout.split('\n').filter(Boolean).length : 0
@@ -60,13 +64,55 @@ export async function recentFolders(projectPaths: string[], home = homedir(), li
 
 /** The signed-in user's repos through `gh`, newest push first. `query` filters by name. */
 export async function listRepos(query?: string): Promise<RepoSummary[]> {
-  const r = await exec('gh', ['repo', 'list', '--limit', '100', '--json', 'nameWithOwner,name,isPrivate,pushedAt'], { timeoutMs: 30000 })
+  const r = await exec('gh', ['repo', 'list', '--limit', '100', '--json', 'nameWithOwner,name,isPrivate,pushedAt,description'], { timeoutMs: 30000 })
   if (r.code !== 0 || r.timedOut) throw ghError(r, 'Could not list your repositories')
   const q = query?.trim().toLowerCase()
-  return (JSON.parse(r.stdout) as { nameWithOwner: string; name: string; isPrivate: boolean; pushedAt: string }[])
-    .map((x) => ({ fullName: x.nameWithOwner, name: x.name, private: x.isPrivate, updatedAt: Date.parse(x.pushedAt) || 0 }))
+  return (JSON.parse(r.stdout) as { nameWithOwner: string; name: string; isPrivate: boolean; pushedAt: string; description?: string | null }[])
+    .map((x) => ({ fullName: x.nameWithOwner, name: x.name, private: x.isPrivate, updatedAt: Date.parse(x.pushedAt) || 0, ...(x.description ? { description: x.description } : {}) }))
     .filter((x) => !q || x.fullName.toLowerCase().includes(q))
     .sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+/** Who a new repo can belong to (KERNEL-944): the signed-in user first, then the orgs they're in. An org list that fails leaves only the user. */
+export async function listOwners(): Promise<GitHubOwner[]> {
+  const user = await exec('gh', ['api', 'user', '--jq', '{login: .login, avatar: .avatar_url}'], { timeoutMs: 20000 })
+  if (user.code !== 0 || user.timedOut) throw ghError(user, 'Could not read your GitHub account')
+  const me = JSON.parse(user.stdout) as { login: string; avatar?: string }
+  const orgs = await exec('gh', ['api', 'user/orgs', '--jq', '[.[] | {login: .login, avatar: .avatar_url}]'], { timeoutMs: 20000 })
+  const theirs = orgs.code === 0 ? (JSON.parse(orgs.stdout || '[]') as { login: string; avatar?: string }[]) : []
+  return [{ login: me.login, avatarUrl: me.avatar, org: false }, ...theirs.map((o) => ({ login: o.login, avatarUrl: o.avatar, org: true }))]
+}
+
+/** The characters GitHub keeps in a repo name. Anything else, and a name of only dots, it refuses or rewrites. */
+const REPO_NAME = /^(?!\.+$)[A-Za-z0-9._-]{1,100}$/
+
+/** Whether `owner/name` is free for a new repo (KERNEL-944). A name GitHub won't take says why, and so does one that exists. */
+export async function repoAvailable(owner: string, name: string): Promise<{ available: boolean; reason?: string }> {
+  if (!REPO_NAME.test(name)) return { available: false, reason: 'Use letters, numbers, dots, dashes and underscores only.' }
+  const r = await exec('gh', ['repo', 'view', `${owner}/${name}`, '--json', 'name'], { timeoutMs: 20000 })
+  if (r.code === 0) return { available: false, reason: `${owner}/${name} already exists.` }
+  if (/could not resolve to a repository|not found/i.test(`${r.stderr}\n${r.stdout}`)) return { available: true }
+  throw ghError(r, 'Could not check the repository name')
+}
+
+/**
+ * Creates the private repo `owner/name` on GitHub and makes it the folder's `origin` (KERNEL-944). With `push`, the current
+ * branch goes up too. A folder with no commit yet can't push, so it gets the remote and nothing else.
+ */
+export async function createGitHubRepo(path: string, owner: string, name: string, push: boolean) {
+  await run('gh', ['repo', 'create', `${owner}/${name}`, '--private', '--source', path, '--remote', 'origin', ...(push ? ['--push'] : [])], { timeoutMs: 120_000 })
+}
+
+/**
+ * From scratch (KERNEL-944): a new folder with a README and one commit on main, nothing else. The folder is Kernel's own and
+ * was empty, so committing it is safe. Works without a git identity.
+ */
+export async function makeEmptyRepo(dest: string, name: string) {
+  await mkdir(dest, { recursive: true })
+  await writeFile(join(dest, 'README.md'), `# ${name}\n`)
+  await git(dest, 'init', '-q', '-b', 'main')
+  await git(dest, 'add', 'README.md')
+  await git(dest, '-c', 'user.name=Kernel', '-c', 'user.email=kernel@localhost', 'commit', '-q', '-m', 'Initial commit')
 }
 
 /** The folder must not exist yet, or be empty, so a clone never lands on top of someone's work. */

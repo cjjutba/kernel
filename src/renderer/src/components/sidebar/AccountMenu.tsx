@@ -3,17 +3,18 @@ import { useRef } from 'react'
 import { chatsLabel, chatsPerAccount } from '../../accountChats'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
+import { openNewChat } from '../../lead'
 import { Icon, Menu, MENU_SEPARATOR, Spinner, useBusy, type MenuEntry } from '../../ui'
 import { PROVIDERS, type AccountProfile, type Provider } from '@shared/types'
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || 'K'
 
-/** Signing out leaves Claude Code without a login, so the checks screen is where you sign back in (as the same or another account). */
+/** Signing out leaves Claude Code without a login. New chat shows the failing sign-in check with its fix (KERNEL-942). */
 async function leave(title: string) {
   try {
     actions.account.set(await call('account.signOut', undefined))
     actions.system.setPreflight(await call('preflight.run', undefined))
-    go({ name: 'onboarding', step: 'checks' })
+    openNewChat(undefined)
   } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }) }
 }
 

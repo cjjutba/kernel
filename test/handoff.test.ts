@@ -19,7 +19,7 @@ import { waitRefusal } from '../src/main/services/waits'
 import { toolSpecs } from '../src/main/services/providers/codex/tools'
 import { toCodexInput } from '../src/main/services/providers/codex/runner'
 import { toUserMessage } from '../src/main/services/providers/claude'
-import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_GO_AHEAD, NO_PLAN, PLAN_MODE_OFF, quotesUser, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_GO_AHEAD, NO_PLAN, PLAN_MODE_OFF, quotesUser, signInNote, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -483,6 +483,33 @@ describe('waiting for another PR (KERNEL-259)', () => {
   })
 })
 
+describe('a hand-off says when a tool needs a sign-in on the agent\'s account (KERNEL-939)', () => {
+  it('adds one line to create_workspace and message_agent, and still hands off', async () => {
+    const asked: string[] = []
+    const noor = { id: 'noor', name: 'Noor', role: 'Engine', lead: false, tools: ['Read', 'Edit', 'Bash', 'mcp__porkbun'] } as AgentDef
+    const ws = { id: 'ws-1', branch: 'noor/dns', agentId: 'noor' } as Workspace
+    const deps: KernelToolDeps = {
+      projectId: 'project', lead: undefined, agents: async () => [noor], workspaces: () => [ws],
+      createWorkspace: async () => ws, messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
+      archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false,
+      signIns: async (agent) => { asked.push(agent.id); return { account: 'Main account', servers: [{ name: 'porkbun', state: 'needs-sign-in' }] } }
+    }
+    const tools = Object.fromEntries(kernelTools(deps).map((t) => [t.name, t]))
+    const created = await tools.create_workspace.handler({ agent: 'noor', title: 'DNS records', brief: 'Goal' } as never, {})
+    expect(created.isError).toBeFalsy()
+    expect((created.content[0] as { text: string }).text).toBe('Created ws-1 on noor/dns for noor. Porkbun needs a sign-in on Main account. Noor starts without it.')
+    const sent = await tools.message_agent.handler({ workspace_id: 'ws-1', text: 'One more record' } as never, {})
+    expect((sent.content[0] as { text: string }).text).toBe('Sent. Porkbun needs a sign-in on Main account. Noor carries on without it.')
+    expect(asked).toEqual(['noor', 'noor'])
+  })
+
+  it('names every server, the ones still being checked apart', () => {
+    expect(signInNote('Noor', 'Side', [{ name: 'porkbun', state: 'needs-sign-in' }, { name: 'claude.ai Gmail', state: 'needs-sign-in' }, { name: 'neon', state: 'checking' }], true))
+      .toBe('Porkbun and claude.ai Gmail need a sign-in on Side. Kernel is still checking Neon on Side. Noor starts without them.')
+    expect(signInNote('Noor', 'Side', [{ name: 'neon', state: 'checking' }], false)).toBe('Kernel is still checking Neon on Side. Noor carries on without it until the check passes.')
+  })
+})
+
 describe('create_workspace with issue (KERNEL-163)', () => {
   it('passes the issue key through, and the rule tells the Lead to', async () => {
     const asked: Parameters<KernelToolDeps['createWorkspace']>[0][] = []
@@ -510,7 +537,8 @@ describe('get_issue and the issue in the brief (KERNEL-473)', () => {
       kind: o.kind ?? 'linear', search: async () => [], start: async () => undefined,
       issue: async (id) => { asked.push(id); if (o.fails) throw new Error(o.fails); return o.has ?? issue({ id }) }
     }
-    const [t] = issueTools({ issueKey: () => o.key, tracker: async () => tracker })
+    // The project reads the key with this tracker, or with none when it is `none` (KERNEL-933).
+    const [t] = issueTools({ issueKey: () => o.key, tracker: async () => (tracker.kind === 'none' ? undefined : tracker) })
     const run = async (args: { key?: string } = {}) => {
       const r = await t.handler(args as never, {})
       return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
@@ -546,13 +574,12 @@ describe('get_issue and the issue in the brief (KERNEL-473)', () => {
     expect(out).toContain(`${'y'.repeat(ISSUE_CAPS.comment)}\n[50 more characters not shown]`)
   })
 
-  it('says plainly when there is no issue, no tracker, a GitHub key in another tracker, or the tracker fails', async () => {
+  it('says plainly when there is no issue, no tracker that reads it, or the tracker fails', async () => {
     expect(await getIssue().run()).toEqual({ isError: true, text: "Not read: this workspace isn't linked to an issue. Pass key to read one." })
     const none = getIssue({ kind: 'none', key: 'PROJ-7' })
-    expect(await none.run()).toEqual({ isError: true, text: "Not read: this project has no issue tracker, so Kernel can't read PROJ-7." })
+    expect(await none.run()).toEqual({ isError: true, text: "Not read: this project has no tracker that reads PROJ-7. GitHub issues need the project's GitHub remote, and Linear issues a Linear token in Settings, Integrations." })
     expect(none.asked).toEqual([])
-    expect(await getIssue({ key: '#41' }).run()).toEqual({ isError: true, text: "Not read: #41 is a GitHub issue, and this project's tracker is Linear." })
-    expect((await getIssue({ kind: 'github', key: '#41' }).run()).isError).toBe(false)
+    expect((await getIssue({ kind: 'github', key: '#41' }).run()).text).toMatch(/^#41 as GitHub has it\./)
     expect(await getIssue({ key: 'PROJ-7', fails: LINEAR_SIGNED_OUT }).run()).toEqual({ isError: true, text: `Not read: ${LINEAR_SIGNED_OUT}` })
   })
 

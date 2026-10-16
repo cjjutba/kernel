@@ -164,8 +164,10 @@ export interface McpSignInStep {
  * - `ignored`: the user chose to ignore it on that account (`accounts.mcpIgnore`), whatever its state would be.
  * - `off`: off on purpose, with the reason in `note`: switched off in Codex's `config.toml` ("Off in Codex config"), or a
  *   plugin's server Codex lists and never starts ("Not started by Codex"). It never needs the user (KERNEL-660).
+ * - `checking`: a sign-in just landed there, from Kernel or copied from another login, and Claude Code hasn't said yet
+ *   whether it works. The check that follows makes it `ready` or what Claude Code says instead (KERNEL-935).
  */
-export type McpAccountState = 'ready' | 'needs-sign-in' | 'failed' | 'not-set-up' | 'ignored' | 'off'
+export type McpAccountState = 'ready' | 'needs-sign-in' | 'failed' | 'not-set-up' | 'ignored' | 'off' | 'checking'
 
 /**
  * Where an MCP server comes from (KERNEL-646). `user`: one the user added, which Kernel shares with every account of the
@@ -204,8 +206,10 @@ export interface McpAccount {
   label: string
   /** The account's email, for "Sign in to claude.ai as cj@example.com first" before a connector's `connectUrl` (KERNEL-646). */
   email?: string
-  /** When Kernel last checked it. Undefined while the first check runs or after it failed. */
+  /** When Kernel last checked it, saved across restarts (KERNEL-936). Kept while a new check runs. Undefined before the first check ends or after one failed. */
   checkedAt?: number
+  /** A check of the account runs now (KERNEL-936). Its result arrives as an `mcp.accounts` push. Undefined when none runs. */
+  checking?: boolean
   /** Why the last check failed. The account then has no servers. */
   error?: string
   servers: McpAccountServer[]

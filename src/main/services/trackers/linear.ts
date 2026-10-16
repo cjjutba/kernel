@@ -47,25 +47,31 @@ export async function searchIssues(token: string | undefined, query = '', fetchI
   return (data.issues?.nodes ?? []).map((n) => ({ id: n.identifier, title: n.title, url: n.url, source: 'linear' as const }))
 }
 
-const NEXT = `query NextIssues($filter: IssueFilter) {
-  issues(first: 50, filter: $filter, orderBy: updatedAt) { nodes { identifier title url priority project { name } } }
+const NEXT_FIELDS = 'nodes { identifier title url priority project { name } }'
+const NEXT = `query NextIssues($todo: IssueFilter, $backlog: IssueFilter) {
+  todo: issues(first: 50, filter: $todo, orderBy: updatedAt) { ${NEXT_FIELDS} }
+  backlog: issues(first: 50, filter: $backlog, orderBy: updatedAt) { ${NEXT_FIELDS} }
 }`
 
 /** Linear's priority as an order: urgent first, then high, medium and low, and none last. */
 const urgency = (p: number) => (p > 0 ? p : 5)
 
+type NextNode = { identifier: string; title: string; url?: string; priority?: number; project?: { name: string } | null }
+
 /**
- * Up next in New chat: the project's team's Todo issues, the ones in an unstarted state, urgent first. Linear only orders by date, so
- * the 50 last updated are sorted here, and issues of one priority keep that order. A project with no team lists nothing, since the token's
- * other teams belong to other projects, and listing them showed one project another's issues.
+ * Up next in New chat: the project's team's Todo issues (unstarted states), then its Backlog issues, each group urgent first. Linear only
+ * orders by date, so the 50 last updated of each are sorted here, and issues of one priority keep that order. The two states are separate
+ * connections in one request, so a busy Backlog can't push Todo issues out of the page (KERNEL-955). A project with no team lists nothing,
+ * since the token's other teams belong to other projects, and listing them showed one project another's issues.
  */
 export async function nextIssues(token: string | undefined, team: string | undefined, fetchImpl: typeof fetch = fetch): Promise<IssueSummary[]> {
   if (!team) return []
-  const filter = { state: { type: { eq: 'unstarted' } }, team: { key: { eq: team } } }
-  const data = await linearRequest<{ issues?: { nodes?: { identifier: string; title: string; url?: string; priority?: number; project?: { name: string } | null }[] } }>(token, NEXT, { filter }, fetchImpl)
-  return (data.issues?.nodes ?? [])
+  const inState = (type: string) => ({ state: { type: { eq: type } }, team: { key: { eq: team } } })
+  const data = await linearRequest<{ todo?: { nodes?: NextNode[] }; backlog?: { nodes?: NextNode[] } }>(token, NEXT, { todo: inState('unstarted'), backlog: inState('backlog') }, fetchImpl)
+  const group = (nodes: NextNode[] | undefined) => (nodes ?? [])
     .map((n) => ({ id: n.identifier, title: n.title, url: n.url, source: 'linear' as const, priority: n.priority ?? 0, ...(n.project?.name ? { project: n.project.name } : {}) }))
     .sort((a, b) => urgency(a.priority) - urgency(b.priority))
+  return [...group(data.todo?.nodes), ...group(data.backlog?.nodes)]
 }
 
 const ISSUE_FIELDS = `

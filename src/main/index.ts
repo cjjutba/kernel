@@ -25,6 +25,7 @@ import { macKeychain } from './services/providers/claudeHome'
 import { claudeAgents } from './services/pluginAgents'
 import { isAppUrl } from './windowGuard'
 import { appearanceOf, readAppearance, WindowAppearance } from './features/appearance'
+import { started as kernelStarted, woke } from './features/wiring'
 import { clampLevel, handZoom, lightsFor, placeLights, settleZoom, zoomStepOf, zoomWindow } from './windowZoom'
 import { attachImageMenu } from './imageMenu'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
@@ -398,6 +399,7 @@ app.whenReady().then(async () => {
       claudeAgents,
       checkPins: true,
       checkMcpOnAdd: true,
+      checkMcp: true,
       // Variables are kept with the Keychain. Where it can't be used, Kernel saves none rather than plain text (KERNEL-247).
       cipher: safeStorage.isEncryptionAvailable()
         ? { encrypt: (text) => safeStorage.encryptString(text).toString('base64'), decrypt: (data) => safeStorage.decryptString(Buffer.from(data, 'base64')) }
@@ -439,9 +441,9 @@ app.whenReady().then(async () => {
     started = refreshPath().then(() => kernel.start())
     started.catch((err: unknown) => { quit.bootFailed(); void bootFailed(err, updater && { updater, quit }) })
     void started.then(() => updater?.start(), () => undefined)
-    // Timers run late by however long the Mac slept, so a usage limit that reset meanwhile is checked on wake, and the PRs
-    // are read again, as when the window comes back from another app (KERNEL-388).
-    powerMonitor.on('resume', () => void started.then(() => { kernel.prs.pollSoon(); return kernel.checkLimits() }, () => undefined))
+    void started.then(() => kernelStarted(kernel), () => undefined)
+    // Timers run late by however long the Mac slept, so waking checks what may have changed meanwhile (`woke`).
+    powerMonitor.on('resume', () => void started.then(() => woke(kernel), () => undefined))
     // The update timer ran late too, so waking checks for an update, at most every half hour (KERNEL-711).
     powerMonitor.on('resume', () => void started.then(() => updater?.wake(), () => undefined))
     app.on('browser-window-focus', (_e, w) => { if (w === mainWindow()) void started.then(() => kernel.prs.pollSoon(), () => undefined) })

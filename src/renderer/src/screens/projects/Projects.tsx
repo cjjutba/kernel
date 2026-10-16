@@ -37,7 +37,7 @@ function ProjectRow({ project, nav }: { project: Project; nav: ReturnType<typeof
         <Icon name={project.kind === 'folder' || (!project.repo && project.kind !== 'scratch') ? 'folder' : project.kind === 'scratch' ? 'burst' : 'branch'} size={16} />
         <span className="mono ellipsis">{sourceOf(project)}</span>
       </span>
-      <span className="row" style={{ gap: 8 }}>
+      <span className="row">
         <span className="rm-team" aria-hidden="true">{agents.slice(0, 5).map((a) => <span key={a.id}>{a.builtIn === 'lead' ? <KernelMark size={12} /> : initial(a)}</span>)}</span>
         <span className="rm-count">{agents.length} {agents.length === 1 ? 'agent' : 'agents'}</span>
       </span>
@@ -62,7 +62,7 @@ export function Projects() {
   useKeptScroll(table, { key: 'projects', ready: shown.length > 0 })
   return (
     <div className="panel">
-      <header className="header" style={{ paddingRight: 12 }}>
+      <header className="header pj-header">
         <SidebarToggleSlot />
         <Icon name="projects" />
         <h1>All projects</h1>
@@ -75,7 +75,7 @@ export function Projects() {
       <div className="rm-table" ref={table} onKeyDown={keys.onKeyDown}>
         <div className="rm-head"><span>Name</span><span>Source</span><span>Agents</span><span>Status</span><span style={{ textAlign: 'right' }}>Updated</span></div>
         {shown.map((r) => <ProjectRow key={r.id} project={r} nav={keys.rowProps} />)}
-        {!shown.length && <p className="muted" style={{ padding: 24, margin: 0 }}>{tab === 'archived' ? 'No archived projects.' : 'No projects yet. Make one with New project.'}</p>}
+        {!shown.length && <p className="muted pj-empty">{tab === 'archived' ? 'No archived projects.' : 'No projects yet. Make one with New project.'}</p>}
       </div>
     </div>
   )

@@ -1,12 +1,10 @@
 /* ConfirmArchive.png and ConfirmDiscard.png: the facts box and the option under the body. */
-.wsc-facts { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--r); background: var(--panel); font-size: 12px; color: var(--ink-3); }
-.wsc-check { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
-.wsc-check input { width: 14px; height: 14px; margin: 0; accent-color: var(--ink); }
+.wsc-facts { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--r); background: var(--panel); font-size: var(--fs-meta); color: var(--ink-3); }
 .wsc-error { margin: 0; color: var(--del); }
 
-.wsc-blockers { margin: 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); line-height: 1.5; }
-.wsc-blocker-at { color: var(--ink-3); font-size: 12px; }
-.wsc-note { margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 500; color: var(--ink-2); }
+.wsc-blockers { margin: 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); line-height: var(--lh); }
+.wsc-blocker-at { color: var(--ink-3); font-size: var(--fs-meta); }
+.wsc-note { margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-2); }
 
 /* ConfirmRevert: the files a revert changes, one per line with their line counts. */
 .wsc-files { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }

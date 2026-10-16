@@ -30,9 +30,9 @@ import { LEAD_MODE_ICON } from './composer/modes'
 import { retryMessage, sendMessage } from './composer/sendMessage'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
-import { countNew, holdView, keepOpen, leftAtEnd, opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
+import { countNew, keepOpen, leftAtEnd, markRevealed, opensAtEnd, placeTop, readPlace, savePlace, shouldReveal, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
-import { createGlider, type Glider } from './scrollGlide'
+import { createChatScroll, followsAfterScroll, movesToEnd, PIN_PX, type ChatScroll, type ScrollView } from './chatScroll'
 import { TranscriptGlide } from './glideContext'
 
 const EMPTY: ChatItem[] = []
@@ -40,9 +40,6 @@ const EMPTY: ChatItem[] = []
 const OPEN_MS = 600
 /** The open chat's spot is saved this long after the reader stops scrolling. */
 const KEEP_MS = 250
-/** The reader counts as following the chat while the end is this close. */
-const PIN_PX = 80
-
 /** The PR state icons a note draws before its text, the same glyphs as the PR header (KERNEL-313). */
 const NOTE_GLYPH: Record<NonNullable<Extract<ChatItem, { kind: 'note' }>['pr']>, IconName> = { merged: 'merged', closed: 'prClosed', cifail: 'prCifail' }
 
@@ -52,8 +49,7 @@ export const followsSend = (item: ChatItem | undefined) => item?.kind === 'user'
 /** What a reader calls a message: a reply, or a message from a teammate or the team. Steps, tool rows, thinking and approvals are not, and the reader's own send follows them to the end. */
 export const isMessage = (item: ChatItem) => item.kind === 'text' || (item.kind === 'user' && !followsSend(item) && ['bubble', 'update'].includes(userView(item)))
 
-/** The numbers a scroll position is read from, so the rule below runs without a layout engine. */
-export interface ScrollView { scrollTop: number; scrollHeight: number; clientHeight: number }
+export { followsAfterScroll, movesToEnd, type ScrollView }
 
 /** Whether rows are scrolled off the top, which is when the top edge fades. At the very top nothing is above, so nothing fades. */
 export const scrolledOff = (scrollTop: number) => scrollTop > 0
@@ -73,38 +69,8 @@ export const sendFollow = (last: ChatItem | undefined, seenId: string | null, op
 /** Whether a message that just posted came from the queue: the queue held one a moment ago. */
 export const postedFromQueue = (queuedAt: number, now: number) => now - queuedAt < QUEUE_POST_MS
 
-const distFromEnd = (v: ScrollView) => v.scrollHeight - v.scrollTop - v.clientHeight
-
-const rangeOf = (v: ScrollView) => v.scrollHeight - v.clientHeight
-
 /** The keys that scroll the view. The rest (the number keys and Enter on a card, typing) arm nothing. */
 const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '])
-
-/**
- * Whether the chat keeps following its end after a scroll event (KERNEL-605). `before` is the view at the last scroll event, and `byHand` is
- * whether the reader's own input (wheel, touch, scrolling keys, the scrollbar, a jump from the chat rail) is behind this scroll.
- * - The view moving up unpins when the reader did it, even by a little, or the next streamed line would pull them straight back. A move nobody
- *   asked for unpins once it lands past PIN_PX, which is how the plan card opening a long plan at its top stops the following.
- * - The reader's scrolling never changes the scroll range. When it changed, layout moved the view, so input that came first doesn't make it theirs:
- *   a question answered by keyboard collapses its card and the browser clamps the view up, with `byHand` still set from the keys.
- * - Anything else only ever follows. The end within PIN_PX means following, and a thread that grew under a view at its end moves no scroll
- *   position, only the distance, which the thread's size observer closes. Our own scroll to the end and the browser clamping or anchoring
- *   the view after rows resize therefore never unpin.
- */
-export function followsAfterScroll(pinned: boolean, view: ScrollView, before: ScrollView, byHand: boolean): boolean {
-  const own = byHand && rangeOf(view) === rangeOf(before)
-  if (view.scrollTop < before.scrollTop && (own || distFromEnd(view) > PIN_PX)) return false
-  return distFromEnd(view) <= PIN_PX ? true : pinned
-}
-
-/**
- * Whether following may move the view (KERNEL-629). Not while the reader's own gesture or its momentum is under way, and not when the view is already
- * at its end, since a jump there cuts the native rubber-band bounce short. Following resumes once the scroll lands.
- */
-export const movesToEnd = (view: ScrollView, byHand: boolean) => !byHand && distFromEnd(view) >= 1
-
-/** How long the reader's input counts as scrolling with no scroll event after it. A pull past the end moves nothing and never fires scrollend. */
-const HAND_MS = 200
 
 /** Calls `fn` once `ms` pass without another call of the returned function, which restarts the wait. `cancel` drops it. */
 export function lapse(ms: number, fn: () => void) {
@@ -114,7 +80,7 @@ export function lapse(ms: number, fn: () => void) {
   return restart
 }
 
-const partsText = (parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ')
+const partsText =(parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ')
 
 export function PartChip({ part, gone }: { part: ChatPart; gone?: boolean }) {
   if (part.type === 'text') return null
@@ -283,7 +249,7 @@ function StepLine({ icon, glyph, failed, label, detail, preview, keep, chip, mon
       )}
       <span className="ellipsis" style={{ maxWidth: 300, flexShrink: 0, color: failed ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
       {chip ? <span className="grow step-chip">{chip}</span> : <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || keep || !open ? preview ?? detail : null}</span>}
-      {meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{meta}</span>}
+      {meta && <span className="mono muted t-chip">{meta}</span>}
     </>
   )
 }
@@ -328,7 +294,7 @@ function StepRow({ icon, glyph, failed, label, detail, preview, keep, name, chip
     void onOpen().then((handled) => { if (!handled) setOpen((o) => !o) })
   }
   return (
-    <div className="col" style={{ gap: 6 }}>
+    <div className="col gap-6">
       <button
         type="button" className="trow trow-btn" aria-label={name} aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={click}
         {...(onPeek && {
@@ -695,7 +661,7 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
   const { bad } = block.summary
   const last = block.entries[block.entries.length - 1]
   return (
-    <div className="col" style={{ gap: 2 }} ref={box}>
+    <div className="col gap-2" ref={box}>
       <button type="button" className="group-btn" aria-expanded={open} aria-controls={id} onClick={() => setManual(!open)}>
         <span className="chev" data-open={open}><Icon name="right" size={12} /></span>
         <span className="group-text">
@@ -872,11 +838,9 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     return approvals.filter((a: Approval) => a.status === 'pending' && !placed.has(a.id) && a.workspaceId === workspaceId && (!a.chatId || a.chatId === chat.id))
   }, [approvals, items, workspaceId, chat.id])
   const waits = planWaits || approvals.some((a: Approval) => a.status === 'pending' && a.workspaceId === workspaceId && (!a.chatId || a.chatId === chat.id))
-  // The chat follows its end only while the reader is at it. Scrolling up to read stops it, scrolling back down starts it again.
+  // The chat follows its end only while the reader is at it. Scrolling up to read stops it, scrolling back down starts it again. The owner (chatScroll.ts) decides what moves the view; this component only tells it what happened.
   const scroller = useRef<HTMLDivElement>(null)
   const thread = useRef<HTMLDivElement>(null)
-  const end = useRef<HTMLDivElement>(null)
-  const pinned = useRef(true)
   // The Scroll to bottom button shows while the reader is away from the end and not following it. State changes only when it flips, so scrolling doesn't render the transcript on every event.
   const [away, setAway] = useState(false)
   const [before, setBefore] = useState<ReadonlySet<string> | null>(null)
@@ -887,18 +851,9 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     setAway(on)
     setBefore(on ? new Set(itemsNow.current.map((i) => i.id)) : null)
   }
-  const pin = (at: boolean) => { pinned.current = at; show(!at) }
-  // Only the reader's own scrolling can unpin a small move, so layout that shifts the view doesn't. Input arms it, and the scroll landing disarms it.
-  const byHand = useRef(false)
-  // While a chat is being put back where it was left: the step that sets the view again (the thread calls it when it changes size), and whether it is a spot and not the end.
-  const restoring = useRef<{ put: () => void; stop: () => void } | null>(null)
-  const spot = useRef(false)
-  const endRestore = () => { restoring.current?.stop(); restoring.current = null; spot.current = false }
-  const seen = useRef<ScrollView>({ scrollTop: 0, scrollHeight: 0, clientHeight: 0 })
-  const remember = (el: ScrollView) => { seen.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight } }
-  const letGo = useRef<ReturnType<typeof lapse> | undefined>(undefined)
-  letGo.current ??= lapse(HAND_MS, () => { byHand.current = false })
-  useEffect(() => () => letGo.current?.cancel(), [])
+  const scroll = useRef<ChatScroll>(undefined as unknown as ChatScroll)
+  scroll.current ??= createChatScroll({ box: () => scroller.current, away: show })
+  const owner = scroll.current
   // The top fade shows only with rows above. The attribute is set on the element and only when it flips, so scrolling never renders the transcript.
   const fade = () => {
     const el = scroller.current
@@ -908,74 +863,15 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   }
   useLayoutEffect(fade)
   const onScroll = () => {
-    const el = scroller.current
-    if (!el) return
     fade()
-    if (byHand.current) letGo.current?.()
-    // A spot being put back is not the reader's scrolling: a clamped frame near the end must not make the chat follow (KERNEL-918).
-    if (!spot.current) pinned.current = followsAfterScroll(pinned.current, el, seen.current, byHand.current)
-    remember(el)
-    show(!pinned.current && distFromEnd(el) > PIN_PX)
+    owner.scrolled()
   }
-  // A glide to the end (the button's) must not be cut short by following. It ends when it lands, or when the reader takes over.
-  // The button's glide passes through "away" on its way down, which never unpins since it only moves toward the end.
-  const gliding = useRef(false)
-  // The scrolls Kernel makes on its own with a glide go through this one glider (KERNEL-862): Scroll to bottom, the chat rail's jump and a plan revealing itself.
-  const glider = useRef<Glider>(undefined as unknown as Glider)
-  glider.current ??= createGlider(() => scroller.current)
-  const release = () => { gliding.current = false; glider.current.cancel() }
-  // The reader's own scrolling ends a glide and holds the view where they left it.
-  const take = () => { release(); endRestore(); byHand.current = true; letGo.current?.() }
   const press = (e: KeyboardEvent) => {
-    if (SCROLL_KEYS.has(e.key) && !(e.target as Element).closest('input, textarea, select, [contenteditable="true"]')) take()
-    else release()
+    if (SCROLL_KEYS.has(e.key) && !(e.target as Element).closest('input, textarea, select, [contenteditable="true"]')) owner.hand()
+    else owner.interrupt()
   }
-  const frame = useRef(0)
-  // Rows far above the end are measured a frame after they first show, so the end moves once. Following again next frame lands on it.
-  const follow = () => {
-    if (gliding.current) return 0
-    const move = () => { const el = scroller.current; if (!el || movesToEnd(el, byHand.current)) end.current?.scrollIntoView({ block: 'end' }) }
-    move()
-    return requestAnimationFrame(() => { if (pinned.current && !gliding.current) move() })
-  }
-  const followNow = () => { cancelAnimationFrame(frame.current); frame.current = follow() }
-  const landed = () => {
-    // The glide's own scrolls end in between its frames, which doesn't mean it landed.
-    if (glider.current.live()) return
-    release()
-    byHand.current = false
-    if (pinned.current) followNow()
-  }
-  const toEnd = () => {
-    release()
-    endRestore()
-    byHand.current = false
-    pin(true)
-    const el = scroller.current
-    if (!el) return
-    const goalOf = () => Math.max(0, rangeOf(el))
-    // Already at the end, nothing would run.
-    if (goalOf() - el.scrollTop <= 0) return
-    glider.current.start({
-      goal: goalOf,
-      far: true,
-      done: (landed) => { gliding.current = false; if (!landed) return; pin(true); followNow() }
-    })
-    gliding.current = glider.current.live()
-  }
-  // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
-  const glideFor = useCallback((goal: () => number, done: (landed: boolean, replaced?: boolean) => void) => {
-    glider.current.start({
-      goal,
-      done: (landed, replaced) => { gliding.current = false; done(landed, replaced) }
-    })
-    gliding.current = glider.current.live()
-    endRestore()
-    byHand.current = true
-    letGo.current?.()
-  }, [])
-  const stopGlide = useCallback(() => { gliding.current = false; glider.current.cancel() }, [])
-  const railGlide = useMemo(() => ({ glide: glideFor, stop: stopGlide }), [glideFor, stopGlide])
+  // The chat rail glides to a message the reader picked, which is the reader scrolling.
+  const railGlide = useMemo(() => ({ glide: (goal: () => number, done: (landed: boolean, replaced?: boolean) => void) => owner.guide(goal, done), stop: () => owner.cancelGlide() }), [owner])
   // The rows on screen with where they sit in the scroller, which is how a spot is saved and found again.
   const rowBoxes = (): RowBox[] => {
     const el = scroller.current
@@ -990,26 +886,11 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   // A chat opens where it was left, or at its end when it was left there or the reader has sent something since (KERNEL-765). A chat a send just created has no spot, so it opens at its end.
   useLayoutEffect(() => {
     if (!loaded) return
-    gliding.current = false
-    byHand.current = false
     const el = scroller.current
+    if (!el) return
     const place = takePlace(chat.id)
     const lastSent = [...itemsNow.current].reverse().find(followsSend)?.id
-    let held: ReturnType<typeof holdView> | undefined
-    // The view is put back every frame until what it is put at holds still for 4 frames. A spot then keeps being corrected whenever the thread changes size
-    // (late layout: code highlighting, images, rows measured after the first paint), until the reader scrolls. `put` returns the scrollTop it set.
-    const hold = (put: () => number, ends: boolean) => {
-      if (!el) return
-      held = holdView({
-        put, ends, over: () => byHand.current, following: () => pinned.current,
-        now: () => performance.now(), raf: (step) => requestAnimationFrame(step), caf: (id) => cancelAnimationFrame(id), capMs: OPEN_MS,
-        frames: (running) => { if (running) el.setAttribute('data-opening', ''); else el.removeAttribute('data-opening') }
-      })
-      if (ends) return
-      spot.current = true
-      restoring.current = { put: () => held?.resume(), stop: () => held?.stop() }
-    }
-    if (el && place?.heights) {
+    if (place?.heights) {
       const kids = thread.current?.children
       drawn.current.forEach((id, i) => {
         const h = place.heights![id]
@@ -1017,23 +898,19 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         if (h && row instanceof HTMLElement) row.style.containIntrinsicBlockSize = `auto ${h}px`
       })
     }
-    el?.setAttribute('data-opening', '')
-    if (!el || opensAtEnd(place, lastSent)) {
-      pin(true)
-      if (el) {
-        hold(() => { const to = Math.max(0, rangeOf(el)); el.scrollTop = to; remember(el); return to }, true)
-        remember(el)
-      } else followNow()
-    } else {
-      pinned.current = false
-      hold(() => {
-        const boxes = new Map(rowBoxes().map((r) => [r.id, r.top]))
-        const to = placeTop(place!, (id) => boxes.get(id), rangeOf(el))
-        el.scrollTop = to
-        remember(el)
-        show(distFromEnd(el) > PIN_PX)
-        return to
-      }, false)
+    el.setAttribute('data-opening', '')
+    // The view is put back every frame until what it is put at holds still for 4 frames (KERNEL-918). A spot keeps being corrected when the thread changes size
+    // (late layout: code highlighting, images, rows measured after the first paint) until the reader scrolls or PLACE_MS passes.
+    const frames = (running: boolean) => { if (running) el.setAttribute('data-opening', ''); else el.removeAttribute('data-opening') }
+    if (opensAtEnd(place, lastSent)) owner.open({ frames })
+    else {
+      owner.open({
+        frames,
+        spot: () => {
+          const boxes = new Map(rowBoxes().map((r) => [r.id, r.top]))
+          return placeTop(place!, (id) => boxes.get(id), Math.max(0, el.scrollHeight - el.clientHeight))
+        }
+      })
     }
     // The spot is kept while the chat is open too, since nothing unmounts the transcript when Kernel quits (KERNEL-922): shortly after the reader stops scrolling, and when the window goes.
     const keep = () => {
@@ -1042,64 +919,53 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
       const state = getState()
       if (!view || !state.chats[workspaceId]?.some((c) => c.id === chat.id && !c.closed) || state.workspaces.find((w) => w.id === workspaceId)?.status === 'archived') return
       // Still being put back, the view is not where the reader left it: the spot from before stays.
-      if (held?.state.correcting && !byHand.current) return
-      savePlace(chat.id, readPlace(rowBoxes(), view.scrollTop, leftAtEnd(distFromEnd(view)), [...itemsNow.current].reverse().find(followsSend)?.id))
+      if (owner.correcting) return
+      savePlace(chat.id, readPlace(rowBoxes(), view.scrollTop, leftAtEnd(view.scrollHeight - view.scrollTop - view.clientHeight), [...itemsNow.current].reverse().find(followsSend)?.id))
     }
     const keeper = keepOpen(keep, KEEP_MS)
     const soon = keeper.soon
-    el?.addEventListener('scroll', soon, { passive: true })
+    el.addEventListener('scroll', soon, { passive: true })
     window.addEventListener('pagehide', keep)
     window.addEventListener('beforeunload', keep)
     return () => {
-      cancelAnimationFrame(frame.current)
-      el?.removeAttribute('data-opening')
+      el.removeAttribute('data-opening')
       keeper.stop()
-      el?.removeEventListener('scroll', soon)
+      el.removeEventListener('scroll', soon)
       window.removeEventListener('pagehide', keep)
       window.removeEventListener('beforeunload', keep)
       keep()
-      endRestore()
-      held?.stop()
+      owner.stop()
     }
   }, [loaded])
-  // Opening a row at the end grows the thread under the reader's click, and following would scroll the row they opened out from under them. They are reading it now,
-  // so the end doesn't pull it away. Only a click on something that opens counts, and only when the thread grows from it: a menu, or a row that closes, leaves following alone.
-  const opening = useRef(false)
-  const opened = (e: MouseEvent<HTMLDivElement>) => {
-    if (!(e.target as Element).closest('[aria-expanded]')) return
-    opening.current = true
-    requestAnimationFrame(() => requestAnimationFrame(() => { opening.current = false }))
-  }
-  useEffect(() => () => glider.current.cancel(), [])
+  useEffect(() => () => owner.stop(), [owner])
   // The thread grows without gaining a row: a reply streaming text into the one it has, a step opening, a turn folding into its summary. Follow its size, not its row count.
-  const height = useRef(0)
+  // The scroller's own size is watched too: the composer growing (the plan strip, typing, attachments, the queue, a banner) shrinks the view with the thread unchanged.
   useEffect(() => {
-    const el = thread.current
-    if (!el || typeof ResizeObserver === 'undefined') return
-    const watch = new ResizeObserver(([entry]) => {
-      const h = entry.contentRect.height
-      if (opening.current && h > height.current) pinned.current = false
-      opening.current = false
-      height.current = h
-      if (restoring.current) { restoring.current.put(); return }
-      if (pinned.current) followNow()
-      else if (scroller.current) show(distFromEnd(scroller.current) > PIN_PX)
-    })
-    watch.observe(el)
-    return () => watch.disconnect()
-  }, [])
-  const openedAt = useRef(Date.now())
-  const reveal = useCallback((el: HTMLElement, holdMs: number) => {
+    const t = thread.current
     const box = scroller.current
-    if (!box || byHand.current) return
+    if (!t || !box || typeof ResizeObserver === 'undefined') return
+    const watch = new ResizeObserver((entries) => {
+      const grown = entries.find((e) => e.target === t)
+      owner.resized(grown?.contentRect.height)
+    })
+    watch.observe(t)
+    watch.observe(box)
+    return () => watch.disconnect()
+  }, [owner])
+  const openedAt = useRef(Date.now())
+  const reveal = useCallback((el: HTMLElement, planId: string) => {
+    const box = scroller.current
+    if (!box) return
+    const go = shouldReveal(takePlace(chat.id)?.revealed, planId, owner.pinned)
+    markRevealed(chat.id, planId)
+    if (!go) return
     const goal = () => {
       const view = box.getBoundingClientRect()
       const at = el.getBoundingClientRect()
       return Math.round(el.offsetHeight > box.clientHeight ? box.scrollTop + at.top - view.top - 8 : box.scrollTop + at.bottom - view.bottom + 14)
     }
-    glider.current.start({ goal, instant: Date.now() - openedAt.current < OPEN_MS, holdMs, over: () => byHand.current, done: () => { gliding.current = false } })
-    gliding.current = glider.current.live()
-  }, [])
+    owner.reveal({ goal, instant: Date.now() - openedAt.current < OPEN_MS })
+  }, [chat.id, owner])
   // Sending a message puts the view at its end at once, even from further up, since the reader just asked for something. No glide: the new row appears and the view stays at the end.
   const last = items[items.length - 1]
   const arrived = useRef(false)
@@ -1111,16 +977,12 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   useLayoutEffect(() => {
     if (!loaded) return
     // Before paint, so the frame that draws the new row is already at the end (KERNEL-895). The first run is the chat opening, which the effect above has placed already.
-    const step = sendFollow(last, sentId.current, arrived.current, postedFromQueue(queuedAt.current, Date.now()), pinned.current)
-    if (step === 'follow') {
-      release()
-      endRestore()
-      byHand.current = false
-      pin(true)
-    } else if (followsSend(last) && last!.id !== sentId.current && scroller.current) show(distFromEnd(scroller.current) > PIN_PX)
+    const step = sendFollow(last, sentId.current, arrived.current, postedFromQueue(queuedAt.current, Date.now()), owner.pinned)
+    if (step === 'follow') owner.sent()
+    else if (followsSend(last) && last!.id !== sentId.current) show(!owner.pinned && owner.distFromEnd() > PIN_PX)
     if (followsSend(last)) sentId.current = last!.id
     arrived.current = true
-    if (pinned.current) followNow()
+    owner.follow()
   }, [items.length, loose.length, running, queued, loaded])
   const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return items[i].ts; return Date.now() }, [items])
   // This chat is on screen, so it is read, whether the window has focus or not. Main can't tell which chat is shown, so it clears the flag when asked:
@@ -1173,7 +1035,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   return (
     <div className="ws-chat" data-rail={rail.current.length >= RAIL_MIN || undefined}>
       <ChatRail key={chat.id} entries={rail.current} scroller={scroller} glide={railGlide} />
-      <div ref={scroller} aria-busy={loading || undefined} className="ws-scroll selectable" onScroll={onScroll} onScrollEnd={landed} onClick={opened} onWheel={take} onTouchStart={take} onPointerDown={(e) => (e.target === e.currentTarget ? take() : release())} onKeyDown={press}>
+      <div ref={scroller} aria-busy={loading || undefined} className="ws-scroll selectable" onScroll={onScroll} onScrollEnd={() => owner.landed()} onClick={(e) => { if ((e.target as Element).closest('[aria-expanded]')) owner.opened() }} onWheel={() => owner.hand()} onTouchStart={() => owner.hand()} onPointerDown={(e) => (e.target === e.currentTarget ? owner.hand() : owner.interrupt())} onKeyDown={press}>
         {failed && (
           <EmptyState icon="warning" title="Could not load this chat">
             <Button busy={retrying !== null} busyLabel="Loading" onClick={() => void retry('load', () => loadWorkspace(workspaceId).catch(() => undefined))}>Try again</Button>
@@ -1194,7 +1056,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
           {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
           {ws && <LocalMergeRow ws={ws} />}
           {running && <TurnLine since={since} waiting={waits} />}
-          <div ref={end} />
+          <div />
         </div>
         </ShownInError.Provider>
         </TranscriptAway.Provider>
@@ -1203,8 +1065,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         </TranscriptGlide.Provider>
       </div>
       {away && !empty && (newCount > 0
-        ? <Button icon="arrowDown" className="ws-jump new" aria-label={`Scroll to bottom, ${newCount} new`} onClick={toEnd}>{newCount} new</Button>
-        : <IconButton icon="arrowDown" label="Scroll to bottom" className="ws-jump" onClick={toEnd} />)}
+        ? <Button icon="arrowDown" className="ws-jump new" aria-label={`Scroll to bottom, ${newCount} new`} onClick={() => owner.toEnd()}>{newCount} new</Button>
+        : <IconButton icon="arrowDown" label="Scroll to bottom" className="ws-jump" onClick={() => owner.toEnd()} />)}
     </div>
   )
 }

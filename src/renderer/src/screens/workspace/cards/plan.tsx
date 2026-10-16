@@ -18,9 +18,6 @@ import './cards.css'
 
 const EMPTY: AgentDef[] = []
 
-/** The Copy and Approve strip opens over --plan-dur, 0.5s (composer.css), so the chat above it settles a little after that. */
-const STRIP_OPENS_MS = 800
-
 export const stepLine = (s: PlanStep, agents: AgentDef[]) => {
   const who = agents.find((x) => x.id === s.agentId)?.name
   return who ? `${s.title} · ${who}` : s.title
@@ -82,7 +79,7 @@ export function PlanInline({ a, agents, hasItem }: { a: Approval; agents: AgentD
   // the chat under it, which would leave a plan that fits with its end below the fold, so while it opens the end stays in view. The transcript's glide does both.
   const glide = useContext(TranscriptGlide)
   useEffect(() => {
-    if (a.status === 'pending' && ref.current) glide?.(ref.current, STRIP_OPENS_MS)
+    if (a.status === 'pending' && ref.current) glide?.(ref.current, a.id)
   }, [a.id])
   const file = a.planFile?.slice(a.planFile.lastIndexOf('/') + 1)
   const answer = planAnswer(a)

@@ -52,7 +52,7 @@ export function About() {
         <Row id="logs" label="Logs" desc="For a bug report.">
           <Button busy={busy === 'logs'} busyLabel="Exporting" disabled={busy !== null} onClick={() => void run('logs', () => call('app.exportLogs', undefined).then((r) => actions.ui.toast({ title: 'Logs exported', sub: r.path })).catch(fail('Could not export logs')))}>Export logs</Button>
         </Row>
-        <Row id="onboarding" label="Onboarding" desc="Walk through setup again."><Button onClick={() => go({ name: 'onboarding', step: 'welcome' })}>Show again</Button></Row>
+        <Row id="onboarding" label="Onboarding" desc="Play the opening splash again."><Button onClick={() => go({ name: 'onboarding', step: 'splash' })}>Show again</Button></Row>
       </Section>
     </Page>
   )

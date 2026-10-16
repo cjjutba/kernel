@@ -7,13 +7,6 @@
 .ft-chip:focus-visible { outline-offset: 2px; }
 .ft-mark { display: inline-flex; }
 .ft-name { color: var(--ink-2); font-weight: var(--fw-medium); }
-.ft-name[data-dim] { color: var(--muted); font-weight: var(--fw-regular); }
-.ft-other { color: var(--muted); }
-.ft-other:hover:not(:disabled), .ft-other:focus-visible { color: var(--ink); }
-.ft-other:hover:not(:disabled) .ft-name, .ft-other:focus-visible .ft-name { color: var(--ink-2); }
-.ft-swap { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; }
-.ft-other .ft-name { max-width: 18ch; overflow: hidden; text-overflow: ellipsis; }
-.ft-more[data-narrow] { display: none; }
 .ft-out { color: var(--muted); }
 .ft-win { display: inline-flex; align-items: center; gap: 5px; }
 .ft-nums { display: inline-flex; align-items: baseline; gap: 5px; }
@@ -40,12 +33,7 @@
 .ft-upd { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
 .ft-retry { color: var(--ink-2); }
 
-/* A narrow window folds the inline other accounts into one "more" chip that counts them all, then drops the Fable number. Nothing wraps or overlaps. */
-@container ft (max-width: 1040px) {
-  .ft-other:not(.ft-more) { display: none; }
-  .ft-more { display: none; }
-  .ft-more[data-narrow] { display: inline-flex; }
-}
+/* A narrow window drops the Fable number. Nothing wraps or overlaps. */
 @container ft (max-width: 820px) { .ft-num[data-fable] { display: none; } }
 
 /* The popover opens above the row from the footer's bottom left, 392px wide. A row is a button that expands in place; the
@@ -82,11 +70,10 @@ button.pm-head:focus-visible { outline: 0; background: var(--hover); }
 .plan-win .meter { width: 56px; flex-shrink: 0; height: 4px; }
 .plan-win .pm-mp { width: 34px; flex-shrink: 0; text-align: right; }
 .plan-wr { flex: 1; min-width: 0; text-align: right; white-space: nowrap; color: var(--muted); }
-.plan-switch { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; margin: 0 -8px; max-height: 176px; overflow-y: auto; }
+.plan-switch { display: flex; flex-direction: column; gap: 2px; padding: 4px 0 0; margin: 0 -8px; list-style: none; max-height: 176px; overflow-y: auto; }
 .plan-switch-title { padding: 0 8px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
-.menu-item.plan-other { align-items: baseline; gap: 8px; color: var(--ink); }
-.menu-item.plan-other:disabled { color: var(--faint); }
-.menu-item.plan-other[aria-busy='true']:disabled { color: var(--ink); }
+/* Read only (KERNEL-949): the menu row's size, with no hover, since nothing here switches. */
+.plan-other { display: flex; align-items: baseline; gap: 8px; height: 32px; line-height: 32px; padding: 0 8px; color: var(--ink); font-size: var(--fs-ui); }
 .plan-other-name { font-weight: var(--fw-medium); }
 .plan-other-plan { flex: 1; min-width: 0; font-size: var(--fs-meta); color: var(--muted); }
 .plan-other-use { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }

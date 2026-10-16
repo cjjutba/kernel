@@ -31,8 +31,9 @@ describe('issueTracker', () => {
 })
 
 describe('issueOpen', () => {
-  const linear = { kind: 'linear' as const }
-  const github = { kind: 'github' as const, where: 'cjjutba/client-a' }
+  const linear = { kind: 'linear' as const, available: { linear: true } }
+  const github = { kind: 'github' as const, where: 'cjjutba/client-a', available: { linear: false, github: { where: 'cjjutba/client-a' } } }
+  const none = { kind: 'none' as const, available: { linear: false } }
   const repo = { id: 'p1', kind: 'repo' as const, repo: 'cjjutba/client-a' }
   const tagged = (id: string, tracker: 'linear' | 'github', url?: string) => ({ ...issue(id, url), tracker })
 
@@ -50,11 +51,11 @@ describe('issueOpen', () => {
   })
   it('builds a GitHub url from the repo when the project does not use GitHub', () => {
     expect(issueOpen(tagged('#12', 'github'), repo, linear)).toEqual({ kind: 'url', url: 'https://github.com/cjjutba/client-a/issues/12' })
-    expect(issueOpen(tagged('#12', 'github'), repo, { kind: 'none' })).toEqual({ kind: 'url', url: 'https://github.com/cjjutba/client-a/issues/12' })
+    expect(issueOpen(tagged('#12', 'github'), repo, none)).toEqual({ kind: 'url', url: 'https://github.com/cjjutba/client-a/issues/12' })
   })
   it('has nowhere to go for a scratch project with no url', () => {
-    expect(issueOpen(tagged('#12', 'github'), { id: 'p2', kind: 'scratch', repo: 'kernel/starter' }, { kind: 'none' })).toEqual({ kind: 'none' })
-    expect(issueOpen(tagged('KERNEL-1', 'linear'), { id: 'p2', kind: 'scratch' }, { kind: 'none' })).toEqual({ kind: 'none' })
+    expect(issueOpen(tagged('#12', 'github'), { id: 'p2', kind: 'scratch', repo: 'kernel/starter' }, none)).toEqual({ kind: 'none' })
+    expect(issueOpen(tagged('KERNEL-1', 'linear'), { id: 'p2', kind: 'scratch' }, none)).toEqual({ kind: 'none' })
   })
   it('falls to the url while the tracker is loading, and without a project', () => {
     expect(issueOpen(tagged('KERNEL-1', 'linear', 'https://linear.app/x/issue/KERNEL-1'), repo, undefined)).toEqual({ kind: 'url', url: 'https://linear.app/x/issue/KERNEL-1' })

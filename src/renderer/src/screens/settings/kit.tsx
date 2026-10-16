@@ -134,8 +134,25 @@ export function SaveNote({ state, shared }: { state: SaveState; shared?: boolean
 }
 
 /**
+ * The text of a field that saves when it loses focus. A new saved value replaces the text only while the field holds the old one, so a
+ * write from outside (settings.toml changed on disk) never takes away what is being typed. A failed save still puts the saved value back,
+ * since the rollback lands while the field holds the text it tried to save.
+ */
+export function useFieldText(saved: string): [string, (t: string) => void] {
+  const [text, setText] = useState(saved)
+  const last = useRef(saved)
+  useEffect(() => {
+    const before = last.current
+    last.current = saved
+    setText((t) => (t === before ? saved : t))
+  }, [saved])
+  return [text, setText]
+}
+
+/**
  * Blur, unmount and Escape for a text field that saves when it loses focus (KERNEL-721). Text still unsaved when the field unmounts
- * (Escape to leave, a shortcut, Cmd+W) saves then. Escape in the field puts the saved text back instead, so nothing saves.
+ * (Escape to leave, a shortcut, Cmd+W) saves then. Escape in the field puts the saved text back instead, so nothing saves. `cancel` does the
+ * same for an Escape the field never sees, such as the one a modal takes first.
  */
 export function useBlurSave({ text, setText, saved, commit }: { text: string; setText: (t: string) => void; saved: string; commit: (text: string) => void }) {
   const live = useRef({ text, saved, commit })
@@ -155,7 +172,7 @@ export function useBlurSave({ text, setText, saved, commit }: { text: string; se
     live.current.text = live.current.saved
     setText(live.current.saved)
   }
-  return { onBlur: flush, onKeyDown: (e: KeyboardEvent) => { if (e.key === 'Escape') cancel() } }
+  return { onBlur: flush, onKeyDown: (e: KeyboardEvent) => { if (e.key === 'Escape') cancel() }, cancel }
 }
 
 /** Where a section's values are saved: `repo` is `.kernel/settings.toml`, shared with everyone on the repo; `mac` stays on this Mac. */

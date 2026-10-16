@@ -174,10 +174,11 @@ export interface SessionDeps {
   /** The project's reference folders that are there now, which a chat may read but not edit (KERNEL-748, KERNEL-790). */
   referencesFor?: (ws: Workspace) => string[] | undefined
   /**
-   * A session reported how its MCP servers are doing. Returns every report the project holds for that provider since, which
-   * may name servers this session's report doesn't yet, such as claude.ai connectors that join late (KERNEL-464).
+   * A session reported how its MCP servers are doing, on `account`, undefined for the CLI's own login (KERNEL-939). Returns
+   * every report the project holds for that provider since, which may name servers this session's report doesn't yet, such
+   * as claude.ai connectors that join late (KERNEL-464).
    */
-  onMcp?: (ws: Workspace, provider: Provider, servers: McpReport[]) => McpReport[]
+  onMcp?: (ws: Workspace, provider: Provider, servers: McpReport[], account: string | undefined) => McpReport[]
   /** Kernel's own rule for this workspace, appended to the agent's prompt, such as a reviewer's (KERNEL-130). */
   rulesFor?: (ws: Workspace, agent: AgentDef | undefined, chat?: Chat) => string | undefined
   /** Bash rules the user allowed for the whole project. */
@@ -1771,7 +1772,7 @@ export class Sessions {
           this.billing.set(chatId, source)
         }
         const servers = o.mcpServers
-        const project = servers && (this.d.onMcp?.(ws, chatProvider(chat), servers) ?? [])
+        const project = servers && (this.d.onMcp?.(ws, chatProvider(chat), servers, live.account) ?? [])
         if (servers && project && !this.mcpChecked.has(chatId)) {
           this.mcpChecked.add(chatId)
           // claude.ai's connectors can join after the first init, so the project's word on those counts too. The project's
@@ -1783,7 +1784,7 @@ export class Sessions {
         }
         this.setRunning(chat, ws, live, true)
       },
-      mcpStatus: (servers) => { this.d.onMcp?.(ws, chatProvider(this.mustChat(chatId)), servers) },
+      mcpStatus: (servers) => { this.d.onMcp?.(ws, chatProvider(this.mustChat(chatId)), servers, live.account) },
       blocked: (event, output) => this.blocked(ws, chatId, event, output),
       toolSucceeded: () => { if (this.turns.get(chatId)?.blocked === 'PreToolUse') this.unblock(this.mustChat(chatId), ws) },
       setTasks: (ids) => { live.tasks = new Set(ids) },
