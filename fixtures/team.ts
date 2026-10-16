@@ -568,7 +568,7 @@ const workIssuesScene = (f: Fixture): Partial<Fixture> => {
 // ---------- Pull requests
 
 /** The Pull requests page: seven open PRs across the four projects, one of each state, and the five merged ones from `homeScene`. `open` and `merged` pick the filter, `none` leaves out every open PR. */
-const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'merged'; failed?: boolean | 'signed-out'; loading?: boolean; manyMerged?: number }): Partial<Fixture> => {
+const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'merged'; failed?: boolean | 'signed-out'; loading?: boolean; manyMerged?: number; plainMerged?: boolean }): Partial<Fixture> => {
   const home = homeScene(f)
   const mk = (n: number, projectId: string, agentId: string, title: string, state: Workspace['prState'], stat: [number, number], extra: Partial<Workspace> = {}, info: Partial<PrInfo> = {}) => {
     const id = `ws-prs-${n}`
@@ -592,10 +592,29 @@ const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'm
   const none = o.none === 'open'
   const minutes = (n: number) => Date.now() - n * 60_000
   const reads = Object.fromEntries([ids.projectA, ids.projectB, ids.projectPortfolio].map((id, i) => [id, o.loading ? {} : o.failed ? (o.failed === 'signed-out' ? { failed: 'signed-out' as const } : { at: minutes(14 + i), failed: 'rate-limited' as const }) : { at: minutes(2 + i) }]))
+  // Merged PRs spread over the last weeks so every day group has some. Every 7th title runs long, every 11th diff is huge and every 13th is empty.
+  const mergedWs = (n: number, i: number, title: string, branch: string, agentId: string, projectId: string, stat: [number, number]): Workspace => {
+    const when = Date.now() - (i + 1) * 5 * 3_600_000
+    return { id: `ws-prs-m${n}`, projectId, name: `merged-${n}`, branch, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/merged-${n}`, mode: 'worktree', agentId, port: 4700 + i, status: 'archived', createdAt: when - 3_600_000, mergedAt: when, title, prTitle: title, prState: 'merged', prNumber: n, prUrl: `https://github.com/cjjutba/pr/pull/${n}`, stat: { files: 2, added: stat[0], removed: stat[1] } }
+  }
+  const crew: [string, string][] = [['kai', ids.projectA], ['noor', ids.projectA], ['ivy', ids.projectA], ['theo', ids.projectA]]
   const more = Array.from({ length: o.manyMerged ?? 0 }, (_, i): Workspace => {
     const n = 100 + i
-    return { id: `ws-prs-m${n}`, projectId: ids.projectA, name: `merged-${n}`, branch: `feat/merged-${n}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/merged-${n}`, mode: 'worktree', agentId: 'kai', port: 4700 + i, status: 'archived', createdAt: at(8, 0) - i * 3_600_000, mergedAt: at(8, 30) - i * 3_600_000, title: `chore: change ${n}`, prTitle: `chore: change ${n}`, prState: 'merged', prNumber: n, prUrl: `https://github.com/cjjutba/pr/pull/${n}`, stat: { files: 2, added: 20 + i, removed: i } }
+    const [agentId, projectId] = crew[i % crew.length]
+    const key = 900 + i
+    const title = i % 7 === 3 ? `feat(workspace): one model chip per role in the team editor, with the effort picker beside it and the saved default shown inline (KERNEL-${key})` : `${['feat(workspace)', 'fix(engine)', 'chore(db)', 'feat(team)'][i % 4]}: change ${n} (KERNEL-${key})`
+    const stat: [number, number] = i % 11 === 5 ? [12_480, 3_207] : i % 13 === 6 ? [0, 0] : [20 + i, i]
+    return mergedWs(n, i, title, `feat/kernel-${key}-change-${n}`, agentId, projectId, stat)
   })
+  // Titles outside the convention: no type, no scope, a bare key, two keys, a key only in the branch.
+  const plain = (o.plainMerged ? [
+    ['Landing page: new case study layout', 'landing-case-study'],
+    ['Update dependencies', 'chore/deps'],
+    ['KERNEL-412 Export invoices as CSV', 'export-csv'],
+    ['fix: stop the sidebar flicker (KERNEL-77) (KERNEL-78)', 'fix/kernel-77-sidebar'],
+    ['Merge branch main into wip', 'wip'],
+    ['feat(billing): proration for mid-cycle upgrades', 'feat/kernel-60-proration']
+  ] as [string, string][] : []).map(([title, branch], i) => mergedWs(200 + i, i, title, branch, crew[i % crew.length][0], crew[i % crew.length][1], i === 4 ? [0, 0] : [30 + i * 11, 4 + i]))
   return {
     ...home,
     github: { reads },
@@ -603,8 +622,9 @@ const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'm
     workspaces: [
       ...home.workspaces!.map((w, i) => (w.prState === 'merged' ? { ...w, prNumber: 56 - i } : none && w.prNumber ? { ...w, prState: 'none' as const } : w)),
       ...(none ? [] : rows.map(([w]) => w)),
-      ...more
-    ].filter((w) => o.none !== 'merged' || w.prState !== 'merged'),
+      ...more,
+      ...plain
+    ].filter((w) => (o.none !== 'merged' && !o.plainMerged) || w.prState !== 'merged' || w.id.startsWith('ws-prs-m')),
     prs: o.loading ? {} : Object.fromEntries(rows.map(([w, pr]) => [w.id, pr])),
     ...(o.loading ? { hold: ['pr.get'] } : {}),
     ui: { route: { name: 'prs', filter: o.filter } }
@@ -843,7 +863,9 @@ export const teamFixtures: Record<string, Fixture> = {
   PullRequestsMerged: scene((f) => prsScene(f, { filter: 'merged' })),
   // No PNG (KERNEL-868): the last status read failed on a rate limit, with the read from before it kept. The cap note shows past 50 merged.
   PullRequestsReadFailed: scene((f) => prsScene(f, { filter: 'open', failed: true })),
-  PullRequestsMergedCapped: scene((f) => prsScene(f, { filter: 'merged', manyMerged: 48 })),
+  PullRequestsMergedCapped: scene((f) => prsScene(f, { filter: 'merged', manyMerged: 130 })),
+  // Titles outside the convention, so the rows show them as written (KERNEL-1010).
+  PullRequestsMergedPlain: scene((f) => prsScene(f, { filter: 'merged', plainMerged: true })),
   PullRequestsEmpty: scene((f) => prsScene(f, { filter: 'open', none: 'open' })),
   PullRequestsNoMerged: scene((f) => prsScene(f, { filter: 'merged', none: 'merged' })),
   // KERNEL-759: the tracker read never answers, so the page shows Loading issues with the load loader.

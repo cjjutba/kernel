@@ -30,16 +30,28 @@
 .prs-cell[data-tone='faint'] { color: var(--muted); }
 .prs-act { position: relative; z-index: 1; display: flex; justify-content: flex-end; }
 
-.prs-merged { grid-template-columns: minmax(0, 1fr) 130px 100px; }
-.prs-merged-icon { display: inline-flex; color: var(--merged); }
-.prs-merged .prs-main > .prs-merged-icon svg { color: var(--merged); }
+.prs-merged-wrap { max-width: 1100px; }
+.prs-merged { grid-template-columns: minmax(0, 1fr) 96px 80px 110px; }
+.prs-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.prs-line .prs-title { min-width: 0; flex: 0 1 auto; }
+.prs-line .scope-label { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.prs-key { position: relative; z-index: 1; min-width: 0; }
+.prs-key-link { padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--fs-chip); text-decoration: none; }
+.prs-key-link:hover { color: var(--ink); text-decoration: underline; }
+.prs-key-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
+.prs-none { color: var(--muted); }
+.prs-stat { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.prs-search { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--muted); }
+.prs-search input { width: 200px; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-ui); }
+.prs-search:focus-within { border-color: var(--ink-3); }
+.prs-search ~ .prs-read { margin-left: 12px; }
 .prs-stat { font-size: var(--fs-meta); text-align: right; }
 
 
 @media (max-width: 900px) {
   .prs-row { grid-template-columns: minmax(0, 1fr) 90px 100px; }
-  .prs-row > :nth-child(4) { display: none; }
-  .prs-merged { grid-template-columns: minmax(0, 1fr) 100px; }
+  .prs-row:not(.prs-merged) > :nth-child(4) { display: none; }
+  .prs-merged { grid-template-columns: minmax(0, 1fr) 80px 80px; }
   .prs-merged .prs-stat { display: none; }
 }
 

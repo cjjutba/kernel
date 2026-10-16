@@ -4,6 +4,7 @@ import { mergeNeedsPr, mergeableState } from '@shared/merge'
 import { call } from '../../api'
 import { leadOf } from '../../lead'
 import { actions, useStore } from '../../store'
+import { splitScope } from '../../ui/dayGroups'
 import { NO_RULES } from '../workspace/pr/model'
 import { leadPrs, type LeadPr } from '../workspace/pr/leadPrList'
 
@@ -73,6 +74,45 @@ export function groupOpen(rows: LeadPr[], prs: Record<string, PrInfo>): { id: Op
 /** The issue a workspace came from, for a row's sub line: "KERNEL-859". */
 export const issueKey = (ws: Workspace): string | undefined => (ws.source?.kind === 'issue' ? ws.source.id : undefined)
 
+/** A merged row's title taken apart: `feat(workspace): text (KERNEL-995)` is the text, the `feat(workspace)` scope and the key. */
+export interface ParsedTitle { text: string; scope?: string; key?: string }
+
+const TITLE_KEY = /\s*\(([A-Z][A-Z0-9]+-\d+)\)/
+
+/**
+ * The scope and the key come off a title that follows the convention. A title without it is returned as written, with no scope. Of
+ * two keys the first is the row's and the second stays in the text.
+ */
+export function parseTitle(title: string): ParsedTitle {
+  const { scope, rest } = splitScope(title)
+  const m = TITLE_KEY.exec(rest)
+  if (!m) return { text: rest, ...(scope ? { scope } : {}) }
+  const text = (rest.slice(0, m.index) + rest.slice(m.index + m[0].length)).trim()
+  return { text: text || rest, ...(scope ? { scope } : {}), key: m[1] }
+}
+
+/** The issue key a branch like `feat/kernel-995-one-chip` names: "KERNEL-995". */
+export function branchKey(branch: string | undefined): string | undefined {
+  const m = branch && /(?:^|\/)([a-z]{2,8})-(\d+)(?:-|$)/i.exec(branch)
+  return m ? `${m[1].toUpperCase()}-${m[2]}` : undefined
+}
+
+/** What a merged row shows: the parsed title, and the issue it closes from the title, else the workspace's own issue, else the branch. */
+export function mergedRow(ws: Workspace): ParsedTitle & { full: string } {
+  const full = ws.prTitle ?? ws.title ?? ws.name
+  const p = parseTitle(full)
+  return { ...p, full, key: p.key ?? issueKey(ws) ?? branchKey(ws.branch) }
+}
+
+/** Whether a merged row matches the search text (title, key, branch) and the agent chosen, if any. */
+export function matchesMerged(ws: Workspace, query: string, agentId: string | undefined): boolean {
+  if (agentId && ws.agentId !== agentId) return false
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  const r = mergedRow(ws)
+  return [r.full, r.key, ws.branch].some((t) => t?.toLowerCase().includes(q))
+}
+
 /** A merged PR is one with a number, whose workspace may have been archived since. Review workspaces never carry the PR. */
 export const isMerged = (ws: Workspace) => ws.prState === 'merged' && !ws.reviewOf && !!ws.prNumber
 
@@ -98,13 +138,12 @@ function useOpenPrs() {
 /** How many pull requests are open across the projects: the count on the Work page's tab, with none of the status reads `usePullRequests` starts. */
 export const useOpenPrCount = () => useOpenPrs().open.length
 
-export function usePullRequests(): { open: LeadPr[]; merged: Workspace[]; mergedTotal: number; reading: boolean; reads: PrReads[]; refresh: () => Promise<void> } {
+export function usePullRequests(): { open: LeadPr[]; mergedAll: Workspace[]; reading: boolean; reads: PrReads[]; refresh: () => Promise<void> } {
   const { visible, workspaces, prs, rules, open } = useOpenPrs()
   const allMerged = useMemo(() => {
     const ids = new Set(visible.map((r) => r.id))
     return workspaces.filter((w) => ids.has(w.projectId) && isMerged(w)).sort((a, b) => (b.mergedAt ?? b.createdAt) - (a.mergedAt ?? a.createdAt))
   }, [visible, workspaces])
-  const merged = useMemo(() => allMerged.slice(0, MERGED_LIMIT), [allMerged])
   const asked = useRef(new Set<string>())
   const [pending, setPending] = useState(0)
   useEffect(() => {
@@ -120,7 +159,7 @@ export function usePullRequests(): { open: LeadPr[]; merged: Workspace[]; merged
   const refresh = async () => {
     await Promise.all(open.map(({ ws }) => call('pr.get', { workspaceId: ws.id }).then((info) => { if (info) actions.prs.set(info) }).catch(() => undefined)))
   }
-  return { open, merged, mergedTotal: allMerged.length, reading: pending > 0, reads, refresh }
+  return { open, mergedAll: allMerged, reading: pending > 0, reads, refresh }
 }
 
 /** The oldest good read among the projects: the page is only as fresh as its stalest project. Undefined when none has been read. */
