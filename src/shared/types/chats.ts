@@ -88,7 +88,16 @@ export interface Chat {
   /** Closed tabs keep their transcript but leave the tab strip. */
   closed?: boolean
   /** A big terminal's preset and the command it types into the login shell, null for a plain shell. Older terminal chats have none and run `claude` (KERNEL-248). */
-  terminal?: { preset: string; command: string | null }
+  terminal?: {
+    preset: string
+    command: string | null
+    /** The seat's role once its pty has started connected to Kernel (KERNEL-999). Absent for a terminal that is not a seat. */
+    role?: 'lead' | 'build' | 'teammate'
+    /** The Claude Code session the seat's hooks last reported, which the next `claude` in the tab resumes (KERNEL-999). */
+    sessionId?: string
+    /** Where that session's transcript is, as its hooks reported it. */
+    transcriptPath?: string
+  }
   /** Kernel picks this chat's name and may change it. `turns` is the finished-turn count it last named it at. A name the user types clears it (KERNEL-202). */
   autoTitle?: { turns: number }
   /** The Lead chat this tab belongs to. Set on every Lead tab, absent elsewhere (KERNEL-337). */
