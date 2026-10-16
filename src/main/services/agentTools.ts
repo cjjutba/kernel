@@ -62,8 +62,11 @@ export interface ToolPolicy {
   allows(tool: string, input?: unknown): boolean
   /** Whether the file's disallowedTools takes the tool away, rather than its tools line leaving it out. */
   disallows(tool: string): boolean
-  /** Why the chat's mode refuses the tool, rather than the agent file: Hand off doesn't edit (KERNEL-770). */
-  modeRefuses(tool: string): string | undefined
+  /**
+   * Why the chat's mode refuses the tool, rather than the agent file: Hand off doesn't edit (KERNEL-770). `now` is the chat's
+   * mode at the call, which a switch during the reply may have changed from the one the session started in.
+   */
+  modeRefuses(tool: string, now?: LeadMode): string | undefined
   /**
    * How much of an MCP server the session may reach. Kernel's own is always all of it. With `unlisted`, a server the tools
    * line leaves out counts as named, as in Bypass permissions with `unlisted_tools = "ask"` (bypass-allows-unlisted-mcp).
@@ -77,6 +80,12 @@ export type ServerAccess = { on: false } | { on: true; only?: string[]; except?:
 
 /** What a chat with Kernel in Hand off hears when it tries to edit a file (KERNEL-770). */
 export const HANDOFF_NO_EDIT = "This chat is in Hand off, so you don't edit files. Hand the change to a teammate with mcp__kernel__create_workspace, or tell the user they can switch this chat to Build here."
+
+/** The same refusal once the user switched the chat to Build here during the reply, which still runs in Hand off. */
+export const HANDOFF_SWITCHED = "This reply started while the chat was in Hand off, so you can't edit files in it. The user has switched this chat to Build here since, and that applies from their next message. Stop here and tell the user to send the request again."
+
+/** What a chat with Kernel hears when Hand off refuses an edit, by the chat's mode at the time of the call. */
+export const handoffRefusal = (now?: LeadMode): string => (now === 'build' ? HANDOFF_SWITCHED : HANDOFF_NO_EDIT)
 
 /** A `.md` file right in Claude Code's plans folder, where plan mode writes its plan. */
 const isPlanFile = (path: unknown, plans: string) => typeof path === 'string' && path.endsWith('.md') && dirname(resolve(path)) === plans && !!basename(path)
@@ -158,7 +167,7 @@ export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string
   // `mcp__*` can't go in the session's list: it would take Kernel's own server too. The gate refuses those calls instead.
   const named = [...[...off.servers].filter((s) => s !== '*' && s !== 'kernel').map((s) => `mcp__${s}`), ...off.tools.filter((t) => t.server !== 'kernel').map((t) => `mcp__${t.server}__${t.tool}`)]
   // A read-only session's writers go from its list too, so the model never reaches for them.
-  const modeRefuses = (tool: string) => (handoff(tool) && !own(tool) ? HANDOFF_NO_EDIT : undefined)
+  const modeRefuses = (tool: string, now?: LeadMode) => (handoff(tool) && !own(tool) ? handoffRefusal(now) : undefined)
   return { hidden: [...new Set([...HIDEABLE.filter((t) => !usable(t)), ...(o.readOnly ? READ_ONLY_OFF : []), ...named])], allows, disallows, modeRefuses, server }
 }
 
