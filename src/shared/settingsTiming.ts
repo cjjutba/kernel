@@ -133,6 +133,7 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   // resolvePreset() in services/terminalPresets.ts, when a tab opens.
   'terminal.preset': 'newChats',
   'terminal.onlyInWorktrees': 'newChats',
+  'terminal.connect': 'newChats',
   'terminal.custom': 'now',
   // features/tools.ts adds share_file to the tools a chat's process starts with.
   'experimental.sharing': 'newChats',

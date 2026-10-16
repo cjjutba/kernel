@@ -79,6 +79,7 @@ export function terminalSettingsOf(v: unknown, defaults: TerminalSettings): Term
     enabled: bool(t.enabled, defaults.enabled),
     preset: typeof t.preset === 'string' && t.preset ? t.preset : defaults.preset,
     onlyInWorktrees: bool(t.onlyInWorktrees, defaults.onlyInWorktrees),
+    connect: bool(t.connect, defaults.connect),
     custom
   }
 }

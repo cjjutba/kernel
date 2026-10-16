@@ -73,7 +73,7 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
     addressReviewInstructions: addressReviewText()
   },
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
-  terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, custom: [] },
+  terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, connect: true, custom: [] },
   experimental: { sharing: true },
   privacy: { telemetry: 'ask' }
 })

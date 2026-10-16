@@ -176,7 +176,7 @@ describe('terminal settings', () => {
 
   it('moves the two experimental switches of an existing settings file into terminal', async () => {
     const { resolved: s } = await loadAppSettings(await file({ experimental: { bigTerminal: false, bigTerminalWorktreeOnly: false, walking: false, floor3d: true, voice: true } }), '/home')
-    expect(s.terminal).toEqual({ enabled: false, preset: 'claude', onlyInWorktrees: false, custom: [] })
+    expect(s.terminal).toEqual({ enabled: false, preset: 'claude', onlyInWorktrees: false, connect: true, custom: [] })
     // sharing was never in a saved file, so it takes the default (KERNEL-308). Voice briefs went with the Experimental page (KERNEL-540), walking and floor3d with the floor (KERNEL-680).
     expect(s.experimental).toEqual({ sharing: true })
   })
