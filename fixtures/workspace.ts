@@ -2137,6 +2137,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
     images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
+  /** The hover preview frame (the landing page's bezel at its small size) on each kind: the transcript's image row, the composer's image and pasted text chips, and an issue chip. scripts/shots.ts hovers each. */
+  WorkspaceReadImagePreview: scene(() => ({
+    items: { [ids.tableChat]: readImageItems },
+    images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
+  })),
   WorkspaceReadImageMissing: scene(() => ({
     items: { [ids.tableChat]: readImageItems },
     images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
@@ -3227,7 +3233,32 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: { ...open, workspace: { right: 'changes', bottom: 'run' } },
     motion: { action: { hold: 'Open issue T-17, Email an invoice to the client from the row actions' }, ms: 500 }
   })),
+  WorkspaceIssuePreview: scene(() => ({
+    items: { [ids.tableChat]: [{ kind: 'user', id: 'ic-u1', ts: at(10, 27), parts: [
+      { type: 'text', text: 'Start from ' },
+      { type: 'issue', name: 'T-17', title: 'Email an invoice to the client from the row actions', url: 'https://linear.app/client-a/issue/T-17', source: 'linear' }
+    ] }] },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
+  })),
   WorkspacePaste: composing({
+    parts: [
+      { type: 'text', text: 'Staging breaks on the invoices page. Here is the log ' },
+      { type: 'file', name: 'pasted_text_1.txt', lines: 212, text: pastedLog },
+      { type: 'text', text: ' and what I see ' },
+      { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot }
+    ],
+    draft: ''
+  }),
+  WorkspacePasteImagePreview: composing({
+    parts: [
+      { type: 'text', text: 'Staging breaks on the invoices page. Here is the log ' },
+      { type: 'file', name: 'pasted_text_1.txt', lines: 212, text: pastedLog },
+      { type: 'text', text: ' and what I see ' },
+      { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot }
+    ],
+    draft: ''
+  }),
+  WorkspacePasteTextPreview: composing({
     parts: [
       { type: 'text', text: 'Staging breaks on the invoices page. Here is the log ' },
       { type: 'file', name: 'pasted_text_1.txt', lines: 212, text: pastedLog },
