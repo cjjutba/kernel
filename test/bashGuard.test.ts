@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bashVerdict, matchesProjectRule, matchesRule, parse, pushesTo, pushMightReach, unwrap, usesNetwork, writesGhIssue } from '../src/main/services/bashGuard'
+import { bashVerdict, matchesProjectRule, matchesRule, parse, pushesTo, pushMightReach, unwrap, publishesWork, usesNetwork, writesGhIssue } from '../src/main/services/bashGuard'
 
 // KERNEL-230: the guard reads a command the way a shell does, so quoting, wrappers, aliases, flag order and redirections
 // don't get past Never allow, Always ask or a project rule.
@@ -644,4 +644,46 @@ describe('gh issue writes (feat-lead-files-tracker-issues-only-with)', () => {
       "gh alias set prs 'pr list'", 'gh alias list'
     ]) expect(writesGhIssue(c), c).toBe(false)
   })
+})
+
+describe('publishesWork (KERNEL-992)', () => {
+  it.each([
+    'git commit -m x',
+    'git commit -am "fix"',
+    'git push',
+    'git push -u origin feat/x',
+    'git -C web push origin HEAD',
+    'git add -A && git commit -m x',
+    'pnpm test; git push origin feat/x',
+    'bash -c "git commit -m x"',
+    'sh -c \'cd web && git push\'',
+    'GIT_AUTHOR_NAME=x git commit -m y',
+    'env FOO=1 git push',
+    'sudo git push',
+    'gh pr create --title x --body y',
+    'gh pr create -f',
+    'gh -R acme/app pr create -f',
+    'pnpm build && gh pr create --fill',
+    'bash -c "gh pr create --fill"',
+    'GH_TOKEN=x gh pr create --fill'
+  ])('%s publishes', (c) => expect(publishesWork(c), c).toBe(true))
+
+  it.each([
+    'git status',
+    'git diff origin/main...HEAD',
+    'git log --oneline -5',
+    'git add -A',
+    'git fetch origin',
+    'git stash',
+    'pnpm test',
+    'pnpm shots Landing',
+    'pnpm typecheck && git status',
+    'gh pr view 12',
+    'gh pr list',
+    'gh pr checks',
+    'gh pr comment 12 --body "git commit"',
+    'echo "git push"',
+    'bash -c "git status"',
+    'ls'
+  ])('%s does not', (c) => expect(publishesWork(c), c).toBe(false))
 })

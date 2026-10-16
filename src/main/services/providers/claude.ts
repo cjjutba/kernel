@@ -14,7 +14,7 @@ import { failureOf } from '../health'
 import { toolKind, toolPolicy, type ToolPolicy } from '../agentTools'
 import { mcpStatus, type McpReport } from '../mcp'
 import { fileMarker, filesNote, IMAGE_DATA_URL, imageMarker, imagesNote, isAttached } from '../attachments'
-import { decide, hookVerdict, MODE_NAMES, NETWORK_OFF, referenceWrite, rulesOf, saveAlwaysAllow, stricter, type Rules, type RunMode, type Verdict } from '../permissions'
+import { buildWrite, decide, hookVerdict, MODE_NAMES, NETWORK_OFF, referenceWrite, rulesOf, saveAlwaysAllow, stricter, type Rules, type RunMode, type Verdict } from '../permissions'
 import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
 import type { Ask, Proc, Runner, RunnerHost } from './types'
@@ -148,6 +148,7 @@ export class ClaudeRunner implements Runner {
         ctx, commands: this.commands, cwds: this.cwds, tools,
         verdict: (command, cwd) => hookVerdict({ tool: 'Bash', command, cwd }, this.rules()),
         writeVerdict: (tool, input, cwd) => referenceWrite({ tool, input, cwd }, this.references),
+        ...(agent?.lead && host.buildOpen ? { buildGate: (tool: string, input: unknown, cwd?: string) => (host.leadMode() === 'build' ? buildWrite({ tool, input, cwd }, () => host.buildOpen!()) : undefined) } : {}),
         projectAllows: (tool, input) => hookVerdict({ tool, input }, this.rules())?.behavior === 'allow',
         askUser: (command, reason, signal) => this.askFromHook(command, reason, signal),
         askTool: (tool, input, reason, signal) => this.askToolFromHook(tool, input, reason, signal),
@@ -689,6 +690,8 @@ function kernelHooks(o: {
   verdict: (command: string, cwd?: string) => Verdict
   /** Kernel's answer about a file edit in the hook: a deny under a reference folder (`referenceWrite`, KERNEL-748). */
   writeVerdict?: (tool: string, input: unknown, cwd?: string) => Verdict
+  /** A Build here chat's file edit in the hook: a deny until the user has given a go-ahead (`buildWrite`, KERNEL-992). */
+  buildGate?: (tool: string, input: unknown, cwd?: string) => Verdict
   /** A project's tool rule lets an MCP or web tool call through from the hook (`hookVerdict`, KERNEL-454). */
   projectAllows: (tool: string, input: unknown) => boolean
   /** Asks the user about an Always ask command and waits, for the hook's answer (`awaitDecision`). */
@@ -714,7 +717,7 @@ function kernelHooks(o: {
   /** Settings, Hooks, read each time a gate runs (KERNEL-537). */
   gates?: () => AppSettings['hooks'] | undefined
 }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, cwds, verdict, writeVerdict, projectAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, leadMode = () => undefined, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
+  const { ctx, commands, cwds, verdict, writeVerdict, buildGate, projectAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, leadMode = () => undefined, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -766,6 +769,15 @@ function kernelHooks(o: {
       return v?.behavior === 'deny' ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: v.message } } : {}
     }
     hooks.PreToolUse!.push({ matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [write] })
+  }
+  // Build here edits files only after a go-ahead, whatever the mode says, so Bypass permissions can't skip it (KERNEL-992).
+  if (buildGate) {
+    const closed: HookCallback = async (input) => {
+      const { tool_name: tool, tool_input, cwd } = input as PreToolUseHookInput
+      const v = buildGate(tool, tool_input, cwd)
+      return v?.behavior === 'deny' ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: v.message } } : {}
+    }
+    hooks.PreToolUse!.push({ matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [closed] })
   }
   // A tool the agent file doesn't list is refused with the reason, here and in any subagent it starts (KERNEL-397).
   if (tools) {

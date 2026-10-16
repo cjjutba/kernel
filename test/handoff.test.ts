@@ -8,7 +8,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo, freePort } from './helpers'
-import { BLOCKER_RULE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, TEAMMATE_RULE, UPDATE_HEADER } from '../src/main/services/handoff'
+import { BLOCKER_RULE, GO_AHEAD_LINE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, TEAMMATE_RULE, UPDATE_HEADER } from '../src/main/services/handoff'
 import { reviewTools } from '../src/main/services/reviewMcp'
 import { reviewPolicyOf } from '../src/main/services/settings'
 import { kindsFor } from '../src/main/services/lenses'
@@ -435,7 +435,7 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     const line = LEAD_RULE.split('\n').find((l) => l.startsWith('With plan mode off'))!
     expect(line).toContain('ending with one yes-or-no question for one set of tasks')
     expect(line).toContain('only on a go-ahead that approves it and raises nothing new, quoted in go_ahead')
-    expect(line).toContain('If the reply also asks questions, changes scope or only agrees with the idea, answer it, restate who gets what, and ask once.')
+    expect(line).toContain(GO_AHEAD_LINE)
     expect(line).toContain('Filing or editing tracker issues with mcp__kernel__file_issue needs the same go-ahead.')
     expect(line).not.toContain('right away')
   })
@@ -463,9 +463,11 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
   it('says the same in the rule, the instructions, the refusal and the starter Kernel, and the rule does not grow', async () => {
     const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
     for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, PLAN_MODE_OFF, starter]) {
-      for (const part of ['one yes-or-no question', 'raises nothing new, quoted in go_ahead', 'changes scope or only agrees with the idea', 'ask once']) expect(said).toContain(part)
+      for (const part of ['one yes-or-no question', 'raises nothing new, quoted in go_ahead', 'ask once']) expect(said).toContain(part)
+      if (said !== LEAD_RULE) expect(said).toContain('changes scope or only agrees with the idea')
       expect(said).not.toMatch(/[\u2013\u2014]/)
     }
+    expect(LEAD_RULE).toContain(GO_AHEAD_LINE)
     for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, starter]) expect(said).toMatch(/Filing (or editing )?tracker issues/)
     // LEAD_RULE's length on main before KERNEL-678. The rule was rewritten, not added to. KERNEL-745 added its one sentence
     // about mentions, 80 characters past that, KERNEL-747 its sentence about proposed hand-offs, 61 more, and KERNEL-777 its

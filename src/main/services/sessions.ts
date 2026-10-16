@@ -246,6 +246,10 @@ export interface SessionDeps {
    * it; `account` is the one it ran on, undefined for the CLI's own login. `limit`: a usage limit Kernel knows cut it off, so
    * the chat waits to carry on (KERNEL-777).
    */
+  /** Whether a Build here chat may change files now, read at each step (`Lead.buildOpen`, KERNEL-992). Left out, it always may. */
+  buildOpen?: (chatId: string) => boolean
+  /** The user approved a plan in a Build here chat, which counts as the go-ahead (KERNEL-992). */
+  onBuildPlanApproved?: (chatId: string) => void
   onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true }) => void
   /**
    * `carryOn` restarted a chat a usage limit or a quit cut off: its queue went, or Kernel's nudge did. After a limit, the
@@ -1494,6 +1498,7 @@ export class Sessions {
     const chat = this.mustChat(chatId)
     const lead = this.isLeadChat(chatId) && leadModeOf(this.d.store.workspace(chat.workspaceId)) === 'handoff'
     if (lead) this.handoffs.approved(chatId)
+    else if (this.isLeadChat(chatId)) this.d.onBuildPlanApproved?.(chatId)
     // The agent has its plan in context, so the note is short. After a restart it names the plan's file, or carries its
     // text when the file is gone (plan-cards-survive-restart).
     const ws = o.restarted ? this.d.store.workspace(chat.workspaceId) : undefined
@@ -1750,6 +1755,7 @@ export class Sessions {
       settings: () => this.d.settings(),
       mode: () => this.modes(this.mustChat(chatId), ws).mode,
       leadMode: () => (agent?.lead ? leadModeOf(this.d.store.workspace(ws.id) ?? ws) : undefined),
+      ...(agent?.lead && this.d.buildOpen ? { buildOpen: () => this.d.buildOpen!(chatId) } : {}),
       projectAllow: () => this.d.projectAllow(ws.projectId),
       allowInProject: (rule) => this.d.allowInProject(ws.projectId, rule),
       projectTools: () => this.d.projectTools?.(ws.projectId) ?? [],

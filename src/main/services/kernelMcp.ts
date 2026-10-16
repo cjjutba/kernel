@@ -100,6 +100,13 @@ export interface KernelToolDeps {
    * checks the Lead's go_ahead quote against it. Left out, create_workspace doesn't check (KERNEL-678).
    */
   userSaid?: () => { text: string; at: number } | undefined
+  /**
+   * Whether this Build here chat may change files now (`buildOpen`, KERNEL-992). Read on each call. Left out, start_build
+   * refuses.
+   */
+  buildOpen?: () => boolean
+  /** Saves the go-ahead start_build passed on, quoted from the user's latest message (KERNEL-992). Left out, start_build refuses. */
+  recordGoAhead?: (quote: string) => void
   /** Sets what the workspace waits for, by workspace id; an empty list ends the wait and starts a held brief (KERNEL-259). */
   setWait?: (workspaceId: string, on: string[]) => Promise<Workspace>
   /** The project's remote and the base a hand-off from `baseRef` starts from, so a wait across bases is refused (KERNEL-693). Left out, bases aren't compared. */
@@ -248,7 +255,28 @@ export function takenWarning(issue: string, t: IssueTaken): string {
 export const PLAN_MODE_OFF = "Not asked: plan mode is off, so there is no plan to approve. If the user only asked a question, answer it and stop. If they asked for work, propose who gets what in one yes-or-no question, and hand off only on a go-ahead that raises nothing new, quoted in go_ahead. If the reply also asks questions, changes scope or only agrees with the idea, answer it and ask once."
 
 /** request_plan_approval's refusal in a Build here chat that isn't in plan mode (KERNEL-770). */
-export const BUILD_PLAN_MODE_OFF = 'Not asked: plan mode is off, so there is no plan to approve. Build what the user asked.'
+export const BUILD_PLAN_MODE_OFF = "Not asked: plan mode is off, so there is no plan to approve. If the user's latest message asks for one clear change, call mcp__kernel__start_build with their words in go_ahead and build it. If it asks a question, offers options or only agrees, answer, recommend one approach and ask once."
+
+/** start_build's refusal, and what a file change gets while Build here has no go-ahead (KERNEL-992). */
+export const BUILD_NO_GO_AHEAD = "Not changed: the user hasn't approved a change yet. If their latest message asks for one clear change, call mcp__kernel__start_build with their words in go_ahead and go on. If it asks a question, offers options or only agrees, answer, recommend one approach and ask once."
+
+/** start_build's refusal in a chat in Hand off (KERNEL-992). */
+export const BUILD_IN_HANDOFF = 'Not started: this chat is in Hand off, so you edit nothing. Propose who gets what, or tell the user they can switch this chat to Build here.'
+
+/** start_build's refusal while the chat is in plan mode (KERNEL-992). */
+export const BUILD_PLAN_MODE_ON = 'Not started: this chat is in plan mode. Plan the change and ask for approval with mcp__kernel__request_plan_approval, then build it.'
+
+/**
+ * Whether a Build here chat may change files now (KERNEL-992). Closed in plan mode. In a turn the user started, open when a
+ * go-ahead was recorded for their latest message or since (`goAhead.at`), or a plan was approved after that message. In a turn
+ * Kernel started, open when the go-ahead is for this branch, so a Team update on approved work carries on, or the chat has an
+ * approved plan. A merge moves the branch, so the old go-ahead stops counting.
+ */
+export function buildOpen(o: { planMode: boolean; userTurn: boolean; branch: string; goAhead?: { at: number; branch: string }; userAt: number; planAts: number[] }): boolean {
+  if (o.planMode) return false
+  if (o.userTurn) return (!!o.goAhead && o.goAhead.at >= o.userAt) || o.planAts.some((at) => at > o.userAt)
+  return o.goAhead?.branch === o.branch || o.planAts.length > 0
+}
 
 /** create_workspace's refusal in a Build here chat, for anything but a review (KERNEL-770). */
 export const BUILD_HERE_REFUSAL = "Not created: this chat is in Build here. Switch this chat to Hand off to give tasks to teammates. Tell the user that, or build it here yourself."
@@ -418,7 +446,7 @@ const SAVE = 'Save'
 export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, answer a question, opinion or report and stop, with no closing offer or question. For a request for work, propose who gets what in one yes-or-no question, and call create_workspace only on a go-ahead that raises nothing new, quoted in go_ahead. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Filing or editing tracker issues with file_issue needs the same go-ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off. When the user says to go past a review\'s blockers, call overrule_blockers with their words in go_ahead.'
 
 /** What the Lead's server tells the model in a Build here chat (KERNEL-770). */
-export const LEAD_BUILD_INSTRUCTIONS = 'You lead a team of agents in Kernel, and this chat is in Build here: you make the change yourself in this chat\'s worktree and open the pull request. While the chat is in plan mode, ask for approval with request_plan_approval first, then build it. With plan mode off, build what the user asked for, and answer a question, opinion or report without changing anything or ending on an offer. create_workspace only starts a review, with review_of. When the work is for a tracker issue, call link_issue before the first push. File or edit tracker issues with file_issue, quoting the user\'s go-ahead in go_ahead. When the work is bigger than one PR or spans lanes, call suggest_hand_off with the reason. Follow up on teammates\' work with message_agent. Use say for a short status line people see on your card in the sidebar.'
+export const LEAD_BUILD_INSTRUCTIONS = 'You lead a team of agents in Kernel, and this chat is in Build here: you make the change yourself in this chat\'s worktree and open the pull request. While the chat is in plan mode, ask for approval with request_plan_approval first, then build it. With plan mode off, call start_build with the user\'s words in go_ahead before your first edit, and build only once it passes. Answer a question, opinion or report without changing anything or ending on an offer. create_workspace only starts a review, with review_of. When the work is for a tracker issue, call link_issue before the first push. File or edit tracker issues with file_issue, quoting the user\'s go-ahead in go_ahead. When the work is bigger than one PR or spans lanes, call suggest_hand_off with the reason. Follow up on teammates\' work with message_agent. Use say for a short status line people see on your card in the sidebar.'
 
 /**
  * The workspace a reviewer's base names: the Lead sometimes starts a review from the reviewed branch with base_ref instead
@@ -516,8 +544,9 @@ export function kernelTools(d: KernelToolDeps) {
    */
   const goAheadOf = (quote: string | undefined): string | false | undefined => {
     if (!d.userSaid || d.planMode?.()) return undefined
+    if (build && d.buildOpen?.()) return undefined
     const plans = d.plans?.() ?? []
-    if (!d.userTurn?.() && (plans.length > 0 || d.workspaces().some((w) => mine(w) && !w.reviewOf))) return undefined
+    if (!build && !d.userTurn?.() && (plans.length > 0 || d.workspaces().some((w) => mine(w) && !w.reviewOf))) return undefined
     const said = d.userSaid()
     if (plans.some((p) => p.at > (said?.at ?? 0))) return undefined
     const q = quote?.trim() ?? ''
@@ -820,6 +849,17 @@ export function kernelTools(d: KernelToolDeps) {
       if (!d.suggestHandoff) return { ...text('Not suggested: this chat can\'t switch modes.'), isError: true }
       d.suggestHandoff(reason.trim())
       return text('Suggested. The user sees a button to switch this chat to Hand off. Stop here, and build nothing until they answer.')
+    }),
+    tool('start_build', 'In Build here, before your first edit: show that the user asked for a change, quoting their words in go_ahead from their latest message. Kernel refuses file changes, commits, pushes and pull requests until it passes. Not for a question, options or a bare yes.', {
+      go_ahead: z.string().describe('The user\'s words that asked for the change, quoted from their latest message, for example "fix it"')
+    }, async ({ go_ahead }) => {
+      if (!build) { bus.track({ name: 'build.refused', reason: 'handoff' }); return { ...text(BUILD_IN_HANDOFF), isError: true } }
+      if (!d.recordGoAhead) return { ...text('Not started: this chat can\'t record a go-ahead.'), isError: true }
+      if (d.planMode?.()) return { ...text(BUILD_PLAN_MODE_ON), isError: true }
+      const goAhead = goAheadOf(go_ahead)
+      if (goAhead === false) { bus.track({ name: 'build.refused', reason: 'go-ahead' }); return { ...text(BUILD_NO_GO_AHEAD), isError: true } }
+      if (goAhead) d.recordGoAhead(goAhead)
+      return text('Go ahead: build it')
     }),
     tool('link_issue', 'In Build here: link this chat\'s work to a tracker issue. Before the first push the branch is renamed after the issue, after it only the link changes. Name the issue in the PR body so it closes on merge.', {
       issue: z.string().min(1).max(80).describe('The issue key, for example "KERNEL-760" or "#41"')

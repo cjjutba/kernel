@@ -887,6 +887,20 @@ export function writesGhIssue(command: string): boolean {
   })
 }
 
+/**
+ * Whether a command puts work where others see it: `git commit`, `git push` or `gh pr create`, in a chain, under `bash -c` or
+ * after env prefixes (KERNEL-992). Build here denies them until the user has given a go-ahead, since nothing else leaves the worktree.
+ */
+export function publishesWork(command: string): boolean {
+  return analyze(command.trim()).effective.some((s) => {
+    const g = gitCall(s)
+    if (g) return g.sub === 'commit' || g.sub === 'push'
+    if (base(s.words[0] ?? '') !== 'gh') return false
+    const { words } = ghWords(s)
+    return words[0] === 'pr' && words[1] === 'create'
+  })
+}
+
 /** The simple commands only: no operators, redirections, process substitution, heredoc, expansion or unknown words. */
 const isPlain = (s: Simple) => !s.unknown && !s.redirects.length && !s.procSub && !s.heredoc && !s.dynamic.some(Boolean)
 

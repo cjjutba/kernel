@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { canOpenPr, LEAD_FILES_ISSUES, mcpWarnings, missingServers, serverReach, toolKind, toolName, toolPolicy } from '../src/main/services/agentTools'
 import { toolServerName } from '../src/main/services/mcp'
+import { BUILD_CLOSED, buildWrite, guardVerdict, type Rules } from '../src/main/services/permissions'
 
 // KERNEL-397: an agent file's tools line holds in Kernel the way it does when Claude Code runs the file as a subagent.
 describe('agent tools', () => {
@@ -250,5 +251,44 @@ describe('agent tools', () => {
     expect(toolPolicy(['Read'], { allow: ['figma'], disallowed: ['mcp__figma'] })!.allows('mcp__figma__get_file')).toBe(false)
     // An alias names the server it stands for too.
     expect(toolPolicy(['Read'], { allow: ['linear'], aliases: { linear: 'claude_ai_Linear' } })!.allows('mcp__claude_ai_Linear__get_issue')).toBe(true)
+  })
+})
+
+describe("Build here's gate on file changes and publishing (KERNEL-992)", () => {
+  const cwd = '/tmp/ws'
+  const plans = '/tmp/plans'
+  const deny = { behavior: 'deny', message: BUILD_CLOSED }
+
+  it('denies Edit, Write, MultiEdit and NotebookEdit until the gate opens, and leaves reads, plan files and shared files alone', () => {
+    let open = false
+    const gate = (tool: string, input: unknown) => buildWrite({ tool, input, cwd }, () => open, plans)
+    for (const tool of ['Edit', 'Write', 'MultiEdit']) expect(gate(tool, { file_path: 'src/a.ts' }), tool).toEqual(deny)
+    expect(gate('NotebookEdit', { notebook_path: 'n.ipynb' })).toEqual(deny)
+    expect(gate('Edit', {})).toEqual(deny)
+    expect(gate('Read', { file_path: 'src/a.ts' })).toBeUndefined()
+    expect(gate('Write', { file_path: '/tmp/plans/plan.md' })).toBeUndefined()
+    expect(gate('Write', { file_path: '/tmp/plans/sub/plan.md' })).toEqual(deny)
+    expect(gate('Write', { file_path: '.kernel/shared/mock.html' })).toBeUndefined()
+    expect(gate('Write', { file_path: '/tmp/ws/.kernel/shared/a/b.png' })).toBeUndefined()
+    expect(gate('Write', { file_path: '.kernel/shared/../../src/a.ts' })).toEqual(deny)
+    open = true
+    expect(gate('Edit', { file_path: 'src/a.ts' })).toBeUndefined()
+  })
+
+  const rules = (mode: Rules['mode'], open: () => boolean): Rules => ({ permissions: { mode, alwaysAsk: [], neverAllow: [], protectedBranches: ['main'], approvalTimeoutSec: 300 } as unknown as Rules['permissions'], mode, projectAllow: () => [], projectTools: () => [], lead: true, buildClosed: () => !open() })
+
+  it('denies git commit, git push and gh pr create while closed, in chains, under bash -c and with env prefixes, in Bypass permissions too, and runs the rest', () => {
+    let open = false
+    for (const mode of ['default', 'acceptEdits', 'bypassPermissions'] as const) {
+      const r = rules(mode, () => open)
+      for (const c of ['git commit -m x', 'pnpm test && git push -u origin feat/x', 'bash -c "git add -A && git commit -m x"', 'GIT_AUTHOR_NAME=x git commit -m y', 'gh pr create --fill']) expect(guardVerdict(c, r), `${mode}: ${c}`).toEqual(deny)
+      for (const c of ['git status', 'git diff', 'pnpm test', 'pnpm shots Landing']) expect(guardVerdict(c, r)?.behavior, `${mode}: ${c}`).not.toBe('deny')
+    }
+    open = true
+    expect(guardVerdict('git commit -m x', rules('acceptEdits', () => open))?.behavior).not.toBe('deny')
+  })
+
+  it("doesn't gate a step that isn't a Build here Lead's", () => {
+    expect(guardVerdict('git commit -m x', { ...rules('acceptEdits', () => false), buildClosed: undefined })?.behavior).not.toBe('deny')
   })
 })

@@ -57,6 +57,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
       const project = k.store.project(projectId)
       if (project && !project.allowTools?.includes(rule)) k.store.saveProject({ ...project, allowTools: [...(project.allowTools ?? []), rule] })
     },
+    buildOpen: (chatId) => k.lead.buildOpen(chatId),
+    onBuildPlanApproved: (chatId) => k.lead.recordGoAhead(chatId, 'plan approved'),
     onReply: (ws, chat) => void k.chats.nameChat(ws, chat),
     // A reply proves the network works, so a failing DNS probe behind a proxy doesn't hold every send (KERNEL-231).
     onReached: () => k.account.network?.reached(),

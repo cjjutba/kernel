@@ -1,4 +1,5 @@
 import { realpathSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentDef, Chat, ChatRunMode, Decision, ModeReason, ModeScope, PermissionMode, Project, RunMode, Workspace } from '@shared/types'
@@ -6,8 +7,10 @@ import { PERMISSION_MODES } from '@shared/types'
 import type { AppSettings } from './settings'
 import type { RunnerHost } from './providers/types'
 import { needsUser } from './approvals'
-import { bashVerdict, pushMightReach, projectRule, usesNetwork, writesGhIssue } from './bashGuard'
+import { bashVerdict, publishesWork, pushMightReach, projectRule, usesNetwork, writesGhIssue } from './bashGuard'
 import { checkedOutBranch } from './worktrees'
+import { isPlanFile } from './agentTools'
+import { sharesFile } from './sharedFiles'
 
 // The permission rules both runners apply (KERNEL-434). A runner describes the step, asks `decide`, and turns the answer
 // into its own protocol: Claude's canUseTool result or hook output, Codex's approval decision. The mode a chat runs in is
@@ -83,6 +86,9 @@ export function pushOwnBranch(branches: string[], branch?: string): string {
 /** What a Lead's gh issue write gets, in every mode (feat-lead-files-tracker-issues-only-with). */
 export const LEAD_GH_ISSUE = "Kernel writes tracker issues for the Lead. Call mcp__kernel__file_issue to file, edit, comment on or move one, instead of gh issue or gh api, with the user's go-ahead quoted in go_ahead. Reading issues with gh works as before."
 
+/** What a commit, push or pull request gets while Build here has no go-ahead (KERNEL-992). */
+export const BUILD_CLOSED = "Not done: the user hasn't approved a change yet. If their latest message asks for one clear change, call mcp__kernel__start_build with their words in go_ahead and go on. If it asks a question, offers options or only agrees, answer, recommend one approach and ask once."
+
 /** Why a command on Always ask goes to the user, for a CLI that takes a reason with an ask. */
 export const ALWAYS_ASK = 'On the Always ask list in Kernel.'
 
@@ -128,11 +134,14 @@ export interface Rules {
   references?: string[]
   /** The step is the Lead's, which files and edits tracker issues with file_issue only (feat-lead-files-tracker-issues-only-with). */
   lead?: boolean
+  /** A Build here Lead with no go-ahead now, read at each step: it commits, pushes and opens PRs only once this says so (KERNEL-992). */
+  buildClosed?: () => boolean
 }
 
 /** The rules for a runner's next step: Settings, Permissions and the project as they stand now, in `mode`, else the chat's mode now. */
-export function rulesOf(host: Pick<RunnerHost, 'settings' | 'projectAllow' | 'projectTools' | 'workspace' | 'mode'> & Partial<Pick<RunnerHost, 'agent'>>, mode: RunMode = host.mode()): Rules {
-  return { permissions: host.settings().permissions, mode, projectAllow: () => host.projectAllow(), projectTools: () => host.projectTools(), branch: host.workspace.branch, ...(host.agent?.lead ? { lead: true } : {}) }
+export function rulesOf(host: Pick<RunnerHost, 'settings' | 'projectAllow' | 'projectTools' | 'workspace' | 'mode'> & Partial<Pick<RunnerHost, 'agent' | 'leadMode' | 'buildOpen'>>, mode: RunMode = host.mode()): Rules {
+  const buildClosed = host.agent?.lead && host.buildOpen ? () => host.leadMode?.() === 'build' && !host.buildOpen?.() : undefined
+  return { permissions: host.settings().permissions, mode, projectAllow: () => host.projectAllow(), projectTools: () => host.projectTools(), branch: host.workspace.branch, ...(host.agent?.lead ? { lead: true } : {}), ...(buildClosed ? { buildClosed } : {}) }
 }
 
 const ALLOW: Verdict = { behavior: 'allow' }
@@ -146,6 +155,7 @@ const ALLOW: Verdict = { behavior: 'allow' }
  */
 export function guardVerdict(command: string, rules: Rules, cwd?: string): Verdict {
   if (rules.lead && writesGhIssue(command)) return { behavior: 'deny', message: LEAD_GH_ISSUE }
+  if (rules.buildClosed?.() && publishesWork(command)) return { behavior: 'deny', message: BUILD_CLOSED }
   const bypass = rules.mode === 'bypassPermissions'
   const branches = rules.permissions.protectedBranches ?? []
   const head = cwd ? () => checkedOutBranch(cwd) : undefined
@@ -177,6 +187,21 @@ export const REFERENCE_READ_ONLY = 'Reference folders are read-only.'
 
 /** The tools that change a file, by the input key that names it. */
 const FILE_WRITES: Record<string, string> = { Edit: 'file_path', Write: 'file_path', MultiEdit: 'file_path', NotebookEdit: 'notebook_path' }
+
+/**
+ * Denies Edit, Write, MultiEdit and NotebookEdit in a Build here chat that has no go-ahead (KERNEL-992), in every mode, Bypass
+ * permissions included. A plan file and a file under `.kernel/shared` stay writable, as in Hand off. `open` is read at the call.
+ */
+export function buildWrite(step: Pick<Step, 'tool' | 'input' | 'cwd'>, open: () => boolean, plans?: string): Verdict {
+  const key = FILE_WRITES[step.tool]
+  if (!key || open()) return undefined
+  const target = (step.input as Record<string, unknown> | undefined)?.[key]
+  if (typeof target === 'string' && target.trim()) {
+    if (isPlanFile(resolve(step.cwd ?? '/', target), plans ?? join(homedir(), '.claude', 'plans'))) return undefined
+    if (step.cwd && sharesFile(step.cwd, target)) return undefined
+  }
+  return { behavior: 'deny', message: BUILD_CLOSED }
+}
 
 /** A path with its symlinks resolved, as far up as it exists, so a file Write is about to create still resolves. */
 function realish(path: string): string {
