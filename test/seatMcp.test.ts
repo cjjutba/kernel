@@ -54,7 +54,7 @@ beforeAll(async () => {
   build = await chatWs('build')
   const made = await setUp(k, (await k.workspaces.createWorkspace(projectId, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
   mate = { ws: made, chatId: k.store.chats(made.id)[0].id }
-  seats = k.chats.seats
+  seats = k.seats
   await seats.start()
 }, 60_000)
 

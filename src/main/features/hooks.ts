@@ -60,11 +60,10 @@ export class Hooks extends Feature {
     }
   }
 
-  async stop(): Promise<void> {
-    await this.k.chats.seats.stop()
+  stop(): Promise<void> {
     // An outside session waiting on an approval holds its request open for up to the approval timeout, and close()
     // waits for it, so whatever is still open ends first.
-    await new Promise<void>((r) => { if (!this.hookServer) return r(); this.hookServer.closeAllConnections(); this.hookServer.close(() => r()) })
+    return new Promise<void>((r) => { if (!this.hookServer) return r(); this.hookServer.closeAllConnections(); this.hookServer.close(() => r()) })
   }
 
   /** A hook from a session Kernel did not start. The listener on the bus calls it. */
