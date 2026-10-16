@@ -342,7 +342,7 @@ describe('restorePlace', () => {
     expect(restorePlace('null', getState())).toBeUndefined()
     expect(restorePlace(saved(at('lead'), {}, 2), getState())).toBeUndefined()
     expect(restorePlace(JSON.stringify({ route: at('lead'), tabs: {} }), getState())).toBeUndefined()
-    for (const route of [{ name: 'settings', page: 'general' }, { name: 'onboarding', step: 'welcome' }, { name: 'devUi', page: 'components' }, { name: 'nope' }, { name: 'workspace' }, { name: 'team' }, { name: 'home' }, 'home', null]) {
+    for (const route of [{ name: 'settings', page: 'general' }, { name: 'onboarding', step: 'splash' }, { name: 'devUi', page: 'components' }, { name: 'nope' }, { name: 'workspace' }, { name: 'team' }, { name: 'home' }, 'home', null]) {
       expect(restorePlace(saved(route), getState())).toBeUndefined()
     }
   })
@@ -364,7 +364,7 @@ describe('placeToSave', () => {
     expect(placeToSave(getState(), { route: { name: 'inbox' } })?.route).toEqual({ name: 'inbox' })
   })
   it('is nothing on onboarding or the dev pages', () => {
-    actions.ui.go({ name: 'onboarding', step: 'welcome' })
+    actions.ui.go({ name: 'onboarding', step: 'splash' })
     expect(placeToSave(getState())).toBeUndefined()
     actions.ui.go({ name: 'devUi', page: 'components' })
     expect(placeToSave(getState())).toBeUndefined()
@@ -380,7 +380,7 @@ describe('launchRoute, which Continue on the checks screen goes to', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', { getItem: (k: string) => (k === 'kernel.lastPlace' ? place : null), setItem: () => undefined, removeItem: () => undefined })
     resetHistory()
-    actions.ui.go({ name: 'onboarding', step: 'checks' }, { history: 'replace' })
+    actions.ui.go({ name: 'onboarding', step: 'project' }, { history: 'replace' })
   })
   afterEach(() => { vi.unstubAllGlobals(); setState({ settings: null }) })
 

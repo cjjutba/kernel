@@ -799,7 +799,7 @@ async function runMotionAction(page: Page, action: MotionAction, app: ElectronAp
   else if ('click' in action) await page.getByRole('button', { name: action.click, exact: true }).or(page.getByRole('tab', { name: action.click })).click()
   else if ('hold' in action) { await page.getByRole('button', { name: action.hold, exact: true }).first().hover(); await page.mouse.down() }
   else for (const key of action.press) {
-    if (key.startsWith('click:')) await page.getByRole('button', { name: key.slice(6), exact: true }).click()
+    if (key.startsWith('click:')) await page.getByRole('button', { name: key.slice(6), exact: true }).or(page.getByRole('tab', { name: key.slice(6) })).click()
     else await page.keyboard.press(key)
   }
 }
