@@ -16,7 +16,7 @@ function ViewHead({ path, children, trailing }: { path: string; children?: React
   const { dir, name } = split(path)
   return (
     <div className="view-head">
-      <span className="row" style={{ minWidth: 0 }}><FileIcon path={path} /><span className="mono ellipsis" style={{ fontSize: 12.5 }}><span className="muted">{dir}</span>{name}</span></span>
+      <span className="row" style={{ minWidth: 0 }}><FileIcon path={path} /><span className="mono ellipsis t-code"><span className="muted">{dir}</span>{name}</span></span>
       {children}
       <span className="grow" />
       {trailing}
@@ -68,9 +68,9 @@ function ImagePane({ wsId, path, at, label, target, onSize }: { wsId: string; pa
     : null
   return (
     <figure className="image-pane">
-      {label && <figcaption className="muted" style={{ fontSize: 12 }}>{label}{size ? ` · ${sizeText(size)}` : ''}</figcaption>}
+      {label && <figcaption className="muted t-meta">{label}{size ? ` · ${sizeText(size)}` : ''}</figcaption>}
       {url === null
-        ? <span className="muted" style={{ fontSize: 12 }}>Can't show this picture.</span>
+        ? <span className="muted t-meta">Can't show this picture.</span>
         : openImage && url && size
           ? <button type="button" className="image-open" aria-label={`Open ${path}`} onClick={() => openImage({ type: 'image', name: split(path).name, path, dataUrl: url })}>{picture}</button>
           : picture}
@@ -107,7 +107,7 @@ function ImageFile({ ws, path, editedBy, changed }: { ws: Workspace; path: strin
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       <ViewHead path={path} trailing={<button type="button" className="open-editor" onClick={() => void call('system.openInEditor', { path: `${ws.path}/${path}` })}>Open in editor</button>}>
-        <span className="muted" style={{ fontSize: 12 }}>Read only{changed && editedBy ? ` · edited by ${editedBy}` : ''}{size ? ` · ${sizeText(size)}` : ''}</span>
+        <span className="muted t-meta">Read only{changed && editedBy ? ` · edited by ${editedBy}` : ''}{size ? ` · ${sizeText(size)}` : ''}</span>
       </ViewHead>
       <div ref={scroller} className="image-view"><ImagePane wsId={ws.id} path={path} at="worktree" onSize={setSize} /></div>
     </div>
@@ -129,12 +129,12 @@ function TextFile({ ws, path, editedBy, changed }: { ws: Workspace; path: string
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       <ViewHead path={path} trailing={<button type="button" className="open-editor" onClick={() => void call('system.openInEditor', { path: `${ws.path}/${path}` })}>Open in editor</button>}>
-        <span className="muted" style={{ fontSize: 12 }}>Read only{changed && editedBy ? ` · edited by ${editedBy}` : ''}</span>
+        <span className="muted t-meta">Read only{changed && editedBy ? ` · edited by ${editedBy}` : ''}</span>
       </ViewHead>
       {error ? (
-        <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Can't show this file</span><span>{error}</span></div>
+        <div className="panel-empty"><span className="ink2 t-medium">Can't show this file</span><span>{error}</span></div>
       ) : (
-        <div ref={scroller} className="code-view selectable mono" role="region" aria-label={`Contents of ${path}`} tabIndex={0}>
+        <div ref={scroller} className="code-view code-view-flush selectable mono" role="region" aria-label={`Contents of ${path}`} tabIndex={0}>
           {text !== null && lines.map((l, i) => <div key={i} className="code-line"><span className="ln">{i + 1}</span><span className="src">{l || ' '}</span></div>)}
         </div>
       )}
@@ -147,7 +147,7 @@ export function ImageView({ name, src, width, height }: { name: string; src: str
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       <ViewHead path={name} trailing={null}>
-        {width && height ? <span className="muted" style={{ fontSize: 12 }}>{width}×{height}</span> : null}
+        {width && height ? <span className="muted t-meta">{width}×{height}</span> : null}
       </ViewHead>
       <div className="image-view"><img src={src} alt={name} /></div>
     </div>
@@ -160,9 +160,9 @@ export function TextView({ name, text }: { name: string; text: string }) {
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       <ViewHead path={name} trailing={null}>
-        <span className="muted" style={{ fontSize: 12 }}>Read only · {lines.length} {lines.length === 1 ? 'line' : 'lines'}</span>
+        <span className="muted t-meta">Read only · {lines.length} {lines.length === 1 ? 'line' : 'lines'}</span>
       </ViewHead>
-      <div className="code-view selectable mono" role="region" aria-label={`Contents of ${name}`} tabIndex={0}>
+      <div className="code-view code-view-flush selectable mono" role="region" aria-label={`Contents of ${name}`} tabIndex={0}>
         {lines.map((l, i) => <div key={i} className="code-line"><span className="ln">{i + 1}</span><span className="src">{l || ' '}</span></div>)}
       </div>
     </div>
@@ -202,7 +202,7 @@ function ImageDiff({ ws, path, changes, target }: { ws: Workspace; path: string;
   const status = changes.find((c) => c.path === path)?.status
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
-      <ViewHead path={path} trailing={null}>{status !== 'M' && size && <span className="muted" style={{ fontSize: 12 }}>{sizeText(size)}</span>}</ViewHead>
+      <ViewHead path={path} trailing={null}>{status !== 'M' && size && <span className="muted t-meta">{sizeText(size)}</span>}</ViewHead>
       <ImageChange wsId={ws.id} path={path} status={status} target={target} onSize={setSize} keep={`diff:${path}`} />
     </div>
   )
@@ -225,9 +225,9 @@ function TextDiff({ ws, path, changes, target, title }: { ws: Workspace; path: s
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       {path
-        ? <ViewHead path={path} trailing={null}>{stat && <span className="mono" style={{ fontSize: 12 }}><span className="add">+{stat.added}</span> <span className="del">-{stat.removed}</span></span>}</ViewHead>
-        : <div className="view-head"><span style={{ fontWeight: 500 }}>{title}</span><span className="muted" style={{ fontSize: 12 }}>{changes.length} {changes.length === 1 ? 'file' : 'files'}</span></div>}
-      <div ref={scroller} className="code-view selectable mono" role="region" aria-label="Diff" tabIndex={0} style={{ padding: '8px 0' }}>
+        ? <ViewHead path={path} trailing={null}>{stat && <span className="mono t-meta"><span className="add">+{stat.added}</span> <span className="del">-{stat.removed}</span></span>}</ViewHead>
+        : <div className="view-head"><span className="t-medium">{title}</span><span className="muted t-meta">{changes.length} {changes.length === 1 ? 'file' : 'files'}</span></div>}
+      <div ref={scroller} className="code-view code-view-flush selectable mono" role="region" aria-label="Diff" tabIndex={0}>
         {error && <div className="panel-empty"><span>{error}</span></div>}
         {text !== null && !files.length && !error && <div className="panel-empty"><span>No changes to show.</span></div>}
         {files.map((f) => (

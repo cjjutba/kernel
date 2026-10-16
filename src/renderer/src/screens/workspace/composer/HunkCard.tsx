@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Hunk, Workspace } from '@shared/types'
 import { call } from '../../../api'
 import { actions } from '../../../store'
-import { Button, useBusy } from '../../../ui'
+import { Button, Checkbox, useBusy } from '../../../ui'
 import { diffTab } from '../ChatTabs'
 import { attempt } from '../MessageActions'
 
@@ -43,20 +43,19 @@ export function HunkCard({ ws, agentName, refreshKey }: { ws: Workspace; agentNa
 
   return (
     <section className="hunk-card" aria-label={`Changes in ${name}`}>
-      <p style={{ margin: 0, fontWeight: 500 }}>{name} has your changes and {agentName}’s</p>
-      <p className="ink2" style={{ margin: 0 }}>You edited this file before the workspace started. Pick what goes in the commit.</p>
-      <div className="col" style={{ gap: 6 }}>
+      <p className="flush t-medium">{name} has your changes and {agentName}’s</p>
+      <p className="ink2 flush">You edited this file before the workspace started. Pick what goes in the commit.</p>
+      <div className="col gap-6">
         {rows.map((h) => (
-          <label key={h.id} className="hunk-row">
-            <input type="checkbox" checked={picked.has(h.id)} onChange={() => toggle(h.id)} />
-            <span className="col" style={{ gap: 2, minWidth: 0 }}>
-              <span style={{ fontWeight: 500 }}>{h.owner === 'agent' ? `${agentName}’s change` : 'Your change from before'}</span>
-              <span className="mono muted" style={{ fontSize: 12 }}>lines {h.lines} · +{h.added} -{h.removed}{h.owner === 'mine' ? ' · stays uncommitted' : ''}</span>
+          <Checkbox key={h.id} className="hunk-row" align="top" checked={picked.has(h.id)} onChange={() => toggle(h.id)}>
+            <span className="col gap-2" style={{ minWidth: 0 }}>
+              <span className="t-medium">{h.owner === 'agent' ? `${agentName}’s change` : 'Your change from before'}</span>
+              <span className="mono muted t-meta">lines {h.lines} · +{h.added} -{h.removed}{h.owner === 'mine' ? ' · stays uncommitted' : ''}</span>
             </span>
-          </label>
+          </Checkbox>
         ))}
       </div>
-      <div className="row" style={{ gap: 8 }}>
+      <div className="row">
         <Button onClick={() => actions.ui.openTab(ws.id, diffTab(file))}>Open diff</Button>
         <Button variant="primary" busy={!!busy} busyLabel="Committing" disabled={!ids.length} onClick={() => void commit()}>Commit selected</Button>
       </div>

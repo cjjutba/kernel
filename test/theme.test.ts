@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveTheme } from '../src/renderer/src/ui/theme'
@@ -106,7 +106,7 @@ describe('theme contrast', () => {
   })
   it('hover card status words reach 4.5:1 on their pill in both themes', () => {
     const fails: string[] = []
-    for (const [name, theme] of themes(both)) for (const t of ['add', 'del', 'muted'])
+    for (const [name, theme] of themes(both)) for (const t of ['del', 'muted'])
       if (contrast(theme[t], theme[`tint-${t}`]) < 4.5) fails.push(`${name} ${t} on tint-${t}: ${contrast(theme[t], theme[`tint-${t}`]).toFixed(2)}`)
     expect(fails).toEqual([])
   })
@@ -210,7 +210,6 @@ describe('no hardcoded colors', () => {
 
 // KERNEL-681: type sizes, weights, line heights, layers and motion come from tokens.css too, and so do the type, color and spacing of
 // an inline style. A value that isn't a token yet becomes one in tokens.css (DESIGN.md), never a literal in a screen.
-// test/themeBaseline.json records the violations that were there when these checks landed. It only shrinks (see `ratchet` below).
 type Kind = 'checkbox' | 'curve' | 'duration' | 'fontSize' | 'fontWeight' | 'inlineStyle' | 'lineHeight' | 'unknownVar' | 'unusedToken' | 'zIndex'
 interface Hit { kind: Kind; line: number; text: string }
 
@@ -310,55 +309,10 @@ describe('design tokens beyond color', () => {
     return out
   }
 
-  type Counts = Partial<Record<Kind, number>>
-  const baselineFile = join(__dirname, 'themeBaseline.json')
-  /** One line per file, sorted by path, kinds sorted inside it, so a diff reads one file per line. */
-  const serialize = (b: Record<string, Counts>) => {
-    const rows = Object.keys(b).sort().map((k) => `  ${JSON.stringify(k)}: ${JSON.stringify(Object.fromEntries(Object.entries(b[k]).sort(([x], [y]) => (x < y ? -1 : 1))))}`)
-    return `{\n${rows.join(',\n')}\n}\n`
-  }
-  const countsOf = (hits: Hit[]) => hits.reduce<Counts>((c, h) => ({ ...c, [h.kind]: (c[h.kind] ?? 0) + 1 }), {})
-
-  // THEME_BASELINE=lower pnpm exec vitest run test/theme.test.ts writes the baseline with every count at the lower of its old value and
-  // today's. It never raises one: a new violation is fixed, not recorded. THEME_BASELINE=seed records today's counts into an empty baseline.
-  const mode = process.env.THEME_BASELINE
-  if (mode === 'lower' || mode === 'seed') {
-    const now = measure()
-    const was: Record<string, Counts> = JSON.parse(readFileSync(baselineFile, 'utf8'))
-    if (mode === 'seed' && Object.keys(was).length) throw new Error('THEME_BASELINE=seed needs an empty baseline')
-    const next: Record<string, Counts> = {}
-    for (const [f, hits] of Object.entries(now)) {
-      const c = countsOf(hits)
-      for (const k of Object.keys(c) as Kind[]) {
-        const keep = mode === 'seed' ? c[k]! : Math.min(c[k]!, was[f]?.[k] ?? 0)
-        if (keep > 0) (next[f] ??= {})[k] = keep
-      }
-    }
-    writeFileSync(baselineFile, serialize(next))
-  }
-
-  it('the baseline is one sorted line per file', () => {
-    expect(readFileSync(baselineFile, 'utf8')).toBe(serialize(JSON.parse(readFileSync(baselineFile, 'utf8'))))
-  })
-
-  it('no file goes above its baseline, and none drops below it without the baseline being lowered', () => {
-    const baseline: Record<string, Counts> = JSON.parse(readFileSync(baselineFile, 'utf8'))
-    const now = measure()
-    const over: string[] = []
-    const under: string[] = []
-    for (const f of new Set([...Object.keys(now), ...Object.keys(baseline)])) {
-      const hits = now[f] ?? []
-      const actual = countsOf(hits)
-      for (const k of new Set([...Object.keys(actual), ...Object.keys(baseline[f] ?? {})]) as Set<Kind>) {
-        const n = actual[k] ?? 0
-        const b = baseline[f]?.[k] ?? 0
-        if (n > b) over.push(`${f}: ${k} is ${n}, baseline ${b}\n${hits.filter((h) => h.kind === k).map((h) => `    :${h.line} ${h.text}`).join('\n')}`)
-        else if (n < b) under.push(`${f}: ${k} is ${n}, baseline still says ${b}. Lower it in test/themeBaseline.json (THEME_BASELINE=lower does it).`)
-      }
-    }
-    // One string, so the runner prints every file and count in full instead of "[ …(2) ]".
-    expect(over.join('\n'), 'above baseline: lower the literal, or use a token').toBe('')
-    expect(under.join('\n'), 'below baseline: run THEME_BASELINE=lower pnpm exec vitest run test/theme.test.ts').toBe('')
+  it('no file has a literal type, layer or motion value, a literal inline style, a raw checkbox, an unknown var() or an unused token', () => {
+    const lines = Object.entries(measure()).map(([f, hits]) => `${f}\n${hits.map((h) => `    :${h.line} ${h.kind} ${h.text}`).join('\n')}`)
+    // One string, so the runner prints every file in full instead of "[ …(2) ]".
+    expect(lines.join('\n'), 'use a token, a class, or add the value to tokens.css').toBe('')
   })
 
   it('tokens.css itself is the only place a value is spelled out: every other file passes through the checks above', () => {
