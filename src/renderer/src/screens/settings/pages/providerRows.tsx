@@ -80,6 +80,7 @@ export function AccountRow({ account, line2, back, note, cells, active, action, 
   // Escape, a press outside or a pick closes the menu and hands focus back to its button. Rename's field and Remove's dialog take it after.
   const close = () => { onMenu(false); anchor.current?.querySelector<HTMLButtonElement>('.ac-more')?.focus() }
   // Enter and Escape end the rename themselves, so the blur that follows when the field goes away saves nothing twice.
+  // A blur with the name cleared keeps the old name: only Enter sends an empty name.
   const renameDone = useRef(false)
   if (!rename) renameDone.current = false
   if (rename) {
@@ -89,7 +90,7 @@ export function AccountRow({ account, line2, back, note, cells, active, action, 
           <input
             className="ac-rename" aria-label={`Name for ${account.label}`} autoComplete="off" spellCheck={false} autoFocus placeholder={account.email} disabled={rename.saving} value={rename.value}
             onFocus={(e) => e.currentTarget.select()} onChange={(e) => { renameDone.current = false; rename.onChange(e.target.value) }}
-            onBlur={() => { if (!renameDone.current && !rename.saving) rename.onSave() }}
+            onBlur={() => { if (renameDone.current || rename.saving) return; if (rename.value.trim()) rename.onSave(); else rename.onCancel() }}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return
               if (e.key === 'Enter') { e.preventDefault(); renameDone.current = true; rename.onSave() }
