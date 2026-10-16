@@ -356,8 +356,9 @@ describe('design tokens beyond color', () => {
         else if (n < b) under.push(`${f}: ${k} is ${n}, baseline still says ${b}. Lower it in test/themeBaseline.json (THEME_BASELINE=lower does it).`)
       }
     }
-    expect(over).toEqual([])
-    expect(under).toEqual([])
+    // One string, so the runner prints every file and count in full instead of "[ …(2) ]".
+    expect(over.join('\n'), 'above baseline: lower the literal, or use a token').toBe('')
+    expect(under.join('\n'), 'below baseline: run THEME_BASELINE=lower pnpm exec vitest run test/theme.test.ts').toBe('')
   })
 
   it('tokens.css itself is the only place a value is spelled out: every other file passes through the checks above', () => {
