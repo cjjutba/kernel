@@ -26,7 +26,7 @@ const agent = (o: Partial<AgentDef>): AgentDef => ({ id: 'kai', name: 'Kai', rol
 describe('which provider, model and effort an agent runs on (KERNEL-406)', () => {
   it("takes the role's default from Settings, and the file's effort over the role's", async () => {
     const { k } = await kernel()
-    await k.config.setSettings({ models: { roles: { engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, qa: { provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' } } } })
+    await k.config.setSettings({ models: { roles: { frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, qa: { provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' } } } })
     expect(k.team.pickFor(agent({}))).toEqual({ provider: 'codex', model: 'gpt-6-astra', effort: 'medium' })
     expect(k.team.pickFor(agent({ effort: 'xhigh' }))).toEqual({ provider: 'codex', model: 'gpt-6-astra', effort: 'xhigh' })
     expect(k.team.pickFor(agent({ role: 'QA' }))).toEqual({ provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' })
@@ -37,7 +37,9 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
   it("reads a review chat as the reviewer's, and a chat with no agent as the Lead's or an engineer's (feat-compact-window-per-role-with-plan)", async () => {
     const { k, project } = await kernel()
     const ws = (o: Partial<Workspace>): Workspace => ({ id: 'ws', projectId: project.id, name: 'w', branch: 'feat/w', baseRef: 'main', path: '/tmp/w', mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...o })
-    expect(k.team.roleFor(ws({}), agent({}))).toBe('engineers')
+    expect(k.team.roleFor(ws({}), agent({}))).toBe('frontend')
+    expect(k.team.roleFor(ws({}), agent({ role: 'Backend' }))).toBe('engineers')
+    expect(k.team.roleFor(ws({}), agent({ role: 'Platform' }))).toBe('engineers')
     expect(k.team.roleFor(ws({}), agent({ role: 'QA' }))).toBe('qa')
     expect(k.team.roleFor(ws({ lead: true }), agent({ lead: true }))).toBe('lead')
     // A review is the reviewer's whichever agent runs it, an engineer and one that pins a model included.
@@ -53,7 +55,7 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
 
   it("lets the agent file's model pin that agent, on its provider line or the one its model belongs to", async () => {
     const { k } = await kernel()
-    await k.config.setSettings({ models: { roles: { engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } } } })
+    await k.config.setSettings({ models: { roles: { frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } } } })
     expect(k.team.pickFor(agent({ model: 'opus' }))).toEqual({ provider: 'claude', model: 'claude-opus-5-5', effort: 'medium' })
     expect(k.team.pickFor(agent({ model: 'claude-sonnet-5-5', effort: 'high' }))).toEqual({ provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' })
     expect(k.team.pickFor(agent({ model: 'gpt-5.6-luna' }))).toMatchObject({ provider: 'codex', model: 'gpt-5.6-luna' })
@@ -65,7 +67,7 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
 
   it('starts a hand-off on the role default, and on the agent alone when its file pins a model', async () => {
     const { k, project } = await kernel({ '.claude/agents/kai.md': KAI, '.claude/agents/ivy.md': IVY.replace('role: QA', 'role: QA\nmodel: gpt-5.6-luna\nprovider: codex') })
-    await k.config.setSettings({ models: { roles: { engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'high' } } } })
+    await k.config.setSettings({ models: { roles: { frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'high' } } } })
     const kai = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai' })
     expect(k.store.chats(kai.id)[0]).toMatchObject({ provider: 'codex', model: 'gpt-6-astra', effort: 'high' })
     const ivy = await k.createWorkspace(project.id, { prompt: 'Test it', agentId: 'ivy' })
@@ -93,7 +95,7 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
     // No Codex role: the tab asks for Codex's models, which come from Codex itself, so the test names one.
     const tab = await h['chats.create']({ workspaceId: ws.id, provider: 'codex', model: 'gpt-5.6-terra', effort: 'medium' })
     expect(tab).toMatchObject({ provider: 'codex', model: 'gpt-5.6-terra', effort: 'medium' })
-    await k.config.setSettings({ models: { roles: { engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'low' } } } })
+    await k.config.setSettings({ models: { roles: { frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'low' } } } })
     expect(await h['chats.create']({ workspaceId: ws.id, provider: 'codex' })).toMatchObject({ provider: 'codex', model: 'gpt-6-astra' })
     // A plain new tab follows the workspace's first chat, as before.
     expect(await h['chats.create']({ workspaceId: ws.id })).toMatchObject({ model: 'claude-sonnet-5-5' })

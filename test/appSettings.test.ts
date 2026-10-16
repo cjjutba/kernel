@@ -110,6 +110,7 @@ describe('loadAppSettings', () => {
     const { saved, resolved: s } = await loadAppSettings(file, '/home/cj')
     expect(s.models.roles).toEqual({
       lead: { provider: 'claude', model: 'claude-fable-5-1', effort: 'xhigh' },
+      frontend: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' },
       engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' },
       qa: { provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'xhigh' },
       reviewer: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'xhigh' }
@@ -121,7 +122,9 @@ describe('loadAppSettings', () => {
         lead: { provider: 'claude', model: 'claude-fable-5-1', effort: 'xhigh' },
         engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' },
         qa: { provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'xhigh' },
-        reviewer: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'xhigh' }
+        reviewer: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'xhigh' },
+        // The engineers' row was every engineer then, so Frontend starts with it too (KERNEL-974).
+        frontend: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' }
       },
       agentLimit: 3
     })
@@ -143,7 +146,7 @@ describe('loadAppSettings', () => {
   })
   it('starts every role on Claude, and both providers on their bundled binary (KERNEL-406)', () => {
     const s = DEFAULT_SETTINGS('/home/cj')
-    expect(Object.values(s.models.roles).map((r) => r.provider)).toEqual(['claude', 'claude', 'claude', 'claude'])
+    expect(Object.values(s.models.roles).map((r) => r.provider)).toEqual(['claude', 'claude', 'claude', 'claude', 'claude'])
     expect(s.providers).toEqual({ claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } })
   })
   it('drops unknown models and efforts from a saved effort memory', async () => {
@@ -398,7 +401,7 @@ describe('agents working at once', () => {
 })
 
 describe('defaults that fit the plan (KERNEL-225)', () => {
-  const COMPACT_KEYS = ['models.compact.lead', 'models.compact.engineers', 'models.compact.qa', 'models.compact.reviewer']
+  const COMPACT_KEYS = ['models.compact.lead', 'models.compact.frontend', 'models.compact.engineers', 'models.compact.qa', 'models.compact.reviewer']
   const dir = () => mkdtemp(join(tmpdir(), 'kernel-settings-'))
   const fileOf = async (saved?: object) => { const file = join(await dir(), 'settings.json'); if (saved) await writeFile(file, JSON.stringify(saved)); return file }
   /** The models group as every launch saved it before KERNEL-406. */
@@ -419,6 +422,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     expect(saved).toEqual({})
     expect(resolved.models.roles).toEqual({
       lead: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'medium' },
+      frontend: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'medium' },
       engineers: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'medium' },
       qa: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'medium' },
       reviewer: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'medium' }
@@ -524,7 +528,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     const { roles: _roles, ...rest } = full.models
     const file = await fileOf({ ...full, models: { ...rest, ...OLD_MODELS, lead: 'claude-sonnet-5-5', reviewer: 'claude-haiku-4-5-20251001', effort: 'low', agentLimit: 4 }, pr: { ...full.pr, autoReview: false } })
     const { saved, resolved } = await loadAppSettings(file, '/home/cj', 'max')
-    const roles = { lead: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'low' }, reviewer: { provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' }, engineers: { effort: 'low' }, qa: { effort: 'low' } }
+    const roles = { lead: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'low' }, reviewer: { provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' }, engineers: { effort: 'low' }, qa: { effort: 'low' }, frontend: { effort: 'low' } }
     expect(saved).toEqual({ models: { roles, agentLimit: 4 }, pr: { autoReview: false }, ...PINNED })
     expect(resolved.models).toMatchObject({ roles, agentLimit: 4 })
     expect(resolved.pr.autoReview).toBe(false)
@@ -537,13 +541,13 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     const { saved, resolved } = await loadAppSettings(file, '/home/cj', 'pro')
     expect(saved).toEqual({ models: { roles: { reviewer: { provider: 'claude', model: 'claude-opus-5-5' }, lead: { effort: 'high' } } }, ...PINNED })
     expect(resolved.models).toMatchObject({ roles: { reviewer: { model: 'claude-opus-5-5', effort: 'medium' }, lead: { model: 'claude-sonnet-5-5', effort: 'high' } }, agentLimit: 2 })
-    expect(resolved.planDefaulted).toEqual(['models.roles.lead.model', 'models.roles.engineers.effort', 'models.roles.qa.effort', 'models.roles.reviewer.effort', 'models.agentLimit', 'pr.autoReview', ...COMPACT_KEYS])
+    expect(resolved.planDefaulted).toEqual(['models.roles.lead.model', 'models.roles.frontend.effort', 'models.roles.engineers.effort', 'models.roles.qa.effort', 'models.roles.reviewer.effort', 'models.agentLimit', 'pr.autoReview', ...COMPACT_KEYS])
   })
 
   it('reads a file written since KERNEL-225 with the models as they were then, keeping each choice in its role (KERNEL-406)', async () => {
     const file = await fileOf({ version: 2, models: { reviewer: 'claude-opus-5-5', effort: 'high' } })
     const { saved, resolved } = await loadAppSettings(file, '/home/cj', 'pro')
-    expect(saved).toEqual({ models: { roles: { reviewer: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' }, lead: { effort: 'high' }, engineers: { effort: 'high' }, qa: { effort: 'high' } } }, ...PINNED })
+    expect(saved).toEqual({ models: { roles: { reviewer: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' }, lead: { effort: 'high' }, engineers: { effort: 'high' }, qa: { effort: 'high' }, frontend: { effort: 'high' } } }, ...PINNED })
     expect(resolved.models.roles.reviewer).toEqual({ provider: 'claude', model: 'claude-opus-5-5', effort: 'high' })
     expect(resolved.models.roles.lead).toEqual({ provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' })
     expect(resolved.planDefaulted).toEqual(['models.roles.lead.model', 'models.agentLimit', 'pr.autoReview', ...COMPACT_KEYS])
@@ -552,7 +556,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
   it('writes only what is saved, with its version, and reads it back the same', async () => {
     const file = await fileOf()
     await saveAppSettings(file, { appearance: { theme: 'light' }, models: { roles: { qa: { effort: 'high' } } } })
-    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, appearance: { theme: 'light' }, models: { roles: { qa: { effort: 'high' } } } })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 3, appearance: { theme: 'light' }, models: { roles: { qa: { effort: 'high' } } } })
     const again = await loadAppSettings(file, '/home/cj', 'pro')
     expect(again.saved).toEqual({ appearance: { theme: 'light' }, models: { roles: { qa: { effort: 'high' } } }, ...PINNED })
     expect(again.resolved.models.roles.qa.effort).toBe('high')
@@ -563,23 +567,23 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
   })
 
   it('gives every role a 200k compact window on Pro (feat-compact-window-per-role-with-plan)', () => {
-    expect(planDefaults('pro').models?.compact).toEqual({ lead: '200k', engineers: '200k', qa: '200k', reviewer: '200k' })
-    expect(resolveSettings(DEFAULT_SETTINGS('/home/cj'), {}, 'pro').models.compact).toEqual({ lead: '200k', engineers: '200k', qa: '200k', reviewer: '200k' })
+    expect(planDefaults('pro').models?.compact).toEqual({ lead: '200k', frontend: '200k', engineers: '200k', qa: '200k', reviewer: '200k' })
+    expect(resolveSettings(DEFAULT_SETTINGS('/home/cj'), {}, 'pro').models.compact).toEqual({ lead: '200k', frontend: '200k', engineers: '200k', qa: '200k', reviewer: '200k' })
   })
 
   it.each<ClaudePlan>(['max', 'team', 'enterprise', 'unknown'])("keeps the model's window for the Lead and engineers on %s, an API key account's plan included", (plan) => {
     expect(planDefaults(plan).models).not.toHaveProperty('compact')
     const resolved = resolveSettings(DEFAULT_SETTINGS('/home/cj'), {}, plan)
-    expect(resolved.models.compact).toEqual({ lead: 'full', engineers: 'full', qa: '200k', reviewer: '200k' })
+    expect(resolved.models.compact).toEqual({ lead: 'full', frontend: 'full', engineers: 'full', qa: '200k', reviewer: '200k' })
     expect(resolved.planDefaulted).toEqual(expect.arrayContaining(COMPACT_KEYS))
   })
 
   it('reads a file with no compact window as the plan says, and a saved one over the plan', async () => {
     const old = await loadAppSettings(await fileOf({ version: 2, appearance: { theme: 'light' } }), '/home/cj', 'pro')
-    expect(old.resolved.models.compact).toEqual({ lead: '200k', engineers: '200k', qa: '200k', reviewer: '200k' })
+    expect(old.resolved.models.compact).toEqual({ lead: '200k', frontend: '200k', engineers: '200k', qa: '200k', reviewer: '200k' })
     expect(old.resolved.planDefaulted).toEqual(expect.arrayContaining(COMPACT_KEYS))
     const chosen = await loadAppSettings(await fileOf({ version: 2, models: { compact: { lead: 'full', qa: '200k' } } }), '/home/cj', 'pro')
-    expect(chosen.resolved.models.compact).toEqual({ lead: 'full', engineers: '200k', qa: '200k', reviewer: '200k' })
+    expect(chosen.resolved.models.compact).toEqual({ lead: 'full', frontend: '200k', engineers: '200k', qa: '200k', reviewer: '200k' })
     expect(chosen.resolved.planDefaulted).toEqual(expect.arrayContaining(['models.compact.engineers', 'models.compact.reviewer']))
     expect(chosen.resolved.planDefaulted).not.toContain('models.compact.lead')
     // A choice equal to the plan's default is still a choice.
@@ -588,7 +592,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
 
   it("falls back to the plan's compact window when the saved one is neither choice", () => {
     const d = DEFAULT_SETTINGS('/home/cj')
-    expect(resolveSettings(d, { models: { compact: { lead: '500k', qa: 200000, reviewer: 'full' } } } as never, 'pro').models.compact).toEqual({ lead: '200k', engineers: '200k', qa: '200k', reviewer: 'full' })
+    expect(resolveSettings(d, { models: { compact: { lead: '500k', qa: 200000, reviewer: 'full' } } } as never, 'pro').models.compact).toEqual({ lead: '200k', frontend: '200k', engineers: '200k', qa: '200k', reviewer: 'full' })
     expect(resolveSettings(d, { models: { compact: 'full' } } as never, 'max').models.compact).toEqual(d.models.compact)
     expect(applySettingsPatch(d, { models: { compact: { lead: '1m' } } } as never).models.compact).toEqual(d.models.compact)
     expect(applySettingsPatch(d, { models: { compact: { lead: '200k' } } }).models.compact).toEqual({ ...d.models.compact, lead: '200k' })
@@ -599,11 +603,11 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     const saved = { models: { compact: { engineers: 'full' as const } } }
     const max = resolveSettings(d, saved, 'max')
     const pro = withPlan(max, d, saved, 'pro')
-    expect(pro.models.compact).toEqual({ lead: '200k', engineers: 'full', qa: '200k', reviewer: '200k' })
-    expect(pro.planDefaulted).toEqual(expect.arrayContaining(['models.compact.lead', 'models.compact.qa', 'models.compact.reviewer']))
+    expect(pro.models.compact).toEqual({ lead: '200k', frontend: '200k', engineers: 'full', qa: '200k', reviewer: '200k' })
+    expect(pro.planDefaulted).toEqual(expect.arrayContaining(['models.compact.lead', 'models.compact.frontend', 'models.compact.qa', 'models.compact.reviewer']))
     expect(pro.planDefaulted).not.toContain('models.compact.engineers')
-    expect(withPlan(pro, d, saved, 'max').models.compact).toEqual({ lead: 'full', engineers: 'full', qa: '200k', reviewer: '200k' })
-    expect(withPlan(pro, d, saved, 'unknown').models.compact).toEqual({ lead: 'full', engineers: 'full', qa: '200k', reviewer: '200k' })
+    expect(withPlan(pro, d, saved, 'max').models.compact).toEqual({ lead: 'full', frontend: 'full', engineers: 'full', qa: '200k', reviewer: '200k' })
+    expect(withPlan(pro, d, saved, 'unknown').models.compact).toEqual({ lead: 'full', frontend: 'full', engineers: 'full', qa: '200k', reviewer: '200k' })
   })
 
   /** A Kernel on a data folder, with the account answering `plan`. */
@@ -623,14 +627,14 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     await expect(stat(file)).rejects.toThrow()
     expect(k.settings.planDefaulted).toEqual([...PLAN_KEYS])
     await h['settings.set']({ patch: { appearance: { theme: 'light' } } })
-    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, appearance: { theme: 'light' } })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 3, appearance: { theme: 'light' } })
     // A limit pulled back into range is saved as the engine kept it. A choice equal to the default is still a choice.
     await h['settings.set']({ patch: { models: { agentLimit: 99, roles: { lead: { effort: 'high' }, engineers: { effort: 'high' }, qa: { effort: 'high' }, reviewer: { effort: 'high' } } } } })
-    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, appearance: { theme: 'light' }, models: { agentLimit: 12, roles: { lead: { effort: 'high' }, engineers: { effort: 'high' }, qa: { effort: 'high' }, reviewer: { effort: 'high' } } } })
-    expect(k.settings.planDefaulted).toEqual(['models.roles.lead.model', 'models.roles.reviewer.model', 'pr.autoReview', ...COMPACT_KEYS])
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 3, appearance: { theme: 'light' }, models: { agentLimit: 12, roles: { lead: { effort: 'high' }, engineers: { effort: 'high' }, qa: { effort: 'high' }, reviewer: { effort: 'high' } } } })
+    expect(k.settings.planDefaulted).toEqual(['models.roles.lead.model', 'models.roles.reviewer.model', 'models.roles.frontend.effort', 'pr.autoReview', ...COMPACT_KEYS])
     // Kernel's own fields can't be set from Settings.
     await h['settings.set']({ patch: { plan: 'pro', planDefaulted: [], models: { effortByModel: { 'claude-opus-5-5': 'xhigh' } } } as never })
-    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, appearance: { theme: 'light' }, models: { agentLimit: 12, roles: { lead: { effort: 'high' }, engineers: { effort: 'high' }, qa: { effort: 'high' }, reviewer: { effort: 'high' } }, effortByModel: { 'claude-opus-5-5': 'xhigh' } } })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 3, appearance: { theme: 'light' }, models: { agentLimit: 12, roles: { lead: { effort: 'high' }, engineers: { effort: 'high' }, qa: { effort: 'high' }, reviewer: { effort: 'high' } }, effortByModel: { 'claude-opus-5-5': 'xhigh' } } })
     expect(k.settings.plan).toBe('unknown')
     await k.stop()
     // The next launch reads the same settings, and still writes nothing.
@@ -655,7 +659,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     account.type = 'max'
     await h['account.get'](undefined)
     expect(k.settings).toMatchObject({ plan: 'max', models: { roles: { lead: { model: 'claude-opus-5-5', effort: 'high' }, engineers: { effort: 'high' } }, agentLimit: 0 }, pr: { autoReview: false } })
-    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, models: { roles: { lead: { effort: 'high' } } } })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 3, models: { roles: { lead: { effort: 'high' } } } })
     // A sign-out says nothing about the plan, so it keeps the last one.
     account.signedIn = false
     await h['account.get'](undefined)
@@ -694,8 +698,66 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     const { k, h, file } = await kernel()
     const port = k.settings.hookPort + 1
     await h['hooks.restart']({ port })
-    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, hookPort: port })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 3, hookPort: port })
     await k.stop()
+  })
+
+  describe('Frontend and Backend rows (KERNEL-974)', () => {
+    const codex = { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } as const
+
+    it('gives Frontend what a file from before the split chose for every engineer, and leaves it on Backend', async () => {
+      const { saved, resolved } = await loadAppSettings(await fileOf({ version: 2, models: { roles: { engineers: codex }, compact: { engineers: '200k' } } }), '/home/cj', 'max')
+      expect(saved.models).toMatchObject({ roles: { engineers: codex, frontend: codex }, compact: { engineers: '200k', frontend: '200k' } })
+      expect(resolved.models.roles.frontend).toEqual(codex)
+      expect(resolved.models.roles.engineers).toEqual(codex)
+      expect(resolved.models.compact).toMatchObject({ frontend: '200k', engineers: '200k' })
+      expect(resolved.planDefaulted).not.toContain('models.compact.frontend')
+      // Only an effort, saved as a choice, carries over as one: Frontend's model still follows the default.
+      const effort = await loadAppSettings(await fileOf({ version: 2, models: { roles: { engineers: { effort: 'low' } } } }), '/home/cj', 'pro')
+      expect(effort.resolved.models.roles.frontend).toEqual({ provider: 'claude', model: 'claude-sonnet-5-5', effort: 'low' })
+      expect(effort.resolved.planDefaulted).not.toContain('models.roles.frontend.effort')
+      // A file from before KERNEL-406 had one model per role, and its engineers' model reaches both rows.
+      const older = await loadAppSettings(await fileOf({ version: 2, models: { engineers: 'claude-opus-5-5' } }), '/home/cj', 'max')
+      expect(older.resolved.models.roles.frontend).toMatchObject({ provider: 'claude', model: 'claude-opus-5-5' })
+      expect(older.resolved.models.roles.engineers).toMatchObject({ provider: 'claude', model: 'claude-opus-5-5' })
+    })
+
+    it('leaves Frontend on its default when a file from after the split chose only Backend', async () => {
+      const { saved, resolved } = await loadAppSettings(await fileOf({ version: 3, models: { roles: { engineers: codex }, compact: { engineers: '200k' } } }), '/home/cj', 'max')
+      expect(saved.models).toEqual({ roles: { engineers: codex }, compact: { engineers: '200k' } })
+      expect(resolved.models.roles.frontend).toEqual({ provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' })
+      expect(resolved.models.compact.frontend).toBe('full')
+    })
+
+    it('saves each row on its own, and a frontend agent reads Frontend while every other engineer reads Backend', async () => {
+      const repo = await tempRepo({
+        'README.md': '# x\n',
+        '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\nrole: Frontend\n---\nYou are Kai.',
+        '.claude/agents/noor.md': '---\nname: noor\ndescription: Backend.\nrole: Backend\n---\nYou are Noor.',
+        '.claude/agents/rio.md': '---\nname: rio\ndescription: Platform.\nrole: Platform\nmodel: opus\n---\nYou are Rio.'
+      })
+      const { k, h, file, dataDir } = await kernel({ settings: { version: 2, models: { roles: { engineers: { provider: 'claude', model: 'claude-opus-5-5' } } } } })
+      const project = await k.addProject(repo)
+      const picks = async () => Object.fromEntries((await k.team.agents(project.id)).map((a) => [a.id, k.team.pickFor(a)]))
+      expect(await picks()).toMatchObject({ kai: { model: 'claude-opus-5-5' }, noor: { model: 'claude-opus-5-5' } })
+      await h['settings.set']({ patch: { models: { roles: { frontend: codex }, compact: { frontend: '200k' } } } })
+      expect(k.settings.models.roles.engineers).toEqual({ provider: 'claude', model: 'claude-opus-5-5', effort: 'high' })
+      expect(k.settings.models.compact.engineers).toBe('full')
+      await h['settings.set']({ patch: { models: { roles: { engineers: { provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' } } } } })
+      expect(k.settings.models.roles.frontend).toEqual(codex)
+      const all = await picks()
+      expect(all.kai).toEqual(codex)
+      expect(all.noor).toEqual({ provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' })
+      // A model line in the agent's file still wins over its row.
+      expect(all.rio).toMatchObject({ provider: 'claude', model: 'claude-opus-5-5' })
+      expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ version: 3, models: { roles: { frontend: codex, engineers: { model: 'claude-haiku-4-5-20251001' } }, compact: { frontend: '200k' } } })
+      await k.stop({ budgetMs: 0 })
+      // The next launch reads both rows as they were saved.
+      const next = await kernel({ dataDir })
+      expect(next.k.settings.models.roles.frontend).toEqual(codex)
+      expect(next.k.settings.models.roles.engineers).toMatchObject({ model: 'claude-haiku-4-5-20251001' })
+      await next.k.stop({ budgetMs: 0 })
+    })
   })
 
   it("leaves the model out of the starter agent files, so Kernel's role models decide", async () => {

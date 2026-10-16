@@ -433,8 +433,8 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsAppearance: settingsPage('appearance'),
   SettingsNotifications: settingsPage('notifications'),
   SettingsShortcuts: settingsPage('shortcuts'),
-  // KERNEL-406: Frontend and Backend run on Codex. The rest stay on Claude.
-  SettingsModels: settingsPage('models', { settings: withRoles({ engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }), models: { codex: codexModels } }),
+  // KERNEL-406, KERNEL-974: Frontend runs on Codex and Backend on Opus, each on its own row. The rest stay on their defaults.
+  SettingsModels: settingsPage('models', { settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),
   // KERNEL-406, KERNEL-665: both providers' accounts and status, with Claude's own login active, a second Claude account, a key, and Fable's weekly window on Work.
   SettingsAccounts: providersPage('claude', { accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex], usage: [...providerUsage(), fableWindow] }),
   // KERNEL-701: Work is added in Kernel and is also Claude Code's own login in Terminal, so it shows once, with its details open.

@@ -623,8 +623,9 @@ describe('holds and limits per provider (KERNEL-406)', () => {
     expect(k.store.project(project.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     k.account.applyLimits([])
     expect(k.store.project(project.id)?.paused).toBeFalsy()
-    // Kai on Codex and the Lead on Claude: the project pauses only when both are limited.
-    await k.config.setSettings({ models: { roles: { engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'low' } } } })
+    // The engineers on Codex, both rows, and the Lead on Claude: the project pauses only when both are limited.
+    const onCodex = { provider: 'codex', model: 'gpt-6-astra', effort: 'low' } as const
+    await k.config.setSettings({ models: { roles: { frontend: onCodex, engineers: onCodex } } })
     k.account.applyLimits([claude])
     expect(k.store.project(project.id)?.paused).toBeFalsy()
     k.account.applyLimits([claude, codex])

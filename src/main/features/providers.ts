@@ -102,7 +102,7 @@ const sameLogin = (a: { email?: string; orgId?: string } | undefined, b: { email
 }
 
 /** A role's name, for an agent Kernel names by its role before any project's team is read (KERNEL-616). */
-const ROLE_NAMES: Record<Role, string> = { lead: 'Kernel', engineers: 'Engineers', qa: 'QA', reviewer: 'Reviewer' }
+const ROLE_NAMES: Record<Role, string> = { lead: 'Kernel', frontend: 'Frontend', engineers: 'Backend', qa: 'QA', reviewer: 'Reviewer' }
 
 /** A model id without its case and its context-window tag (`[1m]`). */
 const bareModel = (id: string) => id.toLowerCase().replace(/\[[^\]]*\]$/, '')
