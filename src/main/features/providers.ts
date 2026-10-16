@@ -1065,6 +1065,7 @@ export class Providers extends Feature {
     }
     if (provider === 'codex') await removeTree(this.codexHome(accountId)!)
     this.mcpSignIns.delete(accountId)
+    this.k.mcp.forget(provider, accountId)
     this.offered.delete(`${provider}:${accountId}`)
     const accounts = await this.list()
     if (!this.stopped) bus.push({ type: 'accounts', accounts })
