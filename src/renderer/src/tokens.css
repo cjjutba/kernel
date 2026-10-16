@@ -37,7 +37,6 @@
      text-safe amber reads brown on a bar (feat-providers-redesign). */
   --needs-fill: #f2c55c;
   --del-fill: #f06363;
-  --tint-add: #173327;
   --tint-del: #2f191b;
   --tint-muted: #252527;
   --aside: #0d0d0e;
@@ -114,7 +113,6 @@
   --needs: #7a4f00;
   --needs-fill: #d97706;
   --del-fill: #dc3e42;
-  --tint-add: #d7f0e2;
   --tint-del: #fbe1e1;
   --tint-muted: #e8e8ec;
   --aside: #f7f7f8;
@@ -251,6 +249,9 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .add { color: var(--add); } .del { color: var(--del); }
 .row { display: flex; align-items: center; gap: 8px; }
 .col { display: flex; flex-direction: column; }
+.gap-2 { gap: 2px; } .gap-4 { gap: 4px; } .gap-6 { gap: 6px; } .gap-8 { gap: 8px; } .gap-10 { gap: 10px; }
+.t-chip { font-size: var(--fs-chip); } .t-meta { font-size: var(--fs-meta); } .t-code { font-size: var(--fs-code); } .t-medium { font-weight: var(--fw-medium); }
+.flush { margin: 0; }
 .grow { flex: 1; min-width: 0; }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .selectable { user-select: text; }

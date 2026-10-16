@@ -1,7 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react'
 import type { LeadMode, Provider } from '@shared/types'
 import type { ModeAvailabilities } from '../../../permissionModes'
-import { Button, Icon, Kbd } from '../../../ui'
+import { Button, Icon, Kbd, listKeyAction } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 import { MODE_ICON, buttonName, leadModeRows, modeAria, modeRows, type ComposerMode, type Shown } from './modes'
 
@@ -32,10 +32,8 @@ export function ModeMenu({ anchorRef, provider, availability, shown, onPick, onC
     const list = items()
     const i = list.indexOf(document.activeElement as HTMLElement)
     const go = (to: number) => { e.preventDefault(); e.stopPropagation(); list[(to + list.length) % list.length]?.focus() }
-    if (e.key === 'ArrowDown') go(i + 1)
-    else if (e.key === 'ArrowUp') go(i - 1)
-    else if (e.key === 'Home') go(0)
-    else if (e.key === 'End') go(list.length - 1)
+    const action = listKeyAction(e, i, list.length, true)
+    if (action?.kind === 'move') go(action.to)
     else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); if (e.shiftKey) onCycle(); else onClose() }
   }
 

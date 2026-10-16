@@ -3,7 +3,7 @@ import type { ChatPart, IssueSummary, PrSummary, Workspace } from '@shared/types
 import { call, cleanError } from '../../../api'
 import { useStore } from '../../../store'
 import { oneOf, useRemembered } from '../../../remember'
-import { Button, Icon, Tabs } from '../../../ui'
+import { arrowRow, Button, Icon, Tabs } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 import { chooseTracker } from '../../issues/parts'
 import { useProjectTracker } from '../../issues/useProjectTracker'
@@ -71,8 +71,8 @@ export function IssuePicker({ projectId, anchorRef, onPick, onClose, style }: { 
   const pick = (i: IssueSummary) => { if (source) onPick({ type: 'issue', name: i.id, title: i.title, url: i.url, source: i.source ?? source }) }
   const switchTo = setTab
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => Math.min(rows.length - 1, i + 1)) }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setAt((i) => Math.max(0, i - 1)) }
+    const to = arrowRow(e, at, rows.length)
+    if (to !== null) { e.preventDefault(); setAt(to) }
     else if (e.key === 'Enter') { e.preventDefault(); if (rows[at]) pick(rows[at]) }
   }
 
@@ -119,8 +119,8 @@ export function PrPicker({ projectId, anchorRef, onPick, onClose, style }: { pro
   const rows = load.state === 'ready' ? load.rows : []
   const pick = (p: PrSummary) => onPick({ type: 'pr', name: `#${p.number}`, number: p.number, title: p.title })
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => Math.min(rows.length - 1, i + 1)) }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setAt((i) => Math.max(0, i - 1)) }
+    const to = arrowRow(e, at, rows.length)
+    if (to !== null) { e.preventDefault(); setAt(to) }
     else if (e.key === 'Enter') { e.preventDefault(); if (rows[at]) pick(rows[at]) }
   }
   return (
@@ -165,8 +165,8 @@ export function WorkspacePicker({ projectId, exclude, anchorRef, onPick, onClose
     if (chosen.length) onPick(chosen.map(workspacePart))
   }
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => Math.min(rows.length - 1, i + 1)) }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setAt((i) => Math.max(0, i - 1)) }
+    const to = arrowRow(e, at, rows.length)
+    if (to !== null) { e.preventDefault(); setAt(to) }
     // Space types into a search that has text, so it checks a row only while the field is empty.
     else if (e.key === ' ' && !q && rows[at]) { e.preventDefault(); toggle(rows[at].id) }
     else if (e.key === 'Enter') { e.preventDefault(); link() }

@@ -83,7 +83,7 @@ function Screen({ route }: { route: Route }): ReactNode {
       if (route.step === 'project') return <ProjectSetup projectId={route.projectId} />
       return <Splash />
     case 'inbox': return <Inbox />
-    case 'issues': return <Issues issueId={route.issueId} projectId={route.projectId} />
+    case 'issues': return <Issues issueId={route.issueId} projectId={route.projectId} tracker={route.tracker} />
     case 'prs': return <PullRequests filter={route.filter} />
     case 'history': return <History />
     case 'projects': return <Projects />

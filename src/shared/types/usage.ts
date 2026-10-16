@@ -206,8 +206,10 @@ export interface McpAccount {
   label: string
   /** The account's email, for "Sign in to claude.ai as cj@example.com first" before a connector's `connectUrl` (KERNEL-646). */
   email?: string
-  /** When Kernel last checked it. Undefined while the first check runs or after it failed. */
+  /** When Kernel last checked it, saved across restarts (KERNEL-936). Kept while a new check runs. Undefined before the first check ends or after one failed. */
   checkedAt?: number
+  /** A check of the account runs now (KERNEL-936). Its result arrives as an `mcp.accounts` push. Undefined when none runs. */
+  checking?: boolean
   /** Why the last check failed. The account then has no servers. */
   error?: string
   servers: McpAccountServer[]

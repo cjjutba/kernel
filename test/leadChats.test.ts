@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from 'v
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, Approval, Chat, ChatPart, PrCheck, PrState, Thread, TrackerIssue, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ChatPart, PrCheck, PrState, Thread, Tracker, TrackerIssue, Workspace } from '@shared/types'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { issueText } from '../src/main/services/issueMcp'
 import { askedQuestions, type QueueReason } from '../src/main/services/sessions'
@@ -263,13 +263,15 @@ describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL
     id: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/kernel/issue/KERNEL-83', description: 'List open issues with their labels.',
     comments: [{ author: 'CJ', body: 'Keep the filters.', createdAt: '2026-10-11T09:00:00Z' }], labels: ['Team']
   }
-  /** Makes the project's tracker a Linear that has `issue`, and returns the keys it is asked for. */
+  /** Makes the project's tracker, and the one every key reads from, a Linear that has `issue`, and returns the keys it is asked for. */
   const linear = (k: Kernel) => {
     const asked: string[] = []
-    k.integrations.trackerFor = async () => ({
+    const tracker: Tracker = {
       kind: 'linear', search: async () => [], start: async () => undefined,
       issue: async (id) => { asked.push(id); if (id !== issue.id) throw new Error(`Linear has no issue ${id}, or this token can't see it.`); return issue }
-    })
+    }
+    k.integrations.trackerFor = async () => tracker
+    k.integrations.trackerOf = async () => tracker
     return asked
   }
   /** Records every brief and message as the parts that went out. */

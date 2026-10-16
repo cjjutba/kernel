@@ -12,6 +12,7 @@ import { fetchedAt } from '../src/main/features/workspaces'
 import { kernelTools, takenWarning } from '../src/main/services/kernelMcp'
 import { issueTaken, keyInBranch, keyInText } from '../src/main/services/issueTaken'
 import { briefParts, leadMessage, pickedLines } from '../src/renderer/src/screens/new-workspace/brief'
+import { issueTools } from '../src/main/services/issueMcp'
 import type { AgentDef, ChatPart, IssueTaken } from '../src/shared/types'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
@@ -120,17 +121,20 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
   }
   const crash = { number: 41, title: 'Crash on save', url: 'https://github.com/acme/app/issues/41', body: 'Steps', labels: [{ name: 'bug' }], comments: [] }
 
-  /** A kernel with one project, on GitHub when `repo` is set. Linear is offline and LINEAR_API_KEY is empty. */
-  async function kernel(repo?: string) {
-    vi.stubEnv('LINEAR_API_KEY', '')
+  /**
+   * A kernel with one project, on GitHub when `repo` is set, with `settings` as its `.kernel/settings.toml`. Linear is offline
+   * unless `fetch` answers for it, and LINEAR_API_KEY is `token`, else empty. `sent` holds each message's parts.
+   */
+  async function kernel(repo?: string, o: { settings?: string; token?: string; fetch?: typeof fetch } = {}) {
+    vi.stubEnv('LINEAR_API_KEY', o.token ?? '')
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
-    const k = new Kernel({ dataDir, home, fetch: async () => { throw new Error('offline') } })
+    const k = new Kernel({ dataDir, home, fetch: o.fetch ?? (async () => { throw new Error('offline') }) })
     await k.start()
     onTestFinished(() => k.stop())
-    k.sessions.send = async () => ({ queued: false })
-    const added = await k.projects.addProject(await tempRepo(team))
+    k.sessions.send = async (_c, parts) => { sent.push(parts); return { queued: false } }
+    const added = await k.projects.addProject(await tempRepo({ ...team, ...(o.settings ? { '.kernel/settings.toml': o.settings } : {}) }))
     return { k, project: repo ? k.store.saveProject({ ...added, repo }) : added }
   }
 
@@ -164,6 +168,94 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
     const own = await none.k.workspaces.createWorkspace(none.project.id, { prompt: 'Build it', source: { kind: 'issue', id: 'APP-7', title: 'Settings page' } })
     expect(own.source).toEqual({ kind: 'issue', id: 'APP-7', title: 'Settings page' })
     expect(own.branch).toBe('feat/app-7-settings-page')
+  })
+
+  const sent: ChatPart[][] = []
+  afterEach(() => { sent.length = 0 })
+
+  describe('an issue from the tracker its key names, not the project\'s (KERNEL-933)', () => {
+    const LINEAR = '[linear]\nteam = "KERNEL"\n'
+    const sam = { name: 'Sam', isMe: false }
+    const linearIssue = {
+      id: 'uuid-83', identifier: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/cj/issue/KERNEL-83', branchName: 'cj/kernel-83-issues-screen',
+      priority: 2, updatedAt: '2026-10-09T10:00:00.000Z', state: { id: 'st-todo', name: 'Todo', type: 'unstarted', position: 1 }, assignee: sam,
+      labels: { nodes: [{ name: 'Engine' }] }, team: { id: 'team-1', key: 'KERNEL', name: 'Kernel' }, project: null, cycle: null,
+      description: 'Build the screen.', comments: { nodes: [] }, inverseRelations: { nodes: [] }
+    }
+    /** Linear, answering every call with KERNEL-83 and counting them. */
+    const linear = () => {
+      const calls: string[] = []
+      const fetch = (async (_url: string, init: { body: string }) => { calls.push(JSON.parse(init.body).query.split('(')[0]); return new Response(JSON.stringify({ data: { issue: linearIssue } })) }) as unknown as typeof globalThis.fetch
+      return { calls, fetch }
+    }
+    /** Kernel's create_workspace in the project, and get_issue as the project's agents get it. */
+    async function tools(k: Kernel, projectId: string) {
+      const lead = (await k.team.agents(projectId)).find((a) => a.lead) as AgentDef
+      const create = kernelTools(k.lead.leadToolDeps(projectId, lead, await k.lead.leadChat(projectId))).find((t) => t.name === 'create_workspace')!
+      const [get] = issueTools({ issueKey: () => undefined, tracker: (key) => k.integrations.trackerOf(projectId, { id: key }) })
+      return {
+        create: async (issue: string) => { await create.handler({ agent: 'noor', title: 'Fix it', brief: 'Go', issue, confirm: true } as never, {}); return k.store.workspaces(projectId).find((w) => w.agentId === 'noor')! },
+        get: async (key: string) => { const r = await get.handler({ key } as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } }
+      }
+    }
+    /** The issue the brief carried, as the pasted block's name and text. */
+    const brief = () => sent.flat().filter((p): p is Extract<ChatPart, { type: 'file' }> => p.type === 'file')
+
+    it('reads a GitHub issue in a Linear project from GitHub: body, labels and assignees, in the brief and through get_issue', async () => {
+      await fakeGh({ view: { ...crash, assignees: [{ login: 'mchen' }] }, login: 'cjjutba' })
+      const l = linear()
+      const { k, project } = await kernel('acme/app', { settings: LINEAR, token: 'lin_key', fetch: l.fetch })
+      expect((await k.integrations.handlers()['issues.tracker']({ projectId: project.id })).kind).toBe('linear')
+      const t = await tools(k, project.id)
+      const ws = await t.create('#41')
+      expect(ws.source).toEqual({ kind: 'issue', id: '#41', title: 'Crash on save', url: crash.url, tracker: 'github' })
+      expect(ws.branch).toBe('fix/41-crash-on-save')
+      expect(brief()).toEqual([expect.objectContaining({ name: '#41 from GitHub', text: expect.stringContaining('Labels: bug\n\nSteps') })])
+      expect(await k.integrations.issueLabels(project.id, { id: '#41', tracker: 'github' })).toEqual(['bug'])
+      expect((await k.integrations.issueTaken(project.id, '#41')).findings).toContainEqual({ kind: 'assignee', name: 'mchen' })
+      expect((await t.get('#41')).text).toMatch(/^#41 as GitHub has it\.[^]*Steps/)
+      // Linear, the project's tracker, is never asked about a GitHub issue, and starting it moves nothing there.
+      expect(l.calls).toEqual([])
+    })
+
+    it('reads a Linear key in a GitHub project from Linear when a token is set', async () => {
+      await fakeGh({})
+      const l = linear()
+      const { k, project } = await kernel('acme/app', { token: 'lin_key', fetch: l.fetch })
+      expect((await k.integrations.handlers()['issues.tracker']({ projectId: project.id })).kind).toBe('github')
+      const t = await tools(k, project.id)
+      const ws = await t.create('KERNEL-83')
+      expect(ws.source).toEqual({ kind: 'issue', id: 'KERNEL-83', title: 'Issues screen', url: linearIssue.url, tracker: 'linear' })
+      expect(ws.branch).toBe('feat/kernel-83-issues-screen')
+      expect(brief()).toEqual([expect.objectContaining({ name: 'KERNEL-83 from Linear', text: expect.stringContaining('Labels: Engine\n\nBuild the screen.') })])
+      expect(await k.integrations.issueLabels(project.id, { id: 'KERNEL-83', tracker: 'linear' })).toEqual(['Engine'])
+      expect((await k.integrations.issueTaken(project.id, 'KERNEL-83')).findings).toContainEqual({ kind: 'assignee', name: 'Sam' })
+      expect((await t.get('KERNEL-83')).text).toMatch(/^KERNEL-83 as Linear has it\./)
+      // Reads only: the GitHub project's tracker moves issues, and this one isn't its own.
+      expect(new Set(l.calls)).toEqual(new Set(['query IssueDetail']))
+    })
+
+    it('keeps the title when the tracker the key names is missing: no GitHub remote, no Linear token, or a project set to none', async () => {
+      const gh = await fakeGh({ view: crash })
+      const unread = (key: string) => `Not read: this project has no tracker that reads ${key}. GitHub issues need the project's GitHub remote, and Linear issues a Linear token in Settings, Integrations.`
+      // A Linear project with no remote.
+      const noRemote = await kernel(undefined, { settings: LINEAR, token: 'lin_key' })
+      const a = await tools(noRemote.k, noRemote.project.id)
+      expect((await a.create('#41')).source).toEqual({ kind: 'issue', id: '#41', title: 'Fix it', tracker: 'github' })
+      expect(await a.get('#41')).toEqual({ isError: true, text: unread('#41') })
+      expect(await noRemote.k.integrations.issueLabels(noRemote.project.id, { id: '#41', tracker: 'github' })).toEqual([])
+      // A GitHub project with no Linear token.
+      const noToken = await kernel('acme/app')
+      const b = await tools(noToken.k, noToken.project.id)
+      expect((await b.create('KERNEL-83')).source).toEqual({ kind: 'issue', id: 'KERNEL-83', title: 'Fix it' })
+      expect(await b.get('KERNEL-83')).toEqual({ isError: true, text: unread('KERNEL-83') })
+      // A project set to no tracker, with both a token and a GitHub remote.
+      const off = await kernel('acme/app', { settings: `${LINEAR}\n[tracker]\nkind = "none"\n`, token: 'lin_key' })
+      expect(await off.k.integrations.trackerOf(off.project.id, { id: '#41' })).toBeUndefined()
+      expect(await off.k.integrations.trackerOf(off.project.id, { id: 'KERNEL-83', tracker: 'linear' })).toBeUndefined()
+      expect(brief()).toEqual([])
+      expect(await gh.calls()).toEqual([])
+    })
   })
 
   describe('someone else on the issue (KERNEL-479)', () => {
