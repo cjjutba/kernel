@@ -73,6 +73,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 - A screenshot or mock in the brief is the spec for that task. Without one, match the current app and `DESIGN.md`. Check your work with `pnpm shots` and share the shot.
 - Follow `DESIGN.md`: monochrome, no status dots, purple only for merged, hairlines instead of shadows, one modal shell, tokens only (no hex values in screen code).
 - Statuses come from real events only, never timers. Fixtures are for screenshots and tests.
+- The repo is public. Describe a design choice by its behavior and the reason for it, never as copying or matching another app. The Other apps check (`scripts/other-apps-check.ts`, run by `.github/workflows/other-apps.yml` on every PR) fails a PR that names one of the apps in its `NAMES` pattern outside the `ALLOWED` list at the top of that script. Add a file there only when it is part of the script import feature or a published note. Fixtures may name one only on a line that models an import.
 - Real buttons, inputs and labels; everything reachable by keyboard; icon buttons have `aria-label`.
 - UI copy is plain, sentence case, no em dashes.
 - A button that waits on the main process spins, says what it is doing ("Archiving") and can't be pressed twice. Use `useBusy` and the `busy` and `busyLabel` props on `Button` (DESIGN.md, Busy buttons).

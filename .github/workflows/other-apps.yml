@@ -1,0 +1,30 @@
+name: Other apps
+
+# Fails a PR that names Conductor, Superset or Orca outside the allowlist in scripts/other-apps-check.ts (AGENTS.md, Rules).
+# No path filter and no vitest: a PR's Test check only runs the affected tests, which would skip the PR that adds a mention.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: other-apps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  other-apps:
+    name: Other apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # The script is a .ts file run by Node itself. 22.18 is the first 22.x with type stripping on by default.
+          node-version: '22.18'
+
+      - name: Check for other apps
+        run: node scripts/other-apps-check.ts
