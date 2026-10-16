@@ -110,7 +110,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     onMoveHold: (chat, held) => k.moves.held(chat, held),
     coldSize: (chat) => k.placement.coldSize(chat),
     emailOf: (provider, accountId) => k.providers.emailOf(provider, accountId),
-    turnNote: (chat) => k.checkpoints.turnNote(chat.id),
+    turnNote: (chat) => [k.checkpoints.turnNote(chat.id), k.lead.turnNote(chat.workspaceId)].filter(Boolean).join('\n\n') || undefined,
     onFailure: (failure, _ws, provider, account) => {
       if (failure === 'auth') k.account.signedOut(provider, { account })
       else if (failure === 'network') void k.account.network?.lost()

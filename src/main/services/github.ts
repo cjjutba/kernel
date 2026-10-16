@@ -517,10 +517,14 @@ export function resolveFile(state: 'conflict' | 'cifail' | 'changes', texts: Pic
 
 const LANDED: Record<'squash' | 'merge' | 'rebase', string> = { squash: 'squashed into', merge: 'merged into', rebase: 'rebased onto' }
 
-/** The note a PR state change leaves in the chat, or nothing. `method` is set when Kernel ran the merge. */
-export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | 'merge' | 'rebase', remote = 'origin'): string | undefined {
+/**
+ * The note a PR state change leaves in the chat, or nothing. `method` is set when Kernel ran the merge. `auto` is why Kernel
+ * merged the chat's own PR by itself, which the note says instead of how it landed (KERNEL-990).
+ */
+export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | 'merge' | 'rebase', remote = 'origin', auto?: string): string | undefined {
   const n = ws.prNumber ? `PR #${ws.prNumber}` : 'The PR'
   const base = stripRemote(info?.baseRef || ws.baseRef, remote)
+  if (ws.prState === 'merged' && auto) return `Kernel merged ${n} automatically, since ${auto}.`
   if (ws.prState === 'merged') return method ? `${n} was ${LANDED[method]} ${base}.` : `${n} was merged on GitHub.`
   if (ws.prState === 'closed') return `${n} was closed without merging on GitHub.`
   if (ws.prState === 'cifail') {
@@ -530,6 +534,12 @@ export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | '
     return `${list} failed on the PR.`
   }
   return undefined
+}
+
+/** The rows a Build here chat's own PR gets when it opens and when it passes checks, which never wake the Lead (KERNEL-990). */
+export function ownPrNote(kind: 'opened' | 'ready', ws: Workspace): string {
+  const n = ws.prNumber ? `PR #${ws.prNumber}` : 'the PR'
+  return kind === 'opened' ? `Opened ${n}` : `${n[0].toUpperCase()}${n.slice(1)} is ready to merge`
 }
 
 /** Where the GitHub CLI stands (`GitHubAuth`, KERNEL-448). */

@@ -9,6 +9,7 @@ import type { OverlapDeps } from '../services/overlap'
 import { mergeBase } from '../services/worktrees'
 import { keepScript } from '../services/scripts'
 import type { SettingsError } from '../services/settings'
+import { updateRow } from './records'
 
 // What Kernel hands the services it builds, and its listeners on the shared bus (KERNEL-324).
 
@@ -50,6 +51,8 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
       const object = update.rows.length > 1 ? `${update.rows.length} teammates` : one.prNumber ? `${one.name}'s PR #${one.prNumber}` : `${one.name}'s work`
       bus.activity({ kind: 'note', projectId, workspaceId: chat.workspaceId, agentId: ws?.agentId, text: 'heard from Kernel about', object, data: { leadUpdate: true } })
     },
+    // A review of the chat's own PR in Build here is a row in its transcript, with no turn (KERNEL-990).
+    row: (chatId, update) => updateRow(k.store, chatId, update),
     opened: (chat, rows) => k.openItems.delivered(chat, rows),
     // Delivery timings reach Kernel's log, so Help, Copy diagnostics shows why an update was late. The log hears warnings
     // through the console already (KERNEL-651).

@@ -44,7 +44,7 @@ async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boole
   ws('w2', 'kai', { title: 'Inbox actions' })
   chat('lc', 'lead'); chat('lc2', 'lead'); chat('nc', 'w1'); chat('kc', 'w2')
   store.saveItem('nc', { kind: 'text', id: 't1', ts: 1, text: REPLY })
-  const s = { enabled: true, hasLead: o.leadChat ?? true, accept: true, busy: new Set<string>(), posts: [] as string[], updates: [] as TeamUpdate[], to: [] as string[], delivered: [] as TeamUpdate[], reviewer: undefined as AgentDef | undefined, review: undefined as ReviewState | undefined, autoReview: true,
+  const s = { enabled: true, hasLead: o.leadChat ?? true, accept: true, busy: new Set<string>(), posts: [] as string[], updates: [] as TeamUpdate[], to: [] as string[], rows: [] as { chatId: string; update: TeamUpdate }[], delivered: [] as TeamUpdate[], reviewer: undefined as AgentDef | undefined, review: undefined as ReviewState | undefined, autoReview: true,
     /** Why the Lead chat can't take a message, as `Sessions.postHold` says it. Unset takes it. */
     hold: undefined as ((chatId: string) => string | undefined) | undefined, logs: [] as string[], times: [] as number[] }
   const deps: ConstructorParameters<typeof LeadUpdates>[0] = {
@@ -61,6 +61,7 @@ async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boole
     isLead: (w) => w.agentId === 'kernel',
     agentName: (_r, a) => NAMES[a],
     post: (chatId, text, update) => { if (!s.accept || s.busy.has(chatId) || s.hold?.(chatId)) return false; s.posts.push(text); s.updates.push(update); s.to.push(chatId); s.times.push(Date.now()); return true },
+    row: (chatId, update) => { s.rows.push({ chatId, update }) },
     holdOf: (chatId) => s.hold?.(chatId) ?? (s.busy.has(chatId) ? 'busy' : undefined),
     log: (level, line) => { s.logs.push(line); o.log?.(level, line) },
     delivered: (_r, _c, update) => { s.delivered.push(update) },
@@ -95,6 +96,7 @@ const THEO: AgentDef = { id: 'theo', name: 'Theo', role: 'Reviewer', description
 /** A PR's reviews as Kernel knows them, kind by kind (KERNEL-549): nothing ran, unless `o` says. */
 const rs = (o: Partial<ReviewState> = {}): ReviewState => ({ approved: [], blocking: [], blockers: false, reviewing: [], inProgress: false, waiting: [], ...o })
 /** The To do line for a PR nobody reviewed while Kernel starts reviews itself (KERNEL-549). */
+const anotherReviewLine = '- PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).'
 const UNREVIEWED = 'PR #54 passed checks and has no conflicts. No review runs on it, so tell the user it is ready for them to review and merge.'
 
 /** The lines of a message, split into its blocks and its To do list. */
@@ -396,8 +398,9 @@ describe('what wakes the Lead (KERNEL-121)', () => {
     ws('rv', 'kai', { title: 'Review PR #54', reviewOf: 'w1' })
     ws('gone', 'kai', { title: 'Dropped', status: 'archived' })
     ws('w2', 'kai', { title: 'Inbox actions', leadChatId: 'elsewhere' })
-    pr('w1', 'merged')
+    pr('w2', 'merged', 60); pr('w1', 'merged')
     await wait()
+    expect(s.to.pop()).toBe('lc')
     expect(parts(s.posts.pop()!).todo).toEqual([ALL_MERGED])
   })
 
@@ -798,8 +801,7 @@ describe("a Build here chat's own PR (KERNEL-778)", () => {
     const said: [PrState, string][] = [
       ['cifail', "- Fix the failed checks on PR #54 in this chat's worktree, then push."],
       ['changes', "- Make the changes requested on PR #54 in this chat's worktree, then push."],
-      ['conflict', "- Resolve the conflicts on PR #54 in this chat's worktree: fetch, merge main into the branch, re-run the tests and push as usual."],
-      ['merged', '- PR #54 merged. Tell the user in one line that the next change in this chat starts a new branch from main.']
+      ['conflict', "- Resolve the conflicts on PR #54 in this chat's worktree: fetch, merge main into the branch, re-run the tests and push as usual."]
     ]
     for (const [state, todo] of said) {
       pr('bh', state)
@@ -834,6 +836,82 @@ describe("a Build here chat's own PR (KERNEL-778)", () => {
     await wait()
     expect(s.to.pop()).toBe('bc')
     expect(parts(s.posts.pop()!).todo).toEqual(["- Send Theo's blockers to Noor with message_agent (workspace w1). When Noor is done, ask Theo to review again with message_agent (workspace rv)."])
+  })
+
+  it('draws the chat\'s own success as rows and takes no turn: opened, ready, unblocked, merged and merged by Kernel (KERNEL-990)', async () => {
+    const { s, pr, u, store } = await buildSetup()
+    const pending = () => (u as unknown as { pending: Map<string, unknown> }).pending.size
+    for (const state of ['open', 'ready', 'merged'] as PrState[]) { pr('bh', state); await wait() }
+    u.autoMerging('bh', { why: 'every check passed', card: 'Every check passed' })
+    pr('bh', 'none'); pr('bh', 'ready'); pr('bh', 'merged')
+    await wait()
+    expect(s.posts).toEqual([])
+    expect(s.rows).toEqual([])
+    // Nothing is held to ride along with a later update.
+    expect(pending()).toBe(0)
+    expect(store.meta<{ pending: unknown[] }>('leadUpdates')?.pending).toEqual([])
+  })
+
+  it('still wakes the chat for what the user has to act on, with today\'s words, and carries no row of the success before it (KERNEL-990)', async () => {
+    const { s, pr, u, store } = await buildSetup()
+    const wakes = async (todo: string) => { await wait(); expect(s.to.pop()).toBe('bc'); const sent = parts(s.posts.pop()!); expect(sent.body.join('\n')).not.toMatch(/Opened PR|passed checks|was merged/); expect(sent.todo).toEqual([todo]); expect(s.rows).toEqual([]) }
+    pr('bh', 'open'); pr('bh', 'ready')
+    store.saveWorkspace({ ...store.workspace('bh')!, prBlocked: 'behind' })
+    bus.push({ type: 'pr.blocked', workspaceId: 'bh', blocked: 'behind' })
+    await wakes("- Update PR #54 in this chat's worktree: fetch, merge main into the branch, re-run the tests and push as usual. GitHub won't merge it while its branch is behind.")
+    store.saveWorkspace({ ...store.workspace('bh')!, prBlocked: undefined })
+    pr('bh', 'cifail')
+    await wakes("- Fix the failed checks on PR #54 in this chat's worktree, then push.")
+    pr('bh', 'closed')
+    await wakes('- PR #54 was closed without merging. Ask the user whether the work is still wanted.')
+    pr('bh', 'ready')
+    u.branchUpdated(store.workspace('bh')!, 'main', { capped: 3 })
+    await wait()
+    expect(s.to.pop()).toBe('bc')
+    expect(parts(s.posts.pop()!).todo[0]).toMatch(/^- Tell the user main keeps moving past PR #54/)
+  })
+
+  it('wakes the chat for a review of an earlier commit and for blockers, and draws an approval as a row with only the reviewer (KERNEL-990)', async () => {
+    const { u, s, ws, chat, store, restart } = await buildSetup()
+    ws('rv', 'theo', { title: 'Review PR #54', reviewOf: 'bh', leadChatId: 'bc' })
+    chat('rvc', 'rv')
+    NAMES.theo = 'Theo'
+    s.reviewer = THEO
+    store.saveWorkspace({ ...store.workspace('bh')!, prState: 'ready', prNumber: 54, prHead: 'abc' })
+    s.review = rs({ approved: ['code'] })
+    const verdict = (o: Partial<ReviewVerdict>): ReviewVerdict => ({ workspaceId: 'rv', agentId: 'theo', verdict: 'approved', summary: 'No blockers.', lens: 'code', sha: 'abc', ts: 1, ...o })
+    u.reviewed(store.workspace('rv')!, store.workspace('bh')!, verdict({}))
+    await wait()
+    expect(s.posts).toEqual([])
+    expect(s.rows).toHaveLength(1)
+    expect(s.rows[0].chatId).toBe('bc')
+    const [row, ...more] = s.rows[0].update.rows
+    expect(more).toEqual([])
+    expect(row).toMatchObject({ workspaceId: 'rv', name: 'Theo', reply: 'No blockers.', events: [{ kind: 'review', actionable: false }] })
+    // Once: a later flush, even after Kernel restarts, shows it again for nothing.
+    u.flush('r'); restart().flush('r')
+    await wait()
+    expect(s.rows).toHaveLength(1)
+    // An approval of an earlier commit asks for another review. It is not a row.
+    store.saveWorkspace({ ...store.workspace('bh')!, prHead: 'def' })
+    s.autoReview = false
+    u.reviewed(store.workspace('rv')!, store.workspace('bh')!, verdict({ sha: 'abc', ts: 2 }))
+    await wait()
+    expect(s.rows).toHaveLength(1)
+    expect(s.to.pop()).toBe('bc')
+    expect(parts(s.posts.pop()!).todo).toEqual([anotherReviewLine])
+  })
+
+  it("keeps waking the Lead for a teammate's ready and merged PR, as in Hand off (KERNEL-990)", async () => {
+    const { s, pr } = await buildSetup()
+    pr('w1', 'open'); pr('w1', 'ready')
+    await wait()
+    expect(s.to.pop()).toBe('lc')
+    expect(parts(s.posts.pop()!).todo).toEqual([`- ${UNREVIEWED}`])
+    pr('w2', 'merged', 60); pr('w1', 'merged')
+    await wait()
+    expect(s.to.pop()).toBe('lc')
+    expect(parts(s.posts.pop()!).todo).toEqual([ALL_MERGED])
   })
 
   it("keeps a chat in Hand off silent about its own PR", async () => {

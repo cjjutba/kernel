@@ -2,7 +2,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, ChatItem, Workspace } from '@shared/types'
+import type { AgentDef, ChatItem, PrInfo, Workspace } from '@shared/types'
 import { leadModeOf, leadModeSwitched, newChatLeadMode } from '@shared/leadMode'
 import { ALREADY_HANDOFF, BUILD_HERE_REFUSAL, BUILD_PLAN_MODE_OFF, kernelTools, uncommittedNote, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { HANDOFF_NO_EDIT, HANDOFF_SWITCHED, toolPolicy } from '../src/main/services/agentTools'
@@ -11,6 +11,7 @@ import { agentPrompt } from '../src/main/services/sessions'
 import { loadRepoSettings, saveRepoSettings } from '../src/main/services/settings'
 import { sharesFile } from '../src/main/services/providers/codex/runner'
 import { Kernel } from '../src/main/kernel'
+import { sessionDeps } from '../src/main/features/sessionDeps'
 import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
 import { setUp, tempRepo, freePort } from './helpers'
@@ -384,7 +385,7 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
     await k.lead.syncLead(project.id, { workspaceId: ws.id })
     await k.lead.syncLead(project.id, { workspaceId: ws.id })
     expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prNumber: 54, prState: 'merged' })
-    expect(notes(k, c.id)).toEqual([`PR #54 merged, but this worktree has uncommitted changes, so Kernel kept this chat on ${ws.branch}. It starts a new branch from main once nothing here is left out of the merge.`])
+    expect(notes(k, c.id)).toEqual(['Kernel kept this branch because it has uncommitted changes. A new branch starts once nothing here is left out of the merge.'])
 
     // Committed after the merge: the commit isn't in the PR, so the chat stays where it is, and hears why once.
     await git(ws.path, 'commit', '-qam', 'after the merge')
@@ -392,7 +393,7 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
     await k.lead.syncLead(project.id, { workspaceId: ws.id })
     expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prState: 'merged' })
     expect((await git(ws.path, 'log', '-1', '--format=%s')).trim()).toBe('after the merge')
-    expect(notes(k, c.id).slice(1)).toEqual([`PR #54 merged, but ${ws.branch} has a commit the PR didn't include, so Kernel kept this chat on ${ws.branch}. It starts a new branch from main once nothing here is left out of the merge.`])
+    expect(notes(k, c.id).slice(1)).toEqual(["Kernel kept this branch because it has a commit the PR didn't include. A new branch starts once nothing here is left out of the merge."])
     // Pushed to the merged branch, it still isn't in the PR. Dropping it lets the chat go on.
     await git(project.path, 'update-ref', `refs/remotes/origin/${ws.branch}`, 'HEAD')
     await k.lead.syncLead(project.id, { workspaceId: ws.id })
@@ -406,7 +407,10 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
     for (const f of ['prNumber', 'prUrl', 'prHead', 'mergedAt', 'source'] as const) expect(next[f], f).toBeUndefined()
     expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(next.branch)
     expect((await git(ws.path, 'rev-parse', 'HEAD')).trim()).toBe((await git(project.path, 'rev-parse', 'main')).trim())
-    expect(notes(k, c.id).at(-1)).toBe(`PR #54 merged. This chat now works on ${next.branch}, from main.`)
+    // No merge row existed here, so the ending is a row of its own. No row names a branch.
+    expect(notes(k, c.id).at(-1)).toBe('PR #54 merged. Next changes start on a new branch')
+    expect(notes(k, c.id).join('\n')).not.toContain(next.branch)
+    expect(notes(k, c.id).join('\n')).not.toContain(ws.branch)
     // The next PR is a new one, opened from the new branch, and its merge starts another.
     k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prNumber: 55, prState: 'merged' })
     await k.lead.syncLead(project.id, { workspaceId: ws.id })
@@ -419,6 +423,70 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
     k.store.saveWorkspace({ ...handoff, prNumber: 56, prState: 'merged' })
     await k.lead.syncLead(project.id, { workspaceId: handoff.id })
     expect(k.store.workspace(handoff.id)).toMatchObject({ branch: handoff.branch, prState: 'merged' })
+  })
+
+  /** A fake GitHub that reads the PR `gh.state` is in. */
+  function github(k: Kernel, ws: Workspace, head: string) {
+    const gh = { state: 'open' as PrInfo['state'] }
+    k.github = {
+      info: async (_cwd, _ref, workspaceId) => ({ workspaceId, number: 54, url: 'https://github.com/o/r/pull/54', title: 'feat: retry', state: gh.state, baseRef: 'main', checks: [{ name: 'Test', state: 'pass' }], comments: [], conflicts: [], head }),
+      merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined
+    }
+    return gh
+  }
+
+  it('draws the PR as rows, once each, ends the merge row with the new branch, and tells the next turn (KERNEL-990)', async () => {
+    const { k, project, c, ws } = await building()
+    const head = (await git(ws.path, 'rev-parse', 'HEAD')).trim()
+    const gh = github(k, ws, head)
+    const refresh = () => k.refreshPr(ws.id, { settle: true })
+    await refresh()
+    gh.state = 'ready'
+    await refresh()
+    await refresh()
+    expect(notes(k, c.id)).toEqual(['Opened PR #54', 'PR #54 is ready to merge'])
+    gh.state = 'merged'
+    await refresh()
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)).toMatchObject({ prState: 'none' }), { timeout: 10_000, interval: 20 })
+    const first = k.store.workspace(ws.id)!
+    expect(first.branch).not.toBe(ws.branch)
+    // One merge row, which carries the ending, and no second row for the switch. No row names a branch.
+    expect(notes(k, c.id)).toEqual(['Opened PR #54', 'PR #54 is ready to merge', 'PR #54 was merged on GitHub. Next changes start on a new branch'])
+    expect(notes(k, c.id).join('\n')).not.toContain(ws.branch)
+    // The chat's next turn starts with one short line, once.
+    const deps = sessionDeps(k)
+    expect(deps.turnNote!(c)).toBe('PR #54 merged. This chat is now on a new branch from main.')
+    expect(deps.turnNote!(c)).toBeUndefined()
+
+    // The same merge seen again, as a replay or a refresh after a restart would, adds no row. The new branch is another one still.
+    k.store.saveWorkspace({ ...first, prNumber: 54, prState: 'ready' })
+    await refresh()
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)).toMatchObject({ prState: 'none' }), { timeout: 10_000, interval: 20 })
+    expect(notes(k, c.id).filter((t) => t.startsWith('PR #54 was merged'))).toHaveLength(1)
+    expect(notes(k, c.id)).toHaveLength(3)
+    expect(k.store.workspace(ws.id)!.branch).not.toBe(first.branch)
+    expect(project.id).toBe(ws.projectId)
+  })
+
+  it('says Kernel could not update to the latest main when the fetch fails, and keeps the branch (KERNEL-990)', async () => {
+    const { k, project, c, ws } = await building()
+    const head = (await git(ws.path, 'rev-parse', 'HEAD')).trim()
+    const gh = github(k, ws, head)
+    k.store.saveWorkspace({ ...ws, prNumber: 54, prState: 'ready', prHead: head })
+    gh.state = 'merged'
+    await git(project.path, 'remote', 'add', 'origin', join(project.path, 'nowhere'))
+    await k.refreshPr(ws.id, { settle: true })
+    await vi.waitFor(() => expect(notes(k, c.id).at(-1)).toBe("PR #54 was merged on GitHub. Kernel couldn't update to the latest main"), { timeout: 10_000, interval: 20 })
+    expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prState: 'merged' })
+  })
+
+  it('draws no row and cuts no branch for a chat that was archived before the switch (KERNEL-990)', async () => {
+    const { k, project, c, ws } = await building()
+    const head = (await git(ws.path, 'rev-parse', 'HEAD')).trim()
+    k.store.saveWorkspace({ ...ws, prNumber: 54, prState: 'merged', prHead: head, status: 'archived' })
+    await k.lead.syncLead(project.id, { workspaceId: ws.id })
+    expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prState: 'merged' })
+    expect(notes(k, c.id)).toEqual([])
   })
 
   it("links an issue, renaming the branch before the first push and only linking after it, and refuses a chat in Hand off", async () => {
