@@ -74,15 +74,18 @@ const bearer = (header: string | string[] | undefined) => (typeof header === 'st
 export function startSeatMcp(o: SeatMcpOptions): Promise<SeatMcp> {
   let port = 0
   const server = createServer(async (req, res) => {
-    if (!req.url?.startsWith('/mcp')) return fail(res, 404, 'not found')
-    // The same checks as the hook server (KERNEL-206): a foreign Host is DNS rebinding, and a web page can't send this header.
+    // Before anything else, routing included: a foreign Host is DNS rebinding and learns nothing, not even which paths exist.
     if (!hostOk(req.headers.host, port)) return fail(res, 401, 'unauthorized')
-    const seat = o.registry.seatOf(bearer(req.headers.authorization))
-    if (!seat) return fail(res, 401, 'unauthorized')
+    if (!req.url?.startsWith('/mcp')) return fail(res, 404, 'not found')
+    const sent = bearer(req.headers.authorization)
+    if (!o.registry.seatOf(sent)) return fail(res, 401, 'unauthorized')
     if (req.method !== 'POST') return fail(res, 405, 'method not allowed', { allow: 'POST' })
     if (req.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json') return fail(res, 415, 'expected application/json')
     let body: unknown
     try { body = JSON.parse(await readBody(req)) } catch { return fail(res, 400, 'invalid json') }
+    // The body can take a while to arrive, and the token may have been revoked or replaced meanwhile.
+    const seat = o.registry.seatOf(sent)
+    if (!seat) return fail(res, 401, 'unauthorized')
     const given = o.serve(seat)
     if (!given) return fail(res, 404, 'no such seat')
     const mcp = new McpServer({ name: KERNEL_SERVER, version: '0.1.0' }, given.instructions ? { instructions: given.instructions } : undefined)

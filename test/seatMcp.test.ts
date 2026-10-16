@@ -156,6 +156,46 @@ describe('tools over HTTP for a seat', () => {
     expect(seats.registry.size).toBe(0)
   })
 
+  it('refuses a foreign Host before routing, on a path that does not exist too', async () => {
+    const u = new URL(seats.url!)
+    const status = (path: string, host: string) => new Promise<number>((resolve, reject) => {
+      const req = request({ host: '127.0.0.1', port: u.port, path, method: 'POST', headers: { host, 'content-type': 'application/json' } }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode!)) })
+      req.on('error', reject)
+      req.end('{}')
+    })
+    expect(await status('/other', 'evil.example:80')).toBe(401)
+    expect(await status('/other', `127.0.0.1:${u.port}`)).toBe(404)
+  })
+
+  it('refuses a request whose token was revoked or replaced while its body was still arriving', async () => {
+    const u = new URL(seats.url!)
+    const list = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })
+    const slow = (token: string) => {
+      const req = request({ host: '127.0.0.1', port: u.port, path: u.pathname, method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' } })
+      const done = new Promise<number>((resolve, reject) => { req.on('response', (res) => { res.resume(); res.on('end', () => resolve(res.statusCode!)) }); req.on('error', reject) })
+      req.write(list.slice(0, 10))
+      return { finish: () => req.end(list.slice(10)), done }
+    }
+    const revoked = seats.makeToken(lead.chatId)
+    const a = slow(revoked)
+    await new Promise((r) => setTimeout(r, 50))
+    seats.revokeToken(revoked)
+    a.finish()
+    expect(await a.done).toBe(401)
+
+    const old = seats.makeToken(mate.chatId)
+    const b = slow(old)
+    await new Promise((r) => setTimeout(r, 50))
+    seats.makeToken(mate.chatId)
+    b.finish()
+    expect(await b.done).toBe(401)
+
+    const live = seats.makeToken(lead.chatId)
+    const c = slow(live)
+    c.finish()
+    expect(await c.done).toBe(200)
+  })
+
   it('refuses a non-JSON post and any other method or path', async () => {
     const token = seats.makeToken(lead.chatId)
     expect(await post({ authorization: `Bearer ${token}`, 'content-type': 'text/plain' })).toBe(415)
