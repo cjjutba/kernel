@@ -4,6 +4,7 @@ import type { ProjectSettingsSection, SettingsPage } from '@shared/types'
 import { actions, getState, go, useStore } from '../../store'
 import { ProjectIcon } from '../../components/ProjectIcon'
 import { Icon, useScreenEscape } from '../../ui'
+import { HistoryButtons } from '../../components/PanelToggles'
 import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import { NAV, PROJECT_PAGES, keywordHits, navMatch, type Keyword } from './nav'
 
@@ -67,7 +68,11 @@ export function SettingsNav({ page, projectId, section }: { page: SettingsPage; 
   const here = (id: string, s: ProjectSettingsSection) => page === 'project' && projectId === id && (section ?? 'general') === s
   return (
     <>
-      <div className="drag" style={{ height: 53, flexShrink: 0 }} />
+      {/* The same strip as the app sidebar's, so Back and Forward stay where they were. Settings has no sidebar toggle. */}
+      <div className="drag sb-titlebar">
+        <span className="grow" />
+        <HistoryButtons />
+      </div>
       <button type="button" className="set-back" onClick={() => actions.ui.leaveSettings()}><Icon name="left" size={14} />Back to app</button>
       <div className="set-search">
         <label htmlFor="set-q" className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>Search settings</label>
