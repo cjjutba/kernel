@@ -53,6 +53,8 @@ export interface Fixture {
   githubOwners?: GitHubOwner[]
   /** owner/repo names Repository name says are taken (KERNEL-944). */
   takenRepos?: string[]
+  /** Owner avatars as data URLs, by login, for `github.avatar` (KERNEL-951). An owner left out has none, so it shows its initials. */
+  avatars?: Record<string, string>
   /** Recent project folders (OpenFolder.png). */
   folders?: FolderInfo[]
   /** By chat id. */

@@ -183,6 +183,8 @@ describe('Files to copy patterns in worktrees (KERNEL-245)', () => {
     const preview = await k.handlers()['files.preview']({ projectId: ws.projectId })
     expect(preview).toEqual([{ path: '.env', size: 6 }, { path: '.env.local', size: 6 }, { path: 'apps/web/.env', size: 6 }])
     for (const f of preview) expect(await readFile(join(ws.path, f.path), 'utf8')).toBe(local[f.path as keyof typeof local])
+    // The chat's "Created the worktree" row counts them (KERNEL-951).
+    expect(k.store.workspace(ws.id)?.copied).toBe(preview.length)
     // The tracked .env.example comes from git, not from the copy.
     expect(await readFile(join(ws.path, '.env.example'), 'utf8')).toBe('KEY=\n')
     await expect(lstat(join(ws.path, 'node_modules'))).rejects.toThrow()

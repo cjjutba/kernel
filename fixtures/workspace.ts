@@ -614,7 +614,7 @@ function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[
   const started = Date.now() - 42_000
   const setupRun = o.pending ? undefined : status === 'setup' ? { startedAt: started } : { startedAt: started - 26_000, endedAt: started + (o.end === null ? 5_000 : 42_000), end: o.end }
   return {
-    workspaces: withWorkspace(f, ids.table, { status, setupRun, ...(o.pending ? { baseRef: 'origin/main', worktreePending: o.pending } : {}) }),
+    workspaces: withWorkspace(f, ids.table, { status, setupRun, copied: 2, ...(o.pending ? { baseRef: 'origin/main', worktreePending: o.pending } : {}) }),
     items: { [ids.tableChat]: [] },
     queue: { [ids.tableChat]: queue },
     push: [...f.push, ...(o.pending ? [] : setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed')), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'setup' as const }] : [])],
@@ -1922,7 +1922,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: [] },
     ui: open
   })),
-  // KERNEL-430: a new chat waiting for setup. The message waits as a bubble, one line says where setup stands, and its log is in the Setup tab.
+  // KERNEL-430: a new chat waiting for setup. KERNEL-951: rows say what Kernel did, the setup script's row counts with its last output line, and the message waits dimmed with Send now.
   SetupRunning: scene((f) => setupWait(f, 'setup', [setupAsk])),
   SetupFollowUp: scene((f) => setupWait(f, 'setup', [setupAsk, setupFollow])),
   // Edit pulled the only queued message back into the box.
@@ -1941,7 +1941,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
   SetupDone: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
+    workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', copied: 2, setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
     items: { [ids.tableChat]: [{ kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }

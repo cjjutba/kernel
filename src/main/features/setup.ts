@@ -76,6 +76,9 @@ export class Setup extends Feature {
     void runScript({ workspaceId: ws.id, kind: 'run', name, script, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }) })
   }
 
+  /** Workspaces whose running setup Send now stopped, so the stop sends the brief instead of failing setup (KERNEL-951). */
+  readonly sendingNow = new Set<string>()
+
   /** Workspaces whose setup is rerunning, so a second Run again doesn't start it twice. */
   readonly settingUp = new Set<string>()
   /**
@@ -120,6 +123,13 @@ export class Setup extends Feature {
   async skipSetup(workspaceId: string): Promise<Workspace> {
     // With no worktree there is nowhere to send to, so only Run again goes on (KERNEL-542).
     const ws = this.mustWs(workspaceId)
+    // Send now while setup runs: the script stops, and its stop counts as a pass, so the brief goes out on the path a passed
+    // setup takes (KERNEL-951).
+    if (ws.status !== 'archived' && ws.setupRun && !ws.setupRun.endedAt) {
+      this.sendingNow.add(workspaceId)
+      stopScript(workspaceId, 'setup')
+      return ws
+    }
     if (this.settingUp.has(workspaceId) || ws.status !== 'failed' || ws.worktreePending) return ws
     this.settingUp.add(workspaceId)
     try {
@@ -220,7 +230,8 @@ export class Setup extends Feature {
 
   /** A files.copy entry that leaves the repo is refused, and the setup output says which (KERNEL-209). */
   async copyFiles(ws: Workspace, project: Project, repo: RepoSettings) {
-    const { refused } = await copyLocalFiles(project.path, ws.path, repo.files.copy, repo.files.exclude)
+    const { copied, refused } = await copyLocalFiles(project.path, ws.path, repo.files.copy, repo.files.exclude)
+    this.updateWs(ws.id, { copied: copied.length })
     for (const f of refused) scriptNote(ws.id, 'setup', `Did not copy ${f}: files.copy can only copy files inside the repo.`)
   }
 
@@ -271,7 +282,9 @@ export class Setup extends Feature {
 
   /** The last line of a failed setup log says so, the way the canvas draws it (WorkspaceSetupFailed.png). */
   private setupPassed(ws: Workspace, code: ScriptEnd) {
+    const sentNow = this.sendingNow.delete(ws.id)
     if (code === 0) { this.setupFailures.delete(ws.id); this.sayLoaded(ws); return true }
+    if (code === null && sentNow) { this.setupFailures.delete(ws.id); scriptNote(ws.id, 'setup', 'Setup was stopped to send now'); return true }
     this.setupFailures.set(ws.id, code)
     const line = code === 'timeout' ? `Setup didn't finish in ${timeoutText(this.settings)}` : code === null ? 'Setup was stopped' : `Setup failed with exit code ${code}`
     scriptNote(ws.id, 'setup', line)

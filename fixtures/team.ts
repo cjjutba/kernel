@@ -62,6 +62,9 @@ const warnSteps: ProjectSetupStep[] = [
   { id: 'agents', title: 'Seat agents', detail: 'Kernel, Kai, Noor, Ivy, Theo from .claude/agents', state: 'ok' }
 ]
 
+/** An owner's GitHub avatar, drawn here since fixtures load nothing remote (KERNEL-951). */
+const ownerAvatar = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="#3b4a5c"/><circle cx="20" cy="16" r="7" fill="#c9d3dd"/><path d="M6 40c2-9 8-13 14-13s12 4 14 13z" fill="#c9d3dd"/></svg>')}`
+
 const shop: Project = { id: 'project-shop', name: 'Shop', kind: 'folder', path: '/Users/you/Projects/shop', defaultBranch: 'main', paused: false, createdAt: ago(MIN) }
 const shopSteps: ProjectSetupStep[] = [
   { id: 'clone', title: 'Use your folder', detail: '~/Projects/shop', state: 'ok' },
@@ -740,7 +743,7 @@ export const teamFixtures: Record<string, Fixture> = {
   // Audit: no project added yet, and the Projects page on its own.
   ProjectsEmpty: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'projects' } } })),
   // KERNEL-947: New project is from scratch only: a name, where it goes, and its private GitHub repo. NewProjectTaken picks a name that exists.
-  NewProject: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'scratch', name: 'Habit tracker', from: '' } } } })),
+  NewProject: scene((f) => ({ ...projectsScene(f), avatars: { samrivera: ownerAvatar }, ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'scratch', name: 'Habit tracker', from: '' } } } })),
   NewProjectTaken: scene((f) => ({ ...projectsScene(f), takenRepos: ['samrivera/habit-tracker'], ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'scratch', name: 'Habit tracker', from: '' } } } })),
   ConnectRepo: scene((f) => ({ ...projectsScene(f), repos, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
   // Audit: the repo list never answers, and the signed-in account has no repos.
@@ -806,6 +809,7 @@ export const teamFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'leadNew', projectId: shop.id } }
   })),
   // KERNEL-397: setup is done in a repo that brought its own agents, and shows the team to check before the project opens.
+  // KERNEL-951: one quiet row says who leads and who reviews, linking to the project's Agents page.
   // KERNEL-555: Kernel is the only built-in agent, so this team has no reviewer and the picker opens on Kernel's code review.
   ProjectSetupTeam: scene((f) => projectSetupTeam(f)),
   // KERNEL-590: the repo's `[team] reviewer = "none"` turned review off, so the picker says No reviewer and no line claims a review.

@@ -1,0 +1,7 @@
+**A chat's worktree and setup script show as plain rows at the top of the chat, and the setup log no longer opens by itself.** Amends KERNEL-430 (SetupWait opened the Setup tab of the bottom pane while setup ran, and kept a line or a card for setup) and KERNEL-513 (the pane opened over whatever the user left it as). CJ's call, from the onboarding redesign: a chat should start the way a Conductor workspace does.
+
+**Rows above the first message.** A chat in its own worktree shows "You're in a new copy of <project> on its own branch", then "Branched <branch> from <base>", "Created the worktree and copied N files", and the setup script's row. The rows stay above the transcript after setup, so a finished chat still says how long setup took. A chat on the current branch, or in the Lead's old shared worktree, has none. The rows read the workspace record, so they cost no tokens.
+
+**The setup row.** Running, it counts the elapsed time and shows the script's last output line, with Stop and a link to the log. Done, it says how long it took. Failed, it shows the last line the script printed, with Run again and Send anyway on the row. The log opens only from the row's link; it no longer opens, or un-collapses the bottom pane, while setup runs.
+
+**Send now.** A message sent while setup runs waits dimmed under the rows, "Sends when setup finishes", with Send now. Send now stops the script and sends, on the path a passed setup takes, so the Lead hears setup passed. Edit and Cancel stay on the message, shown on hover or focus.

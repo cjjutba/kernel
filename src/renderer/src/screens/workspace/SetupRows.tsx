@@ -1,6 +1,8 @@
-import type { Project, ProjectSetupStep } from '@shared/types'
+import type { AgentDef, Project, ProjectSetupStep } from '@shared/types'
+import { KERNEL_REVIEWER, NO_REVIEWER, reviewerChoice } from '@shared/team'
 import { call, cleanError } from '../../api'
-import { actions, go } from '../../store'
+import { actions, go, useStore } from '../../store'
+import { projectAgents } from '../../nav'
 import { Button, Icon, Spinner, useBusy } from '../../ui'
 import { useProjectSettings } from '../settings/useSettings'
 
@@ -20,6 +22,15 @@ function doneText(step: ProjectSetupStep, project: Project): string | null {
   }
 }
 
+const NO_AGENTS: AgentDef[] = []
+
+/** Who leads and who reviews, for a repo that brought its own agents (KERNEL-397), as one line (KERNEL-951). */
+function teamLine(team: AgentDef[], reviewer: string): string {
+  const lead = team.find((a) => a.lead)?.name ?? 'Kernel'
+  const by = reviewer === NO_REVIEWER ? 'no one reviews pull requests' : reviewer === KERNEL_REVIEWER ? 'Kernel reviews pull requests' : `${team.find((a) => a.id === reviewer)?.name ?? 'Kernel'} reviews pull requests`
+  return `${lead} leads, ${by}`
+}
+
 const ICON: Partial<Record<ProjectSetupStep['id'], 'download' | 'branch' | 'folder' | 'term' | 'team' | 'lock'>> = {
   clone: 'download', github: 'branch', worktrees: 'folder', copy: 'folder', hooks: 'term', push: 'lock', agents: 'team'
 }
@@ -30,6 +41,7 @@ const ICON: Partial<Record<ProjectSetupStep['id'], 'download' | 'branch' | 'fold
  */
 export function SetupRows({ project, steps }: { project: Project; steps: ProjectSetupStep[] }) {
   const settings = useProjectSettings(project.id)
+  const agents = useStore((s) => s.agents[project.id] ?? NO_AGENTS)
   const [busy, run] = useBusy<'retry'>()
   const running = steps.some((s) => s.state === 'run')
   const done = steps.every((s) => s.state === 'ok' || s.state === 'warn' || s.state === 'fail')
@@ -37,6 +49,7 @@ export function SetupRows({ project, steps }: { project: Project; steps: Project
     try { await call('projects.retrySetup', { projectId: project.id }) } catch (e) { actions.ui.toast({ title: 'Could not try again', sub: cleanError(e) }) }
   })
   const lead = project.kind === 'repo' ? 'a new project cloned from GitHub' : project.kind === 'scratch' ? 'a new project' : `a new project in ${tilde(project.path)}`
+  const team = agents.filter((a) => !a.retired)
   const shown = steps.filter((s) => s.id !== 'host' && s.state !== 'wait')
   return (
     <section className="su-rows" aria-label="Project setup" aria-busy={running}>
@@ -56,6 +69,14 @@ export function SetupRows({ project, steps }: { project: Project; steps: Project
           {s.state === 'fail' && !running && <Button size="sm" variant="ghost" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void retry()}>Try again</Button>}
         </div>
       ))}
+      {/* A repo that brought its own agents: who leads and who reviews, to check, with the Agents page one click away (KERNEL-951). */}
+      {done && settings && team.length > 0 && !!steps.find((s) => s.id === 'agents' && s.state === 'ok')?.brought && (
+        <button type="button" className="su-row su-link" onClick={() => go(projectAgents(project.id))}>
+          <span className="su-ico"><Icon name="team" size={16} /></span>
+          <span className="su-text"><span className="su-link-text">{teamLine(team, reviewerChoice(team, settings.team))}</span></span>
+          <Icon name="ext" size={12} />
+        </button>
+      )}
       {done && settings && !settings.scripts.setup && (
         <button type="button" className="su-row su-link" onClick={() => go({ name: 'settings', page: 'project', projectId: project.id, section: 'setup' })}>
           <span className="su-ico"><Icon name="term" size={16} /></span>

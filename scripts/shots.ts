@@ -489,13 +489,6 @@ async function typeArchived(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// ProjectSetupTeam is drawn with the Reviewer picker open. Its open state is local to the picker, so click it open.
-async function openReviewer(page: Page) {
-  await page.getByRole('button', { name: 'Reviewer' }).click()
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(300)
-}
-
 // GroupedRowStatus is drawn with the pointer on the Client portal login row, once its card has opened (KERNEL-630).
 async function hoverRow(page: Page, row: string) {
   await page.locator('.chat-row', { hasText: row }).hover()
@@ -606,7 +599,6 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   AuditSidebarWide: async (page) => { const h = page.getByRole('separator', { name: 'Resize sidebar' }); await h.focus(); await page.keyboard.press('End'); await h.blur(); await page.waitForTimeout(300) },
   AccountSwitching: async (page) => { await page.locator('.ft-other').first().click(); await page.waitForTimeout(200) },
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
-  ProjectSetupTeam: openReviewer,
   PanelCompare: openCompare,
   LeadNoChatsBranch: openBaseBranch,
   NewChatProjectPicker: (page) => openWhere(page, /^Project:/, /Client B/),

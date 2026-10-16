@@ -7,7 +7,6 @@
   "src/renderer/src/screens/workspace/FileView.tsx": {"inlineStyle":12},
   "src/renderer/src/screens/workspace/NewChatBar.tsx": {"inlineStyle":1},
   "src/renderer/src/screens/workspace/Panels.tsx": {"inlineStyle":16},
-  "src/renderer/src/screens/workspace/SetupWait.tsx": {"inlineStyle":5},
   "src/renderer/src/screens/workspace/Transcript.tsx": {"inlineStyle":3},
   "src/renderer/src/screens/workspace/banners/banners.css": {"fontSize":2,"lineHeight":1},
   "src/renderer/src/screens/workspace/cards/cards.css": {"fontSize":46,"fontWeight":13,"lineHeight":10},
