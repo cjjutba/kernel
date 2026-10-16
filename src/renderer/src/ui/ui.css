@@ -66,11 +66,11 @@
 .menu-item:focus-visible { outline: 0; background: var(--hover); }
 .menu-item[aria-checked='true'] { background: var(--hover); }
 .menu-item[aria-checked='true'] > svg:last-child { color: var(--ink); }
-.menu-kbd { font: var(--fs-chip) var(--mono); color: var(--muted); }
+.menu-kbd { font-size: var(--fs-ui); color: var(--muted); }
 .menu-note { font-size: var(--fs-meta); color: var(--muted); }
 .menu-check-slot { width: 14px; height: 14px; flex-shrink: 0; }
 .menu-head { padding: 6px 8px 4px; font-size: var(--fs-meta); color: var(--muted); }
-.menu-title { padding: 8px 8px 4px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-2); }
+.menu-title { display: flex; align-items: center; gap: 8px; padding: 8px 8px 4px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-2); }
 .menu-item[data-rich] { height: auto; flex-direction: column; align-items: stretch; gap: 1px; padding: 7px 8px; }
 .menu-sep { height: 1px; margin: 5px 2px; background: var(--line-3); }
 .popover { position: absolute; z-index: var(--z-popover); top: calc(100% + 6px); min-width: 220px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }

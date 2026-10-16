@@ -11,5 +11,8 @@
 .acct-mark { flex-shrink: 0; width: 14px; display: inline-flex; justify-content: center; color: var(--ink-2); }
 .menu-item[data-rich]:has(> .acct-row) { height: 30px; flex-direction: row; align-items: center; padding: 0 8px; }
 .menu[aria-label='Account'] .menu-title { color: var(--muted); }
-/* Headings and the items below the accounts start where the account names do, past the check gutter. */
-.menu:has(.acct-row) .menu-title, .menu:has(.acct-row) .menu-item:not(:has(> .acct-row)) { padding-left: 30px; }
+/* Provider marks and row icons sit in the check gutter, so headings, accounts and the rows below them share one label column. */
+.menu:has(.acct-row) .menu-title { padding-left: 8px; }
+.menu:has(.acct-row) .menu-title svg { width: 14px; height: 14px; flex-shrink: 0; }
+.menu:has(.acct-row) .menu-item:not(:has(> .acct-row)) { gap: 8px; }
+.menu:has(.acct-row) .menu-item:not(:has(> .acct-row)) > svg { width: 14px; height: 14px; }

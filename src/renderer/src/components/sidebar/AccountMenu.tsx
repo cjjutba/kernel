@@ -4,7 +4,7 @@ import { chatsLabel, chatsPerAccount } from '../../accountChats'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { openNewChat } from '../../lead'
-import { Icon, Menu, MENU_SEPARATOR, Spinner, useBusy, type MenuEntry } from '../../ui'
+import { Icon, Menu, ProviderMark, MENU_SEPARATOR, Spinner, useBusy, type MenuEntry } from '../../ui'
 import { PROVIDERS, type AccountProfile, type Provider } from '@shared/types'
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || 'K'
@@ -54,7 +54,7 @@ export function AccountButton() {
   const groups = PROVIDERS.flatMap((p, i) => {
     // API keys go after the subscriptions. The rest keep their order, so a switch doesn't move rows.
     const mine = accounts.filter((a) => a.provider === p.id).sort((a, b) => Number(a.auth === 'apiKey') - Number(b.auth === 'apiKey'))
-    return mine.length ? [...(i ? [MENU_SEPARATOR] : []), { id: `title:${p.id}`, label: p.label, title: true }, ...mine.map(accountEntry)] : []
+    return mine.length ? [...(i ? [MENU_SEPARATOR] : []), { id: `title:${p.id}`, label: p.label, title: true, leading: <ProviderMark provider={p.id} size={14} /> }, ...mine.map(accountEntry)] : []
   })
   return (
     <div ref={anchor} style={{ position: 'relative', minWidth: 0 }}>
@@ -70,12 +70,12 @@ export function AccountButton() {
             ? [
                 ...groups,
                 MENU_SEPARATOR,
-                { id: 'manage', label: 'Manage accounts', onSelect: () => go({ name: 'settings', page: 'accounts' }) },
-                { id: 'settings', label: 'Settings', shortcut: '⌘,', onSelect: () => actions.ui.openSettings() }
+                { id: 'manage', label: 'Manage accounts', icon: 'team', onSelect: () => go({ name: 'settings', page: 'accounts' }) },
+                { id: 'settings', label: 'Settings', icon: 'settings', shortcut: '⌘,', onSelect: () => actions.ui.openSettings() }
               ]
             : [
                 ...(who ? [{ id: 'who', label: who, disabled: true }] : []),
-                { id: 'settings', label: 'Settings', shortcut: '⌘,', onSelect: () => actions.ui.openSettings() },
+                { id: 'settings', label: 'Settings', icon: 'settings', shortcut: '⌘,', onSelect: () => actions.ui.openSettings() },
                 MENU_SEPARATOR,
                 { id: 'switch', label: 'Switch account', onSelect: () => void leave('Could not switch account') },
                 { id: 'out', label: 'Sign out', onSelect: () => void leave('Could not sign out') }
