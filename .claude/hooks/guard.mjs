@@ -8,7 +8,8 @@ import path from 'node:path'
 
 const input = JSON.parse(readFileSync(0, 'utf8'))
 const home = homedir()
-const root = real(path.resolve(process.env.CLAUDE_PROJECT_DIR || path.join(import.meta.dirname, '../..')))
+const project = real(path.resolve(process.env.CLAUDE_PROJECT_DIR || path.join(import.meta.dirname, '../..')))
+const root = workspaceRoot() ?? project
 
 function deny(reason) {
   process.stdout.write(
@@ -49,6 +50,28 @@ function real(p, hops = 0) {
     return real([target, ...parts.slice(i + 1)].join('/'), hops + 1)
   }
   return cur
+}
+
+function commonDir(dir) {
+  try {
+    return real(execFileSync('git', ['-C', dir, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim())
+  } catch {
+    return null
+  }
+}
+
+// A chat with Kernel runs in its own worktree but takes its project config,
+// and so CLAUDE_PROJECT_DIR, from the main checkout (KERNEL-355). Kernel sets
+// KERNEL_WORKSPACE to the chat's folder, again after it moves the folder
+// (KERNEL-976). That folder is this repo when it is a worktree of the same
+// repository as CLAUDE_PROJECT_DIR. Otherwise the root stays where it was.
+function workspaceRoot() {
+  const ws = process.env.KERNEL_WORKSPACE
+  if (!ws || !path.isAbsolute(ws)) return null
+  const dir = real(ws)
+  if (dir === project) return null
+  const own = commonDir(dir)
+  return own && own === commonDir(project) ? dir : null
 }
 
 // Joins without collapsing "..", so real() can follow symlinks first.

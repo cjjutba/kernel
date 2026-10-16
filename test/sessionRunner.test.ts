@@ -725,7 +725,7 @@ describe('a note before the next turn (KERNEL-764)', () => {
 
 describe('compact window per role (feat-compact-window-per-role-with-plan)', () => {
   const WINDOW = 'CLAUDE_CODE_AUTO_COMPACT_WINDOW'
-  const compact: AppSettings['models']['compact'] = { lead: 'full', engineers: '200k', qa: '200k', reviewer: '200k' }
+  const compact: AppSettings['models']['compact'] = { lead: 'full', frontend: 'full', engineers: '200k', qa: '200k', reviewer: '200k' }
   const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Backend', description: 'Engine', lead: false, prompt: 'You build the engine.' }
   const envOf = (call: Call) => call.options.env as Record<string, string>
   const stopped = (call: Call) => !!call.options.abortController?.signal.aborted
