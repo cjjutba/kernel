@@ -202,6 +202,8 @@ const load = (w: BrowserWindow) => { if (rendererUrl) void w.loadURL(rendererUrl
 
 /** Settings, Appearance for the window and native UI, made once the app is ready (KERNEL-708). */
 let appearance: WindowAppearance | undefined
+/** How much Settings, Appearance, Font size zooms the page, which the traffic lights follow on top of the page zoom (KERNEL-972). */
+const fontZoom = () => appearance?.fontZoom ?? 1
 
 function createWindow() {
   win = new BrowserWindow({
@@ -223,7 +225,7 @@ function createWindow() {
   // Cmd+Plus, Minus and 0: the page gets those first, for a shared image's tab, and the window zooms when the page leaves them (KERNEL-598).
   win.webContents.on('before-input-event', (e, input) => {
     const zoom = zoomStepOf(input)
-    if (zoom && win) { e.preventDefault(); void handZoom(win, zoom); return }
+    if (zoom && win) { e.preventDefault(); void handZoom(win, zoom, fontZoom); return }
     // Cmd+Shift+/ is also macOS's own key for searching the Help menu, which the app menu has, so the menu takes it and the page never hears it.
     // The page is handed the key here instead, from the focused element so an open picker sees it too.
     if (input.type === 'keyDown' && input.meta && input.shift && !input.alt && !input.control && (input.code === 'Slash' || input.key === '/' || input.key === '?')) {
@@ -260,12 +262,12 @@ function createWindow() {
     setImmediate(() => {
       if (w.isDestroyed()) return
       const level = w.webContents.getZoomLevel()
-      if (level === before) zoomWindow(w, direction)
-      else { if (clampLevel(level) !== level) w.webContents.setZoomLevel(clampLevel(level)); placeLights(w) }
+      if (level === before) zoomWindow(w, direction, fontZoom())
+      else { if (clampLevel(level) !== level) w.webContents.setZoomLevel(clampLevel(level)); placeLights(w, fontZoom()) }
     })
   })
-  w.webContents.on('did-finish-load', () => settleZoom(w))
-  w.on('leave-full-screen', () => placeLights(w))
+  w.webContents.on('did-finish-load', () => settleZoom(w, fontZoom()))
+  w.on('leave-full-screen', () => placeLights(w, fontZoom()))
   load(w)
 }
 
@@ -329,9 +331,12 @@ app.whenReady().then(async () => {
   // `pnpm shots --motion` asks the app for what the fixture declares, since the script can't import the fixtures (KERNEL-831).
   ;(globalThis as { kernelFixtureMotion?: unknown }).kernelFixtureMotion = fixture?.motion
   ;(globalThis as { kernelFixturePush?: unknown }).kernelFixturePush = (events: PushEvent[]) => events.forEach((e) => bus.push(e))
-  // A fixture's theme wins, as `pnpm shots --theme light` asks. A real run opens on what settings.json says.
-  const fixtureLook = fixture && appearanceOf({ theme: fixtureTheme().theme ?? fixture.ui.theme })
-  appearance = new WindowAppearance({ nativeTheme, window: mainWindow, initial: fixtureLook || readAppearance(join(app.getPath('userData'), 'settings.json')) })
+  // A fixture opens on its saved appearance, with its theme, or the one `pnpm shots --theme light` asks for. A real run opens on what settings.json says.
+  const fixtureLook = fixture && appearanceOf({ ...fixture.settings?.appearance, theme: fixtureTheme().theme ?? fixture.ui.theme })
+  appearance = new WindowAppearance({
+    nativeTheme, window: mainWindow, initial: fixtureLook || readAppearance(join(app.getPath('userData'), 'settings.json')),
+    onFontZoom: (zoom) => { const w = mainWindow(); if (w) placeLights(w, zoom) }
+  })
   let handlers: Record<string, (req: unknown) => Promise<unknown>>
   let started: Promise<void> = Promise.resolve()
   if (fixture) {
@@ -473,7 +478,7 @@ app.whenReady().then(async () => {
     return { ok: true }
   })
   // Any change to the page's zoom moves the traffic lights, including one that skipped zoomWindow (KERNEL-972).
-  handle('system.zoomChanged' satisfies Channel, followPageZoom((sender) => { const w = mainWindow(); return w && w.webContents === sender ? w : null }))
+  handle('system.zoomChanged' satisfies Channel, followPageZoom((sender) => { const w = mainWindow(); return w && w.webContents === sender ? w : null }, fontZoom))
   const previews: PreviewHandlers = preview?.handlers() ?? previewFixture(fixture!)
   for (const [channel, fn] of Object.entries(previews) as [string, (req: unknown) => Promise<unknown>][]) handle(channel, async (_e, req) => { await started; return fn(req) })
   handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixturePush(fixture), ...(process.env.KERNEL_FIXTURE_PERSIST === '1' ? { persist: true } : {}) } : null))
@@ -485,7 +490,7 @@ app.whenReady().then(async () => {
   bus.on('push', (event) => mainWindow()?.webContents.send('kernel:event', event))
   Menu.setApplicationMenu(Menu.buildFromTemplate(appMenu({
     copyDiagnostics: () => void copyDiagnostics().catch((err: unknown) => console.error('[kernel] could not copy diagnostics', err)),
-    zoom: (step) => { const w = mainWindow(); if (w) zoomWindow(w, step) }
+    zoom: (step) => { const w = mainWindow(); if (w) zoomWindow(w, step, fontZoom()) }
   })))
   createWindow()
   app.on('activate', () => { if (!mainWindow()) createWindow() })
