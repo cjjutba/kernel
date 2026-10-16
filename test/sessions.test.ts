@@ -266,11 +266,11 @@ describe('Always allow in this project', () => {
     deps.allowInProject(project.id, 'git log --oneline -1')
     deps.allowInProject(project.id, 'git log --oneline -1')
     expect(deps.projectAllow(project.id)).toEqual(['git log --oneline -1'])
-    k.store.db.close()
+    await k.stop({ budgetMs: 0 })
 
     const again = open()
     expect(again.store.project(project.id)?.allow).toEqual(['git log --oneline -1'])
-    again.store.db.close()
+    await again.stop({ budgetMs: 0 })
   })
 })
 
@@ -1363,5 +1363,200 @@ describe('cold re-reads start two at a time (KERNEL-844)', () => {
     expect(started()).toHaveLength(4)
     await end('mid')
     expect(started().at(-1)).toBe('/tmp/small')
+  })
+})
+
+describe('a change made during a turn reaches the chat\'s next message (KERNEL-994)', () => {
+  afterEach(() => { bus.removeAllListeners('push') })
+
+  type Call = (typeof sdk.calls)[number]
+  const kernel: AgentDef = { id: 'kernel', file: '.claude/agents/kernel.md', name: 'Kernel', role: 'Lead', description: 'Lead', lead: true, prompt: 'You are Kernel.' } as AgentDef
+  const flush = () => new Promise((r) => setTimeout(r, 10))
+
+  /** A Lead chat in Hand off. `mode` switches it as `Lead.setMode` does, and `bypass` is the permission mode the chat runs in. */
+  async function setup() {
+    const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-stale-')), 'kernel.db'))
+    store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'Chat', branch: 'main', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kernel', port: 4300, status: 'ready', prState: 'none', createdAt: 1, leadMode: 'handoff' } as Workspace)
+    store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Chat', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
+    const approvals = new Approvals(store)
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
+    let active = 'work'
+    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => kernel, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {}, accountFor: () => active, claudeEnv: () => ({ CLAUDE_CONFIG_DIR: `/homes/${active}` }), rulesFor: (ws) => (ws.leadMode === 'build' ? 'RULE build' : 'RULE handoff') })
+    const send = async (text: string) => sessions.send('chat', [{ type: 'text', text }])
+    const start = async (text = 'Plan the column') => {
+      await send(text)
+      const call = sdk.calls.at(-1)!
+      call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+      await flush()
+      return call
+    }
+    const finish = async (call: Call) => { call.feed({ type: 'result', subtype: 'success', uuid: `r${sdk.calls.length}`, duration_ms: 5 }); await flush() }
+    const interrupted = async (call: Call) => { call.feed({ type: 'result', subtype: 'error_during_execution', is_error: true, uuid: `r${sdk.calls.length}`, duration_ms: 5, errors: [] }); await flush() }
+    const mode = (to: 'build' | 'handoff', reason: 'mode' | 'agent' = 'mode') => { store.saveWorkspace({ ...store.workspace('ws')!, leadMode: to }); sessions.restartIdle(['ws'], reason) }
+    const stopped = (call: Call) => !!call.options.abortController?.signal.aborted
+    const rule = (call: Call) => JSON.stringify(call.options.systemPrompt)
+    const notes = () => store.items('chat').flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+    const tasks = (call: Call, ids: string[]) => call.feed({ type: 'system', subtype: 'background_tasks_changed', tasks: ids.map((task_id) => ({ task_id, task_type: 'local_bash', description: 'dev server' })) })
+    return { store, sessions, send, start, finish, interrupted, mode, stopped, rule, notes, tasks, switchAccount: (to: string) => { active = to; sessions.restartProvider('claude') } }
+  }
+
+  it('runs a message queued during the turn in a new process with the new mode, both ways', async () => {
+    for (const [from, to] of [['handoff', 'build'], ['build', 'handoff']] as const) {
+      const t = await setup()
+      if (from === 'build') t.mode('build')
+      const call = await t.start()
+      expect(t.rule(call)).toContain(`RULE ${from}`)
+      await t.send('And an index')
+      expect(t.sessions.queued('chat')).toHaveLength(1)
+      t.mode(to)
+      await t.finish(call)
+      const next = sdk.calls.at(-1)!
+      expect(next).not.toBe(call)
+      expect(t.stopped(call)).toBe(true)
+      expect(t.rule(next)).toContain(`RULE ${to}`)
+      expect(t.sessions.queued('chat')).toEqual([])
+      expect(next.options.resume).toBe('session-1')
+    }
+  })
+
+  it('does the same after Stop and a message, and after Send now', async () => {
+    const t = await setup()
+    const call = await t.start()
+    await t.sessions.interrupt('chat')
+    t.mode('build')
+    await t.interrupted(call)
+    // The message arrives once the turn has stopped, at the process the switch left stale.
+    await t.send('i guess you will just build it directly')
+    const next = sdk.calls.at(-1)!
+    expect(next).not.toBe(call)
+    expect(t.rule(next)).toContain('RULE build')
+    expect(next.sent.join('\n')).toContain('build it directly')
+    expect(t.stopped(call)).toBe(true)
+
+    const u = await setup()
+    const old = await u.start()
+    await u.send('Use the staging bucket')
+    await u.sessions.sendNow('chat', u.sessions.queued('chat')[0].id)
+    u.mode('build')
+    await u.interrupted(old)
+    const fresh = sdk.calls.at(-1)!
+    expect(fresh).not.toBe(old)
+    expect(u.rule(fresh)).toContain('RULE build')
+    expect(u.stopped(old)).toBe(true)
+  })
+
+  it('restarts nothing when the chat is switched and switched back during the turn', async () => {
+    const t = await setup()
+    const call = await t.start()
+    await t.send('And an index')
+    t.mode('build')
+    t.mode('handoff')
+    const calls = sdk.calls.length
+    await t.finish(call)
+    expect(sdk.calls).toHaveLength(calls)
+    expect(t.stopped(call)).toBe(false)
+    expect(t.sessions.queued('chat')).toEqual([])
+    expect(t.notes()).toEqual([])
+  })
+
+  it('runs a queued message with Bypass turned on during the turn, and on the account and agent changed during it', async () => {
+    const t = await setup()
+    const call = await t.start()
+    expect(call.options.permissionMode).not.toBe('bypassPermissions')
+    await t.send('And an index')
+    await t.sessions.configure('chat', { mode: 'bypassPermissions' })
+    await t.finish(call)
+    const next = sdk.calls.at(-1)!
+    expect(next).not.toBe(call)
+    expect(next.options.permissionMode).toBe('bypassPermissions')
+
+    const a = await setup()
+    const first = await a.start()
+    await a.send('Next')
+    a.switchAccount('personal')
+    await a.finish(first)
+    expect(sdk.calls.at(-1)!.options.env?.CLAUDE_CONFIG_DIR).toBe('/homes/personal')
+
+    const b = await setup()
+    const old = await b.start()
+    await b.send('Next')
+    b.sessions.restartIdle(['ws'])
+    await b.finish(old)
+    expect(sdk.calls.at(-1)).not.toBe(old)
+    expect(b.stopped(old)).toBe(true)
+  })
+
+  it('ends a stale process a background task held on the next message, and says the tasks stopped', async () => {
+    const t = await setup()
+    const call = await t.start()
+    t.tasks(call, ['t1'])
+    await t.finish(call)
+    t.mode('build')
+    expect(t.stopped(call)).toBe(false)
+    const next = await t.start('Build it')
+    expect(t.stopped(call)).toBe(true)
+    expect(t.rule(next)).toContain('RULE build')
+    expect(t.notes()).toEqual(['Restarted in Build here. Background tasks started before the switch stopped.'])
+
+    // An agent edit says so without naming a mode, and a process with no task says nothing.
+    const u = await setup()
+    const held = await u.start()
+    u.tasks(held, ['t1'])
+    await u.finish(held)
+    u.mode('handoff', 'agent')
+    await u.start('Again')
+    expect(u.notes()).toEqual(['Restarted. Background tasks started before the change stopped.'])
+    const v = await setup()
+    const plain = await v.start()
+    await v.finish(plain)
+    v.mode('build')
+    await v.start('Build it')
+    expect(v.notes()).toEqual([])
+  })
+
+  it('keeps a process held by a task when the chat is switched and back, but not for an agent edit made meanwhile', async () => {
+    const t = await setup()
+    const call = await t.start()
+    t.tasks(call, ['t1'])
+    await t.finish(call)
+    t.mode('build')
+    t.mode('handoff')
+    await t.start('Again')
+    expect(t.stopped(call)).toBe(false)
+    expect(t.notes()).toEqual([])
+  })
+
+  it('sends a plan approved after a switch to a fresh process, with the new mode\'s note, both ways', async () => {
+    for (const [from, to] of [['handoff', 'build'], ['build', 'handoff']] as const) {
+      const t = await setup()
+      if (from === 'build') t.mode('build')
+      const call = await t.start('Plan the column')
+      t.store.saveChat({ ...t.store.chat('chat')!, plan: true })
+      const answer = (call.options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Add the column' }, { signal: new AbortController().signal, toolUseID: 'p1' } as never)
+      await flush()
+      const [card] = t.store.approvals({ pendingOnly: true })
+      t.mode(to)
+      t.sessions['d'].approvals.decide(card.id, { behavior: 'allow' })
+      await answer
+      await t.interrupted(call)
+      const next = sdk.calls.at(-1)!
+      expect(next).not.toBe(call)
+      expect(t.rule(next)).toContain(`RULE ${to}`)
+      const message = next.sent.join('\n')
+      expect(message).toContain(to === 'build' ? 'Build it from the plan below.' : 'Hand off each task from the plan below now.')
+    }
+  })
+
+  it('approves a plan in the mode it went up in without a new process', async () => {
+    const t = await setup()
+    const call = await t.start()
+    const calls = sdk.calls.length
+    const answer = (call.options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Add the column' }, { signal: new AbortController().signal, toolUseID: 'p1' } as never)
+    await flush()
+    const [card] = t.store.approvals({ pendingOnly: true })
+    t.sessions['d'].approvals.decide(card.id, { behavior: 'allow' })
+    expect(await answer).toMatchObject({ behavior: 'allow' })
+    expect(sdk.calls).toHaveLength(calls)
+    expect(t.stopped(call)).toBe(false)
   })
 })

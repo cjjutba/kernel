@@ -176,7 +176,7 @@ export class CodexRunner implements Runner {
   private model: string
   private effort: Effort
   private plan: boolean
-  /** A chat with Kernel in Hand off, which edits no file but the ones it shares (KERNEL-770). Fixed for the process's life. */
+  /** A chat with Kernel in Hand off, which edits no file but the ones it shares (KERNEL-770). The mode it started in. A switch to Hand off applies at the next file change too (KERNEL-994). */
   private readonly handoff: boolean
   private gitDir?: string
   /** The running turn's plan, from its `plan` item. A plan-mode turn that ends with one asks for approval. */
@@ -638,7 +638,7 @@ export class CodexRunner implements Runner {
     if (this.host.workspace.reviewOf) return { decision: 'decline' }
     // Hand off edits nothing but the files it shares under .kernel/shared, whatever the file and the mode say (KERNEL-770).
     // The note says why, and that a switch to Build here during the turn applies from the next message.
-    if (this.handoff && !(change?.changes.length && change.changes.every((c) => sharesFile(this.host.workspace.path, c.path)))) return this.declined(handoffRefusal(this.host.leadMode()))
+    if ((this.handoff || this.host.leadMode() === 'handoff') && !(change?.changes.length && change.changes.every((c) => sharesFile(this.host.workspace.path, c.path)))) return this.declined(handoffRefusal(this.host.leadMode()))
     // Build here edits only after a go-ahead, whatever the mode says (KERNEL-992).
     if (this.host.agent?.lead && this.host.buildOpen && this.host.leadMode() === 'build' && !this.host.buildOpen() && !(change?.changes.length && change.changes.every((c) => sharesFile(this.host.workspace.path, c.path)))) return this.declined(BUILD_CLOSED)
     if (decide({ tool: name, sandbox: p.grantRoot ? 'outside' : 'inside' }, this.rules())?.behavior === 'allow') return { decision: 'accept' }

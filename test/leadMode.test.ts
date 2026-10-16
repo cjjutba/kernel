@@ -181,6 +181,68 @@ describe('lead.setMode (KERNEL-770)', () => {
     expect(modes()).toEqual(['handoff'])
   })
 
+  it('marks the process stale for the switch, and drops that mark when the reply ends in the mode it started in (KERNEL-994)', async () => {
+    const { k, chat } = await setup()
+    const c = await chat()
+    k.sessions.isRunning = () => true
+    const restarts: unknown[][] = []
+    const restartIdle = k.sessions.restartIdle.bind(k.sessions)
+    k.sessions.restartIdle = (ids: string[], reason?: never) => { restarts.push([ids, reason]); restartIdle(ids, reason) }
+    const cleared: string[] = []
+    const clearStale = k.sessions.clearStale.bind(k.sessions)
+    k.sessions.clearStale = (id: string, reason: never) => { cleared.push(`${id}:${reason}`); clearStale(id, reason) }
+    k.lead.setMode(c.workspaceId, 'build')
+    k.lead.setMode(c.workspaceId, 'handoff')
+    expect(restarts).toEqual([[[c.workspaceId], 'mode'], [[c.workspaceId], 'mode']])
+    bus.push({ type: 'chat.running', chatId: c.id, running: false })
+    expect(cleared).toContain(`${c.id}:mode`)
+    // A reply that ends in another mode keeps the mark.
+    cleared.length = 0
+    k.lead.setMode(c.workspaceId, 'build')
+    bus.push({ type: 'chat.running', chatId: c.id, running: false })
+    expect(cleared).toEqual([])
+  })
+
+  it('tells the first message after a switch about it once, and nothing after a switch and back (KERNEL-994)', async () => {
+    const { k, chat } = await setup()
+    const c = await chat()
+    expect(k.lead.turnNote(c.workspaceId)).toBeUndefined()
+    // Nothing was said in the chat yet, so there are no earlier replies to correct.
+    k.lead.setMode(c.workspaceId, 'build')
+    k.lead.setMode(c.workspaceId, 'handoff')
+    expect(k.lead.turnNote(c.workspaceId)).toBeUndefined()
+    k.store.saveItem(c.id, { kind: 'user', id: 'u1', ts: Date.now(), parts: [{ type: 'text', text: 'Plan it' }] })
+    k.lead.setMode(c.workspaceId, 'build')
+    k.lead.setMode(c.workspaceId, 'handoff')
+    expect(k.lead.turnNote(c.workspaceId)).toBeUndefined()
+    k.lead.setMode(c.workspaceId, 'build')
+    // Kept in the store, so a restart in between still sends it.
+    expect(JSON.stringify(k.store.meta('leadTurnNotes'))).toContain('Build here')
+    const note = k.lead.turnNote(c.workspaceId)!
+    expect(note).toContain('switched this chat from Hand off to Build here')
+    expect(note).toContain('Earlier replies were written in Hand off')
+    expect(k.lead.turnNote(c.workspaceId)).toBeUndefined()
+    k.lead.setMode(c.workspaceId, 'handoff')
+    expect(k.lead.turnNote(c.workspaceId)).toContain('from Build here to Hand off')
+  })
+
+  it('keeps a switch made during a turn through a quit, and leaves its divider when the carried-on turn ends (KERNEL-994)', async () => {
+    const { k, chat } = await setup()
+    const c = await chat()
+    k.sessions.isRunning = () => true
+    k.lead.setMode(c.workspaceId, 'build')
+    const saved = k.store.meta<Record<string, string>>('leadSwitchedDuring')
+    expect(saved).toEqual({ [c.id]: 'handoff' })
+    const modes = () => k.store.items(c.id).flatMap((i) => (i.kind === 'leadMode' ? [i.mode] : []))
+    expect(modes()).toEqual([])
+    // Another launch reads it back before the turn carries on and ends.
+    ;(k.lead as unknown as { modeSwitches: object }).modeSwitches = {}
+    await k.lead.backfill()
+    bus.push({ type: 'chat.running', chatId: c.id, running: false })
+    expect(modes()).toEqual(['build'])
+    expect(k.store.meta<Record<string, string>>('leadSwitchedDuring')).toEqual({})
+  })
+
   it('switches with uncommitted edits in the worktree, both ways, and leaves them as they were', async () => {
     const { k, chat } = await setup()
     const c = await chat()

@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { cp, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, LeadMode, PermissionMode, Provider, QueuedMessage, ReviewKind, Project, Thread, Workspace } from '@shared/types'
-import { buildsHere, LEAD_MODES, leadModeOf, newChatLeadMode } from '@shared/leadMode'
+import { buildsHere, LEAD_MODES, leadModeName, leadModeOf, newChatLeadMode } from '@shared/leadMode'
 import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
 import { providerOf } from '@shared/providers'
 import { isSentItem } from '@shared/approvalAnswer'
@@ -33,6 +33,8 @@ import { prNoteOf, reviseNote } from './records'
 
 /** Meta key for the line a Build here chat's next turn starts with after its PR merged, by workspace (KERNEL-990). */
 const TURN_NOTES = 'leadTurnNotes'
+/** Meta key for the mode each chat tab's running turn started in, when a switch came during it, so a quit keeps the divider (KERNEL-994). */
+const SWITCHED_DURING = 'leadSwitchedDuring'
 
 /** The project's Lead: its workspace and chats, its tools, and where teammates' updates go (KERNEL-329). */
 export class Lead extends Feature {
@@ -150,26 +152,53 @@ export class Lead extends Feature {
     for (const c of this.chatTabs(ws.id)) {
       if (c.kind === 'terminal') continue
       // The first switch during the turn keeps the mode the turn runs in.
-      if (this.sessions.isRunning(c.id)) { if (!this.switchedDuring.has(c.id)) this.switchedDuring.set(c.id, was); continue }
+      if (this.sessions.isRunning(c.id)) { if (!this.switchedDuring()[c.id]) this.markSwitchedDuring(c.id, was); continue }
       this.divide(c.id, mode)
     }
-    this.sessions.restartIdle([ws.id])
+    this.noteSwitch(ws.id, was, mode)
+    this.sessions.restartIdle([ws.id], 'mode')
     return next
   }
 
+  /**
+   * The first reply after a switch is told about it, once: the history it resumes holds replies written in the other mode
+   * (KERNEL-994). The note waits in the store with the PR notes. A switch back before any message leaves none.
+   */
+  private noteSwitch(workspaceId: string, was: LeadMode, mode: LeadMode) {
+    const notes = this.store.meta<Record<string, string>>(TURN_NOTES) ?? {}
+    const ran = (notes[`${workspaceId}#ran`] as LeadMode | undefined) ?? was
+    delete notes[`${workspaceId}#mode`]
+    delete notes[`${workspaceId}#ran`]
+    if (ran !== mode && this.chatTabs(workspaceId).some((c) => c.kind !== 'terminal' && this.store.items(c.id).some((i) => i.kind === 'user'))) {
+      notes[`${workspaceId}#ran`] = ran
+      notes[`${workspaceId}#mode`] = `The user switched this chat from ${leadModeName(ran)} to ${leadModeName(mode)}. Earlier replies were written in ${leadModeName(ran)}, so what they say you can or can't do may no longer hold. Follow ${leadModeName(mode)} from here.`
+    }
+    this.store.saveMeta(TURN_NOTES, notes)
+  }
+
   /** Tabs whose chat switched mode during a running turn, with the mode that turn runs in, so the divider waits for its end. */
-  private switchedDuring = new Map<string, LeadMode>()
+  private switchedDuring(): Record<string, LeadMode> { return this.modeSwitches }
+
+  /** Read from the store at launch (`backfill`), not at a turn's end, which reads no database. */
+  private modeSwitches: Record<string, LeadMode> = {}
+
+  private markSwitchedDuring(chatId: string, ran: LeadMode | undefined) {
+    if (ran) this.modeSwitches[chatId] = ran
+    else delete this.modeSwitches[chatId]
+    this.store.saveMeta(SWITCHED_DURING, this.modeSwitches)
+  }
 
   /**
    * A chat's turn ended. A switch made during it leaves its divider now, for the chat's mode at this point, or none when that
    * is the mode the turn ran in.
    */
   turnEnded(chatId: string) {
-    const ran = this.switchedDuring.get(chatId)
+    const ran = this.switchedDuring()[chatId]
     if (!ran) return
-    this.switchedDuring.delete(chatId)
+    this.markSwitchedDuring(chatId, undefined)
     const chat = this.store.chat(chatId)
     const ws = chat && this.store.workspace(chat.workspaceId)
+    if (ws && leadModeOf(ws) === ran) this.sessions.clearStale(chatId, 'mode')
     if (!ws || ws.status === 'archived' || leadModeOf(ws) === ran) return
     this.divide(chatId, leadModeOf(ws))
   }
@@ -356,9 +385,11 @@ export class Lead extends Feature {
   /** The line the chat's next turn starts with after its PR merged, taken so it goes once. Kept in the store, so a restart in between still sends it. */
   turnNote(workspaceId: string): string | undefined {
     const notes = this.store.meta<Record<string, string>>(TURN_NOTES) ?? {}
-    const line = notes[workspaceId]
-    if (line === undefined) return undefined
+    const line = [notes[workspaceId], notes[`${workspaceId}#mode`]].filter(Boolean).join('\n\n')
+    if (!line) return undefined
     delete notes[workspaceId]
+    delete notes[`${workspaceId}#mode`]
+    delete notes[`${workspaceId}#ran`]
     this.store.saveMeta(TURN_NOTES, notes)
     return line
   }
@@ -1097,6 +1128,7 @@ export class Lead extends Feature {
 
   /** Startup's fixes to data from older versions, after the agents load and before any chat carries on. */
   async backfill() {
+    this.modeSwitches = this.store.meta<Record<string, LeadMode>>(SWITCHED_DURING) ?? {}
     this.markLeadWorkspaces()
     this.backfillLeadChats()
     await this.moveLeadChats()

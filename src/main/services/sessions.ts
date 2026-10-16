@@ -3,13 +3,13 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ModelInfo, Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
-import type { AccountAuth, Approval, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, CompactWindow, Decision, LastTurn, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, Role, TeamUpdate, Workspace } from '@shared/types'
+import type { AccountAuth, Approval, LeadMode, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, CompactWindow, Decision, LastTurn, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, Role, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { nearLimit } from '@shared/usage'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { answerItemId, answerParts, isSentItem } from '@shared/approvalAnswer'
-import { leadModeOf } from '@shared/leadMode'
+import { leadModeName, leadModeOf } from '@shared/leadMode'
 import type { Store } from '../db'
 import { bus } from '../bus'
 import type { Approvals } from './approvals'
@@ -39,6 +39,8 @@ interface Live {
   /** The chat's process on its provider (KERNEL-406). */
   runner: Runner
   running: boolean; interrupted: boolean
+  /** The Lead mode the process started in, which its prompt and Kernel's tools follow (KERNEL-994). */
+  leadMode?: LeadMode
   /** Background tasks (shells, subagents, monitors) the process is running, from its latest background_tasks_changed. */
   tasks: Set<string>
   /** Cards this process put up (`placeApproval`). A Stop or Send now, or the process ending, ends those still waiting (KERNEL-563). */
@@ -332,14 +334,17 @@ export function mcpNote(m: MissingServer): string {
   }
 }
 
+/** Why a chat's process needs replacing: its mode, Bypass, agent or account changed, or the compact window did (KERNEL-994). */
+export type StaleReason = 'mode' | 'bypass' | 'agent' | 'account' | 'compact'
+
 export class Sessions {
   private live = new Map<string, Live>()
   /** Per chat, whether or not its process is running. */
   private turns = new Map<string, Turns>()
   /** Idle clocks of live chats between turns. One that runs out stops the process (KERNEL-183). */
   private idle = new Map<string, ReturnType<typeof setTimeout>>()
-  /** Chats whose agent changed during a turn or a background task. Their process ends once nothing runs (KERNEL-397). */
-  private stale = new Set<string>()
+  /** Chats whose process needs replacing after a change during a turn or a background task, by why. It ends once nothing runs (KERNEL-397), or before the next message goes to it (KERNEL-994). */
+  private stale = new Map<string, Set<StaleReason>>()
   /** Each chat's mode as the renderer last got it, from `runMode` or a `chat.runMode` push, so a change goes out once (KERNEL-572). */
   private shownModes = new Map<string, string>()
   /** Lead chats with an approved plan and nothing handed off yet (KERNEL-67). The Lead tools end one when they create a workspace. */
@@ -524,13 +529,13 @@ export class Sessions {
    * processes of chats whose account changed end, and with `account` only those on that account, undefined for the CLI's
    * own login (KERNEL-843).
    */
-  restartProvider(provider: Provider, o: { moved?: boolean; account?: string } = {}) {
+  restartProvider(provider: Provider, o: { moved?: boolean; account?: string; reason?: StaleReason } = {}) {
     for (const [id, live] of [...this.live]) {
       const chat = this.d.store.chat(id)
       if (!chat || chatProvider(chat) !== provider) continue
       if (o.moved && live.account === this.d.accountFor?.(provider, chat)) continue
       if ('account' in o && live.account !== o.account) continue
-      if (live.running || (live.tasks.size && this.cutOff.get(id) !== 'limit')) this.stale.add(id)
+      if (live.running || (live.tasks.size && this.cutOff.get(id) !== 'limit')) this.markStale(id, o.reason ?? 'account')
       else this.end(id, live)
     }
     // Auto depends on the account's models, which Kernel reads again for this one.
@@ -804,7 +809,7 @@ export class Sessions {
     if (live.bypassNote?.waits && !bypass) this.bypassNote(chat, live, false)
     if (!restart) return switched
     if (live.running || live.tasks.size) {
-      this.stale.add(chat.id)
+      this.markStale(chat.id, 'bypass')
       if (live.bypass !== undefined && bypass && !live.bypassNote?.waits) this.bypassNote(chat, live, true)
     } else this.end(chat.id, live)
     return switched
@@ -1012,8 +1017,14 @@ export class Sessions {
     this.setCutOff(chat.id, false)
     // An idle process kept on another account, for its background tasks, ends here. The turn resumes the conversation on
     // the account the chat runs on now, the one `carryOn` checked for a limit, and the note says so.
+    // So does one a change marked stale during its turn, which the queue would otherwise have reused (KERNEL-994).
     const kept = this.live.get(chat.id)
-    if (kept && !kept.running && kept.account !== this.d.accountFor?.(chatProvider(chat), chat)) this.end(chat.id, kept)
+    const why = this.stale.get(chat.id)
+    if (kept && !kept.running && (why || kept.account !== this.d.accountFor?.(chatProvider(chat), chat))) {
+      this.end(chat.id, kept)
+      // A move to another account says so on its own (`noteMove`).
+      if (kept.tasks.size && (why ? [...why].some((r) => r !== 'account') : false)) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: this.restartedNote(chat, ws, why) })
+    }
     // Read before the chat's account moves, which `coldSize` compares against (KERNEL-844).
     const cold = this.d.coldSize?.(chat) !== undefined
     chat = this.noteAccount(chat)
@@ -1035,6 +1046,23 @@ export class Sessions {
     this.push(chat.id, ws, live)
     this.setRunning(chat, ws, live, true)
     return row
+  }
+
+  /** The line a restart that stopped background tasks leaves in the chat (KERNEL-994). */
+  private restartedNote(chat: Chat, ws: Workspace, why: Set<StaleReason> | undefined): string {
+    const mode = why?.has('mode') && this.isLeadChat(chat.id) ? leadModeOf(this.d.store.workspace(ws.id) ?? ws) : undefined
+    return `Restarted${mode ? ` in ${leadModeName(mode)}` : ''}. Background tasks started before the ${mode ? 'switch' : 'change'} stopped.`
+  }
+
+  private markStale(chatId: string, reason: StaleReason) {
+    this.stale.set(chatId, new Set([...(this.stale.get(chatId) ?? []), reason]))
+  }
+
+  /** A change that marked the chat's process stale was undone, such as a mode switched back. The process stays while another reason holds. */
+  clearStale(chatId: string, reason: StaleReason) {
+    const reasons = this.stale.get(chatId)
+    if (!reasons?.delete(reason)) return
+    if (!reasons.size) this.stale.delete(chatId)
   }
 
   /**
@@ -1279,7 +1307,7 @@ export class Sessions {
     // an idle one now, a busy one when its turn ends (feat-compact-window-per-role-with-plan).
     const was = before?.models?.compact
     const compact = this.d.settings().models?.compact
-    if (was && compact && (Object.keys(compact) as Role[]).some((r) => was[r] !== compact[r])) this.restartProvider('claude')
+    if (was && compact && (Object.keys(compact) as Role[]).some((r) => was[r] !== compact[r])) this.restartProvider('claude', { reason: 'compact' })
     this.pushLimits()
   }
 
@@ -1499,6 +1527,12 @@ export class Sessions {
     const lead = this.isLeadChat(chatId) && leadModeOf(this.d.store.workspace(chat.workspaceId)) === 'handoff'
     if (lead) this.handoffs.approved(chatId)
     else if (this.isLeadChat(chatId)) this.d.onBuildPlanApproved?.(chatId)
+    // The waiting turn's process has the tools of the mode it started in, so after a switch its turn ends and the approval
+    // goes to a fresh process, as it does after a restart (KERNEL-994).
+    const live = this.live.get(chatId)
+    const now = this.isLeadChat(chatId) ? leadModeOf(this.d.store.workspace(chat.workspaceId)) : undefined
+    const switched = !!live && !o.restarted && !!live.leadMode && !!now && live.leadMode !== now
+    if (switched) o = { ...o, restarted: true, queue: true }
     // The agent has its plan in context, so the note is short. After a restart it names the plan's file, or carries its
     // text when the file is gone (plan-cards-survive-restart).
     const ws = o.restarted ? this.d.store.workspace(chat.workspaceId) : undefined
@@ -1506,8 +1540,11 @@ export class Sessions {
     const planFile = ws && plan?.planFile && existsSync(join(ws.path, plan.planFile)) ? plan.planFile : undefined
     const note = planApproval({ lead, planFile, plan: plan?.detail, restarted: o.restarted, queued: o.queue })
     const text = forProvider(note.text, chatProvider(chat))
+    if (switched) this.markStale(chatId, 'mode')
     // A message is a turn of its own, so it goes only where no turn is waiting on the answer: Codex, and after a restart.
     if (o.queue) await this.send(chatId, [{ type: 'text', text }], { from: 'kernel', approvalId: o.approvalId })
+    // The tool that is waiting on the answer is in the turn being ended, so nothing here waits for the interrupt.
+    if (switched && live.running) { live.sendNext = true; void this.interrupt(chatId, true).catch(() => undefined) }
     return text
   }
 
@@ -1564,7 +1601,7 @@ export class Sessions {
     this.stopIdle(chatId)
     const live = this.live.get(chatId)
     if (!live || live.running) return
-    if (this.stale.has(chatId) && !live.tasks.size) { this.stale.delete(chatId); this.end(chatId, live); return }
+    if (this.stale.has(chatId) && !live.tasks.size) { this.end(chatId, live); return }
     const clock = setTimeout(() => {
       this.idle.delete(chatId)
       if (this.live.get(chatId) !== live || live.running) return
@@ -1610,12 +1647,14 @@ export class Sessions {
    * agent when it starts, so an idle one ends now and a busy one when its turn and background tasks end. The next message
    * resumes the conversation with the agent as it is now, and nothing waiting in the queue is lost.
    */
-  restartIdle(workspaceIds: string[]) {
+  restartIdle(workspaceIds: string[], reason: StaleReason = 'agent') {
     for (const id of workspaceIds) {
       for (const c of this.d.store.chats(id)) {
         const live = this.live.get(c.id)
         if (!live) continue
-        if (live.running || live.tasks.size) this.stale.add(c.id)
+        // A switch back to the mode the process started in needs no new one.
+        if (reason === 'mode' && live.leadMode === leadModeOf(this.d.store.workspace(id))) { this.clearStale(c.id, 'mode'); continue }
+        if (live.running || live.tasks.size) this.markStale(c.id, reason)
         else this.end(c.id, live)
       }
     }
@@ -1729,7 +1768,7 @@ export class Sessions {
     const root = this.d.store.project(ws.projectId)?.path
     const account = 'account' in o ? o.account : this.d.accountFor?.(chatProvider(chat), chat)
     const { mode, bypass } = this.modes(chat, ws)
-    const live = { running: false, interrupted: false, tasks: new Set<string>(), cards: new Set<string>(), groups: new Set<number>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey', mode } as Live
+    const live = { running: false, interrupted: false, tasks: new Set<string>(), cards: new Set<string>(), groups: new Set<number>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey', mode, leadMode: agent?.lead ? leadModeOf(this.d.store.workspace(ws.id) ?? ws) : undefined } as Live
     const host = this.hostFor(chat.id, ws, agent, live)
     const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.project(ws.projectId)) })
     const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent, chat))
