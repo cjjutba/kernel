@@ -52,7 +52,7 @@ function useShowLog(ws: Workspace) {
  * What Kernel did to start a chat's worktree, as plain rows at the top of the chat, the way Conductor shows a new workspace
  * (KERNEL-951): the branch, the worktree and its copied files, and the setup script, live while it runs with its last output
  * line, then how long it took. A failed setup offers Run again and Send anyway on its row. The log is one click away, never
- * opened for you. A chat on the current branch, the Lead's shared worktree, or a later worktree chat in the project has none of this, so it shows nothing.
+ * opened for you. A chat on the current branch, the Lead's shared worktree, or a later worktree chat in the project shows nothing unless it fails.
  */
 export function ChatSetupRows({ ws }: { ws: Workspace }) {
   const project = useStore((s) => s.projects.find((p) => p.id === ws.projectId))
@@ -61,10 +61,13 @@ export function ChatSetupRows({ ws }: { ws: Workspace }) {
   const since = useSince(run && !run.endedAt ? run.startedAt : undefined)
   const showLog = useShowLog(ws)
   const [busy, track] = useBusy<'again' | 'skip' | 'stop'>()
-  // Only the project's first worktree chat shows the block. Chats from before the stamp have none and count as first.
-  if (ws.mode !== 'worktree' || (ws.lead && !ws.threadId) || ws.firstInProject === false) return null
+  if (ws.mode !== 'worktree' || (ws.lead && !ws.threadId)) return null
   const pending = ws.worktreePending
   const end = endText(ws)
+  // Only the project's first worktree chat shows the whole block. Chats from before the stamp have none and count as first.
+  // A later chat shows just a failure, which it needs for Try again, Run again and Send anyway.
+  const later = ws.firstInProject === false
+  if (later && !pending?.error && !(end?.failed && ws.status === 'failed')) return null
   const tail = run ? lastLine(lines) : undefined
   const again = () => track('again', () => attempt(pending ? 'Could not create the worktree' : 'Could not run setup', () => call('scripts.run', { workspaceId: ws.id, kind: 'setup' })))
   const skip = () => track('skip', () => attempt('Could not send', () => call('scripts.skipSetup', { workspaceId: ws.id })))
@@ -73,7 +76,7 @@ export function ChatSetupRows({ ws }: { ws: Workspace }) {
 
   return (
     <section className="su-rows su-chat" aria-label="Chat setup">
-      {project && <p className="su-banner">You're in a new copy of <code>{project.name}</code> on its own branch</p>}
+      {project && !later && <p className="su-banner">You're in a new copy of <code>{project.name}</code> on its own branch</p>}
       {pending ? (
         <div className="su-row" data-state={pending.error ? 'fail' : 'run'} role="status">
           <span className="su-ico">{pending.error ? <Icon name="close" size={16} /> : <Spinner label={null} pattern="rotate" />}</span>
@@ -83,7 +86,7 @@ export function ChatSetupRows({ ws }: { ws: Workspace }) {
           </span>
           {pending.error && <><span className="grow" /><Button size="sm" variant="ghost" busy={busy === 'again'} busyPattern="rotate" busyLabel="Creating" disabled={busy !== null} onClick={() => void again()}>Try again</Button></>}
         </div>
-      ) : (
+      ) : !later && (
         <>
           <div className="su-row">
             <span className="su-ico"><Icon name="branch" size={16} /></span>
@@ -96,7 +99,7 @@ export function ChatSetupRows({ ws }: { ws: Workspace }) {
           </div>
         </>
       )}
-      {run && !pending && (!run.endedAt ? (
+      {run && !pending && (!run.endedAt ? !later && (
         <div className="su-row su-tall" data-state="run" role="status">
           <span className="su-ico"><Spinner label={null} pattern="rotate" /></span>
           <span className="su-text">

@@ -610,11 +610,11 @@ function setupLog(end: 'running' | 'failed' | 'stopped'): PushEvent[] {
  * A new chat waiting for setup: `queue` waits for it, and `end` is how a failed setup ended (an exit code, or null when stopped).
  * `pending` is a worktree Kernel hasn't made yet (KERNEL-543), with git's reason once it failed: setup hasn't started, so it has no run or log.
  */
-function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { end?: number | null; pending?: { error?: string }; panel?: boolean; right?: 'files'; collapsed?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
+function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { later?: boolean; end?: number | null; pending?: { error?: string }; panel?: boolean; right?: 'files'; collapsed?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
   const started = Date.now() - 42_000
   const setupRun = o.pending ? undefined : status === 'setup' ? { startedAt: started } : { startedAt: started - 26_000, endedAt: started + (o.end === null ? 5_000 : 42_000), end: o.end }
   return {
-    workspaces: withWorkspace(f, ids.table, { status, setupRun, copied: 2, ...(o.pending ? { baseRef: 'origin/main', worktreePending: o.pending } : {}) }),
+    workspaces: withWorkspace(f, ids.table, { status, setupRun, copied: 2, ...(o.later ? { firstInProject: false } : {}), ...(o.pending ? { baseRef: 'origin/main', worktreePending: o.pending } : {}) }),
     items: { [ids.tableChat]: [] },
     queue: { [ids.tableChat]: queue },
     push: [...f.push, ...(o.pending ? [] : setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed')), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'setup' as const }] : [])],
@@ -1970,6 +1970,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
+  // A later worktree chat whose setup failed: only the failed row, with Run again and Send anyway.
+  SetupLaterChatFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { end: 1, later: true })),
   SetupDone: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', copied: 2, setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
     items: { [ids.tableChat]: [{ kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
