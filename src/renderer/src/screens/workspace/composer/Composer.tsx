@@ -56,7 +56,17 @@ type MenuName = 'model' | 'context' | 'mode' | PlusPanel
  * permission mode, which the dropdown after the model button shows and picks (KERNEL-456), Backspace takes a chip like a
  * character. While the agent works, a sent message waits in the queue above the box.
  */
-export function Composer({ chat, agent, blocked, running, prefill, banner }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode; }) {
+export function Composer({ chat, agent, blocked, running, prefill, banner, viewer }: {
+  chat: Chat
+  agent?: AgentDef
+  blocked: boolean
+  running: boolean
+  prefill?: { text: string; n: number }
+  /** A failure banner, drawn right above the box (KERNEL-28). */
+  banner?: ReactNode
+  /** Set while the active tab is a viewer (a shared page, file, image, text or diff). The box is then one line until something opens it (KERNEL-934). `held` is a banner or notice above that asks something, which keeps it open. */
+  viewer?: { held: boolean }
+}) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
   const waiting = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
   // The messages Stop took out of the tray, and the one Send now drew as a bubble, leave it in the frame of the press, whatever main's queue events say while it takes them out one by one or still lists the one it is about to send.
@@ -86,6 +96,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const [files, setFiles] = useState<FileEntry[]>([])
   const [at, setAt] = useState(0)
   const [dismissed, setDismissed] = useState('')
+  // Focus is inside the box or its row of notes. On a viewer tab, the box is one line until this, a draft or something above holds it open (KERNEL-934).
+  const [engaged, setEngaged] = useState(false)
   const filePick = useRef<HTMLInputElement>(null)
   const run = useRef<CycleRun | null>(null)
   const name = agent?.name ?? 'the agent'
@@ -297,7 +309,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
 
   const model = modelLabelOf(chat.model, providerModels)
   const hasDraft = !d.empty
-  const placeholder = blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'setup' ? 'Add a follow up' : withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`
+  const compact = !!viewer && !engaged && !hasDraft && d.pending === 0 && !blocked && !plan && !viewer.held && menu === null
+  const placeholder = blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'setup' || viewer ? 'Add a follow up' : withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`
 
   // ^⌘1 to 9 pick the Nth current model of the chat's provider and ⌘⇧/ cycles the effort, with the picker open or not (useModelKeys).
   useModelKeys({ provider, model: chat.model, effort: chat.effort, fallback, onModel: pickModel, onEffort: setEffort })
@@ -329,28 +342,41 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
 
   return (
     <ComposerShell
+      compact={compact}
+      wrap={{
+        onFocus: () => setEngaged(true),
+        // Focus moving out of the box, into a menu, another tab or a shared page's native view, lets it close. A click on a dead spot of the one line puts the caret in instead.
+        onBlur: (e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setEngaged(false) },
+        onMouseDown: (e) => {
+          if (!compact) return
+          setEngaged(true)
+          if (!(e.target as HTMLElement).closest('button, a, input, [contenteditable]')) { e.preventDefault(); d.focus() }
+        }
+      }}
       above={<>
-        {ws && <HunkCard ws={ws} agentName={name} refreshKey={running} />}
-        {waiters && <div className="note" role="status"><span className="note-text"><NoteText text={waiters.text} refs={waiters.refs} /></span></div>}
+        {!compact && ws && <HunkCard ws={ws} agentName={name} refreshKey={running} />}
+        {!compact && waiters && <div className="note" role="status"><span className="note-text"><NoteText text={waiters.text} refs={waiters.refs} /></span></div>}
         <span className="sr-only" role="status" aria-live="polite">{strip.said}</span>
         {banner}
-        {dirty.length > 0 && <UncommittedNote files={dirty} />}
+        {!compact && dirty.length > 0 && <UncommittedNote files={dirty} />}
         {loadFailureLine(failed) && (
           <div className="note" role="status">
             <span className="note-text grow">{loadFailureLine(failed)}</span>
             <Button variant="ghost" busy={retrying === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void runRetry('retry', retry)}>Retry</Button>
           </div>
         )}
-        <QueueList
-          queue={queue}
-          why={queueWhy}
-          held={held}
-          running={running}
-          sending={sendingNow}
-          onEdit={editQueued}
-          onNow={sendNow}
-          onRemove={(q) => void attempt('Could not remove the message', async () => actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id })))}
-        />
+        {!compact && (
+          <QueueList
+            queue={queue}
+            why={queueWhy}
+            held={held}
+            running={running}
+            sending={sendingNow}
+            onEdit={editQueued}
+            onNow={sendNow}
+            onRemove={(q) => void attempt('Could not remove the message', async () => actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id })))}
+          />
+        )}
       </>}
       popup={<>
         {acOpen && rows.length > 0 && (
@@ -396,9 +422,10 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
       top={<PlanStrip strip={strip} hasText={hasDraft} onSendChanges={() => void send()} onBack={d.focus} />}
       input={<ComposerInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
       foot={<ComposerToolbar
+        compact={compact}
         lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(projectLeadMode, appLeadMode), onPick: pickLeadMode } : undefined}
         agent={!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
-        model={{ label: model, provider, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: setEffort } }}
+        model={{ label: model, provider, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x); d.focus() }, onEffort: setEffort } }}
         mode={{ provider, availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
         context={chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
         plus={{ panel: menu === 'model' || menu === 'context' || menu === 'mode' || menu === 'runIn' || menu === 'branch' ? null : menu, onPanel: setMenu, projectId, workspaceId: chat.workspaceId, onMode: () => setMenu('mode'), onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
