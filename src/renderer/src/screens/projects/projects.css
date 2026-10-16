@@ -143,3 +143,55 @@
 .nr-source-text { gap: 2px; }
 .nr-label-note { font-weight: var(--fw-regular); }
 .row.nr-team { flex-wrap: wrap; gap: 6px; }
+
+/* Open a folder (KERNEL-946): one list with the pick in place, and what opening does under it. No drop box: the whole dialog takes a dropped folder. */
+.of-body2 { display: flex; flex-direction: column; padding: 0 18px 4px; }
+.of-body2[data-over] { outline: 1px dashed var(--line-4); outline-offset: -4px; border-radius: var(--r-lg); }
+.of-head { display: flex; align-items: center; gap: 12px; }
+.of-sub { flex: 1; margin: 0; padding: 0; }
+.of-list2 { display: flex; flex-direction: column; gap: 2px; margin: 12px -8px 0; max-height: 236px; overflow-y: auto; scrollbar-gutter: stable; }
+.of-row2 { display: flex; align-items: center; gap: 12px; height: 44px; flex-shrink: 0; padding: 0 12px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink); text-align: left; }
+.of-row2:hover { background: var(--nav-hover); }
+.of-row2[aria-checked='true'] { background: var(--surface-3); }
+.of-row2 > svg { flex-shrink: 0; color: var(--muted); }
+.of-row2[aria-checked='true'] > svg { color: var(--ink); }
+.of-row2-text { min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.of-row2-name { font-weight: var(--fw-medium); white-space: nowrap; }
+.of-row2-path { min-width: 0; font-size: var(--fs-meta); color: var(--faint); }
+.of-row2-state { font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
+.of-row2-tick { width: 14px; display: inline-flex; color: var(--ink); }
+.of-detail { margin: 10px -18px 0; padding: 14px 18px 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.of-line { margin: 0; display: flex; align-items: center; gap: 8px; font-size: var(--fs-meta); color: var(--muted); }
+.of-line .mono { color: var(--ink-2); }
+.of-line > svg { color: var(--ink-3); flex-shrink: 0; }
+.of-why { display: block; line-height: var(--lh); color: var(--ink-3); }
+
+/* A new private repo's owner and name (KERNEL-944), in Open a folder and New project. */
+.rn { display: flex; flex-direction: column; gap: 6px; }
+.rn-labels { display: grid; grid-template-columns: 180px 14px 1fr; column-gap: 8px; }
+.rn-labels > :last-child { grid-column: 3; }
+.rn-row { display: flex; align-items: center; gap: 8px; }
+.rn-owner { position: relative; display: inline-flex; align-items: center; gap: 7px; width: 180px; height: 36px; padding: 0 10px 0 8px; box-sizing: border-box; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); }
+.rn-owner select { flex: 1; min-width: 0; appearance: none; border: 0; background: transparent; color: var(--ink); font-size: var(--fs-ui); outline: none; }
+.rn-owner > svg { color: var(--muted); pointer-events: none; }
+.rn-owner:focus-within { border-color: var(--ink-3); }
+.rn-av { width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; background: var(--surface-3); display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); color: var(--ink-2); }
+.rn-slash { color: var(--muted); }
+.rn-name { flex: 1; min-width: 0; font-size: var(--fs-ui); }
+.rn-status { margin: 0; display: flex; align-items: center; gap: 6px; min-height: 18px; font-size: var(--fs-meta); color: var(--muted); }
+.rn-status .mono { color: var(--ink-2); }
+.rn-status > svg { color: var(--ink-3); }
+.rn-label { font-size: var(--fs-meta); color: var(--ink-3); }
+.rn-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink); outline: none; }
+.rn-input:focus { border-color: var(--ink-3); }
+.of-err { margin: 10px 0 0; font-size: var(--fs-meta); }
+
+/* New project from scratch (KERNEL-947): name, location and its private GitHub repo. */
+.nps-body { display: flex; flex-direction: column; gap: 16px; margin: 0; padding: 0 18px 6px; }
+.nps-intro { margin: 0; font-size: var(--fs-meta); line-height: var(--lh); color: var(--muted); }
+.nps-intro code { font: var(--fs-meta) var(--mono); color: var(--ink-2); }
+.nps-field { display: flex; flex-direction: column; gap: 6px; }
+.nps-hint { font-size: var(--fs-meta); color: var(--muted); }
+.nps-hint .mono { color: var(--ink-2); }
+.nps-other { font-size: var(--fs-meta); color: var(--muted); }
+.nps-other .cr-link { margin-left: 0; }
