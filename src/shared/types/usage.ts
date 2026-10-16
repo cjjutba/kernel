@@ -164,8 +164,10 @@ export interface McpSignInStep {
  * - `ignored`: the user chose to ignore it on that account (`accounts.mcpIgnore`), whatever its state would be.
  * - `off`: off on purpose, with the reason in `note`: switched off in Codex's `config.toml` ("Off in Codex config"), or a
  *   plugin's server Codex lists and never starts ("Not started by Codex"). It never needs the user (KERNEL-660).
+ * - `checking`: a sign-in just landed there, from Kernel or copied from another login, and Claude Code hasn't said yet
+ *   whether it works. The check that follows makes it `ready` or what Claude Code says instead (KERNEL-935).
  */
-export type McpAccountState = 'ready' | 'needs-sign-in' | 'failed' | 'not-set-up' | 'ignored' | 'off'
+export type McpAccountState = 'ready' | 'needs-sign-in' | 'failed' | 'not-set-up' | 'ignored' | 'off' | 'checking'
 
 /**
  * Where an MCP server comes from (KERNEL-646). `user`: one the user added, which Kernel shares with every account of the
