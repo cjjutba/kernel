@@ -3,7 +3,7 @@ import { call, cleanError } from '../../api'
 import { actions, getState, loadWorkspace } from '../../store'
 import { openLeadChat, openNewChat } from '../../lead'
 import { focusComposerWhenOpen } from '../workspace/composer/bus'
-import { drawStarted } from '../workspace/composer/sendMessage'
+import { drawStarted, markSent } from '../workspace/composer/sendMessage'
 import { clearDraft, loadPicks, newChatDraftOf } from '../workspace/composer/draftStore'
 import { briefParts, leadMessage } from './brief'
 import { startAnywayLine } from './taken'
@@ -20,6 +20,8 @@ export interface ChatStart {
   baseRef: string
   /** Hand off or Build here, left out while it follows the project or Settings. */
   leadMode?: LeadMode
+  /** When the user pressed Send, so the working line New chat drew keeps counting in the chat. Left out, now. */
+  at?: number
 }
 
 /**
@@ -30,6 +32,7 @@ export interface ChatStart {
 export async function startChat(c: ChatStart): Promise<string | undefined> {
   let chat
   const clientId = crypto.randomUUID()
+  markSent(clientId, c.at)
   // The chat's own worktree starts from the target branch picked here, else the latest default branch (KERNEL-405).
   try { chat = await call('lead.start', { projectId: c.projectId, ...leadMessage(c.parts), clientId, model: c.model, effort: c.effort, plan: c.plan, ...(c.mode ? { mode: c.mode } : {}), ...(c.baseRef ? { baseRef: c.baseRef } : {}), ...(c.leadMode ? { leadMode: c.leadMode } : {}) }) }
   catch (e) { return cleanError(e) }

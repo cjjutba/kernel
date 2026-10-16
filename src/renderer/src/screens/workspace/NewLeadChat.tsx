@@ -34,6 +34,7 @@ import { stripRemote } from '../settings/remote'
 import { UpNext } from './UpNext'
 import { SetupRows } from './SetupRows'
 import { ReadinessLine } from './ReadinessLine'
+import { PartChip, TurnLine } from './Transcript'
 
 /**
  * The New chat page, the one way to start a chat (KERNEL-788): the title, which names the project and picks it, a composer and the tracker's
@@ -93,6 +94,10 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   const d = useDraft(forced, draftKey)
   const [sending, run] = useBusy()
   const busy = sending !== null
+  // What Send sent, from the press until the chat opens: drawn as the chat will draw it, so nothing waits on the engine to show it. A failed start brings the page back.
+  const [sent, setSent] = useState<{ parts: ChatPart[]; at: number } | null>(null)
+  // An empty box stands in for the composer meanwhile, as the chat's own will be. The real one keeps the draft until the send succeeds.
+  const blank = useDraft()
   const filePick = useRef<HTMLInputElement>(null)
   const topRef = useRef<HTMLDivElement>(null)
   const titleRef = useRef<HTMLDivElement>(null)
@@ -180,8 +185,10 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
     void run('send', async () => {
       const issue = typed.find((p): p is Extract<ChatPart, { type: 'issue' }> => p.type === 'issue')
       if (issue && (await someoneIsOn(issue, parts))) return
-      const failed = await startChat({ projectId, parts, model, effort, plan, mode, baseRef: picked && place === 'worktree' ? picked : '', leadMode })
-      if (failed) { actions.ui.toast({ title: 'Could not send', sub: failed }); refocus.current = true }
+      const at = Date.now()
+      setSent({ parts: typed, at })
+      const failed = await startChat({ projectId, parts, model, effort, plan, mode, baseRef: picked && place === 'worktree' ? picked : '', leadMode, at })
+      if (failed) { setSent(null); actions.ui.toast({ title: 'Could not send', sub: failed }); refocus.current = true }
     })
   }
   // The box is disabled while the send runs, so the caret goes back once it is enabled again.
@@ -243,7 +250,17 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   return (
     <OpenIssue.Provider value={issueCtx}>
     <div className="lead-new">
-      <div ref={topRef} className="lead-top" data-setup={setupSteps && project ? '' : undefined}>
+      {sent && (
+        <div className="ws-scroll">
+          <div className="thread">
+            <div className="msg msg-user">
+              <div className="bubble">{sent.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : <PartChip key={i} part={p} />))}</div>
+            </div>
+            <TurnLine since={sent.at} waiting={false} />
+          </div>
+        </div>
+      )}
+      <div ref={topRef} className="lead-top" style={sent ? GONE : undefined} data-setup={setupSteps && project ? '' : undefined}>
         {setupSteps && project ? <SetupRows project={project} steps={setupSteps} /> :
         <div ref={titleRef} className="lead-title" style={{ visibility: fits ? undefined : 'hidden' }} aria-hidden={fits ? undefined : true}>
           {usable
@@ -259,10 +276,13 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
               </>}
         </div>}
       </div>
-      <div className="lead-up">{usable && !setupSteps && <UpNext projectId={projectId} lead={name} onPlan={planIssue} />}</div>
+      <div className="lead-up" style={sent ? GONE : undefined}>{usable && !setupSteps && <UpNext projectId={projectId} lead={name} onPlan={planIssue} />}</div>
       <ComposerShell
         above={<>{!projects.length && <FirstProjectPills />}<ReadinessLine /></>}
-        input={<ComposerInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(leadMode, name)} onKeyDown={onKey} />}
+        input={<>
+          {sent && <ComposerInput d={blank} aria-label={`Message ${name}`} disabled placeholder="Add a follow up" />}
+          <div style={sent ? GONE : { display: 'contents' }}><ComposerInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(leadMode, name)} onKeyDown={onKey} /></div>
+        </>}
         box={{ 'data-plan': plan ? 'true' : undefined, 'data-drop': d.over || undefined }}
         foot={<ComposerToolbar disabled={busy}
           lead={{ mode: leadMode, footer: leadDefaultLine(projectLeadMode, appLeadMode), onPick: (m) => { pickLeadMode(m); d.focus() } }}
@@ -276,6 +296,8 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
     </OpenIssue.Provider>
   )
 }
+
+const GONE = { display: 'none' } as const
 
 /** With no project yet, the three ways to add one sit above the box (KERNEL-943). Each opens its own dialog. */
 function FirstProjectPills() {
