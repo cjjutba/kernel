@@ -12,6 +12,7 @@ import { claudeExecutable } from '../services/providers/binary'
 import { LEAD_PRESET, resolvePreset, terminalCommand, terminalPresets, terminalTitle } from '../services/terminalPresets'
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
+import { Seats } from './seats'
 import { Feature } from './feature'
 
 const COPY = 'fork:'
@@ -24,6 +25,10 @@ const notFound = (e: unknown) => /not found/i.test((e as Error)?.message ?? '')
 
 /** Chat tabs, their names, forks and big terminals (KERNEL-329). */
 export class Chats extends Feature {
+  private seatsFeature?: Seats
+  /** Terminal seats (KERNEL-998). Chats owns them, so Kernel only builds Chats. Hooks' stop closes them on quit. */
+  get seats(): Seats { return (this.seatsFeature ??= new Seats(this.k)) }
+
   /** Chats with a turn running. Read from `chat.running` so the quit prompt can count agents (KERNEL-214). */
   private readonly runningChats = new Set<string>()
 
@@ -234,7 +239,7 @@ export class Chats extends Feature {
     // Closing the tab ends what its agent started too (KERNEL-810).
     this.sessions.stop(chatId, { tree: true })
     this.ptys.kill(chatId)
-    this.k.seats.closeSeat(chatId)
+    this.seats.closeSeat(chatId)
     this.saveChat({ ...chat, closed: true })
     if (this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) return
     if (this.isLeadWorkspace(ws)) return
@@ -326,7 +331,7 @@ export class Chats extends Feature {
 
   /** A big terminal chat's pty is about to start: its seat's endpoint is listening by then, when Settings, Terminal has connect on. */
   private async seatsUp(id: string) {
-    if (this.settings.terminal.connect && !this.ptys.has(id) && this.store.chat(id)?.kind === 'terminal') await this.k.seats.start()
+    if (this.settings.terminal.connect && !this.ptys.has(id) && this.store.chat(id)?.kind === 'terminal') await this.seats.start()
   }
 
   /** Where a terminal starts, with what, and the command it types: its workspace's folder as it is now. */
@@ -337,7 +342,7 @@ export class Chats extends Feature {
     const ws = this.mustWs(plain ? id.slice('shell:'.length) : chat!.workspaceId)
     const env = sessionEnv(this.k.env.envFor(ws), {}, { agentTeams: this.settings.models.agentTeams })
     const command = (plain ? null : terminalCommand(chat!)) ?? undefined
-    const seat = plain ? undefined : this.k.seats.launch(id, env)
+    const seat = plain ? undefined : this.seats.launch(id, env)
     return { cwd: ws.path, env: seat?.env ?? env, command: seat ? seat.command(command) : command }
   }
 

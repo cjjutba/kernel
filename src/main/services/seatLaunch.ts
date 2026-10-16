@@ -1,5 +1,5 @@
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { delimiter, join } from 'node:path'
+import { basename, delimiter, join } from 'node:path'
 import { KERNEL_SERVER } from './kernelServer'
 
 export const seatsDir = (dataDir: string) => join(dataDir, 'seats')
@@ -7,8 +7,16 @@ export const seatDir = (dataDir: string, chatId: string) => join(seatsDir(dataDi
 
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 
-/** What a tab types: a command that starts with `claude` runs the seat's script by its path, and any other stays as it is. */
-export const seatCommand = (dir: string, typed: string) => (/^claude(\s|$)/.test(typed) ? `${quote(join(dir, 'claude'))}${typed.slice('claude'.length)}` : typed)
+/**
+ * What a tab types. A login shell's rc files can put Claude's own folder first on the PATH after the seat's folder, so the line
+ * defines a `claude` function that runs the seat's script, and every `claude` the tab types later, after `/exit`, finds it
+ * before any PATH folder. Fish has its own syntax. The name is quoted so an alias of `claude` can't swallow the definition.
+ */
+export function seatCommand(dir: string, typed: string | undefined, shell: string): string {
+  const script = quote(join(dir, 'claude'))
+  const define = basename(shell) === 'fish' ? `function claude; ${script} $argv; end` : `'claude'() { ${script} "$@"; }`
+  return typed === undefined ? define : `${define}; ${typed}`
+}
 
 /**
  * The `claude` script of a seat's folder (KERNEL-998). It finds the real `claude` on the PATH without its own folder and runs it

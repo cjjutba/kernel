@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import type { Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
-import { seatDir } from '../src/main/services/seatLaunch'
+import { seatCommand, seatDir } from '../src/main/services/seatLaunch'
 import { setUp, tempRepo, freePort } from './helpers'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -66,10 +67,10 @@ describe('terminal seats, launch wiring', () => {
     const { chat, seat } = await open(mateWs)
     const dir = seatDir(dataDir, chat.id)
     expect(seat.env.KERNEL_CHAT_ID).toBe(chat.id)
-    expect(seat.env.KERNEL_MCP_URL).toBe(k.seats.url)
-    expect(k.seats.registry.seatOf(seat.env.KERNEL_SEAT_TOKEN)).toMatchObject({ chatId: chat.id, workspaceId: mateWs.id, role: 'teammate' })
+    expect(seat.env.KERNEL_MCP_URL).toBe(k.chats.seats.url)
+    expect(k.chats.seats.registry.seatOf(seat.env.KERNEL_SEAT_TOKEN)).toMatchObject({ chatId: chat.id, workspaceId: mateWs.id, role: 'teammate' })
     expect(seat.env.PATH.split(delimiter)[0]).toBe(dir)
-    expect(seat.command).toBe(`'${join(dir, 'claude')}'`)
+    expect(seat.command).toBe(`'claude'() { '${join(dir, 'claude')}' "$@"; }; claude`)
   })
 
   it('keeps the token out of argv and in a 0600 file, and passes the chat its prompt and the endpoint', async () => {
@@ -77,7 +78,7 @@ describe('terminal seats, launch wiring', () => {
     const dir = seatDir(dataDir, chat.id)
     expect((await stat(join(dir, 'mcp.json'))).mode & 0o777).toBe(0o600)
     const config = JSON.parse(await readFile(join(dir, 'mcp.json'), 'utf8'))
-    expect(config.mcpServers.kernel).toEqual({ type: 'http', url: k.seats.url, headers: { Authorization: `Bearer ${seat.env.KERNEL_SEAT_TOKEN}` } })
+    expect(config.mcpServers.kernel).toEqual({ type: 'http', url: k.chats.seats.url, headers: { Authorization: `Bearer ${seat.env.KERNEL_SEAT_TOKEN}` } })
     const out = runScript(dir, await fakeClaude() + delimiter + seat.env.PATH, '--model', 'opus')
     expect(out.status).toBe(0)
     const argv = out.stdout.split('\0')
@@ -110,12 +111,12 @@ describe('terminal seats, launch wiring', () => {
     const again = started.get(chat.id)!.env.KERNEL_SEAT_TOKEN
     await k.handlers()['terminal.write']({ chatId: chat.id, data: '' })
     expect(started.get(chat.id)!.env.KERNEL_SEAT_TOKEN).not.toBe(again)
-    expect(k.seats.registry.seatOf(again)).toBeUndefined()
+    expect(k.chats.seats.registry.seatOf(again)).toBeUndefined()
     const argv = runScript(dir, path, '--verbose').stdout.split('\0')
     expect(argv.slice(4, 7)).toEqual(['--resume', 'sess-1', '--verbose'])
     expect(runScript(dir, path, '--continue').stdout.split('\0')).not.toContain('sess-1')
     k.store.saveChat({ ...k.store.chat(chat.id)!, sessionId: 'sess-2' })
-    k.seats.sessionChanged(chat.id)
+    k.chats.seats.sessionChanged(chat.id)
     expect(runScript(dir, path).stdout.split('\0')).toContain('sess-2')
   })
 
@@ -137,13 +138,32 @@ describe('terminal seats, launch wiring', () => {
 
   it('keeps the skip flag after the script path', async () => {
     const { chat, seat } = await open(mateWs, 'claude-skip')
-    expect(seat.command).toBe(`'${join(seatDir(dataDir, chat.id), 'claude')}' --dangerously-skip-permissions`)
+    expect(seat.command).toBe(`'claude'() { '${join(seatDir(dataDir, chat.id), 'claude')}' "$@"; }; claude --dangerously-skip-permissions`)
+  })
+
+  // The review of this issue: a .zshrc that puts Claude's own folder first on the PATH must not lose the seat after /exit.
+  it.runIf(existsSync('/bin/zsh'))('keeps the seat for a later claude when the shell\'s rc files put the real one first on the PATH', async () => {
+    const { chat, seat } = await open(mateWs)
+    const dir = seatDir(dataDir, chat.id)
+    const bin = await fakeClaude()
+    const zdot = await mkdtemp(join(tmpdir(), 'kernel-zdot-'))
+    await writeFile(join(zdot, '.zshrc'), `export PATH='${bin}':"$PATH"\nalias claude='claude'\n`)
+    const env = { ...seat.env, PATH: `${seat.env.PATH}${delimiter}${bin}`, ZDOTDIR: zdot, HOME: zdot }
+    const out = spawnSync('/bin/zsh', ['-lic', `${seat.command}; echo '<<<'; claude --model opus`], { env, encoding: 'utf8' })
+    const [first, second] = out.stdout.split('<<<').map((part) => part.split('\0'))
+    expect(first.slice(0, 2)).toEqual(['--mcp-config', join(dir, 'mcp.json')])
+    expect(second.join('\0')).toContain('--mcp-config')
+    expect(second.join('\0')).toContain('--model')
+  })
+
+  it('types the same definition for fish in fish syntax', () => {
+    expect(seatCommand('/seat', 'claude', '/opt/homebrew/bin/fish')).toBe(`function claude; '/seat/claude' $argv; end; claude`)
   })
 
   it('revokes the token and removes the folder when the tab closes', async () => {
     const { chat, seat } = await open(mateWs)
     await k.closeChat(chat.id)
-    expect(k.seats.registry.seatOf(seat.env.KERNEL_SEAT_TOKEN)).toBeUndefined()
+    expect(k.chats.seats.registry.seatOf(seat.env.KERNEL_SEAT_TOKEN)).toBeUndefined()
     await expect(stat(seatDir(dataDir, chat.id))).rejects.toThrow()
   })
 })
@@ -161,7 +181,7 @@ describe('the Lead preset', () => {
     const { chat, seat } = await open(leadWs, 'lead')
     expect(chat.threadId).toBe(leadWs.threadId)
     expect(chat.terminal).toEqual({ preset: 'lead', command: 'claude' })
-    expect(k.seats.registry.seatOf(seat.env.KERNEL_SEAT_TOKEN)).toMatchObject({ chatId: chat.id, workspaceId: leadWs.id, role: 'lead' })
+    expect(k.chats.seats.registry.seatOf(seat.env.KERNEL_SEAT_TOKEN)).toMatchObject({ chatId: chat.id, workspaceId: leadWs.id, role: 'lead' })
     expect(k.store.threadTabs(k.store.chats(leadWs.id).find((c) => c.kind === 'chat')!.id).map((c) => c.id)).toContain(chat.id)
     const plain = await open(leadWs, 'claude')
     expect(plain.chat.threadId).toBeUndefined()

@@ -122,7 +122,7 @@ export class Archive extends Feature {
     // What the agents started ends with them, so no dev server or test run outlives the workspace (KERNEL-810).
     this.sessions.stopWorkspace(id, { tree: true })
     this.ptys.killWorkspace(id, this.store.chats(id).map((c) => c.id))
-    this.k.seats.closeWorkspace(id, this.store.chats(id).map((c) => c.id))
+    this.k.chats.seats.closeWorkspace(id, this.store.chats(id).map((c) => c.id))
     stopRuns(id)
     // A setup still running would finish after the archive and report on a workspace that is gone.
     stopScript(id, 'setup')

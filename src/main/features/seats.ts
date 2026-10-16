@@ -5,6 +5,7 @@ import { LEAD_INSTRUCTIONS } from '../services/kernelMcp'
 import { agentPrompt } from '../services/sessions'
 import { removeSeatDir, seatCommand, seatDir, seatsDir, withDirFirst, writeSeatDir, writeSeatSession } from '../services/seatLaunch'
 import { startSeatMcp, SeatRegistry, type Seat, type SeatMcp, type SeatRole, type SeatTools } from '../services/seatMcp'
+import { loginShell } from '../services/pty'
 import { Feature } from './feature'
 
 /**
@@ -39,10 +40,10 @@ export class Seats extends Feature {
   /**
    * What a terminal chat's pty starts with when the seat is connected (KERNEL-998): the chat's id, a new token and the endpoint
    * in its environment, and a folder first on the PATH whose `claude` runs the real one wired into Kernel. `command` is what the
-   * tab types, with `claude` spelled as that script, so a login shell that rewrites the PATH still starts the seat. Undefined
+   * tab types, with `claude` spelled as that script, so a login shell that rewrites the PATH still starts the seat, and a later `claude` too. Undefined
    * when Settings, Terminal has connect off, or the chat is not a terminal.
    */
-  launch(chatId: string, env: Record<string, string>): { env: Record<string, string>; command: (typed: string | undefined) => string | undefined } | undefined {
+  launch(chatId: string, env: Record<string, string>): { env: Record<string, string>; command: (typed: string | undefined) => string } | undefined {
     const chat = this.store.chat(chatId)
     const url = this.url
     if (!chat || chat.kind !== 'terminal' || !url || !this.settings.terminal.connect) return undefined
@@ -53,7 +54,7 @@ export class Seats extends Feature {
     writeSeatDir(dir, { url, token, prompt: agentPrompt(agent, ws, this.k.tools.rulesFor(ws, agent, chat)), sessionId: chat.sessionId })
     return {
       env: { ...env, PATH: withDirFirst(dir, env.PATH), KERNEL_CHAT_ID: chatId, KERNEL_SEAT_TOKEN: token, KERNEL_MCP_URL: url },
-      command: (typed) => (typed === undefined ? undefined : seatCommand(dir, typed))
+      command: (typed) => seatCommand(dir, typed, loginShell(process.env))
     }
   }
 
