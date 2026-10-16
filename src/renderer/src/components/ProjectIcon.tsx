@@ -6,7 +6,7 @@ import { projectLetter } from '../screens/projects/projectInfo'
 
 /**
  * One project icon, drawn everywhere a project shows its letter (KERNEL-253). The image comes from `projects.icon` and is cached by
- * `projectId:at`, so a new icon has a new key and an old one is never shown. It shows in grayscale (CJ's choice, KERNEL-241), and the
+ * `projectId:at`, so a new icon has a new key and an old one is never shown. It shows in its own colors (kernel-profile-logo-color-in-settings), and the
  * letter stands in while it loads, when the project has no icon, or when the image can't be read.
  */
 const loading = new Map<string, Promise<void>>()
