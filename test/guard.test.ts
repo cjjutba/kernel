@@ -97,7 +97,9 @@ describe.concurrent('guard: edits outside the repo', () => {
 describe.concurrent('guard: live tests', () => {
   it.each([
     ['an approved file', 'KERNEL_LIVE=1 pnpm test test/terminalLead.live.test.ts'],
-    ['an approved file through vitest', 'KERNEL_LIVE=1 pnpm exec vitest run ./test/terminalLead.live.test.ts 2>&1 | tail -40']
+    ['an approved file through vitest', 'KERNEL_LIVE=1 pnpm exec vitest run ./test/terminalLead.live.test.ts 2>&1 | tail -40'],
+    ['an approved file run detached', 'nohup KERNEL_LIVE=1 pnpm test test/terminalLead.live.test.ts > /tmp/x.out 2>&1 &'],
+    ['an approved file run detached with no spaces', 'nohup KERNEL_LIVE=1 pnpm test test/terminalLead.live.test.ts >/tmp/x.out 2>&1&']
   ])('allows %s', async (_, command) => {
     expect(await guard('Bash', { command })).toBe('allow')
   })
@@ -108,7 +110,9 @@ describe.concurrent('guard: live tests', () => {
     ['an approved file plus an unlisted one', 'KERNEL_LIVE=1 pnpm test test/terminalLead.live.test.ts test/live.test.ts'],
     ['a whole-suite run', 'KERNEL_LIVE=1 pnpm test'],
     ['a whole-suite run after an approved one', 'export KERNEL_LIVE=1; pnpm test test/terminalLead.live.test.ts && pnpm test'],
-    ['KERNEL_LIVE with no test run', 'export KERNEL_LIVE=1']
+    ['KERNEL_LIVE with no test run', 'export KERNEL_LIVE=1'],
+    ['an unlisted file run detached', 'nohup KERNEL_LIVE=1 pnpm test test/live.test.ts > /tmp/x.out 2>&1 &'],
+    ['a whole-suite run after a detached approved one', 'KERNEL_LIVE=1 pnpm test test/terminalLead.live.test.ts & pnpm test']
   ])('denies %s', async (_, command) => {
     expect(await guard('Bash', { command })).toBe('deny')
   })
