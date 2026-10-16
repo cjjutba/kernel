@@ -21,18 +21,6 @@ export interface ProjectHead { projects: Project[]; project?: Project; onProject
 /** `parse` for the remembered choice: a stored value that is not a tracker reads as no choice. */
 export const trackerChoice = (raw: string | null): IssueTracker | '' => (raw === 'linear' || raw === 'github' ? raw : '')
 
-const isAvailable = (a: ProjectTracker['available'], t: IssueTracker) => (t === 'linear' ? a.linear : !!a.github)
-
-/**
- * The tracker the page lists (KERNEL-938): the route's, else the project's saved choice, else the project's own (`kind`). One that is
- * unavailable falls back to `kind` for this load. A saved choice that fell back stays saved, so it applies again once it is available.
- */
-export function activeTracker(t: ProjectTracker, pick: { route?: IssueTracker; saved: IssueTracker | '' }): IssueTracker {
-  const own: IssueTracker = t.kind === 'github' ? 'github' : 'linear'
-  for (const c of [pick.route, pick.saved]) if (c && isAvailable(t.available, c)) return c
-  return own
-}
-
 /** Settings, the project, General: where the project's tracker is chosen. */
 export const chooseTracker = (projectId: string) => go({ name: 'settings', page: 'project', projectId, section: 'general' })
 

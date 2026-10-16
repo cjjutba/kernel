@@ -4,9 +4,10 @@ import { useRemembered } from '../../remember'
 import { Banner, Button } from '../../ui'
 import { GithubIssues } from './GithubIssues'
 import { LinearIssues } from './LinearIssues'
-import { IssueSkeleton, NoTracker, activeTracker, trackerChoice, type IssueTracker, type ProjectHead } from './parts'
+import { IssueSkeleton, NoTracker, trackerChoice, type IssueTracker, type ProjectHead } from './parts'
 import { WorkHeader } from '../work/WorkHeader'
 import { useOpenPrCount } from '../prs/model'
+import { activeTracker } from './model'
 import { useProjectTracker } from './useProjectTracker'
 import './issues.css'
 
@@ -33,7 +34,7 @@ export function Issues({ issueId, projectId, tracker }: { issueId?: string; proj
   if (!project) return <LinearIssues issueId={issueId} head={head} />
   if (read.kind === 'ready' && read.tracker.kind !== 'none') {
     const t = read.tracker
-    const active = activeTracker(t, { route: tracker ?? (issueId?.startsWith('#') ? 'github' : undefined), saved })
+    const active = activeTracker(t, { issueId, route: tracker, saved })
     // The switch drops the open issue, which belongs to the tracker it came from.
     const onTracker = (next: IssueTracker) => { save(next); go({ name: 'issues', projectId: project.id }) }
     const withSwitch: ProjectHead = { ...head, tracker: { active, available: t.available, onChange: onTracker } }
