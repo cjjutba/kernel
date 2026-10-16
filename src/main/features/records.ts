@@ -1,4 +1,4 @@
-import type { Chat, ChatItem, Effort, Provider, NoteRef, Workspace } from '@shared/types'
+import type { Chat, ChatItem, Effort, Provider, NoteRef, TeamUpdate, Workspace } from '@shared/types'
 import { newId, type Store } from '../db'
 import { bus } from '../bus'
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
@@ -52,11 +52,45 @@ export function prChat(store: Store, id: string): Chat | undefined {
   return chats.find((c) => c.kind !== 'terminal') ?? chats[0]
 }
 
+/** The PR state a note is about, which draws that state's icon before the text (KERNEL-313, KERNEL-990). */
+export type NotePr = NonNullable<Extract<ChatItem, { kind: 'note' }>['pr']>
+
 /** `pr` is the PR state the note is about, which draws that state's icon before the text. `refs` are words in it that open a workspace. */
-export function note(store: Store, workspaceId: string, text: string, pr?: 'merged' | 'closed' | 'cifail', refs?: NoteRef[]) {
+export function note(store: Store, workspaceId: string, text: string, pr?: NotePr, refs?: NoteRef[]) {
   const chat = prChat(store, workspaceId)
   if (!chat) return
   const item: ChatItem = { kind: 'note', id: newId(), ts: Date.now(), text, ...(pr ? { pr } : {}), ...(refs?.length ? { refs } : {}) }
   store.saveItem(chat.id, item)
   bus.push({ type: 'chat.item', chatId: chat.id, item })
+}
+
+type NoteItem = Extract<ChatItem, { kind: 'note' }>
+
+/** The newest note of `pr` that is about PR number `prNumber`, in the chat that holds a workspace's PR notes. */
+export function prNoteOf(store: Store, workspaceId: string, pr: NotePr, prNumber: number | undefined): { chatId: string; item: NoteItem } | undefined {
+  const chat = prChat(store, workspaceId)
+  if (!chat || !prNumber) return undefined
+  const about = new RegExp(`\\bPR #${prNumber}\\b`)
+  const item = [...store.items(chat.id)].reverse().find((i): i is NoteItem => i.kind === 'note' && i.pr === pr && about.test(i.text))
+  return item && { chatId: chat.id, item }
+}
+
+/** Like `note`, but at most one note of `pr` per PR number, however often the PR is seen to move (KERNEL-990). */
+export function noteOnce(store: Store, workspaceId: string, text: string, pr: NotePr, prNumber: number | undefined) {
+  if (prNoteOf(store, workspaceId, pr, prNumber)) return
+  note(store, workspaceId, text, pr)
+}
+
+/** Changes the text of a note in place, with the same push a new one gets. */
+export function reviseNote(store: Store, chatId: string, item: NoteItem, text: string) {
+  const next: ChatItem = { ...item, text }
+  store.saveItem(chatId, next)
+  bus.push({ type: 'chat.item', chatId, item: next })
+}
+
+/** Draws a Team update in a chat without sending it to the session (KERNEL-990). */
+export function updateRow(store: Store, chatId: string, update: TeamUpdate) {
+  const item: ChatItem = { kind: 'update', id: newId(), ts: Date.now(), update }
+  store.saveItem(chatId, item)
+  bus.push({ type: 'chat.item', chatId, item })
 }

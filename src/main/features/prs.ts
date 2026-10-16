@@ -3,13 +3,17 @@ import { bus } from '../bus'
 import { type AppSettings, autoMergeInProject, loadRepoSettings, localSettingsOwn, prInstructions, sharedMergeOf } from '../services/settings'
 import { branchExists, currentBranch, fastForward, fetchOrigin, folderGone, freeBranch, isAncestor, isPushed, stripRemote } from '../services/worktrees'
 import { exec, git } from '../services/exec'
-import { BranchConflict, type CodeHost, fingerprintOf, GhReadError, HEAD_MOVED, prNote, resolveFile } from '../services/github'
+import { BranchConflict, type CodeHost, fingerprintOf, GhReadError, HEAD_MOVED, ownPrNote, prNote, resolveFile } from '../services/github'
 import { type PrContext, prTextFor } from '../services/conventions'
 import { PrCadence } from '../services/prCadence'
 import { inPaths } from '../services/lenses'
 import { ALWAYS_REVIEW, autoMergeBlock, autoMergeRetry, autoMergeWhy, gatingChecks, kindStates, mergeableState, mergeBlock, mergeNeedsPr, type AutoMergeFacts } from '@shared/merge'
 import type { Handlers } from '../kernel'
+import { prNoteOf, reviseNote } from './records'
 import { Feature } from './feature'
+
+/** PR states a PR reads as when it was just opened (KERNEL-990). */
+const OPENED: PrState[] = ['draft', 'open', 'checks', 'cifail', 'changes', 'conflict', 'ready']
 
 /** PR states whose next read is likely to differ soon, so the poll runs at its fast rate (KERNEL-388). */
 const MOVING: PrState[] = ['creating', 'checks', 'merging', 'resolving']
@@ -32,7 +36,7 @@ export class Prs extends Feature {
 
   /** Workspaces whose merge Kernel is running, so the poll doesn't overwrite `merging`. */
   private merging = new Set<string>()
-  /** The method of a merge Kernel ran, until the PR is seen merged, so the note says how it landed. */
+/** The method of a merge Kernel ran, until the PR is seen merged, so the note says how it landed. */
   private mergedWith = new Map<string, AppSettings['pr']['mergeMethod']>()
   /** The PR action running on each workspace, from whichever button or tool started it (KERNEL-519). */
   private pending = new Map<string, PrPending>()
@@ -296,7 +300,7 @@ export class Prs extends Feature {
     if (info?.conflictsUnknown) this.recheckSoon(id)
     else if (info) this.cancelRecheck(id)
     this.guardOnReady(id, ws.prState, next.prState, info, ws.prBlocked === 'behind')
-    if (next.prState !== ws.prState) this.moved(ws, next, prNote(next, info, this.mergedWith.get(id), remote))
+    if (next.prState !== ws.prState) this.moved(ws, next, prNote(next, info, this.mergedWith.get(id), remote, this.ownChat(next) ? this.autoWhy.get(id) : undefined))
     // A ready PR GitHub started or stopped blocking, its state the same, so nothing above told anyone (KERNEL-401). A PR that
     // becomes ready already blocked goes out with its 'pr' push, which the Lead and the Inbox read prBlocked on.
     if (ws.prState === 'ready' && next.prState === 'ready' && ws.prBlocked !== next.prBlocked) {
@@ -311,14 +315,35 @@ export class Prs extends Feature {
     this.changedAt = Date.now()
     bus.push({ type: 'pr', workspaceId: id, state: next.prState })
     bus.activity({ kind: 'pr.changed', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
-    if (text) this.note(id, text, next.prState === 'merged' || next.prState === 'closed' || next.prState === 'cifail' ? next.prState : undefined)
+    // The chat's own PR in Build here opens and passes checks as rows, never as a turn, and each row shows once per PR (KERNEL-990).
+    if (this.ownChat(next)) {
+      if ((ws.prState === 'none' || ws.prState === 'creating') && OPENED.includes(next.prState)) this.noteOnce(id, ownPrNote('opened', next), 'opened', next.prNumber)
+      if (next.prState === 'ready') this.noteOnce(id, ownPrNote('ready', next), 'ready', next.prNumber)
+    }
+    if (text && next.prState === 'merged') this.noteOnce(id, text, 'merged', next.prNumber)
+    else if (text) this.note(id, text, next.prState === 'closed' || next.prState === 'cifail' ? next.prState : undefined)
     if (next.prState === 'merged') {
       this.mergedWith.delete(id)
+      this.autoWhy.delete(id)
       void this.overlaps.check(ws.projectId).catch(() => undefined)
       // Main moved. A teammate with no PR yet hears it if that would conflict with its work (KERNEL-180). A local merge moved
       // it on this Mac, so there is nothing to fetch.
       void this.k.baseWatch.check(ws.projectId, { fetch: !this.isLocal(ws) }).catch(() => undefined)
     }
+  }
+
+  /** Whether the workspace is a Build here chat's own, whose PR news is rows (KERNEL-990). */
+  private ownChat(ws: Workspace) { return !!this.k.lead.buildTab(ws) }
+
+  /** Why Kernel is merging each Build here chat's own PR by itself, until the merge shows, so its row says so (KERNEL-990). */
+  private autoWhy = new Map<string, string>()
+
+  /** The ready row of the chat's own PR says why Kernel didn't merge it by itself, once it knows (KERNEL-990). */
+  private refusal(id: string, why: string) {
+    const ws = this.k.store.workspace(id)
+    if (!ws || !this.ownChat(ws)) return
+    const row = prNoteOf(this.k.store, id, 'ready', ws.prNumber)
+    if (row && !row.item.text.includes("Kernel didn't merge it")) reviseNote(this.k.store, row.chatId, row.item, `${row.item.text}. Kernel didn't merge it automatically: ${why}`)
   }
 
   /** Creating and Resolving hold while the agent works, and `merging` while Kernel's merge runs. */
@@ -534,11 +559,12 @@ export class Prs extends Feature {
       const waiting = !!head && this.updates.get(id)?.head === head && !gatingChecks(pr?.checks ?? []).length
       // The Lead hears a refusal GitHub hadn't settled only once Kernel stops weighing it again (KERNEL-768).
       if ((autoMergeRetry(facts) || waiting) && this.weighAgain(id, key)) return { refused: said }
-      if (rules.on) this.leadUpdates.autoMergeRefused(id, said)
+      if (rules.on) { this.leadUpdates.autoMergeRefused(id, said); this.refusal(id, said) }
       return { refused: said }
     }
     if (host.updateBranch && (behind || await this.baseMoved(project, ws, pr))) return this.bringUpToDate(ws, { ...pr, head })
     this.leadUpdates.autoMerging(id, why)
+    if (this.ownChat(ws)) this.autoWhy.set(id, why.why)
     const object = `PR #${pr.number}`
     try {
       const merged = await this.mergePr(id, { head })
@@ -546,10 +572,12 @@ export class Prs extends Feature {
       return { merged }
     } catch (e) {
       this.leadUpdates.autoMerging(id)
+      this.autoWhy.delete(id)
       const said = (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
       // GitHub asks for another try when the base moved during the merge, as when another PR landed (KERNEL-829).
       if ((said.startsWith('GitHub is still checking ') || said.includes('Base branch was modified')) && this.weighAgain(id, key)) return { refused: said }
       this.leadUpdates.autoMergeRefused(id, `The merge Kernel started failed. ${said}`)
+      this.refusal(id, `the merge Kernel started failed. ${said}`)
       bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: "couldn't merge automatically", object, warn: true })
       return { refused: said }
     }

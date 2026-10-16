@@ -29,6 +29,10 @@ import { messageOf, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import type { Workspaces } from './workspaces'
 import { Feature } from './feature'
+import { prNoteOf, reviseNote } from './records'
+
+/** Meta key for the line a Build here chat's next turn starts with after its PR merged, by workspace (KERNEL-990). */
+const TURN_NOTES = 'leadTurnNotes'
 
 /** The project's Lead: its workspace and chats, its tools, and where teammates' updates go (KERNEL-329). */
 export class Lead extends Feature {
@@ -236,14 +240,32 @@ export class Lead extends Feature {
     if (o.fetch) {
       const project = this.k.stopped ? undefined : this.store.project(projectId)
       if (!project) return
-      const fetched = await this.k.config.remoteFor(project.path).then((remote) => fetchOrigin(project.path, remote, { fresh: true })).then(() => true, (e) => { failed(e); return false })
-      if (!fetched) return
+      // A fetch that fails is a failure, unless the project has no such remote to fetch from (KERNEL-990).
+      const fetched = await this.k.config.remoteFor(project.path).then(async (remote) => {
+        const r = await fetchOrigin(project.path, remote, { fresh: true })
+        return r.ok || (await exec('git', ['-C', project.path, 'remote', 'get-url', remote])).code !== 0
+      }).catch((e) => { failed(e); return false })
+      if (!fetched) { this.offline(projectId, project.defaultBranch); return }
     }
     if (this.k.stopped) return
     const ids = o.workspaceId ? [o.workspaceId] : this.chatWorkspaces(projectId).map((w) => w.id)
     // A folder that waits to move to match its branch moves first, while the chat is idle (KERNEL-424).
     // A Build here chat whose PR merged starts its next branch before the sync (KERNEL-778).
     await Promise.all(ids.map((id) => this.inOrder(id, async () => { await this.moveNow(id); await this.freshNow(id); await this.syncNow(id) }).catch(failed)))
+  }
+
+  /** The merged Build here chats Kernel told it couldn't update to the latest base, by workspace and PR, so each is told once (KERNEL-990). */
+  private told = new Set<string>()
+
+  /** The fetch after a merge failed, so a merged Build here chat stays where it is and says so in a row (KERNEL-990). */
+  private offline(projectId: string, base: string) {
+    for (const ws of this.chatWorkspaces(projectId)) {
+      if (!buildsHere(ws) || ws.prState !== 'merged' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending) continue
+      const key = `${ws.id} ${ws.prNumber ?? ws.branch}`
+      if (this.told.has(key)) continue
+      this.told.add(key)
+      this.ending(ws.id, ws.prNumber, `Kernel couldn't update to the latest ${base}`)
+    }
   }
 
   /**
@@ -281,19 +303,20 @@ export class Lead extends Feature {
     // branch from the base would drop from the worktree.
     const dirty = (await git(ws.path, 'status', '--porcelain', '--', '.', ':(exclude).kernel')).trim() !== ''
     const after = dirty ? 0 : await this.unmerged(ws, project.path, base)
-    const why = dirty ? 'this worktree has uncommitted changes' : after ? `${ws.branch} has ${after === 1 ? 'a commit' : `${after} commits`} the PR didn't include` : undefined
+    const why = dirty ? 'it has uncommitted changes' : after ? `it has ${after === 1 ? 'a commit' : `${after} commits`} the PR didn't include` : undefined
     if (why) {
       const key = `${id} ${ws.prNumber ?? ws.branch} ${why}`
       if (this.keptMerged.has(key)) return
       this.keptMerged.add(key)
-      this.note(id, `${merged} merged, but ${why}, so Kernel kept this chat on ${ws.branch}. It starts a new branch from ${base} once nothing here is left out of the merge.`)
+      this.note(id, `Kernel kept this branch because ${why}. A new branch starts once nothing here is left out of the merge.`)
       return
     }
     const lead = this.agentsSync(project.id).find((a) => a.lead)
     const title = (ws.threadId && this.store.thread(ws.threadId)?.title) || ws.title || ws.name
     const wanted = leadBranch(repo.workspace.leadBranchPattern || this.settings.workspace.leadBranchPattern, title, lead?.name)
     const branch = await this.k.workspaces.withBranchLock(project.id, async () => {
-      const free = await freeBranch(project.path, wanted, remote, this.k.workspaces.pendingNames(project.id).branches)
+      // The merged branch's own name is taken, even when GitHub deleted it on the remote (KERNEL-990).
+      const free = await freeBranch(project.path, wanted, remote, new Set([...this.k.workspaces.pendingNames(project.id).branches, ws.branch]))
       // Read again after the wait: a turn may have started, or the chat been archived.
       const now = this.k.stopped ? undefined : this.store.workspace(id)
       if (!now || now.prState !== 'merged' || now.status !== 'ready' || this.folderBusy(id)) return undefined
@@ -308,8 +331,36 @@ export class Lead extends Feature {
       ...(ws.source?.kind === 'issue' ? { source: undefined } : {}),
     })
     bus.push({ type: 'pr', workspaceId: id, state: 'none' })
-    this.note(id, `${merged} merged. This chat now works on ${branch}, from ${base}.`)
+    this.switched(id, ws.prNumber, merged, base)
     void this.k.workspaces.changes(id).catch(() => undefined)
+  }
+
+  /** Adds `ending` to the PR's merge row in place, or posts it as a row of its own, headed by `alone`, when there is none. */
+  private ending(id: string, prNumber: number | undefined, ending: string, alone = 'The PR merged.') {
+    const row = prNoteOf(this.store, id, 'merged', prNumber)
+    if (!row) this.note(id, `${alone} ${ending}`, 'merged')
+    else if (!row.item.text.includes(ending)) reviseNote(this.store, row.chatId, row.item, `${row.item.text} ${ending}`)
+  }
+
+  /**
+   * The merge row gets its ending in place, since the new branch is the same news (KERNEL-990). Without a merge row, which a
+   * merge seen before this version left, the ending is a row of its own. The chat's next turn starts with a line saying so.
+   */
+  private switched(id: string, prNumber: number | undefined, merged: string, base: string) {
+    this.ending(id, prNumber, 'Next changes start on a new branch', `${merged} merged.`)
+    const notes = this.store.meta<Record<string, string>>(TURN_NOTES) ?? {}
+    notes[id] = `${merged} merged. This chat is now on a new branch from ${base}.`
+    this.store.saveMeta(TURN_NOTES, notes)
+  }
+
+  /** The line the chat's next turn starts with after its PR merged, taken so it goes once. Kept in the store, so a restart in between still sends it. */
+  turnNote(workspaceId: string): string | undefined {
+    const notes = this.store.meta<Record<string, string>>(TURN_NOTES) ?? {}
+    const line = notes[workspaceId]
+    if (line === undefined) return undefined
+    delete notes[workspaceId]
+    this.store.saveMeta(TURN_NOTES, notes)
+    return line
   }
 
   /** Runs `step` after the git work already queued for the chat's worktree, so two never run git in it at once. */

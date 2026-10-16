@@ -37,7 +37,8 @@ export abstract class Feature {
   protected saveChat(chat: Chat) { return records.saveChat(this.k.store, chat) }
   protected newChat(workspaceId: string, title: string, o: { provider?: Provider; model: string; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal']; threadId?: string }) { return records.newChat(this.k.store, workspaceId, title, o) }
   protected prChat(id: string) { return records.prChat(this.k.store, id) }
-  protected note(workspaceId: string, text: string, pr?: 'merged' | 'closed' | 'cifail', refs?: NoteRef[]) { return records.note(this.k.store, workspaceId, text, pr, refs) }
+  protected note(workspaceId: string, text: string, pr?: records.NotePr, refs?: NoteRef[]) { return records.note(this.k.store, workspaceId, text, pr, refs) }
+  protected noteOnce(workspaceId: string, text: string, pr: records.NotePr, prNumber: number | undefined) { return records.noteOnce(this.k.store, workspaceId, text, pr, prNumber) }
 
   // The team's, so code that moves out of kernel.ts keeps calling them as it did (KERNEL-326).
   protected agentsSync(projectId: string) { return this.k.team.agentsSync(projectId) }

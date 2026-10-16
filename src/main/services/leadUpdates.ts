@@ -46,6 +46,11 @@ export interface LeadUpdateDeps {
    */
   ownChat?: (ws: Workspace) => string | undefined
   agentName: (projectId: string, agentId: string) => string | undefined
+  /**
+   * Draws a Team update in the chat without sending it to the session: a review of the chat's own PR in Build here, which
+   * costs no turn (KERNEL-990). Left out, such a verdict is dropped.
+   */
+  row?: (chatId: string, update: TeamUpdate) => void
   /** Sends Kernel's message into the Lead chat, with the card's data. False when the Lead can't take it now (`Sessions.post`). */
   post: (chatId: string, text: string, update: TeamUpdate) => boolean
   /** Why `post` refused the chat, for the delivery log (`Sessions.postHold`, KERNEL-637). */
@@ -889,6 +894,9 @@ export class LeadUpdates {
   private ownerOf(ws: Workspace) { return ws.leadChatId ?? this.d.ownChat?.(ws) }
 
   /** The Lead's own workspace, whose news never reaches a chat. A Build here chat's PR does (KERNEL-778). */
+  /** The Build here chat's own workspace, whose PR news is rows and wakes the chat only when the user has to act (KERNEL-990). */
+  private isSelf(ws: Workspace) { return this.d.isLead(ws) && !!this.d.ownChat?.(ws) }
+
   private silent(ws: Workspace) { return this.d.isLead(ws) && !this.d.ownChat?.(ws) }
 
   private keyOf(ws: Workspace) { return this.ownerOf(ws) ?? `project:${ws.projectId}` }
@@ -1012,8 +1020,9 @@ export class LeadUpdates {
       if (!g.quiet) continue
       if (this.stopped.has(g.chat.id)) { hold(g.keys, 'stopped'); continue }
       const message = this.compose(projectId, g.sources)
+      if (message?.display.length) this.show(message.display, g, changed)
       // Everything that waited was overtaken, as a failed check fixed since. There is nothing left to say.
-      if (!message) { for (const key of g.keys) drop(key); continue }
+      if (!message || !message.update.rows.length) { for (const key of g.keys) drop(key); continue }
       // Nothing needs the Lead yet. It all waits for the next update that does (KERNEL-121).
       if (!message.wakes) { hold(g.keys, 'quiet'); continue }
       if (!this.d.post(g.chat.id, message.text, message.update)) { hold(g.keys, this.d.holdOf?.(g.chat.id) ?? 'refused'); continue }
@@ -1057,16 +1066,29 @@ export class LeadUpdates {
     }
   }
 
+  /** Draws the rows that cost no turn, and takes their events out of what waits, so each shows once (KERNEL-990). */
+  private show(display: { update: TeamUpdate; events: TeamEvent[] }[], g: { chat: Chat; keys: string[] }, changed: { any: boolean }) {
+    const gone = new Set(display.flatMap((d) => d.events.map((e) => e.n)))
+    for (const d of display) this.d.row?.(g.chat.id, d.update)
+    for (const key of g.keys) {
+      const p = this.pending.get(key)
+      if (!p) continue
+      p.events = p.events.filter((e) => !gone.has(e.n))
+      changed.any = true
+    }
+  }
+
   flushAll() { for (const projectId of new Set([...this.pending.values()].map((p) => p.projectId))) this.flush(projectId) }
 
   /**
    * The text the Lead reads and the card's data, or nothing when no workspace has anything left to say. `wakes` is
    * whether any of it needs the Lead now.
    */
-  private compose(projectId: string, sources: Source[]): { text: string; update: TeamUpdate; wakes: boolean; sent: Set<TeamEvent>; told: { ws: Workspace; name: string; events: TeamEvent[] }[] } | undefined {
+  private compose(projectId: string, sources: Source[]): { text: string; update: TeamUpdate; wakes: boolean; sent: Set<TeamEvent>; told: { ws: Workspace; name: string; events: TeamEvent[] }[]; display: { update: TeamUpdate; events: TeamEvent[] }[] } | undefined {
     const blocks: Block[] = []
     // Events the message carries, or that have nothing left to say. The rest wait for the next update (KERNEL-637).
     const sent = new Set<TeamEvent>()
+    const display: { update: TeamUpdate; events: TeamEvent[] }[] = []
     for (const source of sources) {
       const byWs = new Map<string, TeamEvent[]>()
       for (const e of source.events) byWs.set(e.workspaceId, [...(byWs.get(e.workspaceId) ?? []), e])
@@ -1099,15 +1121,42 @@ export class LeadUpdates {
             review, reviewer, autoReview: this.d.autoReview?.() ?? true, allMerged: () => this.allMerged(ws.projectId, source.owner!), workspace: (id) => this.d.store.workspace(id),
             stateOf: (id) => { const of = this.d.store.workspace(id); return of && this.d.reviewState?.(of) },
             refused: (id) => this.refused.get(id), toldLimit: this.toldLimit.has(ws.id),
-            self: (id) => { const w = this.d.store.workspace(id); return !!w && this.d.isLead(w) && !!this.d.ownChat?.(w) }
+            self: (id) => { const w = this.d.store.workspace(id); return !!w && this.isSelf(w) }
           })
           block.wake = decided.wake
           block.todo = decided.todo
         }
+        // The chat's own PR keeps only the news that needs it: the rest is a row Kernel draws, never held to ride along (KERNEL-990).
+        if (this.isSelf(ws)) {
+          block.events = block.events.filter((e) => block.wake.has(e))
+          block.shares = []
+          block.reply = undefined
+          if (!block.events.length) { for (const e of events) sent.add(e); continue }
+        } else {
+          // A review of the chat's own PR that approved its latest commit is a row with only the reviewer, not a Team update.
+          const shown: TeamEvent[] = []
+          const dropped = new Set<TeamEvent>()
+          for (const e of block.events) {
+            const of = e.kind === 'review' && e.review && !block.wake.has(e) ? this.d.store.workspace(e.review.of) : undefined
+            if (!of || !this.isSelf(of) || e.review!.verdict !== 'approved' || !e.review!.current) continue
+            if (of.prState === 'merged' || of.prState === 'closed' || of.status === 'archived') dropped.add(e)
+            else shown.push(e)
+          }
+          if (shown.length) {
+            const row = rowOf({ ...block, events: shown, shares: [], reply: summaries(shown.flatMap((e) => (e.review ? [e.review] : []))), summary: true, status: '', card: [], held: false, wake: new Set(), todo: [] })
+            display.push({ update: { rows: [row] }, events: events.filter((x) => shown.some((e) => e.n === x.n)) })
+          }
+          if (shown.length || dropped.size) {
+            block.events = block.events.filter((e) => !shown.includes(e) && !dropped.has(e))
+            const gone = new Set([...shown, ...dropped].map((e) => e.n))
+            for (const e of events) if (gone.has(e.n)) sent.add(e)
+            if (!block.events.length && !block.shares.length) { for (const e of events) sent.add(e); continue }
+          }
+        }
         blocks.push(block)
       }
     }
-    if (!blocks.length) return undefined
+    if (!blocks.length) return display.length ? { text: '', update: { rows: [] }, wakes: false, sent, told: [], display } : undefined
     // Blocks that need the Lead come first, then the newest of the rest.
     const rank = (b: Block) => (b.wake.size ? 1 : 0)
     const kept = [...blocks].sort((a, b) => rank(b) - rank(a) || b.latest - a.latest).slice(0, MAX_BLOCKS).sort((a, b) => a.latest - b.latest)
@@ -1130,27 +1179,9 @@ export class LeadUpdates {
     const todo = [...new Set(order.flatMap((b) => b.todo))]
     if (todo.length) lines.push('', 'To do:', ...todo.map((t) => `- ${t}`))
 
-    const rows = order.map((b): TeamUpdateRow => {
-      const prNumber = b.ws.prNumber ?? b.events.find((e) => e.pr)?.pr
-      return {
-        workspaceId: b.ws.id, agentId: b.ws.agentId, name: b.name, task: b.ws.title ?? b.ws.name,
-        ...(prNumber ? { prNumber } : {}),
-        // A ready PR's review follows as a grey segment of its own, so only "Ready to merge" is green (KERNEL-411). A review
-        // that holds it back makes the PR's own event grey too (KERNEL-635).
-        events: b.events.flatMap((e) => [
-          { kind: e.kind, text: cardText(e, b.held), actionable: b.wake.has(e), ...(b.held && (e.kind === 'pr.ready' || e.kind === 'pr.unblocked') ? { held: true } : {}) },
-          ...(e.kind === 'pr.ready' || e.kind === 'pr.unblocked' ? b.card.map((text) => ({ kind: 'pr.review' as const, text, actionable: false })) : []),
-          // Why auto-merge allowed it, grey after "Merged automatically" (KERNEL-556).
-          ...(e.auto ? [{ kind: 'pr.review' as const, text: e.auto.card, actionable: false }] : []),
-          ...(e.review?.stillBlocked ? [{ kind: 'pr.review' as const, text: stillBlockedText(e.review.stillBlocked), actionable: false }] : [])
-        ]),
-        ...(b.reply ? { reply: b.reply } : {}),
-        ...(b.from ? { fromChat: b.from.title, ...(b.from.tab ? { fromTab: true } : {}) } : {}),
-        ...(b.shares.length ? { shared: b.shares.flatMap((e) => (e.shared ? [{ sharedId: e.shared.sharedId, version: e.shared.version, title: e.shared.title, kind: e.shared.kind }] : [])) } : {})
-      }
-    })
+    const rows = order.map(rowOf)
     const allMerged = order.some((b) => b.events.some((e) => e.kind === 'pr.merged' && b.wake.has(e)))
-    return { text: lines.join('\n'), update: { rows, ...(omitted ? { omitted } : {}), ...(allMerged ? { allMerged } : {}) }, wakes: order.some((b) => b.wake.size > 0), sent, told: order.map((b) => ({ ws: b.ws, name: b.name, events: b.events })) }
+    return { text: lines.join('\n'), update: { rows, ...(omitted ? { omitted } : {}), ...(allMerged ? { allMerged } : {}) }, wakes: order.some((b) => b.wake.size > 0), sent, told: order.map((b) => ({ ws: b.ws, name: b.name, events: b.events })), display }
   }
 
   /**
@@ -1257,6 +1288,27 @@ function summaries(verdicts: NonNullable<TeamEvent['review']>[]): string {
 /** The To do line for a PR whose review was of another commit. The PR's own line says the same, so it shows once. */
 const anotherReview = (pr: string, name: string, at: string) => `${upper(pr)} needs another review: the last one was of a different commit. Ask ${name} to review it again with message_agent (workspace ${at}).`
 
+/** One workspace's row on the Team update card. */
+function rowOf(b: Block): TeamUpdateRow {
+  const prNumber = b.ws.prNumber ?? b.events.find((e) => e.pr)?.pr
+  return {
+    workspaceId: b.ws.id, agentId: b.ws.agentId, name: b.name, task: b.ws.title ?? b.ws.name,
+    ...(prNumber ? { prNumber } : {}),
+    // A ready PR's review follows as a grey segment of its own, so only "Ready to merge" is green (KERNEL-411). A review
+    // that holds it back makes the PR's own event grey too (KERNEL-635).
+    events: b.events.flatMap((e) => [
+      { kind: e.kind, text: cardText(e, b.held), actionable: b.wake.has(e), ...(b.held && (e.kind === 'pr.ready' || e.kind === 'pr.unblocked') ? { held: true } : {}) },
+      ...(e.kind === 'pr.ready' || e.kind === 'pr.unblocked' ? b.card.map((text) => ({ kind: 'pr.review' as const, text, actionable: false })) : []),
+      // Why auto-merge allowed it, grey after "Merged automatically" (KERNEL-556).
+      ...(e.auto ? [{ kind: 'pr.review' as const, text: e.auto.card, actionable: false }] : []),
+      ...(e.review?.stillBlocked ? [{ kind: 'pr.review' as const, text: stillBlockedText(e.review.stillBlocked), actionable: false }] : [])
+    ]),
+    ...(b.reply ? { reply: b.reply } : {}),
+    ...(b.from ? { fromChat: b.from.title, ...(b.from.tab ? { fromTab: true } : {}) } : {}),
+    ...(b.shares.length ? { shared: b.shares.flatMap((e) => (e.shared ? [{ sharedId: e.shared.sharedId, version: e.shared.version, title: e.shared.title, kind: e.shared.kind }] : [])) } : {})
+  }
+}
+
 /**
  * Which of one workspace's events need the Lead, and what to do about each (KERNEL-121). Called only for work a Lead chat
  * handed off. A turn the user started in the teammate's own chat, and an error in one, are between them and never wake it.
@@ -1321,6 +1373,8 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (!r.current && of?.prNumber) { if (!r.lens || c.autoReview === false) wake(anotherReview(`PR #${of.prNumber}`, name, ws.id)); break }
         // Another review of the PR is still running or found blockers. Its own news says what's next.
         if (r.lens && (state?.inProgress || state?.blockers)) break
+        // An approval of this chat's own PR is a row, not a turn. Only a block GitHub puts on it is the user's to act on (KERNEL-990).
+        if (ofSelf) { if (of?.prState === 'ready' && of.prNumber && of.prBlocked) wake(blockedTodo(`PR #${of.prNumber}`, r.ofName, ofAt, of.prBlocked, of.baseRef, true), true); break }
         const kinds = state?.approved.length ? state.approved : overruled ? [] : [r.lens ?? 'code']
         // A PR GitHub still blocks is its author's to update, or the user's to know (KERNEL-401).
         if (of?.prState === 'ready' && of.prNumber) { wake(of.prBlocked ? blockedTodo(`PR #${of.prNumber}`, r.ofName, ofAt, of.prBlocked, of.baseRef, ofSelf) : readyToMerge(`PR #${of.prNumber}`, kinds, state?.skipped, c.refused?.(of.id), state?.overruled), true); break }
@@ -1367,9 +1421,9 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         break
       case 'pr.merged':
         // Kernel merged it by itself, so the user hears it from the Lead, even once the work is archived (KERNEL-556).
+        // The chat's own merge is a row, and Kernel cuts its next branch from the base (KERNEL-778, KERNEL-990).
+        if (self) break
         if (e.auto) wake(autoMergedTodo(pr, ws.prUrl), true)
-        // The chat stays open, and Kernel cuts its next branch from the base (KERNEL-778).
-        else if (self) wake(`${upper(pr)} merged. Tell the user in one line that the next change in this chat starts a new branch from ${ws.baseRef}.`, true)
         if (c.allMerged()) wake(b.fromChat ? `Every task handed off in the closed Lead chat "${b.fromChat}" has merged. Tell the user in one line.` : ALL_MERGED, true)
         break
       case 'pr.blocked': if (e.blocked) wake(blockedTodo(pr, name, at, e.blocked, ws.baseRef, self)); break
@@ -1378,6 +1432,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (e.updated?.capped && ws.prState !== 'merged' && ws.prState !== 'closed') wake(`Tell the user ${e.updated.base} keeps moving past ${pr}, so Kernel stopped bringing it up to date after ${e.updated.capped} tries and won't merge it by itself. They can update and merge it by hand.`)
         break
       case 'pr.unblocked': {
+        if (self) break
         const review = c.review
         // A review still to come, or one that holds the PR back, says what's next itself (KERNEL-635).
         if (reviewHolds(review) || review?.inProgress) break
@@ -1394,6 +1449,8 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (review?.blockers || review?.inProgress) break
         // Kernel ran the last review round it runs and blockers were left, so it didn't review the new commits (KERNEL-552).
         if (review?.stillBlocked) { wake(stillBlockedTodo(pr, review.stillBlocked, self ? undefined : name, true)); break }
+        // This chat's own PR that passed checks is a row. A block GitHub puts on it, or a review that can't start, is the user's (KERNEL-990).
+        if (self) { if (blocked) { if (!b.events.some((x) => x.kind === 'pr.blocked')) wake(blocked) } else if (review?.open?.failed) wake(`${upper(pr)} needs a review, and setup failed in its review workspace. Tell the user to fix it and click Run again there (workspace ${review.open.workspaceId}).`); break }
         // A branch behind its base is updated first: the update makes a new head, which any review would have to see again (KERNEL-401).
         if (ws.prBlocked === 'behind' && blocked) { wake(blocked); break }
         if (allApproved(review)) { wake(blocked || readyToMerge(pr, review?.approved ?? [], review?.skipped, c.refused?.(ws.id), review?.overruled)); break }

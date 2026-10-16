@@ -103,6 +103,16 @@ describe('notifications service', () => {
     expect(n.list().some((x) => x.needsYou)).toBe(false)
   })
 
+  it("raises the ready row and the banner for a Build here chat's own PR from the pr push alone, and settles it on the merge (KERNEL-990)", async () => {
+    const { store, n, shown } = await setup()
+    store.saveWorkspace({ ...store.workspace('w')!, agentId: 'kernel', prHead: 'abc' })
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'ready' })
+    expect(n.list()[0]).toMatchObject({ kind: 'merge', title: 'PR #41 is ready to merge', needsYou: true })
+    expect(shown.map((x) => x.title)).toEqual(['PR #41 is ready to merge'])
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'merged' })
+    expect(n.list().some((x) => x.needsYou)).toBe(false)
+  })
+
   it('alerts once per head commit when a ready PR reads as checks and ready again, as each time main moves (KERNEL-283)', async () => {
     const { store, n, shown } = await setup()
     const head = (prHead: string) => store.saveWorkspace({ ...store.workspace('w')!, prState: 'ready', prHead })
