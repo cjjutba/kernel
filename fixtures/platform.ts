@@ -336,6 +336,16 @@ const sixAgents: AgentDef[] = [
   agentFile('noor', 'Noor', 'Backend', 'Schema, API, migrations'), agentFile('ivy', 'Ivy', 'QA', 'Runs tests, attaches output'),
   agentFile('theo', 'Theo', 'Reviewer', 'Types, security, tenancy'), agentFile('wren', 'Wren', 'Designer', 'Joined today')
 ]
+/** The agents Settings, Models lists under each row: Frontend and Backend in two projects, one pinned to a model, one with a custom role. */
+const modelsAgents = (): Fixture['agents'] => {
+  const kai = agentFile('kai', 'Kai', 'Frontend', 'UI work, follows DESIGN.md')
+  const noor = { ...agentFile('noor', 'Noor', 'Backend', 'Schema, API, migrations'), model: undefined }
+  const rio = { ...agentFile('rio', 'Rio', 'Data analyst', 'Reports and queries'), model: undefined }
+  const mira = { ...agentFile('mira', 'Mira', 'Frontend', 'Design systems'), model: 'claude-opus-5-5' }
+  const theo = { ...agentFile('theo', 'Theo', 'Reviewer', 'Types, security, tenancy'), model: undefined }
+  const lead = agentFile('kernel-lead', 'Kernel', 'Lead', 'Plans and hands out tasks')
+  return { [ids.projectA]: [{ ...lead, model: undefined }, { ...kai, model: undefined }, noor, theo], [ids.projectB]: [{ ...kai, model: undefined }, mira, noor, rio], [ids.projectOwn]: [{ ...lead, model: undefined }], [ids.projectPortfolio]: [{ ...kai, model: undefined }] }
+}
 const longExample = 'Use this agent to design AI features and pick models. <example>Context: The user is adding chat. user: "Which SDK should I use?" assistant: "I will use the ai-architect agent."</example> <commentary>The request is about architecture, so hand it over.</commentary> Covers streaming, tool calling and cost.'
 const extraAgents: AgentDef[] = [
   { ...agentFile('ops', 'Ops', 'Ops', 'Deploys and watches logs'), origin: 'personal', file: '/Users/you/.claude/agents/ops.md', member: true, tools: ['Read', 'Bash', 'Grep'], prompt: 'You are Ops. You deploy, watch the logs and say what you saw.\n\nNever deploy on a red build. Roll back first and ask questions after.' },
@@ -434,7 +444,8 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsNotifications: settingsPage('notifications'),
   SettingsShortcuts: settingsPage('shortcuts'),
   // KERNEL-406, KERNEL-974: Frontend runs on Codex and Backend on Opus, each on its own row. The rest stay on their defaults.
-  SettingsModels: settingsPage('models', { settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),
+  // KERNEL-974: Kai and Noor in two projects, Mira on her own model, and Rio with a custom role that lands under Backend. QA has no one.
+  SettingsModels: settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),
   // KERNEL-406, KERNEL-665: both providers' accounts and status, with Claude's own login active, a second Claude account, a key, and Fable's weekly window on Work.
   SettingsAccounts: providersPage('claude', { accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex], usage: [...providerUsage(), fableWindow] }),
   // KERNEL-701: Work is added in Kernel and is also Claude Code's own login in Terminal, so it shows once, with its details open.

@@ -3,7 +3,6 @@
 .ag-role-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .ag-role-name .set-desc { font-size: var(--fs-meta); }
 .ag-auto { padding-left: 11px; font-size: var(--fs-code); color: var(--muted); }
-.ag-info { color: var(--muted); }
 
 .ag-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .ag-bar:empty { display: none; }
@@ -66,3 +65,7 @@
 .ag-kernel code { font: var(--fs-meta) var(--mono); color: var(--ink-2); }
 .ag-kernel span { font-size: var(--fs-code); color: var(--muted); }
 .ag-wt { margin-top: 10px; }
+
+.ag-covers { margin: 3px 0 0; padding: 0; list-style: none; font-size: var(--fs-meta); color: var(--muted); }
+.ag-covers .set-link { font-size: inherit; color: var(--ink-2); }
+.ag-pinned { color: var(--muted); }
