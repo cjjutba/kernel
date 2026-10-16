@@ -144,6 +144,28 @@
 .nr-label-note { font-weight: var(--fw-regular); }
 .row.nr-team { flex-wrap: wrap; gap: 6px; }
 
+/* Clone a GitHub repo (KERNEL-945): a URL, your repos with their owner's avatar, and the folder it lands in. */
+.cl-body { display: flex; flex-direction: column; gap: 18px; padding-top: 4px; position: relative; }
+.cl-acct { position: absolute; top: -40px; right: 34px; display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px 0 3px; border: 1px solid var(--line-3); border-radius: var(--r-pill); font-size: var(--fs-meta); color: var(--ink-2); }
+.cl-av { flex-shrink: 0; border-radius: 50%; object-fit: cover; background: var(--surface-3); }
+.cl-av-none { display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); color: var(--ink-2); text-transform: lowercase; }
+.cl-field { display: flex; flex-direction: column; gap: 6px; }
+.cl-label { font-size: var(--fs-meta); color: var(--ink-3); }
+.cl-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink); font-size: var(--fs-code); outline: none; }
+.cl-input:focus { border-color: var(--ink-3); }
+.cl-list { display: flex; flex-direction: column; gap: 2px; height: 232px; overflow-y: auto; scrollbar-gutter: stable; margin: 2px -8px 0; }
+.cl-repo { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 6px 12px 6px 8px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink); text-align: left; }
+.cl-repo:hover { background: var(--nav-hover); }
+.cl-repo[aria-checked='true'] { background: var(--surface-3); }
+.cl-repo > svg { flex-shrink: 0; color: var(--muted); }
+.cl-repo[aria-checked='true'] > svg:last-child { color: var(--ink); }
+.cl-repo-text { min-width: 0; gap: 1px; font-size: var(--fs-ui); }
+.cl-desc { font-size: var(--fs-meta); color: var(--muted); }
+.cl-hint { font-size: var(--fs-meta); color: var(--muted); }
+.cl-hint .mono { color: var(--ink-2); }
+.cl-kbd { margin-left: 4px; font: var(--fs-meta) var(--mono); opacity: 0.6; }
+.cl-error { margin: 0; font-size: var(--fs-meta); color: var(--del); }
+
 /* Open a folder (KERNEL-946): one list with the pick in place, and what opening does under it. No drop box: the whole dialog takes a dropped folder. */
 .of-body2 { display: flex; flex-direction: column; padding: 0 18px 4px; }
 .of-body2[data-over] { outline: 1px dashed var(--line-4); outline-offset: -4px; border-radius: var(--r-lg); }

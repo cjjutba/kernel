@@ -187,6 +187,8 @@ export interface RepoSummary {
   name: string
   private: boolean
   updatedAt: number
+  /** The repo's one-line description on GitHub (KERNEL-945). */
+  description?: string
 }
 
 /** An account a new GitHub repo can belong to: the signed-in user, then the orgs they're in (KERNEL-944). */

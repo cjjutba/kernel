@@ -9,6 +9,7 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
 import { ago, agoShort, projectState, teamOf } from '../src/renderer/src/screens/projects/projectInfo'
+import { repoOfUrl } from '../src/renderer/src/screens/projects/ConnectRepo'
 import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listOwners, lockfileInstall, recentFolders, repoAvailable, seatStarterTeam } from '../src/main/services/projects'
 import { loadRepoSettings } from '../src/main/services/settings'
 import { repoSlug } from '../src/renderer/src/screens/projects/RepoName'
@@ -152,7 +153,7 @@ describe('Kernel projects', () => {
     const done = (async () => { const project = await k.createProject({ source: 'folder', name: 'Own app', desc: 'Nights', from: repo, team: ['kai'], autostart: false }); return { project, steps: await setupDone(project.id) } })()
     const { project, steps } = await done
     expect(project).toMatchObject({ name: 'Own app', kind: 'folder', path: repo })
-    expect(steps.map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['install', 'ok'], ['copy', 'ok'], ['hooks', 'fail'], ['agents', 'ok']])
+    expect(steps.map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['copy', 'ok'], ['hooks', 'fail'], ['agents', 'ok']])
     expect(steps.find((s) => s.id === 'hooks')?.error).toContain('Check hooks')
     expect((await k.agents(project.id)).map((a) => a.id)).toEqual(['kernel-lead', 'kai'])
     expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Kai from .claude/agents, Kernel leads' })
@@ -188,9 +189,9 @@ describe('Kernel projects', () => {
     bus.off('push', on)
 
     // The failed step and the ones after it go back to waiting, and only they run again.
-    expect(published[0].map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['install', 'ok'], ['copy', 'ok'], ['hooks', 'wait'], ['agents', 'wait']])
+    expect(published[0].map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['copy', 'ok'], ['hooks', 'wait'], ['agents', 'wait']])
     expect([...new Set(published.flatMap((p) => p.filter((s) => s.state === 'run').map((s) => s.id)))]).toEqual(['hooks', 'agents'])
-    expect(steps.map((s) => s.state)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok'])
+    expect(steps.map((s) => s.state)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok'])
     expect(steps.find((s) => s.id === 'hooks')?.error).toBeUndefined()
     // The starter agents the first try seated are still Kernel's, not agents the repo brought.
     expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Kai from .claude/agents, Kernel leads' })
@@ -292,7 +293,7 @@ describe('Kernel projects', () => {
     const done = setupDone(project.id)
     await k.handlers()['projects.retrySetup']({ projectId: project.id })
     const steps = await done
-    expect(steps.map((s) => s.state)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok'])
+    expect(steps.map((s) => s.state)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok'])
     // The starter agents the first launch seated are still Kernel's.
     expect(steps.find((s) => s.id === 'agents')?.brought).toBeUndefined()
     await k.stop({ budgetMs: 0 })
@@ -316,7 +317,7 @@ describe('Kernel projects', () => {
     bus.on('push', on)
     await k.handlers()['projects.list'](undefined)
     bus.off('push', on)
-    expect(published.at(-1)?.map((s) => [s.id, s.state, s.error])).toEqual([['clone', 'ok', undefined], ['host', 'ok', undefined], ['worktrees', 'fail', 'Setup stopped when Kernel quit.'], ['install', 'wait', undefined]])
+    expect(published.at(-1)?.map((s) => [s.id, s.state, s.error])).toEqual([['clone', 'ok', undefined], ['host', 'ok', undefined], ['worktrees', 'fail', 'Setup stopped when Kernel quit.']])
     await k.stop({ budgetMs: 0 })
   })
 
@@ -328,7 +329,7 @@ describe('Kernel projects', () => {
     await exec('git', ['-C', repo, 'remote', 'add', 'origin', remote])
     const project = await k.createProject({ source: 'folder', name: 'Pushed app', from: repo, team: ['kai'], autostart: false })
     const steps = await setupDone(project.id)
-    expect(steps.map((s) => s.id)).toEqual(['clone', 'host', 'worktrees', 'install', 'copy', 'hooks', 'push', 'agents'])
+    expect(steps.map((s) => s.id)).toEqual(['clone', 'host', 'worktrees', 'copy', 'hooks', 'push', 'agents'])
     expect(steps.find((s) => s.id === 'push')).toMatchObject({ state: 'ok', title: 'Check push access', detail: 'git can push to origin' })
     // Settings, Project, Git reads the same result without running it again.
     const first = await k.handlers()['projects.pushCheck']({ projectId: project.id })
@@ -495,30 +496,20 @@ describe("the project's Install step (KERNEL-260, KERNEL-913)", () => {
     return { k, repo, project, steps, h: k.handlers() }
   }
 
-  it('runs the install scripts with the Install step, and the first workspace starts at once (KERNEL-913)', async () => {
+  it('installs nothing at project setup, and the first workspace starts at once (KERNEL-948)', async () => {
     await withFakeNpm(async () => {
       const { k, repo, project, steps } = await start({ 'package.json': pkg('touch ran.txt') })
-      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: 'npm install' })
-      expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
+      expect(steps.map((s) => s.id)).not.toContain('install')
+      expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
       const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'First' })
       expect(ws.status).toBe('ready')
       await k.stop()
     })
   }, 90000)
 
-  it("runs an install that runs the repo's own code with the Install step (KERNEL-913)", async () => {
-    await withFakeNpm(async () => {
-      const { k, repo, steps } = await start({ Gemfile: 'source "https://rubygems.org"\n' })
-      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: 'bundle install' })
-      expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
-      await k.stop()
-    }, { bundle: '#!/bin/sh\ntouch ran.txt\n' })
-  }, 90000)
-
   it('runs each Install step an older Kernel held for trust once, then forgets the list (KERNEL-913)', async () => {
     await withFakeNpm(async () => {
       const { k, repo, project } = await start({ Gemfile: '' })
-      await rm(join(repo, 'ran.txt'))
       k.store.saveMeta('heldInstalls', [project.id, project.id, 'gone'])
       await k.projects.installHeld()
       expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
@@ -530,14 +521,6 @@ describe("the project's Install step (KERNEL-260, KERNEL-913)", () => {
     }, { bundle: '#!/bin/sh\ntouch ran.txt\n' })
   }, 90000)
 
-  it('runs go mod download with the Install step (KERNEL-444)', async () => {
-    await withFakeNpm(async () => {
-      const { k, repo, steps } = await start({ 'go.mod': 'module demo\n' })
-      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: 'go mod download' })
-      expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
-      await k.stop()
-    }, { go: '#!/bin/sh\ntouch ran.txt\n' })
-  }, 90000)
 })
 
 describe('Projects page helpers', () => {
@@ -556,6 +539,18 @@ describe('Projects page helpers', () => {
     const agent = (id: string, retired?: boolean) => ({ id, name: id, role: 'Engineer', model: 'opus', file: '', retired }) as never
     expect(teamOf([agent('kernel'), agent('kai'), agent('kernel-reviewer', true)]).map((a) => a.id)).toEqual(['kernel', 'kai'])
     expect(teamOf(undefined)).toEqual([])
+  })
+})
+
+describe('Clone a GitHub repo (KERNEL-945)', () => {
+  it('reads owner/name from an https or ssh URL, or from owner/name typed as is', () => {
+    expect(repoOfUrl('https://github.com/cjjutba/kernel')).toBe('cjjutba/kernel')
+    expect(repoOfUrl('https://github.com/cjjutba/kernel.git')).toBe('cjjutba/kernel')
+    expect(repoOfUrl('github.com/cjjutba/homebrew-tap/')).toBe('cjjutba/homebrew-tap')
+    expect(repoOfUrl('git@github.com:cjjutba/cjjutba.dev.git')).toBe('cjjutba/cjjutba.dev')
+    expect(repoOfUrl(' cjjutba/fiscplus ')).toBe('cjjutba/fiscplus')
+    expect(repoOfUrl('https://gitlab.com/a/b')).toBeUndefined()
+    expect(repoOfUrl('just words')).toBeUndefined()
   })
 })
 
