@@ -36,7 +36,7 @@ export default defineConfig({
     }
   ],
   resolve: { alias: { '@shared': here('../src/shared') } },
-  define: { __KERNEL_TELEMETRY__: JSON.stringify({ key: '', host: '' }), 'process.env': '{}', 'process.platform': '"darwin"' },
+  define: { __KERNEL_TELEMETRY__: JSON.stringify({ key: '', host: '' }), 'process.env': '{}', 'process.platform': '"darwin"', 'process.versions': '{}' },
   build: {
     outDir: here('../site/public/demo'),
     emptyOutDir: true,
