@@ -1,4 +1,5 @@
 import { createContext, useCallback, useState } from 'react'
+import { getState, subscribe } from '../../store'
 
 /** A row the reader was looking at, and how far into it their view sat. */
 export interface Anchor { id: string; offset: number }
@@ -9,6 +10,11 @@ export interface Place { pinned: boolean; anchors: Anchor[]; scrollTop: number; 
 export interface RowBox { id: string; top: number; height: number }
 
 const ANCHORS = 3
+
+/** A chat was left at its end only within this many pixels of it (KERNEL-918). Following the end (`PIN_PX` in Transcript) is wider, but a reader 40px up left that spot, and it reopens there. */
+export const END_PX = 2
+
+export const leftAtEnd = (distFromEnd: number) => distFromEnd <= END_PX
 
 /** Spots last until Kernel restarts (KERNEL-765). They live here and not in the store, so nothing is persisted. */
 const places = new Map<string, Place>()
@@ -23,6 +29,92 @@ export function dropPlace(chatId: string) {
   places.delete(chatId)
   opened.delete(chatId)
 }
+
+/**
+ * Where a restore stands (KERNEL-918). Each frame reports the scrollTop it put the view at: after 4 frames at the same spot the restore has settled, and a later
+ * frame that lands elsewhere (late layout) unsettles it. A reader leaving while it is correcting keeps the spot from before, since the view is half restored.
+ */
+export function restoreState() {
+  let last = NaN
+  let still = 0
+  let settled = false
+  let live = true
+  return {
+    /** Whether the view had to move since the last report. */
+    see(at: number): boolean {
+      const moved = !(Math.abs(at - last) < 0.5)
+      last = at
+      if (moved) { still = 0; settled = false } else if (++still >= 4) settled = true
+      return moved
+    },
+    get settled() { return settled },
+    /** The reader took over, so the view is theirs. */
+    stop() { live = false },
+    get live() { return live },
+    /** Whether leaving now would save a half restored view. */
+    get correcting() { return live && !settled }
+  }
+}
+
+export interface HoldOptions {
+  /** Puts the view at its target and returns the scrollTop it set. */
+  put: () => number
+  /** A chat opening at its end: it also stops after `capMs`, or once the chat is no longer following. A spot keeps correcting until the reader scrolls. */
+  ends: boolean
+  /** The reader's own scrolling, which ends the hold. */
+  over: () => boolean
+  following: () => boolean
+  now: () => number
+  raf: (step: () => void) => number
+  caf: (id: number) => void
+  capMs: number
+  /** Called whenever the frames stop, and when they start again for a spot. */
+  frames: (running: boolean) => void
+}
+
+/**
+ * Puts the view back every frame until it holds still, for a chat that opens (KERNEL-918). Both paths end their `restoreState` when the frames stop, however they
+ * stop (settled, time up, the reader scrolled, no longer following), except a spot that settled: that one stays live, and `resume` corrects it when the thread changes size.
+ */
+export function holdView(o: HoldOptions) {
+  const st = restoreState()
+  const from = o.now()
+  let id = 0
+  const stopFrames = () => { o.caf(id); id = 0; o.frames(false) }
+  const step = () => {
+    id = 0
+    if (!st.live || o.over() || (o.ends && !o.following())) { st.stop(); return stopFrames() }
+    st.see(o.put())
+    if (!st.settled && !(o.ends && o.now() - from >= o.capMs)) { id = o.raf(step); return }
+    if (o.ends) st.stop()
+    stopFrames()
+  }
+  st.see(o.put())
+  id = o.raf(step)
+  return {
+    state: st,
+    /** The thread changed size: a spot is put back again, and the frames run until it holds still. */
+    resume() {
+      if (o.ends || !st.live || o.over()) return
+      if (st.see(o.put()) && !id) { o.frames(true); id = o.raf(step) }
+    },
+    stop() { st.stop(); stopFrames() }
+  }
+}
+
+/** Forgets the spots of the chats in every archived workspace, which nobody comes back to (KERNEL-918). `chats` is the store's chats by workspace id. */
+export function dropArchived(workspaces: { id: string; status: string }[], chats: Record<string, { id: string }[] | undefined>) {
+  for (const w of workspaces) if (w.status === 'archived') for (const c of chats[w.id] ?? []) dropPlace(c.id)
+}
+
+// Archiving a workspace is not a chat closing, so its chats' spots are dropped here when the workspace list changes, and the store stays as it is.
+let watched = getState().workspaces
+subscribe(() => {
+  const list = getState().workspaces
+  if (list === watched) return
+  watched = list
+  dropArchived(list, getState().chats)
+})
 
 /** The row the view starts in is the first whose bottom is below the top of the view. The rows above it are the fallbacks, each with its own offset. */
 export function readPlace(rows: RowBox[], scrollTop: number, pinned: boolean, lastUserId?: string): Place {
