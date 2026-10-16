@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { boot } from './store'
 import { installScrollIdle } from './ui/scrollIdle'
+import { installZoomSignal } from './ui/zoomSignal'
 import { applyStartupAppearance } from './ui/theme'
 import '@fontsource-variable/geist/wght.css'
 import '@fontsource/geist-mono/400.css'
@@ -13,4 +14,5 @@ import './tokens.css'
 applyStartupAppearance()
 void boot()
 installScrollIdle()
+installZoomSignal()
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)

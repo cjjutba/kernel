@@ -18,12 +18,17 @@ export function zoomStepOf(input: ZoomInput): ZoomStep | null {
 }
 
 /**
- * The traffic lights as macOS draws them, in points, measured on macOS 27 from a window capture: each button is 14 tall, and the
- * three span 60 from the first one's left edge to the last one's right edge. Page zoom doesn't scale them (KERNEL-901).
+ * The traffic lights as macOS draws them, in points. Page zoom doesn't scale them (KERNEL-901). Measured on macOS 27.0 (26A428) from
+ * `screencapture -l` window captures at Retina 2x and on a 1x display: the visible circle fills the 14 tall frame `setWindowButtonPosition`
+ * places, its top on the y given (checked at y 20, 24 and 30), and the three span 60 from the first one's left edge to the last one's right edge.
  */
 export const LIGHT_HEIGHT = 14
 export const LIGHTS_WIDTH = 60
-/** At 100% the lights sit 20 from the left and center on the top row's line, y 31 in the header row y 9 to 53 (KERNEL-431). */
+/**
+ * At 100% the lights sit 20 from the left and center on the top row's line, y 31 in the header row y 9 to 53 (KERNEL-431): the sidebar
+ * toggle's box is y 17 to 45 (`.sidebar-toggle` in tokens.css). On the same captures the circles and the toggle, Back and Forward icons
+ * share a center within 0.25 at 100%, 110% and 120%, sidebar shown and hidden (KERNEL-972).
+ */
 const LEFT = 20
 const ROW_CENTER = 31
 
@@ -68,6 +73,19 @@ export function settleZoom(win: ZoomedWindow) {
   const level = win.webContents.getZoomLevel()
   if (level < FLOOR_LEVEL) win.webContents.setZoomLevel(FLOOR_LEVEL)
   win.setWindowButtonPosition(lightsFor(factorOf(Math.max(FLOOR_LEVEL, level))))
+}
+
+/**
+ * The page's word that its zoom changed (`system.zoomChanged`), however it happened (KERNEL-972). The lights were once left at the 100% place
+ * with the page at 110%, by a change that never went through `zoomWindow`, so this catches any cause. The zoom is read from the page's
+ * webContents, not from the page's devicePixelRatio, which mixes in the display's scale. A sender that isn't the main window is ignored.
+ */
+export function followPageZoom(windowOf: (sender: unknown) => ZoomedWindow | null | undefined) {
+  return async (e: { sender: unknown }) => {
+    const win = windowOf(e.sender)
+    if (win) settleZoom(win)
+    return { ok: true as const }
+  }
 }
 
 /**

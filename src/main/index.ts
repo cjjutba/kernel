@@ -26,7 +26,7 @@ import { claudeAgents } from './services/pluginAgents'
 import { isAppUrl } from './windowGuard'
 import { appearanceOf, readAppearance, WindowAppearance } from './features/appearance'
 import { started as kernelStarted, woke } from './features/wiring'
-import { clampLevel, handZoom, lightsFor, placeLights, settleZoom, zoomStepOf, zoomWindow } from './windowZoom'
+import { clampLevel, followPageZoom, handZoom, lightsFor, placeLights, settleZoom, zoomStepOf, zoomWindow } from './windowZoom'
 import { attachImageMenu } from './imageMenu'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
 import type { Channel, KernelApi, PushEvent } from '@shared/ipc'
@@ -472,6 +472,8 @@ app.whenReady().then(async () => {
     await shell.openExternal(url)
     return { ok: true }
   })
+  // Any change to the page's zoom moves the traffic lights, including one that skipped zoomWindow (KERNEL-972).
+  handle('system.zoomChanged' satisfies Channel, followPageZoom((sender) => { const w = mainWindow(); return w && w.webContents === sender ? w : null }))
   const previews: PreviewHandlers = preview?.handlers() ?? previewFixture(fixture!)
   for (const [channel, fn] of Object.entries(previews) as [string, (req: unknown) => Promise<unknown>][]) handle(channel, async (_e, req) => { await started; return fn(req) })
   handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixturePush(fixture), ...(process.env.KERNEL_FIXTURE_PERSIST === '1' ? { persist: true } : {}) } : null))
