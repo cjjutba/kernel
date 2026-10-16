@@ -1963,6 +1963,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, ...setupLog('failed'), { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
+  // A later worktree chat in the project: no banner and no rows, the chat starts with the message.
+  SetupLaterChat: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', copied: 2, firstInProject: false, setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
+    items: { [ids.tableChat]: [{ kind: 'user', id: 'sl-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
+  })),
   SetupDone: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', copied: 2, setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
     items: { [ids.tableChat]: [{ kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },

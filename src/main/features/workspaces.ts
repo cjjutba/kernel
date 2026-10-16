@@ -139,7 +139,7 @@ export class Workspaces extends Feature {
       const reviewOf = reviewed?.id ?? (mode === 'worktree' ? o.linkReviewOf : undefined)
       const threadId = o.lead?.threadId ?? (o.leadChatId ? this.store.chat(o.leadChatId)?.threadId : undefined)
       const save = (path: string, branch: string, baselineRef?: string) => {
-        const w: Workspace = { id: newId(), projectId, name: slugify(title || 'chat'), branch, baseRef, ...(stale ? { fetchFailed: stale.text } : {}), path, mode, agentId: agent.id, ...(o.lead ? { lead: true as const } : {}), port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(threadId ? { threadId } : {}), ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), ...(later ? { worktreePending: {} } : {}), prState: 'none', createdAt: Date.now() }
+        const w: Workspace = { id: newId(), projectId, name: slugify(title || 'chat'), branch, baseRef, ...(stale ? { fetchFailed: stale.text } : {}), path, mode, agentId: agent.id, ...(o.lead ? { lead: true as const } : {}), port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(threadId ? { threadId } : {}), ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), ...(later ? { worktreePending: {} } : {}), ...(mode === 'worktree' ? { firstInProject: !this.store.workspaces(projectId).some((x) => x.mode === 'worktree' && !(x.lead && !x.threadId)) } : {}), prState: 'none', createdAt: Date.now() }
         this.store.saveWorkspace(w)
         return w
       }

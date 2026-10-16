@@ -52,7 +52,7 @@ function useShowLog(ws: Workspace) {
  * What Kernel did to start a chat's worktree, as plain rows at the top of the chat, the way Conductor shows a new workspace
  * (KERNEL-951): the branch, the worktree and its copied files, and the setup script, live while it runs with its last output
  * line, then how long it took. A failed setup offers Run again and Send anyway on its row. The log is one click away, never
- * opened for you. A chat on the current branch or the Lead's shared worktree has none of this, so it shows nothing.
+ * opened for you. A chat on the current branch, the Lead's shared worktree, or a later worktree chat in the project has none of this, so it shows nothing.
  */
 export function ChatSetupRows({ ws }: { ws: Workspace }) {
   const project = useStore((s) => s.projects.find((p) => p.id === ws.projectId))
@@ -61,7 +61,8 @@ export function ChatSetupRows({ ws }: { ws: Workspace }) {
   const since = useSince(run && !run.endedAt ? run.startedAt : undefined)
   const showLog = useShowLog(ws)
   const [busy, track] = useBusy<'again' | 'skip' | 'stop'>()
-  if (ws.mode !== 'worktree' || (ws.lead && !ws.threadId)) return null
+  // Only the project's first worktree chat shows the block. Chats from before the stamp have none and count as first.
+  if (ws.mode !== 'worktree' || (ws.lead && !ws.threadId) || ws.firstInProject === false) return null
   const pending = ws.worktreePending
   const end = endText(ws)
   const tail = run ? lastLine(lines) : undefined
