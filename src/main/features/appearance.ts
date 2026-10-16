@@ -4,7 +4,7 @@ import type { AppSettings, Theme } from '@shared/types'
 export type Appearance = AppSettings['appearance']
 
 /** The window's background in each theme, `--canvas` in tokens.css. test/appearance.test.ts checks they still match. */
-export const WINDOW_BG: Record<Theme, string> = { dark: '#09090a', light: '#f3f3f4' }
+export const WINDOW_BG: Record<Theme, string> = { dark: '#141414', light: '#f2f2f2' }
 
 /**
  * How much each Font size zooms the page, the `zoom` on `#root` in settings.css. Electron's page zoom doesn't include it, so the traffic
