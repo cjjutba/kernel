@@ -8,7 +8,7 @@ import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { leadOf } from '../../lead'
 import { leadNewKey } from '../../components/sidebar/slots'
-import { Button, useBusy } from '../../ui'
+import { Icon, useBusy } from '../../ui'
 import { briefParts, pickedLines } from '../new-workspace/brief'
 import { startChat } from '../new-workspace/start'
 import { takenFindings } from '../new-workspace/taken'
@@ -81,7 +81,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   const picked = boxPicks?.baseRef ?? ''
   const base = useBaseBranch(projectId, picked)
   // The project's branches are read as the page opens, so the branch menu opens on them. A picked branch the repo no longer has goes back to the default.
-  useEffect(() => { void readBranches(projectId) }, [projectId])
+  useEffect(() => { if (projectId) void readBranches(projectId) }, [projectId])
   const branches = useBranches(projectId)
   useEffect(() => {
     if (picked && branches && 'ok' in branches && !branches.ok.some((b) => b.name === picked)) savePicks(draftKey, { baseRef: undefined })
@@ -129,7 +129,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   }, [sourceKey])
 
   // Kernel fetches the project's remote now, so the fetch a send needs is done or under way by then. Nothing waits on it.
-  useEffect(() => { void call('lead.prefetch', { projectId }).catch(() => undefined) }, [projectId])
+  useEffect(() => { if (projectId) void call('lead.prefetch', { projectId }).catch(() => undefined) }, [projectId])
 
   // The issue in the box starts its check at once and keeps the answer, so a send finds it answered (KERNEL-543). Another issue or project drops it.
   const chip = d.parts.find((p): p is Extract<ChatPart, { type: 'issue' }> => p.type === 'issue')
@@ -238,14 +238,20 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
         <div ref={titleRef} className="lead-title" style={{ visibility: fits ? undefined : 'hidden' }} aria-hidden={fits ? undefined : true}>
           {usable
             ? <h2 className="lead-ask">What's next for {projectPicker('title')}?</h2>
-            : <>
-              <h2 className="lead-ask">What should we build today?</h2>
-              <div className="lead-sub">{projects.length ? projectPicker('button') : <Button onClick={() => actions.ui.openModal({ name: 'newProject' })}>Add a project</Button>}</div>
-            </>}
+            : projects.length
+              ? <>
+                <h2 className="lead-ask">What should we build today?</h2>
+                <div className="lead-sub">{projectPicker('button')}</div>
+              </>
+              : <>
+                <h2 className="lead-ask">What are we building?</h2>
+                <p className="lead-note">Add a project first. Kernel and its team work inside one repo at a time.</p>
+              </>}
         </div>
       </div>
       <div className="lead-up">{usable && <UpNext projectId={projectId} lead={name} onPlan={planIssue} />}</div>
       <ComposerShell
+        above={!projects.length && <FirstProjectPills />}
         input={<ComposerInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(leadMode, name)} onKeyDown={onKey} />}
         box={{ 'data-plan': plan ? 'true' : undefined, 'data-drop': d.over || undefined }}
         foot={<ComposerToolbar disabled={busy}
@@ -258,6 +264,17 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
       />
     </div>
     </OpenIssue.Provider>
+  )
+}
+
+/** With no project yet, the three ways to add one sit above the box (KERNEL-943). Each opens its own dialog. */
+function FirstProjectPills() {
+  return (
+    <nav className="lead-pills" aria-label="Add a project">
+      <button type="button" className="lead-pill" onClick={() => actions.ui.openModal({ name: 'connectRepo' })}><Icon name="branch" size={14} />Connect a repo</button>
+      <button type="button" className="lead-pill" onClick={() => actions.ui.openModal({ name: 'openFolder' })}><Icon name="folder" size={14} />Open a folder</button>
+      <button type="button" className="lead-pill" onClick={() => actions.ui.openModal({ name: 'newProject', prefill: { source: 'scratch', name: '', from: '' } })}><Icon name="burst" size={14} />Start from scratch</button>
+    </nav>
   )
 }
 

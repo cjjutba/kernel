@@ -2899,6 +2899,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const gone = { ...f.projects[0], id: 'project-gone', name: 'Old app', archived: true }
     return { ...p, projects: [...(p.projects ?? f.projects), gone], ui: { ...p.ui!, route: { name: 'leadNew', projectId: gone.id } } }
   }),
+  // KERNEL-943: no project at all yet. The title asks what we're building, and the three ways to add a project sit above the box.
+  NewChatFirstProject: scene(() => ({ projects: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [], ui: { route: { name: 'leadNew', projectId: '' }, workspace: { right: 'changes', bottom: 'run' } } })),
   NewChatMode: scene((f) => noPlan(leadNoChats(f))),
   NewChatKeyboard: scene((f) => noPlan(leadNoChats(f))),
   NewChatBranch: scene(newChatBranches),
