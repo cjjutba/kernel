@@ -20,7 +20,7 @@ export interface MenuEntry {
   note?: string
   /** A nested menu, opened on hover, click or ArrowRight. */
   children?: MenuEntry[]
-  /** A heading for the entries after it, up to the next one. It isn't an item: no focus, no selection. */
+  /** A heading for the entries after it, up to the next one. `leading` draws before its label, such as a provider's mark. It isn't an item: no focus, no selection. */
   title?: boolean
   /** Drawn in place of the label, note and shortcut, for an item that needs more than one line (an account and its usage). */
   content?: ReactNode
@@ -58,7 +58,7 @@ function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { i
       {items.map((it) => {
         if (it.id === '-') return <div key={`sep-${items.indexOf(it)}`} role="separator" className="menu-sep" />
         const m = it as MenuEntry
-        if (m.title) return <div key={m.id} className="menu-title" aria-hidden="true">{m.label}</div>
+        if (m.title) return <div key={m.id} className="menu-title" aria-hidden="true">{m.leading}{m.label}</div>
         const sub = m.children?.length
         return (
           <div key={m.id} className="menu-row" onMouseEnter={() => sub && setOpen(m.id)} onMouseLeave={() => sub && setOpen(null)}>
