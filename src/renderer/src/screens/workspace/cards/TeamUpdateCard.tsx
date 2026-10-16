@@ -1,5 +1,5 @@
 import { Fragment, useId, useLayoutEffect, useRef, useState } from 'react'
-import type { ChatItem, TeamUpdateRow, Workspace } from '@shared/types'
+import type { ChatItem, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
 import { mergeableState } from '@shared/merge'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
@@ -9,7 +9,7 @@ import { SharedRow } from './SharedCard'
 import { MergeButton } from '../pr/MergeButton'
 import { useFileLinks } from '../fileLinks'
 import { inline } from '../markdown'
-import { cardData, eventTone, isStillBlocked, mergeTargetOf, mergedAutomatically, newestRows, openItems, sections, taskParts } from './teamUpdate'
+import { cardData, eventTone, isHiddenUpdate, isReviewOnly, isStillBlocked, mergeTargetOf, mergedAutomatically, newestRows, openItems, sections, taskParts, verdictText, withoutSelfSuccess } from './teamUpdate'
 import './cards.css'
 
 /** One workspace by id, so a row redraws only when its own workspace changes, not when any workspace does. */
@@ -23,30 +23,44 @@ type UseNewest = (target: string, itemId: string, rowId: string) => boolean
  * Kernel's team update in a Lead chat (KERNEL-127): one row per teammate, with what happened and the reply it sent, so it
  * no longer reads as a message the user typed. The Lead reads the item's text; this draws the data saved with it.
  */
-export function TeamUpdateCard({ item, chatId }: { item: Extract<ChatItem, { kind: 'user' }>; chatId: string }) {
+export function TeamUpdateCard({ item, chatId, selfId }: { item: Extract<ChatItem, { kind: 'user' }>; chatId: string; selfId?: string }) {
   // Only one row about a PR in this chat offers Merge (KERNEL-351, KERNEL-581). One boolean per row, so a row redraws only when its answer changes.
   const useNewest = (target: string, itemId: string, rowId: string) => useStore((s) => {
     const row = newestRows(s.items[chatId], s.workspaces).get(target)
     return row?.itemId === itemId && row.workspaceId === rowId
   })
-  return <TeamUpdateView item={item} workspaceOf={useWorkspaceById} useNewest={useNewest} />
+  return <TeamUpdateView item={item} workspaceOf={useWorkspaceById} useNewest={useNewest} selfId={selfId} />
+}
+
+/** A review of the chat's own PR in Build here that Kernel drew without a turn (KERNEL-990): the same rows as a Team update, compact. */
+export function UpdateRowCard({ item }: { item: Extract<ChatItem, { kind: 'update' }> }) {
+  // Merge belongs to the PR header and the ready row, so the compact card never offers it.
+  return <UpdateView update={item.update} itemId={item.id} quiet workspaceOf={useWorkspaceById} useNewest={() => false} />
 }
 
 /** The card itself, given how to find a row's workspace: a store hook in the app, a stub in tests. Each row calls it, so it may be a hook. */
-export function TeamUpdateView({ item, workspaceOf, useNewest }: { item: Extract<ChatItem, { kind: 'user' }>; workspaceOf: WorkspaceOf; useNewest: UseNewest }) {
+export function TeamUpdateView({ item, workspaceOf, useNewest, selfId }: { item: Extract<ChatItem, { kind: 'user' }>; workspaceOf: WorkspaceOf; useNewest: UseNewest; selfId?: string }) {
   const data = cardData(item)
   // An older update whose lines no longer read as rows still shows, as Kernel's note.
   if (!data.rows.length && !data.omitted) return <KernelNote item={item} />
+  // In Build here the chat's own PR going well is a line in the transcript, so an older card drops those rows, and itself when none is left (KERNEL-990).
+  if (isHiddenUpdate(item, selfId)) return null
+  return <UpdateView update={{ ...data, rows: withoutSelfSuccess(data.rows, selfId) }} itemId={item.id} legacy={!item.update} workspaceOf={workspaceOf} useNewest={useNewest} />
+}
+
+function UpdateView({ update: data, itemId, legacy, quiet, workspaceOf, useNewest }: { update: TeamUpdate; itemId: string; legacy?: boolean; quiet?: boolean; workspaceOf: WorkspaceOf; useNewest: UseNewest }) {
+  // Only a card Kernel drew itself is compact. A review in a Hand off chat's Team update keeps its header.
+  const compact = !!quiet && isReviewOnly(data.rows) && !data.omitted
   // An update from before KERNEL-117 counted the lines it left out, not workspaces. Past the 8th workspace, older updates dropped them and newer ones carry them into the next update (KERNEL-637), so the card says only that they didn't fit.
-  const omitted = !data.omitted ? '' : item.update ? `Updates on ${data.omitted} more ${data.omitted === 1 ? 'workspace' : 'workspaces'} didn't fit here` : `${data.omitted} earlier ${data.omitted === 1 ? 'update' : 'updates'} left out`
+  const omitted = !data.omitted ? '' : !legacy ? `Updates on ${data.omitted} more ${data.omitted === 1 ? 'workspace' : 'workspaces'} didn't fit here` : `${data.omitted} earlier ${data.omitted === 1 ? 'update' : 'updates'} left out`
   return (
     <div className="msg tucard-wrap">
-      <section className="card tcard tucard" aria-label="Team update">
-        <header className="tucard-head"><h3 className="tucard-title">Team update</h3><span className="muted">from Kernel</span></header>
+      <section className="card tcard tucard" data-compact={compact || undefined} aria-label={compact ? 'Review' : 'Team update'}>
+        {!compact && <header className="tucard-head"><h3 className="tucard-title">Team update</h3><span className="muted">from Kernel</span></header>}
         {sections(data.rows).map((s, i) => (
           <div key={i} className="tucard-section">
             {s.fromChat && <div className="tucard-from">From "{s.fromChat}", {s.fromTab ? 'a tab you closed' : 'a Lead chat that is now closed'}</div>}
-            {s.rows.map((row) => <Row key={row.workspaceId} row={row} itemId={item.id} workspaceOf={workspaceOf} useNewest={useNewest} />)}
+            {s.rows.map((row) => <Row key={row.workspaceId} row={row} itemId={itemId} compact={compact} workspaceOf={workspaceOf} useNewest={useNewest} />)}
           </div>
         ))}
         {omitted && <div className="tucard-omitted">{omitted}</div>}
@@ -55,7 +69,7 @@ export function TeamUpdateView({ item, workspaceOf, useNewest }: { item: Extract
   )
 }
 
-function Row({ row, itemId, workspaceOf, useNewest }: { row: TeamUpdateRow; itemId: string; workspaceOf: WorkspaceOf; useNewest: UseNewest }) {
+function Row({ row, itemId, compact, workspaceOf, useNewest }: { row: TeamUpdateRow; itemId: string; compact?: boolean; workspaceOf: WorkspaceOf; useNewest: UseNewest }) {
   const ws = workspaceOf(row.workspaceId)
   // A reviewer's row merges the PR it reviewed. Once that workspace is archived the PR is over, and the row says In History.
   const targetId = ws ? mergeTargetOf(ws) : row.workspaceId
@@ -76,7 +90,9 @@ function Row({ row, itemId, workspaceOf, useNewest }: { row: TeamUpdateRow; item
       <div className="tucard-line">
         <span className="tucard-name">{row.name}</span>
         {key && <span className="tucard-key">{key}</span>}
-        <span className="tucard-task ellipsis">{title}</span>
+        <span className="tucard-task ellipsis">{compact ? reviewed(row, target) : title}</span>
+        {compact && row.events.map((e, i) => <Fragment key={i}><span className="tucard-sep" aria-hidden="true">·</span><span className="tucard-ev" data-tone={eventTone(e)}>{verdictText(e.text)}</span></Fragment>)}
+        {compact && <span className="tucard-fill" />}
         {ws && (
           <span className="tucard-act">
             {stuck ? <span className="tucard-why">Needs you</span> : merge && <MergeButton ws={merge} />}
@@ -88,7 +104,7 @@ function Row({ row, itemId, workspaceOf, useNewest }: { row: TeamUpdateRow; item
         )}
       </div>
       {/* The events as one line of text between dots, colored only for what failed, merged or passed (KERNEL-274). */}
-      {row.events.length > 0 && (
+      {!compact && row.events.length > 0 && (
         <p className="tucard-events">
           {row.events.map((e, i) => (
             <Fragment key={i}>
@@ -109,6 +125,12 @@ function Row({ row, itemId, workspaceOf, useNewest }: { row: TeamUpdateRow; item
       {row.shared?.map((f) => <SharedRow key={f.sharedId} sharedId={f.sharedId} version={f.version} title={f.title} kind={f.kind} />)}
     </div>
   )
+}
+
+/** "Reviewed PR #7", the number from the row, the PR it reviewed, or the review's task. */
+function reviewed(row: TeamUpdateRow, target: Workspace | undefined) {
+  const n = row.prNumber ?? target?.prNumber ?? /#(\d+)/.exec(row.task)?.[1]
+  return n ? `Reviewed PR #${n}` : 'Reviewed the PR'
 }
 
 /** The most blockers a still blocked row lists. The PR itself has the rest. */

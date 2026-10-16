@@ -309,6 +309,9 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .note .note-ref:hover { color: var(--ink); text-decoration: underline; }
 .note.inline { gap: 8px; }
 .note.inline > svg { flex-shrink: 0; }
+/* A PR's progress is quiet: opened is grey, ready to merge is the PR header's green, merged is the one purple. */
+.note.inline[data-pr='ready'] > svg { color: var(--pr-ready-text); }
+.note.inline[data-pr='opened'] > svg { color: var(--ink-3); }
 .note.inline[data-pr='merged'] > svg { color: var(--pr-merged-text); }
 .note.inline[data-pr='cifail'] > svg { color: var(--pr-fail-text); }
 .note.inline[data-pr='closed'] > svg { color: var(--ink-3); }

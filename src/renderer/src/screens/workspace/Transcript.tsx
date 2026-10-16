@@ -23,7 +23,8 @@ import { instructionOf } from './pr/model'
 import { userView } from './sender'
 import { KernelNote } from './KernelNote'
 import { SharedCard } from './cards/SharedCard'
-import { TeamUpdateCard } from './cards/TeamUpdateCard'
+import { TeamUpdateCard, UpdateRowCard } from './cards/TeamUpdateCard'
+import { isHiddenUpdate } from './cards/teamUpdate'
 import { LocalMergeRow } from './pr/LocalMerge'
 import { ReviewCard } from './pr/ReviewCard'
 import { LEAD_MODE_ICON } from './composer/modes'
@@ -775,12 +776,13 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorks
       const sent = instructionOf(item)
       if (sent) return <InstructionCard part={sent} />
       const view = userView(item)
-      return view === 'update' ? <div className="jump-anchor" data-jump={item.id}><TeamUpdateCard item={item} chatId={chatId} /></div> : view === 'note' ? <KernelNote item={item} /> : view === 'hidden' ? null : <UserMessage item={item} workspaceId={workspaceId} onEdit={onEdit} />
+      return view === 'update' ? (isHiddenUpdate(item, workspaceId) ? null : <div className="jump-anchor" data-jump={item.id}><TeamUpdateCard item={item} chatId={chatId} selfId={workspaceId} /></div>) : view === 'note' ? <KernelNote item={item} /> : view === 'hidden' ? null : <UserMessage item={item} workspaceId={workspaceId} onEdit={onEdit} />
     }
     case 'text': return <ReplyMessage item={item} chatId={chatId} workspaceId={workspaceId} full={block.actions} onFork={onFork} onForkWorkspace={onForkWorkspace} onOpenDiff={onOpenDiff} />
     case 'thinking': return <ThinkingRow item={item} />
     case 'tool': return <ToolRow item={item} />
     case 'note': return <div className="note inline" data-pr={item.pr}>{item.pr && <Icon name={NOTE_GLYPH[item.pr]} size={14} />}<span className="note-text"><NoteText text={item.text} refs={item.refs} /></span><span className="note-rule" aria-hidden="true" />{item.link && <NoteLink link={item.link} />}</div>
+    case 'update': return <div className="jump-anchor" data-jump={item.id}><UpdateRowCard item={item} /></div>
     case 'interrupted': return <span className="interrupted">INTERRUPTED BY YOU</span>
     case 'approval': return <ApprovalRow id={item.approvalId} />
     case 'shared': return <SharedCard sharedId={item.sharedId} version={item.version} />

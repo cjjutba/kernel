@@ -1719,6 +1719,27 @@ const lmFiles: ChangedFile[] = [
 ]
 const lmPr = { prNumber: 171, prUrl: 'https://github.com/cjjutba/client-a/pull/171', prTitle: 'fix(money): round refunds half away from zero' }
 
+/** Build here's own PR as quiet rows (KERNEL-990): the notes Kernel draws, and Theo's review as a card Kernel draws without a turn. */
+const bhNote = (id: string, m: number, text: string, pr?: 'opened' | 'ready' | 'merged'): ChatItem => ({ kind: 'note', id, ts: at(10, m), text, ...(pr ? { pr } : {}) })
+const bhReview = (id: string, m: number, approved: boolean): ChatItem => ({
+  kind: 'update', id, ts: at(10, m),
+  update: { rows: [{
+    workspaceId: 'ws-review-171', agentId: 'theo', name: 'Theo', task: 'Review PR #171', prNumber: 171,
+    events: [{ kind: 'review', text: approved ? 'Approved PR #171' : 'Found 2 blockers on PR #171', actionable: !approved }],
+    reply: approved
+      ? 'The rounding now goes half away from zero for refunds and the cent case has a test. I checked credit notes and the export and neither calls the changed function. No blockers.'
+      : 'Two blockers. The export still rounds half to even, so a refund exported as CSV is a cent off from the invoice. The new test covers only positive amounts, so negative refunds are untested.'
+  }] }
+})
+/** Theo's review workspace for the card's In History link, and the Lead chat that reviewed PR #171. */
+const bhScene = (f: Fixture, items: ChatItem[], ws: Partial<Workspace> = {}): Partial<Fixture> => {
+  const s = leadModeScene(f, { mode: 'build', right: 'changes', ws: { ...lmPr, ...ws }, items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...items] })
+  const review: Workspace = { id: 'ws-review-171', projectId: ids.projectA, name: 'review-pr-171', title: 'Review PR #171', branch: 'feat/refund-rounding-review', baseRef: 'feat/refund-rounding', path: '/Users/you/kernel/worktrees/client-a/review-pr-171', mode: 'worktree', agentId: 'theo', port: 4317, status: 'archived', prState: 'none', reviewOf: ids.lead, createdAt: at(10, 8) }
+  return { ...s, workspaces: [...(s.workspaces ?? f.workspaces), review] }
+}
+const bhOpened = bhNote('bh-n1', 6, 'Opened PR #171', 'opened')
+const bhReady = bhNote('bh-n2', 12, 'PR #171 is ready to merge', 'ready')
+
 // ---------- Lead chats that hold several tabs (KERNEL-338)
 
 const GROUPED = { export: 't-export', table: 't-table', login: 't-login', demo: 't-demo', csv: 't-csv' } as const
@@ -2324,6 +2345,17 @@ export const workspaceFixtures: Record<string, Fixture> = {
     mode: 'build', right: 'changes', ws: { ...lmPr, prState: 'merged', mergedAt: at(10, 20) },
     items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'PR #171 merged.', 21)]
   })),
+  WorkspaceLeadBuildHereReadyToMerge: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171. Checks are running.', 6), bhOpened, bhReview('bh-u1', 10, true), bhReady], { prState: 'ready' })),
+  WorkspaceLeadBuildHereMergedRows: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhOpened, bhReview('bh-u1', 10, true), bhReady, bhNote('bh-n3', 20, 'PR #171 was squashed into main. Next changes start on a new branch', 'merged'), ...lmReply('lm-c', 'PR #171 is merged. The next change in this chat starts on a new branch from origin/main.', 21)], { prState: 'merged', mergedAt: at(10, 20) })),
+  WorkspaceLeadBuildHereKept: scene((f) => bhScene(f, [...lmReply('lm-b', 'I opened PR #171.', 6), bhOpened, bhReview('bh-u1', 10, true), bhReady, bhNote('bh-n3', 20, 'PR #171 was squashed into main.', 'merged'), bhNote('bh-n4', 20, 'Kernel kept this branch because it has uncommitted changes. A new branch starts once nothing here is left out of the merge.')], { prState: 'merged', mergedAt: at(10, 20) })),
+  WorkspaceLeadBuildHereBlockers: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhOpened, bhReview('bh-u1', 10, false), ...lmReply('lm-c', 'Theo found two blockers in PR #171. I am fixing the export rounding and adding a test for negative refunds.', 11)], { prState: 'open' })),
+  WorkspaceLeadOldSelfCard: scene((f) => bhScene(f, [
+    ...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6),
+    tuCard('bh-old1', 7, [{ ...tuRow(ids.lead, 'kernel-lead', 'Kernel', 'Refund rounding', [tuEv('pr.opened', 'Opened PR #171'), tuEv('pr.ready', 'Ready to merge', true), tuEv('pr.review', 'Code approved')]), prNumber: 171 }]),
+    ...lmReply('lm-c', 'PR #171 is ready to merge. Theo approved it.', 12),
+    tuCard('bh-old2', 13, [{ ...tuRow(ids.lead, 'kernel-lead', 'Kernel', 'Refund rounding', [tuEv('pr.cifail', 'Checks failed', true)]), prNumber: 171 }]),
+    ...lmReply('lm-d', 'A check failed on PR #171. I am looking at it.', 14)
+  ], { prState: 'cifail' })),
   WorkspaceLeadTooBig: scene((f) => leadModeScene(f, {
     mode: 'build', right: 'changes', changes: lmFiles,
     items: [
