@@ -17,18 +17,18 @@
   },
   "dependencies": {
     "@paper-design/shaders-react": "0.0.81",
-    "@radix-ui/react-tabs": "1.1.22",
-    "marked": "18.0.14",
+    "@radix-ui/react-tabs": "1.2.1",
+    "marked": "18.1.1",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.64.0",
     "@tailwindcss/postcss": "4.3.3",
-    "@types/node": "26.6.4",
+    "@types/node": "26.6.5",
     "@types/pngjs": "6.0.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
@@ -38,7 +38,7 @@
     "pngjs": "7.0.0",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
-    "vite": "8.3.3",
-    "vitest": "5.0.3"
+    "vite": "8.3.4",
+    "vitest": "5.0.4"
   }
 }
