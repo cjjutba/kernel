@@ -32,6 +32,7 @@ import { newChatLeadMode } from '@shared/leadMode'
 import { useProjectSettings } from '../settings/useSettings'
 import { stripRemote } from '../settings/remote'
 import { UpNext } from './UpNext'
+import { SetupRows } from './SetupRows'
 
 /**
  * The New chat page, the one way to start a chat (KERNEL-788): the title, which names the project and picks it, a composer and the tracker's
@@ -170,6 +171,10 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
       d.focus()
       return
     }
+    if (!checkedOut) {
+      actions.ui.toast({ title: 'Still setting up', sub: `${project?.name ?? 'The project'} has no checkout yet. Send again once it does.` })
+      return
+    }
     const parts = briefParts(typed, null, pickedLines({ mode: place, target: base.target, fallback: base.fallback, picked: '' }))
     void run('send', async () => {
       const issue = typed.find((p): p is Extract<ChatPart, { type: 'issue' }> => p.type === 'issue')
@@ -227,6 +232,9 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   const { read: trackerRead } = useProjectTracker(projectId)
   // A project that was archived or removed under the page, or none at all: the title asks without one, and nothing sends until one is picked.
   const usable = !!project && !project.archived
+  // A project still setting up shows its steps where the title goes (KERNEL-948), and nothing sends until its checkout is there.
+  const setupSteps = useStore((s) => s.projectSetup[projectId])
+  const checkedOut = !setupSteps || (['clone', 'github'] as const).every((id) => (setupSteps.find((x) => x.id === id)?.state ?? 'ok') === 'ok')
   const projectPicker = (variant: 'title' | 'button') => (
     <ProjectPicker variant={variant} projects={projects} project={usable ? project : undefined} open={menu === 'project'} disabled={busy} onToggle={() => setMenu(menu === 'project' ? null : 'project')} onClose={() => setMenu((m) => (m === 'project' ? null : m))} onPick={pickProject} onNewProject={() => actions.ui.openModal({ name: 'newProject' })} />
   )
@@ -234,7 +242,8 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   return (
     <OpenIssue.Provider value={issueCtx}>
     <div className="lead-new">
-      <div ref={topRef} className="lead-top">
+      <div ref={topRef} className="lead-top" data-setup={setupSteps && project ? '' : undefined}>
+        {setupSteps && project ? <SetupRows project={project} steps={setupSteps} /> :
         <div ref={titleRef} className="lead-title" style={{ visibility: fits ? undefined : 'hidden' }} aria-hidden={fits ? undefined : true}>
           {usable
             ? <h2 className="lead-ask">What's next for {projectPicker('title')}?</h2>
@@ -242,9 +251,9 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
               <h2 className="lead-ask">What should we build today?</h2>
               <div className="lead-sub">{projects.length ? projectPicker('button') : <Button onClick={() => actions.ui.openModal({ name: 'newProject' })}>Add a project</Button>}</div>
             </>}
-        </div>
+        </div>}
       </div>
-      <div className="lead-up">{usable && <UpNext projectId={projectId} lead={name} onPlan={planIssue} />}</div>
+      <div className="lead-up">{usable && !setupSteps && <UpNext projectId={projectId} lead={name} onPlan={planIssue} />}</div>
       <ComposerShell
         input={<ComposerInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(leadMode, name)} onKeyDown={onKey} />}
         box={{ 'data-plan': plan ? 'true' : undefined, 'data-drop': d.over || undefined }}
@@ -253,7 +262,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
           model={{ label: modelLabelOf(model, codexModels), provider: providerOf(model), open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider: providerOf(model), grouped: codexInUse, model, effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: pickEffort } }}
           mode={{ provider: providerOf(model), availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
           plus={{ panel: plusPanel, onPanel: setMenu, projectId, disabled: busy || !usable, where: { place, picked, branch: stripRemote(base.target, base.remote), local: stripRemote(base.fallback, base.remote), onPlace: pickPlace, onBranch: (ref) => savePicks(draftKey, { baseRef: ref || undefined }) }, onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
-          send={{ label: 'Send', ready: hasDraft && usable, busy: busy || d.pending > 0, busyLabel: d.pending > 0 ? 'Attaching' : checking ? 'Checking' : 'Sending', onSend: start }} />}
+          send={{ label: 'Send', ready: hasDraft && usable && checkedOut, busy: busy || d.pending > 0, busyLabel: d.pending > 0 ? 'Attaching' : checking ? 'Checking' : 'Sending', onSend: start }} />}
         hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
       />
     </div>

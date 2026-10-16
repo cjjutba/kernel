@@ -1,7 +1,8 @@
 import { useEffect, useId, useState } from 'react'
 import type { NewProjectPrefill } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions, go } from '../../store'
+import { actions } from '../../store'
+import { openNewChat } from '../../lead'
 import { Button, Modal, useBusy } from '../../ui'
 import { defaultTeam } from './draft'
 import { RepoNameField, useRepoName } from './RepoName'
@@ -42,7 +43,7 @@ export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
         github: { owner: repo.owner, name: repo.name }
       })
       actions.projects.upsert(project)
-      go({ name: 'onboarding', step: 'project', projectId: project.id })
+      openNewChat(project.id)
     } catch (e) { setError(cleanError(e)) }
   })
 
