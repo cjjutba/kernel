@@ -6,6 +6,12 @@ export type Appearance = AppSettings['appearance']
 /** The window's background in each theme, `--canvas` in tokens.css. test/appearance.test.ts checks they still match. */
 export const WINDOW_BG: Record<Theme, string> = { dark: '#09090a', light: '#f3f3f4' }
 
+/**
+ * How much each Font size zooms the page, the `zoom` on `#root` in settings.css. Electron's page zoom doesn't include it, so the traffic
+ * lights, which main places, multiply it in (KERNEL-972). test/appearance.test.ts checks they still match.
+ */
+export const FONT_ZOOM: Record<Appearance['fontSize'], number> = { small: 0.92, default: 1, large: 1.1 }
+
 export const DEFAULT_APPEARANCE: Appearance = { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false }
 
 /** The flag main hands the page through `additionalArguments`, read by the preload. */
@@ -52,7 +58,7 @@ export interface NativeThemeLike {
 export class WindowAppearance {
   private a: Appearance
 
-  constructor(private readonly o: { nativeTheme: NativeThemeLike; window: () => { setBackgroundColor(color: string): void } | null | undefined; initial: Appearance }) {
+  constructor(private readonly o: { nativeTheme: NativeThemeLike; window: () => { setBackgroundColor(color: string): void } | null | undefined; initial: Appearance; onFontZoom?: (zoom: number) => void }) {
     this.a = o.initial
     o.nativeTheme.themeSource = this.a.theme
     o.nativeTheme.on('updated', () => this.paint())
@@ -64,13 +70,18 @@ export class WindowAppearance {
 
   get backgroundColor(): string { return WINDOW_BG[this.theme] }
 
+  /** How much the Font size zooms the page. */
+  get fontZoom(): number { return FONT_ZOOM[this.a.fontSize] }
+
   /** The flag that hands this appearance to a new window's page. */
   get arg(): string { return APPEARANCE_ARG + JSON.stringify(this.a) }
 
-  /** Settings changed. */
+  /** Settings changed. A new Font size zooms the page, so the traffic lights move with it. */
   set(a: Appearance) {
     const theme = a.theme !== this.a.theme
+    const font = a.fontSize !== this.a.fontSize
     this.a = a
+    if (font) this.o.onFontZoom?.(this.fontZoom)
     if (!theme) return
     // Setting themeSource fires 'updated' when the resolved colors change, but not from system to the theme macOS is in.
     this.o.nativeTheme.themeSource = a.theme

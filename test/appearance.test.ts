@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { APPEARANCE_ARG, DEFAULT_APPEARANCE, readAppearance, WINDOW_BG, WindowAppearance, type NativeThemeLike } from '../src/main/features/appearance'
+import { APPEARANCE_ARG, DEFAULT_APPEARANCE, FONT_ZOOM, readAppearance, WINDOW_BG, WindowAppearance, type NativeThemeLike } from '../src/main/features/appearance'
 
 const dirs: string[] = []
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }) })
@@ -48,6 +48,17 @@ function fakeTheme(systemDark: boolean) {
 }
 
 describe('WindowAppearance', () => {
+  it('moves the traffic lights when the Font size changes, and only then (KERNEL-972)', () => {
+    const zooms: number[] = []
+    const a = new WindowAppearance({ nativeTheme: fakeTheme(true), window: () => null, initial: DEFAULT_APPEARANCE, onFontZoom: (z) => zooms.push(z) })
+    expect(a.fontZoom).toBe(1)
+    a.set({ ...DEFAULT_APPEARANCE, theme: 'light' })
+    a.set({ ...DEFAULT_APPEARANCE, theme: 'light', fontSize: 'large' })
+    a.set({ ...DEFAULT_APPEARANCE, theme: 'light', fontSize: 'large', density: 'compact' })
+    a.set({ ...DEFAULT_APPEARANCE, fontSize: 'small' })
+    expect(zooms).toEqual([FONT_ZOOM.large, FONT_ZOOM.small])
+    expect(a.fontZoom).toBe(FONT_ZOOM.small)
+  })
   it('sets native UI to the saved theme and opens on its background', () => {
     const nativeTheme = fakeTheme(true)
     const a = new WindowAppearance({ nativeTheme, window: () => null, initial: { ...DEFAULT_APPEARANCE, theme: 'light' } })
@@ -84,6 +95,15 @@ describe('the startup appearance across processes', () => {
     const canvas = (selector: string) => css.slice(css.indexOf(selector)).match(/--canvas:\s*(#[0-9a-f]+)/i)?.[1]
     expect(canvas(":root, [data-theme='dark'] {")).toBe(WINDOW_BG.dark)
     expect(canvas("[data-theme='light'] {")).toBe(WINDOW_BG.light)
+  })
+  it('zooms the traffic lights by the zoom settings.css gives each Font size', () => {
+    const css = readFileSync('src/renderer/src/screens/settings/settings.css', 'utf8')
+    for (const [size, zoom] of Object.entries(FONT_ZOOM)) {
+      const rule = css.match(new RegExp(`html\\[data-font='${size}'\\] #root \\{ zoom: ([\\d.]+);`))?.[1]
+      expect(rule === undefined ? 1 : Number(rule)).toBe(zoom)
+    }
+    expect(css).toMatch(/data-font='small'/)
+    expect(css).toMatch(/data-font='large'/)
   })
   it('the preload reads the flag main passes', () => {
     expect(readFileSync('src/preload/index.ts', 'utf8')).toContain(`'${APPEARANCE_ARG}'`)

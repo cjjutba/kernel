@@ -737,6 +737,8 @@ export const teamFixtures: Record<string, Fixture> = {
   InboxMany: scene((f) => { const h = homeScene(f); return { ...h, notifications: Array.from({ length: 80 }, (_, i) => ({ ...h.notifications![i % h.notifications!.length], id: `n-many-${i}`, createdAt: ago((i + 1) * 20 * MIN) })), ui: { route: { name: 'inbox' } } } }),
   // No PNG: Settings, Appearance, Density set to Compact, which tightens the inbox rows too (KERNEL-538).
   InboxCompact: scene((f) => ({ ...homeScene(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), appearance: { ...DEFAULT_SETTINGS('/Users/you').appearance, density: 'compact' } }, ui: { route: { name: 'inbox' } } })),
+  // No PNG: Settings, Appearance, Font size set to Large, which zooms the page's root in CSS. The traffic lights follow it onto the top row (KERNEL-972).
+  InboxFontLarge: scene((f) => ({ ...homeScene(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), appearance: { ...DEFAULT_SETTINGS('/Users/you').appearance, fontSize: 'large' } }, ui: { route: { name: 'inbox' } } })),
   // No PNG: two agents in the same file. The newest row, so the detail pane opens on it.
   InboxOverlap: scene((f) => ({
     ...homeScene(f),

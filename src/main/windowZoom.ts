@@ -32,14 +32,17 @@ export const LIGHTS_WIDTH = 60
 const LEFT = 20
 const ROW_CENTER = 31
 
-/** Where the lights go at a page zoom: on the top row's center line, with the left gap scaled like the page, in whole points. */
+/**
+ * Where the lights go at a zoom: on the top row's center line, with the left gap scaled like the page, in whole points. The zoom is the
+ * page's zoom factor times Settings, Appearance, Font size, which zooms the page's root in CSS (`FONT_ZOOM`) without Electron knowing.
+ */
 export function lightsFor(zoomFactor: number, lightHeight = LIGHT_HEIGHT): Point {
   return { x: Math.round(LEFT * zoomFactor), y: Math.round(ROW_CENTER * zoomFactor - lightHeight / 2) }
 }
 
-/** Puts the lights on the top row for the page's current zoom. */
-export function placeLights(win: ZoomedWindow) {
-  win.setWindowButtonPosition(lightsFor(win.webContents.getZoomFactor()))
+/** Puts the lights on the top row for the page's current zoom and the Font size's `fontZoom`. */
+export function placeLights(win: ZoomedWindow, fontZoom: number) {
+  win.setWindowButtonPosition(lightsFor(win.webContents.getZoomFactor() * fontZoom))
 }
 
 /** What the View menu's Zoom In, Zoom Out and Actual Size do: half a zoom level a step, about 10%. */
@@ -62,17 +65,17 @@ export const FLOOR_LEVEL = (() => {
 export const clampLevel = (level: number) => Math.max(FLOOR_LEVEL, level)
 
 /** Zooms the page a step, no lower than the floor, and moves the lights to follow it. */
-export function zoomWindow(win: ZoomedWindow, step: ZoomStep) {
+export function zoomWindow(win: ZoomedWindow, step: ZoomStep, fontZoom: number) {
   const level = clampLevel(step === 'reset' ? 0 : win.webContents.getZoomLevel() + (step === 'in' ? LEVEL : -LEVEL))
   win.webContents.setZoomLevel(level)
-  win.setWindowButtonPosition(lightsFor(factorOf(level)))
+  win.setWindowButtonPosition(lightsFor(factorOf(level) * fontZoom))
 }
 
 /** Clamps a zoom the page has already taken, such as one Electron restored at launch, and moves the lights to it. */
-export function settleZoom(win: ZoomedWindow) {
+export function settleZoom(win: ZoomedWindow, fontZoom: number) {
   const level = win.webContents.getZoomLevel()
   if (level < FLOOR_LEVEL) win.webContents.setZoomLevel(FLOOR_LEVEL)
-  win.setWindowButtonPosition(lightsFor(factorOf(Math.max(FLOOR_LEVEL, level))))
+  win.setWindowButtonPosition(lightsFor(factorOf(Math.max(FLOOR_LEVEL, level)) * fontZoom))
 }
 
 /**
@@ -80,10 +83,10 @@ export function settleZoom(win: ZoomedWindow) {
  * with the page at 110%, by a change that never went through `zoomWindow`, so this catches any cause. The zoom is read from the page's
  * webContents, not from the page's devicePixelRatio, which mixes in the display's scale. A sender that isn't the main window is ignored.
  */
-export function followPageZoom(windowOf: (sender: unknown) => ZoomedWindow | null | undefined) {
+export function followPageZoom(windowOf: (sender: unknown) => ZoomedWindow | null | undefined, fontZoom: () => number) {
   return async (e: { sender: unknown }) => {
     const win = windowOf(e.sender)
-    if (win) settleZoom(win)
+    if (win) settleZoom(win, fontZoom())
     return { ok: true as const }
   }
 }
@@ -92,8 +95,8 @@ export function followPageZoom(windowOf: (sender: unknown) => ZoomedWindow | nul
  * Offers a zoom key to the page before the window takes it (KERNEL-598). A shared image's tab cancels the `kernel:zoom` event and zooms the
  * picture. Where nothing cancels it, or the page doesn't answer, the window zooms as the menu would have.
  */
-export async function handZoom(win: ZoomedWindow & { webContents: Pick<WebContents, 'executeJavaScript' | 'isDestroyed'> }, step: ZoomStep) {
+export async function handZoom(win: ZoomedWindow & { webContents: Pick<WebContents, 'executeJavaScript' | 'isDestroyed'> }, step: ZoomStep, fontZoom: () => number) {
   const wc = win.webContents
   const taken = await wc.executeJavaScript(`window.dispatchEvent(new CustomEvent('kernel:zoom', { cancelable: true, detail: '${step}' })) === false`).catch(() => false)
-  if (!taken && !wc.isDestroyed()) zoomWindow(win, step)
+  if (!taken && !wc.isDestroyed()) zoomWindow(win, step, fontZoom())
 }
