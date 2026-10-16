@@ -182,6 +182,8 @@ export interface RepoSummary {
   name: string
   private: boolean
   updatedAt: number
+  /** The repo's one-line description on GitHub (KERNEL-945). */
+  description?: string
 }
 
 /** A local folder that could become a project (OpenFolder.png). */
