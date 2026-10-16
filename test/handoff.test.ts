@@ -364,7 +364,8 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     const tracker: Tracker = kind === 'none' ? noneTracker() : {
       kind, search: async () => [], start: async () => undefined, issue: async () => { throw new Error('unused') },
       create: async (draft) => { wrote.push(['create', draft]); return { id: 'KERNEL-90', title: draft.title, url: 'https://linear.app/x/KERNEL-90', source: 'linear' } },
-      edit: async (id, change) => { wrote.push(['edit', id, change]); return { id, title: change.title ?? '', source: 'linear' } }
+      edit: async (id, change) => { wrote.push(['edit', id, change]); return { id, title: change.title ?? '', source: 'linear' } },
+      comment: async (id, body) => { wrote.push(['comment', id, body]); return { url: `https://linear.app/x/${id}#comment-1` } }
     }
     t.k.integrations.trackerFor = async () => tracker
     const file = (args: object) => t.run('file_issue', args)
@@ -384,7 +385,21 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     expect(wrote).toEqual([['create', { title: 'Symlink node_modules', description: 'Steps' }], ['edit', 'KERNEL-90', { description: 'More steps' }]])
     // A new issue needs a title, and an edit something to change.
     expect(await file({ go_ahead: 'file it' })).toEqual({ isError: true, text: 'Not filed: a new issue needs a title.' })
-    expect(await file({ issue: 'KERNEL-90', go_ahead: 'file it' })).toEqual({ isError: true, text: 'Not filed: pass the title or description to change on KERNEL-90.' })
+    expect(await file({ issue: 'KERNEL-90', go_ahead: 'file it' })).toEqual({ isError: true, text: 'Not filed: pass the title, description, state or comment to change on KERNEL-90.' })
+  })
+
+  // The /issue flow's comment and move go through file_issue too, on the same go-ahead (feat-lead-files-tracker-issues-only-with).
+  it('comments on an issue and moves its state only on the go-ahead, and never on a new one', { timeout: 60_000 }, async () => {
+    const t = await offLead('Ship it')
+    const { wrote, file } = fileTracker(t)
+    expect(await file({ issue: 'KERNEL-90', comment: 'Opened PR #7' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+    expect(await file({ issue: 'KERNEL-90', state: 'In Review', go_ahead: 'move it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+    expect(wrote).toEqual([])
+    expect(await file({ issue: 'KERNEL-90', state: 'In Review', comment: 'Opened PR #7', go_ahead: 'ship it' })).toEqual({
+      isError: false, text: 'Changed KERNEL-90, now In Review. Commented on KERNEL-90: https://linear.app/x/KERNEL-90#comment-1.'
+    })
+    expect(wrote).toEqual([['edit', 'KERNEL-90', { state: 'In Review' }], ['comment', 'KERNEL-90', 'Opened PR #7']])
+    expect(await file({ title: 'New', comment: 'hi', go_ahead: 'ship it' })).toEqual({ isError: true, text: 'Not filed: pass the issue key to change its state or comment on it.' })
   })
 
   it('files an issue with no quote after an approved plan, and says when the project has no tracker', { timeout: 60_000 }, async () => {

@@ -103,12 +103,31 @@ export function githubTracker(cwd: string, cmd: typeof exec = exec): Tracker {
     edit: async (id, change) => {
       const key = githubKey(id)
       if (!key) throw new Error(`${id} is not a GitHub issue. GitHub issues go by number, like #41.`)
+      const state = change.state?.trim().toLowerCase()
+      if (state !== undefined && state !== 'open' && state !== 'closed') throw new Error(`A GitHub issue is open or closed, not "${change.state}".`)
       const args = [...(change.title !== undefined ? ['--title', change.title] : []), ...(change.description !== undefined ? ['--body', change.description] : [])]
-      if (!args.length) throw new Error('Nothing to change: pass a title or a description.')
-      const r = await cmd('gh', ['issue', 'edit', key.slice(1), ...args], { cwd, timeoutMs: 30000 })
-      if (r.code !== 0 || r.timedOut) throw viewFailed(r, key, 'edit the GitHub issue')
-      // gh prints only the URL, so an edit that leaves the title gives none.
-      return writtenIssue(r.stdout, change.title ?? '')
+      if (!args.length && !state) throw new Error('Nothing to change: pass a title, a description or a state.')
+      let out: IssueSummary = { id: key, title: change.title ?? '', source: 'github' }
+      if (args.length) {
+        const r = await cmd('gh', ['issue', 'edit', key.slice(1), ...args], { cwd, timeoutMs: 30000 })
+        if (r.code !== 0 || r.timedOut) throw viewFailed(r, key, 'edit the GitHub issue')
+        // gh prints only the URL, so an edit that leaves the title gives none.
+        out = writtenIssue(r.stdout, change.title ?? '')
+      }
+      if (state) {
+        const r = await cmd('gh', ['issue', state === 'closed' ? 'close' : 'reopen', key.slice(1)], { cwd, timeoutMs: 30000 })
+        if (r.code !== 0 || r.timedOut) throw viewFailed(r, key, 'edit the GitHub issue')
+      }
+      return out
+    },
+    comment: async (id, body) => {
+      const key = githubKey(id)
+      if (!key) throw new Error(`${id} is not a GitHub issue. GitHub issues go by number, like #41.`)
+      const r = await cmd('gh', ['issue', 'comment', key.slice(1), '--body', body], { cwd, timeoutMs: 30000 })
+      if (r.code !== 0 || r.timedOut) throw viewFailed(r, key, 'comment on the GitHub issue')
+      // gh prints the comment's link, ending in #issuecomment-<id>.
+      const url = r.stdout.trim().split('\n').reverse().map((l) => l.trim()).find((l) => /^https?:\/\//.test(l))
+      return url ? { url } : {}
     }
   }
 }

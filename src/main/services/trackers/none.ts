@@ -10,6 +10,7 @@ export function noneTracker(): Tracker {
     issue: async () => { throw new Error(NO_TRACKER) },
     start: async () => undefined,
     create: async () => { throw new Error(NO_TRACKER) },
-    edit: async () => { throw new Error(NO_TRACKER) }
+    edit: async () => { throw new Error(NO_TRACKER) },
+    comment: async () => { throw new Error(NO_TRACKER) }
   }
 }

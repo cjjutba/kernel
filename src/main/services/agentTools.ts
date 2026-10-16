@@ -83,8 +83,9 @@ export const HANDOFF_NO_EDIT = "This chat is in Hand off, so you don't edit file
 
 /**
  * The tools of the Linear and GitHub MCP servers that write an issue or its comments. A Lead files and edits issues with
- * Kernel's file_issue instead, which checks the user's go-ahead (feat-lead-files-tracker-issues-only-with). Matched by tool name on any server
- * whose name has linear or github in it, so `linear`, `claude_ai_Linear` and `github` all count. Their read tools stay.
+ * Kernel's file_issue instead, which checks the user's go-ahead (feat-lead-files-tracker-issues-only-with). Matched by tool
+ * name on any server whose name has linear or github in it, so `linear`, `claude_ai_Linear` and `github` all count, and on a
+ * server the project's `[mcp.aliases]` ties to such a name, whatever its own. Their read tools stay.
  */
 const ISSUE_WRITES = {
   linear: ['save_issue', 'create_issue', 'update_issue', 'save_comment', 'create_comment', 'delete_comment'],
@@ -94,14 +95,32 @@ const ISSUE_WRITES = {
 /** The names these servers usually go by in a session, from `.mcp.json` and claude.ai's connectors, for the session's hidden list. */
 const ISSUE_SERVERS = { linear: ['linear', 'linear-server', 'claude_ai_Linear'], github: ['github', 'claude_ai_github', 'claude_ai_GitHub'] }
 
-/** The issue write tools of a server, by its name. */
-const issueWrites = (server: string): string[] => {
+type IssueTracker = keyof typeof ISSUE_WRITES
+
+/** Linear or GitHub by a server's name alone. */
+const trackerByName = (server: string): IssueTracker | undefined => {
   const s = server.toLowerCase()
-  return s.includes('linear') ? ISSUE_WRITES.linear : s.includes('github') ? ISSUE_WRITES.github : []
+  return s.includes('linear') ? 'linear' : s.includes('github') ? 'github' : undefined
+}
+
+/**
+ * Linear or GitHub for a server: by its own name, else by the name on the other side of an alias for it, so `linear =
+ * "tracker"` makes `tracker` Linear, and `tracker = "linear"` too. `aliases` is `aliasMap`'s.
+ */
+function trackerOf(server: string, aliases: Map<string, string>): IssueTracker | undefined {
+  const name = toolServerName(server)
+  const own = trackerByName(name)
+  if (own) return own
+  for (const [from, to] of aliases) {
+    const other = from === name ? to : to === name ? from : undefined
+    const kind = other && trackerByName(other)
+    if (kind) return kind
+  }
+  return undefined
 }
 
 /** What a Lead hears when it reaches for a tracker MCP server's issue write tool (feat-lead-files-tracker-issues-only-with). */
-export const LEAD_FILES_ISSUES = "Kernel files and edits tracker issues for the Lead. Call mcp__kernel__file_issue, with the user's go-ahead quoted in go_ahead. Reading issues works as before."
+export const LEAD_FILES_ISSUES = "Kernel writes tracker issues for the Lead. Call mcp__kernel__file_issue to file, edit, comment on or move one, with the user's go-ahead quoted in go_ahead. Reading issues works as before."
 
 /** The same refusal once the user switched the chat to Build here during the reply, which still runs in Hand off. */
 export const HANDOFF_SWITCHED = "This reply started while the chat was in Hand off, so you can't edit files in it. The user has switched this chat to Build here since, and that applies from their next message. Stop here and tell the user to send the request again."
@@ -175,6 +194,7 @@ export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string
   // Hand off only reaches a plan file, through `allows` below (KERNEL-770).
   const handoff = (tool: string) => o.lead === 'handoff' && READ_ONLY_OFF.includes(toolName(tool))
   // A Lead writes tracker issues through file_issue only (feat-lead-files-tracker-issues-only-with).
+  const issueWrites = (server: string): string[] => { const k = trackerOf(server, aliases); return k ? ISSUE_WRITES[k] : [] }
   const leadOff = (tool: string) => { const e = mcpEntry(tool); return !!o.lead && !!e?.tool && issueWrites(e.server).includes(e.tool) }
   const usable = (tool: string) => own(tool) || (listed(tool) && !disallows(tool) && !handoff(tool) && !leadOff(tool))
   const allows = (tool: string, input?: unknown) => usable(tool) || (!o.readOnly && WRITERS.includes(tool) && isPlanFile((input as { file_path?: unknown } | undefined)?.file_path, plans))
@@ -193,8 +213,13 @@ export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string
   const named = [...[...off.servers].filter((s) => s !== '*' && s !== 'kernel').map((s) => `mcp__${s}`), ...off.tools.filter((t) => t.server !== 'kernel').map((t) => `mcp__${t.server}__${t.tool}`)]
   // A read-only session's writers go from its list too, so the model never reaches for them.
   const modeRefuses = (tool: string, now?: LeadMode) => (handoff(tool) && !own(tool) ? handoffRefusal(now) : leadOff(tool) ? LEAD_FILES_ISSUES : undefined)
-  // A Lead's list names the issue writers under the servers' usual names. The gate refuses them under any other.
-  const issueOff = o.lead ? (['linear', 'github'] as const).flatMap((k) => ISSUE_SERVERS[k].flatMap((s) => ISSUE_WRITES[k].map((t) => `mcp__${s}__${t}`))) : []
+  // A Lead's list names the issue writers under the servers' usual names and both sides of the project's aliases for them.
+  // The gate refuses them under any other.
+  const aliased = [...aliases].flatMap(([from, to]) => [from, to]).filter((n) => trackerOf(n, aliases))
+  const issueOff = !o.lead ? [] : [
+    ...(['linear', 'github'] as const).flatMap((k) => ISSUE_SERVERS[k].flatMap((s) => ISSUE_WRITES[k].map((t) => `mcp__${s}__${t}`))),
+    ...aliased.flatMap((n) => issueWrites(n).map((t) => `mcp__${n}__${t}`))
+  ]
   return { hidden: [...new Set([...HIDEABLE.filter((t) => !usable(t)), ...(o.readOnly ? READ_ONLY_OFF : []), ...named, ...issueOff])], allows, disallows, modeRefuses, server }
 }
 

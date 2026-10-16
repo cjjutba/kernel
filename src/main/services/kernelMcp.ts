@@ -833,24 +833,40 @@ export function kernelTools(d: KernelToolDeps) {
         return { ...text(`Not linked: ${firstLine(e instanceof Error ? e.message : String(e))}`), isError: true }
       }
     }),
-    tool('file_issue', "File a new issue in this project's tracker, or change the title or description of one by its key in issue. This is how you file and edit tracker issues. With plan mode off it needs the user's go-ahead, quoted in go_ahead.", {
+    tool('file_issue', "File a new issue in this project's tracker, or change one by its key in issue: its title, description or state, or add a comment. This is how you file, edit, comment on and move tracker issues, the /issue flow's included. With plan mode off it needs the user's go-ahead, quoted in go_ahead.", {
       issue: z.string().optional().describe('The key of the issue to change, for example "PROJ-83" or "#41". Left out, a new issue is filed'),
       title: z.string().optional().describe('The title. A new issue needs one'),
       description: z.string().optional().describe('The description in markdown. On an existing issue it replaces the old one'),
-      go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved filing or changing it, quoted from their latest message, for example \"file it\". Kernel refuses when they aren't in it. Not needed after an approved plan")
-    }, async ({ issue, title, description, go_ahead }) => {
+      state: z.string().optional().describe('With issue: the state to move it to, by its name in the tracker, for example "In Review", or "open" or "closed" where issues only open and close'),
+      comment: z.string().optional().describe('With issue: a comment to add, in markdown'),
+      go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved this, quoted from their latest message, for example \"file it\". Kernel refuses when they aren't in it. Not needed after an approved plan")
+    }, async ({ issue, title, description, state, comment, go_ahead }) => {
       const refuse = (why: string) => ({ ...text(`Not filed: ${why}`), isError: true })
       if (!d.tracker) return refuse('filing issues is not available here.')
       const key = issue?.trim()
+      const note = comment?.trim()
+      if (!key && (state !== undefined || note)) return refuse('pass the issue key to change its state or comment on it.')
       if (!key && !title?.trim()) return refuse('a new issue needs a title.')
-      if (key && title === undefined && description === undefined) return refuse(`pass the title or description to change on ${key}.`)
+      if (key && title === undefined && description === undefined && !state?.trim() && !note) return refuse(`pass the title, description, state or comment to change on ${key}.`)
       // The same go-ahead as a hand-off, since filing an issue is work the user asked for (KERNEL-678).
       if (goAheadOf(go_ahead) === false) return { ...text(NO_FILE_GO_AHEAD), isError: true }
       try {
         const tracker = await d.tracker()
-        const change = { ...(title !== undefined ? { title: title.trim() } : {}), ...(description !== undefined ? { description } : {}) }
-        const r = key ? await tracker.edit(key, change) : await tracker.create({ title: title!.trim(), description })
-        return text(`${key ? 'Changed' : 'Filed'} ${r.id}${r.title ? `, "${r.title}"` : ''}${r.url ? `: ${r.url}` : ''}.`)
+        if (!key) {
+          const r = await tracker.create({ title: title!.trim(), description })
+          return text(`Filed ${r.id}, "${r.title}"${r.url ? `: ${r.url}` : ''}.`)
+        }
+        const change = { ...(title !== undefined ? { title: title.trim() } : {}), ...(description !== undefined ? { description } : {}), ...(state?.trim() ? { state: state.trim() } : {}) }
+        const lines: string[] = []
+        if (Object.keys(change).length) {
+          const r = await tracker.edit(key, change)
+          lines.push(`Changed ${r.id}${r.title ? `, "${r.title}"` : ''}${change.state ? `, now ${change.state}` : ''}${r.url ? `: ${r.url}` : ''}.`)
+        }
+        if (note) {
+          const c = await tracker.comment(key, note)
+          lines.push(`Commented on ${key}${c.url ? `: ${c.url}` : ''}.`)
+        }
+        return text(lines.join(' '))
       } catch (e) {
         return refuse(firstLine(e instanceof Error ? e.message : String(e)))
       }

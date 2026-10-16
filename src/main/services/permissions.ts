@@ -80,8 +80,8 @@ export function pushOwnBranch(branches: string[], branch?: string): string {
   return `Kernel blocks pushes that might reach ${named} in Bypass permissions. Push your own branch by name${own}.`
 }
 
-/** What a Lead's `gh issue create` or `gh issue edit` gets, in every mode (feat-lead-files-tracker-issues-only-with). */
-export const LEAD_GH_ISSUE = "Kernel files and edits tracker issues for the Lead. Call mcp__kernel__file_issue instead of gh issue create or gh issue edit, with the user's go-ahead quoted in go_ahead. Reading issues with gh works as before."
+/** What a Lead's gh issue write gets, in every mode (feat-lead-files-tracker-issues-only-with). */
+export const LEAD_GH_ISSUE = "Kernel writes tracker issues for the Lead. Call mcp__kernel__file_issue to file, edit, comment on or move one, instead of gh issue or gh api, with the user's go-ahead quoted in go_ahead. Reading issues with gh works as before."
 
 /** Why a command on Always ask goes to the user, for a CLI that takes a reason with an ask. */
 export const ALWAYS_ASK = 'On the Always ask list in Kernel.'
@@ -142,7 +142,7 @@ const ALLOW: Verdict = { behavior: 'allow' }
  * asks. In Bypass permissions only the denials hold, and a push that might reach a protected branch is one of them. That
  * denial also holds wherever Claude Code may still run in bypass (`mayBypass`), since nothing would ask there (KERNEL-447).
  * A push of `HEAD` from `cwd` goes through when the branch checked out there now is not protected (KERNEL-687). A Lead's
- * `gh issue create` or `gh issue edit` is denied in every mode, since it files with file_issue (feat-lead-files-tracker-issues-only-with).
+ * gh issue write (`writesGhIssue`) is denied in every mode, since it writes them with file_issue (feat-lead-files-tracker-issues-only-with).
  */
 export function guardVerdict(command: string, rules: Rules, cwd?: string): Verdict {
   if (rules.lead && writesGhIssue(command)) return { behavior: 'deny', message: LEAD_GH_ISSUE }

@@ -224,6 +224,24 @@ describe('agent tools', () => {
     expect(mate.hidden.some((t) => t.startsWith('mcp__'))).toBe(false)
   })
 
+  it("takes a Lead's issue writes away on a server the project aliases to Linear or GitHub, whatever its name (feat-lead-files-tracker-issues-only-with)", () => {
+    // The file's name on the left, the server's own on the right, as `[mcp.aliases]` has them, in either direction.
+    const aliases = { linear: 'tracker', 'work-gh': 'github', 'claude.ai Linear': 'acme-issues' }
+    const p = toolPolicy(undefined, { lead: 'handoff', aliases })!
+    for (const t of ['mcp__tracker__save_issue', 'mcp__tracker__save_comment', 'mcp__work-gh__issue_write', 'mcp__acme-issues__create_issue']) {
+      expect(p.allows(t), t).toBe(false)
+      expect(p.modeRefuses(t), t).toBe(LEAD_FILES_ISSUES)
+    }
+    for (const t of ['mcp__tracker__get_issue', 'mcp__work-gh__issue_read', 'mcp__sentry__update_issue']) expect(p.allows(t), t).toBe(true)
+    expect(p.hidden).toEqual(expect.arrayContaining(['mcp__tracker__save_issue', 'mcp__work-gh__issue_write', 'mcp__acme-issues__save_issue']))
+    // Codex turns them off on the server by its own name.
+    expect(p.server('tracker')).toEqual({ on: true, except: expect.arrayContaining(['save_issue', 'save_comment']) })
+    expect(p.server('acme-issues')).toEqual({ on: true, except: expect.arrayContaining(['save_issue']) })
+    expect(p.server('sentry')).toEqual({ on: true })
+    // A teammate with the same aliases keeps them.
+    expect(toolPolicy(['mcp__linear'], { aliases })!.allows('mcp__tracker__save_issue')).toBe(true)
+  })
+
   it('lets an agent use the MCP servers its project allows it, unless disallowedTools takes them (KERNEL-537)', () => {
     const p = toolPolicy(['Read', 'mcp__linear'], { allow: ['figma'] })!
     expect(p.allows('mcp__figma__get_file')).toBe(true)

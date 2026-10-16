@@ -574,6 +574,14 @@ describe("an agent file's tools on Codex (KERNEL-451)", () => {
     expect(await mate.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'accept' }])
   })
 
+  it("turns off a Lead's issue writes on a server the project aliases to Linear (feat-lead-files-tracker-issues-only-with)", async () => {
+    const lead = { ...noor, id: 'kernel', name: 'Kernel', lead: true } as AgentDef
+    const t = track(await setup({ agent: lead, mcp: JSON.stringify({ tracker: { command: 'linear-mcp', enabled: true }, sentry: { command: 'sentry-mcp', enabled: true } }), aliases: { linear: 'tracker' } }))
+    await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
+    await t.idle()
+    expect((await t.sent('thread/start'))[0].params.config).toEqual({ 'mcp_servers.tracker.disabled_tools': ['save_issue', 'create_issue', 'update_issue', 'save_comment', 'create_comment', 'delete_comment'] })
+  })
+
   describe('in Bypass permissions (bypass-allows-unlisted-mcp)', () => {
     const run = async (o: Parameters<typeof setup>[0]) => {
       const t = track(await setup({ mode: 'bypassPermissions', agent: scoped, mcp: JSON.stringify(servers), ...o }))

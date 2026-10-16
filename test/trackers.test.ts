@@ -142,8 +142,19 @@ describe('GitHub Issues as a tracker (KERNEL-462)', () => {
     await expect(fails({ stdout: 'done' }).create({ title: 'x' })).rejects.toThrow('Could not read the issue gh filed.')
     const g = gh()
     await expect(githubTracker('/repo', g.cmd).edit('KERNEL-41', { title: 'x' })).rejects.toThrow('KERNEL-41 is not a GitHub issue.')
-    await expect(githubTracker('/repo', g.cmd).edit('#41', {})).rejects.toThrow('Nothing to change: pass a title or a description.')
+    await expect(githubTracker('/repo', g.cmd).edit('#41', {})).rejects.toThrow('Nothing to change: pass a title, a description or a state.')
+    await expect(githubTracker('/repo', g.cmd).edit('#41', { state: 'In Review' })).rejects.toThrow('A GitHub issue is open or closed, not "In Review".')
     expect(g.calls).toEqual([])
+  })
+
+  it('closes, reopens and comments on an issue with gh', async () => {
+    const g = gh((args) => ({ stdout: args[1] === 'comment' ? 'https://github.com/acme/app/issues/41#issuecomment-9\n' : '' }))
+    const t = githubTracker('/repo', g.cmd)
+    expect(await t.edit('#41', { state: 'Closed' })).toEqual({ id: '#41', title: '', source: 'github' })
+    await t.edit('41', { state: 'open' })
+    expect(await t.comment('#41', 'Opened PR #7')).toEqual({ url: 'https://github.com/acme/app/issues/41#issuecomment-9' })
+    expect(g.calls.map((c) => c.args)).toEqual([['issue', 'close', '41'], ['issue', 'reopen', '41'], ['issue', 'comment', '41', '--body', 'Opened PR #7']])
+    await expect(githubTracker('/repo', gh(() => ({ code: 1, stderr: 'GraphQL: Could not resolve to an issue or pull request' })).cmd).comment('#999', 'x')).rejects.toThrow('GitHub has no issue #999 in this repo.')
   })
 
   it('moves nothing when a workspace starts on an issue', async () => {
@@ -202,6 +213,17 @@ describe('Linear as a tracker filing and editing an issue', () => {
     expect(l.sent[0].query).toContain('issueUpdate')
   })
 
+  it("moves an issue to its team's state by name, and comments on it", async () => {
+    const states = { data: { issue: { team: { states: { nodes: [{ id: 's1', name: 'Todo' }, { id: 's2', name: 'In Review' }] } } } } }
+    const l = linearCalls(states, { data: { issueUpdate: written() } }, { data: { commentCreate: { success: true, comment: { url: 'https://linear.app/x/KERNEL-90#comment-1' } } } })
+    const t = linearTracker(async () => 'k', l.fetchImpl)
+    await t.edit('KERNEL-90', { state: 'in review' })
+    expect(await t.comment('KERNEL-90', 'Opened PR #7')).toEqual({ url: 'https://linear.app/x/KERNEL-90#comment-1' })
+    expect(l.sent.map((c) => c.variables)).toEqual([{ id: 'KERNEL-90' }, { id: 'KERNEL-90', input: { stateId: 's2' } }, { input: { issueId: 'KERNEL-90', body: 'Opened PR #7' } }])
+    await expect(linearTracker(async () => 'k', linearCalls(states).fetchImpl).edit('KERNEL-90', { state: 'Shipped' })).rejects.toThrow('KERNEL-90\'s team has no state "Shipped". It has Todo, In Review.')
+    await expect(linearTracker(async () => undefined, linearCalls().fetchImpl).comment('KERNEL-90', 'x')).rejects.toThrow(LINEAR_SIGNED_OUT)
+  })
+
   it('says when it is not connected, has no team, or Linear refuses', async () => {
     await expect(linearTracker(async () => undefined, linearCalls().fetchImpl, 'KERNEL').create({ title: 'x' })).rejects.toThrow(LINEAR_SIGNED_OUT)
     await expect(linearTracker(async () => undefined, linearCalls().fetchImpl).edit('KERNEL-9', { title: 'x' })).rejects.toThrow(LINEAR_SIGNED_OUT)
@@ -222,6 +244,7 @@ describe('no tracker (KERNEL-462)', () => {
     expect(await t.start('KERNEL-41')).toBeUndefined()
     await expect(t.create({ title: 'Crash' })).rejects.toThrow(NO_TRACKER)
     await expect(t.edit('#41', { title: 'Crash' })).rejects.toThrow(NO_TRACKER)
+    await expect(t.comment('#41', 'Crash')).rejects.toThrow(NO_TRACKER)
     expect(NO_TRACKER).toBe('This project has no issue tracker.')
   })
 })

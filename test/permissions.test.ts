@@ -30,6 +30,8 @@ describe('guardVerdict', () => {
       const lead = { ...rules({ mode, projectAllow: ['gh issue create:*'] }), lead: true }
       expect(guardVerdict('gh issue create -t Crash', lead), mode).toEqual({ behavior: 'deny', message: LEAD_GH_ISSUE })
       expect(guardVerdict('gh issue edit 41 -b done', lead), mode).toEqual({ behavior: 'deny', message: LEAD_GH_ISSUE })
+      for (const c of ['gh issue -R owner/repo create -t x', 'gh issue comment 41 -b x', 'gh issue close 41', 'gh api repos/o/r/issues/41/comments -f body=x'])
+        expect(guardVerdict(c, lead), `${mode}: ${c}`).toEqual({ behavior: 'deny', message: LEAD_GH_ISSUE })
       expect(guardVerdict('gh issue view 41', lead), mode).toBeUndefined()
     }
     expect(guardVerdict('gh issue create -t Crash', rules({ projectAllow: ['gh issue create:*'] }))).toEqual({ behavior: 'allow' })
