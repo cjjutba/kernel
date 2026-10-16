@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-type Place = { pinned: boolean; anchors: { id: string; offset: number }[]; scrollTop: number; lastUserId?: string; heights?: Record<string, number> }
+type Place = { pinned: boolean; anchors: { id: string; offset: number }[]; scrollTop: number; lastUserId?: string; heights?: Record<string, number>; revealed?: string }
 type Mod = {
   readPlace: (rows: { id: string; top: number; height: number }[], scrollTop: number, pinned: boolean, lastUserId?: string) => Place
   placeTop: (place: Place, rowTop: (id: string) => number | undefined, range: number) => number
@@ -13,6 +13,8 @@ type Mod = {
   holdView: (o: { put: () => number; ends: boolean; over: () => boolean; following: () => boolean; now: () => number; raf: (step: () => void) => number; caf: (id: number) => void; capMs: number; frames: (running: boolean) => void }) => { state: { correcting: boolean; settled: boolean; live: boolean }; resume: () => void; stop: () => void }
   countNew: <T extends { id: string }>(items: T[], before: ReadonlySet<string> | null, isMessage: (i: T) => boolean) => number
   keepOpen: (save: () => void, ms: number, timers: { set: (fn: () => void, ms: number) => unknown; clear: (id: unknown) => void }) => { soon: () => void; stop: () => void }
+  markRevealed: (chatId: string, planId: string) => void
+  shouldReveal: (revealed: string | undefined, planId: string, following: boolean) => boolean
   dropArchived: (workspaces: { id: string; status: string }[], chats: Record<string, { id: string }[] | undefined>) => void
 }
 const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as Promise<Mod>
@@ -358,5 +360,46 @@ describe('counting new messages (KERNEL-922)', () => {
     const { countNew } = await load()
     expect(countNew(items, null, kind)).toBe(0)
     expect(countNew([...items.slice(0, 2), { id: 'c', kind: 'text' }], new Set(['a', 'b']), kind)).toBe(1)
+  })
+})
+
+describe('a plan revealing itself (KERNEL-950)', () => {
+  it('does not reveal a plan again after the chat is reopened, and keeps that through later saves', async () => {
+    const { markRevealed, takePlace, savePlace, shouldReveal, readPlace } = await load()
+    expect(takePlace('c-reveal')?.revealed).toBeUndefined()
+    markRevealed('c-reveal', 'plan-1')
+    expect(shouldReveal(takePlace('c-reveal')?.revealed, 'plan-1', true)).toBe(false)
+    savePlace('c-reveal', readPlace(rows, 100, false))
+    expect(takePlace('c-reveal')?.revealed).toBe('plan-1')
+  })
+
+  it('reveals a first plan, and a revised one only while the reader follows the end', async () => {
+    const { shouldReveal } = await load()
+    expect(shouldReveal(undefined, 'plan-1', false)).toBe(true)
+    expect(shouldReveal('plan-1', 'plan-2', true)).toBe(true)
+    expect(shouldReveal('plan-1', 'plan-2', false)).toBe(false)
+  })
+
+  it('never alternates between two values once the reveal has stopped the open restore', async () => {
+    const { holdView } = await load()
+    const { createGlider } = await import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/scrollGlide' as string)
+    let t = 0
+    let held: (() => void) | undefined
+    let glided: (() => void) | undefined
+    const view = { scrollTop: 0, clientHeight: 600 }
+    const hold = holdView({
+      put: () => { view.scrollTop = 1000; return 1000 }, ends: false, over: () => false, following: () => false, now: () => t,
+      raf: (step) => { held = step; return 1 }, caf: () => { held = undefined }, capMs: 600, frames: () => undefined
+    })
+    const g = createGlider(() => view, { now: () => t, raf: (cb: () => void) => { glided = cb; return 2 }, caf: () => { glided = undefined }, reduced: () => false, ease: () => (x: number) => x })
+    const tick = () => { t += 16; const a = held; const b = glided; held = glided = undefined; a?.(); b?.() }
+    tick()
+    hold.stop()
+    g.start({ goal: () => 991, holdMs: 800, instant: false })
+    const seen: number[] = []
+    for (let i = 0; i < 120; i++) { tick(); seen.push(view.scrollTop) }
+    const flips = seen.slice(2).filter((v, i) => (v - seen[i + 1]) * (seen[i + 1] - seen[i]) < 0)
+    expect(flips).toHaveLength(0)
+    expect(seen[seen.length - 1]).toBe(991)
   })
 })
