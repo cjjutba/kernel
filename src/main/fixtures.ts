@@ -161,6 +161,11 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'workspaces.tree': async ({ workspaceId }) => f.tree?.[workspaceId] ?? [],
     'workspaces.files': async ({ workspaceId, query, limit = 8 }) => (f.tree?.[workspaceId] ?? []).filter((e) => e.path.toLowerCase().includes(query.toLowerCase())).slice(0, limit),
     'workspaces.readFile': async ({ workspaceId, path }) => f.fileText?.[workspaceId]?.[path] ?? '',
+    // A fixture's mentions resolve to the rows of its tree, by exact path.
+    'workspaces.resolvePaths': async ({ workspaceId, paths }) => Object.fromEntries(paths.map((p) => {
+      const e = f.tree?.[workspaceId]?.find((t) => t.path === p)
+      return [p, e ? { kind: e.dir ? 'dir' : 'file', path: e.path } : null]
+    })),
     'workspaces.readImage': async ({ workspaceId, path, at }) => f.images?.[workspaceId]?.[`${at}:${path}`] ?? null,
     'workspaces.hunks': async ({ workspaceId, path }) => (f.hunks?.[workspaceId] ?? []).filter((h) => !path || h.path === path),
     'workspaces.commit': async () => ok,

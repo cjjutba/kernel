@@ -610,11 +610,11 @@ function setupLog(end: 'running' | 'failed' | 'stopped'): PushEvent[] {
  * A new chat waiting for setup: `queue` waits for it, and `end` is how a failed setup ended (an exit code, or null when stopped).
  * `pending` is a worktree Kernel hasn't made yet (KERNEL-543), with git's reason once it failed: setup hasn't started, so it has no run or log.
  */
-function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { end?: number | null; pending?: { error?: string }; panel?: boolean; right?: 'files'; collapsed?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
+function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { later?: boolean; end?: number | null; pending?: { error?: string }; panel?: boolean; right?: 'files'; collapsed?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
   const started = Date.now() - 42_000
   const setupRun = o.pending ? undefined : status === 'setup' ? { startedAt: started } : { startedAt: started - 26_000, endedAt: started + (o.end === null ? 5_000 : 42_000), end: o.end }
   return {
-    workspaces: withWorkspace(f, ids.table, { status, setupRun, copied: 2, ...(o.pending ? { baseRef: 'origin/main', worktreePending: o.pending } : {}) }),
+    workspaces: withWorkspace(f, ids.table, { status, setupRun, copied: 2, ...(o.later ? { firstInProject: false } : {}), ...(o.pending ? { baseRef: 'origin/main', worktreePending: o.pending } : {}) }),
     items: { [ids.tableChat]: [] },
     queue: { [ids.tableChat]: queue },
     push: [...f.push, ...(o.pending ? [] : setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed')), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'setup' as const }] : [])],
@@ -1935,6 +1935,43 @@ const permWaiting = (f: Fixture) => scene2(f, { name: 'invoice-pdf-renderer', br
 
 export const workspaceFixtures: Record<string, Fixture> = {
   Workspace: scene(() => ({ ui: open })),
+  // Chat header mocks: today's two rows on a new Lead chat, then the one-row header with one tab and with three.
+  // The one-row header (Lead chats and New chat): New chat with its one tab, three tabs, and a tab's hover card naming what the chat follows.
+  NewChatOneRow: scene((f) => ({ ...noPlan(leadNoChats(f)), projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)) })),
+  LeadChatTabs: scene((f) => {
+    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+    const { approvals: _none, ...rest } = s
+    const tab = (id: string, title: string, m: number): Chat => ({ id, workspaceId: ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', createdAt: at(9, m) })
+    return {
+      ...rest,
+      ui: { ...rest.ui!, rightPanel: false, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } },
+      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
+      chats: [tab('chat-hdr-long', 'Split the invoice export into one PDF per client and email each client their own copy', 1), tab('chat-hdr-inbox', 'Inbox rows', 2), ...(rest.chats ?? f.chats)]
+    }
+  }),
+  LeadChatTabBranch: scene((f) => {
+    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', mode: 'current', branch: 'main' }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+    const { approvals: _none, ...rest } = s
+    const tab = (id: string, title: string, m: number): Chat => ({ id, workspaceId: ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', createdAt: at(9, m) })
+    return {
+      ...rest,
+      ui: { ...rest.ui!, rightPanel: false, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } },
+      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
+      chats: [tab('chat-hdr-long', 'Split the invoice export into one PDF per client and email each client their own copy', 1), tab('chat-hdr-inbox', 'Inbox rows', 2), ...(rest.chats ?? f.chats)]
+    }
+  }),
+  // Three chat tabs and two file tabs with the right panel open: the tabs shrink and truncate, and the project, + and editor button keep their size. KERNEL-760 is the linked issue.
+  LeadChatTabsFull: scene((f) => {
+    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', source: { kind: 'issue', id: 'KERNEL-760', title: 'Export invoices as PDF' } }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+    const { approvals: _none, ...rest } = s
+    const tab = (id: string, title: string, m: number): Chat => ({ id, workspaceId: ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', createdAt: at(9, m) })
+    return {
+      ...rest,
+      ui: { ...rest.ui!, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: ['src/app/invoices/table.tsx', 'src/app/invoices/pdf-renderer.tsx'], diffs: [] } } },
+      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
+      chats: [tab('chat-hdr-long', 'Split the invoice export into one PDF per client and email each client their own copy', 1), tab('chat-hdr-inbox', 'Inbox rows', 2), ...(rest.chats ?? f.chats)]
+    }
+  }),
   // KERNEL-161: the workspace started on a Linear issue shows its key after the branch.
   WorkspaceIssue: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { branch: 'feat/kernel-24-invoice-table', source: { kind: 'issue', id: 'KERNEL-24', title: 'Invoice table', url: 'https://linear.app/cj-jutba/issue/KERNEL-24' } }),
@@ -1963,6 +2000,15 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, ...setupLog('failed'), { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
+  // A later worktree chat in the project: no banner and no rows, the chat starts with the message.
+  SetupLaterChat: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', copied: 2, firstInProject: false, setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
+    items: { [ids.tableChat]: [{ kind: 'user', id: 'sl-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
+  })),
+  // A later worktree chat whose setup failed: only the failed row, with Run again and Send anyway.
+  SetupLaterChatFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { end: 1, later: true })),
   SetupDone: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', copied: 2, setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
     items: { [ids.tableChat]: [{ kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },

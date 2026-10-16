@@ -140,6 +140,8 @@ export interface Workspace {
   setupRun?: SetupRun
   /** How many local files Kernel copied into the new worktree, for the chat's "Created the worktree" row (KERNEL-951). */
   copied?: number
+  /** Whether this is the project's first worktree chat, which alone shows the setup block at the top of the chat. Absent on chats from before it was stamped, which count as first. */
+  firstInProject?: boolean
 }
 
 /** An overrule of the reviews' blockers on one head commit (KERNEL-732). */
@@ -242,6 +244,28 @@ export interface FileEntry {
   /** A row from one of the project's reference folders, by the folder's name. `path` is then absolute (KERNEL-748). */
   reference?: string
 }
+
+/**
+ * A path an agent mentioned in chat, found on disk (clickable file mentions). `path` is relative to the worktree, or absolute for
+ * a file in the agent's own scratchpad, and `workspaces.readFile` and `workspaces.readImage` take it as it is. `line` and
+ * `endLine` come from `path:12`, `path:12-30` or `path#L12-L30`. `sensitive` marks a `.env`-style file or one holding what
+ * secret masking would hide, so the UI can warn before showing it.
+ */
+export interface ResolvedFile {
+  kind: 'file' | 'dir' | 'image'
+  path: string
+  line?: number
+  endLine?: number
+  sensitive?: true
+}
+
+/** A bare file name that more than one file in the worktree has. Kernel never guesses, so it lists them all, relative to the worktree. */
+export interface AmbiguousPath {
+  matches: string[]
+}
+
+/** What `workspaces.resolvePaths` answers for one mention: null when it isn't a file the workspace may show. */
+export type ResolvedPath = ResolvedFile | AmbiguousPath | null
 
 /**
  * One hunk of a file that has both the user's earlier edits and the agent's (WorkspaceHunks.png).

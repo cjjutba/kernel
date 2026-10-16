@@ -1,6 +1,5 @@
 import { providerOf } from './providers'
-import { isReviewer } from './team'
-import { MODELS, type AgentDef, type Role, type RoleModel } from './types'
+import { MODELS, type AgentDef, type RoleModel } from './types'
 
 /** A model id that is Codex's (gpt-6-astra, o4-mini, codex-mini), for an agent file without `provider:` (KERNEL-406). */
 const CODEX_MODEL = /^(gpt-|o\d|codex-)/i
@@ -18,13 +17,4 @@ export function rolePick(agent: Pick<AgentDef, 'model' | 'provider' | 'effort'>,
   const provider = agent.provider ?? (alias || pinned?.startsWith('claude-') ? 'claude' : pinned && CODEX_MODEL.test(pinned) ? providerOf(pinned) : undefined)
   if (!pinned || !provider) return { ...role, effort: agent.effort ?? role.effort }
   return { provider, model: provider === 'claude' ? alias || pinned : pinned, effort: agent.effort ?? role.effort }
-}
-
-/** The role Settings, Models and effort reads for this agent. A frontend engineer has a row of its own, every other one reads Backend's (KERNEL-974). */
-export function roleOf(agent: AgentDef): Role {
-  if (agent.lead) return 'lead'
-  if (isReviewer(agent)) return 'reviewer'
-  if (/qa/i.test(agent.role)) return 'qa'
-  if (/frontend/i.test(agent.role)) return 'frontend'
-  return 'engineers'
 }

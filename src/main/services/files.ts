@@ -2,7 +2,8 @@ import { execFile } from 'node:child_process'
 import { readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, posix, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import type { ChangedFile, FileEntry, Skill } from '@shared/types'
+import type { ChangedFile, FileEntry, ResolvedFile, ResolvedPath, Skill } from '@shared/types'
+import { maskSecrets } from '@shared/toolView'
 import { EXEC_TIMEOUT_MS, exec, git } from './exec'
 import { PLANS_DIR } from './plans'
 
@@ -44,19 +45,26 @@ function compare(a: FileEntry, b: FileEntry): number {
 const outside = () => new Error('That file is outside this workspace.')
 const isOutside = (rel: string) => !rel || rel.startsWith('..') || isAbsolute(rel)
 
-/** The real path of a file in the worktree, or null when it doesn't exist. Throws for paths outside it, symlinks included. */
-async function insideWorkspace(root: string, path: string): Promise<string | null> {
+/**
+ * The real path of a file in the worktree, or in one of the `also` folders (an agent's scratchpad), or null when it doesn't
+ * exist. A relative path is read from the worktree. Throws for paths outside them all, symlinks included.
+ */
+async function insideWorkspace(root: string, path: string, also: string[] = []): Promise<string | null> {
   if (!path) throw outside()
   const base = await realpath(root)
   const full = await realpath(resolve(base, path)).catch(() => null)
   if (!full) return null
-  if (isOutside(relative(base, full))) throw outside()
+  const roots = [base, ...(await Promise.all(also.map((r) => realpath(r).catch(() => null)))).filter((r) => r !== null)]
+  if (roots.every((r) => isOutside(relative(r, full)))) throw outside()
   return full
 }
 
-/** Text of one file in the worktree, for the file viewer. Refuses paths outside it (symlinks included), big files and binaries. */
-export async function readWorkspaceFile(root: string, path: string): Promise<string> {
-  const full = await insideWorkspace(root, path)
+/**
+ * Text of one file in the worktree or an `also` folder, for the file viewer. Refuses paths outside them (symlinks included), big
+ * files and binaries.
+ */
+export async function readWorkspaceFile(root: string, path: string, also: string[] = []): Promise<string> {
+  const full = await insideWorkspace(root, path, also)
   if (!full) throw new Error(`${path} is not a file in this workspace.`)
   const info = await stat(full)
   if (!info.isFile()) throw new Error(`${path} is not a file in this workspace.`)
@@ -74,17 +82,18 @@ const execFileAsync = promisify(execFile)
 /**
  * An image for the diff tab as a data URL (KERNEL-409). `since` set reads the blob at that commit, the way the diff does,
  * and leaves it unset to read the worktree. Null when the file isn't there. Refuses paths outside the workspace, other file
- * types and images over MAX_IMAGE_BYTES.
+ * types and images over MAX_IMAGE_BYTES. An image on disk may be in one of the `also` folders too, by its absolute path.
  */
-export async function readImage(root: string, path: string, since?: string): Promise<{ dataUrl: string } | null> {
+export async function readImage(root: string, path: string, since?: string, also: string[] = []): Promise<{ dataUrl: string } | null> {
   const type = IMAGE_TYPES[extname(path).slice(1).toLowerCase()]
   if (!type) throw new Error(`${path} is not an image Kernel can show.`)
   const rel = posix.normalize(path.replaceAll('\\', '/'))
-  if (isOutside(rel)) throw outside()
+  // A git blob is always in the worktree. A file on disk is checked by insideWorkspace, against the `also` folders too.
+  if (isOutside(rel) && (since !== undefined || !also.length)) throw outside()
   const tooBig = (size: number) => new Error(`${path} is too large to preview (${Math.round(size / 1024)} KB).`)
   let bytes: Buffer
   if (since === undefined) {
-    const full = await insideWorkspace(root, rel)
+    const full = await insideWorkspace(root, rel, also)
     if (!full) return null
     const info = await stat(full)
     if (!info.isFile()) return null
@@ -99,6 +108,73 @@ export async function readImage(root: string, path: string, since?: string): Pro
     bytes = (await execFileAsync('git', ['-C', root, 'cat-file', 'blob', `${since}:${rel}`], { encoding: 'buffer', maxBuffer: MAX_IMAGE_BYTES + 1, timeout: EXEC_TIMEOUT_MS })).stdout
   }
   return { dataUrl: `data:${type};base64,${bytes.toString('base64')}` }
+}
+
+/**
+ * Where Claude Code keeps a session's scratchpad: `<tmp>/claude-<uid>/<cwd with every other character a dash>/<session>/scratchpad`.
+ * Kernel builds it from the chat's own session, never from what a message says.
+ */
+export function scratchpadDir(cwd: string, sessionId: string, tmp = process.env.CLAUDE_CODE_TMPDIR || '/tmp', uid = process.getuid?.() ?? 0): string {
+  return join(tmp, `claude-${uid}`, cwd.replace(/[^a-zA-Z0-9]/g, '-'), sessionId, 'scratchpad')
+}
+
+/** A mention split from its line range: `a.ts:12`, `a.ts:12-30`, `a.ts:12:5` or `a.ts#L12-L30`. Backslashes read as slashes. */
+export function parseMention(raw: string): { path: string; line?: number; endLine?: number } {
+  let path = raw.trim().replaceAll('\\', '/')
+  const m = /#L(\d+)(?:-L?(\d+))?$/.exec(path) ?? /:(\d+)(?:-(\d+))?(?::\d+)?$/.exec(path)
+  if (!m) return { path }
+  path = path.slice(0, m.index)
+  const line = Number(m[1]), endLine = m[2] ? Number(m[2]) : undefined
+  return { path, ...(line > 0 ? { line } : {}), ...(line > 0 && endLine && endLine > line ? { endLine } : {}) }
+}
+
+/** `.env`, `.env.local`, `prod.env` and `.envrc`, whatever they hold. */
+const ENV_FILE = /^\.env(rc|\..+)?$|\.env$/i
+
+/** Whether a file is `.env`-style or holds what secret masking would hide in a tool row. */
+async function sensitiveFile(full: string, size: number): Promise<boolean> {
+  if (ENV_FILE.test(basename(full))) return true
+  if (size > MAX_FILE_BYTES) return false
+  const buf = await readFile(full).catch(() => null)
+  if (!buf || buf.includes(0)) return false
+  const text = buf.toString('utf8')
+  return maskSecrets(text) !== text
+}
+
+/**
+ * Paths agents mentioned in chat, keyed by the raw string (clickable file mentions). Each one resolves inside the worktree, or
+ * inside one of the `also` folders (the agent's scratchpad) by an absolute or `~/` path, or is null: outside them, symlinks out
+ * included, or missing. A bare file name resolves only when exactly one file in the tree has it, and lists them all when several
+ * do. One the tree doesn't list, such as an ignored `.env`, is looked for at the top of the worktree.
+ */
+export async function resolvePaths(root: string, raws: string[], o: { also?: string[]; home: string }): Promise<Record<string, ResolvedPath>> {
+  const also = o.also ?? []
+  const base = await realpath(root)
+  let names: Promise<string[]> | undefined
+  const files = () => (names ??= listTree(root).then((t) => t.filter((e) => !e.dir).map((e) => e.path)))
+  const one = async (raw: string): Promise<ResolvedPath> => {
+    const { path, line, endLine } = parseMention(raw)
+    if (!path) return null
+    let target = path === '~' || path.startsWith('~/') ? join(o.home, path.slice(1)) : path
+    if (!target.includes('/')) {
+      const found = (await files()).filter((f) => f.slice(f.lastIndexOf('/') + 1) === target)
+      if (found.length > 1) return { matches: found }
+      if (found.length === 1) target = found[0]
+    }
+    const full = await insideWorkspace(base, target, also).catch(() => null)
+    if (!full) return null
+    const info = await stat(full)
+    const rel = relative(base, full)
+    const at = isOutside(rel) ? full : rel
+    if (info.isDirectory()) return { kind: 'dir', path: at }
+    if (!info.isFile()) return null
+    const kind: ResolvedFile['kind'] = IMAGE_TYPES[extname(full).slice(1).toLowerCase()] ? 'image' : 'file'
+    const sensitive = kind === 'file' && await sensitiveFile(full, info.size)
+    return { kind, path: at, ...(line ? { line } : {}), ...(endLine ? { endLine } : {}), ...(sensitive ? { sensitive: true as const } : {}) }
+  }
+  const unique = [...new Set(raws)]
+  const out = await Promise.all(unique.map((raw) => one(raw).catch(() => null)))
+  return Object.fromEntries(unique.map((raw, i) => [raw, out[i]]))
 }
 
 /**

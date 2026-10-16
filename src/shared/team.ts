@@ -1,4 +1,4 @@
-import type { AgentDef, TeamConfig } from './types'
+import type { AgentDef, Role, TeamConfig } from './types'
 
 // Kernel's built-in Lead, its own reviews, and the reads of the roles Kernel resolves for a project's team (KERNEL-397).
 
@@ -29,3 +29,15 @@ export const isReviewer = (a: AgentDef): boolean => a.reviewer ?? (!a.lead && !a
 
 /** Whether the Lead can hand `a` a task. An agent Kernel didn't resolve takes tasks unless it leads. */
 export const takesTasks = (a: AgentDef): boolean => a.member ?? !a.lead
+
+/**
+ * The row of Settings, Models and effort an agent reads: Lead, Reviewer, QA, Frontend, else Backend (KERNEL-974). Main and the
+ * renderer both read it, so an agent's chats, composer and profile agree on the row.
+ */
+export function roleOf(agent: AgentDef): Role {
+  if (agent.lead) return 'lead'
+  if (isReviewer(agent)) return 'reviewer'
+  if (/qa/i.test(agent.role)) return 'qa'
+  if (/frontend/i.test(agent.role)) return 'frontend'
+  return 'engineers'
+}
