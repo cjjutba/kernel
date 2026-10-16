@@ -12,6 +12,7 @@ type Mod = {
   restoreState: () => { see: (at: number) => boolean; settled: boolean; stop: () => void; correcting: boolean }
   holdView: (o: { put: () => number; ends: boolean; over: () => boolean; following: () => boolean; now: () => number; raf: (step: () => void) => number; caf: (id: number) => void; capMs: number; frames: (running: boolean) => void }) => { state: { correcting: boolean; settled: boolean; live: boolean }; resume: () => void; stop: () => void }
   countNew: <T extends { id: string }>(items: T[], before: ReadonlySet<string> | null, isMessage: (i: T) => boolean) => number
+  keepOpen: (save: () => void, ms: number, timers: { set: (fn: () => void, ms: number) => unknown; clear: (id: unknown) => void }) => { soon: () => void; stop: () => void }
   dropArchived: (workspaces: { id: string; status: string }[], chats: Record<string, { id: string }[] | undefined>) => void
 }
 const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as Promise<Mod>
@@ -310,6 +311,37 @@ describe('a chat spot survives a restart (KERNEL-922)', () => {
     expect(takePlace('chat-r')?.lastUserId).toBe('u9')
     dropPlace('chat-r')
     expect(getSpot('chat:chat-r')).toBeUndefined()
+    resetSpots()
+  })
+})
+
+describe('the open chat keeps its spot without switching chats (KERNEL-922)', () => {
+  const clock = () => {
+    const due = new Map<number, () => void>()
+    let n = 0
+    return {
+      timers: { set: (fn: () => void) => { due.set(++n, fn); return n }, clear: (id: unknown) => { due.delete(id as number) } },
+      fire: () => { const all = [...due.values()]; due.clear(); all.forEach((f) => f()) },
+      pending: () => due.size
+    }
+  }
+
+  it('stores the spot after scrolling stops, once, with no unmount', async () => {
+    const { keepOpen, readPlace, savePlace } = await load()
+    const { getSpot, resetSpots } = (await import(/* @vite-ignore */ '../src/renderer/src/ui/keptScroll' as string)) as { getSpot: (k: string) => { pos: number } | undefined; resetSpots: () => void }
+    const c = clock()
+    let top = 300
+    const keeper = keepOpen(() => savePlace('chat-o', readPlace(rows, top, false)), 250, c.timers)
+    keeper.soon()
+    top = 640
+    keeper.soon()
+    expect(c.pending()).toBe(1)
+    expect(getSpot('chat:chat-o')).toBeUndefined()
+    c.fire()
+    expect(getSpot('chat:chat-o')?.pos).toBe(640)
+    keeper.soon()
+    keeper.stop()
+    expect(c.pending()).toBe(0)
     resetSpots()
   })
 })

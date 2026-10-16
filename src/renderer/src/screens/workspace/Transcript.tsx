@@ -30,7 +30,7 @@ import { LEAD_MODE_ICON } from './composer/modes'
 import { retryMessage, sendMessage } from './composer/sendMessage'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
-import { countNew, holdView, leftAtEnd, opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
+import { countNew, holdView, keepOpen, leftAtEnd, opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
 import { createGlider, type Glider } from './scrollGlide'
 import { TranscriptGlide } from './glideContext'
@@ -38,6 +38,8 @@ import { TranscriptGlide } from './glideContext'
 const EMPTY: ChatItem[] = []
 /** A plan revealing itself within this long of the chat opening is placed, not glided. */
 const OPEN_MS = 600
+/** The open chat's spot is saved this long after the reader stops scrolling. */
+const KEEP_MS = 250
 /** The reader counts as following the chat while the end is this close. */
 const PIN_PX = 80
 
@@ -1033,19 +1035,31 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         return to
       }, false)
     }
-    return () => {
-      cancelAnimationFrame(frame.current)
-      el?.removeAttribute('data-opening')
-      const correcting = !!held?.state.correcting && !byHand.current
-      endRestore()
-      held?.stop()
+    // The spot is kept while the chat is open too, since nothing unmounts the transcript when Kernel quits (KERNEL-922): shortly after the reader stops scrolling, and when the window goes.
+    const keep = () => {
       const view = scroller.current
       // A chat that was just closed or archived has no spot to keep, nor has one in an archived workspace.
       const state = getState()
       if (!view || !state.chats[workspaceId]?.some((c) => c.id === chat.id && !c.closed) || state.workspaces.find((w) => w.id === workspaceId)?.status === 'archived') return
       // Still being put back, the view is not where the reader left it: the spot from before stays.
-      if (correcting) return
+      if (held?.state.correcting && !byHand.current) return
       savePlace(chat.id, readPlace(rowBoxes(), view.scrollTop, leftAtEnd(distFromEnd(view)), [...itemsNow.current].reverse().find(followsSend)?.id))
+    }
+    const keeper = keepOpen(keep, KEEP_MS)
+    const soon = keeper.soon
+    el?.addEventListener('scroll', soon, { passive: true })
+    window.addEventListener('pagehide', keep)
+    window.addEventListener('beforeunload', keep)
+    return () => {
+      cancelAnimationFrame(frame.current)
+      el?.removeAttribute('data-opening')
+      keeper.stop()
+      el?.removeEventListener('scroll', soon)
+      window.removeEventListener('pagehide', keep)
+      window.removeEventListener('beforeunload', keep)
+      keep()
+      endRestore()
+      held?.stop()
     }
   }, [loaded])
   // Opening a row at the end grows the thread under the reader's click, and following would scroll the row they opened out from under them. They are reading it now,

@@ -48,6 +48,15 @@ export function countNew<T extends { id: string }>(items: T[], before: ReadonlyS
   return n
 }
 
+/** Saves the open chat's spot a moment after the reader stops scrolling, so a quit keeps it (KERNEL-922). `soon` restarts the wait, `stop` cancels it. */
+export function keepOpen(save: () => void, ms: number, timers: { set: (fn: () => void, ms: number) => unknown; clear: (id: unknown) => void } = { set: (fn, t) => setTimeout(fn, t), clear: (id) => clearTimeout(id as ReturnType<typeof setTimeout>) }) {
+  let id: unknown
+  return {
+    soon: () => { if (id !== undefined) timers.clear(id); id = timers.set(() => { id = undefined; save() }, ms) },
+    stop: () => { if (id !== undefined) timers.clear(id); id = undefined }
+  }
+}
+
 /**
  * Where a restore stands (KERNEL-918). Each frame reports the scrollTop it put the view at: after 4 frames at the same spot the restore has settled, and a later
  * frame that lands elsewhere (late layout) unsettles it. A reader leaving while it is correcting keeps the spot from before, since the view is half restored.
