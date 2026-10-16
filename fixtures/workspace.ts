@@ -2953,6 +2953,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   LeadPrsNoneReady: scene((f) => leadPrsScene(f, [{ ...MERGE_B, state: 'cifail' }, MERGE_C], 'What can I merge?', 'Nothing yet. #330 failed its checks and #333 is still running them.')),
   // Kernel's team updates in Kernel's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
+  // KERNEL-1000: Not reviewed with automatic review off. The card reads as it always did; the pointer on those words says why (TeamUpdateNotReviewedTip).
+  TeamUpdateNotReviewed: scene((f) => leadUpdate(f)),
+  TeamUpdateNotReviewedTip: scene((f) => leadUpdate(f)),
   TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),
   // A merged PR whose workspace isn't archived yet: the row reads the merged icon and Merged beside Open.
   TeamUpdateMerged: scene((f) => { const m = teamUpdateMerge(f); return { ...m, workspaces: (m.workspaces ?? []).map((w) => (w.id === 'ws-163' ? { ...w, status: 'ready' as const, archivedAt: undefined } : w)) } }),

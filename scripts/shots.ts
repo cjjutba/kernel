@@ -747,6 +747,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
     await page.mouse.move(0, 0)
     await page.waitForTimeout(400)
   },
+  TeamUpdateNotReviewedTip: async (page) => { await page.locator('.tucard-ev', { hasText: 'Not reviewed' }).first().hover(); await page.waitForTimeout(900) },
   WorkspaceReadImagePreview: (page) => hoverPreview(page, page.locator('.trow-btn', { hasText: 'Read image' })),
   WorkspacePasteImagePreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open image.png' })),
   WorkspacePasteTextPreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open pasted_text_1.txt' })),

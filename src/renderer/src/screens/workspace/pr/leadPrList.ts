@@ -52,6 +52,13 @@ export function reviewLine(ws: Workspace, pr: PrInfo | null | undefined): LeadPr
   return verdictPhrase({ ...ws, prHead: pr?.head ?? ws.prHead })
 }
 
+/** What "Not reviewed" says on hover when automatic review is off, so Kernel doesn't repeat it in chat for every PR (KERNEL-1000). */
+const NOT_REVIEWED_TIP = 'Automatic review is off. Turn it on in Settings, Pull requests.'
+
+/** The tooltip for a review line: only "Not reviewed" with automatic review off has one. */
+export const notReviewedTip = (text: string, autoReview: boolean | undefined): string | undefined =>
+  text === 'Not reviewed' && autoReview === false ? NOT_REVIEWED_TIP : undefined
+
 /**
  * The project's open PRs in the tab's three lists, ready ones first, then what needs a person, then what is on its way, each in
  * the order the workspaces came in (KERNEL-757). Ready is the rule every Merge button uses (`mergeBlock`), so the tab never

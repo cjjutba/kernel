@@ -6,7 +6,7 @@ import { oneOf, useRemembered } from '../../remember'
 import { WorkHeader, ALL_PROJECTS } from '../work/WorkHeader'
 import { age } from '../inbox/model'
 import { MergeButton } from '../workspace/pr/MergeButton'
-import type { LeadPr } from '../workspace/pr/leadPrList'
+import { notReviewedTip, type LeadPr } from '../workspace/pr/leadPrList'
 import { MERGED_LIMIT, checksCell, conflictsCell, groupOpen, issueKey, oldestRead, readFailure, reviewCell, usePullRequests, type Cell } from './model'
 import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import './prs.css'
@@ -19,7 +19,9 @@ const openWorkspace = (ws: Workspace) => go({ name: 'workspace', workspaceId: ws
 
 /** One word of a row's state. Red is for what needs a person, and a spinner for what is running. */
 function CellText({ cell }: { cell: Cell }) {
-  return <span className="prs-cell" data-tone={cell.tone}>{cell.spin && <Spinner label={null} pattern="checker" />}{cell.text}</span>
+  const autoReview = useStore((s) => s.settings?.pr.autoReview)
+  const tip = notReviewedTip(cell.text, autoReview)
+  return <span className="prs-cell" data-tone={cell.tone} data-tip={tip} aria-description={tip}>{cell.spin && <Spinner label={null} pattern="checker" />}{cell.text}</span>
 }
 
 type Nav = ReturnType<typeof useListKeys>['rowProps']
