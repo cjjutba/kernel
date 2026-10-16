@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { Workspace } from '@shared/types'
 import { actions, go, useStore } from '../../store'
 import { oneOf, useRemembered } from '../../remember'
@@ -8,6 +8,7 @@ import { restoreArchived } from './restore'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import './history.css'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
+import { useKeptScroll } from '../../ui/keptScroll'
 
 const tabs: [HistoryTab, string][] = [['all', 'All'], ['merged', 'Merged'], ['notMerged', 'Not merged']]
 const groups: HistoryGroup[] = ['Today', 'This week', 'Earlier']
@@ -39,6 +40,9 @@ export function History() {
   const order = groups.flatMap((g) => rows.filter((w) => groupOf(endedAt(w)) === g))
   const keys = useListKeys({ ids: order.map((w) => w.id), rowId: (id) => `hs-${id}`, onOpen: (id) => { const w = order.find((x) => x.id === id); if (w && busy === null) void restore(w) } })
 
+  const body = useRef<HTMLDivElement>(null)
+  useKeptScroll(body, { key: `history:${only ?? 'all'}`, ready: rows.length > 0 })
+
   const confirmDelete = (workspaceIds: string[]) => actions.ui.openModal({ name: 'confirm', kind: 'deleteHistory', workspaceIds })
 
   return (
@@ -55,7 +59,7 @@ export function History() {
         {tabs.map(([id, label]) => <Pill key={id} pressed={tab === id} onClick={() => setTab(id)}>{label}<span className="hs-n">{count(id)}</span></Pill>)}
         {rows.length > 0 && <Button variant="ghost" className="hs-bulk" disabled={busy !== null} onClick={() => confirmDelete(rows.map((w) => w.id))}>{deleteAllLabel(tab, q.trim() !== '', rows.length)}</Button>}
       </div>
-      <div className="hs-body">
+      <div className="hs-body" ref={body}>
         {groups.map((g) => {
           const list = rows.filter((w) => groupOf(endedAt(w)) === g)
           if (!list.length) return null
@@ -64,7 +68,7 @@ export function History() {
               <h2 className="hs-group">{g}</h2>
               <ul className="hs-list" onKeyDown={keys.onKeyDown}>
                 {list.map((w) => (
-                  <li key={w.id} {...keys.rowProps(w.id)} className="hs-row">
+                  <li key={w.id} {...keys.rowProps(w.id)} data-keep-id={w.id} className="hs-row">
                     <span className="col hs-name"><span className="ellipsis hs-title">{isLeadChatWorkspace(w) && <Icon name="chat" size={14} />}{nameOf(w)}</span><span className="ellipsis hs-sub">{agentName(w)}</span></span>
                     <span className="mono ellipsis hs-branch">{w.branch}</span>
                     <span className="ellipsis hs-project">{projectName(w)}</span>

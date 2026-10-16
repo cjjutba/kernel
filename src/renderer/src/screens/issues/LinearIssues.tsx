@@ -6,6 +6,7 @@ import { readSaved as readStored, writeSaved } from '../../remember'
 import { Button, EmptyList, FailedState, Icon, NotConnectedState, Pill, useListKeys } from '../../ui'
 import { IssuePriority, IssueState } from '../../icons'
 import { IssueDetail } from './IssueDetail'
+import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import { forgetLinear, generation, getLinearLists, getScope, getSelected, isFresh, setLinearLists, setScope, setSelected } from './cache'
 import { CapNote, FilterChip, IssueSkeleton, RefreshNotice, type ProjectHead } from './parts'
 import { RowStatus, useReadPrs } from './WorkCard'
@@ -197,6 +198,9 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
   const failed: View | null = view.kind === 'ready' ? (!online ? UNREACHABLE : problem) : null
   const shown: View = !online && (view.kind === 'rejected' || view.kind === 'error') ? UNREACHABLE : view
   const ready = shown.kind === 'ready' && scope
+  const listEl = useRef<HTMLDivElement>(null)
+  const keep = spotKey.issues(head.project?.id ?? 'none')
+  useKeptScroll(listEl, { key: keep, ready: !!ready && flat.length > 0 })
   const openIntegrations = () => go({ name: 'settings', page: 'integrations' })
   const set = (patch: Partial<SavedFilter>) => setFilter((f) => (scope ? fitFilter({ ...f, ...patch }, scope) : { ...f, ...patch }))
   const count = (n: number | undefined) => (n === undefined ? '' : n >= 100 ? '100+' : String(n))
@@ -261,7 +265,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
 
       {ready && flat.length > 0 && (
         <div className="is-body">
-          <div className="is-list" aria-label="Issues" onKeyDown={keys.onKeyDown}>
+          <div className="is-list" ref={listEl} aria-label="Issues" onKeyDown={keys.onKeyDown}>
             {groups.map((g) => {
               const key = groupKey(g)
               const open = !folded.has(key)
@@ -277,7 +281,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
                   {g.issues.map((i) => {
                     const live = status.get(i.id)
                     return (
-                      <li key={i.id}>
+                      <li key={i.id} data-keep-id={i.id}>
                         <button type="button" {...keys.rowProps(i.id)} className="is-row" aria-current={i.id === selId ? 'true' : undefined} onClick={() => setSel(i.id)}>
                           <span className="is-slot"><IssueState shape={stateShape(i.state.type)} /></span>
                           <span className="col grow">
@@ -303,7 +307,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
             {list.length >= 100 && <CapNote>Showing the 100 issues updated most recently. Narrow by Linear project, cycle or search to find the rest.</CapNote>}
           </div>
           <div className="is-pane" ref={detail}>
-            {selId && <IssueDetail id={selId} summary={cur} tick={tick} onPlanned={() => { setTick((t) => t + 1); void load(true) }} />}
+            {selId && <IssueDetail keep={keep} id={selId} summary={cur} tick={tick} onPlanned={() => { setTick((t) => t + 1); void load(true) }} />}
           </div>
         </div>
       )}

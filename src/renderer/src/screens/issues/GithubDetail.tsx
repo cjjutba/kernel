@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import type { GithubIssue, GithubIssueDetail, Project } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { useDetailLoad } from './useDetailLoad'
@@ -9,11 +9,12 @@ import { IssueState } from '../../icons'
 import { openLeadChat, openNewChat } from '../../lead'
 import { Markdown } from '../workspace/markdown'
 import { WorkCard } from './WorkCard'
+import { useKeptScroll } from '../../ui/keptScroll'
 import { DescriptionFailed } from './parts'
 import { githubPlanParts, issueAge, linkedWorkspaces, loginInitials } from './model'
 
 /** The selected GitHub issue: what GitHub says about it, the workspaces already working on it, and the buttons that start work (IssuesGitHub.png). */
-export function GithubDetail({ project, id, summary, tick }: { project: Project; id: string; summary?: GithubIssue; tick: number }) {
+export function GithubDetail({ keep, project, id, summary, tick }: { keep: string; project: Project; id: string; summary?: GithubIssue; tick: number }) {
   const { loaded, failure, retry } = useDetailLoad<GithubIssueDetail>(id, detailKey('github', project.id, id), () => call('github.issue', { projectId: project.id, id }), [project.id, tick])
   const failed = failure?.id === id ? failure.message : null
   const [busy, run] = useBusy<'plan'>()
@@ -22,6 +23,8 @@ export function GithubDetail({ project, id, summary, tick }: { project: Project;
 
   // The description and comments come from `github.issue`. The list already has the rest, so the header shows at once.
   const detail = loaded?.id === id ? loaded : null
+  const scroll = useRef<HTMLDivElement>(null)
+  useKeptScroll(scroll, { key: `${keep}:${id}`, ready: !!detail })
   const issue: GithubIssue | undefined = detail ?? summary
   const linked = useMemo(() => linkedWorkspaces(id, workspaces.filter((w) => w.projectId === project.id)), [id, workspaces, project.id])
 
@@ -50,7 +53,7 @@ export function GithubDetail({ project, id, summary, tick }: { project: Project;
   const [first, ...others] = issue.assignees
   return (
     <article className="is-detail" aria-label={issue.title}>
-      <div className="is-scroll">
+      <div className="is-scroll" ref={scroll}>
         <div className="is-inner">
           <div className="col" style={{ gap: 6 }}>
             <span className="mono muted is-key">{issue.id}</span>
