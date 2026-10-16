@@ -117,6 +117,7 @@
 .model-pop { display: flex; flex-direction: column; width: 380px; padding: 0; background: var(--surface-2); }
 /* Opening down from a Settings cell (KERNEL-988) instead of up from the composer. */
 .cmp-pop[data-placement='down'] { bottom: auto; top: calc(100% + 6px); }
+.cmp-pop[data-align='right'] { left: auto; right: 0; }
 /* Taller than the project above the composer, the model list scrolls and the search, Effort and footer stay. */
 .model-pop > .pick-search, .model-pop > .pick-foot { flex-shrink: 0; }
 .model-pop > .pick-body { min-height: 0; }
@@ -165,6 +166,8 @@
 .pick-flyout { left: calc(100% + 9px); bottom: -6px; display: flex; flex-direction: column; gap: 2px; width: 180px; }
 .pick-effort-row > .pick-flyout { left: calc(100% + 21px); }
 .pick-flyout-legacy { width: 280px; overflow-y: auto; }
+.pick-flyout[data-flip='left'] { left: auto; right: calc(100% + 9px); }
+.pick-effort-row > .pick-flyout[data-flip='left'] { left: auto; right: calc(100% + 21px); }
 .pick-flyout-legacy .pick-item > .pick-row { padding-right: 36px; }
 .pick-flyout .pick-row svg { color: var(--ink); }
 .pick-foot { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 8px 0 6px; border-top: 1px solid var(--card-line); font-size: var(--fs-code); color: var(--muted); }

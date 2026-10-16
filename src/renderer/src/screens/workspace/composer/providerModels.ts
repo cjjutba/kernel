@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type Effort, type Provider, type ProviderModel } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type CompactWindow, type Effort, type Provider, type ProviderModel } from '@shared/types'
 import { call } from '../../../api'
 import { useStore } from '../../../store'
 
@@ -52,10 +52,22 @@ export function useCodexInUse(chatProvider?: Provider): boolean {
   return signedIn || configured
 }
 
+export const COMPACT_LABELS: Record<CompactWindow, string> = { '200k': '200k tokens', full: 'Full window' }
+
 export const providerLabel = (p: Provider) => PROVIDERS.find((x) => x.id === p)?.label ?? p
 
 /** A model's name: Claude's from MODELS, Codex's from its list, else the id as written. */
 export const modelLabelOf = (id: string, models: ProviderModel[] = []) => models.find((m) => m.id === id)?.label ?? MODELS.find((m) => m.id === id)?.label ?? id
+
+const FAMILIES = ['sonnet', 'opus', 'haiku']
+
+/** The name for a model an agent file sets: Claude's short alias (sonnet, opus, haiku) reads as the newest model of that family, a known id as its label, anything else as written. */
+export function agentModelLabel(id: string, models: ProviderModel[] = []): string {
+  const family = id.trim().toLowerCase()
+  if (!FAMILIES.includes(family)) return modelLabelOf(id, models)
+  const claude = [...models, ...MODELS.map((m) => ({ id: m.id, label: m.label, legacy: !!m.legacy }))].filter((m) => m.id.startsWith(`claude-${family}-`))
+  return (claude.find((m) => !m.legacy) ?? claude[0])?.label ?? id
+}
 
 /** The efforts a model takes: its own list, else Claude's four. */
 export const effortsOf = (model: string, models: ProviderModel[]): Effort[] => models.find((m) => m.id === model)?.efforts ?? EFFORTS.map((e) => e.id)
