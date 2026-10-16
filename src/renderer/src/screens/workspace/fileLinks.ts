@@ -148,22 +148,15 @@ export function useFolderFocus(workspaceId: string) {
 
 // ---------- Opening
 
-const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i
-
 /** Brings the workspace on screen, whichever one the click came from. */
 function show(workspaceId: string) {
   const { route } = getState().ui
   if (route.name !== 'workspace' || route.workspaceId !== workspaceId) go({ name: 'workspace', workspaceId })
 }
 
-/** Whether the mention still points at something, since an answer kept from earlier may be of a file that has gone. */
+/** Whether the mention still points at something, since an answer kept from earlier may be of a file that has gone. Resolving the path doesn't read the file, so a binary or large one passes. */
 async function stillThere(workspaceId: string, r: ResolvedFile): Promise<boolean> {
-  try {
-    if (r.kind === 'file') { await call('workspaces.readFile', { workspaceId, path: r.path }); return true }
-    if (r.kind === 'image') return !!(await call('workspaces.readImage', { workspaceId, path: r.path, at: 'worktree' }))
-    const now = await call('workspaces.resolvePaths', { workspaceId, paths: [r.path] })
-    return !!now[r.path]
-  } catch { return false }
+  try { return !!(await call('workspaces.resolvePaths', { workspaceId, paths: [r.path] }))[r.path] } catch { return false }
 }
 
 /** Opens what a mention resolved to: a file or picture in a tab of the workspace, a folder in the Files panel, or with `diff` the file's diff when it changed. */
@@ -184,9 +177,11 @@ export async function openMention(workspaceId: string, r: ResolvedFile, o: { dif
   actions.ui.openTab(workspaceId, fileTab(r.path))
 }
 
-/** A bare name's match, as a mention of its own. `raw` supplies the line it named. */
-export function matchOf(path: string, raw: string): ResolvedFile {
-  return { kind: IMAGE.test(path) ? 'image' : 'file', path, ...lineOf(raw) }
+/** A bare name's match picked from the menu, resolved on its own so its sensitive flag and line come with it. Null when it is gone. */
+export async function resolveMatch(workspaceId: string, path: string, raw: string): Promise<ResolvedFile | null> {
+  const asked = `${path}${SUFFIX.exec(raw)?.[0] ?? ''}`
+  const r = (await call('workspaces.resolvePaths', { workspaceId, paths: [asked] }).catch(() => ({} as Record<string, ResolvedPath>)))[asked]
+  return r && !('matches' in r) ? r : null
 }
 
 /** The accessible name of a link. */

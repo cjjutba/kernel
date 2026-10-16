@@ -2,7 +2,8 @@ import { useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { ResolvedFile, ResolvedPath } from '@shared/types'
 import { ConfirmDialog, Menu } from '../../ui'
-import { linkLabel, matchOf, openMention } from './fileLinks'
+import { actions } from '../../store'
+import { linkLabel, openMention, resolveMatch } from './fileLinks'
 
 /**
  * A path an agent mentioned that exists in the workspace: it reads like inline code and underlines on hover. A click opens the
@@ -24,7 +25,7 @@ export function FileLink({ workspaceId, raw, hit, children }: { workspaceId: str
       {matches && menu && (
         <Menu
           label={`Files named ${raw}`} anchorRef={anchor} onClose={() => setMenu(false)} style={{ left: 0, top: 'calc(100% + 4px)', minWidth: 240 }}
-          items={matches.map((m) => ({ id: m, label: m, onSelect: () => { setMenu(false); open(matchOf(m, raw), false) } }))}
+          items={matches.map((m) => ({ id: m, label: m, onSelect: () => { setMenu(false); void resolveMatch(workspaceId, m, raw).then((file) => { if (file) open(file, false); else actions.ui.toast({ title: 'This file no longer exists' }) }) } }))}
         />
       )}
       {ask && createPortal(
