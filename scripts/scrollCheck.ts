@@ -1,5 +1,6 @@
 // End-to-end check that every view keeps its scroll position (KERNEL-923, contract in KERNEL-919). Runs on plain Node with built-in type
-// stripping, so only erasable TypeScript here. Launches the real app headless on fixtures, the way scripts/shots.ts does.
+// stripping, so only erasable TypeScript here. It is a by-hand check, not part of CI: run it after changing scroll code (keptScroll.ts,
+// chatPlace.ts, a list, log or chat view) and before opening the PR. About 6 minutes for all views. Launches the real app headless on fixtures, the way scripts/shots.ts does.
 //
 //   pnpm scroll-check                  build, then check every view
 //   pnpm scroll-check --no-build       reuse the last build
