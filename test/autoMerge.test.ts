@@ -430,6 +430,10 @@ describe('a PR behind its base', () => {
     // Kai's worktree was clean and idle, so it moved to the merge.
     expect((await git(b.path, 'rev-parse', 'HEAD')).trim()).toBe(to)
     expect(h.branchUpdated).toHaveBeenCalledWith(expect.objectContaining({ id: b.id }), 'main')
+    // The Lead update and the activity entry carry the update. Kai's chat gets no note about it (KERNEL-970).
+    const chat = s.k.store.chats(b.id)[0]
+    expect(chat).toBeDefined()
+    expect(s.k.store.items(chat.id).filter((i) => i.kind === 'note' && i.text.includes('up to date'))).toEqual([])
     await vi.waitFor(() => expect(s.k.store.workspace(b.id)?.prState).toBe('merged'))
     expect(h.merged).toEqual([101, 102])
     expect(h.updates).toEqual([102])
