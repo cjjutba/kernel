@@ -129,3 +129,8 @@ button.hc-pr:hover { color: var(--ink); }
 .nav-item[data-arrive] { animation: archive-arrive var(--archive-fade) ease-out; }
 @keyframes archive-arrive { from { background-color: transparent; color: var(--ink-2); } }
 @media (prefers-reduced-motion: reduce) { .row-fold, .row-open, .nav-group:not(:has(> :not(.row-fold))), .nav-item[data-arrive] { animation: none; } .row-fold { display: none; } }
+
+/* The Search field above New chat: the Search settings box (.set-search) as a button that opens the ⌘K palette (KERNEL-930). */
+.sb-search { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 10px 0 9px; border-radius: var(--r-sm); border: 1px solid var(--panel-line); background: var(--panel); color: var(--muted); text-align: left; transition: border-color 0.12s; }
+.sb-search svg { color: var(--faint); flex-shrink: 0; }
+.sb-search:hover { border-color: var(--line-3); }
