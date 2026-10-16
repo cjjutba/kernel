@@ -64,11 +64,11 @@ export async function recentFolders(projectPaths: string[], home = homedir(), li
 
 /** The signed-in user's repos through `gh`, newest push first. `query` filters by name. */
 export async function listRepos(query?: string): Promise<RepoSummary[]> {
-  const r = await exec('gh', ['repo', 'list', '--limit', '100', '--json', 'nameWithOwner,name,isPrivate,pushedAt'], { timeoutMs: 30000 })
+  const r = await exec('gh', ['repo', 'list', '--limit', '100', '--json', 'nameWithOwner,name,isPrivate,pushedAt,description'], { timeoutMs: 30000 })
   if (r.code !== 0 || r.timedOut) throw ghError(r, 'Could not list your repositories')
   const q = query?.trim().toLowerCase()
-  return (JSON.parse(r.stdout) as { nameWithOwner: string; name: string; isPrivate: boolean; pushedAt: string }[])
-    .map((x) => ({ fullName: x.nameWithOwner, name: x.name, private: x.isPrivate, updatedAt: Date.parse(x.pushedAt) || 0 }))
+  return (JSON.parse(r.stdout) as { nameWithOwner: string; name: string; isPrivate: boolean; pushedAt: string; description?: string | null }[])
+    .map((x) => ({ fullName: x.nameWithOwner, name: x.name, private: x.isPrivate, updatedAt: Date.parse(x.pushedAt) || 0, ...(x.description ? { description: x.description } : {}) }))
     .filter((x) => !q || x.fullName.toLowerCase().includes(q))
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }

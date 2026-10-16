@@ -83,8 +83,8 @@ const hostSteps = (first: ProjectSetupStep, host: string, folder: string, o: { p
 
 const clientC: Project = { id: 'project-client-c', name: 'Client C', desc: 'Booking dashboard for a dental clinic', kind: 'repo', repo: 'samrivera/client-c', path: '/Users/you/Projects/client-c', defaultBranch: 'main', paused: false, createdAt: ago(MIN) }
 const repos = [
-  ['client-c', true, 2 * HOUR], ['personal-site', false, DAY], ['habit-tracker', true, 3 * DAY], ['recipe-box', true, 7 * DAY], ['starter-kit', true, 14 * DAY], ['starter-kit-mobile', true, 21 * DAY]
-].map(([name, priv, age]) => ({ fullName: `samrivera/${name}`, name: name as string, private: priv as boolean, updatedAt: ago(age as number) }))
+  ['client-c', true, 2 * HOUR, 'Booking dashboard for a dental clinic'], ['personal-site', false, DAY, 'Portfolio and writing'], ['habit-tracker', true, 3 * DAY, ''], ['recipe-box', true, 7 * DAY, 'Recipes with a weekly shopping list'], ['starter-kit', true, 14 * DAY, ''], ['starter-kit-mobile', true, 21 * DAY, '']
+].map(([name, priv, age, description]) => ({ fullName: `samrivera/${name}`, name: name as string, private: priv as boolean, updatedAt: ago(age as number), ...(description ? { description: description as string } : {}) }))
 
 /** Open a folder's recent folders (KERNEL-946): two on GitHub, one repo with no remote, one plain folder. */
 const recentFolders = [

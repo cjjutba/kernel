@@ -65,12 +65,12 @@ export interface KernelApi {
   'projects.inspectFolder': { req: { path: string }; res: FolderInfo }
   'projects.recentFolders': { req: void; res: FolderInfo[] }
   'github.repos': { req: { query?: string }; res: RepoSummary[] }
+  /** A GitHub user's or org's avatar as a data URL, or null when it can't be had. The window can't load remote images (KERNEL-945). */
+  'github.avatar': { req: { owner: string }; res: string | null }
   /** Who a new repo can belong to: the signed-in user first, then their orgs (KERNEL-944). */
   'github.owners': { req: void; res: GitHubOwner[] }
   /** Whether `owner/name` is free for a new repo. `reason` says why not: taken, or a name GitHub won't take. */
   'github.repoAvailable': { req: { owner: string; name: string }; res: { available: boolean; reason?: string } }
-  /** A GitHub user's or org's avatar as a data URL, or null when it can't be had. The window can't load remote images (KERNEL-945). */
-  'github.avatar': { req: { owner: string }; res: string | null }
 
   // agents (KERNEL-19, 22)
   'agents.list': { req: { projectId: string; retired?: boolean }; res: AgentDef[] }

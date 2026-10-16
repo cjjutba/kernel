@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { GitHubOwner } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { Icon } from '../../ui'
+import { Icon, Select } from '../../ui'
 import { useAvatar } from './avatar'
 
 /** Owners, asked of gh once per window: they rarely change while a dialog is open (KERNEL-944). */
@@ -53,13 +53,9 @@ export function RepoNameField({ repo, label }: { repo: ReturnType<typeof useRepo
     <div className="rn">
       {label && <div className="rn-labels"><span className="rn-label">GitHub owner</span><span className="rn-label">Repository name</span></div>}
       <div className="rn-row">
-        <span className="rn-owner">
-          {avatar ? <img className="rn-av" src={avatar} alt="" /> : <span className="rn-av" aria-hidden="true">{owner.slice(0, 2)}</span>}
-          <select aria-label="GitHub owner" value={owner} onChange={(e) => setOwner(e.target.value)} disabled={!list?.length}>
-            {(list ?? []).map((o) => <option key={o.login} value={o.login}>{o.login}</option>)}
-          </select>
-          <Icon name="chevron" size={12} />
-        </span>
+        <Select className="rn-owner" label="GitHub owner" value={owner} onChange={setOwner} disabled={!list?.length}
+          leading={avatar ? <img className="rn-av" src={avatar} alt="" /> : <span className="rn-av" aria-hidden="true">{owner.slice(0, 2)}</span>}
+          options={(list ?? []).map((o) => ({ value: o.login, label: o.login }))} />
         <span className="rn-slash" aria-hidden="true">/</span>
         <input aria-label="Repository name" className="rn-input rn-name" autoComplete="off" spellCheck={false} value={name} onChange={(e) => setName(e.target.value)} />
       </div>
