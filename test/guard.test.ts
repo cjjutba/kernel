@@ -34,11 +34,15 @@ afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 // Plain node, as Claude Code runs the hook. Under `pnpm test` process.execPath is the Electron binary, which takes
 // seconds to start on a busy machine, and the checks run side by side (KERNEL-187).
-async function guard(tool: string, toolInput: Record<string, string>, h = home) {
+async function guardOutput(tool: string, toolInput: Record<string, string>, h = home) {
   const run = promisify(execFile)('node', [resolve('.claude/hooks/guard.mjs')], { env: { ...process.env, HOME: h, CLAUDE_PROJECT_DIR: repo }, encoding: 'utf8' })
   run.child.stdin!.end(JSON.stringify({ tool_name: tool, tool_input: toolInput, cwd: repo }))
   const { stdout } = await run
-  return stdout ? JSON.parse(stdout).hookSpecificOutput.permissionDecision : 'allow'
+  return stdout ? JSON.parse(stdout).hookSpecificOutput : { permissionDecision: 'allow' }
+}
+
+async function guard(tool: string, toolInput: Record<string, string>, h = home) {
+  return (await guardOutput(tool, toolInput, h)).permissionDecision
 }
 
 describe.concurrent('guard: edits outside the repo', () => {
@@ -87,5 +91,30 @@ describe.concurrent('guard: edits outside the repo', () => {
 
   it('does not follow a plans folder that is a symlink to ~/.claude', async () => {
     expect(await guard('Write', { file_path: join(linkedHome, '.claude/plans/CLAUDE.md') }, linkedHome)).toBe('deny')
+  })
+})
+
+describe.concurrent('guard: live tests', () => {
+  it.each([
+    ['an approved file', 'KERNEL_LIVE=1 pnpm test test/terminalLead.live.test.ts'],
+    ['an approved file through vitest', 'KERNEL_LIVE=1 pnpm exec vitest run ./test/terminalLead.live.test.ts 2>&1 | tail -40']
+  ])('allows %s', async (_, command) => {
+    expect(await guard('Bash', { command })).toBe('allow')
+  })
+
+  it.each([
+    ['an unlisted file', 'KERNEL_LIVE=1 pnpm test test/live.test.ts'],
+    ['a command naming no file', 'KERNEL_LIVE=1 KERNEL_LIVE_REPO=/tmp/side pnpm exec vitest run'],
+    ['an approved file plus an unlisted one', 'KERNEL_LIVE=1 pnpm test test/terminalLead.live.test.ts test/live.test.ts'],
+    ['a whole-suite run', 'KERNEL_LIVE=1 pnpm test'],
+    ['a whole-suite run after an approved one', 'export KERNEL_LIVE=1; pnpm test test/terminalLead.live.test.ts && pnpm test'],
+    ['KERNEL_LIVE with no test run', 'export KERNEL_LIVE=1']
+  ])('denies %s', async (_, command) => {
+    expect(await guard('Bash', { command })).toBe('deny')
+  })
+
+  it('names the approved files when it denies', async () => {
+    const out = await guardOutput('Bash', { command: 'KERNEL_LIVE=1 pnpm test test/live.test.ts' })
+    expect(out.permissionDecisionReason).toContain('test/terminalLead.live.test.ts')
   })
 })
