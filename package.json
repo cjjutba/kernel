@@ -19,6 +19,7 @@
     "test": "node scripts/test.ts",
     "test:changed": "node scripts/test.ts --changed origin/main",
     "shots": "node scripts/shots.ts",
+    "scroll-check": "node scripts/scrollCheck.ts",
     "demo:refresh": "node scripts/demo-refresh.ts",
     "demo:build": "vite build --config demo/vite.config.ts",
     "demo:clips": "vite build --config demo/vite.scenes.config.ts && node demo/clips.ts",
