@@ -149,9 +149,10 @@ export class Mcp extends Feature {
   /**
    * Checks one account's servers. A check that fails keeps its reason and no servers. Two calls share a running check, unless
    * `fresh`, which runs one more after it, since a sign-in that finished meanwhile may not be in it (KERNEL-660). `checkedAt`
-   * is when the check started, so a sign-in during it counts as newer.
+   * is when the check started, so a sign-in during it counts as newer. `Providers.shareMcp` asks for one on each login a
+   * sign-in was copied to (KERNEL-935).
    */
-  private checkAccount(provider: Provider, accountId: string, o: { fresh?: boolean } = {}): Promise<void> {
+  checkAccount(provider: Provider, accountId: string, o: { fresh?: boolean } = {}): Promise<void> {
     // A queued re-check outlives a Kernel that stopped meanwhile, and would start a Claude Code query after it.
     if (this.stopped) return Promise.resolve()
     const key = `${provider}:${accountId}`
@@ -179,8 +180,9 @@ export class Mcp extends Feature {
 
   /**
    * What Kernel knows of each account in `rows`, in their order, with every server of its provider (`withMissing`). A Claude
-   * server that needed a sign-in and is off the account's `mcpSignIns` since got one, here or shared from another login, so
-   * it is ready, and so is a Codex server signed in from Kernel since the account's check (KERNEL-646). Then the quiet ones:
+   * server a sign-in landed on since the check, here or copied from another login, reads `checking` until the next check, since
+   * only Claude Code can say it works (KERNEL-935). A Codex server signed in from Kernel since the account's check is ready,
+   * since Codex shares the token (KERNEL-646). Then the quiet ones:
    * a server ignored on the account reads `ignored`, and one switched off in every project carries `projectOff`. Last the counts,
    * and the Codex accounts whose servers read the same (`sharedWith`, KERNEL-660).
    */
@@ -191,8 +193,11 @@ export class Mcp extends Feature {
       const base = { provider: a.provider, accountId: a.id, label: a.label, ...(a.email ? { email: a.email } : {}) }
       const had = this.onAccounts.get(`${a.provider}:${a.id}`)
       if (!had) return { ...base, servers: [] }
-      const left = a.provider === 'claude' ? this.k.providers.mcpSignInsOn(a.id) : undefined
-      const signedIn = (s: McpAccountServer) => (a.provider === 'claude' ? !!left && !left.some((x) => x.server === s.name) : (this.codexSignedIn.get(s.name) ?? 0) > (had.checkedAt ?? 0))
+      if (a.provider === 'claude') {
+        const checking = new Set(this.k.providers.mcpCheckingOn(a.id))
+        return { ...had, ...base, servers: had.servers.map((s) => (checking.has(s.name) ? { name: s.name, kind: s.kind, connector: s.connector, state: 'checking' } : s)) }
+      }
+      const signedIn = (s: McpAccountServer) => (this.codexSignedIn.get(s.name) ?? 0) > (had.checkedAt ?? 0)
       const servers = had.servers.map((s) => (s.state === 'needs-sign-in' && signedIn(s) ? ready(s) : s))
       return { ...had, ...base, servers }
     })).map((a) => {
@@ -218,8 +223,9 @@ export class Mcp extends Feature {
   }
 
   /**
-   * A server just signed in from Kernel (`Providers.mcpSignIn`). Codex's is kept, since Claude's sign-ins land on
-   * `mcpSignIns`. Every window hears at once, and again once the account is checked again (KERNEL-660).
+   * A server just signed in from Kernel (`Providers.mcpSignIn`). Codex's is kept, since Claude's read `checking` until the
+   * check (`Providers.mcpCheckingOn`, KERNEL-935). Every window hears at once, and again once the account is checked again,
+   * with what Claude Code said (KERNEL-660).
    */
   signedIn(provider: Provider, accountId: string, server: string) {
     if (provider === 'codex') this.codexSignedIn.set(server, Date.now())
