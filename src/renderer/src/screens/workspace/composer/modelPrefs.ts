@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'reac
 import { EFFORT_LABELS, EFFORTS, type AgentDef, type AppSettings, type Effort, type RoleModel } from '@shared/types'
 import type { EffortMemory } from '@shared/effort'
 import { rolePick } from '@shared/rolePick'
+import { roleOf } from '@shared/team'
 import { call } from '../../../api'
 import { useStore } from '../../../store'
 import { patchSettings } from '../../settings/useSettings'
@@ -17,10 +18,14 @@ const NONE: EffortMemory = {}
 export const useEffortMemory = (): EffortMemory => useStore((s) => s.settings?.models.effortByModel ?? NONE)
 
 /**
- * What a model you never picked an effort for runs at in an engineer's workspace: the agent's effort, else the Backend
- * row of Settings, Models. Never the open chat's. The boxes that start a Lead chat fall back to the Lead's (`useLeadBox`).
+ * What a model you never picked an effort for runs at for `agent`: its file's effort, else the row of Settings, Models its role
+ * reads, as main has it (KERNEL-974). A chat with no agent reads Backend's.
  */
-export const useDefaultEffort = (agentEffort?: Effort): Effort => useStore((s) => agentEffort ?? s.settings?.models.roles.engineers.effort ?? 'high')
+export const defaultEffortOf = (agent: AgentDef | undefined, models: AppSettings['models'] | undefined): Effort =>
+  agent?.effort ?? models?.roles[agent ? roleOf(agent) : 'engineers'].effort ?? 'high'
+
+/** `defaultEffortOf` in an engineer's workspace. Never the open chat's. The boxes that start a Lead chat fall back to the Lead's (`useLeadBox`). */
+export const useDefaultEffort = (agent?: AgentDef): Effort => useStore((s) => defaultEffortOf(agent, s.settings?.models))
 
 export const rememberEffort = (model: string, effort: Effort) => void patchSettings({ models: { effortByModel: { [model]: effort } } })
 
