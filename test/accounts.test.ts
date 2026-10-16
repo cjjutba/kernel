@@ -22,8 +22,8 @@ import { tempRepo } from './helpers'
 
 // Claude Code's usage call, answered by the account each short session runs on: its CLAUDE_CONFIG_DIR, '' for the CLI's own
 // login (KERNEL-567). `usage` holds each account's 5-hour use in percent. `mcp` holds the MCP servers each account lists
-// (KERNEL-616), `*` for any added login not named. No Claude Code process starts.
-const sdk = vi.hoisted(() => ({ usage: {} as Record<string, number>, mcp: {} as Record<string, { name: string; status: string; scope?: string }[]>, probes: [] as { dir: string; token?: string }[], reads: [] as string[], hold: undefined as Promise<void> | undefined }))
+// (KERNEL-616), `*` for any added login not named, and `mcpHold` holds their answers. No Claude Code process starts.
+const sdk = vi.hoisted(() => ({ usage: {} as Record<string, number>, mcp: {} as Record<string, { name: string; status: string; scope?: string }[]>, probes: [] as { dir: string; token?: string }[], reads: [] as string[], hold: undefined as Promise<void> | undefined, mcpHold: undefined as Promise<void> | undefined }))
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
   ...await original<object>(),
   query: ({ options }: { options: { env?: Record<string, string> } }) => {
@@ -33,7 +33,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
     return {
       [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }),
       interrupt: async () => {},
-      mcpServerStatus: async () => sdk.mcp[dir] ?? (dir ? sdk.mcp['*'] : undefined) ?? [],
+      mcpServerStatus: async () => { await sdk.mcpHold; return sdk.mcp[dir] ?? (dir ? sdk.mcp['*'] : undefined) ?? [] },
       usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => {
         sdk.reads.push(dir)
         await sdk.hold
@@ -90,7 +90,7 @@ const saved = { codexHome: process.env.CODEX_HOME, claudeDir: process.env.CLAUDE
 // The fakes read their answers from FAKE_* variables, and a test sets them on process.env. One left behind (FAKE_LOGIN_WAIT, FAKE_MCP_FAIL,
 // FAKE_CODEX_MCP_STATUS) changes the next test's fake, and a background read of a stopped Kernel sees it too, so each test starts from none.
 const clearFakes = () => { for (const key of Object.keys(process.env)) if (key.startsWith('FAKE_')) delete process.env[key] }
-beforeEach(async () => { kernels = []; background = []; clearFakes(); fake = await fakeCodex(); process.env.FAKE_CODEX_LOG = fake.log; delete process.env.CODEX_HOME; delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR; sdk.usage = {}; sdk.mcp = {}; sdk.probes = []; sdk.reads = []; sdk.hold = undefined })
+beforeEach(async () => { kernels = []; background = []; clearFakes(); fake = await fakeCodex(); process.env.FAKE_CODEX_LOG = fake.log; delete process.env.CODEX_HOME; delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR; sdk.usage = {}; sdk.mcp = {}; sdk.probes = []; sdk.reads = []; sdk.hold = undefined; sdk.mcpHold = undefined })
 afterEach(async () => {
   // A Kernel a test leaves running (a failed one, or one it never stops) keeps reading in the background, into the next test's fakes.
   await Promise.all(kernels.map((k) => k.stop({ budgetMs: 0 })))
@@ -988,10 +988,14 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     expect(share()).toEqual({ CLAUDE_CONFIG_DIR: folder, CLAUDE_SECURESTORAGE_CONFIG_DIR: folder })
     expect(kc.json(SIDE)).toEqual({ claudeAiOauth: { accessToken: 'pro-login' }, mcpOAuth: { 'linear|aaa': signIn('linear', 'cli', now + HOUR) } })
     expect(JSON.parse(await readFile(join(folder, 'mcp-needs-auth-cache.json'), 'utf8'))).toEqual({})
-    // A session on the account refreshes linear. The CLI's own login gets the new token before its next process.
+    // A session on the account refreshes linear. The CLI's own token still works, so it keeps it (KERNEL-935).
     kc.set(SIDE, { claudeAiOauth: { accessToken: 'pro-login' }, mcpOAuth: { 'linear|aaa': signIn('linear', 'side', now + 2 * HOUR) } })
     await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
     expect(share()).toEqual({})
+    expect(kc.json(CLI).mcpOAuth['linear|aaa']).toEqual(signIn('linear', 'cli', now + HOUR))
+    // Once it expires, the CLI's own login gets the new token before its next process.
+    kc.set(CLI, { ...kc.json(CLI), mcpOAuth: { ...kc.json(CLI).mcpOAuth, 'linear|aaa': signIn('linear', 'cli', now - 1) } })
+    share()
     expect(kc.json(CLI)).toEqual({ claudeAiOauth: { accessToken: 'max-login' }, mcpOAuth: { 'linear|aaa': signIn('linear', 'side', now + 2 * HOUR), 'claude.ai Gmail|ccc': { serverName: 'claude.ai Gmail', accessToken: 'cli-gmail-access' } } })
     // The connector stays the CLI login's own.
     expect(kc.json(SIDE).mcpOAuth['claude.ai Gmail|ccc']).toBeUndefined()
@@ -1001,6 +1005,46 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
       for (const call of spy.mock.calls) expect(JSON.stringify(call)).not.toMatch(/-access|-refresh|-login/)
       spy.mockRestore()
     }
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('reads a copied sign-in as checking until Claude Code checks the login, then as it said, and never copies a token it rejected again (KERNEL-935)', async () => {
+    const { k, h, kc, share } = await setUp()
+    const views: McpAccount[][] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'mcp.accounts') views.push(e.accounts) })
+    const side = await h['accounts.add']({ provider: 'claude' })
+    await settleReads(k); await quiet()
+    const folder = k.providers.claudeHome(side.id)
+    const SIDE = credentialsItem({ CLAUDE_CONFIG_DIR: folder })
+    // Neither login has signed in to anything yet.
+    sdk.mcp = { '': [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'posthog', status: 'connected', scope: 'user' }], [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'posthog', status: 'needs-auth', scope: 'user' }] }
+    await h['mcp.accounts'](undefined)
+    const on = (list: McpAccount[] | undefined) => list?.find((a) => a.accountId === side.id)
+    const states = (a: McpAccount | undefined) => a?.servers.map((s) => [s.name, s.state])
+    // The CLI login holds a linear token the server revoked, and a posthog one that works.
+    const now = Date.now()
+    kc.set(CLI, { claudeAiOauth: { accessToken: 'max-login' }, mcpOAuth: { 'linear|aaa': signIn('linear', 'cli', now + HOUR), 'posthog|bbb': signIn('posthog', 'cli', now + HOUR) } })
+    kc.set(SIDE, { claudeAiOauth: { accessToken: 'pro-login' }, mcpOAuth: { 'linear|aaa': stub('linear'), 'posthog|bbb': stub('posthog') } })
+    sdk.mcp[folder] = [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'posthog', status: 'connected', scope: 'user' }]
+    let release = () => {}
+    sdk.mcpHold = new Promise((r) => { release = r })
+    share(side.id)
+    expect(kc.json(SIDE).mcpOAuth['linear|aaa']).toEqual(signIn('linear', 'cli', now + HOUR))
+    // Until Claude Code checks the login, neither copy counts as ready or as needing the user, and every window hears so.
+    const checking = on(await until(() => views.find((v) => on(v)?.servers.some((s) => s.state === 'checking'))))
+    expect(states(checking)).toEqual([['linear', 'checking'], ['posthog', 'checking']])
+    expect(checking).toMatchObject({ ready: 0, needsYou: 0 })
+    expect(on(await h['mcp.accounts']({}))).toEqual(checking)
+    release()
+    const checked = await until(() => { const a = on(views.at(-1)); return a?.servers.every((s) => s.state !== 'checking') ? a : undefined })
+    expect(states(checked)).toEqual([['linear', 'needs-sign-in'], ['posthog', 'ready']])
+    // Claude Code drops the token it rejected. Shared again, it isn't copied back, and nor does the CLI get it from the account.
+    kc.set(SIDE, { ...kc.json(SIDE), mcpOAuth: { ...kc.json(SIDE).mcpOAuth, 'linear|aaa': stub('linear') } })
+    const writes = kc.writes.length
+    share(side.id)
+    expect(kc.json(SIDE).mcpOAuth['linear|aaa']).toEqual(stub('linear'))
+    expect(kc.writes.length).toBe(writes)
+    expect(states(on(await h['mcp.accounts']({})))).toEqual([['linear', 'needs-sign-in'], ['posthog', 'ready']])
     await k.stop({ budgetMs: 0 })
   })
 
@@ -1691,6 +1735,9 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
     // A sign-in finished: the account is checked again, and what Claude Code says then is what shows.
     sdk.mcp[folder] = [{ name: 'linear', status: 'connected', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }]
     await h['accounts.mcpSignIn']({ provider: 'claude', accountId: side.id, server: 'linear' })
+    // Every window hears at once that linear is being checked, never that it is ready before Claude Code says so (KERNEL-935).
+    const first = await until(() => views.find((v) => on(v, 'claude', side.id)?.servers.some((s) => s.name === 'linear' && s.state !== 'needs-sign-in')))
+    expect(on(first, 'claude', side.id)?.servers.find((s) => s.name === 'linear')?.state).toBe('checking')
     // Before the check, figma reads not set up there, copied from the CLI login. The check finds it waiting on a sign-in.
     const after = await until(() => (on(views.at(-1), 'claude', side.id)?.servers.some((s) => s.name === 'figma' && s.state === 'needs-sign-in') ? views.at(-1) : undefined))
     expect(checks.mock.calls).toEqual([['claude', side.id]])
