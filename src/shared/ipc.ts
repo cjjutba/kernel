@@ -2,7 +2,7 @@ import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubAuth, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewProjectRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
-  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, GitHubOwner, RepoSummary, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ChatArchivePreview, MoveChoice, MoveNotice, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, GitHubOwner, RepoSummary, ResolvedPath, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ChatArchivePreview, MoveChoice, MoveNotice, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -150,7 +150,16 @@ export interface KernelApi {
   'workspaces.tree': { req: { workspaceId: string }; res: FileEntry[] }
   /** @ mentions: files matching the query, best first. */
   'workspaces.files': { req: { workspaceId: string; query: string; limit?: number }; res: FileEntry[] }
+  /**
+   * The text of a file in the worktree, or in the agent's own scratchpad by its absolute path. Paths elsewhere, symlinks out
+   * included, big files and binaries are refused.
+   */
   'workspaces.readFile': { req: { workspaceId: string; path: string }; res: string }
+  /**
+   * Paths agents mentioned in chat, keyed by the raw string, in one call for a whole transcript (clickable file mentions). Each
+   * resolves inside the worktree or the agent's own scratchpad, or is null.
+   */
+  'workspaces.resolvePaths': { req: { workspaceId: string; paths: string[] }; res: Record<string, ResolvedPath> }
   /**
    * An image for the diff tab, as a data URL: `worktree` reads the file on disk, `base` the version the diff compares against.
    * Null when the file isn't there (KERNEL-409). With a `commit` target, `worktree` is the file in that commit (KERNEL-516).
