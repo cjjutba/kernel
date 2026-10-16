@@ -554,7 +554,7 @@ describe('get_issue and the issue in the brief (KERNEL-473)', () => {
   const getIssue = (o: { kind?: Tracker['kind']; has?: TrackerIssue; key?: string; fails?: string } = {}) => {
     const asked: string[] = []
     const tracker: Tracker = {
-      kind: o.kind ?? 'linear', search: async () => [], start: async () => undefined,
+      kind: o.kind ?? 'linear', search: async () => [], start: async () => undefined, create: async () => { throw new Error('unused') }, edit: async () => { throw new Error('unused') },
       issue: async (id) => { asked.push(id); if (o.fails) throw new Error(o.fails); return o.has ?? issue({ id }) }
     }
     // The project reads the key with this tracker, or with none when it is `none` (KERNEL-933).

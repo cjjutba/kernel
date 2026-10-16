@@ -53,6 +53,16 @@ export interface Tracker {
   issue: (id: string) => Promise<TrackerIssue>
   /** Moves the issue to its first started state when it hasn't started (D-140). The state's name when it moved. */
   start: (id: string) => Promise<string | undefined>
+  /** Files a new issue, in the project's Linear team or GitHub repo: the Lead's file_issue. The issue as the tracker keys it. */
+  create: (issue: IssueDraft) => Promise<IssueSummary>
+  /** Changes what `change` sets on one issue, leaving the rest as it was: the Lead's file_issue with an issue key. */
+  edit: (id: string, change: Partial<IssueDraft>) => Promise<IssueSummary>
+}
+
+/** What the Lead's file_issue writes to an issue: its title and its description in markdown. */
+export interface IssueDraft {
+  title: string
+  description?: string
 }
 
 /** The tracker a project uses, for the screens that list its issues. `where` is GitHub's `owner/repo` (KERNEL-471). */
