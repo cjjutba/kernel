@@ -125,8 +125,9 @@ export function listen(k: Kernel): () => void {
 export const MCP_LAUNCH_CHECK_MS = 5_000
 
 /**
- * What runs once Kernel started: a few seconds in, every account's MCP servers are checked in the background, so Settings,
- * MCP servers opens warm (KERNEL-936). The app turns it on (`checkMcp`).
+ * What the app runs once `start()` resolves: a few seconds in, every account's MCP servers are checked in the background, so
+ * Settings, MCP servers opens warm (KERNEL-936). Not in `listen`, which runs in the constructor, before settings load. Only
+ * with `checkMcp`.
  */
 export function started(k: Kernel) {
   if (!k.o.checkMcp) return

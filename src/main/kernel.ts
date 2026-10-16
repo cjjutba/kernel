@@ -23,7 +23,7 @@ import { Overlaps } from './services/overlap'
 import type { KernelOptions } from './features/options'
 import { channels } from './features/channels'
 import * as records from './features/records'
-import { leadUpdateDeps, listen, notificationDeps, overlapDeps, started, taskDeps } from './features/wiring'
+import { leadUpdateDeps, listen, notificationDeps, overlapDeps, taskDeps } from './features/wiring'
 import { sessionDeps } from './features/sessionDeps'
 import { App } from './features/app'
 import { Inbox } from './features/inbox'
@@ -223,7 +223,6 @@ export class Kernel {
     this.reviews.start()
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
     if (this.store.projects().some((r) => r.pausedBy === 'limit')) void this.account.checkLimits()
-    started(this)
   }
 
   /**

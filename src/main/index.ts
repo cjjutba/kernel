@@ -25,7 +25,7 @@ import { macKeychain } from './services/providers/claudeHome'
 import { claudeAgents } from './services/pluginAgents'
 import { isAppUrl } from './windowGuard'
 import { appearanceOf, readAppearance, WindowAppearance } from './features/appearance'
-import { woke } from './features/wiring'
+import { started as kernelStarted, woke } from './features/wiring'
 import { clampLevel, handZoom, lightsFor, placeLights, settleZoom, zoomStepOf, zoomWindow } from './windowZoom'
 import { attachImageMenu } from './imageMenu'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
@@ -441,6 +441,7 @@ app.whenReady().then(async () => {
     started = refreshPath().then(() => kernel.start())
     started.catch((err: unknown) => { quit.bootFailed(); void bootFailed(err, updater && { updater, quit }) })
     void started.then(() => updater?.start(), () => undefined)
+    void started.then(() => kernelStarted(kernel), () => undefined)
     // Timers run late by however long the Mac slept, so waking checks what may have changed meanwhile (`woke`).
     powerMonitor.on('resume', () => void started.then(() => woke(kernel), () => undefined))
     // The update timer ran late too, so waking checks for an update, at most every half hour (KERNEL-711).
