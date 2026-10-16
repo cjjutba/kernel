@@ -448,12 +448,15 @@ export function AppSidebar() {
         <span className="sidebar-toggle-slot" aria-hidden="true" />
         <span className="grow" />
         <HistoryButtons />
-        <IconButton className="nodrag" icon="search" size={16} label="Search" data-tip-kbd="⌘K" onClick={() => actions.ui.openModal({ name: 'search' })} />
       </div>
       {/* Only the projects list gives up space when it outgrows the window, so the rows above it keep their height and y (flexShrink 0). */}
       <div className="row sb-switch-row">
         <AccountButton />
       </div>
+      {/* Search looks like the Search settings field but is a button: it opens the ⌘K palette, the one place you search. */}
+      <button type="button" className="sb-search" aria-keyshortcuts="Meta+K" onClick={() => actions.ui.openModal({ name: 'search' })}>
+        <Icon name="search" size={14} /><span className="grow">Search</span><span className="muted nav-hint">⌘K</span>
+      </button>
       <div className="nav-list sb-top-list">
         <button className="nav-item" onClick={() => openNewChat(openProject)}><Icon name="pen" /><span className="grow">New chat</span><span className="muted nav-hint">⌘N</span></button>
         <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="nav-count">{inbox}</span> : null} />

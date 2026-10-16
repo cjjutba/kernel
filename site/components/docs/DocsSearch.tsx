@@ -1,5 +1,6 @@
 'use client'
 
+import { escapeRegExp } from '@/lib/regexp'
 import { useRouter } from 'next/navigation'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { SearchEntry } from '@/lib/docs'
@@ -18,10 +19,10 @@ export type Suggestion = { href: string; title: string; section: string }
 /** `text` with every typed word wrapped in a mark. */
 function marked(text: string, terms: string[]): ReactNode {
   if (!terms.length) return text
-  const pattern = new RegExp(`(${terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
+  const pattern = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi')
   return text.split(pattern).map((part, i) =>
     i % 2 ? (
-      <mark key={i} className="rounded-sm bg-white/10 text-ink">
+      <mark key={i} className="rounded-sm bg-tint-high text-ink">
         {part}
       </mark>
     ) : (
@@ -193,7 +194,7 @@ export function DocsSearch({ suggestions = [] }: { suggestions?: Suggestion[] })
       ref={dialog}
       aria-label="Search the docs"
       onClick={(e) => e.target === dialog.current && dialog.current?.close()}
-      className="docs-search m-auto mt-24 w-full max-w-150 rounded-frame border border-line-strong bg-surface-2 p-0 text-ink max-nav:mx-3 max-nav:mt-4 max-nav:w-auto max-nav:max-w-none"
+      className="docs-search m-auto mt-24 w-full max-w-lead rounded-frame border border-line-strong bg-surface-2 p-0 text-ink max-nav:mx-3 max-nav:mt-4 max-nav:w-auto max-nav:max-w-none"
     >
       <div className="flex items-center gap-3 border-b border-line px-4">
         <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="shrink-0 text-faint">
@@ -219,7 +220,7 @@ export function DocsSearch({ suggestions = [] }: { suggestions?: Suggestion[] })
         />
         <kbd className="font-mono text-badge text-faint">Esc</kbd>
       </div>
-      <div className="max-h-105 overflow-y-auto p-2">
+      <div className="max-h-search-list overflow-y-auto p-2">
         {failed && typed ? (
           <p className="px-3 py-8 text-center text-ui text-muted">Search couldn&apos;t load. Reload the page and try again.</p>
         ) : typed && !index ? (
@@ -239,7 +240,7 @@ export function DocsSearch({ suggestions = [] }: { suggestions?: Suggestion[] })
                       go(r.href)
                     }}
                     onMouseMove={() => setActive(i)}
-                    className={`flex items-start gap-3 rounded-md px-3 py-2.5 ${i === active ? 'bg-white/6' : ''}`}
+                    className={`flex items-start gap-3 rounded-md px-3 py-2.5 ${i === active ? 'bg-tint-strong' : ''}`}
                   >
                     <span className={`mt-0.5 shrink-0 ${i === active ? 'text-ink-2' : 'text-faint'}`}>{r.heading ? <HashIcon /> : <PageIcon />}</span>
                     <span className="min-w-0 flex-1">
