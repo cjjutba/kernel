@@ -9,3 +9,5 @@ Amends D-088 and extends D-089.
 - `session_id` and `transcript_path` are saved on `Chat.terminal`, so D-089 titles work for seats and the next `claude` resumes the session.
 - An accepted `ExitPlanMode` (`PostToolUse`) is saved as an allowed plan approval, which `read_plans` and the "after an approved plan" rules already read.
 - `ask_user` in a seat tells the agent to use AskUserQuestion. Its `PostToolUse` settles the `about` ids.
+- `Chat.seat.connected` is false from the start of a seat's pty, true from its first hook or use of its token, and false again when the pty exits on its own. Exiting also closes the user's open words and clears working.
+- `terminal.reconnect` restarts the seat's pty through the same launch path, so `claude` resumes the saved session. A running pty is replaced and an exited one starts. It refuses a chat that is no terminal seat.

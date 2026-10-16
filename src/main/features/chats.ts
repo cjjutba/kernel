@@ -383,6 +383,15 @@ export class Chats extends Feature {
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
       'terminal.write': async ({ chatId, data }) => { await this.seatsUp(chatId); this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { await this.seatsUp(chatId); this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
+      'terminal.reconnect': async ({ chatId }) => {
+        const chat = this.mustChat(chatId)
+        if (chat.kind !== 'terminal' || !chat.terminal?.role) throw new Error('That tab is not a terminal seat.')
+        await this.seatsUp(chatId)
+        // A running pty is replaced and an exited one starts, both through the launch path, so `claude` resumes the saved session.
+        if (this.ptys.has(chatId)) this.ptys.restart(chatId, this.ptyOptions(chatId))
+        else this.ensurePty(chatId)
+        return { ok: true }
+      },
       'terminal.replay': async ({ chatId }) => { this.ptys.replay(chatId); return { ok: true } },
       'chats.create': async ({ workspaceId, kind, preset, threadId, provider, model: asked, effort }) => {
         const ws = this.mustWs(workspaceId)

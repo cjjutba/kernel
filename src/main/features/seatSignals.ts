@@ -30,11 +30,29 @@ export class SeatSignals extends Feature {
   private asking = new Map<string, string[]>()
   private running = new Set<string>()
 
+  /** The seat is connected: a hook or a call with its token came from it. Saved on the chat only when that changes. */
+  connect(chatId: string) { this.setConnected(chatId, true) }
+
+  /** The seat's pty exited or started again, so nothing is connected until its next hook. */
+  disconnect(chatId: string) { this.setConnected(chatId, false) }
+
+  private setConnected(chatId: string, connected: boolean) {
+    const chat = this.store.chat(chatId)
+    if (!chat || chat.kind !== 'terminal' || !chat.terminal?.role || chat.seat?.connected === connected) return
+    this.saveChat({ ...chat, seat: { connected } })
+    if (!connected) {
+      const said = this.said.get(chatId)
+      if (said) said.open = false
+      this.setRunning(chatId, false)
+    }
+  }
+
   /** A hook from a seat's terminal. `chatId` is the one its command named, already checked by the hook server. */
   onHook(e: AnyHook, chatId: string) {
     const chat = this.store.chat(chatId)
     if (!chat || chat.kind !== 'terminal' || !chat.terminal?.role) return
     const now = this.follow(chat, e)
+    this.connect(chatId)
     switch (e.hook_event_name) {
       case 'UserPromptSubmit': {
         const prompt = (e as Hook<'UserPromptSubmit'>).prompt

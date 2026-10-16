@@ -23,6 +23,7 @@ export class Seats extends Feature {
   start(): Promise<void> {
     return (this.starting ??= (async () => {
       await rm(seatsDir(this.o.dataDir), { recursive: true, force: true }).catch(() => undefined)
+      this.k.ptys.onExit((id) => this.k.seatSignals.disconnect(id))
       this.http = await startSeatMcp({ registry: this.registry, serve: (seat) => this.serve(seat) })
     })().catch((e) => { this.starting = undefined; throw e }))
   }
@@ -50,6 +51,7 @@ export class Seats extends Feature {
     const ws = this.mustWs(chat.workspaceId)
     const token = this.makeToken(chatId)
     this.saveRole(chat, this.roleOf(chatId))
+    this.k.seatSignals.disconnect(chatId)
     const dir = seatDir(this.o.dataDir, chatId)
     const agent = this.agentFor(ws, chat)
     writeSeatDir(dir, { url, token, prompt: agentPrompt(agent, ws, this.k.tools.rulesFor(ws, agent, chat)), sessionId: chat.terminal?.sessionId ?? chat.sessionId })
@@ -109,6 +111,7 @@ export class Seats extends Feature {
     const chat = this.store.chat(seat.chatId)
     if (!ws || !chat || chat.workspaceId !== ws.id || ws.status === 'archived') return undefined
     const agent = this.agentFor(ws, chat)
+    if (chat.kind === 'terminal') this.k.seatSignals.connect(chat.id)
     return { tools: chat.kind === 'terminal' ? this.k.seatSignals.wrap(chat.id, this.k.tools.toolsFor(ws, agent, chat)) : this.k.tools.toolsFor(ws, agent, chat), instructions: agent?.lead ? LEAD_INSTRUCTIONS : undefined }
   }
 

@@ -244,3 +244,46 @@ describe('asking the user', () => {
     asked.mockRestore()
   })
 })
+
+describe('connected', () => {
+  const connected = (chat: Chat) => k.store.chat(chat.id)!.seat?.connected
+  const exit = (chat: Chat) => (k.ptys as unknown as { exits: ((id: string) => void)[] }).exits.forEach((fn) => fn(chat.id))
+
+  it('is false at launch, true from the first hook, and false when the pty exits', async () => {
+    const chat = await open(mateWs, 'claude')
+    expect(connected(chat)).toBe(false)
+    await send(chat, { hook_event_name: 'Notification', message: 'x' })
+    expect(connected(chat)).toBe(true)
+    await prompt(chat, 'hi')
+    exit(chat)
+    expect(connected(chat)).toBe(false)
+    expect(k.seatSignals.working(chat.id)).toBe(false)
+    expect(k.seatSignals.userTurn(chat.id)).toBe(false)
+  })
+
+  it('is true once the seat uses its token', async () => {
+    const chat = await open(mateWs, 'claude')
+    k.seats.serve({ chatId: chat.id, workspaceId: chat.workspaceId, role: k.seats.roleOf(chat.id) })
+    expect(connected(chat)).toBe(true)
+  })
+
+  it('reconnect starts the pty again through the launch path, resuming the session', async () => {
+    const chat = await open(mateWs, 'claude')
+    await send(chat, { hook_event_name: 'Notification', message: 'x', session_id: 'resumed', transcript_path: '/t/r.jsonl' })
+    exit(chat)
+    const starts: { command?: string; env?: Record<string, string> }[] = []
+    k.ptys.start = ((_id: string, o: { command?: string; env?: Record<string, string> }) => { starts.push(o) }) as never
+    expect(await k.handlers()['terminal.reconnect']({ chatId: chat.id })).toEqual({ ok: true })
+    expect(starts).toHaveLength(1)
+    expect(starts[0].env?.KERNEL_CHAT_ID).toBe(chat.id)
+    expect(starts[0].command).toContain(seatDir(dataDir, chat.id))
+    expect((await readFile(join(seatDir(dataDir, chat.id), 'session'), 'utf8')).trim()).toBe('resumed')
+    expect(connected(chat)).toBe(false)
+    k.ptys.start = () => undefined
+  })
+
+  it('reconnect refuses a chat that is no terminal seat', async () => {
+    const plain = k.store.chats(leadWs.id).find((c) => c.kind === 'chat')!
+    await expect(k.handlers()['terminal.reconnect']({ chatId: plain.id })).rejects.toThrow('not a terminal seat')
+  })
+})
