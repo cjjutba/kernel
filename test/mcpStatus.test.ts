@@ -241,6 +241,65 @@ describe("every account's MCP servers, saved and checked in the background", () 
     await k.stop({ budgetMs: 0 })
   })
 
+  // KERNEL-939: a session's own report corrects the account it runs on, which a hand-off then reads.
+  it('takes what a session on an account says at once, saved and pushed, and a check that started before does not undo it', async () => {
+    let release = () => {}
+    let held: Promise<void> | undefined
+    const saved = { version: 1, accounts: [{ provider: 'claude', accountId: 'cli', checkedAt: 1000, servers: [ready('porkbun')] }, { provider: 'claude', accountId: 'side', checkedAt: 1000, servers: [ready('linear'), ready('porkbun')] }] }
+    const { k, pushes, file } = await accounts(['cli', 'side'], { saved: JSON.stringify(saved), probe: async () => { await held; return [ready('linear'), { ...ready('porkbun'), state: 'needs-sign-in' }] } })
+    const states = (list: McpAccount[], id: string) => list.find((a) => a.accountId === id)?.servers.map((s) => [s.name, s.state])
+    k.mcp.reported('project', 'claude', [
+      { name: 'porkbun', status: 'needs-auth', source: 'user' }, { name: 'kernel', status: 'connected', source: 'sdk' }, { name: 'neon', status: 'failed', source: 'user' }
+    ], { account: 'side' })
+    const pushed = await until(() => pushes[0])
+    expect(states(pushed.accounts, 'side')).toEqual([['linear', 'ready'], ['porkbun', 'needs-sign-in']])
+    // Every account lists every server of its provider, so cli shows linear, which it never had, as not set up.
+    expect(states(pushed.accounts, 'cli')).toEqual([['linear', 'not-set-up'], ['porkbun', 'ready']])
+    await k.mcp.saved()
+    expect((await file()).accounts.find((a: { accountId: string }) => a.accountId === 'side').servers.map((s: McpAccountServer) => s.state)).toEqual(['ready', 'needs-sign-in'])
+    // The same report again changes nothing, so nothing is pushed.
+    k.mcp.reported('project', 'claude', [{ name: 'porkbun', status: 'needs-auth', source: 'user' }], { account: 'side' })
+    await sleep(30)
+    expect(pushes).toHaveLength(1)
+
+    // A check starts, a session says porkbun is connected while it runs, and the check's older answer doesn't win.
+    held = new Promise<void>((r) => { release = r })
+    const checked = k.mcp.checkAccount('claude', 'side')
+    await sleep(5)
+    k.mcp.reported('project', 'claude', [{ name: 'porkbun', status: 'connected', source: 'user' }], { account: 'side' })
+    release()
+    await checked
+    expect(states(await k.mcp.accounts(), 'side')).toEqual([['linear', 'ready'], ['porkbun', 'ready']])
+    // The next check stands on its own.
+    await k.mcp.checkAccount('claude', 'side')
+    expect(states(await k.mcp.accounts(), 'side')).toEqual([['linear', 'ready'], ['porkbun', 'needs-sign-in']])
+
+    // A session on the CLI's own login reports with no account id.
+    k.mcp.reported('project', 'claude', [{ name: 'claude.ai Gmail', status: 'needs-auth', source: 'claudeai' }], { account: undefined })
+    const cli = await until(() => pushes.find((p) => p.accounts.find((a) => a.accountId === 'cli')?.servers.some((s) => s.name === 'claude.ai Gmail'))?.accounts.find((a) => a.accountId === 'cli'))
+    expect(cli.servers.find((s) => s.name === 'claude.ai Gmail')).toMatchObject({ kind: 'connector', connector: true, state: 'needs-sign-in' })
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it("names the servers an agent's tools line needs that its account can't give it yet, through the project's aliases", async () => {
+    const saved = { version: 1, accounts: [{ provider: 'claude', accountId: 'cli', checkedAt: 1000, servers: [{ ...ready('porkbun'), state: 'needs-sign-in' }, ready('linear'), { ...ready('claude.ai Gmail'), kind: 'connector', connector: true, state: 'needs-sign-in' }, { ...ready('neon'), state: 'failed', error: 'ENOENT' }] }] }
+    const { k } = await accounts(['cli'], { saved: JSON.stringify(saved) })
+    // This Kernel isn't started, so it has no Settings, Models to pick the agent's provider from.
+    vi.spyOn(k.team, 'pickFor').mockReturnValue({ provider: 'claude' } as never)
+    const repo = await tempRepo({ 'README.md': '# demo\n' })
+    await saveRepoSettings(repo, { mcp: { aliases: { gmail: 'claude_ai_Gmail' } } })
+    k.store.saveProject({ id: 'project', name: 'Invoices', path: repo, createdAt: 1 } as never)
+    const agent = (tools: string[]) => ({ id: 'noor', name: 'Noor', role: 'Backend', description: '', lead: false, prompt: '', file: '/r/noor.md', tools }) as AgentDef
+    expect(await k.mcp.signInsFor('project', agent(['Read', 'mcp__porkbun__*', 'mcp__linear', 'mcp__gmail', 'mcp__neon', 'mcp__kernel']))).toEqual({
+      account: 'Claude Code’s own login', servers: [{ name: 'porkbun', state: 'needs-sign-in' }, { name: 'claude.ai Gmail', state: 'needs-sign-in' }]
+    })
+    expect(await k.mcp.signInsFor('project', agent(['Read', 'mcp__linear']))).toBeUndefined()
+    // A session saying porkbun works clears it.
+    k.mcp.reported('project', 'claude', [{ name: 'porkbun', status: 'connected', source: 'user' }], { account: undefined })
+    expect((await k.mcp.signInsFor('project', agent(['mcp__porkbun'])))).toBeUndefined()
+    await k.stop({ budgetMs: 0 })
+  })
+
   it('leaves a removed account out of the saved file, and a check running at the removal does not write it back', async () => {
     let release = () => {}
     const held = new Promise<void>((r) => { release = r })
