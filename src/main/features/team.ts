@@ -601,11 +601,12 @@ export class Team extends Feature {
    */
   pickFor(agent: AgentDef): RoleModel { return rolePick(agent, this.roleModel(agent)) }
 
-  /** The role Settings, Models and effort reads for this agent. */
+  /** The role Settings, Models and effort reads for this agent. A frontend engineer has a row of its own, every other one reads Backend's (KERNEL-974). */
   roleOf(agent: AgentDef): Role {
     if (agent.lead) return 'lead'
     if (isReviewer(agent)) return 'reviewer'
     if (/qa/i.test(agent.role)) return 'qa'
+    if (/frontend/i.test(agent.role)) return 'frontend'
     return 'engineers'
   }
 

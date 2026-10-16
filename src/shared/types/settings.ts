@@ -111,8 +111,11 @@ export interface AppSettings {
   privacy: { telemetry: 'ask' | 'on' | 'off' }
 }
 
-/** The roles Settings, Models and effort sets a default for. */
-export type Role = 'lead' | 'engineers' | 'qa' | 'reviewer'
+/**
+ * The roles Settings, Models and effort sets a default for. `frontend` is the agents whose role says frontend, and
+ * `engineers` every other engineer, the Backend row (KERNEL-974).
+ */
+export type Role = 'lead' | 'frontend' | 'engineers' | 'qa' | 'reviewer'
 
 /**
  * Where a Claude chat compacts: against a 200k window, or against its model's own (feat-compact-window-per-role-with-plan).
