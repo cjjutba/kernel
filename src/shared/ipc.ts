@@ -263,6 +263,8 @@ export interface KernelApi {
   'commands.list': { req: void; res: BuiltinCommand[] }
   'terminal.write': { req: { chatId: string; data: string }; res: Ok }
   'terminal.resize': { req: { chatId: string; cols: number; rows: number }; res: Ok }
+  /** Starts a terminal seat's pty again, resuming its session, as it was launched (KERNEL-999). A running pty is replaced, an exited one starts. Its output so far stays. */
+  'terminal.reconnect': { req: { chatId: string }; res: Ok }
   /** Pushes the terminal's kept output as one `terminal.data` with `replace`, for a window that wasn't there to see it (KERNEL-340). */
   'terminal.replay': { req: { chatId: string }; res: Ok }
   /** The presets a new big terminal tab can run: the built-ins, the CLIs on the PATH, then the custom ones (KERNEL-248). */

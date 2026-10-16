@@ -87,6 +87,11 @@ export interface Chat {
   contextUsage?: { used: number; max: number; rows: { name: string; tokens: number; kind: 'used' | 'free' | 'buffer' }[] }
   /** Closed tabs keep their transcript but leave the tab strip. */
   closed?: boolean
+  /**
+   * Whether a terminal seat is connected to Kernel now: true from its first hook or use of its token, false from the start of its
+   * pty until then and again when the pty exits. Absent for a chat that is not a terminal seat (KERNEL-999).
+   */
+  seat?: { connected: boolean }
   /** A big terminal's preset and the command it types into the login shell, null for a plain shell. Older terminal chats have none and run `claude` (KERNEL-248). */
   terminal?: {
     preset: string
