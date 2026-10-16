@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Project, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
-import { providerOf } from '@shared/providers'
+import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Project, type ResolvedPath, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
+import { chatProvider, providerOf } from '@shared/providers'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, referencesInProject, type RepoSettings } from '../services/settings'
@@ -9,7 +9,7 @@ import { clock, worktreeTree, writeTree } from '../services/checkpoints'
 import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, projectWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
 import { linkNodeModules, NoFreePortBlock, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
-import { listTree, readImage, readWorkspaceFile, searchFiles } from '../services/files'
+import { listTree, readImage, readWorkspaceFile, resolvePaths, scratchpadDir, searchFiles } from '../services/files'
 import { commitHunks, listHunks } from '../services/hunks'
 import { head, messageOf, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
@@ -58,6 +58,8 @@ export class Workspaces extends Feature {
   readonly reservedPorts = new Set<number>()
   /** Per project, the last branch pick and the step that makes the branch, so two at once never pick the same free name (KERNEL-231). */
   private branchLocks = new Map<string, Promise<unknown>>()
+  /** Per workspace, what each mention in chat resolved to, and the changed files they were resolved against (clickable file mentions). */
+  private mentions = new Map<string, { changed?: string; paths: Map<string, ResolvedPath> }>()
 
   /** A workspace for the project's work: `cutWorkspace` makes it, then `setUpWorkspace` copies files, runs setup and sends the brief. */
   async createWorkspace(projectId: string, o: Omit<CutWorkspace, 'lead'>): Promise<Workspace> {
@@ -500,10 +502,44 @@ export class Workspaces extends Feature {
     const files = ws.mode === 'current'
       ? await changedFiles(ws.path, ws.baselineRef ?? 'HEAD')
       : await changedFiles(ws.path, await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef))
+    this.filesMoved(id, files.map((f) => `${f.status} ${f.path}`).join('\0'))
     const stat = { files: files.length, added: files.reduce((n, f) => n + f.added, 0), removed: files.reduce((n, f) => n + f.removed, 0) }
     const old = this.mustWs(id).stat
     if (!old || old.files !== stat.files || old.added !== stat.added || old.removed !== stat.removed) this.updateWs(id, { stat })
     return files
+  }
+
+  /**
+   * The worktree's changed files differ from the last read, so the mentions resolved before may not hold: one was made, deleted or
+   * renamed. Every turn's end reads the changes, so the cache doesn't outlive a turn that moved files.
+   */
+  private filesMoved(id: string, changed: string) {
+    if (this.mentions.get(id)?.changed !== changed) this.mentions.set(id, { changed, paths: new Map() })
+  }
+
+  /** The scratchpads of the workspace's Claude chats, built from each chat's own session (clickable file mentions). */
+  private scratchpads(ws: Workspace): string[] {
+    return this.store.chats(ws.id).filter((c) => chatProvider(c) === 'claude' && c.sessionId).map((c) => scratchpadDir(ws.path, c.sessionId!))
+  }
+
+  /**
+   * What each path mentioned in the workspace's chats resolves to, from the cache when it can. A miss by an absolute or `~/` path
+   * isn't kept: the agent may write that file to its scratchpad later in the turn, which the changed files never show.
+   */
+  async resolvePaths(id: string, paths: string[]): Promise<Record<string, ResolvedPath>> {
+    const ws = this.mustWs(id)
+    if (ws.worktreePending) return Object.fromEntries(paths.map((p) => [p, null]))
+    const cache = this.mentions.get(id) ?? { paths: new Map<string, ResolvedPath>() }
+    this.mentions.set(id, cache)
+    const todo = [...new Set(paths)].filter((p) => !cache.paths.has(p))
+    if (todo.length) {
+      const found = await resolvePaths(ws.path, todo, { also: this.scratchpads(ws), home: this.home }).catch(() => ({} as Record<string, ResolvedPath>))
+      for (const raw of todo) {
+        const r = found[raw] ?? null
+        if (r || !/^\s*[~/]/.test(raw)) cache.paths.set(raw, r)
+      }
+    }
+    return Object.fromEntries(paths.map((p) => [p, cache.paths.get(p) ?? null]))
   }
 
   /** A Lead chat whose worktree isn't made yet: nothing reads its folder, and the right panel gets empty lists (KERNEL-542). */
@@ -582,11 +618,17 @@ export class Workspaces extends Feature {
       'workspaces.commits': async ({ workspaceId }) => this.unmade(workspaceId) ? [] : this.commits(workspaceId),
       'workspaces.compareBranches': async ({ workspaceId }) => this.compareBranches(workspaceId),
       'workspaces.tree': async ({ workspaceId }) => this.unmade(workspaceId) ? [] : listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
-      'workspaces.readFile': async ({ workspaceId, path }) => { this.mustBeMade(workspaceId); return readWorkspaceFile(this.mustWs(workspaceId).path, path) },
+      // A file in the agent's own scratchpad opens too, by its absolute path (clickable file mentions).
+      'workspaces.readFile': async ({ workspaceId, path }) => {
+        this.mustBeMade(workspaceId)
+        const ws = this.mustWs(workspaceId)
+        return readWorkspaceFile(ws.path, path, this.scratchpads(ws))
+      },
+      'workspaces.resolvePaths': async ({ workspaceId, paths }) => this.resolvePaths(workspaceId, paths),
       'workspaces.readImage': async ({ workspaceId, path, at, target }) => {
         const ws = this.mustWs(workspaceId)
         if (ws.worktreePending) return null
-        if (!target || target.kind === 'base') return readImage(ws.path, path, at === 'base' ? await this.since(ws) : undefined)
+        if (!target || target.kind === 'base') return at === 'base' ? readImage(ws.path, path, await this.since(ws)) : readImage(ws.path, path, undefined, this.scratchpads(ws))
         const range = await compareRange(ws.path, target)
         return readImage(ws.path, path, at === 'base' ? range.from : range.to)
       },

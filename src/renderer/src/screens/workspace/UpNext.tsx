@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ChatPart, IssueSummary, ProjectTracker, TrackerKind } from '@shared/types'
 import { call } from '../../api'
-import { IssuePriority } from '../../icons'
+import { Icon, IssuePriority } from '../../icons'
 import { go, useStore } from '../../store'
 import { readUpNext, storeUpNext } from './upNextCache'
 
@@ -13,7 +13,7 @@ const NAMES: Record<TrackerKind, string> = { linear: 'Linear', github: 'GitHub' 
 /**
  * Up next, on New chat's composer: the project tracker's issues nobody has started, the most pressing first, as `issues.next` lists them,
  * less the ones a workspace in the project already started from. A Linear project lists its own team's only. Each row is one button: the
- * priority, the key, the title and the project, with Plan showing on hover and focus. Pressing it hands the issue to `onPlan` as a chip.
+ * priority, the key, the title and the project, with Plan always showing at the end, quiet at rest and full ink on hover and focus. Pressing it hands the issue to `onPlan` as a chip.
  * A project with no tracker, a Linear project with no team, or a tracker that doesn't answer shows nothing, and holds no space while it is asked,
  * so the box never moves for a project that has no Up next.
  */
@@ -64,7 +64,7 @@ export function UpNext({ projectId, lead, onPlan }: { projectId: string; lead: s
               <span className="mono up-next-key">{i.id}</span>
               <span className="up-next-title ellipsis">{i.title}</span>
               <span className="up-next-project ellipsis" title={i.project ? `Linear project: ${i.project}` : undefined}>{i.project}</span>
-              <span className="up-next-plan" aria-hidden="true">Plan</span>
+              <span className="up-next-plan" aria-hidden="true">Plan<Icon name="right" size={12} /></span>
             </button>
           </li>
         ))}

@@ -1540,7 +1540,7 @@ describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () =
 
   it('sends an update a busy, queued, crashed, limit-held or full Lead chat refused once the chat stops running or its queue empties', async () => {
     const { store, u, s, nc } = await setup()
-    const k = { chats: { onRunning: () => {} }, leadUpdates: u, store } as unknown as Kernel
+    const k = { chats: { onRunning: () => {} }, lead: { turnEnded: () => {} }, leadUpdates: u, store } as unknown as Kernel
     const off = listen(k)
     try {
       const frees: [string, PushEvent][] = [

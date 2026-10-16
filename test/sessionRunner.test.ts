@@ -16,7 +16,7 @@ import type { Ask } from '../src/main/services/providers/types'
 import { BYPASS_OFF_AGAIN, BYPASS_WAITS, CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
 import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_BUILD_RULE, LEAD_RULE } from '../src/main/services/handoff'
-import { HANDOFF_NO_EDIT, LEAD_FILES_ISSUES } from '../src/main/services/agentTools'
+import { HANDOFF_NO_EDIT, HANDOFF_SWITCHED, LEAD_FILES_ISSUES } from '../src/main/services/agentTools'
 import { OpenItems, openReminder } from '../src/main/features/openItems'
 import type { Kernel } from '../src/main/kernel'
 import type { AppSettings } from '../src/main/services/settings'
@@ -2877,6 +2877,15 @@ describe('a chat with Kernel in Hand off or Build here, on Claude (KERNEL-770)',
     // Plan mode still writes its plan before it asks (D-023).
     expect(await use(gate, 'Write', { file_path: join(homedir(), '.claude', 'plans', 'plan.md') })).toEqual({})
     for (const tool of ['Read', 'Bash', 'mcp__kernel__create_workspace']) expect(await use(gate, tool), tool).toEqual({})
+  })
+
+  it('a turn that started in Hand off still refuses edits after a switch to Build here, and says the switch applies from the next message', async () => {
+    const { options, store } = await setup('acceptEdits', { agent: lead, ws: leadWs() })
+    const gate = gateOf(options)
+    store.saveWorkspace({ ...store.workspace('ws')!, leadMode: 'build' })
+    expect(await use(gate, 'Edit', { file_path: '/tmp/ws/src/app.ts' })).toEqual({ hookSpecificOutput: { ...refused.hookSpecificOutput, permissionDecisionReason: HANDOFF_SWITCHED } })
+    store.saveWorkspace({ ...store.workspace('ws')!, leadMode: 'handoff' })
+    expect(await use(gate, 'Edit', { file_path: '/tmp/ws/src/app.ts' })).toEqual(refused)
   })
 
   it('Build here takes the Build here rule and edits even when the tools line leaves Edit and Write out', async () => {

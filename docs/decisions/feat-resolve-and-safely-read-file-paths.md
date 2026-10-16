@@ -1,0 +1,7 @@
+**A path an agent mentions in chat opens only inside the worktree or that chat's own scratchpad.** `workspaces.resolvePaths`, `workspaces.readFile` and `workspaces.readImage` check every path with the same allowlist: the worktree, plus the scratchpad of each Claude chat in the workspace. Kernel builds a scratchpad from the chat's saved session id and the worktree path, the way Claude Code lays it out (`<tmp>/claude-<uid>/<cwd with dashes>/<session>/scratchpad`), and never from the message text, so a message can't name its way into `~/.ssh` or another session's files. Symlinks resolve before the check. A path outside answers null rather than an error, since chat mentions it as plain text.
+
+**A bare file name never guesses.** `tokens.css` resolves only when exactly one file in the tree has that name. With several, Kernel lists them all and the UI asks. With none, it looks once at the top of the worktree, which finds an ignored `.env`.
+
+**`.env`-style files and files secret masking would catch are flagged, not hidden.** The UI warns before showing one. Reading stays allowed, since the agent already read it.
+
+**Resolved mentions are cached per workspace until its changed files differ.** Every turn's end reads the changes, so a turn that made, deleted or renamed a file clears the cache. A miss by an absolute or `~/` path isn't kept, because a scratchpad file the agent writes later never shows in the changes.

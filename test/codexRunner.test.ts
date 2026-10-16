@@ -21,7 +21,7 @@ import { codexLimits, toCodexInput, unwrapShell } from '../src/main/services/pro
 /** The approval's note. Codex still has its plan in context, so the note names no file and carries no plan. */
 const APPROVED = 'Plan approved. Carry it out.'
 import { callTool, mcpOverrides, toolSpecs } from '../src/main/services/providers/codex/tools'
-import { toolPolicy } from '../src/main/services/agentTools'
+import { HANDOFF_NO_EDIT, HANDOFF_SWITCHED, toolPolicy } from '../src/main/services/agentTools'
 import { GET_ISSUE, issueText, issueTools } from '../src/main/services/issueMcp'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { fakeCodex, item, script } from './helpers/fakeCodex'
@@ -1056,6 +1056,13 @@ describe('a chat with Kernel in Hand off or Build here, on Codex (KERNEL-770)', 
     const instructions = (await t.sent('thread/start'))[0].params.developerInstructions as string
     expect(instructions).toContain(forProvider(LEAD_RULE, 'codex'))
     expect(instructions).not.toContain(forProvider(LEAD_BUILD_RULE, 'codex'))
+    expect(t.of('note').map((n) => n.text)).toEqual([HANDOFF_NO_EDIT, HANDOFF_NO_EDIT])
+    // A switch to Build here applies from the next turn. Until the process restarts, the refusal says so.
+    t.store.saveWorkspace({ ...t.store.workspace(t.ws.id)!, leadMode: 'build' })
+    await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
+    await t.idle()
+    expect((await t.answers('item/fileChange/requestApproval')).at(-1)).toEqual({ decision: 'decline' })
+    expect(t.of('note').at(-1)?.text).toBe(HANDOFF_SWITCHED)
   })
 
   it('Build here writes in the workspace and accepts file changes as the mode says, with the Build here rule', async () => {
