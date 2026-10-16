@@ -210,12 +210,12 @@ describe('stillThere and nearest', () => {
     actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel', folderGone: true }))
     expect(projectHome('r1', getState())).toEqual({ name: 'leadNew', projectId: 'r1' })
   })
-  it('sends a removed project, and a hidden or archived one, to New chat in another project, or Welcome with none', () => {
+  it('sends a removed project, and a hidden or archived one, to New chat in another project, or New chat with no project when none is left', () => {
     actions.projects.upsert(project('r2', { archived: true }))
     expect(nearest(at('r2lead'), getState())).toEqual({ name: 'leadNew', projectId: 'r1' })
     actions.projects.remove('r1')
-    expect(nearest(at('other'), getState())).toEqual({ name: 'onboarding', step: 'welcome' })
-    expect(nearest({ name: 'settings', page: 'project', projectId: 'r1', section: 'agents' }, getState())).toEqual({ name: 'onboarding', step: 'welcome' })
+    expect(nearest(at('other'), getState())).toEqual({ name: 'leadNew', projectId: '' })
+    expect(nearest({ name: 'settings', page: 'project', projectId: 'r1', section: 'agents' }, getState())).toEqual({ name: 'leadNew', projectId: '' })
   })
   it('treats a Settings project page as gone with its project, and other pages as always there', () => {
     expect(stillThere({ name: 'settings', page: 'project', projectId: 'r1' }, getState())).toBe(true)
