@@ -151,6 +151,7 @@ Dragging, dropping, pasting and picking a file all answer at once, in the worksp
 - When main corrects a number, the note says "Set to N, the most allowed" or "Set to N, the least allowed" and stays until the next edit.
 - A field with unsaved text saves when it unmounts. Escape inside a field cancels the edit and puts the saved value back.
 - A failed save rolls back, shows the "Could not save" toast and no Saved note.
+- Editing a value that already exists never takes a Save button: a script, an instruction, an account's name. Multi-line fields save the same way, on losing focus or Cmd+Enter, and a sheet that edits one value has Done instead of Cancel and Save. A button stays only for adding something new in a dialog (a run script, a variable, a preview URL, a terminal preset) and for a step that asks where to save (an agent saved for you or opened as a pull request).
 
 ## Busy buttons
 

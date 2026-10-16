@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { PrInstructions } from '@shared/types'
 import { Button, Modal } from '../../../ui'
+import { SaveNote, useBlurSave, useSaveNote, type SaveResult } from '../kit'
 
 /** The four instructions a PR button sends, with their names and the button that sends each (Settings, Pull requests and a project's). */
 export const INSTRUCTIONS: { key: keyof PrInstructions; label: string; file: string; desc: string }[] = [
@@ -12,32 +13,32 @@ export const INSTRUCTIONS: { key: keyof PrInstructions; label: string; file: str
 
 /**
  * Edits one PR instruction in the one modal shell (KERNEL-680), so the page lists four short rows instead of four long text boxes.
- * `fallback` is the text used when this one is left empty: the app's default, or for a project the app's text. Use default puts it back,
- * sending `null`. Save sends the text, or `null` when it is the fallback.
+ * `fallback` is the text used when this one is left empty: the app's default, or for a project the app's text. The text saves when the
+ * field loses focus or the sheet closes, with the Saved note in the footer, and Escape in the field puts the saved text back (KERNEL-721).
+ * Use default puts the fallback back and saves it at once. A save sends the text, or `null` when it is empty or the fallback.
  */
 export function InstructionSheet({ title, value, fallback, fallbackLabel = 'Use default', onSave, onClose }: {
-  title: string; value: string; fallback: string; fallbackLabel?: string; onSave: (text: string | null) => Promise<unknown> | void; onClose: () => void
+  title: string; value: string; fallback: string; fallbackLabel?: string; onSave: (text: string | null) => SaveResult; onClose: () => void
 }) {
   const [text, setText] = useState(value)
-  const [busy, setBusy] = useState(false)
-  const save = async (next: string | null) => {
-    setBusy(true)
-    try { await onSave(next !== null && (next.trim() === '' || next === fallback) ? null : next) } finally { setBusy(false) }
-    onClose()
-  }
+  const note = useSaveNote()
+  useEffect(() => { setText(value) }, [value])
+  const commit = (next: string) => void note.track(onSave(next.trim() === '' || next === fallback ? null : next))
+  const save = useBlurSave({ text, setText, saved: value, commit })
+  const useFallback = () => { setText(fallback); if (value !== fallback) commit(fallback) }
   return (
     <Modal
       title={title} width={640} onClose={onClose}
       footer={(
         <>
-          <Button variant="ghost" disabled={busy || text === fallback} onClick={() => setText(fallback)}>{fallbackLabel}</Button>
+          <Button variant="ghost" disabled={text === fallback} onClick={useFallback}>{fallbackLabel}</Button>
           <span className="grow" />
-          <Button disabled={busy} onClick={onClose}>Cancel</Button>
-          <Button variant="primary" busy={busy} busyLabel="Saving" disabled={text === value} onClick={() => void save(text)}>Save</Button>
+          <SaveNote state={note.state} />
+          <Button variant="primary" onClick={onClose}>Done</Button>
         </>
       )}
     >
-      <textarea className="set-lines set-sheet-text" aria-label={title} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
+      <textarea className="set-lines set-sheet-text" aria-label={title} spellCheck={false} value={text} onChange={(e) => { note.reset(); setText(e.target.value) }} {...save} />
     </Modal>
   )
 }
