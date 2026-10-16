@@ -10,7 +10,9 @@ interface GlideEnv { now: () => number; raf: Raf; caf: (id: number) => void; red
 
 const place = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as Promise<{ holdView: (o: HoldOptions) => Hold; restoreState: () => { see: (at: number) => boolean; settled: boolean } }>
 const glide = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/scrollGlide' as string) as Promise<{ createGlider: (view: () => View | null, env: GlideEnv) => Glider; GLIDE_MAX_MS: number; easingOf: (css: string | undefined) => (x: number) => number }>
-const follow = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ followsAfterScroll: (pinned: boolean, view: View, before: View, byHand: boolean) => boolean; movesToEnd: (view: View, byHand: boolean) => boolean }>
+const follow = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatScroll' as string) as Promise<{ followsAfterScroll: (pinned: boolean, view: View, before: View, byHand: boolean) => boolean; movesToEnd: (view: View, byHand: boolean) => boolean }>
+interface Owner { open: (run: { spot?: () => number; frames: (running: boolean) => void }) => void; resized: (h?: number) => void; reveal: (run: { goal: () => number; instant: boolean }) => void; intent: string | undefined; follow: () => void }
+const scrollOwner = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatScroll' as string) as Promise<{ createChatScroll: (o: { box: () => View | null; env: GlideEnv & { warn: (m: string) => void } }) => Owner }>
 
 type Mover = 'hold' | 'glide' | 'follow'
 interface Write { frame: number; by: Mover; to: number }
@@ -21,18 +23,19 @@ function rig(init: Partial<View> = {}) {
   let frame = 0
   let next = 1
   let by: Mover = 'follow'
+  let who: () => string = () => by
   const queue = new Map<number, { cb: () => void; by: Mover }>()
   const writes: Write[] = []
   let top = init.scrollTop ?? 0
   const view: View = {
     get scrollTop() { return top },
-    set scrollTop(v: number) { top = Math.max(0, Math.min(v, view.scrollHeight - view.clientHeight)); writes.push({ frame, by, to: top }) },
+    set scrollTop(v: number) { top = Math.max(0, Math.min(v, view.scrollHeight - view.clientHeight)); writes.push({ frame, by: who() as Mover, to: top }) },
     scrollHeight: init.scrollHeight ?? 3000,
     clientHeight: init.clientHeight ?? 800
   }
   const raf = (who: Mover): Raf => (cb) => { const id = next++; queue.set(id, { cb, by: who }); return id }
   const caf = (id: number) => { queue.delete(id) }
-  const as = <T>(who: Mover, fn: () => T): T => { const was = by; by = who; try { return fn() } finally { by = was } }
+  const as = <T>(who_: Mover, fn: () => T): T => { const was = by; by = who_; try { return fn() } finally { by = was } }
   /** Runs the frames queued so far as one frame, 16ms later. A callback queued while it runs waits for the next. */
   const tick = (before?: () => void) => {
     t += 16
@@ -48,12 +51,24 @@ function rig(init: Partial<View> = {}) {
     for (const w of writes) by.set(w.frame, (by.get(w.frame) ?? new Set()).add(w.by))
     return [...by].filter(([, movers]) => movers.size > 1).map(([f, movers]) => `frame ${f}: ${[...movers].join(' and ')}`)
   }
-  return { view, writes, raf, caf, as, tick, now: () => t, frame: () => frame, queued: () => queue.size, end, clash }
+  const track = (fn: () => string) => { who = fn }
+  return { view, writes, raf, caf, as, tick, track, now: () => t, frame: () => frame, queued: () => queue.size, end, clash }
 }
 
 /** What the thread does to the view when it grows or shrinks under a reader: following closes the distance when it may, as the thread's size observer does. */
 const followEnd = (r: ReturnType<typeof rig>, f: Awaited<ReturnType<typeof follow>>, pinned: boolean, byHand = false) => {
   if (pinned && f.movesToEnd(r.view, byHand)) r.as('follow', () => { r.view.scrollTop = r.end() })
+}
+
+/** The owner over the rig's view. Each write is recorded with the intent that was current when it landed. */
+async function owned(r: ReturnType<typeof rig>, init: { reduced?: boolean } = {}) {
+  const { createChatScroll } = await scrollOwner()
+  const { easingOf } = await glide()
+  const warnings: string[] = []
+  let o: Owner | undefined
+  r.track(() => o?.intent ?? 'none')
+  o = createChatScroll({ box: () => r.view, env: { now: r.now, raf: r.raf('follow'), caf: r.caf, reduced: () => !!init.reduced, ease: () => easingOf(undefined), warn: (m) => warnings.push(m) } })
+  return { o, warnings }
 }
 
 describe('chat scroll races (KERNEL-952)', () => {
@@ -104,25 +119,26 @@ describe('chat scroll races (KERNEL-952)', () => {
 
   describe('one mover writes the scroll position per frame', () => {
     // (a) A pending plan in a chat left at its end, to another tab and back. The open restore holds the view at the end while the thread settles, and the thread's growth is followed.
-    it.fails('(a) the open restore and following both write while a reopened chat settles its rows', async () => {
-      const { holdView } = await place()
-      const f = await follow()
+    it('(a) the open restore alone writes while a reopened chat settles its rows', async () => {
       const r = rig({ scrollTop: 0, scrollHeight: 2400 })
-      r.as('hold', () => holdView({ put: () => { r.view.scrollTop = r.end(); return r.view.scrollTop }, ends: true, over: () => false, following: () => true, now: r.now, raf: r.raf('hold'), caf: r.caf, capMs: 1500, frames: () => undefined }))
-      for (let i = 0; i < 12; i++) r.tick(() => { if (i < 6) { r.view.scrollHeight += 30; followEnd(r, f, true) } })
+      const { o } = await owned(r)
+      o.open({ frames: () => undefined })
+      for (let i = 0; i < 12; i++) r.tick(() => { if (i < 6) { r.view.scrollHeight += 30; o.resized(r.view.scrollHeight) } })
       expect(r.clash()).toEqual([])
+      expect(new Set(r.writes.map((w) => w.by))).toEqual(new Set(['place']))
+      expect(Math.abs(r.end() - r.view.scrollTop)).toBeLessThan(1)
     })
 
-    // (b) A pending plan taller than the view, read from its task list: the restore of that spot and a plan reveal both aim at the view.
-    it.fails('(b) a spot restore and a plan reveal aimed elsewhere both write when a tall plan opens', async () => {
-      const { holdView } = await place()
-      const { createGlider, easingOf } = await glide()
+    // (b) A pending plan taller than the view, read from its task list: the open restore is still holding when the plan reveal starts, in the order the owner uses (the restore stops, then the glide starts).
+    it('(b) a plan reveal that takes over from the spot restore leaves one mover per frame', async () => {
       const r = rig({ scrollTop: 0, scrollHeight: 4200 })
-      r.as('hold', () => holdView({ put: () => { r.view.scrollTop = 3000; return r.view.scrollTop }, ends: false, over: () => false, following: () => false, now: r.now, raf: r.raf('hold'), caf: r.caf, capMs: 1500, frames: () => undefined }))
-      const g = createGlider(() => r.view, { now: r.now, raf: r.raf('glide'), caf: r.caf, reduced: () => false, ease: () => easingOf(undefined) })
-      r.as('glide', () => g.start({ goal: () => 2600, holdMs: 400 }))
-      for (let i = 0; i < 20; i++) r.tick()
+      const { o } = await owned(r)
+      o.open({ spot: () => 3000, frames: () => undefined })
+      let at = 0
+      for (let i = 0; i < 40; i++) r.tick(() => { if (i === 2) { at = r.frame(); o.reveal({ goal: () => 2600, instant: false }) } })
       expect(r.clash()).toEqual([])
+      expect(r.writes.filter((w) => w.frame >= at).every((w) => w.by === 'glide')).toBe(true)
+      expect(Math.abs(r.view.scrollTop - 2600)).toBeLessThan(1)
     })
 
     // (c) A revised plan (a new approval id) arriving while the reader is scrolled up: nothing may move the view.
@@ -150,7 +166,7 @@ describe('chat scroll races (KERNEL-952)', () => {
     })
 
     // (e) A turn ending and folding its steps while the reader is scrolled up: the fold shrinks the thread and the browser clamps the view, which is not the reader scrolling.
-    it.fails('(e) a fold that clamps a scrolled up reader onto the end does not make them follow again', async () => {
+    it('(e) a fold that clamps a scrolled up reader onto the end does not make them follow again', async () => {
       const { followsAfterScroll } = await follow()
       const r = rig({ scrollTop: 2000, scrollHeight: 3000 })
       const before = { ...r.view }
@@ -160,16 +176,15 @@ describe('chat scroll races (KERNEL-952)', () => {
       expect(followsAfterScroll(false, r.view, before, false)).toBe(false)
     })
 
-    // (f) Case (a) under reduced motion: a reveal that places the view at once and the restore that holds it share the first frame.
-    it.fails('(f) under reduced motion the reveal and the open restore both write in the first frame', async () => {
-      const { holdView } = await place()
-      const { createGlider, easingOf } = await glide()
+    // (f) Case (a) under reduced motion: the reveal places the view at once, in the order the owner uses (the restore stops, then the glide starts).
+    it('(f) under reduced motion the reveal stops the open restore before it places the view', async () => {
       const r = rig({ scrollTop: 0, scrollHeight: 2400 })
-      r.as('hold', () => holdView({ put: () => { r.view.scrollTop = r.end(); return r.view.scrollTop }, ends: true, over: () => false, following: () => true, now: r.now, raf: r.raf('hold'), caf: r.caf, capMs: 1500, frames: () => undefined }))
-      const g = createGlider(() => r.view, { now: r.now, raf: r.raf('glide'), caf: r.caf, reduced: () => true, ease: () => easingOf(undefined) })
-      r.as('glide', () => g.start({ goal: () => r.end() - 500 }))
-      for (let i = 0; i < 12; i++) r.tick()
+      const { o } = await owned(r, { reduced: true })
+      o.open({ frames: () => undefined })
+      for (let i = 0; i < 12; i++) r.tick(() => { if (i === 1) o.reveal({ goal: () => r.end() - 500, instant: true }) })
       expect(r.clash()).toEqual([])
+      expect(r.view.scrollTop).toBe(r.end() - 500)
+      expect(r.writes.at(-1)?.by).toBe('glide')
     })
   })
 })

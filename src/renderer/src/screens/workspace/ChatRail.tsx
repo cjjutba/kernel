@@ -166,7 +166,7 @@ export function ChatRail({ entries, scroller, glide: glider }: { entries: RailEn
     glide.current = stop
     if (Math.abs(goal() - box.scrollTop) < 1) { glide.current = undefined; light(el); return }
     const run = glideNow.current
-    if (!run) { box.scrollTop = goal(); glide.current = undefined; light(el); return }
+    if (!run) { glide.current = undefined; light(el); return }
     run.glide(goal, (landed, replaced) => {
       if (glide.current === stop) glide.current = undefined
       if (landed || replaced) light(el)
