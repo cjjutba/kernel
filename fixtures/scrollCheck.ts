@@ -49,7 +49,7 @@ const runLines = Array.from({ length: 400 }, (_, i) => `GET /api/requests/${i} 2
 const longIssue = (f: Fixture): Fixture => {
   const long = Array.from({ length: 24 }, (_, i) => `## Step ${i + 1}\n\nThe billing team listed this in the planning thread: the export keeps the invoice number in the file name, the totals match the table and the empty state reads the same in every locale. Check ${i + 1} of 24.`).join('\n\n')
   const comments = Array.from({ length: 30 }, (_, i) => ({ id: `c-${i}`, author: 'Maya', body: `Comment ${i + 1}: the same question came up in review, and the answer is in the thread above.`, createdAt: new Date(Date.now() - (30 - i) * 3_600_000).toISOString() }))
-  return { ...f, linear: { ...f.linear!, issues: f.linear!.issues.map((i) => (i.identifier === 'KERNEL-200' ? { ...i, description: long, comments: comments as typeof i.comments } : i)) } }
+  return { ...f, linear: { ...f.linear!, issues: (f.linear!.issues ?? []).map((i) => (i.id === 'KERNEL-200' ? { ...i, description: long, comments: comments as typeof i.comments } : i)) } }
 }
 
 /** Inbox on its plan approval, with a plan of 80 steps so the reading pane scrolls. */
