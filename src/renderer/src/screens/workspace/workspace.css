@@ -54,6 +54,14 @@ button.ws-issue:hover { background: var(--surface-3); }
 .tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more, .tab-group[data-rest] .tab-caret.more { opacity: 1; }
 .tab-group:hover .tab-pen, .tab-group:has(:focus-visible) .tab-pen { opacity: 0; }
 
+/* One-row header (a Lead chat): the tabs sit in the header after the project, so the row is the header's height and its hairline is the only one. */
+.header[data-one-row] { padding-left: 12px; gap: 4px; }
+.header[data-one-row] .crumb { margin-left: 2px; }
+.ws-tabs[data-inline] { align-self: stretch; height: auto; min-width: 0; padding: 0; border: 0; }
+.ws-tabs[data-inline] > [role='tablist'] { height: 100%; }
+.ws-tabs[data-inline] .tab-group { height: 100%; }
+.ws-tabs[data-inline] .tab-new { margin-left: 2px; }
+
 /* transcript */
 /* The scroll area sits in a frame, so the Scroll to bottom button floats over it instead of scrolling away with the thread (KERNEL-532). */
 .ws-chat { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }

@@ -12,7 +12,8 @@ import { currentThread, tabOf, threadIdOf } from '../../nav'
 import { ProjectIcon } from '../../components/ProjectIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './leadNoChat'
-import { NewChatHeader, NewChatTab } from './NewChatBar'
+import { leadNewKey } from '../../components/sidebar/slots'
+import { NewChatHeader, NewChatTab, OneRowHeader } from './NewChatBar'
 import { NewLeadChat } from './NewLeadChat'
 import { nextTab } from './nextTab'
 import { OpenIn } from './OpenIn'
@@ -256,7 +257,15 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // under it (KERNEL-769).
   return (
     <div className="panel ws-panel">
-      {newChatShown ? <NewChatHeader project={project} /> : <header className="header">
+      {isLead ? (
+        <OneRowHeader project={project} end={!newChatShown && <>
+          <OpenIn ws={ws} />
+        {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary projectId={ws.projectId} capsule quiet={held} />)}
+        {!panels && <PanelToggleSlot />}
+        </>}>
+          {alone ? <NewChatTab focusIn={workspaceId} /> : <ChatTabs inline workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />}
+        </OneRowHeader>
+      ) : <header className="header">
         <SidebarToggleSlot />
         <ProjectIcon project={project} className="crumb-avatar" />
         <button type="button" className="crumb" onClick={() => project && void openProject(project.id)}>{project?.name}</button>
@@ -273,7 +282,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       <OpenText.Provider value={openText}>
       <OpenIssue.Provider value={issueCtx}>
         <section aria-label="Agent" className="ws-main">
-          {alone ? <NewChatTab /> : <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />}
+          {!isLead && <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />}
           <div className="col grow" style={{ minHeight: 0 }}>
             {diffPath !== undefined
               ? <DiffView ws={ws} path={diffPath} changes={changes} />
@@ -331,9 +340,8 @@ export function LeadNewScreen({ projectId, source, picks }: { projectId: string;
   const project = useStore((s) => s.projects.find((r) => r.id === projectId))
   return (
     <div className="panel ws-panel">
-      <NewChatHeader project={project} />
+      <NewChatHeader project={project} focusIn={leadNewKey(projectId)} />
       <section aria-label="Agent" className="ws-main">
-        <NewChatTab />
         <div className="col grow" style={{ minHeight: 0 }}><NewLeadChat projectId={projectId} source={source} picks={picks} /></div>
       </section>
     </div>

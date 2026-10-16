@@ -1935,6 +1935,20 @@ const permWaiting = (f: Fixture) => scene2(f, { name: 'invoice-pdf-renderer', br
 
 export const workspaceFixtures: Record<string, Fixture> = {
   Workspace: scene(() => ({ ui: open })),
+  // Chat header mocks: today's two rows on a new Lead chat, then the one-row header with one tab and with three.
+  ChatHeaderNow: scene((f) => ({ ...noPlan(leadNoChats(f)), projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)) })),
+  ChatHeaderOneRow: scene((f) => ({ ...noPlan(leadNoChats(f)), projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)) })),
+  ChatHeaderOneRowTabs: scene((f) => {
+    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+    const { approvals: _none, ...rest } = s
+    const tab = (id: string, title: string, m: number): Chat => ({ id, workspaceId: ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', createdAt: at(9, m) })
+    return {
+      ...rest,
+      ui: { ...rest.ui!, rightPanel: false, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } },
+      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
+      chats: [tab('chat-hdr-long', 'Split the invoice export into one PDF per client and email each client their own copy', 1), tab('chat-hdr-inbox', 'Inbox rows', 2), ...(rest.chats ?? f.chats)]
+    }
+  }),
   // KERNEL-161: the workspace started on a Linear issue shows its key after the branch.
   WorkspaceIssue: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { branch: 'feat/kernel-24-invoice-table', source: { kind: 'issue', id: 'KERNEL-24', title: 'Invoice table', url: 'https://linear.app/cj-jutba/issue/KERNEL-24' } }),
