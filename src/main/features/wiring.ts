@@ -78,6 +78,8 @@ export function listen(k: Kernel): () => void {
     // Script lines only go out as pushes, so Kernel keeps them for a window that loads later (KERNEL-340).
     keepScript(e)
     if (e.type === 'chat.running') k.chats.onRunning(e)
+    // A mode switch made during the turn leaves its divider after it (KERNEL-770).
+    if (e.type === 'chat.running' && !e.running) k.lead.turnEnded(e.chatId)
     // A chat that stopped running, or whose queue emptied, may take a Team update now, and a turn's end frees a slot for the
     // others. The update goes then, not at the next PR poll (KERNEL-637).
     if ((e.type === 'chat.running' && !e.running) || (e.type === 'chat.queue' && !e.queue.length)) k.leadUpdates.chatFreed()

@@ -1749,6 +1749,7 @@ export class Sessions {
       chat: () => this.mustChat(chatId),
       settings: () => this.d.settings(),
       mode: () => this.modes(this.mustChat(chatId), ws).mode,
+      leadMode: () => (agent?.lead ? leadModeOf(this.d.store.workspace(ws.id) ?? ws) : undefined),
       projectAllow: () => this.d.projectAllow(ws.projectId),
       allowInProject: (rule) => this.d.allowInProject(ws.projectId, rule),
       projectTools: () => this.d.projectTools?.(ws.projectId) ?? [],

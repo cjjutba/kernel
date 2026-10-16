@@ -133,23 +133,47 @@ export class Lead extends Feature {
   /**
    * Switches a chat with Kernel to Hand off or Build here (KERNEL-770). Each tab gets a divider, or its last one updates, and the chat's idle processes
    * end, so the next turn starts with the mode's prompt and tools. A running turn finishes in the mode it started in, and its
-   * process restarts after it.
+   * process restarts after it. That tab's divider waits for the turn to end, so it sits before the first reply in the new mode.
    */
   setMode(workspaceId: string, mode: LeadMode): Workspace {
     if (!LEAD_MODES.includes(mode)) throw new Error(`${String(mode)} is not a mode. Use handoff or build.`)
     const ws = this.store.workspace(workspaceId)
     if (!ws || !isLeadChatWorkspace(ws)) throw new Error('Only a chat with Kernel can switch between Hand off and Build here.')
     if (ws.status === 'archived') throw new Error('This chat is archived. Restore it from History first.')
-    if (leadModeOf(ws) === mode) return ws
+    const was = leadModeOf(ws)
+    if (was === mode) return ws
     const next = this.updateWs(ws.id, { leadMode: mode })
-    // A tab whose last item is a divider updates it in place, so switching back and forth leaves one (KERNEL-809).
     for (const c of this.chatTabs(ws.id)) {
       if (c.kind === 'terminal') continue
-      const last = this.store.items(c.id).at(-1)
-      this.place(c.id, { kind: 'leadMode', id: last?.kind === 'leadMode' ? last.id : newId(), ts: Date.now(), mode })
+      // The first switch during the turn keeps the mode the turn runs in.
+      if (this.sessions.isRunning(c.id)) { if (!this.switchedDuring.has(c.id)) this.switchedDuring.set(c.id, was); continue }
+      this.divide(c.id, mode)
     }
     this.sessions.restartIdle([ws.id])
     return next
+  }
+
+  /** Tabs whose chat switched mode during a running turn, with the mode that turn runs in, so the divider waits for its end. */
+  private switchedDuring = new Map<string, LeadMode>()
+
+  /**
+   * A chat's turn ended. A switch made during it leaves its divider now, for the chat's mode at this point, or none when that
+   * is the mode the turn ran in.
+   */
+  turnEnded(chatId: string) {
+    const ran = this.switchedDuring.get(chatId)
+    if (!ran) return
+    this.switchedDuring.delete(chatId)
+    const chat = this.store.chat(chatId)
+    const ws = chat && this.store.workspace(chat.workspaceId)
+    if (!ws || ws.status === 'archived' || leadModeOf(ws) === ran) return
+    this.divide(chatId, leadModeOf(ws))
+  }
+
+  /** A mode divider at the end of a tab. One that is already its last item updates in place, so switching back and forth leaves one (KERNEL-809). */
+  private divide(chatId: string, mode: LeadMode) {
+    const last = this.store.items(chatId).at(-1)
+    this.place(chatId, { kind: 'leadMode', id: last?.kind === 'leadMode' ? last.id : newId(), ts: Date.now(), mode })
   }
 
   /** Puts an item in a chat's transcript. */
