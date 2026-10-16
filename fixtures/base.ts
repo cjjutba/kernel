@@ -98,10 +98,10 @@ const waiting: Approval[] = [
 
 export const base: Fixture = {
   projects: [
-    project(ids.projectA, 'Client A', '/Users/you/code/client-a', 'samrivera/client-a'),
-    project(ids.projectB, 'Client B', '/Users/you/code/client-b', 'samrivera/client-b'),
-    project(ids.projectOwn, 'Own app', '/Users/you/code/own-app', 'samrivera/own-app'),
-    project(ids.projectPortfolio, 'Portfolio', '/Users/you/code/portfolio', 'samrivera/portfolio')
+    project(ids.projectA, 'Client A', '/Users/you/code/client-a', 'cjjutba/client-a'),
+    project(ids.projectB, 'Client B', '/Users/you/code/client-b', 'cjjutba/client-b'),
+    project(ids.projectOwn, 'Own app', '/Users/you/code/own-app', 'cjjutba/own-app'),
+    project(ids.projectPortfolio, 'Portfolio', '/Users/you/code/portfolio', 'cjjutba/portfolio')
   ],
   agents: { [ids.projectA]: team, [ids.projectB]: team, [ids.projectOwn]: team, [ids.projectPortfolio]: team },
   status: {
@@ -112,7 +112,7 @@ export const base: Fixture = {
     ws(ids.lead, 'lead', 'kernel/lead', 'kernel-lead', 4300, { lead: true, threadId: 't-lead', path: '/Users/you/kernel/worktrees/client-a/kernel-lead', createdAt: at(9, 5) }),
     ws(ids.table, 'invoice-table', 'feat/t-14-invoice-table', 'kai', 4312, { stat: { files: 4, added: 412, removed: 38 } }),
     ws(ids.schema, 'invoice-schema', 'feat/t-12-invoice-schema', 'noor', 4313, { createdAt: at(10, 3) }),
-    ws(ids.invites, 'org-invites', 'feat/t-09-org-invites', 'kai', 4314, { prNumber: 41, prUrl: 'https://github.com/samrivera/client-a/pull/41', prState: 'open', createdAt: at(10, 4) })
+    ws(ids.invites, 'org-invites', 'feat/t-09-org-invites', 'kai', 4314, { prNumber: 41, prUrl: 'https://github.com/cjjutba/client-a/pull/41', prState: 'open', createdAt: at(10, 4) })
   ],
   chats: [
     { id: ids.leadChat, workspaceId: ids.lead, title: 'Lead', kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: true, threadId: 't-lead', createdAt: at(9, 5) },
@@ -132,7 +132,7 @@ export const base: Fixture = {
   usage: [],
   preflight: [
     { id: 'claude', ok: true, blocking: false, title: 'Claude Code', detail: 'v2.1.292' },
-    { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail: 'Signed in as samrivera' },
+    { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail: 'Signed in as cjjutba' },
     { id: 'hooks', ok: true, blocking: true, title: 'Hook server', detail: 'Listening on localhost:7420' }
   ],
   changes: {

@@ -20,7 +20,7 @@ const projectsScene = (f: Fixture): Partial<Fixture> => {
     { ...f.projects[1], desc: 'Discovery Sprint', kind: 'repo', createdAt: ago(14 * MIN) },
     { ...f.projects[2], desc: 'Nights and weekends', kind: 'folder', repo: undefined, path: '/Users/you/Projects/own-app', createdAt: ago(HOUR) },
     { ...f.projects[3], desc: 'Personal site refresh', kind: 'repo', createdAt: ago(2 * DAY) },
-    { id: 'project-sandbox', name: 'Sandbox', desc: 'Trying out new agent roles', kind: 'scratch', repo: 'samrivera/starter-kit', path: '/Users/you/Projects/sandbox', defaultBranch: 'main', paused: false, archived: true, createdAt: ago(21 * DAY) }
+    { id: 'project-sandbox', name: 'Sandbox', desc: 'Trying out new agent roles', kind: 'scratch', repo: 'cjjutba/starter-kit', path: '/Users/you/Projects/sandbox', defaultBranch: 'main', paused: false, archived: true, createdAt: ago(21 * DAY) }
   ]
   const crew = (...names: string[]): AgentDef[] => names.map((n) => team.find((a) => a.id === n)!)
   return {
@@ -44,11 +44,11 @@ const projectsScene = (f: Fixture): Partial<Fixture> => {
 const withMenu = (menu: 'projects' | `project:${string}`, route: Fixture['ui']['route']) => scene((f) => ({ ...projectsScene(f), ui: { route, menu } }))
 
 const setupSteps: ProjectSetupStep[] = [
-  { id: 'clone', title: 'Clone samrivera/client-c', detail: '~/Projects/client-c', state: 'ok', meta: '4s' },
+  { id: 'clone', title: 'Clone cjjutba/client-c', detail: '~/Projects/client-c', state: 'ok', meta: '4s' },
   { id: 'worktrees', title: 'Create the worktree folder', detail: '~/kernel/worktrees/client-c', state: 'ok' },
   { id: 'copy', title: 'Copy local files', detail: '.env.local, .env.test', state: 'run', meta: 'running' },
   { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'wait' },
-  { id: 'push', title: 'Check push access', detail: 'samrivera can push to samrivera/client-c', state: 'wait' },
+  { id: 'push', title: 'Check push access', detail: 'cjjutba can push to cjjutba/client-c', state: 'wait' },
   { id: 'agents', title: 'Seat agents', detail: 'Kernel, Kai, Noor, Ivy, Theo from .claude/agents', state: 'wait' }
 ]
 // KERNEL-449: setup is done, and two of the copied files look like production. KERNEL-460: git can't push, because it
@@ -81,16 +81,16 @@ const hostSteps = (first: ProjectSetupStep, host: string, folder: string, o: { p
   ...setupSteps.filter((s) => s.id === 'copy' || s.id === 'hooks' || s.id === 'agents' || (o.push && s.id === 'push'))
 ]
 
-const clientC: Project = { id: 'project-client-c', name: 'Client C', desc: 'Booking dashboard for a dental clinic', kind: 'repo', repo: 'samrivera/client-c', path: '/Users/you/Projects/client-c', defaultBranch: 'main', paused: false, createdAt: ago(MIN) }
+const clientC: Project = { id: 'project-client-c', name: 'Client C', desc: 'Booking dashboard for a dental clinic', kind: 'repo', repo: 'cjjutba/client-c', path: '/Users/you/Projects/client-c', defaultBranch: 'main', paused: false, createdAt: ago(MIN) }
 const repos = [
   ['client-c', true, 2 * HOUR, 'Booking dashboard for a dental clinic'], ['personal-site', false, DAY, 'Portfolio and writing'], ['habit-tracker', true, 3 * DAY, ''], ['recipe-box', true, 7 * DAY, 'Recipes with a weekly shopping list'], ['starter-kit', true, 14 * DAY, ''], ['starter-kit-mobile', true, 21 * DAY, '']
-].map(([name, priv, age, description]) => ({ fullName: `samrivera/${name}`, name: name as string, private: priv as boolean, updatedAt: ago(age as number), ...(description ? { description: description as string } : {}) }))
+].map(([name, priv, age, description]) => ({ fullName: `cjjutba/${name}`, name: name as string, private: priv as boolean, updatedAt: ago(age as number), ...(description ? { description: description as string } : {}) }))
 
 /** Open a folder's recent folders (KERNEL-946): two on GitHub, one repo with no remote, one plain folder. */
 const recentFolders = [
-  { path: '/Users/you/Projects/habit-tracker', git: true, branch: 'main', dirty: 2, remote: 'samrivera/habit-tracker' },
+  { path: '/Users/you/Projects/habit-tracker', git: true, branch: 'main', dirty: 2, remote: 'cjjutba/habit-tracker' },
   { path: '/Users/you/Projects/recipe-box', git: true, branch: 'main', dirty: 0 },
-  { path: '/Users/you/Projects/personal-site', git: true, branch: 'main', dirty: 0, remote: 'samrivera/personal-site' },
+  { path: '/Users/you/Projects/personal-site', git: true, branch: 'main', dirty: 0, remote: 'cjjutba/personal-site' },
   { path: '/Users/you/Desktop/sandbox', git: false }
 ]
 
@@ -475,7 +475,7 @@ const linearIssues = (): LinearIssueDetail[] => {
 }
 
 const linearIntegrations: Integration[] = [
-  { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as samrivera' },
+  { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as cjjutba' },
   { id: 'linear', name: 'Linear', connected: true, detail: 'Token saved. Create workspaces from issues' }
 ]
 
@@ -485,7 +485,7 @@ const issuesScene = (f: Fixture, opts: { issueId?: string; working?: boolean; li
   const home = homeScene(f)
   const fromIssue = (id: string, title: string) => ({ source: { kind: 'issue' as const, id, title, url: `https://linear.app/cj-jutba/issue/${id}` } })
   // KERNEL-24 has Kai's PR. Working adds Ivy's tests and Noor on KERNEL-27, with their chats running.
-  const table = { ...fromIssue('KERNEL-24', 'Invoice table with sorting and empty states'), branch: 'feat/kernel-24-invoice-table', prNumber: 41, prUrl: 'https://github.com/samrivera/client-a/pull/41', prState: 'open' as const }
+  const table = { ...fromIssue('KERNEL-24', 'Invoice table with sorting and empty states'), branch: 'feat/kernel-24-invoice-table', prNumber: 41, prUrl: 'https://github.com/cjjutba/client-a/pull/41', prState: 'open' as const }
   const links: Record<string, Partial<Workspace>> = linkedProject || working ? { [ids.table]: table } : {}
   if (working) links[ids.schema] = fromIssue('KERNEL-27', 'Rate limit the invite endpoint')
   const tests: Workspace = {
@@ -539,7 +539,7 @@ const issuesTrackerScene = (f: Fixture, route: { issueId?: string; projectId: st
 /** KERNEL-938: Client A on Linear, with a github.com remote too, so the header offers Linear | GitHub. `github: false` drops the remote. */
 const bothTrackers = (f: Fixture, route: { issueId?: string; tracker?: 'linear' | 'github' }, github = true): Partial<Fixture> => ({
   ...issuesScene(f, { issueId: route.issueId ?? 'KERNEL-31' }),
-  trackers: { [ids.projectA]: { kind: 'linear' as const, where: 'cj-jutba', available: { linear: true, ...(github ? { github: { where: 'samrivera/client-a' } } : {}) } } },
+  trackers: { [ids.projectA]: { kind: 'linear' as const, where: 'cj-jutba', available: { linear: true, ...(github ? { github: { where: 'cjjutba/client-a' } } : {}) } } },
   githubIssues: { [ids.projectA]: githubIssues() },
   ui: { route: { name: 'issues', projectId: ids.projectA, ...route } }
 })
@@ -550,13 +550,13 @@ const bothTrackers = (f: Fixture, route: { issueId?: string; tracker?: 'linear' 
  */
 const workIssuesScene = (f: Fixture): Partial<Fixture> => {
   const s = issuesScene(f, { issueId: 'KERNEL-24', working: true })
-  const info = (id: string, n: number, checks: PrInfo['checks'], extra: Partial<PrInfo> = {}): PrInfo => ({ workspaceId: id, number: n, url: `https://github.com/samrivera/client-a/pull/${n}`, title: 'Invoice work', state: 'open', baseRef: 'main', comments: [], conflicts: [], head: `h${n}`, checks, ...extra })
+  const info = (id: string, n: number, checks: PrInfo['checks'], extra: Partial<PrInfo> = {}): PrInfo => ({ workspaceId: id, number: n, url: `https://github.com/cjjutba/client-a/pull/${n}`, title: 'Invoice work', state: 'open', baseRef: 'main', comments: [], conflicts: [], head: `h${n}`, checks, ...extra })
   const pass: PrInfo['checks'] = [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
   return {
     ...s,
     workspaces: s.workspaces!.map((w) =>
       w.id === ids.table ? { ...w, prState: 'ready' as const, prNumber: 41, prHead: 'h41' }
-      : w.id === ids.schema ? { ...w, prState: 'cifail' as const, prNumber: 42, prUrl: 'https://github.com/samrivera/client-a/pull/42', prHead: 'h42' }
+      : w.id === ids.schema ? { ...w, prState: 'cifail' as const, prNumber: 42, prUrl: 'https://github.com/cjjutba/client-a/pull/42', prHead: 'h42' }
       : w),
     prs: {
       [ids.table]: info(ids.table, 41, pass, { state: 'ready', reviewDecision: 'approved' }),
@@ -753,8 +753,8 @@ export const teamFixtures: Record<string, Fixture> = {
   // Audit: no project added yet, and the Projects page on its own.
   ProjectsEmpty: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'projects' } } })),
   // KERNEL-947: New project is from scratch only: a name, where it goes, and its private GitHub repo. NewProjectTaken picks a name that exists.
-  NewProject: scene((f) => ({ ...projectsScene(f), avatars: { samrivera: ownerAvatar }, ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'scratch', name: 'Habit tracker', from: '' } } } })),
-  NewProjectTaken: scene((f) => ({ ...projectsScene(f), takenRepos: ['samrivera/habit-tracker'], ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'scratch', name: 'Habit tracker', from: '' } } } })),
+  NewProject: scene((f) => ({ ...projectsScene(f), avatars: { cjjutba: ownerAvatar }, ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'scratch', name: 'Habit tracker', from: '' } } } })),
+  NewProjectTaken: scene((f) => ({ ...projectsScene(f), takenRepos: ['cjjutba/habit-tracker'], ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'scratch', name: 'Habit tracker', from: '' } } } })),
   ConnectRepo: scene((f) => ({ ...projectsScene(f), repos, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
   // Audit: the repo list never answers, and the signed-in account has no repos.
   ConnectRepoLoading: scene((f) => ({ ...projectsScene(f), hold: ['github.repos'], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
@@ -809,7 +809,7 @@ export const teamFixtures: Record<string, Fixture> = {
   ProjectSetupGitHub: scene((f) => ({
     ...projectsScene(f),
     projects: [...f.projects, { ...clientC, host: 'github' }],
-    push: [{ type: 'project.setup', projectId: clientC.id, steps: hostSteps(setupSteps[0], 'GitHub, samrivera/client-c', 'client-c', { push: true }) }],
+    push: [{ type: 'project.setup', projectId: clientC.id, steps: hostSteps(setupSteps[0], 'GitHub, cjjutba/client-c', 'client-c', { push: true }) }],
     ui: { route: { name: 'leadNew', projectId: clientC.id } }
   })),
   ProjectSetupLocal: scene((f) => ({

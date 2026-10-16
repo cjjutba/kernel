@@ -18,7 +18,7 @@ const empty = { projects: [], agents: {}, status: {}, workspaces: [], chats: [],
 // The checks, in canvas order. Copy matches src/main/services/preflight.ts.
 const claudeOk: PreflightCheck = { id: 'claude', ok: true, blocking: false, title: 'Claude Code', detail: 'Found on your PATH', meta: 'v2.1.284' }
 const authOk: PreflightCheck = { id: 'auth', ok: true, blocking: true, title: 'Signed in', detail: 'Claude Max' }
-const ghOk: PreflightCheck = { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail: 'Signed in as samrivera', meta: 'gh 2.62' }
+const ghOk: PreflightCheck = { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail: 'Signed in as cjjutba', meta: 'gh 2.62' }
 const hooksOk: PreflightCheck = { id: 'hooks', ok: true, blocking: true, title: 'Hook server', detail: 'Listening for events', meta: 'localhost:7420' }
 const allOk = [claudeOk, authOk, ghOk, hooksOk]
 /** Every check passing except the one at `id`, which is replaced by `failing`. */
@@ -101,7 +101,7 @@ const subscription = (provider: Provider, id: string, label: string, email: stri
 // KERNEL-561: the accounts the canvas draws. Work is Claude Code's own login with a nickname, and Codex's own login has none, so its name is its email.
 const workClaude = subscription('claude', 'cli', 'Work', 'cj@example.com', 'Claude Max', { active: true })
 const personalClaude = subscription('claude', 'personal', 'Personal', 'cj@jutba.example', 'Claude Pro')
-const personalAccount = { signedIn: true, name: 'Sam Rivera', login: 'samrivera', email: 'cj@jutba.example', plan: 'Claude Pro' }
+const personalAccount = { signedIn: true, name: 'CJ Jutba', login: 'cjjutba', email: 'cj@jutba.example', plan: 'Claude Pro' }
 const ownCodex = subscription('codex', 'cli', 'cj@example.com', 'cj@example.com', 'ChatGPT Plus', { active: true })
 const personalCodex = subscription('codex', 'personal', 'Personal', 'cj@jutba.example', 'ChatGPT Pro')
 const window5 = (provider: Provider, accountId: string, pct: number, resetsAt: number, readAt?: number): RateLimit => ({ type: 'five_hour', status: 'allowed', utilization: pct / 100, resetsAt: secs(resetsAt), ...(provider === 'codex' ? { provider } : {}), ...(accountId === 'cli' ? {} : { accountId }), ...(readAt ? { readAt } : {}) })
@@ -209,14 +209,14 @@ const clientA = (extra: Partial<ProjectSettings> = {}) => ({ projectSettings: { 
  */
 const pushCheck = (state: 'ok' | 'failed' | 'unreachable'): Pick<Fixture, 'pushChecks'> => {
   const check: PushCheck = {
-    remote: 'origin', repo: 'samrivera/client-a', login: 'samrivera', at: Date.now() - (state === 'unreachable' ? 0 : 2 * 60_000),
+    remote: 'origin', repo: 'cjjutba/client-a', login: 'cjjutba', at: Date.now() - (state === 'unreachable' ? 0 : 2 * 60_000),
     reach: { state: 'ok', detail: 'git ls-remote origin' },
     push: state === 'failed'
-      ? { state: 'fail', detail: 'gh is signed in as samrivera, but git isn\u2019t using that login.', fix: 'gh auth setup-git' }
-      : { state: 'ok', detail: 'From gh, signed in as samrivera' }
+      ? { state: 'fail', detail: 'gh is signed in as cjjutba, but git isn\u2019t using that login.', fix: 'gh auth setup-git' }
+      : { state: 'ok', detail: 'From gh, signed in as cjjutba' }
   }
   if (state === 'unreachable') {
-    check.reach = { state: 'fail', detail: 'git ls-remote origin', output: 'fatal: unable to access \'https://github.com/samrivera/client-a.git/\': Could not resolve host: github.com', note: 'Check your connection or VPN, then check again.' }
+    check.reach = { state: 'fail', detail: 'git ls-remote origin', output: 'fatal: unable to access \'https://github.com/cjjutba/client-a.git/\': Could not resolve host: github.com', note: 'Check your connection or VPN, then check again.' }
     check.push = { state: 'unchecked', detail: 'Needs a reachable remote' }
   }
   return { pushChecks: { [ids.projectA]: check } }
@@ -343,7 +343,7 @@ const extraAgents: AgentDef[] = [
   { ...agentFile('vercel:deployment-expert', 'Deployment Expert', 'Specialist', 'Debugs failed deployments'), origin: 'plugin', file: '', member: true, prompt: 'You debug failed deployments. Read the build log first, then the config that produced it.' }
 ]
 const integrationRows: Integration[] = [
-  { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as samrivera' },
+  { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as cjjutba' },
   { id: 'linear', name: 'Linear', connected: false, detail: 'Create workspaces from issues' }
 ]
 
@@ -892,7 +892,7 @@ export const platformFixtures: Record<string, Fixture> = {
     }
   }),
   // Main keeps the last name it read when a session reports the sign-out, so the account menu still says who.
-  WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }, ui: open })),
+  WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'CJ Jutba', login: 'cjjutba', plan: 'Claude Max' }, ui: open })),
   // KERNEL-941: an added account in use signed out. The banner names it and its Sign in opens its row in Settings, Accounts.
   WorkspaceSignedOutAdded: scene(() => ({ account: { signedIn: false, name: 'Personal', plan: 'Claude Pro' }, accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true, signedIn: false }], ui: open })),
   // KERNEL-218: the dialog the banner's Review opens, over the held workspace.
