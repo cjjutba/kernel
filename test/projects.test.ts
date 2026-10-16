@@ -9,6 +9,7 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
 import { ago, agoShort, projectState, teamOf } from '../src/renderer/src/screens/projects/projectInfo'
+import { repoOfUrl } from '../src/renderer/src/screens/projects/ConnectRepo'
 import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listOwners, lockfileInstall, recentFolders, repoAvailable, seatStarterTeam } from '../src/main/services/projects'
 import { loadRepoSettings } from '../src/main/services/settings'
 import { repoSlug } from '../src/renderer/src/screens/projects/RepoName'
@@ -538,6 +539,18 @@ describe('Projects page helpers', () => {
     const agent = (id: string, retired?: boolean) => ({ id, name: id, role: 'Engineer', model: 'opus', file: '', retired }) as never
     expect(teamOf([agent('kernel'), agent('kai'), agent('kernel-reviewer', true)]).map((a) => a.id)).toEqual(['kernel', 'kai'])
     expect(teamOf(undefined)).toEqual([])
+  })
+})
+
+describe('Clone a GitHub repo (KERNEL-945)', () => {
+  it('reads owner/name from an https or ssh URL, or from owner/name typed as is', () => {
+    expect(repoOfUrl('https://github.com/cjjutba/kernel')).toBe('cjjutba/kernel')
+    expect(repoOfUrl('https://github.com/cjjutba/kernel.git')).toBe('cjjutba/kernel')
+    expect(repoOfUrl('github.com/cjjutba/homebrew-tap/')).toBe('cjjutba/homebrew-tap')
+    expect(repoOfUrl('git@github.com:cjjutba/cjjutba.dev.git')).toBe('cjjutba/cjjutba.dev')
+    expect(repoOfUrl(' cjjutba/fiscplus ')).toBe('cjjutba/fiscplus')
+    expect(repoOfUrl('https://gitlab.com/a/b')).toBeUndefined()
+    expect(repoOfUrl('just words')).toBeUndefined()
   })
 })
 
