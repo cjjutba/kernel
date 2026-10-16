@@ -43,7 +43,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
       }
       return present
     },
-    onMcp: (ws, provider, servers) => k.mcp.reported(ws.projectId, provider, servers),
+    onMcp: (ws, provider, servers, account) => k.mcp.reported(ws.projectId, provider, servers, { account }),
     rulesFor: (ws, agent, chat) => k.tools.rulesFor(ws, agent, chat),
     projectAllow: (projectId) => k.store.project(projectId)?.allow ?? [],
     availability: (chat, ws, wants) => k.permissions.forChat(chat, ws, wants),

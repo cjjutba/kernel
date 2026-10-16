@@ -54,8 +54,8 @@ describe('what is recorded', () => {
     expect(route()).toEqual({ name: 'inbox' })
   })
   it('does not record a move to onboarding or devUi, or a move away from onboarding', () => {
-    go({ name: 'onboarding', step: 'welcome' })
-    go({ name: 'onboarding', step: 'checks' })
+    go({ name: 'onboarding', step: 'splash' })
+    go({ name: 'onboarding', step: 'project' })
     go({ name: 'projects' })
     expect(canBack()).toBe(false)
     go({ name: 'devUi', page: 'components' })
@@ -359,7 +359,7 @@ describe('the saved place', () => {
   })
   it('never saves onboarding or the dev pages, and leaves the last place alone', () => {
     go(at('lead'))
-    go({ name: 'onboarding', step: 'welcome' })
+    go({ name: 'onboarding', step: 'splash' })
     go({ name: 'devUi', page: 'components' })
     expect(saved().route).toEqual(at('lead'))
   })

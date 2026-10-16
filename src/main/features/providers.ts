@@ -769,6 +769,18 @@ export class Providers extends Feature {
     return r.account?.type === 'chatgpt' && sameLogin({ email: r.account.email ?? undefined }, who)
   }
 
+  /**
+   * The id and name an account goes by in `accounts.list`, from what Kernel saved, without asking the CLI: the CLI's own login
+   * that is also an added account goes by that account (KERNEL-843). For create_workspace's sign-in line (KERNEL-939).
+   */
+  rowOf(provider: Provider, accountId: string): { id: string; label: string } {
+    const cli = this.load()[provider].cli
+    const a = accountId === CLI_ACCOUNT ? this.twinOfCli(provider, cli && { email: cli.email, orgId: cli.orgId }) : this.stored(provider, accountId)
+    if (a) return { id: a.id, label: a.label }
+    if (accountId !== CLI_ACCOUNT) return { id: accountId, label: accountId }
+    return { id: CLI_ACCOUNT, label: cli?.label ?? cli?.email ?? OWN_LOGIN[provider] }
+  }
+
   /** The added account that is the CLI's own login `cli`, when one is (`sameLogin`, KERNEL-701). */
   private twinOfCli(provider: Provider, cli: { email?: string; orgId?: string } | undefined): StoredAccount | undefined {
     return this.load()[provider].accounts.find((a) => a.auth !== 'apiKey' && sameLogin(cli, a))

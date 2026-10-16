@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { HookStatus } from '@shared/types'
-import { needsHookCheck } from '../src/renderer/src/screens/onboarding/Checks'
+import { needsHookCheck } from '../src/renderer/src/screens/onboarding/hookCheck'
 import { problemCard } from '../src/renderer/src/screens/onboarding/CheckHooks'
 
 const status = (o: Partial<HookStatus>): HookStatus => ({ port: 7420, listening: true, installed: false, events: [], ...o })
