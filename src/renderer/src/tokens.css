@@ -1,5 +1,5 @@
 @import './ui/ui.css';
-/* Kernel design tokens. Source of truth: DESIGN.md. Monochrome; color only carries meaning. `--working` and the `--tint-*`
+/* Kernel design tokens. Source of truth: DESIGN.md. Monochrome; color only carries meaning. the `--tint-*`
    pill fills color status words in the sidebar's hover cards (D-084); `--needs` is only the composer's context ring from 75%, no icon uses it (no-amber-icons).
    `--plan` is plan mode, and the `--pr-*` sets are the PR header's bands per state (KERNEL-274). `--claude` is Claude's own
    orange, on the Claude mark in the model picker and nowhere else. */
@@ -32,16 +32,13 @@
   --mod: #e2c08d;
   --merged: #b9a3f5;
   --merged-solid: #7c5ce0;
-  --working: #7cb2ff;
   --needs: #f2c55c;
   /* Amber and red as a fill: meter bars and warning icons. In dark they equal the text tokens. Light needs brighter ones, since
      text-safe amber reads brown on a bar (feat-providers-redesign). */
   --needs-fill: #f2c55c;
   --del-fill: #f06363;
-  --tint-working: #1c2b45;
   --tint-add: #173327;
   --tint-del: #2f191b;
-  --tint-merged: #2c2545;
   --tint-muted: #252527;
   --aside: #0d0d0e;
   --plan: #5aa2ff;
@@ -114,14 +111,11 @@
   --mod: #895503;
   --merged: #6b4bd0;
   --merged-solid: #7c5ce0;
-  --working: #1a56b0;
   --needs: #7a4f00;
   --needs-fill: #d97706;
   --del-fill: #dc3e42;
-  --tint-working: #d6e4fb;
   --tint-add: #d7f0e2;
   --tint-del: #fbe1e1;
-  --tint-merged: #ebe5fc;
   --tint-muted: #e8e8ec;
   --aside: #f7f7f8;
   --plan: #1f5fbf;
