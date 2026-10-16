@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type McpServerStatus, type ModelInfo, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
-import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, CompactWindow, Effort, TokenCounts, UnlistedTools } from '@shared/types'
+import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, CompactWindow, Effort, LeadMode, TokenCounts, UnlistedTools } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
@@ -157,7 +157,8 @@ export class ClaudeRunner implements Runner {
         held: () => host.held(),
         networkAllowed: () => host.settings().permissions.network !== false,
         afterPlan: () => host.afterPlan(),
-        handoff: agent?.lead ? { atStop: () => host.handoffAtStop() } : undefined
+        handoff: agent?.lead ? { atStop: () => host.handoffAtStop() } : undefined,
+        leadMode: () => host.leadMode()
       }),
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
@@ -699,6 +700,8 @@ function kernelHooks(o: {
   handoff?: LeadHandoff
   /** The agent file's tools line, when it has one (KERNEL-397). */
   tools?: ToolPolicy
+  /** A chat with Kernel's mode at the call, so Hand off's refusal can say the user switched since the turn started (KERNEL-770). */
+  leadMode?: () => LeadMode | undefined
   /** Asks the user about an MCP tool the file doesn't list, for `unlisted_tools = "ask"` (KERNEL-537). */
   askTool?: (tool: string, input: unknown, reason: string, signal: AbortSignal) => Promise<SyncHookJSONOutput>
   /** The project's `[agents] unlisted_tools`. `ask` when unset. */
@@ -711,7 +714,7 @@ function kernelHooks(o: {
   /** Settings, Hooks, read each time a gate runs (KERNEL-537). */
   gates?: () => AppSettings['hooks'] | undefined
 }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, cwds, verdict, writeVerdict, projectAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
+  const { ctx, commands, cwds, verdict, writeVerdict, projectAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, leadMode = () => undefined, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -777,8 +780,8 @@ function kernelHooks(o: {
         if (unlisted === 'ask' && bypassing()) return PROJECT_ALLOWS
         if (unlisted === 'ask' && askTool) return askTool(tool, tool_input, `Your agent file doesn't list ${tool.split('__')[1]}.`, signal)
       }
-      // Hand off refuses an edit whatever the file says, and says so (KERNEL-770).
-      const mode = tools.modeRefuses(tool)
+      // Hand off refuses an edit whatever the file says, and says so, including a switch to Build here since the turn started (KERNEL-770).
+      const mode = tools.modeRefuses(tool, leadMode())
       if (mode) return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: mode } }
       bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
       const why = tools.disallows(tool)
