@@ -312,6 +312,9 @@ const LAST_PLACE = 'kernel.lastPlace'
 let fixtureMode = false
 /** Fixture mode runs on a shared folder of its own and must neither read nor write what a real launch saved. */
 export const isFixture = () => fixtureMode
+let fixturePersist = false
+/** Fixture mode with KERNEL_FIXTURE_PERSIST=1: remembered choices use real localStorage, for scripts that relaunch the app (scroll-check). */
+export const fixturePersists = () => fixtureMode && fixturePersist
 function savePlace() {
   if (!state.system.booted || fixtureMode) return
   const place = placeToSave(state, returnTo)
@@ -919,6 +922,7 @@ async function start() {
     call('threads.list', {}).catch((): Thread[] => [])
   ])
   fixtureMode = !!fixture
+  fixturePersist = !!fixture?.persist
   // A retry that works drops the error here, so the error screen keeps its busy button until the lists are in.
   actions.ui.setStartError(undefined)
   setState({ projects, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings, shared: Object.fromEntries(shared.map((f) => [f.id, f])), threads: Object.fromEntries(threads.map((t) => [t.id, t])) })

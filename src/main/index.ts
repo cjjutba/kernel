@@ -472,7 +472,7 @@ app.whenReady().then(async () => {
   })
   const previews: PreviewHandlers = preview?.handlers() ?? previewFixture(fixture!)
   for (const [channel, fn] of Object.entries(previews) as [string, (req: unknown) => Promise<unknown>][]) handle(channel, async (_e, req) => { await started; return fn(req) })
-  handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixturePush(fixture) } : null))
+  handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixturePush(fixture), ...(process.env.KERNEL_FIXTURE_PERSIST === '1' ? { persist: true } : {}) } : null))
   // The file view, plan rows, approval cards and Settings open in the default editor, through Open in's checks (KERNEL-427).
   handle('system.openInEditor' satisfies Channel, async (_e, { path }: KernelApi['system.openInEditor']['req']) => {
     await started
