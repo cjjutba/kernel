@@ -44,6 +44,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
   const pauseNearLimit = useStore((s) => s.settings?.usage.pauseNearLimit)
   const warnBeforeWeekly = useStore((s) => s.settings?.usage.warnBeforeWeekly)
   const switchAtLimit = useStore((s) => s.settings?.accounts.switchAtLimit[chat ? chatProvider(chat) : 'claude'])
+  const keepChats = useStore((s) => s.settings?.accounts.keepChatsOnAccount)
   const dismissed = useLimitDismissed()
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -63,7 +64,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
     return () => clearTimeout(t)
   }, [])
   if (!ws) return null
-  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, scripts, setupCode, isLead, leadName, skipsSetup, dismissed, switchAtLimit, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
+  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, scripts, setupCode, isLead, leadName, skipsSetup, dismissed, switchAtLimit, keepChats, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
 }
 
 /**
@@ -135,7 +136,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
           if (view.signIn!.provider === 'claude') actions.account.set(await call('account.get', undefined))
         })
         : go({ name: 'settings', page: 'accounts', tab: view.signIn.provider }))
-      case 'providers': return go({ name: 'settings', page: 'accounts', tab: 'codex' })
+      case 'providers': return go({ name: 'settings', page: 'accounts', tab: chat ? chatProvider(chat) : 'claude' })
       case 'editScript': return go({ name: 'settings', page: 'project', projectId: ws.projectId, section: 'setup' })
       case 'runAgain': return run(id, 'Could not run setup', async () => {
         actions.ui.setWorkspaceView({ bottom: 'setup' })

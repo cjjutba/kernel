@@ -44,7 +44,7 @@ export interface AppSettings {
   usage: { warnBeforeWeekly: boolean; pauseNearLimit: boolean }
   /**
    * `switchAtLimit`: per provider, Kernel moves to another signed-in subscription account when the one in use hits its 5-hour
-   * or weekly limit. Off by default, and never to an API key account (KERNEL-568).
+   * or weekly limit, or nears it. On by default (KERNEL-941), and never to an API key account (KERNEL-568).
    * `keepChatsOnAccount`: a chat stays on the account that holds its cache rather than following a switch. `longChatMove`:
    * what Kernel does, per provider, when a chat of `longChatTokens` or more has to move to another account (KERNEL-841).
    */

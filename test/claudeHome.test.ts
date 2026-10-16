@@ -64,6 +64,39 @@ describe('linkClaudeHome', () => {
     expect(await readlink(join(home, 'skills', 'unslop'))).toBe(join(root, 'skills', 'unslop'))
     expect(await isLink(join(home, 'skills', 'synced'))).toBe(false)
   })
+  it("moves the chats an account's own projects folder holds into ~/.claude's and links it, keeping a file both have (KERNEL-941)", async () => {
+    const { root, home } = await setUp()
+    await mkdir(join(home, 'projects', '-repo', 'sess', 'subagents'), { recursive: true })
+    await writeFile(join(home, 'projects', '-repo', 'mine.jsonl'), 'mine\n')
+    await writeFile(join(home, 'projects', '-repo', 'sess', 'subagents', 'a.jsonl'), 'a\n')
+    await mkdir(join(home, 'projects', '-other'))
+    await writeFile(join(home, 'projects', '-other', 'x.jsonl'), 'x\n')
+    linkClaudeHome(home, root)
+    expect(await readlink(join(home, 'projects'))).toBe(join(root, 'projects'))
+    expect(await readFile(join(root, 'projects', '-repo', 'mine.jsonl'), 'utf8')).toBe('mine\n')
+    expect(await readFile(join(root, 'projects', '-repo', 'sess', 'subagents', 'a.jsonl'), 'utf8')).toBe('a\n')
+    expect(await readFile(join(root, 'projects', '-other', 'x.jsonl'), 'utf8')).toBe('x\n')
+    expect(await readFile(join(root, 'projects', '-repo', 'chat.jsonl'), 'utf8')).toBe('{}\n')
+
+    // A transcript both have is never overwritten: it stays in the folder, and so does the folder.
+    const { root: root2, home: home2 } = await setUp()
+    await mkdir(join(home2, 'projects', '-repo'), { recursive: true })
+    await writeFile(join(home2, 'projects', '-repo', 'chat.jsonl'), 'other\n')
+    await writeFile(join(home2, 'projects', '-repo', 'new.jsonl'), 'new\n')
+    linkClaudeHome(home2, root2)
+    expect(await isLink(join(home2, 'projects'))).toBe(false)
+    expect(await readFile(join(home2, 'projects', '-repo', 'chat.jsonl'), 'utf8')).toBe('other\n')
+    expect(await readFile(join(root2, 'projects', '-repo', 'chat.jsonl'), 'utf8')).toBe('{}\n')
+    expect(await readFile(join(root2, 'projects', '-repo', 'new.jsonl'), 'utf8')).toBe('new\n')
+  })
+
+  it("makes ~/.claude/projects before linking, so a fresh login's chats are shared from its first one (KERNEL-941)", async () => {
+    const { root, home } = await setUp()
+    await rm(join(root, 'projects'), { recursive: true })
+    linkClaudeHome(home, root)
+    expect(await readlink(join(home, 'projects'))).toBe(join(root, 'projects'))
+  })
+
   it("never links Claude Code's locks, and drops a link to one an older Kernel left, which would block the account's saves", async () => {
     const { root, home } = await setUp()
     // The CLI login is saving and renewing its login right now.

@@ -1,7 +1,7 @@
 import type { ChatPart, Effort } from './chats'
 import type { NewAgentPrefill, NewProjectPrefill } from './projects'
 import type { ProjectSettingsSection, SettingsPage, Theme } from './settings'
-import type { MovePreview, Provider } from './chats'
+import type { Provider } from './chats'
 import type { AppUpdate } from './system'
 import type { LeadMode, WorkspaceMode, WorkspaceSource } from './workspaces'
 
@@ -102,8 +102,6 @@ export type Modal =
   | { name: 'confirm'; kind: 'bypass'; projectId?: string; chatId?: string; /** New chat's box, whose draft keeps the pick until the chat starts. */ draftKey?: string }
   /** The one-time question about usage data, after the first project (KERNEL-397). */
   | { name: 'telemetryAsk' }
-  /** A switch that would make long chats read their history again on `accountId`: what it costs, and whether to keep them or move them (KERNEL-845). `reason` is the banner's. */
-  | { name: 'confirm'; kind: 'switchAccount'; provider: Provider; accountId: string; preview: MovePreview; reason?: 'banner'; /** Runs once the switch is done. It belongs to this request, so a newer one replaces it. */ onSwitched?: () => void }
   /** Set up this account: the checklist of the MCP servers that need the user on one account (KERNEL-661). */
   | { name: 'mcpSetUp'; provider: Provider; accountId: string }
 

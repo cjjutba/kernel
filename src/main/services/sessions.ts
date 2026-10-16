@@ -534,6 +534,33 @@ export class Sessions {
   }
 
   /**
+   * An account is being removed (KERNEL-941): its folder and login are about to go, so no process may keep running on it. A
+   * turn running there stops, and the chat carries on with a nudge on the account it runs on now. Idle processes end. Resolves
+   * once none is left on the account, ending what still runs after `budgetMs`, such as background tasks.
+   */
+  async leaveAccount(provider: Provider, account: string, budgetMs = 10_000): Promise<void> {
+    const on = () => [...this.live].filter(([id, l]) => {
+      const chat = this.d.store.chat(id)
+      return l.account === account && (!chat || chatProvider(chat) === provider)
+    })
+    for (const [id, live] of on()) {
+      if (!live.running) continue
+      await this.interrupt(id, true).catch(() => undefined)
+      await this.send(id, [{ type: 'text', text: ACCOUNT_LEFT }], { from: 'kernel' }).catch(() => undefined)
+    }
+    this.restartProvider(provider, { account })
+    const until = Date.now() + budgetMs
+    while (on().length && Date.now() < until) await new Promise((r) => setTimeout(r, 100))
+    for (const [id, live] of on()) {
+      this.end(id, live)
+      // A turn that never ended leaves the chat marked running, and what waited behind it goes now, on the account in use.
+      const chat = this.d.store.chat(id)
+      if (live.running && chat) this.setRunning(chat, this.mustWorkspace(chat.workspaceId), live, false)
+      this.drain(id)
+    }
+  }
+
+  /**
    * Kernel checks the network and the sign-in at launch before agents carry on (KERNEL-215). Until `releaseCarryOn`, chats
    * a quit or a limit cut off wait, queue included. Ordinary sends and every other queue go out as usual.
    */
@@ -862,7 +889,7 @@ export class Sessions {
     if (this.holding(chatProvider(chat))) return 'offline'
     if (this.pausedChat(chat)) return 'paused'
     if (this.moveHolds.has(chat.id)) return 'move'
-    if (this.nearLimitHolds(chat.id)) return 'limit'
+    if (this.nearLimitHolds(chat.id) || this.accountLimitHolds(chat)) return 'limit'
     if (this.atCapacity(chat.id) || this.coldHolds(chat.id)) return 'capacity'
     return undefined
   }
@@ -893,7 +920,7 @@ export class Sessions {
     if (this.holding(chatProvider(chat))) return 'offline'
     if (this.pausedChat(chat)) return 'paused'
     if (this.moveHolds.has(chatId)) return 'move'
-    if (this.nearLimitHolds(chatId)) return 'limit'
+    if (this.nearLimitHolds(chatId) || this.accountLimitHolds(chat)) return 'limit'
     if (this.atCapacity(chatId) || this.coldHolds(chatId)) return 'capacity'
     return undefined
   }
@@ -1227,7 +1254,7 @@ export class Sessions {
     const queue = this.queued(chatId)
     const [next] = queue
     const chat = this.d.store.chat(chatId)
-    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.unmade(chat) || this.pausedChat(chat) || this.moveHolds.has(chatId) || this.nearLimitHolds(chatId) || this.atCapacity(chatId) || this.coldHolds(chatId)) return
+    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.unmade(chat) || this.pausedChat(chat) || this.moveHolds.has(chatId) || this.nearLimitHolds(chatId) || this.accountLimitHolds(chat) || this.atCapacity(chatId) || this.coldHolds(chatId)) return
     const batch = queue.length > 1 && !this.d.store.items(chatId).some((i) => i.kind === 'user') ? firstTurn(queue) : [next]
     this.setQueue(chatId, queue.slice(batch.length))
     this.dispatch(chat, next.parts, next, batch.slice(1))
@@ -1344,6 +1371,13 @@ export class Sessions {
     const limits = this.limitsFor(chat, live)
     return !!blockingLimit(limits) || (limitedModels(limits) as string[]).includes(chat.model)
   }
+
+  /**
+   * A rejected 5-hour or weekly window on the account the chat runs on holds its next turn. A project pauses only when none of
+   * its chats can run, so a chat on a limited account in a project that runs on waits here instead of starting a turn the
+   * account refuses (KERNEL-941). A model's own limit doesn't hold: its banner offers another model.
+   */
+  private accountLimitHolds(chat: Chat) { return !!blockingLimit(this.limitsFor(chat)) }
 
   /** The usage windows that count for a chat: its own provider's, on the account it runs on (KERNEL-406, KERNEL-843), or on `live`'s account. */
   private limitsFor(chat: Chat, live?: Pick<Live, 'account'>) {
@@ -2140,6 +2174,9 @@ export const PAUSE_KEEPS = new Set<AgentStatus>(['needs', 'blocked', 'offline'])
 
 /** What Kernel sends a chat a usage limit stopped, once the limit lifts. */
 export const LIMIT_LIFTED = 'The usage limit that stopped you no longer applies. Pick up where you left off.'
+
+/** What Kernel sends a chat whose turn stopped because the account it ran on was removed (KERNEL-941). */
+export const ACCOUNT_LEFT = 'Your last step stopped because the account it ran on was removed from Kernel, so it may not have finished. Check the worktree and what you already did before you redo anything, then carry on.'
 
 /** What Kernel sends a chat whose turn was running when Kernel quit or closed, once it opens again (KERNEL-215). */
 export const RELAUNCH_NUDGE = 'Kernel closed while you were working, so your last step may not have finished. Check the worktree and what you already did (git status, open PRs, workspaces you handed off) before you redo anything, then carry on.'

@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { ChatPart, AccountProfile, MoveNotice, MovePreview, MovePreviewChat, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { ChatPart, AccountProfile, MoveNotice, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
@@ -1326,22 +1326,6 @@ const moveAccounts = (): AccountProfile[] => [
   { id: 'key', provider: 'claude', label: 'API key', cli: false, auth: 'apiKey', active: false, signedIn: true },
   { id: 'cli', provider: 'codex', label: 'cj@example.com', email: 'cj@example.com', plan: 'ChatGPT Plus', cli: true, auth: 'subscription', active: true, signedIn: true }
 ]
-const moveChat = (chatId: string, title: string, workspace: string, tokens: number, to: string, extra: Partial<MovePreviewChat> = {}): MovePreviewChat => ({
-  chatId, title, workspaceId: ids.table, workspace, provider: 'claude', from: 'cli', to, tokens, running: false, coldReason: 'account', fits: true, ...extra
-})
-const switchConfirm = ({ key, atLimit }: { key?: boolean; atLimit?: boolean } = {}) => scene(() => {
-  const to = key ? 'key' : 'third'
-  const price = (tokens: number) => (key ? { price: Math.round(tokens * 0.0000045 * 100) / 100 } : {})
-  const chats = [
-    moveChat('c1', 'Invoice table filters', 'Invoice table', 310_000, to, { running: true, ...price(310_000) }),
-    moveChat('c2', 'Migrate the invoice schema', 'Invoice schema', 280_000, to, price(280_000)),
-    moveChat('c3', 'Org invites', 'Org invites', 160_000, to, { estimated: true, ...price(160_000) }),
-    moveChat('c4', 'Fix the CSV export', 'Invoice table', 70_000, to, price(70_000))
-  ]
-  const preview: MovePreview = { provider: 'claude', from: 'cli', to, chats }
-  return { accounts: moveAccounts(), movePreview: preview, ui: { ...open, modal: { name: 'confirm', kind: 'switchAccount', provider: 'claude', accountId: to, preview, ...(atLimit ? { reason: 'banner' as const } : {}) } } }
-})
-
 // KERNEL-841: the notice above the composer. The chat last ran on Main account and its next turn runs on the 3rd account.
 const moveNoticeScene = (notice: Partial<MoveNotice>, chat: Partial<Chat> = {}) => scene((f) => ({
   accounts: moveAccounts(),
@@ -2288,15 +2272,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // KERNEL-766: revert from the turn. Kai's summary has Revert files to here in its "..." menu, since a later turn is the current checkpoint. Choosing it opens the confirm with the files that change,
   // and the same confirm for an earlier checkpoint adds the line about the commits made since.
   WorkspaceRevertMenu: revertScene({ menu: 'reply:x1' }),
-  // KERNEL-845: a switch that would make long chats read their history again. Keeping them is the primary button. The key variant adds what reading them once costs.
-  SwitchAccountConfirm: switchConfirm(),
-  SwitchAccountConfirmApiKey: switchConfirm({ key: true }),
-  // KERNEL-841: the switch from the limit banner. Main account can't run the chats, so there is no Keep button and Move all chats now has the focus.
-  SwitchAccountConfirmAtLimit: switchConfirm({ atLimit: true }),
-  // KERNEL-841: the chat's own notice before its next turn re-reads 310k tokens on another account. The key variant adds the price, the idle one is a hint with no buttons.
+  // KERNEL-841: the notice of a chat that waits for the user to choose how it moves, before its next turn re-reads 310k tokens on another account. The key variant adds the price.
   ChatMoveNotice: moveNoticeScene({}),
   ChatMoveNoticeApiKey: moveNoticeScene({ to: 'key', price: 1.74 }),
-  ChatMoveNoticeIdle: moveNoticeScene({ kind: 'idle', reason: 'idle', to: 'cli', keep: false }),
   SettingsAccountsMoves: scene(() => ({ accounts: moveAccounts(), ui: { route: { name: 'settings', page: 'accounts' } } })),
   ConfirmRevert: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '3' } }),
   ConfirmRevertCommits: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }),

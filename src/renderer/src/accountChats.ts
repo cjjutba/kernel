@@ -20,4 +20,12 @@ export function chatsPerAccount(chats: Record<string, Chat[]>, provider: Provide
 
 export const chatsLabel = (n: number | undefined) => (n ? `${n} chat${n === 1 ? '' : 's'}` : undefined)
 
-export const accountLabel = (accounts: AccountProfile[], provider: Provider, id: string) => accounts.find((a) => a.provider === provider && a.id === id)?.label ?? id
+/**
+ * An account's name by its id. The CLI's own login (`cli`) has no row of its own when an added account is the same login, so it goes by
+ * that account's name (KERNEL-701), and by "the Claude Code login" or "the Codex login" when neither is listed, never by its id (KERNEL-941).
+ */
+export const accountLabel = (accounts: AccountProfile[], provider: Provider, id: string) => {
+  const own = accounts.filter((a) => a.provider === provider)
+  const found = own.find((a) => a.id === id) ?? (id === 'cli' ? own.find((a) => a.alsoCli) : undefined)
+  return found?.label ?? (id === 'cli' ? `the ${provider === 'codex' ? 'Codex' : 'Claude Code'} login` : id)
+}
