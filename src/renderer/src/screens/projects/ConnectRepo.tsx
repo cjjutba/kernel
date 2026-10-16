@@ -143,7 +143,7 @@ export function ConnectRepo() {
         </div>
         <div className="cl-field">
           <label className="cl-label" htmlFor="cl-loc">Location</label>
-          <div className="row" style={{ gap: 8 }}>
+          <div className="row">
             <input id="cl-loc" className="cl-input mono grow" autoComplete="off" spellCheck={false} value={parent} onChange={(e) => setParent(e.target.value)} />
             <Button size="lg" onClick={() => void browse()}>Browse…</Button>
           </div>
