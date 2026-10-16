@@ -327,7 +327,7 @@ export function prDisplayTitle(ws: Pick<Workspace, 'title' | 'prTitle' | 'name'>
 }
 
 /**
- * The icon that leads a PR action's button, as Conductor's do (KERNEL-528). The label picks it first, since Fix checks, Address
+ * The icon that leads a PR action's button (KERNEL-528). The label picks it first, since Fix checks, Address
  * review and Resolve conflicts share one action. A label it doesn't know falls back to the action's icon, and to none.
  */
 export function actionIcon(label: string, action?: PrAction): 'pr' | 'merged' | 'branch' | 'check' | 'refresh' | 'comment' | undefined {

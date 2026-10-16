@@ -1,4 +1,4 @@
-**Project setup happens on the project's New chat page, and adding a project installs nothing.** Amends KERNEL-682 (the project's one-time Install step stays was its line) and the full-screen ProjectSetup from KERNEL-20. CJ's call, from the onboarding redesign: setup should look like Conductor's new workspace, not a screen of its own.
+**Project setup happens on the project's New chat page, and adding a project installs nothing.** Amends KERNEL-682 (the project's one-time Install step stays was its line) and the full-screen ProjectSetup from KERNEL-20. CJ's call, from the onboarding redesign: setup should show as plain rows in the chat, not a screen of its own.
 
 **No Install step.** A new project is only checked out: clone, the GitHub repo when one is made (KERNEL-944), the worktree folder, files to copy, hooks, push access, agents. Dependencies come from the project's setup script, which runs in each new chat's worktree. A project with no setup script shows "No setup script yet" with a link to Settings, Scripts. A setup saved by an older build drops its Install step when it is restored, so it can still finish.
 

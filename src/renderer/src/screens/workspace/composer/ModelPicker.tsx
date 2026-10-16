@@ -39,7 +39,7 @@ type Item = { kind: 'model'; row: Row } | { kind: 'legacy'; rows: Row[] }
 type Tab = 'favorites' | Provider
 
 /**
- * Model and effort, as in Conductor (D-093) with t3's rail. The rail switches between Favorites and the providers, and the list shows
+ * Model and effort (D-093) with t3's rail. The rail switches between Favorites and the providers, and the list shows
  * only that tab's models, the older ones folded under one Legacy models row. Type to search (legacy models included), arrow keys
  * move, Enter picks. Each model shows the effort you last used with it and comes back at that effort, else at `fallback`, the default
  * effort, never the open chat's (D-130). The caller remembers a picked effort. The Effort row opens the levels to its right and the Legacy

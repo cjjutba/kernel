@@ -195,7 +195,7 @@ const atEnd = (parts: ChatPart[]) => {
 }
 
 /**
- * A composer's draft, as in Conductor: text and chips flow together, the caret goes anywhere, and Backspace takes a chip
+ * A composer's draft: text and chips flow together, the caret goes anywhere, and Backspace takes a chip
  * like a character. Every chip lands where the caret is: a pasted screenshot or long text, a dropped or picked file, an @
  * file, a / skill. `insert` and `attach` run in order, so two images pasted at once both land.
  * With a `key` (a chat id) the draft is kept per key outside the component: it comes back after a tab switch or a remount,

@@ -105,7 +105,7 @@ const PREVIEW_CHARS = 1200
 const head = (text: string) => text.slice(0, PREVIEW_CHARS).split('\n').slice(0, PREVIEW_LINES).join('\n')
 
 /**
- * A chip's name and icon as a button, as in Conductor: hovering or focusing it shows a preview, clicking opens it.
+ * A chip's name and icon as a button: hovering or focusing it shows a preview, clicking opens it.
  * The chip itself still shows an icon, never a thumbnail (D-062).
  */
 function PreviewButton({ name, preview, previewClass, modal, modalWidth, onOpen, plain, children, ...rest }: {

@@ -23,7 +23,7 @@ let warmUntil = 0
 let current: { close: () => void } | null = null
 
 /**
- * Shows a row's card after a deliberate hover, or at once on keyboard focus, like Conductor's workspace cards. Escape, scrolling
+ * Shows a row's card after a deliberate hover, or at once on keyboard focus. Escape, scrolling
  * the sidebar or leaving the window puts it away, since it is placed once and doesn't follow the row. A click keeps it away
  * until the pointer leaves the row. The pointer can cross to the card, which stays while it is over it. A control marked
  * `data-card-off` (the archive button) hides it while pointed at or focused, so the control's own tooltip doesn't land on the card.

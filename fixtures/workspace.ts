@@ -2501,7 +2501,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     images: { [ids.table]: { 'worktree:public/logo.png': { dataUrl: imageAfter } } },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.table]: { tab: 'diff:', files: [], diffs: [''] } } }
   })),
-  // Focus mode hides both sides the way Conductor does (D-063), so this shot has no rail where the PNG draws one.
+  // Focus mode hides both sides (D-063), so this shot has no rail where the PNG draws one.
   WorkspaceFocus: scene(() => ({
     ui: { ...open, sidebar: false, rightPanel: false, workspace: { right: 'changes', bottom: 'run' } }
   })),

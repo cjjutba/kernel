@@ -635,7 +635,7 @@ export const platformFixtures: Record<string, Fixture> = {
     branches: ['origin/main', 'origin/dev', 'main'],
     ...pushCheck('unreachable')
   }),
-  // KERNEL-914: the Scripts page as Conductor draws it. A twelve-line setup script that overrides settings.toml, an empty archive script, and run scripts as rows. The list is one value, so the preview URLs' source shows on the first row.
+  // KERNEL-914: the Scripts page. A twelve-line setup script that overrides settings.toml, an empty archive script, and run scripts as rows. The list is one value, so the preview URLs' source shows on the first row.
   SettingsProjectScripts: scriptsPage,
   // KERNEL-914: the same page scrolled to the archive script, the run scripts as rows, Run mode and Ports.
   SettingsProjectScriptsRuns: scriptsPage,
@@ -650,7 +650,7 @@ export const platformFixtures: Record<string, Fixture> = {
     ...clientA({ scripts: { ...kernelFiles.scripts, setup: '', archive: '', run: '' }, runScripts: [], sources: {} }),
     ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'setup' } }
   })),
-  // KERNEL-684: Setup is empty, and Kernel found a script in the repo's Conductor file. Archive has a value, so it offers nothing.
+  // KERNEL-684: Setup is empty, and Kernel found a script in the repo's .conductor file. Archive has a value, so it offers nothing.
   SettingsProjectScriptsSuggestion: scene((f) => ({
     ...clientA({ scripts: { ...kernelFiles.scripts, setup: '' }, sources: Object.fromEntries(Object.entries(kernelFiles.sources ?? {}).filter(([k]) => k !== 'scripts.setup')) }),
     scriptSuggestions: { [ids.projectA]: [{ source: 'conductor', file: '.conductor/settings.toml', patch: { scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local' } }, notes: ['The archive script was left out because this project already has one.'] }] },

@@ -11,7 +11,7 @@ import { ChatSetupRows } from './ChatSetupRows'
 const NO_QUEUE: QueuedMessage[] = []
 
 /**
- * A chat whose workspace is still setting up, or whose setup failed or was stopped (KERNEL-430), drawn as Conductor draws a new
+ * A chat whose workspace is still setting up, or whose setup failed or was stopped (KERNEL-430), drawn like a new
  * workspace (KERNEL-951): the setup rows, then the messages waiting for setup, dimmed where they will land, with Send now. Before
  * setup, a new chat's worktree is made in the background (`worktreePending`, KERNEL-543): the message reads as sent meanwhile, with the
  * working line under it from the press of Send, as the turn that follows draws it.

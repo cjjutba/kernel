@@ -1,4 +1,4 @@
-**The sidebar lists chats with Kernel by your last send, newest first.** Amends D-139 (chat order) and KERNEL-357 (what ⌘1 opens). The sidebar listed chats with Kernel oldest first, so a new chat landed at the bottom and writing in one moved nothing. Claude and Conductor put the chat you last used on top, and now Kernel does too.
+**The sidebar lists chats with Kernel by your last send, newest first.** Amends D-139 (chat order) and KERNEL-357 (what ⌘1 opens). The sidebar listed chats with Kernel oldest first, so a new chat landed at the bottom and writing in one moved nothing. Claude puts the chat you last used on top, and now Kernel does too.
 
 `Thread.lastSentAt` holds the user's last send. `userSpoke` in `features/lead.ts` sets it when the chat's workspace is a chat with Kernel, saves the thread and pushes it, and the renderer applies the push like any other thread. `userSpoke` runs only when the user sends: Send in any tab, the first message of a new chat, Ask Kernel, Retry on their own message, a comment on a shared file, and Resolve or Update branch on the chat's PR. A queued message counts when the user sends it, not when it leaves the queue.
 

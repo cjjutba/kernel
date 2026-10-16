@@ -267,7 +267,7 @@ export class Projects extends Feature {
       await mkdir(worktrees, { recursive: true })
       await ensureRepoSettings(project.path)
     })
-    // No install here (KERNEL-948): a new project is only checked out, as in Conductor. Dependencies come from the project's setup
+    // No install here (KERNEL-948): a new project is only checked out. Dependencies come from the project's setup
     // script, which runs in each new chat's worktree.
     await step('copy', async () => {
       const { files } = await loadRepoSettings(project.path)

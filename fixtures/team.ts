@@ -282,7 +282,7 @@ const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
     ...projects,
     chats: [
       ...f.chats.filter((c) => c.workspaceId !== ids.lead),
-      chat('chat-lead-ui', 'Conductor app UI review', 5), chat('chat-lead-inbox', 'Inbox clutter and old messages in the list', 6),
+      chat('chat-lead-ui', 'App UI review', 5), chat('chat-lead-inbox', 'Inbox clutter and old messages in the list', 6),
       chat('chat-lead-tools', 'Tool call display mode', 7), chat('chat-lead-new', 'New chat', 8)
     ],
     workspaces: [

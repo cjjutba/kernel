@@ -197,7 +197,7 @@ const ChatItem = memo(ChatItemRow, (a, b) =>
   a.projectId === b.projectId && a.thread === b.thread && a.ws === b.ws && a.folded === b.folded && sameList(a.tabs, b.tabs) && sameList(a.owned, b.owned) && sameSlot(a.slot, b.slot) && sameGone(a.leaving, b.leaving))
 
 /**
- * The row's archive button archives in one click, like Conductor, when nothing would be lost. Uncommitted changes, commits
+ * The row's archive button archives in one click when nothing would be lost. Uncommitted changes, commits
  * not on GitHub yet, or a status Kernel can't read open ConfirmArchive instead, which says what happens to them.
  * A current-branch workspace removes no files, so it never needs the dialog.
  */
@@ -291,7 +291,7 @@ function blocksOf(shown: Shown[]): Shown[][] {
 
 /**
  * A project in the sidebar. Expanded, it lists the Lead's open chats with the workspaces each started under it (unless the chat is folded), then the workspaces
- * no open chat owns (D-139). Pressing the row folds or unfolds it, as in Conductor, and hovering it
+ * no open chat owns (D-139). Pressing the row folds or unfolds it, and hovering it
  * swaps the project's letter for a chevron and shows the menu button.
  */
 const NO_KEYS: string[] = []
@@ -340,7 +340,7 @@ function ProjectItem({ project, current, expanded, numbered, hints, ctrlHints, o
           </span>
           <span className="grow ellipsis">{project.name}</span>
         </button>
-        {/* New chat stays visible, as in Conductor. The menu button shows on hover or keyboard focus, or while its menu is open. */}
+        {/* New chat stays visible. The menu button shows on hover or keyboard focus, or while its menu is open. */}
         <div className="row project-actions">
           <button className="icon-btn more" style={{ width: 24, height: 24, opacity: menuOpen ? 1 : undefined }} aria-label={`${project.name} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu(`project:${project.id}`)}><Icon name="more" size={14} /></button>
           <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New chat in ${project.name}`} onClick={() => openNewChat(project.id)}><Icon name="plus" size={14} /></button>
