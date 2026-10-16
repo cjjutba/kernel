@@ -213,7 +213,7 @@ const ciState: Record<PrCheck['state'], CheckState> = { pass: 'ok', fail: 'fail'
 function CheckIcon({ state }: { state: CheckState }) {
   if (state === 'run') return <span className="check-spin"><Spinner label="Running" pattern="snake" /></span>
   const icon = state === 'ok' ? 'check' : state === 'fail' ? 'close' : state === 'warn' ? 'warning' : 'minus'
-  const color = state === 'ok' ? 'var(--add)' : state === 'fail' ? 'var(--del)' : state === 'warn' ? 'var(--ink-2)' : 'var(--faint)'
+  const color = state === 'ok' ? 'var(--add)' : state === 'fail' ? 'var(--del)' : state === 'warn' ? 'var(--needs-fill)' : 'var(--faint)'
   return <span style={{ color, display: 'inline-flex' }}><Icon name={icon} size={14} /></span>
 }
 

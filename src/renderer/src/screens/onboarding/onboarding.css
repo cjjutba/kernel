@@ -11,7 +11,7 @@
 .ob-check + .ob-check { border-top: 1px solid var(--line); }
 .ob-ico { width: 15px; margin-top: 2px; flex-shrink: 0; display: inline-flex; color: var(--add); }
 .ob-check[data-ok="false"] .ob-ico { color: var(--del); }
-.ob-check[data-ok="false"][data-blocking="false"] .ob-ico { color: var(--ink); }
+.ob-check[data-ok="false"][data-blocking="false"] .ob-ico { color: var(--needs-fill); }
 .ob-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .ob-name { font-weight: var(--fw-medium); }
 .ob-detail { font-size: var(--fs-code); color: var(--muted); }

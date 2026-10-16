@@ -1,6 +1,6 @@
 @import './ui/ui.css';
 /* Kernel design tokens. Source of truth: DESIGN.md. Monochrome; color only carries meaning. the `--tint-*`
-   pill fills color status words in the sidebar's hover cards (D-084); `--needs` is only the composer's context ring from 75%, no icon uses it (no-amber-icons).
+   pill fills color status words in the sidebar's hover cards (D-084); `--needs` is amber text and `--needs-fill` amber icons: the waiting icon on sidebar rows and chat tabs, warning triangles and the context ring from 75% (amber-waiting-icons-and-warning).
    `--plan` is plan mode, and the `--pr-*` sets are the PR header's bands per state (KERNEL-274). `--claude` is Claude's own
    orange, on the Claude mark in the model picker and nowhere else. */
 /* Dark is the default. Light values are the dark ones lightened, and test/theme.test.ts checks every text pair for contrast.

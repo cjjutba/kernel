@@ -149,7 +149,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-row.set-sub { padding-left: 48px; }
 /* Files to copy: the files that look like production (KERNEL-449, SettingsFilesProduction.png). */
 .set-banner { display: flex; gap: 12px; padding: 16px 18px; }
-.set-banner > svg { flex-shrink: 0; margin-top: 1px; color: var(--ink); }
+.set-banner > svg { flex-shrink: 0; margin-top: 1px; color: var(--needs-fill); }
 .set-banner-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .set-banner-text { display: flex; flex-direction: column; gap: 2px; }
 .set-banner-title { font-size: var(--fs-row); font-weight: var(--fw-medium); color: var(--ink); }

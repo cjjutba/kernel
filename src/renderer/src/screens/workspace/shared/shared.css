@@ -64,7 +64,7 @@
 .sv-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
 /* WorkspaceSharedCrashed.png: the notice takes the stage, with no frame behind it */
 .sv-crash { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; background: var(--aside); }
-.sv-crash-icon { display: inline-flex; color: var(--muted); }
+.sv-crash-icon { display: inline-flex; color: var(--needs-fill); }
 .sv-crash-title { font-size: var(--fs-chat); font-weight: var(--fw-medium); color: var(--ink); }
 .sv-crash-sub { font-size: var(--fs-code); color: var(--muted); }
 .sv-reload { height: 30px; margin-top: 8px; padding: 0 14px; border-radius: var(--r); font-size: var(--fs-ui); }
