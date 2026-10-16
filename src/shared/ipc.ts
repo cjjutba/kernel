@@ -508,15 +508,17 @@ export interface KernelApi {
   /**
    * Every signed-in subscription account of both providers with each MCP server's state on it (KERNEL-626): every server
    * any account of the provider has, on each of its accounts, in one of five states (KERNEL-646). Kernel keeps
-   * what it last found: only an account it hasn't checked yet is checked, and the call waits for it. `refresh` checks again,
+   * what it last found, saved across restarts, and answers at once with it (KERNEL-936). An account it hasn't checked since
+   * launch is checked in the background, `checking` while it runs, and pushed as `mcp.accounts` when its check ends. `refresh` checks again,
    * every account or only `provider`'s, or only `accountId`. A Claude check starts Claude Code on the account and stops it,
    * as `accounts.checkMcp` does. A Codex check lists the servers in the account's home. Changes arrive as `mcp.accounts`.
    */
   'mcp.accounts': { req: { refresh?: boolean; provider?: Provider; accountId?: string } | void; res: McpAccount[] }
   /**
-   * Re-check on return (KERNEL-660): the renderer calls it when Kernel's window gets focus. Checks again only the accounts
-   * with something pending (`needsYou`, or a check that failed), at most once every 10 seconds, and resolves with
-   * `mcp.accounts` as it reads then. Changes arrive as `mcp.accounts` too. Kernel also re-checks an account after each sign-in.
+   * Re-check on return (KERNEL-660): the renderer calls it when Kernel's window gets focus. Checks again the accounts with
+   * something pending (`needsYou`, or a check that failed), and every account last checked 5 minutes ago or more (KERNEL-936),
+   * at most once every 10 seconds. Resolves at once with `mcp.accounts` as it reads then, and each account's result arrives as
+   * an `mcp.accounts` push. Kernel also re-checks an account after each sign-in.
    */
   'mcp.recheck': { req: void; res: McpAccount[] }
   'integrations.list': { req: void; res: Integration[] }
