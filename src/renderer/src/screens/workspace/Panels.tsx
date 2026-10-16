@@ -7,6 +7,7 @@ import { isLeadWorkspace, leadOf, openLeadChat } from '../../lead'
 import { collapsedWord } from './bottomWord'
 import { actions, go, useStore, type State } from '../../store'
 import { useRemembered } from '../../remember'
+import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, Skeleton, Spinner, useBusy, type MenuEntry } from '../../ui'
 import { stripRemote } from '../settings/remote'
 import { patchProjectSettings, useRemote, useProjectSettings } from '../settings/useSettings'
@@ -55,6 +56,8 @@ function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; cha
   const [open, setOpen] = useState<Set<string> | null>(null)
   const [failed, setFailed] = useState(false)
   const filter = usePanelFilter()
+  const scroller = useRef<HTMLDivElement>(null)
+  useKeptScroll(scroller, { key: spotKey.panel(ws.id, 'files'), ready: tree !== null })
   useEffect(() => {
     let live = true
     call('workspaces.tree', { workspaceId: ws.id }).then((t) => { rememberTree(ws.id, t); if (live) { setTree(t); setFailed(false) } }).catch(() => { if (live) setFailed(true) })
@@ -84,7 +87,7 @@ function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; cha
         : found && !found.entries.length
         ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No files match</span><span>Try another name or folder.</span></div>
         : (
-          <div className="panel-scroll" style={{ padding: '0 8px 8px' }}>
+          <div ref={scroller} className="panel-scroll" style={{ padding: '0 8px 8px' }}>
             <FileTree label="All files" entries={found ? found.entries : tree} expanded={expanded} onToggle={toggle} onOpen={onOpenFile} activePath={activePath} />
           </div>
         )}
@@ -100,7 +103,7 @@ function ChangeRow({ f, active, conflicted, ranges, onOpen }: { f: ChangedFile; 
   // A file a local merge would conflict in reads C in the diff's red, the letter the merge note lists it with (KERNEL-478).
   const deco = conflicted ? { letter: 'C', label: 'Conflict', color: 'var(--del)', struck: false } : gitDecoration(f.status)
   return (
-    <button type="button" className="tree-row change-row" aria-current={active || undefined} data-tip={f.from ? `Renamed from ${f.from}` : undefined} onClick={onOpen}>
+    <button type="button" data-keep-id={f.path} className="tree-row change-row" aria-current={active || undefined} data-tip={f.from ? `Renamed from ${f.from}` : undefined} onClick={onOpen}>
       <FileIcon path={f.path} />
       <span className="tree-name ellipsis">
         <span data-struck={deco?.struck || undefined} style={deco ? { color: deco.color } : undefined}><Marked text={name} from={dir ? dir.length + 1 : 0} ranges={ranges} /></span>
@@ -147,6 +150,8 @@ function ChangesList({ ws, changes: base, onOpenDiff, activePath }: { ws: Worksp
   const empty = compareEmpty(compare)
   // The ⋯ stays whatever the list holds, so a pick with no files can be changed. A pick still being read, or one that failed, has no list to act on.
   const listed = files !== null && !error && changes.length > 0
+  const scroller = useRef<HTMLDivElement>(null)
+  useKeptScroll(scroller, { key: spotKey.panel(ws.id, 'changes'), ready: listed })
   return (
     <>
       <PanelTools>
@@ -168,7 +173,7 @@ function ChangesList({ ws, changes: base, onOpenDiff, activePath }: { ws: Worksp
             : (
               <>
                 <FilterField filter={filter} label="Filter changed files" />
-                <div className="panel-scroll" style={{ padding: '4px 10px' }}>
+                <div ref={scroller} className="panel-scroll" style={{ padding: '4px 10px' }}>
                   <div className="changes-head">
                     <span className="changes-count">{changes.length} {changes.length === 1 ? 'file' : 'files'} changed{note && ` ${note}`}</span>
                     <span className="grow" />
@@ -274,13 +279,15 @@ function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
   const local = useLocalMerge(ws)
   const groups = checkGroups(ws, changes, pr, useRemote(ws.projectId), local)
   const url = checksUrl(pr?.url || ws.prUrl)
+  const scroller = useRef<HTMLDivElement>(null)
+  useKeptScroll(scroller, { key: spotKey.panel(ws.id, 'checks'), ready: true })
   return (
     <>
       <PanelTools>
         <RefreshButton ids={[ws.id]} label="Refresh checks" failTitle="Could not refresh checks" />
         <ToolButton icon="ext" label="Open on GitHub" disabled={!url} onClick={() => { if (url) void attempt('Could not open GitHub', () => call('system.openExternal', { url })) }} />
       </PanelTools>
-      <div className="panel-scroll" style={{ gap: 14, padding: '6px 16px' }}>
+      <div ref={scroller} className="panel-scroll" style={{ gap: 14, padding: '6px 16px' }}>
         {groups.map((g) => (
           <div key={g.title} className="col" style={{ gap: 4 }}>
             <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>{g.title}</span>
