@@ -32,6 +32,7 @@ import { newChatLeadMode } from '@shared/leadMode'
 import { useProjectSettings } from '../settings/useSettings'
 import { stripRemote } from '../settings/remote'
 import { UpNext } from './UpNext'
+import { ReadinessLine } from './ReadinessLine'
 
 /**
  * The New chat page, the one way to start a chat (KERNEL-788): the title, which names the project and picks it, a composer and the tracker's
@@ -251,7 +252,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
       </div>
       <div className="lead-up">{usable && <UpNext projectId={projectId} lead={name} onPlan={planIssue} />}</div>
       <ComposerShell
-        above={!projects.length && <FirstProjectPills />}
+        above={<>{!projects.length && <FirstProjectPills />}<ReadinessLine /></>}
         input={<ComposerInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(leadMode, name)} onKeyDown={onKey} />}
         box={{ 'data-plan': plan ? 'true' : undefined, 'data-drop': d.over || undefined }}
         foot={<ComposerToolbar disabled={busy}
