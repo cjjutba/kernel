@@ -137,3 +137,11 @@
 .tucard-toggle:hover { color: var(--ink-2); }
 .tucard-from { padding: 10px 16px 0; font-size: var(--fs-meta); color: var(--muted); }
 .tucard-omitted { padding: 8px 16px 10px; border-top: 1px solid var(--line); font-size: var(--fs-meta); color: var(--muted); }
+
+/* A review of the chat's own PR in Build here: one line with the verdict, the reply under it (KERNEL-990). */
+.tucard[data-compact] .tucard-row { padding: 10px 16px 11px; }
+.tucard-fill { flex: 1; }
+.tucard[data-compact] .tucard-quote { margin-top: 4px; }
+.tucard[data-compact] .tucard-quote[data-clamped='true'] { -webkit-line-clamp: 2; }
+.tucard[data-compact] .tucard-task { flex: 0 1 auto; }
+.tucard[data-compact] .tucard-sep { margin: 0; }

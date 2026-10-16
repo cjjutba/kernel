@@ -11,6 +11,31 @@ export function cardData(item: UserItem): TeamUpdate {
   return item.update ?? legacyRows(textOf(item))
 }
 
+/** Events that only say the chat's own PR went well. A blocker, failed check, conflict or requested change is never one (KERNEL-990). */
+const isSuccess = (e: TeamUpdateRow['events'][number]) => ['pr.opened', 'pr.ready', 'pr.unblocked', 'pr.merged'].includes(e.kind) || (e.kind === 'pr.review' && eventTone(e) !== 'del')
+
+/**
+ * The rows of an older Team update left once the chat's own workspace's success-only rows are gone. In Build here those are
+ * lines of the transcript now, so the card no longer repeats them (KERNEL-990). `selfId` is the chat's workspace.
+ */
+export const withoutSelfSuccess = (rows: TeamUpdateRow[], selfId: string | undefined): TeamUpdateRow[] =>
+  selfId ? rows.filter((r) => r.workspaceId !== selfId || !r.events.length || !r.events.every(isSuccess) || !!r.shared?.length) : rows
+
+/** Whether a Team update draws nothing in the chat `selfId`: every row it holds was about that chat's own PR going well. */
+export const isHiddenUpdate = (item: UserItem, selfId: string | undefined): boolean => {
+  const data = cardData(item)
+  return !!selfId && data.rows.length > 0 && !data.omitted && withoutSelfSuccess(data.rows, selfId).length === 0
+}
+
+/** A review-only update, as the compact card: the reviewer's verdict without the "Team update" header (KERNEL-990). */
+export const isReviewOnly = (rows: TeamUpdateRow[]) => rows.length > 0 && rows.every((r) => r.events.length > 0 && r.events.every((e) => e.kind === 'review' || e.kind === 'pr.review'))
+
+/** "Approved PR #7" as "Approved", "Code review found 2 blockers on PR #7" as "Found 2 blockers": the PR is already in the line before it. */
+export const verdictText = (text: string) => {
+  const t = text.replace(/\.$/, '').replace(/^\S+ review (?=\S)/i, '').replace(/\s+(?:on|of|for)?\s*PR #\d+$/i, '')
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 /** The workspace a row's Merge button merges: a reviewer's row merges the work it reviewed (`reviewOf`), every other row its own. */
 export const mergeTargetOf = (ws: Pick<Workspace, 'id' | 'reviewOf'>) => ws.reviewOf ?? ws.id
 
