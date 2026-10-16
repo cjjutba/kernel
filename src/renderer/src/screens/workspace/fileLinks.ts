@@ -179,7 +179,8 @@ export async function openMention(workspaceId: string, r: ResolvedFile, o: { dif
 
 /** A bare name's match picked from the menu, resolved on its own so its sensitive flag and line come with it. Null when it is gone. */
 export async function resolveMatch(workspaceId: string, path: string, raw: string): Promise<ResolvedFile | null> {
-  const asked = `${path}${SUFFIX.exec(raw)?.[0] ?? ''}`
+  // `./` anchors it to the worktree: a file at the root has no slash, and the engine would read it as a bare name and list the matches again.
+  const asked = `./${path}${SUFFIX.exec(raw)?.[0] ?? ''}`
   const r = (await call('workspaces.resolvePaths', { workspaceId, paths: [asked] }).catch(() => ({} as Record<string, ResolvedPath>)))[asked]
   return r && !('matches' in r) ? r : null
 }

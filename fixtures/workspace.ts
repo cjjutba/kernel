@@ -751,7 +751,7 @@ function fileLinks(f: Fixture, click?: { click: string }): Partial<Fixture> {
     '',
     '- Layout rules are in DESIGN.md, and the folder is `src/app/invoices/`.',
     '- Two `page.tsx` files use it, so check both before you change the props.',
-    '- I removed `src/gone.ts` and bumped the PDF library to 1.2.3.'
+    '- I removed `src/gone.ts` and bumped the PDF library to 1.2.3 in `package.json`.'
   ].join('\n')
   const file = (path: string, more: object = {}) => ({ kind: 'file' as const, path, ...more })
   return {
@@ -761,7 +761,10 @@ function fileLinks(f: Fixture, click?: { click: string }): Partial<Fixture> {
       'empty-state.tsx': file('src/app/invoices/empty-state.tsx'),
       'DESIGN.md': file('DESIGN.md'),
       'src/app/invoices/': { kind: 'dir', path: 'src/app/invoices' },
-      'page.tsx': { matches: ['src/app/invoices/page.tsx', 'src/app/page.tsx'] }
+      'page.tsx': { matches: ['src/app/invoices/page.tsx', 'src/app/page.tsx'] },
+      // Picking the root match asks for it as `./package.json`, so the engine doesn't list the matches again.
+      'package.json': { matches: ['package.json', 'packages/pdf/package.json'] },
+      './package.json': file('package.json', { sensitive: true })
     } },
     ui: { ...open, workspace: { right: 'files', bottom: 'run' } },
     ...(click && { motion: { action: click, ms: 800, area: '.ws-main' } })
