@@ -129,17 +129,13 @@ describe('chat scroll races (KERNEL-952)', () => {
       expect(Math.abs(r.end() - r.view.scrollTop)).toBeLessThan(1)
     })
 
-    // (b) A pending plan taller than the view, read from its task list: the restore of that spot and a plan reveal both aim at the view.
-    it('(b) a plan reveal takes over from a spot restore, and the restore writes nothing after it', async () => {
+    // (b) A pending plan taller than the view, read from its task list: the open restore is still holding when the plan reveal starts, in the order the owner uses (the restore stops, then the glide starts).
+    it('(b) a plan reveal that takes over from the spot restore leaves one mover per frame', async () => {
       const r = rig({ scrollTop: 0, scrollHeight: 4200 })
       const { o } = await owned(r)
       o.open({ spot: () => 3000, frames: () => undefined })
-      r.tick()
-      r.tick()
-      // The reveal runs from an effect at the start of a frame after the one that opened the chat.
-      const at = r.frame() + 1
-      r.tick(() => o.reveal({ goal: () => 2600, instant: false }))
-      for (let i = 0; i < 40; i++) r.tick(() => { if (i < 10) o.resized(r.view.scrollHeight) })
+      let at = 0
+      for (let i = 0; i < 40; i++) r.tick(() => { if (i === 2) { at = r.frame(); o.reveal({ goal: () => 2600, instant: false }) } })
       expect(r.clash()).toEqual([])
       expect(r.writes.filter((w) => w.frame >= at).every((w) => w.by === 'glide')).toBe(true)
       expect(Math.abs(r.view.scrollTop - 2600)).toBeLessThan(1)
@@ -180,14 +176,14 @@ describe('chat scroll races (KERNEL-952)', () => {
       expect(followsAfterScroll(false, r.view, before, false)).toBe(false)
     })
 
-    // (f) Case (a) under reduced motion: a reveal that places the view at once and the restore that holds it share the first frame.
-    it('(f) under reduced motion the reveal replaces the open restore, so one mover writes each frame', async () => {
+    // (f) Case (a) under reduced motion: the reveal places the view at once, in the order the owner uses (the restore stops, then the glide starts).
+    it('(f) under reduced motion the reveal stops the open restore before it places the view', async () => {
       const r = rig({ scrollTop: 0, scrollHeight: 2400 })
       const { o } = await owned(r, { reduced: true })
       o.open({ frames: () => undefined })
-      r.tick(() => o.reveal({ goal: () => r.end() - 500, instant: true }))
-      for (let i = 0; i < 12; i++) r.tick()
+      for (let i = 0; i < 12; i++) r.tick(() => { if (i === 1) o.reveal({ goal: () => r.end() - 500, instant: true }) })
       expect(r.clash()).toEqual([])
+      expect(r.view.scrollTop).toBe(r.end() - 500)
       expect(r.writes.at(-1)?.by).toBe('glide')
     })
   })
