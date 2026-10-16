@@ -136,6 +136,8 @@ const fullUsers = (k: Kernel, chat: Chat) => k.store.items(chat.id).flatMap((i) 
 const users = (k: Kernel, chat: Chat) => fullUsers(k, chat).map(([t, from]) => [plain(t as string), from])
 const fullNotes = (k: Kernel, chat: Chat) => k.store.items(chat.id).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
 const notes = (k: Kernel, chat: Chat) => fullNotes(k, chat).map(plain)
+/** Kernel's message right behind a brief whose branch it moved onto what merged (KERNEL-973). */
+const ahead = (label: string, it = 'it') => [`${label} merged before your brief went out. Your branch already starts from ${it}.`, 'kernel']
 const callsIn = (ws: Workspace) => sdk.calls.filter((c) => c.options.cwd === ws.path)
 /** The text blocks of the first message Kernel sent the SDK, which is one user message however many rows it came from (KERNEL-393). */
 const firstInput = async (call: (typeof sdk.calls)[number]) => ((await call.prompt[Symbol.asyncIterator]().next()).value.message.content as { text: string }[]).map((b) => b.text)
@@ -169,9 +171,8 @@ describe('a hand-off that waits for a merge', () => {
     expect(w).toMatchObject({ status: 'ready', waitsFor: { on: [noor.id], held: true, base: await head(w.path) } })
     expect(queue(k, chat)).toEqual([['Build T-15', 'lead']])
     expect(users(k, chat)).toEqual([])
-    expect(notes(k, chat)).toContain('Waiting for PR #164 by Noor to merge. Kernel sends this brief then. Send now starts it sooner.')
-    // "PR #164 by Noor" in the note opens Noor's workspace.
-    expect(k.store.items(chat.id).find((i) => i.kind === 'note' && i.text.startsWith('Waiting for'))).toMatchObject({ refs: [{ text: 'PR #164 by Noor', workspaceId: noor.id }] })
+    // The queue tray shows the wait and Send now, so no note says it again (KERNEL-973).
+    expect(notes(k, chat)).toEqual([])
     expect(callsIn(w)).toEqual([])
     expect(existsSync(join(w.path, 'ran.txt'))).toBe(false)
     expect(await listCheckpoints(w)).toEqual([])
@@ -196,17 +197,19 @@ describe('a hand-off that waits for a merge', () => {
     // The start of chat is the new HEAD, so reverting to it keeps the merged work.
     const start = (await listCheckpoints(k.store.workspace(w.id)!)).find((c) => c.start)!
     expect((await exec('git', ['-C', w.path, 'cat-file', '-e', `${start.ref}:pr-164.txt`])).code).toBe(0)
-    expect(notes(k, chat)).toContain('PR #164 by Noor merged. Your branch now starts from it.')
-    // Both rows are there as soon as the PR merges, and one message reached the SDK, so no turn waits behind the brief's.
-    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ['Use the new rows', 'lead']])
+    // The brief is the chat's first row, with no note above it, and what merged goes to the agent behind it (KERNEL-973).
+    expect(notes(k, chat)).toEqual([])
+    expect(k.store.items(chat.id)[0]).toMatchObject({ kind: 'user', from: 'lead' })
+    // All rows are there as soon as the PR merges, and one message reached the SDK, so no turn waits behind the brief's.
+    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor'), ['Use the new rows', 'lead']])
     expect(queue(k, chat)).toEqual([])
     await vi.waitFor(() => expect(existsSync(join(w.path, 'ran.txt'))).toBe(true), SLOW)
     expect(callsIn(w)).toHaveLength(1)
-    expect(await firstInput(callsIn(w)[0])).toEqual(['Build T-15', 'Use the new rows'])
+    expect((await firstInput(callsIn(w)[0])).map(plain)).toEqual(['Build T-15', ahead('PR #164 by Noor')[0], 'Use the new rows'])
     callsIn(w)[0].feed(result('r1'))
     await idle(k, w)
     expect(queue(k, chat)).toEqual([])
-    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ['Use the new rows', 'lead']])
+    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor'), ['Use the new rows', 'lead']])
     // The save after the turn is titled for the brief that started it, not for the note that came last.
     await vi.waitFor(async () => expect((await listCheckpoints(k.store.workspace(w.id)!)).filter((c) => !c.start).map((c) => c.title)).toEqual(['Build T-15']), SLOW)
     expect(pending(k).some((e) => e.kind === 'wait.released' && e.workspaceId === w.id)).toBe(true)
@@ -239,12 +242,12 @@ describe('a hand-off that waits for a merge', () => {
     await k.sessions.send(chat.id, [{ type: 'text', text: 'And the footer' }])
     await mergeOnGitHub(k, noor)
     await released(k, w)
-    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ['Use the new rows', 'lead']])
+    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor'), ['Use the new rows', 'lead']])
     expect(queue(k, chat)).toEqual([['the header', undefined], ['And the footer', undefined]])
-    expect(await firstInput(callsIn(w)[0])).toEqual(['Build T-15', 'Use the new rows'])
+    expect((await firstInput(callsIn(w)[0])).map(plain)).toEqual(['Build T-15', ahead('PR #164 by Noor')[0], 'Use the new rows'])
     // The chat has a turn behind it now, so the rest go one at a time, as before.
     callsIn(w)[0].feed(result('r1'))
-    await vi.waitFor(() => expect(users(k, chat)).toHaveLength(3), SLOW)
+    await vi.waitFor(() => expect(users(k, chat)).toHaveLength(4), SLOW)
     expect(queue(k, chat)).toEqual([['And the footer', undefined]])
     await k.stop()
   })
@@ -261,11 +264,12 @@ describe('a hand-off that waits for a merge', () => {
     await mergeOnGitHub(k, b)
     await released(k, w)
     expect(existsSync(join(w.path, 'pr-164.txt')) && existsSync(join(w.path, 'pr-170.txt'))).toBe(true)
-    expect(notes(k, chatOf(k, w))).toContain('PR #164 by Noor and PR #170 by Noor merged. Your branch now starts from them.')
+    expect(notes(k, chatOf(k, w))).toEqual([])
+    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor and PR #170 by Noor', 'them')])
     await k.stop()
   })
 
-  it('says what merged and how to read it, in the note and in the held rebase message (KERNEL-695)', async () => {
+  it('says what merged and how to read it in the brief\'s first turn, with no note (KERNEL-695, KERNEL-973)', async () => {
     const { k, project, lead, target, mergeOnGitHub, gh } = await setup()
     const a = await target(k, 164)
     const b = await target(k, 170)
@@ -279,7 +283,10 @@ describe('a hand-off that waits for a merge', () => {
     gh.prs.set(b.branch, { ...gh.prs.get(b.branch)!, title: '' })
     await mergeOnGitHub(k, b)
     await released(k, w)
-    expect(fullNotes(k, chatOf(k, w))).toContain(`PR #164 by Noor and PR #170 by Noor merged. Your branch now starts from them. PR #164 is "Fix the header". Read what changed with \`gh pr view 164\`, \`gh pr view 170\` and \`git log ${before}..origin/main\`.`)
+    const told = `PR #164 by Noor and PR #170 by Noor merged before your brief went out. Your branch already starts from them. PR #164 is "Fix the header". Read what changed with \`gh pr view 164\`, \`gh pr view 170\` and \`git log ${before}..origin/main\`.`
+    expect(fullNotes(k, chatOf(k, w))).toEqual([])
+    await vi.waitFor(() => expect(callsIn(w)).toHaveLength(1), SLOW)
+    expect(await firstInput(callsIn(w)[0])).toEqual(['Build T-15', told])
     await k.stop()
   })
 
@@ -294,7 +301,8 @@ describe('a hand-off that waits for a merge', () => {
     await released(k, w)
     const read = `PR #164 is "Fix the header". Read what changed with \`gh pr view 164\` and \`git log ${base}..origin/main\`.`
     expect(fullUsers(k, chatOf(k, w)).at(-1)).toEqual([`PR #164 by Noor merged after your branch started. Rebase onto origin/main before you build on it. ${read}`, 'kernel'])
-    expect(fullNotes(k, chatOf(k, w))).toContain(`PR #164 by Noor merged. Kernel couldn't move your branch onto it, so a message with the brief asks for a rebase. ${read}`)
+    // Something went wrong, so the user hears it in one short note, without what the agent reads (KERNEL-973).
+    expect(fullNotes(k, chatOf(k, w))).toEqual(["PR #164 by Noor merged, but Kernel couldn't move your branch onto it. A message with the brief asks for a rebase."])
     await k.stop()
   })
 
@@ -327,7 +335,8 @@ describe('a hand-off that waits for a merge', () => {
     await k.setWait(w.id, [])
     expect(k.store.workspace(w.id)?.waitsFor).toBeUndefined()
     expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])
-    expect(notes(k, chatOf(k, w))).toContain('Started without waiting for PR #164 by Noor.')
+    // The Lead's own call said so, and the queue tray showed the wait, so the brief starts with no note (KERNEL-973).
+    expect(notes(k, chatOf(k, w))).toEqual([])
     callsIn(w)[0].feed(result('r1'))
     await idle(k, w)
     await mergeOnGitHub(k, noor)
@@ -384,7 +393,8 @@ describe('a hand-off that waits for a merge', () => {
     await k.chats['sendNow'](chat.id, k.sessions.queued(chat.id)[0].id)
     expect(k.store.workspace(w.id)?.waitsFor).toEqual({ on: [b.id], held: false })
     expect(existsSync(join(w.path, 'pr-164.txt'))).toBe(true)
-    expect(notes(k, chat)).toEqual(expect.arrayContaining(['Started without waiting for PR #170 by Noor. Kernel asks Kai to rebase once it merges.', 'PR #164 by Noor merged. Your branch now starts from it.']))
+    expect(notes(k, chat)).toEqual(['Started without waiting for PR #170 by Noor. Kernel asks Kai to rebase once it merges.'])
+    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor')])
     await k.stop()
   })
 
@@ -417,8 +427,8 @@ describe('a hand-off that waits for a merge', () => {
     expect(out.text).toBe('Kai no longer waits. Kernel sent the brief, so Kai starts now.')
     expect(k.store.workspace(w.id)?.waitsFor).toBeUndefined()
     expect(existsSync(join(w.path, 'pr-164.txt'))).toBe(true)
-    expect(notes(k, chatOf(k, w))).toEqual(expect.arrayContaining(['Started without waiting for PR #170 by Noor.', 'PR #164 by Noor merged. Your branch now starts from it.']))
-    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])
+    expect(notes(k, chatOf(k, w))).toEqual([])
+    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor')])
     await k.stop()
   })
 
@@ -447,7 +457,7 @@ describe('a hand-off that waits for a merge', () => {
     await k.refreshPr(noor.id)
     await released(k, w)
     expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ['PR #164 by Noor merged after your branch started. Merge origin/main into your branch before you build on it. Your branch is on origin, so merge rather than rebase.', 'kernel']])
-    expect(notes(k, chatOf(k, w))).toContain("PR #164 by Noor merged. Kernel couldn't move your branch onto it, so a message with the brief asks for a merge.")
+    expect(notes(k, chatOf(k, w))).toEqual(["PR #164 by Noor merged, but Kernel couldn't move your branch onto it. A message with the brief asks for a merge."])
     await k.stop()
   })
 
@@ -465,8 +475,7 @@ describe('a hand-off that waits for a merge', () => {
     await released(k, w)
     // origin/main didn't move, so the fast-forward was "already up to date".
     expect(await head(w.path)).toBe(base)
-    expect(notes(k, chatOf(k, w))).toContain("PR #164 by Noor merged. Kernel couldn't move your branch onto it, so a message with the brief asks for a rebase.")
-    expect(notes(k, chatOf(k, w))).not.toContain('PR #164 by Noor merged. Your branch now starts from it.')
+    expect(notes(k, chatOf(k, w))).toEqual(["PR #164 by Noor merged, but Kernel couldn't move your branch onto it. A message with the brief asks for a rebase."])
     expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ['PR #164 by Noor merged after your branch started. Rebase onto origin/main before you build on it.', 'kernel']])
     await k.stop()
   })
@@ -480,10 +489,10 @@ describe('a hand-off that waits for a merge', () => {
     await vi.waitFor(() => expect(k.store.workspace(w.id)?.status).toBe('failed'), SLOW)
     expect(k.store.workspace(w.id)?.waitsFor).toBeUndefined()
     const chat = chatOf(k, w)
-    expect(queue(k, chat)).toEqual([['Build T-15', 'lead']])
+    expect(queue(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor')])
     await writeFile(join(w.path, 'ok.txt'), 'ok\n')
     expect((await k.retrySetup(w.id)).status).toBe('ready')
-    expect(users(k, chat)).toEqual([['Build T-15', 'lead']])
+    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor')])
     await k.stop()
   })
 
@@ -750,7 +759,7 @@ describe('across a restart', () => {
     await k.stop()
     const k2 = await again()
     await released(k2, w)
-    expect(users(k2, chatOf(k2, w))).toEqual([['Build T-15', 'lead']])
+    expect(users(k2, chatOf(k2, w))).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor')])
     await k2.stop()
   })
 })

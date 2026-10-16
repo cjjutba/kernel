@@ -575,11 +575,15 @@ export class Sessions {
 
   /**
    * Put a message in the chat's queue without sending it, until `release`. Used for the first prompt while setup fails. With no
-   * message the chat only waits, as a forked workspace's does through its setup (KERNEL-346).
+   * message the chat only waits, as a forked workspace's does through its setup (KERNEL-346). `at` puts the message at that
+   * place in the queue instead of last, as Kernel's word on a released wait goes right behind the brief (KERNEL-973).
    */
-  hold(chatId: string, parts?: ChatPart[], o: Sender = {}) {
+  hold(chatId: string, parts?: ChatPart[], o: Sender = {}, at?: number) {
     this.waiting.add(chatId)
-    this.setQueue(chatId, parts && !this.known(chatId, o.clientId) ? [...this.queued(chatId), queuedOf(chatId, parts, o)] : this.queued(chatId))
+    const queue = this.queued(chatId)
+    if (!parts || this.known(chatId, o.clientId)) { this.setQueue(chatId, queue); return }
+    const i = at ?? queue.length
+    this.setQueue(chatId, [...queue.slice(0, i), queuedOf(chatId, parts, o), ...queue.slice(i)])
   }
 
   /** The chat is held for its workspace's setup or a merge (`hold`), whatever its queue holds. */

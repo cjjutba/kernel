@@ -116,7 +116,7 @@ export class Waits extends Feature {
       if (merged.length) {
         const rest = wait.on.filter((t) => !merged.includes(t))
         const skipped = { ...ws, waitsFor: { ...wait, on: rest } }
-        if (rest.length) this.note(id, this.earlyNote(skipped, left, await this.pushed(ws)), undefined, this.waitRefsOf(skipped))
+        if (rest.length && left.length) this.note(id, this.earlyNote(skipped, left, await this.pushed(ws)), undefined, this.waitRefsOf(skipped))
         wait = this.updateWs(id, { waitsFor: { ...wait, on: merged } }).waitsFor!
         now = false
       }
@@ -149,14 +149,19 @@ export class Waits extends Feature {
     const current = this.mustWs(id)
     if (current.status !== 'ready' || !current.waitsFor?.held) return
     if (!now && !waitMet(current.waitsFor, this.store.workspaces(current.projectId))) return
-    if (now) this.note(id, this.earlyNote(current, left, pushed), undefined, refs)
-    else {
-      // The brief was written before the merge, so the teammate hears what merged and how to read it (KERNEL-695).
+    if (now && left.length) this.note(id, this.earlyNote(current, left, pushed), undefined, refs)
+    else if (!now) {
+      // The brief was written before the merge, so the teammate hears what merged and how to read it (KERNEL-695), in a
+      // message that goes out in the brief's first turn. A chat note never reaches the agent, and the queue tray told the
+      // user about the wait, so a clean release leaves the brief first in the chat (KERNEL-973).
       const reading = this.readingOf(current, before ? `${before}..${remote}/${base}` : undefined)
-      const take = pushed ? `Merge ${remote}/${base} into your branch` : `Rebase onto ${remote}/${base}`
-      if (!forwarded && chat) this.sessions.hold(chat.id, [{ type: 'text', text: withReading(`${label} merged after your branch started. ${take} before you build on it.${mergeWhy(remote, pushed)}`, reading) }], { from: 'kernel' })
       const it = refs.length > 1 ? 'them' : 'it'
-      this.note(id, withReading(forwarded ? `${label} merged. Your branch now starts from ${it}.` : `${label} merged. Kernel couldn't move your branch onto ${it}, so a message with the brief asks for a ${pushed ? 'merge' : 'rebase'}.`, reading), undefined, refs)
+      const take = pushed ? `Merge ${remote}/${base} into your branch` : `Rebase onto ${remote}/${base}`
+      const told = forwarded ? `${label} merged before your brief went out. Your branch already starts from ${it}.` : `${label} merged after your branch started. ${take} before you build on it.${mergeWhy(remote, pushed)}`
+      // Right behind the brief, so a message with a skill chip queued after it can't push this out of the first turn.
+      if (chat) this.sessions.hold(chat.id, [{ type: 'text', text: withReading(told, reading) }], { from: 'kernel' }, 1)
+      // Something went wrong, so the user hears it too.
+      if (!forwarded) this.note(id, `${label} merged, but Kernel couldn't move your branch onto ${it}. A message with the brief asks for a ${pushed ? 'merge' : 'rebase'}.`, undefined, refs)
       this.leadUpdates.waits(current, 'wait.released', { on: wait.on, label, held: true })
     }
     // Setup runs again only when the files under it changed.
@@ -182,10 +187,12 @@ export class Waits extends Feature {
     return mergedReading((ws.waitsFor?.on ?? []).map((t) => all.find((w) => w.id === t)).filter((t): t is Workspace => !!t), log)
   }
 
-  /** "Started without waiting for PR #170 by Noor.", and who Kernel asks to take the base when the brief went with the wait kept. */
+  /**
+   * "Started without waiting for PR #170 by Noor. Kernel asks Ivy to rebase once it merges.": who takes the base later
+   * when the brief went with the wait kept. Only then, since the queue tray showed the wait and Send now ended it (KERNEL-973).
+   */
   private earlyNote(skipped: Workspace, left: string[], pushed: boolean) {
     const label = this.waitLabelOf(skipped)
-    if (!left.length) return `Started without waiting for ${label}.`
     const many = left.length > 1
     return `Started without waiting for ${label}. Kernel asks ${this.nameOf(skipped)} to ${pushed ? `merge ${many ? 'them' : 'it'} in` : 'rebase'} once ${many ? 'they merge' : 'it merges'}.`
   }
@@ -291,7 +298,8 @@ export class Waits extends Feature {
     this.releaseSent.delete(id)
     const next = this.updateWs(id, { waitsFor: { on: left, held, ...(was?.base ? { base: was.base } : {}) } })
     const label = this.waitLabelOf(next)
-    if (next.status === 'ready') this.note(id, held ? `Waiting for ${label} to merge. Kernel sends this brief then. Send now starts it sooner.` : `Waiting for ${label} to merge. Kernel asks ${this.nameOf(next)} to ${await this.pushed(next) ? 'merge it in' : 'rebase onto it'} then.`, undefined, this.waitRefsOf(next))
+    // A held brief's wait shows in the composer's queue tray. A started teammate's shows nowhere else (KERNEL-973).
+    if (next.status === 'ready' && !held) this.note(id, `Waiting for ${label} to merge. Kernel asks ${this.nameOf(next)} to ${await this.pushed(next) ? 'merge it in' : 'rebase onto it'} then.`, undefined, this.waitRefsOf(next))
     // The Lead set it, and reads what happened in the tool's result. A teammate's own wait is news for the Lead (KERNEL-262).
     this.leadUpdates.waits(next, 'wait.started', { on: left, label, held, ...(o.told === false ? {} : { told: true }), ...(o.why ? { why: o.why } : {}) })
     return next
