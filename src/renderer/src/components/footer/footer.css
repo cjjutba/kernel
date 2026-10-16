@@ -1,13 +1,13 @@
 /* Footer, its usage row and the Usage popover (KERNEL-21, KERNEL-588, KERNEL-674). Tokens only. */
 .ft { padding: 0 10px; container: ft / inline-size; }
 .ft-usage { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; }
-.ft-chip { display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+.ft-chip { display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-meta); white-space: nowrap; }
 .ft-chip:hover, .ft-chip[aria-expanded='true'] { background: var(--nav-hover); }
 .ft-chip:disabled { color: var(--muted); cursor: default; background: transparent; }
 .ft-chip:focus-visible { outline-offset: 2px; }
 .ft-mark { display: inline-flex; }
-.ft-name { color: var(--ink-2); font-weight: 500; }
-.ft-name[data-dim] { color: var(--muted); font-weight: 400; }
+.ft-name { color: var(--ink-2); font-weight: var(--fw-medium); }
+.ft-name[data-dim] { color: var(--muted); font-weight: var(--fw-regular); }
 .ft-other { color: var(--muted); }
 .ft-other:hover:not(:disabled), .ft-other:focus-visible { color: var(--ink); }
 .ft-other:hover:not(:disabled) .ft-name, .ft-other:focus-visible .ft-name { color: var(--ink-2); }
@@ -30,14 +30,14 @@
 .ft-pc[data-tone='near'], .pm-mp[data-tone='near'] { color: var(--needs); }
 .ft-pc[data-tone='full'], .pm-mp[data-tone='full'] { color: var(--del); }
 .ft-div { width: 1px; height: 14px; margin: 0 6px; background: var(--line-2); }
-.ft-pill { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 12px; }
+.ft-pill { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-meta); }
 .ft-pill { height: 26px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-pill); color: var(--ink-2); }
 .ft-pill:hover { background: var(--surface-3); }
 .ft-pill:focus-visible { outline-offset: 2px; }
 /* The pill fits the 32px footer. */
 .ft .ft-pill { height: 24px; }
 /* The quiet update line: progress or a failure, with Try again as a small pill. */
-.ft-upd { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ft-upd { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
 .ft-retry { color: var(--ink-2); }
 
 /* A narrow window folds the inline other accounts into one "more" chip that counts them all, then drops the Fable number. Nothing wraps or overlaps. */
@@ -54,44 +54,44 @@
 .popover.usage-pop { width: 392px; padding: 0; overflow: hidden auto; max-height: calc(100vh - 56px); }
 .popover.usage-pop[data-side='top'] { bottom: calc(100% + 6px); }
 .pm-top { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line-2); }
-.pm-title { font-size: 13px; font-weight: 500; color: var(--ink); }
+.pm-title { font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
 .pm-sec + .pm-sec, .pm-sec + .plan-foot { border-top: 1px solid var(--line-2); }
-.pm-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; border: 0; background: transparent; color: var(--ink-2); text-align: left; font-size: 12px; }
+.pm-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; border: 0; background: transparent; color: var(--ink-2); text-align: left; font-size: var(--fs-meta); }
 button.pm-head:hover { background: var(--nav-hover); }
 button.pm-head:focus-visible { outline: 0; background: var(--hover); }
 .pm-mark { display: inline-flex; width: 14px; justify-content: center; color: var(--ink); }
 .pm-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .pm-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.pm-name { font-size: 13px; font-weight: 500; color: var(--ink); white-space: nowrap; }
-.pm-acct { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-name { font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); white-space: nowrap; }
+.pm-acct { font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pm-chev { display: inline-flex; color: var(--muted); }
 .pm-chev[data-open] { transform: rotate(180deg); }
-.pm-cw { display: inline-flex; align-items: baseline; gap: 8px; font-size: 12px; }
+.pm-cw { display: inline-flex; align-items: baseline; gap: 8px; font-size: var(--fs-meta); }
 .pm-cl { color: var(--muted); }
 .pm-minis { display: flex; align-items: center; gap: 14px; padding: 0 14px 10px 38px; margin-top: -3px; }
-.pm-mini { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.pm-mini { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-meta); white-space: nowrap; }
 .pm-ml { color: var(--muted); }
 .pm-mini .meter { width: 48px; height: 4px; }
 .pm-body { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 8px 38px; margin-top: -4px; }
-.plan-email { font-size: 12px; color: var(--muted); }
-.plan-billed { font-size: 12.5px; color: var(--ink-2); }
+.plan-email { font-size: var(--fs-meta); color: var(--muted); }
+.plan-billed { font-size: var(--fs-code); color: var(--ink-2); }
 .plan-rows { display: flex; flex-direction: column; gap: 7px; }
 /* A window is one row: its label, a short meter, the number, and the reset as muted text on the right. */
-.plan-win { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.plan-win { display: flex; align-items: center; gap: 8px; font-size: var(--fs-meta); }
 .plan-wl { width: 54px; flex-shrink: 0; color: var(--ink-2); }
 .plan-win .meter { width: 56px; flex-shrink: 0; height: 4px; }
 .plan-win .pm-mp { width: 34px; flex-shrink: 0; text-align: right; }
 .plan-wr { flex: 1; min-width: 0; text-align: right; white-space: nowrap; color: var(--muted); }
 .plan-switch { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; margin: 0 -8px; max-height: 176px; overflow-y: auto; }
-.plan-switch-title { padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.plan-switch-title { padding: 0 8px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
 .menu-item.plan-other { align-items: baseline; gap: 8px; color: var(--ink); }
 .menu-item.plan-other:disabled { color: var(--faint); }
 .menu-item.plan-other[aria-busy='true']:disabled { color: var(--ink); }
-.plan-other-name { font-weight: 500; }
-.plan-other-plan { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
-.plan-other-use { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.plan-other-name { font-weight: var(--fw-medium); }
+.plan-other-plan { flex: 1; min-width: 0; font-size: var(--fs-meta); color: var(--muted); }
+.plan-other-use { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
 .plan-num { display: inline-flex; gap: 4px; }
 .plan-sep { color: var(--faint); }
-.btn.plan-signin { height: 24px; padding: 0 10px; font-size: 12px; }
+.btn.plan-signin { height: 24px; padding: 0 10px; font-size: var(--fs-meta); }
 .plan-foot { padding: 6px; }
 

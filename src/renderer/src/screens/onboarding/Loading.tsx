@@ -21,7 +21,7 @@ export function Loading() {
         {error === undefined ? (
           <div className="ob-load-panel" role="status" aria-live="polite">
             <span className="ob-load-title"><Spinner label={null} pattern="arrow-down" /><span className="ink2">Starting Kernel</span></span>
-            <span className="muted" style={{ fontSize: 12.5 }}>{`Reconnecting ${sessions ? `${sessions} ${sessions === 1 ? 'session' : 'sessions'}` : 'sessions'} and the hook server`}</span>
+            <span className="muted ob-note">{`Reconnecting ${sessions ? `${sessions} ${sessions === 1 ? 'session' : 'sessions'}` : 'sessions'} and the hook server`}</span>
           </div>
         ) : (
           <div className="ob-load-panel" role="alert">

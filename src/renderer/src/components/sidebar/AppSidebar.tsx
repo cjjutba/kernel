@@ -235,7 +235,7 @@ function WorkspaceItemRow({ ws, parent, slot, nested, leaving, onSettled }: { ws
         onOpen={() => openRow(ws.projectId, { kind: 'workspace', ws, nested: !!nested })}
         right={<>
           {diff && ws.stat && <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>}
-          {ws.prNumber ? <span className="mono muted ws-right ws-pr" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
+          {ws.prNumber ? <span className="mono muted ws-right ws-pr">#{ws.prNumber}</span> : null}
         </>}
       />
       <div className="more ws-archive">
@@ -330,7 +330,7 @@ function ProjectItem({ project, current, expanded, numbered, hints, ctrlHints, o
   return (
     <div className="nav-list" data-keep-id={project.id}>
       <div ref={anchor} className="hv project-row" style={{ position: 'relative' }}>
-        <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} aria-label={unread ? `${project.name}, Unread` : undefined} data-unread={unread ? '' : undefined} onClick={onToggle}>
+        <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined }} aria-expanded={expanded} aria-label={unread ? `${project.name}, Unread` : undefined} data-unread={unread ? '' : undefined} onClick={onToggle}>
           <span className="project-mark">
             <ProjectIcon project={project} className="project-letter" current={current} />
             <span className="project-chev" data-open={expanded}><Icon name="right" size={14} /></span>
@@ -338,7 +338,7 @@ function ProjectItem({ project, current, expanded, numbered, hints, ctrlHints, o
           <span className="grow ellipsis">{project.name}</span>
         </button>
         {/* New chat stays visible, as in Conductor. The menu button shows on hover or keyboard focus, or while its menu is open. */}
-        <div className="row" style={{ position: 'absolute', right: 4, top: 3, gap: 2 }}>
+        <div className="row project-actions">
           <button className="icon-btn more" style={{ width: 24, height: 24, opacity: menuOpen ? 1 : undefined }} aria-label={`${project.name} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu(`project:${project.id}`)}><Icon name="more" size={14} /></button>
           <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New chat in ${project.name}`} onClick={() => openNewChat(project.id)}><Icon name="plus" size={14} /></button>
         </div>
@@ -444,23 +444,23 @@ export function AppSidebar() {
   return (
     <>
       {/* The strip lines up with the screen header (y 9 to 53), where the traffic lights sit. The toggle sits over the slot at x 87, mounted once by App so it is the same element when the sidebar hides (KERNEL-431). */}
-      <div className="drag" style={{ height: 53, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '9px 0 0 77px' }}>
+      <div className="drag sb-titlebar">
         <span className="sidebar-toggle-slot" aria-hidden="true" />
         <span className="grow" />
         <HistoryButtons />
         <IconButton className="nodrag" icon="search" size={16} label="Search" data-tip-kbd="⌘K" onClick={() => actions.ui.openModal({ name: 'search' })} />
       </div>
       {/* Only the projects list gives up space when it outgrows the window, so the rows above it keep their height and y (flexShrink 0). */}
-      <div className="row" style={{ height: 36, paddingLeft: 4, flexShrink: 0 }}>
+      <div className="row sb-switch-row">
         <AccountButton />
       </div>
-      <div className="nav-list" style={{ marginTop: 10, flexShrink: 0 }}>
-        <button className="nav-item" onClick={() => openNewChat(openProject)}><Icon name="pen" /><span className="grow">New chat</span><span className="muted" style={{ fontSize: 11.5 }}>⌘N</span></button>
+      <div className="nav-list sb-top-list">
+        <button className="nav-item" onClick={() => openNewChat(openProject)}><Icon name="pen" /><span className="grow">New chat</span><span className="muted nav-hint">⌘N</span></button>
         <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="nav-count">{inbox}</span> : null} />
         <NavItem route={{ name: workTab }} icon="issues" label="Work" />
       </div>
       <div className="sb-rule" role="separator" />
-      <div ref={projectsAnchor} className="section-label hv" style={{ position: 'relative', marginTop: 8, flexShrink: 0 }}>
+      <div ref={projectsAnchor} className="section-label hv sb-projects-label">
         <span>Your projects</span>
         <button className="icon-btn more" style={{ width: 24, height: 24, opacity: projectsMenu ? 1 : undefined }} aria-label="Projects menu" aria-haspopup="menu" aria-expanded={projectsMenu} onClick={() => actions.ui.toggleMenu('projects')}><Icon name="more" size={14} /></button>
         {projectsMenu && <ProjectsMenu anchorRef={projectsAnchor} />}
