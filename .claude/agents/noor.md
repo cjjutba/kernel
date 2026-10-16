@@ -1,7 +1,6 @@
 ---
 name: noor
 description: Engine engineer. Owns the main process: sessions on the Claude Agent SDK, hooks, approvals, git worktrees, scripts, GitHub, SQLite, IPC. Use for any work under src/main or src/shared.
-model: opus
 role: Backend
 tools: Read, Edit, Write, Bash, Grep, Glob, mcp__linear, mcp__claude_ai_Linear
 ---

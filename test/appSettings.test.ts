@@ -9,11 +9,13 @@ import { bashVerdict, pushesTo, usesNetwork } from '../src/main/services/bashGua
 import { Sessions } from '../src/main/services/sessions'
 import { Kernel } from '../src/main/kernel'
 import { applySettingsPatch, deepMerge, DEFAULT_SETTINGS, loadAppSettings, PLAN_KEYS, planDefaults, planOf, resolveSettings, saveAppSettings, withPlan } from '../src/main/services/settings'
-import { tempRepo } from './helpers'
+import { git } from '../src/main/services/exec'
+import { freePort, tempRepo } from './helpers'
 
 // Each query() is a scripted session that never answers on its own. A turn ends when the test feeds a result.
 const sdk = vi.hoisted(() => ({ calls: [] as { feed: (m: unknown) => void }[] }))
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
+  ...await original<object>(),
   query: () => {
     const items: unknown[] = []
     const waiters: ((r: IteratorResult<unknown>) => void)[] = []
@@ -757,6 +759,53 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
       expect(next.k.settings.models.roles.frontend).toEqual(codex)
       expect(next.k.settings.models.roles.engineers).toMatchObject({ model: 'claude-haiku-4-5-20251001' })
       await next.k.stop({ budgetMs: 0 })
+    })
+  })
+
+  describe('a change in Settings, Models reaches the next chat', () => {
+    const haiku = { provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' } as const
+
+    async function setup() {
+      const repo = await tempRepo({
+        'README.md': '# x\n',
+        '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nrole: Lead\nlead: true\n---\nYou are Kernel.',
+        '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer.\nrole: Reviewer\n---\nYou are Theo.',
+        '.claude/agents/noor.md': '---\nname: noor\ndescription: Backend.\nrole: Backend\n---\nYou are Noor.'
+      })
+      const k = await kernel({ settings: { version: 3, hookPort: await freePort(), workspace: { baseRef: 'main' }, pr: { autoReview: true }, models: { roles: { engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' } } } } })
+      const project = await k.k.addProject(repo)
+      const firstChat = async (agentId: string) => {
+        const ws = await k.k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId, title: 'Task' })
+        return { ws, chat: k.k.store.chats(ws.id)[0] }
+      }
+      return { ...k, project, firstChat }
+    }
+
+    it('starts a new chat on the row as it is now, and leaves a chat made before the change on what it had', async () => {
+      const { k, h, firstChat } = await setup()
+      const before = await firstChat('noor')
+      expect(before.chat).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+      await h['settings.set']({ patch: { models: { roles: { engineers: haiku } } } })
+      const after = await firstChat('noor')
+      expect(after.chat).toMatchObject({ model: haiku.model, effort: haiku.effort })
+      expect(k.store.chat(before.chat.id)).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+      await k.stop({ budgetMs: 0 })
+    })
+
+    it('starts a review chat on the Reviewer row', async () => {
+      const { k, h, firstChat, project } = await setup()
+      await h['settings.set']({ patch: { models: { roles: { reviewer: haiku } } } })
+      const { ws } = await firstChat('noor')
+      await writeFile(join(ws.path, 'notes.md'), 'notes\n')
+      await git(ws.path, 'add', '-A')
+      await git(ws.path, 'commit', '-qm', 'work')
+      const head = (await git(ws.path, 'rev-parse', 'HEAD')).trim()
+      k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prNumber: 101, prTitle: 'Task', prState: 'ready', prHead: head })
+      await k.reviews.onReady(ws.id)
+      const rws = k.store.workspaces(project.id).find((w) => w.reviewOf === ws.id)!
+      expect(rws.agentId).toBe('theo')
+      expect(k.store.chats(rws.id)[0]).toMatchObject({ model: haiku.model, effort: haiku.effort, lens: { kind: 'code' } })
+      await k.stop({ budgetMs: 0 })
     })
   })
 

@@ -1,7 +1,6 @@
 ---
 name: ivy
 description: QA. Runs tests, typecheck and the screenshot harness, shares shots of the changed screens, and writes regression tests. Use before opening any PR and for KERNEL-31.
-model: sonnet
 role: QA
 tools: Read, Bash, Grep, Glob, Edit, Write, mcp__linear, mcp__claude_ai_Linear
 ---

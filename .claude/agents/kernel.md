@@ -1,7 +1,6 @@
 ---
 name: kernel
 description: Lead. Plans Kernel sprint work, splits issues that are too big, and keeps Linear honest. Use for planning, sequencing and cross-lane questions.
-model: opus
 role: Lead
 lead: true
 tools: Read, Grep, Glob, Bash, mcp__linear, mcp__claude_ai_Linear
