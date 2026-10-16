@@ -3360,7 +3360,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: { ...open, menu: 'model' }
   })),
   // KERNEL-987: the keyboard path. Down to the Legacy row, Right opens the flyout.
-  WorkspaceModelPickerLegacyKeys: { ...scene((f) => ({ settings: codexRoleSettings(), chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)), models: { codex: codexModels }, ui: { ...open, menu: 'model' } })), motion: { action: { press: ['ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowRight'] }, ms: 600 } },
+  WorkspaceModelPickerLegacyKeys: { ...scene((f) => ({ settings: codexRoleSettings(), chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)), models: { codex: codexModels }, ui: { ...open, menu: 'model' } })), motion: { action: { press: ['ArrowDown', 'ArrowDown', 'ArrowRight'] }, ms: 600 } },
   // Stars on two Claude models, then the Favorites tab.
   WorkspaceModelPickerFavorites: scene((f) => ({
     settings: codexRoleSettings(),
