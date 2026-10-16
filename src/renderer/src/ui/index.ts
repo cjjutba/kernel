@@ -10,3 +10,5 @@ export { Banner, bannerIcon, Chip, Card, Meter, CodeBlock, Kbd, Avatar, Spinner,
 export { ProviderMark, Icon, iconNames, type IconName } from '../icons'
 export { LoadingRow, EmptyList, FailedState, NotConnectedState } from './states'
 export { Tooltips } from './Tooltips'
+export { ScopeLabel, DayGroupHeader } from './WorkParts'
+export { dayGroup, groupByDay, splitScope, DAY_GROUPS, type DayGroup } from './dayGroups'

@@ -16,6 +16,7 @@ import {
 import { CapNote, chooseTracker, FilterChip, githubProblem, IssueSkeleton, RefreshNotice, type ProjectHead } from './parts'
 import { RowStatus, useReadPrs } from './WorkCard'
 import { WorkHeader } from '../work/WorkHeader'
+import { useGithubLogin } from '../work/useGithubLogin'
 import { useOpenPrCount } from '../prs/model'
 import './issues.css'
 
@@ -34,6 +35,7 @@ const failure = (e: unknown): Failure => ({ kind: 'error', why: githubErrorKind(
  */
 export function GithubIssues({ project, where, issueId, head }: { project: Project; where?: string; issueId?: string; head: ProjectHead }) {
   const prCount = useOpenPrCount()
+  const login = useGithubLogin()
   const online = useStore((s) => s.system.online)
   const workspaces = useStore((s) => s.workspaces)
   const agents = useStore((s) => s.agents)
@@ -159,7 +161,7 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
 
   return (
     <div className="panel">
-      <WorkHeader tab="issues" head={head} counts={{ issues: ready ? count(narrowed.length) : undefined, prs: prCount }} onRefresh={refresh} refreshing={refreshing} where={shown.kind === 'loading' ? undefined : `GitHub${where ? ` · ${where}` : ''}`} />
+      <WorkHeader tab="issues" head={head} counts={{ issues: ready ? count(narrowed.length) : undefined, prs: prCount }} onRefresh={refresh} refreshing={refreshing} where={shown.kind === 'loading' ? undefined : login ? `GitHub · ${login}` : 'GitHub'} />
 
       {ready && (
         <div className="is-bar">
