@@ -6,7 +6,7 @@ import { PERMISSION_MODES } from '@shared/types'
 import type { AppSettings } from './settings'
 import type { RunnerHost } from './providers/types'
 import { needsUser } from './approvals'
-import { bashVerdict, pushMightReach, projectRule, usesNetwork } from './bashGuard'
+import { bashVerdict, pushMightReach, projectRule, usesNetwork, writesGhIssue } from './bashGuard'
 import { checkedOutBranch } from './worktrees'
 
 // The permission rules both runners apply (KERNEL-434). A runner describes the step, asks `decide`, and turns the answer
@@ -80,6 +80,9 @@ export function pushOwnBranch(branches: string[], branch?: string): string {
   return `Kernel blocks pushes that might reach ${named} in Bypass permissions. Push your own branch by name${own}.`
 }
 
+/** What a Lead's gh issue write gets, in every mode (feat-lead-files-tracker-issues-only-with). */
+export const LEAD_GH_ISSUE = "Kernel writes tracker issues for the Lead. Call mcp__kernel__file_issue to file, edit, comment on or move one, instead of gh issue or gh api, with the user's go-ahead quoted in go_ahead. Reading issues with gh works as before."
+
 /** Why a command on Always ask goes to the user, for a CLI that takes a reason with an ask. */
 export const ALWAYS_ASK = 'On the Always ask list in Kernel.'
 
@@ -123,11 +126,13 @@ export interface Rules {
   branch?: string
   /** The project's reference folders, which a file edit may not touch (KERNEL-748). */
   references?: string[]
+  /** The step is the Lead's, which files and edits tracker issues with file_issue only (feat-lead-files-tracker-issues-only-with). */
+  lead?: boolean
 }
 
 /** The rules for a runner's next step: Settings, Permissions and the project as they stand now, in `mode`, else the chat's mode now. */
-export function rulesOf(host: Pick<RunnerHost, 'settings' | 'projectAllow' | 'projectTools' | 'workspace' | 'mode'>, mode: RunMode = host.mode()): Rules {
-  return { permissions: host.settings().permissions, mode, projectAllow: () => host.projectAllow(), projectTools: () => host.projectTools(), branch: host.workspace.branch }
+export function rulesOf(host: Pick<RunnerHost, 'settings' | 'projectAllow' | 'projectTools' | 'workspace' | 'mode'> & Partial<Pick<RunnerHost, 'agent'>>, mode: RunMode = host.mode()): Rules {
+  return { permissions: host.settings().permissions, mode, projectAllow: () => host.projectAllow(), projectTools: () => host.projectTools(), branch: host.workspace.branch, ...(host.agent?.lead ? { lead: true } : {}) }
 }
 
 const ALLOW: Verdict = { behavior: 'allow' }
@@ -136,9 +141,11 @@ const ALLOW: Verdict = { behavior: 'allow' }
  * Kernel's lists on one command: Never allow and protected-branch pushes deny, a project's Always allow rule allows, Always ask
  * asks. In Bypass permissions only the denials hold, and a push that might reach a protected branch is one of them. That
  * denial also holds wherever Claude Code may still run in bypass (`mayBypass`), since nothing would ask there (KERNEL-447).
- * A push of `HEAD` from `cwd` goes through when the branch checked out there now is not protected (KERNEL-687).
+ * A push of `HEAD` from `cwd` goes through when the branch checked out there now is not protected (KERNEL-687). A Lead's
+ * gh issue write (`writesGhIssue`) is denied in every mode, since it writes them with file_issue (feat-lead-files-tracker-issues-only-with).
  */
 export function guardVerdict(command: string, rules: Rules, cwd?: string): Verdict {
+  if (rules.lead && writesGhIssue(command)) return { behavior: 'deny', message: LEAD_GH_ISSUE }
   const bypass = rules.mode === 'bypassPermissions'
   const branches = rules.permissions.protectedBranches ?? []
   const head = cwd ? () => checkedOutBranch(cwd) : undefined

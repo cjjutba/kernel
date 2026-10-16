@@ -336,7 +336,8 @@ describe("the Lead's prompt and tools in each mode (KERNEL-770)", () => {
     for (const tool of ['Edit', 'Write', 'MultiEdit']) expect(build.allows(tool, { file_path: '/tmp/ws/a.ts' }), tool).toBe(true)
     expect(build.modeRefuses('Edit')).toBeUndefined()
     expect(build.allows('WebFetch')).toBe(false)
-    expect(toolPolicy(undefined, { lead: 'build' })).toBeUndefined()
+    // With no tools line, Build here hides only the tracker issue writes, which go through file_issue (feat-lead-files-tracker-issues-only-with).
+    expect(toolPolicy(undefined, { lead: 'build' })!.hidden.every((t) => t.startsWith('mcp__'))).toBe(true)
     // disallowedTools still takes them away in Build here.
     expect(toolPolicy(undefined, { lead: 'build', disallowed: ['Edit'] })!.allows('Edit', { file_path: '/tmp/ws/a.ts' })).toBe(false)
   })

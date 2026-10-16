@@ -15,11 +15,12 @@ import { kindsFor } from '../src/main/services/lenses'
 import { teammateTools } from '../src/main/services/teammateMcp'
 import { briefParts, ISSUE_CAPS, issueText, issueTools } from '../src/main/services/issueMcp'
 import { LINEAR_SIGNED_OUT } from '../src/main/services/trackers/linear'
+import { noneTracker } from '../src/main/services/trackers/none'
 import { waitRefusal } from '../src/main/services/waits'
 import { toolSpecs } from '../src/main/services/providers/codex/tools'
 import { toCodexInput } from '../src/main/services/providers/codex/runner'
 import { toUserMessage } from '../src/main/services/providers/claude'
-import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_GO_AHEAD, NO_PLAN, PLAN_MODE_OFF, quotesUser, signInNote, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_FILE_GO_AHEAD, NO_GO_AHEAD, NO_PLAN, PLAN_MODE_OFF, quotesUser, signInNote, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -357,6 +358,65 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     expect(t.teammates().map((w) => w.goAhead)).toEqual([undefined, undefined])
   })
 
+  /** A tracker on the Lead's project that keeps what file_issue wrote. */
+  function fileTracker(t: Awaited<ReturnType<typeof offLead>>, kind: Tracker['kind'] = 'linear') {
+    const wrote: unknown[] = []
+    const tracker: Tracker = kind === 'none' ? noneTracker() : {
+      kind, search: async () => [], start: async () => undefined, issue: async () => { throw new Error('unused') },
+      create: async (draft) => { wrote.push(['create', draft]); return { id: 'KERNEL-90', title: draft.title, url: 'https://linear.app/x/KERNEL-90', source: 'linear' } },
+      edit: async (id, change) => { wrote.push(['edit', id, change]); return { id, title: change.title ?? '', source: 'linear' } },
+      comment: async (id, body) => { wrote.push(['comment', id, body]); return { url: `https://linear.app/x/${id}#comment-1` } }
+    }
+    t.k.integrations.trackerFor = async () => tracker
+    const file = (args: object) => t.run('file_issue', args)
+    return { wrote, file }
+  }
+
+  it('files or edits a tracker issue only on a go-ahead quoted from the latest message', { timeout: 60_000 }, async () => {
+    const t = await offLead('Yes, but is it a bug?')
+    const { wrote, file } = fileTracker(t)
+    expect(await file({ title: 'Symlink node_modules' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+    expect(await file({ title: 'Symlink node_modules', go_ahead: 'file it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+    expect(await file({ issue: 'KERNEL-90', title: 'Better title', go_ahead: 'file it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+    expect(wrote).toEqual([])
+    t.k.store.saveItem(t.chat.id, { kind: 'user', id: 'yes', ts: Date.now() + 1, parts: [{ type: 'text', text: 'Yes, file it' }] })
+    expect(await file({ title: ' Symlink node_modules ', description: 'Steps', go_ahead: 'file it' })).toEqual({ isError: false, text: 'Filed KERNEL-90, "Symlink node_modules": https://linear.app/x/KERNEL-90.' })
+    expect(await file({ issue: 'KERNEL-90', description: 'More steps', go_ahead: 'file it' })).toEqual({ isError: false, text: 'Changed KERNEL-90.' })
+    expect(wrote).toEqual([['create', { title: 'Symlink node_modules', description: 'Steps' }], ['edit', 'KERNEL-90', { description: 'More steps' }]])
+    // A new issue needs a title, and an edit something to change.
+    expect(await file({ go_ahead: 'file it' })).toEqual({ isError: true, text: 'Not filed: a new issue needs a title.' })
+    expect(await file({ issue: 'KERNEL-90', go_ahead: 'file it' })).toEqual({ isError: true, text: 'Not filed: pass the title, description, state or comment to change on KERNEL-90.' })
+  })
+
+  // The /issue flow's comment and move go through file_issue too, on the same go-ahead (feat-lead-files-tracker-issues-only-with).
+  it('comments on an issue and moves its state only on the go-ahead, and never on a new one', { timeout: 60_000 }, async () => {
+    const t = await offLead('Ship it')
+    const { wrote, file } = fileTracker(t)
+    expect(await file({ issue: 'KERNEL-90', comment: 'Opened PR #7' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+    expect(await file({ issue: 'KERNEL-90', state: 'In Review', go_ahead: 'move it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+    expect(wrote).toEqual([])
+    expect(await file({ issue: 'KERNEL-90', state: 'In Review', comment: 'Opened PR #7', go_ahead: 'ship it' })).toEqual({
+      isError: false, text: 'Changed KERNEL-90, now In Review. Commented on KERNEL-90: https://linear.app/x/KERNEL-90#comment-1.'
+    })
+    expect(wrote).toEqual([['edit', 'KERNEL-90', { state: 'In Review' }], ['comment', 'KERNEL-90', 'Opened PR #7']])
+    expect(await file({ title: 'New', comment: 'hi', go_ahead: 'ship it' })).toEqual({ isError: true, text: 'Not filed: pass the issue key to change its state or comment on it.' })
+  })
+
+  it('files an issue with no quote after an approved plan, and says when the project has no tracker', { timeout: 60_000 }, async () => {
+    const t = await offLead('Plan the symlink work')
+    const { wrote, file } = fileTracker(t)
+    await t.k.sessions.configure(t.chat.id, { plan: true })
+    const asked = t.run('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Noor'] })
+    for (let i = 0; i < 100 && !t.plans().length; i++) await new Promise((r) => setTimeout(r, 20))
+    t.k.approvals.decide(t.plans()[0].id, { behavior: 'allow' })
+    await asked
+    await t.planSaved()
+    expect((await file({ title: 'Symlink node_modules' })).isError).toBe(false)
+    expect(wrote).toHaveLength(1)
+    fileTracker(t, 'none')
+    expect(await file({ title: 'Symlink node_modules' })).toEqual({ isError: true, text: 'Not filed: This project has no issue tracker.' })
+  })
+
   it('needs no go-ahead for a review, or for a follow-up Kernel started on approved work', { timeout: 60_000 }, async () => {
     const t = await offLead('hand it to Noor')
     expect((await t.handOff({ go_ahead: 'hand it to Noor' })).isError).toBe(false)
@@ -376,7 +436,7 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     expect(line).toContain('ending with one yes-or-no question for one set of tasks')
     expect(line).toContain('only on a go-ahead that approves it and raises nothing new, quoted in go_ahead')
     expect(line).toContain('If the reply also asks questions, changes scope or only agrees with the idea, answer it, restate who gets what, and ask once.')
-    expect(line).toContain('Filing or editing tracker issues needs the same go-ahead.')
+    expect(line).toContain('Filing or editing tracker issues with mcp__kernel__file_issue needs the same go-ahead.')
     expect(line).not.toContain('right away')
   })
 
@@ -394,7 +454,7 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     expect(LEAD_RULE).toContain('no "I\'ll" or "next" about work you aren\'t doing')
     for (const said of [LEAD_INSTRUCTIONS, PLAN_MODE_OFF]) expect(said).toMatch(/answer (a question, opinion or report|it) and stop/)
     // The ending question and the go-ahead check stay for requests for work, and no tracker is named.
-    expect(LEAD_INSTRUCTIONS).toContain('Filing tracker issues needs the same go-ahead.')
+    expect(LEAD_INSTRUCTIONS).toContain('Filing or editing tracker issues with file_issue needs the same go-ahead.')
     for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, PLAN_MODE_OFF, starter]) expect(said).not.toMatch(/Linear|GitHub Issues/)
     // A teammate's blocking question still goes to the user.
     expect(LEAD_RULE).toContain('else ask the user with mcp__kernel__ask_user')
@@ -411,8 +471,8 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     // about mentions, 80 characters past that, KERNEL-747 its sentence about proposed hand-offs, 61 more, and KERNEL-777 its
     // sentence about limit replies, 176 more, and feat-review-messages-reach-named its sentence about reporting a message's
     // answer and the review kind to name, 118 more. KERNEL-880 renamed room to project, 9 more. feat-lead-stops-ending-answers-with
-    // added its line on answering without an offer, 332 more.
-    expect(LEAD_RULE.length).toBeLessThanOrEqual(6171)
+    // added its line on answering without an offer, 332 more. feat-lead-files-tracker-issues-only-with named file_issue, 29 more.
+    expect(LEAD_RULE.length).toBeLessThanOrEqual(6200)
   })
 
   // KERNEL-692: Kernel is the Lead, so its rule speaks to Kernel and never about Kernel in the third person.
@@ -554,7 +614,7 @@ describe('get_issue and the issue in the brief (KERNEL-473)', () => {
   const getIssue = (o: { kind?: Tracker['kind']; has?: TrackerIssue; key?: string; fails?: string } = {}) => {
     const asked: string[] = []
     const tracker: Tracker = {
-      kind: o.kind ?? 'linear', search: async () => [], start: async () => undefined,
+      kind: o.kind ?? 'linear', search: async () => [], start: async () => undefined, create: async () => { throw new Error('unused') }, edit: async () => { throw new Error('unused') }, comment: async () => { throw new Error('unused') },
       issue: async (id) => { asked.push(id); if (o.fails) throw new Error(o.fails); return o.has ?? issue({ id }) }
     }
     // The project reads the key with this tracker, or with none when it is `none` (KERNEL-933).

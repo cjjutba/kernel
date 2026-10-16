@@ -3,7 +3,7 @@ import type { exec, ExecResult } from '../src/main/services/exec'
 import type { TrackerKind } from '../src/shared/types'
 import { issueTracker, trackerKind, trackerName } from '../src/main/services/trackers'
 import { GH_SIGNED_OUT, githubKey, githubTracker, parseIssueView } from '../src/main/services/trackers/github'
-import { LINEAR_SIGNED_OUT, linearTracker } from '../src/main/services/trackers/linear'
+import { LINEAR_SIGNED_OUT, linearTracker, NO_LINEAR_TEAM } from '../src/main/services/trackers/linear'
 import { NO_TRACKER, noneTracker } from '../src/main/services/trackers/none'
 
 /** A gh that answers every call with `answer`, and keeps each call's arguments and folder. */
@@ -120,6 +120,43 @@ describe('GitHub Issues as a tracker (KERNEL-462)', () => {
     await expect(fails({ code: 127 }).issue('#41')).rejects.toThrow('Install the GitHub CLI (gh) to read GitHub issues.')
   })
 
+  it('files and edits an issue with gh, reading the issue from the URL gh prints', async () => {
+    const g = gh(() => ({ stdout: 'Creating issue in acme/app\n\nhttps://github.com/acme/app/issues/42\n' }))
+    const t = githubTracker('/repo', g.cmd)
+    expect(await t.create({ title: 'Crash on save', description: 'Steps' })).toEqual({ id: '#42', title: 'Crash on save', url: 'https://github.com/acme/app/issues/42', source: 'github' })
+    expect(await t.edit('42', { title: 'Crash on save in Safari' })).toMatchObject({ id: '#42', title: 'Crash on save in Safari' })
+    await t.edit('#42', { description: 'More steps' })
+    expect(g.calls).toEqual([
+      { args: ['issue', 'create', '--title', 'Crash on save', '--body', 'Steps'], cwd: '/repo' },
+      { args: ['issue', 'edit', '42', '--title', 'Crash on save in Safari'], cwd: '/repo' },
+      { args: ['issue', 'edit', '42', '--body', 'More steps'], cwd: '/repo' }
+    ])
+  })
+
+  it('says why a write failed, as it does for reads', async () => {
+    const fails = (r: Partial<ExecResult>) => githubTracker('/repo', gh(() => r).cmd)
+    await expect(fails({ code: 4, stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' }).create({ title: 'x' })).rejects.toThrow(GH_SIGNED_OUT)
+    await expect(fails({ code: 127 }).create({ title: 'x' })).rejects.toThrow('Install the GitHub CLI (gh) to file the GitHub issue.')
+    await expect(fails({ code: 1, stderr: 'GraphQL: Could not resolve to an issue or pull request with the number of 999.' }).edit('999', { title: 'x' })).rejects.toThrow('GitHub has no issue #999 in this repo.')
+    await expect(fails({ code: 1, stderr: 'HTTP 403: Resource not accessible' }).edit('#41', { title: 'x' })).rejects.toThrow('Could not edit the GitHub issue: HTTP 403: Resource not accessible')
+    await expect(fails({ stdout: 'done' }).create({ title: 'x' })).rejects.toThrow('Could not read the issue gh filed.')
+    const g = gh()
+    await expect(githubTracker('/repo', g.cmd).edit('KERNEL-41', { title: 'x' })).rejects.toThrow('KERNEL-41 is not a GitHub issue.')
+    await expect(githubTracker('/repo', g.cmd).edit('#41', {})).rejects.toThrow('Nothing to change: pass a title, a description or a state.')
+    await expect(githubTracker('/repo', g.cmd).edit('#41', { state: 'In Review' })).rejects.toThrow('A GitHub issue is open or closed, not "In Review".')
+    expect(g.calls).toEqual([])
+  })
+
+  it('closes, reopens and comments on an issue with gh', async () => {
+    const g = gh((args) => ({ stdout: args[1] === 'comment' ? 'https://github.com/acme/app/issues/41#issuecomment-9\n' : '' }))
+    const t = githubTracker('/repo', g.cmd)
+    expect(await t.edit('#41', { state: 'Closed' })).toEqual({ id: '#41', title: '', source: 'github' })
+    await t.edit('41', { state: 'open' })
+    expect(await t.comment('#41', 'Opened PR #7')).toEqual({ url: 'https://github.com/acme/app/issues/41#issuecomment-9' })
+    expect(g.calls.map((c) => c.args)).toEqual([['issue', 'close', '41'], ['issue', 'reopen', '41'], ['issue', 'comment', '41', '--body', 'Opened PR #7']])
+    await expect(githubTracker('/repo', gh(() => ({ code: 1, stderr: 'GraphQL: Could not resolve to an issue or pull request' })).cmd).comment('#999', 'x')).rejects.toThrow('GitHub has no issue #999 in this repo.')
+  })
+
   it('moves nothing when a workspace starts on an issue', async () => {
     const g = gh()
     expect(await githubTracker('/repo', g.cmd).start('#41')).toBeUndefined()
@@ -149,6 +186,55 @@ describe('Linear as a tracker reading one issue (KERNEL-473)', () => {
   })
 })
 
+describe('Linear as a tracker filing and editing an issue', () => {
+  /** A Linear that answers each call in turn, and keeps the variables each one sent. */
+  function linearCalls(...answers: unknown[]) {
+    const sent: { query: string; variables: Record<string, unknown> }[] = []
+    const fetchImpl = (async (_url: string, init: { body: string }) => {
+      sent.push(JSON.parse(init.body))
+      return new Response(JSON.stringify(answers.shift()), { status: 200 })
+    }) as unknown as typeof fetch
+    return { sent, fetchImpl }
+  }
+  const written = () => ({ success: true, issue: { identifier: 'KERNEL-90', title: 'Symlink node_modules', url: 'https://linear.app/x/KERNEL-90' } })
+
+  it("files in the project's team, looked up by its key", async () => {
+    const l = linearCalls({ data: { teams: { nodes: [{ id: 'team-uuid' }] } } }, { data: { issueCreate: written() } })
+    expect(await linearTracker(async () => 'k', l.fetchImpl, 'KERNEL').create({ title: 'Symlink node_modules', description: 'Steps' }))
+      .toEqual({ id: 'KERNEL-90', title: 'Symlink node_modules', url: 'https://linear.app/x/KERNEL-90', source: 'linear' })
+    expect(l.sent.map((c) => c.variables)).toEqual([{ key: 'KERNEL' }, { input: { teamId: 'team-uuid', title: 'Symlink node_modules', description: 'Steps' } }])
+    expect(l.sent[1].query).toContain('issueCreate')
+  })
+
+  it('edits only what it is given, by the issue key', async () => {
+    const l = linearCalls({ data: { issueUpdate: written() } })
+    expect((await linearTracker(async () => 'k', l.fetchImpl).edit('KERNEL-90', { description: 'More' })).id).toBe('KERNEL-90')
+    expect(l.sent.map((c) => c.variables)).toEqual([{ id: 'KERNEL-90', input: { description: 'More' } }])
+    expect(l.sent[0].query).toContain('issueUpdate')
+  })
+
+  it("moves an issue to its team's state by name, and comments on it", async () => {
+    const states = { data: { issue: { team: { states: { nodes: [{ id: 's1', name: 'Todo' }, { id: 's2', name: 'In Review' }] } } } } }
+    const l = linearCalls(states, { data: { issueUpdate: written() } }, { data: { commentCreate: { success: true, comment: { url: 'https://linear.app/x/KERNEL-90#comment-1' } } } })
+    const t = linearTracker(async () => 'k', l.fetchImpl)
+    await t.edit('KERNEL-90', { state: 'in review' })
+    expect(await t.comment('KERNEL-90', 'Opened PR #7')).toEqual({ url: 'https://linear.app/x/KERNEL-90#comment-1' })
+    expect(l.sent.map((c) => c.variables)).toEqual([{ id: 'KERNEL-90' }, { id: 'KERNEL-90', input: { stateId: 's2' } }, { input: { issueId: 'KERNEL-90', body: 'Opened PR #7' } }])
+    await expect(linearTracker(async () => 'k', linearCalls(states).fetchImpl).edit('KERNEL-90', { state: 'Shipped' })).rejects.toThrow('KERNEL-90\'s team has no state "Shipped". It has Todo, In Review.')
+    await expect(linearTracker(async () => undefined, linearCalls().fetchImpl).comment('KERNEL-90', 'x')).rejects.toThrow(LINEAR_SIGNED_OUT)
+  })
+
+  it('says when it is not connected, has no team, or Linear refuses', async () => {
+    await expect(linearTracker(async () => undefined, linearCalls().fetchImpl, 'KERNEL').create({ title: 'x' })).rejects.toThrow(LINEAR_SIGNED_OUT)
+    await expect(linearTracker(async () => undefined, linearCalls().fetchImpl).edit('KERNEL-9', { title: 'x' })).rejects.toThrow(LINEAR_SIGNED_OUT)
+    await expect(linearTracker(async () => 'k', linearCalls().fetchImpl).create({ title: 'x' })).rejects.toThrow(NO_LINEAR_TEAM)
+    await expect(linearTracker(async () => 'k', linearCalls({ data: { teams: { nodes: [] } } }).fetchImpl, 'NOPE').create({ title: 'x' })).rejects.toThrow("Linear has no team NOPE, or this token can't see it.")
+    await expect(linearTracker(async () => 'k', linearCalls({ errors: [{ message: 'Entity not found: Issue' }] }).fetchImpl).edit('KERNEL-999', { title: 'x' }))
+      .rejects.toThrow("Linear has no issue KERNEL-999, or this token can't see it.")
+    await expect(linearTracker(async () => 'k', linearCalls({ data: { issueUpdate: { success: false, issue: null } } }).fetchImpl).edit('KERNEL-9', { title: 'x' })).rejects.toThrow('Linear did not change the issue.')
+  })
+})
+
 describe('no tracker (KERNEL-462)', () => {
   it('lists nothing, reads nothing and moves nothing', async () => {
     const t = noneTracker()
@@ -156,5 +242,9 @@ describe('no tracker (KERNEL-462)', () => {
     expect(await t.search('crash')).toEqual([])
     await expect(t.issue('#41')).rejects.toThrow(NO_TRACKER)
     expect(await t.start('KERNEL-41')).toBeUndefined()
+    await expect(t.create({ title: 'Crash' })).rejects.toThrow(NO_TRACKER)
+    await expect(t.edit('#41', { title: 'Crash' })).rejects.toThrow(NO_TRACKER)
+    await expect(t.comment('#41', 'Crash')).rejects.toThrow(NO_TRACKER)
+    expect(NO_TRACKER).toBe('This project has no issue tracker.')
   })
 })

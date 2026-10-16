@@ -715,6 +715,8 @@ export class Lead extends Feature {
       handoffBase: (baseRef) => this.k.workspaces.handoffBase(projectId, baseRef),
       // A branch on the remote, an open PR or another assignee says someone else may be on the issue (KERNEL-479).
       issueTaken: (key) => this.k.integrations.issueTaken(projectId, key),
+      // file_issue writes to the project's own tracker, read on each call like the Issues screen's (KERNEL-462).
+      tracker: () => this.k.integrations.trackerFor(projectId),
       // The project's `[agents] open_workspaces` when it sets one, else Settings, Models' agent limit. 0 from either is no cap,
       // with no hidden default (KERNEL-492, amends KERNEL-220).
       agentCap: async () => {

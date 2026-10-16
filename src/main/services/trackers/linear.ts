@@ -1,4 +1,4 @@
-import type { ChatPart, IssueSummary, LinearComment, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, LinearStateType, Tracker } from '@shared/types'
+import type { ChatPart, IssueChange, IssueDraft, IssueSummary, LinearComment, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, LinearStateType, Tracker } from '@shared/types'
 
 // Linear issues: the new workspace modal's search, the Issues screen, Plan with Kernel and the move to In Progress (D-140).
 // The token comes from Settings > Integrations (KERNEL-26), else LINEAR_API_KEY in the environment.
@@ -204,6 +204,67 @@ export async function moveToStarted(token: string | undefined, id: string, fetch
   return target.name
 }
 
+/** Filing an issue in a Linear project that names no team, which file_issue passes on. */
+export const NO_LINEAR_TEAM = "This project names no Linear team to file in. The user can set [linear] team in the project's .kernel/settings.toml."
+
+const TEAM = `query Team($key: String!) { teams(filter: { key: { eq: $key } }) { nodes { id } } }`
+
+const WRITTEN = 'success issue { identifier title url }'
+const CREATE = `mutation Create($input: IssueCreateInput!) { issueCreate(input: $input) { ${WRITTEN} } }`
+const UPDATE = `mutation Update($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { ${WRITTEN} } }`
+
+type Written = { success: boolean; issue: { identifier: string; title: string; url?: string } | null }
+
+const writtenIssue = (w: Written, verb: string): IssueSummary => {
+  if (!w.success || !w.issue) throw new Error(`Linear did not ${verb} the issue.`)
+  return { id: w.issue.identifier, title: w.issue.title, url: w.issue.url, source: 'linear' }
+}
+
+/** A new issue in the team with key `team` ("KERNEL"). Linear takes the team by its id, so the key is looked up first. */
+export async function createIssue(token: string | undefined, team: string | undefined, draft: IssueDraft, fetchImpl: typeof fetch = fetch): Promise<IssueSummary> {
+  if (!team) throw new Error(NO_LINEAR_TEAM)
+  const { teams } = await linearRequest<{ teams: { nodes: { id: string }[] } }>(token, TEAM, { key: team }, fetchImpl)
+  const teamId = teams.nodes[0]?.id
+  if (!teamId) throw new Error(`Linear has no team ${team}, or this token can't see it.`)
+  const input = { teamId, title: draft.title, ...(draft.description !== undefined ? { description: draft.description } : {}) }
+  const { issueCreate } = await linearRequest<{ issueCreate: Written }>(token, CREATE, { input }, fetchImpl)
+  return writtenIssue(issueCreate, 'file')
+}
+
+const STATES = `query States($id: String!) { issue(id: $id) { team { states(first: 100) { nodes { id name } } } } }`
+
+/** The id of the issue's team's state called `name`, ignoring case, or why there is none. */
+async function stateId(token: string | undefined, id: string, name: string, fetchImpl: typeof fetch): Promise<string> {
+  const { issue } = await linearRequest<{ issue: { team: { states: { nodes: { id: string; name: string }[] } } } }>(token, STATES, { id }, fetchImpl)
+  const states = issue.team.states.nodes
+  const hit = states.find((s) => s.name.trim().toLowerCase() === name.trim().toLowerCase())
+  if (!hit) throw new Error(`${id}'s team has no state "${name}". It has ${states.map((s) => s.name).join(', ')}.`)
+  return hit.id
+}
+
+/**
+ * Changes the title, description or state of an issue, by identifier ("KERNEL-83"), which `issueUpdate` takes as well as the
+ * uuid. A state goes by its name in the issue's team.
+ */
+export async function updateIssue(token: string | undefined, id: string, change: IssueChange, fetchImpl: typeof fetch = fetch): Promise<IssueSummary> {
+  const input = {
+    ...(change.title !== undefined ? { title: change.title } : {}), ...(change.description !== undefined ? { description: change.description } : {}),
+    ...(change.state?.trim() ? { stateId: await stateId(token, id, change.state, fetchImpl) } : {})
+  }
+  if (!Object.keys(input).length) throw new Error('Nothing to change: pass a title, a description or a state.')
+  const { issueUpdate } = await linearRequest<{ issueUpdate: Written }>(token, UPDATE, { id, input }, fetchImpl)
+  return writtenIssue(issueUpdate, 'change')
+}
+
+const COMMENT = `mutation Comment($input: CommentCreateInput!) { commentCreate(input: $input) { success comment { url } } }`
+
+/** Adds a comment to an issue, by identifier, which `commentCreate` takes as its `issueId` as well as the uuid. */
+export async function commentIssue(token: string | undefined, id: string, body: string, fetchImpl: typeof fetch = fetch): Promise<{ url?: string }> {
+  const { commentCreate } = await linearRequest<{ commentCreate: { success: boolean; comment: { url?: string } | null } }>(token, COMMENT, { input: { issueId: id, body } }, fetchImpl)
+  if (!commentCreate.success) throw new Error('Linear did not add the comment.')
+  return commentCreate.comment?.url ? { url: commentCreate.comment.url } : {}
+}
+
 /** Plan with Kernel's first message: the issue chip, its description, and how to hand it off. */
 export function planParts(issue: LinearIssueDetail): ChatPart[] {
   const description = issue.description.trim() || 'The issue has no description.'
@@ -211,6 +272,16 @@ export function planParts(issue: LinearIssueDetail): ChatPart[] {
     { type: 'issue', name: issue.id, title: issue.title, url: issue.url, source: 'linear' },
     { type: 'text', text: `${description}\n\nWhen you hand it off, pass ${issue.id} as issue to create_workspace.` }
   ]
+}
+
+/** A write to an issue, with Linear's "Entity not found" in plain words. */
+async function unknownIssue<T>(id: string, write: () => Promise<T>): Promise<T> {
+  try {
+    return await write()
+  } catch (e) {
+    if (/not found|could not find/i.test((e as Error).message)) throw new Error(`Linear has no issue ${id}, or this token can't see it.`)
+    throw e
+  }
 }
 
 /** Reading an issue with no token, which an agent's get_issue passes on (KERNEL-473). */
@@ -221,7 +292,10 @@ export const LINEAR_SIGNED_OUT = "Kernel isn't connected to Linear. The user can
  * applies at once. `start` without a token resolves to nothing: Linear isn't connected, so there is nothing to move (D-140).
  * `issue` says plainly when Kernel isn't connected or Linear has no such issue, since get_issue hands its error to an agent.
  */
-/** `team` is the project's Linear team key, which Up next lists from. Search and issue reads reach every team the token sees. */
+/**
+ * `team` is the project's Linear team key, which Up next lists from and `create` files in. Search, issue reads and edits reach
+ * every team the token sees.
+ */
 export function linearTracker(token: () => Promise<string | undefined>, fetchImpl: typeof fetch = fetch, team?: string): Tracker {
   return {
     kind: 'linear',
@@ -243,6 +317,21 @@ export function linearTracker(token: () => Promise<string | undefined>, fetchImp
     start: async (id) => {
       const key = await token()
       return key ? moveToStarted(key, id, fetchImpl) : undefined
+    },
+    create: async (draft) => {
+      const key = await token()
+      if (!key) throw new Error(LINEAR_SIGNED_OUT)
+      return createIssue(key, team, draft, fetchImpl)
+    },
+    edit: async (id, change) => {
+      const key = await token()
+      if (!key) throw new Error(LINEAR_SIGNED_OUT)
+      return unknownIssue(id, () => updateIssue(key, id, change, fetchImpl))
+    },
+    comment: async (id, body) => {
+      const key = await token()
+      if (!key) throw new Error(LINEAR_SIGNED_OUT)
+      return unknownIssue(id, () => commentIssue(key, id, body, fetchImpl))
     }
   }
 }
