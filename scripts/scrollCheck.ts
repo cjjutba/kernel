@@ -108,6 +108,7 @@ async function launch(fixture: string, data: string, size: [number, number] = [1
   for (const [k, val] of Object.entries(process.env)) if (val !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_RENDERER_URL') env[k] = val
   env.KERNEL_FIXTURES = fixture
   env.KERNEL_HEADLESS = '1'
+  env.KERNEL_FIXTURE_PERSIST = '1' // fixture mode keeps remembered choices in memory otherwise, so the restart step would find nothing
   env.KERNEL_FIXTURE_DATA = data
   const app = await electron.launch({ args: ['.', '--force-device-scale-factor=1'], cwd: root, env })
   const page = await app.firstWindow()
