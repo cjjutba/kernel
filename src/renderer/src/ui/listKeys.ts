@@ -23,6 +23,13 @@ export function listKeyAction(e: KeyLike, at: number, len: number, wrap = false)
   }
 }
 
+/** For a list beside a text field, where j, k, Home and End type or move the caret: only the arrows move. The row to go to, or null for any other key. */
+export function arrowRow(e: KeyLike, at: number, len: number, wrap = false): number | null {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return null
+  const action = listKeyAction(e, at, len, wrap)
+  return action?.kind === 'move' ? action.to : null
+}
+
 export const isTyping = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]')
 
 interface RowTarget { closest: (selector: string) => { id: string } | null }

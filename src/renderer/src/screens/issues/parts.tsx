@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { BannerKind, GitHubErrorKind, Project } from '@shared/types'
+import type { BannerKind, GitHubErrorKind, Project, ProjectTracker } from '@shared/types'
 import { go } from '../../store'
 import { Banner, Button, EmptyList, Select, Skeleton, useBusy } from '../../ui'
 
@@ -10,8 +10,16 @@ export function FilterChip({ label, value, options, onChange }: { label: string;
   return <Select variant="chip" prefix={label} label={label} value={value || (options[0]?.value ?? '')} options={options} onChange={onChange} />
 }
 
+export type IssueTracker = 'linear' | 'github'
+
+/** What the Linear | GitHub control in the header needs. A header without it shows no control. */
+export interface TrackerSwitch { active: IssueTracker; available: ProjectTracker['available']; onChange: (t: IssueTracker) => void }
+
 /** The project the page lists and the projects it can switch to. A page with no project at all has none. */
-export interface ProjectHead { projects: Project[]; project?: Project; onProject: (id: string) => void }
+export interface ProjectHead { projects: Project[]; project?: Project; onProject: (id: string) => void; tracker?: TrackerSwitch }
+
+/** `parse` for the remembered choice: a stored value that is not a tracker reads as no choice. */
+export const trackerChoice = (raw: string | null): IssueTracker | '' => (raw === 'linear' || raw === 'github' ? raw : '')
 
 /** Settings, the project, General: where the project's tracker is chosen. */
 export const chooseTracker = (projectId: string) => go({ name: 'settings', page: 'project', projectId, section: 'general' })
@@ -57,7 +65,7 @@ export function CapNote({ children }: { children: ReactNode }) {
 /** What a failed GitHub read says and where it points, by the kind the engine gave it (KERNEL-861). */
 export function githubProblem(kind: GitHubErrorKind, message: string, where: string): { title: string; sub: string; banner: BannerKind } {
   if (kind === 'signed-out') return { title: "GitHub isn't signed in", sub: 'Run gh auth login in a terminal, then try again.', banner: 'auth' }
-  if (kind === 'not-found') return { title: `Can't find ${where}`, sub: 'The repo may have been renamed, deleted or made private. Choose another tracker for this project.', banner: 'setup' }
+  if (kind === 'not-found') return { title: `Can't find ${where}`, sub: 'The repo may have been renamed, deleted or made private. Check the repo name and your access to it, then try again.', banner: 'setup' }
   if (kind === 'rate-limited') return { title: 'GitHub rate limit reached', sub: 'Wait a few minutes, then try again.', banner: 'limit' }
   if (kind === 'offline') return { title: "Can't reach GitHub", sub: 'Check your connection, then try again.', banner: 'offline' }
   return { title: "Can't load issues", sub: message, banner: 'offline' }

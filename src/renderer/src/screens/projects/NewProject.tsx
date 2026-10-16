@@ -66,7 +66,7 @@ export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
         </div>
         <div className="nps-field">
           <label className="rn-label" htmlFor={`${id}l`}>Location</label>
-          <div className="row" style={{ gap: 8 }}>
+          <div className="row">
             <input id={`${id}l`} className="rn-input mono grow" autoComplete="off" spellCheck={false} value={parent} onChange={(e) => setParent(e.target.value)} />
             <Button size="lg" onClick={() => void browse()}>Change…</Button>
           </div>

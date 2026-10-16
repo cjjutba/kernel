@@ -1,7 +1,7 @@
 import { useId, type RefObject } from 'react'
 import type { Provider } from '@shared/types'
 import { actions, go, useStore } from '../../store'
-import { Button, Icon, Meter, Popover, ProviderMark, SegmentedControl, Spinner } from '../../ui'
+import { Button, Icon, Meter, Popover, ProviderMark, SegmentedControl } from '../../ui'
 import { useFreshUsage } from '../../accountRows'
 import { chatsLabel, chatsPerAccount } from '../../accountChats'
 import { planSections, type PlanSection } from './planModel'
@@ -19,16 +19,15 @@ const accountLine = (s: PlanSection, compact: boolean) => {
 
 /**
  * The Usage popover (UsagePopover.png, KERNEL-619, KERNEL-674). It opens upward from the footer's bottom left with a row for Claude Code and one for Codex.
- * Detailed shows each provider's two windows even folded, and Compact shows one number. A row expands in place to its account, every window and Switch to the
- * provider's other signed-in accounts. A key in use says it is billed per token, and a provider that isn't signed in is one line with Sign in.
+ * Detailed shows each provider's two windows even folded, and Compact shows one number. A row expands in place to its account, every window and the
+ * provider's other signed-in accounts with their numbers. It only reports: switching is in the account menu and Settings, Accounts (KERNEL-949). A key in use says it is billed per token, and a provider that isn't signed in is one line with Sign in.
  * The numbers follow `usage` and `accounts` pushes, so they change while it is open.
  */
-export function UsagePopover({ open, onClose, anchorRef, busy, onSwitch, onSignIn }: {
+export function UsagePopover({ open, onClose, anchorRef, busy, onSignIn }: {
   open: boolean
   onClose: () => void
   anchorRef: RefObject<HTMLElement | null>
   busy: UsageBusy | null
-  onSwitch: (provider: Provider, accountId: string) => void
   onSignIn: (provider: Provider, cli: boolean) => void
 }) {
   const accounts = useStore((s) => s.accounts)
@@ -45,7 +44,7 @@ export function UsagePopover({ open, onClose, anchorRef, busy, onSwitch, onSignI
         <span className="pm-title">Usage</span>
         <SegmentedControl label="Usage view" value={view} onChange={(v) => actions.ui.setUsageView(v as typeof view)} options={[{ value: 'detailed', label: 'Detailed' }, { value: 'compact', label: 'Compact' }]} />
       </div>
-      {sections.map((s) => <Row key={s.provider} s={s} compact={view === 'compact'} open={expanded.includes(s.provider)} counts={chatsPerAccount(chats, s.provider)} busy={busy} onSwitch={onSwitch} onSignIn={onSignIn} />)}
+      {sections.map((s) => <Row key={s.provider} s={s} compact={view === 'compact'} open={expanded.includes(s.provider)} counts={chatsPerAccount(chats, s.provider)} busy={busy} onSignIn={onSignIn} />)}
       <div className="plan-foot">
         <button type="button" className="menu-item" onClick={() => go({ name: 'settings', page: 'accounts' })}>
           <span className="grow">Account and usage</span><Icon name="right" size={14} />
@@ -55,7 +54,7 @@ export function UsagePopover({ open, onClose, anchorRef, busy, onSwitch, onSignI
   )
 }
 
-function Row({ s, compact, open, counts, busy, onSwitch, onSignIn }: { s: PlanSection; compact: boolean; open: boolean; counts: Record<string, number>; busy: UsageBusy | null; onSwitch: (provider: Provider, accountId: string) => void; onSignIn: (provider: Provider, cli: boolean) => void }) {
+function Row({ s, compact, open, counts, busy, onSignIn }: { s: PlanSection; compact: boolean; open: boolean; counts: Record<string, number>; busy: UsageBusy | null; onSignIn: (provider: Provider, cli: boolean) => void }) {
   const body = useId()
   const { account } = s
   if (!account) {
@@ -109,23 +108,18 @@ function Row({ s, compact, open, counts, busy, onSwitch, onSignIn }: { s: PlanSe
               </div>
             )}
           {s.others.length > 0 && (
-            <div className="plan-switch" role="group" aria-label={`Switch ${s.name} account`}>
-              <span className="plan-switch-title" aria-hidden="true">Switch</span>
-              {s.others.map((o) => {
-                const switching = busy === `switch:${s.provider}:${o.id}`
-                return (
-                  <button key={o.id} type="button" className="menu-item plan-other" aria-label={`Switch ${s.name} to ${o.label}`} aria-busy={switching || undefined} disabled={busy !== null} onClick={() => onSwitch(s.provider, o.id)}>
-                    <span className="plan-other-name">{o.label}</span>
-                    <span className="plan-other-plan ellipsis">{[o.plan, chatsLabel(counts[o.id])].filter(Boolean).join(' · ')}</span>
-                    {switching
-                      ? <span className="plan-other-use"><Spinner label={null} pattern="wave-back" />Switching</span>
-                      : !compact && o.nums.length > 0
-                        ? <span className="plan-other-use">{o.nums.map((n, i) => <span key={n.short} className="plan-num">{i > 0 && <span className="plan-sep" aria-hidden="true">·</span>}{n.short} <span className="pm-mp" data-tone={tone(n.value)}>{pct(n.value)}</span></span>)}</span>
-                        : o.use && <span className="plan-other-use">{o.use}</span>}
-                  </button>
-                )
-              })}
-            </div>
+            <ul className="plan-switch" aria-label={`Other ${s.name} accounts`}>
+              <li className="plan-switch-title" aria-hidden="true">Other accounts</li>
+              {s.others.map((o) => (
+                <li key={o.id} className="plan-other">
+                  <span className="plan-other-name">{o.label}</span>
+                  <span className="plan-other-plan ellipsis">{[o.plan, chatsLabel(counts[o.id])].filter(Boolean).join(' · ')}</span>
+                  {!compact && o.nums.length > 0
+                    ? <span className="plan-other-use">{o.nums.map((n, i) => <span key={n.short} className="plan-num">{i > 0 && <span className="plan-sep" aria-hidden="true">·</span>}{n.short} <span className="pm-mp" data-tone={tone(n.value)}>{pct(n.value)}</span></span>)}</span>
+                    : o.use && <span className="plan-other-use">{o.use}</span>}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}
