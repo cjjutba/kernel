@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { LinearIssue, LinearIssueDetail, Project } from '@shared/types'
+import type { IssueTakenFinding, LinearIssue, LinearIssueDetail, Project } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { useDetailLoad } from './useDetailLoad'
 import { detailKey, forgetTracker } from './cache'
@@ -12,6 +12,8 @@ import { Markdown } from '../workspace/markdown'
 import { DescriptionFailed } from './parts'
 import { initials, issueAge, linkedWorkspaces, stateShape } from './model'
 import { WorkCard } from './WorkCard'
+import { ConfirmIssueTaken } from './ConfirmIssueTaken'
+import { takenFindings } from '../new-workspace/taken'
 import { useKeptScroll } from '../../ui/keptScroll'
 
 /** The selected issue: what Linear says about it, the workspaces already working on it, and the buttons that start work. */
@@ -19,6 +21,8 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
   const { loaded, failure, retry } = useDetailLoad<LinearIssueDetail>(id, detailKey('linear', '', id), () => call('linear.issue', { id }), [tick])
   const failed = failure?.id === id ? failure.message : null
   const [busy, run] = useBusy<'plan' | 'link'>()
+  // Work already on the issue holds Plan with Kernel back until the person says to start anyway.
+  const [asking, setAsking] = useState<IssueTakenFinding[] | null>(null)
   const [picked, setPicked] = useState<{ issue: string; project: string } | null>(null)
   const projects = useStore((s) => s.projects)
   const projectSettings = useStore((s) => s.projectSettings)
@@ -57,12 +61,21 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
   const work = linked[0]
   const unlinked = !!issue && settled && !linkedProject && !!project
 
-  const plan = () => project && run('plan', async () => {
+  const startPlan = async () => {
+    if (!project) return
     try {
       const { chatId } = await call('linear.plan', { id, projectId: project.id })
       onPlanned()
       await openLeadChat(project.id, chatId)
     } catch (e) { actions.ui.toast({ title: `Could not plan with ${lead}`, sub: cleanError(e) }) }
+  }
+  const plan = () => project && run('plan', async () => {
+    if (linked.length === 0) return startPlan()
+    // What Kernel found on the issue, then the workspaces already linked to it, three things at most.
+    const found = await takenFindings((req) => call('issues.taken', req), project.id, id)
+    const mine: IssueTakenFinding[] = linked.flatMap((w) => [{ kind: 'branch' as const, ref: w.branch }, ...(w.prNumber && !['none', 'merged', 'closed'].includes(w.prState) ? [{ kind: 'pr' as const, number: w.prNumber, title: w.title ?? w.name }] : [])])
+    const seen = new Set<string>()
+    setAsking([...found, ...mine].filter((f) => { const k = JSON.stringify(f); return !seen.has(k) && !!seen.add(k) }).slice(0, 3))
   })
   const link = () => project && team && run('link', async () => {
     try { actions.settings.setProject(project.id, await call('settings.setProject', { projectId: project.id, patch: { linear: { team } } })); forgetTracker(project.id) }
@@ -167,6 +180,7 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
           </div>
         </div>
       </div>
+      {asking && <ConfirmIssueTaken issue={id} findings={asking} onStart={async () => { await startPlan(); setAsking(null) }} onCancel={() => setAsking(null)} />}
     </article>
   )
 }

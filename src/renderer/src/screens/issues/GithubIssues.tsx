@@ -155,8 +155,8 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
   const ready = shown.kind === 'ready'
   const listEl = useRef<HTMLDivElement>(null)
   const keep = spotKey.issues(project.id)
-  useKeptScroll(listEl, { key: keep, ready: ready && flat.length > 0 })
-  useReveal(listEl, selId, ready && flat.length > 0, 0)
+  const kept = useKeptScroll(listEl, { key: keep, ready: ready && flat.length > 0 })
+  useReveal(listEl, selId, ready && flat.length > 0, 0, kept.stop)
   const hidden = ready && !!selId && !cur && flat.length > 0
   // The project's filter is kept when you leave Issues and come back (DESIGN.md, Remembered choices).
   useEffect(() => { writeSavedJson(githubFilterKey(project.id), filter) }, [project.id, filter])

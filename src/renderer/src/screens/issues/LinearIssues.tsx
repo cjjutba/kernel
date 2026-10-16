@@ -174,11 +174,11 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
     if (selId !== sel) setSel(selId)
     setSelected('linear', selId)
   }, [selId, sel, lists])
-  // Opening an issue opens its group, in case the person folded it earlier.
+  // Opening an issue, or a cleared filter bringing it back, opens its group, in case the person folded it earlier.
   useEffect(() => {
     const g = groups.find((x) => x.issues.some((i) => i.id === selId))
     if (g) setFolded((f) => (f.has(groupKey(g)) ? new Set([...f].filter((k) => k !== groupKey(g))) : f))
-  }, [selId])
+  }, [selId, !!cur])
   const fold = (key: string) => setFolded((f) => { const n = new Set(f); if (!n.delete(key)) n.add(key); return n })
 
   // The PRs behind the rows are read once, so a failing PR can say how many checks fail.
@@ -206,8 +206,8 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
   const ready = shown.kind === 'ready' && scope
   const listEl = useRef<HTMLDivElement>(null)
   const keep = spotKey.issues(head.project?.id ?? 'none')
-  useKeptScroll(listEl, { key: keep, ready: !!ready && flat.length > 0 })
-  useReveal(listEl, selId, !!ready && flat.length > 0, folded)
+  const kept = useKeptScroll(listEl, { key: keep, ready: !!ready && flat.length > 0 })
+  useReveal(listEl, selId, !!ready && flat.length > 0, folded, kept.stop)
   // The open issue came from a link or the last visit, and the filter leaves it out of the list.
   const hidden = !!ready && !unread && !!lists && !!selId && !cur && flat.length > 0
   const hiddenFits = scope ? describeFilter({ ...filter, query }, scope).fits : []
