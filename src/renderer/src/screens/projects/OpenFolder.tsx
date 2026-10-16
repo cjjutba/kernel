@@ -54,22 +54,22 @@ export function OpenFolder() {
       }
     >
       <p className="rm-sub">Use a folder that already lives on your Mac.</p>
-      <div className="rm-pad" style={{ gap: 14 }}>
+      <div className="rm-pad of-body">
         <div className="of-drop">
           <Icon name="folder" size={20} />
-          <span style={{ color: 'var(--ink-2)' }}>Choose a project folder on this Mac</span>
+          <span className="of-hint">Choose a project folder on this Mac</span>
           <Button onClick={() => void choose()}>Choose folder</Button>
         </div>
-        {error && <p role="alert" className="del" style={{ margin: 0, fontSize: 12.5 }}>{error}</p>}
-        <p className="nr-label" style={{ margin: 0 }}>Recent folders</p>
-        <div role="radiogroup" aria-label="Recent folders" className="cr-list" style={{ marginTop: -6 }} aria-busy={!folders}>
+        {error && <p role="alert" className="del of-error">{error}</p>}
+        <p className="nr-label">Recent folders</p>
+        <div role="radiogroup" aria-label="Recent folders" className="cr-list of-list" aria-busy={!folders}>
           {folders?.map((f) => (
             <div key={f.path} className="of-rowwrap">
               <button type="button" role="radio" aria-checked={picked === f.path} className="cr-repo of-row" onClick={() => setPicked(f.path)}>
                 <Icon name="folder" size={16} />
                 <span className="col grow">
-                  <span className="mono" style={{ fontSize: 12.5 }}>{tilde(f.path)}</span>
-                  <span className="cr-sub" style={{ color: f.dirty ? 'var(--ink-2)' : undefined }}>{sub(f)}</span>
+                  <span className="mono cr-path">{tilde(f.path)}</span>
+                  <span className={f.dirty ? 'cr-sub of-dirty' : 'cr-sub'}>{sub(f)}</span>
                 </span>
               </button>
               {!f.git && <button type="button" className="of-init" aria-pressed={init === f.path} onClick={() => { setPicked(f.path); setInit(init === f.path ? null : f.path) }}>{init === f.path ? 'Will initialize git' : 'Initialize git'}</button>}
@@ -79,7 +79,7 @@ export function OpenFolder() {
           {folders && !folders.length && loadError && (
             <Banner kind="setup" title="Could not read your recent folders" actions={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void retry()}>Try again</Button>}>{loadError}</Banner>
           )}
-          {folders && !folders.length && !loadError && <p className="muted" style={{ margin: 0, padding: '10px 12px' }}>No recent folders. Use Choose folder.</p>}
+          {folders && !folders.length && !loadError && <p className="muted cr-empty">No recent folders. Use Choose folder.</p>}
         </div>
         {!!current?.dirty && <p className="of-note">The {current.dirty} uncommitted {current.dirty === 1 ? 'change stays' : 'changes stay'}. Current-branch workspaces treat them as the baseline.</p>}
       </div>

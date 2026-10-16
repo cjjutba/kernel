@@ -95,7 +95,7 @@ export function ProjectSetup({ projectId }: { projectId?: string }) {
       : 'Reviews each pull request before it merges'
 
   return (
-    <div className="panel" style={{ background: 'transparent', border: 0 }}>
+    <div className="panel ob-bare">
       <div className={showTeam ? 'ob-page rs-review' : 'ob-page'}>
         <div className="ob-col">
           <h1 className="ob-h1">{stopped ? `${project?.name ?? 'Your project'} did not finish setting up` : `Setting up ${project?.name ?? 'your project'}`}</h1>
@@ -150,7 +150,7 @@ export function ProjectSetup({ projectId }: { projectId?: string }) {
             <span role="status">{status}</span>
             <Button variant="primary" size="lg" disabled={!finished || busy !== null} busy={busy === 'open'} busyLabel="Opening" onClick={() => void open()}>Open the project</Button>
           </div>
-          {finished && failed > 0 && <button type="button" className="ob-link" style={{ alignSelf: 'flex-start', marginTop: 12 }} onClick={() => { actions.ui.go({ name: 'projects' }) }}>All projects</button>}
+          {finished && failed > 0 && <button type="button" className="ob-link ps-all" onClick={() => { actions.ui.go({ name: 'projects' }) }}>All projects</button>}
         </div>
       </div>
     </div>
