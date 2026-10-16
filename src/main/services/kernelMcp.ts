@@ -6,7 +6,7 @@ import { blockedWhy, headBlockers, notMergeable, reviewsText } from '@shared/mer
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
 import { bus } from '../bus'
 import { kernelServer } from './kernelServer'
-import { canOpenPr } from './agentTools'
+import { canOpenPr, type AccountSignIn } from './agentTools'
 import { agentFromFile, hireDefaults, renderAgentFile } from './agents'
 import { HANDOFF_NOW } from './handoff'
 import { firstLine } from './text'
@@ -79,6 +79,12 @@ export interface KernelToolDeps {
    * the project's first check. Left out, create_agent says nothing about servers (KERNEL-476).
    */
   reach?: (agent: AgentDef, o?: { wait?: boolean }) => Promise<AgentReach>
+  /**
+   * The servers an agent's tools line names that the account it would run on now can't give it yet, needing a sign-in there
+   * or still being checked, with the account's name. Never blocks a hand-off. Left out, create_workspace and message_agent
+   * say nothing about them (KERNEL-939).
+   */
+  signIns?: (agent: AgentDef) => Promise<{ account: string; servers: AccountSignIn[] } | undefined>
   /** Archives with the user's Settings for the branch, as the sidebar does (KERNEL-93). */
   archiveWorkspace: (workspaceId: string) => Promise<void>
   /** Merges the workspace's PR as the Merge button does, refusing with the reason when it can't merge (KERNEL-349). */
@@ -155,6 +161,22 @@ const imagesArg = z.array(z.union([
   z.object({ shared: z.string().describe('The id of an image a teammate shared, as the Team update names it'), version: z.number().int().describe('Which version of it to pass on') })
 ])).optional()
 type ImageArg = { path: string } | { shared: string; version: number }
+
+/**
+ * create_workspace's and message_agent's line on the servers an agent's tools line names that its account can't give it yet
+ * (KERNEL-939): "Porkbun needs a sign-in on Main account. Noor starts without it." `starts` is a hand-off, else a follow-up.
+ */
+export function signInNote(agent: string, account: string, servers: AccountSignIn[], starts: boolean): string {
+  const name = (s: AccountSignIn) => (/^[a-z][a-z0-9_-]*$/.test(s.name) ? s.name[0].toUpperCase() + s.name.slice(1) : s.name)
+  const needs = servers.filter((s) => s.state === 'needs-sign-in').map(name)
+  const checking = servers.filter((s) => s.state === 'checking').map(name)
+  const lines: string[] = []
+  if (needs.length) lines.push(`${joinLabels(needs)} need${needs.length === 1 ? 's' : ''} a sign-in on ${account}.`)
+  if (checking.length) lines.push(`Kernel is still checking ${joinLabels(checking)} on ${account}.`)
+  const it = needs.length + checking.length === 1 ? 'it' : 'them'
+  lines.push(`${agent} ${starts ? 'starts' : 'carries on'} without ${it}${needs.length ? '' : ' until the check passes'}.`)
+  return lines.join(' ')
+}
 
 /** What the `images` argument says, for both tools. */
 const IMAGES_DESCRIBE = 'Images and files the teammate needs to act on, at most 3 in all: a screenshot, PDF or any other file the user attached in this chat by its path in .kernel/attachments/, or an image a teammate shared by its id and version from the Team update. Kernel copies each into the teammate\'s workspace and names it in their chat. Leave out files that don\'t change what the teammate does'
@@ -476,6 +498,11 @@ export function kernelTools(d: KernelToolDeps) {
     if (!files) return ''
     return uncommittedNote(files, base ?? (await d.handoffBase?.().catch(() => undefined))?.base ?? 'the default branch')
   }
+  /** The sign-in line for an agent's servers, with a space before it, or nothing. A check that fails says nothing (KERNEL-939). */
+  const signInLine = async (agent: AgentDef | undefined, starts: boolean): Promise<string> => {
+    const needs = agent && await d.signIns?.(agent).catch(() => undefined)
+    return needs ? ` ${signInNote(agent.name, needs.account, needs.servers, starts)}` : ''
+  }
   return [
     tool('list_agents', 'List the agents in this project with their roles. Helpers, which don\'t take tasks, come as one line of names.', {}, async () => text(agentList(await d.agents()))),
     tool('list_workspaces', 'List open workspaces in this project: id, agent, branch, PR state, "yours" for the ones you handed off in this chat, and "open" for a question, blockers or a proposed hand-off you haven\'t acted on.', {}, async () => {
@@ -629,7 +656,9 @@ export function kernelTools(d: KernelToolDeps) {
       const unchecked = taken?.notes.length ? ` ${taken.notes.join(' ')}` : ''
       // This chat's own edits stay in its worktree. The Lead tells the user, and nothing is held up (KERNEL-770).
       const left = review_of ? '' : await leftBehind(ws.baseRef)
-      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${failed}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued)}${unchecked}${left ? ` ${left} Tell the user.` : ''}`)
+      // A tool the agent's file names that its account can't give it yet. The agent still starts (KERNEL-939).
+      const signIn = await signInLine(pick, true)
+      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${failed}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued)}${unchecked}${signIn}${left ? ` ${left} Tell the user.` : ''}`)
     }),
     tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to bring its branch up to date with them. An empty list ends the wait and sends a held brief now.", {
       workspace_id: z.string().describe('The workspace that waits, from list_workspaces'),
@@ -675,7 +704,9 @@ export function kernelTools(d: KernelToolDeps) {
       if (ws && d.lead && r.sent !== false) bus.activity({ kind: 'agent.talk', projectId: d.projectId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: r.agentId ?? ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
       // Its updates still go to the chat that handed it off, so say so rather than leave this chat waiting (KERNEL-105).
       const from = ws?.leadChatId && d.chatId && !mine(ws) ? d.chatTitle?.(ws.leadChatId) : undefined
-      return text(from ? `${r.note} This workspace was handed off in the Lead chat "${from}", so its updates go there, not here.` : r.note)
+      const to = ws && d.signIns ? (await d.agents()).find((a) => a.id === (r.agentId ?? ws.agentId)) : undefined
+      const signIn = await signInLine(to, false)
+      return text(`${from ? `${r.note} This workspace was handed off in the Lead chat "${from}", so its updates go there, not here.` : r.note}${signIn}`)
     }),
     tool('archive_workspace', 'Archive workspaces whose work is done. Skips the Lead\'s own workspace, any with an agent still working, an open PR or uncommitted changes. The user can restore them from History.', {
       workspace_ids: z.array(z.string()).min(1).describe('Workspace ids from list_workspaces')

@@ -10,8 +10,9 @@ import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
 import { ago, agoShort, projectState, teamOf } from '../src/renderer/src/screens/projects/projectInfo'
 import { repoOfUrl } from '../src/renderer/src/screens/projects/ConnectRepo'
-import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, lockfileInstall, recentFolders, seatStarterTeam } from '../src/main/services/projects'
+import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listOwners, lockfileInstall, recentFolders, repoAvailable, seatStarterTeam } from '../src/main/services/projects'
 import { loadRepoSettings } from '../src/main/services/settings'
+import { repoSlug } from '../src/renderer/src/screens/projects/RepoName'
 import { tempRepo, freePort } from './helpers'
 
 const starter = join(__dirname, '..', 'docs', 'starter-agents')
@@ -152,7 +153,7 @@ describe('Kernel projects', () => {
     const done = (async () => { const project = await k.createProject({ source: 'folder', name: 'Own app', desc: 'Nights', from: repo, team: ['kai'], autostart: false }); return { project, steps: await setupDone(project.id) } })()
     const { project, steps } = await done
     expect(project).toMatchObject({ name: 'Own app', kind: 'folder', path: repo })
-    expect(steps.map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['install', 'ok'], ['copy', 'ok'], ['hooks', 'fail'], ['agents', 'ok']])
+    expect(steps.map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['copy', 'ok'], ['hooks', 'fail'], ['agents', 'ok']])
     expect(steps.find((s) => s.id === 'hooks')?.error).toContain('Check hooks')
     expect((await k.agents(project.id)).map((a) => a.id)).toEqual(['kernel-lead', 'kai'])
     expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Kai from .claude/agents, Kernel leads' })
@@ -188,9 +189,9 @@ describe('Kernel projects', () => {
     bus.off('push', on)
 
     // The failed step and the ones after it go back to waiting, and only they run again.
-    expect(published[0].map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['install', 'ok'], ['copy', 'ok'], ['hooks', 'wait'], ['agents', 'wait']])
+    expect(published[0].map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['copy', 'ok'], ['hooks', 'wait'], ['agents', 'wait']])
     expect([...new Set(published.flatMap((p) => p.filter((s) => s.state === 'run').map((s) => s.id)))]).toEqual(['hooks', 'agents'])
-    expect(steps.map((s) => s.state)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok'])
+    expect(steps.map((s) => s.state)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok'])
     expect(steps.find((s) => s.id === 'hooks')?.error).toBeUndefined()
     // The starter agents the first try seated are still Kernel's, not agents the repo brought.
     expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Kai from .claude/agents, Kernel leads' })
@@ -292,7 +293,7 @@ describe('Kernel projects', () => {
     const done = setupDone(project.id)
     await k.handlers()['projects.retrySetup']({ projectId: project.id })
     const steps = await done
-    expect(steps.map((s) => s.state)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok'])
+    expect(steps.map((s) => s.state)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok'])
     // The starter agents the first launch seated are still Kernel's.
     expect(steps.find((s) => s.id === 'agents')?.brought).toBeUndefined()
     await k.stop({ budgetMs: 0 })
@@ -316,7 +317,7 @@ describe('Kernel projects', () => {
     bus.on('push', on)
     await k.handlers()['projects.list'](undefined)
     bus.off('push', on)
-    expect(published.at(-1)?.map((s) => [s.id, s.state, s.error])).toEqual([['clone', 'ok', undefined], ['host', 'ok', undefined], ['worktrees', 'fail', 'Setup stopped when Kernel quit.'], ['install', 'wait', undefined]])
+    expect(published.at(-1)?.map((s) => [s.id, s.state, s.error])).toEqual([['clone', 'ok', undefined], ['host', 'ok', undefined], ['worktrees', 'fail', 'Setup stopped when Kernel quit.']])
     await k.stop({ budgetMs: 0 })
   })
 
@@ -328,7 +329,7 @@ describe('Kernel projects', () => {
     await exec('git', ['-C', repo, 'remote', 'add', 'origin', remote])
     const project = await k.createProject({ source: 'folder', name: 'Pushed app', from: repo, team: ['kai'], autostart: false })
     const steps = await setupDone(project.id)
-    expect(steps.map((s) => s.id)).toEqual(['clone', 'host', 'worktrees', 'install', 'copy', 'hooks', 'push', 'agents'])
+    expect(steps.map((s) => s.id)).toEqual(['clone', 'host', 'worktrees', 'copy', 'hooks', 'push', 'agents'])
     expect(steps.find((s) => s.id === 'push')).toMatchObject({ state: 'ok', title: 'Check push access', detail: 'git can push to origin' })
     // Settings, Project, Git reads the same result without running it again.
     const first = await k.handlers()['projects.pushCheck']({ projectId: project.id })
@@ -495,30 +496,20 @@ describe("the project's Install step (KERNEL-260, KERNEL-913)", () => {
     return { k, repo, project, steps, h: k.handlers() }
   }
 
-  it('runs the install scripts with the Install step, and the first workspace starts at once (KERNEL-913)', async () => {
+  it('installs nothing at project setup, and the first workspace starts at once (KERNEL-948)', async () => {
     await withFakeNpm(async () => {
       const { k, repo, project, steps } = await start({ 'package.json': pkg('touch ran.txt') })
-      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: 'npm install' })
-      expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
+      expect(steps.map((s) => s.id)).not.toContain('install')
+      expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
       const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'First' })
       expect(ws.status).toBe('ready')
       await k.stop()
     })
   }, 90000)
 
-  it("runs an install that runs the repo's own code with the Install step (KERNEL-913)", async () => {
-    await withFakeNpm(async () => {
-      const { k, repo, steps } = await start({ Gemfile: 'source "https://rubygems.org"\n' })
-      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: 'bundle install' })
-      expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
-      await k.stop()
-    }, { bundle: '#!/bin/sh\ntouch ran.txt\n' })
-  }, 90000)
-
   it('runs each Install step an older Kernel held for trust once, then forgets the list (KERNEL-913)', async () => {
     await withFakeNpm(async () => {
       const { k, repo, project } = await start({ Gemfile: '' })
-      await rm(join(repo, 'ran.txt'))
       k.store.saveMeta('heldInstalls', [project.id, project.id, 'gone'])
       await k.projects.installHeld()
       expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
@@ -530,14 +521,6 @@ describe("the project's Install step (KERNEL-260, KERNEL-913)", () => {
     }, { bundle: '#!/bin/sh\ntouch ran.txt\n' })
   }, 90000)
 
-  it('runs go mod download with the Install step (KERNEL-444)', async () => {
-    await withFakeNpm(async () => {
-      const { k, repo, steps } = await start({ 'go.mod': 'module demo\n' })
-      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: 'go mod download' })
-      expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
-      await k.stop()
-    }, { go: '#!/bin/sh\ntouch ran.txt\n' })
-  }, 90000)
 })
 
 describe('Projects page helpers', () => {
@@ -568,5 +551,103 @@ describe('Clone a GitHub repo (KERNEL-945)', () => {
     expect(repoOfUrl(' cjjutba/fiscplus ')).toBe('cjjutba/fiscplus')
     expect(repoOfUrl('https://gitlab.com/a/b')).toBeUndefined()
     expect(repoOfUrl('just words')).toBeUndefined()
+  })
+})
+
+describe('a GitHub repo for every project (KERNEL-944)', () => {
+  /**
+   * Runs `fn` with a `gh` first on the PATH that creates repos as bare folders and answers `repo view` and `api`. `taken` lists the
+   * owner/name pairs that already exist. Returns the folder the bare repos land in.
+   */
+  async function withFakeGh(fn: (remotes: string) => Promise<void>, taken: string[] = []) {
+    const bin = await mkdtemp(join(tmpdir(), 'kernel-gh-'))
+    const remotes = join(bin, 'remotes')
+    await mkdir(remotes)
+    await writeFile(join(bin, 'gh'), [
+      '#!/bin/sh',
+      'case "$1 $2" in',
+      '  "repo create")',
+      '    name=$(basename "$3"); src=""; push=""; shift 3',
+      '    while [ $# -gt 0 ]; do case "$1" in --source) src="$2"; shift ;; --push) push=1 ;; esac; shift; done',
+      `    git init -q --bare "${remotes}/$name.git" && git -C "$src" remote add origin "${remotes}/$name.git"`,
+      '    [ -z "$push" ] || git -C "$src" push -q origin HEAD',
+      '    ;;',
+      '  "repo view")',
+      `    case " ${taken.join(' ')} " in *" $3 "*) echo '{"name":"x"}' ;; *) echo "GraphQL: Could not resolve to a Repository with the name '$3'." >&2; exit 1 ;; esac ;;`,
+      `  "api user") echo '{"login":"me","avatar":"https://avatars.example/me.png"}' ;;`,
+      `  "api user/orgs") echo '[{"login":"acme","avatar":"https://avatars.example/acme.png"}]' ;;`,
+      '  *) echo "not stubbed" >&2; exit 1 ;;',
+      'esac',
+      ''
+    ].join('\n'), { mode: 0o755 })
+    const path = process.env.PATH
+    process.env.PATH = `${bin}:${path}`
+    try { await fn(remotes) } finally { process.env.PATH = path }
+  }
+
+  it('makes a project from scratch as an empty repo with a README, and pushes it to a new private repo', async () => {
+    const { k, home } = await kernel()
+    await withFakeGh(async (remotes) => {
+      const project = await k.createProject({ source: 'scratch', name: 'Habit tracker', from: '', github: { owner: 'me', name: 'habit-tracker' }, cloneTo: join(home, 'Projects', 'habit-tracker'), team: [], autostart: false })
+      const steps = await setupDone(project.id)
+      expect(steps.map((s) => s.id).slice(0, 2)).toEqual(['clone', 'github'])
+      expect(steps.find((s) => s.id === 'clone')).toMatchObject({ state: 'ok', title: 'Create the folder' })
+      expect(steps.find((s) => s.id === 'github')).toMatchObject({ state: 'ok', title: 'Create me/habit-tracker on GitHub', detail: 'Private repo, pushed' })
+      expect(await readFile(join(project.path, 'README.md'), 'utf8')).toBe('# Habit tracker\n')
+      expect(k.store.project(project.id)?.repo).toBe('me/habit-tracker')
+      expect((await exec('git', ['-C', join(remotes, 'habit-tracker.git'), 'rev-parse', 'main'])).code).toBe(0)
+    })
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('gives a folder that is not a repo git and a remote, and pushes nothing of the user\'s', async () => {
+    const { k, home } = await kernel()
+    const folder = join(home, 'Projects', 'notes')
+    await mkdir(folder, { recursive: true })
+    await writeFile(join(folder, 'todo.txt'), 'x\n')
+    await withFakeGh(async (remotes) => {
+      const project = await k.createProject({ source: 'folder', name: 'Notes', from: folder, github: { owner: 'me', name: 'notes' }, team: [], autostart: false })
+      const github = (await setupDone(project.id)).find((s) => s.id === 'github')
+      expect(github).toMatchObject({ state: 'ok', detail: expect.stringContaining('Make the first commit') })
+      expect((await exec('git', ['-C', folder, 'remote', 'get-url', 'origin'])).stdout.trim()).toBe(join(remotes, 'notes.git'))
+      expect((await exec('git', ['-C', folder, 'rev-parse', 'HEAD'])).code).not.toBe(0)
+    })
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('pushes the current branch of a repo that has no remote yet', async () => {
+    const { k } = await kernel()
+    const repo = await tempRepo({ 'README.md': '# app\n' })
+    await withFakeGh(async (remotes) => {
+      const project = await k.createProject({ source: 'folder', name: 'App', from: repo, github: { owner: 'acme', name: 'app' }, team: [], autostart: false })
+      expect((await setupDone(project.id)).find((s) => s.id === 'github')).toMatchObject({ state: 'ok', detail: 'Private repo, pushed' })
+      expect((await exec('git', ['-C', join(remotes, 'app.git'), 'rev-parse', 'HEAD'])).code).toBe(0)
+      expect(await inspectFolder(repo)).not.toHaveProperty('remote')
+    })
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('lists the user then their orgs, and says when a name is taken or one GitHub won\'t take', async () => {
+    await withFakeGh(async () => {
+      expect(await listOwners()).toEqual([
+        { login: 'me', avatarUrl: 'https://avatars.example/me.png', org: false },
+        { login: 'acme', avatarUrl: 'https://avatars.example/acme.png', org: true }
+      ])
+      expect(await repoAvailable('me', 'fresh')).toEqual({ available: true })
+      expect(await repoAvailable('me', 'kernel')).toEqual({ available: false, reason: 'me/kernel already exists.' })
+      expect(await repoAvailable('me', 'my app')).toMatchObject({ available: false, reason: expect.stringContaining('letters, numbers') })
+    }, ['me/kernel'])
+  })
+
+  it('reads a folder\'s GitHub remote as owner/repo', async () => {
+    const repo = await tempRepo()
+    await exec('git', ['-C', repo, 'remote', 'add', 'origin', 'git@github.com:me/app.git'])
+    expect(await inspectFolder(repo)).toMatchObject({ git: true, remote: 'me/app' })
+  })
+
+  it('suggests a repo name GitHub keeps as typed (KERNEL-946)', () => {
+    expect(repoSlug('recipe-box')).toBe('recipe-box')
+    expect(repoSlug('cjjutba.dev')).toBe('cjjutba.dev')
+    expect(repoSlug(' My new app! ')).toBe('My-new-app')
   })
 })

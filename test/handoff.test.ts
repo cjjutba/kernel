@@ -19,7 +19,7 @@ import { waitRefusal } from '../src/main/services/waits'
 import { toolSpecs } from '../src/main/services/providers/codex/tools'
 import { toCodexInput } from '../src/main/services/providers/codex/runner'
 import { toUserMessage } from '../src/main/services/providers/claude'
-import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_GO_AHEAD, NO_PLAN, PLAN_MODE_OFF, quotesUser, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_GO_AHEAD, NO_PLAN, PLAN_MODE_OFF, quotesUser, signInNote, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -480,6 +480,33 @@ describe('waiting for another PR (KERNEL-259)', () => {
     const tools = kernelTools({} as KernelToolDeps)
     expect(tools.find((x) => x.name === 'create_workspace')!.description).not.toContain('Starts the agent right away')
     expect(tools.map((x) => x.name)).toContain('wait_for_merge')
+  })
+})
+
+describe('a hand-off says when a tool needs a sign-in on the agent\'s account (KERNEL-939)', () => {
+  it('adds one line to create_workspace and message_agent, and still hands off', async () => {
+    const asked: string[] = []
+    const noor = { id: 'noor', name: 'Noor', role: 'Engine', lead: false, tools: ['Read', 'Edit', 'Bash', 'mcp__porkbun'] } as AgentDef
+    const ws = { id: 'ws-1', branch: 'noor/dns', agentId: 'noor' } as Workspace
+    const deps: KernelToolDeps = {
+      projectId: 'project', lead: undefined, agents: async () => [noor], workspaces: () => [ws],
+      createWorkspace: async () => ws, messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
+      archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false,
+      signIns: async (agent) => { asked.push(agent.id); return { account: 'Main account', servers: [{ name: 'porkbun', state: 'needs-sign-in' }] } }
+    }
+    const tools = Object.fromEntries(kernelTools(deps).map((t) => [t.name, t]))
+    const created = await tools.create_workspace.handler({ agent: 'noor', title: 'DNS records', brief: 'Goal' } as never, {})
+    expect(created.isError).toBeFalsy()
+    expect((created.content[0] as { text: string }).text).toBe('Created ws-1 on noor/dns for noor. Porkbun needs a sign-in on Main account. Noor starts without it.')
+    const sent = await tools.message_agent.handler({ workspace_id: 'ws-1', text: 'One more record' } as never, {})
+    expect((sent.content[0] as { text: string }).text).toBe('Sent. Porkbun needs a sign-in on Main account. Noor carries on without it.')
+    expect(asked).toEqual(['noor', 'noor'])
+  })
+
+  it('names every server, the ones still being checked apart', () => {
+    expect(signInNote('Noor', 'Side', [{ name: 'porkbun', state: 'needs-sign-in' }, { name: 'claude.ai Gmail', state: 'needs-sign-in' }, { name: 'neon', state: 'checking' }], true))
+      .toBe('Porkbun and claude.ai Gmail need a sign-in on Side. Kernel is still checking Neon on Side. Noor starts without them.')
+    expect(signInNote('Noor', 'Side', [{ name: 'neon', state: 'checking' }], false)).toBe('Kernel is still checking Neon on Side. Noor carries on without it until the check passes.')
   })
 })
 

@@ -96,6 +96,11 @@ export interface NewProjectRequest {
   cloneTo?: string
   /** Folder projects: the folder is not a git repository, so run `git init` and make a first commit. */
   initGit?: boolean
+  /**
+   * Creates a private GitHub repo for the project and makes it `origin` (KERNEL-944). Scratch projects start as an empty repo
+   * with a README. A folder with no GitHub remote gets one, and a folder that isn't a repo yet is initialized first.
+   */
+  github?: { owner: string; name: string }
 }
 
 /** Values New project opens with. Fixtures use it to show the filled form. */
@@ -121,7 +126,7 @@ export interface NewAgentPrefill {
 /** One line of the project setup progress (ProjectSetup.png). */
 export interface ProjectSetupStep {
   /** `push` is there only when the project has a remote (KERNEL-460). `host` is the code host read from the remote (KERNEL-477). */
-  id: 'clone' | 'host' | 'worktrees' | 'install' | 'copy' | 'hooks' | 'push' | 'agents'
+  id: 'clone' | 'github' | 'host' | 'worktrees' | 'install' | 'copy' | 'hooks' | 'push' | 'agents'
   title: string
   detail: string
   /** `warn` finished with something to look at, which never blocks the project (KERNEL-437). */
@@ -186,10 +191,19 @@ export interface RepoSummary {
   description?: string
 }
 
+/** An account a new GitHub repo can belong to: the signed-in user, then the orgs they're in (KERNEL-944). */
+export interface GitHubOwner {
+  login: string
+  avatarUrl?: string
+  org: boolean
+}
+
 /** A local folder that could become a project (OpenFolder.png). */
 export interface FolderInfo {
   path: string
   git: boolean
+  /** owner/repo of the folder's GitHub remote, when it has one (KERNEL-944). */
+  remote?: string
   branch?: string
   /** Uncommitted changes in the checkout. */
   dirty?: number

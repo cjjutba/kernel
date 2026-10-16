@@ -117,6 +117,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'projects.pushCheck': async ({ projectId }) => f.pushChecks?.[projectId] ?? null,
     'github.repos': async ({ query }) => (f.repos ?? []).filter((r) => !query || r.fullName.includes(query)),
     'github.avatar': async () => null,
+    'github.owners': async () => f.githubOwners ?? [{ login: 'samrivera', org: false }],
+    'github.repoAvailable': async ({ owner, name }) => (f.takenRepos ?? []).includes(`${owner}/${name}`) ? { available: false, reason: `${owner}/${name} already exists.` } : { available: true },
     'agents.list': async ({ projectId, retired }) => (f.agents[projectId] ?? []).filter((a) => !!a.retired === !!retired),
     'agents.status': async ({ projectId }) => f.status[projectId] ?? {},
     'agents.save': async ({ projectId, agentId, patch }) => ({ ...agentOf(projectId, agentId), ...patch }),
