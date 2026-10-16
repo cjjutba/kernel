@@ -48,12 +48,13 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   models: {
     roles: {
       lead: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' },
+      frontend: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
       engineers: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
       qa: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
       reviewer: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' }
     },
     // The Lead and engineers hold long work, so they keep the model's window. A QA run or a review is short (feat-compact-window-per-role-with-plan).
-    compact: { lead: 'full', engineers: 'full', qa: '200k', reviewer: '200k' },
+    compact: { lead: 'full', frontend: 'full', engineers: 'full', qa: '200k', reviewer: '200k' },
     leadPlanMode: true, agentLimit: 0, agentTeams: false, leadUpdates: true, workspacePlanMode: false, effortByModel: {}
   },
   providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } },
@@ -85,9 +86,9 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
  */
 export const PLAN_KEYS = [
   'models.roles.lead.model', 'models.roles.reviewer.model',
-  'models.roles.lead.effort', 'models.roles.engineers.effort', 'models.roles.qa.effort', 'models.roles.reviewer.effort',
+  'models.roles.lead.effort', 'models.roles.frontend.effort', 'models.roles.engineers.effort', 'models.roles.qa.effort', 'models.roles.reviewer.effort',
   'models.agentLimit', 'pr.autoReview',
-  'models.compact.lead', 'models.compact.engineers', 'models.compact.qa', 'models.compact.reviewer'
+  'models.compact.lead', 'models.compact.frontend', 'models.compact.engineers', 'models.compact.qa', 'models.compact.reviewer'
 ] as const
 
 /**
@@ -110,8 +111,13 @@ const SAVED_BEFORE: Record<string, unknown[]> = {
   'pr.createInstructions': ['# Create a pull request\n1. Rebase on the base branch and run the test suite.\n2. Title it as a Conventional Commit.\n3. Fill in summary, scope and risk.\n4. Open it with `gh pr create` and print the URL.']
 }
 
-/** The version a settings.json written by KERNEL-225 or later carries. Older files saved every key, and are read as that. */
-const SAVED_VERSION = 2
+/**
+ * The version settings.json carries. A file from before 2 (KERNEL-225) saved every key, and is read as that. A file from
+ * before 3 had one row for every engineer, which became Frontend and Backend (KERNEL-974).
+ */
+const SAVED_VERSION = 3
+/** The first version that saves only what the user chose. */
+const SPARSE_SINCE = 2
 
 /** `claude auth status` says "pro", "max", "team" or "enterprise". Anything else, an API key login included, is `unknown`. */
 export function planOf(subscriptionType: unknown): ClaudePlan {
@@ -130,8 +136,8 @@ export function planDefaults(plan: ClaudePlan | undefined): DeepPartial<AppSetti
   if (plan === 'pro') {
     return {
       models: {
-        roles: { lead: { model: 'claude-sonnet-5-5', effort: 'medium' }, reviewer: { model: 'claude-sonnet-5-5', effort: 'medium' }, engineers: { effort: 'medium' }, qa: { effort: 'medium' } },
-        compact: { lead: '200k', engineers: '200k', qa: '200k', reviewer: '200k' },
+        roles: { lead: { model: 'claude-sonnet-5-5', effort: 'medium' }, reviewer: { model: 'claude-sonnet-5-5', effort: 'medium' }, frontend: { effort: 'medium' }, engineers: { effort: 'medium' }, qa: { effort: 'medium' } },
+        compact: { lead: '200k', frontend: '200k', engineers: '200k', qa: '200k', reviewer: '200k' },
         agentLimit: 2
       }
     }
@@ -268,10 +274,12 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
     const checked = terminalSettingsOf(deepMerge(defaults.terminal, own), defaults.terminal) as unknown as Record<string, unknown>
     s.terminal = Object.fromEntries(Object.keys(own).map((k) => [k, checked[k]]))
   }
-  const saved: DeepPartial<AppSettings> = (version === SAVED_VERSION ? s : sparse(s, defaults)) ?? {}
+  const sparseFile = typeof version === 'number' && version >= SPARSE_SINCE
+  const saved: DeepPartial<AppSettings> = (sparseFile ? s : sparse(s, defaults)) ?? {}
   // An old file's `false` was a choice, back when the default was on. It equals today's default, so `sparse` dropped it (feat-automatic-review-off-by-default).
-  if (version !== SAVED_VERSION && group('pr')?.autoReview === false) saved.pr = { ...saved.pr, autoReview: false }
+  if (!sparseFile && group('pr')?.autoReview === false) saved.pr = { ...saved.pr, autoReview: false }
   migrateRoles(saved)
+  if (!(typeof version === 'number' && version >= SAVED_VERSION)) splitEngineers(saved)
   migratePermissions(saved)
   return { saved, resolved: resolveSettings(defaults, saved, plan) }
 }
@@ -314,7 +322,9 @@ export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppS
   return next
 }
 
-const ROLES: Role[] = ['lead', 'engineers', 'qa', 'reviewer']
+const ROLES: Role[] = ['lead', 'frontend', 'engineers', 'qa', 'reviewer']
+/** The roles that had a key of their own before KERNEL-406. */
+const LEGACY_ROLES = ['lead', 'engineers', 'qa', 'reviewer']
 
 /**
  * Before KERNEL-406 each role had one Claude model and every role shared one `effort`. What the user chose of those moves into
@@ -324,15 +334,30 @@ const ROLES: Role[] = ['lead', 'engineers', 'qa', 'reviewer']
 function migrateRoles(saved: DeepPartial<AppSettings>) {
   const m = saved.models as Record<string, unknown> | undefined
   if (!m) return
-  const legacy = ROLES.filter((r) => typeof m[r] === 'string')
+  const legacy = LEGACY_ROLES.filter((r) => typeof m[r] === 'string')
   const effort = typeof m.effort === 'string' ? m.effort : undefined
   if (!m.roles && (legacy.length || effort)) {
     const roles: Record<string, Record<string, unknown>> = {}
     for (const r of legacy) roles[r] = { provider: 'claude', model: m[r] }
-    if (effort) for (const r of ROLES) roles[r] = { ...roles[r], effort }
+    if (effort) for (const r of LEGACY_ROLES) roles[r] = { ...roles[r], effort }
     m.roles = roles
   }
-  for (const k of [...ROLES, 'effort']) delete m[k]
+  for (const k of [...LEGACY_ROLES, 'effort']) delete m[k]
+}
+
+/**
+ * Before KERNEL-974 one row, `engineers`, set every engineer. It is the Backend row now, and the new Frontend row starts with
+ * what the user had chosen for it, model, effort and compact window, so nothing they set changes. Only a file from before the
+ * split gets this: in a newer one, a Backend choice with no Frontend one means Frontend was left as it was.
+ */
+function splitEngineers(saved: DeepPartial<AppSettings>) {
+  const m = saved.models as Record<string, unknown> | undefined
+  if (!m) return
+  for (const k of ['roles', 'compact']) {
+    const t = m[k]
+    if (!isTable(t) || t.engineers === undefined || t.frontend !== undefined) continue
+    t.frontend = structuredClone(t.engineers)
+  }
 }
 
 /**
