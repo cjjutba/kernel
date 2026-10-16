@@ -134,7 +134,7 @@ function TextFile({ ws, path, editedBy, changed }: { ws: Workspace; path: string
       {error ? (
         <div className="panel-empty"><span className="ink2 t-medium">Can't show this file</span><span>{error}</span></div>
       ) : (
-        <div ref={scroller} className="code-view code-view-flush selectable mono" role="region" aria-label={`Contents of ${path}`} tabIndex={0}>
+        <div ref={scroller} className="code-view selectable mono" role="region" aria-label={`Contents of ${path}`} tabIndex={0}>
           {text !== null && lines.map((l, i) => <div key={i} className="code-line"><span className="ln">{i + 1}</span><span className="src">{l || ' '}</span></div>)}
         </div>
       )}
@@ -162,7 +162,7 @@ export function TextView({ name, text }: { name: string; text: string }) {
       <ViewHead path={name} trailing={null}>
         <span className="muted t-meta">Read only · {lines.length} {lines.length === 1 ? 'line' : 'lines'}</span>
       </ViewHead>
-      <div className="code-view code-view-flush selectable mono" role="region" aria-label={`Contents of ${name}`} tabIndex={0}>
+      <div className="code-view selectable mono" role="region" aria-label={`Contents of ${name}`} tabIndex={0}>
         {lines.map((l, i) => <div key={i} className="code-line"><span className="ln">{i + 1}</span><span className="src">{l || ' '}</span></div>)}
       </div>
     </div>
