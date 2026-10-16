@@ -1,6 +1,9 @@
+import type { ReactNode } from 'react'
 import type { Project } from '@shared/types'
 import { landing } from '../../nav'
 import { actions, getState } from '../../store'
+import { openProject } from '../../lead'
+import { focusComposerIn } from './composer/bus'
 import { Icon, IconButton } from '../../ui'
 import { useScreenEscape } from '../../ui/hooks'
 import { ProjectIcon } from '../../components/ProjectIcon'
@@ -17,46 +20,56 @@ const leave = (): boolean => {
 }
 
 /**
- * New chat's header, the first row a chat has: the breadcrumb "project › New chat" and nothing on the right. No editor button, panel
- * toggle or PR capsule, since there is no workspace yet (KERNEL-788).
+ * The one header row of a Lead chat: project avatar and name (a link to the project), a separator, then the tabs and the new tab button
+ * (`children`), and what sits on the right (`end`). The chat's title is its tab, so it is said once.
  */
-export function NewChatHeader({ project }: { project?: Project }) {
+export function OneRowHeader({ project, children, end }: { project?: Project; children: ReactNode; end?: ReactNode }) {
   return (
-    <header className="header">
+    <header className="header" data-one-row>
       <SidebarToggleSlot />
       {project && !project.archived && <>
         <ProjectIcon project={project} className="crumb-avatar" />
-        <span className="crumb">{project.name}</span>
+        <button type="button" className="crumb" onClick={() => void openProject(project.id)}>{project.name}</button>
         <span className="muted"><Icon name="right" size={12} /></span>
       </>}
-      <h1 className="ellipsis">New chat</h1>
+      {children}
       <span className="grow" />
+      {end}
     </header>
   )
 }
 
 /**
- * The tab row's one tab, "New chat", with the chat icon and a × that stays in view. No rename pencil, no new tab button. The × and Esc
- * go back (KERNEL-788). Esc is the screen's own, so an open menu and a field being edited take it first, and a toast waits.
+ * New chat's header, the only row a chat has: the project, then its one tab, "New chat", with no close button while it is the only tab
+ * and empty, and the new tab button. No editor button, panel toggle or PR capsule, since there is no workspace yet (KERNEL-788).
  */
-export function NewChatTab() {
+export function NewChatHeader({ project, focusIn }: { project?: Project; focusIn: string }) {
+  return <OneRowHeader project={project}><NewChatTab focusIn={focusIn} /></OneRowHeader>
+}
+
+/**
+ * The tab row's one tab, "New chat", with the chat icon and no close button, since closing the only, empty tab would only leave the page.
+ * + puts the caret in the box. Esc goes back (KERNEL-788). Esc is the screen's own, so an open menu and a field being edited take it
+ * first, and a toast waits. `focusIn` is the key the box takes focus requests under.
+ */
+export function NewChatTab({ focusIn }: { focusIn: string }) {
   useScreenEscape((_e, inField) => {
     if (inField) return false
     return leave()
   })
   return (
-    <div className="ws-tabs">
+    <div className="ws-tabs" data-inline>
       <div role="tablist" aria-label="Chats and files" className="row gap-2" style={{ alignItems: 'flex-end', minWidth: 0 }}>
-        <span className="tab-group" data-on data-rest>
+        <span className="tab-group" data-on>
           <button type="button" role="tab" aria-selected id="ws-tab-new-chat" className="ws-tab">
             <span className="tab-glyph" aria-hidden="true"><Icon name="chat" size={14} /></span>
             <span className="ellipsis">New chat</span>
           </button>
-          <span className="tab-end">
-            <IconButton className="tab-caret more" icon="close" size={12} label="Close New chat" onClick={leave} />
-          </span>
         </span>
       </div>
+      <span className="tab-new">
+        <IconButton icon="plus" size={14} label="New tab" onClick={() => focusComposerIn(focusIn)} />
+      </span>
     </div>
   )
 }

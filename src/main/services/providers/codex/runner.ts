@@ -10,7 +10,7 @@ import { planChanges } from '../../handoff'
 import { exec } from '../../exec'
 import { fileMarker, filesNote, IMAGE_DATA_URL, imageMarker, imagesNote, isAttached } from '../../attachments'
 import { ALWAYS_ASK, decide, referenceWrite, REFERENCE_READ_ONLY, rulesOf, saveAlwaysAllow, type Rules, type RunMode, type Step } from '../../permissions'
-import { toolPolicy } from '../../agentTools'
+import { handoffRefusal, toolPolicy } from '../../agentTools'
 import { codexStatus } from '../../mcp'
 import { SHARED_DIR } from '../../sharedFiles'
 import type { LimitPatch } from '../limits'
@@ -635,7 +635,8 @@ export class CodexRunner implements Runner {
     // A review only reads, whatever its agent's file says (KERNEL-549).
     if (this.host.workspace.reviewOf) return { decision: 'decline' }
     // Hand off edits nothing but the files it shares under .kernel/shared, whatever the file and the mode say (KERNEL-770).
-    if (this.handoff && !(change?.changes.length && change.changes.every((c) => sharesFile(this.host.workspace.path, c.path)))) return { decision: 'decline' }
+    // The note says why, and that a switch to Build here during the turn applies from the next message.
+    if (this.handoff && !(change?.changes.length && change.changes.every((c) => sharesFile(this.host.workspace.path, c.path)))) return this.declined(handoffRefusal(this.host.leadMode()))
     if (decide({ tool: name, sandbox: p.grantRoot ? 'outside' : 'inside' }, this.rules())?.behavior === 'allow') return { decision: 'accept' }
     const d = describeTool(name, { file_path: path })
     const result = await this.host.ask({ kind: 'tool', toolName: name, input: { file_path: path }, title: d.title, detail: p.reason ?? undefined }, { signal })

@@ -54,6 +54,18 @@ button.ws-issue:hover { background: var(--surface-3); }
 .tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more, .tab-group[data-rest] .tab-caret.more { opacity: 1; }
 .tab-group:hover .tab-pen, .tab-group:has(:focus-visible) .tab-pen { opacity: 0; }
 
+/* One-row header (a Lead chat): the tabs sit in the header after the project, so the row is the header's height and its hairline is the only one. */
+.header[data-one-row] { padding-left: 12px; gap: 4px; }
+.header[data-one-row] .crumb { margin-left: 2px; }
+.ws-tabs[data-inline] { align-self: stretch; flex: 0 1 auto; height: auto; min-width: 0; padding: 0; border: 0; }
+.ws-tabs[data-inline] > [role='tablist'] { height: 100%; flex: 0 1 auto; min-width: 0; }
+/* The project avatar and name, + and the right side keep their size. The tabs are what gives way, and a title truncates. */
+.header[data-one-row] .crumb-avatar, .ws-tabs[data-inline] .tab-new { flex-shrink: 0; }
+.ws-tabs[data-inline] .tab-group { height: 100%; }
+.ws-tabs[data-inline] .tab-new { margin-left: 2px; }
+.ws-tabs[data-inline] .ws-tab { padding: 0 8px; gap: 6px; }
+.ws-tabs[data-inline] > [role='tablist'] { gap: 0; }
+
 /* transcript */
 /* The scroll area sits in a frame, so the Scroll to bottom button floats over it instead of scrolling away with the thread (KERNEL-532). */
 .ws-chat { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -499,7 +511,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .lead-up .up-next { max-width: 760px; margin: 0 auto; }
 /* Up next: the tracker's issues nobody has started. A quiet header, then one row per issue that fills on hover, with Plan showing at the end. */
 .up-next { width: 100%; max-width: 640px; text-align: left; }
-.up-next-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 10px 6px; }
+.up-next-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 10px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--line-2); }
 .up-next-head h3 { margin: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
 .up-next-all { padding: 0; border: 0; background: none; font-size: var(--fs-meta); color: var(--muted); }
 .up-next-all:hover, .up-next-all:focus-visible { color: var(--ink-2); }
@@ -507,16 +519,18 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .up-next ul { display: grid; grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) auto; margin: 0; padding: 0; list-style: none; }
 .up-next ul.up-next-plain { grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content) auto; }
 .up-next-item { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
-.up-next-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: 10px; align-items: center; height: 34px; padding: 0 6px 0 10px; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-2); font: inherit; font-size: var(--fs-ui); text-align: left; cursor: pointer; }
-.up-next-item + .up-next-item { margin-top: 2px; }
+.up-next-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: 12px; align-items: center; height: 38px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-2); font: inherit; font-size: var(--fs-ui); text-align: left; cursor: pointer; }
+.up-next-item + .up-next-item { margin-top: 1px; }
 .up-next-row:hover, .up-next-row:focus-visible { background: var(--surface-3); color: var(--ink); }
 .up-next-row:focus-visible { outline: 1px solid var(--line-4); outline-offset: -1px; }
 .up-next-row > svg { color: var(--ink-3); }
 .up-next-key { font-size: var(--fs-chip); color: var(--muted); }
 .up-next-title { min-width: 0; }
-.up-next-project { max-width: 180px; font-size: var(--fs-meta); color: var(--muted); }
-.up-next-plan { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-sm); font-size: var(--fs-meta); color: var(--ink-2); opacity: 0; }
-.up-next-row:hover .up-next-plan, .up-next-row:focus-visible .up-next-plan { opacity: 1; }
+.up-next-project { max-width: 180px; justify-self: end; font-size: var(--fs-meta); color: var(--muted); }
+.up-next-plan { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 48px; font-size: var(--fs-meta); color: var(--muted); }
+.up-next-plan svg { transition: transform 120ms ease; }
+.up-next-row:hover .up-next-plan, .up-next-row:focus-visible .up-next-plan { color: var(--ink); }
+.up-next-row:hover .up-next-plan svg, .up-next-row:focus-visible .up-next-plan svg { transform: translateX(2px); }
 .chat-suggest { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; }
 .chat-suggest button { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: transparent; color: var(--ink-2); font-size: var(--fs-code); }
 .chat-suggest button svg { color: var(--muted); }

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AgentDef, AgentEdit, Effort } from '@shared/types'
+import type { AgentDef, AgentEdit, Effort, Role } from '@shared/types'
 import { EFFORTS, MODELS } from '@shared/types'
-import { isReviewer } from '@shared/team'
+import { roleOf } from '@shared/team'
 import { call } from '../../api'
 import { useStore } from '../../store'
 import { Icon, SegmentedControl } from '../../ui'
 import { SettingsLink } from '../settings/kit'
+import { defaultEffortOf } from '../workspace/composer/modelPrefs'
 import { STANDARD_TOOLS, modelAlias, sameModel, warningText, withExtras } from './model'
 import './agent.css'
 
@@ -53,7 +54,8 @@ export function useSkillNames(projectId?: string): string[] {
 }
 
 /** Settings, Models and effort's name for the role an agent takes its default from. */
-const roleTitle = (a: AgentDef) => (a.lead ? 'Kernel' : isReviewer(a) ? 'Reviewer' : /qa/i.test(a.role) ? 'QA' : /frontend/i.test(a.role) ? 'Frontend' : 'Backend')
+const ROLE_TITLES: Record<Role, string> = { lead: 'Kernel', reviewer: 'Reviewer', qa: 'QA', frontend: 'Frontend', engineers: 'Backend' }
+const roleTitle = (a: AgentDef) => ROLE_TITLES[roleOf(a)]
 
 /**
  * Whether the agent follows Settings or its file pins a model (KERNEL-406), with Use Settings to clear the pin. Saved with
@@ -72,7 +74,6 @@ function PinHint({ agent, model, onClear, disabled }: { agent: AgentDef; model: 
 export function AgentFields({ agent, form, set, skillNames, readOnly = false, noSkillsHint = 'No skills found in this project.' }: {
   agent: AgentDef; form: AgentForm; set: (patch: Partial<AgentForm>) => void; skillNames: string[]; readOnly?: boolean; noSkillsHint?: string
 }) {
-  const defaultEffort = useStore((s) => s.settings?.models.roles.engineers.effort)
   const models = useStore((s) => s.settings?.models)
   const builtIn = !!agent.builtIn && !agent.file
   const locked = builtIn || readOnly
@@ -85,7 +86,7 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
   }
   // Kernel's own agents have no model of their own: Settings, Models picks it.
   const modelId = builtIn ? (agent.lead ? models?.roles.lead.model : models?.roles.reviewer.model) ?? '' : MODELS.find((m) => sameModel(form.model, m.id))?.id ?? ''
-  const effort = form.effort ?? defaultEffort ?? 'high'
+  const effort = form.effort ?? defaultEffortOf(agent, models)
   return (
     <>
       {builtIn && (
