@@ -4,10 +4,12 @@
 .acct svg { color: var(--muted); flex-shrink: 0; }
 .acct-av { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); background: var(--ink); color: var(--canvas); font-size: var(--fs-tile-md); font-weight: var(--fw-semibold); }
 
-/* An account in the menu: its name and plan on the left, a check or a short note on the right. The whole row is the switch button (KERNEL-561). */
+/* An account in the menu: a gutter for the check, as in Mac menus, then its name, then its plan and chats right-aligned, so every row's text lines up. The whole row is the switch button (KERNEL-561). */
 .acct-row { display: flex; align-items: center; gap: 8px; width: 100%; }
 .acct-name { flex: 0 1 auto; min-width: 0; font-weight: var(--fw-medium); color: var(--ink); }
-.acct-plan { flex: 1 1 auto; min-width: 0; font-size: var(--fs-meta); color: var(--muted); }
-.acct-state { flex-shrink: 0; font-size: var(--fs-meta); color: var(--muted); }
-.acct-row > svg { flex-shrink: 0; color: var(--ink-2); }
+.acct-plan { flex: 0 1 auto; min-width: 0; margin-left: auto; font-size: var(--fs-meta); color: var(--muted); text-align: right; }
+.acct-mark { flex-shrink: 0; width: 14px; display: inline-flex; justify-content: center; color: var(--ink-2); }
 .menu-item[data-rich]:has(> .acct-row) { height: 30px; flex-direction: row; align-items: center; padding: 0 8px; }
+.menu[aria-label='Account'] .menu-title { color: var(--muted); }
+/* Headings and the items below the accounts start where the account names do, past the check gutter. */
+.menu:has(.acct-row) .menu-title, .menu:has(.acct-row) .menu-item:not(:has(> .acct-row)) { padding-left: 30px; }

@@ -35,7 +35,7 @@ export function AccountButton() {
   const accountEntry = (a: AccountProfile): MenuEntry => {
     const provider = PROVIDERS.find((p) => p.id === a.provider)?.label
     const switching = busy === `${a.provider}:${a.id}`
-    const note = !a.signedIn ? 'Signed out' : a.auth === 'apiKey' ? 'Billed per token' : undefined
+    const meta = !a.signedIn ? 'Signed out' : [a.auth === 'apiKey' ? 'Billed per token' : a.plan, chatsLabel(counts[a.provider]?.[a.id])].filter(Boolean).join(' · ')
     return {
       id: `acct:${a.provider}:${a.id}`,
       label: a.label,
@@ -43,16 +43,17 @@ export function AccountButton() {
       ariaLabel: !a.signedIn ? `${provider}, ${a.label}, signed out. Opens providers` : a.active ? `${provider}, ${a.label}, in use` : `Switch ${provider} to ${a.label}`,
       content: (
         <span className="acct-row">
+          <span className="acct-mark">{switching ? <Spinner label={null} pattern="wave-back" /> : a.active ? <Icon name="check" size={14} /> : null}</span>
           <span className="acct-name ellipsis">{a.label}</span>
-          <span className="acct-plan ellipsis">{[a.auth === 'apiKey' ? undefined : a.plan, chatsLabel(counts[a.provider]?.[a.id])].filter(Boolean).join(' · ')}</span>
-          {switching ? <Spinner label={null} pattern="wave-back" /> : note ? <span className="acct-state">{note}</span> : a.active ? <Icon name="check" size={14} /> : null}
+          <span className="acct-plan ellipsis">{meta}</span>
         </span>
       ),
       onSelect: !a.signedIn ? () => go({ name: 'settings', page: 'accounts', tab: a.provider }) : a.active ? undefined : () => switchTo(a.provider, a.id)
     }
   }
   const groups = PROVIDERS.flatMap((p, i) => {
-    const mine = accounts.filter((a) => a.provider === p.id)
+    // API keys go after the subscriptions. The rest keep their order, so a switch doesn't move rows.
+    const mine = accounts.filter((a) => a.provider === p.id).sort((a, b) => Number(a.auth === 'apiKey') - Number(b.auth === 'apiKey'))
     return mine.length ? [...(i ? [MENU_SEPARATOR] : []), { id: `title:${p.id}`, label: p.label, title: true }, ...mine.map(accountEntry)] : []
   })
   return (
@@ -69,9 +70,8 @@ export function AccountButton() {
             ? [
                 ...groups,
                 MENU_SEPARATOR,
-                { id: 'settings', label: 'Settings', shortcut: '⌘,', onSelect: () => actions.ui.openSettings() },
-                MENU_SEPARATOR,
-                { id: 'manage', label: 'Manage accounts', onSelect: () => go({ name: 'settings', page: 'accounts' }) }
+                { id: 'manage', label: 'Manage accounts', onSelect: () => go({ name: 'settings', page: 'accounts' }) },
+                { id: 'settings', label: 'Settings', shortcut: '⌘,', onSelect: () => actions.ui.openSettings() }
               ]
             : [
                 ...(who ? [{ id: 'who', label: who, disabled: true }] : []),
