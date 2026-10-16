@@ -283,7 +283,7 @@ function StepLine({ icon, glyph, failed, label, detail, preview, keep, chip, mon
       )}
       <span className="ellipsis" style={{ maxWidth: 300, flexShrink: 0, color: failed ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
       {chip ? <span className="grow step-chip">{chip}</span> : <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || keep || !open ? preview ?? detail : null}</span>}
-      {meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{meta}</span>}
+      {meta && <span className="mono muted t-chip">{meta}</span>}
     </>
   )
 }
@@ -328,7 +328,7 @@ function StepRow({ icon, glyph, failed, label, detail, preview, keep, name, chip
     void onOpen().then((handled) => { if (!handled) setOpen((o) => !o) })
   }
   return (
-    <div className="col" style={{ gap: 6 }}>
+    <div className="col gap-6">
       <button
         type="button" className="trow trow-btn" aria-label={name} aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={click}
         {...(onPeek && {
@@ -695,7 +695,7 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
   const { bad } = block.summary
   const last = block.entries[block.entries.length - 1]
   return (
-    <div className="col" style={{ gap: 2 }} ref={box}>
+    <div className="col gap-2" ref={box}>
       <button type="button" className="group-btn" aria-expanded={open} aria-controls={id} onClick={() => setManual(!open)}>
         <span className="chev" data-open={open}><Icon name="right" size={12} /></span>
         <span className="group-text">
