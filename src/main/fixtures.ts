@@ -116,6 +116,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'projects.recentFolders': async () => f.folders ?? [],
     'projects.pushCheck': async ({ projectId }) => f.pushChecks?.[projectId] ?? null,
     'github.repos': async ({ query }) => (f.repos ?? []).filter((r) => !query || r.fullName.includes(query)),
+    'github.avatar': async () => null,
     'agents.list': async ({ projectId, retired }) => (f.agents[projectId] ?? []).filter((a) => !!a.retired === !!retired),
     'agents.status': async ({ projectId }) => f.status[projectId] ?? {},
     'agents.save': async ({ projectId, agentId, patch }) => ({ ...agentOf(projectId, agentId), ...patch }),

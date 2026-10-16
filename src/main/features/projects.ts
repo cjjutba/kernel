@@ -13,7 +13,7 @@ import { scanInstructions } from '../services/instructionConflicts'
 import { exec } from '../services/exec'
 import { checkPush, pushStepOf } from '../services/preflight'
 import { resolveFilesToCopy } from '../services/filesToCopy'
-import { AVATAR_FAILED, githubOwner, readImage } from '../services/projectIcons'
+import { AVATAR_FAILED, githubAvatar, githubOwner, imageType, readImage } from '../services/projectIcons'
 import { removeTree } from '../services/removeTree'
 import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, exists, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/projects'
 import { Feature } from './feature'
@@ -45,6 +45,8 @@ export class Projects extends Feature {
   private readonly checking = new Map<string, Promise<PushCheck | null>>()
   /** By project id, the project's setup, so Check again can update its step and Try again can run it again. */
   private readonly setups = new Map<string, Setup>()
+  /** Owner avatars as data URLs, read once per launch. A failed read is kept as null, so a list doesn't ask again (KERNEL-945). */
+  private readonly avatars = new Map<string, Promise<string | null>>()
   /** Whether the setups saved before this launch are in `setups` yet. Read on first use, since features have no start of their own. */
   private restored = false
 
@@ -59,6 +61,17 @@ export class Projects extends Feature {
     this.store.saveProject(project)
     await this.k.team.agents(project.id)
     return project
+  }
+
+  /** An owner's avatar as a data URL, or null when gh or the network can't give one. Cached for the launch (KERNEL-945). */
+  avatarOf(owner: string): Promise<string | null> {
+    if (!githubOwner(owner)) return Promise.resolve(null)
+    let found = this.avatars.get(owner)
+    if (!found) {
+      found = githubAvatar(owner).then((buf) => `data:image/${imageType(buf) === 'png' ? 'png' : 'jpeg'};base64,${buf.toString('base64')}`, () => null)
+      this.avatars.set(owner, found)
+    }
+    return found
   }
 
   // ---------- new projects
@@ -504,6 +517,7 @@ export class Projects extends Feature {
       'projects.recentFolders': async () => recentFolders(this.store.projects().map((r) => r.path), this.home),
       'projects.pushCheck': async ({ projectId, recheck }) => this.pushCheck(projectId, recheck),
       'github.repos': async ({ query }) => listRepos(query),
+      'github.avatar': async ({ owner }) => this.avatarOf(owner),
       'projects.setPaused': async ({ projectId, paused }) => (paused ? this.pauseProject(projectId, 'you') : this.resumeProject(projectId))
     } satisfies Partial<Handlers>
   }
