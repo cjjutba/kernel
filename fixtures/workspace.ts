@@ -1848,6 +1848,32 @@ function sidebarUnread(f: Fixture): Partial<Fixture> {
   }
 }
 
+/**
+ * SidebarChatPrs (no PNG, KERNEL-993): `grouped` where a chat's own PR shows on its row. The table chat has a ready PR, the login chat has checks running, and the
+ * demo chat's PR is merged. The export chat is folded over a teammate with a red PR and keeps its chat icon.
+ */
+function sidebarChatPrs(f: Fixture): Partial<Fixture> {
+  const g = grouped(f, { tab: 'chat-table', running: [] })
+  const own = (id: string, over: Partial<Workspace>) => (w: Workspace) => (w.id === id ? { ...w, ...over } : w)
+  const edits = [
+    own('ws-chat-table', { prState: 'ready', prNumber: 31, prUrl: 'https://github.com/cjjutba/client-a/pull/31' }),
+    own('ws-chat-login', { prState: 'checks', prNumber: 32, prUrl: 'https://github.com/cjjutba/client-a/pull/32' }),
+    own('ws-chat-demo', { prState: 'merged', prNumber: 33, prUrl: 'https://github.com/cjjutba/client-a/pull/33' }),
+    own('ws-pdf-renderer', { prState: 'cifail', prNumber: 34, prUrl: 'https://github.com/cjjutba/client-a/pull/34' })
+  ]
+  return { ...g, workspaces: g.workspaces!.map((w) => edits.reduce((t, e) => e(t), w)), ui: { ...g.ui!, foldedChats: [GROUPED.export] } }
+}
+
+/** SidebarChatPrPlan (no PNG, KERNEL-993): the table chat plans while its PR's CI failed, so its icon stays red. The login chat has a plain chat icon, and so does the Hand off chat. */
+function sidebarChatPrPlan(f: Fixture): Partial<Fixture> {
+  const g = grouped(f, { tab: 'chat-table', running: [] })
+  return {
+    ...g,
+    chats: g.chats!.map((c) => (c.id === 'chat-table' ? { ...c, plan: true } : c)),
+    workspaces: g.workspaces!.map((w) => (w.id === 'ws-chat-table' ? { ...w, prState: 'cifail', prNumber: 31, prUrl: 'https://github.com/cjjutba/client-a/pull/31' } : w))
+  }
+}
+
 /** SidebarPlanChat (no PNG): `grouped` with the table chat and its copy tab planning, so their rows take the blue icon next to the ordinary ones. */
 function sidebarPlanChat(f: Fixture): Partial<Fixture> {
   const g = grouped(f, { tab: 'chat-login', running: [] })
@@ -3038,6 +3064,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   GroupedChatArchive: scene((f) => grouped(f, { running: [] })),
   SidebarUnread: scene(sidebarUnread),
   SidebarPlanChat: scene(sidebarPlanChat),
+  SidebarChatPrs: scene(sidebarChatPrs),
+  SidebarChatPrPlan: scene(sidebarChatPrPlan),
   // Archiving the export chat would stop Kai's open PR and drop the renderer's uncommitted changes, so it asks first (KERNEL-405).
   ConfirmArchiveChat: scene((f) => {
     const g = grouped(f, { running: [] })

@@ -145,11 +145,14 @@ function ChatItemRow({ projectId, thread, ws, tabs, owned, folded, slot, leaving
   })
   const arrive = useArriving(current && !leaving)
   // Plan mode tints the icon `plan` blue, like the composer: a tab that plans, or a plan waiting for approval. The shape still says the state (no-amber-icons).
-  const planning = tabs.some((c) => c.plan) || waiting.some(isPlanApproval)
-  const g = chatGlyph({ ws, waiting, running })
+  const local = useLocalMerge(ws)
+  const pending = useStore((s) => (ws ? s.prPending[ws.id] : undefined))
+  const g = chatGlyph({ ws, waiting, running, local, pending })
   // The loader takes the icon only when nothing waits on you: a wait, on a tab or on a hidden workspace, keeps its icon until it is answered.
   const busy = g.icon === 'spin'
-  const shown = restIcon(g, chatGlyph({ ws, waiting, running: false }), 'chat')
+  const shown = restIcon(g, chatGlyph({ ws, waiting, running: false, local }), 'chat')
+  // The blue tint belongs to the chat and plan icons: a PR icon keeps its green, red or purple in plan mode (KERNEL-993).
+  const planning = (tabs.some((c) => c.plan) || waiting.some(isPlanApproval)) && (shown.icon === 'chat' || shown.icon === 'plan')
   // A new reply in any tab, or in a hidden workspace while folded, bolds the title. The icon keeps its own state (KERNEL-508).
   const unread = useStore((s) => chatUnread({ tabs, owned, chats: s.chats, folded, current }))
   const [archiving, run] = useBusy()
@@ -164,7 +167,7 @@ function ChatItemRow({ projectId, thread, ws, tabs, owned, folded, slot, leaving
       >
         <span className="nav-glyph" data-tone={shown.tone} data-owned={owned.length ? '' : undefined} data-plan={planning ? '' : undefined} aria-hidden="true">{busy ? <Spinner label={null} /> : <Icon name={shown.icon} />}</span>
         <span className="grow ellipsis">{thread.title}</span>
-        {slot?.hint && <KeyHint n={slot.n} />}
+        {slot?.hint ? <KeyHint n={slot.n} /> : ws?.prNumber ? <span className="mono muted ws-right ws-pr">#{ws.prNumber}</span> : null}
       </button>
       {ws && (
         <div className="more ws-archive">
@@ -177,7 +180,7 @@ function ChatItemRow({ projectId, thread, ws, tabs, owned, folded, slot, leaving
           <Icon name="right" size={14} />
         </button>
       )}
-      {card.at && <ChatCard projectId={projectId} thread={thread} tabs={tabs} owned={owned} at={card.at} id={card.id} hold={card.hold} onArchive={ws ? () => { card.close(); archive() } : undefined} />}
+      {card.at && <ChatCard projectId={projectId} thread={thread} ws={ws} tabs={tabs} owned={owned} at={card.at} id={card.id} hold={card.hold} onArchive={ws ? () => { card.close(); archive() } : undefined} />}
     </div>
   )
 }
