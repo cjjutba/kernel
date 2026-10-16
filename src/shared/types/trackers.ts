@@ -56,13 +56,23 @@ export interface Tracker {
   /** Files a new issue, in the project's Linear team or GitHub repo: the Lead's file_issue. The issue as the tracker keys it. */
   create: (issue: IssueDraft) => Promise<IssueSummary>
   /** Changes what `change` sets on one issue, leaving the rest as it was: the Lead's file_issue with an issue key. */
-  edit: (id: string, change: Partial<IssueDraft>) => Promise<IssueSummary>
+  edit: (id: string, change: IssueChange) => Promise<IssueSummary>
+  /** Adds a comment in markdown to one issue: the Lead's file_issue with `comment`. The comment's link, when the tracker gives one. */
+  comment: (id: string, body: string) => Promise<{ url?: string }>
 }
 
 /** What the Lead's file_issue writes to an issue: its title and its description in markdown. */
 export interface IssueDraft {
   title: string
   description?: string
+}
+
+/**
+ * What file_issue changes on an existing issue. `state` is the state's name as the tracker has it: one of the team's states on
+ * Linear ("In Review"), `open` or `closed` on GitHub.
+ */
+export interface IssueChange extends Partial<IssueDraft> {
+  state?: string
 }
 
 /** The tracker a project uses, for the screens that list its issues. `where` is GitHub's `owner/repo` (KERNEL-471). */

@@ -267,7 +267,7 @@ describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL
   const linear = (k: Kernel) => {
     const asked: string[] = []
     const tracker: Tracker = {
-      kind: 'linear', search: async () => [], start: async () => undefined, create: async () => { throw new Error('unused') }, edit: async () => { throw new Error('unused') },
+      kind: 'linear', search: async () => [], start: async () => undefined, create: async () => { throw new Error('unused') }, edit: async () => { throw new Error('unused') }, comment: async () => { throw new Error('unused') },
       issue: async (id) => { asked.push(id); if (id !== issue.id) throw new Error(`Linear has no issue ${id}, or this token can't see it.`); return issue }
     }
     k.integrations.trackerFor = async () => tracker

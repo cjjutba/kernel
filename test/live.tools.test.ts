@@ -99,7 +99,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live issue without a tracker MCP serv
       const { k, project, done } = await boot(provider === 'codex' ? { models: { roles: { lead: codexRole, engineers: codexRole, qa: codexRole, reviewer: codexRole }, leadPlanMode: false } } : {})
       const word = `fence-${randomUUID().slice(0, 8)}`
       const tracker: Tracker = {
-        kind: 'linear', search: async () => [], start: async () => undefined, create: async () => { throw new Error('unused') }, edit: async () => { throw new Error('unused') },
+        kind: 'linear', search: async () => [], start: async () => undefined, create: async () => { throw new Error('unused') }, edit: async () => { throw new Error('unused') }, comment: async () => { throw new Error('unused') },
         issue: async (id) => ({ id, title: 'Paint the fence', description: `Paint it green. The codeword is ${word}.`, comments: [], labels: [] })
       }
       k.integrations.trackerFor = async () => tracker
