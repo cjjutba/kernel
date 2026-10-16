@@ -11,6 +11,7 @@ import { isLeadWorkspace, leadOf, openProject } from '../../lead'
 import { currentThread, tabOf, threadIdOf } from '../../nav'
 import { ProjectIcon } from '../../components/ProjectIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
+import { FileLinkScope } from './fileLinks'
 import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './leadNoChat'
 import { NewChatHeader, NewChatTab } from './NewChatBar'
 import { NewLeadChat } from './NewLeadChat'
@@ -269,6 +270,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary projectId={ws.projectId} capsule quiet={held} />)}
         {!panels && <PanelToggleSlot />}
       </header>}
+      <FileLinkScope.Provider value={workspaceId}>
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
       <OpenIssue.Provider value={issueCtx}>
@@ -301,6 +303,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       </OpenIssue.Provider>
       </OpenText.Provider>
       </OpenImage.Provider>
+      </FileLinkScope.Provider>
       {panels && !newChatShown && (
         <aside ref={aside} aria-label="Workspace panels" className="ws-aside" style={panelWidth === null ? undefined : { width: `max(${PANEL_MIN}px, min(${panelWidth}px, 100cqw - ${CHAT_MIN}px))` }}>
           <ResizeHandle

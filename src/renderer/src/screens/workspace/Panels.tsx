@@ -25,6 +25,7 @@ import { scriptKey } from '@shared/scriptLog'
 import { BottomResize } from './BottomResize'
 import { bottomKindOf } from './bottomSplit'
 import { FileIcon } from '../../components/FileIcon'
+import { useFolderFocus } from './fileLinks'
 import { FileTree } from './FileTree'
 import { gitDecoration } from './gitStatus'
 import { changesToEntries, openByDefault } from './tree'
@@ -64,6 +65,16 @@ function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; cha
     return () => { live = false }
   }, [ws.id, changes])
   const initial = useMemo(() => openByDefault(tree ?? []), [tree])
+  // A link in chat to a folder opens its parents and the folder itself, and scrolls to it.
+  const asked = useFolderFocus(ws.id)
+  useEffect(() => {
+    if (!asked || !tree) return
+    const parts = asked.path.split('/')
+    const chain = parts.map((_, i) => parts.slice(0, i + 1).join('/'))
+    setOpen((o) => new Set([...(o ?? initial), ...chain]))
+    const frame = requestAnimationFrame(() => [...(scroller.current?.querySelectorAll<HTMLElement>('[data-keep-id]') ?? [])].find((el) => el.dataset.keepId === asked.path)?.scrollIntoView({ block: 'center' }))
+    return () => cancelAnimationFrame(frame)
+  }, [asked, tree])
   // Filtering draws every folder with a match open, but the ones the reader closed since.
   const found = useMemo(() => (filter.filtering ? filterEntries(tree ?? [], filter.query) : null), [tree, filter.filtering, filter.query])
   const expanded = useMemo(() => (found ? new Set([...found.dirs].filter((d) => !filter.shut.has(d))) : open ?? initial), [found, filter.shut, open, initial])

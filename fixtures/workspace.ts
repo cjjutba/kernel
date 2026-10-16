@@ -744,6 +744,30 @@ const newChatBranches = (f: Fixture): Partial<Fixture> => ({
   branches: ['origin/main', 'origin/feat/t-14-invoice-table', 'origin/feat/t-12-invoice-schema', 'origin/feat/t-09-org-invites', 'origin/fix/t-17-pdf-fonts', 'origin/feat/t-21-saving-saved', 'origin/feat/t-23-project-settings', 'spike/pdf-fonts']
 })
 
+/** Ivy's reply with paths in it (clickable file mentions), and what the workspace resolves them to. */
+function fileLinks(f: Fixture, click?: { click: string }): Partial<Fixture> {
+  const text = [
+    'The sort lives in `src/app/invoices/table.tsx:12-14`, and the empty state is in empty-state.tsx.',
+    '',
+    '- Layout rules are in DESIGN.md, and the folder is `src/app/invoices/`.',
+    '- Two `page.tsx` files use it, so check both before you change the props.',
+    '- I removed `src/gone.ts` and bumped the PDF library to 1.2.3.'
+  ].join('\n')
+  const file = (path: string, more: object = {}) => ({ kind: 'file' as const, path, ...more })
+  return {
+    items: { [ids.tableChat]: [{ kind: 'text', id: 'fl0', ts: at(10, 31), text }] },
+    mentions: { [ids.table]: {
+      'src/app/invoices/table.tsx:12-14': file('src/app/invoices/table.tsx', { line: 12, endLine: 14 }),
+      'empty-state.tsx': file('src/app/invoices/empty-state.tsx'),
+      'DESIGN.md': file('DESIGN.md'),
+      'src/app/invoices/': { kind: 'dir', path: 'src/app/invoices' },
+      'page.tsx': { matches: ['src/app/invoices/page.tsx', 'src/app/page.tsx'] }
+    } },
+    ui: { ...open, workspace: { right: 'files', bottom: 'run' } },
+    ...(click && { motion: { action: click, ms: 800, area: '.ws-main' } })
+  }
+}
+
 function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatItem[], extra: Partial<Fixture>, chat: Partial<Chat> = {}): Partial<Fixture> {
   const id = ws.id ?? ids.table
   const chatId = id === ids.lead ? ids.leadChat : ids.tableChat
@@ -2355,6 +2379,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceHistoryButtonsHidden: scene(() => ({
     ui: { ...open, sidebar: false, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run' } }
   })),
+  // Clickable file mentions: paths in the reply link when the workspace has them. `src/gone.ts` and `1.2.3` stay plain text. The motion clicks a link with a range, so the file tab opens on it.
+  WorkspaceFileLinks: scene((f) => fileLinks(f, { click: 'Open src/app/invoices/table.tsx at line 12' })),
+  WorkspaceFileLinksText: scene((f) => fileLinks(f)),
+  // A bare name that two files have: the link opens a menu of the paths instead of guessing.
+  WorkspaceFileLinksMenu: { ...scene((f) => fileLinks(f)), motion: { action: { click: 'Choose a file named page.tsx' }, ms: 600, area: '.ws-main' } },
   WorkspaceRunning: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
