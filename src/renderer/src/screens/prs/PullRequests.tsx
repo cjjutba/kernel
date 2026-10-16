@@ -4,6 +4,8 @@ import { go, useStore } from '../../store'
 import { Banner, Button, EmptyList, Icon, NotConnectedState, Pill, Skeleton, Spinner, useListKeys } from '../../ui'
 import { oneOf, useRemembered } from '../../remember'
 import { WorkHeader, ALL_PROJECTS } from '../work/WorkHeader'
+import { useWorkProject } from '../work/useWorkProject'
+import { useGithubLogin } from '../work/useGithubLogin'
 import { age } from '../inbox/model'
 import { MergeButton } from '../workspace/pr/MergeButton'
 import { notReviewedTip, type LeadPr } from '../workspace/pr/leadPrList'
@@ -96,9 +98,8 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   // The project the list is narrowed to, or none for every project. A project that was archived or hidden since reads as none.
   const projects = useStore((s) => s.projects)
   const choices = useMemo(() => projects.filter((r) => !r.archived && !r.hidden), [projects])
-  // Rooms were renamed projects (KERNEL-880). The saved key keeps its old name, so the project picked before the update stays.
-  const [projectId, setProjectId] = useRemembered<string>('kernel.prsRoom', (raw) => raw ?? ALL_PROJECTS)
-  const project = choices.find((r) => r.id === projectId)
+  const { scope: project, pick } = useWorkProject(choices)
+  const login = useGithubLogin()
   const open = project ? all.open.filter((r) => r.ws.projectId === project.id) : all.open
   const merged = project ? all.merged.filter((w) => w.projectId === project.id) : all.merged
   const [refreshing, setRefreshing] = useState(false)
@@ -126,7 +127,7 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   useKeptScroll(scroll, { key: spotKey.prs(filter), ready: filter === 'open' ? !loading && open.length > 0 : merged.length > 0 })
   return (
     <div className="panel">
-      <WorkHeader tab="prs" allProjects head={{ projects: choices, project, onProject: setProjectId }} counts={{ prs: open.length }} where="GitHub" refreshing={refreshing}
+      <WorkHeader tab="prs" allProjects head={{ projects: choices, project, onProject: pick }} counts={{ prs: all.open.length }} where={login ? `GitHub · ${login}` : 'GitHub'} refreshing={refreshing}
         onRefresh={() => { setRefreshing(true); void refresh().finally(() => setRefreshing(false)) }} />
       <div className="prs-bar" role="group" aria-label="Filter pull requests">
         {filters.map(([id, label]) => <Pill key={id} pressed={filter === id} onClick={() => setFilter(id)}>{label}<span className="prs-n">{counts[id]}</span></Pill>)}
@@ -162,7 +163,7 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
         ) : signedOut ? (
           <NotConnectedState icon="key" title="GitHub isn't signed in" page="integrations" label="Open Settings, Integrations">Sign the GitHub CLI in and the pull requests your agents open show up here with their checks and review.</NotConnectedState>
         ) : (
-          <EmptyList icon="pr" title="No open pull requests" action={project && all.open.length > 0 ? <Button size="lg" onClick={() => setProjectId(ALL_PROJECTS)}>Show all projects</Button> : merged.length > 0 ? <Button size="lg" onClick={() => setFilter('merged')}>Show merged</Button> : undefined}>
+          <EmptyList icon="pr" title="No open pull requests" action={project && all.open.length > 0 ? <Button size="lg" onClick={() => pick(ALL_PROJECTS)}>Show all projects</Button> : merged.length > 0 ? <Button size="lg" onClick={() => setFilter('merged')}>Show merged</Button> : undefined}>
             {project && all.open.length > 0 ? `${project.name} has none, but other projects do.` : 'When an agent opens a pull request in any project, it shows up here with its checks and review.'}
           </EmptyList>
         )

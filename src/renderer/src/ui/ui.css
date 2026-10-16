@@ -199,3 +199,8 @@
 .devui-row.devui-below { margin-top: 10px; }
 .devui-name { font-weight: var(--fw-semibold); }
 .card.devui-pad { padding: 12px; }
+
+/* Work list parts (KERNEL-1009): the muted scope before a title and a day group header. */
+.scope-label { color: var(--faint); font-size: var(--fs-meta); font-weight: var(--fw-regular); white-space: nowrap; }
+.day-group { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 10px; height: 30px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-2); }
+.day-group-n { font-weight: var(--fw-regular); color: var(--muted); font-variant-numeric: tabular-nums; }

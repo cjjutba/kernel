@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
-import { go, lastProject, useStore } from '../../store'
+import { useMemo } from 'react'
+import { go, useStore } from '../../store'
 import { useRemembered } from '../../remember'
 import { Banner, Button } from '../../ui'
 import { GithubIssues } from './GithubIssues'
 import { LinearIssues } from './LinearIssues'
 import { IssueSkeleton, NoTracker, trackerChoice, type IssueTracker, type ProjectHead } from './parts'
 import { WorkHeader } from '../work/WorkHeader'
+import { useWorkProject } from '../work/useWorkProject'
 import { useOpenPrCount } from '../prs/model'
 import { activeTracker } from './model'
 import { useProjectTracker } from './useProjectTracker'
@@ -19,11 +20,10 @@ import './issues.css'
 export function Issues({ issueId, projectId, tracker }: { issueId?: string; projectId?: string; tracker?: IssueTracker }) {
   const projects = useStore((s) => s.projects)
   const choices = useMemo(() => projects.filter((r) => !r.archived && !r.hidden), [projects])
-  // The project opened last, read once. A store selector runs on every change and must not touch localStorage.
-  const [lastProjectId] = useState(lastProject)
-  const project = choices.find((r) => r.id === projectId) ?? choices.find((r) => r.id === lastProjectId) ?? choices[0]
+  // One project for both Work tabs. While it is All projects, Issues keeps the last single project it was on.
+  const { single: project, pick } = useWorkProject(choices, projectId)
   // Another project is another route, so the sidebar follows it and Back returns to the project before.
-  const head: ProjectHead = { projects: choices, project, onProject: (id) => go({ name: 'issues', projectId: id }) }
+  const head: ProjectHead = { projects: choices, project, onProject: (id) => { pick(id); go({ name: 'issues', projectId: id }) } }
 
   const { read, retry } = useProjectTracker(project?.id)
   const prCount = useOpenPrCount()

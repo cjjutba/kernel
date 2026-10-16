@@ -5,6 +5,7 @@ import { ProjectIcon } from '../../components/ProjectIcon'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
 import type { IssueTracker, ProjectHead, TrackerSwitch } from '../issues/parts'
 import { WORK_TABS, useWorkTab, type WorkTab } from './tab'
+import { ALL_PROJECTS, projectLabel } from './scope'
 import './work.css'
 
 const TRACKERS: { id: IssueTracker; label: string }[] = [{ id: 'linear', label: 'Linear' }, { id: 'github', label: 'GitHub' }]
@@ -41,24 +42,23 @@ function TrackerToggle({ active, available, onChange }: TrackerSwitch) {
 
 const labels: Record<WorkTab, string> = { issues: 'Issues', prs: 'Pull requests' }
 
-/** `onProject('')` on the Pull requests tab means every project. */
-export const ALL_PROJECTS = ''
+export { ALL_PROJECTS }
 
 interface Props {
   tab: WorkTab
   head: ProjectHead
   /** Pull requests only: adds "All projects" to the picker, which is selected while `head.project` is empty. */
   allProjects?: boolean
-  /** How many each tab lists, when the page knows. */
+  /** How many each tab lists, when the page knows. Pull requests shows its count only above 0. */
   counts?: Partial<Record<WorkTab, string | number>>
-  /** Where the list comes from: "Linear · cj-jutba". */
+  /** Where the list comes from and whose account: "Linear · cj-jutba", "GitHub · cj-jutba". */
   where?: ReactNode
   /** Reads the list again. The button is left out without it. */
   onRefresh?: () => void
   refreshing?: boolean
 }
 
-/** The other tab's route. Issues keeps the project picked on it, and Pull requests lists every project unless one was picked. */
+/** The other tab's route. The project is the shared pick (`useWorkProject`), which Pull requests reads itself, so only Issues needs it in the route. */
 const routeFor = (tab: WorkTab, projectId?: string) => (tab === 'issues' ? { name: 'issues' as const, projectId } : { name: 'prs' as const })
 
 /**
@@ -102,7 +102,7 @@ export function WorkHeader({ tab, head, allProjects, counts, where, onRefresh, r
       <div className="wk-tabs" role="tablist" aria-label="Work">
         {WORK_TABS.map((t, i) => (
           <button key={t} ref={(el) => { refs.current[i] = el }} type="button" role="tab" aria-selected={t === tab} tabIndex={t === tab ? 0 : -1} data-tip-kbd={String(i + 1)} onClick={() => to(t)} onKeyDown={(e) => onTabKey(e, i)}>
-            {labels[t]}{counts?.[t] !== undefined && <span className="wk-n">{counts[t]}</span>}
+            {labels[t]}{counts?.[t] !== undefined && !(t === 'prs' && !counts[t]) && <span className="wk-n">{counts[t]}</span>}
           </button>
         ))}
       </div>
@@ -110,14 +110,14 @@ export function WorkHeader({ tab, head, allProjects, counts, where, onRefresh, r
         <>
           <span className="wk-vr" aria-hidden="true" />
           <span ref={anchor} className="wk-project">
-            <Button variant="ghost" className="wk-pick" aria-label={`Project: ${pick.name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-              {project ? <ProjectIcon project={project} className="wk-letter" fallback="?" /> : <span className="wk-letter" aria-hidden="true">A</span>}{pick.name}<Icon name="chevron" size={12} />
+            <Button variant="ghost" className="wk-pick" aria-label={`Project: ${project ? projectLabel(project, projects) : pick.name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+              {project ? <ProjectIcon project={project} className="wk-letter" fallback="?" /> : <span className="wk-letter" aria-hidden="true">A</span>}{project ? projectLabel(project, projects) : pick.name}<Icon name="chevron" size={12} />
             </Button>
             {open && (
               <Menu label="Project" anchorRef={anchor} onClose={() => setOpen(false)} style={{ left: 0, top: 'calc(100% + 4px)' }}
                 items={[
                   ...(allProjects ? [{ id: 'all', label: 'All projects', checked: !project, onSelect: () => onProject(ALL_PROJECTS) }] : []),
-                  ...projects.map((r) => ({ id: r.id, label: r.name, checked: r.id === project?.id, onSelect: () => onProject(r.id) }))
+                  ...projects.map((r) => ({ id: r.id, label: projectLabel(r, projects), checked: r.id === project?.id, onSelect: () => onProject(r.id) }))
                 ]} />
             )}
           </span>
