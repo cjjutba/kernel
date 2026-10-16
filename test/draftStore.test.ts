@@ -394,4 +394,43 @@ describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
     expect(disk.get('kernel.drafts')).toBe(before)
     expect(fixture.loadPicks(KEY)).toEqual({ effort: 'medium' })
   })
+  describe('caret and scroll positions (KERNEL-989)', () => {
+    it('keeps a position per draft, in memory only, and none for a key without a draft', async () => {
+      const m = await launch()
+      m.savePosition('a', { offset: 3, top: 90 })
+      expect(m.loadPosition('a')).toBeUndefined()
+      m.saveDraft('a', words('hello'), 'w1')
+      m.saveDraft('b', words('other'), 'w1')
+      m.savePosition('a', { offset: 3 })
+      m.savePosition('a', { top: 90 })
+      m.savePosition('b', { offset: 1, top: 4 })
+      expect(m.loadPosition('a')).toEqual({ offset: 3, top: 90 })
+      expect(m.loadPosition('b')).toEqual({ offset: 1, top: 4 })
+      vi.advanceTimersByTime(500)
+      expect(JSON.stringify(onDisk())).not.toContain('90')
+      const again = await launch()
+      expect(again.loadDraft('a')).toEqual(words('hello'))
+      expect(again.loadPosition('a')).toBeUndefined()
+    })
+
+    it('drops a position with its draft: a send, an empty save, closed chats and a pruned workspace', async () => {
+      const m = await launch()
+      for (const k of ['new-chat:p', 'a', 'b', 'c']) { m.saveDraft(k, words('x'), k === 'new-chat:p' ? '' : 'w1'); m.savePosition(k, { offset: 1, top: 2 }) }
+      m.clearDraft('new-chat:p')
+      m.saveDraft('a', [], 'w1')
+      m.dropDrafts(['b'])
+      expect(['new-chat:p', 'a', 'b'].map(m.loadPosition)).toEqual([undefined, undefined, undefined])
+      m.pruneDrafts({ workspaces: [], chats: {} }, () => false)
+      expect(m.loadPosition('c')).toBeUndefined()
+    })
+
+    it('moves a position with the text to the other New chat box', async () => {
+      const m = await launch()
+      m.saveDraft('new-chat:a', words('long'), '')
+      m.savePosition('new-chat:a', { offset: 2, top: 30 })
+      m.moveDraft('new-chat:a', 'new-chat:b')
+      expect(m.loadPosition('new-chat:a')).toBeUndefined()
+      expect(m.loadPosition('new-chat:b')).toEqual({ offset: 2, top: 30 })
+    })
+  })
 })

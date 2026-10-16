@@ -4,7 +4,7 @@ import type { ChatPart } from '@shared/types'
 import { attachFiles, clipboardImages, Held, pastedText } from './attach'
 import { ComposerChip } from './Chip'
 import { chatsLoaded, getState, isFixture, subscribe } from '../../../store'
-import { dropProjectDrafts, loadDraft, persistDrafts, pruneDrafts, saveDraft } from './draftStore'
+import { dropProjectDrafts, loadDraft, loadPosition, persistDrafts, pruneDrafts, saveDraft, savePosition, type DraftPosition } from './draftStore'
 
 const text = (t: string): ChatPart => ({ type: 'text', text: t })
 
@@ -132,6 +132,40 @@ function endOf(el: HTMLElement): Range {
   else { r.selectNodeContents(el); r.collapse(false) }
   r.collapse(true)
   return r
+}
+
+/** How far into the draft a range starts: its characters, with a chip as one. The same count `rangeAt` walks. */
+function offsetOf(el: HTMLElement, chips: Map<string, ChatPart>, r: Range): number {
+  const head = document.createRange()
+  head.selectNodeContents(el)
+  head.setEnd(r.startContainer, r.startOffset)
+  return readParts(head.cloneContents(), chips, false).reduce((n, p) => n + (p.type === 'text' ? p.text.length : 1), 0)
+}
+
+/** The caret `offset` into a box just drawn from its parts (text nodes and chip slots), or at its end when the draft is shorter. */
+function rangeAt(el: HTMLElement, offset: number): Range {
+  let rest = offset
+  for (const n of Array.from(el.childNodes)) {
+    const r = document.createRange()
+    if (n.nodeType === Node.TEXT_NODE) {
+      const len = (n as Text).data.length
+      if (rest <= len) { r.setStart(n, rest); r.collapse(true); return r }
+      rest -= len
+    } else if (n instanceof HTMLElement && n.dataset.chip !== undefined) {
+      if (rest === 0) { r.setStartBefore(n); r.collapse(true); return r }
+      rest -= 1
+    }
+  }
+  return endOf(el)
+}
+
+/** Scrolls the box so the caret in `r` shows, by the least that does it. */
+function reveal(el: HTMLElement, r: Range) {
+  const c = r.getBoundingClientRect()
+  if (!c.height) return
+  const box = el.getBoundingClientRect()
+  if (c.bottom > box.bottom) el.scrollTop += c.bottom - box.bottom
+  else if (c.top < box.top) el.scrollTop -= box.top - c.top
 }
 
 const caretAfter = (node: Node) => {
@@ -305,9 +339,10 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
 
   /**
    * Everything in the box at once, with the caret at the end. `undo` makes it one Cmd+Z step; otherwise old chips are
-   * forgotten. `focus` is false only for the first draw.
+   * forgotten. `focus` is false only for the first draw. `at` is where that draft's box was left: the caret and scroll go back there
+   * (KERNEL-989). Without it the caret goes to the end and the box to the bottom.
    */
-  const write = (parts: ChatPart[], undo: boolean, focus = true) => {
+  const write = (parts: ChatPart[], undo: boolean, focus = true, at?: DraftPosition) => {
     const el = input.current
     if (!el) return
     if (undo && el.isContentEditable) {
@@ -329,28 +364,35 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
       el.replaceChildren(t.content)
       if (focus && el.isContentEditable) el.focus({ preventScroll: true })
     }
-    if (document.activeElement === el) { getSelection()?.removeAllRanges(); getSelection()?.addRange(endOf(el)) }
+    const caret = () => (at?.offset !== undefined ? rangeAt(el, at.offset) : endOf(el))
+    if (document.activeElement === el) { getSelection()?.removeAllRanges(); getSelection()?.addRange(caret()) }
     else {
       // The old caret pointed into nodes that are gone, so the next focus goes to the end. A selection that was in the box
       // moves there too; one outside it stays. Chromium hands focus to a box that script selects in, so focus goes back to
       // the element that had it, or arrow keys on the tab that was just clicked would stop working.
-      saved.current = endOf(el)
+      saved.current = caret()
       const anchor = getSelection()?.anchorNode
       if (anchor && el.contains(anchor)) {
         const had = document.activeElement
-        getSelection()?.removeAllRanges(); getSelection()?.addRange(endOf(el))
+        getSelection()?.removeAllRanges(); getSelection()?.addRange(caret())
         if (had instanceof HTMLElement && document.activeElement !== had) had.focus({ preventScroll: true })
       }
     }
     sync(true)
+    if (at) {
+      el.scrollTop = at.top ?? el.scrollHeight
+      if (at.offset !== undefined) reveal(el, caret())
+    } else if (!undo) el.scrollTop = el.scrollHeight
   }
 
-  useLayoutEffect(() => { if (initial.length) write(initial, false, false) }, [])
+  useLayoutEffect(() => { if (initial.length) write(initial, false, false, key ? loadPosition(key) : undefined) }, [])
   // The composer now shows another chat: draw its own draft, or an empty box.
   useLayoutEffect(() => {
     if (shown.current === key) return
+    // The box still holds the old chat's draft, so its scroll is read before the new one is drawn.
+    if (shown.current && input.current?.clientHeight) savePosition(shown.current, { top: input.current.scrollTop })
     shown.current = key
-    write((key ? loadDraft(key) : undefined) ?? [], false, false)
+    write((key ? loadDraft(key) : undefined) ?? [], false, false, key ? loadPosition(key) : undefined)
   }, [key])
 
   useEffect(() => {
@@ -364,6 +406,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
       const chip = chipOf(r.startContainer)
       if (chip && el.contains(chip) && sel?.isCollapsed && document.activeElement === el) { caretAfter(chip); return }
       saved.current = r.cloneRange()
+      if (shown.current && el.clientHeight) savePosition(shown.current, { offset: offsetOf(el, chips.current, r) })
       const c = caretIn(el, chips.current)
       if (c) setView((v) => (v.before === c.before && v.after === c.after && v.first === c.first ? v : { ...v, ...c }))
     }
@@ -372,9 +415,12 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
       if (e.inputType === 'insertParagraph') { e.preventDefault(); document.execCommand('insertLineBreak') }
       else if (e.inputType.startsWith('format')) e.preventDefault()
     }
+    // A box that isn't laid out (a hidden tab) reads a scroll of 0, which is not where the user left it.
+    const onScroll = () => { if (shown.current && el.clientHeight) savePosition(shown.current, { top: el.scrollTop }) }
     document.addEventListener('selectionchange', onSelect)
     el.addEventListener('beforeinput', onBeforeInput)
-    return () => { document.removeEventListener('selectionchange', onSelect); el.removeEventListener('beforeinput', onBeforeInput) }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => { document.removeEventListener('selectionchange', onSelect); el.removeEventListener('beforeinput', onBeforeInput); el.removeEventListener('scroll', onScroll) }
   }, [])
 
   // The pane takes files dragged over it, wherever they land. A blocked or disabled box (not editable) takes none. A count of enters and

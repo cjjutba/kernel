@@ -28,6 +28,13 @@ const PROJECT_PICKS = ['leadMode', 'place'] as const
 interface Draft { workspaceId: string; parts: ChatPart[]; picks?: DraftPicks }
 const saved = new Map<string, Draft>()
 
+/**
+ * Where a draft's caret and scroll were when its box was last on screen (KERNEL-989): the caret as an offset into the parts (a chip counts
+ * as one), and the box's scroll top. In memory only, so a draft restored after a relaunch has none and opens at the end, scrolled to the bottom.
+ */
+export interface DraftPosition { offset?: number; top?: number }
+const positions = new Map<string, DraftPosition>()
+
 /** A New chat box's draft belongs to no chat or workspace, so it is never pruned, and it goes to disk like a chat's. */
 const NEW_CHAT = 'new-chat'
 /** The draft of a project's New chat page (KERNEL-788). Kept per project, so one project's text never shows in another. The retired modal's bare `new-chat` draft is no longer read, so the next write drops it from disk. */
@@ -122,6 +129,16 @@ function schedule() {
 /** The parts of a draft, or nothing when it has none: a draft kept only for its picks has no text to bring back. */
 export const loadDraft = (chatId: string): ChatPart[] | undefined => { load(); const d = saved.get(chatId); return d?.parts.length ? d.parts : undefined }
 
+/** Where the box of a draft was left, or nothing when it has no saved place. */
+export const loadPosition = (chatId: string): DraftPosition | undefined => positions.get(chatId)
+
+/** Remembers the caret or scroll of a draft's box, over what it had. A key with no draft keeps nothing, so a cleared box doesn't hold a place. */
+export function savePosition(chatId: string, patch: DraftPosition) {
+  load()
+  if (!saved.has(chatId)) return
+  positions.set(chatId, { ...positions.get(chatId), ...patch })
+}
+
 /**
  * An empty draft is dropped instead of stored, so a sent message stays gone, unless it has picks, which an empty box keeps.
  * `workspaceId` is the chat's workspace, or empty to keep the draft in memory only.
@@ -130,7 +147,7 @@ export function saveDraft(chatId: string, parts: ChatPart[], workspaceId: string
   load()
   const picks = saved.get(chatId)?.picks
   if (parts.length || picks) saved.set(chatId, { workspaceId, parts, ...(picks ? { picks } : {}) })
-  else saved.delete(chatId)
+  else { saved.delete(chatId); positions.delete(chatId) }
   schedule()
 }
 
@@ -166,6 +183,10 @@ export function moveDraft(from: string, to: string) {
   if (from === to || !d?.parts.length) return
   if (d.picks) saved.set(from, { workspaceId: d.workspaceId, parts: [], picks: d.picks })
   else saved.delete(from)
+  const place = positions.get(from)
+  positions.delete(from)
+  if (place) positions.set(to, place)
+  else positions.delete(to)
   const dest = saved.get(to)
   saved.set(to, { workspaceId: dest?.workspaceId ?? d.workspaceId, parts: d.parts, ...(dest?.picks ? { picks: dest.picks } : {}) })
   schedule()
@@ -178,6 +199,7 @@ export function clearDraft(key: string) {
   const kept = Object.fromEntries(PROJECT_PICKS.flatMap((k) => (had?.[k] ? [[k, had[k]]] : []))) as DraftPicks
   if (Object.keys(kept).length) saved.set(key, { workspaceId: saved.get(key)?.workspaceId ?? '', parts: [], picks: kept })
   else saved.delete(key)
+  positions.delete(key)
   schedule()
   if (had) for (const fn of [...pickListeners]) fn()
 }
@@ -188,7 +210,7 @@ export function dropProjectDrafts(liveProjectIds: Iterable<string>) {
   const live = new Set(liveProjectIds)
   let changed = false
   for (const key of [...saved.keys()]) {
-    if (isNewChatDraft(key) && !live.has(key.slice(NEW_CHAT.length + 1))) { saved.delete(key); changed = true }
+    if (isNewChatDraft(key) && !live.has(key.slice(NEW_CHAT.length + 1))) { saved.delete(key); positions.delete(key); changed = true }
   }
   if (changed) { schedule(); for (const fn of [...pickListeners]) fn() }
 }
@@ -196,7 +218,7 @@ export function dropProjectDrafts(liveProjectIds: Iterable<string>) {
 /** Forgets the drafts of chats that are gone, and their saved copy. An image chip holds its whole screenshot, so a stale draft is a real cost. */
 export function dropDrafts(chatIds: Iterable<string>) {
   load()
-  for (const id of chatIds) saved.delete(id)
+  for (const id of chatIds) { saved.delete(id); positions.delete(id) }
   schedule()
 }
 
@@ -212,7 +234,7 @@ export function pruneDrafts(s: { workspaces: { id: string; status: string }[]; c
     if (isNewChatDraft(chatId)) continue
     const ws = s.workspaces.find((w) => w.id === d.workspaceId)
     const gone = !ws || ws.status === 'archived' || (chatsLoaded(d.workspaceId) && !(s.chats[d.workspaceId] ?? []).some((c) => c.id === chatId))
-    if (gone) { saved.delete(chatId); changed = true }
+    if (gone) { saved.delete(chatId); positions.delete(chatId); changed = true }
   }
   if (changed) schedule()
 }
