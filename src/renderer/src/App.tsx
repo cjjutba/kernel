@@ -23,10 +23,8 @@ import { backToNewChat, startHeld } from './screens/new-workspace/start'
 import { Issues } from './screens/issues/Issues'
 import { PullRequests } from './screens/prs/PullRequests'
 import { CheckHooks } from './screens/onboarding/CheckHooks'
-import { Checks } from './screens/onboarding/Checks'
 import { Loading } from './screens/onboarding/Loading'
-import { Permissions } from './screens/onboarding/Permissions'
-import { Welcome } from './screens/onboarding/Welcome'
+import { Splash } from './screens/onboarding/Splash'
 import { ConfirmRemoveProject } from './screens/projects/ConfirmRemoveProject'
 import { ConfirmDeleteHistory } from './screens/history/ConfirmDeleteHistory'
 import { ConnectRepo } from './screens/projects/ConnectRepo'
@@ -82,10 +80,8 @@ const fullWindow = (r: Route) => r.name === 'onboarding' || r.name === 'devUi'
 function Screen({ route }: { route: Route }): ReactNode {
   switch (route.name) {
     case 'onboarding':
-      if (route.step === 'welcome') return <Welcome />
       if (route.step === 'project') return <ProjectSetup projectId={route.projectId} />
-      if (route.step === 'permissions') return <Permissions />
-      return <Checks />
+      return <Splash />
     case 'inbox': return <Inbox />
     case 'issues': return <Issues issueId={route.issueId} projectId={route.projectId} tracker={route.tracker} />
     case 'prs': return <PullRequests filter={route.filter} />
