@@ -543,6 +543,11 @@ async function hoverRow(page: Page, row: string) {
   await page.waitForTimeout(300)
 }
 
+async function hoverLeadSwitch(page: Page) {
+  await page.locator('.cmp-switch-side').last().hover()
+  await page.waitForTimeout(800)
+}
+
 async function hoverFileChip(page: Page) {
   await page.locator('.cmp-chip[data-tip]').first().hover()
   await page.waitForTimeout(800)
@@ -654,6 +659,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceModelPickerLocked: hoverLockedProvider,
   ComposerAttaching: dropWhileReading,
   ComposerFileTip: hoverFileChip,
+  NewChatSwitchTip: hoverLeadSwitch,
   ConfirmOverrule: openOverrule,
   UsageFooterNarrow: narrowWindow,
   AuditSidebarWide: async (page) => { const h = page.getByRole('separator', { name: 'Resize sidebar' }); await h.focus(); await page.keyboard.press('End'); await h.blur(); await page.waitForTimeout(300) },
