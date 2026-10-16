@@ -599,6 +599,24 @@ describe('kernel recovery paths', () => {
     await k.stop({ budgetMs: 0 })
   })
 
+  it('sends the brief now while setup runs: the script stops and the brief goes out as after a pass (KERNEL-951)', async () => {
+    const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt || (sleep 2 && false)"\n' })
+    const lead = await k.leadChat(project.id)
+    await setUp(k, lead.id, 'failed')
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const chat = k.store.chats(ws.id)[0]
+    const rerun = k.setup.retrySetup(ws.id)
+    await new Promise((r) => setTimeout(r, 300))
+    await k.setup.handlers()['scripts.skipSetup']({ workspaceId: ws.id })
+    const after = await rerun
+    expect(after.status).toBe('ready')
+    expect(after.setupRun?.end).toBeNull()
+    expect(k.sessions.queued(chat.id)).toEqual([])
+    expect(k.store.items(chat.id).some((i) => i.kind === 'user')).toBe(true)
+    expect(k.setup.sendingNow.has(ws.id)).toBe(false)
+    await k.stop({ budgetMs: 0 })
+  })
+
   it('writes no note above the brief when Run again passes (KERNEL-430, KERNEL-533)', async () => {
     const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(project.id)

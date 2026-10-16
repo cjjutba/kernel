@@ -34,6 +34,7 @@ import { countNew, keepOpen, leftAtEnd, markRevealed, opensAtEnd, placeTop, read
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
 import { createChatScroll, followsAfterScroll, movesToEnd, PIN_PX, type ChatScroll, type ScrollView } from './chatScroll'
 import { TranscriptGlide } from './glideContext'
+import { ChatSetupRows } from './ChatSetupRows'
 
 const EMPTY: ChatItem[] = []
 /** A plan revealing itself within this long of the chat opening is placed, not glided. */
@@ -1041,6 +1042,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
             <Button busy={retrying !== null} busyLabel="Loading" onClick={() => void retry('load', () => loadWorkspace(workspaceId).catch(() => undefined))}>Try again</Button>
           </EmptyState>
         )}
+        {/* The worktree and its setup, above the first message, as Conductor shows a new workspace (KERNEL-951). Outside the thread, whose children line up with its blocks. */}
+        {ws && !empty && !failed && <ChatSetupRows ws={ws} />}
         {empty && (
           <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
             onPick={(text) => sendMessage(chat.id, [{ type: 'text', text }])} />

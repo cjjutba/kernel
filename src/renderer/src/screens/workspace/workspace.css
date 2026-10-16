@@ -95,8 +95,10 @@ button.ws-issue:hover { background: var(--surface-3); }
 .queued-meta { display: flex; align-items: center; gap: 14px; font-size: var(--fs-meta); color: var(--muted); }
 .link-btn { padding: 0; border: 0; background: none; color: var(--ink-3); font-size: var(--fs-meta); }
 .link-btn:hover { color: var(--ink); }
-.setup-line { display: flex; align-items: center; gap: 10px; color: var(--muted); }
-.setup-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 10px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: var(--input-bg); }
+/* A message waiting for setup keeps its Edit and Cancel out of sight until it is pointed at or tabbed into (KERNEL-951). */
+.msg-user[data-queued] .queued-edit { display: inline-flex; gap: 14px; opacity: 0; }
+.msg-user[data-queued]:hover .queued-edit, .msg-user[data-queued]:focus-within .queued-edit { opacity: 1; }
+.queued-meta .btn { margin: -4px 0; }
 .msg-chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; margin-right: 4px; padding: 0 7px; vertical-align: middle; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: var(--fs-chip) var(--mono); color: var(--ink-2); }
 .msg-chip svg { color: var(--muted); }
 .msg-chip .chip-meta { color: var(--muted); }
@@ -575,3 +577,15 @@ button.msg-chip:hover { border-color: var(--line-4); }
 button.su-link { border: 0; background: transparent; padding: 0; text-align: left; color: var(--muted); align-self: flex-start; }
 button.su-link:hover { color: var(--ink); }
 button.su-link:hover .su-link-text { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-4); }
+/* A chat's worktree and setup script, as rows above its first message (KERNEL-951). Same rows as project setup. */
+.su-rows.su-chat { margin-bottom: 18px; flex-shrink: 0; }
+.su-rows code { font: var(--fs-ui) var(--mono); color: var(--ink); }
+.su-row .grow { flex: 1; }
+.su-tall { align-items: flex-start; padding-top: 7px; }
+.su-tall .su-ico, .su-tall .su-out { margin-top: 2px; }
+.su-tall .btn { margin-top: -3px; }
+.su-head { display: flex; align-items: baseline; gap: 10px; }
+.su-ink { color: var(--ink); }
+.su-clock { font: var(--fs-meta) var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.su-tail { font: var(--fs-meta) var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.su-row[data-state='run'] .su-text { color: var(--ink-2); }

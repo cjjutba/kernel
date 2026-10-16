@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { GitHubOwner } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { Icon, Select } from '../../ui'
+import { useAvatar } from './avatar'
 
 /** Owners, asked of gh once per window: they rarely change while a dialog is open (KERNEL-944). */
 let owners: Promise<GitHubOwner[]> | undefined
@@ -47,12 +48,13 @@ export function useRepoName(suggested: string) {
 /** Owner / name, and what the check found. Shared by Open a folder and New project. */
 export function RepoNameField({ repo, label }: { repo: ReturnType<typeof useRepoName>; label?: boolean }) {
   const { owners: list, owner, setOwner, name, setName, check, listError } = repo
+  const avatar = useAvatar(owner)
   return (
     <div className="rn">
       {label && <div className="rn-labels"><span className="rn-label">GitHub owner</span><span className="rn-label">Repository name</span></div>}
       <div className="rn-row">
         <Select className="rn-owner" label="GitHub owner" value={owner} onChange={setOwner} disabled={!list?.length}
-          leading={<span className="rn-av" aria-hidden="true">{owner.slice(0, 2)}</span>}
+          leading={avatar ? <img className="rn-av" src={avatar} alt="" /> : <span className="rn-av" aria-hidden="true">{owner.slice(0, 2)}</span>}
           options={(list ?? []).map((o) => ({ value: o.login, label: o.login }))} />
         <span className="rn-slash" aria-hidden="true">/</span>
         <input aria-label="Repository name" className="rn-input rn-name" autoComplete="off" spellCheck={false} value={name} onChange={(e) => setName(e.target.value)} />

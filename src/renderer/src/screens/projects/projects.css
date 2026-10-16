@@ -195,7 +195,7 @@
 .rn-row { display: flex; align-items: center; gap: 8px; }
 .rn-owner { width: 180px; flex-shrink: 0; }
 .rn-owner .select-trigger { width: 100%; height: 36px; }
-.rn-av { width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; background: var(--surface-3); display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); color: var(--ink-2); }
+.rn-av { width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; object-fit: cover; background: var(--surface-3); display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); color: var(--ink-2); }
 .rn-slash { color: var(--muted); }
 .rn-name { flex: 1; min-width: 0; font-size: var(--fs-ui); }
 .rn-status { margin: 0; display: flex; align-items: center; gap: 6px; min-height: 18px; font-size: var(--fs-meta); color: var(--muted); }

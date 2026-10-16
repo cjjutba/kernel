@@ -138,6 +138,8 @@ export interface Workspace {
   waitsFor?: WaitsFor
   /** The setup script's last run, for the chat's setup line and the note when it passes (KERNEL-430). */
   setupRun?: SetupRun
+  /** How many local files Kernel copied into the new worktree, for the chat's "Created the worktree" row (KERNEL-951). */
+  copied?: number
 }
 
 /** An overrule of the reviews' blockers on one head commit (KERNEL-732). */
