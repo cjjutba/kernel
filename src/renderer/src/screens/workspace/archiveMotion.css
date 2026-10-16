@@ -1,2 +1,1 @@
 /* The archive beat (KERNEL-580, DESIGN.md Motion). Every curve is ease-out. The main panel swaps at once (KERNEL-636). */
-:root { --archive-fold: var(--dur-base); --archive-fade: var(--dur-fast); }

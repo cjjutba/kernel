@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Avatar, Banner, Button, Card, Chip, CodeBlock, ConfirmDialog, EmptyState, Icon, IconButton, Kbd, Menu, MENU_SEPARATOR, Meter, Modal, Pill, Popover, SegmentedControl, Select, Skeleton, Spinner, Tabs, Toast, Toggle, bannerIcon, iconNames, LoadingRow, EmptyList, FailedState, NotConnectedState } from './index'
+import { Avatar, Banner, Button, Card, Checkbox, Chip, CodeBlock, ConfirmDialog, EmptyState, Icon, IconButton, Kbd, Menu, MENU_SEPARATOR, Meter, Modal, Pill, Popover, SegmentedControl, Select, Skeleton, Spinner, Tabs, Toast, Toggle, bannerIcon, iconNames, LoadingRow, EmptyList, FailedState, NotConnectedState } from './index'
 import type { BannerKind, DevUiPage } from '@shared/types'
 import { spinnerPatterns } from './dotPatterns'
 
@@ -19,6 +19,7 @@ function Controls() {
   const [on, setOn] = useState(true)
   const [size, setSize] = useState('default')
   const [pill, setPill] = useState(true)
+  const [agree, setAgree] = useState(true)
   return (
     <>
       <Section title="Buttons">
@@ -27,6 +28,19 @@ function Controls() {
           <Button variant="danger">Discard</Button><Button variant="merged" icon="pr">Merged</Button><Button disabled>Disabled</Button>
           <Button variant="primary" busy busyLabel="Archiving">Archive</Button>
           <IconButton icon="plus" label="Add" /><IconButton icon="more" label="More" /><IconButton icon="archive" label="Archive" busy busyLabel="Archiving" />
+        </div>
+      </Section>
+      <Section title="Sizes and checkbox">
+        <div className="devui-row">
+          <Button size="sm">Run</Button><Button>Open</Button><Button size="lg">Create</Button>
+          <Button size="sm" variant="primary" icon="plus">Add</Button><Button size="sm" disabled>Stop</Button>
+          <IconButton icon="more" label="More, md" box="md" /><IconButton icon="more" label="More, sm" box="sm" size={14} /><IconButton icon="more" label="More, xs" box="xs" size={14} />
+        </div>
+        <div className="devui-row">
+          <Checkbox checked={agree} onChange={setAgree}>Delete the worktrees too</Checkbox>
+          <Checkbox checked={false} onChange={() => undefined}>Keep the branch</Checkbox>
+          <Checkbox checked onChange={() => undefined} disabled>Unavailable</Checkbox>
+          <Checkbox checked={agree} onChange={setAgree} align="top"><span>First line of a label<br />that wraps to a second line</span></Checkbox>
         </div>
       </Section>
       <Section title="Busy buttons">

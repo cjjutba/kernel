@@ -236,7 +236,6 @@
    out over --plan-dur even though the border underneath only ever moves at 160ms (CSS can't tell a plan-off from a blur, both land
    on the same style).
    Only the glow's opacity loops, so the loop costs a compositor layer and nothing else. Reduced motion stops all of it. */
-.cmp, .nw { --ease-plan: cubic-bezier(0.33, 0, 0.2, 1); --plan-dur: 0.5s; }
 .cmp { transition: border-color 160ms ease-out; }
 .nw { position: relative; }
 .nw > * { position: relative; }
