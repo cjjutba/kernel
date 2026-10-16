@@ -7,6 +7,7 @@ import { Icon } from '../../../ui'
 import { KernelNote } from '../KernelNote'
 import { SharedRow } from './SharedCard'
 import { MergeButton } from '../pr/MergeButton'
+import { notReviewedTip } from '../pr/leadPrList'
 import { useFileLinks } from '../fileLinks'
 import { inline } from '../markdown'
 import { cardData, eventTone, isHiddenUpdate, isReviewOnly, isStillBlocked, mergeTargetOf, mergedAutomatically, newestRows, openItems, sections, taskParts, verdictText, withoutSelfSuccess } from './teamUpdate'
@@ -18,6 +19,9 @@ const useWorkspaceById = (id: string) => useStore((s) => s.workspaces.find((w) =
 type WorkspaceOf = (id: string) => Workspace | undefined
 /** Whether this row, of the workspace `rowId` in the item `itemId`, is the one in the chat that offers Merge for the PR of `target`, a workspace id. May be a hook. */
 type UseNewest = (target: string, itemId: string, rowId: string) => boolean
+/** Whether automatic review is on, from the app settings: a store hook in the app, left out in tests. */
+type UseAutoReview = () => boolean | undefined
+const useAutoReviewSetting: UseAutoReview = () => useStore((s) => s.settings?.pr.autoReview)
 
 /**
  * Kernel's team update in a Lead chat (KERNEL-127): one row per teammate, with what happened and the reply it sent, so it
@@ -29,26 +33,26 @@ export function TeamUpdateCard({ item, chatId, selfId }: { item: Extract<ChatIte
     const row = newestRows(s.items[chatId], s.workspaces).get(target)
     return row?.itemId === itemId && row.workspaceId === rowId
   })
-  return <TeamUpdateView item={item} workspaceOf={useWorkspaceById} useNewest={useNewest} selfId={selfId} />
+  return <TeamUpdateView item={item} workspaceOf={useWorkspaceById} useNewest={useNewest} useAutoReview={useAutoReviewSetting} selfId={selfId} />
 }
 
 /** A review of the chat's own PR in Build here that Kernel drew without a turn (KERNEL-990): the same rows as a Team update, compact. */
 export function UpdateRowCard({ item }: { item: Extract<ChatItem, { kind: 'update' }> }) {
   // Merge belongs to the PR header and the ready row, so the compact card never offers it.
-  return <UpdateView update={item.update} itemId={item.id} quiet workspaceOf={useWorkspaceById} useNewest={() => false} />
+  return <UpdateView update={item.update} itemId={item.id} quiet workspaceOf={useWorkspaceById} useNewest={() => false} useAutoReview={useAutoReviewSetting} />
 }
 
 /** The card itself, given how to find a row's workspace: a store hook in the app, a stub in tests. Each row calls it, so it may be a hook. */
-export function TeamUpdateView({ item, workspaceOf, useNewest, selfId }: { item: Extract<ChatItem, { kind: 'user' }>; workspaceOf: WorkspaceOf; useNewest: UseNewest; selfId?: string }) {
+export function TeamUpdateView({ item, workspaceOf, useNewest, useAutoReview, selfId }: { item: Extract<ChatItem, { kind: 'user' }>; workspaceOf: WorkspaceOf; useNewest: UseNewest; useAutoReview?: UseAutoReview; selfId?: string }) {
   const data = cardData(item)
   // An older update whose lines no longer read as rows still shows, as Kernel's note.
   if (!data.rows.length && !data.omitted) return <KernelNote item={item} />
   // In Build here the chat's own PR going well is a line in the transcript, so an older card drops those rows, and itself when none is left (KERNEL-990).
   if (isHiddenUpdate(item, selfId)) return null
-  return <UpdateView update={{ ...data, rows: withoutSelfSuccess(data.rows, selfId) }} itemId={item.id} legacy={!item.update} workspaceOf={workspaceOf} useNewest={useNewest} />
+  return <UpdateView update={{ ...data, rows: withoutSelfSuccess(data.rows, selfId) }} itemId={item.id} legacy={!item.update} workspaceOf={workspaceOf} useNewest={useNewest} useAutoReview={useAutoReview} />
 }
 
-function UpdateView({ update: data, itemId, legacy, quiet, workspaceOf, useNewest }: { update: TeamUpdate; itemId: string; legacy?: boolean; quiet?: boolean; workspaceOf: WorkspaceOf; useNewest: UseNewest }) {
+function UpdateView({ update: data, itemId, legacy, quiet, workspaceOf, useNewest, useAutoReview }: { update: TeamUpdate; itemId: string; legacy?: boolean; quiet?: boolean; workspaceOf: WorkspaceOf; useNewest: UseNewest; useAutoReview?: UseAutoReview }) {
   // Only a card Kernel drew itself is compact. A review in a Hand off chat's Team update keeps its header.
   const compact = !!quiet && isReviewOnly(data.rows) && !data.omitted
   // An update from before KERNEL-117 counted the lines it left out, not workspaces. Past the 8th workspace, older updates dropped them and newer ones carry them into the next update (KERNEL-637), so the card says only that they didn't fit.
@@ -60,7 +64,7 @@ function UpdateView({ update: data, itemId, legacy, quiet, workspaceOf, useNewes
         {sections(data.rows).map((s, i) => (
           <div key={i} className="tucard-section">
             {s.fromChat && <div className="tucard-from">From "{s.fromChat}", {s.fromTab ? 'a tab you closed' : 'a Lead chat that is now closed'}</div>}
-            {s.rows.map((row) => <Row key={row.workspaceId} row={row} itemId={itemId} compact={compact} workspaceOf={workspaceOf} useNewest={useNewest} />)}
+            {s.rows.map((row) => <Row key={row.workspaceId} row={row} itemId={itemId} compact={compact} workspaceOf={workspaceOf} useNewest={useNewest} useAutoReview={useAutoReview} />)}
           </div>
         ))}
         {omitted && <div className="tucard-omitted">{omitted}</div>}
@@ -69,8 +73,14 @@ function UpdateView({ update: data, itemId, legacy, quiet, workspaceOf, useNewes
   )
 }
 
-function Row({ row, itemId, compact, workspaceOf, useNewest }: { row: TeamUpdateRow; itemId: string; compact?: boolean; workspaceOf: WorkspaceOf; useNewest: UseNewest }) {
+function Row({ row, itemId, compact, workspaceOf, useNewest, useAutoReview = () => undefined }: { row: TeamUpdateRow; itemId: string; compact?: boolean; workspaceOf: WorkspaceOf; useNewest: UseNewest; useAutoReview?: UseAutoReview }) {
   const ws = workspaceOf(row.workspaceId)
+  // "Not reviewed" explains itself on hover when automatic review is off (KERNEL-1000).
+  const autoReview = useAutoReview()
+  const tipProps = (e: TeamUpdateRow['events'][number]) => {
+    const tip = e.kind === 'pr.review' ? notReviewedTip(e.text, autoReview) : undefined
+    return tip ? { 'data-tip': tip, 'aria-description': tip } : {}
+  }
   // A reviewer's row merges the PR it reviewed. Once that workspace is archived the PR is over, and the row says In History.
   const targetId = ws ? mergeTargetOf(ws) : row.workspaceId
   const target = workspaceOf(targetId)
@@ -91,7 +101,7 @@ function Row({ row, itemId, compact, workspaceOf, useNewest }: { row: TeamUpdate
         <span className="tucard-name">{row.name}</span>
         {key && <span className="tucard-key">{key}</span>}
         <span className="tucard-task ellipsis">{compact ? reviewed(row, target) : title}</span>
-        {compact && row.events.map((e, i) => <Fragment key={i}><span className="tucard-sep" aria-hidden="true">·</span><span className="tucard-ev" data-tone={eventTone(e)}>{verdictText(e.text)}</span></Fragment>)}
+        {compact && row.events.map((e, i) => <Fragment key={i}><span className="tucard-sep" aria-hidden="true">·</span><span className="tucard-ev" data-tone={eventTone(e)} {...tipProps(e)}>{verdictText(e.text)}</span></Fragment>)}
         {compact && <span className="tucard-fill" />}
         {ws && (
           <span className="tucard-act">
@@ -110,7 +120,7 @@ function Row({ row, itemId, compact, workspaceOf, useNewest }: { row: TeamUpdate
             <Fragment key={i}>
               {i > 0 && <span className="tucard-sep" aria-hidden="true">·</span>}
               {/* A screen reader hears a full stop between events, unless one already ends the sentence. */}
-              <span className="tucard-ev" data-tone={eventTone(e)}>{e.text.replace(/\.$/, '')}<span className="sr-only">{/[!?…]$/.test(e.text) ? ' ' : '. '}</span></span>
+              <span className="tucard-ev" data-tone={eventTone(e)} {...tipProps(e)}>{e.text.replace(/\.$/, '')}<span className="sr-only">{/[!?…]$/.test(e.text) ? ' ' : '. '}</span></span>
             </Fragment>
           ))}
         </p>
