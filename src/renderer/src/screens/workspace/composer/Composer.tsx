@@ -349,8 +349,11 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
         onBlur: (e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setEngaged(false) },
         onMouseDown: (e) => {
           if (!compact) return
+          const t = e.target as HTMLElement
+          // A button in the one line (attach, stop) keeps the box shut until its click lands: focusing it on press would bring the toolbar back and move it out from under the pointer. The menu it opens holds the box open.
+          if (t.closest('button')) { e.preventDefault(); return }
           setEngaged(true)
-          if (!(e.target as HTMLElement).closest('button, a, input, [contenteditable]')) { e.preventDefault(); d.focus() }
+          if (!t.closest('a, input, [contenteditable]')) { e.preventDefault(); d.focus() }
         }
       }}
       above={<>
