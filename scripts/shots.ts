@@ -606,6 +606,14 @@ async function openLegacyModels(page: Page) {
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
+// Settings, Models (KERNEL-988): the Kernel row's Model cell opens the picker, which starts on that role's provider.
+async function openRolePicker(page: Page, tab?: string, legacy = false) {
+  await page.getByRole('button', { name: /^Kernel model/ }).click()
+  if (tab) await page.getByRole('tab', { name: tab }).click()
+  if (legacy) await page.getByRole('button', { name: /Legacy models/ }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
 async function starModels(page: Page) {
   for (const name of ['Opus 5.5', 'Haiku 5.5']) {
     const row = page.getByRole('option', { name: new RegExp(name) })
@@ -631,6 +639,9 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceModelPickerCodex: openLegacyModels,
   WorkspaceModelPickerLegacy: openLegacyModels,
   WorkspaceModelPickerLegacyChat: openLegacyModels,
+  SettingsModelsPicker: (page) => openRolePicker(page),
+  SettingsModelsPickerCodex: (page) => openRolePicker(page, 'Codex'),
+  SettingsModelsPickerLegacy: (page) => openRolePicker(page, undefined, true),
   WorkspaceModelPickerKeys: async (page) => { await page.keyboard.press('ArrowUp'); await page.waitForTimeout(300) },
   WorkspaceModelPickerFavorites: starModels,
   WorkspaceModelPickerEffort: openEffortFlyout,

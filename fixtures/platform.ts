@@ -337,6 +337,7 @@ const sixAgents: AgentDef[] = [
   agentFile('theo', 'Theo', 'Reviewer', 'Types, security, tenancy'), agentFile('wren', 'Wren', 'Designer', 'Joined today')
 ]
 /** The agents Settings, Models lists under each row: Frontend and Backend in two projects, one pinned to a model, one with a custom role. */
+const modelsPage = () => settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } })
 const modelsAgents = (): Fixture['agents'] => {
   const kai = agentFile('kai', 'Kai', 'Frontend', 'UI work, follows DESIGN.md')
   const noor = { ...agentFile('noor', 'Noor', 'Backend', 'Schema, API, migrations'), model: undefined }
@@ -446,6 +447,10 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-406, KERNEL-974: Frontend runs on Codex and Backend on Opus, each on its own row. The rest stay on their defaults.
   // KERNEL-974: Kai and Noor in two projects, Mira on her own model, and Rio with a custom role that lands under Backend. QA has no one.
   SettingsModels: settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),
+  // KERNEL-988: a role's Model cell opens the model picker under it, on Claude, on Codex, and with the Legacy models flyout open.
+  SettingsModelsPicker: modelsPage(),
+  SettingsModelsPickerCodex: modelsPage(),
+  SettingsModelsPickerLegacy: modelsPage(),
   // KERNEL-406, KERNEL-665: both providers' accounts and status, with Claude's own login active, a second Claude account, a key, and Fable's weekly window on Work.
   SettingsAccounts: providersPage('claude', { accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex], usage: [...providerUsage(), fableWindow] }),
   // KERNEL-701: Work is added in Kernel and is also Claude Code's own login in Terminal, so it shows once, with its details open.

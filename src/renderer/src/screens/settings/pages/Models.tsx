@@ -1,7 +1,9 @@
 import './agents.css'
+import { useRef, useState } from 'react'
 import { COMPACT_WINDOWS, EFFORT_LABELS, type AgentDef, type AppSettings, type CompactWindow, type Provider, type Role, type RoleModel } from '@shared/types'
 import { roleOf } from '@shared/team'
-import { Select, Toggle } from '../../../ui'
+import { Icon, ProviderMark, Select, Toggle } from '../../../ui'
+import { ModelPicker } from '../../workspace/composer/ModelPicker'
 import { effortsOf, fitEffort, modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
 import { appliesTo, Page, Row, Section } from '../kit'
 import { go, useStore } from '../../../store'
@@ -52,6 +54,31 @@ function RoleAgents({ roleKey, models }: { roleKey: Role; models: ReturnType<typ
   )
 }
 
+/** A role's Model cell: a button like the composer's model chip that opens the model picker under it (KERNEL-988). Escape and a pick return focus to the button. */
+function ModelCell({ title, current, models, onPick }: { title: string; current: RoleModel; models: ReturnType<typeof useProviderModels>; onPick: (model: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const wrap = useRef<HTMLSpanElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const label = modelLabelOf(current.model, models)
+  // An outside click has already moved focus where the person pointed, so only take it back from the picker or from nowhere.
+  const close = () => {
+    const at = document.activeElement
+    setOpen(false)
+    if (!at || at === document.body || wrap.current?.contains(at)) button.current?.focus()
+  }
+  return (
+    <span ref={wrap} className="select">
+      <button ref={button} type="button" className="select-trigger ag-model-trigger" aria-haspopup="dialog" aria-expanded={open} aria-label={`${title} model, ${label}`} onClick={() => (open ? close() : setOpen(true))}>
+        <ProviderMark provider={current.provider} size={14} />
+        <span className="ag-model-name ellipsis">{label}</span>
+        <Icon name="chevron" size={12} />
+      </button>
+      {open && <ModelPicker variant="settings" placement="down" anchorRef={wrap} provider={current.provider} model={current.model} effort={current.effort} fallback={current.effort}
+        onModel={(m) => { onPick(m); close() }} onEffort={() => {}} onClose={close} />}
+    </span>
+  )
+}
+
 /**
  * One role's row (KERNEL-406, KERNEL-680): the model picker is grouped by provider, so picking a model also picks the provider, and the
  * effort moves to one the model takes. Codex manages its own context, so its compact cell says Auto.
@@ -65,16 +92,11 @@ function RoleLine({ title, roleKey, current, compact }: { title: string; roleKey
     const provider: Provider = codex.some((m) => m.id === model) ? 'codex' : claude.some((m) => m.id === model) ? 'claude' : current.provider
     save({ provider, model, effort: fitEffort(current.effort, model, listOf(provider)) })
   }
-  const group = (label: string, p: Provider) => {
-    const ids = [...new Set([...listOf(p).map((m) => m.id), ...(current.provider === p ? [current.model] : [])])]
-    return { label, options: ids.map((id) => ({ value: id, label: modelLabelOf(id, listOf(p)) })) }
-  }
-  const groups = [group('Claude Code', 'claude'), group('Codex', 'codex')].filter((g) => g.options.length)
   const efforts = [...new Set([...effortsOf(current.model, listOf(current.provider)), current.effort])]
   return (
     <div className="set-table-row" role="row" aria-label={title} style={{ gridTemplateColumns: ROLE_GRID }}>
       <span role="cell" className="ag-role-name"><span className="set-label">{title}</span><span className="set-desc">{current.provider === 'codex' ? 'Codex' : 'Claude Code'}</span><RoleAgents roleKey={roleKey} models={[...claude, ...codex]} /></span>
-      <span role="cell"><Select label={`${title} model`} value={current.model} options={groups} onChange={pick} /></span>
+      <span role="cell"><ModelCell title={title} current={current} models={listOf(current.provider)} onPick={pick} /></span>
       <span role="cell"><Select label={`${title} effort`} value={current.effort} options={efforts.map((e) => ({ value: e, label: EFFORT_LABELS[e] }))} onChange={(v) => save({ ...current, effort: v as RoleModel['effort'] })} /></span>
       <span role="cell">
         {current.provider === 'codex'
