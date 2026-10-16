@@ -38,6 +38,20 @@ async function setup(o: { link: boolean; modules?: boolean; copy?: string[]; loc
   return { k, repo, ws }
 }
 
+describe('the setup block of a project\'s chats', () => {
+  it('stamps the first worktree chat and no later one, archived or not', async () => {
+    const { k, ws } = await setup({ link: false })
+    expect(k.store.workspace(ws.id)?.firstInProject).toBe(true)
+    const second = await k.createWorkspace(ws.projectId, { prompt: 'Next', agentId: 'kai', title: 'Second chat' })
+    expect(k.store.workspace(second.id)?.firstInProject).toBe(false)
+    await k.archiveWorkspace(ws.id, false)
+    await k.archiveWorkspace(second.id, false)
+    const third = await k.createWorkspace(ws.projectId, { prompt: 'Again', agentId: 'kai', title: 'Third chat' })
+    expect(k.store.workspace(third.id)?.firstInProject).toBe(false)
+    await k.stop({ budgetMs: 0 })
+  }, 30000)
+})
+
 describe('symlink node_modules into worktrees', () => {
   it('links the main checkout and keeps the link out of the changes', async () => {
     const { repo, ws } = await setup({ link: true })
