@@ -47,7 +47,7 @@ export function History() {
 
   return (
     <div className="panel">
-      <header className="header" style={{ paddingRight: 12 }}>
+      <header className="header hs-header">
         <SidebarToggleSlot />
         <Icon name="history" />
         <h1>{only ? `History, ${projects.find((r) => r.id === only)?.name ?? 'project'}` : 'History'}</h1>

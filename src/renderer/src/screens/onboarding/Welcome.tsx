@@ -8,7 +8,7 @@ import './onboarding.css'
 export function Welcome() {
   const version = useStore((s) => s.system.update?.current ?? '0.1')
   return (
-    <div className="panel" style={{ background: 'transparent', border: 0 }}>
+    <div className="panel ob-bare">
       <main className="ob-center">
         <span className="ob-mark" aria-hidden="true"><LargeMark size={34} /></span>
         <h1 className="ob-title">Welcome to Kernel</h1>
