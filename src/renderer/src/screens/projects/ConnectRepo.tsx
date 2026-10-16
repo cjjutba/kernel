@@ -86,7 +86,7 @@ export function ConnectRepo() {
       <div className="rm-pad">
         <div className="cr-acct">
           <span className="rm-av" aria-hidden="true">{who.name.slice(0, 2)}</span>
-          <span className="col grow"><span style={{ fontWeight: 500 }}>{who.name}</span><span className="cr-sub">{who.sub}</span></span>
+          <span className="col grow"><span className="cr-name">{who.name}</span><span className="cr-sub">{who.sub}</span></span>
           <Button variant="ghost" onClick={switchAccount}>Switch account</Button>
         </div>
         <div className="cr-search">
@@ -100,7 +100,7 @@ export function ConnectRepo() {
             return (
               <button key={r.fullName} type="button" role="radio" aria-checked={picked === r.fullName} className="cr-repo" onClick={() => setPicked(r.fullName)}>
                 <Icon name="branch" size={16} />
-                <span className="grow mono ellipsis" style={{ fontSize: 12.5 }}><span className="muted">{owner}/</span>{name}</span>
+                <span className="grow mono ellipsis cr-path"><span className="muted">{owner}/</span>{name}</span>
                 <span className="cr-vis">{r.private ? 'Private' : 'Public'}</span>
                 <span className="cr-ago">{agoShort(r.updatedAt)}</span>
               </button>
@@ -117,7 +117,7 @@ export function ConnectRepo() {
             >{error.message}</Banner>
           )}
           {repos && !repos.length && !error && (query.trim()
-            ? <p className="muted" role="status" style={{ margin: 0, padding: '10px 12px' }}>No repositories match.</p>
+            ? <p className="muted cr-empty" role="status">No repositories match.</p>
             : <EmptyList icon="branch" title="This account has no repositories" action={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void retry()}>Try again</Button>}>Create or fork one on GitHub, then try again.</EmptyList>)}
         </div>
       </div>
