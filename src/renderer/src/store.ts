@@ -1,5 +1,5 @@
 import { useRef, useSyncExternalStore } from 'react'
-import type { AccountAddStep, AccountProfile, MovePreview, Provider, SwitchMove,
+import type { AccountAddStep, AccountProfile, Provider,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
   ForcedUi, GitHubStatus, HookStatus, LeadMode, MenuId, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, RateLimit, Project, ProjectSettings,
   ProjectSettingsSection, ProjectSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, ToolCalls, UiState, UsageView, Workspace, WorkspaceTabs, WorkspaceView
@@ -432,8 +432,8 @@ let toastSeq = 0
 /** The stack holds this many toasts. A newer one pushes the oldest out (DESIGN.md). */
 const MAX_TOASTS = 3
 
-async function performSwitch(provider: Provider, accountId: string, reason?: 'banner', move?: SwitchMove, done?: () => void) {
-  actions.accounts.set(await call('accounts.switch', { provider, accountId, ...(reason ? { reason } : {}), ...(move ? { move } : {}) }))
+async function performSwitch(provider: Provider, accountId: string, reason?: 'banner', done?: () => void) {
+  actions.accounts.set(await call('accounts.switch', { provider, accountId, ...(reason ? { reason } : {}) }))
   void call('usage.get', undefined).then(actions.usage.set).catch(() => undefined)
   done?.()
 }
@@ -758,19 +758,12 @@ export const actions = {
     set: (accounts: AccountProfile[]) => setState({ accounts }),
     adding: (accountAdd: AccountAddStep | null) => setState({ accountAdd }),
     /**
-     * The one way every switch starts (KERNEL-845). It reads what the switch would move and opens the confirmation only when a long
-     * chat would read its history again. Otherwise it switches at once. `onSwitched` runs once the switch is done, from the modal's
-     * button when one opened. The modal carries its own target and callback, so a second request replaces it and the buttons never
-     * run the old one. A failed switch throws, so each entry point keeps its own error toast.
+     * The one way every switch starts. It switches at once (KERNEL-941): chats stay on the account that holds their cache while
+     * it can run them, and move by the policy in Settings, Accounts when it can't. `onSwitched` runs once the switch is done. A
+     * failed switch throws, so each entry point keeps its own error toast.
      */
-    requestSwitch: async (provider: Provider, accountId: string, opts: { reason?: 'banner'; onSwitched?: () => void } = {}) => {
-      let preview: MovePreview | undefined
-      try { preview = await call('accounts.previewSwitch', { provider, accountId }) } catch { preview = undefined }
-      if (preview?.chats.some((c) => c.coldReason)) return actions.ui.openModal({ name: 'confirm', kind: 'switchAccount', provider, accountId, preview, ...(opts.reason ? { reason: opts.reason } : {}), ...(opts.onSwitched ? { onSwitched: opts.onSwitched } : {}) })
-      await performSwitch(provider, accountId, opts.reason, undefined, opts.onSwitched)
-    },
-    /** The confirmation's buttons: `keep` leaves chats on the account that holds their cache, `all` moves them now. */
-    confirmSwitch: (provider: Provider, accountId: string, move: SwitchMove, reason?: 'banner', onSwitched?: () => void) => performSwitch(provider, accountId, reason, move, onSwitched),
+    requestSwitch: (provider: Provider, accountId: string, opts: { reason?: 'banner'; onSwitched?: () => void } = {}) =>
+      performSwitch(provider, accountId, opts.reason, opts.onSwitched),
     mcpRun: (run: McpSignInAll) => setState((s) => ({ mcpRuns: { ...s.mcpRuns, [mcpRunKey(run.provider ?? 'claude', run.accountId)]: run } })),
     clearMcpRun: (provider: Provider, accountId: string) => setState(({ mcpRuns: { [mcpRunKey(provider, accountId)]: _gone, ...mcpRuns } }) => ({ mcpRuns }))
   },
@@ -812,17 +805,18 @@ async function mcpNeededToast(n: McpNeeded) {
 let switchToastId: string | undefined
 
 /**
- * One notice for each account switch, with Undo back to the account it left. A newer switch replaces the last notice, so Undo
- * always reverses the latest one. `accounts` arrives before this event, so the names are current (KERNEL-699).
+ * One notice for each switch Kernel makes by itself, with Undo back to the account it left. The user's own switches say nothing:
+ * the account menu already shows where they went (KERNEL-941). A newer switch replaces the last notice, so Undo always reverses
+ * the latest one. `accounts` arrives before this event, so the names are current (KERNEL-699).
  */
 function accountSwitchedToast(e: Extract<PushEvent, { type: 'accountSwitched' }>) {
+  if (e.reason !== 'limit') return
   const accounts = getState().accounts
   const name = (id: string) => accounts.find((a) => a.provider === e.provider && a.id === id)?.label ?? 'another account'
   const provider = PROVIDERS.find((p) => p.id === e.provider)?.label ?? e.provider
-  const window = e.limit === 'five_hour' ? '5-hour limit' : e.limit ? 'weekly limit' : 'limit'
-  const title = e.reason === 'limit'
-    ? `Kernel switched ${provider} to ${name(e.to)}, ${name(e.from)} hit its ${window}`
-    : `${provider} now uses ${name(e.to)}`
+  // A switch ahead of a limit has no window that was hit (KERNEL-844).
+  const why = e.limit === 'five_hour' ? 'hit its 5-hour limit' : e.limit ? 'hit its weekly limit' : 'is close to its limit'
+  const title = `Kernel switched ${provider} to ${name(e.to)}, ${name(e.from)} ${why}`
   if (switchToastId) actions.ui.dismissToast(switchToastId)
   switchToastId = actions.ui.toast({ title, action: { label: 'Undo', switchAccount: { provider: e.provider, accountId: e.from } } })
 }
