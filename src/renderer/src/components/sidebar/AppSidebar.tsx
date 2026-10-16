@@ -1,3 +1,4 @@
+import { useKeptScroll } from '../../ui/keptScroll'
 import { memo, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import type { Chat, Project, Thread, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
@@ -327,7 +328,7 @@ function ProjectItem({ project, current, expanded, numbered, hints, ctrlHints, o
   useChatLists([...homes, ...liveWorkspaces(workspaces, project.id).map((w) => w.id)])
   const unread = projectUnread({ rows, chats, expanded })
   return (
-    <div className="nav-list">
+    <div className="nav-list" data-keep-id={project.id}>
       <div ref={anchor} className="hv project-row" style={{ position: 'relative' }}>
         <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} aria-label={unread ? `${project.name}, Unread` : undefined} data-unread={unread ? '' : undefined} onClick={onToggle}>
           <span className="project-mark">
@@ -410,6 +411,7 @@ export function AppSidebar() {
 
   // Arriving on a workspace or chat from anywhere but the list (Open in the PRs list, the Inbox, search, the palette, a notification) brings its row into view.
   const list = useRef<HTMLDivElement>(null)
+  const keep = useKeptScroll(list, { key: 'sidebar', ready: projects.length > 0 })
   const here = route.name === 'workspace' ? `workspace:${route.workspaceId}` : route.name === 'leadNew' ? `lead:${route.projectId}` : ''
   // Set by a click in the list until that click is handled: its row is already there, so it never moves the list, even when the row is cut off by an edge.
   const clicking = useRef(false)
@@ -419,6 +421,7 @@ export function AppSidebar() {
   /** 'nearest' leaves a row that is fully in view where it is, and otherwise moves the list just far enough, never centering the row. */
   const showCurrent = () => {
     const row = list.current?.querySelector('[aria-current="page"]')
+    if (row) keep.stop()
     row?.scrollIntoView({ block: 'nearest' })
     return !!row
   }

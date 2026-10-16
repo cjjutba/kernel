@@ -12,6 +12,7 @@ import { attempt } from '../workspace/MessageActions'
 import { decideAtOnce, useFoldPhase, useHeldRows } from '../workspace/cards/decideFold'
 import { openProject } from '../../lead'
 import { age, agentOf, allOverlaps, fileName, inboxItems, inTab, names, needsYou, type InboxItem, type InboxTab } from './model'
+import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import './inbox.css'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
 
@@ -134,10 +135,14 @@ export function Inbox() {
   const list = all.filter((i) => inTab(i, tab))
   const shownRows = useHeldRows(list, (i) => i.n.id, (i) => i.approval?.id)
   const cur = list.find((i) => i.n.id === sel) ?? list[0]
+  // The list keeps one spot per tab and the reading pane one per item. A j or k is going somewhere on purpose, so it ends a restore (KERNEL-919).
+  const listEl = useRef<HTMLDivElement>(null)
+  const listKeep = useKeptScroll(listEl, { key: spotKey.inbox('list', tab), ready: list.length > 0 })
+  useKeptScroll(detail, { key: spotKey.inbox('pane', cur?.n.id), ready: !!cur })
   const count = (t: InboxTab) => all.filter((i) => inTab(i, t)).length
 
   const markRead = (ids: string[] | 'all') => void call('notifications.read', { ids }).then((rows) => rows.forEach(actions.notifications.upsert)).catch(() => undefined)
-  const open = (i: InboxItem) => { setSel(i.n.id); if (!i.n.read) markRead([i.n.id]) }
+  const open = (i: InboxItem) => { listKeep.stop(); setSel(i.n.id); if (!i.n.read) markRead([i.n.id]) }
 
   // Keyboard: the list keys come from useListKeys, j and k also work from anywhere on the screen, a approves, d denies. Typing in a field is left alone.
   const keys = useListKeys({
@@ -186,9 +191,9 @@ export function Inbox() {
         {tabs.map(([id, label]) => <Pill key={id} pressed={tab === id} onClick={() => setTab(id)}>{label}<span className="ib-n">{count(id)}</span></Pill>)}
       </div>
       <div className="ib-body-wrap">
-        <div className="ib-list" role="group" aria-label="Inbox items" onKeyDown={keys.onKeyDown}>
+        <div className="ib-list" ref={listEl} role="group" aria-label="Inbox items" onKeyDown={keys.onKeyDown}>
           {shownRows.map(({ item: i, held }) => (
-            <button key={i.n.id} type="button" {...keys.rowProps(i.n.id)} className={`ib-row${held ? ' decide-fold' : ''}`} aria-current={i.n.id === cur?.n.id ? 'true' : undefined} data-unread={!i.n.read ? 'true' : undefined} onClick={() => open(i)}>
+            <button key={i.n.id} type="button" {...keys.rowProps(i.n.id)} data-keep-id={i.n.id} className={`ib-row${held ? ' decide-fold' : ''}`} aria-current={i.n.id === cur?.n.id ? 'true' : undefined} data-unread={!i.n.read ? 'true' : undefined} onClick={() => open(i)}>
               <Letter item={i} agents={agentOf(i.n, agents)} />
               <span className="col grow" style={{ minWidth: 0 }}>
                 <span className="ib-title ellipsis">{i.n.title}</span>

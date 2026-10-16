@@ -7,6 +7,7 @@ import { readSavedJson, writeSavedJson } from '../../remember'
 import { Button, EmptyList, FailedState, Icon, Pill, useListKeys } from '../../ui'
 import { IssueState } from '../../icons'
 import { GithubDetail } from './GithubDetail'
+import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import { generation, getGithubList, getSelected, isFresh, setGithubList, setSelected } from './cache'
 import {
   byUpdated, DEFAULT_GITHUB_FILTER, githubFilterKey, parseGithubFilter, describeGithub, issueAge, joinFits, labelsOf, linkedWorkspaces, loginInitials, milestonesOf, narrowGithub, rowLabels, rowState,
@@ -149,6 +150,9 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
   const failed: Failure | null = view.kind === 'ready' ? (!online ? UNREACHABLE : problem) : null
   const shown: View = !online && view.kind === 'error' ? UNREACHABLE : view
   const ready = shown.kind === 'ready'
+  const listEl = useRef<HTMLDivElement>(null)
+  const keep = spotKey.issues(project.id)
+  useKeptScroll(listEl, { key: keep, ready: ready && flat.length > 0 })
   // The project's filter is kept when you leave Issues and come back (DESIGN.md, Remembered choices).
   useEffect(() => { writeSavedJson(githubFilterKey(project.id), filter) }, [project.id, filter])
   const set = (patch: Partial<GithubFilter>) => setFilter((f) => ({ ...f, ...patch }))
@@ -208,7 +212,7 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
 
       {ready && flat.length > 0 && (
         <div className="is-body">
-          <div className="is-list" aria-label="Issues" onKeyDown={keys.onKeyDown}>
+          <div className="is-list" ref={listEl} aria-label="Issues" onKeyDown={keys.onKeyDown}>
             {issues.length >= 100 && <CapNote>Showing the 100 newest issues. Search or filter to find the rest.</CapNote>}
             <section aria-label="Open">
               <h3 className="is-group"><span className="is-slot"><IssueState shape="todo" /></span><span>Open</span><span className="muted">{flat.length}</span></h3>
@@ -218,7 +222,7 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
                   const labels = rowLabels(i.labels)
                   const who = i.assignees[0]
                   return (
-                    <li key={i.id}>
+                    <li key={i.id} data-keep-id={i.id}>
                       <button type="button" {...keys.rowProps(i.id)} className="is-row" aria-current={i.id === selId ? 'true' : undefined} onClick={() => setSel(i.id)}>
                         <span className="is-slot"><IssueState shape="todo" /></span>
                         <span className="col grow">
@@ -243,7 +247,7 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
             </section>
           </div>
           <div className="is-pane" ref={detail}>
-            {selId && <GithubDetail project={project} id={selId} summary={cur} tick={tick} />}
+            {selId && <GithubDetail keep={keep} project={project} id={selId} summary={cur} tick={tick} />}
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LinearIssue, LinearIssueDetail } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { useDetailLoad } from './useDetailLoad'
@@ -12,9 +12,10 @@ import { Markdown } from '../workspace/markdown'
 import { DescriptionFailed } from './parts'
 import { initials, issueAge, linkedWorkspaces, stateShape } from './model'
 import { WorkCard } from './WorkCard'
+import { useKeptScroll } from '../../ui/keptScroll'
 
 /** The selected issue: what Linear says about it, the workspaces already working on it, and the buttons that start work. */
-export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summary?: LinearIssue; tick: number; onPlanned: () => void }) {
+export function IssueDetail({ keep, id, summary, tick, onPlanned }: { keep: string; id: string; summary?: LinearIssue; tick: number; onPlanned: () => void }) {
   const { loaded, failure, retry } = useDetailLoad<LinearIssueDetail>(id, detailKey('linear', '', id), () => call('linear.issue', { id }), [tick])
   const failed = failure?.id === id ? failure.message : null
   const [busy, run] = useBusy<'plan' | 'link'>()
@@ -29,6 +30,8 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
   // The description and comments come from `linear.issue`. The list already has the rest, so the header shows at once.
   const issue: LinearIssue | undefined = loaded?.id === id ? loaded : summary
   const detail = loaded?.id === id ? loaded : null
+  const scroll = useRef<HTMLDivElement>(null)
+  useKeptScroll(scroll, { key: `${keep}:${id}`, ready: !!detail })
 
   const choices = useMemo(() => projects.filter((r) => !r.archived && !r.hidden), [projects])
   const ids = choices.map((r) => r.id).join(',')
@@ -81,7 +84,7 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
   const cycle = issue.cycle ? issue.cycle.name || `Cycle ${issue.cycle.number}` : 'No cycle'
   return (
     <article className="is-detail" aria-label={issue.title}>
-      <div className="is-scroll">
+      <div className="is-scroll" ref={scroll}>
         <div className="is-inner">
           <div className="col" style={{ gap: 6 }}>
             <span className="is-keyline">

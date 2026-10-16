@@ -53,7 +53,7 @@ export function FileTree({ label, entries, expanded, onToggle, onOpen, activePat
           <button
             key={entry.path} ref={(el) => { if (el) refs.current.set(entry.path, el); else refs.current.delete(entry.path) }}
             type="button" role="treeitem" aria-level={depth + 1} aria-expanded={entry.dir ? open : undefined} aria-selected={!entry.dir && entry.path === activePath}
-            tabIndex={i === stop ? 0 : -1} className="tree-row" style={{ paddingLeft: PAD + depth * INDENT }}
+            data-keep-id={entry.path} tabIndex={i === stop ? 0 : -1} className="tree-row" style={{ paddingLeft: PAD + depth * INDENT }}
             onFocus={() => setFocused(entry.path)} onKeyDown={(e) => onKey(e, i)} onClick={() => (entry.dir ? onToggle(entry.path) : onOpen(entry.path))}
           >
             {ancestors.map((a, level) => <span key={a} className="tree-guide" data-lit={a === lit || undefined} style={{ left: guideX(level) }} />)}
