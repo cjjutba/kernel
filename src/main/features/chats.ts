@@ -9,7 +9,7 @@ import { sessionEnv } from '../services/sessions'
 import { shellId } from '../services/pty'
 import { askCodexTitle, askTitle, titleText } from '../services/titles'
 import { claudeExecutable } from '../services/providers/binary'
-import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from '../services/terminalPresets'
+import { LEAD_PRESET, resolvePreset, terminalCommand, terminalPresets, terminalTitle } from '../services/terminalPresets'
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
@@ -234,6 +234,7 @@ export class Chats extends Feature {
     // Closing the tab ends what its agent started too (KERNEL-810).
     this.sessions.stop(chatId, { tree: true })
     this.ptys.kill(chatId)
+    this.k.seats.closeSeat(chatId)
     this.saveChat({ ...chat, closed: true })
     if (this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) return
     if (this.isLeadWorkspace(ws)) return
@@ -323,17 +324,21 @@ export class Chats extends Feature {
     this.ptys.start(id, { ...this.ptyOptions(id), ...size })
   }
 
+  /** A big terminal chat's pty is about to start: its seat's endpoint is listening by then, when Settings, Terminal has connect on. */
+  private async seatsUp(id: string) {
+    if (this.settings.terminal.connect && !this.ptys.has(id) && this.store.chat(id)?.kind === 'terminal') await this.k.seats.start()
+  }
+
   /** Where a terminal starts, with what, and the command it types: its workspace's folder as it is now. */
   private ptyOptions(id: string) {
     const plain = id.startsWith('shell:')
     const chat = plain ? undefined : this.mustChat(id)
     if (chat && (chat.kind !== 'terminal' || chat.closed)) throw new Error('That tab is not a terminal.')
     const ws = this.mustWs(plain ? id.slice('shell:'.length) : chat!.workspaceId)
-    return {
-      cwd: ws.path,
-      env: sessionEnv(this.k.env.envFor(ws), {}, { agentTeams: this.settings.models.agentTeams }),
-      command: (plain ? null : terminalCommand(chat!)) ?? undefined
-    }
+    const env = sessionEnv(this.k.env.envFor(ws), {}, { agentTeams: this.settings.models.agentTeams })
+    const command = (plain ? null : terminalCommand(chat!)) ?? undefined
+    const seat = plain ? undefined : this.k.seats.launch(id, env)
+    return { cwd: ws.path, env: seat?.env ?? env, command: seat ? seat.command(command) : command }
   }
 
   /** The workspace's terminals that run a command now, which a folder move waits for (KERNEL-424). */
@@ -355,7 +360,7 @@ export class Chats extends Feature {
   private async terminalFor(ws: Workspace, preset?: string) {
     const t = this.settings.terminal
     if (!t.enabled) throw new Error('Big terminal tabs are off. Turn them on in Settings, Big terminal.')
-    return resolvePreset(await terminalPresets(t), t, ws.mode, preset)
+    return resolvePreset(await terminalPresets(t, undefined, this.isLeadWorkspace(ws)), t, ws.mode, preset)
   }
 
 
@@ -375,22 +380,27 @@ export class Chats extends Feature {
       'chats.close': async ({ chatId }) => { await this.closeChat(chatId); return { ok: true } },
       'chats.markRead': async ({ chatId }) => { this.markRead(chatId); return { ok: true } },
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
-      'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
-      'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
+      'terminal.write': async ({ chatId, data }) => { await this.seatsUp(chatId); this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
+      'terminal.resize': async ({ chatId, cols, rows }) => { await this.seatsUp(chatId); this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
       'terminal.replay': async ({ chatId }) => { this.ptys.replay(chatId); return { ok: true } },
       'chats.create': async ({ workspaceId, kind, preset, threadId, provider, model: asked, effort }) => {
         const ws = this.mustWs(workspaceId)
-        const term = kind === 'terminal' ? await this.terminalFor(ws, preset) : undefined
         // Right after a restart nothing may have read the team yet, and the agent's effort is the fallback.
         if (!this.k.team.agentCache.has(ws.projectId)) await this.k.team.agents(ws.projectId)
+        const term = kind === 'terminal' ? await this.terminalFor(ws, preset) : undefined
         const on = await this.newTabModel(ws, provider, asked)
         const pick = { provider: on.provider, model: on.model, effort: effort ?? this.openedEffort(workspaceId, on.model), plan: false }
         // A Lead tab joins the chat its workspace hosts (KERNEL-405), or in the shared Lead workspace from before, the Lead chat
-        // `threadId` (KERNEL-337). A big terminal belongs to no Lead chat.
+        // `threadId` (KERNEL-337). A big terminal belongs to no Lead chat, except the Lead preset's, a seat of the chat (KERNEL-998).
+        if (term?.preset.id === LEAD_PRESET.id) return this.k.lead.leadTab(ws, terminalTitle(term.preset), { ...pick, kind, terminal: term.terminal }, threadId)
         if (!term && this.isLeadWorkspace(ws)) return this.k.lead.leadTab(ws, NEW_TAB, pick, threadId)
         return this.newChat(workspaceId, term ? terminalTitle(term.preset) : NEW_CHAT, { ...pick, kind, terminal: term?.terminal })
       },
-      'terminal.presets': async () => terminalPresets(this.settings.terminal),
+      'terminal.presets': async (req) => {
+        const ws = req?.workspaceId ? this.store.workspace(req.workspaceId) : undefined
+        if (ws && !this.k.team.agentCache.has(ws.projectId)) await this.k.team.agents(ws.projectId)
+        return terminalPresets(this.settings.terminal, undefined, !!ws && this.isLeadWorkspace(ws))
+      },
       'chats.items': async ({ chatId }) => this.store.items(chatId),
       'commands.list': async () => this.sessions.commands(this.home),
       'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),

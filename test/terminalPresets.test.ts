@@ -22,11 +22,11 @@ async function binDir() {
 }
 
 /** A Kernel on a temp repo whose big terminals record the command they would type instead of starting a shell. */
-async function kernel(settings: object = {}) {
+async function kernel(settings: { terminal?: object; [key: string]: unknown } = {}) {
   const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...settings }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...settings, terminal: { connect: false, ...settings.terminal } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   k.sessions.send = async () => ({ queued: false })
@@ -212,7 +212,7 @@ describe('terminal settings', () => {
     await h['settings.set']({ patch: { terminal: { preset: 'shell' } } })
     const saved = JSON.parse(await readFile(join(dataDir, 'settings.json'), 'utf8'))
     // Only what differs from the defaults is saved: the old switch that was off, and the preset just picked (KERNEL-225).
-    expect(saved.terminal).toEqual({ enabled: false, preset: 'shell' })
+    expect(saved.terminal).toEqual({ connect: false, enabled: false, preset: 'shell' })
     // The two old switches are gone, and nothing else in Experimental was chosen.
     expect(saved.experimental).toBeUndefined()
     expect(JSON.stringify(saved)).not.toContain('bigTerminal')
