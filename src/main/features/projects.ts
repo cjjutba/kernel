@@ -22,7 +22,7 @@ import { Feature } from './feature'
 const AGENT_PLACES: Record<AgentOrigin, string> = { project: '.claude/agents', personal: '~/.claude/agents', plugin: 'Claude Code plugins' }
 
 /** The order setup runs its steps in, so a retry knows which come after the failed one (KERNEL-876). */
-const STEP_ORDER: ProjectSetupStep['id'][] = ['clone', 'github', 'host', 'worktrees', 'install', 'copy', 'hooks', 'push', 'agents']
+const STEP_ORDER: ProjectSetupStep['id'][] = ['clone', 'github', 'host', 'worktrees', 'copy', 'hooks', 'push', 'agents']
 
 /**
  * A project's setup: the steps last published, the request that started it, the run going now, and whether Kernel seated
@@ -108,7 +108,6 @@ export class Projects extends Feature {
       ...(req.github ? [{ id: 'github' as const, title: `Create ${req.github.owner}/${req.github.name} on GitHub`, detail: 'Private repo', state: 'wait' as const }] : []),
       { id: 'host', title: 'Code host', detail: '', state: 'wait' },
       { id: 'worktrees', title: 'Create the worktree folder', detail: tildify(worktrees, this.home), state: 'wait' },
-      { id: 'install', title: 'Install dependencies', detail: 'Checking the lockfile', state: 'wait' },
       { id: 'copy', title: 'Copy local files', detail: '', state: 'wait' },
       { id: 'hooks', title: 'Install hooks', detail: `${KERNEL_HOOK_EVENTS.length} events to localhost:${this.settings.hookPort}`, state: 'wait' },
       { id: 'agents', title: 'Seat agents', detail: '', state: 'wait' }
@@ -143,6 +142,8 @@ export class Projects extends Feature {
       if (!this.store.project(id) || this.setups.has(id)) continue
       const stopped = s.steps.find((x) => x.state === 'run') ?? (s.steps.some((x) => x.state === 'fail') ? undefined : s.steps.find((x) => x.state === 'wait'))
       if (stopped) Object.assign(stopped, { state: 'fail', meta: undefined, error: 'Setup stopped when Kernel quit.' })
+      // Setups saved by a build that still had the Install step drop it, since nothing runs it now (KERNEL-948).
+      s.steps = s.steps.filter((x) => x.id !== 'install')
       this.track(id, s)
     }
     this.saveSetups()
@@ -253,13 +254,8 @@ export class Projects extends Feature {
       await mkdir(worktrees, { recursive: true })
       await ensureRepoSettings(project.path)
     })
-    await step('install', async () => {
-      const { command, reason } = await installCommand(project.path)
-      if (!command) return { detail: reason ?? 'Nothing to install' }
-      update('install', { detail: command })
-      const r = await exec('sh', ['-c', command], { cwd: project.path, timeoutMs: 600_000 })
-      if (r.code !== 0) throw new Error((r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join('\n') || `${command} failed`)
-    })
+    // No install here (KERNEL-948): a new project is only checked out, as in Conductor. Dependencies come from the project's setup
+    // script, which runs in each new chat's worktree.
     await step('copy', async () => {
       const { files } = await loadRepoSettings(project.path)
       const present = (await resolveFilesToCopy(project.path, files.copy, [], files.exclude)).map((f) => f.path)
