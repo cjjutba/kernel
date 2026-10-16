@@ -6,6 +6,8 @@
 #   pnpm release --dry            build, sign, notarize and verify, but don't publish
 #   pnpm release --rollout <pct>  offer the update to that share of installs (default 100, KERNEL-712)
 #
+# After it publishes, it deploys the website from the same commit (scripts/deploy-site.sh), so the changelog, the hero
+# pill and the download link move with the release.
 # The notes come from site/content/releases/<version>.md, compiled in the release PR (D-058). The same file becomes
 # What's new (through latest-mac.yml) and the GitHub release body.
 set -euo pipefail
@@ -44,6 +46,7 @@ if ! $dry; then
   git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null || fail "$tag is not on origin. Run: git push origin $tag"
   gh auth status >/dev/null 2>&1 || fail "gh is not signed in. Run: gh auth login"
   ! gh release view "$tag" --repo "$repo" >/dev/null 2>&1 || fail "a release for $tag already exists on $repo."
+  bash scripts/deploy-site.sh --check || fail "the site can't deploy after the release. Sign in to Vercel first."
 fi
 
 tmp=$(mktemp -d)
@@ -134,3 +137,9 @@ if [[ "$rollout" == 100 ]]; then
 else
   echo "release: the Homebrew cask stays on the previous version until the rollout reaches 100. Then: pnpm release:rollout $version 100"
 fi
+# The site reads the latest release from GitHub when it builds, so deploying now shows this version at once. The
+# release is already public, so a failed deploy warns instead of failing it.
+bash scripts/deploy-site.sh || {
+  echo "release: WARNING: the website was NOT deployed, so its changelog may not show $version yet." >&2
+  echo "release: the release itself is fine. Rerun: pnpm site:deploy" >&2
+}
