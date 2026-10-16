@@ -39,5 +39,4 @@
 @container panel (max-width: 760px) { .ib-pane { padding: 20px 24px; } }
 .ib-first { display: flex; gap: 8px; margin-top: 4px; }
 .ib-from { font-weight: var(--fw-medium); }
-.ib-sub { font-size: var(--fs-meta); }
 .header.ib-header { padding-right: 12px; }
