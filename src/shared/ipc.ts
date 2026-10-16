@@ -171,7 +171,7 @@ export interface KernelApi {
    * be on it (ConfirmIssueTaken.png, KERNEL-479). A check that can't answer adds a note instead of holding the start up.
    */
   'issues.taken': { req: { projectId: string; issue: string }; res: IssueTaken }
-  /** The project's issue tracker, which the Issues screen, the From popover and Link issue read to know whose issues to list (KERNEL-471). */
+  /** The project's issue tracker, which the Issues screen, the From popover and Link issue read to know whose issues to list (KERNEL-471), and the trackers the Issues screen can switch between (KERNEL-933). */
   'issues.tracker': { req: { projectId: string }; res: ProjectTracker }
   /** The project's open GitHub issues with the fields the Issues screen shows, up to 100, through gh. */
   'github.issueList': { req: { projectId: string; query?: string }; res: GithubIssue[] }

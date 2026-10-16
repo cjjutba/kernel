@@ -510,7 +510,8 @@ describe('get_issue and the issue in the brief (KERNEL-473)', () => {
       kind: o.kind ?? 'linear', search: async () => [], start: async () => undefined,
       issue: async (id) => { asked.push(id); if (o.fails) throw new Error(o.fails); return o.has ?? issue({ id }) }
     }
-    const [t] = issueTools({ issueKey: () => o.key, tracker: async () => tracker })
+    // The project reads the key with this tracker, or with none when it is `none` (KERNEL-933).
+    const [t] = issueTools({ issueKey: () => o.key, tracker: async () => (tracker.kind === 'none' ? undefined : tracker) })
     const run = async (args: { key?: string } = {}) => {
       const r = await t.handler(args as never, {})
       return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
@@ -546,13 +547,12 @@ describe('get_issue and the issue in the brief (KERNEL-473)', () => {
     expect(out).toContain(`${'y'.repeat(ISSUE_CAPS.comment)}\n[50 more characters not shown]`)
   })
 
-  it('says plainly when there is no issue, no tracker, a GitHub key in another tracker, or the tracker fails', async () => {
+  it('says plainly when there is no issue, no tracker that reads it, or the tracker fails', async () => {
     expect(await getIssue().run()).toEqual({ isError: true, text: "Not read: this workspace isn't linked to an issue. Pass key to read one." })
     const none = getIssue({ kind: 'none', key: 'PROJ-7' })
-    expect(await none.run()).toEqual({ isError: true, text: "Not read: this project has no issue tracker, so Kernel can't read PROJ-7." })
+    expect(await none.run()).toEqual({ isError: true, text: "Not read: this project has no tracker that reads PROJ-7. GitHub issues need the project's GitHub remote, and Linear issues a Linear token in Settings, Integrations." })
     expect(none.asked).toEqual([])
-    expect(await getIssue({ key: '#41' }).run()).toEqual({ isError: true, text: "Not read: #41 is a GitHub issue, and this project's tracker is Linear." })
-    expect((await getIssue({ kind: 'github', key: '#41' }).run()).isError).toBe(false)
+    expect((await getIssue({ kind: 'github', key: '#41' }).run()).text).toMatch(/^#41 as GitHub has it\./)
     expect(await getIssue({ key: 'PROJ-7', fails: LINEAR_SIGNED_OUT }).run()).toEqual({ isError: true, text: `Not read: ${LINEAR_SIGNED_OUT}` })
   })
 

@@ -57,8 +57,14 @@ export interface Tracker {
 
 /** The tracker a project uses, for the screens that list its issues. `where` is GitHub's `owner/repo` (KERNEL-471). */
 export interface ProjectTracker {
+  /** The project's own tracker by KERNEL-462's rule: the one Up next, the From popover and the move to In Progress use. */
   kind: TrackerKind | 'none'
   where?: string
+  /**
+   * The trackers the Issues screen can list for the project (KERNEL-933): Linear with a token and the project's `[linear] team`,
+   * GitHub with a github.com remote, `where` being its `owner/repo`. Neither with `[tracker] kind = "none"`.
+   */
+  available: { linear: boolean; github?: { where: string } }
 }
 
 /** A GitHub issue as the Issues screen lists it (KERNEL-471). */
