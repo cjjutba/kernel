@@ -30,7 +30,7 @@ import { LEAD_MODE_ICON } from './composer/modes'
 import { retryMessage, sendMessage } from './composer/sendMessage'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
-import { countNew, holdView, keepOpen, leftAtEnd, opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
+import { countNew, holdView, keepOpen, leftAtEnd, markRevealed, opensAtEnd, placeTop, readPlace, savePlace, shouldReveal, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
 import { createGlider, type Glider } from './scrollGlide'
 import { TranscriptGlide } from './glideContext'
@@ -893,6 +893,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   // While a chat is being put back where it was left: the step that sets the view again (the thread calls it when it changes size), and whether it is a spot and not the end.
   const restoring = useRef<{ put: () => void; stop: () => void } | null>(null)
   const spot = useRef(false)
+  const holding = useRef<ReturnType<typeof holdView> | undefined>(undefined)
   const endRestore = () => { restoring.current?.stop(); restoring.current = null; spot.current = false }
   const seen = useRef<ScrollView>({ scrollTop: 0, scrollHeight: 0, clientHeight: 0 })
   const remember = (el: ScrollView) => { seen.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight } }
@@ -1000,7 +1001,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     // (late layout: code highlighting, images, rows measured after the first paint), until the reader scrolls. `put` returns the scrollTop it set.
     const hold = (put: () => number, ends: boolean) => {
       if (!el) return
-      held = holdView({
+      held = holding.current = holdView({
         put, ends, over: () => byHand.current, following: () => pinned.current,
         now: () => performance.now(), raf: (step) => requestAnimationFrame(step), caf: (id) => cancelAnimationFrame(id), capMs: OPEN_MS,
         frames: (running) => { if (running) el.setAttribute('data-opening', ''); else el.removeAttribute('data-opening') }
@@ -1089,9 +1090,14 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     return () => watch.disconnect()
   }, [])
   const openedAt = useRef(Date.now())
-  const reveal = useCallback((el: HTMLElement, holdMs: number) => {
+  const reveal = useCallback((el: HTMLElement, holdMs: number, planId: string) => {
     const box = scroller.current
-    if (!box || byHand.current) return
+    if (!box) return
+    const go = shouldReveal(takePlace(chat.id)?.revealed, planId, pinned.current)
+    markRevealed(chat.id, planId)
+    if (!go || byHand.current) return
+    endRestore()
+    holding.current?.stop()
     const goal = () => {
       const view = box.getBoundingClientRect()
       const at = el.getBoundingClientRect()
@@ -1099,7 +1105,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     }
     glider.current.start({ goal, instant: Date.now() - openedAt.current < OPEN_MS, holdMs, over: () => byHand.current, done: () => { gliding.current = false } })
     gliding.current = glider.current.live()
-  }, [])
+  }, [chat.id])
   // Sending a message puts the view at its end at once, even from further up, since the reader just asked for something. No glide: the new row appears and the view stays at the end.
   const last = items[items.length - 1]
   const arrived = useRef(false)
