@@ -102,7 +102,9 @@ export function Accounts({ s }: { s: AppSettings }) {
       return next
     })
   }
-  const locked = busy !== null || sheetOpen || addMenu
+  const running = useStore((s) => s.ui.switching ?? null)
+  const switchingTo = (a: AccountProfile) => running?.provider === a.provider && running.accountId === a.id
+  const locked = busy !== null || running !== null || sheetOpen || addMenu
 
   // The row's own action: Switch for an account that can take agents, Sign in for one that is signed out.
   const actionFor = (a: AccountProfile, blocked: boolean): RowAction | undefined => {
@@ -112,7 +114,7 @@ export function Accounts({ s }: { s: AppSettings }) {
     if (!a.signedIn) return { label: 'Sign in', busy: busy === `signin:${k}`, busyLabel: 'Signing in', onClick: () => void signIn(a) }
     if (a.legacyToken) return { label: 'Sign in again', onClick: () => setRenewing(a) }
     if (a.active || blocked) return undefined
-    return { label: 'Switch', busy: busy === `use:${k}`, busyLabel: 'Switching', onClick: () => void switchTo(a) }
+    return { label: 'Switch', busy: busy === `use:${k}` || switchingTo(a), busyLabel: 'Switching', onClick: () => void switchTo(a) }
   }
   const menuFor = (a: AccountProfile, blocked: boolean): (MenuEntry | typeof MENU_SEPARATOR)[] => {
     const canSwitch = a.signedIn && !a.active && !a.keychainWait
@@ -208,7 +210,7 @@ export function Accounts({ s }: { s: AppSettings }) {
       {holds.map((h) => (
         <div key={h.provider} className="ac-hold" role="status">
           <span><b>{NAME[h.provider]} is on hold.</b> Every subscription is at a limit{h.until ? ` until ${h.until}` : ''}.</span>
-          {h.key && <Button busy={busy === `use:${keyOf(h.key)}`} busyPattern="wave-back" busyLabel="Switching" disabled={locked} onClick={() => void switchTo(h.key!)}>Use {h.key.label}</Button>}
+          {h.key && <Button busy={busy === `use:${keyOf(h.key)}` || switchingTo(h.key)} busyPattern="wave-back" busyLabel="Switching" disabled={locked} onClick={() => void switchTo(h.key!)}>Use {h.key.label}</Button>}
         </div>
       ))}
       {PROVIDERS.map((p) => {

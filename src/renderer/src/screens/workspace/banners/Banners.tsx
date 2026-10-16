@@ -73,6 +73,8 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
  */
 export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Workspace; chat?: Chat }) {
   const [busy, track] = useBusy<BannerAction>()
+  const switching = useStore((s) => s.ui.switching ?? null)
+  const switchingHere = switching !== null && switching.provider === view.switchAccount?.provider && switching.accountId === view.switchAccount.accountId
   // "Notify me" and "Wait" settle the banner without clearing it, as the canvas does. Keyed by banner, so a new one starts fresh.
   const [settled, setSettled] = useState<{ id: string; notified?: boolean } | null>(null)
   const mine = settled?.id === view.id ? settled : null
@@ -159,7 +161,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
     <Banner
       key={view.dismissKey ?? view.id} kind={view.kind} title={view.title} onDismiss={view.dismissKey ? () => dismissLimitBanner(view.dismissKey!) : undefined}
       actions={shown.length ? <span className="wsb-actions">{shown.map((a) => (
-        <Button key={a.id} variant={a.primary ? 'primary' : 'secondary'} className="wsb-btn" busy={busy === a.id} busyLabel={BUSY_LABEL[a.id]} disabled={busy !== null} onClick={() => act(a.id)}>{a.label}</Button>
+        <Button key={a.id} variant={a.primary ? 'primary' : 'secondary'} className="wsb-btn" busy={busy === a.id || (switchingHere && (a.id === 'switchAccount' || a.id === 'switchBack'))} busyLabel={BUSY_LABEL[a.id]} disabled={busy !== null || (switching !== null && (a.id === 'switchAccount' || a.id === 'switchBack'))} onClick={() => act(a.id)}>{a.label}</Button>
       ))}</span> : undefined}
     >{sub}</Banner>
   )

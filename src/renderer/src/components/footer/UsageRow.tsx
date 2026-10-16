@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef } from 'react'
 import { actions, useStore } from '../../store'
-import { IconButton, Meter, ProviderMark, useBusy } from '../../ui'
+import { IconButton, Meter, ProviderMark, Spinner, useBusy } from '../../ui'
 import { call } from '../../api'
 import { chipLabel, footerGroups, tightest, tone, type FooterChip, type FooterGroup } from './usageModel'
 import { UsagePopover } from './UsagePopover'
@@ -18,13 +18,14 @@ export function UsageRow() {
   const accounts = useStore((s) => s.accounts)
   const usage = useStore((s) => s.usage)
   const view = useStore((s) => s.ui.usageView)
+  const switching = useStore((s) => s.ui.switching ?? null)
   const open = useStore((s) => s.ui.menu === 'plan')
   const anchor = useRef<HTMLDivElement>(null)
   const opener = useRef<HTMLElement | null>(null)
   const { busy, signIn } = useUsageActions()
   const compact = view === 'compact'
   const now = Date.now()
-  const groups = footerGroups(accounts, usage, now)
+  const groups = footerGroups(accounts, usage, now, switching)
 
   // Escape closes the popover with focus inside it, which leaves focus on the page. It goes back to the chip that opened it.
   const wasOpen = useRef(open)
@@ -60,10 +61,11 @@ function Chip({ g, c, compact, open, onOpen }: { g: FooterGroup; c: FooterChip; 
   const label = chipLabel(g, c, compact)
   const top = compact ? tightest(c) : undefined
   return (
-    <button type="button" className="ft-chip" data-on="" aria-label={label} aria-haspopup="dialog" aria-expanded={open} onClick={(e) => onOpen(g.provider, e.currentTarget)}>
+    <button type="button" className="ft-chip" data-on="" aria-label={label} aria-haspopup="dialog" aria-expanded={open} aria-busy={c.switching || undefined} onClick={(e) => onOpen(g.provider, e.currentTarget)}>
       <span className="ft-mark"><ProviderMark provider={g.provider} size={13} /></span>
-      {(c.billed || !compact) && <span className="ft-name">{c.name}</span>}
-      {!c.billed && !compact && (
+      {(c.billed || c.switching || !compact) && <span className="ft-name">{c.name}</span>}
+      {c.switching && <span className="ft-switching"><Spinner label={null} pattern="wave-back" /><span>Switching</span></span>}
+      {!c.switching && !c.billed && !compact && (
         <>
           <span aria-hidden="true" className="ft-bar"><Meter label={`${g.name} 5-hour`} value={c.five ?? 0} /></span>
           <span className="ft-nums">
@@ -73,7 +75,7 @@ function Chip({ g, c, compact, open, onOpen }: { g: FooterGroup; c: FooterChip; 
           </span>
         </>
       )}
-      {!c.billed && compact && <Window label={`${g.name} ${top?.title ?? 'usage'}`} value={top?.value} />}
+      {!c.switching && !c.billed && compact && <Window label={`${g.name} ${top?.title ?? 'usage'}`} value={top?.value} />}
     </button>
   )
 }
