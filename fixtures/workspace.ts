@@ -2540,6 +2540,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: tabsView('chat-other')
   })), motion: { action: { click: 'Snapshot tests' }, ms: 1000, area: '.ws-main' } },
+  /** A working chat that has settled at its end gets a new step. Its open steps list must not play its open motion again, which slid the chat down under a reader at the end. */
+  WorkspaceChatWorkingNewStepMotion: { ...scene((f) => ({
+    items: { [ids.tableChat]: [...longChat, ...longRunningItems()] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: open
+  })), motion: { action: { push: [{ type: 'chat.item', chatId: ids.tableChat, item: tool('lr20', 'Check the snapshots', 'pnpm vitest run invoices', { ts: Date.now(), status: 'running', durationMs: undefined, input: { command: 'pnpm vitest run invoices' } }) }] }, ms: 600, area: '.ws-main' } },
   /** KERNEL-912: back to a chat left scrolled up in the middle of its thread. scripts/shots.ts scrolls it up and leaves it first, and the motion clicks its tab. The view must be on the same lines from the first frame. */
   WorkspaceChatSwitchSavedSpotMotion: { ...scene((f) => ({
     chats: [...f.chats, extraChat('chat-other', 'Empty state copy')],

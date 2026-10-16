@@ -651,14 +651,23 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
   // The list leaves the page after its fold-up has played. A short turn, and reduced motion, skip it.
   const animates = !turn.short && !(typeof matchMedia === 'function' && reduced())
   const [mounted, setMounted] = useState(open)
-  const first = useRef(true)
   useLayoutEffect(() => {
     if (open || !mounted) { setMounted(open); return }
     if (!animates) { setMounted(false); return }
     const t = setTimeout(() => setMounted(false), 200)
     return () => clearTimeout(t)
   }, [open, animates]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { first.current = false }, [])
+  // The fold moves only while `open` changes on screen. Left on, a later render (a new step) or the end of a chat's opening would start the open motion
+  // again, and a reader at the end would watch the chat slide down.
+  const [moving, setMoving] = useState(false)
+  const was = useRef(open)
+  useLayoutEffect(() => {
+    if (was.current === open || !animates) { was.current = open; setMoving(false); return }
+    was.current = open
+    setMoving(true)
+    const t = setTimeout(() => setMoving(false), 200)
+    return () => clearTimeout(t)
+  }, [open, animates])
   const [all, setAll] = useRowOpen(chatId, `${block.id}:earlier`, false)
   const { shown: rows, earlier } = windowEntries(block.entries, turn.live, all)
   const id = `${block.id}-list`
@@ -674,7 +683,7 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
         </span>
       </button>
       {mounted && (
-        <div className="group-collapse" data-open={open} data-animate={animates && !first.current ? '' : undefined}>
+        <div className="group-collapse" data-open={open} data-animate={moving ? '' : undefined}>
           <div id={id} className="group-list">
             {earlier > 0 && (
               <button type="button" className="group-earlier" aria-expanded={false} onClick={() => setAll(true)}>{earlier} earlier {earlier === 1 ? 'step' : 'steps'}</button>
