@@ -49,6 +49,12 @@ async function openEveryRow(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// A hover preview open: the pointer on the named control. Focus stays out, so a preview shows from the pointer only.
+async function hoverPreview(page: Page, target: ReturnType<Page['locator']>) {
+  await target.first().hover()
+  await page.waitForTimeout(300)
+}
+
 // A Read image row clicked: the first one loads and opens its image in a tab, the one for the deleted file opens to its path (KERNEL-671).
 async function clickReadImage(page: Page, name: string) {
   await page.locator('.trow-btn', { hasText: 'Read image' }).filter({ hasText: name }).first().click()
@@ -724,6 +730,10 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
     await page.mouse.move(0, 0)
     await page.waitForTimeout(400)
   },
+  WorkspaceReadImagePreview: (page) => hoverPreview(page, page.locator('.trow-btn', { hasText: 'Read image' })),
+  WorkspacePasteImagePreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open image.png' })),
+  WorkspacePasteTextPreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open pasted_text_1.txt' })),
+  WorkspaceIssuePreview: (page) => hoverPreview(page, page.getByRole('button', { name: /^Open issue T-17/ })),
   WorkspaceReadImageTab: (page) => clickReadImage(page, 'image.png'),
   WorkspaceReadImageMissing: (page) => clickReadImage(page, 'image-2.png'),
   WorkspaceJustSent: sendMessage,
