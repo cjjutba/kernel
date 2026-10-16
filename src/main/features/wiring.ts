@@ -120,3 +120,26 @@ export function listen(k: Kernel): () => void {
     k.config?.stopWatching()
   }
 }
+
+/** How long after launch every account's MCP servers are first checked (KERNEL-936). */
+export const MCP_LAUNCH_CHECK_MS = 5_000
+
+/**
+ * What runs once Kernel started: a few seconds in, every account's MCP servers are checked in the background, so Settings,
+ * MCP servers opens warm (KERNEL-936). The app turns it on (`checkMcp`).
+ */
+export function started(k: Kernel) {
+  if (!k.o.checkMcp) return
+  setTimeout(() => { if (!k.stopped) void k.mcp.checkEvery().catch(() => undefined) }, MCP_LAUNCH_CHECK_MS).unref()
+}
+
+/**
+ * The Mac woke. Timers ran late by however long it slept, so a usage limit that reset meanwhile is checked and the PRs are
+ * read again, as when the window comes back from another app (KERNEL-388). A sign-in to an MCP server may have expired
+ * meanwhile, so every account's servers are checked again (KERNEL-936).
+ */
+export function woke(k: Kernel): Promise<void> {
+  k.prs.pollSoon()
+  if (k.o.checkMcp) void k.mcp.checkEvery().catch(() => undefined)
+  return k.account.checkLimits()
+}

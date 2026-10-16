@@ -1018,7 +1018,7 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     const SIDE = credentialsItem({ CLAUDE_CONFIG_DIR: folder })
     // Neither login has signed in to anything yet.
     sdk.mcp = { '': [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'posthog', status: 'connected', scope: 'user' }], [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'posthog', status: 'needs-auth', scope: 'user' }] }
-    await h['mcp.accounts'](undefined)
+    await k.mcp.accounts({ wait: true })
     const on = (list: McpAccount[] | undefined) => list?.find((a) => a.accountId === side.id)
     const states = (a: McpAccount | undefined) => a?.servers.map((s) => [s.name, s.state])
     // The CLI login holds a linear token the server revoked, and a posthog one that works.
@@ -1368,7 +1368,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
       [workHome]: [codexServer('github', 'bearerToken', ['search']), codexServer('vercel', 'notLoggedIn'), codexServer('figma', 'unsupported')]
     })
     await quiet(); sdk.probes = []
-    const all = await h['mcp.accounts'](undefined)
+    const all = await k.mcp.accounts({ wait: true })
     expect(all.map((a) => [a.provider, a.accountId])).toEqual([['claude', 'cli'], ['claude', side.id], ['codex', 'cli'], ['codex', work.id]])
     const on = (list: McpAccount[], provider: string, id: string) => list.find((a) => a.provider === provider && a.accountId === id)
     expect(states(on(all, 'claude', 'cli'))).toEqual([['claude.ai Gmail', 'ready', 'connector'], ['claude.ai Google Drive', 'needs-sign-in', 'connector'], ['linear', 'ready'], ['neon', 'ready']])
@@ -1389,7 +1389,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     expect(spy).not.toHaveBeenCalled()
     // Refresh checks again, here one account.
     sdk.mcp[folder] = [{ name: 'linear', status: 'connected', scope: 'user' }, { name: 'neon', status: 'connected', scope: 'user' }]
-    const again = await h['mcp.accounts']({ refresh: true, accountId: side.id })
+    const again = await k.mcp.accounts({ refresh: true, accountId: side.id, wait: true })
     expect(spy.mock.calls).toEqual([['claude', side.id]])
     expect(states(on(again, 'claude', side.id))).toEqual([['claude.ai Gmail', 'not-set-up', 'connector'], ['claude.ai Google Drive', 'not-set-up', 'connector'], ['linear', 'ready'], ['neon', 'ready']])
     spy.mockRestore()
@@ -1428,7 +1428,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     const side = await h['accounts.add']({ provider: 'claude' })
     const folder = k.providers.claudeHome(side.id)
     sdk.mcp = { [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }] }
-    await h['mcp.accounts'](undefined)
+    await k.mcp.accounts({ wait: true })
     process.env.FAKE_LOGIN_WAIT = '1'
     const running = k.mcp.signInAll('claude', side.id)
     await until(async () => (await logins()).includes('figma'))
@@ -1509,7 +1509,7 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
       '': [codexServer('github', 'bearerToken', ['search']), codexServer('supabase', 'notLoggedIn'), codexServer('code-review', 'unsupported', [], 'code-review@openai-bundled'), codexServer('broken', 'unsupported'), codexServer('vapi', 'unsupported')]
     })
     process.env.FAKE_CODEX_MCP_STARTUP = JSON.stringify({ '': { github: { status: 'ready' }, broken: { status: 'failed', error: 'MCP client for `broken` failed to start: handshake timed out\nCaused by: deadline has elapsed' } } })
-    const all = await h['mcp.accounts'](undefined)
+    const all = await k.mcp.accounts({ wait: true })
     const rows = (a: McpAccount | undefined) => a?.servers.map((s) => [s.name, s.kind, s.state, ...(s.error ? [s.error] : []), ...(s.note ? [s.note] : []), ...(s.connectUrl ? [s.connectUrl] : [])])
     expect(rows(on(all, 'claude', 'cli'))).toEqual([
       ['claude.ai Gmail', 'connector', 'ready'], ['claude.ai Vercel', 'connector', 'ready'], ['linear', 'user', 'ready'], ['neon', 'user', 'failed', 'Error: spawn neon ENOENT'],
@@ -1543,7 +1543,7 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
     const workHome = k.providers.codexHome(work.id)!
     const list = [codexServer('github', 'bearerToken', ['search']), codexServer('supabase', 'notLoggedIn'), codexServer('linear', 'notLoggedIn'), codexServer('mobbin', 'notLoggedIn')]
     process.env.FAKE_CODEX_MCP_STATUS = JSON.stringify({ '': list, [workHome]: list })
-    await h['mcp.accounts'](undefined)
+    await k.mcp.accounts({ wait: true })
     const logs = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m))
     opened.length = 0
     // Signed in, Codex lists supabase with its token, which the check after the sign-in reads (KERNEL-660).
@@ -1561,7 +1561,7 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
     expect(messages[login].params.name).toBe('supabase')
     expect(messages.slice(0, login).filter((m) => 'started' in m).at(-1)?.started).toBe(workHome)
     // Codex keeps the token where every Codex account reads it, so it is ready on both without another check.
-    const after = await h['mcp.accounts'](undefined)
+    const after = await k.mcp.accounts({ wait: true })
     for (const id of ['cli', work.id]) expect(on(after, 'codex', id)?.servers.find((s) => s.name === 'supabase')?.state).toBe('ready')
     // Sign in to all skips what is ready, and a failure carries Codex's reason.
     process.env.FAKE_MCP_FAIL = 'linear'
@@ -1678,7 +1678,7 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
     })
     process.env.FAKE_CODEX_MCP_STARTUP = JSON.stringify({ '': { broken: { status: 'failed', error: 'MCP client for `broken` failed to start: handshake timed out' } } })
     await h['accounts.mcpIgnore']({ provider: 'codex', accountId: 'cli', server: 'linear', ignored: true })
-    const codex = on(await h['mcp.accounts'](undefined), 'codex', 'cli')
+    const codex = on(await k.mcp.accounts({ wait: true }), 'codex', 'cli')
     expect(codex?.servers.map((s) => [s.name, s.state, ...(s.note ? [s.note] : [])])).toEqual([
       ['broken', 'failed'], ['code-review', 'off', 'Not started by Codex'], ['codex_app', 'off', 'Not started by Codex'], ['computer-use', 'off', 'Off in Codex config'],
       ['github', 'ready'], ['linear', 'ignored'], ['supabase', 'needs-sign-in'], ['vapi', 'off', 'Off in Codex config']
@@ -1698,7 +1698,7 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
       '': [{ name: 'claude.ai Gmail', status: 'connected', scope: 'claudeai' }, { name: 'claude.ai Google Drive', status: 'connected', scope: 'claudeai' }, { name: 'linear', status: 'connected', scope: 'user' }, { name: 'figma', status: 'connected', scope: 'user' }, { name: 'neon', status: 'connected', scope: 'user' }],
       [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }, { name: 'neon', status: 'failed', scope: 'user' }]
     }
-    const before = on(await h['mcp.accounts'](undefined), 'claude', side.id)
+    const before = on(await k.mcp.accounts({ wait: true }), 'claude', side.id)
     expect(before?.servers.filter((s) => s.state !== 'ready').map((s) => s.name)).toEqual(['claude.ai Gmail', 'claude.ai Google Drive', 'figma', 'linear', 'neon'])
     expect(before?.needsYou).toBe(5)
     process.env.FAKE_MCP_FAIL = 'figma'
@@ -1730,7 +1730,7 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
     const folder = k.providers.claudeHome(side.id)
     sdk.mcp = { '': [{ name: 'linear', status: 'connected', scope: 'user' }, { name: 'figma', status: 'connected', scope: 'user' }], [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }] }
     process.env.FAKE_CODEX_MCP_STATUS = JSON.stringify({ '': [codexServer('github', 'bearerToken', ['search'])] })
-    await h['mcp.accounts'](undefined)
+    await k.mcp.accounts({ wait: true })
     const checks = vi.spyOn(k.providers, 'mcpServersOn')
     // A sign-in finished: the account is checked again, and what Claude Code says then is what shows.
     sdk.mcp[folder] = [{ name: 'linear', status: 'connected', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }]
@@ -1745,16 +1745,16 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
     // Focus: only the added login has something pending.
     checks.mockClear()
     sdk.mcp[folder] = [{ name: 'linear', status: 'connected', scope: 'user' }, { name: 'figma', status: 'connected', scope: 'user' }]
-    const back = await h['mcp.recheck'](undefined)
+    const back = await k.mcp.recheck({ wait: true })
     expect(checks.mock.calls).toEqual([['claude', side.id]])
     expect(on(back, 'claude', side.id)?.needsYou).toBe(0)
     expect(views.at(-1)).toEqual(back)
     // Focus again within 10 seconds checks nothing, and nor does focus later with nothing pending.
     sdk.mcp[folder] = [{ name: 'linear', status: 'needs-auth', scope: 'user' }]
-    await h['mcp.recheck'](undefined)
+    await k.mcp.recheck({ wait: true })
     const now = Date.now()
     const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 11_000)
-    await h['mcp.recheck'](undefined)
+    await k.mcp.recheck({ wait: true })
     clock.mockRestore()
     expect(checks).toHaveBeenCalledTimes(1)
     checks.mockRestore()
@@ -1769,7 +1769,7 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
     const list = [codexServer('github', 'bearerToken', ['search']), codexServer('supabase', 'notLoggedIn')]
     process.env.FAKE_CODEX_MCP_STATUS = JSON.stringify({ '': list, [workHome]: list })
     sdk.mcp = { '': [{ name: 'linear', status: 'connected', scope: 'user' }] }
-    const all = await h['mcp.accounts'](undefined)
+    const all = await k.mcp.accounts({ wait: true })
     expect(on(all, 'codex', 'cli')?.sharedWith).toEqual([work.id])
     expect(on(all, 'codex', work.id)?.sharedWith).toEqual(['cli'])
     expect(on(all, 'claude', 'cli')?.sharedWith).toBeUndefined()

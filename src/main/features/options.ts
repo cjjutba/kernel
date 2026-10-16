@@ -23,6 +23,11 @@ export interface KernelOptions {
    * passes true. Tests leave it out, so adding an account starts no check they didn't ask for.
    */
   checkMcpOnAdd?: boolean
+  /**
+   * Every account's MCP servers get checked a few seconds after launch and when the Mac wakes (KERNEL-936). The app passes
+   * true. Tests leave it out, so no check starts that they didn't ask for.
+   */
+  checkMcp?: boolean
   /** Can this machine reach Claude? The app passes a DNS probe; tests leave it out, so they never go offline. */
   probeNetwork?: () => Promise<boolean>
   /**

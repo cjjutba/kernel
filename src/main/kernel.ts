@@ -23,7 +23,7 @@ import { Overlaps } from './services/overlap'
 import type { KernelOptions } from './features/options'
 import { channels } from './features/channels'
 import * as records from './features/records'
-import { leadUpdateDeps, listen, notificationDeps, overlapDeps, taskDeps } from './features/wiring'
+import { leadUpdateDeps, listen, notificationDeps, overlapDeps, started, taskDeps } from './features/wiring'
 import { sessionDeps } from './features/sessionDeps'
 import { App } from './features/app'
 import { Inbox } from './features/inbox'
@@ -223,6 +223,7 @@ export class Kernel {
     this.reviews.start()
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
     if (this.store.projects().some((r) => r.pausedBy === 'limit')) void this.account.checkLimits()
+    started(this)
   }
 
   /**
@@ -284,7 +285,7 @@ export class Kernel {
   // Each forwards to its feature, plain and not async (R4). New code and new tests call the feature itself.
 
   readAccount(): Promise<ClaudeAccount> { return this.account.readAccount() }
-  /** The app calls it when the Mac wakes. */
+  /** What the Mac waking runs (`woke` in features/wiring.ts), for tests. */
   checkLimits(): Promise<void> { return this.account.checkLimits() }
   checkpoint(ws: Workspace, chat: Chat): Promise<Checkpoint> { return this.checkpoints.checkpoint(ws, chat) }
   chatTabs(workspaceId: string): Chat[] { return records.chatTabs(this.store, workspaceId) }
