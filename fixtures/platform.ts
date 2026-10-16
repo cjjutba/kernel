@@ -360,7 +360,7 @@ const largeAgents = (): Fixture['agents'] => {
   const mk = (name: string, role: string, model?: string, over: Partial<AgentDef> = {}): AgentDef => ({ ...agentFile(slug(name), name, role, `${name} for this project`), model, ...over })
   const team = (n: number): AgentDef[] => [
     { ...agentFile('kernel-lead', 'Kernel', 'Lead', 'Plans and hands out tasks'), model: undefined },
-    mk('Kai', 'Frontend'), mk('Noor', 'Backend'), mk('Ivy', 'QA'), mk('Theo', 'Reviewer'), mk('Rio', 'Backend', 'claude-sonnet-5-5'), mk('Mira', 'Backend', 'claude-opus-5-5'), mk('Sol', 'Backend'),
+    mk('Kai', 'Frontend'), mk('Noor', 'Backend'), mk('Ivy', 'QA'), mk('Theo', 'Reviewer'), mk('Rio', 'Backend', 'claude-sonnet-5-5'), mk('Mira', 'Backend', 'claude-opus-5-5'), mk('Sol', 'Backend', 'haiku'),
     ...specialists.filter((_, i) => (i + n) % 2 === 0 || n === 1).map((name, i) => mk(name, 'Specialist', i % 9 === 0 ? undefined : i % 4 === 0 ? 'opus' : 'sonnet')),
     mk('Frontend Component Dev', 'Frontend Specialist', 'sonnet'),
     mk('Explore', 'Backend', undefined, { member: false }), mk('Plan', 'Backend', undefined, { member: false }), mk('Old Migrator', 'Backend', undefined, { retired: true })

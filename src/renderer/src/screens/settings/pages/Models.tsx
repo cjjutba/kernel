@@ -4,7 +4,7 @@ import { EFFORT_LABELS, type AppSettings, type CompactWindow, type Effort, type 
 import { roleOf, takesTasks } from '@shared/team'
 import { Icon, Popover, ProviderMark, Select, Toggle } from '../../../ui'
 import { ModelPicker } from '../../workspace/composer/ModelPicker'
-import { COMPACT_LABELS, fitEffort, modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
+import { agentModelLabel, COMPACT_LABELS, fitEffort, modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
 import { appliesTo, Page, Row, Section } from '../kit'
 import { go, useStore } from '../../../store'
 import { patchSettings } from '../useSettings'
@@ -38,7 +38,7 @@ function useRoleAgents(roleKey: Role, models: ProviderModel[]): { follow: WhoLin
       if (a.retired || roleOf(a) !== roleKey || (roleKey !== 'lead' && roleKey !== 'reviewer' && !takesTasks(a))) continue
       const open = a.file ? { projectId: p.id, agentId: a.id } : undefined
       if (a.model) {
-        const label = modelLabelOf(a.model, models)
+        const label = agentModelLabel(a.model, models)
         if (!own.has(`${a.name}|${label}`)) own.set(`${a.name}|${label}`, { key: `${a.name}|${label}`, name: a.name, right: label, open })
         else if (!own.get(`${a.name}|${label}`)!.open) own.get(`${a.name}|${label}`)!.open = open
       } else {
