@@ -100,6 +100,32 @@ describe('row heights', () => {
   })
 })
 
+describe('row heights after a restart (KERNEL-954)', () => {
+  const long = Array.from({ length: 260 }, (_, i) => ({ id: `r${i}`, top: i * 100, height: 90.4 + (i % 3) }))
+
+  it('come back from storage with whole pixels, for the last 200 rows only', async () => {
+    const { readPlace, savePlace, takePlace } = await load()
+    const kept = await import(/* @vite-ignore */ '../src/renderer/src/ui/keptScroll' as string) as { flushSpots: () => void; resetSpots: () => void }
+    savePlace('chat-r', readPlace(long, 500, false))
+    kept.flushSpots()
+    kept.resetSpots()
+    const heights = takePlace('chat-r')?.heights ?? {}
+    expect(Object.keys(heights)).toHaveLength(200)
+    expect(heights.r59).toBeUndefined()
+    expect(heights.r60).toBe(90)
+    expect(heights.r259).toBe(Math.round(90.4 + (259 % 3)))
+  })
+
+  it('stay when a save carries none, and go with the chat and with an archived workspace', async () => {
+    const { readPlace, savePlace, takePlace, dropArchived } = await load()
+    savePlace('chat-k', readPlace(rows, 500, false))
+    savePlace('chat-k', { pinned: false, anchors: [], scrollTop: 9 })
+    expect(takePlace('chat-k')?.heights?.r2).toBe(200)
+    dropArchived([{ id: 'w1', status: 'archived' }], { w1: [{ id: 'chat-k' }] })
+    expect(takePlace('chat-k')).toBeUndefined()
+  })
+})
+
 // A thread as the browser lays it out (KERNEL-918): rows far from the view are skipped and take the height they were given, the saved one or a 60px placeholder,
 // rows near the view are drawn at their real size, and some of those grow a few frames after they are first drawn (code highlighting, images).
 const GAP = 12
@@ -303,13 +329,13 @@ describe('leaving and coming back (KERNEL-918)', () => {
 })
 
 describe('a chat spot survives a restart (KERNEL-922)', () => {
-  it('is stored under chat:<id>, with the last send, and heights stay in memory', async () => {
+  it('is stored under chat:<id>, with the last send and the row heights', async () => {
     const { readPlace, savePlace, takePlace, dropPlace } = await load()
     const { getSpot, resetSpots } = (await import(/* @vite-ignore */ '../src/renderer/src/ui/keptScroll' as string)) as { getSpot: (k: string) => { end: boolean; pos: number; data?: unknown } | undefined; resetSpots: () => void }
     savePlace('chat-r', readPlace(rows, 500, false, 'u9'))
     const spot = getSpot('chat:chat-r')
     expect(spot).toMatchObject({ end: false, pos: 500, data: { lastUserId: 'u9' } })
-    expect(JSON.stringify(spot)).not.toContain('heights')
+    expect(spot?.data).toMatchObject({ heights: { r2: 200 } })
     expect(takePlace('chat-r')?.lastUserId).toBe('u9')
     dropPlace('chat-r')
     expect(getSpot('chat:chat-r')).toBeUndefined()
