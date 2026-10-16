@@ -185,3 +185,13 @@
 .rn-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink); outline: none; }
 .rn-input:focus { border-color: var(--ink-3); }
 .of-err { margin: 10px 0 0; font-size: var(--fs-meta); }
+
+/* New project from scratch (KERNEL-947): name, location and its private GitHub repo. */
+.nps-body { display: flex; flex-direction: column; gap: 16px; margin: 0; padding: 0 18px 6px; }
+.nps-intro { margin: 0; font-size: var(--fs-meta); line-height: var(--lh); color: var(--muted); }
+.nps-intro code { font: var(--fs-meta) var(--mono); color: var(--ink-2); }
+.nps-field { display: flex; flex-direction: column; gap: 6px; }
+.nps-hint { font-size: var(--fs-meta); color: var(--muted); }
+.nps-hint .mono { color: var(--ink-2); }
+.nps-other { font-size: var(--fs-meta); color: var(--muted); }
+.nps-other .cr-link { margin-left: 0; }

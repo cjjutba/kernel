@@ -742,10 +742,9 @@ export const teamFixtures: Record<string, Fixture> = {
   ProjectsRowFocused: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'projects' } } })),
   // Audit: no project added yet, and the Projects page on its own.
   ProjectsEmpty: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'projects' } } })),
-  NewProject: scene((f) => ({
-    ...projectsScene(f),
-    ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'repo', name: 'Client C', desc: 'Booking dashboard for a dental clinic', from: 'samrivera/client-c', baseBranch: 'main' } } }
-  })),
+  // KERNEL-947: New project is from scratch only: a name, where it goes, and its private GitHub repo. NewProjectTaken picks a name that exists.
+  NewProject: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'scratch', name: 'Habit tracker', from: '' } } } })),
+  NewProjectTaken: scene((f) => ({ ...projectsScene(f), takenRepos: ['samrivera/habit-tracker'], ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'scratch', name: 'Habit tracker', from: '' } } } })),
   ConnectRepo: scene((f) => ({ ...projectsScene(f), repos, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
   // Audit: the repo list never answers, and the signed-in account has no repos.
   ConnectRepoLoading: scene((f) => ({ ...projectsScene(f), hold: ['github.repos'], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
