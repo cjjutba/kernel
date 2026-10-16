@@ -100,8 +100,8 @@ export interface AppSettings {
    */
   pr: { mergeMethod: MergeMethod; draft: boolean; requireGreen: boolean; requireReviewer: boolean; autoReview: boolean; leadMerge: boolean; autoMerge: AutoMerge } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
-  /** The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace. */
-  terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; custom: { id: string; name: string; command: string }[] }
+  /** The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace. `connect` (on by default) runs a tab's `claude` wired into Kernel's tools (KERNEL-998). */
+  terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; connect: boolean; custom: { id: string; name: string; command: string }[] }
   /** `sharing` gives agents share_file (KERNEL-302). On by default since KERNEL-308. No page shows it; `false` in settings.json turns it off. */
   experimental: { sharing?: boolean }
   /**

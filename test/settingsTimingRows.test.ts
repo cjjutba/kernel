@@ -11,7 +11,7 @@ const lines = files.flatMap((f) => readFileSync(f, 'utf8').split('\n')).filter((
 /**
  * Settings that have no row in Settings at all: main reads them, but only a settings file sets them.
  */
-const NO_ROW = new Set(['hookPort', 'experimental.sharing', 'models.effortByModel', 'mcp.aliases', 'agents.unlistedTools', 'agents.allow'])
+const NO_ROW = new Set(['hookPort', 'experimental.sharing', 'models.effortByModel', 'mcp.aliases', 'agents.unlistedTools', 'agents.allow', 'terminal.connect'])
 
 const NOTED = new Set(['newChats', 'newWorkspaces', 'newProjects', 'restart'])
 const noted = (map: Record<string, string>) => Object.entries(map).filter(([, t]) => NOTED.has(t)).map(([k]) => k)

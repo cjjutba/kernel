@@ -266,7 +266,7 @@ export interface KernelApi {
   /** Pushes the terminal's kept output as one `terminal.data` with `replace`, for a window that wasn't there to see it (KERNEL-340). */
   'terminal.replay': { req: { chatId: string }; res: Ok }
   /** The presets a new big terminal tab can run: the built-ins, the CLIs on the PATH, then the custom ones (KERNEL-248). */
-  'terminal.presets': { req: void; res: TerminalPreset[] }
+  'terminal.presets': { req: { workspaceId?: string } | void; res: TerminalPreset[] }
 
   // checkpoints (KERNEL-13)
   'checkpoints.list': { req: { workspaceId: string }; res: Checkpoint[] }

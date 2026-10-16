@@ -7,7 +7,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { AgentDef, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
-import { Seats } from '../src/main/features/seats'
+import type { Seats } from '../src/main/features/seats'
 import { run } from '../src/main/services/exec'
 import { LEAD_INSTRUCTIONS } from '../src/main/services/kernelMcp'
 import { SeatRegistry } from '../src/main/services/seatMcp'
@@ -54,7 +54,7 @@ beforeAll(async () => {
   build = await chatWs('build')
   const made = await setUp(k, (await k.workspaces.createWorkspace(projectId, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
   mate = { ws: made, chatId: k.store.chats(made.id)[0].id }
-  seats = new Seats(k)
+  seats = k.seats
   await seats.start()
 }, 60_000)
 

@@ -14,6 +14,9 @@ export const BUILTIN_PRESETS: readonly TerminalPreset[] = [
   { id: 'shell', name: 'Shell', command: null, builtin: true, skipsPermissions: false }
 ]
 
+/** The terminal of a chat with Kernel's Lead: its seat joins the Lead chat's thread (KERNEL-998). Listed in a Lead workspace only. */
+export const LEAD_PRESET: TerminalPreset = { id: 'lead', name: 'Lead', command: 'claude', builtin: true, skipsPermissions: false }
+
 /** An executable file named `bin` in one of PATH's folders. Nothing is run. */
 async function onPath(bin: string, path: string): Promise<boolean> {
   for (const dir of path.split(delimiter)) {
@@ -33,15 +36,15 @@ export async function foundClis(path = process.env.PATH ?? ''): Promise<Terminal
 }
 
 /** The built-ins, then the found CLIs, then the custom commands. A custom id that repeats an earlier one is left out. */
-export function presetList(t: TerminalSettings, clis: TerminalPreset[]): TerminalPreset[] {
-  const out: TerminalPreset[] = [...BUILTIN_PRESETS, ...clis]
+export function presetList(t: TerminalSettings, clis: TerminalPreset[], lead = false): TerminalPreset[] {
+  const out: TerminalPreset[] = [...BUILTIN_PRESETS.slice(0, 2), ...(lead ? [LEAD_PRESET] : []), ...BUILTIN_PRESETS.slice(2), ...clis]
   for (const c of t.custom) out.push({ id: c.id, name: c.name, command: c.command, builtin: false, skipsPermissions: skipsPermissions(c.command) })
   const seen = new Set<string>()
   return out.filter((p) => !seen.has(p.id) && !!seen.add(p.id))
 }
 
-export async function terminalPresets(t: TerminalSettings, path?: string): Promise<TerminalPreset[]> {
-  return presetList(t, await foundClis(path))
+export async function terminalPresets(t: TerminalSettings, path?: string, lead = false): Promise<TerminalPreset[]> {
+  return presetList(t, await foundClis(path), lead)
 }
 
 /**
@@ -70,7 +73,7 @@ export const terminalCommand = (chat: Chat): string | null => (chat.terminal ? c
 export function terminalSettingsOf(v: unknown, defaults: TerminalSettings): TerminalSettings {
   const t = (v && typeof v === 'object' ? v : {}) as Partial<Record<keyof TerminalSettings, unknown>>
   const bool = (x: unknown, d: boolean) => (typeof x === 'boolean' ? x : d)
-  const seen = new Set<string>([...BUILTIN_PRESETS, ...KNOWN_CLIS].map((p) => p.id))
+  const seen = new Set<string>([...BUILTIN_PRESETS, LEAD_PRESET, ...KNOWN_CLIS].map((p) => p.id))
   const custom = (Array.isArray(t.custom) ? t.custom : [])
     .filter((c): c is TerminalSettings['custom'][number] => typeof c?.id === 'string' && !!c.id && typeof c.name === 'string' && typeof c.command === 'string' && !!c.command.trim())
     .filter((c) => !seen.has(c.id) && !!seen.add(c.id))
@@ -79,6 +82,7 @@ export function terminalSettingsOf(v: unknown, defaults: TerminalSettings): Term
     enabled: bool(t.enabled, defaults.enabled),
     preset: typeof t.preset === 'string' && t.preset ? t.preset : defaults.preset,
     onlyInWorktrees: bool(t.onlyInWorktrees, defaults.onlyInWorktrees),
+    connect: bool(t.connect, defaults.connect),
     custom
   }
 }

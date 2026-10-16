@@ -593,13 +593,13 @@ export class Lead extends Feature {
    * none, so there `threadId` names the chat, or the tab starts one. A tab opened while the chat's first message waits for
    * setup waits with it. Saved, not pushed, like `newChat`.
    */
-  leadTab(ws: Workspace, title: string, o: { provider?: Provider; model: string; effort: Effort; plan: boolean }, threadId?: string): Chat {
+  leadTab(ws: Workspace, title: string, o: { provider?: Provider; model: string; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal'] }, threadId?: string): Chat {
     const id = ws.threadId ?? threadId
     const thread = id ? this.store.thread(id) : undefined
     if (id && thread?.projectId !== ws.projectId) throw new Error('That chat no longer exists.')
     const held = ws.status !== 'ready' && this.chatTabs(ws.id).some((c) => this.sessions.isHeld(c.id))
     const chat = this.newChat(ws.id, title, { ...o, threadId: (thread ?? this.pushThread({ id: newId(), projectId: ws.projectId, title, createdAt: Date.now() })).id })
-    if (held) this.sessions.hold(chat.id)
+    if (held && o.kind !== 'terminal') this.sessions.hold(chat.id)
     return chat
   }
 
