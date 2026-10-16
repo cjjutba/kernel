@@ -22,7 +22,11 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
   const failed = failure?.id === id ? failure.message : null
   const [busy, run] = useBusy<'plan' | 'link'>()
   // Work already on the issue holds Plan with Kernel back until the person says to start anyway.
-  const [asking, setAsking] = useState<IssueTakenFinding[] | null>(null)
+  // It is pinned to the issue and project Plan was clicked on, so a new selection can't retarget it.
+  const [asking, setAsking] = useState<{ issue: string; projectId: string; findings: IssueTakenFinding[] } | null>(null)
+  const current = useRef(id)
+  current.current = id
+  useEffect(() => { setAsking(null) }, [id])
   const [picked, setPicked] = useState<{ issue: string; project: string } | null>(null)
   const projects = useStore((s) => s.projects)
   const projectSettings = useStore((s) => s.projectSettings)
@@ -61,21 +65,22 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
   const work = linked[0]
   const unlinked = !!issue && settled && !linkedProject && !!project
 
-  const startPlan = async () => {
-    if (!project) return
+  const startPlan = async (issueId: string, projectId: string) => {
     try {
-      const { chatId } = await call('linear.plan', { id, projectId: project.id })
+      const { chatId } = await call('linear.plan', { id: issueId, projectId })
       onPlanned()
-      await openLeadChat(project.id, chatId)
+      await openLeadChat(projectId, chatId)
     } catch (e) { actions.ui.toast({ title: `Could not plan with ${lead}`, sub: cleanError(e) }) }
   }
   const plan = () => project && run('plan', async () => {
-    if (linked.length === 0) return startPlan()
+    const target = id
+    if (linked.length === 0) return startPlan(target, project.id)
     // What Kernel found on the issue, then the workspaces already linked to it, three things at most.
-    const found = await takenFindings((req) => call('issues.taken', req), project.id, id)
+    const found = await takenFindings((req) => call('issues.taken', req), project.id, target)
+    if (current.current !== target) return
     const mine: IssueTakenFinding[] = linked.flatMap((w) => [{ kind: 'branch' as const, ref: w.branch }, ...(w.prNumber && !['none', 'merged', 'closed'].includes(w.prState) ? [{ kind: 'pr' as const, number: w.prNumber, title: w.title ?? w.name }] : [])])
     const seen = new Set<string>()
-    setAsking([...found, ...mine].filter((f) => { const k = JSON.stringify(f); return !seen.has(k) && !!seen.add(k) }).slice(0, 3))
+    setAsking({ issue: target, projectId: project.id, findings: [...found, ...mine].filter((f) => { const k = JSON.stringify(f); return !seen.has(k) && !!seen.add(k) }).slice(0, 3) })
   })
   const link = () => project && team && run('link', async () => {
     try { actions.settings.setProject(project.id, await call('settings.setProject', { projectId: project.id, patch: { linear: { team } } })); forgetTracker(project.id) }
@@ -180,7 +185,7 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
           </div>
         </div>
       </div>
-      {asking && <ConfirmIssueTaken issue={id} findings={asking} onStart={async () => { await startPlan(); setAsking(null) }} onCancel={() => setAsking(null)} />}
+      {asking && asking.issue === id && <ConfirmIssueTaken issue={asking.issue} findings={asking.findings} onStart={async () => { await startPlan(asking.issue, asking.projectId); setAsking(null) }} onCancel={() => setAsking(null)} />}
     </article>
   )
 }
