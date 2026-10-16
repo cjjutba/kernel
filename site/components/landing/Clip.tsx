@@ -218,16 +218,16 @@ export function Clip({ name, width, height, label }: Props) {
       <div
         aria-hidden="true"
         style={{ backgroundImage: `url(/clips/${name}.jpg)` }}
-        className={`pointer-events-none absolute inset-0 bg-cover bg-center transition-opacity duration-500 ${covered ? 'opacity-100' : 'opacity-0'}`}
+        className={`pointer-events-none absolute inset-0 bg-cover bg-center transition-opacity duration-fade ${covered ? 'opacity-100' : 'opacity-0'}`}
       />
       {tapToPlay ? (
         <button
           type="button"
           onClick={toggle}
           aria-label={`Play: ${label}`}
-          className="absolute inset-0 flex items-center justify-center bg-canvas/20 transition-colors hover:bg-canvas/10"
+          className="absolute inset-0 flex items-center justify-center bg-canvas-veil-strong transition-colors hover:bg-canvas-veil"
         >
-          <span className="inline-flex h-10 items-center gap-2 rounded-full border border-edge bg-canvas/80 px-4 text-ui font-medium text-ink backdrop-blur-nav">
+          <span className="inline-flex h-10 items-center gap-2 rounded-pill border border-edge bg-canvas-chip px-4 text-ui font-medium text-ink backdrop-blur-nav">
             <PlayIcon size={13} />
             Play
           </span>
@@ -237,7 +237,7 @@ export function Clip({ name, width, height, label }: Props) {
           type="button"
           onClick={toggle}
           aria-label={playing ? `Pause: ${label}` : `Play: ${label}`}
-          className={`absolute right-3 bottom-3 inline-flex size-8 items-center justify-center rounded-full border border-edge bg-canvas/80 text-ink-2 backdrop-blur-nav transition hover:border-edge-hover hover:text-ink focus-visible:opacity-100 ${
+          className={`absolute right-3 bottom-3 inline-flex size-8 items-center justify-center rounded-pill border border-edge bg-canvas-chip text-ink-2 backdrop-blur-nav transition hover:border-edge-hover hover:text-ink focus-visible:opacity-100 ${
             playing ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'
           }`}
         >

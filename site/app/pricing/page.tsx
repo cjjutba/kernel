@@ -4,10 +4,11 @@ import type { Metadata } from 'next'
 import { WaitlistReveal } from '@/components/landing/WaitlistReveal'
 import { SiteFooter } from '@/components/layout/SiteFooter'
 import { SiteNav } from '@/components/layout/SiteNav'
-import { Button } from '@/components/ui/Button'
-import { CheckIcon, DownloadIcon } from '@/components/ui/icons'
-import { DOWNLOAD_URL, LICENSE_URL } from '@/lib/links'
+import { CheckIcon } from '@/components/ui/icons'
+import { LICENSE_URL } from '@/lib/links'
 import { pageMetadata } from '@/lib/site'
+import { CtaBlock } from '@/components/ui/CtaBlock'
+import { ExternalLink } from '@/components/ui/ExternalLink'
 
 const title = 'Pricing · Kernel'
 const description = 'Kernel is free for now: no subscription, no paywall and no account. Your agents run on the plan you already have.'
@@ -52,9 +53,9 @@ const QUESTIONS: { q: string; a: ReactNode }[] = [
     a: (
       <>
         Yes. The{' '}
-        <a href={LICENSE_URL} target="_blank" rel="noopener" className={link}>
+        <ExternalLink href={LICENSE_URL} className={link}>
           Elastic License 2.0
-        </a>{' '}
+        </ExternalLink>{' '}
         lets you use Kernel for personal and commercial work. It doesn&apos;t let you sell Kernel to others as a hosted
         service.
       </>
@@ -68,16 +69,16 @@ export default function PricingPage() {
       <SiteNav current="/pricing" />
       <main id="content">
         <section aria-labelledby="pricing-title" className="relative pt-32 text-center max-nav:pt-20">
-          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-130 bg-dots-hero" />
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-dots-page bg-dots-hero" />
           <div className="relative px-6">
             <h1 id="pricing-title" className="text-display-sm text-balance">
               Free for now.
             </h1>
-            <p className="mx-auto mt-5 max-w-150 text-hero-lead text-balance text-muted">No subscription, no paywall, no account.</p>
+            <p className="mx-auto mt-5 max-w-lead text-hero-lead text-balance text-muted">No subscription, no paywall, no account.</p>
           </div>
         </section>
 
-        <section aria-label="The plan" className="mx-auto mt-14 max-w-250 px-6 max-nav:mt-10">
+        <section aria-label="The plan" className="mx-auto mt-14 max-w-head px-6 max-nav:mt-10">
           <div className="frame-gradient">
             <div className="rounded-frame-in bg-surface-1">
               <div className="flex items-end justify-between gap-x-10 gap-y-8 p-10 max-faq:flex-col max-faq:items-start max-nav:gap-y-7 max-nav:p-6">
@@ -90,14 +91,7 @@ export default function PricingPage() {
                   <p className="mt-3 text-small text-faint">For Macs with Apple silicon, on macOS 13 or later.</p>
                 </div>
                 {/* On phones the two buttons span the card, one above the other. */}
-                <div className="flex flex-wrap gap-3 max-nav:w-full max-nav:flex-col">
-                  <Button href={DOWNLOAD_URL} size="lg" icon={<DownloadIcon />} className="max-nav:w-full">
-                    Download for macOS
-                  </Button>
-                  <Button href="/docs/install" variant="secondary" size="lg" className="max-nav:w-full">
-                    Install guide
-                  </Button>
-                </div>
+                <CtaBlock stack secondary={{ href: '/docs/install', label: 'Install guide' }} className="max-nav:w-full" />
               </div>
               <div className="border-t border-line p-10 max-nav:p-6">
                 <p className="text-small font-medium text-ink-2">Everything included</p>
@@ -116,7 +110,7 @@ export default function PricingPage() {
           </div>
         </section>
 
-        <section aria-labelledby="costs-title" className="mx-auto max-w-250 px-6 pt-28 max-nav:pt-20">
+        <section aria-labelledby="costs-title" className="mx-auto max-w-head px-6 pt-28 max-nav:pt-20">
           <h2 id="costs-title" className="text-h3">
             What you pay for
           </h2>
@@ -134,7 +128,7 @@ export default function PricingPage() {
           </ul>
         </section>
 
-        <section aria-labelledby="pricing-faq-title" className="mx-auto grid max-w-250 grid-faq items-start gap-16 px-6 pt-28 pb-32 max-faq:grid-cols-1 max-faq:gap-8 max-nav:pt-20 max-nav:pb-24">
+        <section aria-labelledby="pricing-faq-title" className="mx-auto grid max-w-head grid-faq items-start gap-16 px-6 pt-28 pb-32 max-faq:grid-cols-1 max-faq:gap-8 max-nav:pt-20 max-nav:pb-24">
           <h2 id="pricing-faq-title" className="text-h3">
             Questions
           </h2>
@@ -146,7 +140,7 @@ export default function PricingPage() {
                   {x.q}
                   <span aria-hidden="true" className="faq-plus" />
                 </summary>
-                <p className="-mt-1.5 max-w-155 pr-12 pb-4.5 text-body leading-relaxed text-muted">{x.a}</p>
+                <p className="-mt-1.5 max-w-answer pr-12 pb-4.5 text-body leading-relaxed text-muted">{x.a}</p>
               </details>
             ))}
           </div>

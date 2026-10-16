@@ -82,7 +82,7 @@ export function Toc({ headings }: { headings: DocHeading[] }) {
                   href={`#${h.id}`}
                   onClick={(e) => go(e, h.id)}
                   aria-current={on ? 'location' : undefined}
-                  className={`block py-1 text-small transition-colors duration-200 ${h.depth === 3 ? 'pl-6' : 'pl-3.5'} ${on ? 'text-ink' : 'text-muted hover:text-ink-2'}`}
+                  className={`block py-1 text-small transition-colors duration-base ${h.depth === 3 ? 'pl-6' : 'pl-3.5'} ${on ? 'text-ink' : 'text-muted hover:text-ink-2'}`}
                 >
                   {h.text}
                 </a>

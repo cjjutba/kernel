@@ -5,6 +5,7 @@ import { ChangelogHeader } from './ChangelogHeader'
 import { Pager } from './Pager'
 import { ReleaseEntry } from './ReleaseEntry'
 import { UpNext } from './UpNext'
+import { Container } from '@/components/ui/Container'
 
 /** One page of the changelog. Up next and the Latest badge belong to page 1. */
 export function ChangelogView({ data }: { data: NonNullable<Awaited<ReturnType<typeof changelogPage>>> }) {
@@ -14,7 +15,7 @@ export function ChangelogView({ data }: { data: NonNullable<Awaited<ReturnType<t
       <SiteNav current="/changelog" />
       <main id="content">
         <ChangelogHeader page={page} pages={pages} />
-        <div className="mx-auto max-w-262 px-6 pb-24 max-nav:pb-16">
+        <Container size="changelog" className="pb-24 max-nav:pb-16">
           {releases.map((release, i) => (
             <ReleaseEntry key={release.version} release={release} latest={page === 1 && i === 0} />
           ))}
@@ -26,7 +27,7 @@ export function ChangelogView({ data }: { data: NonNullable<Awaited<ReturnType<t
               This is where it all starts. Older releases will appear here as Kernel grows.
             </p>
           ) : null}
-        </div>
+        </Container>
       </main>
       <SiteFooter />
     </>

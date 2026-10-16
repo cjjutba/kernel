@@ -28,6 +28,7 @@
   --color-edge: #2a2b30;
   --color-edge-hover: #34363c;
   --color-rule: #3a3c42;
+  --color-clear: rgba(0, 0, 0, 0);
 
   --color-ink: #f7f8f8;
   --color-ink-2: #d0d6e0;
@@ -66,6 +67,21 @@
   --color-merged-fg: #d4c2ff;
   --color-merged-text: #b88fff;
   --color-merged-solid: #8b45f5;
+
+  /* See-through fills. Tailwind's own opacity modifier mixes in oklab, so these do too: the pixels match bg-white/5. */
+  --color-tint-faint: color-mix(in oklab, var(--color-white) 2%, transparent);
+  --color-tint-subtle: color-mix(in oklab, var(--color-white) 3%, transparent);
+  --color-tint-soft: color-mix(in oklab, var(--color-white) 4%, transparent);
+  --color-tint: color-mix(in oklab, var(--color-white) 5%, transparent);
+  --color-tint-strong: color-mix(in oklab, var(--color-white) 6%, transparent);
+  --color-tint-high: color-mix(in oklab, var(--color-white) 10%, transparent);
+  --color-canvas-veil: color-mix(in oklab, var(--color-canvas) 10%, transparent);
+  --color-canvas-veil-strong: color-mix(in oklab, var(--color-canvas) 20%, transparent);
+  --color-canvas-glass: color-mix(in oklab, var(--color-canvas) 72%, transparent);
+  --color-canvas-chip: color-mix(in oklab, var(--color-canvas) 80%, transparent);
+  --color-canvas-scrim: color-mix(in oklab, var(--color-canvas) 90%, transparent);
+  --color-surface-1-glass: color-mix(in oklab, var(--color-surface-1) 60%, transparent);
+  --color-surface-2-glass: color-mix(in oklab, var(--color-surface-2) 85%, transparent);
 
   --text-*: initial;
   --text-display: clamp(44px, 5.6vw, 80px);
@@ -131,12 +147,22 @@
   --text-tag--line-height: 1.55;
   --text-badge: 11px;
   --text-badge--line-height: 1.55;
+  --text-prose-h2: 23px;
+  --text-prose-h3: 17.5px;
 
   /* The reference sets mono text with the font shorthand, which resets line height to normal. */
   --leading-*: initial;
   --leading-normal: normal;
   --leading-snug: 1.5;
   --leading-relaxed: 1.6;
+
+  /* Only the weights the site sets, so any other weight utility fails to generate. */
+  --font-weight-*: initial;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* Letter spacing comes with the --text-* tokens. */
+  --tracking-*: initial;
 
   --radius-*: initial;
   --radius-pill: 999px;
@@ -164,7 +190,64 @@
   --breakpoint-docs: 961px;
   --breakpoint-toc: 1201px;
 
-  --default-transition-duration: 150ms;
+  /* Max widths, as max-w-<name> (and w-<name>). */
+  --container-*: initial;
+  --container-page: 78rem; /* 1248: 1200 of content plus the gutters */
+  --container-hero-shot: 80rem; /* 1280: the hero demo */
+  --container-changelog: 65.5rem; /* 1048: the changelog column */
+  --container-head: 62.5rem; /* 1000: a centered section heading, the pricing column */
+  --container-lead: 37.5rem; /* 600: the hero and pricing lead, the search dialog */
+  --container-section-lead: 35rem; /* 560: the line under a section heading, the waitlist form */
+  --container-answer: 38.75rem; /* 620: a FAQ answer */
+  --container-blurb: 30rem; /* 480: the line under the privacy heading */
+  --container-short: 27.5rem; /* 440: a tile's text, the confirm card */
+  --container-tagline: 17.5rem; /* 280: the footer tagline */
+  --container-docs: 84rem; /* 1344: the docs shell */
+  --container-docs-head: 55rem; /* 880: the docs index heading */
+  --container-article: 45rem; /* 720: a docs article */
+  --container-menu: 15rem; /* 240: the copy page menu */
+  --container-nav-menu: 12rem; /* 192: the phone nav menu */
+
+  /* Boxes off the spacing scale, as h-<name>, size-<name>, top-<name> and so on. */
+  --spacing-search-list: 26.25rem; /* 420: the tallest the search results grow */
+  --spacing-dots-page: 32.5rem; /* 520: the dots behind a page heading */
+  --spacing-dither-hero: 50rem; /* 800: the wave behind the hero demo */
+  --spacing-dither-hero-rise: 16rem; /* 256: how far it rises above the demo */
+  --spacing-dither-hero-phone: 22.5rem; /* 360 */
+  --spacing-dither-footer: 14rem; /* 224: the footer's dots */
+  --spacing-sphere: 40rem; /* 640: the final CTA's sphere */
+  --spacing-sphere-phone: 27.5rem; /* 440 */
+  --spacing-sphere-drop: 11rem; /* 176: how far it sinks below, or rises above, the card */
+  --spacing-sphere-bleed: 7rem; /* 112: how far it leaves the card's right edge on phones */
+  --spacing-sphere-clear: 14rem; /* 224: the card's top padding on phones, under the sphere */
+  --spacing-tile-text: 11rem; /* 176: the floor under a feature tile's text */
+  --spacing-node: 4.75rem; /* 76: a node of the privacy map */
+  --spacing-offscreen: 625rem; /* the waitlist's trap field, out of sight */
+
+  /* Stacking, as z-<name> and -z-<name>. */
+  --z-index-*: initial;
+  --z-index-raise: 1; /* above a section's decoration, or one layer below it as -z-raise */
+  --z-index-deep: 2; /* two layers below, as -z-deep */
+  --z-index-bar: 4; /* the docs bar under the nav */
+  --z-index-nav: 5; /* the sticky nav */
+  --z-index-menu: 10; /* a popover menu */
+  --z-index-skip: 50; /* the skip link, above everything */
+
+  --ease-*: initial;
+  --ease-settle: cubic-bezier(0.22, 0.61, 0.36, 1); /* a panel or row coming to rest */
+  --ease-flow: cubic-bezier(0.45, 0, 0.3, 1); /* the privacy map's pulse */
+  --animate-*: initial;
+  --duration-fast: 150ms; /* color changes on hover */
+  --duration-base: 200ms; /* the FAQ plus turning, a link's color, a fade out */
+  --duration-settle: 260ms; /* the dither's height and the demo's transform */
+  --duration-slow: 300ms; /* the nav's border, a revealed row */
+  --duration-fade: 0.5s; /* an image or the demo fading in */
+  --duration-spin: 0.8s; /* the busy spinner */
+  --duration-flow: 3.9s; /* one pulse along the privacy map */
+  --duration-shimmer: 4.5s; /* one pass of the hero pill's shimmer, pause included */
+  --duration-shimmer-delay: 1.2s; /* before the first pass */
+
+  --default-transition-duration: var(--duration-fast);
   --default-font-feature-settings: 'cv01', 'ss03';
 }
 
@@ -175,7 +258,7 @@
 
 /* Scrollbars, as in the app (tokens.css, KERNEL-597, KERNEL-602). Every scroll area, the page included, draws one thin
    thumb: 6px, rounded, no track, on the area's edge. It is invisible until the area scrolls (ScrollIdle sets
-   data-scrolling while it scrolls or its scrollbar is held, and for 800ms after), and fades in over 150ms and out over
+   data-scrolling while it scrolls or its scrollbar is held, and for 800ms after), and fades in over var(--duration-fast) and out over
    200ms. Hovering an area doesn't show it. Chromium can't transition a scrollbar part, so the colour is a registered
    custom property on the scroller, which it can, and the thumb reads it. It inherits, since a scrollbar part takes its
    style from its scroller as a child does. ::-webkit-scrollbar only: scrollbar-width or scrollbar-color would switch
@@ -207,12 +290,12 @@
 @layer base {
   :where(*) {
     --scroll-thumb: transparent;
-    transition: --scroll-thumb 200ms ease-out;
+    transition: --scroll-thumb var(--duration-base) ease-out;
   }
 
   :where([data-scrolling]) {
     --scroll-thumb: var(--color-rule);
-    transition-duration: 150ms;
+    transition-duration: var(--duration-fast);
   }
 }
 
@@ -235,8 +318,8 @@
     background: var(--color-canvas);
     color: var(--color-ink);
     font-family: var(--font-sans);
-    font-size: 15px;
-    line-height: 1.55;
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
     -webkit-font-smoothing: antialiased;
     font-feature-settings: 'cv01', 'ss03';
     overflow-x: clip;
@@ -247,7 +330,7 @@
   summary:focus-visible {
     outline: 2px solid color-mix(in srgb, var(--color-ink) 55%, transparent);
     outline-offset: 2px;
-    border-radius: 6px;
+    border-radius: var(--radius-chip);
   }
 
   summary {
@@ -322,8 +405,8 @@
 @utility toc-bar {
   top: 0;
   transition:
-    transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    height 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    transform var(--duration-settle) var(--ease-settle),
+    height var(--duration-settle) var(--ease-settle);
 }
 
 @utility docs-search {
@@ -385,7 +468,7 @@
   stroke-linecap: round;
   stroke-dasharray: 0.1 2;
   stroke-dashoffset: 0.1;
-  animation: map-flow 3.9s cubic-bezier(0.45, 0, 0.3, 1) infinite;
+  animation: map-flow var(--duration-flow) var(--ease-flow) infinite;
 }
 
 @keyframes map-flow {
@@ -447,7 +530,7 @@
   box-shadow:
     inset 0 1px 0 color-mix(in oklab, var(--color-ink) 12%, transparent),
     0 0 0 1px color-mix(in oklab, var(--color-ink) 3%, transparent),
-    0 24px 50px -20px rgb(0 0 0 / 0.85);
+    0 24px 50px -20px color-mix(in srgb, black 85%, transparent);
 }
 
 /* A row that opens from nothing (components/landing/WaitlistReveal.tsx): its single grid track eases from 0 to its
@@ -457,8 +540,8 @@
   grid-template-rows: 0fr;
   opacity: 0;
   transition:
-    grid-template-rows 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    opacity 200ms ease-out;
+    grid-template-rows var(--duration-slow) var(--ease-settle),
+    opacity var(--duration-base) ease-out;
 
   &[data-open] {
     grid-template-rows: 1fr;
@@ -487,7 +570,7 @@
 @utility bg-dots-hero {
   background-image: conic-gradient(at 3px 3px, transparent 75%, color-mix(in oklab, var(--color-line-strong) 70%, transparent) 0);
   background-size: 12px 12px;
-  mask-image: radial-gradient(ellipse 62% 58% at 50% 22%, #000 15%, transparent 75%);
+  mask-image: radial-gradient(ellipse 62% 58% at 50% 22%, black 15%, transparent 75%);
 }
 
 /* A soft band of light that crosses the hero pill every few seconds. The pill clips it. */
@@ -498,20 +581,20 @@
    and it is gone well before the frame's bottom. The frame covers the middle. */
 @utility dither-hero {
   mask-image:
-    linear-gradient(to bottom, transparent, #000 34%, rgb(0 0 0 / 0.75) 46%, rgb(0 0 0 / 0.25) 72%, transparent 92%),
-    radial-gradient(ellipse 24% 36% at 50% 4%, transparent 55%, #000 100%);
+    linear-gradient(to bottom, transparent, black 34%, color-mix(in srgb, black 75%, transparent) 46%, color-mix(in srgb, black 25%, transparent) 72%, transparent 92%),
+    radial-gradient(ellipse 24% 36% at 50% 4%, transparent 55%, black 100%);
   mask-composite: intersect;
 
   @media (width < 761px) {
     mask-image:
-      linear-gradient(to bottom, transparent, #000 40%, rgb(0 0 0 / 0.6) 55%, transparent 92%),
-      radial-gradient(ellipse 48% 40% at 50% 4%, transparent 55%, #000 100%);
+      linear-gradient(to bottom, transparent, black 40%, color-mix(in srgb, black 60%, transparent) 55%, transparent 92%),
+      radial-gradient(ellipse 48% 40% at 50% 4%, transparent 55%, black 100%);
   }
 }
 
 /* The closing panel's sphere: soft at its rim so it sits in the panel's dark rather than on it. */
 @utility dither-sphere {
-  mask-image: radial-gradient(circle at 50% 50%, #000 45%, transparent 72%);
+  mask-image: radial-gradient(circle at 50% 50%, black 45%, transparent 72%);
 }
 
 /* The waitlist confirm page: the stage fills the screen under the nav, so the card sits in its middle. Over its ripple,
@@ -531,7 +614,7 @@
 
 /* The footer's noise: rises from the page's bottom edge and is gone by the footer's links. */
 @utility dither-footer {
-  mask-image: linear-gradient(to top, #000, rgb(0 0 0 / 0.55) 35%, transparent);
+  mask-image: linear-gradient(to top, black, color-mix(in srgb, black 55%, transparent) 35%, transparent);
 }
 
 /* Demo bezel: the hero's app in a laptop-like frame, built from layers rather than effects:
@@ -551,9 +634,9 @@
     inset 0 1px 0 color-mix(in oklab, var(--color-ink) 16%, transparent),
     inset 0 -1px 0 color-mix(in oklab, var(--color-ink) 4%, transparent),
     0 0 0 1px color-mix(in oklab, var(--color-ink) 5%, transparent),
-    0 2px 3px rgb(0 0 0 / 0.5),
-    0 18px 40px -12px rgb(0 0 0 / 0.75),
-    0 48px 120px -24px rgb(0 0 0 / 0.9);
+    0 2px 3px color-mix(in srgb, black 50%, transparent),
+    0 18px 40px -12px color-mix(in srgb, black 75%, transparent),
+    0 48px 120px -24px color-mix(in srgb, black 90%, transparent);
 
   @media (width < 761px) {
     padding: 5px;
@@ -575,8 +658,8 @@
       var(--color-line) 100%
     );
     mask:
-      linear-gradient(#000 0 0) content-box exclude,
-      linear-gradient(#000 0 0);
+      linear-gradient(black 0 0) content-box exclude,
+      linear-gradient(black 0 0);
     pointer-events: none;
   }
 }
@@ -598,7 +681,7 @@
 @utility demo-screen {
   border-radius: var(--radius-track);
   box-shadow:
-    0 0 0 1px rgb(0 0 0 / 0.85),
+    0 0 0 1px color-mix(in srgb, black 85%, transparent),
     0 0 0 2px color-mix(in oklab, var(--color-ink) 4%, transparent);
 
   &::after {
@@ -607,7 +690,7 @@
     inset: 0 0 auto;
     z-index: 2;
     height: 10px;
-    background: linear-gradient(180deg, rgb(0 0 0 / 0.35), transparent);
+    background: linear-gradient(180deg, color-mix(in srgb, black 35%, transparent), transparent);
     pointer-events: none;
   }
 }
@@ -621,8 +704,8 @@
     inset 0 1px 0 color-mix(in oklab, var(--color-ink) 14%, transparent),
     inset 0 -1px 0 color-mix(in oklab, var(--color-ink) 4%, transparent),
     0 0 0 1px color-mix(in oklab, var(--color-ink) 5%, transparent),
-    0 2px 3px rgb(0 0 0 / 0.45),
-    0 14px 32px -12px rgb(0 0 0 / 0.7);
+    0 2px 3px color-mix(in srgb, black 45%, transparent),
+    0 14px 32px -12px color-mix(in srgb, black 70%, transparent);
 
   @media (width < 761px) {
     padding: 4px;
@@ -663,14 +746,14 @@
     border-radius: inherit;
     pointer-events: none;
     opacity: var(--spot, 0);
-    transition: opacity 300ms ease-out;
+    transition: opacity var(--duration-slow) ease-out;
     inset: -1px;
     z-index: 1;
     padding: 1px;
     background: radial-gradient(560px circle at var(--mx, -999px) var(--my, -999px), color-mix(in oklab, var(--color-ink) 55%, transparent), transparent 70%);
     mask:
-      linear-gradient(#000 0 0) content-box exclude,
-      linear-gradient(#000 0 0);
+      linear-gradient(black 0 0) content-box exclude,
+      linear-gradient(black 0 0);
   }
 }
 
@@ -694,7 +777,7 @@
     background-size: 250% 100%;
     background-repeat: no-repeat;
     background-position: 150% 0;
-    animation: shimmer-pill 4.5s ease-in-out 1.2s infinite;
+    animation: shimmer-pill var(--duration-shimmer) ease-in-out var(--duration-shimmer-delay) infinite;
   }
 }
 
@@ -739,7 +822,7 @@
     height: 1.5px;
     border-radius: 1px;
     background: var(--color-muted);
-    transition: transform 0.2s;
+    transition: transform var(--duration-base);
   }
 
   &::after {
@@ -775,7 +858,7 @@
   border-radius: 50%;
   border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent);
   border-top-color: currentColor;
-  animation: spin 0.8s linear infinite;
+  animation: spin var(--duration-spin) linear infinite;
 }
 
 @keyframes spin {
@@ -794,7 +877,7 @@
 
 /* The provider tiles beside the hero's headline: a raised face lit from above, and a slow drift. */
 @utility fade-in {
-  animation: fade-in 0.5s ease both;
+  animation: fade-in var(--duration-fade) ease both;
 }
 
 @keyframes fade-in {
@@ -828,7 +911,7 @@
 /* A docs page's text, rendered from Markdown by lib/docs.ts. */
 .doc-prose {
   color: var(--color-ink-2);
-  font-size: 15.5px;
+  font-size: var(--text-list);
   line-height: 1.7;
 
   & > * + * {
@@ -850,14 +933,14 @@
 
   & h2 {
     margin-top: 3.25rem;
-    font-size: 23px;
+    font-size: var(--text-prose-h2);
     line-height: 1.25;
     letter-spacing: -0.02em;
   }
 
   & h3 {
     margin-top: 2.25rem;
-    font-size: 17.5px;
+    font-size: var(--text-prose-h3);
     line-height: 1.35;
     letter-spacing: -0.01em;
   }
@@ -935,7 +1018,7 @@
     padding: 14px 16px;
     padding-right: 72px;
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: var(--text-small);
     line-height: 1.65;
     color: var(--color-ink);
   }
@@ -946,9 +1029,9 @@
     top: 10px;
     right: 12px;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-badge);
     color: var(--color-faint);
-    transition: opacity 150ms;
+    transition: opacity var(--duration-fast);
   }
 
   & .doc-copy {
@@ -961,14 +1044,14 @@
     border-radius: var(--radius-chip);
     background: var(--color-surface-3);
     color: var(--color-ink-2);
-    font-size: 12px;
+    font-size: var(--text-micro);
     font-weight: 500;
     opacity: 0;
     cursor: pointer;
     transition:
-      opacity 150ms,
-      color 150ms,
-      border-color 150ms;
+      opacity var(--duration-fast),
+      color var(--duration-fast),
+      border-color var(--duration-fast);
   }
 
   & .doc-code:hover .doc-copy,
@@ -1008,7 +1091,7 @@
   & table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 14px;
+    font-size: var(--text-ui);
     line-height: 1.55;
   }
 
@@ -1049,7 +1132,7 @@
     border-radius: var(--radius-lg);
     background: var(--color-surface-1);
     padding: 12px 16px 12px 42px;
-    font-size: 14.5px;
+    font-size: var(--text-link);
   }
 
   & .doc-note::before {

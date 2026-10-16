@@ -49,7 +49,7 @@ export function Pager({ page, pages }: { page: number; pages: number }) {
                 aria-label={`Page ${n}`}
                 aria-current={n === page ? 'page' : undefined}
                 className={`inline-flex size-9 items-center justify-center rounded-md font-mono text-ui tabular-nums transition-colors ${
-                  n === page ? 'border border-edge bg-raised text-ink' : 'text-muted hover:bg-white/4 hover:text-ink'
+                  n === page ? 'border border-edge bg-raised text-ink' : 'text-muted hover:bg-tint-soft hover:text-ink'
                 }`}
               >
                 {n}
