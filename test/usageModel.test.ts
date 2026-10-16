@@ -1,69 +1,44 @@
 import { describe, expect, it } from 'vitest'
 import type { AccountProfile, RateLimit } from '@shared/types'
-import { chipLabel, footerGroups, moreLabel, switchTip } from '../src/renderer/src/components/footer/usageModel'
+import { chipLabel, footerGroups } from '../src/renderer/src/components/footer/usageModel'
 
 const now = 1_800_000_000_000
 const account = (id: string, active: boolean, over: Partial<AccountProfile> = {}): AccountProfile => ({ id, provider: 'claude', label: id, plan: 'Claude Pro', cli: id === 'cli', auth: 'subscription', active, signedIn: true, ...over })
 const window = (type: RateLimit['type'], utilization: number, accountId?: string, over: Partial<RateLimit> = {}): RateLimit => ({ type, status: 'allowed', utilization, resetsAt: 1_900_000_000, ...(accountId ? { accountId } : {}), ...over })
 
-describe('the footer chips (KERNEL-674)', () => {
+describe('the footer chip (KERNEL-674)', () => {
   const accounts = [account('cli', true), account('side', false)]
   const usage = [window('five_hour', 0.06), window('seven_day', 1), window('seven_day_overage_included', 0), window('five_hour', 0.2, 'side')]
 
   it('carries the Fable number on an account that reports a Fable window, and leaves it off one that does not', () => {
-    const [claude] = footerGroups(accounts, usage, now)
-    expect(claude.chips.map((c) => [c.id, c.five, c.week, c.fable])).toEqual([['cli', 0.06, 1, 0], ['side', 0.2, undefined, undefined]])
+    expect(footerGroups(accounts, usage, now)[0].chip).toEqual({ id: 'cli', name: 'cli', billed: false, five: 0.06, week: 1, fable: 0 })
+    expect(footerGroups([account('cli', true)], [window('five_hour', 0.2)], now)[0].chip?.fable).toBeUndefined()
   })
 
   it('reads a Fable window tagged with the model, and not one that has reset since', () => {
     const tagged = [window('seven_day_opus', 0.4, undefined, { model: 'claude-fable-5-1' })]
-    expect(footerGroups(accounts, tagged, now)[0].chips[0].fable).toBe(0.4)
-    expect(footerGroups(accounts, [window('seven_day_overage_included', 0.4, undefined, { resetsAt: 1_000_000_000 })], now)[0].chips[0].fable).toBeUndefined()
+    expect(footerGroups(accounts, tagged, now)[0].chip?.fable).toBe(0.4)
+    expect(footerGroups(accounts, [window('seven_day_overage_included', 0.4, undefined, { resetsAt: 1_000_000_000 })], now)[0].chip?.fable).toBeUndefined()
   })
 
-  it('says the Fable number in the active chip label only when there is one', () => {
+  it('says the Fable number in the chip label only when there is one', () => {
     const [claude] = footerGroups(accounts, usage, now)
-    expect(chipLabel(claude, claude.chips[0], false)).toBe('Claude Code, cli, active: 5-hour 6%, weekly 100%, Fable 5.1 weekly 0%. Opens usage')
-    expect(chipLabel(claude, { ...claude.chips[0], fable: undefined }, false)).toBe('Claude Code, cli, active: 5-hour 6%, weekly 100%. Opens usage')
+    expect(chipLabel(claude, claude.chip!, false)).toBe('Claude Code, cli, active: 5-hour 6%, weekly 100%, Fable 5.1 weekly 0%. Opens usage')
+    expect(chipLabel(claude, { ...claude.chip!, fable: undefined }, false)).toBe('Claude Code, cli, active: 5-hour 6%, weekly 100%. Opens usage')
   })
 })
 
-describe('the footer row with many accounts (KERNEL-697)', () => {
-  const ids = ['a', 'b', 'c', 'd', 'e']
-  const many = [account('cli', true), ...ids.map((id) => account(id, false))]
-  const headroom = ids.map((id, i) => window('five_hour', 0.1 * (i + 1), id))
-
-  it('shows two others inline, most headroom first, and counts the rest as overflow', () => {
-    const [claude] = footerGroups(many, headroom, now)
-    expect(claude.chips.map((c) => c.id)).toEqual(['cli', 'a', 'b'])
-    expect(claude.overflow.map((c) => c.id)).toEqual(['c', 'd', 'e'])
-    expect(claude.others).toBe(5)
+describe('the footer reports and never switches (KERNEL-949)', () => {
+  it('shows only the account each provider runs on, however many there are', () => {
+    const many = [account('cli', true), ...['a', 'b', 'c'].map((id) => account(id, false)), account('cx', true, { provider: 'codex' })]
+    const groups = footerGroups(many, [window('five_hour', 0.1, 'a')], now)
+    expect(groups.map((g) => [g.provider, g.chip?.id])).toEqual([['claude', 'cli'], ['codex', 'cx']])
   })
 
-  it('has no overflow at two others, and none at all with one account', () => {
-    const two = footerGroups(many.slice(0, 3), headroom, now)[0]
-    expect([two.chips.length, two.overflow.length, two.others]).toEqual([3, 0, 2])
-    const one = footerGroups([account('cli', true)], headroom, now)[0]
-    expect([one.chips.length, one.overflow.length, one.others]).toEqual([1, 0, 0])
-  })
-
-  it('leaves keys, signed-out logins and Keychain waits out of the count', () => {
-    const mixed = [account('cli', true), account('a', false), account('key', false, { auth: 'apiKey' }), account('out', false, { signedIn: false }), account('kc', false, { keychainWait: true }), account('b', false), account('c', false)]
-    const [claude] = footerGroups(mixed, [], now)
-    expect(claude.others).toBe(3)
-    expect(claude.overflow).toHaveLength(1)
-  })
-
-  it('says what switching does, the limit, the missing models and the shared limits', () => {
-    const accounts = [account('cli', true), account('a', false, { label: 'Main account', sameOrg: ['cli'], missingModels: [{ model: 'm', label: 'Opus 5.5', agents: [] }] })]
-    const usage = [{ ...window('five_hour', 1, 'a'), status: 'rejected' as const }]
-    const [claude] = footerGroups(accounts, usage, now)
-    const tip = switchTip(claude, claude.chips[1], now)
-    expect(tip).toContain('Switch Claude Code to Main account. Every Claude agent uses it from its next turn.')
-    expect(tip).toContain('At its limit until')
-    expect(tip).toContain("Doesn't offer Opus 5.5.")
-    expect(tip).toContain('Shares limits with cli.')
-    expect(chipLabel(claude, claude.chips[1], false)).toBe('Switch Claude Code to Main account, 5-hour 100%')
-    expect(moreLabel(claude, 3)).toBe('3 more Claude Code accounts')
+  it('is Sign in for a provider whose account in use is signed out, and billed per token for a key', () => {
+    expect(footerGroups([account('cli', true, { signedIn: false })], [], now)[0]).toEqual({ provider: 'claude', name: 'Claude Code', signedOut: true })
+    const [key] = footerGroups([account('key', true, { auth: 'apiKey' })], [window('five_hour', 0.5, 'key')], now)
+    expect(key.chip).toEqual({ id: 'key', name: 'key', billed: true })
+    expect(chipLabel(key, key.chip!, false)).toBe('Claude Code, key, active: billed per token. Opens usage')
   })
 })

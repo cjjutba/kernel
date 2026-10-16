@@ -74,7 +74,7 @@ function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; cha
     setOpen(next)
   }
   const collapseAll = () => (found ? filter.foldAll(found.dirs) : setOpen(new Set()))
-  if (failed && !tree) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Could not list files</span><span>Try again in a moment.</span></div>
+  if (failed && !tree) return <div className="panel-empty"><span className="ink2 t-medium">Could not list files</span><span>Try again in a moment.</span></div>
   return (
     <>
       <PanelTools>
@@ -83,11 +83,11 @@ function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; cha
       </PanelTools>
       <FilterField filter={filter} label="Filter files" />
       {!tree
-        ? <div className="panel-scroll" style={{ padding: '4px 12px' }} aria-busy="true">{[70, 50, 60, 40, 55, 45, 65, 50].map((w, i) => <div key={i} className="tree-row" style={{ paddingLeft: i % 3 === 1 ? 20 : 0 }}><Skeleton width={`${w}%`} height={10} /></div>)}</div>
+        ? <div className="panel-scroll tree-skel" aria-busy="true">{[70, 50, 60, 40, 55, 45, 65, 50].map((w, i) => <div key={i} className="tree-row" style={{ paddingLeft: i % 3 === 1 ? 20 : 0 }}><Skeleton width={`${w}%`} height={10} /></div>)}</div>
         : found && !found.entries.length
-        ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No files match</span><span>Try another name or folder.</span></div>
+        ? <div className="panel-empty"><span className="ink2 t-medium">No files match</span><span>Try another name or folder.</span></div>
         : (
-          <div ref={scroller} className="panel-scroll" style={{ padding: '0 8px 8px' }}>
+          <div ref={scroller} className="panel-scroll tree-scroll">
             <FileTree label="All files" entries={found ? found.entries : tree} expanded={expanded} onToggle={toggle} onOpen={onOpenFile} activePath={activePath} />
           </div>
         )}
@@ -165,26 +165,26 @@ function ChangesList({ ws, changes: base, onOpenDiff, activePath }: { ws: Worksp
         <CompareButton ws={ws} compare={compare} />
       </PanelTools>
       {error
-        ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Could not compare</span><span>{error}</span></div>
+        ? <div className="panel-empty"><span className="ink2 t-medium">Could not compare</span><span>{error}</span></div>
         : files === null
           ? null
           : !changes.length
-            ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>{empty.title}</span><span>{empty.sub}</span></div>
+            ? <div className="panel-empty"><span className="ink2 t-medium">{empty.title}</span><span>{empty.sub}</span></div>
             : (
               <>
                 <FilterField filter={filter} label="Filter changed files" />
-                <div ref={scroller} className="panel-scroll" style={{ padding: '4px 10px' }}>
+                <div ref={scroller} className="panel-scroll changes-scroll">
                   <div className="changes-head">
                     <span className="changes-count">{changes.length} {changes.length === 1 ? 'file' : 'files'} changed{note && ` ${note}`}</span>
                     <span className="grow" />
                     <span className="mono changes-total">{added ? <span className="add">+{added}</span> : null}{removed ? <span className="del">-{removed}</span> : null}</span>
                   </div>
                   {filter.filtering && !shown.length
-                    ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No changes match</span><span>Try another name or folder.</span></div>
+                    ? <div className="panel-empty"><span className="ink2 t-medium">No changes match</span><span>Try another name or folder.</span></div>
                     : view === 'tree'
                       ? <FileTree label="Changed files" entries={treeEntries} expanded={expanded} onToggle={toggle} onOpen={onOpenDiff} activePath={activePath} trailing={(e) => <Counts f={byPath.get(e.path)} />} />
                       : shown.map((f) => <ChangeRow key={f.path} f={f} active={f.path === activePath} conflicted={conflicts.has(f.path)} ranges={matchRanges(f.path, filter.query)} onOpen={() => onOpenDiff(f.path)} />)}
-                  {ws.mode === 'current' && !note && <p className="muted" style={{ margin: '8px 6px 0', fontSize: 12 }}>Changes from before this workspace started are hidden.</p>}
+                  {ws.mode === 'current' && !note && <p className="muted t-meta changes-hidden">Changes from before this workspace started are hidden.</p>}
                 </div>
               </>
             )}
@@ -200,7 +200,7 @@ interface CheckRow { state: CheckState; label: string; meta?: string; dim?: bool
 const ciState: Record<PrCheck['state'], CheckState> = { pass: 'ok', fail: 'fail', running: 'run', queued: 'run', skipped: 'idle' }
 
 function CheckIcon({ state }: { state: CheckState }) {
-  if (state === 'run') return <span style={{ margin: '0 1px', display: 'inline-flex' }}><Spinner label="Running" pattern="snake" /></span>
+  if (state === 'run') return <span className="check-spin"><Spinner label="Running" pattern="snake" /></span>
   const icon = state === 'ok' ? 'check' : state === 'fail' ? 'close' : state === 'warn' ? 'warning' : 'minus'
   const color = state === 'ok' ? 'var(--add)' : state === 'fail' ? 'var(--del)' : state === 'warn' ? 'var(--ink-2)' : 'var(--faint)'
   return <span style={{ color, display: 'inline-flex' }}><Icon name={icon} size={14} /></span>
@@ -287,20 +287,20 @@ function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
         <RefreshButton ids={[ws.id]} label="Refresh checks" failTitle="Could not refresh checks" />
         <ToolButton icon="ext" label="Open on GitHub" disabled={!url} onClick={() => { if (url) void attempt('Could not open GitHub', () => call('system.openExternal', { url })) }} />
       </PanelTools>
-      <div ref={scroller} className="panel-scroll" style={{ gap: 14, padding: '6px 16px' }}>
+      <div ref={scroller} className="panel-scroll checks-body">
         {groups.map((g) => (
-          <div key={g.title} className="col" style={{ gap: 4 }}>
-            <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>{g.title}</span>
+          <div key={g.title} className="col gap-4">
+            <span className="muted t-meta t-medium">{g.title}</span>
             {g.rows.map((r, i) => (
-              <div key={i} className="row" style={{ gap: 10, minHeight: 26 }}>
+              <div key={i} className="row gap-10" style={{ minHeight: 26 }}>
                 <CheckIcon state={r.state} />
                 <span className="grow ellipsis" style={{ color: r.dim ? 'var(--muted)' : 'var(--ink-2)' }}>{r.label}</span>
-                {r.meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{r.meta}</span>}
+                {r.meta && <span className="mono muted t-chip">{r.meta}</span>}
               </div>
             ))}
           </div>
         ))}
-        <div className="row muted" style={{ gap: 10, fontSize: 12 }}><span>Port</span><span className="mono ink2">{ws.port}</span><span className="grow" /><OpenPreview ws={ws} /></div>
+        <div className="row muted gap-10 t-meta"><span>Port</span><span className="mono ink2">{ws.port}</span><span className="grow" /><OpenPreview ws={ws} /></div>
       </div>
     </>
   )

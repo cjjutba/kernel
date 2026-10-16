@@ -517,7 +517,7 @@ async function narrowSidebar(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// UsageFooterNarrow is the window at 900px wide, where the footer's inline accounts fold into the "more" chip (KERNEL-697).
+// UsageFooterNarrow is the window at 900px wide, where the footer drops the Fable number (KERNEL-697, KERNEL-949).
 async function narrowWindow(page: Page, app: ElectronApplication) {
   await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: 900, h: HEIGHT })
   await page.waitForTimeout(400)
@@ -604,7 +604,6 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   ConfirmOverrule: openOverrule,
   UsageFooterNarrow: narrowWindow,
   AuditSidebarWide: async (page) => { const h = page.getByRole('separator', { name: 'Resize sidebar' }); await h.focus(); await page.keyboard.press('End'); await h.blur(); await page.waitForTimeout(300) },
-  AccountSwitching: async (page) => { await page.locator('.ft-other').first().click(); await page.waitForTimeout(200) },
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   ProjectSetupTeam: openReviewer,
   PanelCompare: openCompare,
@@ -800,7 +799,7 @@ async function runMotionAction(page: Page, action: MotionAction, app: ElectronAp
   else if ('click' in action) await page.getByRole('button', { name: action.click, exact: true }).or(page.getByRole('tab', { name: action.click })).click()
   else if ('hold' in action) { await page.getByRole('button', { name: action.hold, exact: true }).first().hover(); await page.mouse.down() }
   else for (const key of action.press) {
-    if (key.startsWith('click:')) await page.getByRole('button', { name: key.slice(6), exact: true }).click()
+    if (key.startsWith('click:')) await page.getByRole('button', { name: key.slice(6), exact: true }).or(page.getByRole('tab', { name: key.slice(6) })).click()
     else await page.keyboard.press(key)
   }
 }

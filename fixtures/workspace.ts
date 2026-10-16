@@ -2512,6 +2512,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     approvals: [pending('tool', 'noor', { toolName: 'mcp__claude_ai_Linear__save_issue', input: { title: 'Export invoices as PDF', team: 'Kernel' }, ...describeTool('mcp__claude_ai_Linear__save_issue', { title: 'Export invoices as PDF', team: 'Kernel' }) }), ...f.approvals]
   })),
   WorkspacePlan: scene(planWaiting),
+  /** KERNEL-950: back to a Lead chat with a plan waiting from another tab. The transcript must not move once the strip has opened. */
+  WorkspacePlanRoundTrip: { ...scene((f) => { const s = planWaiting(f); return { ...s, chats: [...(s.chats ?? f.chats), { ...extraChat('chat-other', 'Empty state copy'), workspaceId: ids.lead, threadId: 't-lead' }], items: { ...s.items, 'chat-other': [userMsg('o1', 'Shorten the empty state copy.')] }, ui: { ...s.ui, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: ids.leadChat, files: [], diffs: [] } } } } }), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 1500, area: '.ws-main' } },
   WorkspacePlanApprove: { ...scene(planWaiting), motion: { action: { click: 'Approve' }, ms: 1000, area: '.ws-main' } },
   WorkspacePlanApproved: scene(planApproved), // an older chat: no answer row, so the plan card draws the bubble
   WorkspacePlanApprovedItem: scene(planApprovedItem),
@@ -2899,6 +2901,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const gone = { ...f.projects[0], id: 'project-gone', name: 'Old app', archived: true }
     return { ...p, projects: [...(p.projects ?? f.projects), gone], ui: { ...p.ui!, route: { name: 'leadNew', projectId: gone.id } } }
   }),
+  // KERNEL-943: no project at all yet. The title asks what we're building, and the three ways to add a project sit above the box.
+  NewChatFirstProject: scene(() => ({ projects: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [], ui: { route: { name: 'leadNew', projectId: '' }, workspace: { right: 'changes', bottom: 'run' } } })),
   NewChatMode: scene((f) => noPlan(leadNoChats(f))),
   NewChatKeyboard: scene((f) => noPlan(leadNoChats(f))),
   NewChatBranch: scene(newChatBranches),
