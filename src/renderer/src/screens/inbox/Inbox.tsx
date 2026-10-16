@@ -135,9 +135,9 @@ export function Inbox() {
   const list = all.filter((i) => inTab(i, tab))
   const shownRows = useHeldRows(list, (i) => i.n.id, (i) => i.approval?.id)
   const cur = list.find((i) => i.n.id === sel) ?? list[0]
-  // The list and the reading pane each keep their own spot. The pane keeps one per item, since a different item is a different page. A j or k is going somewhere on purpose, so it ends a restore (KERNEL-919).
+  // The list keeps one spot per tab and the reading pane one per item. A j or k is going somewhere on purpose, so it ends a restore (KERNEL-919).
   const listEl = useRef<HTMLDivElement>(null)
-  const listKeep = useKeptScroll(listEl, { key: spotKey.inbox('list'), ready: list.length > 0 })
+  const listKeep = useKeptScroll(listEl, { key: spotKey.inbox('list', tab), ready: list.length > 0 })
   useKeptScroll(detail, { key: spotKey.inbox('pane', cur?.n.id), ready: !!cur })
   const count = (t: InboxTab) => all.filter((i) => inTab(i, t)).length
 

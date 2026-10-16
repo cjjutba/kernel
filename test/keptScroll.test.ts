@@ -188,6 +188,19 @@ describe('useKeptScroll', () => {
     expect(host().scrollTop).toBe(0)
   })
 
+  it('keeps a spot per tab of the same list', () => {
+    mount({ k: spotKey.inbox('list', 'all'), list: rows(200) })
+    scrollTo(1000)
+    act(() => root!.render(h(Probe, { k: spotKey.inbox('list', 'needs'), list: rows(50) })))
+    settle()
+    expect(host().scrollTop).toBe(0)
+    scrollTo(300)
+    act(() => root!.render(h(Probe, { k: spotKey.inbox('list', 'all'), list: rows(200) })))
+    settle()
+    expect(host().scrollTop).toBe(1000)
+    expect(getSpot(spotKey.inbox('list', 'needs'))?.pos).toBe(300)
+  })
+
   it('starts a key it has no spot for at the top', () => {
     mount({ k: 'prs:open', list: rows(200) })
     scrollTo(1000)
@@ -240,6 +253,7 @@ describe('the spot store', () => {
     expect(spotKey.prs('open')).toBe('prs:open')
     expect(spotKey.issues('p1')).toBe('issues:p1')
     expect(spotKey.settings('project', 'scripts', 'p1')).toBe('settings:project:p1:scripts')
+    expect(spotKey.inbox('list', 'needs')).toBe('inbox:list:needs')
     expect(spotKey.panel('w1', 'changes')).toBe('panel:w1:changes')
     expect(spotKey.chat('c1')).toBe('chat:c1')
   })

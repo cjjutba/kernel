@@ -27,7 +27,7 @@ const WRITE_MS = 400
 export const spotKey = {
   prs: (filter: string) => `prs:${filter}`,
   issues: (projectId: string) => `issues:${projectId}`,
-  inbox: (part: 'list' | 'pane', itemId?: string) => (itemId ? `inbox:${part}:${itemId}` : `inbox:${part}`),
+  inbox: (part: 'list' | 'pane', id?: string) => (id ? `inbox:${part}:${id}` : `inbox:${part}`),
   settings: (scope: 'project' | 'app', page: string, projectId?: string) => (scope === 'project' ? `settings:project:${projectId}:${page}` : `settings:app:${page}`),
   panel: (workspaceId: string, tab: string) => `panel:${workspaceId}:${tab}`,
   chat: (chatId: string) => `chat:${chatId}`
