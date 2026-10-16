@@ -10,6 +10,7 @@ type Mod = {
   dropPlace: (chatId: string) => void
   leftAtEnd: (distFromEnd: number) => boolean
   restoreState: () => { see: (at: number) => boolean; settled: boolean; stop: () => void; correcting: boolean }
+  holdView: (o: { put: () => number; ends: boolean; over: () => boolean; following: () => boolean; now: () => number; raf: (step: () => void) => number; caf: (id: number) => void; capMs: number; frames: (running: boolean) => void }) => { state: { correcting: boolean; settled: boolean; live: boolean }; resume: () => void; stop: () => void }
   dropArchived: (workspaces: { id: string; status: string }[], chats: Record<string, { id: string }[] | undefined>) => void
 }
 const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as Promise<Mod>
@@ -246,5 +247,53 @@ describe('leaving and coming back (KERNEL-918)', () => {
     dropArchived([{ id: 'wa', status: 'archived' }, { id: 'wk', status: 'ready' }], { wa: [{ id: 'a1' }, { id: 'a2' }], wk: [{ id: 'k1' }] })
     expect([takePlace('a1'), takePlace('a2')]).toEqual([undefined, undefined])
     expect(takePlace('k1')).toBeDefined()
+  })
+
+  describe('a chat opening at its end', () => {
+    // A frame clock the test advances by hand.
+    const clock = () => {
+      let queued: (() => void) | undefined
+      let t = 0
+      return { now: () => t, raf: (f: () => void) => { queued = f; return 1 }, caf: () => { queued = undefined }, frame(ms = 16) { t += ms; const f = queued; queued = undefined; f?.() } }
+    }
+    const open = async (c: ReturnType<typeof clock>, flags: { byHand: boolean; pinned: boolean; at: () => number }) => {
+      const { holdView } = await load()
+      return holdView({ put: () => flags.at(), ends: true, over: () => flags.byHand, following: () => flags.pinned, now: c.now, raf: c.raf, caf: c.caf, capMs: 600, frames: () => undefined })
+    }
+
+    it('is no longer correcting once a streaming thread keeps the hold going past its time', async () => {
+      const c = clock()
+      let end = 100
+      const hold = await open(c, { byHand: false, pinned: true, at: () => (end += 40) })
+      for (let i = 0; i < 40; i++) c.frame()
+      expect(hold.state.correcting).toBe(false)
+    })
+
+    it('is no longer correcting when the reader scrolls in the first frames', async () => {
+      const c = clock()
+      const flags = { byHand: false, pinned: true, at: () => 500 }
+      const hold = await open(c, flags)
+      c.frame()
+      flags.byHand = true
+      flags.pinned = false
+      c.frame()
+      expect(hold.state.correcting).toBe(false)
+    })
+
+    it('saves the spot the reader scrolled to and left, instead of keeping the old one', async () => {
+      const { savePlace, takePlace, readPlace, leftAtEnd } = await load()
+      const c = clock()
+      const flags = { byHand: false, pinned: true, at: () => 500 }
+      const hold = await open(c, flags)
+      c.frame()
+      flags.byHand = true
+      flags.pinned = false
+      c.frame()
+      const old = readPlace(rows, 0, false)
+      savePlace('end-open', old)
+      if (!hold.state.correcting) savePlace('end-open', readPlace(rows, 424, leftAtEnd(900)))
+      expect(takePlace('end-open')).not.toBe(old)
+      expect(takePlace('end-open')?.scrollTop).toBe(424)
+    })
   })
 })

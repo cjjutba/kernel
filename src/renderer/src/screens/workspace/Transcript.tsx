@@ -30,7 +30,7 @@ import { LEAD_MODE_ICON } from './composer/modes'
 import { retryMessage, sendMessage } from './composer/sendMessage'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
-import { leftAtEnd, opensAtEnd, placeTop, readPlace, restoreState, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
+import { holdView, leftAtEnd, opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
 import { createGlider, type Glider } from './scrollGlide'
 import { TranscriptGlide } from './glideContext'
@@ -980,30 +980,19 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const el = scroller.current
     const place = takePlace(chat.id)
     const lastSent = [...itemsNow.current].reverse().find(followsSend)?.id
-    let again = 0
-    const st = restoreState()
-    const done = () => { cancelAnimationFrame(again); again = 0; el?.removeAttribute('data-opening') }
-    const over = () => !st.live || byHand.current
+    let held: ReturnType<typeof holdView> | undefined
     // The view is put back every frame until what it is put at holds still for 4 frames. A spot then keeps being corrected whenever the thread changes size
     // (late layout: code highlighting, images, rows measured after the first paint), until the reader scrolls. `put` returns the scrollTop it set.
     const hold = (put: () => number, ends: boolean) => {
       if (!el) return
-      st.see(put())
-      const from = performance.now()
-      const step = () => {
-        again = 0
-        if (over() || (ends && !pinned.current)) return done()
-        st.see(put())
-        if (!st.settled && !(ends && performance.now() - from >= OPEN_MS)) again = requestAnimationFrame(step)
-        else done()
-      }
-      again = requestAnimationFrame(step)
+      held = holdView({
+        put, ends, over: () => byHand.current, following: () => pinned.current,
+        now: () => performance.now(), raf: requestAnimationFrame, caf: cancelAnimationFrame, capMs: OPEN_MS,
+        frames: (running) => { if (running) el.setAttribute('data-opening', ''); else el.removeAttribute('data-opening') }
+      })
       if (ends) return
       spot.current = true
-      restoring.current = {
-        put: () => { if (!over() && st.see(put()) && !again) { el.setAttribute('data-opening', ''); again = requestAnimationFrame(step) } },
-        stop: () => { st.stop(); done() }
-      }
+      restoring.current = { put: () => held?.resume(), stop: () => held?.stop() }
     }
     if (el && place?.heights) {
       const kids = thread.current?.children
@@ -1033,11 +1022,10 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     }
     return () => {
       cancelAnimationFrame(frame.current)
-      cancelAnimationFrame(again)
       el?.removeAttribute('data-opening')
-      const correcting = st.correcting && !byHand.current
+      const correcting = !!held?.state.correcting && !byHand.current
       endRestore()
-      st.stop()
+      held?.stop()
       const view = scroller.current
       // A chat that was just closed or archived has no spot to keep, nor has one in an archived workspace.
       const state = getState()

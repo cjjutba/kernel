@@ -56,6 +56,52 @@ export function restoreState() {
   }
 }
 
+export interface HoldOptions {
+  /** Puts the view at its target and returns the scrollTop it set. */
+  put: () => number
+  /** A chat opening at its end: it also stops after `capMs`, or once the chat is no longer following. A spot keeps correcting until the reader scrolls. */
+  ends: boolean
+  /** The reader's own scrolling, which ends the hold. */
+  over: () => boolean
+  following: () => boolean
+  now: () => number
+  raf: (step: () => void) => number
+  caf: (id: number) => void
+  capMs: number
+  /** Called whenever the frames stop, and when they start again for a spot. */
+  frames: (running: boolean) => void
+}
+
+/**
+ * Puts the view back every frame until it holds still, for a chat that opens (KERNEL-918). Both paths end their `restoreState` when the frames stop, however they
+ * stop (settled, time up, the reader scrolled, no longer following), except a spot that settled: that one stays live, and `resume` corrects it when the thread changes size.
+ */
+export function holdView(o: HoldOptions) {
+  const st = restoreState()
+  const from = o.now()
+  let id = 0
+  const stopFrames = () => { o.caf(id); id = 0; o.frames(false) }
+  const step = () => {
+    id = 0
+    if (!st.live || o.over() || (o.ends && !o.following())) { st.stop(); return stopFrames() }
+    st.see(o.put())
+    if (!st.settled && !(o.ends && o.now() - from >= o.capMs)) { id = o.raf(step); return }
+    if (o.ends) st.stop()
+    stopFrames()
+  }
+  st.see(o.put())
+  id = o.raf(step)
+  return {
+    state: st,
+    /** The thread changed size: a spot is put back again, and the frames run until it holds still. */
+    resume() {
+      if (o.ends || !st.live || o.over()) return
+      if (st.see(o.put()) && !id) { o.frames(true); id = o.raf(step) }
+    },
+    stop() { st.stop(); stopFrames() }
+  }
+}
+
 /** Forgets the spots of the chats in every archived workspace, which nobody comes back to (KERNEL-918). `chats` is the store's chats by workspace id. */
 export function dropArchived(workspaces: { id: string; status: string }[], chats: Record<string, { id: string }[] | undefined>) {
   for (const w of workspaces) if (w.status === 'archived') for (const c of chats[w.id] ?? []) dropPlace(c.id)

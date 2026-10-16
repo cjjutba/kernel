@@ -9,3 +9,5 @@
 - Nothing is persisted: spots last until Kernel restarts (KERNEL-922 adds that).
 
 KERNEL-918.
+
+A chat that opens at its end always ends its restore when its hold stops, whether it settled, ran out of time, the reader scrolled or the chat stopped following. A hold left running would make a later leave look like a half restored view and keep the old spot instead of the reader's new one.
