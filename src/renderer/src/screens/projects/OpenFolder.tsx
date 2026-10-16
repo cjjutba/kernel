@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { FolderInfo } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions, go } from '../../store'
+import { actions } from '../../store'
+import { openNewChat } from '../../lead'
 import { Banner, Button, Icon, LoadingRow, Modal, useBusy } from '../../ui'
 import { baseName, defaultTeam, tilde } from './draft'
 import { RepoNameField, useRepoName } from './RepoName'
@@ -57,7 +58,7 @@ export function OpenFolder() {
         ...(needsRepo ? { github: { owner: repo.owner, name: repo.name } } : {})
       })
       actions.projects.upsert(project)
-      go({ name: 'onboarding', step: 'project', projectId: project.id })
+      openNewChat(project.id)
     } catch (e) { setError(cleanError(e)) }
   })
 
