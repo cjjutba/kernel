@@ -49,7 +49,7 @@ export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
       footer={
         <>
           <Toggle checked={d.autostart} onChange={(v) => patchDraft({ autostart: v })} label="Brief Kernel right away" />
-          <span className="grow" style={{ fontSize: 13, color: 'var(--ink-2)' }}>
+          <span className="grow np-hint">
             {error ? <span role="alert" className="del">{error}</span> : <span aria-hidden="true">Brief Kernel right away</span>}
           </span>
           <Button variant="ghost" size="lg" onClick={close}>Cancel</Button>
@@ -65,14 +65,14 @@ export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
         <button type="button" data-close className="icon-btn" aria-label="Close" onClick={close}><Icon name="close" /></button>
       </div>
       <div className="nr-body">
-        <div className="col" style={{ gap: 6 }}>
+        <div className="col np-gap-6">
           <label htmlFor={`${id}n`} className="sr-only">Project name</label>
           <input id={`${id}n`} className="nr-name" autoComplete="off" placeholder="Project name" value={d.name} onChange={(e) => patchDraft({ name: e.target.value, named: true })} />
           <label htmlFor={`${id}d`} className="sr-only">What this project builds</label>
           <input id={`${id}d`} className="nr-desc" autoComplete="off" placeholder="What should this project build?" value={d.desc} onChange={(e) => patchDraft({ desc: e.target.value })} />
         </div>
 
-        <div className="col" style={{ gap: 8 }}>
+        <div className="col np-gap-8">
           <p className="nr-label">Start from</p>
           <div role="radiogroup" aria-label="Start from" className="nr-sources">
             {SOURCES.map((s) => (
@@ -81,7 +81,7 @@ export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
                 onClick={() => patchDraft({ source: s.id, from: s.id === d.source ? d.from : '', baseBranch: '', initGit: false, cloneTo: undefined })}
               >
                 <Icon name={s.icon} size={16} />
-                <span className="col" style={{ gap: 2 }}><span className="nr-source-title">{s.title}</span><span className="nr-source-sub">{s.sub}</span></span>
+                <span className="col nr-source-text"><span className="nr-source-title">{s.title}</span><span className="nr-source-sub">{s.sub}</span></span>
                 {d.source === s.id && <span className="nr-tick" aria-hidden="true"><Icon name="check" size={12} /></span>}
               </button>
             ))}
@@ -89,7 +89,7 @@ export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
         </div>
 
         <div className="nr-fields">
-          <div className="col" style={{ gap: 6 }}>
+          <div className="col np-gap-6">
             <span className="nr-label">{field.label}</span>
             <div className="nr-field">
               {d.source === 'scratch'
@@ -98,15 +98,15 @@ export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
               {field.action && <button type="button" className="nr-change" onClick={change}>{field.action}</button>}
             </div>
           </div>
-          <div className="col" style={{ gap: 6 }}>
+          <div className="col np-gap-6">
             <label htmlFor={`${id}b`} className="nr-label">Base branch</label>
             <input id={`${id}b`} className="nr-field mono nr-branch" autoComplete="off" value={d.baseBranch} placeholder={d.source === 'folder' ? 'Current branch' : 'Detected after clone'} onChange={(e) => patchDraft({ baseBranch: e.target.value })} />
           </div>
         </div>
 
-        <div className="col" style={{ gap: 8 }}>
-          <p className="nr-label">Team <span style={{ fontWeight: 400 }}>from .claude/agents</span></p>
-          <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+        <div className="col np-gap-8">
+          <p className="nr-label">Team <span className="nr-label-note">from .claude/agents</span></p>
+          <div className="row nr-team">
             {STARTER_TEAM.map((m) => {
               const on = m.builtIn || d.team.includes(m.id)
               return (
