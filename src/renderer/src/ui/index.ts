@@ -2,7 +2,7 @@
 export { resolveTheme } from './theme'
 export { useBusy, useEscape, useScreenEscape } from './hooks'
 export { useListKeys, listKeyAction, isTyping } from './listKeys'
-export { Button, IconButton, Pill, Tabs, Toggle, SegmentedControl } from './controls'
+export { Button, Checkbox, IconButton, Pill, Tabs, Toggle, SegmentedControl } from './controls'
 export { Select } from './Select'
 export { CodeLines, lineCount } from './CodeLines'
 export { Menu, MENU_SEPARATOR, Popover, Modal, ConfirmDialog, Toast, ToastStack, type MenuEntry } from './overlays'
