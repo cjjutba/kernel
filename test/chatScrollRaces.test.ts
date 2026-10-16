@@ -141,6 +141,22 @@ describe('chat scroll races (KERNEL-952)', () => {
       expect(Math.abs(r.view.scrollTop - 2600)).toBeLessThan(1)
     })
 
+    // KERNEL-991: a tall plan arriving live. Its top moves while the glide runs (rows above take their real height) and the strip shrinks the view, so the range changes under the glide.
+    it('a reveal follows a goal that moves and a view that shrinks, and lands on the plan top', async () => {
+      const r = rig({ scrollTop: 2400, scrollHeight: 3200, clientHeight: 800 })
+      const { o } = await owned(r)
+      let planTop = 2300
+      o.reveal({ goal: () => planTop - 8, instant: false })
+      for (let i = 0; i < 90; i++) r.tick(() => {
+        if (i === 3) planTop = 2000
+        if (i === 6) planTop = 2150
+        if (i >= 4 && i < 40) r.view.clientHeight = Math.max(640, r.view.clientHeight - 6)
+      })
+      expect(r.clash()).toEqual([])
+      expect(Math.abs(r.view.scrollTop - (planTop - 8))).toBeLessThan(1)
+      expect(o.intent).toBeUndefined()
+    })
+
     // (c) A revised plan (a new approval id) arriving while the reader is scrolled up: nothing may move the view.
     it('(c) a revised plan moves nothing while the reader is scrolled up', async () => {
       const { followsAfterScroll, movesToEnd } = await follow()

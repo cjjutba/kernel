@@ -960,10 +960,14 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const go = shouldReveal(takePlace(chat.id)?.revealed, planId, owner.pinned)
     markRevealed(chat.id, planId)
     if (!go) return
+    // The plan's row can be remounted while the glide runs, which leaves `el` detached and measuring zero. Look the plan up again whenever it is.
+    const live = () => (el.isConnected ? el : box.querySelector<HTMLElement>(`[data-plan-id="${CSS.escape(planId)}"]`))
     const goal = () => {
+      const plan = live()
+      if (!plan) return box.scrollTop
       const view = box.getBoundingClientRect()
-      const at = el.getBoundingClientRect()
-      return Math.round(el.offsetHeight > box.clientHeight ? box.scrollTop + at.top - view.top - 8 : box.scrollTop + at.bottom - view.bottom + 14)
+      const at = plan.getBoundingClientRect()
+      return Math.round(plan.offsetHeight > box.clientHeight ? box.scrollTop + at.top - view.top - 8 : box.scrollTop + at.bottom - view.bottom + 14)
     }
     owner.reveal({ goal, instant: Date.now() - openedAt.current < OPEN_MS })
   }, [chat.id, owner])
