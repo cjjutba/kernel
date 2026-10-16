@@ -1,5 +1,6 @@
 import { createContext, useCallback, useState } from 'react'
 import { getState, subscribe } from '../../store'
+import { dropSpot, getSpot, setSpot, spotKey } from '../../ui/keptScroll'
 
 /** A row the reader was looking at, and how far into it their view sat. */
 export interface Anchor { id: string; offset: number }
@@ -16,18 +17,44 @@ export const END_PX = 2
 
 export const leftAtEnd = (distFromEnd: number) => distFromEnd <= END_PX
 
-/** Spots last until Kernel restarts (KERNEL-765). They live here and not in the store, so nothing is persisted. */
-const places = new Map<string, Place>()
+/** A chat's spot lives in `ui/keptScroll` under `chat:<chatId>` and survives a restart (KERNEL-922). Row heights stay here in memory, since they are only worth drawing a chat in the same session. */
+const heights = new Map<string, Record<string, number>>()
 const opened = new Map<string, Map<string, boolean>>()
 
-export const savePlace = (chatId: string, place: Place) => { places.set(chatId, place) }
+export const savePlace = (chatId: string, place: Place) => {
+  if (place.heights) heights.set(chatId, place.heights)
+  setSpot(spotKey.chat(chatId), { anchors: place.anchors, pos: place.scrollTop, end: place.pinned, data: { lastUserId: place.lastUserId } })
+}
 
-export const takePlace = (chatId: string): Place | undefined => places.get(chatId)
+export const takePlace = (chatId: string): Place | undefined => {
+  const spot = getSpot(spotKey.chat(chatId))
+  if (!spot) return undefined
+  const last = (spot.data as { lastUserId?: unknown } | undefined)?.lastUserId
+  return { pinned: spot.end, anchors: spot.anchors, scrollTop: spot.pos, lastUserId: typeof last === 'string' ? last : undefined, heights: heights.get(chatId) }
+}
 
 /** Forgets the chat's spot, with the row heights it holds, and the rows it had open, for a chat that is closed or archived. */
 export function dropPlace(chatId: string) {
-  places.delete(chatId)
+  dropSpot(spotKey.chat(chatId))
+  heights.delete(chatId)
   opened.delete(chatId)
+}
+
+/** The messages that arrived while the reader was higher up: items counted as messages that were not in the thread when they left the end. Steps and tool rows never count. */
+export function countNew<T extends { id: string }>(items: T[], before: ReadonlySet<string> | null, isMessage: (item: T) => boolean): number {
+  if (!before) return 0
+  let n = 0
+  for (const i of items) if (!before.has(i.id) && isMessage(i)) n++
+  return n
+}
+
+/** Saves the open chat's spot a moment after the reader stops scrolling, so a quit keeps it (KERNEL-922). `soon` restarts the wait, `stop` cancels it. */
+export function keepOpen(save: () => void, ms: number, timers: { set: (fn: () => void, ms: number) => unknown; clear: (id: unknown) => void } = { set: (fn, t) => setTimeout(fn, t), clear: (id) => clearTimeout(id as ReturnType<typeof setTimeout>) }) {
+  let id: unknown
+  return {
+    soon: () => { if (id !== undefined) timers.clear(id); id = timers.set(() => { id = undefined; save() }, ms) },
+    stop: () => { if (id !== undefined) timers.clear(id); id = undefined }
+  }
 }
 
 /**

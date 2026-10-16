@@ -30,7 +30,7 @@ import { LEAD_MODE_ICON } from './composer/modes'
 import { retryMessage, sendMessage } from './composer/sendMessage'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
-import { holdView, leftAtEnd, opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
+import { countNew, holdView, keepOpen, leftAtEnd, opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
 import { createGlider, type Glider } from './scrollGlide'
 import { TranscriptGlide } from './glideContext'
@@ -38,6 +38,8 @@ import { TranscriptGlide } from './glideContext'
 const EMPTY: ChatItem[] = []
 /** A plan revealing itself within this long of the chat opening is placed, not glided. */
 const OPEN_MS = 600
+/** The open chat's spot is saved this long after the reader stops scrolling. */
+const KEEP_MS = 250
 /** The reader counts as following the chat while the end is this close. */
 const PIN_PX = 80
 
@@ -46,6 +48,9 @@ const NOTE_GLYPH: Record<NonNullable<Extract<ChatItem, { kind: 'note' }>['pr']>,
 
 /** The user's own send is what a reader scrolled up follows. A bubble with a sender, the Lead handing work to a teammate, arrives while they read and leaves them where they are. */
 export const followsSend = (item: ChatItem | undefined) => item?.kind === 'user' && !item.from && userView(item) === 'bubble'
+
+/** What a reader calls a message: a reply, or a message from a teammate or the team. Steps, tool rows, thinking and approvals are not, and the reader's own send follows them to the end. */
+export const isMessage = (item: ChatItem) => item.kind === 'text' || (item.kind === 'user' && !followsSend(item) && ['bubble', 'update'].includes(userView(item)))
 
 /** The numbers a scroll position is read from, so the rule below runs without a layout engine. */
 export interface ScrollView { scrollTop: number; scrollHeight: number; clientHeight: number }
@@ -828,6 +833,9 @@ const blockKey = (b: ThreadBlock) => (b.kind === 'item' ? b.item.id : b.id)
 function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onForked }: TranscriptProps) {
   const items = useStore((s) => s.items[chat.id] ?? EMPTY)
   const running = useStore((s) => !!s.running[chat.id])
+  const loaded = useStore((s) => !!s.itemsLoaded[chat.id])
+  const failed = useStore((s) => !!s.itemsFailed[chat.id]) && !loaded && !items.length
+  const loading = !loaded && !failed && !items.length
   const approvals = useStore((s) => s.approvals)
   // The agent is waiting on you, not working, while a request or its plan waits. Both come from the real approvals, so the line at the end of the turn never guesses.
   const planWaits = useStore((s) => !!waitingPlan(s.approvals, chat))
@@ -871,8 +879,14 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const pinned = useRef(true)
   // The Scroll to bottom button shows while the reader is away from the end and not following it. State changes only when it flips, so scrolling doesn't render the transcript on every event.
   const [away, setAway] = useState(false)
+  const [before, setBefore] = useState<ReadonlySet<string> | null>(null)
   const awayNow = useRef(false)
-  const show = (on: boolean) => { if (awayNow.current !== on) { awayNow.current = on; setAway(on) } }
+  const show = (on: boolean) => {
+    if (awayNow.current === on) return
+    awayNow.current = on
+    setAway(on)
+    setBefore(on ? new Set(itemsNow.current.map((i) => i.id)) : null)
+  }
   const pin = (at: boolean) => { pinned.current = at; show(!at) }
   // Only the reader's own scrolling can unpin a small move, so layout that shifts the view doesn't. Input arms it, and the scroll landing disarms it.
   const byHand = useRef(false)
@@ -975,6 +989,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   }
   // A chat opens where it was left, or at its end when it was left there or the reader has sent something since (KERNEL-765). A chat a send just created has no spot, so it opens at its end.
   useLayoutEffect(() => {
+    if (!loaded) return
     gliding.current = false
     byHand.current = false
     const el = scroller.current
@@ -987,7 +1002,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
       if (!el) return
       held = holdView({
         put, ends, over: () => byHand.current, following: () => pinned.current,
-        now: () => performance.now(), raf: requestAnimationFrame, caf: cancelAnimationFrame, capMs: OPEN_MS,
+        now: () => performance.now(), raf: (step) => requestAnimationFrame(step), caf: (id) => cancelAnimationFrame(id), capMs: OPEN_MS,
         frames: (running) => { if (running) el.setAttribute('data-opening', ''); else el.removeAttribute('data-opening') }
       })
       if (ends) return
@@ -1020,21 +1035,33 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         return to
       }, false)
     }
-    return () => {
-      cancelAnimationFrame(frame.current)
-      el?.removeAttribute('data-opening')
-      const correcting = !!held?.state.correcting && !byHand.current
-      endRestore()
-      held?.stop()
+    // The spot is kept while the chat is open too, since nothing unmounts the transcript when Kernel quits (KERNEL-922): shortly after the reader stops scrolling, and when the window goes.
+    const keep = () => {
       const view = scroller.current
       // A chat that was just closed or archived has no spot to keep, nor has one in an archived workspace.
       const state = getState()
       if (!view || !state.chats[workspaceId]?.some((c) => c.id === chat.id && !c.closed) || state.workspaces.find((w) => w.id === workspaceId)?.status === 'archived') return
       // Still being put back, the view is not where the reader left it: the spot from before stays.
-      if (correcting) return
+      if (held?.state.correcting && !byHand.current) return
       savePlace(chat.id, readPlace(rowBoxes(), view.scrollTop, leftAtEnd(distFromEnd(view)), [...itemsNow.current].reverse().find(followsSend)?.id))
     }
-  }, [])
+    const keeper = keepOpen(keep, KEEP_MS)
+    const soon = keeper.soon
+    el?.addEventListener('scroll', soon, { passive: true })
+    window.addEventListener('pagehide', keep)
+    window.addEventListener('beforeunload', keep)
+    return () => {
+      cancelAnimationFrame(frame.current)
+      el?.removeAttribute('data-opening')
+      keeper.stop()
+      el?.removeEventListener('scroll', soon)
+      window.removeEventListener('pagehide', keep)
+      window.removeEventListener('beforeunload', keep)
+      keep()
+      endRestore()
+      held?.stop()
+    }
+  }, [loaded])
   // Opening a row at the end grows the thread under the reader's click, and following would scroll the row they opened out from under them. They are reading it now,
   // so the end doesn't pull it away. Only a click on something that opens counts, and only when the thread grows from it: a menu, or a row that closes, leaves following alone.
   const opening = useRef(false)
@@ -1082,6 +1109,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const prevQueued = useRef(queued)
   useEffect(() => { if (queued > 0 || prevQueued.current > 0) queuedAt.current = Date.now(); prevQueued.current = queued }, [queued])
   useLayoutEffect(() => {
+    if (!loaded) return
     // Before paint, so the frame that draws the new row is already at the end (KERNEL-895). The first run is the chat opening, which the effect above has placed already.
     const step = sendFollow(last, sentId.current, arrived.current, postedFromQueue(queuedAt.current, Date.now()), pinned.current)
     if (step === 'follow') {
@@ -1093,7 +1121,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     if (followsSend(last)) sentId.current = last!.id
     arrived.current = true
     if (pinned.current) followNow()
-  }, [items.length, loose.length, running, queued])
+  }, [items.length, loose.length, running, queued, loaded])
   const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return items[i].ts; return Date.now() }, [items])
   // This chat is on screen, so it is read, whether the window has focus or not. Main can't tell which chat is shown, so it clears the flag when asked:
   // on opening the chat, and again whenever a turn ends in it while it stays open (KERNEL-507, KERNEL-508).
@@ -1102,10 +1130,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
 
   // An empty chat shows the centred welcome in place of the thread, which sits at the bottom of the scroll area.
   // A chat whose items have not arrived is not empty, whatever it holds: it shows nothing until they do, or Try again when the load failed (KERNEL-860).
-  const loaded = useStore((s) => !!s.itemsLoaded[chat.id])
-  const failed = useStore((s) => !!s.itemsFailed[chat.id]) && !loaded && !items.length
-  const loading = !loaded && !failed && !items.length
   const empty = !loading && !failed && !items.length && !loose.length && !running && !(ws?.prState === 'changes' && pr)
+  const newCount = useMemo(() => countNew(items, before, isMessage), [items, before])
   const [retrying, retry] = useBusy()
   // The rows are memoized, so these keep one identity while the chat and workspace stay the same, whatever the parent passes.
   useEffect(() => {
@@ -1176,7 +1202,9 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         </TranscriptWorkspace.Provider>
         </TranscriptGlide.Provider>
       </div>
-      {away && !empty && <IconButton icon="arrowDown" label="Scroll to bottom" className="ws-jump" onClick={toEnd} />}
+      {away && !empty && (newCount > 0
+        ? <Button icon="arrowDown" className="ws-jump new" aria-label={`Scroll to bottom, ${newCount} new`} onClick={toEnd}>{newCount} new</Button>
+        : <IconButton icon="arrowDown" label="Scroll to bottom" className="ws-jump" onClick={toEnd} />)}
     </div>
   )
 }
