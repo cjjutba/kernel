@@ -840,6 +840,9 @@ const planWithOtherChat = (f: Fixture, detail = LEAD_PLAN): Partial<Fixture> => 
   }
 }
 
+/** `planWithOtherChat` with the other chat open, so the first open of the plan's chat is the motion. */
+const startOnOtherChat = (s: Partial<Fixture>): Partial<Fixture> => ({ ...s, ui: { ...s.ui, tabs: { [ids.lead]: { tab: 'chat-other', files: [], diffs: [] } } } })
+
 /** A plan with a new approval id, as Kernel sends it after changes were asked for: the old one expires and the new one takes its place in the chat. */
 const revisedPlan = (f: Fixture): PushEvent[] => {
   const old = planWaiting(f).approvals?.[0]
@@ -2549,11 +2552,15 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   WorkspacePlan: scene(planWaiting),
   /** KERNEL-950: back to a Lead chat with a plan waiting from another tab. The transcript must not move once the strip has opened. */
-  WorkspacePlanRoundTrip: { ...scene((f) => { const s = planWaiting(f); return { ...s, chats: [...(s.chats ?? f.chats), { ...extraChat('chat-other', 'Empty state copy'), workspaceId: ids.lead, threadId: 't-lead' }], items: { ...s.items, 'chat-other': [userMsg('o1', 'Shorten the empty state copy.')] }, ui: { ...s.ui, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: ids.leadChat, files: [], diffs: [] } } } } }), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 1500, area: '.ws-main' } },
+  WorkspacePlanRoundTrip: { ...scene((f) => { const s = planAfterHistory(planWaiting(f)); return { ...s, chats: [...(s.chats ?? f.chats), { ...extraChat('chat-other', 'Empty state copy'), workspaceId: ids.lead, threadId: 't-lead' }], items: { ...s.items, 'chat-other': [userMsg('o1', 'Shorten the empty state copy.')] }, ui: { ...s.ui, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: ids.leadChat, files: [], diffs: [] } } } } }), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 600, area: '.ws-scroll' } },
   /** KERNEL-952 (a): a pending plan in a chat left at its end, to another tab and back. */
-  WorkspaceScrollPlanRoundTripMotion: { ...scene((f) => planWithOtherChat(f)), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 1500, area: '.ws-main' } },
+  WorkspaceScrollPlanRoundTripMotion: { ...scene((f) => planWithOtherChat(f)), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 600, area: '.ws-scroll' } },
   /** KERNEL-952 (b): a pending plan taller than the view, scrolled to its task list, then to another tab and back. */
-  WorkspaceScrollTallPlanRoundTripMotion: { ...scene((f) => planWithOtherChat(f, TALL_PLAN)), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 1500, area: '.ws-main' } },
+  WorkspaceScrollTallPlanRoundTripMotion: { ...scene((f) => planWithOtherChat(f, TALL_PLAN)), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 600, area: '.ws-scroll' } },
+  /** KERNEL-952 (KERNEL-953 acceptance): a pending plan taller than the view, opened for the first time from another tab. The chat must open at the top of the plan. */
+  WorkspaceScrollTallPlanFirstOpenMotion: { ...scene((f) => startOnOtherChat(planWithOtherChat(f, TALL_PLAN))), motion: { action: { click: 'Export invoices as PDF' }, ms: 900, area: '.ws-scroll' } },
+  /** KERNEL-952 (KERNEL-953 acceptance): a plan that fits, opened for the first time from another tab. The end of the chat stays in view while the strip opens. */
+  WorkspaceScrollFitPlanFirstOpenMotion: { ...scene((f) => startOnOtherChat(planWithOtherChat(f))), motion: { action: { click: 'Export invoices as PDF' }, ms: 900, area: '.ws-scroll' } },
   /** KERNEL-952 (c): a revised plan with a new approval id arriving while the reader is scrolled up. */
   WorkspaceScrollRevisedPlanMotion: { ...scene((f) => planAfterHistory(planWaiting(f))), motion: { action: { push: revisedPlan(scene(() => ({}))) }, ms: 1500, area: '.ws-main' } },
   /** KERNEL-952 (d): a pasted image grows the composer while the chat is at its end. */
@@ -2565,7 +2572,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   /** KERNEL-952 (e): a turn ends and folds its steps while the reader is scrolled up. */
   WorkspaceScrollTurnFoldMotion: { ...scene((f) => ({ items: { [ids.tableChat]: [...scrollHistory('tf'), ...runningItems()] }, push: [...f.push, runningEvent(ids.tableChat, true)], ui: open })), motion: { action: { push: [{ type: 'chat.item', chatId: ids.tableChat, item: { kind: 'text', id: 'tf-done', ts: Date.now(), text: 'All three snapshot tests pass with frozen dates.' } }, { type: 'chat.item', chatId: ids.tableChat, item: { kind: 'result', id: 'tf-res', ts: Date.now(), durationMs: 134_000, ok: true } }, runningEvent(ids.tableChat, false)] }, ms: 1500, area: '.ws-main' } },
   /** KERNEL-952 (f): case (a) under reduced motion. */
-  WorkspaceScrollPlanRoundTripReducedMotion: { ...scene((f) => planWithOtherChat(f)), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 1500, area: '.ws-main' } },
+  WorkspaceScrollPlanRoundTripReducedMotion: { ...scene((f) => planWithOtherChat(f)), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 600, area: '.ws-scroll' } },
   WorkspacePlanApprove: { ...scene(planWaiting), motion: { action: { click: 'Approve' }, ms: 1000, area: '.ws-main' } },
   WorkspacePlanApproved: scene(planApproved), // an older chat: no answer row, so the plan card draws the bubble
   WorkspacePlanApprovedItem: scene(planApprovedItem),
