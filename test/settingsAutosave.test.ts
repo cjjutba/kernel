@@ -158,6 +158,24 @@ describe('PR instructions sheet saves without a Save button', () => {
     expect(onSave.mock.calls).toEqual([['Kept.']])
   })
 
+  it('saves what was typed when a press on the scrim closes it', async () => {
+    const onSave = vi.fn(async (t: string | null) => t)
+    let open = true
+    const Host = () => {
+      const [shown, setShown] = React.useState(true)
+      return shown ? React.createElement(InstructionSheet, { title: 'Create PR', value: 'Open a PR.', fallback: 'Default text.', onSave: onSave as never, onClose: () => { open = false; setShown(false) } }) : null
+    }
+    mount(React.createElement(Host))
+    const text = field('Create PR')
+    type(text, 'Keep this.')
+    await act(async () => { document.querySelector('.scrim')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
+    const dialog = document.querySelector<HTMLElement>('.modal')!
+    await blur(text)
+    await act(async () => { dialog.dispatchEvent(Object.assign(new Event('animationend', { bubbles: true }), { animationName: 'modal-out' })) })
+    expect(open).toBe(false)
+    expect(onSave.mock.calls).toEqual([['Keep this.']])
+  })
+
   it('closes on Escape without saving the text in the field, though the modal takes the key first', async () => {
     const onSave = vi.fn(async (t: string | null) => t)
     let open = true
