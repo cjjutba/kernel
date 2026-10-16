@@ -536,10 +536,10 @@ export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | '
   return undefined
 }
 
-/** The rows a Build here chat's own PR gets when it opens and when it passes checks, which never wake the Lead (KERNEL-990). */
-export function ownPrNote(kind: 'opened' | 'ready', ws: Workspace): string {
-  const n = ws.prNumber ? `PR #${ws.prNumber}` : 'the PR'
-  return kind === 'opened' ? `Opened ${n}` : `${n[0].toUpperCase()}${n.slice(1)} is ready to merge`
+/** The row a Build here chat's own PR gets when it passed checks and the screen doesn't say so, which never wakes the Lead (KERNEL-990). `tail` is why it is posted. */
+export function ownPrNote(ws: Workspace, tail?: string): string {
+  const n = ws.prNumber ? `PR #${ws.prNumber}` : 'The PR'
+  return `${n} is ready to merge${tail ? `. ${tail}` : ''}`
 }
 
 /** Where the GitHub CLI stands (`GitHubAuth`, KERNEL-448). */
