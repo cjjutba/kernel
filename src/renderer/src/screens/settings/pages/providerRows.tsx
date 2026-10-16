@@ -1,7 +1,7 @@
 import { useId, useRef, type ReactNode } from 'react'
 import type { AccountProfile, RateLimit } from '@shared/types'
 import { resetPhrase } from '@shared/usage'
-import { Button, IconButton, Menu, Meter, type MenuEntry, MENU_SEPARATOR } from '../../../ui'
+import { Button, IconButton, Menu, Meter, Spinner, type MenuEntry, MENU_SEPARATOR } from '../../../ui'
 import { isFable, live, windowsOf } from '../../../components/footer/planModel'
 import './accounts.css'
 
@@ -79,21 +79,24 @@ export function AccountRow({ account, line2, back, note, cells, active, action, 
   const detailsId = useId()
   // Escape, a press outside or a pick closes the menu and hands focus back to its button. Rename's field and Remove's dialog take it after.
   const close = () => { onMenu(false); anchor.current?.querySelector<HTMLButtonElement>('.ac-more')?.focus() }
+  // Enter and Escape end the rename themselves, so the blur that follows when the field goes away saves nothing twice.
+  const renameDone = useRef(false)
+  if (!rename) renameDone.current = false
   if (rename) {
     return (
       <div className="ac-row" data-open="true">
         <div className="ac-renaming">
           <input
             className="ac-rename" aria-label={`Name for ${account.label}`} autoComplete="off" spellCheck={false} autoFocus placeholder={account.email} disabled={rename.saving} value={rename.value}
-            onFocus={(e) => e.currentTarget.select()} onChange={(e) => rename.onChange(e.target.value)}
+            onFocus={(e) => e.currentTarget.select()} onChange={(e) => { renameDone.current = false; rename.onChange(e.target.value) }}
+            onBlur={() => { if (!renameDone.current && !rename.saving) rename.onSave() }}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return
-              if (e.key === 'Enter') { e.preventDefault(); rename.onSave() }
-              else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); rename.onCancel() }
+              if (e.key === 'Enter') { e.preventDefault(); renameDone.current = true; rename.onSave() }
+              else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renameDone.current = true; rename.onCancel() }
             }}
           />
-          <Button variant="ghost" aria-label={`Cancel renaming ${account.label}`} disabled={rename.saving} onClick={rename.onCancel}>Cancel</Button>
-          <Button variant="primary" aria-label={`Save the name for ${account.label}`} busy={rename.saving} busyLabel="Saving" onClick={rename.onSave}>Save</Button>
+          {rename.saving && <span className="set-save" data-state="saving" role="status"><Spinner label={null} pattern="wave-back" />Saving</span>}
         </div>
       </div>
     )
