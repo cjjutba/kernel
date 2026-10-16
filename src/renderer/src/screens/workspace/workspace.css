@@ -39,7 +39,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 .ws-tab { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 100%; max-width: 220px; padding: 0 12px; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); font-weight: var(--fw-medium); }
 .tab-glyph { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .tab-glyph > svg { flex-shrink: 0; }
-.tab-glyph[data-tone='needs'] svg { color: var(--ink); }
+.tab-glyph[data-tone='needs'] svg { color: var(--needs-fill); }
 .ws-tab:hover { color: var(--ink); }
 .ws-tab[aria-selected='true'] { color: var(--ink); }
 /* A tab with a reply you haven't seen is bold, like its sidebar row (KERNEL-508). The tab on screen is read, so it is never marked. */

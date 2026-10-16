@@ -92,7 +92,7 @@
 /* Project setup, remove project */
 .rs-ico[data-state='wait'] { color: var(--faint); }
 .rs-ico[data-state='run'] { color: var(--ink-2); }
-.rs-ico[data-state='warn'] { color: var(--ink); }
+.rs-ico[data-state='warn'] { color: var(--needs-fill); }
 .rs-note { margin-top: 4px; }
 .rs-note code { font: var(--fs-meta) var(--mono); color: var(--ink-2); white-space: nowrap; }
 .rs-acts .btn { height: 30px; }
@@ -125,7 +125,7 @@
 .rs-team-label { font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink-2); }
 .rs-team-text > [data-gap] { color: var(--ink-3); }
 .rs-team-warn { display: flex; align-items: flex-start; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); font-size: var(--fs-code); color: var(--ink-2); }
-.rs-team-warn svg { flex-shrink: 0; margin-top: 2px; color: var(--ink); }
+.rs-team-warn svg { flex-shrink: 0; margin-top: 2px; color: var(--needs-fill); }
 .cr-name { font-weight: var(--fw-medium); }
 .cr-path { font-size: var(--fs-code); }
 .cr-empty { margin: 0; padding: 10px 12px; }

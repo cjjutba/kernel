@@ -115,6 +115,7 @@
 /* banner */
 .banner { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); font-size: var(--fs-code); }
 .banner > svg, .banner > .dots { color: var(--ink-2); flex-shrink: 0; }
+.banner[data-kind='warn'] > svg { color: var(--needs-fill); }
 .banner-title { color: var(--ink); font-weight: var(--fw-medium); }
 /* A dismissible banner follows a swipe, then slides out. Its close button sits on the top right corner, out of the row, so the row looks the same at rest. */
 .banner[data-dismissible] { position: relative; transition: transform var(--dur-slow) ease-out; }
