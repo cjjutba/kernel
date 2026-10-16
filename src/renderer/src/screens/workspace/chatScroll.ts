@@ -327,9 +327,9 @@ export function createChatScroll(o: ChatScrollOptions) {
     },
 
     /** A plan revealing itself. Not while the reader is scrolling, and a place or a follow gives way to it. */
-    reveal(run: { goal: () => number; instant: boolean }) {
+    reveal(run: { goal: () => number; instant: boolean; holdMs?: number }) {
       if (byHand()) return
-      glide({ goal: run.goal, instant: run.instant, over: byHand })
+      glide({ goal: run.goal, instant: run.instant, holdMs: run.holdMs, over: byHand })
     },
 
     /** Ends the glide where it is, as the chat rail does when the reader moves on. */

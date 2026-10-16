@@ -39,6 +39,9 @@ import { ChatSetupRows } from './ChatSetupRows'
 const EMPTY: ChatItem[] = []
 /** A plan revealing itself within this long of the chat opening is placed, not glided. */
 const OPEN_MS = 600
+
+/** A plan's reveal keeps following its goal this long, so it outlasts the Approve strip opening under it. */
+const STRIP_MS = 1300
 /** The open chat's spot is saved this long after the reader stops scrolling. */
 const KEEP_MS = 250
 /** The PR state icons a note draws before its text, the same glyphs as the PR header (KERNEL-313). */
@@ -969,7 +972,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
       const at = plan.getBoundingClientRect()
       return Math.round(plan.offsetHeight > box.clientHeight ? box.scrollTop + at.top - view.top - 8 : box.scrollTop + at.bottom - view.bottom + 14)
     }
-    owner.reveal({ goal, instant: Date.now() - openedAt.current < OPEN_MS })
+    // The Approve strip opens over about a second and shrinks the view, so the reveal keeps following its goal past that, placed or glided.
+    owner.reveal({ goal, instant: Date.now() - openedAt.current < OPEN_MS, holdMs: STRIP_MS })
   }, [chat.id, owner])
   // Sending a message puts the view at its end at once, even from further up, since the reader just asked for something. No glide: the new row appears and the view stays at the end.
   const last = items[items.length - 1]
