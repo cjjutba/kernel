@@ -1,5 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
-import { Icon } from '../../../ui'
+import { Icon, listKeyAction } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 
 /** What the arrow keys move between in a where-row menu: its search field and its rows. */
@@ -34,10 +34,9 @@ export function WherePop({ anchorRef, label, width, onClose, onKey, focusFirst =
     const i = all.indexOf(document.activeElement as HTMLElement)
     const move = (to: number) => { e.preventDefault(); e.stopPropagation(); all[(to + all.length) % all.length]?.focus() }
     const typing = e.target instanceof HTMLInputElement
-    if (e.key === 'ArrowDown') move(i + 1)
-    else if (e.key === 'ArrowUp') move(i - 1)
-    else if (e.key === 'Home' && !typing) move(0)
-    else if (e.key === 'End' && !typing) move(all.length - 1)
+    const action = listKeyAction(e, i, all.length, true)
+    const to = action?.kind === 'move' && (!typing || e.key.startsWith('Arrow')) ? action.to : null
+    if (to !== null) move(to)
     else if (e.key === 'Tab') { e.preventDefault(); onClose(true) }
   }
   return (

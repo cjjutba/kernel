@@ -41,7 +41,7 @@ export function SharedPanel({ ws }: { ws: Workspace }) {
   const scroller = useRef<HTMLDivElement>(null)
   useKeptScroll(scroller, { key: spotKey.panel(ws.id, 'shared'), ready: files.length > 0 })
   if (!files.length) {
-    return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Nothing shared in this workspace yet</span><span style={{ fontSize: 12.5 }}>Files an agent shares show up here.</span></div>
+    return <div className="panel-empty"><span className="ink2 t-medium">Nothing shared in this workspace yet</span><span className="t-code">Files an agent shares show up here.</span></div>
   }
   return (
     <div ref={scroller} className="shpanel">
