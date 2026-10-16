@@ -344,3 +344,9 @@
 .open-items-row + .open-items-row { border-top: 1px solid var(--line-4); }
 .open-items-text { flex: 1; min-width: 0; }
 .open-items-row .btn { height: 24px; padding: 0 8px; font-size: 12px; }
+
+/* Viewer tabs (KERNEL-934): the box is one line, the input with its hint, then + and Stop, and the viewer takes the rest of the column. The height snaps. */
+.cmp[data-compact] { flex-direction: row; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; }
+.cmp[data-compact] .cmp-field { flex: 1; min-width: 0; }
+.cmp[data-compact] .cmp-input { min-height: 24px; max-height: 24px; overflow: hidden; }
+.cmp[data-compact] .cmp-foot { flex-shrink: 0; }

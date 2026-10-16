@@ -66,7 +66,8 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
 
   return (
     <div className="shared-view">
-      <div className="shared-title"><h2 className="ellipsis">{file.title}</h2><span className="shared-by">Shared by {by} · {clock(version)}</span></div>
+      <div className="shared-head">
+      <div className="shared-title"><h2 className="ellipsis">{file.title}</h2><span className="shared-by ellipsis">Shared by {by} · {clock(version)}</span></div>
       <div className="shared-tools">
         <span ref={anchor} style={{ position: 'relative' }}>
           <button type="button" className="shared-ver" aria-label="Versions" aria-haspopup="menu" aria-expanded={versions} onClick={() => setVersions(!versions)}>
@@ -75,7 +76,6 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
           {versions && <Menu label="Versions" anchorRef={anchor} onClose={() => setVersions(false)} style={{ left: 0, top: 'calc(100% + 6px)', width: 380 }} items={entries} />}
         </span>
         {page && <span className="shared-width"><SegmentedControl label="Preview width" value={width} onChange={(w) => setWidth(w as PreviewWidth)} options={WIDTHS} /></span>}
-        <span className="grow" />
         {file.kind === 'image' && <ZoomControl zoom={zoom} />}
         {!pdf && (
           <button ref={toggle} type="button" className="shared-comment" aria-pressed={commenting} disabled={!ready} onClick={() => setCommenting(!commenting)}>
@@ -85,6 +85,7 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
         {page && <Button className="small" icon="refresh" onClick={() => setAgain(again + 1)}>Reload</Button>}
         {pdf && <Button className="small" icon="ext" busy={busy === 'open'} busyLabel="Opening" onClick={() => void openInPreview()}>Open in Preview</Button>}
         <Button className="small" icon="folder" onClick={reveal}>Show in Finder</Button>
+      </div>
       </div>
       <div className="shared-body">
         <div ref={area} className="shared-area" data-kind={file.kind}>

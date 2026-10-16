@@ -1380,7 +1380,7 @@ const renderer = (f: Fixture) => ({
 })
 
 /** The chat card shots show v2 of the page, the tab shots its three versions. `file` is the shared id the tab opens on. */
-const sharedTab = (file?: string, htmlLatest = 3) => scene((f) => ({
+const sharedTabScene = (f: Fixture, file?: string, htmlLatest = 3): Partial<Fixture> => ({
   ...renderer(f),
   shared: sharedFiles(htmlLatest).filter((x) => x.workspaceId === ids.table),
   ui: {
@@ -1388,7 +1388,8 @@ const sharedTab = (file?: string, htmlLatest = 3) => scene((f) => ({
     workspace: { right: 'changes', bottom: 'run' },
     ...(file ? { tabs: { [ids.table]: { tab: `shared:${file}`, lastChat: ids.tableChat, files: [], diffs: [], shared: [file] } } } : {})
   }
-}))
+})
+const sharedTab = (file?: string, htmlLatest = 3) => scene((f) => sharedTabScene(f, file, htmlLatest))
 
 // Comment mode on a shared file (KERNEL-311). The canvas comments on a pricing page Noor shared, so these shots swap it in for the invoice layout.
 // A fixture run has no live page: `sharedHits` is what `system.preview.hit` finds, and the pins come from `sharedComments`.
@@ -2933,6 +2934,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceSharedPdf: sharedTab('sh-pdf'),
   WorkspaceSharedCrashed: sharedTab('sh-html'),
   WorkspaceSharedVersions: sharedTab('sh-html'),
+  // KERNEL-934: a viewer tab keeps the box to one line (WorkspaceSharedHtml and WorkspaceSharedImage show it closed). Open with the model menu, a plan waiting on a file tab, and a draft waiting.
+  WorkspaceViewerOpenMenu: scene((f) => ({ ...sharedTabScene(f, 'sh-html'), ui: { ...sharedTabScene(f, 'sh-html').ui, menu: 'model' } })),
+  WorkspaceViewerPlan: scene((f) => {
+    const p = planWaiting(f)
+    return { ...p, fileText: { [ids.lead]: { 'plans/t-15-invoice-pdf.md': LEAD_PLAN } }, ui: { ...p.ui, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: 'file:plans/t-15-invoice-pdf.md', lastChat: ids.leadChat, files: ['plans/t-15-invoice-pdf.md'], diffs: [] } } } }
+  }),
+  WorkspaceViewerDraft: scene((f) => withDraft(sharedTabScene(f, 'sh-html'), 'Make the totals row bold in the detailed layout.')),
   // Comment mode (KERNEL-311). The shots click Comment and the spot (scripts/shots.ts); the state they reach is not a fixture's to force.
   WorkspaceSharedComment: commentTab('sh-pricing'),
   WorkspaceSharedCommentImage: commentTab('sh-image'),

@@ -27,10 +27,13 @@
 
 /* the tab (WorkspaceSharedHtml.png and the rest) */
 .shared-view { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.shared-title { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px; }
-.shared-title h2 { margin: 0; min-width: 0; font-size: 14px; font-weight: 500; color: var(--ink); }
-.shared-by { flex-shrink: 0; font-size: 12.5px; color: var(--muted); }
-.shared-tools { height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px 6px; border-bottom: 1px solid var(--line); }
+.shared-head { height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--line); container-type: inline-size; }
+/* One row (KERNEL-934). The title gives way first, down to a few letters, then who shared it, which is dropped when the column is narrow. The tools never shrink. */
+.shared-title { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.shared-title h2 { flex: 0 1000 auto; min-width: 72px; margin: 0; font-size: 14px; font-weight: 500; color: var(--ink); }
+.shared-by { flex: 0 1 auto; min-width: 0; font-size: 12.5px; color: var(--muted); }
+.shared-tools { flex-shrink: 0; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+@container (max-width: 900px) { .shared-by { display: none; } }
 .shared-ver { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font: 12px var(--mono); }
 .shared-ver[aria-expanded='true'] { background: var(--surface-3); }
 .shared-ver svg { color: var(--muted); }

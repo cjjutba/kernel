@@ -132,6 +132,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const sharedId = tab?.startsWith('shared:') ? tab.slice(7) : undefined
   const image = images.find((i) => i.id === tab)?.part
   const text = texts.find((t) => t.id === tab)?.part
+  // A page, file, image, text or diff fills the column, so the composer under it is one line until something opens it (KERNEL-934).
+  const viewer = diffPath !== undefined || !!sharedId || !!filePath || !!image || !!text
   // A project whose last chat was closed has no chat to show: New chat is drawn instead, and the first message starts the chat (KERNEL-366).
   // A terminal tab is shown while it is the one open, until + or ⌘T ask for the box (`newChat`).
   const noChat = leadHasNoChat(isLead, everyChat)
@@ -294,7 +296,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                     ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} />
                     : <div className="grow" />}
           </div>
-          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner ? <WorkspaceBanner view={banner} ws={ws} chat={chat} /> : moveNotice && <ChatMoveNotice chat={chat} notice={moveNotice} />}</>} />}
+          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} viewer={viewer ? { held: banner ? banner.actions.length > 0 : !!moveNotice } : undefined} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner ? <WorkspaceBanner view={banner} ws={ws} chat={chat} /> : moveNotice && <ChatMoveNotice chat={chat} notice={moveNotice} />}</>} />}
         </section>
       </OpenIssue.Provider>
       </OpenText.Provider>
