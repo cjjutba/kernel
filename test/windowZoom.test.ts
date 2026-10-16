@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { FLOOR_LEVEL, LIGHT_HEIGHT, LIGHTS_WIDTH, handZoom, lightsFor, placeLights, settleZoom, zoomStepOf, zoomWindow } from '../src/main/windowZoom'
+import { FLOOR_LEVEL, LIGHT_HEIGHT, LIGHTS_WIDTH, followPageZoom, handZoom, lightsFor, placeLights, settleZoom, zoomStepOf, zoomWindow } from '../src/main/windowZoom'
 
 const key = (k: string, extra: Partial<{ type: string; meta: boolean; control: boolean; alt: boolean }> = {}) => ({ type: 'keyDown', key: k, meta: true, control: false, alt: false, ...extra })
 
@@ -79,6 +79,30 @@ describe('the traffic lights', () => {
     settleZoom(low as never)
     expect(low.webContents.setZoomLevel).toHaveBeenCalledWith(FLOOR_LEVEL)
     expect(low.setWindowButtonPosition).toHaveBeenLastCalledWith(lightsFor(1.2 ** FLOOR_LEVEL))
+  })
+})
+
+// KERNEL-972: the page says its zoom changed, and main reads the zoom itself, so a change that skipped zoomWindow still moves the lights.
+describe('followPageZoom', () => {
+  it('moves the lights to the zoom the page already has', async () => {
+    const w = window_(false, 0)
+    const follow = followPageZoom((sender) => (sender === w.webContents ? w : null) as never)
+    for (const level of [0, 0.5, 1]) {
+      w.webContents.setZoomLevel(level)
+      expect(await follow({ sender: w.webContents })).toEqual({ ok: true })
+      expect(w.setWindowButtonPosition).toHaveBeenLastCalledWith(lightsFor(1.2 ** level))
+    }
+  })
+  it('raises a zoom below the floor, as a launch does', async () => {
+    const w = window_(false, -1)
+    await followPageZoom(() => w as never)({ sender: w.webContents })
+    expect(w.webContents.setZoomLevel).toHaveBeenCalledWith(FLOOR_LEVEL)
+    expect(w.setWindowButtonPosition).toHaveBeenLastCalledWith(lightsFor(1.2 ** FLOOR_LEVEL))
+  })
+  it('ignores a page that is not the main window', async () => {
+    const w = window_(false, 1)
+    expect(await followPageZoom(() => null)({ sender: {} })).toEqual({ ok: true })
+    expect(w.setWindowButtonPosition).not.toHaveBeenCalled()
   })
 })
 
