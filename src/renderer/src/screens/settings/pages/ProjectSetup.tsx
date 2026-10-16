@@ -4,7 +4,7 @@ import type { ProjectSettings, ScriptSuggestion } from '@shared/types'
 import { call } from '../../../api'
 import { useStore } from '../../../store'
 import { Button, CodeLines, Toggle, useBusy } from '../../../ui'
-import { appliesTo, NoProject, ProjectPage, projectValue, Row, SaveNote, Section, useBlurSave, useProjectPage, useSaveNote } from '../kit'
+import { appliesTo, NoProject, ProjectPage, projectValue, Row, SaveNote, Section, useBlurSave, useFieldText, useProjectPage, useSaveNote } from '../kit'
 import { patchProjectSettings } from '../useSettings'
 import { PreviewUrls } from './PreviewUrls'
 import { RunMode, RunScripts } from './RunScripts'
@@ -64,11 +64,15 @@ function ScriptSource({ projectId, kind, rs }: { projectId: string; kind: Script
  */
 function ScriptEditor({ projectId, kind, rs, offer }: { projectId: string; kind: ScriptKey; rs: ProjectSettings | null; offer?: ScriptSuggestion }) {
   const saved = rs?.scripts[kind] ?? ''
-  const [text, setText] = useState(saved)
+  const [text, setText] = useFieldText(saved)
   const note = useSaveNote()
   const { title, placeholder, desc } = SCRIPT_HELP[kind]
-  useEffect(() => { setText(saved) }, [saved])
-  const save = useBlurSave({ text, setText, saved, commit: (t) => void note.track(patchProjectSettings(projectId, { scripts: { [kind]: t.trim() ? t : null } })) })
+  // A script of only spaces saves as none and the field empties, so it doesn't save again when the page goes away.
+  const commit = (t: string) => {
+    if (!t.trim()) setText('')
+    void note.track(patchProjectSettings(projectId, { scripts: { [kind]: t.trim() ? t : null } }))
+  }
+  const save = useBlurSave({ text, setText, saved, commit })
   const dirty = text !== saved
   const empty = !saved.trim() && !!rs
   return (
