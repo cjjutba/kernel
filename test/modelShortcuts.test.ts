@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { ProviderModel } from '@shared/types'
-import { nextEffort } from '../src/renderer/src/screens/workspace/composer/modelPrefs'
+import type { AgentDef, AppSettings, ProviderModel } from '@shared/types'
+import { defaultEffortOf, nextEffort } from '../src/renderer/src/screens/workspace/composer/modelPrefs'
 import { SHORTCUT_MAX, isCycleEffortKey, shortcutModel, shortcutModels, shortcutNumber } from '../src/renderer/src/screens/workspace/composer/modelShortcuts'
 
 const m = (provider: ProviderModel['provider'], id: string, legacy = false): ProviderModel => ({ provider, id, label: id, legacy, efforts: ['medium'], defaultEffort: 'medium' })
@@ -74,5 +74,24 @@ describe('cycle effort', () => {
     expect(nextEffort('xhigh')).toBe('low')
     expect(nextEffort('xhigh', ['low', 'medium', 'high', 'xhigh', 'max'])).toBe('max')
     expect(nextEffort('max', ['low', 'medium', 'high', 'xhigh', 'max'])).toBe('low')
+  })
+})
+
+describe('the effort a model with none remembered falls back to (KERNEL-974)', () => {
+  const row = (effort: string) => ({ provider: 'claude', model: 'claude-sonnet-5-5', effort })
+  const models = { roles: { lead: row('max'), frontend: row('low'), engineers: row('high'), qa: row('medium'), reviewer: row('xhigh') } } as unknown as AppSettings['models']
+  const agent = (o: Partial<AgentDef>) => ({ id: 'a', name: 'A', role: '', description: '', prompt: '', file: '', ...o }) as AgentDef
+
+  it("reads the row of the agent's own role, so a frontend agent gets Frontend's and a backend one Backend's", () => {
+    expect(defaultEffortOf(agent({ role: 'Frontend engineer' }), models)).toBe('low')
+    expect(defaultEffortOf(agent({ role: 'Backend engineer' }), models)).toBe('high')
+    expect(defaultEffortOf(agent({ role: 'QA' }), models)).toBe('medium')
+    expect(defaultEffortOf(agent({ lead: true }), models)).toBe('max')
+  })
+
+  it("keeps the agent file's own effort, and reads Backend's for a chat with no agent", () => {
+    expect(defaultEffortOf(agent({ role: 'Frontend engineer', effort: 'xhigh' }), models)).toBe('xhigh')
+    expect(defaultEffortOf(undefined, models)).toBe('high')
+    expect(defaultEffortOf(undefined, undefined)).toBe('high')
   })
 })

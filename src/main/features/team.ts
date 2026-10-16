@@ -3,7 +3,7 @@ import { basename, dirname, join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
 import type { AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, Provider, Role, RoleModel, RosterAdvice, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
 import { rolePick } from '@shared/rolePick'
-import { isReviewer, KERNEL_FILE, KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
+import { isReviewer, KERNEL_FILE, KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER, roleOf } from '@shared/team'
 import { countRange } from '@shared/telemetry'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
@@ -602,13 +602,7 @@ export class Team extends Feature {
   pickFor(agent: AgentDef): RoleModel { return rolePick(agent, this.roleModel(agent)) }
 
   /** The role Settings, Models and effort reads for this agent. A frontend engineer has a row of its own, every other one reads Backend's (KERNEL-974). */
-  roleOf(agent: AgentDef): Role {
-    if (agent.lead) return 'lead'
-    if (isReviewer(agent)) return 'reviewer'
-    if (/qa/i.test(agent.role)) return 'qa'
-    if (/frontend/i.test(agent.role)) return 'frontend'
-    return 'engineers'
-  }
+  roleOf(agent: AgentDef): Role { return roleOf(agent) }
 
   /**
    * The role Settings, Models reads for a chat in `ws` run by `agent` (feat-compact-window-per-role-with-plan). A review

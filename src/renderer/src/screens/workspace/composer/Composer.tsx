@@ -247,7 +247,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
     actions.chats.upsert({ ...chat, effort })
     void configure({ effort }).then((ok) => { if (!ok) actions.chats.upsert({ ...chat, effort: was }) })
   }
-  const fallback = useDefaultEffort(agent?.effort)
+  const fallback = useDefaultEffort(agent)
   const sendWith = useSendWith()
   const [sendingNow, runNow] = useBusy<string>()
   const sendNow = (q: QueuedMessage) => void runNow(q.id, () => attempt('Could not send now', async () => {
