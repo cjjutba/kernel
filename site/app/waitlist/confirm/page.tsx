@@ -24,7 +24,7 @@ const MESSAGES: Record<string, { title: string; text: string }> = {
 }
 
 function Card({ children }: { children: ReactNode }) {
-  return <div className="map-mac mx-auto max-w-110 rounded-frame border border-line-strong bg-surface-1 px-10 py-11 text-center max-nav:px-6 max-nav:py-9">{children}</div>
+  return <div className="map-mac mx-auto max-w-short rounded-frame border border-line-strong bg-surface-1 px-10 py-11 text-center max-nav:px-6 max-nav:py-9">{children}</div>
 }
 
 function list(items: string[]) {
@@ -70,7 +70,7 @@ export default async function ConfirmPage({ searchParams }: Props) {
         </h1>
         <p className="mt-3 text-body text-balance text-muted">{message.text}</p>
         <div className="mt-8 flex flex-wrap justify-center gap-2">
-          <Link href={done ? '/' : '/#waitlist'} className="inline-flex h-10 items-center rounded-lg border border-edge bg-white/2 px-4 text-ui font-medium text-ink transition-colors hover:border-edge-hover hover:bg-white/6">
+          <Link href={done ? '/' : '/#waitlist'} className="inline-flex h-10 items-center rounded-lg border border-edge bg-tint-faint px-4 text-ui font-medium text-ink transition-colors hover:border-edge-hover hover:bg-tint-strong">
             {done ? 'Back to Kernel' : 'Sign up again'}
           </Link>
           <Link href="/docs" className="inline-flex h-10 items-center rounded-lg px-4 text-ui font-medium text-muted transition-colors hover:text-ink">
@@ -87,8 +87,8 @@ export default async function ConfirmPage({ searchParams }: Props) {
       <main id="content" aria-labelledby="confirm-title" className="confirm-stage relative isolate flex items-center overflow-hidden px-6 py-24">
         {/* Rings of dots spreading out from behind the card. The fade is a veil painted over the field rather than a mask
             on it, since a mask on a WebGL canvas inside a clipped box can go missing (globals.css, Dither fields). */}
-        <Dither shape="ripple" scale={0.8} speed={0.25} frame={1800} tone="edge" className="absolute inset-0 -z-2" />
-        <div aria-hidden="true" className="ripple-veil pointer-events-none absolute inset-0 -z-1" />
+        <Dither shape="ripple" scale={0.8} speed={0.25} frame={1800} tone="edge" className="absolute inset-0 -z-deep" />
+        <div aria-hidden="true" className="ripple-veil pointer-events-none absolute inset-0 -z-raise" />
         <div className="w-full">{body}</div>
       </main>
       <SiteFooter />

@@ -3,6 +3,7 @@ import { Shot } from '@/components/ui/Shot'
 import { formatDate } from '@/lib/format'
 import type { Release } from '@/lib/schema'
 import { ChangeList } from './ChangeList'
+import { Badge } from '@/components/ui/Badge'
 
 const versionPill = 'inline-flex h-6 items-center rounded-chip border px-2 font-mono text-micro leading-normal font-medium'
 
@@ -41,9 +42,7 @@ export function ReleaseEntry({ release, latest }: { release: Release; latest: bo
               <VersionPill>{release.version}</VersionPill>
             </a>
             {latest ? (
-              <span className="inline-flex h-5 items-center rounded-pill bg-ink px-2 text-badge font-semibold text-canvas">
-                Latest
-              </span>
+              <Badge size="sm">Latest</Badge>
             ) : null}
           </div>
           {/* Stacked beside the entry on wide screens; one line above it on phones. */}

@@ -14,7 +14,7 @@ type Props = {
 
 const variants = {
   primary: 'bg-ink text-canvas hover:bg-white',
-  secondary: 'border border-edge bg-white/2 text-ink hover:border-edge-hover hover:bg-white/6 hover:text-white'
+  secondary: 'border border-edge bg-tint-faint text-ink hover:border-edge-hover hover:bg-tint-strong hover:text-white'
 }
 
 const sizes = {

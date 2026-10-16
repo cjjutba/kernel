@@ -67,7 +67,7 @@ export function HeroDemo() {
 
   const showApp = wide && mounted
   return (
-    <div className="mx-auto max-w-320">
+    <div className="mx-auto max-w-hero-shot">
       {/* The app sits in a bezel like a laptop's, with a glow along its top edge (globals.css, Demo bezel). */}
       <div className="demo-bezel">
         <span aria-hidden="true" className="demo-edge" />
@@ -78,7 +78,7 @@ export function HeroDemo() {
             sizes="(max-width: 1328px) calc(100vw - 48px), 1280px"
             preload
             quality={90}
-            className={`block h-auto w-full transition-opacity duration-500 ${live && showApp ? 'opacity-0' : ''}`}
+            className={`block h-auto w-full transition-opacity duration-fade ${live && showApp ? 'opacity-0' : ''}`}
             aria-hidden={live && showApp ? true : undefined}
           />
           {showApp && (
@@ -87,7 +87,7 @@ export function HeroDemo() {
               src={DEMO_SRC}
               title="Kernel, running on sample data. Explore it."
               loading="eager"
-              className={`demo-stage absolute top-0 left-0 z-1 bg-surface-2 ${live ? 'fade-in' : 'opacity-0'}`}
+              className={`demo-stage absolute top-0 left-0 z-raise bg-surface-2 ${live ? 'fade-in' : 'opacity-0'}`}
               style={{ transform: `scale(${scale})` }}
             />
           )}
@@ -103,7 +103,7 @@ export function HeroDemo() {
             type="button"
             onClick={startOver}
             disabled={!mounted}
-            className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-faint transition-colors hover:bg-white/4 hover:text-ink disabled:opacity-50"
+            className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-faint transition-colors hover:bg-tint-soft hover:text-ink disabled:opacity-50"
           >
             <ReplayIcon size={12} />
             Start over

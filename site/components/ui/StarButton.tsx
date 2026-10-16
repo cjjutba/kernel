@@ -14,9 +14,9 @@ export function StarButtonView({ count, className = '' }: { count: number | null
       href={REPO_URL}
       target="_blank"
       rel="noopener"
-      className={`group inline-flex h-8 items-stretch overflow-hidden rounded-md border border-edge bg-white/2 text-ui font-medium text-ink transition-colors hover:border-edge-hover hover:text-white ${className}`}
+      className={`group inline-flex h-8 items-stretch overflow-hidden rounded-md border border-edge bg-tint-faint text-ui font-medium text-ink transition-colors hover:border-edge-hover hover:text-white ${className}`}
     >
-      <span className="inline-flex items-center gap-2 px-3 transition-colors group-hover:bg-white/6">
+      <span className="inline-flex items-center gap-2 px-3 transition-colors group-hover:bg-tint-strong">
         <GitHubIcon size={15} />
         Star
         {/* The name reads "Star Kernel on GitHub, 1.2k stars" and still contains the visible text. */}

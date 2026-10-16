@@ -14,13 +14,13 @@ export const NAV_LINKS = [
 
 export type NavPath = (typeof NAV_LINKS)[number]['href']
 
-const linkClass = 'inline-flex h-8 items-center rounded-md px-3 text-ui transition-colors hover:bg-white/5 hover:text-ink'
+const linkClass = 'inline-flex h-8 items-center rounded-md px-3 text-ui transition-colors hover:bg-tint hover:text-ink'
 
 /** `current` marks the section the page belongs to, so a docs page marks Docs. */
 export function SiteNav({ current }: { current?: NavPath }) {
   return (
     <NavFrame>
-      <div className="mx-auto flex h-16 max-w-312 items-center gap-2 px-6">
+      <div className="mx-auto flex h-16 max-w-page items-center gap-2 px-6">
         <Link href="/" className="inline-flex items-center">
           <Wordmark />
         </Link>
@@ -30,7 +30,7 @@ export function SiteNav({ current }: { current?: NavPath }) {
               key={href}
               href={href}
               aria-current={href === current ? 'page' : undefined}
-              className={`${linkClass} ${href === current ? 'bg-white/5 text-ink' : 'text-muted'}`}
+              className={`${linkClass} ${href === current ? 'bg-tint text-ink' : 'text-muted'}`}
             >
               {label}
             </Link>
@@ -52,13 +52,13 @@ export function SiteNav({ current }: { current?: NavPath }) {
               <path d="M4 4l8 8M12 4l-8 8" className="hidden group-open:block" />
             </svg>
           </summary>
-          <nav aria-label="Main" className="absolute top-11 right-0 flex w-48 flex-col rounded-lg border border-line-strong bg-surface-2 p-1.5">
+          <nav aria-label="Main" className="absolute top-11 right-0 flex w-nav-menu flex-col rounded-lg border border-line-strong bg-surface-2 p-1.5">
             {NAV_LINKS.map(({ href, label }) => (
               <Link
                 key={href}
                 href={href}
                 aria-current={href === current ? 'page' : undefined}
-                className={`${linkClass} ${href === current ? 'bg-white/5 text-ink' : 'text-ink-2'}`}
+                className={`${linkClass} ${href === current ? 'bg-tint text-ink' : 'text-ink-2'}`}
               >
                 {label}
               </Link>

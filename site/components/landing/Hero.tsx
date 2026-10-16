@@ -1,9 +1,9 @@
 import Link from 'next/link'
-import { Button } from '@/components/ui/Button'
 import { Dither } from '@/components/ui/Dither'
-import { ArrowIcon, DownloadIcon } from '@/components/ui/icons'
-import { DOWNLOAD_URL } from '@/lib/links'
+import { ArrowIcon } from '@/components/ui/icons'
 import { HeroDemo } from './HeroDemo'
+import { Badge } from '@/components/ui/Badge'
+import { CtaBlock } from '@/components/ui/CtaBlock'
 
 /** `version` is the newest release's label, such as "0.1". */
 export function Hero({ version }: { version: string }) {
@@ -12,9 +12,9 @@ export function Hero({ version }: { version: string }) {
       <div className="relative px-6">
         <Link
           href="/changelog"
-          className="shimmer-pill inline-flex h-8 items-center gap-2 rounded-pill border border-line-strong bg-surface-2/85 pr-3 pl-1 text-small text-ink-2 hover:border-edge-hover hover:text-white"
+          className="shimmer-pill inline-flex h-8 items-center gap-2 rounded-pill border border-line-strong bg-surface-2-glass pr-3 pl-1 text-small text-ink-2 hover:border-edge-hover hover:text-white"
         >
-          <span className="inline-flex h-6 items-center rounded-pill bg-ink px-2 text-tag font-semibold text-canvas">New</span>
+          <Badge>New</Badge>
           Kernel {version} is here
           <ArrowIcon className="text-muted" />
         </Link>
@@ -24,14 +24,10 @@ export function Hero({ version }: { version: string }) {
           <br className="max-nav:hidden" />
           working as a team.
         </h1>
-        <p className="mx-auto mt-6 max-w-150 text-hero-lead text-balance text-muted">
+        <p className="mx-auto mt-6 max-w-lead text-hero-lead text-balance text-muted">
           Brief a lead, approve the plan, and merge what the team builds.
         </p>
-        <div className="mt-10 flex flex-wrap justify-center gap-3">
-          <Button href={DOWNLOAD_URL} size="lg" icon={<DownloadIcon />}>
-            Download for macOS
-          </Button>
-        </div>
+        <CtaBlock align="center" className="mt-10" />
         <p className="mt-4 text-small text-faint">
           For Macs with Apple silicon
           {/* Only the link stands out: brighter, with an arrow, and underlined on hover. */}
@@ -47,7 +43,7 @@ export function Hero({ version }: { version: string }) {
       <div className="relative mt-16 px-6 max-nav:mt-12">
         {/* A rolling wave of dots that rises behind the demo and thins out along its sides, gone before the frame's
             bottom, so it never reaches the next section (globals.css, Dither fields). */}
-        <Dither shape="wave" scale={1.15} speed={0.35} frame={4000} className="dither-hero absolute inset-x-0 -top-64 -z-1 h-200 max-nav:-top-40 max-nav:h-90" />
+        <Dither shape="wave" scale={1.15} speed={0.35} frame={4000} className="dither-hero absolute inset-x-0 -top-dither-hero-rise -z-raise h-dither-hero max-nav:-top-40 max-nav:h-dither-hero-phone" />
         <HeroDemo />
       </div>
     </section>

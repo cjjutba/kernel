@@ -18,7 +18,7 @@ type State = { kind: 'idle' } | { kind: 'sending' } | { kind: 'sent'; email: str
 const ALL = ['windows', 'linux', 'intel-mac']
 
 /** `className` sets the form's width and place. It defaults to a centered column. */
-export function WaitlistForm({ className = 'mx-auto max-w-140' }: { className?: string }) {
+export function WaitlistForm({ className = 'mx-auto max-w-section-lead' }: { className?: string }) {
   const id = useId()
   const [email, setEmail] = useState('')
   const [platform, setPlatform] = useState('any')
@@ -104,7 +104,7 @@ export function WaitlistForm({ className = 'mx-auto max-w-140' }: { className?: 
             id={`${id}-platform`}
             value={platform}
             onChange={(e) => setPlatform(e.target.value)}
-            className="h-10 w-full cursor-pointer appearance-none rounded-chip bg-transparent pr-8 pl-3 text-ui text-ink-2 outline-none transition-colors hover:bg-white/4 hover:text-ink focus-visible:bg-white/6"
+            className="h-10 w-full cursor-pointer appearance-none rounded-chip bg-transparent pr-8 pl-3 text-ui text-ink-2 outline-none transition-colors hover:bg-tint-soft hover:text-ink focus-visible:bg-tint-strong"
           >
             {PLATFORMS.map((p) => (
               <option key={p.id} value={p.id}>
@@ -127,7 +127,7 @@ export function WaitlistForm({ className = 'mx-auto max-w-140' }: { className?: 
         </button>
       </div>
       {/* People never see this field. Bots fill it in, and the server quietly drops their signup. */}
-      <div aria-hidden="true" className="absolute -left-2500 size-px overflow-hidden">
+      <div aria-hidden="true" className="absolute -left-offscreen size-px overflow-hidden">
         <label>
           Company
           <input tabIndex={-1} autoComplete="off" value={company} onChange={(e) => setCompany(e.target.value)} />
