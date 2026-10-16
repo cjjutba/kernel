@@ -284,7 +284,7 @@ export class Kernel {
   // Each forwards to its feature, plain and not async (R4). New code and new tests call the feature itself.
 
   readAccount(): Promise<ClaudeAccount> { return this.account.readAccount() }
-  /** The app calls it when the Mac wakes. */
+  /** What the Mac waking runs (`woke` in features/wiring.ts), for tests. */
   checkLimits(): Promise<void> { return this.account.checkLimits() }
   checkpoint(ws: Workspace, chat: Chat): Promise<Checkpoint> { return this.checkpoints.checkpoint(ws, chat) }
   chatTabs(workspaceId: string): Chat[] { return records.chatTabs(this.store, workspaceId) }

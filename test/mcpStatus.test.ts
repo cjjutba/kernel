@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, McpServer } from '@shared/types'
+import type { AgentDef, McpAccount, McpAccountServer, McpServer } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { withStatus } from '../src/main/services/mcp'
+import { readMcpSaved } from '../src/main/services/mcpSaved'
 import { probeClaudeMcp } from '../src/main/services/providers/claude'
 import { saveRepoSettings } from '../src/main/services/settings'
 import { tempRepo } from './helpers'
@@ -147,5 +148,115 @@ describe("a project's MCP servers", () => {
     expect((await h['mcp.list']({ projectId: 'project', probe: true })).map((s) => s.name)).toEqual(['figma', 'linear', 'neon'])
     expect(sdk.calls).toHaveLength(2)
     await k.stop()
+  })
+})
+
+// KERNEL-936: each account's last check is saved, `mcp.accounts` answers at once with it, and each check is pushed as it ends.
+describe("every account's MCP servers, saved and checked in the background", () => {
+  const account = (id: string, provider: 'claude' | 'codex' = 'claude') => ({ provider, id, label: id, auth: 'subscription', signedIn: true }) as never
+  const ready = (name: string) => ({ name, kind: 'user', connector: false, state: 'ready' }) as McpAccountServer
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+  /**
+   * A Kernel that isn't started, with `rows` as its signed-in accounts and a fake check: each account's servers after its own
+   * delay. `saved` is written to `mcp-accounts.json` first.
+   */
+  async function accounts(rows: string[], o: { saved?: string; probe?: (id: string) => Promise<McpAccountServer[]> } = {}) {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    if (o.saved !== undefined) await writeFile(join(dataDir, 'mcp-accounts.json'), o.saved)
+    const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')) })
+    vi.spyOn(k.providers, 'list').mockImplementation(async () => rows.map((id) => account(id)))
+    const checks = vi.spyOn(k.providers, 'mcpServersOn').mockImplementation(async (_p, id) => (o.probe ? o.probe(id) : [ready('linear')]))
+    const pushes: { at: number; accounts: McpAccount[] }[] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'mcp.accounts') pushes.push({ at: Date.now(), accounts: e.accounts }) })
+    const file = async () => JSON.parse(await readFile(join(dataDir, 'mcp-accounts.json'), 'utf8'))
+    return { k, h: k.handlers(), checks, pushes, file, dataDir }
+  }
+
+  it('answers at once with the saved checks, marked checking, then pushes each account as its check ends, and saves no token', async () => {
+    const saved = { version: 1, accounts: [{ provider: 'claude', accountId: 'cli', checkedAt: 1000, servers: [{ ...ready('linear'), state: 'needs-sign-in' }] }] }
+    const { k, h, pushes, file } = await accounts(['cli', 'side'], { saved: JSON.stringify(saved), probe: async (id) => { await sleep(id === 'cli' ? 300 : 600); return [ready('linear')] } })
+    const start = Date.now()
+    const first = await h['mcp.accounts'](undefined)
+    expect(Date.now() - start).toBeLessThan(100)
+    expect(first.map((a) => [a.accountId, a.checking, a.checkedAt, a.servers.map((s) => s.state)])).toEqual([['cli', true, 1000, ['needs-sign-in']], ['side', true, undefined, []]])
+    // One push for the start, then one per account as its own check ends.
+    await until(() => pushes.length === 3)
+    const [, cli, side] = pushes.map((p) => p.accounts)
+    expect(cli.map((a) => [a.accountId, a.checking, a.servers.map((s) => s.state)])).toEqual([['cli', undefined, ['ready']], ['side', true, []]])
+    expect(side.map((a) => [a.accountId, a.checking, a.servers.map((s) => s.state)])).toEqual([['cli', undefined, ['ready']], ['side', undefined, ['ready']]])
+    await k.mcp.saved()
+    const written = await file()
+    expect(written.version).toBe(1)
+    expect(written.accounts.map((a: { accountId: string; servers: unknown[] }) => [a.accountId, a.servers])).toEqual([['cli', [ready('linear')]], ['side', [ready('linear')]]])
+    // Opening the page again checks nothing.
+    expect((await h['mcp.accounts'](undefined)).every((a) => !a.checking)).toBe(true)
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('pushes an account whose check takes a second without waiting for one that takes five', async () => {
+    const { k, h, pushes } = await accounts(['fast', 'slow'], { probe: async (id) => { await sleep(id === 'fast' ? 1000 : 5000); return [ready('linear')] } })
+    const start = Date.now()
+    await h['mcp.accounts'](undefined)
+    const pushed = await until(() => pushes.find((p) => p.accounts.find((a) => a.accountId === 'fast')?.checkedAt))
+    expect(pushed.at - start).toBeGreaterThanOrEqual(950)
+    expect(pushed.at - start).toBeLessThan(2500)
+    expect(pushed.accounts.find((a) => a.accountId === 'slow')?.checking).toBe(true)
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('checks a Ready account again on focus once its last check is 5 minutes old, and not before', async () => {
+    const { k, h, checks } = await accounts(['cli'])
+    const now = Date.now()
+    expect((await k.mcp.accounts({ wait: true }))[0]).toMatchObject({ ready: 1, needsYou: 0 })
+    checks.mockClear()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 4 * 60_000)
+    await h['mcp.recheck'](undefined)
+    expect(checks).not.toHaveBeenCalled()
+    clock.mockReturnValue(now + 5 * 60_000 + 1000)
+    const back = await k.mcp.recheck({ wait: true })
+    expect(checks.mock.calls).toEqual([['claude', 'cli']])
+    expect(back[0].checkedAt).toBe(now + 5 * 60_000 + 1000)
+    clock.mockRestore()
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('counts a saved check older than 5 minutes as due on focus', async () => {
+    const saved = { version: 1, accounts: [{ provider: 'claude', accountId: 'cli', checkedAt: Date.now() - 6 * 60_000, servers: [ready('linear')] }] }
+    const { k, checks } = await accounts(['cli'], { saved: JSON.stringify(saved) })
+    await k.mcp.recheck({ wait: true })
+    expect(checks.mock.calls).toEqual([['claude', 'cli']])
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('ignores a saved file that is corrupt or of another format version', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-data-')), 'mcp-accounts.json')
+    for (const text of ['{"version":1,"accounts":[', JSON.stringify({ version: 2, accounts: [{ provider: 'claude', accountId: 'cli', servers: [] }] }), JSON.stringify({ accounts: [] }), 'null']) {
+      await writeFile(file, text)
+      expect(readMcpSaved(file)).toEqual([])
+    }
+    expect(readMcpSaved(join(tmpdir(), 'no-such-folder', 'mcp-accounts.json'))).toEqual([])
+    const { k, h } = await accounts(['cli'], { saved: '{not json' })
+    expect((await h['mcp.accounts'](undefined)).map((a) => [a.accountId, a.checkedAt, a.checking])).toEqual([['cli', undefined, true]])
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('leaves a removed account out of the saved file, and a check running at the removal does not write it back', async () => {
+    let release = () => {}
+    const held = new Promise<void>((r) => { release = r })
+    let ended = false
+    const saved = { version: 1, accounts: [{ provider: 'claude', accountId: 'old', checkedAt: 1000, servers: [ready('linear')] }] }
+    const { k, h, pushes, file } = await accounts(['cli', 'side'], { saved: JSON.stringify(saved), probe: async (id) => { if (id === 'side') { await held; ended = true } return [ready('linear')] } })
+    await h['mcp.accounts'](undefined)
+    await until(() => pushes.some((p) => p.accounts.find((a) => a.accountId === 'cli')?.checkedAt))
+    // old was saved before it left, and side leaves while its check runs.
+    k.mcp.forget('claude', 'old')
+    k.mcp.forget('claude', 'side')
+    release()
+    await until(() => ended)
+    await sleep(20)
+    await k.mcp.saved()
+    expect((await file()).accounts.map((a: { accountId: string }) => a.accountId)).toEqual(['cli'])
+    await k.stop({ budgetMs: 0 })
   })
 })

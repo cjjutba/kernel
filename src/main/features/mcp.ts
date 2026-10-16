@@ -7,13 +7,15 @@ import { buildEnv, withoutClaudeNames } from '../services/env'
 import { CONNECT_URL, discoverMcp, toolServerName, withMissing, withStatus, type McpReport } from '../services/mcp'
 import { claudeExecutable } from '../services/providers/binary'
 import { mcpReports, probeClaudeMcp, sessionEnv } from '../services/providers/claude'
+import { mcpSavedFile, readMcpSaved, writeMcpSaved, type SavedMcpAccount } from '../services/mcpSaved'
 import { aliasesInProject, disabledInProject } from '../services/settings'
 import { Feature } from './feature'
 
 /**
  * The MCP servers each project's agents can reach, and how each is doing (KERNEL-464). Kernel finds them in the files Claude
- * Code and Codex read, and hears their status from a probe of the project and from every session. Nothing is saved: a status
- * is as good as the last report, and the next probe or session brings a new one.
+ * Code and Codex read, and hears their status from a probe of the project and from every session. A project's statuses aren't
+ * saved: a status is as good as the last report, and the next probe or session brings a new one. Each account's last check is
+ * (KERNEL-936).
  */
 export class Mcp extends Feature {
   /** The last report on each server, by project, then provider, then the server's name. */
@@ -23,8 +25,24 @@ export class Mcp extends Feature {
   /** Projects the first `mcp.list` started a probe for, so a probe that fails isn't started again by every list. */
   private readonly asked = new Set<string>()
   private readonly probes = new Map<string, Promise<void>>()
-  /** What `mcp.accounts` last found on each account, by `provider:id` (KERNEL-626). */
-  private readonly onAccounts = new Map<string, Omit<McpAccount, 'label' | 'needsYou' | 'ready'>>()
+  /**
+   * What `mcp.accounts` last found on each account, by `provider:id` (KERNEL-626), read from `mcp-accounts.json` on first use
+   * and saved there after each check (KERNEL-936).
+   */
+  private get onAccounts(): Map<string, SavedMcpAccount> {
+    this.found ??= new Map(readMcpSaved(mcpSavedFile(this.o.dataDir)).map((a) => [`${a.provider}:${a.accountId}`, a]))
+    return this.found
+  }
+  private found?: Map<string, SavedMcpAccount>
+  /** Accounts checked since launch, by `provider:id`. A saved result alone gets checked again when the page opens (KERNEL-936). */
+  private readonly live = new Set<string>()
+  /**
+   * Accounts that left Kernel, by `provider:id`, so a check that started before doesn't bring one back (KERNEL-936). An added
+   * account's id is never used again, and the CLI's own login can't be removed.
+   */
+  private readonly gone = new Set<string>()
+  /** The write of `mcp-accounts.json` in progress, so writes go one after another and the last one wins. */
+  private saving: Promise<void> = Promise.resolve()
   /** Account checks running, by `provider:id`, so two calls share one. */
   private readonly checks = new Map<string, Promise<void>>()
   /** A check asked for while one runs, by `provider:id`, which runs once it ends so it sees what changed meanwhile (KERNEL-660). */
@@ -127,19 +145,62 @@ export class Mcp extends Feature {
   // ---------- every account's servers (KERNEL-626)
 
   /**
-   * Every signed-in subscription account's MCP servers (`mcp.accounts`). An account Kernel hasn't checked is checked now,
-   * and `refresh` checks the ones it names again: every account, or only `provider`'s, or only `accountId`. Accounts are
-   * checked side by side. Pushes `mcp.accounts` when any was checked.
+   * Every signed-in subscription account's MCP servers (`mcp.accounts`), at once, with what Kernel has, saved or live
+   * (KERNEL-936). An account not checked since launch is checked, and `refresh` checks the ones it names again: every
+   * account, or only `provider`'s, or only `accountId`. The checks run side by side in the background, and each account is
+   * pushed as `mcp.accounts` when its own check ends. `wait` waits for them instead, for tests.
    */
-  async accounts(o: { refresh?: boolean; provider?: Provider; accountId?: string } = {}): Promise<McpAccount[]> {
+  async accounts(o: { refresh?: boolean; provider?: Provider; accountId?: string; wait?: boolean } = {}): Promise<McpAccount[]> {
     const rows = await this.mcpRows()
     const named = (a: AccountProfile) => (!o.provider || o.provider === a.provider) && (!o.accountId || o.accountId === a.id)
-    const due = rows.filter((a) => !this.onAccounts.has(`${a.provider}:${a.id}`) || (o.refresh && named(a)))
-    await Promise.all(due.map((a) => this.checkAccount(a.provider, a.id)))
+    return this.checkAll(rows, rows.filter((a) => !this.live.has(`${a.provider}:${a.id}`) || (o.refresh && named(a))), o)
+  }
+
+  /**
+   * Checks `due` side by side, pushing `mcp.accounts` as each ends, and answers with the view as it reads now, the ones
+   * checking marked so. With `wait`, answers once every check ended.
+   */
+  private async checkAll(rows: AccountProfile[], due: AccountProfile[], o: { fresh?: boolean; wait?: boolean } = {}): Promise<McpAccount[]> {
+    const done = due.map((a) => this.checkAccount(a.provider, a.id, { fresh: o.fresh }).then(() => this.pushAccounts()))
+    if (o.wait) {
+      await Promise.all(done)
+      return this.view(await this.mcpRows())
+    }
     const out = this.view(rows)
+    // Every window hears the checks started, so each shows them running.
     if (due.length && !this.stopped) bus.push({ type: 'mcp.accounts', accounts: out })
     return out
   }
+
+  /**
+   * Every account's check, in the background: a few seconds after launch, so Settings, MCP servers is warm before anyone
+   * opens it, and when the Mac wakes, since a sign-in may have expired meanwhile (KERNEL-936, `wiring.ts`).
+   */
+  async checkEvery(o: { wait?: boolean } = {}): Promise<void> {
+    if (this.stopped) return
+    const rows = await this.mcpRows()
+    await this.checkAll(rows, rows, o)
+  }
+
+  /**
+   * An account left Kernel (`Providers.remove`): it leaves `mcp-accounts.json` too, and a check of it that is still running
+   * doesn't write it back (KERNEL-936).
+   */
+  forget(provider: Provider, accountId: string) {
+    const key = `${provider}:${accountId}`
+    this.gone.add(key)
+    this.live.delete(key)
+    if (this.onAccounts.delete(key)) void this.save()
+  }
+
+  /** Writes `mcp-accounts.json` after the write before it. A write that fails leaves the last file, and the next check tries again. */
+  private save(): Promise<void> {
+    this.saving = this.saving.then(() => writeMcpSaved(mcpSavedFile(this.o.dataDir), [...this.onAccounts.values()])).catch((e: unknown) => console.warn(`Couldn't save the MCP checks: ${(e as Error).message}`))
+    return this.saving
+  }
+
+  /** Resolves once every write of `mcp-accounts.json` asked for so far is done. */
+  saved(): Promise<void> { return this.saving }
 
   /** The accounts `mcp.accounts` covers: signed-in subscription logins. A legacy token account has no login to check. */
   private async mcpRows(): Promise<AccountProfile[]> {
@@ -167,12 +228,17 @@ export class Mcp extends Feature {
     }
     const p = (async () => {
       const startedAt = Date.now()
+      let result: SavedMcpAccount
       try {
-        const servers = await this.k.providers.mcpServersOn(provider, accountId)
-        this.onAccounts.set(key, { provider, accountId, checkedAt: startedAt, servers })
+        result = { provider, accountId, checkedAt: startedAt, servers: await this.k.providers.mcpServersOn(provider, accountId) }
       } catch (e) {
-        this.onAccounts.set(key, { provider, accountId, error: (e as Error).message, servers: [] })
+        result = { provider, accountId, error: (e as Error).message, servers: [] }
       }
+      // The account left Kernel while it was checked.
+      if (this.gone.has(key) || this.stopped) return
+      this.onAccounts.set(key, result)
+      this.live.add(key)
+      void this.save()
     })().finally(() => this.checks.delete(key))
     this.checks.set(key, p)
     return p
@@ -190,8 +256,9 @@ export class Mcp extends Feature {
     const ready = (s: McpAccountServer): McpAccountServer => ({ name: s.name, kind: s.kind, connector: s.connector, state: 'ready' })
     const projectOff = this.projectOff()
     const out = withMissing(rows.map((a): Omit<McpAccount, 'needsYou' | 'ready'> => {
-      const base = { provider: a.provider, accountId: a.id, label: a.label, ...(a.email ? { email: a.email } : {}) }
-      const had = this.onAccounts.get(`${a.provider}:${a.id}`)
+      const key = `${a.provider}:${a.id}`
+      const base = { provider: a.provider, accountId: a.id, label: a.label, ...(a.email ? { email: a.email } : {}), ...(this.checks.has(key) ? { checking: true } : {}) }
+      const had = this.onAccounts.get(key)
       if (!had) return { ...base, servers: [] }
       if (a.provider === 'claude') {
         const checking = new Set(this.k.providers.mcpCheckingOn(a.id))
@@ -235,18 +302,18 @@ export class Mcp extends Feature {
 
   /**
    * Re-check on return (`mcp.recheck`, KERNEL-660): when Kernel's window gets focus, the accounts with something pending,
-   * servers that need the user or a check that failed, are checked again side by side. At most once every RECHECK_MS, and
-   * a call inside that only answers with what Kernel knows.
+   * servers that need the user or a check that failed, are checked again side by side, and so is every account last checked
+   * STALE_MS ago or more, Ready ones too, so a sign-in that expired since shows (KERNEL-936). A saved result counts by when it
+   * was checked. At most once every RECHECK_MS, and a call inside that only answers with what Kernel knows. Answers at once,
+   * as `accounts` does.
    */
-  async recheck(): Promise<McpAccount[]> {
+  async recheck(o: { wait?: boolean } = {}): Promise<McpAccount[]> {
     const rows = await this.mcpRows()
-    if (Date.now() - this.recheckedAt < RECHECK_MS) return this.view(rows)
-    this.recheckedAt = Date.now()
-    const pending = this.view(rows).filter((a) => a.error || a.needsYou > 0)
-    await Promise.all(pending.map((a) => this.checkAccount(a.provider, a.accountId, { fresh: true })))
-    const out = this.view(rows)
-    if (pending.length && !this.stopped) bus.push({ type: 'mcp.accounts', accounts: out })
-    return out
+    const now = Date.now()
+    if (now - this.recheckedAt < RECHECK_MS) return this.view(rows)
+    this.recheckedAt = now
+    const due = new Set(this.view(rows).filter((a) => a.error || a.needsYou > 0 || now - (a.checkedAt ?? 0) >= STALE_MS).map((a) => `${a.provider}:${a.accountId}`))
+    return this.checkAll(rows, rows.filter((a) => due.has(`${a.provider}:${a.id}`)), { fresh: true, wait: o.wait })
   }
 
   /** Tells every window what `mcp.accounts` knows now, without checking anything. `Providers.mcpSignIn` calls it after a sign-in. */
@@ -385,7 +452,7 @@ export class Mcp extends Feature {
         }
         return this.servers(projectId, provider)
       },
-      'mcp.accounts': async (req) => this.accounts(req ?? {}),
+      'mcp.accounts': async (req) => this.accounts({ refresh: req?.refresh, provider: req?.provider, accountId: req?.accountId }),
       'accounts.mcpIgnore': async ({ provider, accountId, server, ignored }) => this.ignore(provider, accountId, server, ignored),
       'accounts.mcpSetUp': async ({ provider, accountId, include }) => this.setUp(provider, accountId, include),
       'mcp.recheck': async () => this.recheck()
@@ -398,6 +465,9 @@ const waiting = (a: McpAccount) => a.servers.filter((s) => s.state === 'needs-si
 
 /** How often `mcp.recheck` checks at most (KERNEL-660). */
 const RECHECK_MS = 10_000
+
+/** How old an account's last check is before `mcp.recheck` checks it again, Ready or not (KERNEL-936). */
+export const STALE_MS = 5 * 60_000
 
 /** One step of `Mcp.queue`: a server to sign in to, or the claude.ai connectors to add in one go. */
 type Step = { server: string } | { connect: McpConnect }
