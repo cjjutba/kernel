@@ -28,6 +28,7 @@ import { LeadPrSummary } from './pr/LeadPrSummary'
 import { LocalMergeInfo } from './pr/LocalMerge'
 import { hasChanges } from './pr/model'
 import { copyBranch, PrHeader } from './pr/PrHeader'
+import { SeatNotice } from './terminal/SeatNotice'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
 import { SetupWait } from './SetupWait'
@@ -303,7 +304,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   : showNewChat
                     ? <NewLeadChat projectId={ws.projectId} focusIn={workspaceId} />
                   : chat?.kind === 'terminal'
-                    ? <><SkipNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>
+                    ? <><SkipNotice chat={chat} /><SeatNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>
                   : chat
                     ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} />
                     : <div className="grow" />}

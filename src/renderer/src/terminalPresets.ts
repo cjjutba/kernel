@@ -5,21 +5,22 @@ import { call } from './api'
 import { useStore } from './store'
 
 /** What the last answer from `terminal.presets` was, so a screen opens with a list and doesn't flash an empty one. */
-let last: TerminalPreset[] | null = null
+const last = new Map<string, TerminalPreset[]>()
 
 /**
  * The presets a new big terminal tab can run (KERNEL-248): the built-ins, the CLIs found on the PATH, then the custom commands.
  * Main builds the list, so this asks again whenever the custom commands change and whenever `refresh` changes (a menu opening),
- * which is when a CLI installed since shows up. Null until the first answer.
+ * which is when a CLI installed since shows up. `workspaceId` adds the Lead preset in a Lead workspace. Null until the first answer.
  */
-export function useTerminalPresets(refresh?: unknown): TerminalPreset[] | null {
+export function useTerminalPresets(refresh?: unknown, workspaceId?: string): TerminalPreset[] | null {
   const custom = useStore((s) => s.settings?.terminal.custom)
-  const [list, setList] = useState(last)
+  const key = workspaceId ?? ''
+  const [list, setList] = useState<TerminalPreset[] | null>(last.get(key) ?? null)
   useEffect(() => {
     let live = true
-    void call('terminal.presets', undefined).then((l) => { last = l; if (live) setList(l) }).catch(() => undefined)
+    void call('terminal.presets', workspaceId ? { workspaceId } : undefined).then((l) => { last.set(key, l); if (live) setList(l) }).catch(() => undefined)
     return () => { live = false }
-  }, [custom, refresh])
+  }, [custom, refresh, workspaceId, key])
   return list
 }
 
