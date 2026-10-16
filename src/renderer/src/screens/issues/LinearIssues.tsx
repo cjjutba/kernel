@@ -8,12 +8,13 @@ import { IssuePriority, IssueState } from '../../icons'
 import { IssueDetail } from './IssueDetail'
 import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import { forgetLinear, generation, getLinearLists, getScope, getSelected, isFresh, setLinearLists, setScope, setSelected } from './cache'
-import { CapNote, FilterChip, IssueSkeleton, RefreshNotice, type ProjectHead } from './parts'
+import { CapNote, FilterChip, HiddenNote, IssueSkeleton, RefreshNotice, type ProjectHead } from './parts'
+import { useReveal } from './useReveal'
 import { RowStatus, useReadPrs } from './WorkCard'
 import { WorkHeader } from '../work/WorkHeader'
 import { useOpenPrCount } from '../prs/model'
 import {
-  clearedFilter, cyclesFor, cycleLabel, describeFilter, fitFilter, FILTER_KEY, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces,
+  ageTip, clearedFilter, cyclesFor, cycleLabel, describeFilter, fitFilter, FILTER_KEY, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces,
   parseFilter, projectsFor, rowState, serializeFilter, stateShape, workspaceSlug, type SavedFilter
 } from './model'
 import './issues.css'
@@ -173,6 +174,11 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
     if (selId !== sel) setSel(selId)
     setSelected('linear', selId)
   }, [selId, sel, lists])
+  // Opening an issue, or a cleared filter bringing it back, opens its group, in case the person folded it earlier.
+  useEffect(() => {
+    const g = groups.find((x) => x.issues.some((i) => i.id === selId))
+    if (g) setFolded((f) => (f.has(groupKey(g)) ? new Set([...f].filter((k) => k !== groupKey(g))) : f))
+  }, [selId, !!cur])
   const fold = (key: string) => setFolded((f) => { const n = new Set(f); if (!n.delete(key)) n.add(key); return n })
 
   // The PRs behind the rows are read once, so a failing PR can say how many checks fail.
@@ -200,7 +206,13 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
   const ready = shown.kind === 'ready' && scope
   const listEl = useRef<HTMLDivElement>(null)
   const keep = spotKey.issues(head.project?.id ?? 'none')
-  useKeptScroll(listEl, { key: keep, ready: !!ready && flat.length > 0 })
+  const kept = useKeptScroll(listEl, { key: keep, ready: !!ready && flat.length > 0 })
+  useReveal(listEl, selId, !!ready && flat.length > 0, folded, kept.stop)
+  // The open issue came from a link or the last visit, and the filter leaves it out of the list.
+  const hidden = !!ready && !unread && !!lists && !!selId && !cur && flat.length > 0
+  const hiddenFits = scope ? describeFilter({ ...filter, query }, scope).fits : []
+  // Every issue in the list is in one Linear project, so naming it on each row says nothing.
+  const oneProject = flat.length > 0 && flat.every((i) => i.project?.id === flat[0].project?.id)
   const openIntegrations = () => go({ name: 'settings', page: 'integrations' })
   const set = (patch: Partial<SavedFilter>) => setFilter((f) => (scope ? fitFilter({ ...f, ...patch }, scope) : { ...f, ...patch }))
   const count = (n: number | undefined) => (n === undefined ? '' : n >= 100 ? '100+' : String(n))
@@ -218,7 +230,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
           <span className="is-sep" aria-hidden="true" />
           {scope.teams.length > 1 && <FilterChip label="Team" value={filter.teamId ?? ''} options={[{ value: '', label: 'All' }, ...scope.teams.map((t) => ({ value: t.id, label: t.key }))]} onChange={(v) => set({ teamId: v || undefined })} />}
           {scope.teams.length === 1 && <FilterChip label="Team" value={scope.teams[0].id} options={[{ value: scope.teams[0].id, label: scope.teams[0].key }]} onChange={() => undefined} />}
-          <FilterChip label="Linear project" value={filter.projectId ?? ''} options={[{ value: '', label: 'All' }, ...projectsFor(scope, filter.teamId).map((p) => ({ value: p.id, label: p.name }))]} onChange={(v) => set({ projectId: v || undefined })} />
+          <FilterChip label="Linear project" prefix="Linear:" value={filter.projectId ?? ''} options={[{ value: '', label: 'All projects' }, ...projectsFor(scope, filter.teamId).map((p) => ({ value: p.id, label: p.name }))]} onChange={(v) => set({ projectId: v || undefined })} />
           <FilterChip label="Cycle" value={filter.cycleId ?? ''} options={[{ value: '', label: 'All' }, ...cyclesFor(scope, filter.teamId).map((c) => ({ value: c.id, label: cycleLabel(c, scope, filter.teamId) }))]} onChange={(v) => set({ cycleId: v || undefined })} />
           <span className="grow" />
           <span className="is-search">
@@ -263,6 +275,8 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
         )
       })()}
 
+      {hidden && selId && <HiddenNote id={selId} fits={hiddenFits} onClear={() => { setQuery(''); if (scope) setFilter(clearedFilter(scope)) }} />}
+
       {ready && flat.length > 0 && (
         <div className="is-body">
           <div className="is-list" ref={listEl} aria-label="Issues" onKeyDown={keys.onKeyDown}>
@@ -282,18 +296,18 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
                     const live = status.get(i.id)
                     return (
                       <li key={i.id} data-keep-id={i.id}>
-                        <button type="button" {...keys.rowProps(i.id)} className="is-row" aria-current={i.id === selId ? 'true' : undefined} onClick={() => setSel(i.id)}>
+                        <button type="button" {...keys.rowProps(i.id)} className="is-row" aria-current={i.id === selId ? 'true' : undefined} aria-selected={i.id === selId} onClick={() => setSel(i.id)}>
                           <span className="is-slot"><IssueState shape={stateShape(i.state.type)} /></span>
                           <span className="col grow">
                             <span className="is-title ellipsis">{i.title}</span>
                             <span className="is-sub">
-                              <IssuePriority priority={i.priority} size={14} />
+                              {i.priority > 0 && <IssuePriority priority={i.priority} size={14} />}
                               <span className="mono">{i.id}</span>
-                              {i.project && <span className="ellipsis" title={`Linear project: ${i.project.name}`}>{i.project.name}</span>}
+                              {i.project && !oneProject && i.project.id !== filter.projectId && <span className="ellipsis" title={`Linear project: ${i.project.name}`}>{i.project.name}</span>}
                             </span>
                           </span>
                           <span className="is-right">
-                            {live ? <RowStatus who={live.who} state={live} /> : issueAge(i.updatedAt)}
+                            {live ? <RowStatus who={live.who} state={live} /> : <span className="is-age" role="img" aria-label={ageTip(i.updatedAt)} data-tip={ageTip(i.updatedAt)}>{issueAge(i.updatedAt)}</span>}
                             {!filter.mine && i.assignee && <span className="is-av" role="img" aria-label={`Assigned to ${i.assignee.name}`}>{initials(i.assignee.name)}</span>}
                           </span>
                         </button>
@@ -307,7 +321,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
             {list.length >= 100 && <CapNote>Showing the 100 issues updated most recently. Narrow by Linear project, cycle or search to find the rest.</CapNote>}
           </div>
           <div className="is-pane" ref={detail}>
-            {selId && <IssueDetail keep={keep} id={selId} summary={cur} tick={tick} onPlanned={() => { setTick((t) => t + 1); void load(true) }} />}
+            {selId && <IssueDetail keep={keep} headProject={head.project} id={selId} summary={cur} tick={tick} onPlanned={() => { setTick((t) => t + 1); void load(true) }} />}
           </div>
         </div>
       )}

@@ -53,6 +53,9 @@ export function groupIssues(issues: LinearIssue[]): IssueGroup[] {
 /** The rows in the order the list shows them, for the arrow keys. */
 export const flatIssues = (groups: IssueGroup[]): LinearIssue[] => groups.flatMap((g) => g.issues)
 
+/** What an age like "4d" measures, for the tooltip on a row. */
+export const ageTip = (iso: string) => `Updated ${issueAge(iso)} ago`
+
 /** "3h", "2d", "1w" since an ISO time. Weeks past 14 days stay in weeks, like the canvas. */
 export function issueAge(iso: string, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000))

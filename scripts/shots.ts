@@ -715,6 +715,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   TurnFilesHover: hoverAndFocusRows,
   InboxRowFocused: focusListRow,
   IssuesRowFocused: focusListRow,
+  IssuesNoWork1280: windowAt(1280),
   ProjectsRowFocused: focusListRow,
   PullRequestsRowFocused: focusListRow,
   HistoryRowFocused: focusListRow,
