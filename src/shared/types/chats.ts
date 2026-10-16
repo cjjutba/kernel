@@ -238,8 +238,13 @@ export type ChatItem =
    * `pr` is the PR state a note about a PR is for, so the row can draw that state's icon (KERNEL-313). Older notes and other notes have none.
    * `refs` are spans of `text`, in the order they appear, that open another workspace, such as the PRs a held brief waits for.
    */
-  | { kind: 'note'; id: string; ts: number; text: string; link?: { label: string; href: string }; pr?: 'merged' | 'closed' | 'cifail'; refs?: NoteRef[] }
+  | { kind: 'note'; id: string; ts: number; text: string; link?: { label: string; href: string }; pr?: 'opened' | 'ready' | 'merged' | 'closed' | 'cifail'; refs?: NoteRef[] }
   | { kind: 'interrupted'; id: string; ts: number }
+  /**
+   * A Team update drawn in the transcript and never sent to the session (KERNEL-990). Kernel posts one for a review of the chat's
+   * own PR in Build here, holding only the reviewer's row, so the verdict shows without a turn.
+   */
+  | { kind: 'update'; id: string; ts: number; update: TeamUpdate }
   /** Where an approval card sits in the transcript. The card itself reads the Approval, so the Inbox and the transcript stay in sync (D-007). */
   | { kind: 'approval'; id: string; ts: number; approvalId: string }
   /** A file the agent shared with share_file. The card reads the SharedFile, so a later version shows on it (KERNEL-302). */

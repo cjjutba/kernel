@@ -42,7 +42,7 @@ const OPEN_MS = 600
 /** The open chat's spot is saved this long after the reader stops scrolling. */
 const KEEP_MS = 250
 /** The PR state icons a note draws before its text, the same glyphs as the PR header (KERNEL-313). */
-const NOTE_GLYPH: Record<NonNullable<Extract<ChatItem, { kind: 'note' }>['pr']>, IconName> = { merged: 'merged', closed: 'prClosed', cifail: 'prCifail' }
+const NOTE_GLYPH: Record<NonNullable<Extract<ChatItem, { kind: 'note' }>['pr']>, IconName> = { opened: 'prReady', ready: 'prReady', merged: 'merged', closed: 'prClosed', cifail: 'prCifail' }
 
 /** The user's own send is what a reader scrolled up follows. A bubble with a sender, the Lead handing work to a teammate, arrives while they read and leaves them where they are. */
 export const followsSend = (item: ChatItem | undefined) => item?.kind === 'user' && !item.from && userView(item) === 'bubble'
