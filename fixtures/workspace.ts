@@ -9,7 +9,7 @@ import { downloadFlowMarkdown, fontsCheckImage, invoiceLayoutStill, invoicePdfSt
 // Workspace lane: the workspace screen (KERNEL-10), PR states (KERNEL-15), agent turns and requests (KERNEL-14).
 
 const open = { route: { name: 'workspace', workspaceId: ids.table } } as const
-const pr = { prNumber: 42, prUrl: 'https://github.com/samrivera/client-a/pull/42' }
+const pr = { prNumber: 42, prUrl: 'https://github.com/cjjutba/client-a/pull/42' }
 /** The transcript up to the last tool call, before Kai's summary. */
 const midTurn = tableItems.filter((i) => i.kind !== 'text' && i.kind !== 'result')
 
@@ -45,11 +45,11 @@ const headerScene = (prState: Workspace['prState'], note: ChatItem[], opts: { pa
       name: 'kernel-155-home-and-inbox-keep-asking-about-requests-and-prs', branch: HEADER_BRANCH, agentId: 'noor', prState,
       title: opts.title ?? 'KERNEL-155 Home and Inbox keep asking about requests and the PRs',
       source: { kind: 'issue', id: 'KERNEL-155', title: 'Home and Inbox keep asking about requests and the PRs' },
-      prNumber: 147, prUrl: 'https://github.com/samrivera/client-a/pull/147', prTitle: 'feat(home): ask about requests and PRs'
+      prNumber: 147, prUrl: 'https://github.com/cjjutba/client-a/pull/147', prTitle: 'feat(home): ask about requests and PRs'
     }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'KERNEL-155 Home and Inbox' } : c)),
     items: { [ids.tableChat]: [...tableItems, ...note] },
-    prs: prInfo(prState, { number: 147, url: 'https://github.com/samrivera/client-a/pull/147', title: 'feat(home): ask about requests and PRs' }),
+    prs: prInfo(prState, { number: 147, url: 'https://github.com/cjjutba/client-a/pull/147', title: 'feat(home): ask about requests and PRs' }),
     ui: { ...open, rightPanel: !!opts.panel, workspace: { right: 'changes', bottom: 'run' } }
   }))
 
@@ -937,7 +937,7 @@ const leadUpdate = (f: Fixture): Partial<Fixture> => {
   const kai: TeamUpdateRow = {
     workspaceId: ids.table, agentId: 'kai', name: 'Kai', task: 'Remove the Try section from the sidebar', prNumber: 108,
     events: [{ kind: 'pr.opened', text: 'Opened PR #108', actionable: false }, { kind: 'pr.ready', text: 'Ready to merge', actionable: true }, { kind: 'pr.review', text: 'Not reviewed', actionable: false }],
-    reply: 'Removed the Try section from the sidebar. Connect a repo and Open a folder stay in the projects plus menu and on Home\'s empty state, and Check hooks stays in the footer.\n\nOpened https://github.com/samrivera/client-a/pull/108'
+    reply: 'Removed the Try section from the sidebar. Connect a repo and Open a folder stay in the projects plus menu and on Home\'s empty state, and Check hooks stays in the footer.\n\nOpened https://github.com/cjjutba/client-a/pull/108'
   }
   const theo: TeamUpdateRow = {
     workspaceId: 'ws-review-108', agentId: 'theo', name: 'Theo', task: 'Review PR #108',
@@ -975,10 +975,10 @@ const tuCard = (id: string, m: number, rows: TeamUpdateRow[], todo = 'Tell the u
 })
 const withOmitted = (item: ChatItem, omitted: number): ChatItem => (item.kind === 'user' && item.update ? { ...item, update: { ...item.update, omitted } } : item)
 const tuWork = (id: string, agentId: string, name: string, n: number, over: Partial<Workspace>): Workspace =>
-  ({ id, projectId: ids.projectA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4330 + n % 50, status: 'ready', prState: 'ready', prNumber: n, prUrl: `https://github.com/samrivera/client-a/pull/${n}`, createdAt: at(19, 40), ...over })
+  ({ id, projectId: ids.projectA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4330 + n % 50, status: 'ready', prState: 'ready', prNumber: n, prUrl: `https://github.com/cjjutba/client-a/pull/${n}`, createdAt: at(19, 40), ...over })
 const tuVerdict = (workspaceId: string, prNumber: number, sha: string): ReviewVerdict => ({ workspaceId, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha, prNumber, ts: at(20, 12) })
 const tuChecks: PrInfo['checks'] = [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
-const tuInfo = (workspaceId: string, number: number, head: string): PrInfo => ({ workspaceId, number, url: `https://github.com/samrivera/client-a/pull/${number}`, title: '', state: 'ready', baseRef: 'main', checks: tuChecks, comments: [], conflicts: [], head })
+const tuInfo = (workspaceId: string, number: number, head: string): PrInfo => ({ workspaceId, number, url: `https://github.com/cjjutba/client-a/pull/${number}`, title: '', state: 'ready', baseRef: 'main', checks: tuChecks, comments: [], conflicts: [], head })
 
 /**
  * Team updates with Merge (TeamUpdateMerge.png, KERNEL-351): an older card about PR #162 that no longer offers it, then a card where #162 and
@@ -1121,7 +1121,7 @@ const prFields = (p: OpenPr): Partial<Workspace> => {
   const verdict = (o: Partial<ReviewVerdict>): ReviewVerdict => ({ workspaceId: `${p.id}-review`, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha: `h${p.n}`, prNumber: p.n, ts: at(20, 12), ...o })
   const reviews = p.review === 'approved' ? [verdict({})] : p.review === 'secure' ? [verdict({ lens: 'code' }), verdict({ lens: 'security', workspaceId: `${p.id}-security` })] : p.review === 'stale' ? [verdict({ sha: `h${p.n}-old` })] : p.review === 'blockers' ? [verdict({ verdict: 'blockers', blockers: [{ text: 'The download never retries.' }, { text: 'No test covers the failure toast.' }] })] : undefined
   return {
-    title: p.title, prState: p.state, prNumber: p.n, prUrl: `https://github.com/samrivera/client-a/pull/${p.n}`, prTitle: commitTitle(p.title, p.key), prHead: `h${p.n}`, source: { kind: 'issue', id: p.key, title: p.title },
+    title: p.title, prState: p.state, prNumber: p.n, prUrl: `https://github.com/cjjutba/client-a/pull/${p.n}`, prTitle: commitTitle(p.title, p.key), prHead: `h${p.n}`, source: { kind: 'issue', id: p.key, title: p.title },
     stat: { files: 3, added: p.stat[0], removed: p.stat[1] }, reviews,
     ...(p.review === 'planned' ? { reviewRound: { n: 1, rounds: 2, head: `h${p.n}`, prNumber: p.n, kinds: ['code'] } } : {}),
     ...(p.overruled && { overruled: { head: `h${p.n}`, kinds: ['code' as const], by: 'user' as const, ts: at(20, 40) } })
@@ -1135,7 +1135,7 @@ const openPrWorkspace = (p: OpenPr): Workspace => {
 
 /** GitHub's read of each PR: its checks follow its state, and the head commit is the one the workspace saw. */
 const openPrInfo = (p: OpenPr): PrInfo => ({
-  workspaceId: p.id, number: p.n, url: `https://github.com/samrivera/client-a/pull/${p.n}`, title: commitTitle(p.title, p.key), state: p.state, baseRef: 'main', comments: [], conflicts: [], head: `h${p.n}`,
+  workspaceId: p.id, number: p.n, url: `https://github.com/cjjutba/client-a/pull/${p.n}`, title: commitTitle(p.title, p.key), state: p.state, baseRef: 'main', comments: [], conflicts: [], head: `h${p.n}`,
   checks: p.state === 'checks' ? [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'running' }] : p.state === 'cifail' ? [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'fail', meta: '48s' }] : [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
 })
 
@@ -1704,7 +1704,7 @@ const lmFiles: ChangedFile[] = [
   { path: 'src/lib/money.ts', status: 'M', added: 9, removed: 3 },
   { path: 'src/lib/money.test.ts', status: 'M', added: 24, removed: 0 }
 ]
-const lmPr = { prNumber: 171, prUrl: 'https://github.com/samrivera/client-a/pull/171', prTitle: 'fix(money): round refunds half away from zero' }
+const lmPr = { prNumber: 171, prUrl: 'https://github.com/cjjutba/client-a/pull/171', prTitle: 'fix(money): round refunds half away from zero' }
 
 // ---------- Lead chats that hold several tabs (KERNEL-338)
 
@@ -3443,7 +3443,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   /** A brief Kernel handed off with wait_for, held until Noor's PR merges, with Send now to start it sooner (KERNEL-259, KERNEL-361). */
   WorkspaceQueuedMerge: scene((f) => {
     const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 2), from: 'lead' as const, parts: [{ type: 'text' as const, text: 'Build the invoice table on top of the new schema' }] }]
-    const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/samrivera/client-a/pull/43', prState: 'open' })
+    const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/cjjutba/client-a/pull/43', prState: 'open' })
     return {
       workspaces: withWorkspace({ ...f, workspaces: schema }, ids.table, { stat: undefined, waitsFor: { on: [ids.schema], held: true } }),
       items: { [ids.tableChat]: [{ kind: 'note', id: 'n1', ts: at(10, 2), text: 'Waiting for PR #43 by Noor to merge. Kernel sends this brief then. Send now starts it sooner.', refs: [{ text: 'PR #43 by Noor', workspaceId: ids.schema }] }] },
@@ -3456,7 +3456,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   /** Noor's PR #43 with Kai's T-14 brief held until it merges: the line above the box names Kai's workspace and opens it. */
   WorkspaceWaitedOn: scene((f) => {
-    const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/samrivera/client-a/pull/43', prState: 'open', prTitle: 'feat(invoices): schema and migrations' })
+    const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/cjjutba/client-a/pull/43', prState: 'open', prTitle: 'feat(invoices): schema and migrations' })
     return {
       workspaces: withWorkspace({ ...f, workspaces: schema }, ids.table, { stat: undefined, source: { kind: 'issue', id: 'T-14', title: 'Invoice table' }, waitsFor: { on: [ids.schema], held: true } }),
       ui: { route: { name: 'workspace', workspaceId: ids.schema } }

@@ -17,7 +17,7 @@ import { mustBeInside, OPEN_APPS } from './services/openApps'
 import { presetList, resolvePreset, terminalTitle } from './services/terminalPresets'
 
 const ok = { ok: true } as const
-const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }
+const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'CJ Jutba', login: 'cjjutba', plan: 'Claude Max' }
 
 /**
  * Fixture mode (KERNEL_FIXTURES): every IPC channel answered from one fixture, with no database, hook server or sessions.
@@ -117,7 +117,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'projects.pushCheck': async ({ projectId }) => f.pushChecks?.[projectId] ?? null,
     'github.repos': async ({ query }) => (f.repos ?? []).filter((r) => !query || r.fullName.includes(query)),
     'github.avatar': async ({ owner }) => f.avatars?.[owner] ?? null,
-    'github.owners': async () => f.githubOwners ?? [{ login: 'samrivera', org: false }],
+    'github.owners': async () => f.githubOwners ?? [{ login: 'cjjutba', org: false }],
     'github.repoAvailable': async ({ owner, name }) => (f.takenRepos ?? []).includes(`${owner}/${name}`) ? { available: false, reason: `${owner}/${name} already exists.` } : { available: true },
     'agents.list': async ({ projectId, retired }) => (f.agents[projectId] ?? []).filter((a) => !!a.retired === !!retired),
     'agents.status': async ({ projectId }) => f.status[projectId] ?? {},

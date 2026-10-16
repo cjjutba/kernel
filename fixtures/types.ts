@@ -49,7 +49,7 @@ export interface Fixture {
   openItems?: OpenItem[]
   /** The signed-in user's GitHub repos (ConnectRepo.png). */
   repos?: RepoSummary[]
-  /** Who a new GitHub repo can belong to (KERNEL-944). Signed in as samrivera when unset. */
+  /** Who a new GitHub repo can belong to (KERNEL-944). Signed in as cjjutba when unset. */
   githubOwners?: GitHubOwner[]
   /** owner/repo names Repository name says are taken (KERNEL-944). */
   takenRepos?: string[]
