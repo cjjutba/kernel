@@ -7,6 +7,7 @@ import { Icon } from '../../../ui'
 import { KernelNote } from '../KernelNote'
 import { SharedRow } from './SharedCard'
 import { MergeButton } from '../pr/MergeButton'
+import { useFileLinks } from '../fileLinks'
 import { inline } from '../markdown'
 import { cardData, eventTone, isStillBlocked, mergeTargetOf, mergedAutomatically, newestRows, openItems, sections, taskParts } from './teamUpdate'
 import './cards.css'
@@ -104,7 +105,7 @@ function Row({ row, itemId, workspaceOf, useNewest }: { row: TeamUpdateRow; item
           {open.length > MAX_OPEN && <li className="tucard-more-open">{open.length - MAX_OPEN} more</li>}
         </ul>
       )}
-      {row.reply ? <Reply text={row.reply} link={link} /> : link && <p className="tucard-quote"><PrLink {...link} lone /></p>}
+      {row.reply ? <Reply text={row.reply} link={link} workspaceId={row.workspaceId} /> : link && <p className="tucard-quote"><PrLink {...link} lone /></p>}
       {row.shared?.map((f) => <SharedRow key={f.sharedId} sharedId={f.sharedId} version={f.version} title={f.title} kind={f.kind} />)}
     </div>
   )
@@ -128,8 +129,10 @@ function PrLink({ url, number, tabbable = true, lone }: { url: string; number?: 
  * The teammate's reply, three lines until the user asks for the rest. Show more appears only when the lines run over. A `link` follows
  * the last line. When the lines run over it is cut off with them, so it shows again under the reply, and the one in the text steps aside.
  */
-function Reply({ text, link }: { text: string; link?: { url: string; number?: number } }) {
+function Reply({ text, link, workspaceId }: { text: string; link?: { url: string; number?: number }; workspaceId: string }) {
   const ref = useRef<HTMLQuoteElement>(null)
+  // The paths in a teammate's reply open in that teammate's worktree, not the Lead's.
+  const links = useFileLinks(workspaceId, [text], ref)
   const id = useId()
   const [open, setOpen] = useState(false)
   const [over, setOver] = useState(false)
@@ -148,7 +151,7 @@ function Reply({ text, link }: { text: string; link?: { url: string; number?: nu
     <>
       {/* Clamped, paragraphs sit on the next line so a blank one doesn't use up the three. */}
       {/* Inline code, bold and links render as they do in chat, so a reply never shows raw backticks (KERNEL-411). */}
-      <blockquote ref={ref} id={id} className="tucard-quote" data-clamped={open ? undefined : 'true'}>{inline(open ? text : text.replace(/\n{2,}/g, '\n'))}{link && <PrLink {...link} tabbable={!clipped} />}</blockquote>
+      <blockquote ref={ref} id={id} className="tucard-quote" data-clamped={open ? undefined : 'true'}>{inline(open ? text : text.replace(/\n{2,}/g, '\n'), links)}{link && <PrLink {...link} tabbable={!clipped} />}</blockquote>
       {(over || open) && <button type="button" className="tucard-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>{open ? 'Show less' : 'Show more'}</button>}
       {link && clipped && <p className="tucard-quote"><PrLink {...link} lone /></p>}
     </>

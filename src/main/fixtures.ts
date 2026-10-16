@@ -163,6 +163,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'workspaces.readFile': async ({ workspaceId, path }) => f.fileText?.[workspaceId]?.[path] ?? '',
     // A fixture's mentions resolve to the rows of its tree, by exact path.
     'workspaces.resolvePaths': async ({ workspaceId, paths }) => Object.fromEntries(paths.map((p) => {
+      const m = f.mentions?.[workspaceId]?.[p]
+      if (m !== undefined) return [p, m]
       const e = f.tree?.[workspaceId]?.find((t) => t.path === p)
       return [p, e ? { kind: e.dir ? 'dir' : 'file', path: e.path } : null]
     })),

@@ -8,6 +8,7 @@ import { addToComposer } from './composer/bus'
 import { OpenImage } from './composer/Chip'
 import { compareTitle, targetKey, useCompared } from './compare'
 import { parseDiff } from './diff'
+import { useLineFocus } from './fileLinks'
 import { gitDecoration } from './gitStatus'
 
 const split = (path: string) => { const i = path.lastIndexOf('/'); return { dir: path.slice(0, i + 1), name: path.slice(i + 1) } }
@@ -94,6 +95,11 @@ function ImageChange({ wsId, path, status, target, onSize, inline, keep }: { wsI
   )
 }
 
+/** A file in the scratchpad has an absolute path, a file in the worktree one relative to it. */
+function OpenInEditor({ ws, path }: { ws: Workspace; path: string }) {
+  return <button type="button" className="open-editor" onClick={() => void call('system.openInEditor', { path: path.startsWith('/') ? path : `${ws.path}/${path}` })}>Open in editor</button>
+}
+
 /** A file in the worktree, read only, with line numbers (WorkspaceFile.png). */
 export function FileView(props: { ws: Workspace; path: string; editedBy?: string; changed: boolean }) {
   return isImagePath(props.path) ? <ImageFile {...props} /> : <TextFile {...props} />
@@ -106,7 +112,7 @@ function ImageFile({ ws, path, editedBy, changed }: { ws: Workspace; path: strin
   useCodeScroll(scroller, ws.id, `file:${path}`, true)
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
-      <ViewHead path={path} trailing={<button type="button" className="open-editor" onClick={() => void call('system.openInEditor', { path: `${ws.path}/${path}` })}>Open in editor</button>}>
+      <ViewHead path={path} trailing={<OpenInEditor ws={ws} path={path} />}>
         <span className="muted t-meta">Read only{changed && editedBy ? ` · edited by ${editedBy}` : ''}{size ? ` · ${sizeText(size)}` : ''}</span>
       </ViewHead>
       <div ref={scroller} className="image-view"><ImagePane wsId={ws.id} path={path} at="worktree" onSize={setSize} /></div>
@@ -126,16 +132,23 @@ function TextFile({ ws, path, editedBy, changed }: { ws: Workspace; path: string
   const lines = useMemo(() => (text ?? '').replace(/\n$/, '').split('\n'), [text])
   const scroller = useRef<HTMLDivElement>(null)
   useCodeScroll(scroller, ws.id, `file:${path}`, text !== null)
+  // A link in chat to `path:12-30` scrolls to the lines and marks them.
+  const range = useLineFocus(ws.id, path)
+  useEffect(() => {
+    if (!range || text === null) return
+    const frame = requestAnimationFrame(() => scroller.current?.querySelector(`[data-line="${range.start}"]`)?.scrollIntoView({ block: 'center' }))
+    return () => cancelAnimationFrame(frame)
+  }, [range, text])
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
-      <ViewHead path={path} trailing={<button type="button" className="open-editor" onClick={() => void call('system.openInEditor', { path: `${ws.path}/${path}` })}>Open in editor</button>}>
+      <ViewHead path={path} trailing={<OpenInEditor ws={ws} path={path} />}>
         <span className="muted t-meta">Read only{changed && editedBy ? ` · edited by ${editedBy}` : ''}</span>
       </ViewHead>
       {error ? (
         <div className="panel-empty"><span className="ink2 t-medium">Can't show this file</span><span>{error}</span></div>
       ) : (
         <div ref={scroller} className="code-view selectable mono" role="region" aria-label={`Contents of ${path}`} tabIndex={0}>
-          {text !== null && lines.map((l, i) => <div key={i} className="code-line"><span className="ln">{i + 1}</span><span className="src">{l || ' '}</span></div>)}
+          {text !== null && lines.map((l, i) => <div key={i} className="code-line" data-line={i + 1} data-hit={range && i + 1 >= range.start && i + 1 <= range.end ? '' : undefined}><span className="ln">{i + 1}</span><span className="src">{l || ' '}</span></div>)}
         </div>
       )}
     </div>
