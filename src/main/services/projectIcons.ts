@@ -4,7 +4,7 @@ import type { Project } from '@shared/types'
 import { exec, type ExecResult } from './exec'
 
 // Project icons (KERNEL-241): the GitHub owner's avatar or a picked PNG or JPEG, stored as downloaded in the data folder.
-// Grayscale is the renderer's job. nativeImage isn't available in tests, so the checks read magic bytes.
+// nativeImage isn't available in tests, so the checks read magic bytes.
 
 export const ICON_MAX_BYTES = 2 * 1024 * 1024
 export const AVATAR_FAILED = "Couldn't get the GitHub avatar. The project keeps its letter."
