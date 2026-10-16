@@ -4,7 +4,7 @@ import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, stat, symlink, 
 import { existsSync, mkdirSync, rmdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { accountEnv, credentialsDir, credentialsItem, linkClaudeHome, loginMcp, mcpLoginLink, removeClaudeHome, shareMcpSignIns, syncClaudeConfig, syncClaudePlugins } from '../src/main/services/providers/claudeHome'
+import { accountEnv, credentialsDir, credentialsItem, linkClaudeHome, loginMcp, mcpLoginLink, mcpTokenMark, removeClaudeHome, shareMcpSignIns, syncClaudeConfig, syncClaudePlugins } from '../src/main/services/providers/claudeHome'
 import { sessionEnv } from '../src/main/services/providers/claude'
 import { fakeClaude, MCP_LINK } from './helpers/fakeClaude'
 import { fakeKeychain } from './helpers/fakeKeychain'
@@ -400,6 +400,39 @@ describe('sharing MCP sign-ins between Claude logins', () => {
     // A tie keeps each as it is: porkbun stays the CLI's on the CLI and the account's on the account.
     expect(kc.json(SIDE).mcpOAuth['porkbun|ccc'].accessToken).toBe('side-porkbun-access')
     expect(kc.writes).toEqual([CLI])
+  })
+
+  it("never gives away a token that expired with no refresh token, and keeps a login's own working token over a later one (KERNEL-935)", async () => {
+    const { logins } = await folders()
+    const kc = fakeKeychain({
+      // Two hours on, the CLI's linear token has expired, and with no refresh token nothing can renew it.
+      [CLI]: { mcpOAuth: { 'linear|aaa': { ...signIn('linear', 'cli', now + HOUR), refreshToken: '' }, 'posthog|bbb': signIn('posthog', 'cli', now + 4 * HOUR) } },
+      [SIDE]: { mcpOAuth: { 'linear|aaa': stub('linear'), 'posthog|bbb': signIn('posthog', 'side', now + 3 * HOUR) } }
+    })
+    expect(shareMcpSignIns(kc.keychain, logins, { now: now + 2 * HOUR }).size).toBe(0)
+    expect(kc.json(SIDE).mcpOAuth).toEqual({ 'linear|aaa': stub('linear'), 'posthog|bbb': signIn('posthog', 'side', now + 3 * HOUR) })
+    expect(kc.writes).toEqual([])
+  })
+
+  it('never copies a token Claude Code rejected, and lets a login holding one take a newer sign-in (KERNEL-935)', async () => {
+    const { side, logins } = await folders()
+    const revoked = signIn('linear', 'cli', now + 2 * HOUR)
+    const rejected = new Set([mcpTokenMark('linear', revoked)])
+    const kc = fakeKeychain({ [CLI]: { mcpOAuth: { 'linear|aaa': revoked } }, [SIDE]: { mcpOAuth: { 'linear|aaa': signIn('linear', 'side', now + HOUR) } } })
+    // The account's own still works, so it keeps it even without the mark. With it, nothing moves either way.
+    expect(shareMcpSignIns(kc.keychain, logins, { now }).size).toBe(0)
+    kc.set(SIDE, { mcpOAuth: { 'linear|aaa': stub('linear') } })
+    expect(shareMcpSignIns(kc.keychain, logins, { now, rejected }).size).toBe(0)
+    expect(kc.writes).toEqual([])
+    // The account holds the rejected token while the CLI signs in again: the new one replaces it, and only it is reported.
+    kc.set(SIDE, { mcpOAuth: { 'linear|aaa': revoked } })
+    kc.set(CLI, { mcpOAuth: { 'linear|aaa': signIn('linear', 'again', now + HOUR) } })
+    const copies: [string, string, string][] = []
+    expect(shareMcpSignIns(kc.keychain, logins, { now, rejected, onCopy: (dir, server, mark) => copies.push([dir, server, mark]) })).toEqual(new Map([[side, ['linear']]]))
+    expect(kc.json(SIDE).mcpOAuth['linear|aaa']).toEqual(signIn('linear', 'again', now + HOUR))
+    expect(kc.json(CLI).mcpOAuth['linear|aaa']).toEqual(signIn('linear', 'again', now + HOUR))
+    expect(copies).toEqual([[side, 'linear', mcpTokenMark('linear', { expiresAt: now + HOUR })]])
+    expect(copies.flat().join()).not.toContain('again-linear')
   })
 
   it("leaves an item it can't read whole alone, and makes none", async () => {

@@ -441,24 +441,47 @@ const serverOf = (key: string, t: McpToken | undefined) => (typeof t?.serverName
 
 /**
  * How fresh a sign-in is: -1 without a token, else when its access token expires. A refresh or a new sign-in always moves
- * that later. One with a token but no expiry counts as 0, so any dated one beats it.
+ * that later. One with a token but no expiry counts as 0, so any dated one beats it. One that expired with no refresh token
+ * to renew it is dead, so it counts as no token (KERNEL-935).
  */
-const freshness = (t: McpToken | undefined) => (!t || !(t.accessToken || t.refreshToken) ? -1 : typeof t.expiresAt === 'number' ? t.expiresAt : 0)
+const freshness = (t: McpToken | undefined, now: number) => {
+  if (!t || !(t.accessToken || t.refreshToken)) return -1
+  if (typeof t.expiresAt !== 'number') return 0
+  return t.expiresAt <= now && !t.refreshToken ? -1 : t.expiresAt
+}
+
+/** A sign-in whose access token still works by its clock: one with an expiry that hasn't passed. */
+const valid = (t: McpToken | undefined, now: number) => !!t?.accessToken && typeof t.expiresAt === 'number' && t.expiresAt > now
+
+/**
+ * What Kernel remembers of a copied sign-in Claude Code then rejected (KERNEL-935): a hash of the server's name and the
+ * token's expiry, never the token.
+ */
+export const mcpTokenMark = (server: string, t: { expiresAt?: unknown }) => createHash('sha256').update(`${server}|${String(t.expiresAt)}`).digest('hex')
 
 /**
  * Gives every Claude login the freshest sign-in of each MCP server the user added (KERNEL-616). `logins` is each login's
  * Keychain item with its folder, the CLI's own first, which wins a tie. A sign-in with a token beats one without, and a
- * later expiry beats an earlier one, so a token one login refreshes reaches the others, both ways, before the old one stops
- * working where the server swaps refresh tokens. A server's own client secret goes where it is missing. claude.ai
- * connectors stay with their account. An item Kernel can't read whole is left alone, and none is made. An item is written
- * under the lock Claude Code itself takes to write it, `.storage-write.lock` in `store`, the item's folder (`credentialsDir`),
- * `dir` when left out. Inside it the item is read again and only the sign-ins still behind change, so a login Claude Code
- * renews meanwhile is saved after Kernel's write and never under it. A login whose lock a CLI holds is left for the next
- * share (feat-make-claude-account-credentials-and). A server that got a sign-in leaves the login's
- * `mcp-needs-auth-cache.json`, or Claude Code would skip it for up to 15 minutes. Returns the servers each login got, by
- * folder. Nothing it reads is logged.
+ * later expiry beats an earlier one. A login whose own token is still valid keeps it, whatever another login holds: a later
+ * expiry elsewhere may be a token the server revoked (KERNEL-935). A token that expired with no refresh token, or one in
+ * `rejected` (`mcpTokenMark`), is never copied, and a login holding one counts as holding none. A server's own client
+ * secret goes where it is missing. claude.ai connectors stay with their account. An item Kernel can't read whole is left
+ * alone, and none is made. An item is written under the lock Claude Code itself takes to write it, `.storage-write.lock`
+ * in `store`, the item's folder (`credentialsDir`), `dir` when left out. Inside it the item is read again and only the
+ * sign-ins still behind change, so a login Claude Code renews meanwhile is saved after Kernel's write and never under it.
+ * A login whose lock a CLI holds is left for the next share (feat-make-claude-account-credentials-and). A server that got a
+ * sign-in leaves the login's `mcp-needs-auth-cache.json`, or Claude Code would skip it for up to 15 minutes. Returns the
+ * servers each login got, by folder, and `onCopy` hears each copied token's mark. `now` is the clock tokens expire by.
+ * Nothing it reads is logged.
  */
-export function shareMcpSignIns(keychain: Keychain, logins: { item: string; dir: string; store?: string }[]): Map<string, string[]> {
+export function shareMcpSignIns(
+  keychain: Keychain,
+  logins: { item: string; dir: string; store?: string }[],
+  o: { now?: number; rejected?: ReadonlySet<string>; onCopy?: (dir: string, server: string, mark: string) => void } = {}
+): Map<string, string[]> {
+  const now = o.now ?? Date.now()
+  const rejected = (key: string, t: McpToken) => !!o.rejected?.has(mcpTokenMark(serverOf(key, t), t))
+  const rank = (key: string, t: McpToken | undefined) => (t && rejected(key, t) ? -1 : freshness(t, now))
   const got = new Map<string, string[]>()
   const items = new Set<string>()
   const read = logins.filter((l) => !items.has(l.item) && !!items.add(l.item)).flatMap((l) => {
@@ -469,10 +492,14 @@ export function shareMcpSignIns(keychain: Keychain, logins: { item: string; dir:
   const best = new Map<string, McpToken>()
   const clients = new Map<string, unknown>()
   for (const { secrets } of read) {
-    for (const [key, t] of Object.entries(tokensOf(secrets))) if (!isConnector(serverOf(key, t)) && freshness(t) > freshness(best.get(key))) best.set(key, t)
+    for (const [key, t] of Object.entries(tokensOf(secrets))) if (!isConnector(serverOf(key, t)) && rank(key, t) > rank(key, best.get(key))) best.set(key, t)
     for (const [key, c] of Object.entries(clientsOf(secrets))) if (!clients.has(key)) clients.set(key, c)
   }
-  const behind = (s: Secrets) => [...best].filter(([key, t]) => freshness(tokensOf(s)[key]) < freshness(t))
+  const behind = (s: Secrets) => [...best].filter(([key, t]) => {
+    const had = tokensOf(s)[key]
+    const r = rank(key, had)
+    return !(r >= 0 && valid(had, now)) && r < rank(key, t)
+  })
   const missing = (s: Secrets) => [...clients].filter(([key]) => !(key in clientsOf(s)))
   for (const login of read) {
     if (!behind(login.secrets).length && !missing(login.secrets).length) continue
@@ -491,6 +518,7 @@ export function shareMcpSignIns(keychain: Keychain, logins: { item: string; dir:
     } finally { unlock() }
     const servers = [...new Set(tokens.map(([key, t]) => serverOf(key, t)))].sort()
     if (!servers.length) continue
+    for (const [key, t] of tokens) o.onCopy?.(login.dir, serverOf(key, t), mcpTokenMark(serverOf(key, t), t))
     forgetNeedsAuth(login.dir, servers)
     got.set(login.dir, servers)
   }
