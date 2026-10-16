@@ -100,12 +100,29 @@ describe('Linear queries', () => {
 
   it("lists the project team's Todo issues for Up next, urgent first and no priority last, keeping the order within a priority", async () => {
     const n = (identifier: string, priority: number) => ({ identifier, title: identifier, url: `https://linear.app/cj/issue/${identifier}`, priority, project: identifier === 'K-3' ? { name: 'Kernel v1' } : null })
-    const l = linear(() => ({ issues: { nodes: [n('K-1', 0), n('K-2', 3), n('K-3', 1), n('K-4', 3), n('K-5', 4)] } }))
+    const l = linear(() => ({ todo: { nodes: [n('K-1', 0), n('K-2', 3), n('K-3', 1), n('K-4', 3), n('K-5', 4)] }, backlog: { nodes: [] } }))
     const out = await nextIssues('k', 'K', l.fetch)
-    expect(l.calls[0].variables.filter).toEqual({ state: { type: { eq: 'unstarted' } }, team: { key: { eq: 'K' } } })
     expect(out.map((i) => i.id)).toEqual(['K-3', 'K-2', 'K-4', 'K-5', 'K-1'])
     expect(out[0]).toEqual({ id: 'K-3', title: 'K-3', url: 'https://linear.app/cj/issue/K-3', source: 'linear', priority: 1, project: 'Kernel v1' })
     expect(out[1]).not.toHaveProperty('project')
+  })
+
+  it("fills Up next from the team's Backlog after its Todo issues, each urgent first, and asks for no other state (KERNEL-955)", async () => {
+    const n = (identifier: string, priority: number) => ({ identifier, title: identifier, priority })
+    const l = linear(() => ({ todo: { nodes: [n('T-1', 4)] }, backlog: { nodes: [n('B-1', 0), n('B-2', 2), n('B-3', 1), n('B-4', 2)] } }))
+    expect((await nextIssues('k', 'K', l.fetch)).map((i) => i.id)).toEqual(['T-1', 'B-3', 'B-2', 'B-4', 'B-1'])
+    expect(l.calls).toHaveLength(1)
+    expect(l.calls[0].variables).toEqual({
+      todo: { state: { type: { eq: 'unstarted' } }, team: { key: { eq: 'K' } } },
+      backlog: { state: { type: { eq: 'backlog' } }, team: { key: { eq: 'K' } } }
+    })
+    expect(l.calls[0].query).toMatch(/todo: issues\(first: 50, filter: \$todo[^)]*\)[\s\S]*backlog: issues\(first: 50, filter: \$backlog/)
+  })
+
+  it('keeps every Todo issue ahead of an urgent Backlog issue in Up next', async () => {
+    const n = (identifier: string, priority: number) => ({ identifier, title: identifier, priority })
+    const l = linear(() => ({ todo: { nodes: [n('T-1', 0), n('T-2', 4), n('T-3', 3)] }, backlog: { nodes: [n('B-1', 1)] } }))
+    expect((await nextIssues('k', 'K', l.fetch)).map((i) => i.id).slice(0, 3)).toEqual(['T-3', 'T-2', 'T-1'])
   })
 
   it("lists nothing for Up next in a project with no Linear team, rather than another team's issues", async () => {

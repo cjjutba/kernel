@@ -1,125 +1,82 @@
-import { useId, useLayoutEffect, useState } from 'react'
-import type { NewProjectPrefill, ProjectKind } from '@shared/types'
+import { useEffect, useId, useState } from 'react'
+import type { NewProjectPrefill } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions, go } from '../../store'
-import { Button, Icon, Modal, Toggle, useBusy, type IconName } from '../../ui'
-import { patchDraft, resetDraft, STARTER_TEAM, tilde, useDraft } from './draft'
+import { actions } from '../../store'
+import { openNewChat } from '../../lead'
+import { Button, Modal, useBusy } from '../../ui'
+import { defaultTeam } from './draft'
+import { RepoNameField, useRepoName } from './RepoName'
 import './projects.css'
 
-const SOURCES: { id: ProjectKind; icon: IconName; title: string; sub: string }[] = [
-  { id: 'repo', icon: 'branch', title: 'GitHub repo', sub: 'Clone it and work on branches' },
-  { id: 'folder', icon: 'folder', title: 'Local folder', sub: 'Use a folder already on your Mac' },
-  { id: 'scratch', icon: 'burst', title: 'From scratch', sub: 'Start from your starter kit' }
-]
+/** "Habit tracker" becomes "habit-tracker": the folder's name. */
+const folderOf = (name: string) => name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
 
-/** NewProject.png: name it, pick where it comes from, pick the team, create. Connect a repo and Open a folder fill the source. */
+/**
+ * New project from scratch (KERNEL-947): a name, where the folder goes, and its private GitHub repo. It is always an empty repo
+ * with a README; Kernel makes it, commits it and pushes it (KERNEL-944). Cloning and opening a folder have their own dialogs, so
+ * a prefill for either opens that one instead.
+ */
 export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
-  useLayoutEffect(() => { if (prefill) resetDraft({ ...prefill, desc: prefill.desc ?? '', baseBranch: prefill.baseBranch ?? '', named: true }) }, [])
-  const d = useDraft()
+  useEffect(() => {
+    if (prefill?.source === 'repo') actions.ui.openModal({ name: 'connectRepo' })
+    else if (prefill?.source === 'folder') actions.ui.openModal({ name: 'openFolder' })
+  }, [])
+  const [name, setName] = useState(prefill?.source === 'scratch' ? prefill.name : '')
+  const [parent, setParent] = useState('~/Projects')
   const [busy, run] = useBusy()
   const [error, setError] = useState<string | null>(null)
+  const repo = useRepoName(folderOf(name))
   const id = useId()
 
-  const close = actions.ui.closeModal
-  const ready = d.name.trim() !== '' && d.from.trim() !== ''
-  const change = () => actions.ui.openModal({ name: d.source === 'repo' ? 'connectRepo' : 'openFolder' })
-  const toggle = (member: string) => patchDraft({ team: d.team.includes(member) ? d.team.filter((m) => m !== member) : [...d.team, member] })
-
+  const folder = folderOf(name)
+  const ready = !!folder && repo.ready
+  const browse = async () => {
+    const chosen = await call('system.pickFolder', undefined)
+    if (chosen) setParent(chosen.replace(/^\/Users\/[^/]+/, '~'))
+  }
   const create = () => run('create', async () => {
+    if (!ready) return
     setError(null)
     try {
       const project = await call('projects.create', {
-        source: d.source, name: d.name.trim(), desc: d.desc.trim() || undefined, from: d.from.trim(), baseBranch: d.baseBranch.trim() || undefined,
-        team: d.team, autostart: d.autostart, cloneTo: d.source === 'folder' ? undefined : d.cloneTo, initGit: d.initGit
+        source: 'scratch', name: name.trim(), from: '', cloneTo: `${parent.replace(/\/+$/, '')}/${folder}`, team: defaultTeam(), autostart: false,
+        github: { owner: repo.owner, name: repo.name }
       })
       actions.projects.upsert(project)
-      go({ name: 'onboarding', step: 'project', projectId: project.id })
+      openNewChat(project.id)
     } catch (e) { setError(cleanError(e)) }
   })
 
-  const field = d.source === 'repo'
-    ? { label: 'Repository', value: d.from || 'Choose a repository', action: 'Change' }
-    : d.source === 'folder'
-      ? { label: 'Folder', value: d.from ? tilde(d.from) : 'Choose a folder', action: 'Change' }
-      : { label: 'Starter kit', value: d.from || 'starter-kit', action: '' }
-
   return (
     <Modal
-      title="New project" onClose={close} bare width={640} top={92}
+      title="New project" onClose={actions.ui.closeModal} width={560} top={112}
       footer={
         <>
-          <Toggle checked={d.autostart} onChange={(v) => patchDraft({ autostart: v })} label="Brief Kernel right away" />
-          <span className="grow np-hint">
-            {error ? <span role="alert" className="del">{error}</span> : <span aria-hidden="true">Brief Kernel right away</span>}
-          </span>
-          <Button variant="ghost" size="lg" onClick={close}>Cancel</Button>
-          <Button variant="primary" size="lg" busy={!!busy} busyLabel="Creating" disabled={!ready} onClick={() => void create()}>Create project</Button>
+          <span className="nps-other">Or <button type="button" className="cr-link" onClick={() => actions.ui.openModal({ name: 'connectRepo' })}>clone a repo</button> or <button type="button" className="cr-link" onClick={() => actions.ui.openModal({ name: 'openFolder' })}>open a folder</button></span>
+          <span className="grow" />
+          <Button variant="ghost" size="lg" onClick={actions.ui.closeModal}>Cancel</Button>
+          <Button variant="primary" size="lg" disabled={!ready} busy={busy !== null} busyLabel="Creating" onClick={() => void create()}>Create project</Button>
         </>
       }
     >
-      <div className="nr-crumbs">
-        <span className="nr-crumb">Projects</span>
-        <Icon name="right" size={12} />
-        <span>New project</span>
-        <span className="grow" />
-        <button type="button" data-close className="icon-btn" aria-label="Close" onClick={close}><Icon name="close" /></button>
-      </div>
-      <div className="nr-body">
-        <div className="col np-gap-6">
-          <label htmlFor={`${id}n`} className="sr-only">Project name</label>
-          <input id={`${id}n`} className="nr-name" autoComplete="off" placeholder="Project name" value={d.name} onChange={(e) => patchDraft({ name: e.target.value, named: true })} />
-          <label htmlFor={`${id}d`} className="sr-only">What this project builds</label>
-          <input id={`${id}d`} className="nr-desc" autoComplete="off" placeholder="What should this project build?" value={d.desc} onChange={(e) => patchDraft({ desc: e.target.value })} />
+      <form className="nps-body" onSubmit={(e) => { e.preventDefault(); void create() }}>
+        <p className="nps-intro">Kernel makes the folder with a README, runs <code>git init</code>, creates a private GitHub repo as <code>origin</code> and pushes <code>main</code>.</p>
+        <div className="nps-field">
+          <label className="rn-label" htmlFor={`${id}n`}>Name</label>
+          <input id={`${id}n`} className="rn-input" autoComplete="off" placeholder="Habit tracker" value={name} onChange={(e) => setName(e.target.value)} data-autofocus />
         </div>
-
-        <div className="col np-gap-8">
-          <p className="nr-label">Start from</p>
-          <div role="radiogroup" aria-label="Start from" className="nr-sources">
-            {SOURCES.map((s) => (
-              <button
-                key={s.id} type="button" role="radio" aria-checked={d.source === s.id} className="nr-source"
-                onClick={() => patchDraft({ source: s.id, from: s.id === d.source ? d.from : '', baseBranch: '', initGit: false, cloneTo: undefined })}
-              >
-                <Icon name={s.icon} size={16} />
-                <span className="col nr-source-text"><span className="nr-source-title">{s.title}</span><span className="nr-source-sub">{s.sub}</span></span>
-                {d.source === s.id && <span className="nr-tick" aria-hidden="true"><Icon name="check" size={12} /></span>}
-              </button>
-            ))}
+        <div className="nps-field">
+          <label className="rn-label" htmlFor={`${id}l`}>Location</label>
+          <div className="row">
+            <input id={`${id}l`} className="rn-input mono grow" autoComplete="off" spellCheck={false} value={parent} onChange={(e) => setParent(e.target.value)} />
+            <Button size="lg" onClick={() => void browse()}>Change…</Button>
           </div>
+          <span className="nps-hint">{folder ? <>Creates <span className="mono">{parent.replace(/\/+$/, '')}/{folder}</span></> : 'Name it to see where it goes'}</span>
         </div>
-
-        <div className="nr-fields">
-          <div className="col np-gap-6">
-            <span className="nr-label">{field.label}</span>
-            <div className="nr-field">
-              {d.source === 'scratch'
-                ? <input aria-label="Starter kit repository" className="nr-field-input mono" placeholder="starter-kit" value={d.from} onChange={(e) => patchDraft({ from: e.target.value })} />
-                : <span className="nr-field-value mono">{field.value}</span>}
-              {field.action && <button type="button" className="nr-change" onClick={change}>{field.action}</button>}
-            </div>
-          </div>
-          <div className="col np-gap-6">
-            <label htmlFor={`${id}b`} className="nr-label">Base branch</label>
-            <input id={`${id}b`} className="nr-field mono nr-branch" autoComplete="off" value={d.baseBranch} placeholder={d.source === 'folder' ? 'Current branch' : 'Detected after clone'} onChange={(e) => patchDraft({ baseBranch: e.target.value })} />
-          </div>
-        </div>
-
-        <div className="col np-gap-8">
-          <p className="nr-label">Team <span className="nr-label-note">from .claude/agents</span></p>
-          <div className="row nr-team">
-            {STARTER_TEAM.map((m) => {
-              const on = m.builtIn || d.team.includes(m.id)
-              return (
-                <button key={m.id} type="button" className="nr-member" aria-pressed={on} disabled={m.builtIn} onClick={() => toggle(m.id)}>
-                  <span className="nr-av" aria-hidden="true">{m.name[0]}</span>{m.name}<span className="mono nr-role">{m.role}</span>
-                </button>
-              )
-            })}
-          </div>
-          <p className="nr-hint">Kernel is built in and always joins. The others are copied into .claude/agents.</p>
-        </div>
-      </div>
+        <RepoNameField repo={repo} label />
+        {error && <p className="del of-err" role="alert">{error}</p>}
+        <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
+      </form>
     </Modal>
   )
 }
-

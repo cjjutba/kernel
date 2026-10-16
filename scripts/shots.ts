@@ -735,6 +735,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   ChatRestoredSpot: scrollUp,
   ChatNewMessages: scrollUpAndReceive,
   WorkspaceScrollTallPlanRoundTripMotion: scrollToTasks,
+  WorkspacePlanRoundTrip: toEnd,
   WorkspaceScrollPlanRoundTripMotion: toEnd,
   WorkspaceScrollRevisedPlanMotion: async (page) => { await toEnd(page); await scrollUp(page) },
   WorkspaceScrollComposerImageMotion: copyImage,
