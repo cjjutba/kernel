@@ -613,6 +613,8 @@ function setupLog(end: 'running' | 'failed' | 'stopped'): PushEvent[] {
 function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { later?: boolean; end?: number | null; pending?: { error?: string }; panel?: boolean; right?: 'files'; collapsed?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
   const started = Date.now() - 42_000
   const setupRun = o.pending ? undefined : status === 'setup' ? { startedAt: started } : { startedAt: started - 26_000, endedAt: started + (o.end === null ? 5_000 : 42_000), end: o.end }
+  // A worktree still being made was asked for a moment ago, and the Working line counts from then.
+  if (o.pending && !o.pending.error) queue = queue.map((q) => ({ ...q, ts: Date.now() - 2_000 }))
   return {
     workspaces: withWorkspace(f, ids.table, { status, setupRun, copied: 2, ...(o.later ? { firstInProject: false } : {}), ...(o.pending ? { baseRef: 'origin/main', worktreePending: o.pending } : {}) }),
     items: { [ids.tableChat]: [] },
@@ -2093,6 +2095,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   })),
+  // A later worktree chat whose worktree isn't made yet: no rows, so the Working line under the message is what says it is under way.
+  SetupLaterChatCreatingWorktree: scene((f) => setupWait(f, 'setup', [setupAsk], { pending: {}, later: true })),
   // A later worktree chat whose setup failed: only the failed row, with Run again and Send anyway.
   SetupLaterChatFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { end: 1, later: true })),
   SetupDone: scene((f) => ({
@@ -2256,6 +2260,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: { ...base.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'hi this is a test prompt' } } }
     }
   }), motion: { action: { click: 'Send' }, ms: 1500, area: '.ws-main' } },
+  /** A send from New chat that fails: the message and the Working line show at once, then the page comes back with the text still in the box and a toast says why. */
+  NewChatSendFailedMotion: { ...scene((f) => {
+    const base = noPlan(leadNoChats(f))
+    return {
+      ...base,
+      lag: { 'lead.start': 500 },
+      fails: { 'lead.start': 'Kernel could not reach the remote.' },
+      ui: { ...base.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'hi this is a test prompt' } } }
+    }
+  }), motion: { action: { click: 'Send' }, ms: 1000, area: '.ws-main' } },
   /** A typed send in a short chat: the message appears at the end at once and nothing moves besides the new row. */
   WorkspaceSendShortMotion: { ...scene(() => ({
     ...withDraft({ items: { [ids.tableChat]: tableItems.slice(0, 1) }, ui: open }, 'Now add a CSV export for the filtered rows.'),

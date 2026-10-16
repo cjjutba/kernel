@@ -106,16 +106,26 @@ export async function sendQueuedNow(chatId: string, q: QueuedMessage): Promise<v
   }
 }
 
+const sent = new Map<string, number>()
+
+/**
+ * When the window sent a message New chat started, by its id. The engine stamps the row when the turn starts, after the worktree is made, so the
+ * working line counts from the press instead and doesn't go back to 0s as the chat opens. A reload forgets it, and the row's own time counts.
+ */
+export function markSent(id: string, at = Date.now()): void { if (!sent.has(id)) sent.set(id, at) }
+export const sentAt = (id: string): number | undefined => sent.get(id)
+
 /**
  * A chat New chat just started has its first message in the tray while its worktree is made, or as a row with the turn running. The chat opens with that already drawn, under
  * the id the start was given, so main's row or queued message replaces it in place. Nothing is drawn when the chat already holds the message.
  */
 export function drawStarted(chatId: string, id: string, parts: ChatPart[]): void {
+  markSent(id)
   const s = getState()
   if ((s.items[chatId] ?? []).some((i) => i.id === id) || (s.queue[chatId] ?? []).some((q) => q.id === id)) return
   const ws = Object.values(s.chats).flat().find((c) => c.id === chatId)?.workspaceId
   const making = ws ? s.workspaces.find((w) => w.id === ws)?.worktreePending : undefined
-  const ts = Date.now()
+  const ts = sentAt(id) ?? Date.now()
   if (making || s.running[chatId] || !s.system.online) actions.chats.draw(chatId, { queue: [...(s.queue[chatId] ?? []), { id, chatId, parts, ts, clientId: id }], why: making ? 'setup' : s.system.online ? undefined : 'offline' })
   else actions.chats.draw(chatId, { item: { kind: 'user', id, ts, parts }, running: true })
 }

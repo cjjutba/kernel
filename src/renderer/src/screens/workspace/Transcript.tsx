@@ -28,7 +28,7 @@ import { isHiddenUpdate } from './cards/teamUpdate'
 import { LocalMergeRow } from './pr/LocalMerge'
 import { ReviewCard } from './pr/ReviewCard'
 import { LEAD_MODE_ICON } from './composer/modes'
-import { retryMessage, sendMessage } from './composer/sendMessage'
+import { retryMessage, sendMessage, sentAt } from './composer/sendMessage'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
 import { countNew, keepOpen, leftAtEnd, markRevealed, opensAtEnd, placeTop, readPlace, savePlace, shouldReveal, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
@@ -698,9 +698,9 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
 
 /**
  * The line at the end of a running turn, under every fold, card and note: the spinner and the seconds since the turn started, counted from the message's own
- * timestamp so it is right after a reload. While a request waits on the reader it says "Waiting for you", with no spinner and no clock.
+ * timestamp so it is right after a reload, or from the press of Send for a chat New chat just started. New chat and the setup wait draw it too. While a request waits on the reader it says "Waiting for you", with no spinner and no clock.
  */
-function TurnLine({ since, waiting }: { since: number; waiting: boolean }) {
+export function TurnLine({ since, waiting }: { since: number; waiting: boolean }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (waiting) return
@@ -1004,7 +1004,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     arrived.current = true
     owner.follow()
   }, [items.length, loose.length, running, queued, loaded])
-  const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return items[i].ts; return Date.now() }, [items])
+  const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return Math.min(items[i].ts, sentAt(items[i].id) ?? Infinity); return Date.now() }, [items])
   // This chat is on screen, so it is read, whether the window has focus or not. Main can't tell which chat is shown, so it clears the flag when asked:
   // on opening the chat, and again whenever a turn ends in it while it stays open (KERNEL-507, KERNEL-508).
   const unreadAt = chat.unreadAt
