@@ -113,15 +113,14 @@ describe('chat scroll races (KERNEL-952)', () => {
       expect(r.clash()).toEqual([])
     })
 
-    // (b) A pending plan taller than the view, read from its task list: the restore of that spot and a plan reveal both aim at the view.
-    it.fails('(b) a spot restore and a plan reveal aimed elsewhere both write when a tall plan opens', async () => {
+    // (b) A pending plan taller than the view, read from its task list: the open restore is still holding when the plan reveal starts, in the order `reveal` uses (the hold stops, then the glide starts).
+    it('(b) a plan reveal that stops the spot restore first leaves one mover per frame', async () => {
       const { holdView } = await place()
       const { createGlider, easingOf } = await glide()
       const r = rig({ scrollTop: 0, scrollHeight: 4200 })
-      r.as('hold', () => holdView({ put: () => { r.view.scrollTop = 3000; return r.view.scrollTop }, ends: false, over: () => false, following: () => false, now: r.now, raf: r.raf('hold'), caf: r.caf, capMs: 1500, frames: () => undefined }))
+      const hold = r.as('hold', () => holdView({ put: () => { r.view.scrollTop = 3000; return r.view.scrollTop }, ends: false, over: () => false, following: () => false, now: r.now, raf: r.raf('hold'), caf: r.caf, capMs: 1500, frames: () => undefined }))
       const g = createGlider(() => r.view, { now: r.now, raf: r.raf('glide'), caf: r.caf, reduced: () => false, ease: () => easingOf(undefined) })
-      r.as('glide', () => g.start({ goal: () => 2600, holdMs: 400 }))
-      for (let i = 0; i < 20; i++) r.tick()
+      for (let i = 0; i < 20; i++) r.tick(() => { if (i === 2) { hold.stop(); r.as('glide', () => g.start({ goal: () => 2600, holdMs: 400 })) } })
       expect(r.clash()).toEqual([])
     })
 
@@ -160,16 +159,16 @@ describe('chat scroll races (KERNEL-952)', () => {
       expect(followsAfterScroll(false, r.view, before, false)).toBe(false)
     })
 
-    // (f) Case (a) under reduced motion: a reveal that places the view at once and the restore that holds it share the first frame.
-    it.fails('(f) under reduced motion the reveal and the open restore both write in the first frame', async () => {
+    // (f) Case (a) under reduced motion: the reveal places the view at once, in the order `reveal` uses (the hold stops, then the glide starts).
+    it('(f) under reduced motion the reveal stops the open restore before it places the view', async () => {
       const { holdView } = await place()
       const { createGlider, easingOf } = await glide()
       const r = rig({ scrollTop: 0, scrollHeight: 2400 })
-      r.as('hold', () => holdView({ put: () => { r.view.scrollTop = r.end(); return r.view.scrollTop }, ends: true, over: () => false, following: () => true, now: r.now, raf: r.raf('hold'), caf: r.caf, capMs: 1500, frames: () => undefined }))
+      const hold = r.as('hold', () => holdView({ put: () => { r.view.scrollTop = r.end(); return r.view.scrollTop }, ends: true, over: () => false, following: () => true, now: r.now, raf: r.raf('hold'), caf: r.caf, capMs: 1500, frames: () => undefined }))
       const g = createGlider(() => r.view, { now: r.now, raf: r.raf('glide'), caf: r.caf, reduced: () => true, ease: () => easingOf(undefined) })
-      r.as('glide', () => g.start({ goal: () => r.end() - 500 }))
-      for (let i = 0; i < 12; i++) r.tick()
+      for (let i = 0; i < 12; i++) r.tick(() => { if (i === 1) { hold.stop(); r.as('glide', () => g.start({ goal: () => r.end() - 500 })) } })
       expect(r.clash()).toEqual([])
+      expect(r.view.scrollTop).toBe(r.end() - 500)
     })
   })
 })
