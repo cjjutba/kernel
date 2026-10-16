@@ -8,7 +8,7 @@
    is inline over this (Workspace.tsx), and its resize handle sits on the left border (components/resize.css). */
 .ws-aside { position: relative; grid-column: 2; grid-row: 1 / span 2; width: clamp(320px, 28vw, 400px); display: flex; flex-direction: column; border-left: 1px solid var(--line); min-height: 0; background: var(--panel); }
 .ws-aside-head { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 0; padding: 0; border-bottom: 1px solid var(--line); }
-.crumb-avatar { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: 10px; font-weight: 600; }
+.crumb-avatar { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: var(--fs-tile); font-weight: var(--fw-semibold); }
 .crumb { flex-shrink: 0; max-width: 30%; overflow: hidden; text-overflow: ellipsis; padding: 0; border: 0; background: transparent; color: var(--ink-2); }
 .crumb:hover { color: var(--ink); }
 /* The title is the only thing in the header that shrinks, and it cuts off with an ellipsis. Its hover box reaches 6px into the gaps on
@@ -18,38 +18,38 @@
 .ws-title-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ws-title-btn:hover { background: var(--hover); }
 /* What the Lead's workspace and a current-branch workspace follow. A label, not a branch to copy. */
-.ws-label { flex-shrink: 4; min-width: 0; font-size: 12px; }
+.ws-label { flex-shrink: 4; min-width: 0; font-size: var(--fs-meta); }
 .header .icon-btn, .ws-aside-head .icon-btn { flex-shrink: 0; }
 /* The one panel toggle, fixed 10px from the screen's right edge (the header's padding) and 8px from its top, whole pixels so it can't
    round differently in the header and the band. The slots hold its project and are never a drag region or a click target. */
 .ws-panel > .panel-toggle { position: absolute; top: 8px; right: 10px; z-index: 2; -webkit-app-region: no-drag; }
 .panel-toggle-slot { flex: none; width: 28px; height: 28px; }
-.ws-issue { flex-shrink: 0; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: var(--r-xs); background: transparent; color: var(--ink-2); font-family: var(--mono); font-size: 11.5px; }
+.ws-issue { flex-shrink: 0; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: var(--r-xs); background: transparent; color: var(--ink-2); font-family: var(--mono); font-size: var(--fs-chip); }
 button.ws-issue { cursor: pointer; }
 button.ws-issue:hover { background: var(--surface-3); }
 
 /* header: the pull request area is in pr/pr.css */
-.btn.small { height: 26px; padding: 0 10px; border-radius: var(--r-sm); font-size: 12px; }
+.btn.small { height: 26px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 
 /* tabs row */
 .ws-tabs { position: relative; height: 40px; flex-shrink: 0; display: flex; align-items: flex-end; padding: 0 12px; border-bottom: 1px solid var(--line); }
 /* The underline spans the whole group, so the pen and the close button sit inside the tab, as in Conductor (D-088). */
 .tab-group { position: relative; display: inline-flex; align-items: center; height: 40px; min-width: 0; padding-right: 4px; border-bottom: 2px solid transparent; }
 .tab-group[data-on] { border-bottom-color: var(--ink); }
-.ws-tab { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 100%; max-width: 220px; padding: 0 12px; border: 0; background: transparent; color: var(--ink-2); font-size: 13px; font-weight: 500; }
+.ws-tab { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 100%; max-width: 220px; padding: 0 12px; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); font-weight: var(--fw-medium); }
 .tab-glyph { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .tab-glyph > svg { flex-shrink: 0; }
 .tab-glyph[data-tone='needs'] svg { color: var(--ink); }
 .ws-tab:hover { color: var(--ink); }
 .ws-tab[aria-selected='true'] { color: var(--ink); }
 /* A tab with a reply you haven't seen is bold, like its sidebar row (KERNEL-508). The tab on screen is read, so it is never marked. */
-.ws-tab[data-unread] { color: var(--ink); font-weight: 600; }
+.ws-tab[data-unread] { color: var(--ink); font-weight: var(--fw-semibold); }
 /* The pen and the close button share one slot. Focus only counts from the keyboard, so a clicked tab keeps its pen. */
 .tab-end { display: inline-grid; place-items: center; margin-left: -8px; }
 .tab-end > * { grid-area: 1 / 1; }
 .tab-pen { display: flex; color: var(--muted); pointer-events: none; }
 .tab-caret { width: 22px; height: 22px; border-radius: var(--r-sm); }
-.tab-caret.more, .tab-pen { transition: opacity 0.12s; }
+.tab-caret.more, .tab-pen { transition: opacity var(--dur-fast); }
 .tab-caret.more { opacity: 0; }
 .tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more, .tab-group[data-rest] .tab-caret.more { opacity: 1; }
 .tab-group:hover .tab-pen, .tab-group:has(:focus-visible) .tab-pen { opacity: 0; }
@@ -73,31 +73,31 @@ button.ws-issue:hover { background: var(--surface-3); }
 /* The list is a menu popover, 8px left of the rail and level with its top. The pop's padding is the hover bridge over that gap. 15 rows and a half row show before it scrolls. */
 .rail-pop { position: absolute; top: 0; right: 100%; padding-right: 8px; }
 .rail-list { position: relative; width: min(320px, calc(100cqw - 48px)); max-height: 440px; overflow-y: auto; padding: 6px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: var(--surface-2); }
-.rail-opt { display: flex; align-items: baseline; gap: 8px; height: 28px; padding: 0 10px; border-radius: var(--r-sm); font-size: 13px; line-height: 28px; color: var(--ink-2); cursor: default; }
+.rail-opt { display: flex; align-items: baseline; gap: 8px; height: 28px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-ui); line-height: 28px; color: var(--ink-2); cursor: default; }
 .rail-opt-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rail-opt-nx { flex-shrink: 0; font-size: 12px; color: var(--faint); }
-.rail-opt[data-now] { color: var(--ink); font-weight: 500; }
+.rail-opt-nx { flex-shrink: 0; font-size: var(--fs-meta); color: var(--faint); }
+.rail-opt[data-now] { color: var(--ink); font-weight: var(--fw-medium); }
 .rail-opt[data-update] { color: var(--muted); }
 .rail-opt[data-active] { background: var(--hover); color: var(--ink); }
 .rail-opt[data-update][data-active] { color: var(--ink-2); }
 /* The jumped-to message holds a 1px ring for 1.2s, fading over the last 400ms. */
 @keyframes jump-ring { 0%, 66.6% { outline-color: var(--line-4); } 100% { outline-color: transparent; } }
-.msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { outline: 1px solid var(--line-4); animation: jump-ring 1.2s linear forwards; }
+.msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { outline: 1px solid var(--line-4); animation: jump-ring var(--dur-ring) linear forwards; }
 @media (prefers-reduced-motion: reduce) { .msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { animation: none; } }
 .thread { width: 100%; max-width: 760px; margin: 0 auto auto; display: flex; flex-direction: column; gap: 12px; }
 /* Rows far above the end skip layout and paint while off screen, and `auto` remembers the height each last had. The last twelve are left alone, so a short chat draws as it always did. The clip margin keeps focus rings, which reach past a row, from being cut. A step row bleeds 8px past its row for its hover fill, and its focus ring sits 1px further out and is 2px thick, so a ring reaches 11px out. 12px covers it (KERNEL-375). */
 .thread > :nth-last-child(n+13) { content-visibility: auto; contain-intrinsic-block-size: auto 60px; overflow-clip-margin: 12px; }
 .msg { display: flex; flex-direction: column; }
 .msg-user { align-self: flex-end; max-width: 82%; align-items: flex-end; gap: 4px; }
-.bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink-2); font-size: 14px; line-height: 1.7; }
+.bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink-2); font-size: var(--fs-chat); line-height: var(--lh-loose); }
 /* The setup wait (KERNEL-430): messages waiting for setup sit where they will land, at lower contrast, with one line or card for setup. */
 .msg-user[data-queued] .bubble { background: var(--surface); color: var(--muted); }
-.queued-meta { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--muted); }
-.link-btn { padding: 0; border: 0; background: none; color: var(--ink-3); font-size: 12px; }
+.queued-meta { display: flex; align-items: center; gap: 14px; font-size: var(--fs-meta); color: var(--muted); }
+.link-btn { padding: 0; border: 0; background: none; color: var(--ink-3); font-size: var(--fs-meta); }
 .link-btn:hover { color: var(--ink); }
 .setup-line { display: flex; align-items: center; gap: 10px; color: var(--muted); }
 .setup-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 10px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: var(--input-bg); }
-.msg-chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; margin-right: 4px; padding: 0 7px; vertical-align: middle; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: 11.5px var(--mono); color: var(--ink-2); }
+.msg-chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; margin-right: 4px; padding: 0 7px; vertical-align: middle; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: var(--fs-chip) var(--mono); color: var(--ink-2); }
 .msg-chip svg { color: var(--muted); }
 .msg-chip .chip-meta { color: var(--muted); }
 .msg-chip[data-state='unreadable'] { opacity: 0.6; }
@@ -107,24 +107,24 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .msg-reply { gap: 6px; }
 .msg-kernel { gap: 4px; }
 /* Kernel's message as one note line that opens to its full text (KernelNote). */
-.knote { width: 100%; border: 0; font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.knote { width: 100%; border: 0; font: inherit; font-size: var(--fs-code); text-align: left; cursor: pointer; }
 .knote .note-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .knote { align-items: flex-start; }
-.knote > svg { margin-top: 4px; transition: transform 120ms; }
-.msg-kernel[data-open] .knote .note-text { overflow: visible; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.knote > svg { margin-top: 4px; transition: transform var(--dur-fast); }
+.msg-kernel[data-open] .knote .note-text { overflow: visible; white-space: pre-wrap; overflow-wrap: anywhere; line-height: var(--lh-relaxed); }
 .msg-kernel[data-open] .knote .note-rule { display: none; }
 .msg-kernel[data-open] .knote > svg { transform: rotate(90deg); }
 .knote:hover { color: var(--ink-2); }
-.knote-full { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 2px 0 2px 20px; color: var(--ink-3); font-size: 12.5px; line-height: 1.6; }
+.knote-full { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 2px 0 2px 20px; color: var(--ink-3); font-size: var(--fs-code); line-height: var(--lh-relaxed); }
 .knote-full p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.msg-acts { display: flex; gap: 2px; height: 24px; opacity: 0; transition: opacity 0.12s; }
+.msg-acts { display: flex; gap: 2px; height: 24px; opacity: 0; transition: opacity var(--dur-fast); }
 .msg-reply .msg-acts { margin-left: -5px; }
 /* An open "..." menu or a fork on its way keeps the row up when the pointer leaves. */
 .msg:hover .msg-acts, .msg:focus-within .msg-acts, .msg-foot:hover .msg-acts, .msg-foot:focus-within .msg-acts, .msg-acts:has([aria-expanded='true']), .msg-acts[data-busy] { opacity: 1; }
 .msg-acts .icon-btn { width: 24px; height: 24px; border-radius: var(--r-sm); }
 /* Copy alone under an agent line (KERNEL-828): it floats in the gap under the line, so the line keeps its height. */
 .msg-reply[data-copy] { position: relative; }
-.msg-copy { position: absolute; right: 0; bottom: -15px; z-index: 1; opacity: 0; transition: opacity 0.12s; }
+.msg-copy { position: absolute; right: 0; bottom: -15px; z-index: 1; opacity: 0; transition: opacity var(--dur-fast); }
 .msg:hover .msg-copy, .msg:focus-within .msg-copy { opacity: 1; }
 .msg-copy .icon-btn { width: 22px; height: 22px; border-radius: var(--r-sm); }
 /* The end of a finished turn (KERNEL-346): its time, always shown, then the reply's actions on the same line. */
@@ -134,21 +134,21 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .msg-more .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
 .msg-reply .tf { margin-top: 8px; }
 .msg-reply .tf + .msg-foot { margin-top: 0; }
-.md { font-size: 14px; line-height: 1.6; color: var(--ink-2); }
+.md { font-size: var(--fs-chat); line-height: var(--lh-relaxed); color: var(--ink-2); }
 .md > * { margin: 0 0 8px; }
 .md > *:last-child { margin-bottom: 0; }
 .md p { white-space: pre-wrap; }
-.md-h { font-weight: 600; color: var(--ink); line-height: 1.4; }
-.md-h[data-level='1'] { font-size: 17px; }
-.md-h[data-level='2'] { font-size: 15px; }
-.md-h[data-level='3'] { font-size: 14px; }
-.md-h[data-level='4'] { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.md-h { font-weight: var(--fw-semibold); color: var(--ink); line-height: var(--lh-snug); }
+.md-h[data-level='1'] { font-size: var(--fs-md-h1); }
+.md-h[data-level='2'] { font-size: var(--fs-sub); }
+.md-h[data-level='3'] { font-size: var(--fs-chat); }
+.md-h[data-level='4'] { font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink-2); }
 .md > .md-h:not(:first-child) { margin-top: 20px; }
 .md > .md-h[data-level='3']:not(:first-child), .md > .md-h[data-level='4']:not(:first-child) { margin-top: 14px; }
 .md ul, .md ol { padding-left: 22px; }
 .md li + li { margin-top: 3px; }
 .md li::marker { color: var(--muted); }
-.md ol > li::marker { font: 12.5px var(--mono); }
+.md ol > li::marker { font: var(--fs-code) var(--mono); }
 .md li > ul, .md li > ol, .md li > p, .md li > blockquote, .md li > .codeblock, .md li > .md-table { margin: 4px 0 0; }
 .md ul[data-tasks] { padding-left: 2px; }
 .md li[data-task] { list-style: none; display: grid; grid-template-columns: 22px minmax(0, 1fr); }
@@ -160,24 +160,24 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .md blockquote > *:last-child { margin-bottom: 0; }
 .md hr { height: 0; margin: 18px 0; border: 0; border-top: 1px solid var(--line-2); }
 .md-table { overflow-x: auto; border: 1px solid var(--line-2); border-radius: var(--r); }
-.md-table table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.5; }
+.md-table table { width: 100%; border-collapse: collapse; font-size: var(--fs-ui); line-height: var(--lh); }
 .md-table th, .md-table td { padding: 7px 12px; text-align: left; vertical-align: top; border-top: 1px solid var(--line-2); }
-.md-table th { border-top: 0; font-weight: 500; color: var(--ink-2); background: var(--surface); }
+.md-table th { border-top: 0; font-weight: var(--fw-medium); color: var(--ink-2); background: var(--surface); }
 .md-table:focus-visible { outline: 1px solid var(--ink-3); outline-offset: 1px; }
-.md-doc .md-h[data-level='1'] { font-size: 26px; line-height: 1.25; letter-spacing: -0.01em; }
-.md-doc .md-h[data-level='2'] { font-size: 19px; line-height: 1.3; }
-.md-doc .md-h[data-level='3'] { font-size: 15.5px; }
+.md-doc .md-h[data-level='1'] { font-size: var(--fs-page); line-height: var(--lh-tight); letter-spacing: -0.01em; }
+.md-doc .md-h[data-level='2'] { font-size: var(--fs-doc-h2); line-height: var(--lh-heading); }
+.md-doc .md-h[data-level='3'] { font-size: var(--fs-doc-h3); }
 .md-doc > * { margin-bottom: 12px; }
 .md-doc > .md-h { margin-bottom: 12px; }
 .md-doc > .md-h:not(:first-child) { margin-top: 28px; }
 .md-doc > .md-h[data-level='3']:not(:first-child), .md-doc > .md-h[data-level='4']:not(:first-child) { margin-top: 18px; }
 .md-doc li + li { margin-top: 5px; }
-.md-code { padding: 1px 5px; border: 1px solid var(--line-3); border-radius: var(--r-xs); background: var(--surface-2); color: var(--ink); font: 12.5px var(--mono); overflow-wrap: anywhere; }
+.md-code { padding: 1px 5px; border: 1px solid var(--line-3); border-radius: var(--r-xs); background: var(--surface-2); color: var(--ink); font: var(--fs-code) var(--mono); overflow-wrap: anywhere; }
 /* Bold is the one emphasis a reply has, so it takes full ink at 600 and stands off the body text (KERNEL-526). */
-.md strong { font-weight: 600; color: var(--ink); }
+.md strong { font-weight: var(--fw-semibold); color: var(--ink); }
 .md a { color: var(--ink); }
 .trow { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.trow-btn { width: calc(100% + 16px); margin: -4px -8px; padding: 4px 8px; border: 0; border-radius: var(--r-sm); background: transparent; text-align: left; cursor: default; transition: background 0.12s; }
+.trow-btn { width: calc(100% + 16px); margin: -4px -8px; padding: 4px 8px; border: 0; border-radius: var(--r-sm); background: transparent; text-align: left; cursor: default; transition: background var(--dur-fast); }
 .trow-btn:not(:disabled) { cursor: pointer; }
 /* A row with something to open fills under the pointer and on focus (KERNEL-375). The padding gives the fill project and the margin
    cancels it, so text and icons stay where they were. The fill is the button only, never the opened body under it. */
@@ -188,23 +188,23 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .step-slot { position: relative; flex-shrink: 0; width: 15px; }
 /* A 16px glyph in the 15px slot, with the extra pixel taken from below so the row keeps the height it had at 15 (icon-sizes-and-stroke). */
 .step-slot:not(.step-glyph) > svg { margin-bottom: -1px; }
-.step-slot > :not(.step-chev) { transition: opacity 0.12s; }
-.chev.step-chev { position: absolute; top: 0; bottom: 0; left: 0; width: 15px; align-items: center; justify-content: center; color: var(--muted); opacity: 0; transition: opacity 0.12s, transform 0.12s; }
+.step-slot > :not(.step-chev) { transition: opacity var(--dur-fast); }
+.chev.step-chev { position: absolute; top: 0; bottom: 0; left: 0; width: 15px; align-items: center; justify-content: center; color: var(--muted); opacity: 0; transition: opacity var(--dur-fast), transform var(--dur-fast); }
 .trow-btn:not(:disabled):hover .step-chev, .trow-btn:focus-visible .step-chev, .trow-btn[aria-expanded='true'] .step-chev { opacity: 1; }
 .trow-btn:not(:disabled):hover .step-slot > :not(.step-chev), .trow-btn:focus-visible .step-slot > :not(.step-chev), .trow-btn[aria-expanded='true'] .step-slot > :not(.step-chev) { opacity: 0; }
 /* An open row lines up under its label, past the 15px icon and the 10px gap. */
 .step-body { display: flex; flex-direction: column; gap: 4px; margin-left: 25px; min-width: 0; }
 .step-cut { display: block; margin-top: 6px; color: var(--muted); }
-.step-text { font-size: 13px; line-height: 1.6; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.step-text { font-size: var(--fs-ui); line-height: var(--lh-relaxed); color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .step-text .md { color: inherit; font-size: inherit; white-space: normal; }
 /* An opened message row (KERNEL-840): its text in the same muted ink as thinking, with Copy in the corner on hover and focus. */
 .step-msg { position: relative; padding-right: 28px; }
-.step-copy { position: absolute; top: -2px; right: 0; opacity: 0; transition: opacity 0.12s; }
+.step-copy { position: absolute; top: -2px; right: 0; opacity: 0; transition: opacity var(--dur-fast); }
 .step-msg:hover .step-copy, .step-msg:focus-within .step-copy { opacity: 1; }
 .step-copy .icon-btn { width: 22px; height: 22px; border-radius: var(--r-sm); }
-.group-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; height: 26px; max-width: 100%; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
+.group-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; height: 26px; max-width: 100%; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--fs-ui); }
 .group-btn:hover { color: var(--ink-2); }
-.chev { display: inline-flex; flex-shrink: 0; width: 12px; transition: transform 0.12s; }
+.chev { display: inline-flex; flex-shrink: 0; width: 12px; transition: transform var(--dur-fast); }
 .chev[data-open='true'] { transform: rotate(90deg); }
 .group-text { min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* What went wrong in a run or a summary, after its sentence. */
@@ -225,7 +225,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .ws-scroll[data-opening] .group-collapse[data-animate][data-open] > .group-list { animation: none; }
 @keyframes group-open { from { grid-template-rows: 0fr; } to { grid-template-rows: 1fr; } }
 @keyframes group-clip { from, to { overflow: hidden; } }
-.group-earlier { align-self: flex-start; height: 26px; margin: 4px 0 0 21px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
+.group-earlier { align-self: flex-start; height: 26px; margin: 4px 0 0 21px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--fs-ui); }
 .group-earlier:hover { color: var(--ink-2); }
 .group-item { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px 0; }
 .group-item:not(:last-child)::after { content: ''; position: absolute; left: 7px; top: 29px; bottom: -7px; width: 1px; background: var(--line-2); pointer-events: none; }
@@ -236,16 +236,16 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* A row's preview is a sentence: what it touched, in the muted body face, then its folder fainter and, on a failure, the error's first line. Only a raw command is mono. */
 .step-dir, .step-det { margin-left: 8px; }
 .step-dir { color: var(--faint); }
-.step-cmd { font-size: 12px; }
+.step-cmd { font-size: var(--fs-meta); }
 /* An opened row is one hairline card. Each section has a small muted heading with its Copy in the corner, always shown, then its text capped
    at 260px with a fade where it is cut. Copy raw call sits in the card's footer. Ink and weight only: red and green are for diff lines. */
 .tool-card { border: 1px solid var(--line-2); border-radius: var(--r-md); overflow: hidden; min-width: 0; }
 .tool-sec + .tool-sec, .tool-foot { border-top: 1px solid var(--line-2); }
 .tool-head { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 4px 0 12px; }
-.tool-title { font-size: 11.5px; font-weight: 500; color: var(--muted); }
-.tool-note { font: 11.5px var(--mono); color: var(--faint); }
+.tool-title { font-size: var(--fs-chip); font-weight: var(--fw-medium); color: var(--muted); }
+.tool-note { font: var(--fs-chip) var(--mono); color: var(--faint); }
 .tool-head > .icon-btn { margin-left: auto; width: 24px; height: 24px; }
-.tool-body { max-height: 260px; overflow: auto; padding: 0 12px 10px; font: 12px/1.6 var(--mono); color: var(--ink-3); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.tool-body { max-height: 260px; overflow: auto; padding: 0 12px 10px; font: var(--fs-meta)/var(--lh-relaxed) var(--mono); color: var(--ink-3); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .tool-body[data-more] { -webkit-mask-image: linear-gradient(to bottom, var(--canvas) calc(100% - 36px), transparent); mask-image: linear-gradient(to bottom, var(--canvas) calc(100% - 36px), transparent); }
 .tool-body:focus-visible { outline: 1px solid var(--ink-3); outline-offset: -1px; }
 .tool-body .hunk, .tool-body .file { color: var(--faint); }
@@ -257,18 +257,18 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* The turn files card (KERNEL-586): what a turn created, edited and deleted. A card, a 36px header, then 30px rows 2px apart in 6px of padding, like a menu. A row is a button that opens that file's diff. */
 .tf { overflow: hidden; }
 .tf-h { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-bottom: 1px solid var(--line-2); }
-.tf-c { font-size: 13px; color: var(--ink-2); }
+.tf-c { font-size: var(--fs-ui); color: var(--ink-2); }
 .tf-h .tf-n { margin-left: auto; }
-.tf-all { flex: none; margin-left: 8px; padding: 0; border: 0; background: transparent; font-size: 12px; color: var(--muted); }
+.tf-all { flex: none; margin-left: 8px; padding: 0; border: 0; background: transparent; font-size: var(--fs-meta); color: var(--muted); }
 .tf-all:hover, .tf-all:focus-visible { color: var(--ink-2); }
 .tf-b { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
-.tf-r { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 13px; text-align: left; white-space: nowrap; }
+.tf-r { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); text-align: left; white-space: nowrap; }
 .tf-r:hover { background: var(--surface-3); }
 /* The name never gives way to the folder: the folder takes what is left and is cut off first. */
 .tf-nm { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
-.tf-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--muted); }
-.tf-mk { flex: none; width: 56px; text-align: right; font-size: 12px; color: var(--muted); }
-.tf-n { display: flex; flex: none; gap: 6px; font: 11.5px var(--mono); font-variant-numeric: tabular-nums; }
+.tf-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-meta); color: var(--muted); }
+.tf-mk { flex: none; width: 56px; text-align: right; font-size: var(--fs-meta); color: var(--muted); }
+.tf-n { display: flex; flex: none; gap: 6px; font: var(--fs-chip) var(--mono); font-variant-numeric: tabular-nums; }
 .tf-n > span { display: block; text-align: right; white-space: nowrap; }
 .tf-n > .add { width: 42px; }
 .tf-n > .del { width: 38px; }
@@ -276,17 +276,17 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .tf-r:hover .tf-nm, .tf-r:focus-visible .tf-nm { color: var(--ink); }
 .tf-r[data-gone]:hover .tf-nm, .tf-r[data-gone]:focus-visible .tf-nm { color: var(--ink-2); }
 .tf-more, .tf-chev { color: var(--muted); }
-.tf-chev { display: inline-flex; flex-shrink: 0; transition: transform 0.12s; }
+.tf-chev { display: inline-flex; flex-shrink: 0; transition: transform var(--dur-fast); }
 .tf-chev[data-open='true'] { transform: rotate(180deg); }
 .tf-more .tf-nm { flex: 1; max-width: none; text-align: left; color: var(--muted); }
 .tf-more:hover .tf-nm, .tf-more:focus-visible .tf-nm { color: var(--ink-2); }
 /* With no reply, the card sits in the thread's 12px gap under the fold, and the time under it is 10px away. */
 .thread > .tf + .meta { margin-top: -2px; }
-.meta { font-size: 12px; color: var(--muted); }
-.running { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; font: 12.5px var(--mono); color: var(--muted); }
-.interrupted { align-self: flex-start; font: 12px var(--mono); letter-spacing: 0.06em; color: var(--muted); }
-.note { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--r); background: var(--card-bg); color: var(--ink-3); font-size: 12.5px; }
-.note a { color: var(--ink-2); font-weight: 500; white-space: nowrap; }
+.meta { font-size: var(--fs-meta); color: var(--muted); }
+.running { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; font: var(--fs-code) var(--mono); color: var(--muted); }
+.interrupted { align-self: flex-start; font: var(--fs-meta) var(--mono); letter-spacing: 0.06em; color: var(--muted); }
+.note { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--r); background: var(--card-bg); color: var(--ink-3); font-size: var(--fs-code); }
+.note a { color: var(--ink-2); font-weight: var(--fw-medium); white-space: nowrap; }
 /* Kernel's notes in a chat ("PR #42 was merged on GitHub.") read as a quiet line with a hairline after it (KERNEL-274). */
 .note.inline { padding: 2px 0; border-radius: 0; background: transparent; color: var(--muted); }
 .note.inline .note-text { min-width: 0; }
@@ -308,12 +308,12 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .panel-tools { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .panel-tools:empty { display: none; }
 .panel-tools .icon-btn { width: 24px; height: 24px; border-radius: var(--r-sm); }
-.panel-tools .tool-text { height: 24px; margin-right: 4px; padding: 0 9px; border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); font-size: 12px; font-weight: 400; }
+.panel-tools .tool-text { height: 24px; margin-right: 4px; padding: 0 9px; border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); font-size: var(--fs-meta); font-weight: var(--fw-regular); }
 /* The filter under the strip (PanelFilter.png). The match is lit in the row's name and folder. */
 .ffield { flex-shrink: 0; padding: 0 10px 8px; }
 .finput { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 3px 0 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
 .finput:focus-within { border-color: var(--ink-3); }
-.finput input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: 13px; }
+.finput input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); }
 .finput input::placeholder { color: var(--muted); }
 .hl { border-radius: var(--r-2xs); background: color-mix(in srgb, var(--ink) 16%, transparent); color: inherit; }
 /* Both tab strips, the panel's and the bottom's (TabStrip). A narrow panel scrolls the tabs sideways instead of wrapping a label. Only the tablist scrolls, so what follows it stays pinned (KERNEL-489).
@@ -330,44 +330,44 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .tab-more[data-side='right'] { right: 0; justify-content: flex-end; background: linear-gradient(to right, transparent, var(--panel) 58%); }
 .tab-more[data-side='left'] svg { transform: rotate(180deg); }
 /* The Lead's strip, as LeadPrs.png draws it (KERNEL-354): 12.5px tabs with a faint count. */
-.panel-tabs[data-lead] .tab { height: auto; padding: 4px 8px; border-radius: var(--r-sm); font-size: 12.5px; font-weight: 400; }
+.panel-tabs[data-lead] .tab { height: auto; padding: 4px 8px; border-radius: var(--r-sm); font-size: var(--fs-code); font-weight: var(--fw-regular); }
 .panel-tabs[data-lead] [role='tablist'] { gap: 4px !important; } /* Tabs sets its gap inline. */
-.panel-tabs[data-lead] .tab-count { color: var(--muted); font-size: 11.5px; }
+.panel-tabs[data-lead] .tab-count { color: var(--muted); font-size: var(--fs-chip); }
 .panel-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .panel-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px; color: var(--muted); text-align: center; }
 /* File trees (All files, the Changes tree) and the Changes list, drawn like VS Code's explorer (KERNEL-399). */
 .file-tree { display: flex; flex-direction: column; }
-.tree-row { position: relative; display: flex; align-items: center; gap: 4px; flex-shrink: 0; width: 100%; height: 24px; padding-right: 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 13px; text-align: left; }
+.tree-row { position: relative; display: flex; align-items: center; gap: 4px; flex-shrink: 0; width: 100%; height: 24px; padding-right: 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); text-align: left; }
 .tree-row:hover { background: var(--nav-hover); }
 .tree-row[aria-selected='true'], .tree-row[aria-current='true'] { background: var(--surface-3); color: var(--ink); }
 .tree-row .file-icon { flex-shrink: 0; margin-right: 2px; }
 .tree-chev { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; color: var(--muted); }
-.tree-chev svg { transition: transform 0.12s; }
+.tree-chev svg { transition: transform var(--dur-fast); }
 .tree-chev[data-open] svg { transform: rotate(90deg); }
 .tree-guide { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-2); pointer-events: none; }
 .tree-guide[data-lit] { background: var(--line-4); }
 .tree-name { flex: 1; min-width: 0; }
 .tree-name [data-struck], .tree-name[data-struck] { text-decoration: line-through; }
-.tree-counts { display: inline-flex; flex-shrink: 0; gap: 6px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
-.tree-letter { flex-shrink: 0; width: 14px; text-align: center; font: 500 11.5px var(--mono); }
+.tree-counts { display: inline-flex; flex-shrink: 0; gap: 6px; font-size: var(--fs-chip); font-variant-numeric: tabular-nums; }
+.tree-letter { flex-shrink: 0; width: 14px; text-align: center; font: var(--fw-medium) var(--fs-chip) var(--mono); }
 .change-row { gap: 6px; padding-left: 6px; }
-.change-dir { margin-left: 8px; color: var(--muted); font-size: 12px; }
+.change-dir { margin-left: 8px; color: var(--muted); font-size: var(--fs-meta); }
 /* "4 files changed" and its totals, with a hairline under it before the files (KERNEL-274). Review all is in the strip (KERNEL-515). */
 .changes-head { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 40px; margin: 0 -10px 6px; padding: 0 16px; border-bottom: 1px solid var(--line); }
-.changes-count { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--ink-2); }
-.changes-total { display: inline-flex; gap: 6px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.changes-count { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-ui); color: var(--ink-2); }
+.changes-total { display: inline-flex; gap: 6px; font-size: var(--fs-chip); font-variant-numeric: tabular-nums; }
 /* The Changes ⋯ and its menu (PanelCompare.png, KERNEL-517): 332px under the button, 10px clear of it and level with its right edge, narrower in a panel that is. The ⋯ reads pressed while the menu is open. */
 .panel-tools .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
 .compare-anchor { position: relative; display: inline-flex; }
 .compare-menu { top: calc(100% + 10px); right: 0; display: flex; flex-direction: column; width: min(332px, calc(100cqw - 16px)); max-height: min(480px, calc(100vh - 140px)); }
 .compare-menu > * { flex-shrink: 0; }
-.compare-target { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 8px; font-size: 13px; }
+.compare-target { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 8px; font-size: var(--fs-ui); }
 .compare-pick { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 200px; height: 24px; padding: 0 6px 0 9px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); }
-.compare-pick .mono { font-size: 12px; }
+.compare-pick .mono { font-size: var(--fs-meta); }
 .compare-pick svg { flex-shrink: 0; color: var(--muted); }
 .compare-pick:hover, .compare-pick:focus-visible { background: var(--hover); outline: 0; }
 .compare-rule { height: 1px; margin: 6px -6px; background: var(--line-3); }
-.compare-row, .compare-back { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 13px; text-align: left; }
+.compare-row, .compare-back { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); text-align: left; }
 .compare-row:hover, .compare-row:focus-visible, .compare-back:hover, .compare-back:focus-visible { background: var(--hover); outline: 0; }
 .compare-back svg { color: var(--muted); }
 .compare-ck { display: inline-flex; flex-shrink: 0; width: 16px; height: 16px; color: var(--ink); }
@@ -375,16 +375,16 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .compare-commit .compare-ck { margin-top: 1px; }
 .compare-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .compare-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.compare-sub { display: flex; align-items: center; gap: 6px; margin-top: 1px; font-size: 12px; color: var(--muted); white-space: nowrap; }
-.compare-sha { font-size: 11.5px; color: var(--muted); }
+.compare-sub { display: flex; align-items: center; gap: 6px; margin-top: 1px; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
+.compare-sha { font-size: var(--fs-chip); color: var(--muted); }
 .compare-dot { color: var(--faint); }
 .compare-age { margin-left: auto; color: var(--muted); }
 /* The commits and the branches scroll under the rows that stay put. */
 .compare-commits, .compare-list { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; overflow-y: auto; }
-.compare-note { margin: 0; padding: 6px 8px; font-size: 12px; color: var(--muted); }
+.compare-note { margin: 0; padding: 6px 8px; font-size: var(--fs-meta); color: var(--muted); }
 .compare-filter { display: flex; align-items: center; gap: 8px; height: 30px; margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
 .compare-filter:focus-within { border-color: var(--ink-3); }
-.compare-filter input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: 13px; }
+.compare-filter input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); }
 .compare-filter input::placeholder { color: var(--muted); }
 
 /* The right panel under the PR band: the top pane (tabs and their list) over the bottom pane. `--bottom-ratio` is the bottom's share of this box, one for
@@ -395,13 +395,13 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .bottom-panel { position: relative; height: clamp(160px, calc(var(--bottom-ratio, 0.3333) * 100cqh), calc(100cqh - 160px)); flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 .bottom-panel[data-collapsed] { height: 41px; }
 .bottom-panel[data-collapsed] .bottom-tabs { border-bottom: 0; }
-.bottom-word { flex-shrink: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.bottom-word { flex-shrink: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-meta); color: var(--muted); }
 .bottom-tabs { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; border-bottom: 1px solid var(--line); }
 /* The chevron points down while the pane is open and up once it is folded. */
 .bottom-tabs > .icon-btn { width: 24px; height: 24px; border-radius: var(--r-sm); }
 .bottom-tabs > .icon-btn[aria-expanded='false'] svg { transform: rotate(180deg); }
 .bottom-tabs .tab-strip > [role='tablist'] { align-self: stretch; align-items: stretch; }
-.bottom-tabs .tab { display: inline-flex; align-items: center; gap: 6px; height: auto; padding: 0 9px; border-radius: 0; border-bottom: 2px solid transparent; font-size: 12.5px; }
+.bottom-tabs .tab { display: inline-flex; align-items: center; gap: 6px; height: auto; padding: 0 9px; border-radius: 0; border-bottom: 2px solid transparent; font-size: var(--fs-code); }
 .bottom-tabs .tab[aria-selected='true'] { background: transparent; border-bottom-color: var(--ink); }
 .run-split { margin-left: auto; flex-shrink: 0; display: inline-flex; align-items: center; }
 .run-caret-anchor { position: relative; display: inline-flex; margin-left: -1px; }
@@ -412,7 +412,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .run-main:hover:not(:disabled), .run-caret:hover, .run-caret[aria-expanded='true'] { background: var(--surface-3); }
 .run-main:disabled { color: var(--faint); cursor: default; }
 .script-actions { flex-shrink: 0; display: flex; justify-content: flex-end; padding: 8px 12px; }
-.script-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px 24px; color: var(--muted); font: 12px/1.5 var(--font); text-align: center; }
+.script-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px 24px; color: var(--muted); font: var(--fs-meta)/var(--lh) var(--font); text-align: center; }
 .script-empty .btn { margin: 4px 0; }
 /* The Run button under the play icon has the 4px above it and nothing under it, as PanelSplit.png draws it (KERNEL-512). */
 .script-empty .btn.idle-run { margin-bottom: 0; }
@@ -420,14 +420,14 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .add-setup > * { flex: none; }
 .add-setup-pick { display: flex; flex-direction: column; gap: 2px; align-items: stretch; width: min(420px, 100%); margin: 4px 0 4px; padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--r-md); text-align: left; }
 .add-setup-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.add-setup-script { margin: 0; max-height: 36px; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 18px; color: var(--ink); white-space: pre; }
+.add-setup-script { margin: 0; max-height: 36px; overflow: auto; font-family: var(--mono); font-size: var(--fs-meta); line-height: 18px; color: var(--ink); white-space: pre; }
 .add-setup-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .add-setup-actions { display: flex; gap: 8px; }
 .add-setup-actions .btn { margin: 0; }
 .script-empty-icon { display: inline-flex; color: var(--ink-3); }
 .script-empty-icon path { fill: currentColor; }
 .run-picker { flex-shrink: 0; padding: 10px 16px 0; }
-.log { flex: 1; min-height: 0; overflow: auto; padding: 6px 16px 12px; font-size: 12px; line-height: 1.7; }
+.log { flex: 1; min-height: 0; overflow: auto; padding: 6px 16px 12px; font-size: var(--fs-meta); line-height: var(--lh-loose); }
 .log[data-empty] { display: flex; padding: 0; }
 .term-script { padding: 8px 0 4px 16px; }
 
@@ -442,14 +442,14 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .image-pair { display: flex; align-items: flex-start; justify-content: center; gap: 24px; min-width: 0; max-height: 100%; }
 .image-view[data-inline] { flex: none; padding: 16px; justify-content: flex-start; overflow: visible; }
 .image-view[data-inline] img { max-height: 320px; }
-.open-editor { padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 12px; text-decoration: underline; }
-.code-view { flex: 1; min-height: 0; overflow: auto; padding: 10px 0; font-size: 12.5px; line-height: 22px; }
+.open-editor { padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-meta); text-decoration: underline; }
+.code-view { flex: 1; min-height: 0; overflow: auto; padding: 10px 0; font-size: var(--fs-code); line-height: 22px; }
 .code-line { display: grid; grid-template-columns: 52px minmax(0, 1fr); }
 .code-line .ln { text-align: right; padding-right: 14px; color: var(--muted); user-select: none; }
 .code-line .src, .diff-line .src { white-space: pre; color: var(--ink-2); }
 .diff-line { display: grid; grid-template-columns: 44px 44px 18px minmax(0, 1fr); }
 .diff-line { position: relative; }
-.hunk-send { position: absolute; right: 12px; top: 1px; height: 20px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink-2); font: 12px var(--font); opacity: 0; }
+.hunk-send { position: absolute; right: 12px; top: 1px; height: 20px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink-2); font: var(--fs-meta) var(--font); opacity: 0; }
 .diff-line:hover .hunk-send, .hunk-send:focus-visible { opacity: 1; }
 .diff-line .ln { text-align: right; padding-right: 10px; color: var(--muted); user-select: none; }
 .diff-line[data-mark='+'] { background: color-mix(in srgb, var(--add) 8%, transparent); }
@@ -463,12 +463,12 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* terminals */
 .term { flex: 1; min-height: 0; display: flex; background: var(--code-bg); padding: 12px 0 8px 18px; }
 .term-compact { padding: 8px 0 4px 12px; }
-.term-notice { margin: 0; padding: 8px 18px; border-bottom: 1px solid var(--line-2); font-size: 12.5px; color: var(--muted); }
+.term-notice { margin: 0; padding: 8px 18px; border-bottom: 1px solid var(--line-2); font-size: var(--fs-code); color: var(--muted); }
 .term-host { flex: 1; min-width: 0; min-height: 0; }
 .term .xterm { height: 100%; }
 .term .xterm-viewport { background-color: transparent !important; }
 .chat-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding-bottom: 12px; text-align: center; }
-.chat-empty h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+.chat-empty h2 { margin: 0; font-size: var(--fs-title-sm); font-weight: var(--fw-semibold); color: var(--ink); letter-spacing: -0.01em; }
 /* New chat is a chat's page without a transcript: the title block takes the space above Up next, Up next sits on the box, and the box is the composer shell, pinned to the bottom edge like a chat's.
    A long draft grows the box up. The title block gives way first (NewLeadChat hides it), then Up next scrolls. */
 .lead-new { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -476,9 +476,9 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .lead-title { flex-shrink: 0; }
 /* The project menu hangs below the title, past the block's edge, so the block lets it out while it is open. */
 .lead-top:has(.lead-project-anchor [aria-expanded='true'], .lead-sub [aria-expanded='true']) { position: relative; overflow: visible; z-index: 2; }
-.lead-title h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+.lead-title h2 { margin: 0; font-size: var(--fs-title-sm); font-weight: var(--fw-semibold); color: var(--ink); letter-spacing: -0.01em; }
 /* The title asks what's next and names the project. The name is the project menu's button: underlined, dotted until hovered or opened. */
-.lead-title h2.lead-ask { font-size: 24px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.3; }
+.lead-title h2.lead-ask { font-size: var(--fs-doc-h1); font-weight: var(--fw-medium); letter-spacing: -0.02em; line-height: var(--lh-heading); }
 .lead-project-anchor { position: relative; display: inline-flex; min-width: 0; max-width: 20ch; vertical-align: bottom; }
 .lead-project { display: inline-flex; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; letter-spacing: inherit; text-decoration: underline dotted var(--ink-3); text-decoration-thickness: 1.5px; text-underline-offset: 6px; cursor: pointer; }
 .lead-project:hover, .lead-project[aria-expanded='true'] { text-decoration-style: solid; text-decoration-color: var(--ink-2); }
@@ -487,33 +487,39 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .lead-project .ellipsis { text-decoration: inherit; }
 .lead-sub { display: flex; justify-content: center; margin-top: 14px; }
 .lead-sub .cmp-branch-anchor { position: relative; }
+/* No project yet (KERNEL-943): a line under the title, and the three ways to add one in pills above the box. */
+.lead-note { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.lead-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 12px; }
+.lead-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px 0 12px; border: 1px solid var(--line-3); border-radius: var(--r-pill); background: transparent; color: var(--ink-2); font-size: 13px; font-weight: 500; }
+.lead-pill > svg { color: var(--muted); }
+.lead-pill:hover { background: var(--surface-2); border-color: var(--line-4); color: var(--ink); }
 .lead-up { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 0 24px 16px; }
 .lead-up .up-next { max-width: 760px; margin: 0 auto; }
 /* Up next: the tracker's issues nobody has started. A quiet header, then one row per issue that fills on hover, with Plan showing at the end. */
 .up-next { width: 100%; max-width: 640px; text-align: left; }
 .up-next-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 10px 6px; }
-.up-next-head h3 { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
-.up-next-all { padding: 0; border: 0; background: none; font-size: 12px; color: var(--muted); }
+.up-next-head h3 { margin: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
+.up-next-all { padding: 0; border: 0; background: none; font-size: var(--fs-meta); color: var(--muted); }
 .up-next-all:hover, .up-next-all:focus-visible { color: var(--ink-2); }
 /* The rows share one grid, so keys, titles and projects line up across rows. A tracker with no priority drops that column. */
 .up-next ul { display: grid; grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) auto; margin: 0; padding: 0; list-style: none; }
 .up-next ul.up-next-plain { grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content) auto; }
 .up-next-item { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
-.up-next-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: 10px; align-items: center; height: 34px; padding: 0 6px 0 10px; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-2); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.up-next-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: 10px; align-items: center; height: 34px; padding: 0 6px 0 10px; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-2); font: inherit; font-size: var(--fs-ui); text-align: left; cursor: pointer; }
 .up-next-item + .up-next-item { margin-top: 2px; }
 .up-next-row:hover, .up-next-row:focus-visible { background: var(--surface-3); color: var(--ink); }
 .up-next-row:focus-visible { outline: 1px solid var(--line-4); outline-offset: -1px; }
 .up-next-row > svg { color: var(--ink-3); }
-.up-next-key { font-size: 11.5px; color: var(--muted); }
+.up-next-key { font-size: var(--fs-chip); color: var(--muted); }
 .up-next-title { min-width: 0; }
-.up-next-project { max-width: 180px; font-size: 12px; color: var(--muted); }
-.up-next-plan { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-sm); font-size: 12px; color: var(--ink-2); opacity: 0; }
+.up-next-project { max-width: 180px; font-size: var(--fs-meta); color: var(--muted); }
+.up-next-plan { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-sm); font-size: var(--fs-meta); color: var(--ink-2); opacity: 0; }
 .up-next-row:hover .up-next-plan, .up-next-row:focus-visible .up-next-plan { opacity: 1; }
 .chat-suggest { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; }
-.chat-suggest button { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: transparent; color: var(--ink-2); font-size: 12.5px; }
+.chat-suggest button { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: transparent; color: var(--ink-2); font-size: var(--fs-code); }
 .chat-suggest button svg { color: var(--muted); }
 .chat-suggest button:hover { background: var(--surface-3); border-color: var(--line-3); }
-.tab-rename { height: 26px; width: 150px; padding: 0 8px; margin: 0 6px; align-self: center; border: 1px solid var(--input-line); border-radius: var(--r-sm); background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 500; }
+.tab-rename { height: 26px; width: 150px; padding: 0 8px; margin: 0 6px; align-self: center; border: 1px solid var(--input-line); border-radius: var(--r-sm); background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: var(--fs-ui); font-weight: var(--fw-medium); }
 
 /* A narrow chat column: the transcript and composer pull in from the edges (D-080). */
 @container chat (max-width: 520px) {
@@ -524,7 +530,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* Open, the split button by the Port row on the Checks tab (WorkspacePreview.png, KERNEL-250) */
 .open-split { display: inline-flex; align-items: center; }
 .open-caret-anchor { position: relative; display: inline-flex; margin-left: -1px; }
-.open-main, .open-caret { display: inline-flex; align-items: center; height: 24px; background: var(--surface); border: 1px solid var(--line-3); color: var(--ink-2); font-size: 12px; }
+.open-main, .open-caret { display: inline-flex; align-items: center; height: 24px; background: var(--surface); border: 1px solid var(--line-3); color: var(--ink-2); font-size: var(--fs-meta); }
 .open-main { padding: 0 10px; border-radius: var(--r-sm) 0 0 var(--r-sm); }
 .open-caret { padding: 0 6px; border-radius: 0 var(--r-sm) var(--r-sm) 0; color: var(--muted); }
 .open-main:hover:not(:disabled), .open-caret:hover { background: var(--surface-3); }
@@ -532,7 +538,17 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .open-caret[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
 
 /* The line a switch between Hand off and Build here leaves in the thread (KERNEL-780). */
-.mode-divider { display: flex; align-items: center; gap: 8px; padding: 6px 0; color: var(--muted); font-size: 12px; }
+.mode-divider { display: flex; align-items: center; gap: 8px; padding: 6px 0; color: var(--muted); font-size: var(--fs-meta); }
 .mode-divider::before, .mode-divider::after { content: ''; flex: 1; height: 1px; background: var(--card-line); }
 .mode-divider > svg { flex: none; }
 .mode-suggest { display: flex; padding: 2px 0 4px; }
+
+/* What used to be inline styles (KERNEL-929). */
+.tab-new { position: relative; align-self: center; margin-left: 4px; }
+.panel-scroll.tree-skel { padding: 4px 12px; }
+.panel-scroll.tree-scroll { padding: 0 8px 8px; }
+.panel-scroll.changes-scroll { padding: 4px 10px; }
+.panel-scroll.checks-body { gap: 14px; padding: 6px 16px; }
+.changes-hidden { margin: 8px 6px 0; }
+.check-spin { display: inline-flex; margin: 0 1px; }
+.code-view.code-view-flush { padding: 8px 0; }

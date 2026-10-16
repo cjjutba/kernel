@@ -13,6 +13,16 @@ export const serverName = (server: string) => server.replace(/^claude\.ai\s+/i, 
 /** "Google Drive and Gmail", "Linear, Google Drive and Gmail". */
 export const joinNames = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`)
 
+const accountKey = (a: McpAccount) => `${a.provider}:${a.accountId}`
+
+/** A push replaces only the accounts it carries, in the places they already are, so the rest of the page stays put (KERNEL-937). */
+function mergeAccounts(had: McpAccount[] | null, pushed: McpAccount[]): McpAccount[] {
+  if (!had) return pushed
+  const next = new Map(pushed.map((a) => [accountKey(a), a]))
+  const merged = had.map((a) => next.get(accountKey(a)) ?? a)
+  return [...merged, ...pushed.filter((a) => !had.some((b) => accountKey(b) === accountKey(a)))]
+}
+
 /** Every signed-in account's servers, read when the page opens, kept live and checked again whenever the window gets focus (KERNEL-661). `refresh` checks again. */
 export function useMcpAccounts() {
   const [accounts, setAccounts] = useState<McpAccount[] | null>(null)
@@ -20,7 +30,7 @@ export function useMcpAccounts() {
   useEffect(() => {
     let stopped = false
     void call('mcp.accounts', undefined).then((a) => { if (!stopped) setAccounts(a) }).catch(() => { if (!stopped) setAccounts([]) })
-    const off = onPush((e) => { if (e.type === 'mcp.accounts') setAccounts(e.accounts) })
+    const off = onPush((e) => { if (e.type === 'mcp.accounts') setAccounts((had) => mergeAccounts(had, e.accounts)) })
     const onFocus = () => { void call('mcp.recheck', undefined).then((a) => { if (!stopped) setAccounts(a) }).catch(() => undefined) }
     window.addEventListener('focus', onFocus)
     return () => { stopped = true; off(); window.removeEventListener('focus', onFocus) }
