@@ -515,6 +515,7 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsAddAccountDuplicate: providersPage('claude', { push: [{ type: 'account.add', add: { provider: 'claude', step: 'failed', error: 'That account is already in Kernel.' } }] }),
   // KERNEL-561: the menu lists every account of both providers with its plan and usage, and Cmd+K switches to any that isn't in use.
   AccountMenu: { ...teamFixtures.Inbox, accounts: richAccounts, usage: providerUsage(), ui: { route: { name: 'inbox' }, menu: 'account' } },
+  AccountMenuFooter: usageHome({}, { menu: 'account' }),
   // KERNEL-674: usage is in the footer all the time. Detailed gives the active account of each provider its name and both windows, and Compact gives it one number.
   UsageFooter: usageHome(),
   UsageFooterCompact: usageHome({}, { usageView: 'compact' }),
