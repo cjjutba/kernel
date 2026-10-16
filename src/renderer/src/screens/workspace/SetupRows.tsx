@@ -36,7 +36,7 @@ const ICON: Partial<Record<ProjectSetupStep['id'], 'download' | 'branch' | 'fold
 }
 
 /**
- * Project setup, written into New chat as plain rows, the way Conductor shows a new workspace (KERNEL-948). Kernel's own code
+ * Project setup, written into New chat as plain rows (KERNEL-948). Kernel's own code
  * runs every step; nothing here uses a model. A step that warns or fails says so on its row, with its one action.
  */
 export function SetupRows({ project, steps }: { project: Project; steps: ProjectSetupStep[] }) {

@@ -49,7 +49,7 @@ function useShowLog(ws: Workspace) {
 }
 
 /**
- * What Kernel did to start a chat's worktree, as plain rows at the top of the chat, the way Conductor shows a new workspace
+ * What Kernel did to start a chat's worktree, as plain rows at the top of the chat
  * (KERNEL-951): the branch, the worktree and its copied files, and the setup script, live while it runs with its last output
  * line, then how long it took. A failed setup offers Run again and Send anyway on its row. The log is one click away, never
  * opened for you. A chat on the current branch, the Lead's shared worktree, or a later worktree chat in the project shows nothing unless it fails.

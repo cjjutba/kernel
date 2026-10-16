@@ -48,7 +48,7 @@ async function copyPath(path: string) {
 }
 
 /**
- * The workspace header's Open in control, as in Conductor: a split button whose left half opens the workspace in the app used last
+ * The workspace header's Open in control: a split button whose left half opens the workspace in the app used last
  * and whose right half lists every editor and terminal on this Mac, numbered 1 to 9, then Copy path. ⌘O does what the left half does.
  */
 export function OpenIn({ ws }: { ws: Workspace }) {

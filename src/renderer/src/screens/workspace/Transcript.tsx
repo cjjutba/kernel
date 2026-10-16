@@ -1061,7 +1061,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
             <Button busy={retrying !== null} busyLabel="Loading" onClick={() => void retry('load', () => loadWorkspace(workspaceId).catch(() => undefined))}>Try again</Button>
           </EmptyState>
         )}
-        {/* The worktree and its setup, above the first message, as Conductor shows a new workspace (KERNEL-951). Outside the thread, whose children line up with its blocks. */}
+        {/* The worktree and its setup, above the first message (KERNEL-951). Outside the thread, whose children line up with its blocks. */}
         {ws && !empty && !failed && <ChatSetupRows ws={ws} />}
         {empty && (
           <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}

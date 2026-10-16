@@ -13,7 +13,7 @@ import { planAnswer } from '@shared/approvalAnswer'
 import { outcome, planSteps, planText } from './steps'
 import './cards.css'
 
-// A plan in its chat, the way Conductor shows one (D-092): the transcript shows a "Propose plan" row and the plan as a
+// A plan in its chat (D-092): the transcript shows a "Propose plan" row and the plan as a
 // document, and while it waits the composer carries Copy and Approve, and whatever you type goes back as changes.
 
 const EMPTY: AgentDef[] = []

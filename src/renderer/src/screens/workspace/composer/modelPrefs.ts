@@ -9,7 +9,7 @@ import { patchSettings } from '../../settings/useSettings'
 import { loadPicks, onPicksChange, savePicks, type DraftPicks } from './draftStore'
 import { fitEffort } from './providerModels'
 
-// Each model remembers the effort you last used with it, the way Conductor's picker shows one per model (D-093).
+// Each model remembers the effort you last used with it, and the picker shows one per model (D-093).
 // The memory is `models.effortByModel` in app settings, so main starts the chats you open at it too (D-130).
 
 const NONE: EffortMemory = {}

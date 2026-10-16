@@ -33,7 +33,7 @@ function Avatar({ owner, size }: { owner: string; size: number }) {
 }
 
 /**
- * Clone a GitHub repo (KERNEL-945), as Conductor does: a URL, or one of your repos picked from a searchable list, and the folder it
+ * Clone a GitHub repo (KERNEL-945): a URL, or one of your repos picked from a searchable list, and the folder it
  * goes in. Clone creates the project at once and setup runs; there is no second form.
  */
 export function ConnectRepo() {

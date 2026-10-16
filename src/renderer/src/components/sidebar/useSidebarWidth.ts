@@ -5,7 +5,7 @@ export const SIDEBAR_DEFAULT = 236
 export const SIDEBAR_MIN = 200
 const SIDEBAR_MAX = 480
 export const SIDEBAR_KEY = 'kernel.sidebarWidth'
-/** Letting go below this hides the sidebar, the way Conductor does. The saved width stays. Settings has no hide, so it clamps to the minimum instead. */
+/** Letting go below this hides the sidebar. The saved width stays. Settings has no hide, so it clamps to the minimum instead. */
 export const SIDEBAR_HIDE_BELOW = 160
 /** The panel keeps at least this much of the window, however wide the sidebar was saved. */
 const PANEL_MIN = 520

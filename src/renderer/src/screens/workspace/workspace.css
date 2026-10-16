@@ -33,7 +33,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 
 /* tabs row */
 .ws-tabs { position: relative; height: 40px; flex-shrink: 0; display: flex; align-items: flex-end; padding: 0 12px; border-bottom: 1px solid var(--line); }
-/* The underline spans the whole group, so the pen and the close button sit inside the tab, as in Conductor (D-088). */
+/* The underline spans the whole group, so the pen and the close button sit inside the tab, (D-088). */
 .tab-group { position: relative; display: inline-flex; align-items: center; height: 40px; min-width: 0; padding-right: 4px; border-bottom: 2px solid transparent; }
 .tab-group[data-on] { border-bottom-color: var(--ink); }
 .ws-tab { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 100%; max-width: 220px; padding: 0 12px; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); font-weight: var(--fw-medium); }
@@ -578,7 +578,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .check-spin { display: inline-flex; margin: 0 1px; }
 .code-view.code-view-flush { padding: 8px 0; }
 
-/* Project setup on New chat (KERNEL-948): plain rows at the top, like Conductor's new workspace. No boxes but the banner. */
+/* Project setup on New chat (KERNEL-948): plain rows at the top. No boxes but the banner. */
 .lead-top[data-setup] { justify-content: flex-start; text-align: left; padding-top: 24px; overflow-y: auto; }
 .su-rows { width: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 4px; }
 .su-banner { margin: 0 0 10px; padding: 13px 16px; border-radius: var(--r); background: var(--surface-2); color: var(--ink); font-size: var(--fs-chat); }

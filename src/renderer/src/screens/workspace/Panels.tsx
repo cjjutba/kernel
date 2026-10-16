@@ -473,7 +473,7 @@ function AddSetup({ projectId, onManual }: { projectId: string; onManual: () => 
   )
 }
 
-/** Conductor's split Run button, always at the right of the tab strip: the play part runs or stops the picked script, the chevron lists every script, Run all and Configure. */
+/** The split Run button, always at the right of the tab strip: the play part runs or stops the picked script, the chevron lists every script, Run all and Configure. */
 function RunSplit({ label, none, running, names, runningNames, busy, onPlay, onToggle, onAll, onConfigure }: {
   label: string; none: boolean; running: boolean; names: string[]; runningNames: string[]; busy: string | null
   onPlay: () => void; onToggle: (name: string) => void; onAll: () => void; onConfigure: () => void

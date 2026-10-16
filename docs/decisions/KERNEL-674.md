@@ -6,7 +6,7 @@ The popover is 360px, opens upward, and has a Detailed and Compact switch kept a
 
 **The GitHub paused notice was removed** (KERNEL-401), with `githubPause` and its tests. It is not shown anywhere now. **Hooks down no longer shows in the footer.** It shows in the "Hooks are disconnected" banner above the composer and in Settings, Hooks.
 
-## Amendment: the footer spans the window, with an Orca-style row and a refresh button
+## Amendment: the footer spans the window, with a row and a refresh button
 
 **The footer is the window's full width.** It sits under the sidebar and the main panel, not inside the main panel, so the usage row starts at the window's bottom left corner and the popover opens upward from there. Screens that hide the footer still do, and with the sidebar hidden it still spans the window. The `design/screens/UsageFooter*.png` targets show the old placement and row on purpose and were not edited.
 

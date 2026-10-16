@@ -20,7 +20,7 @@ export interface PlusWhere {
 const ABOVE = { right: 0, bottom: 'calc(100% + 8px)' } as const
 
 /**
- * The + button and its menu, as in Conductor (D-093): Link issue (⌘I), Link pull request, Link workspaces, Permission mode or plan mode (⇧Tab) and Add
+ * The + button and its menu (D-093): Link issue (⌘I), Link pull request, Link workspaces, Permission mode or plan mode (⇧Tab) and Add
  * attachment (⌘U). Both composers use it. New chat passes `where` for the two rows that start a chat, Run in and Branch, and gets a quiet chip beside +
  * while either differs from the default, which opens the same picker. `anchorRef` is the wrapper around this component, so a press on + toggles instead of reopening.
  * A chat's composer passes `onMode`, which opens its mode menu from the Permission mode row (KERNEL-456). The boxes that start a chat have

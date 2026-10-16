@@ -155,7 +155,7 @@ function TextFile({ ws, path, editedBy, changed }: { ws: Workspace; path: string
   )
 }
 
-/** An attached image opened from its chip, in a tab of its own, as in Conductor. */
+/** An attached image opened from its chip, in a tab of its own. */
 export function ImageView({ name, src, width, height }: { name: string; src: string; width?: number; height?: number }) {
   return (
     <div className="col grow" style={{ minHeight: 0 }}>

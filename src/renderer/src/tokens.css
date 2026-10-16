@@ -316,7 +316,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .nav-item svg { color: var(--muted); flex-shrink: 0; }
 .nav-item[aria-current='page'] svg { color: var(--ink-2); }
 .nav-sub { padding-left: 20px; }
-/* A few pixels between rows, so a hovered row's fill never touches the selected row's (Conductor). */
+/* A few pixels between rows, so a hovered row's fill never touches the selected row's. */
 .nav-list { display: flex; flex-direction: column; gap: 3px; }
 .section-label { height: 28px; display: flex; align-items: center; justify-content: space-between; margin-top: 16px; padding: 0 2px 0 8px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
 /* Hover-only buttons show on hover or keyboard focus. A mouse click also focuses the button, and must not keep it up. */
