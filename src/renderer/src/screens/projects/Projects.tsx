@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import type { Project } from '@shared/types'
 import { actions, useStore } from '../../store'
 import { openProject } from '../../lead'
@@ -10,6 +11,7 @@ import { ago, initial, projectState, sourceOf, stateLabel, teamOf } from './proj
 import './projects.css'
 import { ProjectIcon } from '../../components/ProjectIcon'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
+import { useKeptScroll } from '../../ui/keptScroll'
 
 type Tab = 'all' | 'active' | 'archived'
 
@@ -22,7 +24,7 @@ function ProjectRow({ project, nav }: { project: Project; nav: ReturnType<typeof
   const open = () => void openProject(project.id)
   const show = () => void call('projects.update', { projectId: project.id, patch: { hidden: false } }).then((r) => actions.projects.upsert(r))
   return (
-    <div className="rm-row" onClick={open}>
+    <div className="rm-row" data-keep-id={project.id} onClick={open}>
       <span className="rm-name">
         <ProjectIcon project={project} className="rm-letter" />
         <span className="col" style={{ minWidth: 0 }}>
@@ -56,6 +58,8 @@ export function Projects() {
   const shown = tab === 'all' ? projects : tab === 'active' ? active : projects.filter((r) => r.archived)
   const tabs: [Tab, string, number][] = [['all', 'All projects', projects.length], ['active', 'Active', active.length], ['archived', 'Archived', projects.length - active.length]]
   const keys = useListKeys({ ids: shown.map((r) => r.id), rowId: (id) => `rm-${id}`, onOpen: (id) => void openProject(id) })
+  const table = useRef<HTMLDivElement>(null)
+  useKeptScroll(table, { key: 'projects', ready: shown.length > 0 })
   return (
     <div className="panel">
       <header className="header" style={{ paddingRight: 12 }}>
@@ -68,7 +72,7 @@ export function Projects() {
       <div className="rm-tabs" role="group" aria-label="Filter projects">
         {tabs.map(([id, label, n]) => <Pill key={id} pressed={tab === id} onClick={() => setTab(id)}>{label}<span className="rm-n">{n}</span></Pill>)}
       </div>
-      <div className="rm-table" onKeyDown={keys.onKeyDown}>
+      <div className="rm-table" ref={table} onKeyDown={keys.onKeyDown}>
         <div className="rm-head"><span>Name</span><span>Source</span><span>Agents</span><span>Status</span><span style={{ textAlign: 'right' }}>Updated</span></div>
         {shown.map((r) => <ProjectRow key={r.id} project={r} nav={keys.rowProps} />)}
         {!shown.length && <p className="muted" style={{ padding: 24, margin: 0 }}>{tab === 'archived' ? 'No archived projects.' : 'No projects yet. Make one with New project.'}</p>}

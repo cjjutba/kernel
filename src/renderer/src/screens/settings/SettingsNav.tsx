@@ -4,6 +4,7 @@ import type { ProjectSettingsSection, SettingsPage } from '@shared/types'
 import { actions, getState, go, useStore } from '../../store'
 import { ProjectIcon } from '../../components/ProjectIcon'
 import { Icon, useScreenEscape } from '../../ui'
+import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import { NAV, PROJECT_PAGES, keywordHits, navMatch, type Keyword } from './nav'
 
 /** The groups the sidebar lists. They live in nav.ts so search and the command palette read the same list (KERNEL-680). */
@@ -18,6 +19,7 @@ export function SettingsNav({ page, projectId, section }: { page: SettingsPage; 
   const [q, setQ] = useState('')
   const [folded, setFolded] = useState<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
+  const keep = useKeptScroll(list, { key: spotKey.settings('app', 'nav'), ready: true })
   const projects = useStore((s) => s.projects.filter((r) => !r.hidden && !r.archived))
   const match = (label: string, keywords?: Keyword[], terms?: string[]) => navMatch(q, label, keywords, terms)
   // Escape: the search box clears first. Other text fields keep it for themselves, and elsewhere it leaves Settings.
@@ -34,6 +36,7 @@ export function SettingsNav({ page, projectId, section }: { page: SettingsPage; 
   // A project's pages run past the bottom of the window, so a project page brings the end of its project and the next project's row into view, then the open page.
   useEffect(() => {
     if (page !== 'project') return
+    keep.stop()
     const end = list.current?.querySelector('[data-project-end]')
     ;(end?.parentElement?.nextElementSibling?.firstElementChild ?? end)?.scrollIntoView({ block: 'nearest' })
     list.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' })
@@ -78,7 +81,7 @@ export function SettingsNav({ page, projectId, section }: { page: SettingsPage; 
           <div key={g.title}>
             <p className="set-group">{g.title}</p>
             {g.items.map((i) => (
-              <div key={i.page}>
+              <div key={i.page} data-keep-id={i.page}>
                 <button type="button" className="nav-item set-item" aria-current={page === i.page ? 'page' : undefined} onClick={() => go({ name: 'settings', page: i.page })}>
                   <Icon name={i.icon} size={16} />{i.label}
                 </button>
@@ -93,7 +96,7 @@ export function SettingsNav({ page, projectId, section }: { page: SettingsPage; 
             {shownProjects.map(({ project: r, pages }) => {
               const expanded = searching ? true : open === r.id && folded !== r.id
               return (
-                <div key={r.id}>
+                <div key={r.id} data-keep-id={r.id}>
                   <button type="button" className="nav-item set-item set-project" aria-expanded={expanded} onClick={() => {
                     // Another project opens on its General page. Its own row folds and unfolds its pages.
                     if (open === r.id) setFolded(expanded ? r.id : null)

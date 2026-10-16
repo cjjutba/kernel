@@ -7,14 +7,21 @@ import { actions, go, useStore } from '../../store'
 import { Button, EmptyState, Icon, Kbd, Menu, Spinner, useBusy, type IconName } from '../../ui'
 import { openNewProject } from '../projects/draft'
 import { useProjectSettings } from './useSettings'
+import { useKeptScroll } from '../../ui/keptScroll'
+
+/** Which spot the page in view keeps, and whether a route row or an agent editor is taking it somewhere on purpose (KERNEL-920). */
+export const KeepContext = createContext<{ key: string; target: boolean } | null>(null)
 
 /**
  * One settings page: the title, one muted line saying changes save as you make them (KERNEL-721), and its sections. `action` sits at the right of the title, and
  * `back` is the link above it to the page it opened from. `crumb` puts a link before the title, the project on a project's page.
  */
 export function Page({ title, crumb, action, back, saved, note, subtitle, children }: { title: string; crumb?: ReactNode; action?: ReactNode; back?: ReactNode; saved?: Scope; note?: ReactNode; subtitle?: string; children: ReactNode }) {
+  const keep = useContext(KeepContext)
+  const scroll = useRef<HTMLDivElement>(null)
+  useKeptScroll(scroll, { key: keep?.key ?? '', ready: !!keep, target: keep?.target })
   return (
-    <div className="set-scroll">
+    <div className="set-scroll" ref={scroll}>
       <div className="set-page">
         <div>
           {back}
@@ -177,7 +184,7 @@ export function Section({ id, holds, title, count, scope, note, action, footnote
     ? <button type="button" className="set-fold" aria-expanded={open} onClick={() => setOpen(!open)}><h2>{title}{n}</h2><Icon name="right" size={12} /></button>
     : title && <h2>{title}{n}</h2>
   return (
-    <section className="set-section" data-row={id} aria-label={title ? undefined : label}>
+    <section className="set-section" data-row={id} data-keep-id={id} aria-label={title ? undefined : label}>
       {(title || action || scope || note) && (
         <div className="set-section-head">
           {heading}
@@ -214,7 +221,7 @@ export function Row({ id, label, shared, inherited, changed, changedIn, desc, se
   }
   return (
     <RowTiming.Provider value={{ timing: setting ? timingOf(setting, projectId) : undefined, projectId, shared }}>
-    <div ref={ref} data-row={id} className={['set-row', child && 'set-child', hover && 'set-hoverable', className].filter(Boolean).join(' ')}>
+    <div ref={ref} data-row={id} data-keep-id={id} className={['set-row', child && 'set-child', hover && 'set-hoverable', className].filter(Boolean).join(' ')}>
       {child && <span className="set-guide" aria-hidden="true" />}
       {lead && <span className="set-lead">{lead}</span>}
       <div className="set-text">

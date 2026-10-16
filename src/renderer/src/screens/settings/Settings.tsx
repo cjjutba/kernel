@@ -1,9 +1,11 @@
 import './settings.css'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AppSettings, ProjectSettingsSection, SettingsPage } from '@shared/types'
 import { call } from '../../api'
 import { actions, useStore } from '../../store'
 import { Icon } from '../../ui'
+import { spotKey } from '../../ui/keptScroll'
+import { KeepContext } from './kit'
 import { landWhenThere } from './landOnRow'
 import { NAV_PAGES, PROJECT_PAGES } from './nav'
 import { SettingsPending } from './SettingsLoad'
@@ -72,7 +74,12 @@ export function Settings({ page, projectId, section, agentId }: { page: Settings
   const panel = useRef<HTMLDivElement>(null)
   const row = route.name === 'settings' ? route.row : undefined
   useEffect(() => (row ? landWhenThere(row, panel.current) : undefined), [route, row, !!settings])
-  return <div className="panel" ref={panel}>{body}</div>
+  const view = page === 'project' ? section ?? 'general' : page
+  const keep = useMemo(
+    () => ({ key: `${page === 'project' ? spotKey.settings('project', view, projectId) : spotKey.settings('app', view)}${agentId ? `:${agentId}` : ''}`, target: !!row || !!agentId }),
+    [page, view, projectId, agentId, row]
+  )
+  return <div className="panel" ref={panel}><KeepContext.Provider value={keep}>{body}</KeepContext.Provider></div>
 }
 
 /** A project's page waits for the project's files, with its title in place, and says so when they don't come. */
