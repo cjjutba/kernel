@@ -1737,7 +1737,6 @@ const bhScene = (f: Fixture, items: ChatItem[], ws: Partial<Workspace> = {}): Pa
   const review: Workspace = { id: 'ws-review-171', projectId: ids.projectA, name: 'review-pr-171', title: 'Review PR #171', branch: 'feat/refund-rounding-review', baseRef: 'feat/refund-rounding', path: '/Users/you/kernel/worktrees/client-a/review-pr-171', mode: 'worktree', agentId: 'theo', port: 4317, status: 'archived', prState: 'none', reviewOf: ids.lead, createdAt: at(10, 8) }
   return { ...s, workspaces: [...(s.workspaces ?? f.workspaces), review] }
 }
-const bhOpened = bhNote('bh-n1', 6, 'Opened PR #171', 'opened')
 const bhReady = bhNote('bh-n2', 12, 'PR #171 is ready to merge', 'ready')
 
 // ---------- Lead chats that hold several tabs (KERNEL-338)
@@ -2345,10 +2344,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
     mode: 'build', right: 'changes', ws: { ...lmPr, prState: 'merged', mergedAt: at(10, 20) },
     items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'PR #171 merged.', 21)]
   })),
-  WorkspaceLeadBuildHereReadyToMerge: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171. Checks are running.', 6), bhOpened, bhReview('bh-u1', 10, true), bhReady], { prState: 'ready' })),
-  WorkspaceLeadBuildHereMergedRows: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhOpened, bhReview('bh-u1', 10, true), bhReady, bhNote('bh-n3', 20, 'PR #171 was squashed into main. Next changes start on a new branch', 'merged'), ...lmReply('lm-c', 'PR #171 is merged. The next change in this chat starts on a new branch from origin/main.', 21)], { prState: 'merged', mergedAt: at(10, 20) })),
-  WorkspaceLeadBuildHereKept: scene((f) => bhScene(f, [...lmReply('lm-b', 'I opened PR #171.', 6), bhOpened, bhReview('bh-u1', 10, true), bhReady, bhNote('bh-n3', 20, 'PR #171 was squashed into main.', 'merged'), bhNote('bh-n4', 20, 'Kernel kept this branch because it has uncommitted changes. A new branch starts once nothing here is left out of the merge.')], { prState: 'merged', mergedAt: at(10, 20) })),
-  WorkspaceLeadBuildHereBlockers: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhOpened, bhReview('bh-u1', 10, false), ...lmReply('lm-c', 'Theo found two blockers in PR #171. I am fixing the export rounding and adding a test for negative refunds.', 11)], { prState: 'open' })),
+  WorkspaceLeadBuildHereReadyToMerge: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171. Checks are running.', 6), bhReview('bh-u1', 10, true)], { prState: 'ready' })),
+  WorkspaceLeadBuildHereReadyNoReview: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReady], { prState: 'ready' })),
+  WorkspaceLeadBuildHereMergedRows: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReview('bh-u1', 10, true), bhNote('bh-n3', 20, 'PR #171 was squashed into main. Next changes start on a new branch', 'merged')], { prState: 'merged', mergedAt: at(10, 20) })),
+  WorkspaceLeadBuildHereKept: scene((f) => bhScene(f, [...lmReply('lm-b', 'I opened PR #171.', 6), bhReview('bh-u1', 10, true), bhNote('bh-n3', 20, 'PR #171 was squashed into main.', 'merged'), bhNote('bh-n4', 20, 'Kernel kept this branch because it has uncommitted changes. A new branch starts once nothing here is left out of the merge.')], { prState: 'merged', mergedAt: at(10, 20) })),
+  WorkspaceLeadBuildHereBlockers: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReview('bh-u1', 10, false), ...lmReply('lm-c', 'Theo found two blockers in PR #171. I am fixing the export rounding and adding a test for negative refunds.', 11)], { prState: 'open' })),
   WorkspaceLeadOldSelfCard: scene((f) => bhScene(f, [
     ...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6),
     tuCard('bh-old1', 7, [{ ...tuRow(ids.lead, 'kernel-lead', 'Kernel', 'Refund rounding', [tuEv('pr.opened', 'Opened PR #171'), tuEv('pr.ready', 'Ready to merge', true), tuEv('pr.review', 'Code approved')]), prNumber: 171 }]),
