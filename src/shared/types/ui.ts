@@ -210,6 +210,8 @@ export interface UiState {
   usageView: UsageView
   /** The providers whose rows are expanded in the Usage popover. Detailed starts with Claude Code open, Compact with none, and switching view resets it. */
   usageOpen: Provider[]
+  /** The account switch in progress, from `requestSwitch` until `accounts.switch` and a fresh `usage.get` have both answered (KERNEL-986). Null when none runs. */
+  switching?: { provider: Provider; accountId: string } | null
   /** Why the app could not start. Set when `boot` fails, so Loading shows the error and Try again instead of "Starting Kernel" forever (KERNEL-217). */
   startError?: string
 }
