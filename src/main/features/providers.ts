@@ -139,6 +139,13 @@ export class Providers extends Feature {
   private sharedAt = 0
   /** What `checkMcp` last found on each Claude login, by account id, `cli` for the CLI's own (KERNEL-616). */
   private mcpSignIns = new Map<string, McpSignIn[]>()
+  /**
+   * The servers a sign-in just landed on, by Claude account, until Claude Code's next check there says whether it works
+   * (KERNEL-935): copied from another login, with the token's mark (`mcpTokenMark`), or signed in from Kernel, without one.
+   */
+  private readonly mcpLanded = new Map<string, Map<string, string | undefined>>()
+  /** Marks of copied tokens Claude Code still found needing a sign-in, which are never copied again. In memory only (KERNEL-935). */
+  private readonly mcpRejected = new Set<string>()
   /** The models each account offers, by `provider:id`, with the login they were read on (`loginKey`, KERNEL-616). */
   private offered = new Map<string, { login: string; ids: string[] }>()
   /** When the MCP servers were last synced across every Claude login (KERNEL-618). */
@@ -762,6 +769,18 @@ export class Providers extends Feature {
     return r.account?.type === 'chatgpt' && sameLogin({ email: r.account.email ?? undefined }, who)
   }
 
+  /**
+   * The id and name an account goes by in `accounts.list`, from what Kernel saved, without asking the CLI: the CLI's own login
+   * that is also an added account goes by that account (KERNEL-843). For create_workspace's sign-in line (KERNEL-939).
+   */
+  rowOf(provider: Provider, accountId: string): { id: string; label: string } {
+    const cli = this.load()[provider].cli
+    const a = accountId === CLI_ACCOUNT ? this.twinOfCli(provider, cli && { email: cli.email, orgId: cli.orgId }) : this.stored(provider, accountId)
+    if (a) return { id: a.id, label: a.label }
+    if (accountId !== CLI_ACCOUNT) return { id: accountId, label: accountId }
+    return { id: CLI_ACCOUNT, label: cli?.label ?? cli?.email ?? OWN_LOGIN[provider] }
+  }
+
   /** The added account that is the CLI's own login `cli`, when one is (`sameLogin`, KERNEL-701). */
   private twinOfCli(provider: Provider, cli: { email?: string; orgId?: string } | undefined): StoredAccount | undefined {
     return this.load()[provider].accounts.find((a) => a.auth !== 'apiKey' && sameLogin(cli, a))
@@ -1058,6 +1077,7 @@ export class Providers extends Feature {
     }
     if (provider === 'codex') await removeTree(this.codexHome(accountId)!)
     this.mcpSignIns.delete(accountId)
+    this.k.mcp.forget(provider, accountId)
     this.offered.delete(`${provider}:${accountId}`)
     const accounts = await this.list()
     if (!this.stopped) bus.push({ type: 'accounts', accounts })
@@ -1168,19 +1188,32 @@ export class Providers extends Feature {
   /**
    * Shares the user-added MCP servers' sign-ins among every Claude login (`shareMcpSignIns`): the CLI's own, and each added
    * login whose folder still matches the path it signed in with. At most once every SHARE_EVERY_MS unless `force`. A server
-   * a login got leaves that account's `mcpSignIns`. Without a Keychain (tests that don't pass one) nothing is shared.
+   * a login got leaves that account's `mcpSignIns` and reads `checking`, which every window hears, until Claude Code checks
+   * the login again, which starts now, except for `checking`, the login whose check is about to run (KERNEL-935). A token Claude Code rejected
+   * after a copy is never copied again. Without a Keychain (tests that don't pass one) nothing is shared.
    */
-  private shareMcp(o: { force?: boolean } = {}) {
+  private shareMcp(o: { force?: boolean; checking?: string } = {}) {
     const keychain = this.o.keychain
     if (!keychain || this.stopped || (!o.force && Date.now() - this.sharedAt < SHARE_EVERY_MS)) return
     this.sharedAt = Date.now()
     const logins: { id: string; item: string; dir: string; store?: string }[] = [{ id: CLI_ACCOUNT, item: credentialsItem(process.env), dir: this.claudeRoot(), store: credentialsDir(process.env, this.home) }]
     // A login waiting on a Keychain prompt would hold the main process up to its read's timeout (KERNEL-618).
     for (const a of this.load().claude.accounts) if (a.home && !this.moved(a) && !this.keychain.has(a.id)) logins.push({ id: a.id, item: credentialsItem(accountEnv(a.home)), dir: a.home })
+    const copied = new Map<string, Map<string, string>>()
+    const onCopy = (dir: string, server: string, mark: string) => { const m = copied.get(dir) ?? new Map<string, string>(); copied.set(dir, m.set(server, mark)) }
     let got: Map<string, string[]>
-    try { got = shareMcpSignIns(keychain, logins) } catch { return }
+    try { got = shareMcpSignIns(keychain, logins, { rejected: this.mcpRejected, onCopy }) } catch { return }
     let changed = false
+    let landed = false
     for (const l of logins) {
+      const marks = copied.get(l.dir)
+      if (marks?.size) {
+        const on = this.mcpLanded.get(l.id) ?? new Map<string, string | undefined>()
+        for (const [server, mark] of marks) on.set(server, mark)
+        this.mcpLanded.set(l.id, on)
+        landed = true
+        if (l.id !== o.checking) void this.k.mcp.checkAccount('claude', l.id, { fresh: true }).then(() => this.k.mcp.pushAccounts())
+      }
       const servers = got.get(l.dir) ?? []
       const list = this.mcpSignIns.get(l.id)
       if (!list?.some((s) => servers.includes(s.server))) continue
@@ -1188,7 +1221,24 @@ export class Providers extends Feature {
       changed = true
     }
     if (changed) void this.pushAccounts()
+    if (landed) void this.k.mcp.pushAccounts()
   }
+
+  /**
+   * After Claude Code checked a login: each server in `landed`, what had landed there before the check, is settled. A copied
+   * token it still lists as needing a sign-in is rejected for good (KERNEL-935). What landed during the check waits for the next.
+   */
+  private settleLanded(accountId: string, landed: Map<string, string | undefined>, list: { name: string; status: string }[]) {
+    const now = this.mcpLanded.get(accountId)
+    for (const [server, mark] of landed) {
+      if (mark && list.some((s) => s.name === server && s.status === 'needs-auth')) this.mcpRejected.add(mark)
+      if (now?.has(server) && now.get(server) === mark) now.delete(server)
+    }
+    if (now && !now.size) this.mcpLanded.delete(accountId)
+  }
+
+  /** The servers on a Claude login a sign-in just landed on, which read `checking` until Claude Code's next check there (KERNEL-935). */
+  mcpCheckingOn(accountId: string): string[] { return [...(this.mcpLanded.get(accountId)?.keys() ?? [])] }
 
   /**
    * The folder of a Claude login whose MCP servers Kernel checks and signs in: undefined for the CLI's own, an added login's
@@ -1226,9 +1276,11 @@ export class Providers extends Feature {
   async mcpServersOn(provider: Provider, accountId: string): Promise<McpAccountServer[]> {
     if (provider === 'claude') {
       const home = this.mcpHome(accountId)
-      this.shareMcp({ force: true })
+      this.shareMcp({ force: true, checking: accountId })
+      const landed = new Map(this.mcpLanded.get(accountId))
       const list = await probeClaudeMcp(this.home, { env: this.mcpEnv(accountId, home), executable: claudeExecutable(this.settings.providers?.claude) })
       this.mcpSignIns.set(accountId, list.filter((s) => s.status === 'needs-auth').map((s) => ({ server: s.name, connector: isConnector(s.name) || (s.source ?? s.scope) === 'claudeai' })))
+      this.settleLanded(accountId, landed, list)
       return claudeAccountServers(list)
     }
     const home = this.codexMcpHome(accountId)
@@ -1296,7 +1348,8 @@ export class Providers extends Feature {
    * Signs one MCP server in on an account (`accounts.mcpSignIn`), one sign-in at a time per provider like Add account. On
    * Claude: `claude mcp login` in its folder, which opens the browser. A user-added server's new sign-in is shared with every
    * login at once. A claude.ai connector finishes on claude.ai and loads from the account's next session, so it stays listed
-   * until the next check. On Codex: `mcpCodexSignIn`. Either way the account is checked again after (`Mcp.signedIn`, KERNEL-660).
+   * until the next check. On Codex: `mcpCodexSignIn`. Either way the account is checked again after (`Mcp.signedIn`, KERNEL-660),
+   * and on Claude the server reads `checking` until that check says what Claude Code makes of it (KERNEL-935).
    */
   async mcpSignIn(provider: Provider, accountId: string, server: string): Promise<AccountProfile[]> {
     const name = server.trim()
@@ -1314,6 +1367,7 @@ export class Providers extends Feature {
       throw e
     } finally { this.adding.delete('claude') }
     step({ step: 'done' })
+    this.mcpLanded.set(accountId, (this.mcpLanded.get(accountId) ?? new Map<string, string | undefined>()).set(name, undefined))
     if (!connector) {
       const list = this.mcpSignIns.get(accountId)
       if (list) this.mcpSignIns.set(accountId, list.filter((s) => s.server !== name))

@@ -1,73 +1,73 @@
 /* Projects, New project, Connect a repo, Open a folder, Project setup (KERNEL-20). Tokens only. */
 .rm-tabs { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid var(--line); }
-.rm-tabs .pill { gap: 6px; font-size: 13px; }
-.rm-n { font-size: 12px; color: var(--muted); font-weight: 400; }
+.rm-tabs .pill { gap: 6px; font-size: var(--fs-ui); }
+.rm-n { font-size: var(--fs-meta); color: var(--muted); font-weight: var(--fw-regular); }
 .rm-table { flex: 1; min-height: 0; overflow: auto; padding: 0 12px; }
 .rm-head, .rm-row { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.6fr) 150px 130px 90px; align-items: center; gap: 16px; padding: 0 12px; }
-.rm-head { height: 40px; font-size: 12px; color: var(--muted); }
+.rm-head { height: 40px; font-size: var(--fs-meta); color: var(--muted); }
 .rm-row { height: 60px; border-top: 1px solid var(--line); cursor: pointer; }
 .rm-row:hover { background: var(--nav-hover); }
 .rm-row:has(.rm-link:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
 .rm-link:focus-visible { outline: none; }
 .rm-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.rm-letter { width: 28px; height: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-3); font-size: 12px; font-weight: 600; }
-.rm-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-weight: 500; text-align: left; }
-.rm-desc { font-size: 12px; color: var(--muted); }
+.rm-letter { width: 28px; height: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-3); font-size: var(--fs-meta); font-weight: var(--fw-semibold); }
+.rm-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-weight: var(--fw-medium); text-align: left; }
+.rm-desc { font-size: var(--fs-meta); color: var(--muted); }
 .rm-source { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ink-2); }
 .rm-source svg { color: var(--muted); flex-shrink: 0; }
-.rm-source .mono { font-size: 12px; }
+.rm-source .mono { font-size: var(--fs-meta); }
 .rm-team { display: flex; }
-.rm-team span { width: 20px; height: 20px; margin-right: -5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid var(--panel); background: var(--surface-3); color: var(--ink-2); font-size: 8.5px; font-weight: 600; }
-.rm-count { margin-left: 6px; font-size: 12px; color: var(--muted); }
-.rm-status { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-size: 12px; color: var(--ink-2); }
+.rm-team span { width: 20px; height: 20px; margin-right: -5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid var(--panel); background: var(--surface-3); color: var(--ink-2); font-size: var(--fs-tile-xs); font-weight: var(--fw-semibold); }
+.rm-count { margin-left: 6px; font-size: var(--fs-meta); color: var(--muted); }
+.rm-status { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-size: var(--fs-meta); color: var(--ink-2); }
 .rm-status[data-state='you'] { border-color: var(--line-4); color: var(--ink); }
 .rm-status[data-state='idle'], .rm-status[data-state='archived'] { border-color: var(--line-2); color: var(--muted); }
-.rm-show { margin-left: auto; flex-shrink: 0; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; text-decoration: underline; }
+.rm-show { margin-left: auto; flex-shrink: 0; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--fs-meta); text-decoration: underline; }
 .rm-show:hover { color: var(--ink); }
-.rm-updated { font-size: 12px; color: var(--muted); text-align: right; }
+.rm-updated { font-size: var(--fs-meta); color: var(--muted); text-align: right; }
 
 /* New project */
-.nr-crumbs { display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 10px 0 18px; font-size: 12px; color: var(--muted); }
+.nr-crumbs { display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 10px 0 18px; font-size: var(--fs-meta); color: var(--muted); }
 .nr-crumbs > span:not(.grow) { color: var(--ink-2); }
 .nr-crumb { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: var(--r-sm); border: 1px solid var(--line-2); }
 .nr-body { display: flex; flex-direction: column; gap: 18px; padding: 6px 18px 18px; }
-.nr-name { height: 32px; padding: 0; border: 0; outline: none; background: transparent; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.4px; }
-.nr-desc { height: 22px; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: 14px; }
-.nr-label { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
-.nr-hint { margin: 0; font-size: 12px; color: var(--muted); }
+.nr-name { height: 32px; padding: 0; border: 0; outline: none; background: transparent; font-size: var(--fs-title-sm); font-weight: var(--fw-semibold); color: var(--ink); letter-spacing: -0.4px; }
+.nr-desc { height: 22px; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: var(--fs-chat); }
+.nr-label { margin: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
+.nr-hint { margin: 0; font-size: var(--fs-meta); color: var(--muted); }
 .nr-sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .nr-source { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--panel); color: var(--ink-2); text-align: left; }
 .nr-source:hover { background: var(--surface); }
 .nr-source[aria-checked='true'] { border-color: var(--line-4); background: var(--surface-3); }
 .nr-source svg { color: var(--ink-2); }
-.nr-source-title { font-size: 13px; font-weight: 500; }
-.nr-source-sub { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.nr-source-title { font-size: var(--fs-ui); font-weight: var(--fw-medium); }
+.nr-source-sub { font-size: var(--fs-meta); color: var(--muted); line-height: var(--lh-snug); }
 .nr-tick { position: absolute; top: 10px; right: 10px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--ink); color: var(--on-ink); }
 .nr-tick svg { color: var(--on-ink); }
 .nr-fields { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 8px; }
 .nr-field { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 6px 0 10px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--panel); }
-.nr-field-value { flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nr-field-input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; font-size: 12.5px; }
-.nr-branch { padding: 0 10px; font-size: 12.5px; outline: none; color: var(--ink-2); }
+.nr-field-value { flex: 1; min-width: 0; font-size: var(--fs-code); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nr-field-input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; font-size: var(--fs-code); }
+.nr-branch { padding: 0 10px; font-size: var(--fs-code); outline: none; color: var(--ink-2); }
 .nr-branch:focus, .nr-field:focus-within { border-color: var(--ink-3); }
-.nr-change { height: 24px; padding: 0 9px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); font-size: 12px; }
+.nr-change { height: 24px; padding: 0 9px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); font-size: var(--fs-meta); }
 .nr-change:hover { background: var(--surface-3); }
-.nr-member { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border-radius: var(--r-pill); border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+.nr-member { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border-radius: var(--r-pill); border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-size: var(--fs-code); font-weight: var(--fw-medium); }
 .nr-member[aria-pressed='true'] { border-color: var(--line-3); background: var(--surface-3); color: var(--ink); }
 .nr-member:disabled { opacity: 1; cursor: default; }
-.nr-av { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--line-3); color: var(--ink-2); font-size: 8.5px; font-weight: 600; }
+.nr-av { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--line-3); color: var(--ink-2); font-size: var(--fs-tile-xs); font-weight: var(--fw-semibold); }
 .nr-member[aria-pressed='true'] .nr-av { background: var(--ink); color: var(--on-ink); }
-.nr-role { font-size: 11px; color: var(--muted); font-weight: 400; }
+.nr-role { font-size: var(--fs-badge); color: var(--muted); font-weight: var(--fw-regular); }
 
 /* Connect a repo, Open a folder */
 .rm-sub { margin: 0; padding: 0 18px 4px; color: var(--muted); }
 .rm-pad { display: flex; flex-direction: column; gap: 12px; padding: 12px 18px 16px; }
-.rm-av { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--ink); color: var(--on-ink); font-size: 9px; font-weight: 600; text-transform: uppercase; }
+.rm-av { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--ink); color: var(--on-ink); font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); text-transform: uppercase; }
 .cr-acct { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--pill-line); background: var(--panel); }
-.cr-sub { font-size: 12px; color: var(--muted); }
+.cr-sub { font-size: var(--fs-meta); color: var(--muted); }
 .cr-search { position: relative; }
 .cr-search svg { position: absolute; left: 11px; top: 10px; color: var(--muted); }
-.cr-search input { width: 100%; height: 34px; padding: 0 12px 0 32px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--panel); outline: none; font-size: 13px; }
+.cr-search input { width: 100%; height: 34px; padding: 0 12px 0 32px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--panel); outline: none; font-size: var(--fs-ui); }
 .cr-search input:focus { border-color: var(--ink-3); }
 /* The list bleeds to the modal's edge, past .rm-pad's 18px, and pads itself back, so its thumb sits on the edge and rows stay put (KERNEL-602). The gutter is
    held, as in the sidebar's .sb-scroll, so rows are the same width whether or not the list scrolls: 18px less the 6px thumb. OpenFolder sets its own margin-top. */
@@ -76,34 +76,32 @@
 .cr-repo:hover { background: var(--nav-hover); }
 .cr-repo[aria-checked='true'] { border-color: var(--line-3); background: var(--surface-3); }
 .cr-repo svg { color: var(--muted); flex-shrink: 0; }
-.cr-vis { height: 20px; padding: 0 7px; border-radius: var(--r-pill); border: 1px solid var(--line-2); font-size: 11.5px; line-height: 18px; color: var(--muted); }
-.cr-ago { width: 64px; text-align: right; font-size: 12px; color: var(--muted); }
-.cr-where { font-size: 12px; color: var(--muted); padding-left: 2px; }
-.cr-where .mono { font-size: 12px; }
-.cr-link { margin-left: 8px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 12px; text-decoration: underline; }
+.cr-vis { height: 20px; padding: 0 7px; border-radius: var(--r-pill); border: 1px solid var(--line-2); font-size: var(--fs-chip); line-height: 18px; color: var(--muted); }
+.cr-ago { width: 64px; text-align: right; font-size: var(--fs-meta); color: var(--muted); }
+.cr-where { font-size: var(--fs-meta); color: var(--muted); padding-left: 2px; }
+.cr-where .mono { font-size: var(--fs-meta); }
+.cr-link { margin-left: 8px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-meta); text-decoration: underline; }
 .of-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 136px; border-radius: var(--r-lg); border: 1.5px dashed var(--line-3); background: var(--panel); }
 .of-drop > svg { color: var(--ink-2); }
 .of-rowwrap { position: relative; flex-shrink: 0; }
 .of-row { height: 50px; }
-.of-init { position: absolute; right: 12px; top: 13px; height: 24px; padding: 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: transparent; color: var(--ink-2); font-size: 12px; }
+.of-init { position: absolute; right: 12px; top: 13px; height: 24px; padding: 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: transparent; color: var(--ink-2); font-size: var(--fs-meta); }
 .of-init:hover, .of-init[aria-pressed='true'] { background: var(--surface-3); color: var(--ink); }
-.of-note { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.of-note { margin: 0; font-size: var(--fs-code); color: var(--ink-2); }
 
 /* Project setup, remove project */
 .rs-ico[data-state='wait'] { color: var(--faint); }
 .rs-ico[data-state='run'] { color: var(--ink-2); }
 .rs-ico[data-state='warn'] { color: var(--ink); }
 .rs-note { margin-top: 4px; }
-.rs-note code { font: 12px var(--mono); color: var(--ink-2); white-space: nowrap; }
+.rs-note code { font: var(--fs-meta) var(--mono); color: var(--ink-2); white-space: nowrap; }
 .rs-acts .btn { height: 30px; }
 .rs-dash { display: inline-block; width: 15px; text-align: center; line-height: 15px; }
 .rs-fail { margin-top: 8px; white-space: pre-wrap; }
 .rs-fail .banner { align-items: flex-start; }
 .rs-out { margin: 10px 0 0; }
 .ob-check[data-state='wait'] .ob-detail { color: var(--muted); }
-.rm-box { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--r); background: var(--code-bg); font-size: 12px; }
-.rm-check { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
-.rm-check input { width: 14px; height: 14px; margin: 0; accent-color: var(--ink); }
+.rm-box { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--r); background: var(--code-bg); font-size: var(--fs-meta); }
 .nr-name:focus-visible, .nr-desc:focus-visible, .cr-search input:focus-visible { outline: none; }
 
 /* Narrow screens drop Source, then Agents (D-080). */
@@ -120,11 +118,100 @@
 .ob-page.rs-review { padding-top: 48px; padding-bottom: 32px; overflow-y: auto; }
 .rs-team { margin-top: 20px; border: 1px solid var(--panel-line); border-radius: var(--r-lg); background: var(--panel); }
 .rs-team-head { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px 12px; }
-.rs-team-head h2 { margin: 0; font-size: 14px; font-weight: 500; color: var(--ink); }
-.rs-team-head p { margin: 0; font-size: 12.5px; color: var(--muted); }
+.rs-team-head h2 { margin: 0; font-size: var(--fs-chat); font-weight: var(--fw-medium); color: var(--ink); }
+.rs-team-head p { margin: 0; font-size: var(--fs-code); color: var(--muted); }
 .rs-team-row { display: flex; align-items: center; gap: 16px; padding: 12px 16px; border-top: 1px solid var(--line); }
-.rs-team-text { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12.5px; color: var(--muted); }
-.rs-team-label { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.rs-team-text { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: var(--fs-code); color: var(--muted); }
+.rs-team-label { font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink-2); }
 .rs-team-text > [data-gap] { color: var(--ink-3); }
-.rs-team-warn { display: flex; align-items: flex-start; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-2); }
+.rs-team-warn { display: flex; align-items: flex-start; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); font-size: var(--fs-code); color: var(--ink-2); }
 .rs-team-warn svg { flex-shrink: 0; margin-top: 2px; color: var(--ink); }
+.cr-name { font-weight: var(--fw-medium); }
+.cr-path { font-size: var(--fs-code); }
+.cr-empty { margin: 0; padding: 10px 12px; }
+.rm-pad.of-body { gap: 14px; }
+.of-hint { color: var(--ink-2); }
+.of-error { margin: 0; font-size: var(--fs-code); }
+.cr-list.of-list { margin-top: -6px; }
+.cr-sub.of-dirty { color: var(--ink-2); }
+.header.pj-header { padding-right: 12px; }
+.pj-empty { margin: 0; padding: 24px; }
+.ob-link.ps-all { align-self: flex-start; margin-top: 12px; }
+.np-hint { font-size: var(--fs-ui); color: var(--ink-2); }
+.np-gap-6 { gap: 6px; }
+.np-gap-8 { gap: 8px; }
+.nr-source-text { gap: 2px; }
+.nr-label-note { font-weight: var(--fw-regular); }
+.row.nr-team { flex-wrap: wrap; gap: 6px; }
+
+/* Clone a GitHub repo (KERNEL-945): a URL, your repos with their owner's avatar, and the folder it lands in. */
+.cl-body { display: flex; flex-direction: column; gap: 18px; padding-top: 4px; position: relative; }
+.cl-acct { position: absolute; top: -40px; right: 34px; display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px 0 3px; border: 1px solid var(--line-3); border-radius: var(--r-pill); font-size: var(--fs-meta); color: var(--ink-2); }
+.cl-av { flex-shrink: 0; border-radius: 50%; object-fit: cover; background: var(--surface-3); }
+.cl-av-none { display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); color: var(--ink-2); text-transform: lowercase; }
+.cl-field { display: flex; flex-direction: column; gap: 6px; }
+.cl-label { font-size: var(--fs-meta); color: var(--ink-3); }
+.cl-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink); font-size: var(--fs-code); outline: none; }
+.cl-input:focus { border-color: var(--ink-3); }
+.cl-list { display: flex; flex-direction: column; gap: 2px; height: 232px; overflow-y: auto; scrollbar-gutter: stable; margin: 2px -8px 0; }
+.cl-repo { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 6px 12px 6px 8px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink); text-align: left; }
+.cl-repo:hover { background: var(--nav-hover); }
+.cl-repo[aria-checked='true'] { background: var(--surface-3); }
+.cl-repo > svg { flex-shrink: 0; color: var(--muted); }
+.cl-repo[aria-checked='true'] > svg:last-child { color: var(--ink); }
+.cl-repo-text { min-width: 0; gap: 1px; font-size: var(--fs-ui); }
+.cl-desc { font-size: var(--fs-meta); color: var(--muted); }
+.cl-hint { font-size: var(--fs-meta); color: var(--muted); }
+.cl-hint .mono { color: var(--ink-2); }
+.cl-kbd { margin-left: 4px; font: var(--fs-meta) var(--mono); opacity: 0.6; }
+.cl-error { margin: 0; font-size: var(--fs-meta); color: var(--del); }
+
+/* Open a folder (KERNEL-946): one list with the pick in place, and what opening does under it. No drop box: the whole dialog takes a dropped folder. */
+.of-body2 { display: flex; flex-direction: column; padding: 0 18px 4px; }
+.of-body2[data-over] { outline: 1px dashed var(--line-4); outline-offset: -4px; border-radius: var(--r-lg); }
+.of-head { display: flex; align-items: center; gap: 12px; }
+.of-sub { flex: 1; margin: 0; padding: 0; }
+.of-list2 { display: flex; flex-direction: column; gap: 2px; margin: 12px -8px 0; max-height: 236px; overflow-y: auto; scrollbar-gutter: stable; }
+.of-row2 { display: flex; align-items: center; gap: 12px; height: 44px; flex-shrink: 0; padding: 0 12px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink); text-align: left; }
+.of-row2:hover { background: var(--nav-hover); }
+.of-row2[aria-checked='true'] { background: var(--surface-3); }
+.of-row2 > svg { flex-shrink: 0; color: var(--muted); }
+.of-row2[aria-checked='true'] > svg { color: var(--ink); }
+.of-row2-text { min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.of-row2-name { font-weight: var(--fw-medium); white-space: nowrap; }
+.of-row2-path { min-width: 0; font-size: var(--fs-meta); color: var(--faint); }
+.of-row2-state { font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
+.of-row2-tick { width: 14px; display: inline-flex; color: var(--ink); }
+.of-detail { margin: 10px -18px 0; padding: 14px 18px 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.of-line { margin: 0; display: flex; align-items: center; gap: 8px; font-size: var(--fs-meta); color: var(--muted); }
+.of-line .mono { color: var(--ink-2); }
+.of-line > svg { color: var(--ink-3); flex-shrink: 0; }
+.of-why { display: block; line-height: var(--lh); color: var(--ink-3); }
+
+/* A new private repo's owner and name (KERNEL-944), in Open a folder and New project. */
+.rn { display: flex; flex-direction: column; gap: 6px; }
+.rn-labels { display: grid; grid-template-columns: 180px 14px 1fr; column-gap: 8px; }
+.rn-labels > :last-child { grid-column: 3; }
+.rn-row { display: flex; align-items: center; gap: 8px; }
+.rn-owner { width: 180px; flex-shrink: 0; }
+.rn-owner .select-trigger { width: 100%; height: 36px; }
+.rn-av { width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; background: var(--surface-3); display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); color: var(--ink-2); }
+.rn-slash { color: var(--muted); }
+.rn-name { flex: 1; min-width: 0; font-size: var(--fs-ui); }
+.rn-status { margin: 0; display: flex; align-items: center; gap: 6px; min-height: 18px; font-size: var(--fs-meta); color: var(--muted); }
+.rn-status .mono { color: var(--ink-2); }
+.rn-status > svg { color: var(--ink-3); }
+.rn-label { font-size: var(--fs-meta); color: var(--ink-3); }
+.rn-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink); outline: none; }
+.rn-input:focus { border-color: var(--ink-3); }
+.of-err { margin: 10px 0 0; font-size: var(--fs-meta); }
+
+/* New project from scratch (KERNEL-947): name, location and its private GitHub repo. */
+.nps-body { display: flex; flex-direction: column; gap: 16px; margin: 0; padding: 0 18px 6px; }
+.nps-intro { margin: 0; font-size: var(--fs-meta); line-height: var(--lh); color: var(--muted); }
+.nps-intro code { font: var(--fs-meta) var(--mono); color: var(--ink-2); }
+.nps-field { display: flex; flex-direction: column; gap: 6px; }
+.nps-hint { font-size: var(--fs-meta); color: var(--muted); }
+.nps-hint .mono { color: var(--ink-2); }
+.nps-other { font-size: var(--fs-meta); color: var(--muted); }
+.nps-other .cr-link { margin-left: 0; }

@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { go, lastProject, useStore } from '../../store'
+import { useRemembered } from '../../remember'
 import { Banner, Button } from '../../ui'
 import { GithubIssues } from './GithubIssues'
 import { LinearIssues } from './LinearIssues'
-import { IssueSkeleton, NoTracker, type ProjectHead } from './parts'
+import { IssueSkeleton, NoTracker, trackerChoice, type IssueTracker, type ProjectHead } from './parts'
 import { WorkHeader } from '../work/WorkHeader'
 import { useOpenPrCount } from '../prs/model'
+import { activeTracker } from './model'
 import { useProjectTracker } from './useProjectTracker'
 import './issues.css'
 
@@ -14,7 +16,7 @@ import './issues.css'
  * was), the project's GitHub Issues, or a line saying the project has no tracker. The route's `projectId` picks the project, else the one used
  * last. The project menu in the header switches to another project's tracker.
  */
-export function Issues({ issueId, projectId }: { issueId?: string; projectId?: string }) {
+export function Issues({ issueId, projectId, tracker }: { issueId?: string; projectId?: string; tracker?: IssueTracker }) {
   const projects = useStore((s) => s.projects)
   const choices = useMemo(() => projects.filter((r) => !r.archived && !r.hidden), [projects])
   // The project opened last, read once. A store selector runs on every change and must not touch localStorage.
@@ -25,11 +27,21 @@ export function Issues({ issueId, projectId }: { issueId?: string; projectId?: s
 
   const { read, retry } = useProjectTracker(project?.id)
   const prCount = useOpenPrCount()
+  // The choice is saved per project. A route that names a tracker, or an issue `#41`, shows that one without saving it.
+  const [saved, save] = useRemembered(`kernel.issuesTracker:${project?.id ?? ''}`, trackerChoice)
 
   // With no project there is no tracker to read, and Linear's list needs none.
   if (!project) return <LinearIssues issueId={issueId} head={head} />
-  if (read.kind === 'ready' && read.tracker.kind === 'linear') return <LinearIssues key={project.id} issueId={issueId} head={head} />
-  if (read.kind === 'ready' && read.tracker.kind === 'github') return <GithubIssues key={project.id} project={project} where={read.tracker.where} issueId={issueId} head={head} />
+  if (read.kind === 'ready' && read.tracker.kind !== 'none') {
+    const t = read.tracker
+    const active = activeTracker(t, { issueId, route: tracker, saved })
+    // The switch drops the open issue, which belongs to the tracker it came from.
+    const onTracker = (next: IssueTracker) => { save(next); go({ name: 'issues', projectId: project.id }) }
+    const withSwitch: ProjectHead = { ...head, tracker: { active, available: t.available, onChange: onTracker } }
+    return active === 'github'
+      ? <GithubIssues key={`${project.id}|github`} project={project} where={t.available.github?.where ?? t.where} issueId={issueId?.startsWith('#') ? issueId : undefined} head={withSwitch} />
+      : <LinearIssues key={`${project.id}|linear`} issueId={issueId?.startsWith('#') ? undefined : issueId} head={withSwitch} />
+  }
 
   return (
     <div className="panel">

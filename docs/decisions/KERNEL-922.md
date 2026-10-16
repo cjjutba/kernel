@@ -1,0 +1,5 @@
+**Chat spots survive a restart, and Scroll to bottom counts new messages.** Amends KERNEL-765 and KERNEL-918.
+
+- A chat's spot (anchors, at-end state and the last message the reader sent) is stored through `ui/keptScroll.ts` under `chat:<chatId>`. Row heights stay in memory in `chatPlace.ts` and are never persisted. `dropPlace` and the archived-workspace drops work against the shared store, which also prunes dead chats.
+- A transcript restores and saves only once its history has loaded (`itemsLoaded`), so the empty first render after a restart never overwrites the saved spot. The follow-on-send rule waits for the same moment, so the first load is the chat opening and not a send.
+- Scroll to bottom shows "N new" for messages that arrived since the reader left the end. A message is a reply, or a user item that is a teammate's or the team's message. Steps, tool rows, thinking, approvals and the reader's own sends don't count, and a reply that streams counts once. The count is taken from the real items against the thread as it was when the reader scrolled away, and clears when the reader reaches the end. The button's label is "Scroll to bottom, N new".

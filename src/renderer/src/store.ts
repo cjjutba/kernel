@@ -312,6 +312,9 @@ const LAST_PLACE = 'kernel.lastPlace'
 let fixtureMode = false
 /** Fixture mode runs on a shared folder of its own and must neither read nor write what a real launch saved. */
 export const isFixture = () => fixtureMode
+let fixturePersist = false
+/** Fixture mode with KERNEL_FIXTURE_PERSIST=1: remembered choices use real localStorage, for scripts that relaunch the app (scroll-check). */
+export const fixturePersists = () => fixtureMode && fixturePersist
 function savePlace() {
   if (!state.system.booted || fixtureMode) return
   const place = placeToSave(state, returnTo)
@@ -919,6 +922,7 @@ async function start() {
     call('threads.list', {}).catch((): Thread[] => [])
   ])
   fixtureMode = !!fixture
+  fixturePersist = !!fixture?.persist
   // A retry that works drops the error here, so the error screen keeps its busy button until the lists are in.
   actions.ui.setStartError(undefined)
   setState({ projects, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings, shared: Object.fromEntries(shared.map((f) => [f.id, f])), threads: Object.fromEntries(threads.map((t) => [t.id, t])) })
@@ -933,24 +937,21 @@ async function start() {
   // Chosen before the branches below, so a launch that stops at the checks still has its tabs back, and the first move after the checks
   // can't save an empty tab list over them. Continue on the checks screen asks again and lands on the same place.
   const opening = launchRoute()
-  // A fresh install always starts at Welcome, whose Get started runs the checks.
+  // A fresh install starts at the splash, which opens New chat when its wordmark has settled (KERNEL-942).
   // Replace, so Back right after launch has nowhere to go.
   const replace = { history: 'replace' } as const
-  if (!projects.length) go({ name: 'onboarding', step: 'welcome' }, replace)
+  if (!projects.length) go({ name: 'onboarding', step: 'splash' }, replace)
   else go(opening, replace)
   for (const r of projects) void loadProject(r.id).catch(() => undefined)
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)
   // The checks rerun on every launch, after the app is up: they run claude and gh one after another and can take a while on a slow Mac.
-  // Only a blocking failure takes the screen (KERNEL-27, KERNEL-213), and only if nothing has moved you since the route above and no modal is open,
-  // because `go` closes modals. Otherwise a toast says so and nothing you are doing is interrupted.
-  const shown = state.ui.route
+  // They never take the screen (KERNEL-942). A blocking failure shows above New chat's box with its fix, and a launch that opens
+  // somewhere else hears about it in a toast.
   void call('preflight.run', undefined).then((checks) => {
     actions.system.setPreflight(checks)
     const blocking = checks.find((c) => !c.ok && c.blocking)
-    if (!projects.length || !blocking) return
-    if (state.ui.route === shown && !state.ui.modal) go({ name: 'onboarding', step: 'checks' }, replace)
-    else actions.ui.toast({ title: blocking.title, sub: 'Kernel will show the checks the next time it starts.' })
+    if (blocking && projects.length && state.ui.route.name !== 'leadNew') actions.ui.toast({ title: blocking.title, sub: 'New chat shows how to fix it.' })
   }).catch(() => undefined)
   // After an update installs, What's new opens once with that version's notes (KERNEL-30). It waits for the route above, which closes modals,
   // and carries its own copy, since the updater's first check pushes a new state that drops `installed` and the notes.

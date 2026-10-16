@@ -38,32 +38,32 @@ beforeEach(() => {
   getState().ui.toasts.forEach((t) => actions.ui.dismissToast(t.id))
 })
 
-describe('boot and a blocking check that fails late', () => {
-  it('opens the app before the checks answer, then moves to Checks if nothing else is going on', async () => {
+describe('boot and a blocking check that fails late (KERNEL-942)', () => {
+  it('opens the app before the checks answer, and never moves to a checks screen', async () => {
     const finishChecks = await bootWith([portTaken])
     expect(getState().system.booted).toBe(true)
     expect(getState().ui.route).toEqual(opened)
     finishChecks()
     await settle()
-    expect(getState().ui.route).toEqual({ name: 'onboarding', step: 'checks' })
+    expect(getState().ui.route).toEqual(opened)
+    expect(getState().system.preflight).toEqual([portTaken])
+    expect(getState().ui.toasts.map((t) => t.title)).toEqual(['Port 7420 is taken'])
   })
 
-  it('leaves an open modal and the route alone, and says what failed in a toast', async () => {
+  it('leaves an open modal alone', async () => {
     const finishChecks = await bootWith([portTaken])
     actions.ui.openModal({ name: 'checkHooks' })
     finishChecks()
     await settle()
     expect(getState().ui.route).toEqual(opened)
     expect(getState().ui.modal).toEqual({ name: 'checkHooks' })
-    expect(getState().ui.toasts.map((t) => t.title)).toEqual(['Port 7420 is taken'])
   })
 
-  it('leaves the route alone after you moved on, with a toast', async () => {
+  it('says nothing in a toast on New chat, where the line above the box shows the check', async () => {
     const finishChecks = await bootWith([portTaken])
-    actions.ui.go({ name: 'inbox' })
+    actions.ui.go({ name: 'leadNew', projectId: 'r1' })
     finishChecks()
     await settle()
-    expect(getState().ui.route).toEqual({ name: 'inbox' })
-    expect(getState().ui.toasts).toHaveLength(1)
+    expect(getState().ui.toasts).toHaveLength(0)
   })
 })

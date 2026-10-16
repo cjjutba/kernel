@@ -54,7 +54,7 @@ export function WaitlistReveal({ className = '' }: { className?: string }) {
       <div id={`${id}-form`} data-open={open || undefined} className="reveal" inert={!open}>
         <div className="min-h-0 overflow-hidden">
           <div className="pt-4 pb-1">
-            <WaitlistForm className="max-w-140" />
+            <WaitlistForm className="max-w-section-lead" />
             <p className="mt-2 text-small text-faint">
               We email you once, when Kernel supports your platform.{' '}
               <Link href="/docs/privacy#waitlist" className="text-muted underline decoration-rule underline-offset-3 hover:text-ink">

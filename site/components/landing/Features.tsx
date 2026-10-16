@@ -1,6 +1,7 @@
 import { SectionHead } from '@/components/ui/SectionHead'
 import { Clip } from './Clip'
 import { SpotlightGrid } from './SpotlightGrid'
+import { Section } from '@/components/ui/Container'
 
 // What surrounds the loop the hero shows, as a bento of clips recorded from the real app on sample data
 // (demo/clips.ts). Two wide tiles bracket two rows of pairs. Every clip is the full window, so all of them share an aspect.
@@ -69,11 +70,11 @@ function Tile({ f }: { f: Feature }) {
   return (
     <article aria-labelledby={f.id} className={`spot-card flex flex-col rounded-frame border border-line bg-surface-1 ${f.wide ? 'col-span-full' : ''}`}>
       {/* The text sits on a fixed floor, so a line more or less (fonts measure a little differently across systems) never moves the clip. */}
-      <div className={`px-10 pt-10 pb-8 max-nav:px-5 max-nav:pt-7 max-nav:pb-6 ${f.wide ? '' : 'faq:min-h-44'}`}>
+      <div className={`px-10 pt-10 pb-8 max-nav:px-5 max-nav:pt-7 max-nav:pb-6 ${f.wide ? '' : 'faq:min-h-tile-text'}`}>
         <h3 id={f.id} className={`text-balance ${f.wide ? 'text-h3' : 'text-entry-title max-nav:text-h3'}`}>
           {f.title}
         </h3>
-        {f.text ? <p className="mt-3 max-w-110 text-body text-muted">{f.text}</p> : null}
+        {f.text ? <p className="mt-3 max-w-short text-body text-muted">{f.text}</p> : null}
       </div>
       <div className="mt-auto px-10 pb-10 max-nav:px-3 max-nav:pb-3">
         {/* Each clip sits in a smaller version of the hero demo's bezel, with the same glow along its top edge. */}
@@ -90,7 +91,7 @@ function Tile({ f }: { f: Feature }) {
 
 export function Features() {
   return (
-    <section id="features" aria-labelledby="features-title" className="mx-auto max-w-312 px-6 pt-40 max-nav:pt-24">
+    <Section id="features" aria-labelledby="features-title">
       <SectionHead
         title="The whole team, in one window."
         titleId="features-title"
@@ -100,6 +101,6 @@ export function Features() {
           <Tile key={f.id} f={f} />
         ))}
       </SpotlightGrid>
-    </section>
+    </Section>
   )
 }

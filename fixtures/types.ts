@@ -1,6 +1,6 @@
 import type { AccountProfile, MoveNotice, MovePreview, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, ClaudeAccount, DeletePreview,
-  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Project, ProjectSettings, ProjectTracker, SharedAnchor, SharedComment, SharedFile,
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, GitHubOwner, RepoSummary, Project, ProjectSettings, ProjectTracker, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { Channel, PushEvent } from '@shared/ipc'
@@ -49,6 +49,10 @@ export interface Fixture {
   openItems?: OpenItem[]
   /** The signed-in user's GitHub repos (ConnectRepo.png). */
   repos?: RepoSummary[]
+  /** Who a new GitHub repo can belong to (KERNEL-944). Signed in as samrivera when unset. */
+  githubOwners?: GitHubOwner[]
+  /** owner/repo names Repository name says are taken (KERNEL-944). */
+  takenRepos?: string[]
   /** Recent project folders (OpenFolder.png). */
   folders?: FolderInfo[]
   /** By chat id. */
@@ -84,7 +88,7 @@ export interface Fixture {
   settings?: AppSettings
   /** When set, `preflight.fix` fails with this message, so a shot can show a fix that did not work (SetupPortBusyFixFailed, KERNEL-865). */
   preflightFixError?: string
-  /** Channels whose calls never answer, so a screenshot can show the wait (IssuesLoading, AccountSwitching, KERNEL-759). */
+  /** Channels whose calls never answer, so a screenshot can show the wait (IssuesLoading, KERNEL-759). */
   hold?: string[]
   /**
    * By project id. `sources` is optional: a fixture without it reads as every value coming from the app default. So is

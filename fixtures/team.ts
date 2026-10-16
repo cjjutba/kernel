@@ -46,8 +46,7 @@ const withMenu = (menu: 'projects' | `project:${string}`, route: Fixture['ui']['
 const setupSteps: ProjectSetupStep[] = [
   { id: 'clone', title: 'Clone samrivera/client-c', detail: '~/Projects/client-c', state: 'ok', meta: '4s' },
   { id: 'worktrees', title: 'Create the worktree folder', detail: '~/kernel/worktrees/client-c', state: 'ok' },
-  { id: 'install', title: 'Install dependencies', detail: 'pnpm install', state: 'run', meta: 'running' },
-  { id: 'copy', title: 'Copy local files', detail: '.env.local, .env.test', state: 'wait' },
+  { id: 'copy', title: 'Copy local files', detail: '.env.local, .env.test', state: 'run', meta: 'running' },
   { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'wait' },
   { id: 'push', title: 'Check push access', detail: 'samrivera can push to samrivera/client-c', state: 'wait' },
   { id: 'agents', title: 'Seat agents', detail: 'Kernel, Kai, Noor, Ivy, Theo from .claude/agents', state: 'wait' }
@@ -57,7 +56,6 @@ const setupSteps: ProjectSetupStep[] = [
 const warnSteps: ProjectSetupStep[] = [
   { id: 'clone', title: 'Clone cjjutba/client-c', detail: '~/Projects/client-c', state: 'ok', meta: '4s' },
   { id: 'worktrees', title: 'Create the worktree folder', detail: '~/kernel/worktrees/client-c', state: 'ok' },
-  { id: 'install', title: 'Install dependencies', detail: 'pnpm install', state: 'ok', meta: '12s' },
   { id: 'copy', title: 'Copy local files', detail: '.env, .env.local, .env.production', state: 'warn', production: ['.env', '.env.production'] },
   { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'ok' },
   { id: 'push', title: 'Git can\u2019t push to cjjutba/client-c', detail: 'gh is signed in as cjjutba, but git isn\u2019t using that login, so agents can\u2019t push yet.', state: 'warn', fix: { command: 'gh auth setup-git', action: 'recheck' } },
@@ -68,7 +66,6 @@ const shop: Project = { id: 'project-shop', name: 'Shop', kind: 'folder', path: 
 const shopSteps: ProjectSetupStep[] = [
   { id: 'clone', title: 'Use your folder', detail: '~/Projects/shop', state: 'ok' },
   { id: 'worktrees', title: 'Create the worktree folder', detail: '~/kernel/worktrees/shop', state: 'ok' },
-  { id: 'install', title: 'Install dependencies', detail: 'pnpm install', state: 'ok', meta: '12s' },
   { id: 'copy', title: 'Copy local files', detail: '.env.local, .env.test', state: 'ok' },
   { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'ok' },
   { id: 'agents', title: 'Seat agents', detail: 'Api, Architect, Web from .claude/agents, Kernel leads', state: 'ok', brought: 3 }
@@ -78,13 +75,21 @@ const hostSteps = (first: ProjectSetupStep, host: string, folder: string, o: { p
   first,
   { id: 'host', title: 'Code host', detail: host, state: 'ok' },
   { id: 'worktrees', title: 'Create the worktree folder', detail: `~/kernel/worktrees/${folder}`, state: 'ok' },
-  ...setupSteps.filter((s) => s.id === 'install' || s.id === 'copy' || s.id === 'hooks' || s.id === 'agents' || (o.push && s.id === 'push'))
+  ...setupSteps.filter((s) => s.id === 'copy' || s.id === 'hooks' || s.id === 'agents' || (o.push && s.id === 'push'))
 ]
 
 const clientC: Project = { id: 'project-client-c', name: 'Client C', desc: 'Booking dashboard for a dental clinic', kind: 'repo', repo: 'samrivera/client-c', path: '/Users/you/Projects/client-c', defaultBranch: 'main', paused: false, createdAt: ago(MIN) }
 const repos = [
-  ['client-c', true, 2 * HOUR], ['personal-site', false, DAY], ['habit-tracker', true, 3 * DAY], ['recipe-box', true, 7 * DAY], ['starter-kit', true, 14 * DAY], ['starter-kit-mobile', true, 21 * DAY]
-].map(([name, priv, age]) => ({ fullName: `samrivera/${name}`, name: name as string, private: priv as boolean, updatedAt: ago(age as number) }))
+  ['client-c', true, 2 * HOUR, 'Booking dashboard for a dental clinic'], ['personal-site', false, DAY, 'Portfolio and writing'], ['habit-tracker', true, 3 * DAY, ''], ['recipe-box', true, 7 * DAY, 'Recipes with a weekly shopping list'], ['starter-kit', true, 14 * DAY, ''], ['starter-kit-mobile', true, 21 * DAY, '']
+].map(([name, priv, age, description]) => ({ fullName: `samrivera/${name}`, name: name as string, private: priv as boolean, updatedAt: ago(age as number), ...(description ? { description: description as string } : {}) }))
+
+/** Open a folder's recent folders (KERNEL-946): two on GitHub, one repo with no remote, one plain folder. */
+const recentFolders = [
+  { path: '/Users/you/Projects/habit-tracker', git: true, branch: 'main', dirty: 2, remote: 'samrivera/habit-tracker' },
+  { path: '/Users/you/Projects/recipe-box', git: true, branch: 'main', dirty: 0 },
+  { path: '/Users/you/Projects/personal-site', git: true, branch: 'main', dirty: 0, remote: 'samrivera/personal-site' },
+  { path: '/Users/you/Desktop/sandbox', git: false }
+]
 
 /** Local time today or yesterday, so lists group rows under Today and Yesterday whatever day the shots run. */
 const clock = (daysAgo: number, h: number, m: number) => { const d = new Date(); d.setDate(d.getDate() - daysAgo); d.setHours(h, m, 0, 0); return d.getTime() }
@@ -520,12 +525,20 @@ const githubIssues = (): GithubIssueDetail[] => {
 }
 
 /** Client B reads GitHub Issues and Portfolio has no tracker. The other projects read Linear, as every fixture before KERNEL-438 drew them. */
-const trackerProjects = { trackers: { [ids.projectB]: { kind: 'github' as const, where: 'cjjutba/client-b' }, [ids.projectPortfolio]: { kind: 'none' as const } } }
+const trackerProjects = { trackers: { [ids.projectB]: { kind: 'github' as const, where: 'cjjutba/client-b', available: { linear: false, github: { where: 'cjjutba/client-b' } } }, [ids.projectPortfolio]: { kind: 'none' as const, available: { linear: false } } } }
 
 /** The Issues page on Client B (GitHub) or Portfolio (no tracker). */
 const issuesTrackerScene = (f: Fixture, route: { issueId?: string; projectId: string }): Partial<Fixture> => ({
   ...homeScene(f), integrations: linearIntegrations, trackers: trackerProjects.trackers, githubIssues: { [ids.projectB]: githubIssues() },
   ui: { route: { name: 'issues', ...route } }
+})
+
+/** KERNEL-938: Client A on Linear, with a github.com remote too, so the header offers Linear | GitHub. `github: false` drops the remote. */
+const bothTrackers = (f: Fixture, route: { issueId?: string; tracker?: 'linear' | 'github' }, github = true): Partial<Fixture> => ({
+  ...issuesScene(f, { issueId: route.issueId ?? 'KERNEL-31' }),
+  trackers: { [ids.projectA]: { kind: 'linear' as const, where: 'cj-jutba', available: { linear: true, ...(github ? { github: { where: 'samrivera/client-a' } } : {}) } } },
+  githubIssues: { [ids.projectA]: githubIssues() },
+  ui: { route: { name: 'issues', projectId: ids.projectA, ...route } }
 })
 
 /**
@@ -611,7 +624,7 @@ const projectSetupTeam = (f: Fixture, team?: TeamConfig): Partial<Fixture> => {
     agents: { ...(r.agents ?? f.agents), [shop.id]: ownCrew.filter((a) => a.id !== 'kernel-reviewer') },
     ...(team ? { projectSettings: { ...f.projectSettings, [shop.id]: { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {}, team } } } : {}),
     push: [{ type: 'project.setup', projectId: shop.id, steps: shopSteps }],
-    ui: { route: { name: 'onboarding', step: 'project', projectId: shop.id } }
+    ui: { route: { name: 'leadNew', projectId: shop.id } }
   }
 }
 
@@ -624,21 +637,21 @@ const manyIssues = (): LinearIssueDetail[] => {
   })
 }
 
-/** Setup that stopped on its install step. */
-const failedSteps: ProjectSetupStep[] = setupSteps.map((s) => (s.id === 'install' ? { ...s, state: 'fail' as const, meta: '38s', error: 'pnpm install exited with code 1' } : s.id === 'clone' || s.id === 'worktrees' ? s : { ...s, state: 'wait' as const }))
+/** Setup that stopped on its copy step (KERNEL-948: there is no install step any more). */
+const failedSteps: ProjectSetupStep[] = setupSteps.map((s) => (s.id === 'copy' ? { ...s, state: 'fail' as const, meta: undefined, error: 'Could not copy .env.local: permission denied' } : s.id === 'clone' || s.id === 'worktrees' ? s : { ...s, state: 'wait' as const }))
 
 /** KERNEL-877: what the engine pushes after Try again: the failed step and the rest back to wait, then each step runs and ends. */
 const retryEvents = (end: 'ok' | 'fail'): { afterMs: number; events: PushEvent[] }[] => {
-  const order = ['install', 'copy', 'hooks', 'push', 'agents']
-  const failure = 'pnpm install exited with code 1: ERR_PNPM_FETCH_503, the registry did not answer'
+  const order = ['copy', 'hooks', 'push', 'agents']
+  const failure = 'Could not copy .env.local: the file is locked by another app'
   const frame = (i: number, states: Record<string, Partial<ProjectSetupStep>>) => ({
     afterMs: 150 + i * 350,
     events: [{ type: 'project.setup' as const, projectId: clientC.id, steps: failedSteps.map((s) => (order.includes(s.id) ? { ...s, state: 'wait' as const, meta: undefined, error: undefined, ...states[s.id] } : s)) }]
   })
   const done = (n: number) => Object.fromEntries(order.slice(0, n).map((id) => [id, { state: 'ok' as const }]))
   const running = (n: number, id: string) => ({ ...done(n), [id]: { state: 'run' as const, meta: 'running' } })
-  if (end === 'fail') return [frame(0, {}), frame(1, { install: { state: 'run', meta: 'running' } }), frame(2, { install: { state: 'fail', meta: '9s', error: failure } })]
-  return [frame(0, {}), frame(1, running(0, 'install')), frame(2, done(1)), frame(3, running(1, 'copy')), frame(4, done(4)), frame(5, running(4, 'agents')), frame(6, done(5))]
+  if (end === 'fail') return [frame(0, {}), frame(1, { copy: { state: 'run', meta: 'running' } }), frame(2, { copy: { state: 'fail', meta: undefined, error: failure } })]
+  return [frame(0, {}), frame(1, running(0, 'copy')), frame(2, done(1)), frame(3, running(1, 'hooks')), frame(4, done(3)), frame(5, running(3, 'agents')), frame(6, done(4))]
 }
 export const teamFixtures: Record<string, Fixture> = {
   // KERNEL-253: Client B has its GitHub avatar, in grayscale, in the sidebar and on its card in the Projects list.
@@ -734,10 +747,9 @@ export const teamFixtures: Record<string, Fixture> = {
   ProjectsRowFocused: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'projects' } } })),
   // Audit: no project added yet, and the Projects page on its own.
   ProjectsEmpty: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'projects' } } })),
-  NewProject: scene((f) => ({
-    ...projectsScene(f),
-    ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'repo', name: 'Client C', desc: 'Booking dashboard for a dental clinic', from: 'samrivera/client-c', baseBranch: 'main' } } }
-  })),
+  // KERNEL-947: New project is from scratch only: a name, where it goes, and its private GitHub repo. NewProjectTaken picks a name that exists.
+  NewProject: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'scratch', name: 'Habit tracker', from: '' } } } })),
+  NewProjectTaken: scene((f) => ({ ...projectsScene(f), takenRepos: ['samrivera/habit-tracker'], ui: { route: { name: 'projects' }, modal: { name: 'newProject', prefill: { source: 'scratch', name: 'Habit tracker', from: '' } } } })),
   ConnectRepo: scene((f) => ({ ...projectsScene(f), repos, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
   // Audit: the repo list never answers, and the signed-in account has no repos.
   ConnectRepoLoading: scene((f) => ({ ...projectsScene(f), hold: ['github.repos'], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
@@ -754,27 +766,21 @@ export const teamFixtures: Record<string, Fixture> = {
   OpenFolderLoading: scene((f) => ({ ...projectsScene(f), hold: ['projects.recentFolders'], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   OpenFolderFailed: scene((f) => ({ ...projectsScene(f), fails: { 'projects.recentFolders': 'Permission denied reading the folder list.' }, ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   OpenFolderEmpty: scene((f) => ({ ...projectsScene(f), folders: [], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
-  OpenFolder: scene((f) => ({
-    ...projectsScene(f),
-    folders: [
-      { path: '/Users/you/Projects/habit-tracker', git: true, branch: 'main', dirty: 0 },
-      { path: '/Users/you/Projects/recipe-box', git: true, branch: 'dev', dirty: 3 },
-      { path: '/Users/you/Projects/personal-site', git: true, branch: 'main', dirty: 0 },
-      { path: '/Users/you/Desktop/sandbox', git: false }
-    ],
-    ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } }
-  })),
+  OpenFolder: scene((f) => ({ ...projectsScene(f), folders: recentFolders, ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
+  // KERNEL-946: the pick has no GitHub remote, then isn't a repo at all, so Open offers a private repo under the list.
+  OpenFolderNoRemote: scene((f) => ({ ...projectsScene(f), folders: [recentFolders[1], recentFolders[0], ...recentFolders.slice(2)], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
+  OpenFolderNotGit: scene((f) => ({ ...projectsScene(f), folders: [recentFolders[3], ...recentFolders.slice(0, 3)], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   ProjectSetup: scene((f) => ({
     ...projectsScene(f),
     projects: [...f.projects, clientC],
     push: [{ type: 'project.setup', projectId: clientC.id, steps: setupSteps }],
-    ui: { route: { name: 'onboarding', step: 'project', projectId: clientC.id } }
+    ui: { route: { name: 'leadNew', projectId: clientC.id } }
   })),
   ProjectSetupWarnings: scene((f) => ({
     ...projectsScene(f),
     projects: [...f.projects, clientC],
     push: [{ type: 'project.setup', projectId: clientC.id, steps: warnSteps }],
-    ui: { route: { name: 'onboarding', step: 'project', projectId: clientC.id } }
+    ui: { route: { name: 'leadNew', projectId: clientC.id } }
   })),
   // Audit: the install step failed and the later steps never ran.
   ProjectSetupFailed: { ...scene((f) => ({
@@ -782,7 +788,7 @@ export const teamFixtures: Record<string, Fixture> = {
     projects: [...f.projects, clientC],
     push: [{ type: 'project.setup', projectId: clientC.id, steps: failedSteps }],
     afterRetry: retryEvents('ok'),
-    ui: { route: { name: 'onboarding', step: 'project', projectId: clientC.id } }
+    ui: { route: { name: 'leadNew', projectId: clientC.id } }
   })), motion: { action: { click: 'Try again' }, ms: 3000, area: '.ob-col' } },
   // KERNEL-877: the motion presses Try again, and setup runs the failed step and the rest and finishes. The retry in the next one fails again, with a new reason.
   ProjectSetupRetryFailed: {
@@ -791,7 +797,7 @@ export const teamFixtures: Record<string, Fixture> = {
       projects: [...f.projects, clientC],
       push: [{ type: 'project.setup', projectId: clientC.id, steps: failedSteps }],
       afterRetry: retryEvents('fail'),
-      ui: { route: { name: 'onboarding', step: 'project', projectId: clientC.id } }
+      ui: { route: { name: 'leadNew', projectId: clientC.id } }
     })),
     motion: { action: { click: 'Try again' }, ms: 1800, area: '.ob-col' }
   },
@@ -799,13 +805,13 @@ export const teamFixtures: Record<string, Fixture> = {
     ...projectsScene(f),
     projects: [...f.projects, { ...clientC, host: 'github' }],
     push: [{ type: 'project.setup', projectId: clientC.id, steps: hostSteps(setupSteps[0], 'GitHub, samrivera/client-c', 'client-c', { push: true }) }],
-    ui: { route: { name: 'onboarding', step: 'project', projectId: clientC.id } }
+    ui: { route: { name: 'leadNew', projectId: clientC.id } }
   })),
   ProjectSetupLocal: scene((f) => ({
     ...projectsScene(f),
     projects: [...f.projects, { ...shop, host: 'local' }],
     push: [{ type: 'project.setup', projectId: shop.id, steps: hostSteps(shopSteps[0], 'Local, no GitHub remote. Kernel merges branches on this Mac.', 'shop', { push: false }) }],
-    ui: { route: { name: 'onboarding', step: 'project', projectId: shop.id } }
+    ui: { route: { name: 'leadNew', projectId: shop.id } }
   })),
   // KERNEL-397: setup is done in a repo that brought its own agents, and shows the team to check before the project opens.
   // KERNEL-555: Kernel is the only built-in agent, so this team has no reviewer and the picker opens on Kernel's code review.
@@ -861,6 +867,12 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesConnect: scene((f) => ({ ...issuesScene(f), integrations: linearIntegrations.map((i) => (i.id === 'linear' ? { ...i, connected: false, detail: 'Create workspaces from issues' } : i)) })),
   // Offline: the screen says Linear can't be reached whatever the last answer was.
   IssuesError: scene((f) => ({ ...issuesScene(f), push: [{ type: 'online', online: false }] })),
+  // KERNEL-938: the Linear | GitHub switch in the Work header. A Linear project on Linear, the same project on GitHub, GitHub disabled with no remote, gh signed out, and a #31 link opening GitHub.
+  IssuesTrackerLinear: scene((f) => bothTrackers(f, {})),
+  IssuesTrackerGitHub: scene((f) => bothTrackers(f, { tracker: 'github' })),
+  IssuesTrackerNoRemote: scene((f) => bothTrackers(f, {}, false)),
+  IssuesTrackerSignedOut: scene((f) => ({ ...bothTrackers(f, { tracker: 'github' }), fails: { 'github.issueList': "GitHubError[signed-out]: The GitHub CLI isn't signed in. Run gh auth login in a terminal." } })),
+  IssuesTrackerHashLink: scene((f) => bothTrackers(f, { issueId: '#31' })),
   // KERNEL-438: a project on GitHub Issues lists its own issues, with the project in the header. Linear's list is the account's and has no project.
   IssuesGitHub: scene((f) => issuesTrackerScene(f, { issueId: '#31', projectId: ids.projectB })),
   // The newest 100 is all GitHub returns, so the list ends with a note saying so.

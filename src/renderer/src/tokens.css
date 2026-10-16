@@ -37,7 +37,6 @@
      text-safe amber reads brown on a bar (feat-providers-redesign). */
   --needs-fill: #f2c55c;
   --del-fill: #f06363;
-  --tint-add: #173327;
   --tint-del: #2f191b;
   --tint-muted: #252527;
   --aside: #0d0d0e;
@@ -114,7 +113,6 @@
   --needs: #7a4f00;
   --needs-fill: #d97706;
   --del-fill: #dc3e42;
-  --tint-add: #d7f0e2;
   --tint-del: #fbe1e1;
   --tint-muted: #e8e8ec;
   --aside: #f7f7f8;
@@ -207,15 +205,41 @@
   --r-2xs: 4px; --r-xs: 6px; --r-sm: 8px; --r: 10px; --r-md: 12px; --r-lg: 16px; --r-xl: 18px; --r-pill: 999px;
   --font: 'Geist Variable', 'Geist', -apple-system, 'SF Pro Text', system-ui, sans-serif;
   --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
+  /* Type sizes (KERNEL-681), named by role and set to the values in use. A size that isn't here is a new token, never a literal in a screen;
+     test/theme.test.ts fails on one. Letter tiles and avatars take the tile sizes. The md and doc sizes are the markdown headings in a reply
+     and in a full-page doc. */
+  --fs-tile-xs: 8.5px; --fs-tile-sm: 9px; --fs-tile-md: 9.5px; --fs-tile: 10px;
+  --fs-badge: 11px; --fs-chip: 11.5px; --fs-meta: 12px; --fs-code: 12.5px; --fs-ui: 13px; --fs-row: 13.5px; --fs-chat: 14px;
+  --fs-sub: 15px; --fs-doc-h3: 15.5px; --fs-dialog: 16px; --fs-md-h1: 17px; --fs-doc-h2: 19px; --fs-title-sm: 20px; --fs-title: 22px;
+  --fs-doc-h1: 24px; --fs-page: 26px; --fs-wordmark: 42.5px;
+  /* Unitless line heights. A px line height stays next to the control height it centres text in. */
+  --lh-none: 1; --lh-compact: 1.2; --lh-tight: 1.25; --lh-heading: 1.3; --lh-snug: 1.4; --lh-ui: 1.45; --lh: 1.5; --lh-prose: 1.55;
+  --lh-relaxed: 1.6; --lh-code: 1.65; --lh-loose: 1.7;
+  /* Weights: 400 and 500, and 600 for page titles, names on cards, letter tiles and avatars, dialog headings and bold text in a reply. */
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-wordmark: 800;
+  /* Layers. 1 to 9 stay literal: they order siblings inside one component. Everything that floats over other components is here. */
+  --z-veil: 30; --z-scrim: 40; --z-modal: 50; --z-popover: 60; --z-submenu: 61; --z-preview: 65; --z-toast: 70; --z-tooltip: 90;
+  /* Motion. fast is hover and press feedback and every exit, base a fade in, glide a slide, slow a fold, swipe or sheet, enter a toast
+     rising. scroll-in and turn are 150ms: the scroll thumb appearing and a chevron turning. */
   --dur-fast: 120ms;
   --dur-base: 160ms;
   --dur-glide: 180ms;
+  --dur-scroll-in: 150ms; --dur-turn: 150ms; --dur-slow: 200ms; --dur-enter: 300ms; --dur-delay: 80ms;
+  --dur-spin: 0.8s; --dur-ring: 1.2s; --dur-pulse: 1.4s; --dur-sweep: 1.6s; --dur-breathe: 8s;
+  /* The splash (KERNEL-942): the K settles, then ernel wipes in. Reduced motion fades both instead. */
+  --dur-splash: 1.5s; --dur-splash-k: 0.3s; --dur-splash-rest: 1s; --dur-splash-fade: 0.6s; --ease-wipe: cubic-bezier(0.65, 0, 0.35, 1);
   --ease-out: ease-out;
   --ease-glide: cubic-bezier(0.45, 0, 0.05, 1);
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1); --ease-exit: cubic-bezier(0.4, 0, 1, 1); --ease-sweep: cubic-bezier(0.4, 0.1, 0.6, 0.9);
+  --ease-dip: cubic-bezier(0.37, 0, 0.63, 1);
+  /* Plan mode (KERNEL-322, KERNEL-418, KERNEL-565): every state change of the composer's plan mode runs over 0.5s. */
+  --plan-dur: 0.5s; --ease-plan: cubic-bezier(0.33, 0, 0.2, 1);
+  /* The archive beat (KERNEL-580). archiveMotion.tsx reads these from the root in ms. */
+  --archive-fold: var(--dur-base); --archive-fade: var(--dur-fast);
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { background: var(--canvas); color: var(--ink-2); font: 13px/1.45 var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; }
+body { background: var(--canvas); color: var(--ink-2); font: var(--fs-ui)/var(--lh-ui) var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; }
 button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: var(--ink-2); }
@@ -227,6 +251,9 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .add { color: var(--add); } .del { color: var(--del); }
 .row { display: flex; align-items: center; gap: 8px; }
 .col { display: flex; flex-direction: column; }
+.gap-2 { gap: 2px; } .gap-4 { gap: 4px; } .gap-6 { gap: 6px; } .gap-8 { gap: 8px; } .gap-10 { gap: 10px; }
+.t-chip { font-size: var(--fs-chip); } .t-meta { font-size: var(--fs-meta); } .t-code { font-size: var(--fs-code); } .t-medium { font-weight: var(--fw-medium); }
+.flush { margin: 0; }
 .grow { flex: 1; min-width: 0; }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .selectable { user-select: text; }
@@ -244,8 +271,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb { border-radius: var(--r-pill); background: var(--scroll-thumb); }
-:where(*) { --scroll-thumb: transparent; transition: --scroll-thumb 200ms ease-out; }
-:where([data-scrolling]) { --scroll-thumb: var(--line-4); transition-duration: 150ms; }
+:where(*) { --scroll-thumb: transparent; transition: --scroll-thumb var(--dur-slow) ease-out; }
+:where([data-scrolling]) { --scroll-thumb: var(--line-4); transition-duration: var(--dur-scroll-in); }
 @media (prefers-reduced-motion: reduce) { :where(*) { transition-duration: 0s; } }
 
 /* shell */
@@ -261,7 +288,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .nodrag { -webkit-app-region: no-drag; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; }
 /* The 32px strip under the sidebar and the main panel, the window's full width: usage on the left, the update pill on the right (KERNEL-588). */
-.footer { height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.footer { height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; font-size: var(--fs-meta); color: var(--muted); }
 .panel { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--r-md); overflow: hidden; }
 /* Every screen is a size container named panel, so `@container panel (max-width: ...)` lays it out for the space it has, sidebar or not (D-084). */
 .panel { container: panel / inline-size; }
@@ -269,7 +296,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 /* A header never wraps. Its mono detail (repo, branch, task count) gives way first. */
 .header > .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .header .menu { white-space: normal; }
-.header h1 { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
+.header h1 { margin: 0; font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
 /* Sidebar hidden: the header clears the traffic lights, which always sit on its row (KERNEL-431), and drags the window. */
 .app[data-sidebar='hidden'] .main { padding-left: 8px; }
 .app[data-sidebar='hidden'] .panel > .header { padding-left: 78px; }
@@ -291,13 +318,13 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .nav-sub { padding-left: 20px; }
 /* A few pixels between rows, so a hovered row's fill never touches the selected row's (Conductor). */
 .nav-list { display: flex; flex-direction: column; gap: 3px; }
-.section-label { height: 28px; display: flex; align-items: center; justify-content: space-between; margin-top: 16px; padding: 0 2px 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.section-label { height: 28px; display: flex; align-items: center; justify-content: space-between; margin-top: 16px; padding: 0 2px 0 8px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
 /* Hover-only buttons show on hover or keyboard focus. A mouse click also focuses the button, and must not keep it up. */
-.hv .more { opacity: 0; transition: opacity 0.12s; }
+.hv .more { opacity: 0; transition: opacity var(--dur-fast); }
 .hv:hover .more, .hv:has(:focus-visible) .more { opacity: 1; }
 
 /* controls */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: transparent; color: var(--ink-2); font-size: 12.5px; font-weight: 500; white-space: nowrap; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); white-space: nowrap; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .btn.primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
 .btn.ghost { border-color: transparent; color: var(--ink-2); }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: var(--on-solid); }
@@ -312,7 +339,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .btn.danger:where(:not(:disabled):active) { background: color-mix(in srgb, var(--danger) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--danger) 76%, var(--on-solid)); }
 .btn.merged:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--merged-solid) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--merged-solid) 88%, var(--on-solid)); }
 .btn.merged:where(:not(:disabled):active) { background: color-mix(in srgb, var(--merged-solid) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--merged-solid) 76%, var(--on-solid)); }
-.btn.lg { height: 32px; font-size: 13px; padding: 0 14px; border-radius: var(--r); }
+.btn.lg { height: 32px; font-size: var(--fs-ui); padding: 0 14px; border-radius: var(--r); }
 .btn:disabled { opacity: 0.55; cursor: default; }
 /* Busy: the work the button started is running (DESIGN.md). Every variant takes the canvas's Creating PR look. */
 .btn[aria-busy='true']:disabled { opacity: 1; background: var(--surface-3); border: 1px solid var(--line-3); color: var(--ink-3); }
@@ -320,40 +347,40 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 /* Hover brightens the icon with no fill behind it. A fill means on or open (`aria-pressed`, `aria-expanded`), never hover (DESIGN.md). */
 .icon-btn:hover { color: var(--ink); }
 .icon-btn:disabled { color: var(--faint); cursor: default; }
-.pill { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: var(--r-pill); border: 1px solid var(--pill-line); background: transparent; color: var(--muted); font-weight: 500; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+.pill { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: var(--r-pill); border: 1px solid var(--pill-line); background: transparent; color: var(--muted); font-weight: var(--fw-medium); transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .pill:where(:not(:disabled, [aria-pressed='true'], [aria-current='page']):hover) { border-color: var(--line-3); color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { .btn, .icon-btn, .pill { transition: none; } }
 .pill[aria-pressed='true'], .pill[aria-current='page'] { border-color: var(--line-3); background: var(--surface-3); color: var(--ink); }
-.tab { height: 28px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-weight: 500; }
+.tab { height: 28px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-weight: var(--fw-medium); }
 .tab[aria-selected='true'] { background: var(--surface-3); color: var(--ink); }
 /* Underline tabs (Settings, Providers): text tabs on a hairline, the selected one ink with a 2px bar under it. */
 .tabs-underline { gap: 24px; border-bottom: 1px solid var(--panel-line); }
-.tabs-underline .tab { position: relative; height: 38px; padding: 0; border-radius: 0; font-size: 13.5px; transition: color 0.12s; }
+.tabs-underline .tab { position: relative; height: 38px; padding: 0; border-radius: 0; font-size: var(--fs-row); transition: color var(--dur-fast); }
 .tabs-underline .tab:hover { color: var(--ink-2); }
 .tabs-underline .tab[aria-selected='true'] { background: transparent; color: var(--ink); }
 .tabs-underline .tab[aria-selected='true']::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--ink); }
 .input { height: 34px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink-2); outline: none; }
 .card { border: 1px solid var(--card-line); border-radius: var(--r-md); background: var(--card-bg); }
-.code { padding: 9px 11px; border-radius: var(--r-md); background: var(--code-bg); font: 12px/1.6 var(--mono); color: var(--ink-3); white-space: pre-wrap; user-select: text; }
-.chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: 11.5px var(--mono); color: var(--ink-2); vertical-align: middle; }
+.code { padding: 9px 11px; border-radius: var(--r-md); background: var(--code-bg); font: var(--fs-meta)/var(--lh-relaxed) var(--mono); color: var(--ink-3); white-space: pre-wrap; user-select: text; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: var(--fs-chip) var(--mono); color: var(--ink-2); vertical-align: middle; }
 /* The dot loader (KERNEL-714, KERNEL-740, KERNEL-755, KERNEL-759, revised below). One 3x3 grid of round dots, 13px square everywhere (3px dots, 2px gaps) in one steady gray, in the 16px icon slot. The dots rest at full size and dip out on their turn: each shrinks on a sine ease (185ms, 23.125% of the loop), stays gone (55ms, 6.875%), grows back the same way (185ms) and holds full size for the other 46.875% of the 800ms `--loop`. Opacity only drops once a dot is nearly a pinpoint, so size carries the motion and a gone dot leaves no speck. A pattern (ui/dotPatterns.ts) splits the loop into `--n` steps and gives every dot the step `--k` where its dip starts, so neighbors are offset and a size gradient sweeps across the grid. The center never shows or dips alone. Only transform and opacity animate, on plain 3px dots, so the sizes between pixels antialias smoothly. Reduced motion draws no animation, the pattern's `still` dots at full size and the rest at `--s`. Every loader starts its loop at the same time, so rows run in step. Negative delays start the loop mid-wave. */
-.dots { --d: 3px; --g: 2px; --loop: 0.8s; --n: 3; --step: calc(var(--loop) / var(--n)); display: inline-grid; flex-shrink: 0; grid-template-columns: repeat(3, var(--d)); grid-auto-rows: var(--d); gap: var(--g); }
+.dots { --d: 3px; --g: 2px; --loop: var(--dur-spin); --n: 3; --step: calc(var(--loop) / var(--n)); display: inline-grid; flex-shrink: 0; grid-template-columns: repeat(3, var(--d)); grid-auto-rows: var(--d); gap: var(--g); }
 .dots > i { display: block; border-radius: 50%; background: var(--spin-ink, var(--faint)); transform: scale(var(--s, 0.35)); will-change: transform, opacity; }
-@keyframes dots-dip { 0% { transform: scale(1); animation-timing-function: cubic-bezier(0.37, 0, 0.63, 1); } 23.125%, 30% { transform: scale(0); } 30% { animation-timing-function: cubic-bezier(0.37, 0, 0.63, 1); } 53.125%, 100% { transform: scale(1); } }
+@keyframes dots-dip { 0% { transform: scale(1); animation-timing-function: var(--ease-dip); } 23.125%, 30% { transform: scale(0); } 30% { animation-timing-function: var(--ease-dip); } 53.125%, 100% { transform: scale(1); } }
 @keyframes dots-dip-fade { 0%, 18.5% { opacity: 1; animation-timing-function: linear; } 23.125%, 30% { opacity: 0; animation-timing-function: linear; } 34.625%, 100% { opacity: 1; } }
 @media (prefers-reduced-motion: no-preference) {
   .dots > i { animation: dots-dip var(--loop) linear infinite, dots-dip-fade var(--loop) linear infinite; animation-delay: calc(var(--k) * var(--step) - var(--loop)); }
 }
-.menu { position: absolute; z-index: 60; min-width: 220px; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
-.menu-item { display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; font-size: 13px; }
+.menu { position: absolute; z-index: var(--z-popover); min-width: 220px; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
+.menu-item { display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; font-size: var(--fs-ui); }
 .menu-item:hover { background: var(--hover); }
 
 /* modal: one shell for every dialog */
-.scrim { position: fixed; inset: 0; z-index: 40; background: var(--scrim); backdrop-filter: blur(2px); animation: scrim-in var(--dur-base) var(--ease-out); }
+.scrim { position: fixed; inset: 0; z-index: var(--z-scrim); background: var(--scrim); backdrop-filter: blur(2px); animation: scrim-in var(--dur-base) var(--ease-out); }
 .scrim[data-closing] { animation: scrim-out var(--dur-fast) linear forwards; pointer-events: none; }
 /* Modal sets `--modal-y`, the dialog's top in px on the canvas. A dialog taller than the window scrolls (D-084). */
-.modal { --modal-y: 140; --modal-top: calc(var(--modal-y) * 1px); position: fixed; z-index: 50; left: 50%; top: var(--modal-top); transform: translateX(-50%); width: 620px; max-width: calc(100vw - 40px); max-height: calc(100vh - var(--modal-top) - 16px); overflow-y: auto; display: flex; flex-direction: column; border-radius: var(--r-xl); border: 1px solid var(--line-3); background: var(--surface-2); animation: modal-in 200ms cubic-bezier(0.22, 1, 0.36, 1); }
-.modal[data-closing] { animation: modal-out 120ms cubic-bezier(0.4, 0, 1, 1) forwards; pointer-events: none; }
+.modal { --modal-y: 140; --modal-top: calc(var(--modal-y) * 1px); position: fixed; z-index: var(--z-modal); left: 50%; top: var(--modal-top); transform: translateX(-50%); width: 620px; max-width: calc(100vw - 40px); max-height: calc(100vh - var(--modal-top) - 16px); overflow-y: auto; display: flex; flex-direction: column; border-radius: var(--r-xl); border: 1px solid var(--line-3); background: var(--surface-2); animation: modal-in var(--dur-slow) var(--ease-enter); }
+.modal[data-closing] { animation: modal-out var(--dur-fast) var(--ease-exit) forwards; pointer-events: none; }
 /* The separate translate and scale properties leave the centering transform alone. */
 @keyframes scrim-in { from { opacity: 0; } }
 @keyframes scrim-out { to { opacity: 0; } }
@@ -361,7 +388,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 @keyframes modal-out { to { opacity: 0; translate: 0 4px; } }
 @media (prefers-reduced-motion: reduce) { .scrim, .modal { animation: none; } }
 .modal-head { display: flex; align-items: center; height: 52px; padding: 0 10px 0 18px; }
-.modal-head h2 { flex: 1; margin: 0; font-size: 14px; font-weight: 500; color: var(--ink); }
+.modal-head h2 { flex: 1; margin: 0; font-size: var(--fs-chat); font-weight: var(--fw-medium); color: var(--ink); }
 .modal-foot { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--card-line); }
 
 /* A window under 800px or over 900px tall moves every dialog in proportion to the canvas's 900px height (D-080, KERNEL-577). */
@@ -370,5 +397,5 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 /* composer */
 .composer { display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px 14px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--surface); }
 .composer:focus-within { border-color: var(--line-4); }
-.composer input { flex: 1 1 160px; min-width: 120px; height: 24px; padding: 0; border: 0; outline: none; background: transparent; font-size: 14px; }
+.composer input { flex: 1 1 160px; min-width: 120px; height: 24px; padding: 0; border: 0; outline: none; background: transparent; font-size: var(--fs-chat); }
 

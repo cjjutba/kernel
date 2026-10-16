@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveTheme } from '../src/renderer/src/ui/theme'
 
@@ -106,7 +106,7 @@ describe('theme contrast', () => {
   })
   it('hover card status words reach 4.5:1 on their pill in both themes', () => {
     const fails: string[] = []
-    for (const [name, theme] of themes(both)) for (const t of ['add', 'del', 'muted'])
+    for (const [name, theme] of themes(both)) for (const t of ['del', 'muted'])
       if (contrast(theme[t], theme[`tint-${t}`]) < 4.5) fails.push(`${name} ${t} on tint-${t}: ${contrast(theme[t], theme[`tint-${t}`]).toFixed(2)}`)
     expect(fails).toEqual([])
   })
@@ -205,5 +205,177 @@ describe('no hardcoded colors', () => {
       readFileSync(f, 'utf8').split('\n').forEach((line, i) => { if (/#[0-9a-fA-F]{3,8}\b(?![\w-])|\brgba?\(|\bhsla?\(/.test(line.replace(/\b(?:error|PR) #\d+/g, ''))) hits.push(`${f.slice(root.length + 1)}:${i + 1}: ${line.trim().slice(0, 80)}`) })
     }
     expect(hits).toEqual([])
+  })
+})
+
+// KERNEL-681: type sizes, weights, line heights, layers and motion come from tokens.css too, and so do the type, color and spacing of
+// an inline style. A value that isn't a token yet becomes one in tokens.css (DESIGN.md), never a literal in a screen.
+type Kind = 'checkbox' | 'curve' | 'duration' | 'fontSize' | 'fontWeight' | 'inlineStyle' | 'lineHeight' | 'unknownVar' | 'unusedToken' | 'zIndex'
+interface Hit { kind: Kind; line: number; text: string }
+
+/** A file with its comments blanked out, line breaks kept, so a duration in a comment isn't a hit and line numbers still match. */
+const blank = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '))
+const lineOf = (text: string, index: number) => text.slice(0, index).split('\n').length
+const sample = (text: string, line: number) => (text.split('\n')[line - 1] ?? '').trim().slice(0, 100)
+/** One hit per kind and line, whatever number of values the line holds (a token is one hit each, see unusedTokenHits). */
+function collect(text: string, found: [Kind, number][]): Hit[] {
+  const seen = new Set<string>()
+  const out: Hit[] = []
+  for (const [kind, index] of found) {
+    const line = lineOf(text, index)
+    if (seen.has(`${kind}:${line}`)) continue
+    seen.add(`${kind}:${line}`)
+    out.push({ kind, line, text: sample(text, line) })
+  }
+  return out
+}
+const noVars = (v: string) => v.replace(/var\([^)]*\)/g, ' ')
+
+/** A literal font size, weight, unitless line height, z-index, duration or curve in a stylesheet. Not for tokens.css. */
+export function cssHits(source: string): Hit[] {
+  const text = blank(source)
+  const found: [Kind, number][] = []
+  for (const m of text.matchAll(/(?<![\w-])(font-size|font-weight|line-height|z-index|font|transition(?:-duration|-delay)?|animation(?:-duration|-delay)?)\s*:\s*([^;{}]*)/g)) {
+    const [, prop, raw] = m
+    const v = noVars(raw)
+    const at = m.index
+    if (prop === 'font-size' && /^\s*-?[0-9.]+(px|rem|em|pt)\b/.test(v)) found.push(['fontSize', at])
+    else if (prop === 'font-weight' && /^\s*(\d{3}|bold|bolder|lighter)\b/.test(v)) found.push(['fontWeight', at])
+    else if (prop === 'line-height' && /^\s*[0-9.]+\s*(!important)?\s*$/.test(v)) found.push(['lineHeight', at])
+    else if (prop === 'z-index' && /^\s*-?\d{2,}\b/.test(v)) found.push(['zIndex', at])
+    else if (prop === 'font') {
+      if (/(?<![\w./-])[0-9.]+(px|rem|em|pt)\b/.test(v)) found.push(['fontSize', at])
+      if (/^\s*(\d{3}|bold|bolder|lighter)\s/.test(v)) found.push(['fontWeight', at])
+      if (/\/\s*[0-9.]+(?![0-9.]|px|rem|em|%)/.test(v)) found.push(['lineHeight', at])
+    } else if (/^(transition|animation)/.test(prop) && /(?<![\w.-])(?!0s\b|0\.001ms\b)[0-9]*\.?[0-9]+m?s\b/.test(v)) found.push(['duration', at])
+  }
+  for (const m of text.matchAll(/cubic-bezier\(/g)) found.push(['curve', m.index])
+  return collect(text, found)
+}
+
+/** A literal type, color or spacing value in an inline style, or a raw checkbox. `rel` is the file's path from the repo root. */
+export function tsxHits(rel: string, source: string): Hit[] {
+  const found: [Kind, number][] = []
+  const prop = /(?:^|,)\s*(fontSize|fontWeight|lineHeight|color|background\w*|gap|margin\w*|padding\w*|border\w*)\s*:\s*(-?[0-9.]+|'[^']*'|"[^"]*")\s*(?=,|$)/g
+  for (const m of source.matchAll(/style=\{\{([^{}]*)\}\}/g)) {
+    if ([...m[1].matchAll(prop)].some((p) => !p[2].includes('var('))) found.push(['inlineStyle', m.index])
+  }
+  if (!rel.startsWith('src/renderer/src/ui/'))
+    for (const m of source.matchAll(/<input\b(?:[^>]|=>)*?\btype=["']checkbox["']/g)) found.push(['checkbox', m.index])
+  return collect(source, found)
+}
+
+/** Every `var(--x)` in `source` that `defined` doesn't have. */
+export function unknownVarHits(source: string, defined: Set<string>): Hit[] {
+  return collect(source, [...source.matchAll(/var\((--[\w-]+)/g)].filter((m) => !defined.has(m[1])).map((m) => ['unknownVar', m.index] as [Kind, number]))
+}
+
+/** Names a file declares (`--x:`), and names it quotes (`'--x'`, set or read from script). */
+const declared = (text: string) => [...text.matchAll(/(?<![\w-])(--[\w-]+)\s*:/g), ...text.matchAll(/['"`](--[\w-]+)['"`]/g)].map((m) => m[1])
+
+/** Every token `tokens` declares that `usage` never reads. The terminal reads its palette by a built name and the scrollbar transitions --scroll-thumb by name. */
+export function unusedTokenHits(tokens: string, usage: string): Hit[] {
+  const text = blank(tokens)
+  const names = [...new Set(declared(text).filter((n) => text.includes(`${n}:`)))]
+  const unused = names.filter((n) => !n.startsWith('--term-') && n !== '--scroll-thumb' && !new RegExp(`var\\(${n}(?![\\w-])`).test(usage) && !new RegExp(`['"\`]${n}['"\`]`).test(usage))
+  return unused.map((n) => {
+    const line = lineOf(text, text.search(new RegExp(`(?<![\\w-])${n}\\s*:`)))
+    return { kind: 'unusedToken' as const, line, text: n }
+  })
+}
+
+describe('design tokens beyond color', () => {
+  const src = join(root, 'src/renderer/src')
+  const all = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = join(dir, e.name)
+    return e.isDirectory() ? all(p) : /\.(tsx?|css)$/.test(e.name) ? [p] : []
+  })
+  const rel = (f: string) => f.slice(root.length + 1).split(sep).join('/')
+  const files = all(src).map((f) => ({ path: rel(f), text: readFileSync(f, 'utf8') }))
+  const everything = files.map((f) => f.text).join('\n')
+
+  /** Violations per file. A file with none is left out. */
+  function measure(): Record<string, Hit[]> {
+    const defined = new Set(declared(everything))
+    const out: Record<string, Hit[]> = {}
+    for (const f of files) {
+      const hits: Hit[] = []
+      if (f.path.endsWith('.css') && !f.path.endsWith('/tokens.css')) hits.push(...cssHits(f.text))
+      if (f.path.endsWith('.tsx')) hits.push(...tsxHits(f.path, f.text))
+      hits.push(...unknownVarHits(blank(f.text), defined))
+      if (f.path.endsWith('/tokens.css')) hits.push(...unusedTokenHits(f.text, everything))
+      if (hits.length) out[f.path] = hits
+    }
+    return out
+  }
+
+  it('no file has a literal type, layer or motion value, a literal inline style, a raw checkbox, an unknown var() or an unused token', () => {
+    const lines = Object.entries(measure()).map(([f, hits]) => `${f}\n${hits.map((h) => `    :${h.line} ${h.kind} ${h.text}`).join('\n')}`)
+    // One string, so the runner prints every file in full instead of "[ …(2) ]".
+    expect(lines.join('\n'), 'use a token, a class, or add the value to tokens.css').toBe('')
+  })
+
+  it('tokens.css itself is the only place a value is spelled out: every other file passes through the checks above', () => {
+    expect(files.some((f) => f.path.endsWith('/tokens.css'))).toBe(true)
+    expect(measure()['src/renderer/src/tokens.css']?.filter((h) => h.kind !== 'unusedToken' && h.kind !== 'unknownVar') ?? []).toEqual([])
+  })
+})
+
+describe('each design token check fails on an injected violation', () => {
+  const kinds = (hits: Hit[]) => hits.map((h) => h.kind)
+  it('a literal font size, in font-size or in the font shorthand', () => {
+    expect(kinds(cssHits('.a { font-size: 13px; }'))).toEqual(['fontSize'])
+    expect(kinds(cssHits('.a { font: 11.5px var(--mono); }'))).toEqual(['fontSize'])
+    expect(cssHits('.a { font-size: var(--fs-ui); font: var(--fs-code)/20px var(--mono); font-size: inherit; }')).toEqual([])
+  })
+  it('a literal weight', () => {
+    expect(kinds(cssHits('.a { font-weight: 500; }'))).toEqual(['fontWeight'])
+    expect(kinds(cssHits('.a { font: 600 var(--fs-ui) var(--font); }'))).toEqual(['fontWeight'])
+    expect(cssHits('.a { font-weight: var(--fw-medium); }')).toEqual([])
+  })
+  it('a unitless line height, and not a px one', () => {
+    expect(kinds(cssHits('.a { line-height: 1.5; }'))).toEqual(['lineHeight'])
+    expect(kinds(cssHits('.a { font: var(--fs-meta)/1.6 var(--mono); }'))).toEqual(['lineHeight'])
+    expect(cssHits('.a { line-height: 20px; font: var(--fs-code)/20px var(--mono); line-height: var(--lh); }')).toEqual([])
+  })
+  it('a z-index of two digits or more, and not one that orders siblings', () => {
+    expect(kinds(cssHits('.a { z-index: 65; }'))).toEqual(['zIndex'])
+    expect(cssHits('.a { z-index: 2; } .b { z-index: var(--z-modal); }')).toEqual([])
+  })
+  it('a literal duration, delay or curve', () => {
+    expect(kinds(cssHits('.a { transition: opacity 0.12s; }'))).toEqual(['duration'])
+    expect(kinds(cssHits('.a { animation: spin 1.2s linear infinite; }'))).toEqual(['duration'])
+    expect(kinds(cssHits('.a { transition-delay: 80ms; }'))).toEqual(['duration'])
+    expect(kinds(cssHits('.a { transition: opacity var(--dur-fast) cubic-bezier(0.4, 0, 1, 1); }'))).toEqual(['curve'])
+    expect(cssHits('.a { transition: opacity var(--dur-fast) var(--ease-out); animation-duration: 0.001ms; transition-duration: 0s; }')).toEqual([])
+  })
+  it('a value inside a comment is not a violation, and its line number holds', () => {
+    expect(cssHits('/* font-size: 13px; 120ms */\n.a { font-size: 13px; }')).toEqual([{ kind: 'fontSize', line: 2, text: '.a { font-size: 13px; }' }])
+  })
+  it('a literal type, color or spacing in an inline style', () => {
+    const kindsOf = (code: string) => kinds(tsxHits('src/renderer/src/screens/A.tsx', code))
+    expect(kindsOf('<div style={{ fontSize: 12 }} />')).toEqual(['inlineStyle'])
+    expect(kindsOf("<div style={{ color: 'var(--muted)', gap: 6 }} />")).toEqual(['inlineStyle'])
+    expect(kindsOf("<div style={{ padding: '4px 8px' }} />")).toEqual(['inlineStyle'])
+    expect(kindsOf("<div style={{\n  marginTop: 10\n}} />")).toEqual(['inlineStyle'])
+    expect(kindsOf("<div style={{ color: 'var(--muted)', width: 120, transform: `translateX(${x}px)` }} />")).toEqual([])
+  })
+  it('a raw checkbox outside ui/', () => {
+    expect(kinds(tsxHits('src/renderer/src/screens/A.tsx', '<input type="checkbox" checked={on} onChange={() => set(!on)} />'))).toEqual(['checkbox'])
+    expect(kinds(tsxHits('src/renderer/src/screens/A.tsx', '<input\n  onChange={(e) => set(e.target.checked)}\n  type="checkbox"\n/>'))).toEqual(['checkbox'])
+    expect(tsxHits('src/renderer/src/ui/controls.tsx', '<input type="checkbox" />')).toEqual([])
+    expect(tsxHits('src/renderer/src/screens/A.tsx', '<input type="text" />')).toEqual([])
+  })
+  it('a var() that names no token', () => {
+    const defined = new Set(['--ink'])
+    expect(kinds(unknownVarHits('.a { color: var(--ink); background: var(--inkk); }', defined))).toEqual(['unknownVar'])
+    expect(unknownVarHits('.a { color: var(--ink); }', defined)).toEqual([])
+  })
+  it('a token nothing uses', () => {
+    const tokens = ':root { --used: 1px; --orphan: 2px; --term-red: #f00; }'
+    expect(unusedTokenHits(tokens, '.a { margin: var(--used); }').map((h) => h.text)).toEqual(['--orphan'])
+    expect(kinds(unusedTokenHits(':root { --a: 1px; --b: 2px; }', ''))).toEqual(['unusedToken', 'unusedToken'])
+    expect(unusedTokenHits(tokens, '.a { margin: var(--used) var(--orphan); }')).toEqual([])
+    expect(unusedTokenHits(':root { --a: 1px; }', "setProperty('--a', '2px')")).toEqual([])
   })
 })

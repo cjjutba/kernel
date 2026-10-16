@@ -6,6 +6,7 @@ import { ArrowIcon } from '@/components/ui/icons'
 import { docsNav } from '@/lib/docs'
 import { ISSUES_URL } from '@/lib/links'
 import { pageMetadata } from '@/lib/site'
+import { ExternalLink } from '@/components/ui/ExternalLink'
 
 // The docs home: search and the four pages to start with. The sidebar lists everything else.
 
@@ -17,10 +18,10 @@ export default function DocsHome() {
   const start = docsNav()[0]
   return (
     <DocsLayout current="home" label="Overview">
-      <div className="max-w-220 max-docs:mt-8">
+      <div className="max-w-docs-head max-docs:mt-8">
         <h1 className="text-h2 text-balance">Kernel docs</h1>
-        <p className="mt-3 max-w-140 text-lead text-muted">{description}</p>
-        <div className="mt-8 max-w-140">
+        <p className="mt-3 max-w-section-lead text-lead text-muted">{description}</p>
+        <div className="mt-8 max-w-section-lead">
           <SearchButton size="lg" />
         </div>
 
@@ -47,9 +48,9 @@ export default function DocsHome() {
 
         <p className="mt-16 border-t border-line-faint pt-6 text-small text-faint">
           Something missing?{' '}
-          <a href={ISSUES_URL} target="_blank" rel="noopener" className="text-muted underline decoration-rule underline-offset-3 hover:text-ink">
+          <ExternalLink href={ISSUES_URL} className="text-muted underline decoration-rule underline-offset-3 hover:text-ink">
             Ask on GitHub
-          </a>
+          </ExternalLink>
           . For an AI tool, every page is listed in{' '}
           <a href="/llms.txt" className="text-muted underline decoration-rule underline-offset-3 hover:text-ink">
             llms.txt

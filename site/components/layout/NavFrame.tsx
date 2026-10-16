@@ -17,8 +17,8 @@ export function NavFrame({ children }: { children: ReactNode }) {
   return (
     <header
       data-scrolled={scrolled || undefined}
-      className={`sticky top-0 z-5 border-b transition-colors duration-300 ${
-        scrolled ? 'border-white/6 bg-canvas/72 backdrop-blur-nav' : 'border-transparent bg-transparent'
+      className={`sticky top-0 z-nav border-b transition-colors duration-slow ${
+        scrolled ? 'border-tint-strong bg-canvas-glass backdrop-blur-nav' : 'border-transparent bg-transparent'
       }`}
     >
       {children}

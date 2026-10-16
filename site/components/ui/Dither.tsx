@@ -37,13 +37,16 @@ type Props = {
 export function Dither({ shape, type = '4x4', size = 3, scale = 1, speed = 0.3, frame = 0, tone = 'rule', className }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const [color, setColor] = useState<string | null>(null)
+  const [clear, setClear] = useState('')
   const [near, setNear] = useState(false)
   const [still, setStill] = useState(false)
 
   useEffect(() => {
     const el = box.current
     if (!el) return
-    setColor(getComputedStyle(document.documentElement).getPropertyValue(`--color-${tone}`).trim())
+    const root = getComputedStyle(document.documentElement)
+    setColor(root.getPropertyValue(`--color-${tone}`).trim())
+    setClear(root.getPropertyValue('--color-clear').trim())
     const motion = matchMedia('(prefers-reduced-motion: reduce)')
     const onMotion = () => setStill(motion.matches)
     onMotion()
@@ -60,7 +63,7 @@ export function Dither({ shape, type = '4x4', size = 3, scale = 1, speed = 0.3, 
     <div ref={box} aria-hidden="true" className={`pointer-events-none ${className}`}>
       {color && near ? (
         <Dithering
-          colorBack="rgba(0, 0, 0, 0)"
+          colorBack={clear}
           colorFront={color}
           shape={shape}
           type={type}

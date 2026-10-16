@@ -4,6 +4,7 @@ import { ClaudeLogo, OpenAILogo } from '@/components/brand/logos'
 import { KernelMark } from '@/components/brand/KernelMark'
 import { ArrowIcon, GitHubIcon, IssueIcon, PulseIcon, ReplayIcon } from '@/components/ui/icons'
 import { SpotlightGrid } from './SpotlightGrid'
+import { Section } from '@/components/ui/Container'
 
 // Privacy, shown rather than claimed: a map of everything Kernel connects to. Your Mac sits in the middle. On its left,
 // what Kernel always talks to, on solid lines that carry a slow pulse outward. On its right, what it talks to only if
@@ -43,7 +44,7 @@ const RIGHT = { nodes: [25, 75], ports: [44, 56] }
 /** On the map every node is the same height, space for two lines, so each one's middle sits where its line meets it. */
 function NodeCard({ node, optional }: { node: Node; optional?: boolean }) {
   return (
-    <div className={`spot-card map-node-card flex items-center gap-3 rounded-lg border px-3 py-2.5 faq:min-h-19 ${optional ? 'border-dashed border-edge bg-surface-1/60' : 'border-line-strong bg-surface-1'}`}>
+    <div className={`spot-card map-node-card flex items-center gap-3 rounded-lg border px-3 py-2.5 faq:min-h-node ${optional ? 'border-dashed border-edge bg-surface-1-glass' : 'border-line-strong bg-surface-1'}`}>
       <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-line-strong bg-surface-2 text-ink-2">{node.icon}</span>
       <span className="min-w-0">
         <span className={`block text-ui font-medium ${optional ? 'text-ink-2' : 'text-ink'}`}>{node.title}</span>
@@ -98,13 +99,13 @@ function Group({ label, nodes, optional }: { label: string; nodes: Node[]; optio
 
 export function Privacy() {
   return (
-    <section id="privacy" aria-labelledby="privacy-title" className="mx-auto max-w-312 px-6 pt-40 max-nav:pt-24">
+    <Section id="privacy" aria-labelledby="privacy-title">
       <h2 id="privacy-title" className="text-center text-h2 text-balance">
         Your Mac. <br className="nav:hidden" />
         Your plan. <br className="nav:hidden" />
         Your code.
       </h2>
-      <p className="mx-auto mt-4 max-w-120 text-center text-lead text-balance text-muted">Everything Kernel connects to. None of it is us.</p>
+      <p className="mx-auto mt-4 max-w-blurb text-center text-lead text-balance text-muted">Everything Kernel connects to. None of it is us.</p>
 
       <figure className="mt-20 max-nav:mt-10" aria-label="What Kernel connects to">
         {/* The cards take the bento's pointer light. */}
@@ -143,6 +144,6 @@ export function Privacy() {
           </Link>
         </figcaption>
       </figure>
-    </section>
+    </Section>
   )
 }

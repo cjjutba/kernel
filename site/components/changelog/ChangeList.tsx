@@ -1,5 +1,6 @@
 import { pullUrl } from '@/lib/links'
 import type { ChangeItem } from '@/lib/schema'
+import { OutlineChip } from '@/components/ui/OutlineChip'
 
 /** How many changes a section shows before the rest fold behind "Show N more". */
 const SHOWN = 6
@@ -12,15 +13,13 @@ function Item({ item }: { item: ChangeItem }) {
       {item.text}
       {item.pr ? ' ' : null}
       {item.pr ? (
-        <a
+        <OutlineChip
           href={pullUrl(item.pr)}
-          target="_blank"
-          rel="noopener"
           aria-label={`Pull request #${item.pr}`}
-          className="ml-2 inline-flex h-5 items-center rounded-prchip border border-line-strong bg-surface-2 px-1.5 align-nudge font-mono text-tag leading-normal font-medium text-muted hover:border-edge-hover hover:text-ink"
+          className="ml-2 inline-flex h-5 items-center rounded-prchip bg-surface-2 px-1.5 align-nudge font-mono text-tag leading-normal font-medium text-muted hover:text-ink"
         >
           #{item.pr}
-        </a>
+        </OutlineChip>
       ) : null}
     </li>
   )

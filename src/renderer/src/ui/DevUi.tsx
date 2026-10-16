@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Avatar, Banner, Button, Card, Chip, CodeBlock, ConfirmDialog, EmptyState, Icon, IconButton, Kbd, Menu, MENU_SEPARATOR, Meter, Modal, Pill, Popover, SegmentedControl, Select, Skeleton, Spinner, Tabs, Toast, Toggle, bannerIcon, iconNames, LoadingRow, EmptyList, FailedState, NotConnectedState } from './index'
+import { Avatar, Banner, Button, Card, Checkbox, Chip, CodeBlock, ConfirmDialog, EmptyState, Icon, IconButton, Kbd, Menu, MENU_SEPARATOR, Meter, Modal, Pill, Popover, SegmentedControl, Select, Skeleton, Spinner, Tabs, Toast, Toggle, bannerIcon, iconNames, LoadingRow, EmptyList, FailedState, NotConnectedState } from './index'
 import type { BannerKind, DevUiPage } from '@shared/types'
 import { spinnerPatterns } from './dotPatterns'
 
@@ -19,6 +19,7 @@ function Controls() {
   const [on, setOn] = useState(true)
   const [size, setSize] = useState('default')
   const [pill, setPill] = useState(true)
+  const [agree, setAgree] = useState(true)
   return (
     <>
       <Section title="Buttons">
@@ -27,6 +28,19 @@ function Controls() {
           <Button variant="danger">Discard</Button><Button variant="merged" icon="pr">Merged</Button><Button disabled>Disabled</Button>
           <Button variant="primary" busy busyLabel="Archiving">Archive</Button>
           <IconButton icon="plus" label="Add" /><IconButton icon="more" label="More" /><IconButton icon="archive" label="Archive" busy busyLabel="Archiving" />
+        </div>
+      </Section>
+      <Section title="Sizes and checkbox">
+        <div className="devui-row">
+          <Button size="sm">Run</Button><Button>Open</Button><Button size="lg">Create</Button>
+          <Button size="sm" variant="primary" icon="plus">Add</Button><Button size="sm" disabled>Stop</Button>
+          <IconButton icon="more" label="More, md" box="md" /><IconButton icon="more" label="More, sm" box="sm" size={14} /><IconButton icon="more" label="More, xs" box="xs" size={14} />
+        </div>
+        <div className="devui-row">
+          <Checkbox checked={agree} onChange={setAgree}>Delete the worktrees too</Checkbox>
+          <Checkbox checked={false} onChange={() => undefined}>Keep the branch</Checkbox>
+          <Checkbox checked onChange={() => undefined} disabled>Unavailable</Checkbox>
+          <Checkbox checked={agree} onChange={setAgree} align="top"><span>First line of a label<br />that wraps to a second line</span></Checkbox>
         </div>
       </Section>
       <Section title="Busy buttons">
@@ -46,7 +60,7 @@ function Controls() {
           <Pill pressed={pill} onClick={() => setPill(!pill)}>All projects</Pill><Pill>Needs you</Pill>
           <Tabs label="Panels" value={tab} onChange={setTab} tabs={[{ id: 'chat', label: 'Chat' }, { id: 'changes', label: 'Changes' }, { id: 'files', label: 'Files' }]} />
         </div>
-        <div className="devui-row" style={{ marginTop: 10 }}>
+        <div className="devui-row devui-below">
           <SegmentedControl label="Theme" value={seg} onChange={setSeg} options={[{ value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }, { value: 'system', label: 'System' }]} />
           <Toggle label="Reduce motion" checked={on} onChange={setOn} /><Toggle label="Pointer cursors" checked={false} onChange={() => undefined} />
           <Select label="Font size" value={size} onChange={setSize} options={[{ value: 'small', label: 'Small' }, { value: 'default', label: 'Default' }, { value: 'large', label: 'Large' }]} />
@@ -56,15 +70,15 @@ function Controls() {
         <div className="devui-row"><Chip kind="file" onRemove={() => undefined}>plan.md</Chip><Chip kind="image" onRemove={() => undefined}>screenshot.png</Chip><Chip kind="mention">Noor</Chip><Chip kind="skill">review</Chip></div>
       </Section>
       <Section title="Meter, code, kbd, avatar, spinner, skeleton">
-        <div className="col" style={{ gap: 10 }}>
-          <div className="col" style={{ gap: 6 }}><Meter label="Session, 40%" value={0.4} /><Meter label="Weekly, 85%" value={0.85} /><Meter label="Session, 100%" value={1} /></div>
+        <div className="col devui-gap-10">
+          <div className="col devui-gap-6"><Meter label="Session, 40%" value={0.4} /><Meter label="Weekly, 85%" value={0.85} /><Meter label="Session, 100%" value={1} /></div>
           <CodeBlock>{'pnpm shots Home'}</CodeBlock>
           <div className="devui-row"><Kbd>⌘K</Kbd><Kbd>⇧⌘N</Kbd><Avatar name="Client A" /><Avatar name="Kernel" size={28} solid /><Spinner /><Skeleton width={120} /></div>
         </div>
       </Section>
       <Section title="Card, empty state">
         <div className="devui-row" style={{ alignItems: 'stretch' }}>
-          <Card style={{ padding: 12, flex: 1 }}><b style={{ fontWeight: 600 }}>Client A</b><div className="muted">5 agents</div></Card>
+          <Card className="devui-pad" style={{ flex: 1 }}><b className="devui-name">Client A</b><div className="muted">5 agents</div></Card>
           <Card style={{ flex: 1 }}><EmptyState icon="inbox" title="Nothing needs you" action={<Button>New workspace</Button>}>Approvals and plans show up here.</EmptyState></Card>
         </div>
       </Section>
@@ -76,10 +90,10 @@ function Display() {
   return (
     <>
       <Section title="Banners">
-        <div className="col" style={{ gap: 6 }}>{kinds.map((k) => <Banner key={k} kind={k} title={bannerCopy[k]} actions={<Button size="md">Open</Button>}>One neutral surface for every failure.</Banner>)}</div>
+        <div className="col devui-gap-6">{kinds.map((k) => <Banner key={k} kind={k} title={bannerCopy[k]} actions={<Button size="md">Open</Button>}>One neutral surface for every failure.</Banner>)}</div>
       </Section>
       <Section title="Loader patterns">
-        <div className="devui-row">{spinnerPatterns.map((p) => <span key={p} className="row" style={{ gap: 6 }}><Spinner pattern={p} />{p}</span>)}<Button busy busyLabel="Archiving">Archive</Button></div>
+        <div className="devui-row">{spinnerPatterns.map((p) => <span key={p} className="row devui-gap-6"><Spinner pattern={p} />{p}</span>)}<Button busy busyLabel="Archiving">Archive</Button></div>
       </Section>
       <Section title={`Icons (${iconNames().length})`}>
         <div className="devui-icons">{iconNames().map((n) => <span key={n} title={n}><Icon name={n} /></span>)}</div>

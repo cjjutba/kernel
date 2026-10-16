@@ -7,7 +7,8 @@ import {
 import { serializeFilter } from '../src/renderer/src/screens/issues/model'
 
 const scope: LinearScope = { teams: [{ id: 't1', key: 'KERNEL', name: 'Kernel' }], projects: [], cycles: [] }
-const linear: ProjectTracker = { kind: 'linear' }
+const linear: ProjectTracker = { kind: 'linear', available: { linear: true } }
+const none: ProjectTracker = { kind: 'none', available: { linear: false } }
 const lists = (n: number) => ({ mine: [{ id: `K-${n}` } as LinearIssue], all: [{ id: `K-${n}` } as LinearIssue] })
 const filterKey = (n: number) => serializeFilter({ mine: false, teamId: `t${n}` })
 const gh = (id: string) => [{ id } as GithubIssue]
@@ -17,9 +18,9 @@ afterEach(() => resetIssuesCache())
 describe('trackers, scope and lists', () => {
   it('keeps a tracker per project', () => {
     setTracker('a', linear)
-    setTracker('b', { kind: 'none' })
+    setTracker('b', none)
     expect(getTracker('a')?.value).toEqual(linear)
-    expect(getTracker('b')?.value).toEqual({ kind: 'none' })
+    expect(getTracker('b')?.value).toEqual(none)
     expect(getTracker('c')).toBeUndefined()
   })
 

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react'
 import { getState, subscribe, type State } from '../store'
+import { readSaved, writeSaved } from '../remember'
 
 /**
  * Kept scroll (KERNEL-919): a view opens where it was left, and that survives a restart. The contract is in docs/decisions/KERNEL-919.md.
@@ -73,7 +74,7 @@ function load() {
   if (loaded) return
   loaded = true
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = readSaved(STORAGE_KEY)
     if (!raw) return
     const saved = JSON.parse(raw) as { v?: number; spots?: unknown }
     if (saved.v !== VERSION || !Array.isArray(saved.spots)) return
@@ -88,7 +89,7 @@ function load() {
 export function flushSpots() {
   clearTimeout(writer)
   writer = undefined
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: VERSION, spots: [...spots] })) } catch { /* nothing to keep it in */ }
+  writeSaved(STORAGE_KEY, JSON.stringify({ v: VERSION, spots: [...spots] }))
 }
 
 const later = () => { clearTimeout(writer); writer = setTimeout(flushSpots, WRITE_MS) }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { DeletePreview } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
-import { Button, ConfirmDialog, useBusy } from '../../ui'
+import { Button, Checkbox, ConfirmDialog, useBusy } from '../../ui'
 import { sizeLabel } from './model'
 import './history.css'
 
@@ -73,7 +73,7 @@ export function ConfirmDeleteHistory({ workspaceIds }: { workspaceIds: string[] 
       onConfirm={() => void remove()} onCancel={actions.ui.closeModal} body={body}
     >
       {preview && preview.unpushedBranches > 0 && (
-        <label className="hs-check"><input type="checkbox" checked={unpushed} onChange={(e) => setUnpushed(e.target.checked)} />Also delete {plural(preview.unpushedBranches, 'branch')} with commits that aren't pushed anywhere</label>
+        <Checkbox checked={unpushed} onChange={setUnpushed}>Also delete {plural(preview.unpushedBranches, 'branch')} with commits that aren't pushed anywhere</Checkbox>
       )}
       {skipped.length > 0 && <p>{waiting ? `${skipped.length} ${skipped.length === 1 ? 'is' : 'are'} skipped because other work still waits on ${skipped.length === 1 ? 'it' : 'them'}.` : `${skipped.length} ${skipped.length === 1 ? 'is' : 'are'} skipped. ${skipped[0].reason}`}</p>}
       {error && <p role="alert" className="hs-error">{error}</p>}

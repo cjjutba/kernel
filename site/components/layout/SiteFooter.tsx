@@ -4,6 +4,7 @@ import { Dither } from '@/components/ui/Dither'
 import { ArrowIcon, GitHubIcon } from '@/components/ui/icons'
 import { latestRelease } from '@/content/changelog'
 import { CONTRIBUTING_URL, DOWNLOAD_URL, ISSUES_URL, LICENSE_URL, RELEASES_URL, REPO_URL, SECURITY_URL } from '@/lib/links'
+import { ExternalLink } from '@/components/ui/ExternalLink'
 
 type FooterLink = { href: string; label: string; external?: boolean }
 
@@ -45,13 +46,13 @@ export async function SiteFooter() {
   return (
     <footer className="relative isolate overflow-hidden border-t border-line-faint pt-20 pb-36 max-nav:pb-28">
       {/* A low field of drifting noise along the page's bottom edge: the footer's own texture (globals.css, Dither fields). */}
-      <Dither shape="simplex" type="8x8" size={2} scale={0.55} speed={0.18} frame={1200} tone="edge" className="dither-footer absolute inset-x-0 bottom-0 -z-1 h-56 max-nav:h-40" />
-      <div className="mx-auto grid max-w-312 grid-footer gap-x-12 gap-y-12 px-6">
+      <Dither shape="simplex" type="8x8" size={2} scale={0.55} speed={0.18} frame={1200} tone="edge" className="dither-footer absolute inset-x-0 bottom-0 -z-raise h-dither-footer max-nav:h-40" />
+      <div className="mx-auto grid max-w-page grid-footer gap-x-12 gap-y-12 px-6">
         <div>
           <Link href="/" className="inline-flex">
             <Wordmark />
           </Link>
-          <p className="mt-4 max-w-70 text-ui leading-relaxed text-muted">Your coding agents, working as a team.</p>
+          <p className="mt-4 max-w-tagline text-ui leading-relaxed text-muted">Your coding agents, working as a team.</p>
           <Link
             href="/changelog"
             className="mt-6 inline-flex h-7 items-center gap-2 rounded-pill border border-line-strong pr-2.5 pl-1 text-small text-muted transition-colors hover:border-edge-hover hover:text-ink"
@@ -82,14 +83,14 @@ export async function SiteFooter() {
           </nav>
         ))}
       </div>
-      <div className="mx-auto mt-16 flex max-w-312 items-center justify-between gap-6 px-6 pt-6 text-small text-faint rule-inset">
+      <div className="mx-auto mt-16 flex max-w-page items-center justify-between gap-6 px-6 pt-6 text-small text-faint rule-inset">
         {/* The line wraps on its own, so the GitHub link stays at its right on phones. */}
         <span className="min-w-0">
           © 2026 Christian Jerald Jutba · <span className="whitespace-nowrap">Elastic License 2.0</span>
         </span>
-        <a href={REPO_URL} target="_blank" rel="noopener" aria-label="Kernel on GitHub" className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/4 hover:text-ink">
+        <ExternalLink href={REPO_URL} aria-label="Kernel on GitHub" className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-tint-soft hover:text-ink">
           <GitHubIcon size={16} />
-        </a>
+        </ExternalLink>
       </div>
     </footer>
   )

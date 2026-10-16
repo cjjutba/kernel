@@ -8,14 +8,14 @@
 .nav-item .nav-glyph[data-plan] svg { color: var(--plan); }
 /* Unread is a bold title in ink and a heavier icon, never a dot (KERNEL-508, DESIGN.md). The icon follows the title: ink and a 1.8 stroke in place of the muted 1.4.
    A glyph with a tone keeps its colour and only gets the stroke. Filled icons have stroke none, so the width leaves their shape alone. A row's title is the one .grow span. */
-.nav-item[data-unread] > .grow { font-weight: 600; color: var(--ink); }
+.nav-item[data-unread] > .grow { font-weight: var(--fw-semibold); color: var(--ink); }
 .nav-item[data-unread] > svg, .nav-item[data-unread] .nav-glyph svg { stroke-width: 1.8; }
 .nav-item[data-unread] > svg, .nav-item[data-unread] .nav-glyph:not([data-tone]) svg { color: var(--ink); }
 /* A project row keeps its hover fill while the pointer is on its buttons. Hovering it, or reaching it by keyboard, swaps the
    project's letter for a chevron, which points down while the project is expanded (Conductor). A click alone does not. */
 .project-row:hover > .nav-item { background: var(--nav-hover); }
 .project-mark { width: 18px; height: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
-.project-letter { width: 18px; height: 18px; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface); font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.project-letter { width: 18px; height: 18px; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface); font-size: var(--fs-tile); font-weight: var(--fw-semibold); display: inline-flex; align-items: center; justify-content: center; }
 .project-letter[data-current] { background: var(--surface-3); }
 .project-chev { display: none; }
 .project-chev[data-open='true'] svg { transform: rotate(90deg); }
@@ -35,12 +35,12 @@
 .chat-row.busy .more { opacity: 1; }
 .chat-row[data-key] .ws-archive { visibility: hidden; }
 /* A project's menu sits in a portal at a fixed spot (ProjectMenu.tsx), so the scrolling projects list can't clip it. */
-.project-menu { position: fixed; z-index: 60; }
+.project-menu { position: fixed; z-index: var(--z-popover); }
 .project-menu .menu-anchor { position: static; }
 /* Hovering a workspace row, or reaching it by keyboard, swaps its whole right end, the diff totals and the spinner, for the archive button, the way Conductor does. A chat row's spinner does the same.
    Selecting a row with the mouse leaves the totals. The name stops short of the button. */
 .ws-row { position: relative; }
-.ws-stat { font-size: 11px; display: none; gap: 6px; }
+.ws-stat { font-size: var(--fs-badge); display: none; gap: 6px; }
 /* A PR number is no diff count and stays at any width. From 300px the counts take its place when a row has both, as they did before. */
 @container sidebar (min-width: 282px) { .ws-stat { display: inline-flex; } .ws-stat + .ws-pr { display: none; } }
 .ws-archive { position: absolute; top: 0; bottom: 0; right: 4px; display: flex; align-items: center; }
@@ -50,9 +50,9 @@
 .ws-row.busy .more { opacity: 1; }
 /* Holding ⌘ swaps a numbered row's right end for its ⌘N. On a workspace row the archive button steps aside so the two don't overlap,
    and its 32px stays off so a hovered row's ⌘N lines up with the rest. */
-.nav-key { flex-shrink: 0; font-size: 11px; color: var(--muted); }
+.nav-key { flex-shrink: 0; font-size: var(--fs-badge); color: var(--muted); }
 /* The Inbox count sits in muted like the ⌘K and ⌘N hints beside it (KERNEL-607). */
-.nav-count { flex-shrink: 0; font: 500 11.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+.nav-count { flex-shrink: 0; font: var(--fw-medium) var(--fs-chip) var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
 .ws-row[data-key] .ws-archive { visibility: hidden; }
 /* The hairline under the top nav runs edge to edge, past the sidebar's 10px left and 8px right padding. */
 .sb-rule { flex-shrink: 0; height: 1px; margin: 10px -8px 0 -10px; background: var(--panel-line); }
@@ -67,20 +67,20 @@
 
 /* A row's hover card (HoverCard.tsx): Conductor's workspace card in Kernel's shell, a hairline and no shadow. The outer box is transparent
    and spans the gap to the row, so the pointer can cross to the card. The state icon is monochrome; only a merged PR takes a color. */
-.hover-card { position: fixed; z-index: 60; }
+.hover-card { position: fixed; z-index: var(--z-popover); }
 .hc-box { width: 300px; display: flex; flex-direction: column; gap: 4px; padding: 11px 14px 10px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
-.hc-head { display: flex; align-items: center; gap: 6px; min-height: 18px; font-size: 12px; color: var(--muted); }
+.hc-head { display: flex; align-items: center; gap: 6px; min-height: 18px; font-size: var(--fs-meta); color: var(--muted); }
 .hc-eyebrow { min-width: 0; margin-right: 2px; }
 .hc-state { flex-shrink: 0; display: inline-flex; align-items: center; color: var(--ink-3); }
 .hc-state[data-tone='needs'] { color: var(--ink); }
 .hc-state[data-tone='merged'] { color: var(--merged); }
-.hc-title { font-size: 13px; font-weight: 500; color: var(--ink); }
-.hc-line { font-size: 12px; color: var(--muted); }
+.hc-title { font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
+.hc-line { font-size: var(--fs-meta); color: var(--muted); }
 .hc-wrap-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
 .hc-wrap { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.hc-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11.5px; color: var(--muted); }
-.hc-foot .btn { height: 24px; padding: 0 8px; font-size: 12px; }
-.hc-pr { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: none; font-size: 11.5px; color: var(--ink-3); }
+.hc-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: var(--fs-chip); color: var(--muted); }
+.hc-foot .btn { height: 24px; padding: 0 8px; font-size: var(--fs-meta); }
+.hc-pr { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: none; font-size: var(--fs-chip); color: var(--ink-3); }
 button.hc-pr { cursor: pointer; }
 button.hc-pr:hover { color: var(--ink); }
 .hc-pr[data-merged] { color: var(--merged); }
@@ -129,3 +129,16 @@ button.hc-pr:hover { color: var(--ink); }
 .nav-item[data-arrive] { animation: archive-arrive var(--archive-fade) ease-out; }
 @keyframes archive-arrive { from { background-color: transparent; color: var(--ink-2); } }
 @media (prefers-reduced-motion: reduce) { .row-fold, .row-open, .nav-group:not(:has(> :not(.row-fold))), .nav-item[data-arrive] { animation: none; } .row-fold { display: none; } }
+.ws-right.ws-pr { font-size: var(--fs-badge); }
+.project-row > .nav-item { padding-right: 60px; }
+.nav-hint { font-size: var(--fs-chip); }
+.sb-titlebar { height: 53px; flex-shrink: 0; display: flex; align-items: center; padding: 9px 0 0 77px; }
+.sb-switch-row { height: 36px; padding-left: 4px; flex-shrink: 0; }
+.sb-top-list { margin-top: 10px; flex-shrink: 0; }
+.section-label.sb-projects-label { position: relative; margin-top: 8px; flex-shrink: 0; }
+.row.project-actions { position: absolute; right: 4px; top: 3px; gap: 2px; }
+
+/* The Search field above New chat: the Search settings box (.set-search) as a button that opens the ⌘K palette (KERNEL-930). */
+.sb-search { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 10px 0 9px; border-radius: var(--r-sm); border: 1px solid var(--panel-line); background: var(--panel); color: var(--muted); text-align: left; margin-top: 8px; flex-shrink: 0; transition: border-color var(--dur-fast); }
+.sb-search svg { color: var(--faint); flex-shrink: 0; }
+.sb-search:hover { border-color: var(--line-3); }

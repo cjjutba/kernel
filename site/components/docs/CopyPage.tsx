@@ -85,13 +85,13 @@ export function CopyPage({ markdown, mdUrl, mdAbsolute, title }: Props) {
     }
   }
 
-  const row = 'flex h-9 w-full items-center gap-3 rounded-md px-2.5 text-left text-ui text-ink-2 outline-none transition-colors hover:bg-white/6 hover:text-ink focus-visible:bg-white/6 focus-visible:text-ink'
+  const row = 'flex h-9 w-full items-center gap-3 rounded-md px-2.5 text-left text-ui text-ink-2 outline-none transition-colors hover:bg-tint-strong hover:text-ink focus-visible:bg-tint-strong focus-visible:text-ink'
   const q = prompt(mdAbsolute, title)
 
   return (
     <div ref={wrap} className="relative inline-flex shrink-0">
       <div className="inline-flex h-8 items-stretch overflow-hidden rounded-md border border-line-strong text-small font-medium text-ink-2">
-        <button type="button" onClick={() => void copy()} className="inline-flex items-center gap-2 px-3 transition-colors hover:bg-white/5 hover:text-ink">
+        <button type="button" onClick={() => void copy()} className="inline-flex items-center gap-2 px-3 transition-colors hover:bg-tint hover:text-ink">
           {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
           {copied ? 'Copied' : 'Copy page'}
         </button>
@@ -101,13 +101,13 @@ export function CopyPage({ markdown, mdUrl, mdAbsolute, title }: Props) {
           aria-haspopup="menu"
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
-          className="inline-flex w-8 items-center justify-center border-l border-line-strong transition-colors hover:bg-white/5 hover:text-ink"
+          className="inline-flex w-8 items-center justify-center border-l border-line-strong transition-colors hover:bg-tint hover:text-ink"
         >
           <Chevron />
         </button>
       </div>
       {open ? (
-        <div role="menu" aria-label="Use this page" onKeyDown={onMenuKey} className="absolute top-10 right-0 z-10 w-60 rounded-lg border border-line-strong bg-surface-2 p-1.5">
+        <div role="menu" aria-label="Use this page" onKeyDown={onMenuKey} className="absolute top-10 right-0 z-menu w-menu rounded-lg border border-line-strong bg-surface-2 p-1.5">
           <button
             ref={(el) => {
               items.current[0] = el

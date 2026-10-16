@@ -1,17 +1,11 @@
-/* First run screens (KERNEL-27): Welcome, Setup*, Check hooks, Loading. Tokens only. */
-.ob-center { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 0 40px; text-align: center; }
-.ob-mark { width: 72px; height: 72px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xl); border: 1px solid var(--line-3); background: var(--surface); color: var(--ink); }
-.ob-title { margin: 28px 0 0; font-size: 36px; font-weight: 600; color: var(--ink); letter-spacing: -1px; line-height: 1.15; }
-.ob-lede { margin: 12px 0 0; max-width: 440px; font-size: 15px; line-height: 1.55; color: var(--muted); }
-.ob-cta { margin-top: 32px; width: 280px; height: 40px; font-size: 14px; border-radius: var(--r); }
-.ob-foot { height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font-size: 12px; color: var(--muted); }
-.ob-link { padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; }
+/* First run screens: the splash (KERNEL-942), Check hooks, Loading, and project setup. Tokens only. */
+.ob-link { padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--fs-meta); }
 .ob-link:hover { color: var(--ink); }
 
 .ob-page { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; padding-top: 105px; }
 .ob-col { width: 560px; display: flex; flex-direction: column; }
-.ob-h1 { margin: 0; font-size: 22px; font-weight: 600; color: var(--ink); letter-spacing: -0.4px; }
-.ob-sub { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.ob-h1 { margin: 0; font-size: var(--fs-title); font-weight: var(--fw-semibold); color: var(--ink); letter-spacing: -0.4px; }
+.ob-sub { margin: 6px 0 0; color: var(--muted); font-size: var(--fs-ui); }
 .ob-list { margin-top: 24px; border: 1px solid var(--panel-line); border-radius: var(--r-lg); background: var(--panel); }
 .ob-check { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; min-height: 66px; box-sizing: border-box; }
 .ob-check + .ob-check { border-top: 1px solid var(--line); }
@@ -19,43 +13,35 @@
 .ob-check[data-ok="false"] .ob-ico { color: var(--del); }
 .ob-check[data-ok="false"][data-blocking="false"] .ob-ico { color: var(--ink); }
 .ob-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.ob-name { font-weight: 500; }
-.ob-detail { font-size: 12.5px; color: var(--muted); }
-.ob-note { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
-.ob-code { font: 12px var(--mono); color: var(--ink-2); white-space: nowrap; }
-.ob-meta { font: 12px var(--mono); color: var(--muted); margin-top: 2px; }
+.ob-name { font-weight: var(--fw-medium); }
+.ob-detail { font-size: var(--fs-code); color: var(--muted); }
+.ob-meta { font: var(--fs-meta) var(--mono); color: var(--muted); margin-top: 2px; }
 .ob-acts { display: flex; gap: 8px; margin-top: 10px; }
 .ob-fix { margin-top: 10px; }
 .ob-fix .code { background: var(--code-bg); }
-.ob-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; font-size: 13px; color: var(--muted); }
+.ob-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; font-size: var(--fs-ui); color: var(--muted); }
 .ob-bar .btn.lg { height: 32px; }
 
-.ob-cards { width: 640px; margin-top: 28px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; text-align: left; }
-.ob-card { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 16px; border-radius: var(--r-md); border: 1px solid var(--pill-line); background: var(--panel); color: var(--ink-2); text-align: left; }
-.ob-card:hover { background: var(--surface); }
-.ob-card svg { color: var(--ink-2); }
-.ob-card-name { font-weight: 500; }
-.ob-card-sub { font-size: 12px; color: var(--muted); }
 
 .ob-load { width: 237px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px; padding: 58px 14px 0 15px; box-sizing: border-box; }
 .ob-load-group { display: flex; flex-direction: column; gap: 12px; }
 .ob-load-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--r-md); }
 .ob-load-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 48px 0; box-sizing: border-box; }
 .ob-load-title { display: inline-flex; align-items: center; gap: 8px; }
-.ob-load-error { max-width: 420px; padding: 0 16px; text-align: center; font-size: 12.5px; text-wrap: balance; user-select: text; }
+.ob-load-error { max-width: 420px; padding: 0 16px; text-align: center; font-size: var(--fs-code); text-wrap: balance; user-select: text; }
 
-.hk-lede { margin: 0; padding: 0 18px 12px; color: var(--muted); line-height: 1.5; }
-.hk-status { display: flex; align-items: center; gap: 10px; margin: 0 18px; height: 40px; padding: 0 14px; border: 1px solid var(--card-line); border-radius: var(--r); background: var(--surface); font-weight: 500; }
-.hk-status .mono { margin-left: auto; font-weight: 400; color: var(--muted); font-size: 12px; }
+.hk-lede { margin: 0; padding: 0 18px 12px; color: var(--muted); line-height: var(--lh); }
+.hk-status { display: flex; align-items: center; gap: 10px; margin: 0 18px; height: 40px; padding: 0 14px; border: 1px solid var(--card-line); border-radius: var(--r); background: var(--surface); font-weight: var(--fw-medium); }
+.hk-status .mono { margin-left: auto; font-weight: var(--fw-regular); color: var(--muted); font-size: var(--fs-meta); }
 .hk-events { margin: 12px 18px 0; padding: 4px 0; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); }
 .modal:has(.hk-lede) { --modal-y: 98; }
-.hk-event { display: grid; grid-template-columns: 1fr 1fr 80px; align-items: center; height: 31px; padding: 0 12px; font-size: 12.5px; }
-.hk-event .mono { font: 12.5px var(--mono); }
+.hk-event { display: grid; grid-template-columns: 1fr 1fr 80px; align-items: center; height: 31px; padding: 0 12px; font-size: var(--fs-code); }
+.hk-event .mono { font: var(--fs-code) var(--mono); }
 .hk-event span:last-child { text-align: right; color: var(--muted); }
 .hk-event[data-seen="false"] span:nth-child(2) { color: var(--muted); }
 .hk-test { display: flex; align-items: center; gap: 12px; margin: 12px 18px 0; }
 .hk-test .btn { height: 26px; }
-.hk-note { font-size: 12.5px; color: var(--muted); }
+.hk-note { font-size: var(--fs-code); color: var(--muted); }
 .code.hk-snip { margin: 12px 18px 18px; white-space: pre; overflow: auto; }
 .hk-snip .path { color: var(--muted); }
 /* CheckHooksNotWritable.png and the four beside it (KERNEL-461): the status row, one card with one fix, and what still works. */
@@ -64,36 +50,41 @@
 .hk-card { display: flex; flex-direction: column; gap: 14px; padding: 14px 16px; border: 1px solid var(--card-line); border-radius: var(--r); background: var(--surface); }
 .hk-card p { margin: 0; }
 .hk-card-head { display: flex; flex-direction: column; gap: 4px; }
-.hk-card-title { font-weight: 500; }
-.hk-card-detail { font-size: 12.5px; line-height: 1.55; color: var(--muted); }
-.hk-mono { font: 12px var(--mono); color: var(--ink-2); white-space: nowrap; }
+.hk-card-title { font-weight: var(--fw-medium); }
+.hk-card-detail { font-size: var(--fs-code); line-height: var(--lh-prose); color: var(--muted); }
+.hk-mono { font: var(--fs-meta) var(--mono); color: var(--ink-2); white-space: nowrap; }
 .hk-fix { display: flex; flex-direction: column; gap: 8px; }
-.hk-fix-label { font-size: 12px; font-weight: 500; color: var(--muted); }
-.hk-command { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--r); background: var(--code-bg); font: 12.5px/1.55 var(--mono); user-select: text; }
+.hk-fix-label { font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
+.hk-command { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--r); background: var(--code-bg); font: var(--fs-code)/ var(--lh-prose) var(--mono); user-select: text; }
 .hk-command span { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.hk-command .btn { flex-shrink: 0; height: 24px; padding: 0 8px; border-radius: var(--r-sm); font-size: 12px; font-weight: 400; color: var(--ink-2); }
-.hk-line { padding: 9px 12px; border-radius: var(--r); background: var(--code-bg); font: 12.5px var(--mono); color: var(--ink-2); white-space: pre; user-select: text; }
+.hk-command .btn { flex-shrink: 0; height: 24px; padding: 0 8px; border-radius: var(--r-sm); font-size: var(--fs-meta); font-weight: var(--fw-regular); color: var(--ink-2); }
+.hk-line { padding: 9px 12px; border-radius: var(--r); background: var(--code-bg); font: var(--fs-code) var(--mono); color: var(--ink-2); white-space: pre; user-select: text; }
 .hk-admin.btn { height: 30px; }
-.hk-keep { margin: 0; padding: 0 2px; font-size: 12px; color: var(--muted); }
+.hk-keep { margin: 0; padding: 0 2px; font-size: var(--fs-meta); color: var(--muted); }
 
 /* Permission mode step (KERNEL-457): SetupPermissions.png. A radio list in the Checks list's card. */
 .ob-list.ob-modes { margin-top: 20px; }
 .ob-bar.ob-modes-bar { margin-top: 20px; }
-.ob-mode { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; }
-.ob-mode + .ob-mode { border-top: 1px solid var(--line); }
-.ob-radio { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 1px solid var(--line-4); background: transparent; color: var(--on-ink); }
-.ob-radio[aria-checked='true'] { border-color: var(--ink); background: var(--ink); }
-.ob-mode-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.ob-mode-title { display: flex; align-items: center; gap: 8px; font-weight: 500; }
-.ob-mode-desc { font-size: 12.5px; color: var(--muted); }
-.ob-mode-note { display: block; margin-top: 2px; }
-.ob-mode[data-disabled='true'] .ob-radio { opacity: 0.45; }
-.ob-mode[data-disabled='true'] .ob-mode-title { color: var(--muted); }
-.ob-tag { display: inline-flex; align-items: center; height: 18px; box-sizing: border-box; padding: 0 6px; border: 1px solid var(--line-3); border-radius: var(--r-xs); color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1; }
-.ob-mode-why { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; color: var(--ink-3); }
-.ob-mode-why svg, .ob-caution svg { flex-shrink: 0; }
-.ob-mode-why svg { color: var(--muted); }
-.ob-caution { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; padding: 9px 12px; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--code-bg); font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
-.ob-caution svg { margin-top: 2px; }
 
 .ob-bar .btn.primary:disabled { opacity: 1; background: var(--surface-3); border-color: transparent; color: var(--faint); }
+.panel.ob-bare { background: transparent; border: 0; }
+.ob-h1.ob-h1-lg { font-size: var(--fs-page); letter-spacing: -0.6px; }
+.ob-sub.ob-sub-lg { font-size: var(--fs-chat); }
+.ob-link.ob-later { margin-top: 24px; font-size: var(--fs-ui); }
+.ob-reconnect { font-size: var(--fs-code); }
+
+/* Splash (KERNEL-942): the wordmark alone, brushed grey like the app icon and a little sunk into the canvas. The K settles in from a
+   soft blur, then ernel wipes in from the left. The wipe's animationend opens New chat. */
+.ob-splash { flex: 1; display: flex; align-items: center; justify-content: center; }
+.ob-wordmark { display: flex; align-items: baseline; opacity: 0.7; }
+.ob-wordmark-k { flex-shrink: 0; display: block; animation: ob-k-in var(--dur-splash) var(--ease-enter) var(--dur-splash-k) both; }
+.ob-k-stem { fill: var(--ink); }
+.ob-k-chevron { fill: var(--ink-3); }
+.ob-wordmark-rest { display: block; padding-left: 3px; animation: ob-rest-in var(--dur-splash) var(--ease-wipe) var(--dur-splash-rest) both; }
+.ob-wordmark-text { display: block; font-size: var(--fs-wordmark); font-weight: var(--fw-wordmark); letter-spacing: -0.05em; line-height: 30px; background: linear-gradient(180deg, var(--ink-hover) 0%, var(--ink) 40%, var(--ink-3) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+@keyframes ob-k-in { from { opacity: 0; filter: blur(10px); transform: scale(.94); } to { opacity: 1; filter: blur(0); transform: none; } }
+@keyframes ob-rest-in { from { opacity: 0; clip-path: inset(0 100% 0 0); filter: blur(5px); } to { opacity: 1; clip-path: inset(0 0 0 0); filter: blur(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .ob-wordmark-k, .ob-wordmark-rest { animation: ob-fade var(--dur-splash-fade) var(--ease-out) both; }
+  @keyframes ob-fade { from { opacity: 0; } to { opacity: 1; } }
+}

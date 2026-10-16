@@ -64,6 +64,52 @@ async function scrollUp(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// KERNEL-952 scroll baselines. A tall plan is read from its task list before the round trip; a revised plan and a turn's end arrive on a chat read from higher up.
+async function scrollToTasks(page: Page) {
+  await page.waitForTimeout(1500)
+  await page.locator('.ws-scroll').evaluate((box) => {
+    const tasks = [...box.querySelectorAll('*')].filter((e) => /T-15a/.test(e.textContent ?? '')).pop()
+    if (tasks) box.scrollTop += tasks.getBoundingClientRect().top - box.getBoundingClientRect().top - 16
+  })
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+async function reducedMotion(page: Page) {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.waitForTimeout(300)
+}
+async function copyImage(page: Page) {
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 160
+    canvas.height = 100
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = '#888'
+    ctx.fillRect(0, 0, 160, 100)
+    const blob = await new Promise<Blob>((r) => canvas.toBlob((b) => r(b!), 'image/png'))
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+  })
+  await focusComposer(page)
+}
+async function toEnd(page: Page) {
+  await page.waitForTimeout(1500)
+  await page.locator('.ws-scroll').evaluate((box) => { box.scrollTop = box.scrollHeight })
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(1500)
+}
+
+// ChatNewMessages: the chat is read from higher up while two replies, a teammate's message and some steps arrive. Only the three messages are counted (KERNEL-922).
+async function scrollUpAndReceive(page: Page, app: ElectronApplication) {
+  await scrollUp(page)
+  const push = (item: object) => app.evaluate(({ BrowserWindow }, i) => BrowserWindow.getAllWindows()[0]?.webContents.send('kernel:event', { type: 'chat.item', chatId: 'chat-invoice-table', item: i }), item)
+  await push({ kind: 'tool', id: 'nm-t1', ts: Date.now(), toolUseId: 'toolu_nm1', name: 'Bash', label: 'Ran tests', detail: 'pnpm test', status: 'done', durationMs: 100 })
+  await push({ kind: 'text', id: 'nm-r1', ts: Date.now(), text: 'The export is wired to the table menu.' })
+  await push({ kind: 'tool', id: 'nm-t2', ts: Date.now(), toolUseId: 'toolu_nm2', name: 'Bash', label: 'Ran lint', detail: 'pnpm lint', status: 'done', durationMs: 100 })
+  await push({ kind: 'text', id: 'nm-r2', ts: Date.now(), text: 'Tests pass for the CSV rows.' })
+  await push({ kind: 'text', id: 'nm-r3', ts: Date.now(), text: 'One more thing: the header row is included.' })
+  await page.waitForTimeout(500)
+}
+
 // WorkspaceJustSent: a send arrives while the chat is open, and the view stays at its end (KERNEL-891).
 async function sendMessage(page: Page, app: ElectronApplication) {
   await page.waitForTimeout(300)
@@ -505,7 +551,7 @@ async function narrowSidebar(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// UsageFooterNarrow is the window at 900px wide, where the footer's inline accounts fold into the "more" chip (KERNEL-697).
+// UsageFooterNarrow is the window at 900px wide, where the footer drops the Fable number (KERNEL-697, KERNEL-949).
 async function narrowWindow(page: Page, app: ElectronApplication) {
   await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: 900, h: HEIGHT })
   await page.waitForTimeout(400)
@@ -592,7 +638,6 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   ConfirmOverrule: openOverrule,
   UsageFooterNarrow: narrowWindow,
   AuditSidebarWide: async (page) => { const h = page.getByRole('separator', { name: 'Resize sidebar' }); await h.focus(); await page.keyboard.press('End'); await h.blur(); await page.waitForTimeout(300) },
-  AccountSwitching: async (page) => { await page.locator('.ft-other').first().click(); await page.waitForTimeout(200) },
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   ProjectSetupTeam: openReviewer,
   PanelCompare: openCompare,
@@ -688,6 +733,16 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceChatSwitchWorkingMotion: async (page) => { await page.getByRole('tab', { name: 'Snapshot tests' }).click(); await page.waitForTimeout(500); await page.getByRole('tab', { name: 'Empty state copy' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(500) },
   WorkspaceChatSwitchSavedSpotMotion: async (page) => { await scrollUp(page); await page.getByRole('tab', { name: 'Empty state copy' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(500) },
   ChatRestoredSpot: scrollUp,
+  ChatNewMessages: scrollUpAndReceive,
+  WorkspaceScrollTallPlanRoundTripMotion: scrollToTasks,
+  WorkspacePlanRoundTrip: toEnd,
+  WorkspaceScrollPlanRoundTripMotion: toEnd,
+  WorkspaceScrollRevisedPlanMotion: async (page) => { await toEnd(page); await scrollUp(page) },
+  WorkspaceScrollComposerImageMotion: copyImage,
+  WorkspaceScrollComposerLinesMotion: (page) => focusComposer(page),
+  WorkspaceScrollComposerQueueMotion: (page) => focusComposer(page),
+  WorkspaceScrollTurnFoldMotion: scrollUp,
+  WorkspaceScrollPlanRoundTripReducedMotion: async (page) => { await reducedMotion(page); await toEnd(page) },
   SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSaved: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSavedLight: (page) => leaveSizeLimit(page, '600'),
@@ -787,7 +842,7 @@ async function runMotionAction(page: Page, action: MotionAction, app: ElectronAp
   else if ('click' in action) await page.getByRole('button', { name: action.click, exact: true }).or(page.getByRole('tab', { name: action.click })).click()
   else if ('hold' in action) { await page.getByRole('button', { name: action.hold, exact: true }).first().hover(); await page.mouse.down() }
   else for (const key of action.press) {
-    if (key.startsWith('click:')) await page.getByRole('button', { name: key.slice(6), exact: true }).click()
+    if (key.startsWith('click:')) await page.getByRole('button', { name: key.slice(6), exact: true }).or(page.getByRole('tab', { name: key.slice(6) })).click()
     else await page.keyboard.press(key)
   }
 }
