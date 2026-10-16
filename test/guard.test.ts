@@ -3,7 +3,10 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { run } from '../src/main/services/exec'
+import { moveWorktree } from '../src/main/services/worktrees'
+import { tempRepo } from './helpers'
 
 // The guard reads HOME through os.homedir(), so a fake home keeps these runs
 // away from the real ~/.claude.
@@ -34,15 +37,19 @@ afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 // Plain node, as Claude Code runs the hook. Under `pnpm test` process.execPath is the Electron binary, which takes
 // seconds to start on a busy machine, and the checks run side by side (KERNEL-187).
-async function guardOutput(tool: string, toolInput: Record<string, string>, h = home) {
-  const run = promisify(execFile)('node', [resolve('.claude/hooks/guard.mjs')], { env: { ...process.env, HOME: h, CLAUDE_PROJECT_DIR: repo }, encoding: 'utf8' })
-  run.child.stdin!.end(JSON.stringify({ tool_name: tool, tool_input: toolInput, cwd: repo }))
-  const { stdout } = await run
+// KERNEL_WORKSPACE is cleared, since a run inside a Kernel session inherits the session's own.
+async function guardOutput(tool: string, toolInput: Record<string, string>, h = home, o: { project?: string; workspace?: string } = {}) {
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: h, CLAUDE_PROJECT_DIR: o.project ?? repo }
+  delete env.KERNEL_WORKSPACE
+  if (o.workspace) env.KERNEL_WORKSPACE = o.workspace
+  const proc = promisify(execFile)('node', [resolve('.claude/hooks/guard.mjs')], { env, encoding: 'utf8' })
+  proc.child.stdin!.end(JSON.stringify({ tool_name: tool, tool_input: toolInput, cwd: o.workspace ?? o.project ?? repo }))
+  const { stdout } = await proc
   return stdout ? JSON.parse(stdout).hookSpecificOutput : { permissionDecision: 'allow' }
 }
 
-async function guard(tool: string, toolInput: Record<string, string>, h = home) {
-  return (await guardOutput(tool, toolInput, h)).permissionDecision
+async function guard(tool: string, toolInput: Record<string, string>, h = home, o: { project?: string; workspace?: string } = {}) {
+  return (await guardOutput(tool, toolInput, h, o)).permissionDecision
 }
 
 describe.concurrent('guard: edits outside the repo', () => {
@@ -91,6 +98,42 @@ describe.concurrent('guard: edits outside the repo', () => {
 
   it('does not follow a plans folder that is a symlink to ~/.claude', async () => {
     expect(await guard('Write', { file_path: join(linkedHome, '.claude/plans/CLAUDE.md') }, linkedHome)).toBe('deny')
+  })
+})
+
+// A chat with Kernel works in its own worktree, but Claude Code sets CLAUDE_PROJECT_DIR to the main checkout it takes its
+// config from (KERNEL-355). Kernel moves that worktree to match the chat's title (KERNEL-424) and restarts the session there.
+describe('guard: a chat with Kernel in a moved worktree (KERNEL-976)', () => {
+  let checkout: string, moved: string, other: string
+  beforeAll(async () => {
+    checkout = await tempRepo()
+    other = await tempRepo()
+    const before = join(tmp, 'worktrees', 'kernel-what-your-thoughts-about')
+    moved = join(tmp, 'worktrees', 'kernel-redundant-top-bar-in-new-chat')
+    await run('git', ['-C', checkout, 'worktree', 'add', '-q', '--detach', before])
+    await moveWorktree(checkout, before, moved)
+  })
+  afterAll(() => {
+    for (const dir of [checkout, other]) rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('allows a write inside the new folder', async () => {
+    const o = { project: checkout, workspace: moved }
+    expect(await guard('Write', { file_path: join(moved, '.kernel/shared/chat-header-merge.html') }, home, o)).toBe('allow')
+    expect(await guard('Write', { file_path: 'shots/x.html' }, home, o)).toBe('allow')
+  })
+
+  it('still denies a write outside it, the main checkout and the old folder included', async () => {
+    const o = { project: checkout, workspace: moved }
+    expect(await guard('Write', { file_path: join(outside, 'x.ts') }, home, o)).toBe('deny')
+    expect(await guard('Write', { file_path: join(checkout, 'README.md') }, home, o)).toBe('deny')
+    expect(await guard('Write', { file_path: join(tmp, 'worktrees', 'kernel-what-your-thoughts-about', 'x.ts') }, home, o)).toBe('deny')
+    expect(await guard('Edit', { file_path: `${moved}/../kernel-what-your-thoughts-about/x.ts` }, home, o)).toBe('deny')
+  })
+
+  it('ignores a KERNEL_WORKSPACE that is not a worktree of the same repo', async () => {
+    expect(await guard('Write', { file_path: join(other, 'x.ts') }, home, { project: checkout, workspace: other })).toBe('deny')
+    expect(await guard('Write', { file_path: join(checkout, 'x.ts') }, home, { project: checkout, workspace: other })).toBe('allow')
   })
 })
 
