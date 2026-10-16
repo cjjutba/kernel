@@ -5,12 +5,13 @@ import { join } from 'node:path'
 import type { AgentDef, ChatItem, Workspace } from '@shared/types'
 import { leadModeOf, leadModeSwitched, newChatLeadMode } from '@shared/leadMode'
 import { ALREADY_HANDOFF, BUILD_HERE_REFUSAL, BUILD_PLAN_MODE_OFF, kernelTools, uncommittedNote, type KernelToolDeps } from '../src/main/services/kernelMcp'
-import { HANDOFF_NO_EDIT, toolPolicy } from '../src/main/services/agentTools'
+import { HANDOFF_NO_EDIT, HANDOFF_SWITCHED, toolPolicy } from '../src/main/services/agentTools'
 import { forProvider, LEAD_BUILD_RULE, LEAD_RULE, leadRule } from '../src/main/services/handoff'
 import { agentPrompt } from '../src/main/services/sessions'
 import { loadRepoSettings, saveRepoSettings } from '../src/main/services/settings'
 import { sharesFile } from '../src/main/services/providers/codex/runner'
 import { Kernel } from '../src/main/kernel'
+import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
 import { setUp, tempRepo, freePort } from './helpers'
 
@@ -131,6 +132,50 @@ describe('lead.setMode (KERNEL-770)', () => {
     expect(modes(c.id)).toEqual(['build', 'build'])
     expect(modes(other.id)).toEqual(['build'])
     expect(k.store.items(c.id).map((i) => i.kind)).toEqual(['leadMode', 'note', 'leadMode'])
+  })
+
+  it('holds the divider of a tab with a reply running until that reply ends, and places the others at once', async () => {
+    const { k, chat } = await setup()
+    const c = await chat()
+    const other = k.store.saveChat({ ...c, id: 'second-tab', title: 'Second' })
+    const running = new Set([c.id])
+    k.sessions.isRunning = (id: string) => running.has(id)
+    const modes = (id: string) => k.store.items(id).flatMap((i) => (i.kind === 'leadMode' ? [i.mode] : []))
+    const ended = (id: string) => { running.delete(id); bus.push({ type: 'chat.running', chatId: id, running: false }) }
+    k.lead.setMode(c.workspaceId, 'build')
+    expect(modes(c.id)).toEqual([])
+    expect(modes(other.id)).toEqual(['build'])
+    k.store.saveItem(c.id, { kind: 'note', id: 'reply', ts: Date.now(), text: 'Still in Hand off.' })
+    ended(c.id)
+    expect(k.store.items(c.id).map((i) => i.kind)).toEqual(['note', 'leadMode'])
+    expect(modes(c.id)).toEqual(['build'])
+    // Another turn's end places nothing more.
+    ended(c.id)
+    expect(modes(c.id)).toEqual(['build'])
+  })
+
+  it('leaves one divider for the mode a reply ends in after two switches, or none when that is the mode it started in', async () => {
+    const { k, chat } = await setup()
+    const c = await chat()
+    let running = true
+    k.sessions.isRunning = () => running
+    const modes = () => k.store.items(c.id).flatMap((i) => (i.kind === 'leadMode' ? [i.mode] : []))
+    const end = () => { running = false; bus.push({ type: 'chat.running', chatId: c.id, running: false }); running = true }
+    // Started in Hand off, ends in Hand off: no divider.
+    k.lead.setMode(c.workspaceId, 'build')
+    k.lead.setMode(c.workspaceId, 'handoff')
+    end()
+    expect(modes()).toEqual([])
+    // Started in Hand off, ends in Build here after three switches: one.
+    k.lead.setMode(c.workspaceId, 'build')
+    k.lead.setMode(c.workspaceId, 'handoff')
+    k.lead.setMode(c.workspaceId, 'build')
+    end()
+    expect(modes()).toEqual(['build'])
+    // Started in Build here, ends in Hand off, with the divider still last: it updates in place (KERNEL-809).
+    k.lead.setMode(c.workspaceId, 'handoff')
+    end()
+    expect(modes()).toEqual(['handoff'])
   })
 
   it('switches with uncommitted edits in the worktree, both ways, and leaves them as they were', async () => {
@@ -258,7 +303,9 @@ describe("the Lead's prompt and tools in each mode (KERNEL-770)", () => {
     expect(LEAD_BUILD_RULE).not.toContain('Never build a task yourself.')
     expect(LEAD_BUILD_RULE).not.toContain('the approval means "hand it off now"')
     for (const part of ['open a pull request', 'fix your own PR', 'never call mcp__kernel__create_workspace, except with review_of', 'bigger than one PR', 'mcp__kernel__suggest_hand_off']) expect(LEAD_BUILD_RULE, part).toContain(part)
-    for (const part of ['Team update', 'Never use em dashes', 'mcp__kernel__read_plans', 'Never leave a teammate waiting']) {
+    // A question in Build here gets an answer and changes nothing (feat-lead-stops-ending-answers-with).
+    expect(LEAD_BUILD_RULE).toContain('A question is not a request to build, so it changes nothing.')
+    for (const part of ['Team update', 'Never use em dashes', 'mcp__kernel__read_plans', 'Never leave a teammate waiting', 'answer and stop, with no closing offer or question']) {
       expect(LEAD_RULE, part).toContain(part)
       expect(LEAD_BUILD_RULE, part).toContain(part)
     }
@@ -277,6 +324,9 @@ describe("the Lead's prompt and tools in each mode (KERNEL-770)", () => {
       for (const tool of ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']) {
         expect(p.allows(tool, { file_path: '/tmp/ws/a.ts' }), tool).toBe(false)
         expect(p.modeRefuses(tool)).toBe(HANDOFF_NO_EDIT)
+        // A switch to Build here during the reply applies from the next message, and the refusal says so.
+        expect(p.modeRefuses(tool, 'handoff')).toBe(HANDOFF_NO_EDIT)
+        expect(p.modeRefuses(tool, 'build')).toBe(HANDOFF_SWITCHED)
       }
       expect(p.allows('Write', { file_path: '/tmp/plans/plan.md' })).toBe(true)
       expect(p.allows('Bash')).toBe(true)

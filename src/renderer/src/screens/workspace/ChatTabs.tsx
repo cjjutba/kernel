@@ -25,8 +25,8 @@ const base = (path: string) => path.split('/').pop() ?? path
  * a close button on hover. The new tab menu lists a New tab row, then every terminal preset (Settings, Big terminal).
  * In the Lead's workspace `chats` are the tabs of the chat on screen (`threadId`), and a new tab joins that chat (KERNEL-338).
  */
-export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
-  workspaceId: string; /** The Lead chat on screen. A new chat tab joins it. Unset outside the Lead's workspace. */ threadId?: string
+export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewChat, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
+  /** The tabs sit in the header row, after the project, and not in a row of their own. */ inline?: boolean; /** What the workspace follows ("latest main", "current branch · main"), said in a chat tab's hover card. */ note?: string; workspaceId: string; /** The Lead chat on screen. A new chat tab joins it. Unset outside the Lead's workspace. */ threadId?: string
   /** The Lead's workspace shows New chat, so a new tab is that box and starts no chat (KERNEL-366). */ noChat?: boolean; /** Switches the screen to that box when another tab is showing. */ onNewChat?: () => void; chats: Chat[]; files: string[]; diffs: string[]; shared: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
   onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseDiff: (path: string) => void; onCloseShared: (sharedId: string) => void; onCloseImage: (id: string) => void; onCloseText: (id: string) => void
 }) {
@@ -137,7 +137,7 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
   ]
   const stop = tabStop(tabs.map((t) => t.id), active)
   return (
-    <div className="ws-tabs">
+    <div className="ws-tabs" data-inline={inline || undefined}>
       <div role="tablist" aria-label="Chats and files" className="row gap-2" style={{ alignItems: 'flex-end', minWidth: 0 }}>
         {tabs.map((t) => {
           const on = t.id === active
@@ -154,7 +154,7 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
                   onFocus={(e) => e.currentTarget.select()} onBlur={(e) => rename(t.id, e.currentTarget.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') rename(t.id, e.currentTarget.value); else if (e.key === 'Escape') setRenaming(null) }} />
               ) : (
-                <button type="button" role="tab" aria-selected={on} tabIndex={t.id === stop ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" data-tip={t.title} data-unread={unread || undefined} onClick={() => onSelect(t.id)}
+                <button type="button" role="tab" aria-selected={on} tabIndex={t.id === stop ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" data-tip={t.title} data-tip-hint={t.kind === 'chat' ? note : undefined} data-unread={unread || undefined} onClick={() => onSelect(t.id)}
                   aria-label={g?.label || unread ? name : undefined} aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
                   onKeyDown={(e) => { if (t.kind === 'chat' && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) { e.preventDefault(); openTabMenu(t.id) } else arrow(e, t.id) }}
                   onContextMenu={(e) => { if (t.kind !== 'chat') return; e.preventDefault(); openTabMenu(t.id) }}

@@ -287,7 +287,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
   it('tells the Lead to ask for approval only in plan mode, and otherwise to ask in the chat before handing off', () => {
     expect(LEAD_RULE).toContain('Ask for plan approval only while the chat is in plan mode')
     expect(LEAD_RULE).not.toContain('in plan mode or through request_plan_approval')
-    expect(LEAD_RULE).toContain('With plan mode off, propose what you would hand off and to whom, ending with one yes-or-no question for one set of tasks. Call mcp__kernel__create_workspace only on a go-ahead')
+    expect(LEAD_RULE).toContain('With plan mode off, when the user asks for work, say who gets what, ending with one yes-or-no question for one set of tasks. Call mcp__kernel__create_workspace only on a go-ahead')
     expect(PLAN_MODE_OFF).toContain('there is no plan to approve')
     // "Don't ask" holds only after an approved plan, so it can't be read against asking first with plan mode off.
     const dontAsk = LEAD_RULE.split('\n').filter((l) => /don't ask/i.test(l))
@@ -377,8 +377,27 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     expect(line).toContain('only on a go-ahead that approves it and raises nothing new, quoted in go_ahead')
     expect(line).toContain('If the reply also asks questions, changes scope or only agrees with the idea, answer it, restate who gets what, and ask once.')
     expect(line).toContain('Filing or editing tracker issues needs the same go-ahead.')
-    expect(line).toContain("Propose new findings, don't start them.")
     expect(line).not.toContain('right away')
+  })
+
+  // feat-lead-stops-ending-answers-with: only a request for work ends on a question. "Is this a bug?" gets an answer.
+  it('tells the Lead to answer a question and stop, and to ask only when the user asked for work', async () => {
+    const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
+    const line = LEAD_RULE.split('\n').find((l) => l.startsWith('With plan mode off'))!
+    expect(line).toContain('when the user asks for work, say who gets what')
+    expect(line).not.toContain('Propose new findings')
+    expect(LEAD_RULE).toContain('When the user asks a question, gives an opinion or reports something, answer and stop, with no closing offer or question')
+    for (const part of ['A message that also asks for work is a request for work.', '"Okay" after an answer starts nothing.', 'a serious one first']) {
+      expect(LEAD_RULE, part).toContain(part)
+      expect(starter, part).toContain(part)
+    }
+    expect(LEAD_RULE).toContain('no "I\'ll" or "next" about work you aren\'t doing')
+    for (const said of [LEAD_INSTRUCTIONS, PLAN_MODE_OFF]) expect(said).toMatch(/answer (a question, opinion or report|it) and stop/)
+    // The ending question and the go-ahead check stay for requests for work, and no tracker is named.
+    expect(LEAD_INSTRUCTIONS).toContain('Filing tracker issues needs the same go-ahead.')
+    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, PLAN_MODE_OFF, starter]) expect(said).not.toMatch(/Linear|GitHub Issues/)
+    // A teammate's blocking question still goes to the user.
+    expect(LEAD_RULE).toContain('else ask the user with mcp__kernel__ask_user')
   })
 
   it('says the same in the rule, the instructions, the refusal and the starter Kernel, and the rule does not grow', async () => {
@@ -391,8 +410,9 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     // LEAD_RULE's length on main before KERNEL-678. The rule was rewritten, not added to. KERNEL-745 added its one sentence
     // about mentions, 80 characters past that, KERNEL-747 its sentence about proposed hand-offs, 61 more, and KERNEL-777 its
     // sentence about limit replies, 176 more, and feat-review-messages-reach-named its sentence about reporting a message's
-    // answer and the review kind to name, 118 more. KERNEL-880 renamed room to project, 9 more.
-    expect(LEAD_RULE.length).toBeLessThanOrEqual(5839)
+    // answer and the review kind to name, 118 more. KERNEL-880 renamed room to project, 9 more. feat-lead-stops-ending-answers-with
+    // added its line on answering without an offer, 332 more.
+    expect(LEAD_RULE.length).toBeLessThanOrEqual(6171)
   })
 
   // KERNEL-692: Kernel is the Lead, so its rule speaks to Kernel and never about Kernel in the third person.
