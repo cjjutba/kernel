@@ -33,17 +33,17 @@
 .pr-cap .lp-summary { flex: none; height: 100%; }
 
 /* The `#42 | ↗` pill, then where the PR stands. The label shortens with an ellipsis before anything else gives way. */
-.pr-link { display: inline-flex; align-items: stretch; height: 24px; border: 1px solid var(--b-edge); border-radius: var(--r-sm); overflow: hidden; background: var(--b-soft); color: var(--b-fg); text-decoration: none; font: 11.5px var(--mono); }
+.pr-link { display: inline-flex; align-items: stretch; height: 24px; border: 1px solid var(--b-edge); border-radius: var(--r-sm); overflow: hidden; background: var(--b-soft); color: var(--b-fg); text-decoration: none; font: var(--fs-chip) var(--mono); }
 .pr-link:hover { background: color-mix(in srgb, var(--b-soft) 88%, var(--b-fg)); }
 .pr-num { display: inline-flex; align-items: center; padding: 0 7px; }
 .pr-ext { display: inline-flex; align-items: center; padding: 0 6px; border-left: 1px solid var(--b-edge); }
-.pr-state { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; font-weight: 500; color: var(--b-text); }
+.pr-state { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-code); font-weight: var(--fw-medium); color: var(--b-text); }
 .pr-state svg { flex-shrink: 0; }
 .pr-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The PR buttons are 26px, 12px type and 10px sides, as the redesign draws them. That fits Continue and Archive side by side at the
    panel's widest, and leaves the capsule 2px above and below. */
-.pr-tone .btn { height: 26px; gap: 6px; padding: 0 10px; font-size: 12px; }
+.pr-tone .btn { height: 26px; gap: 6px; padding: 0 10px; font-size: var(--fs-meta); }
 .pr-tone .split-caret { height: 26px; }
 /* Soft buttons sit in the band's tone; Merge PR and Archive take its solid. Create PR stays ink on the neutral band. */
 /* Merge anyway in a PRs tab or Team update row is an outline: the row's red state already says what is wrong (KERNEL-757). */
@@ -58,7 +58,7 @@
 .pr-tone .btn[aria-busy='true'] { --spin-ink: var(--b-text); }
 /* An open PR's state word in a PRs tab or Team update row, red for what needs fixing, as the band says it (KERNEL-417). While
    something runs, the spinner sits before the word in its color, with nothing to press (KERNEL-757). */
-.pr-word { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.pr-word { font-size: var(--fs-meta); color: var(--ink-3); white-space: nowrap; }
 .pr-word[data-tone='fail'] { color: var(--pr-fail-text); }
 .pr-word[data-tone='ready'] { color: var(--pr-ready-text); }
 .pr-run { display: inline-flex; align-items: center; gap: 6px; --spin-ink: currentColor; }
@@ -75,8 +75,8 @@
 
 /* "create-pr.md sent": an instruction file Kernel sent for the user. */
 .pr-sent { align-self: flex-end; width: 82%; border-radius: var(--r-md); background: var(--line); overflow: hidden; }
-.pr-sent-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--card-line); font-size: 12.5px; color: var(--ink-2); }
-.pr-sent-body { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; font: 12px/1.5 var(--mono); color: var(--ink-3); }
+.pr-sent-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--card-line); font-size: var(--fs-code); color: var(--ink-2); }
+.pr-sent-body { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; font: var(--fs-meta)/var(--lh) var(--mono); color: var(--ink-3); }
 .pr-sent-body span { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* The Lead's PRs tab (KERNEL-354): a header that counts what can merge, then the project's open PRs, ready ones first. */
@@ -84,9 +84,9 @@
 .lp-summary[data-spread] { align-self: stretch; }
 .lp-go { margin-left: auto; display: inline-flex; color: var(--b-text); }
 /* Each list's heading and count (KERNEL-757). The first sits close under the strip. */
-.lp-sec { display: flex; align-items: baseline; gap: 6px; padding: 12px 14px 2px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.lp-sec { display: flex; align-items: baseline; gap: 6px; padding: 12px 14px 2px; font-size: var(--fs-meta); line-height: 16px; color: var(--muted); }
 section:first-child > .lp-sec { padding-top: 6px; }
-.lp-sec h3 { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
+.lp-sec h3 { margin: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
 .lp-list { list-style: none; margin: 0; padding: 0; }
 /* A row (KERNEL-757): its icon, the title with Merge on the right, then one line with where it stands, who, the PR and its size.
    The title's button covers the row, so a click anywhere opens the workspace, and Merge and the PR link sit above it. Each line
@@ -99,7 +99,7 @@ section:first-child > .lp-sec { padding-top: 6px; }
 .lp-glyph[data-tone='del'] { color: var(--del); }
 .lp-body { flex: 1; min-width: 0; }
 .lp-l1 { display: flex; align-items: center; gap: 10px; height: 22px; }
-.lp-open { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: 13px; font-weight: 500; line-height: 18px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.lp-open { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: var(--fs-ui); font-weight: var(--fw-medium); line-height: 18px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .lp-open:focus-visible { outline: none; }
 .lp-open::after { content: ''; position: absolute; inset: 0; border-radius: var(--r-sm); }
 .lp-act, .lp-num { position: relative; z-index: 1; }
@@ -108,7 +108,7 @@ section:first-child > .lp-sec { padding-top: 6px; }
 /* Rows with nothing to press show where a click goes, on hover or focus. */
 .lp-chev { flex-shrink: 0; display: inline-flex; color: var(--ink-3); opacity: 0; }
 .lp-row:hover .lp-chev, .lp-row:has(.lp-open:focus-visible) .lp-chev { opacity: 1; }
-.lp-l2 { display: flex; align-items: baseline; gap: 5px; margin-top: 2px; overflow: hidden; font-size: 12px; line-height: 16px; white-space: nowrap; color: var(--muted); }
+.lp-l2 { display: flex; align-items: baseline; gap: 5px; margin-top: 2px; overflow: hidden; font-size: var(--fs-meta); line-height: 16px; white-space: nowrap; color: var(--muted); }
 .lp-l2 > * { flex-shrink: 0; }
 .lp-state { color: var(--ink-3); }
 .lp-state { display: inline-flex; align-items: center; gap: 4px; }
@@ -116,28 +116,28 @@ section:first-child > .lp-sec { padding-top: 6px; }
 .lp-state[data-tone='fail'] { color: var(--del); }
 .lp-dot { color: var(--faint); }
 .lp-l2 > .lp-name { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
-.lp-num { display: inline-flex; align-items: center; gap: 2px; font: 11.5px var(--mono); color: var(--muted); text-decoration: none; }
+.lp-num { display: inline-flex; align-items: center; gap: 2px; font: var(--fs-chip) var(--mono); color: var(--muted); text-decoration: none; }
 .lp-num:hover { color: var(--ink-2); }
-.lp-stat { margin-left: auto; padding-left: 8px; font: 11px var(--mono); font-variant-numeric: tabular-nums; }
+.lp-stat { margin-left: auto; padding-left: 8px; font: var(--fs-badge) var(--mono); font-variant-numeric: tabular-nums; }
 
 /* A branch that merges on the Mac: a plain `→ main` pill where the PR link was, in the band's tone, with nothing to open (KERNEL-478). */
-.pr-pill { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px 0 7px; border: 1px solid var(--b-edge); border-radius: var(--r-sm); background: var(--b-soft); color: var(--b-fg); font-size: 11.5px; }
+.pr-pill { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px 0 7px; border: 1px solid var(--b-edge); border-radius: var(--r-sm); background: var(--b-soft); color: var(--b-fg); font-size: var(--fs-chip); }
 /* The merge line and its note under the band, above the tabs: how far the branch is from its base, then what is in the way. */
-.lm-line { display: flex; align-items: center; gap: 6px; padding: 10px 14px 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.lm-line { display: flex; align-items: center; gap: 6px; padding: 10px 14px 0; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
 .lm-line:empty { display: none; }
 .lm-line .n { color: var(--ink-2); }
-.lm-line .hot { color: var(--ink); font-weight: 500; }
+.lm-line .hot { color: var(--ink); font-weight: var(--fw-medium); }
 .lm-line .sep { color: var(--faint); }
-.lm-line .meth { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+.lm-line .meth { margin-left: auto; font-size: var(--fs-chip); color: var(--muted); }
 .lm-note { margin: 10px 12px 0; padding: 10px 12px 8px; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-sm); }
-.lm-note h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
-.lm-note p { margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
-.lm-note code { font-size: 11.5px; color: var(--ink-2); }
+.lm-note h3 { margin: 0; font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
+.lm-note p { margin: 3px 0 0; font-size: var(--fs-meta); line-height: var(--lh); color: var(--muted); }
+.lm-note code { font-size: var(--fs-chip); color: var(--ink-2); }
 .lm-files { list-style: none; margin: 8px 0 0; padding: 4px 0 0; max-height: 144px; overflow-y: auto; border-top: 1px solid var(--line); }
-.lm-file { display: flex; align-items: center; gap: 10px; height: 24px; font: 11.5px var(--mono); color: var(--ink-2); }
+.lm-file { display: flex; align-items: center; gap: 10px; height: 24px; font: var(--fs-chip) var(--mono); color: var(--ink-2); }
 .lm-file .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lm-file .d { color: var(--muted); }
-.lm-file .why { font-family: var(--font); font-size: 11.5px; color: var(--muted); }
+.lm-file .why { font-family: var(--font); font-size: var(--fs-chip); color: var(--muted); }
 .lm-letter { color: var(--muted); }
 .lm-letter[data-tone='add'] { color: var(--add); }
 .lm-letter[data-tone='del'] { color: var(--del); }
@@ -151,7 +151,7 @@ section:first-child > .lp-sec { padding-top: 6px; }
    under the chat tabs. No line splits the two rows. */
 .ws-aside-head:has(.pr-r1) { height: auto; }
 .pr-r1 { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 14px; }
-.pr-r1 .pr-state { font-size: 13px; }
+.pr-r1 .pr-state { font-size: var(--fs-ui); }
 .pr-r2 { height: 39px; display: flex; align-items: flex-start; gap: 6px; padding: 0 12px; }
 .pr-r2 > .btn, .pr-r2 > .pr-split { flex: 1; min-width: 0; }
 .pr-r2 .btn { justify-content: center; }
@@ -167,12 +167,12 @@ section:first-child > .lp-sec { padding-top: 6px; }
 /* The capsule's state word sits on the buttons' centre line. */
 .pr-cap .pr-state { line-height: 16px; }
 
-.pr-overruled { display: flex; align-items: baseline; gap: 6px; padding: 0 12px 8px 14px; font-size: 12px; color: var(--ink-3); }
+.pr-overruled { display: flex; align-items: baseline; gap: 6px; padding: 0 12px 8px 14px; font-size: var(--fs-meta); color: var(--ink-3); }
 .pr-overruled .pr-overruled-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pr-undo { flex-shrink: 0; padding: 0; border: 0; background: none; font: inherit; color: var(--ink-2); text-decoration: underline; cursor: pointer; }
 .pr-undo:hover { color: var(--ink); }
 .pr-undo:disabled { cursor: default; opacity: 0.6; }
 
 /* A chat with Kernel's merged band: its next change starts a new branch, so there is no Continue or Archive (KERNEL-780). */
-.pr-next { font-size: 12.5px; color: var(--b-fg); }
+.pr-next { font-size: var(--fs-code); color: var(--b-fg); }
 .pr-r2.pr-r2-text { height: auto; padding-bottom: 10px; }

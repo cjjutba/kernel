@@ -74,7 +74,7 @@ function PrSkeleton() {
         <div key={g}>
           <div className="prs-group"><Skeleton width={110} height={10} /></div>
           {Array.from({ length: n }, (_, i) => (
-            <div key={i} className="prs-row"><span className="col" style={{ gap: 8 }}><Skeleton width={`${62 - i * 14}%`} height={11} /><Skeleton width="30%" height={9} /></span><Skeleton width={60} height={10} /><Skeleton width={70} height={10} /><Skeleton width={40} height={10} /><span /></div>
+            <div key={i} className="prs-row"><span className="col gap-8"><Skeleton width={`${62 - i * 14}%`} height={11} /><Skeleton width="30%" height={9} /></span><Skeleton width={60} height={10} /><Skeleton width={70} height={10} /><Skeleton width={40} height={10} /><span /></div>
           ))}
         </div>
       ))}
