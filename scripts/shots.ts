@@ -600,7 +600,7 @@ async function dropWhileReading(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// The model picker's states that take a click: the legacy models folded under their row, the stars and the Favorites tab, and the dimmed provider's tooltip.
+// The model picker's states that take a click: the legacy models flyout, the stars and the Favorites tab, and the dimmed provider's tooltip.
 async function openLegacyModels(page: Page) {
   await page.getByRole('button', { name: /Legacy models/ }).click()
   await page.mouse.move(0, 0)
@@ -629,6 +629,8 @@ async function hoverLockedProvider(page: Page) {
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   ComposerDragOver: dragOverPane,
   WorkspaceModelPickerCodex: openLegacyModels,
+  WorkspaceModelPickerLegacy: openLegacyModels,
+  WorkspaceModelPickerLegacyChat: openLegacyModels,
   WorkspaceModelPickerKeys: async (page) => { await page.keyboard.press('ArrowUp'); await page.waitForTimeout(300) },
   WorkspaceModelPickerFavorites: starModels,
   WorkspaceModelPickerEffort: openEffortFlyout,

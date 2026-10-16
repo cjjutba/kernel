@@ -121,7 +121,7 @@
 .pick-tab[aria-selected='true'] { background: var(--hover); color: var(--ink); }
 .pick-tab[aria-disabled='true'] { opacity: 0.4; cursor: default; }
 .pick-tab[aria-disabled='true']:hover { background: transparent; color: var(--muted); }
-.pick-list { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; }
+.pick-list { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
 .pick-item { position: relative; display: flex; align-items: center; }
 .pick-item > .pick-row { flex: 1; min-width: 0; padding-right: 36px; }
 .pick-star { position: absolute; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
@@ -130,14 +130,17 @@
 .pick-star[aria-pressed='true'] { color: var(--ink); }
 .pick-star[aria-pressed='true'] svg path { fill: currentColor; }
 .pick-count { flex-shrink: 0; font-size: var(--fs-code); color: var(--muted); }
-.pick-chev { display: inline-flex; color: var(--muted); transition: transform var(--dur-turn); }
-.pick-chev[data-open='true'] { transform: rotate(180deg); }
 .pick-row { height: 36px; padding: 0 10px; gap: 10px; font-size: var(--fs-row); }
 .pick-row > svg { flex-shrink: 0; }
 .pick-row:hover { background: transparent; }
 .pick-row[data-active='true'] { background: var(--hover); }
+/* One look per state: hover and the keyboard cursor fill with --hover, the row whose flyout is open takes the deeper fill and a hairline, the current model keeps full ink. */
+.pick-row[data-open='true'] { background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--line-3); }
+.pick-row > svg:last-child { color: var(--muted); }
 .pick-item[data-active='true'] > .pick-row { background: var(--hover); }
-.pick-name { flex-shrink: 0; font-weight: var(--fw-regular); color: var(--ink); }
+.pick-item[data-active='true'] .pick-name { color: var(--ink); }
+.pick-name { flex-shrink: 0; font-weight: var(--fw-regular); color: var(--ink-2); }
+.pick-row[data-selected='true'] .pick-name, .pick-row[data-active='true'] .pick-name, .pick-row[data-open='true'] .pick-name { color: var(--ink); }
 .pick-effort { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-code); color: var(--muted); }
 .pick-kbd { font: var(--fs-chip) var(--mono); letter-spacing: 0.02em; color: var(--muted); }
 .pick-check { display: inline-flex; }
@@ -146,7 +149,9 @@
 .pick-effort-row { position: relative; }
 .pick-effort-row > .pick-row { width: 100%; }
 .pick-effort-row > .pick-row > svg { color: var(--muted); }
-.pick-flyout { left: calc(100% + 10px); bottom: -6px; width: 180px; }
+.pick-flyout { left: calc(100% + 10px); bottom: -6px; display: flex; flex-direction: column; gap: 2px; width: 180px; }
+.pick-flyout-legacy { width: 280px; overflow-y: auto; }
+.pick-flyout-legacy .pick-item > .pick-row { padding-right: 36px; }
 .pick-flyout .pick-row svg { color: var(--ink); }
 .pick-foot { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 8px 0 6px; border-top: 1px solid var(--card-line); font-size: var(--fs-code); color: var(--muted); }
 .pick-link { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font: inherit; }

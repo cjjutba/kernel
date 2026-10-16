@@ -3338,13 +3338,29 @@ export const workspaceFixtures: Record<string, Fixture> = {
     models: { codex: codexModels },
     ui: { ...open, menu: 'model' }
   })),
-  // The picker of a chat that started on Codex: it opens on Codex and Claude is dimmed. The shot opens Legacy models.
+  // The picker of a chat that started on Codex: it opens on Codex and Claude is dimmed. The shot opens the Legacy models flyout.
   WorkspaceModelPickerCodex: scene((f) => ({
     settings: codexRoleSettings(),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, provider: 'codex' as const, model: 'gpt-6-astra', effort: 'medium' as Effort, sessionId: 'session-kai' } : c)),
     models: { codex: codexModels },
     ui: { ...open, menu: 'model' }
   })),
+  // KERNEL-987: the Legacy models row opens its older models in a flyout to the right. The shot clicks the row.
+  WorkspaceModelPickerLegacy: scene((f) => ({
+    settings: codexRoleSettings(),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+    models: { codex: codexModels },
+    ui: { ...open, menu: 'model' }
+  })),
+  // KERNEL-987: a chat on a legacy model. The Legacy row names it and the cursor starts there. The shot opens the flyout, with the cursor on that model.
+  WorkspaceModelPickerLegacyChat: scene((f) => ({
+    settings: codexRoleSettings(),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, model: 'claude-opus-4-8', sessionId: 'session-kai' } : c)),
+    models: { codex: codexModels },
+    ui: { ...open, menu: 'model' }
+  })),
+  // KERNEL-987: the keyboard path. Down to the Legacy row, Right opens the flyout.
+  WorkspaceModelPickerLegacyKeys: { ...scene((f) => ({ settings: codexRoleSettings(), chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)), models: { codex: codexModels }, ui: { ...open, menu: 'model' } })), motion: { action: { press: ['ArrowDown', 'ArrowDown', 'ArrowRight'] }, ms: 600 } },
   // Stars on two Claude models, then the Favorites tab.
   WorkspaceModelPickerFavorites: scene((f) => ({
     settings: codexRoleSettings(),
