@@ -1045,8 +1045,9 @@ export class Providers extends Feature {
     if (file[provider].active === accountId) await this.switchTo(provider, CLI_ACCOUNT)
     file[provider].accounts = file[provider].accounts.filter((x) => x.id !== accountId)
     await this.save()
-    // Chats it held move to the account in use, and their idle processes end before its folder goes (KERNEL-843).
-    this.sessions.restartProvider(provider, { account: accountId })
+    // Chats it held move to the account in use. Every process on it ends before its folder goes (KERNEL-843): a running turn
+    // stops and carries on on the account in use, so nothing runs on a login that is gone (KERNEL-941).
+    await this.sessions.leaveAccount(provider, accountId)
     await Promise.allSettled([...(this.reading.get(accountId) ?? [])])
     if (key) await this.saveKey(accountId, undefined)
     else if (provider === 'claude') await this.saveToken(accountId, undefined)

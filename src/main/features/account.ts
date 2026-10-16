@@ -8,7 +8,7 @@ import { blockingLimit, isRejected, NetworkMonitor, WINDOW_MODEL } from '../serv
 import type { LimitNews } from '../services/leadUpdates'
 import { planOf } from '../services/settings'
 import { LIMIT_NAME, limitKey } from '../services/providers/limits'
-import { limitProvider } from '@shared/providers'
+import { chatProvider, limitProvider } from '@shared/providers'
 import { Feature } from './feature'
 
 /** While a usage window is rejected, how often Kernel checks whether it lifted. Claude Code answers the usage call from a snapshot under a minute old, so this waits longer than that. */
@@ -196,6 +196,9 @@ export class Account extends Feature {
 
   /** Runs Claude Code's own login with Kernel's own copy (it opens the browser), then reads the account back (KERNEL-277). */
   private async signIn() {
+    // This signs in the CLI's own login. An added account signs in in its own folder, from its row in Settings, Accounts (KERNEL-941).
+    const added = this.k.providers.active('claude')
+    if (added) throw new Error(`Sign in to ${this.k.providers.label('claude', added)} from Settings, Accounts.`)
     await exec(this.k.providers.binary('claude').path ?? 'claude', ['auth', 'login'], { timeoutMs: 5 * 60_000 })
     const account = await this.readAccount()
     bus.push({ type: 'account', account })
@@ -216,12 +219,23 @@ export class Account extends Feature {
     const now = Date.now()
     this.store.saveMeta('limits', limits)
     const projects = this.store.projects().filter((r) => !r.archived)
-    // A provider is stopped when its active account has a 5-hour or weekly rejection. A project pauses only when every provider
-    // its agents run on is stopped, so Codex agents keep working through a Claude limit (KERNEL-406).
-    const stopped = (p: Provider) => !!blockingLimit(limits.filter((l) => limitProvider(l) === p && l.accountId === this.k.providers.active(p)), now)
+    // A provider is stopped in a project when its active account has a 5-hour or weekly rejection and none of the project's chats
+    // runs on another of its accounts that has none, as a chat kept on the account that holds its cache does (KERNEL-941). A
+    // project pauses only when every provider its agents run on is stopped, so Codex agents keep working through a Claude limit
+    // (KERNEL-406). A chat on a limited account in a project that runs on waits by itself (Sessions' `accountLimitHolds`).
+    const blocked = (p: Provider, account: string | undefined) => !!blockingLimit(limits.filter((l) => limitProvider(l) === p && l.accountId === account), now)
+    const stopped = (projectId: string) => (p: Provider) => {
+      const active = this.k.providers.active(p)
+      if (!blocked(p, active)) return false
+      return !this.store.workspaces(projectId).some((ws) => ws.status !== 'archived' && this.store.chats(ws.id).some((c) => {
+        if (c.kind !== 'chat' || c.closed || chatProvider(c) !== p) return false
+        const on = this.k.placement.accountFor(p, c, limits, now)
+        return on !== active && !blocked(p, on)
+      }))
+    }
     for (const r of projects) {
       const uses = this.k.providers.usedIn(r.id)
-      const pause = uses.length > 0 && uses.every(stopped)
+      const pause = uses.length > 0 && uses.every(stopped(r.id))
       if (pause && !r.paused) this.k.projects.pauseProject(r.id, 'limit')
       else if (!pause && r.paused && r.pausedBy === 'limit') this.k.projects.resumeProject(r.id, 'limit')
     }

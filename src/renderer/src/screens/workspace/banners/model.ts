@@ -68,6 +68,8 @@ export interface BannerInput {
   dismissed?: ReadonlySet<string>
   /** Settings, Providers: Kernel switches this chat's provider on its own at a limit, so the near-limit offer would only nag (KERNEL-569). */
   switchAtLimit?: boolean
+  /** Settings, Accounts "Keep chats on their account". Left out counts as on, the default (KERNEL-841). */
+  keepChats?: boolean
   /** Settings, Account. A switch left out counts as on, which is the default. */
   usageSettings?: { pauseNearLimit?: boolean; warnBeforeWeekly?: boolean }
   /** Both providers' accounts (KERNEL-406). Without them every limit counts as the Claude login's, as before. */
@@ -114,7 +116,12 @@ export function bannerFor(i: BannerInput): BannerView | null {
   const current = accounts.find((a) => a.active)
   const active = current?.id ?? 'cli'
   const windowsOf = (id: string) => i.usage.filter((l) => limitProvider(l) === provider && (l.accountId ?? 'cli') === id)
-  const usage = windowsOf(active)
+  // A chat kept on the account that holds its cache runs there while that account is signed in, below its limits and the move
+  // threshold, as main's `Placement.accountFor` decides, so it hears that account's windows, not the one in use (KERNEL-941).
+  const kept = chat && i.keepChats !== false && chat.ranOn && chat.ranOn !== active ? chat.ranOn : undefined
+  const keptRuns = !!kept && accounts.some((a) => (a.id === kept || (kept === 'cli' && a.alsoCli)) && a.signedIn) &&
+    !windowsOf(kept).some((l) => (l.type === 'five_hour' || l.type === 'seven_day') && rejected(l, now)) && !nearLimit(windowsOf(kept), now)
+  const usage = windowsOf(keptRuns && kept ? kept : active)
   const named = (what: string) => (i.codexInUse ? `${providerName} ${what}` : what)
   // Where the provider can go: the same answer Kernel's own switch at a limit uses (`switchChoices`, KERNEL-618). The other signed-in accounts with no rejected
   // window take over with one click, a subscription before an API key, which a switch starts paying for (KERNEL-524), and the one with the most 5-hour headroom first
@@ -145,9 +152,15 @@ export function bannerFor(i: BannerInput): BannerView | null {
     actions: [{ id: 'providers', label: 'Sign in', primary: true }], blocks: true
   }
 
+  // An account Kernel added signs in from its row in Settings, Accounts, in its own folder. `claude /login` in a terminal and the
+  // banner's own sign-in would sign in the CLI's login instead (KERNEL-941).
   if (provider === 'claude' && i.account && !i.account.signedIn) return {
-    id: 'signedOut', kind: 'auth', title: 'Claude Code is signed out', sub: 'Agents cannot run until you sign in. Workspaces and chats are safe.',
-    actions: [{ id: 'terminal', label: 'Open terminal' }, { id: 'signIn', label: 'Sign in', primary: true }], blocks: true
+    id: 'signedOut', kind: 'auth', title: current && !current.cli && !current.alsoCli ? `${current.label} is signed out` : 'Claude Code is signed out',
+    sub: 'Agents cannot run until you sign in. Workspaces and chats are safe.',
+    actions: current && !current.cli && !current.alsoCli
+      ? [{ id: 'providers', label: 'Sign in', primary: true }]
+      : [{ id: 'terminal', label: 'Open terminal' }, { id: 'signIn', label: 'Sign in', primary: true }],
+    blocks: true
   }
 
   if (!i.online) return {

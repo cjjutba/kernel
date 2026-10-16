@@ -294,27 +294,27 @@ export class Placement extends Feature {
   }
 
   /**
-   * What the chat's next turn re-reads and why, for the notice above the composer (KERNEL-841), read only. Nothing for a
-   * chat under the Long chat size, a chat that never ran, one the user chose Summarize or Continue for, or a warm one. Keep hides it only while the kept account can still run the chat. A cache gone cold
-   * from idling alone is an `idle` hint only on a Claude API key, where it has a price. On a plan or Codex it would re-read
-   * wherever it ran and there is nothing to do about it, so it says nothing (KERNEL-917).
+   * What the chat's next turn re-reads and why, for the notice above the composer (KERNEL-841), read only. Only a chat that
+   * waits for the user to choose how it moves has one (KERNEL-941): every other move follows the policy without asking, so
+   * there is nothing to say before it. Nothing either for a chat under the Long chat size, one that never ran, one the user
+   * chose Summarize or Continue for, or a warm one.
    */
   moveNotice(chatId: string, now = Date.now()): MoveNotice | null {
     const chat = this.store.chat(chatId)
+    if (!chat || chat.kind !== 'chat' || !this.sessions.heldForMove(chatId)) return null
     // Summarize and Continue are answers to this move. Keep is one only while the kept account can run the chat, which `accountFor` checks.
-    if (!chat || chat.kind !== 'chat' || (chat.moveChoice && chat.moveChoice.choice !== 'keep')) return null
+    if (chat.moveChoice && chat.moveChoice.choice !== 'keep') return null
     const provider = chatProvider(chat)
     const from = chat.ranOn ?? chat.lastTurn?.account
     if (!from) return null
     const to = this.accountFor(provider, chat, undefined, now) ?? CLI_ACCOUNT
-    const reason = this.coldReason(chat, { account: to }, now)
+    // The hold decided the chat moves, so the notice shows even when Kernel can't say why its cache is cold.
+    const reason = this.coldReason(chat, { account: to }, now) ?? (from !== to ? 'account' : undefined)
     if (!reason) return null
     const cost = this.moveCost(chat, { account: to })
-    if (cost.tokens < (this.settings?.accounts?.longChatTokens ?? 50_000)) return null
-    if (reason === 'idle' && cost.price === undefined) return null
     const model = reason === 'model' ? MODELS.find((m) => m.id === bareModel(chat.model))?.label ?? chat.model : undefined
     return {
-      kind: reason === 'idle' ? 'idle' : 'move', reason, from, to, ...(model ? { model } : {}), tokens: cost.tokens,
+      kind: 'move', reason, from, to, ...(model ? { model } : {}), tokens: cost.tokens,
       ...(cost.estimated ? { estimated: true as const } : {}), ...(cost.price !== undefined ? { price: cost.price } : {}),
       keep: reason === 'account' && from !== to && this.canRun(provider, from, chat.model, now)
     }
@@ -330,7 +330,6 @@ export class Placement extends Feature {
 
   handlers() {
     return {
-      'accounts.previewSwitch': async ({ provider, accountId }) => this.previewSwitch(provider, accountId),
       'chats.moveNotice': async ({ chatId }) => this.moveNotice(chatId)
     } satisfies Partial<Handlers>
   }

@@ -10,7 +10,7 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import type { KernelOptions } from '../src/main/features/options'
 import { sessionEnv } from '../src/main/services/providers/claude'
-import { LIMIT_LIFTED, TOO_LONG_NOTE } from '../src/main/services/sessions'
+import { ACCOUNT_LEFT, LIMIT_LIFTED, TOO_LONG_NOTE } from '../src/main/services/sessions'
 import { USAGE_AFTER_TURN_MS } from '../src/main/features/providers'
 import { sessionDeps } from '../src/main/features/sessionDeps'
 import { credentialsItem } from '../src/main/services/providers/claudeHome'
@@ -645,6 +645,25 @@ describe('holds and limits per provider (KERNEL-406)', () => {
     expect(s.limitHolds(k.store.chat('claude')!)).toBe(false)
     await k.stop({ budgetMs: 0 })
   })
+
+  it("keeps a project running when a chat in it is kept on another account with room, and holds only the chat on the limited one (KERNEL-941)", async () => {
+    const { k, project } = await twoChats()
+    const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; label: string; createdAt: number }[] } } }
+    p.load().claude.accounts.push({ id: 'work', label: 'Work', createdAt: 1 })
+    vi.spyOn(k.providers, 'signedInNow').mockReturnValue(true)
+    const limited: RateLimit = { type: 'five_hour', status: 'rejected', resetsAt: Math.round(Date.now() / 1000) + 3600 }
+    ;(k.sessions as unknown as { mergeLimits: (l: RateLimit[]) => void }).mergeLimits([limited])
+    k.account.applyLimits([limited])
+    expect(k.store.project(project.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
+    // Another chat last ran on Work, which has room: it keeps the cache there and runs, so the project does too.
+    k.store.saveChat({ id: 'kept', workspaceId: 'ws', title: 'k', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, ranOn: 'work', createdAt: 3 })
+    k.account.applyLimits([limited])
+    expect(k.store.project(project.id)?.paused).toBeFalsy()
+    expect(k.sessions.waitsFor('kept')).toBeUndefined()
+    // The chat on the limited CLI login waits by itself rather than start a turn the account refuses.
+    expect(k.sessions.waitsFor('claude')).toBe('limit')
+    await k.stop({ budgetMs: 0 })
+  })
 })
 
 describe('switching accounts at a limit (KERNEL-568)', () => {
@@ -756,8 +775,29 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await again.stop({ budgetMs: 0 })
   })
 
+  it("stops a turn running on an account being removed before its folder goes, and carries the chat on on the account in use (KERNEL-941)", async () => {
+    const { k, h, ids, folder } = await setUp(['Side'])
+    await h['accounts.switch']({ provider: 'claude', accountId: ids.Side, move: 'all' })
+    await k.sessions.send('chat', [{ type: 'text', text: 'Go on' }])
+    await until(() => k.sessions.isRunning('chat'))
+    expect(k.store.chat('chat')?.ranOn).toBe(ids.Side)
+    const home = folder('Side')
+    // This fake Claude never ends a turn, even when stopped, so its process is ended at the end of a short wait.
+    const leave = k.sessions.leaveAccount.bind(k.sessions)
+    vi.spyOn(k.sessions, 'leaveAccount').mockImplementation((p, a) => leave(p, a, 200))
+    await h['accounts.remove']({ provider: 'claude', accountId: ids.Side })
+    expect(existsSync(home)).toBe(false)
+    // The turn on Side stopped, and the nudge to carry on runs on the CLI login.
+    expect(k.store.items('chat').some((i) => i.kind === 'interrupted')).toBe(true)
+    await until(() => k.store.items('chat').some((i) => i.kind === 'user' && i.parts.some((p) => p.type === 'text' && p.text === ACCOUNT_LEFT)))
+    expect(k.store.chat('chat')?.ranOn).toBe('cli')
+    await k.stop({ budgetMs: 0 })
+  })
+
   it('changes nothing with the switch off: the limit pauses the project and Kernel stays on the account', async () => {
     const { k, project, folder } = await setUp(['Personal'])
+    // On by default (KERNEL-941).
+    await k.config.setSettings({ accounts: { switchAtLimit: { claude: false, codex: false } } })
     sdk.usage = { '': 100, [folder('Personal')]: 10 }
     await quiet(); sdk.probes = []
     reject(k)
@@ -798,6 +838,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
   it('tells the Lead what Kernel does about a limit: waits with the earliest reset, then moves (KERNEL-777)', async () => {
     const { k, ids, folder } = await setUp(['Personal'])
     const stuck = vi.spyOn(k.leadUpdates, 'limitStuck')
+    await k.config.setSettings({ accounts: { switchAtLimit: { claude: false, codex: false } } })
     sdk.usage = { '': 100, [folder('Personal')]: 100 }
     reject(k)
     // The switch is off, so the chat waits for this account's own reset.
@@ -1969,7 +2010,7 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
     chat('closed', { closed: true, lastTurn: turn({ context: 400_000 }) })
     chat('codex', { provider: 'codex', model: 'gpt-6-astra', lastTurn: turn({ model: 'gpt-6-astra', context: 400_000 }) })
     vi.spyOn(k.sessions, 'isRunning').mockImplementation((id) => id === 'big')
-    const preview = await h['accounts.previewSwitch']({ provider: 'claude', accountId: 'key' })
+    const preview = k.placement.previewSwitch('claude', 'key')
     expect(preview).toEqual({
       provider: 'claude', from: 'cli', to: 'key', chats: [
         { chatId: 'big', title: 'big', workspaceId: 'ws', workspace: 'invoice-schema', provider: 'claude', from: 'cli', to: 'key', tokens: 400_000, running: true, coldReason: 'account', fits: true, price: 2 },
@@ -1978,8 +2019,8 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
     })
     // A subscription target has no price, and the long chat size is the user's.
     await k.config.setSettings({ accounts: { longChatTokens: 150_000 } })
-    expect((await h['accounts.previewSwitch']({ provider: 'claude', accountId: 'side' })).chats).toEqual([expect.not.objectContaining({ price: expect.anything() })])
-    expect((await h['accounts.previewSwitch']({ provider: 'codex', accountId: 'cx' })).chats.map((c) => c.chatId)).toEqual(['codex'])
+    expect(k.placement.previewSwitch('claude', 'side').chats).toEqual([expect.not.objectContaining({ price: expect.anything() })])
+    expect(k.placement.previewSwitch('codex', 'cx').chats.map((c) => c.chatId)).toEqual(['codex'])
     // Nothing moved.
     expect(k.providers.active('claude')).toBeUndefined()
     expect(k.store.chat('big')?.ranOn).toBe('cli')
@@ -1989,88 +2030,46 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
     await k.stop({ budgetMs: 0 })
   })
 
-  it("tells a long chat what its next turn re-reads before it runs: a move, another model or the cache gone by, and nothing once it's answered", async () => {
+  it("tells a long chat what its move re-reads only while it waits for the user's choice, and nothing once it's answered (KERNEL-941)", async () => {
     const { k, chat, turn, place } = await setUp()
     const h = k.handlers()
     // A switch reads the CLI's login again. A fake Claude signed in as the turns' email keeps that read off the machine's own login.
     vi.stubEnv('FAKE_EMAIL', 'cj@example.com')
     await k.providers.setPath('claude', { path: (await fakeClaude()).bin })
+    const waiting = new Set<string>()
+    vi.spyOn(k.sessions, 'heldForMove').mockImplementation((id) => waiting.has(id))
     const notice = (id: string) => h['chats.moveNotice']({ chatId: id })
     chat('a', { lastTurn: turn() })
-    expect(await notice('a')).toBeNull()
-    // A switch with Move all sends it to Side, which reads the whole chat once. Side's price is nothing, a key's is the cache write.
+    // A move the policy decides says nothing: Move all sends the chat to Side, and its next turn just goes.
     await h['accounts.switch']({ provider: 'claude', accountId: 'side', move: 'all' })
+    expect(await notice('a')).toBeNull()
+    // Waiting for the user's choice, it says what the move reads, with Keep while the CLI login can still run it.
+    waiting.add('a')
     expect(await notice('a')).toEqual({ kind: 'move', reason: 'account', from: 'cli', to: 'side', tokens: 200_000, keep: true })
     await h['accounts.switch']({ provider: 'claude', accountId: 'key', move: 'all' })
     expect(await notice('a')).toMatchObject({ kind: 'move', to: 'key', price: 1, keep: true })
-    // Summarize and Continue answer the move, and Keep holds the chat where it is.
+    // Summarize and Continue answer the move.
     await h['chats.moveChoice']({ chatId: 'a', choice: 'summarize' })
     expect(await notice('a')).toBeNull()
-    await h['chats.moveChoice']({ chatId: 'a', choice: 'keep' })
-    expect(await notice('a')).toBeNull()
     k.store.saveChat({ ...k.store.chat('a')!, moveChoice: undefined })
-    // Under the Long chat size nothing is said, and a chat that never ran has nothing to read.
-    chat('small', { lastTurn: turn({ context: 10_000 }) })
-    expect(await notice('small')).toBeNull()
+    // A chat that never ran has nothing to read, and one that stays where it ran has nothing to say.
     expect(await notice('nope')).toBeNull()
-    // A pair proven to share a cache reads warm, so the warning doesn't come back for it.
-    await h['accounts.switch']({ provider: 'claude', accountId: 'side', move: 'all' })
-    expect(await notice('a')).not.toBeNull()
-    const warm = chat('w', { ranOn: 'side', lastTurn: turn({ account: 'side', first: { input: 10, cacheRead: 199_000, cacheWrite: 990 } }) })
-    place.moved(warm, 'cli')
-    expect(await notice('a')).toBeNull()
-
-    // Another model reads it again on the same account, and says which.
     await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
+    expect(await notice('a')).toBeNull()
+    // Another model on the same account re-reads it there, and says which.
     chat('m', { model: 'claude-sonnet-5-5', lastTurn: turn({ model: 'claude-opus-5-5' }) })
+    waiting.add('m')
     expect(await notice('m')).toEqual({ kind: 'move', reason: 'model', from: 'cli', to: 'cli', model: 'Sonnet 5.5', tokens: 200_000, keep: false })
-    // An hour idle on a Claude plan, or 5 minutes on Codex, re-reads wherever it runs with nothing to pay or pick, so nothing is said.
-    chat('i', { lastTurn: turn({ at: Date.now() - 61 * MIN }) })
-    expect(await notice('i')).toBeNull()
-    chat('c', { provider: 'codex', model: 'gpt-6-astra', lastTurn: turn({ model: 'gpt-6-astra', email: undefined, at: Date.now() - 6 * MIN }) })
-    expect(await notice('c')).toBeNull()
-    chat('c2', { provider: 'codex', model: 'gpt-6-astra', lastTurn: turn({ model: 'gpt-6-astra', email: undefined, at: Date.now() - 2 * MIN }) })
-    expect(await notice('c2')).toBeNull()
     // The size is a guess for a chat from before, and says so.
     chat('old')
     k.store.saveItem('old', { kind: 'text', id: 't1', ts: Date.now(), text: 'y'.repeat(240_000) })
-    await k.config.setSettings({ accounts: { longChatTokens: 20_000 } })
+    waiting.add('old')
     await h['accounts.switch']({ provider: 'claude', accountId: 'key', move: 'all' })
     expect(await notice('old')).toMatchObject({ kind: 'move', tokens: 60_000, estimated: true })
-    await k.stop({ budgetMs: 0 })
-  })
-
-  it("gives a long chat's move notice for a move, another model or an idle cache, none once answered, and again once a kept account can't run it", async () => {
-    const { k, file, chat, turn, place } = await setUp()
-    // On the account it ran on: another model re-reads it there. An hour idle on a plan says nothing, since there is nothing
-    // to do about it, while 5 minutes idle on an API key is a hint with its price (KERNEL-917).
-    chat('m', { model: 'claude-sonnet-5-5', lastTurn: turn() })
-    expect(place.moveNotice('m')).toEqual({ kind: 'move', reason: 'model', from: 'cli', to: 'cli', model: 'Sonnet 5.5', tokens: 200_000, keep: false })
-    chat('i', { lastTurn: turn({ at: Date.now() - 61 * MIN }) })
-    expect(place.moveNotice('i')).toBeNull()
-    chat('k', { ranOn: 'key', lastTurn: turn({ account: 'key', email: undefined, at: Date.now() - 6 * MIN }) })
-    file.claude.active = 'key'
-    expect(place.moveNotice('k')).toEqual({ kind: 'idle', reason: 'idle', from: 'key', to: 'key', tokens: 200_000, price: 1, keep: false })
-    file.claude.active = 'cli'
-    chat('small', { lastTurn: turn({ context: 10_000 }) })
-    expect(place.moveNotice('small')).toBeNull()
-
-    // Moved to Side, the chat re-reads there, and Keep is offered while the CLI login can still run it.
-    chat('a', { lastTurn: turn() })
-    file.claude.active = 'side'
-    place.placeAll('claude', 'side')
-    const move = { kind: 'move', reason: 'account', from: 'cli', to: 'side', tokens: 200_000 }
-    expect(place.moveNotice('a')).toEqual({ ...move, keep: true })
-    expect(place.moveNotice('small')).toBeNull()
-    place.moveChoice('a', 'summarize')
-    expect(place.moveNotice('a')).toBeNull()
-    place.moveChoice('a', 'continue')
-    expect(place.moveNotice('a')).toBeNull()
-    place.moveChoice('a', 'keep')
-    expect(place.moveNotice('a')).toBeNull()
-    // The CLI login hits its limit: the kept chat moves after all, so the notice is back, without Keep.
+    // The CLI login hits its limit: a chat kept there moves after all, so Keep is no longer offered.
+    place.moveChoice('old', 'keep')
     k.store.saveMeta<RateLimit[]>('limits', [{ type: 'five_hour', status: 'rejected', provider: 'claude', resetsAt: Math.round(Date.now() / 1000) + 3600 }])
-    expect(place.moveNotice('a')).toEqual({ ...move, keep: false })
+    expect(await notice('old')).toMatchObject({ kind: 'move', to: 'key', keep: false })
     await k.stop({ budgetMs: 0 })
   })
 

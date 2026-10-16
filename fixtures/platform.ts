@@ -892,6 +892,8 @@ export const platformFixtures: Record<string, Fixture> = {
   }),
   // Main keeps the last name it read when a session reports the sign-out, so the account menu still says who.
   WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }, ui: open })),
+  // KERNEL-941: an added account in use signed out. The banner names it and its Sign in opens its row in Settings, Accounts.
+  WorkspaceSignedOutAdded: scene(() => ({ account: { signedIn: false, name: 'Personal', plan: 'Claude Pro' }, accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true, signedIn: false }], ui: open })),
   // KERNEL-218: the dialog the banner's Review opens, over the held workspace.
   WorkspaceSetupFailed: scene((f) => ({
     ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),

@@ -89,7 +89,7 @@ export function Accounts({ s }: { s: AppSettings }) {
       if (a.provider === 'claude') actions.account.set(await call('account.get', undefined))
     })
   }
-  const switchTo = (a: AccountProfile) => act(`use:${keyOf(a)}`, 'Could not switch accounts', () => actions.accounts.requestSwitch(a.provider, a.id, { onSwitched: () => { void read(a.provider).catch(() => undefined); actions.ui.toast({ title: `Switched to ${a.label}`, sub: 'Agents use it from their next turn.' }) } }))
+  const switchTo = (a: AccountProfile) => act(`use:${keyOf(a)}`, 'Could not switch accounts', () => actions.accounts.requestSwitch(a.provider, a.id, { onSwitched: () => void read(a.provider).catch(() => undefined) }))
   const signOut = (a: AccountProfile) => accountsCall(`out:${keyOf(a)}`, 'Could not sign out', a, () => call('accounts.signOut', { provider: a.provider, accountId: a.id }))
   const remove = (a: AccountProfile) => accountsCall(`remove:${keyOf(a)}`, 'Could not remove the account', a, () => call('accounts.remove', { provider: a.provider, accountId: a.id }), () => actions.ui.toast({ title: `Removed ${a.label}` })).finally(() => setRemoving(null))
   const stopRenaming = () => { if (renaming) renamed.current = accounts.find((a) => keyOf(a) === renaming.key)?.label ?? null; setRenaming(null) }

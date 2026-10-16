@@ -47,6 +47,11 @@ const isLock = (name: string) => name.endsWith('.lock')
 export function linkClaudeHome(home: string, root: string) {
   mkdirSync(home, { recursive: true })
   mkdirSync(root, { recursive: true })
+  // Every account reads its chats from `~/.claude/projects`, or a chat resumed on another account starts over (KERNEL-941). It is
+  // made first, so the CLI never makes a real one in the folder, and one it made before is moved over and gives way to the link.
+  mkdirSync(join(root, 'projects'), { recursive: true })
+  const own = join(home, 'projects')
+  if (lstatOf(own)?.isDirectory()) mergeInto(own, join(root, 'projects'))
   for (const name of readdirSync(home)) {
     if (isLock(name) && lstatOf(join(home, name))?.isSymbolicLink()) { try { unlinkSync(join(home, name)) } catch { /* the next pass tries again */ } }
   }
@@ -59,6 +64,24 @@ export function linkClaudeHome(home: string, root: string) {
     mkdirSync(into, { recursive: true })
     for (const entry of readdirSync(join(root, name))) if (entry !== 'synced') link(join(root, name, entry), join(into, entry))
   }
+}
+
+/**
+ * Moves what `from` has into `to`, entry by entry: what `to` lacks is moved, a folder both have is merged the same way, and a
+ * file both have stays where it is, so nothing is overwritten. Each folder emptied by the move goes. A move that fails leaves
+ * the entry in place.
+ */
+function mergeInto(from: string, to: string) {
+  for (const name of readdirSync(from)) {
+    const src = join(from, name)
+    const dst = join(to, name)
+    const there = lstatOf(dst)
+    try {
+      if (!there) renameSync(src, dst)
+      else if (there.isDirectory() && lstatOf(src)?.isDirectory()) mergeInto(src, dst)
+    } catch { /* stays here, and the folder with it */ }
+  }
+  try { rmdirSync(from) } catch { /* something stayed */ }
 }
 
 function link(target: string, at: string) {

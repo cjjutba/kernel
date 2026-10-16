@@ -20,13 +20,15 @@ const windowsKey = (usage: RateLimit[], provider: Provider) => usage
 
 /**
  * What the chat's next turn re-reads, asked from main when something it depends on changes: the chat's last turn, model and
- * choice, the accounts, and the provider's windows as `windowsKey` reads them. The last notice stays on screen while the next
+ * choice, the accounts, the provider's windows as `windowsKey` reads them, and whether the chat waits for a move. The last notice stays on screen while the next
  * one loads, so it doesn't flicker; another chat starts with none. Null while nothing needs saying.
  */
 export function useMoveNotice(chat: Chat | undefined): MoveNotice | null {
   const accounts = useStore((s) => s.accounts)
   const provider = chat ? chatProvider(chat) : 'claude'
   const windows = useStore((s) => windowsKey(s.usage, provider))
+  // Only a chat held for a move has a notice (KERNEL-941), so the hold starting or ending asks again.
+  const held = useStore((s) => (chat ? s.queueWhy[chat.id] === 'move' : false))
   const [shown, setShown] = useState<{ chatId: string; notice: MoveNotice | null } | null>(null)
   const id = chat?.id
   const stamp = chat ? `${chat.ranOn}|${chat.model}|${chat.lastTurn?.at}|${chat.moveChoice?.choice}` : ''
@@ -35,7 +37,7 @@ export function useMoveNotice(chat: Chat | undefined): MoveNotice | null {
     if (!id) return
     void call('chats.moveNotice', { chatId: id }).then((notice) => { if (live) setShown({ chatId: id, notice }) }).catch(() => undefined)
     return () => { live = false }
-  }, [id, stamp, accounts, windows])
+  }, [id, stamp, accounts, windows, held])
   return shown && shown.chatId === id ? shown.notice : null
 }
 
@@ -45,9 +47,8 @@ const CHOICES: { choice: MoveChoice; label: string; busy: string }[] = [
 ]
 
 /**
- * The notice above the composer before a long chat's next turn re-reads its history on another account or model (ChatMoveNotice.png,
- * KERNEL-841). Each button is `chats.moveChoice`, which the chat keeps until its next turn starts, so the notice shows once per move.
- * A chat cold only from idling gets a hint with no buttons.
+ * The notice above the composer while a long chat waits for the user to choose how it moves to another account (ChatMoveNotice.png,
+ * KERNEL-841, KERNEL-941). Each button is `chats.moveChoice`, which the chat keeps until its next turn starts, so the notice shows once per move.
  */
 export function ChatMoveNotice({ chat, notice }: { chat: Chat; notice: MoveNotice }) {
   const accounts = useStore((s) => s.accounts)
@@ -61,9 +62,6 @@ export function ChatMoveNotice({ chat, notice }: { chat: Chat; notice: MoveNotic
     actions.chats.upsert(await call('chats.moveChoice', { chatId: chat.id, choice }))
   }))
 
-  if (notice.kind === 'idle') {
-    return <Banner kind="context" title={`This chat has been idle, so its next turn re-reads ${read}.`}>{notice.price !== undefined ? `On this API key that costs about ${dollars(notice.price)}.` : undefined}</Banner>
-  }
   const title = notice.reason === 'model'
     ? `Switching to ${notice.model} re-reads ${read}.`
     : `This chat last ran on ${from}. Its next turn re-reads ${read} on ${to}.`

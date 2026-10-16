@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AccountProfile, Chat, RateLimit, Workspace } from '@shared/types'
 import { bannerFor, limitBannerExpired, limitBannerKey, type BannerInput } from '../src/renderer/src/screens/workspace/banners/model'
 import { accountRow, limitHit, tilde } from '../src/renderer/src/accountRows'
+import { accountLabel } from '../src/renderer/src/accountChats'
 import { meterLevel } from '../src/renderer/src/ui/display'
 import { fitEffort } from '../src/renderer/src/screens/workspace/composer/providerModels'
 import { nextEffort } from '../src/renderer/src/screens/workspace/composer/modelPrefs'
@@ -249,5 +250,40 @@ describe('Settings, Providers rows (KERNEL-406, KERNEL-561, feat-providers-redes
     expect(fitEffort('max', 'claude-opus-5-5', [])).toBe('xhigh')
     expect(nextEffort('xhigh')).toBe('low')
     expect(nextEffort('xhigh', ['low', 'medium', 'high', 'xhigh', 'max'])).toBe('max')
+  })
+})
+
+describe('seamless account switching (KERNEL-941)', () => {
+  const work = (o: Partial<AccountProfile> = {}): AccountProfile => ({ ...accounts[1], ...o })
+  const cli = (o: Partial<AccountProfile> = {}): AccountProfile => ({ ...accounts[0], ...o })
+
+  it("sends an added account that signed out to its row in Settings, Accounts, and keeps the CLI login's own sign-in", () => {
+    const out = { signedIn: false }
+    expect(bannerFor(input({ account: out, accounts: [cli({ active: false }), work({ active: true, signedIn: false })] }))).toMatchObject({
+      id: 'signedOut', title: 'Work is signed out', actions: [{ id: 'providers', label: 'Sign in', primary: true }]
+    })
+    expect(bannerFor(input({ account: out, accounts: [cli({ signedIn: false }), work()] }))).toMatchObject({
+      id: 'signedOut', title: 'Claude Code is signed out', actions: [{ id: 'terminal' }, { id: 'signIn', primary: true }]
+    })
+  })
+
+  it("hears the windows of the account a kept chat runs on, not the limited one in use", () => {
+    const kept = { ...claudeChat, ranOn: 'work' } as Chat
+    const both = [cli(), work()]
+    expect(bannerFor(input({ chat: kept, usage: [claudeLimit], accounts: both }))).toBeNull()
+    // Work is limited too, or the chat no longer keeps it: the limit in use speaks.
+    expect(bannerFor(input({ chat: kept, usage: [claudeLimit, { ...claudeLimit, accountId: 'work' }], accounts: both }))?.id).toBe('session')
+    expect(bannerFor(input({ chat: kept, usage: [claudeLimit], accounts: both, keepChats: false }))?.id).toBe('session')
+    expect(bannerFor(input({ chat: kept, usage: [claudeLimit], accounts: [cli(), work({ signedIn: false })] }))?.id).toBe('session')
+  })
+})
+
+describe('account names (KERNEL-941)', () => {
+  it("names the CLI's own login by its twin's row, or by what it is, never by its id", () => {
+    const twin: AccountProfile = { ...accounts[1], alsoCli: true }
+    expect(accountLabel([twin], 'claude', 'cli')).toBe('Work')
+    expect(accountLabel([], 'claude', 'cli')).toBe('the Claude Code login')
+    expect(accountLabel([], 'codex', 'cli')).toBe('the Codex login')
+    expect(accountLabel(accounts, 'claude', 'work')).toBe('Work')
   })
 })
