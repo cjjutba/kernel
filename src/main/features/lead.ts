@@ -768,6 +768,8 @@ export class Lead extends Feature {
       },
       // For the new agent card and create_agent's result (KERNEL-476).
       reach: (agent, o) => this.k.mcp.reach(projectId, agent, o),
+      // The account the agent runs on, for create_workspace's and message_agent's sign-in line (KERNEL-939).
+      signIns: (agent) => this.k.mcp.signInsFor(projectId, agent),
       // The same save as Settings, once the user presses Save on the card (KERNEL-683).
       saveProjectScripts: (patch) => this.k.config.setProject(projectId, patch)
     }

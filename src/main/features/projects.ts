@@ -8,21 +8,21 @@ import type { Handlers } from '../kernel'
 import { PAUSE_KEEPS } from '../services/sessions'
 import { KERNEL_HOOK_EVENTS } from '../services/hooksInstaller'
 import { DEFAULT_BASE_REF, loadRepoSettings } from '../services/settings'
-import { defaultBranch, onRemote, remoteRepo, projectWorktreeRoot, slugify } from '../services/worktrees'
+import { defaultBranch, hasCommit, onRemote, remoteRepo, projectWorktreeRoot, slugify } from '../services/worktrees'
 import { scanInstructions } from '../services/instructionConflicts'
 import { exec } from '../services/exec'
 import { checkPush, pushStepOf } from '../services/preflight'
 import { resolveFilesToCopy } from '../services/filesToCopy'
 import { AVATAR_FAILED, githubOwner, readImage } from '../services/projectIcons'
 import { removeTree } from '../services/removeTree'
-import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, exists, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/projects'
+import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, createGitHubRepo, ensureRepoSettings, exists, expandHome, initGit, inspectFolder, installCommand, listOwners, listRepos, makeEmptyRepo, recentFolders, refuseHome, repoAvailable, seatStarterTeam, tildify } from '../services/projects'
 import { Feature } from './feature'
 
 /** Where Project setup says a project's agents came from, when it asks for a roster (ProjectSetupRoster.png). */
 const AGENT_PLACES: Record<AgentOrigin, string> = { project: '.claude/agents', personal: '~/.claude/agents', plugin: 'Claude Code plugins' }
 
 /** The order setup runs its steps in, so a retry knows which come after the failed one (KERNEL-876). */
-const STEP_ORDER: ProjectSetupStep['id'][] = ['clone', 'host', 'worktrees', 'install', 'copy', 'hooks', 'push', 'agents']
+const STEP_ORDER: ProjectSetupStep['id'][] = ['clone', 'github', 'host', 'worktrees', 'install', 'copy', 'hooks', 'push', 'agents']
 
 /**
  * A project's setup: the steps last published, the request that started it, the run going now, and whether Kernel seated
@@ -75,7 +75,7 @@ export class Projects extends Feature {
       path = expandHome(req.from, this.home)
       refuseHome(path, this.home)
       const info = await inspectFolder(path, this.home)
-      if (!info.git && !req.initGit) throw new Error(`${tildify(path, this.home)} is not a git repository. Initialize git to use it.`)
+      if (!info.git && !req.initGit && !req.github) throw new Error(`${tildify(path, this.home)} is not a git repository. Initialize git to use it.`)
       // Refused here, before the project exists, rather than in the setup step (KERNEL-231).
       if (!info.git) await assertInitable(path, this.home)
     } else {
@@ -103,7 +103,9 @@ export class Projects extends Feature {
     this.restore()
     const worktrees = projectWorktreeRoot(this.settings.worktreeRoot, project)
     const steps: ProjectSetupStep[] = [
-      { id: 'clone', title: req.source === 'repo' ? `Clone ${req.from}` : req.source === 'scratch' ? `Copy ${req.from}` : 'Use your folder', detail: tildify(project.path, this.home), state: 'wait' },
+      { id: 'clone', title: req.source === 'repo' ? `Clone ${req.from}` : req.source === 'scratch' ? (req.github ? 'Create the folder' : `Copy ${req.from}`) : 'Use your folder', detail: tildify(project.path, this.home), state: 'wait' },
+      // A private repo for a project made from scratch, or a folder with no GitHub remote yet (KERNEL-944).
+      ...(req.github ? [{ id: 'github' as const, title: `Create ${req.github.owner}/${req.github.name} on GitHub`, detail: 'Private repo', state: 'wait' as const }] : []),
       { id: 'host', title: 'Code host', detail: '', state: 'wait' },
       { id: 'worktrees', title: 'Create the worktree folder', detail: tildify(worktrees, this.home), state: 'wait' },
       { id: 'install', title: 'Install dependencies', detail: 'Checking the lockfile', state: 'wait' },
@@ -191,7 +193,7 @@ export class Projects extends Feature {
       update(id, { state: 'run', meta: 'running', error: undefined })
       // Setup stops running as its last result is published, so Try again on that result is never refused. The last is the
       // agents step, or a checkout that failed.
-      const end = (ok: boolean) => { if (id === 'agents' || (id === 'clone' && !ok)) setup.running = undefined }
+      const end = (ok: boolean) => { if (id === 'agents' || ((id === 'clone' || id === 'github') && !ok)) setup.running = undefined }
       try {
         const done = (await fn()) ?? {}
         end(true)
@@ -208,8 +210,9 @@ export class Projects extends Feature {
       let inited = false
       if (req.source !== 'folder') await this.clearFailedClone(project, setup)
       if (req.source === 'repo') await cloneRepo(req.from, project.path)
+      else if (req.source === 'scratch' && req.github) await makeEmptyRepo(project.path, project.name)
       else if (req.source === 'scratch') await copyTemplate(req.from, project.path)
-      else if (req.initGit && !(await inspectFolder(project.path, this.home)).git) { await initGit(project.path, this.home); inited = true }
+      else if ((req.initGit || req.github) && !(await inspectFolder(project.path, this.home)).git) { await initGit(project.path, this.home); inited = true }
       const remote = await this.k.config.remoteFor(project.path)
       const next: Project = { ...project, repo: project.repo ?? (await remoteRepo(project.path, remote)), defaultBranch: req.baseBranch || (await defaultBranch(project.path, remote).catch(() => 'main')) }
       this.store.saveProject(next)
@@ -218,6 +221,17 @@ export class Projects extends Feature {
       if (inited) return { detail: `Git initialized in ${tildify(project.path, this.home)}. Make the first commit so new workspaces have something to branch from.` }
     })
     if (!checkedOut) return
+    // The repo goes up before Code host reads the remote, so the project is a GitHub one from here on (KERNEL-944). A folder with no
+    // commit yet gets the remote and nothing pushed: Kernel commits nothing in the user's folder (KERNEL-231).
+    const hosted = !req.github || await step('github', async () => {
+      const { owner, name } = req.github!
+      const committed = await hasCommit(project.path)
+      await createGitHubRepo(project.path, owner, name, committed)
+      const next = this.store.saveProject({ ...this.mustProject(project.id), repo: `${owner}/${name}` })
+      bus.push({ type: 'project', project: next })
+      return { detail: committed ? 'Private repo, pushed' : 'Private repo. Make the first commit and push it so new workspaces have something to branch from.' }
+    })
+    if (!hosted) return
     // Read from the checkout's remote, so a folder with no GitHub remote merges on this Mac (KERNEL-477).
     await step('host', async () => {
       const { host } = await this.k.codeHost.detect(project.path)
@@ -504,6 +518,8 @@ export class Projects extends Feature {
       'projects.recentFolders': async () => recentFolders(this.store.projects().map((r) => r.path), this.home),
       'projects.pushCheck': async ({ projectId, recheck }) => this.pushCheck(projectId, recheck),
       'github.repos': async ({ query }) => listRepos(query),
+      'github.owners': async () => listOwners(),
+      'github.repoAvailable': async ({ owner, name }) => repoAvailable(owner, name),
       'projects.setPaused': async ({ projectId, paused }) => (paused ? this.pauseProject(projectId, 'you') : this.resumeProject(projectId))
     } satisfies Partial<Handlers>
   }

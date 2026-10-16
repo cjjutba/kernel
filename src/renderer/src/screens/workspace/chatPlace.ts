@@ -5,8 +5,8 @@ import { dropSpot, getSpot, setSpot, spotKey } from '../../ui/keptScroll'
 /** A row the reader was looking at, and how far into it their view sat. */
 export interface Anchor { id: string; offset: number }
 
-/** Where a chat was left. `anchors` are the row the view started in and up to two rows above it, for when that row is gone. `heights` is each row's height by id, so a reopened chat draws its rows at the size they had (KERNEL-912). */
-export interface Place { pinned: boolean; anchors: Anchor[]; scrollTop: number; lastUserId?: string; heights?: Record<string, number> }
+/** Where a chat was left. `revealed` is the id of the plan that already scrolled itself into view, so reopening the chat leaves the view to the open restore (KERNEL-950). `anchors` are the row the view started in and up to two rows above it, for when that row is gone. `heights` is each row's height by id, so a reopened chat draws its rows at the size they had (KERNEL-912). */
+export interface Place { pinned: boolean; anchors: Anchor[]; scrollTop: number; lastUserId?: string; heights?: Record<string, number>; revealed?: string }
 
 export interface RowBox { id: string; top: number; height: number }
 
@@ -21,16 +21,32 @@ export const leftAtEnd = (distFromEnd: number) => distFromEnd <= END_PX
 const heights = new Map<string, Record<string, number>>()
 const opened = new Map<string, Map<string, boolean>>()
 
+const revealedOf = (chatId: string): string | undefined => {
+  const id = (getSpot(spotKey.chat(chatId))?.data as { revealed?: unknown } | undefined)?.revealed
+  return typeof id === 'string' ? id : undefined
+}
+
 export const savePlace = (chatId: string, place: Place) => {
   if (place.heights) heights.set(chatId, place.heights)
-  setSpot(spotKey.chat(chatId), { anchors: place.anchors, pos: place.scrollTop, end: place.pinned, data: { lastUserId: place.lastUserId } })
+  setSpot(spotKey.chat(chatId), { anchors: place.anchors, pos: place.scrollTop, end: place.pinned, data: { lastUserId: place.lastUserId, revealed: place.revealed ?? revealedOf(chatId) } })
 }
 
 export const takePlace = (chatId: string): Place | undefined => {
   const spot = getSpot(spotKey.chat(chatId))
   if (!spot) return undefined
   const last = (spot.data as { lastUserId?: unknown } | undefined)?.lastUserId
-  return { pinned: spot.end, anchors: spot.anchors, scrollTop: spot.pos, lastUserId: typeof last === 'string' ? last : undefined, heights: heights.get(chatId) }
+  return { pinned: spot.end, anchors: spot.anchors, scrollTop: spot.pos, lastUserId: typeof last === 'string' ? last : undefined, heights: heights.get(chatId), revealed: revealedOf(chatId) }
+}
+
+/** Whether a plan reveals itself now: once per plan id. A revised plan (a new id after one was revealed) waits while the reader is scrolled up (KERNEL-950). */
+export const shouldReveal = (revealed: string | undefined, planId: string, following: boolean) =>
+  revealed !== planId && (revealed === undefined || following)
+
+/** Records the plan that revealed itself in the chat's saved spot, which a later save keeps. */
+export function markRevealed(chatId: string, planId: string) {
+  const spot = getSpot(spotKey.chat(chatId))
+  const data = { ...(spot?.data as object | undefined), revealed: planId }
+  setSpot(spotKey.chat(chatId), spot ? { ...spot, data } : { anchors: [], pos: 0, end: true, data })
 }
 
 /** Forgets the chat's spot, with the row heights it holds, and the rows it had open, for a chat that is closed or archived. */
