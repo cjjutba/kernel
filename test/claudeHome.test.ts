@@ -530,6 +530,31 @@ describe('sharing MCP sign-ins between Claude logins', () => {
     expect(shareMcpSignIns(kc.keychain, logins)).toEqual(new Map([[side, ['linear']]]))
   })
 
+  it('copies a token that expired overnight while its refresh token is there, and never a cleared one over it (KERNEL-940)', async () => {
+    const { cli, side, logins } = await folders()
+    const kc = fakeKeychain({
+      [CLI]: { mcpOAuth: { 'linear|aaa': signIn('linear', 'cli', now + HOUR), 'posthog|bbb': { ...stub('posthog'), expiresAt: 0 } } },
+      [SIDE]: { mcpOAuth: { 'linear|aaa': stub('linear'), 'posthog|bbb': signIn('posthog', 'side', now + HOUR) } }
+    })
+    // Eight hours on, both access tokens are stale but renewable, and the CLI's posthog was cleared when its refresh failed.
+    expect(shareMcpSignIns(kc.keychain, logins, { now: now + 8 * HOUR })).toEqual(new Map([[side, ['linear']], [cli, ['posthog']]]))
+    expect(kc.json(SIDE).mcpOAuth['linear|aaa']).toEqual(signIn('linear', 'cli', now + HOUR))
+    expect(kc.json(SIDE).mcpOAuth['posthog|bbb']).toEqual(signIn('posthog', 'side', now + HOUR))
+    expect(kc.json(CLI).mcpOAuth['posthog|bbb']).toEqual(signIn('posthog', 'side', now + HOUR))
+  })
+
+  it('shares a user server and leaves a claude.ai connector of the same name with each account (KERNEL-940)', async () => {
+    const { side, logins } = await folders()
+    const connector = (who: string) => ({ serverName: 'claude.ai Linear', accessToken: `${who}-connector-access` })
+    const kc = fakeKeychain({
+      [CLI]: { mcpOAuth: { 'linear|aaa': signIn('linear', 'cli', now + HOUR), 'claude.ai Linear|ccc': connector('cli') } },
+      [SIDE]: { mcpOAuth: { 'claude.ai Linear|ccc': connector('side') } }
+    })
+    expect(shareMcpSignIns(kc.keychain, logins)).toEqual(new Map([[side, ['linear']]]))
+    expect(kc.json(SIDE).mcpOAuth).toEqual({ 'linear|aaa': signIn('linear', 'cli', now + HOUR), 'claude.ai Linear|ccc': connector('side') })
+    expect(kc.json(CLI).mcpOAuth['claude.ai Linear|ccc']).toEqual(connector('cli'))
+  })
+
   it('logs nothing it read', async () => {
     const { logins } = await folders()
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m))

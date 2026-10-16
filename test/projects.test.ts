@@ -11,6 +11,7 @@ import { exec } from '../src/main/services/exec'
 import { ago, agoShort, projectState, teamOf } from '../src/renderer/src/screens/projects/projectInfo'
 import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listOwners, lockfileInstall, recentFolders, repoAvailable, seatStarterTeam } from '../src/main/services/projects'
 import { loadRepoSettings } from '../src/main/services/settings'
+import { repoSlug } from '../src/renderer/src/screens/projects/RepoName'
 import { tempRepo, freePort } from './helpers'
 
 const starter = join(__dirname, '..', 'docs', 'starter-agents')
@@ -647,5 +648,11 @@ describe('a GitHub repo for every project (KERNEL-944)', () => {
     const repo = await tempRepo()
     await exec('git', ['-C', repo, 'remote', 'add', 'origin', 'git@github.com:me/app.git'])
     expect(await inspectFolder(repo)).toMatchObject({ git: true, remote: 'me/app' })
+  })
+
+  it('suggests a repo name GitHub keeps as typed (KERNEL-946)', () => {
+    expect(repoSlug('recipe-box')).toBe('recipe-box')
+    expect(repoSlug('cjjutba.dev')).toBe('cjjutba.dev')
+    expect(repoSlug(' My new app! ')).toBe('My-new-app')
   })
 })

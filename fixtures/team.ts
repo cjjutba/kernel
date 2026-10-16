@@ -86,6 +86,14 @@ const repos = [
   ['client-c', true, 2 * HOUR], ['personal-site', false, DAY], ['habit-tracker', true, 3 * DAY], ['recipe-box', true, 7 * DAY], ['starter-kit', true, 14 * DAY], ['starter-kit-mobile', true, 21 * DAY]
 ].map(([name, priv, age]) => ({ fullName: `samrivera/${name}`, name: name as string, private: priv as boolean, updatedAt: ago(age as number) }))
 
+/** Open a folder's recent folders (KERNEL-946): two on GitHub, one repo with no remote, one plain folder. */
+const recentFolders = [
+  { path: '/Users/you/Projects/habit-tracker', git: true, branch: 'main', dirty: 2, remote: 'samrivera/habit-tracker' },
+  { path: '/Users/you/Projects/recipe-box', git: true, branch: 'main', dirty: 0 },
+  { path: '/Users/you/Projects/personal-site', git: true, branch: 'main', dirty: 0, remote: 'samrivera/personal-site' },
+  { path: '/Users/you/Desktop/sandbox', git: false }
+]
+
 /** Local time today or yesterday, so lists group rows under Today and Yesterday whatever day the shots run. */
 const clock = (daysAgo: number, h: number, m: number) => { const d = new Date(); d.setDate(d.getDate() - daysAgo); d.setHours(h, m, 0, 0); return d.getTime() }
 
@@ -762,16 +770,10 @@ export const teamFixtures: Record<string, Fixture> = {
   OpenFolderLoading: scene((f) => ({ ...projectsScene(f), hold: ['projects.recentFolders'], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   OpenFolderFailed: scene((f) => ({ ...projectsScene(f), fails: { 'projects.recentFolders': 'Permission denied reading the folder list.' }, ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   OpenFolderEmpty: scene((f) => ({ ...projectsScene(f), folders: [], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
-  OpenFolder: scene((f) => ({
-    ...projectsScene(f),
-    folders: [
-      { path: '/Users/you/Projects/habit-tracker', git: true, branch: 'main', dirty: 0 },
-      { path: '/Users/you/Projects/recipe-box', git: true, branch: 'dev', dirty: 3 },
-      { path: '/Users/you/Projects/personal-site', git: true, branch: 'main', dirty: 0 },
-      { path: '/Users/you/Desktop/sandbox', git: false }
-    ],
-    ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } }
-  })),
+  OpenFolder: scene((f) => ({ ...projectsScene(f), folders: recentFolders, ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
+  // KERNEL-946: the pick has no GitHub remote, then isn't a repo at all, so Open offers a private repo under the list.
+  OpenFolderNoRemote: scene((f) => ({ ...projectsScene(f), folders: [recentFolders[1], recentFolders[0], ...recentFolders.slice(2)], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
+  OpenFolderNotGit: scene((f) => ({ ...projectsScene(f), folders: [recentFolders[3], ...recentFolders.slice(0, 3)], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   ProjectSetup: scene((f) => ({
     ...projectsScene(f),
     projects: [...f.projects, clientC],
