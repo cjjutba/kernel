@@ -347,6 +347,34 @@ const modelsAgents = (): Fixture['agents'] => {
   const lead = agentFile('kernel-lead', 'Kernel', 'Lead', 'Plans and hands out tasks')
   return { [ids.projectA]: [{ ...lead, model: undefined }, { ...kai, model: undefined }, noor, theo], [ids.projectB]: [{ ...kai, model: undefined }, mira, noor, rio], [ids.projectOwn]: [{ ...lead, model: undefined }], [ids.projectPortfolio]: [{ ...kai, model: undefined }] }
 }
+/** KERNEL-995: the real setup, four projects and about sixty agents. Most Backend agents pin their own model, so the row follows few of them, and helpers and a retired agent sit beside them. */
+const REAL_PROJECTS: Record<string, string> = { [ids.projectA]: 'Kernel', [ids.projectB]: 'Fiscplus', [ids.projectOwn]: 'Cjjutba Dev', [ids.projectPortfolio]: 'aurahire' }
+const specialists = [
+  'Abdel Message Drafter', 'Accessibility Specialist', 'Ai Architect', 'Auth Security Specialist', 'Belgian Compliance Specialist', 'Code Architect', 'Code Explorer', 'Code Reviewer',
+  'Data Table Specialist', 'Database Architect', 'Database Migration Specialist', 'Deployment Expert', 'Email Template Specialist', 'Export Report Generator', 'File Upload Storage Specialist',
+  'Form Validation Expert', 'Integration Api Specialist', 'Nestjs Backend Api', 'Notification Toast Specialist', 'Performance Optimizer', 'Scheduling Cron Job Specialist', 'Search Filter Specialist',
+  'Tanstack Query Expert', 'Unit Test Specialist', 'Websocket Realtime Specialist', 'Workflow State Machine Specialist'
+]
+const slug = (n: string) => n.toLowerCase().replace(/[^a-z]+/g, '-')
+const largeAgents = (): Fixture['agents'] => {
+  const mk = (name: string, role: string, model?: string, over: Partial<AgentDef> = {}): AgentDef => ({ ...agentFile(slug(name), name, role, `${name} for this project`), model, ...over })
+  const team = (n: number): AgentDef[] => [
+    { ...agentFile('kernel-lead', 'Kernel', 'Lead', 'Plans and hands out tasks'), model: undefined },
+    mk('Kai', 'Frontend'), mk('Noor', 'Backend'), mk('Ivy', 'QA'), mk('Theo', 'Reviewer'), mk('Rio', 'Backend', 'claude-sonnet-5-5'), mk('Mira', 'Backend', 'claude-opus-5-5'), mk('Sol', 'Backend'),
+    ...specialists.filter((_, i) => (i + n) % 2 === 0 || n === 1).map((name, i) => mk(name, 'Specialist', i % 9 === 0 ? undefined : i % 4 === 0 ? 'opus' : 'sonnet')),
+    mk('Frontend Component Dev', 'Frontend Specialist', 'sonnet'),
+    mk('Explore', 'Backend', undefined, { member: false }), mk('Plan', 'Backend', undefined, { member: false }), mk('Old Migrator', 'Backend', undefined, { retired: true })
+  ]
+  return { [ids.projectA]: team(1), [ids.projectB]: team(2), [ids.projectOwn]: team(3).slice(0, 14), [ids.projectPortfolio]: team(4).slice(0, 14) }
+}
+const largeModels = () => scene((f) => ({
+  projects: f.projects.map((r) => ({ ...r, name: REAL_PROJECTS[r.id] ?? r.name })),
+  agents: largeAgents(),
+  status: {},
+  settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'medium' }, lead: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }),
+  models: { codex: codexModels },
+  ui: { route: { name: 'settings', page: 'models' } }
+}))
 const longExample = 'Use this agent to design AI features and pick models. <example>Context: The user is adding chat. user: "Which SDK should I use?" assistant: "I will use the ai-architect agent."</example> <commentary>The request is about architecture, so hand it over.</commentary> Covers streaming, tool calling and cost.'
 const extraAgents: AgentDef[] = [
   { ...agentFile('ops', 'Ops', 'Ops', 'Deploys and watches logs'), origin: 'personal', file: '/Users/you/.claude/agents/ops.md', member: true, tools: ['Read', 'Bash', 'Grep'], prompt: 'You are Ops. You deploy, watch the logs and say what you saw.\n\nNever deploy on a red build. Roll back first and ask questions after.' },
@@ -451,6 +479,14 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsModelsPicker: modelsPage(),
   SettingsModelsPickerCodex: modelsPage(),
   SettingsModelsPickerLegacy: modelsPage(),
+  // KERNEL-995: one chip per role and an agent count. The large fixture is the real setup, to check every row is as tall as the next.
+  SettingsModelsLarge: largeModels(),
+  SettingsModelsAgents: largeModels(),
+  SettingsModelsAgentsNone: modelsPage(),
+  SettingsModelsPickerEffort: modelsPage(),
+  SettingsModelsPickerCompact: modelsPage(),
+  SettingsModelsPickerCodexRole: modelsPage(),
+  SettingsModelsNarrow: largeModels(),
   // KERNEL-406, KERNEL-665: both providers' accounts and status, with Claude's own login active, a second Claude account, a key, and Fable's weekly window on Work.
   SettingsAccounts: providersPage('claude', { accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex], usage: [...providerUsage(), fableWindow] }),
   // KERNEL-701: Work is added in Kernel and is also Claude Code's own login in Terminal, so it shows once, with its details open.

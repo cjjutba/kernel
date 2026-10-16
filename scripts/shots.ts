@@ -625,6 +625,18 @@ async function openRolePicker(page: Page, tab?: string, legacy = false) {
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
+// KERNEL-995: the Backend row's count opens the agents popover, a row's chip opens its picker, and the Effort and Compact at rows open their flyouts.
+async function openRoleAgents(page: Page, row = 'Backend') {
+  await page.getByRole('row', { name: row }).getByRole('button', { name: /agents?$|No agents/ }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+async function openRoleFlyout(page: Page, row: string, flyout: 'Effort' | 'Compact at') {
+  await page.getByRole('row', { name: row }).getByRole('button', { name: new RegExp(`^${row} model`) }).click()
+  await page.getByRole('button', { name: new RegExp(`^${flyout}`) }).hover()
+  await page.getByRole('menu', { name: flyout }).waitFor()
+  await page.waitForTimeout(300)
+}
 async function starModels(page: Page) {
   for (const name of ['Opus 5.5', 'Haiku 5.5']) {
     const row = page.getByRole('option', { name: new RegExp(name) })
@@ -653,6 +665,12 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsModelsPicker: (page) => openRolePicker(page),
   SettingsModelsPickerCodex: (page) => openRolePicker(page, 'Codex'),
   SettingsModelsPickerLegacy: (page) => openRolePicker(page, undefined, true),
+  SettingsModelsAgents: (page) => openRoleAgents(page),
+  SettingsModelsAgentsNone: (page) => openRoleAgents(page, 'QA'),
+  SettingsModelsPickerEffort: (page) => openRoleFlyout(page, 'Kernel', 'Effort'),
+  SettingsModelsPickerCompact: (page) => openRoleFlyout(page, 'Kernel', 'Compact at'),
+  SettingsModelsPickerCodexRole: async (page) => { await page.getByRole('button', { name: /^Frontend model/ }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  SettingsModelsNarrow: windowAt(720),
   WorkspaceModelPickerKeys: async (page) => { await page.keyboard.press('ArrowUp'); await page.waitForTimeout(300) },
   WorkspaceModelPickerFavorites: starModels,
   WorkspaceModelPickerEffort: openEffortFlyout,

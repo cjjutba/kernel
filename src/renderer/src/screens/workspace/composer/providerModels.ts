@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type Effort, type Provider, type ProviderModel } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type CompactWindow, type Effort, type Provider, type ProviderModel } from '@shared/types'
 import { call } from '../../../api'
 import { useStore } from '../../../store'
 
@@ -51,6 +51,8 @@ export function useCodexInUse(chatProvider?: Provider): boolean {
   const configured = useStore((s) => chatProvider === 'codex' || Object.values(s.settings?.models.roles ?? {}).some((r) => r.provider === 'codex'))
   return signedIn || configured
 }
+
+export const COMPACT_LABELS: Record<CompactWindow, string> = { '200k': '200k tokens', full: 'Full window' }
 
 export const providerLabel = (p: Provider) => PROVIDERS.find((x) => x.id === p)?.label ?? p
 

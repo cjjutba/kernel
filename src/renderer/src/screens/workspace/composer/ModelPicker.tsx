@@ -1,26 +1,26 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { EFFORT_LABELS, EFFORTS, type Effort, type Provider } from '@shared/types'
+import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, type CompactWindow, type Effort, type Provider } from '@shared/types'
 import { actions } from '../../../store'
 import { arrowRow, Icon, ProviderMark } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, useEffortMemory } from './modelPrefs'
 import { useFavoriteModels, toggleFavoriteModel } from './favoriteModels'
-import { effortsOf, fitEffort, providerLabel, useProviderModels } from './providerModels'
+import { COMPACT_LABELS, effortsOf, fitEffort, providerLabel, useProviderModels } from './providerModels'
 import { isCycleEffortKey, shortcutNumber } from './modelShortcuts'
 
 export { EFFORTS }
 
-/** The Effort row's flyout: the model's levels with a check on the current one. Escape or ArrowLeft goes back to the models. */
-function EffortMenu({ efforts, effort, at, onAt, onPick, onClose }: { efforts: Effort[]; effort: Effort; at: number; onAt: (i: number) => void; onPick: (e: Effort) => void; onClose: () => void }) {
+/** A row's flyout: its choices with a check on the current one. Escape or ArrowLeft goes back to the models. */
+function ChoiceMenu({ label, options, value, at, onAt, onPick, onClose, flip }: { label: string; options: { id: string; label: string }[]; value: string; at: number; onAt: (i: number) => void; onPick: (id: string) => void; onClose: () => void; flip?: boolean }) {
   useLayer({ onEscape: onClose })
   return (
-    <div className="menu pick-flyout" role="menu" aria-label="Effort">
-      {efforts.map((x, i) => (
-        <button key={x} type="button" role="menuitemradio" aria-checked={x === effort} tabIndex={-1} className="menu-item pick-row" data-active={i === at}
-          onMouseEnter={() => onAt(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(x)}>
-          <span className="grow">{EFFORT_LABELS[x]}</span>
-          {x === effort && <Icon name="check" size={14} />}
+    <div className="menu pick-flyout" role="menu" aria-label={label} data-flip={flip ? 'left' : undefined}>
+      {options.map((x, i) => (
+        <button key={x.id} type="button" role="menuitemradio" aria-checked={x.id === value} tabIndex={-1} className="menu-item pick-row" data-active={i === at}
+          onMouseEnter={() => onAt(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(x.id)}>
+          <span className="grow">{x.label}</span>
+          {x.id === value && <Icon name="check" size={14} />}
         </button>
       ))}
     </div>
@@ -28,9 +28,9 @@ function EffortMenu({ efforts, effort, at, onAt, onPick, onClose }: { efforts: E
 }
 
 /** The Legacy models row's flyout, built like the Effort one: the older models as rows like the main list's. Escape or ArrowLeft goes back to the Legacy row. */
-function LegacyMenu({ style, onClose, children }: { style: React.CSSProperties; onClose: () => void; children: React.ReactNode }) {
+function LegacyMenu({ style, flip, onClose, children }: { style: React.CSSProperties; flip: boolean; onClose: () => void; children: React.ReactNode }) {
   useLayer({ onEscape: onClose })
-  return <div className="menu pick-flyout pick-flyout-legacy" role="listbox" aria-label="Legacy models" style={style}>{children}</div>
+  return <div className="menu pick-flyout pick-flyout-legacy" role="listbox" aria-label="Legacy models" data-flip={flip ? 'left' : undefined} style={style}>{children}</div>
 }
 
 /** A row of the picker: a model on a provider, and `n` for its ^⌘ shortcut. */
@@ -51,12 +51,13 @@ type Tab = 'favorites' | Provider
  * The picker opens on the current model's provider. Both providers show when Codex is in use (`grouped`). A model on the other provider
  * can't take over a chat that has started, so that provider's rail icon is dimmed and says to start a new chat (KERNEL-406).
  *
- * `variant="settings"` is the role picker in Settings, Models (KERNEL-988): the rail lists Claude and Codex with neither locked, and the Effort row,
- * favorites, ^⌘N hints, footer and their keys are gone, since a role's effort is its own cell. `placement="down"` opens it under its anchor, sized to
- * the space below, and its Legacy flyout opens downward too.
+ * `variant="settings"` is the role picker in Settings, Models (KERNEL-988, KERNEL-995): the rail lists Claude and Codex with neither locked, and favorites,
+ * ^⌘N hints, footer and their keys are gone. The Effort row stays, and a Claude role also gets a Compact at row (`compact`, `onCompact`). Each model
+ * row shows the effort the role would get on it, `fitEffort(effort, model)`. A flyout opens to the left when there is no room on the right.
+ * `placement="down"` opens it under its anchor, sized to the space below, and its Legacy flyout opens downward too.
  */
-export function ModelPicker({ provider = 'claude', grouped = false, started = false, variant = 'composer', placement = 'up', model, effort, fallback, onModel, onEffort, onClose, anchorRef }: {
-  anchorRef: React.RefObject<HTMLElement | null>; provider?: Provider; grouped?: boolean; started?: boolean; variant?: 'composer' | 'settings'; placement?: 'up' | 'down'; model: string; effort: Effort; fallback: Effort
+export function ModelPicker({ provider = 'claude', grouped = false, started = false, variant = 'composer', placement = 'up', model, effort, fallback, compact, onCompact, onModel, onEffort, onClose, anchorRef }: {
+  anchorRef: React.RefObject<HTMLElement | null>; provider?: Provider; grouped?: boolean; started?: boolean; variant?: 'composer' | 'settings'; placement?: 'up' | 'down'; model: string; effort: Effort; fallback: Effort; compact?: CompactWindow; onCompact?: (w: CompactWindow) => void
   onModel: (m: string, effort: Effort) => void; onEffort: (e: Effort) => void; onClose: () => void
 }) {
   const codex = useProviderModels('codex')
@@ -66,7 +67,14 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const efforts = effortsOf(model, own)
   const favorites = useFavoriteModels()
   const settings = variant === 'settings'
-  const down = placement === 'down'
+  // Under the chip when the window has room for the picker below it, else above it, so a low row's picker isn't squeezed (KERNEL-995).
+  const [down] = useState(() => {
+    if (placement !== 'down') return false
+    const a = anchorRef.current?.getBoundingClientRect()
+    if (!settings || !a) return true
+    const below = window.innerHeight - a.bottom
+    return below >= 460 || below >= a.top
+  })
   const providers: Provider[] = settings || grouped || provider === 'codex' ? ['claude', 'codex'] : ['claude']
   /** The other provider can't take over a chat that has started. */
   const locked = (p: Provider) => !settings && started && p !== provider
@@ -91,8 +99,13 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   }, [all, tab, favorites, needle, started, provider])
   // A chat on a legacy model starts with the cursor on the Legacy row, which names that model.
   const [at, setAt] = useState(() => Math.max(0, items.findIndex((i) => (i.kind === 'model' ? i.row.id === model : i.rows.some((r) => r.id === model)))))
-  const [flyout, setFlyout] = useState<'effort' | 'legacy' | null>(null)
+  const [flyout, setFlyout] = useState<'effort' | 'compact' | 'legacy' | null>(null)
   const sub = flyout === 'effort'
+  const hasCompact = settings && compact !== undefined
+  const compactShown = flyout === 'compact' && hasCompact
+  const compactOptions = COMPACT_WINDOWS.map((w) => ({ id: w, label: COMPACT_LABELS[w] }))
+  const effortOptions = efforts.map((x) => ({ id: x, label: EFFORT_LABELS[x] }))
+  const [flip, setFlip] = useState(false)
   const legacyIdx = items.findIndex((i) => i.kind === 'legacy')
   const legacyRows = (items[legacyIdx] as Extract<Item, { kind: 'legacy' }> | undefined)?.rows ?? []
   const legacyShown = flyout === 'legacy' && legacyRows.length > 0
@@ -123,14 +136,22 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
       ? { top: row.top - pop.top - 7, bottom: 'auto', maxHeight: Math.max(160, window.innerHeight - row.top + 6 - 12) }
       : { bottom: pop.bottom - row.bottom - 7, maxHeight: Math.max(160, row.bottom + 6 - 12) })
   }, [legacyShown, items])
+  // In Settings the picker sits at the table's right edge, so a flyout that would pass the window's turns to the left.
+  useLayoutEffect(() => {
+    if (!settings || !flyout || !ref.current) return
+    setFlip(ref.current.getBoundingClientRect().right + 21 + (flyout === 'legacy' ? 320 : 220) > window.innerWidth - 16)
+  }, [settings, flyout])
 
-  // The Effort row is the last stop for the arrow keys, and there is none in Settings.
-  const effortRow = settings ? -1 : items.length
-  const rowEffort = (m: Row) => (m.id === model ? effort : fitEffort(effortFor(m.id, memory, fallback), m.id, listOf(m.provider)))
+  // The Effort row, then the Compact at row in Settings, are the last stops for the arrow keys.
+  const effortRow = items.length
+  const compactRow = hasCompact ? items.length + 1 : -1
+  const rowEffort = (m: Row) => (settings ? fitEffort(effort, m.id, listOf(m.provider)) : m.id === model ? effort : fitEffort(effortFor(m.id, memory, fallback), m.id, listOf(m.provider)))
   const pickModel = (m: Row) => { if (!locked(m.provider)) onModel(m.id, rowEffort(m)) }
   const setSub = (on: boolean) => setFlyout(on ? 'effort' : null)
   const pickEffort = (e: Effort) => { onEffort(e); setSub(false) }
   const openSub = () => { setSubAt(Math.max(0, efforts.indexOf(effort))); setSub(true) }
+  const pickCompact = (w: CompactWindow) => { onCompact?.(w); setFlyout(null) }
+  const openCompact = () => { setSubAt(Math.max(0, COMPACT_WINDOWS.indexOf(compact ?? 'full'))); setFlyout('compact') }
   const openLegacy = () => { setLegacyAt(Math.max(0, legacyRows.findIndex((r) => r.id === model))); setFlyout('legacy') }
   const goTab = (t: Tab) => { if (t !== 'favorites' && locked(t)) return; setTab(t); setAt(0); setSub(false) }
   const press = (i: Item | undefined) => { if (i?.kind === 'legacy') (legacyShown ? setFlyout(null) : openLegacy()); else if (i) pickModel(i.row) }
@@ -152,18 +173,20 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
       else if (e.key === 'Enter') { e.preventDefault(); const r = legacyRows[legacyAt]; if (r) pickModel(r) }
       return
     }
-    if (sub) {
-      const to = arrowRow(e, subAt, efforts.length)
+    if (sub || compactShown) {
+      const options = sub ? effortOptions : compactOptions
+      const to = arrowRow(e, subAt, options.length)
       if (to !== null) { e.preventDefault(); setSubAt(to) }
-      else if (e.key === 'ArrowLeft') { e.preventDefault(); setSub(false) }
-      else if (e.key === 'Enter') { e.preventDefault(); pickEffort(efforts[subAt]) }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); setFlyout(null) }
+      else if (e.key === 'Enter') { e.preventDefault(); const o = options[subAt]; if (o) (sub ? pickEffort(o.id as Effort) : pickCompact(o.id as CompactWindow)) }
       return
     }
-    const to = arrowRow(e, at, settings ? items.length : effortRow + 1)
+    const to = arrowRow(e, at, effortRow + 1 + (hasCompact ? 1 : 0))
     if (to !== null) { e.preventDefault(); setAt(to) }
     else if (e.key === 'ArrowRight' && at === effortRow) { e.preventDefault(); openSub() }
+    else if (e.key === 'ArrowRight' && at === compactRow) { e.preventDefault(); openCompact() }
     else if (e.key === 'ArrowRight' && items[at]?.kind === 'legacy') { e.preventDefault(); openLegacy() }
-    else if (e.key === 'Enter') { e.preventDefault(); const it = items[at]; if (at === effortRow) openSub(); else if (it?.kind === 'legacy') openLegacy(); else press(it) }
+    else if (e.key === 'Enter') { e.preventDefault(); const it = items[at]; if (at === effortRow) openSub(); else if (at === compactRow) openCompact(); else if (it?.kind === 'legacy') openLegacy(); else press(it) }
   }
 
   /** A model row, in the list and in the Legacy flyout alike. */
@@ -187,7 +210,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const empty = needle ? `No model matches "${q.trim()}".` : tab === 'favorites' ? 'Star a model to keep it here.' : 'No models to show.'
 
   return (
-    <div ref={ref} className="menu cmp-pop model-pop" role="dialog" aria-label={settings ? 'Model' : 'Model and effort'} data-placement={down ? 'down' : undefined} onKeyDown={onKey} style={{ maxHeight }}>
+    <div ref={ref} className="menu cmp-pop model-pop" role="dialog" aria-label={settings ? 'Model' : 'Model and effort'} data-placement={down ? 'down' : undefined} data-align={settings ? 'right' : undefined} onKeyDown={onKey} style={{ maxHeight }}>
       <label className="pick-search">
         <Icon name="search" size={14} />
         <input aria-label="Search models" placeholder="Search models" autoComplete="off" spellCheck={false} value={q} onChange={(e) => { setQ(e.target.value); setAt(0); setFlyout(null) }} />
@@ -209,7 +232,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
           <div role="listbox" aria-label="Models" className="pick-list">
             {items.map((it, i) => it.kind === 'legacy' ? (
               <button key="legacy" type="button" tabIndex={-1} className="menu-item pick-row pick-legacy" aria-haspopup="listbox" aria-expanded={legacyShown} data-active={!sub && !legacyShown && i === at} data-open={legacyShown}
-                onMouseEnter={() => { setAt(i); if (flyout === 'effort') setFlyout(null) }} onMouseDown={(e) => e.preventDefault()} onClick={() => (legacyShown ? setFlyout(null) : (setAt(i), openLegacy()))}>
+                onMouseEnter={() => { setAt(i); if (flyout === 'effort' || flyout === 'compact') setFlyout(null) }} onMouseDown={(e) => e.preventDefault()} onClick={() => (legacyShown ? setFlyout(null) : (setAt(i), openLegacy()))}>
                 <span className="pick-name">Legacy models</span>
                 <span className="pick-count">{it.rows.length}</span>
                 <span className="grow" />
@@ -220,20 +243,32 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
             {!items.length && <p className="pick-empty">{empty}</p>}
           </div>
         </div>
-        {!settings && <><div className="menu-sep" />
+        <div className="menu-sep" />
         <div className="pick-effort-row">
-          <button type="button" tabIndex={-1} className="menu-item pick-row pick-effort-btn" aria-haspopup="menu" aria-expanded={sub} data-active={!sub && !legacyShown && at === effortRow} data-open={sub}
+          <button type="button" tabIndex={-1} className="menu-item pick-row pick-effort-btn" aria-haspopup="menu" aria-expanded={sub} data-active={!flyout && at === effortRow} data-open={sub}
             onMouseEnter={() => { setAt(effortRow); openSub() }} onMouseDown={(e) => e.preventDefault()} onClick={() => (sub ? setSub(false) : openSub())}>
             <span className="pick-name">Effort</span>
             <span className="grow" />
             <span className="pick-effort">{effortLabel(effort)}</span>
             <Icon name="right" size={14} />
           </button>
-          {sub && <EffortMenu efforts={efforts} effort={effort} at={subAt} onAt={setSubAt} onPick={pickEffort} onClose={() => setSub(false)} />}
-        </div></>}
+          {sub && <ChoiceMenu label="Effort" options={effortOptions} value={effort} at={subAt} onAt={setSubAt} onPick={(id) => pickEffort(id as Effort)} onClose={() => setSub(false)} flip={flip} />}
+        </div>
+        {hasCompact && (
+          <div className="pick-effort-row">
+            <button type="button" tabIndex={-1} className="menu-item pick-row pick-effort-btn" aria-haspopup="menu" aria-expanded={compactShown} data-active={!flyout && at === compactRow} data-open={compactShown}
+              onMouseEnter={() => { setAt(compactRow); openCompact() }} onMouseDown={(e) => e.preventDefault()} onClick={() => (compactShown ? setFlyout(null) : openCompact())}>
+              <span className="pick-name">Compact at</span>
+              <span className="grow" />
+              <span className="pick-effort">{COMPACT_LABELS[compact ?? 'full']}</span>
+              <Icon name="right" size={14} />
+            </button>
+            {compactShown && <ChoiceMenu label="Compact at" options={compactOptions} value={compact ?? 'full'} at={subAt} onAt={setSubAt} onPick={(id) => pickCompact(id as CompactWindow)} onClose={() => setFlyout(null)} flip={flip} />}
+          </div>
+        )}
       </div>
       {legacyShown && (
-        <LegacyMenu style={legacyStyle} onClose={() => setFlyout(null)}>
+        <LegacyMenu style={legacyStyle} flip={flip} onClose={() => setFlyout(null)}>
           {legacyRows.map((r, i) => modelRow(r, i === legacyAt, () => setLegacyAt(i)))}
         </LegacyMenu>
       )}

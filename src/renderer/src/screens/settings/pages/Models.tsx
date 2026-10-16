@@ -1,10 +1,10 @@
 import './agents.css'
 import { useRef, useState } from 'react'
-import { COMPACT_WINDOWS, EFFORT_LABELS, type AgentDef, type AppSettings, type CompactWindow, type Provider, type Role, type RoleModel } from '@shared/types'
-import { roleOf } from '@shared/team'
-import { Icon, ProviderMark, Select, Toggle } from '../../../ui'
+import { EFFORT_LABELS, type AppSettings, type CompactWindow, type Effort, type Provider, type ProviderModel, type Role, type RoleModel } from '@shared/types'
+import { roleOf, takesTasks } from '@shared/team'
+import { Icon, Popover, ProviderMark, Select, Toggle } from '../../../ui'
 import { ModelPicker } from '../../workspace/composer/ModelPicker'
-import { effortsOf, fitEffort, modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
+import { COMPACT_LABELS, fitEffort, modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
 import { appliesTo, Page, Row, Section } from '../kit'
 import { go, useStore } from '../../../store'
 import { patchSettings } from '../useSettings'
@@ -18,48 +18,82 @@ const ROLES: { key: Role; title: string }[] = [
   { key: 'reviewer', title: 'Reviewer' }
 ]
 
-const COMPACT_LABELS: Record<CompactWindow, string> = { '200k': '200k tokens', full: 'Full window' }
 const LIMITS = [1, 2, 3, 4, 5, 6, 8]
 
-const ROLE_GRID = 'minmax(0, 1fr) 196px 128px 128px'
+const ROLE_GRID = 'minmax(150px, 1fr) minmax(0, 280px)'
 
-/** The agents of every project that read a role's row, by project. Retired agents are left out. */
-function useRoleAgents(roleKey: Role) {
+interface WhoLine { key: string; name: string; right: string; open?: { projectId: string; agentId: string } }
+
+/**
+ * The agents of every project that read a role's row (KERNEL-974, KERNEL-995), by name across projects. Retired agents and helpers, which take no
+ * tasks, are left out. `follow` take the row's model, `own` have a file that sets one and keep it.
+ */
+function useRoleAgents(roleKey: Role, models: ProviderModel[]): { follow: WhoLine[]; own: WhoLine[] } {
   const projects = useStore((st) => st.projects)
   const agents = useStore((st) => st.agents)
-  return projects
-    .map((p) => ({ project: p, agents: (agents[p.id] ?? []).filter((a) => !a.retired && roleOf(a) === roleKey) }))
-    .filter((g) => g.agents.length)
+  const follow = new Map<string, WhoLine & { in: string[] }>()
+  const own = new Map<string, WhoLine>()
+  for (const p of projects) {
+    for (const a of agents[p.id] ?? []) {
+      if (a.retired || roleOf(a) !== roleKey || (roleKey !== 'lead' && roleKey !== 'reviewer' && !takesTasks(a))) continue
+      const open = a.file ? { projectId: p.id, agentId: a.id } : undefined
+      if (a.model) {
+        const label = modelLabelOf(a.model, models)
+        if (!own.has(`${a.name}|${label}`)) own.set(`${a.name}|${label}`, { key: `${a.name}|${label}`, name: a.name, right: label, open })
+        else if (!own.get(`${a.name}|${label}`)!.open) own.get(`${a.name}|${label}`)!.open = open
+      } else {
+        const line = follow.get(a.name) ?? { key: a.name, name: a.name, right: '', in: [], open }
+        line.in.push(p.name)
+        if (!line.open) line.open = open
+        follow.set(a.name, line)
+      }
+    }
+  }
+  return { follow: [...follow.values()].map((l) => ({ key: l.key, name: l.name, right: l.in.join(', '), open: l.open })), own: [...own.values()] }
 }
 
-/** Who a row covers (KERNEL-974): an agent whose file sets its own model keeps it, and its name opens the profile. */
-function RoleAgents({ roleKey, models }: { roleKey: Role; models: ReturnType<typeof useProviderModels> }) {
-  const groups = useRoleAgents(roleKey)
-  if (!groups.length) return <span className="ag-covers">No agents use this yet</span>
-  const name = (projectId: string, a: AgentDef) =>
-    a.file
-      ? <button type="button" className="set-link" onClick={() => go({ name: 'settings', page: 'project', projectId, section: 'agents', agentId: a.id })}>{a.name}</button>
-      : <span>{a.name}</span>
+/** A role's second line: the provider, then who follows the row as a quiet link that opens the list of agents on it and the ones that set their own model. */
+function RoleAgents({ title, provider, follow, own }: { title: string; provider: Provider; follow: WhoLine[]; own: WhoLine[] }) {
+  const [open, setOpen] = useState(false)
+  const wrap = useRef<HTMLSpanElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const close = () => {
+    const at = document.activeElement
+    setOpen(false)
+    if (!at || at === document.body || wrap.current?.contains(at)) button.current?.focus()
+  }
+  const count = follow.length ? `${follow.length} ${follow.length === 1 ? 'agent' : 'agents'}` : 'No agents use this row'
+  const line = (l: WhoLine) => (
+    <li key={l.key} className="ag-who-line">
+      {l.open
+        ? <button type="button" className="set-link ag-who-name" onClick={() => go({ name: 'settings', page: 'project', projectId: l.open!.projectId, section: 'agents', agentId: l.open!.agentId })}>{l.name}</button>
+        : <span className="ag-who-name">{l.name}</span>}
+      <span className="ag-who-right ellipsis">{l.right}</span>
+    </li>
+  )
   return (
-    <ul className="ag-covers" aria-label="Agents on this row">
-      {groups.map(({ project, agents }) => (
-        <li key={project.id}>
-          {agents.map((a, i) => (
-            <span key={a.id}>{i > 0 && ', '}{name(project.id, a)}{a.model && <span className="ag-pinned"> (uses {modelLabelOf(a.model, models)} from its file)</span>}</span>
-          ))}
-          {' in '}{project.name}
-        </li>
-      ))}
-    </ul>
+    <span ref={wrap} className="set-desc ag-role-sub">
+      <span>{provider === 'codex' ? 'Codex' : 'Claude Code'}</span>
+      <span aria-hidden="true">·</span>
+      {follow.length || own.length
+        ? <button ref={button} type="button" className="ag-count" aria-haspopup="dialog" aria-expanded={open} onClick={() => (open ? close() : setOpen(true))}>{count}</button>
+        : <span>{count}</span>}
+      <Popover open={open} onClose={close} label={`Agents on ${title}`} anchorRef={wrap} className="ag-who">
+        {follow.length > 0 && <><p className="ag-who-head">Uses this row</p><ul className="ag-who-list">{follow.map(line)}</ul></>}
+        {own.length > 0 && <><p className="ag-who-head">Sets its own model</p><ul className="ag-who-list">{own.map(line)}</ul></>}
+      </Popover>
+    </span>
   )
 }
 
-/** A role's Model cell: a button like the composer's model chip that opens the model picker under it (KERNEL-988). Escape and a pick return focus to the button. */
-function ModelCell({ title, current, models, onPick }: { title: string; current: RoleModel; models: ReturnType<typeof useProviderModels>; onPick: (model: string) => void }) {
+/** A role's chip: like the composer's model chip, with the model, then the effort and, on Claude, the compact window. Opens the model picker under it (KERNEL-988, KERNEL-995). Escape and a pick return focus to the chip. */
+function ModelChip({ title, current, compact, models, onPick, onEffort, onCompact }: { title: string; current: RoleModel; compact: CompactWindow; models: ProviderModel[]; onPick: (model: string) => void; onEffort: (e: Effort) => void; onCompact: (w: CompactWindow) => void }) {
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLSpanElement>(null)
   const button = useRef<HTMLButtonElement>(null)
   const label = modelLabelOf(current.model, models)
+  const claude = current.provider !== 'codex'
+  const detail = claude ? `${EFFORT_LABELS[current.effort]} · ${COMPACT_LABELS[compact]}` : EFFORT_LABELS[current.effort]
   // An outside click has already moved focus where the person pointed, so only take it back from the picker or from nowhere.
   const close = () => {
     const at = document.activeElement
@@ -68,41 +102,37 @@ function ModelCell({ title, current, models, onPick }: { title: string; current:
   }
   return (
     <span ref={wrap} className="select">
-      <button ref={button} type="button" className="select-trigger ag-model-trigger" aria-haspopup="dialog" aria-expanded={open} aria-label={`${title} model, ${label}`} onClick={() => (open ? close() : setOpen(true))}>
+      <button ref={button} type="button" className="select-trigger ag-chip" aria-haspopup="dialog" aria-expanded={open} aria-label={`${title} model, ${label}, ${detail}`} onClick={() => (open ? close() : setOpen(true))}>
         <ProviderMark provider={current.provider} size={14} />
-        <span className="ag-model-name ellipsis">{label}</span>
+        <span className="ag-chip-name">{label}</span>
+        <span className="ag-chip-detail ellipsis">{detail}</span>
         <Icon name="chevron" size={12} />
       </button>
-      {open && <ModelPicker variant="settings" placement="down" anchorRef={wrap} provider={current.provider} model={current.model} effort={current.effort} fallback={current.effort}
-        onModel={(m) => { onPick(m); close() }} onEffort={() => {}} onClose={close} />}
+      {open && <ModelPicker variant="settings" placement="down" anchorRef={wrap} provider={current.provider} model={current.model} effort={current.effort} fallback={current.effort} compact={claude ? compact : undefined}
+        onModel={(m) => { onPick(m); close() }} onEffort={onEffort} onCompact={onCompact} onClose={close} />}
     </span>
   )
 }
 
 /**
- * One role's row (KERNEL-406, KERNEL-680): the model picker is grouped by provider, so picking a model also picks the provider, and the
- * effort moves to one the model takes. Codex manages its own context, so its compact cell says Auto.
+ * One role's row (KERNEL-406, KERNEL-680, KERNEL-995): the model picker is grouped by provider, so picking a model also picks the provider, and the
+ * effort moves to one the model takes. Codex manages its own context, so a Codex role has no compact window.
  */
 function RoleLine({ title, roleKey, current, compact }: { title: string; roleKey: Role; current: RoleModel; compact: CompactWindow }) {
   const claude = useProviderModels('claude')
   const codex = useProviderModels('codex')
   const listOf = (p: Provider) => (p === 'codex' ? codex : claude)
+  const who = useRoleAgents(roleKey, [...claude, ...codex])
   const save = (next: RoleModel) => void patchSettings({ models: { roles: { [roleKey]: next } } })
   const pick = (model: string) => {
     const provider: Provider = codex.some((m) => m.id === model) ? 'codex' : claude.some((m) => m.id === model) ? 'claude' : current.provider
     save({ provider, model, effort: fitEffort(current.effort, model, listOf(provider)) })
   }
-  const efforts = [...new Set([...effortsOf(current.model, listOf(current.provider)), current.effort])]
   return (
-    <div className="set-table-row" role="row" aria-label={title} style={{ gridTemplateColumns: ROLE_GRID }}>
-      <span role="cell" className="ag-role-name"><span className="set-label">{title}</span><span className="set-desc">{current.provider === 'codex' ? 'Codex' : 'Claude Code'}</span><RoleAgents roleKey={roleKey} models={[...claude, ...codex]} /></span>
-      <span role="cell"><ModelCell title={title} current={current} models={listOf(current.provider)} onPick={pick} /></span>
-      <span role="cell"><Select label={`${title} effort`} value={current.effort} options={efforts.map((e) => ({ value: e, label: EFFORT_LABELS[e] }))} onChange={(v) => save({ ...current, effort: v as RoleModel['effort'] })} /></span>
-      <span role="cell">
-        {current.provider === 'codex'
-          ? <span className="ag-auto" title="Codex manages its own context">Auto</span>
-          : <Select label={`${title} compact at`} value={compact} options={COMPACT_WINDOWS.map((w) => ({ value: w, label: COMPACT_LABELS[w] }))} onChange={(v) => void patchSettings({ models: { compact: { [roleKey]: v as CompactWindow } } })} />}
-      </span>
+    <div className="set-table-row ag-role-row" role="row" aria-label={title} style={{ gridTemplateColumns: ROLE_GRID }}>
+      <span role="cell" className="ag-role-name"><span className="set-label ellipsis">{title}</span><RoleAgents title={title} provider={current.provider} follow={who.follow} own={who.own} /></span>
+      <span role="cell"><ModelChip title={title} current={current} compact={compact} models={listOf(current.provider)} onPick={pick}
+        onEffort={(effort) => save({ ...current, effort })} onCompact={(w) => void patchSettings({ models: { compact: { [roleKey]: w } } })} /></span>
     </div>
   )
 }
@@ -110,7 +140,7 @@ function RoleLine({ title, roleKey, current, compact }: { title: string; roleKey
 function Roles({ s }: { s: AppSettings }) {
   return (
     <div className="set-card ag-roles" role="table" aria-label="Roles">
-      <div className="set-table-head" role="row" style={{ gridTemplateColumns: ROLE_GRID }}>{['Role', 'Model', 'Effort', 'Compact at'].map((c) => <span key={c} role="columnheader">{c}</span>)}</div>
+      <div className="set-table-head" role="row" style={{ gridTemplateColumns: ROLE_GRID }}>{['Role', 'Model'].map((c) => <span key={c} role="columnheader">{c}</span>)}</div>
       {ROLES.map((r) => <RoleLine key={r.key} title={r.title} roleKey={r.key} current={s.models.roles[r.key]} compact={s.models.compact[r.key]} />)}
     </div>
   )
