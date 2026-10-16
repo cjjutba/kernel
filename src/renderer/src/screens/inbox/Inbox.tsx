@@ -78,8 +78,8 @@ function Detail({ item }: { item: InboxItem }) {
       <header className="ib-who">
         <Letter item={item} agents={agent} />
         <div className="col">
-          <span style={{ fontWeight: 500 }}>{agent?.name ?? 'Kernel'}</span>
-          <span className="muted" style={{ fontSize: 12 }}>{n.sub} · {age(n.createdAt)} ago</span>
+          <span className="ib-from">{agent?.name ?? 'Kernel'}</span>
+          <span className="muted ib-sub">{n.sub} · {age(n.createdAt)} ago</span>
         </div>
       </header>
       <h2>{heading}</h2>
@@ -180,7 +180,7 @@ export function Inbox() {
 
   return (
     <div className="panel">
-      <header className="header" style={{ paddingRight: 12 }}>
+      <header className="header ib-header">
         <SidebarToggleSlot />
         <Icon name="inbox" />
         <h1>Inbox</h1>

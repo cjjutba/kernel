@@ -194,3 +194,8 @@
 .code-gutter span { display: block; height: 20px; }
 .code-text { flex: 1 1 auto; min-width: 0; box-sizing: border-box; margin: 0; padding: 8px 12px; border: 0; background: transparent; color: var(--ink); font: var(--fs-code)/20px var(--mono); white-space: pre; overflow: auto; resize: none; outline: none; user-select: text; tab-size: 2; }
 .code-text::placeholder { color: var(--muted); }
+.devui-gap-10 { gap: 10px; }
+.devui-gap-6, .row.devui-gap-6 { gap: 6px; }
+.devui-row.devui-below { margin-top: 10px; }
+.devui-name { font-weight: var(--fw-semibold); }
+.card.devui-pad { padding: 12px; }

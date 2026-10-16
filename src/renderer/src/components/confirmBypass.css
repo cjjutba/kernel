@@ -1,5 +1,5 @@
 /* ConfirmBypass (KERNEL-455): what Bypass permissions still stops for, in a panel under the body */
 .cb-stops { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--r); background: var(--panel); }
-.cb-stops-title { font-size: 12px; font-weight: 500; color: var(--muted); }
-.cb-stops ul { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0 0 0 18px; font-size: 12.5px; color: var(--ink-2); }
-.confirm-body .cb-note { font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.cb-stops-title { font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
+.cb-stops ul { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0 0 0 18px; font-size: var(--fs-code); color: var(--ink-2); }
+.confirm-body .cb-note { font-size: var(--fs-code); line-height: var(--lh); color: var(--muted); }

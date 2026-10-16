@@ -88,8 +88,8 @@ export function NewAgent({ projectId, step, prefill }: { projectId?: string; ste
             {PRESETS.map((p) => <Pill key={p.label} onClick={() => { setDescription(p.description); if (!name.trim()) setName(p.label) }}>{p.label}</Pill>)}
           </div>
           <div className="na-two">
-            <label className="col" style={{ gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Name</span><input className="input" value={name} placeholder="Wren" onChange={(e) => setName(e.target.value)} /></label>
-            <div className="col" style={{ gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Model</span><SegmentedControl label="Model" value={model} onChange={setModel} options={MODEL_CHOICES} /></div>
+            <label className="col na-field"><span className="muted na-label">Name</span><input className="input" value={name} placeholder="Wren" onChange={(e) => setName(e.target.value)} /></label>
+            <div className="col na-field"><span className="muted na-label">Model</span><SegmentedControl label="Model" value={model} onChange={setModel} options={MODEL_CHOICES} /></div>
           </div>
         </form>
       </Modal>
@@ -108,7 +108,7 @@ export function NewAgent({ projectId, step, prefill }: { projectId?: string; ste
         <div className="na-body">
           <div className="na-by">
             <span className="tm-av" aria-hidden="true"><KernelMark size={14} /></span>
-            <span><b style={{ fontWeight: 500 }}>{author}</b> drafted the agent file</span>
+            <span><b className="na-author">{author}</b> drafted the agent file</span>
           </div>
           <div className="na-file">
             <div className="na-file-head">{draft.file}<span className="na-tag">new file</span></div>
