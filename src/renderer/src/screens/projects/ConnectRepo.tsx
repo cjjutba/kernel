@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { GitHubAuth, GitHubErrorKind, RepoSummary } from '@shared/types'
 import { githubErrorKind } from '@shared/githubError'
 import { call, cleanError } from '../../api'
-import { actions, go } from '../../store'
+import { actions } from '../../store'
+import { openNewChat } from '../../lead'
 import { Banner, Button, EmptyList, Icon, LoadingRow, Modal, useBusy } from '../../ui'
 import { defaultTeam } from './draft'
 import { useAvatar } from './avatar'
@@ -81,7 +82,7 @@ export function ConnectRepo() {
     try {
       const project = await call('projects.create', { source: 'repo', name, from: target, cloneTo: folder, team: defaultTeam(), autostart: false })
       actions.projects.upsert(project)
-      go({ name: 'onboarding', step: 'project', projectId: project.id })
+      openNewChat(project.id)
     } catch (e) { setCloneError(cleanError(e)) }
   })
   const fail = error ? failure[error.kind] : null
