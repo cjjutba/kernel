@@ -14,3 +14,10 @@
 .wk-pick > svg:last-child { color: var(--muted); }
 .wk-letter { width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: 10px; font-weight: 600; }
 .wk-where { font-size: 12.5px; color: var(--muted); }
+.wk-tracker { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; height: 26px; box-sizing: border-box; padding: 2px; margin-right: 10px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--input-bg); flex-shrink: 0; }
+.wk-tracker button { padding: 0 10px; border: 0; border-radius: calc(var(--r) - 3px); background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.wk-tracker button:hover { color: var(--ink-2); }
+.wk-tracker button[aria-checked='true'] { background: var(--surface-3); color: var(--ink); }
+.wk-tracker button[aria-disabled='true'] { color: var(--faint); opacity: 0.55; cursor: default; }
+.wk-tracker button[aria-disabled='true']:hover { color: var(--faint); }
+.wk-tracker button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }

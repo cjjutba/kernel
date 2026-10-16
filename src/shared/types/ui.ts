@@ -26,8 +26,11 @@ export type Route =
    */
   | { name: 'leadNew'; projectId: string; source?: WorkspaceSource; picks?: NewChatPicks }
   /** Linear issues. `issueId` is the identifier of the open issue. */
-  /** `projectId` is the project whose tracker the screen lists. Without it the screen opens on the project used last (KERNEL-471). */
-  | { name: 'issues'; issueId?: string; projectId?: string }
+  /**
+   * `projectId` is the project whose tracker the screen lists. Without it the screen opens on the project used last (KERNEL-471).
+   * `tracker` opens that tracker's list. Without it an `issueId` starting with `#` opens GitHub, else the project's saved choice (KERNEL-938).
+   */
+  | { name: 'issues'; issueId?: string; projectId?: string; tracker?: 'linear' | 'github' }
   /** Pull requests across every project. `filter` is the list it opens on, Open when unset. */
   | { name: 'prs'; filter?: 'open' | 'merged' }
   /** `section` is for `page: 'project'`, and none means General. */
