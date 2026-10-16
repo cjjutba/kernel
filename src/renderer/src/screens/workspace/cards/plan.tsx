@@ -85,7 +85,7 @@ export function PlanInline({ a, agents, hasItem }: { a: Approval; agents: AgentD
   const answer = planAnswer(a)
   return (
     <>
-      <div ref={ref} className="plan-inline">
+      <div ref={ref} className="plan-inline" data-plan-id={a.id}>
         <div className="trow">
           <span className="plan-doc-icon"><Icon name="doc" size={16} /></span>
           <span className="ink2">Propose plan</span>

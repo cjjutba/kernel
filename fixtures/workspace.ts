@@ -870,6 +870,19 @@ const planWithOtherChat = (f: Fixture, detail = LEAD_PLAN): Partial<Fixture> => 
 /** `planWithOtherChat` with the other chat open, so the first open of the plan's chat is the motion. */
 const startOnOtherChat = (s: Partial<Fixture>): Partial<Fixture> => ({ ...s, ui: { ...s.ui, tabs: { [ids.lead]: { tab: 'chat-other', files: [], diffs: [] } } } })
 
+/** A long plan arriving live in a Lead chat that is open at its end: the plan's approval and its row are pushed, not in the chat yet. */
+const livePlan = (f: Fixture, detail: string): { start: Partial<Fixture>; push: PushEvent[] } => {
+  const s = planAfterHistory(planWaiting({ ...f }))
+  const plan = { ...s.approvals![0], detail }
+  return {
+    start: { ...s, approvals: s.approvals!.slice(1), chats: s.chats?.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)), items: { ...s.items, [ids.leadChat]: s.items![ids.leadChat].filter((i) => i.id !== `approval-${plan.id}`) } },
+    push: [
+      { type: 'approval', approval: plan },
+      { type: 'chat.item', chatId: ids.leadChat, item: { kind: 'approval', id: `approval-${plan.id}`, ts: Date.now(), approvalId: plan.id } }
+    ]
+  }
+}
+
 /** A plan with a new approval id, as Kernel sends it after changes were asked for: the old one expires and the new one takes its place in the chat. */
 const revisedPlan = (f: Fixture): PushEvent[] => {
   const old = planWaiting(f).approvals?.[0]
@@ -2625,6 +2638,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceScrollFitPlanFirstOpenMotion: { ...scene((f) => startOnOtherChat(planWithOtherChat(f))), motion: { action: { click: 'Export invoices as PDF' }, ms: 900, area: '.ws-scroll' } },
   /** KERNEL-952 (c): a revised plan with a new approval id arriving while the reader is scrolled up. */
   WorkspaceScrollRevisedPlanMotion: { ...scene((f) => planAfterHistory(planWaiting(f))), motion: { action: { push: revisedPlan(scene(() => ({}))) }, ms: 1500, area: '.ws-main' } },
+  /** KERNEL-991: a plan taller than the view arriving live in a chat open at its end. It opens at its top. */
+  WorkspaceScrollLiveTallPlanMotion: { ...scene((f) => livePlan(f, TALL_PLAN).start), motion: { action: { push: livePlan(scene(() => ({})) as Fixture, TALL_PLAN).push }, ms: 2200, area: '.ws-main' } },
   /** KERNEL-952 (d): a pasted image grows the composer while the chat is at its end. */
   WorkspaceScrollComposerImageMotion: { ...scene(() => ({ items: { [ids.tableChat]: [...scrollHistory('ci'), ...tableItems] }, ui: open })), motion: { action: { press: ['Meta+v'] }, ms: 900, area: '.ws-main' } },
   /** KERNEL-952 (d): several typed lines grow the composer while the chat is at its end. */

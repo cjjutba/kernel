@@ -11,7 +11,7 @@ interface GlideEnv { now: () => number; raf: Raf; caf: (id: number) => void; red
 const place = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as Promise<{ holdView: (o: HoldOptions) => Hold; restoreState: () => { see: (at: number) => boolean; settled: boolean } }>
 const glide = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/scrollGlide' as string) as Promise<{ createGlider: (view: () => View | null, env: GlideEnv) => Glider; GLIDE_MAX_MS: number; easingOf: (css: string | undefined) => (x: number) => number }>
 const follow = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatScroll' as string) as Promise<{ followsAfterScroll: (pinned: boolean, view: View, before: View, byHand: boolean) => boolean; movesToEnd: (view: View, byHand: boolean) => boolean }>
-interface Owner { open: (run: { spot?: () => number; frames: (running: boolean) => void }) => void; resized: (h?: number) => void; reveal: (run: { goal: () => number; instant: boolean }) => void; intent: string | undefined; follow: () => void }
+interface Owner { open: (run: { spot?: () => number; frames: (running: boolean) => void }) => void; resized: (h?: number) => void; reveal: (run: { goal: () => number; instant: boolean; holdMs?: number }) => void; intent: string | undefined; follow: () => void }
 const scrollOwner = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatScroll' as string) as Promise<{ createChatScroll: (o: { box: () => View | null; env: GlideEnv & { warn: (m: string) => void } }) => Owner }>
 
 type Mover = 'hold' | 'glide' | 'follow'
@@ -139,6 +139,33 @@ describe('chat scroll races (KERNEL-952)', () => {
       expect(r.clash()).toEqual([])
       expect(r.writes.filter((w) => w.frame >= at).every((w) => w.by === 'glide')).toBe(true)
       expect(Math.abs(r.view.scrollTop - 2600)).toBeLessThan(1)
+    })
+
+    // KERNEL-991: a tall plan arriving live. Its top moves while the glide runs (rows above take their real height) and the strip shrinks the view, so the range changes under the glide.
+    it('a reveal follows a goal that moves and a view that shrinks, and lands on the plan top', async () => {
+      const r = rig({ scrollTop: 2400, scrollHeight: 3200, clientHeight: 800 })
+      const { o } = await owned(r)
+      let planTop = 2300
+      o.reveal({ goal: () => planTop - 8, instant: false })
+      for (let i = 0; i < 90; i++) r.tick(() => {
+        if (i === 3) planTop = 2000
+        if (i === 6) planTop = 2150
+        if (i >= 4 && i < 40) r.view.clientHeight = Math.max(640, r.view.clientHeight - 6)
+      })
+      expect(r.clash()).toEqual([])
+      expect(Math.abs(r.view.scrollTop - (planTop - 8))).toBeLessThan(1)
+      expect(o.intent).toBeUndefined()
+    })
+
+    // KERNEL-991: the same plan placed, not glided, because the chat opened a moment ago. The goal holds still for a while and then the strip shrinks the view.
+    it('a placed reveal keeps the plan top while the strip shrinks the view after the goal held still', async () => {
+      const r = rig({ scrollTop: 2400, scrollHeight: 3200, clientHeight: 800 })
+      const { o } = await owned(r)
+      const planTop = () => 2000
+      o.reveal({ goal: () => planTop() - 8, instant: true, holdMs: 1300 })
+      for (let i = 0; i < 90; i++) r.tick(() => { if (i >= 30 && i < 60) { r.view.clientHeight = Math.max(640, r.view.clientHeight - 6); o.resized() } })
+      expect(r.clash()).toEqual([])
+      expect(Math.abs(r.view.scrollTop - (planTop() - 8))).toBeLessThan(1)
     })
 
     // (c) A revised plan (a new approval id) arriving while the reader is scrolled up: nothing may move the view.
