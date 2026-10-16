@@ -3084,6 +3084,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   NewChatNarrow: scene((f) => noPlan(leadNoChats(f))),
   NewChatSwitchNarrow: scene((f) => noPlan(leadNoChats(f))), // the chat column at 460px (scripts/shots.ts): the switch keeps its icons and drops its labels
   NewChatBuildHere: scene((f) => noPlan(leadNoChats(f))),
+  // The Build here side hovered, with its shortcut in the tooltip (scripts/shots.ts).
+  NewChatSwitchTip: scene((f) => noPlan(leadNoChats(f))),
   // KERNEL-788: NewChat is the page at rest, with the header a chat has and one New chat tab. NewChatAfterSend is the chat right after the send: the box stays at the same y, the
   // breadcrumb and tab take the chat's title, and the panel setting is on but held closed. ChatPanelOpened is that chat after the toggle was pressed.
   NewChatAfterSend: scene((f) => noPlan(startedFromNewChat(f, false))),
