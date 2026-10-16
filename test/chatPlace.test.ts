@@ -11,6 +11,7 @@ type Mod = {
   leftAtEnd: (distFromEnd: number) => boolean
   restoreState: () => { see: (at: number) => boolean; settled: boolean; stop: () => void; correcting: boolean }
   holdView: (o: { put: () => number; ends: boolean; over: () => boolean; following: () => boolean; now: () => number; raf: (step: () => void) => number; caf: (id: number) => void; capMs: number; frames: (running: boolean) => void }) => { state: { correcting: boolean; settled: boolean; live: boolean }; resume: () => void; stop: () => void }
+  countNew: <T extends { id: string }>(items: T[], before: ReadonlySet<string> | null, isMessage: (i: T) => boolean) => number
   dropArchived: (workspaces: { id: string; status: string }[], chats: Record<string, { id: string }[] | undefined>) => void
 }
 const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as Promise<Mod>
@@ -207,7 +208,7 @@ describe('leaving and coming back (KERNEL-918)', () => {
     st.see(240)
     expect(st.correcting).toBe(true)
     if (!st.correcting) savePlace('mid', readPlace(rows, 240, false))
-    expect(takePlace('mid')).toBe(before)
+    expect(takePlace('mid')).toEqual(before)
   })
 
   it('settles after 4 frames at the same spot, unsettles when late layout moves it, and is the reader\'s once they take over', async () => {
@@ -295,5 +296,35 @@ describe('leaving and coming back (KERNEL-918)', () => {
       expect(takePlace('end-open')).not.toBe(old)
       expect(takePlace('end-open')?.scrollTop).toBe(424)
     })
+  })
+})
+
+describe('a chat spot survives a restart (KERNEL-922)', () => {
+  it('is stored under chat:<id>, with the last send, and heights stay in memory', async () => {
+    const { readPlace, savePlace, takePlace, dropPlace } = await load()
+    const { getSpot, resetSpots } = (await import(/* @vite-ignore */ '../src/renderer/src/ui/keptScroll' as string)) as { getSpot: (k: string) => { end: boolean; pos: number; data?: unknown } | undefined; resetSpots: () => void }
+    savePlace('chat-r', readPlace(rows, 500, false, 'u9'))
+    const spot = getSpot('chat:chat-r')
+    expect(spot).toMatchObject({ end: false, pos: 500, data: { lastUserId: 'u9' } })
+    expect(JSON.stringify(spot)).not.toContain('heights')
+    expect(takePlace('chat-r')?.lastUserId).toBe('u9')
+    dropPlace('chat-r')
+    expect(getSpot('chat:chat-r')).toBeUndefined()
+    resetSpots()
+  })
+})
+
+describe('counting new messages (KERNEL-922)', () => {
+  const kind = (i: { id: string; kind: string }) => i.kind === 'text'
+  const items = [{ id: 'a', kind: 'text' }, { id: 'b', kind: 'tool' }, { id: 'c', kind: 'text' }, { id: 'd', kind: 'thinking' }, { id: 'e', kind: 'text' }]
+  it('counts only messages that were not there when the reader left the end', async () => {
+    const { countNew } = await load()
+    expect(countNew(items, new Set(['a', 'b']), kind)).toBe(2)
+    expect(countNew(items, new Set(items.map((i) => i.id)), kind)).toBe(0)
+  })
+  it('is zero at the end, and a streamed reply counts once', async () => {
+    const { countNew } = await load()
+    expect(countNew(items, null, kind)).toBe(0)
+    expect(countNew([...items.slice(0, 2), { id: 'c', kind: 'text' }], new Set(['a', 'b']), kind)).toBe(1)
   })
 })
