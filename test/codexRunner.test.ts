@@ -1113,6 +1113,17 @@ describe('a chat with Kernel in Hand off or Build here, on Codex (KERNEL-770)', 
     expect(inputs[1]).toBe(APPROVED)
   })
 
+  it('declines a file change in a process started in Build here once the chat is switched to Hand off (KERNEL-994)', async () => {
+    const t = track(await setup({ agent: kernel, ws: leadWs('build') }))
+    await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
+    await t.idle()
+    t.store.saveWorkspace({ ...t.store.workspace('ws')!, leadMode: 'handoff' })
+    await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
+    await t.idle()
+    expect(await t.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'accept' }, { decision: 'decline' }])
+    expect(t.of('note').map((n) => n.text)).toEqual([HANDOFF_NO_EDIT])
+  })
+
   it('a switch takes effect from the next turn: the thread resumes with the new rule and sandbox', async () => {
     const t = track(await setup({ agent: kernel, ws: leadWs() }))
     await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
