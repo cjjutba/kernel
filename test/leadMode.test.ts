@@ -258,7 +258,9 @@ describe("the Lead's prompt and tools in each mode (KERNEL-770)", () => {
     expect(LEAD_BUILD_RULE).not.toContain('Never build a task yourself.')
     expect(LEAD_BUILD_RULE).not.toContain('the approval means "hand it off now"')
     for (const part of ['open a pull request', 'fix your own PR', 'never call mcp__kernel__create_workspace, except with review_of', 'bigger than one PR', 'mcp__kernel__suggest_hand_off']) expect(LEAD_BUILD_RULE, part).toContain(part)
-    for (const part of ['Team update', 'Never use em dashes', 'mcp__kernel__read_plans', 'Never leave a teammate waiting']) {
+    // A question in Build here gets an answer and changes nothing (feat-lead-stops-ending-answers-with).
+    expect(LEAD_BUILD_RULE).toContain('A question is not a request to build, so it changes nothing.')
+    for (const part of ['Team update', 'Never use em dashes', 'mcp__kernel__read_plans', 'Never leave a teammate waiting', 'answer and stop, with no closing offer or question']) {
       expect(LEAD_RULE, part).toContain(part)
       expect(LEAD_BUILD_RULE, part).toContain(part)
     }
