@@ -1,8 +1,9 @@
-import { useContext, useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { ChangedFile, CompareTarget, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
 import { actions } from '../../store'
+import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import { addToComposer } from './composer/bus'
 import { OpenImage } from './composer/Chip'
 import { compareTitle, targetKey, useCompared } from './compare'
@@ -45,6 +46,14 @@ function useImage(wsId: string, path: string, at: 'worktree' | 'base', target?: 
   return url
 }
 
+const NO_ROWS = '[data-keep-none]'
+
+function useCodeScroll(ref: RefObject<HTMLElement | null>, wsId: string, view: string, ready: boolean) {
+  const key = spotKey.panel(wsId, view)
+  useKeptScroll(ref, { key, ready, itemSelector: NO_ROWS })
+  useKeptScroll(ref, { key: `${key}:x`, ready, itemSelector: NO_ROWS, axis: 'x' })
+}
+
 const sizeText = (s: { w: number; h: number } | null) => (s ? `${s.w}×${s.h}` : '')
 
 /** One picture of a file. With a `label` ("Before", "After") it carries a caption with its size, without one the parent shows the size through `onSize`. */
@@ -70,10 +79,12 @@ function ImagePane({ wsId, path, at, label, target, onSize }: { wsId: string; pa
 }
 
 /** The pictures of a changed image: the worktree's for an added one, the base's for a deleted one, and both for a changed one. */
-function ImageChange({ wsId, path, status, target, onSize, inline }: { wsId: string; path: string; status?: ChangedFile['status']; target?: CompareTarget; onSize?: (s: { w: number; h: number }) => void; inline?: boolean }) {
+function ImageChange({ wsId, path, status, target, onSize, inline, keep }: { wsId: string; path: string; status?: ChangedFile['status']; target?: CompareTarget; onSize?: (s: { w: number; h: number }) => void; inline?: boolean; keep?: string }) {
   const both = status === 'M'
+  const scroller = useRef<HTMLDivElement>(null)
+  useCodeScroll(scroller, wsId, keep ?? '', !!keep)
   return (
-    <div className="image-view" data-inline={inline || undefined}>
+    <div ref={scroller} className="image-view" data-inline={inline || undefined}>
       {status === 'D'
         ? <ImagePane wsId={wsId} path={path} at="base" target={target} onSize={onSize} />
         : both
@@ -91,12 +102,14 @@ export function FileView(props: { ws: Workspace; path: string; editedBy?: string
 /** A picture in the worktree, from All files or a changed file. */
 function ImageFile({ ws, path, editedBy, changed }: { ws: Workspace; path: string; editedBy?: string; changed: boolean }) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null)
+  const scroller = useRef<HTMLDivElement>(null)
+  useCodeScroll(scroller, ws.id, `file:${path}`, true)
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       <ViewHead path={path} trailing={<button type="button" className="open-editor" onClick={() => void call('system.openInEditor', { path: `${ws.path}/${path}` })}>Open in editor</button>}>
         <span className="muted" style={{ fontSize: 12 }}>Read only{changed && editedBy ? ` · edited by ${editedBy}` : ''}{size ? ` · ${sizeText(size)}` : ''}</span>
       </ViewHead>
-      <div className="image-view"><ImagePane wsId={ws.id} path={path} at="worktree" onSize={setSize} /></div>
+      <div ref={scroller} className="image-view"><ImagePane wsId={ws.id} path={path} at="worktree" onSize={setSize} /></div>
     </div>
   )
 }
@@ -111,6 +124,8 @@ function TextFile({ ws, path, editedBy, changed }: { ws: Workspace; path: string
     return () => { live = false }
   }, [ws.id, path])
   const lines = useMemo(() => (text ?? '').replace(/\n$/, '').split('\n'), [text])
+  const scroller = useRef<HTMLDivElement>(null)
+  useCodeScroll(scroller, ws.id, `file:${path}`, text !== null)
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       <ViewHead path={path} trailing={<button type="button" className="open-editor" onClick={() => void call('system.openInEditor', { path: `${ws.path}/${path}` })}>Open in editor</button>}>
@@ -119,7 +134,7 @@ function TextFile({ ws, path, editedBy, changed }: { ws: Workspace; path: string
       {error ? (
         <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Can't show this file</span><span>{error}</span></div>
       ) : (
-        <div className="code-view selectable mono" role="region" aria-label={`Contents of ${path}`} tabIndex={0}>
+        <div ref={scroller} className="code-view selectable mono" role="region" aria-label={`Contents of ${path}`} tabIndex={0}>
           {text !== null && lines.map((l, i) => <div key={i} className="code-line"><span className="ln">{i + 1}</span><span className="src">{l || ' '}</span></div>)}
         </div>
       )}
@@ -188,7 +203,7 @@ function ImageDiff({ ws, path, changes, target }: { ws: Workspace; path: string;
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       <ViewHead path={path} trailing={null}>{status !== 'M' && size && <span className="muted" style={{ fontSize: 12 }}>{sizeText(size)}</span>}</ViewHead>
-      <ImageChange wsId={ws.id} path={path} status={status} target={target} onSize={setSize} />
+      <ImageChange wsId={ws.id} path={path} status={status} target={target} onSize={setSize} keep={`diff:${path}`} />
     </div>
   )
 }
@@ -205,12 +220,14 @@ function TextDiff({ ws, path, changes, target, title }: { ws: Workspace; path: s
   }, [ws.id, path, key])
   const files = useMemo(() => parseDiff(text ?? ''), [text])
   const stat = path ? changes.find((c) => c.path === path) : undefined
+  const scroller = useRef<HTMLDivElement>(null)
+  useCodeScroll(scroller, ws.id, `diff:${path}`, text !== null)
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       {path
         ? <ViewHead path={path} trailing={null}>{stat && <span className="mono" style={{ fontSize: 12 }}><span className="add">+{stat.added}</span> <span className="del">-{stat.removed}</span></span>}</ViewHead>
         : <div className="view-head"><span style={{ fontWeight: 500 }}>{title}</span><span className="muted" style={{ fontSize: 12 }}>{changes.length} {changes.length === 1 ? 'file' : 'files'}</span></div>}
-      <div className="code-view selectable mono" role="region" aria-label="Diff" tabIndex={0} style={{ padding: '8px 0' }}>
+      <div ref={scroller} className="code-view selectable mono" role="region" aria-label="Diff" tabIndex={0} style={{ padding: '8px 0' }}>
         {error && <div className="panel-empty"><span>{error}</span></div>}
         {text !== null && !files.length && !error && <div className="panel-empty"><span>No changes to show.</span></div>}
         {files.map((f) => (

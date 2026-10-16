@@ -6,6 +6,7 @@ import type { ScriptKind } from '@shared/types'
 import { scriptKey } from '@shared/scriptLog'
 import { call } from '../../api'
 import { getState, useStore } from '../../store'
+import { getSpot, setSpot, spotKey } from '../../ui/keptScroll'
 import { appended } from './terminal/buffer'
 import { css, xtermLinks, xtermTheme } from './terminal/Terminal'
 
@@ -47,7 +48,19 @@ export function ScriptView({ workspaceId, kind, name, label, fallback }: { works
       void call('scripts.resize', { workspaceId, kind, ...(name && { name }), cols: term.cols, rows: term.rows }).catch(() => undefined)
     }
     resize()
-    term.write(HIDE_CURSOR + latest.current)
+    const spotId = spotKey.panel(workspaceId, `log:${key}`)
+    let restored = false
+    const save = () => {
+      if (!restored) return
+      const b = term.buffer.active
+      setSpot(spotId, { anchors: [], pos: b.viewportY, end: b.viewportY >= b.baseY })
+    }
+    const scrolled = term.onScroll(save)
+    term.write(HIDE_CURSOR + latest.current, () => {
+      const spot = getSpot(spotId)
+      if (spot && !spot.end) term.scrollToLine(Math.min(spot.pos, term.buffer.active.baseY))
+      restored = true
+    })
     live.current = { term, seen: latest.current, replays: getState().scriptReplays[workspaceId] ?? 0 }
     term.attachCustomKeyEventHandler((e) => {
       if (e.type === 'keydown' && e.metaKey && !e.shiftKey && e.key === 'c' && term.hasSelection()) {
@@ -58,7 +71,7 @@ export function ScriptView({ workspaceId, kind, name, label, fallback }: { works
     })
     const ro = new ResizeObserver(() => requestAnimationFrame(resize))
     ro.observe(el)
-    return () => { live.current = undefined; ro.disconnect(); term.dispose() }
+    return () => { save(); scrolled.dispose(); live.current = undefined; ro.disconnect(); term.dispose() }
   }, [workspaceId, kind, name])
   useEffect(() => {
     const l = live.current
