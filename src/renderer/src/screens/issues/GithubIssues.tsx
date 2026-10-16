@@ -10,10 +10,11 @@ import { GithubDetail } from './GithubDetail'
 import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import { generation, getGithubList, getSelected, isFresh, setGithubList, setSelected } from './cache'
 import {
-  byUpdated, DEFAULT_GITHUB_FILTER, githubFilterKey, parseGithubFilter, describeGithub, issueAge, joinFits, labelsOf, linkedWorkspaces, loginInitials, milestonesOf, narrowGithub, rowLabels, rowState,
+  ageTip, byUpdated, DEFAULT_GITHUB_FILTER, githubFilterKey, parseGithubFilter, describeGithub, issueAge, joinFits, labelsOf, linkedWorkspaces, loginInitials, milestonesOf, narrowGithub, rowLabels, rowState,
   type GithubFilter
 } from './model'
-import { CapNote, chooseTracker, FilterChip, githubProblem, IssueSkeleton, RefreshNotice, type ProjectHead } from './parts'
+import { CapNote, chooseTracker, FilterChip, githubProblem, HiddenNote, IssueSkeleton, RefreshNotice, type ProjectHead } from './parts'
+import { useReveal } from './useReveal'
 import { RowStatus, useReadPrs } from './WorkCard'
 import { WorkHeader } from '../work/WorkHeader'
 import { useGithubLogin } from '../work/useGithubLogin'
@@ -155,6 +156,8 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
   const listEl = useRef<HTMLDivElement>(null)
   const keep = spotKey.issues(project.id)
   useKeptScroll(listEl, { key: keep, ready: ready && flat.length > 0 })
+  useReveal(listEl, selId, ready && flat.length > 0, 0)
+  const hidden = ready && !!selId && !cur && flat.length > 0
   // The project's filter is kept when you leave Issues and come back (DESIGN.md, Remembered choices).
   useEffect(() => { writeSavedJson(githubFilterKey(project.id), filter) }, [project.id, filter])
   const set = (patch: Partial<GithubFilter>) => setFilter((f) => ({ ...f, ...patch }))
@@ -212,12 +215,14 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
         )
       })()}
 
+      {hidden && selId && <HiddenNote id={selId} fits={describeGithub(filter, query, where ?? 'this repo').fits} onClear={() => { setQuery(''); setFilter(DEFAULT_GITHUB_FILTER) }} />}
+
       {ready && flat.length > 0 && (
         <div className="is-body">
           <div className="is-list" ref={listEl} aria-label="Issues" onKeyDown={keys.onKeyDown}>
             {issues.length >= 100 && <CapNote>Showing the 100 newest issues. Search or filter to find the rest.</CapNote>}
             <section aria-label="Open">
-              <h3 className="is-group"><span className="is-slot"><IssueState shape="todo" /></span><span>Open</span><span className="muted">{flat.length}</span></h3>
+              <h3 className="is-group is-group-plain"><span className="is-slot"><IssueState shape="todo" /></span><span>Open</span><span className="muted">{flat.length}</span></h3>
               <ul>
                 {flat.map((i) => {
                   const live = status.get(i.id)
@@ -225,7 +230,7 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
                   const who = i.assignees[0]
                   return (
                     <li key={i.id} data-keep-id={i.id}>
-                      <button type="button" {...keys.rowProps(i.id)} className="is-row" aria-current={i.id === selId ? 'true' : undefined} onClick={() => setSel(i.id)}>
+                      <button type="button" {...keys.rowProps(i.id)} className="is-row" aria-current={i.id === selId ? 'true' : undefined} aria-selected={i.id === selId} onClick={() => setSel(i.id)}>
                         <span className="is-slot"><IssueState shape="todo" /></span>
                         <span className="col grow">
                           <span className="is-title ellipsis">{i.title}</span>
@@ -239,7 +244,7 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
                           {!filter.mine && (who
                             ? <span className="is-av is-av-row" role="img" aria-label={`Assigned to ${i.assignees.join(', ')}`}>{loginInitials(who)}</span>
                             : <span className="is-av-none" role="img" aria-label="Unassigned" />)}
-                          {live ? <RowStatus who={live.who} state={live} /> : <span className="is-age">{issueAge(i.updatedAt)}</span>}
+                          {live ? <RowStatus who={live.who} state={live} /> : <span className="is-age" role="img" aria-label={ageTip(i.updatedAt)} data-tip={ageTip(i.updatedAt)}>{issueAge(i.updatedAt)}</span>}
                         </span>
                       </button>
                     </li>

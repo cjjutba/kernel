@@ -2,12 +2,13 @@ import type { ReactNode } from 'react'
 import type { BannerKind, GitHubErrorKind, Project, ProjectTracker } from '@shared/types'
 import { go } from '../../store'
 import { Banner, Button, EmptyList, Select, Skeleton, useBusy } from '../../ui'
+import { joinFits } from './model'
 
 type Option = { value: string; label: string }
 
 /** A filter as a chip: its name, its value and a chevron. It is a Select, so the keyboard and screen readers work (KERNEL-680). */
-export function FilterChip({ label, value, options, onChange }: { label: string; value: string; options: Option[]; onChange: (v: string) => void }) {
-  return <Select variant="chip" prefix={label} label={label} value={value || (options[0]?.value ?? '')} options={options} onChange={onChange} />
+export function FilterChip({ label, prefix, value, options, onChange }: { label: string; prefix?: string; value: string; options: Option[]; onChange: (v: string) => void }) {
+  return <Select variant="chip" prefix={prefix ?? label} label={label} value={value || (options[0]?.value ?? '')} options={options} onChange={onChange} />
 }
 
 export type IssueTracker = 'linear' | 'github'
@@ -30,6 +31,16 @@ export function NoTracker({ project }: { project: Project }) {
     <EmptyList icon="plug" title={`${project.name} has no tracker yet`} action={<Button variant="primary" size="lg" onClick={() => chooseTracker(project.id)}>Choose a tracker</Button>}>
       Connect Linear or GitHub Issues in the project's settings, and its issues show up here. Chats work without one.
     </EmptyList>
+  )
+}
+
+/** The open issue is hidden by the filter: say so above the list, with the way to show it. */
+export function HiddenNote({ id, fits, onClear }: { id: string; fits: string[]; onClear: () => void }) {
+  return (
+    <div className="is-hidden" role="status">
+      <span className="grow">{id} isn't in this list{fits.length > 0 ? `, which shows only ${joinFits(fits)}` : ''}.</span>
+      {fits.length > 0 && <Button size="md" onClick={onClear}>Clear filter</Button>}
+    </div>
   )
 }
 

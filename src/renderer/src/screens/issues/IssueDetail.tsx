@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { LinearIssue, LinearIssueDetail } from '@shared/types'
+import type { LinearIssue, LinearIssueDetail, Project } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { useDetailLoad } from './useDetailLoad'
 import { detailKey, forgetTracker } from './cache'
@@ -15,7 +15,7 @@ import { WorkCard } from './WorkCard'
 import { useKeptScroll } from '../../ui/keptScroll'
 
 /** The selected issue: what Linear says about it, the workspaces already working on it, and the buttons that start work. */
-export function IssueDetail({ keep, id, summary, tick, onPlanned }: { keep: string; id: string; summary?: LinearIssue; tick: number; onPlanned: () => void }) {
+export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }: { keep: string; headProject?: Project; id: string; summary?: LinearIssue; tick: number; onPlanned: () => void }) {
   const { loaded, failure, retry } = useDetailLoad<LinearIssueDetail>(id, detailKey('linear', '', id), () => call('linear.issue', { id }), [tick])
   const failed = failure?.id === id ? failure.message : null
   const [busy, run] = useBusy<'plan' | 'link'>()
@@ -48,7 +48,9 @@ export function IssueDetail({ keep, id, summary, tick, onPlanned }: { keep: stri
 
   const team = issue?.team.key
   const linkedProject = team ? choices.find((r) => projectSettings[r.id]?.linear?.team?.toUpperCase() === team.toUpperCase()) : undefined
-  const project = choices.find((r) => r.id === (picked?.issue === id ? picked.project : undefined)) ?? linkedProject ?? choices.find((r) => r.id === lastProjectId) ?? choices[0]
+  const project = choices.find((r) => r.id === (picked?.issue === id ? picked.project : undefined)) ?? linkedProject ?? choices.find((r) => r.id === headProject?.id) ?? choices.find((r) => r.id === lastProjectId) ?? choices[0]
+  // The page's project is where this plans. The choice only shows when the issue can go elsewhere: its team belongs to another project, or the page has none.
+  const choosable = !headProject || project?.id !== headProject.id || picked?.issue === id
   const lead = (project && agents[project.id]?.find((a) => a.lead)?.name) || 'Kernel'
   const linked = linkedWorkspaces(id, workspaces)
   // The one furthest along, which the footer's main button opens.
@@ -81,6 +83,8 @@ export function IssueDetail({ keep, id, summary, tick, onPlanned }: { keep: stri
     )
   }
 
+  // Started, with no assignee and no workspace of ours. Kernel's agents aren't Linear users, so a linked workspace means someone is on it.
+  const nobody = issue.state.type === 'started' && !issue.assignee && linked.length === 0
   const cycle = issue.cycle ? issue.cycle.name || `Cycle ${issue.cycle.number}` : 'No cycle'
   return (
     <article className="is-detail" aria-label={issue.title}>
@@ -94,6 +98,7 @@ export function IssueDetail({ keep, id, summary, tick, onPlanned }: { keep: stri
             <h2>{issue.title}</h2>
           </div>
 
+          <div className="is-cols">
           <dl className="is-facts">
             <dt>Status</dt>
             <dd><IssueState shape={stateShape(issue.state.type)} />{issue.state.name}</dd>
@@ -104,11 +109,12 @@ export function IssueDetail({ keep, id, summary, tick, onPlanned }: { keep: stri
             <dt>Cycle</dt>
             <dd>{issue.cycle ? cycle : <span className="muted">{cycle}</span>}</dd>
             <dt>Assignee</dt>
-            <dd>{issue.assignee ? <><span className="is-av" aria-hidden="true">{initials(issue.assignee.name)}</span>{issue.assignee.name}</> : <span className="muted">Unassigned</span>}</dd>
+            <dd>{issue.assignee ? <><span className="is-av" aria-hidden="true">{initials(issue.assignee.name)}</span>{issue.assignee.name}</> : <span className="muted">{nobody ? 'No one is on this' : 'Unassigned'}</span>}</dd>
             <dt>Labels</dt>
             <dd>{issue.labels.length ? issue.labels.map((l) => <span key={l} className="is-label">{l}</span>) : <span className="muted">None</span>}</dd>
           </dl>
 
+          <div className="is-main">
           <WorkCard linked={linked} />
 
           {detail ? (
@@ -133,6 +139,8 @@ export function IssueDetail({ keep, id, summary, tick, onPlanned }: { keep: stri
           ) : (
             <div className="col is-gap-8" aria-busy="true"><Skeleton width="85%" /><Skeleton width="70%" /><Skeleton width="40%" /></div>
           )}
+          </div>
+          </div>
         </div>
       </div>
 
@@ -146,7 +154,7 @@ export function IssueDetail({ keep, id, summary, tick, onPlanned }: { keep: stri
             </div>
           )}
           <div className="is-actions">
-            {project && (
+            {project && choosable && (
               <Select
                 variant="chip" className="is-project" prefix="Project" leading={<ProjectIcon project={project} className="is-letter" />} label="Project" value={project.id}
                 options={choices.map((r) => ({ value: r.id, label: r.name, leading: <ProjectIcon project={r} className="is-letter" /> }))} onChange={(v) => setPicked({ issue: id, project: v })}

@@ -60,6 +60,7 @@ export function GithubDetail({ keep, project, id, summary, tick }: { keep: strin
             <h2>{issue.title}</h2>
           </div>
 
+          <div className="is-cols">
           <dl className="is-facts">
             <dt>State</dt>
             <dd><IssueState shape="todo" />Open</dd>
@@ -73,6 +74,7 @@ export function GithubDetail({ keep, project, id, summary, tick }: { keep: strin
             <dd className="is-wide">{issue.labels.length ? issue.labels.map((l) => <span key={l} className="is-label">{l}</span>) : <span className="muted">None</span>}</dd>
           </dl>
 
+          <div className="is-main">
           <WorkCard linked={linked} />
 
           {detail ? (
@@ -97,6 +99,8 @@ export function GithubDetail({ keep, project, id, summary, tick }: { keep: strin
           ) : (
             <div className="col is-gap-8" aria-busy="true"><Skeleton width="85%" /><Skeleton width="70%" /><Skeleton width="40%" /></div>
           )}
+          </div>
+          </div>
         </div>
       </div>
 
