@@ -206,7 +206,13 @@ export function App() {
         if (s.ui.modal?.name === 'search') actions.ui.closeModal()
         else if (!s.ui.modal && s.ui.route.name !== 'onboarding') actions.ui.openModal({ name: 'search' })
       }
-      if (e.key === ',') { e.preventDefault(); actions.ui.openSettings() }
+      // ⌘, opens Settings, and goes back to the app when Settings is already open (like Back to app). A modal over Settings keeps it open.
+      if (e.key === ',') {
+        e.preventDefault()
+        const s = getState()
+        if (s.ui.route.name !== 'settings') actions.ui.openSettings()
+        else if (!s.ui.modal) actions.ui.leaveSettings()
+      }
       if (e.key === '\\') { e.preventDefault(); toggleFocus() }
       // ⌘J collapses or opens the right panel's bottom pane (KERNEL-513). Match the physical key, as ⌘B does.
       if (e.code === 'KeyJ' && !e.shiftKey && !e.altKey && !e.ctrlKey) { e.preventDefault(); toggleBottomPanel() }
