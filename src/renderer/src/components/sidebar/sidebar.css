@@ -134,7 +134,7 @@ button.hc-pr:hover { color: var(--ink); }
 .nav-hint { font-size: var(--fs-chip); }
 .sb-titlebar { height: 53px; flex-shrink: 0; display: flex; align-items: center; padding: 9px 0 0 77px; }
 .sb-switch-row { height: 36px; padding-left: 4px; flex-shrink: 0; }
-.sb-top-list { margin-top: 10px; flex-shrink: 0; }
+.sb-top-list { margin-top: 3px; flex-shrink: 0; }
 .section-label.sb-projects-label { position: relative; margin-top: 8px; flex-shrink: 0; }
 .row.project-actions { position: absolute; right: 4px; top: 3px; gap: 2px; }
 
