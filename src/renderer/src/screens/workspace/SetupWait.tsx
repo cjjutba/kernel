@@ -4,7 +4,8 @@ import { actions, useStore } from '../../store'
 import { Button, useBusy } from '../../ui'
 import { attempt } from './MessageActions'
 import { editQueuedInComposer } from './composer/bus'
-import { PartChip } from './Transcript'
+import { PartChip, TurnLine } from './Transcript'
+import { sentAt } from './composer/sendMessage'
 import { ChatSetupRows } from './ChatSetupRows'
 
 const NO_QUEUE: QueuedMessage[] = []
@@ -12,7 +13,8 @@ const NO_QUEUE: QueuedMessage[] = []
 /**
  * A chat whose workspace is still setting up, or whose setup failed or was stopped (KERNEL-430), drawn as Conductor draws a new
  * workspace (KERNEL-951): the setup rows, then the messages waiting for setup, dimmed where they will land, with Send now. Before
- * setup, a new chat's worktree is made in the background (`worktreePending`, KERNEL-543): the message reads as sent meanwhile.
+ * setup, a new chat's worktree is made in the background (`worktreePending`, KERNEL-543): the message reads as sent meanwhile, with the
+ * working line under it from the press of Send, as the turn that follows draws it.
  */
 export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
   const queue = useStore((s) => (chat ? s.queue[chat.id] : undefined)) ?? NO_QUEUE
@@ -45,6 +47,7 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
             )}
           </div>
         ))}
+        {making && !ws.worktreePending?.error && queue.length > 0 && <TurnLine since={Math.min(queue[0].ts, sentAt(queue[0].id) ?? Infinity)} waiting={false} />}
       </div>
     </div>
   )
