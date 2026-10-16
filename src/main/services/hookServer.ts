@@ -144,10 +144,10 @@ function readBody(req: IncomingMessage): Promise<string> {
 /** Sent by the hook command of a process a Kernel started. None means a session started outside every Kernel. */
 const fromOtherBuild = (sent: string | string[] | undefined, build: HookBuild) => typeof sent === 'string' && sent !== '' && sent !== build
 
-const hostOk = (host: string | undefined, port: number) => host === `127.0.0.1:${port}` || host === `localhost:${port}`
+export const hostOk = (host: string | undefined, port: number) => host === `127.0.0.1:${port}` || host === `localhost:${port}`
 
 /** Constant time, so the answer's timing says nothing about how much of a guess was right. */
-function tokenOk(sent: string | string[] | undefined, token: string): boolean {
+export function tokenOk(sent: string | string[] | undefined, token: string): boolean {
   if (typeof sent !== 'string') return false
   const a = Buffer.from(sent), b = Buffer.from(token)
   return a.length === b.length && timingSafeEqual(a, b)
