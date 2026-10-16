@@ -449,7 +449,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .code-line .src, .diff-line .src { white-space: pre; color: var(--ink-2); }
 .diff-line { display: grid; grid-template-columns: 44px 44px 18px minmax(0, 1fr); }
 .diff-line { position: relative; }
-.hunk-send { position: absolute; right: 12px; top: 1px; height: 20px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink-2); font: 12px var(--sans, inherit); opacity: 0; }
+.hunk-send { position: absolute; right: 12px; top: 1px; height: 20px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink-2); font: 12px var(--font); opacity: 0; }
 .diff-line:hover .hunk-send, .hunk-send:focus-visible { opacity: 1; }
 .diff-line .ln { text-align: right; padding-right: 10px; color: var(--muted); user-select: none; }
 .diff-line[data-mark='+'] { background: color-mix(in srgb, var(--add) 8%, transparent); }
