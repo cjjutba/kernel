@@ -63,10 +63,10 @@ export async function openLead(projectId: string): Promise<Workspace | undefined
  * `source` arrives in the box as a chip, and `picks` are what the box had chosen when the issue warning sent it back.
  */
 export function openNewChat(projectId: string | undefined, opts?: { source?: WorkspaceSource; picks?: NewChatPicks }): void {
-  const project = projectId ?? getState().projects[0]?.id
-  if (!project) return
+  const project = projectId ?? getState().projects[0]?.id ?? ''
+  // With no project yet, New chat still opens, and asks for a project first (KERNEL-943).
   // The box takes the caret when it mounts, or at once when New chat is already showing.
-  focusComposerIn(leadNewKey(project))
+  if (project) focusComposerIn(leadNewKey(project))
   go({ name: 'leadNew', projectId: project, ...opts })
 }
 

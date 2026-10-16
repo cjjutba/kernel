@@ -10,8 +10,8 @@ import { at, base, ids, invaderIcon, scene, tableItems, withWorkspace } from './
 // Platform lane: setup checks (KERNEL-27), limits and setup failures (KERNEL-28).
 // Check copy matches src/main/services/preflight.ts.
 
-const onboarding = { route: { name: 'onboarding', step: 'checks' } } as const
-const permissionStep = { route: { name: 'onboarding', step: 'permissions' } } as const
+// The checks show above New chat's box with no project (KERNEL-942), so a failing check is drawn there.
+const onboarding = { route: { name: 'leadNew', projectId: '' }, workspace: { right: 'changes', bottom: 'run' } } as const
 const open = { route: { name: 'workspace', workspaceId: ids.table } } as const
 const empty = { projects: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [] }
 
@@ -518,18 +518,14 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-674: usage is in the footer all the time. Detailed gives the active account of each provider its name and both windows, and Compact gives it one number.
   UsageFooter: usageHome(),
   UsageFooterCompact: usageHome({}, { usageView: 'compact' }),
-  // KERNEL-759: a click on the other account holds main's answer, so its chip shows the swap loader.
-  AccountSwitching: usageHome({ hold: ['accounts.switch'] }),
   // The Help button stays at the footer's right with no update, and its menu opens upward from it.
   UsageFooterNoUpdate: usageHome({ update: undefined }),
   FooterHelpMenu: usageHome({ update: undefined }, { menu: 'help' }),
   // KERNEL-674: Codex's 5-hour window is full, so its bar and number go red.
   UsageFooterCodexFull: usageHome({ usage: footerUsage(100) }),
-  // KERNEL-697: another account's chip has a swap icon and a tooltip. One account shows only the active chip, six fold into "more", a narrow window folds the inline ones too, and an account at its limit keeps its red number.
-  UsageFooterSingleAccount: usageHome({ accounts: [secondClaude, footerCodex] }),
+  // KERNEL-949: the footer shows only the account each provider runs on, however many there are. Switching is in the account menu. A narrow window drops the Fable number.
   UsageFooterManyAccounts: usageHome({ accounts: manyAccounts, usage: manyUsage() }),
   UsageFooterNarrow: usageHome({ accounts: manyAccounts, usage: manyUsage() }),
-  UsageFooterAtLimit: usageHome({ usage: [...footerUsage().filter((l) => !(l.accountId === 'third')), { ...window5('claude', 'third', 100, next(15, 0)), status: 'rejected' }, windowWeek('claude', 'third', 40, nextOn(3, 3, 0))] }),
   // KERNEL-699: every switch shows a notice with Undo. Your own says what you now use, and Kernel's at a limit says why it moved.
   UsageSwitchToast: switchedHome([{ ...secondClaude, active: false }, { ...mainClaude, active: true }, footerKey(), thirdClaude, footerCodex], { type: 'accountSwitched', provider: 'claude', from: 'cli', to: 'main', reason: 'user' }),
   UsageSwitchToastAtLimit: switchedHome([{ ...secondClaude, active: false }, mainClaude, footerKey(), { ...thirdClaude, active: true }, footerCodex], { type: 'accountSwitched', provider: 'claude', from: 'main', to: 'third', reason: 'limit', limit: 'five_hour' }),
@@ -736,6 +732,12 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsMcpServersReady: mcpPage({}, {}),
   // KERNEL-661: the notice or Providers opens the page on Personal: sign-ins, a failure, connectors not set up and one ignored.
   SettingsMcpServers: mcpPage({}),
+  // KERNEL-937: saved results on screen while both Claude Code accounts are checked again, Personal for the first time in 3 minutes.
+  McpServersChecking: mcpPage({ mcpAccounts: mcpAcrossAccounts.map((a) => ({ ...a, checking: true, checkedAt: Date.now() - 3 * 60_000 })) }),
+  // KERNEL-937: Linear was just signed in by copying a login, and Claude Code hasn't said yet.
+  McpServersCopiedSignIn: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], counted({ ...mcpAcrossAccounts[1], checking: true, servers: mcpAcrossAccounts[1].servers.map((s) => (s.name === 'Linear' ? { ...s, state: 'checking' as const } : s)) }), mcpAcrossAccounts[2]] }),
+  // KERNEL-937: the check failed, so Personal keeps the servers from 3 hours ago.
+  McpServersOffline: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], { ...mcpAcrossAccounts[1], checkedAt: Date.now() - 3 * 3600_000, error: 'Claude Code did not answer' }, mcpAcrossAccounts[2]] }),
   // KERNEL-661: Codex accounts that read the same show as one Codex tab, with a sign-in and two servers that are off on purpose.
   SettingsMcpServersCodex: mcpPage({ mcpAccounts: sharedCodex(), accounts: [workClaude, personalClaude, ownCodex, personalCodex] }, { tab: 'codex', account: 'cli' }),
   // KERNEL-661: twenty-seven servers on Personal at 1440x900.
@@ -776,7 +778,8 @@ export const platformFixtures: Record<string, Fixture> = {
   DevUiStates: gallery('states'),
   DevUiOverlays: gallery('overlays'),
   DevUiDialogs: gallery('dialogs'),
-  Welcome: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'welcome' } } })),
+  // KERNEL-942: the wordmark a fresh install sees before New chat.
+  Splash: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'splash' } } })),
   // KERNEL-217: boot failed. The Loading layout with the error and Try again. No PNG.
   LoadingError: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'loading' }, startError: 'Could not read the Kernel database. Quit Kernel and open it again.' } })),
   LoadingApp: scene((f) => ({ ...sixRunning(f), ui: { route: { name: 'onboarding', step: 'loading' } } })),
@@ -804,9 +807,6 @@ export const platformFixtures: Record<string, Fixture> = {
   SetupGhToken: setup(passing({ ...ghOk, detail: 'Signed in as cjjutba-bot, from `GH_TOKEN` in your shell', note: 'Kernel passes it on because gh has no stored login.' })),
   SetupShellTimeout: setup([{ id: 'shell', ok: false, blocking: false, title: 'Reading your shell timed out', detail: 'Kernel reads PATH and proxy settings from your login shell and gave up after 10 seconds. Tools from nvm, or a proxy set in `.zshrc`, may be missing until it can.', note: 'Look in `.zshrc` for a slow command, or one that waits for an answer, like an update prompt.', fix: { action: 'recheck' } }, ...allOk]),
   SetupBedrock: setup(passing({ id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', meta: 'us-east-1' })),
-  // KERNEL-457: the step after the checks. The Lead runs on Claude Code in the first and on Codex in the second, where the fixture's availability answer turns Auto off (src/main/fixtures.ts).
-  SetupPermissions: scene(() => ({ ...empty, ui: permissionStep })),
-  SetupPermissionsNoAuto: scene(() => ({ ...empty, settings: withRoles({ lead: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }), ui: permissionStep })),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
   // KERNEL-406: Kai on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has headroom.

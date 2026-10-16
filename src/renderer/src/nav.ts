@@ -117,13 +117,13 @@ export function archiveDestination(route: Route, s: State, archived: (workspaceI
   return projectId ? frontDoor(projectId, s) : undefined
 }
 
-/** Where the app lands when nothing better is known: New chat in the first visible project, or Welcome when there is no project. */
+/** Where the app lands when nothing better is known: New chat in the first visible project, or New chat with no project (KERNEL-943). */
 export function landing(s: State, projectId?: string): Route {
   const project = s.projects.find((r) => r.id === projectId && projectVisible(s, r.id)) ?? s.projects.find((r) => projectVisible(s, r.id))
-  return project ? frontDoor(project.id, s) : { name: 'onboarding', step: 'welcome' }
+  return project ? frontDoor(project.id, s) : { name: 'leadNew', projectId: '' }
 }
 
-/** The route if it is still there, else its project's Lead workspace, then the project's Agents page, then New chat in the first project, then Welcome. */
+/** The route if it is still there, else its project's Lead workspace, then the project's Agents page, then New chat in the first project, then New chat with no project. */
 export function nearest(route: Route, s: State): Route {
   if (stillThere(route, s)) return route
   const projectId = projectOf(route, s)

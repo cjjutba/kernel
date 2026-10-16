@@ -3,9 +3,41 @@ import { go } from '../../store'
 import { Button, Icon, IconButton, Menu, isTyping } from '../../ui'
 import { ProjectIcon } from '../../components/ProjectIcon'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
-import type { ProjectHead } from '../issues/parts'
+import type { IssueTracker, ProjectHead, TrackerSwitch } from '../issues/parts'
 import { WORK_TABS, useWorkTab, type WorkTab } from './tab'
 import './work.css'
+
+const TRACKERS: { id: IssueTracker; label: string }[] = [{ id: 'linear', label: 'Linear' }, { id: 'github', label: 'GitHub' }]
+
+/**
+ * Linear | GitHub (KERNEL-938): which tracker the Issues list reads. A side the project can't use stays in place, greyed and still
+ * focusable, so its reason is there to read by hover and by screen reader. Arrow keys skip it.
+ */
+function TrackerToggle({ active, available, onChange }: TrackerSwitch) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([])
+  const reason = (t: IssueTracker) => (t === 'linear' ? (available.linear ? undefined : 'Connect Linear in Settings, Integrations') : available.github ? undefined : 'No GitHub remote')
+  const onKey = (e: KeyboardEvent, i: number) => {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+    if (!step) return
+    e.preventDefault()
+    const next = (i + step + TRACKERS.length) % TRACKERS.length
+    if (reason(TRACKERS[next].id)) return
+    onChange(TRACKERS[next].id)
+    refs.current[next]?.focus()
+  }
+  return (
+    <div className="wk-tracker" role="radiogroup" aria-label="Issue tracker">
+      {TRACKERS.map((t, i) => {
+        const why = reason(t.id)
+        return (
+          <button key={t.id} ref={(el) => { refs.current[i] = el }} type="button" role="radio" aria-checked={t.id === active} aria-disabled={why ? true : undefined}
+            aria-label={why ? `${t.label}, unavailable: ${why}` : t.label} data-tip={why} tabIndex={t.id === active ? 0 : -1}
+            onClick={() => { if (!why && t.id !== active) onChange(t.id) }} onKeyDown={(e) => onKey(e, i)}>{t.label}</button>
+        )
+      })}
+    </div>
+  )
+}
 
 const labels: Record<WorkTab, string> = { issues: 'Issues', prs: 'Pull requests' }
 
@@ -92,6 +124,7 @@ export function WorkHeader({ tab, head, allProjects, counts, where, onRefresh, r
         </>
       )}
       <span className="grow" />
+      {head.tracker && <TrackerToggle {...head.tracker} />}
       {where && <span className="wk-where">{where}</span>}
       {onRefresh && <IconButton icon="refresh" size={16} label="Refresh" busy={refreshing} busyPattern="rotate" busyLabel="Refreshing" onClick={onRefresh} />}
     </header>
