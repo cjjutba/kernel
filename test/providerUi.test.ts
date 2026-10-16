@@ -275,6 +275,10 @@ describe('seamless account switching (KERNEL-941)', () => {
     expect(bannerFor(input({ chat: kept, usage: [claudeLimit, { ...claudeLimit, accountId: 'work' }], accounts: both }))?.id).toBe('session')
     expect(bannerFor(input({ chat: kept, usage: [claudeLimit], accounts: both, keepChats: false }))?.id).toBe('session')
     expect(bannerFor(input({ chat: kept, usage: [claudeLimit], accounts: [cli(), work({ signedIn: false })] }))?.id).toBe('session')
+    // Near its limit, Work moves the chat on, unless the user chose to keep it there.
+    const near = { ...claudeLimit, status: 'allowed' as const, utilization: 0.95, accountId: 'work' }
+    expect(bannerFor(input({ chat: kept, usage: [claudeLimit, near], accounts: both }))?.id).toBe('session')
+    expect(bannerFor(input({ chat: { ...kept, moveChoice: { choice: 'keep', at: now } }, usage: [claudeLimit, near], accounts: both }))?.id).not.toBe('session')
   })
 })
 

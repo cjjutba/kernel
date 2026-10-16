@@ -120,7 +120,9 @@ export function bannerFor(i: BannerInput): BannerView | null {
   // threshold, as main's `Placement.accountFor` decides, so it hears that account's windows, not the one in use (KERNEL-941).
   const kept = chat && i.keepChats !== false && chat.ranOn && chat.ranOn !== active ? chat.ranOn : undefined
   const keptRuns = !!kept && accounts.some((a) => (a.id === kept || (kept === 'cli' && a.alsoCli)) && a.signedIn) &&
-    !windowsOf(kept).some((l) => (l.type === 'five_hour' || l.type === 'seven_day') && rejected(l, now)) && !nearLimit(windowsOf(kept), now)
+    !windowsOf(kept).some((l) => (l.type === 'five_hour' || l.type === 'seven_day') && rejected(l, now)) &&
+    // A chat the user chose to keep stays past the move threshold, as `accountFor` lets it (KERNEL-844).
+    (chat?.moveChoice?.choice === 'keep' || !nearLimit(windowsOf(kept), now))
   const usage = windowsOf(keptRuns && kept ? kept : active)
   const named = (what: string) => (i.codexInUse ? `${providerName} ${what}` : what)
   // Where the provider can go: the same answer Kernel's own switch at a limit uses (`switchChoices`, KERNEL-618). The other signed-in accounts with no rejected
