@@ -1,51 +1,51 @@
 /* The agent editor, New agent and Retire (KERNEL-19, KERNEL-642). Tokens only. */
-.tm-av { width: 32px; height: 32px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--ink-2); font-size: 13px; font-weight: 600; }
-.tm-av.xl { width: 52px; height: 52px; font-size: 20px; }
+.tm-av { width: 32px; height: 32px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--ink-2); font-size: var(--fs-ui); font-weight: var(--fw-semibold); }
+.tm-av.xl { width: 52px; height: 52px; font-size: var(--fs-title-sm); }
 
-.ap-save-note { font-size: 12.5px; color: var(--muted); }
-.ap-label { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
+.ap-save-note { font-size: var(--fs-code); color: var(--muted); }
+.ap-label { margin: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
 .ap-field { display: flex; flex-direction: column; gap: 6px; }
-.ap-note { margin: 0; padding: 12px 14px; border-radius: var(--r); border: 1px solid var(--line-3); color: var(--ink-2); line-height: 1.55; }
+.ap-note { margin: 0; padding: 12px 14px; border-radius: var(--r); border: 1px solid var(--line-3); color: var(--ink-2); line-height: var(--lh-prose); }
 .ap-warns { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .ap-warns li { display: flex; align-items: flex-start; gap: 8px; color: var(--ink-2); }
 .ap-warns svg { flex-shrink: 0; margin-top: 3px; color: var(--ink); }
 .ap-fields { display: flex; flex-direction: column; gap: 22px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .ap-fields:disabled { opacity: 0.7; }
-.ap-field .hint { font-size: 12px; color: var(--muted); }
+.ap-field .hint { font-size: var(--fs-meta); color: var(--muted); }
 .ap-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .ap-two .segmented { display: flex; padding: 2px; }
-.ap-two .segmented button { flex: 1; height: 28px; font-size: 12px; font-weight: 500; }
-.ap-text { box-sizing: border-box; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: 13.5px; line-height: 1.5; outline: none; resize: none; }
+.ap-two .segmented button { flex: 1; height: 28px; font-size: var(--fs-meta); font-weight: var(--fw-medium); }
+.ap-text { box-sizing: border-box; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: var(--fs-row); line-height: var(--lh); outline: none; resize: none; }
 .ap-text:focus { border-color: var(--ink-3); }
-.ap-text.mono { padding: 12px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.65; resize: vertical; }
+.ap-text.mono { padding: 12px 14px; font-family: var(--mono); font-size: var(--fs-code); line-height: var(--lh-code); resize: vertical; }
 .ap-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.ap-chip { height: 28px; padding: 0 10px; border: 1px solid var(--pill-line); border-radius: var(--r); background: transparent; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.ap-chip { height: 28px; padding: 0 10px; border: 1px solid var(--pill-line); border-radius: var(--r); background: transparent; color: var(--muted); font-family: var(--mono); font-size: var(--fs-meta); }
 .ap-chip[aria-pressed='true'] { border-color: var(--line-3); background: var(--surface-3); color: var(--ink); }
 .ap-chip:hover { color: var(--ink); }
 
 .na-body { display: flex; flex-direction: column; gap: 14px; padding: 18px 18px 20px; }
-.na-body p { margin: 0; color: var(--muted); line-height: 1.5; }
-.na-text { min-height: 86px; resize: none; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: 15px; line-height: 1.5; outline: none; }
+.na-body p { margin: 0; color: var(--muted); line-height: var(--lh); }
+.na-text { min-height: 86px; resize: none; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: var(--fs-sub); line-height: var(--lh); outline: none; }
 .na-text:focus { border-color: var(--ink-3); }
 .na-text::placeholder { color: var(--muted); }
 .na-presets { display: flex; flex-wrap: wrap; gap: 8px; }
 .na-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 .na-two .segmented { display: flex; }
-.na-two .segmented button { flex: 1; height: 32px; font-size: 12.5px; }
+.na-two .segmented button { flex: 1; height: 32px; font-size: var(--fs-code); }
 .na-by { display: flex; align-items: center; gap: 10px; }
-.na-by .tm-av { width: 26px; height: 26px; font-size: 11px; color: var(--ink); background: none; border: 1px solid var(--line-3); }
+.na-by .tm-av { width: 26px; height: 26px; font-size: var(--fs-badge); color: var(--ink); background: none; border: 1px solid var(--line-3); }
 .na-file { border-radius: var(--r-md); border: 1px solid var(--line-2); overflow: hidden; }
-.na-file-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--line-2); font-family: var(--mono); font-size: 12px; }
-.na-tag { height: 18px; padding: 0 7px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-family: var(--font); font-size: 11px; line-height: 16px; color: var(--muted); }
-.na-code { display: block; width: 100%; box-sizing: border-box; height: 224px; padding: 12px; border: 0; background: var(--code-bg); color: var(--ink-2); font: 12.5px/1.7 var(--mono); outline: none; resize: none; }
-.na-link { align-self: flex-start; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 13px; text-decoration: underline; }
+.na-file-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--line-2); font-family: var(--mono); font-size: var(--fs-meta); }
+.na-tag { height: 18px; padding: 0 7px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-family: var(--font); font-size: var(--fs-badge); line-height: 16px; color: var(--muted); }
+.na-code { display: block; width: 100%; box-sizing: border-box; height: 224px; padding: 12px; border: 0; background: var(--code-bg); color: var(--ink-2); font: var(--fs-code)/ var(--lh-loose) var(--mono); outline: none; resize: none; }
+.na-link { align-self: flex-start; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); text-decoration: underline; }
 .na-link:hover { color: var(--ink); }
 .na-link:disabled { opacity: 0.55; cursor: default; }
 .na-link[aria-busy='true'] { display: inline-flex; align-items: center; gap: 7px; opacity: 1; text-decoration: none; }
 .na-done { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 40px 26px; text-align: center; }
-.na-done h3 { margin: 6px 0 0; font-size: 16px; font-weight: 600; color: var(--ink); }
-.na-done p { margin: 0; max-width: 420px; color: var(--muted); line-height: 1.5; }
-.tm-box { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--r); background: var(--code-bg); font-size: 12px; }
+.na-done h3 { margin: 6px 0 0; font-size: var(--fs-dialog); font-weight: var(--fw-semibold); color: var(--ink); }
+.na-done p { margin: 0; max-width: 420px; color: var(--muted); line-height: var(--lh); }
+.tm-box { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--r); background: var(--code-bg); font-size: var(--fs-meta); }
 .ap-two .segmented button { white-space: nowrap; padding: 0 6px; }
 
 .ap-unpin { padding: 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; text-decoration: underline; cursor: pointer; }
@@ -54,3 +54,6 @@
 @container panel (max-width: 900px) {
   .ap-two { grid-template-columns: minmax(0, 1fr); }
 }
+.na-field { gap: 6px; }
+.na-label { font-size: var(--fs-meta); }
+.na-author { font-weight: var(--fw-medium); }

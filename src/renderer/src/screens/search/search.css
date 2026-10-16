@@ -1,25 +1,25 @@
 /* Command palette (KERNEL-21, KERNEL-903). Tokens only. */
 .cp-input { height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 16px; color: var(--muted); }
-.cp-input input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: 15px; }
+.cp-input input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: var(--fs-sub); }
 .cp-input input::placeholder { color: var(--muted); }
 .cp-scopes { display: flex; gap: 2px; flex-shrink: 0; padding: 0 10px 8px; border-bottom: 1px solid var(--line); }
-.cp-tab { height: 26px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; cursor: default; }
+.cp-tab { height: 26px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font: inherit; font-size: var(--fs-code); cursor: default; }
 .cp-tab:hover { color: var(--ink-2); }
 .cp-tab[aria-selected='true'] { background: var(--surface-3); color: var(--ink); }
 .cp-list { max-height: min(600px, calc(100vh - var(--modal-top) - 150px)); overflow-y: auto; padding: 0 6px 6px; }
 .cp-group + .cp-group { border-top: 1px solid var(--line); margin-top: 4px; }
-.cp-sec { position: sticky; top: 0; z-index: 1; padding: 10px 10px 4px; font-size: 12px; line-height: 16px; color: var(--muted); background: var(--surface-2); }
-.cp-row { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: var(--r-sm); font-size: 13px; cursor: default; }
+.cp-sec { position: sticky; top: 0; z-index: 1; padding: 10px 10px 4px; font-size: var(--fs-meta); line-height: 16px; color: var(--muted); background: var(--surface-2); }
+.cp-row { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-ui); cursor: default; }
 .cp-row[aria-selected='true'] { background: var(--surface-3); color: var(--ink); }
 .cp-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex-shrink: 0; color: var(--muted); }
 .cp-row[aria-selected='true'] .cp-icon { color: var(--ink-2); }
 .cp-label { color: var(--ink-2); }
 .cp-row[aria-selected='true'] .cp-label { color: var(--ink-2); }
-.cp-hit { background: transparent; color: var(--ink); font-weight: 600; }
-.cp-meta { flex-shrink: 0; max-width: 45%; font-size: 12px; color: var(--muted); }
-.cp-keys { flex-shrink: 0; display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: var(--r-xs); border: 1px solid var(--line-3); font: 11px var(--mono); color: var(--faint); }
-.cp-none { padding: 28px 10px; text-align: center; color: var(--muted); font-size: 13px; }
-.cp-foot { display: flex; align-items: center; gap: 16px; height: 38px; flex-shrink: 0; padding: 0 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.cp-hit { background: transparent; color: var(--ink); font-weight: var(--fw-semibold); }
+.cp-meta { flex-shrink: 0; max-width: 45%; font-size: var(--fs-meta); color: var(--muted); }
+.cp-keys { flex-shrink: 0; display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: var(--r-xs); border: 1px solid var(--line-3); font: var(--fs-badge) var(--mono); color: var(--faint); }
+.cp-none { padding: 28px 10px; text-align: center; color: var(--muted); font-size: var(--fs-ui); }
+.cp-foot { display: flex; align-items: center; gap: 16px; height: 38px; flex-shrink: 0; padding: 0 16px; border-top: 1px solid var(--line); font-size: var(--fs-meta); color: var(--muted); }
 .cp-hint { display: inline-flex; align-items: center; gap: 6px; }
 .cp-count { margin-left: auto; }
-.cp-foot .kbd { min-width: 18px; justify-content: center; font-family: inherit; font-size: 11px; }
+.cp-foot .kbd { min-width: 18px; justify-content: center; font-family: inherit; font-size: var(--fs-badge); }

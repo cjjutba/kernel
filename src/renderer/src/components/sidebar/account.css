@@ -1,13 +1,13 @@
 /* The account button at the top of the sidebar (KERNEL-21). Tokens only. */
-.acct { display: inline-flex; align-items: center; gap: 8px; height: 28px; max-width: 170px; padding: 0 6px 0 4px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink-2); font-weight: 500; }
+.acct { display: inline-flex; align-items: center; gap: 8px; height: 28px; max-width: 170px; padding: 0 6px 0 4px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink-2); font-weight: var(--fw-medium); }
 .acct:hover, .acct[aria-expanded='true'] { background: var(--nav-hover); }
 .acct svg { color: var(--muted); flex-shrink: 0; }
-.acct-av { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); background: var(--ink); color: var(--canvas); font-size: 9.5px; font-weight: 600; }
+.acct-av { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); background: var(--ink); color: var(--canvas); font-size: var(--fs-tile-md); font-weight: var(--fw-semibold); }
 
 /* An account in the menu: its name and plan on the left, a check or a short note on the right. The whole row is the switch button (KERNEL-561). */
 .acct-row { display: flex; align-items: center; gap: 8px; width: 100%; }
-.acct-name { flex: 0 1 auto; min-width: 0; font-weight: 500; color: var(--ink); }
-.acct-plan { flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--muted); }
-.acct-state { flex-shrink: 0; font-size: 12px; color: var(--muted); }
+.acct-name { flex: 0 1 auto; min-width: 0; font-weight: var(--fw-medium); color: var(--ink); }
+.acct-plan { flex: 1 1 auto; min-width: 0; font-size: var(--fs-meta); color: var(--muted); }
+.acct-state { flex-shrink: 0; font-size: var(--fs-meta); color: var(--muted); }
 .acct-row > svg { flex-shrink: 0; color: var(--ink-2); }
 .menu-item[data-rich]:has(> .acct-row) { height: 30px; flex-direction: row; align-items: center; padding: 0 8px; }
