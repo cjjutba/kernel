@@ -1,18 +1,19 @@
 import { useSyncExternalStore } from 'react'
-import { isFixture } from './store'
+import { fixturePersists, isFixture } from './store'
 
 /**
  * Choices the user makes that outlive the screen they made them on (DESIGN.md, Remembered choices): a tab, a filter, a width, a
  * picked script. This is the one place a screen or component reads and writes localStorage, and `test/remember.test.ts` fails
  * when one touches it directly. localStorage may be missing or blocked, in which case a choice lasts until the window reloads.
- * Fixture mode keeps choices in memory, since it must neither read nor write what a real launch saved.
+ * Fixture mode keeps choices in memory, since it must neither read nor write what a real launch saved, unless KERNEL_FIXTURE_PERSIST=1
+ * asks for real storage (the fixture then runs on its own userData folder, so it is still not a real launch's).
  */
 const memory = new Map<string, string>()
 const listeners = new Set<() => void>()
 
 /** What is stored under `key`, or null. Read through every time, so a value written elsewhere is never stale. */
 export function readSaved(key: string): string | null {
-  if (isFixture()) return memory.get(key) ?? null
+  if (isFixture() && !fixturePersists()) return memory.get(key) ?? null
   try { return localStorage.getItem(key) } catch { return memory.get(key) ?? null }
 }
 
@@ -20,7 +21,7 @@ export function readSaved(key: string): string | null {
 export function writeSaved(key: string, value: string | null) {
   if (value === null) memory.delete(key)
   else memory.set(key, value)
-  if (!isFixture()) {
+  if (!isFixture() || fixturePersists()) {
     try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value) } catch { /* kept in memory */ }
   }
   for (const fn of [...listeners]) fn()

@@ -590,8 +590,8 @@ export interface KernelApi {
   'system.pickImage': { req: void; res: string | null }
   'system.openExternal': { req: { url: string }; res: Ok }
   'system.openInEditor': { req: { path: string }; res: Ok }
-  /** Fixture mode only (KERNEL_FIXTURES). The UI to force and push events to replay. Null in a real run. */
-  'system.fixture': { req: void; res: { ui: ForcedUi; push: PushEvent[] } | null }
+  /** Fixture mode only (KERNEL_FIXTURES). The UI to force and push events to replay. `persist` (KERNEL_FIXTURE_PERSIST=1) lets remembered choices use real localStorage, so a relaunch keeps them. Null in a real run. */
+  'system.fixture': { req: void; res: { ui: ForcedUi; push: PushEvent[]; persist?: boolean } | null }
 
   // live previews of shared HTML (KERNEL-303). Each is a locked-down native view main draws over the tab. `preview`
   // events report its state and `preview.key` carries app shortcuts typed inside it.

@@ -14,10 +14,11 @@ const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true 
 })
 
 let disk: Map<string, string>
-async function launch(fixture = false) {
+async function launch(fixture = false, persist = false) {
   vi.resetModules()
   const store = await import('../src/renderer/src/store')
   vi.spyOn(store, 'isFixture').mockReturnValue(fixture)
+  vi.spyOn(store, 'fixturePersists').mockReturnValue(fixture && persist)
   return import('../src/renderer/src/remember')
 }
 
@@ -59,5 +60,23 @@ describe('remembered choices', () => {
     expect(r.readSaved('kernel.a')).toBeNull()
     r.writeSaved('kernel.a', 'shot')
     expect([r.readSaved('kernel.a'), disk.get('kernel.a')]).toEqual(['shot', 'real'])
+  })
+
+  it('uses real storage in fixture mode only when persist is asked for', async () => {
+    const r = await launch(true, true)
+    r.writeSaved('kernel.a', 'kept')
+    expect([r.readSaved('kernel.a'), disk.get('kernel.a')]).toEqual(['kept', 'kept'])
+    const again = await launch(true, true)
+    expect(again.readSaved('kernel.a')).toBe('kept')
+    const off = await launch(true)
+    off.writeSaved('kernel.b', 'shot')
+    expect(disk.has('kernel.b')).toBe(false)
+  })
+
+  it('falls back to memory in persist mode when localStorage throws', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('blocked') }, setItem: () => { throw new Error('blocked') }, removeItem: () => { throw new Error('blocked') } })
+    const r = await launch(true, true)
+    r.writeSaved('kernel.a', 'x')
+    expect(r.readSaved('kernel.a')).toBe('x')
   })
 })
