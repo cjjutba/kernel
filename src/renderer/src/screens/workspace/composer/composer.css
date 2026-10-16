@@ -105,6 +105,8 @@
 .cmp-pop { left: 0; bottom: calc(100% + 8px); }
 /* Model and effort (D-093), drawn after Conductor's picker. The link pickers share the search field. */
 .model-pop { display: flex; flex-direction: column; width: 380px; padding: 0; background: var(--surface-2); }
+/* Opening down from a Settings cell (KERNEL-988) instead of up from the composer. */
+.cmp-pop[data-placement='down'] { bottom: auto; top: calc(100% + 6px); }
 /* Taller than the project above the composer, the model list scrolls and the search, Effort and footer stay. */
 .model-pop > .pick-search, .model-pop > .pick-foot { flex-shrink: 0; }
 .model-pop > .pick-body { min-height: 0; }

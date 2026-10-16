@@ -50,9 +50,13 @@ type Tab = 'favorites' | Provider
  *
  * The picker opens on the current model's provider. Both providers show when Codex is in use (`grouped`). A model on the other provider
  * can't take over a chat that has started, so that provider's rail icon is dimmed and says to start a new chat (KERNEL-406).
+ *
+ * `variant="settings"` is the role picker in Settings, Models (KERNEL-988): the rail lists Claude and Codex with neither locked, and the Effort row,
+ * favorites, ^⌘N hints, footer and their keys are gone, since a role's effort is its own cell. `placement="down"` opens it under its anchor, sized to
+ * the space below, and its Legacy flyout opens downward too.
  */
-export function ModelPicker({ provider = 'claude', grouped = false, started = false, model, effort, fallback, onModel, onEffort, onClose, anchorRef }: {
-  anchorRef: React.RefObject<HTMLElement | null>; provider?: Provider; grouped?: boolean; started?: boolean; model: string; effort: Effort; fallback: Effort
+export function ModelPicker({ provider = 'claude', grouped = false, started = false, variant = 'composer', placement = 'up', model, effort, fallback, onModel, onEffort, onClose, anchorRef }: {
+  anchorRef: React.RefObject<HTMLElement | null>; provider?: Provider; grouped?: boolean; started?: boolean; variant?: 'composer' | 'settings'; placement?: 'up' | 'down'; model: string; effort: Effort; fallback: Effort
   onModel: (m: string, effort: Effort) => void; onEffort: (e: Effort) => void; onClose: () => void
 }) {
   const codex = useProviderModels('codex')
@@ -61,14 +65,16 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const own = listOf(provider)
   const efforts = effortsOf(model, own)
   const favorites = useFavoriteModels()
-  const providers: Provider[] = grouped || provider === 'codex' ? ['claude', 'codex'] : ['claude']
+  const settings = variant === 'settings'
+  const down = placement === 'down'
+  const providers: Provider[] = settings || grouped || provider === 'codex' ? ['claude', 'codex'] : ['claude']
   /** The other provider can't take over a chat that has started. */
-  const locked = (p: Provider) => started && p !== provider
+  const locked = (p: Provider) => !settings && started && p !== provider
   const [q, setQ] = useState('')
   const [tab, setTab] = useState<Tab>(provider)
   // A row shows ^⌘N only when that key works: it picks the Nth current model of the chat's own provider (useModelKeys).
   const all: Row[] = useMemo(() => {
-    const row = (p: Provider, m: { id: string; label: string; legacy?: boolean }): Row => ({ provider: p, id: m.id, label: m.label, legacy: !!m.legacy, n: shortcutNumber({ id: m.id, provider: p }, provider, own) })
+    const row = (p: Provider, m: { id: string; label: string; legacy?: boolean }): Row => ({ provider: p, id: m.id, label: m.label, legacy: !!m.legacy, n: settings ? undefined : shortcutNumber({ id: m.id, provider: p }, provider, own) })
     return [...claude.map((m) => row('claude', m)), ...(providers.includes('codex') ? codex.map((m) => row('codex', m)) : [])]
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claude, codex, grouped, provider])
@@ -97,26 +103,29 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const ref = useRef<HTMLDivElement>(null)
   useLayer({ onEscape: onClose, onOutside: onClose, ref, anchorRef })
   useEffect(() => { ref.current?.querySelector('input')?.focus() }, [])
-  // The popover opens upward from the composer, so it gets the space between its bottom and the window's top.
+  // Opening upward from the composer, the popover gets the space between its bottom and the window's top. Opening down, the space below its top.
   const [maxHeight, setMaxHeight] = useState<number>()
   useLayoutEffect(() => {
-    const fit = () => { if (ref.current) setMaxHeight(Math.max(160, ref.current.getBoundingClientRect().bottom - 12)) }
+    const fit = () => { if (ref.current) { const box = ref.current.getBoundingClientRect(); setMaxHeight(Math.max(160, down ? window.innerHeight - box.top - 12 : box.bottom - 12)) } }
     fit()
     window.addEventListener('resize', fit)
     return () => window.removeEventListener('resize', fit)
   }, [])
   useEffect(() => { ref.current?.querySelector('.pick-list [data-active="true"]')?.scrollIntoView({ block: 'nearest' }) }, [at, items])
   useEffect(() => { if (legacyShown) ref.current?.querySelector('.pick-flyout-legacy [data-active="true"]')?.scrollIntoView({ block: 'nearest' }) }, [legacyAt, legacyShown])
-  // The flyout's bottom edge sits on the Legacy row's, like the Effort flyout's, and it grows upward into the space above.
+  // The flyout's bottom edge sits on the Legacy row's, like the Effort flyout's, and it grows upward into the space above. Opening down, its top sits on the row's and it grows down.
   useLayoutEffect(() => {
     if (!legacyShown || !ref.current) return
     const row = ref.current.querySelector('.pick-legacy')?.getBoundingClientRect()
     if (!row) return
     const pop = ref.current.getBoundingClientRect()
-    setLegacyStyle({ bottom: pop.bottom - row.bottom - 7, maxHeight: Math.max(160, row.bottom + 6 - 12) })
+    setLegacyStyle(down
+      ? { top: row.top - pop.top - 7, bottom: 'auto', maxHeight: Math.max(160, window.innerHeight - row.top + 6 - 12) }
+      : { bottom: pop.bottom - row.bottom - 7, maxHeight: Math.max(160, row.bottom + 6 - 12) })
   }, [legacyShown, items])
 
-  const effortRow = items.length
+  // The Effort row is the last stop for the arrow keys, and there is none in Settings.
+  const effortRow = settings ? -1 : items.length
   const rowEffort = (m: Row) => (m.id === model ? effort : fitEffort(effortFor(m.id, memory, fallback), m.id, listOf(m.provider)))
   const pickModel = (m: Row) => { if (!locked(m.provider)) onModel(m.id, rowEffort(m)) }
   const setSub = (on: boolean) => setFlyout(on ? 'effort' : null)
@@ -127,9 +136,9 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const press = (i: Item | undefined) => { if (i?.kind === 'legacy') (legacyShown ? setFlyout(null) : openLegacy()); else if (i) pickModel(i.row) }
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.ctrlKey && e.metaKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); const m = all.find((r) => r.n === Number(e.key)); if (m) pickModel(m); return }
-    if (isCycleEffortKey(e)) { e.preventDefault(); pickEffort(nextEffort(effort, efforts)); return }
-    if (e.metaKey && !e.shiftKey && !e.ctrlKey && e.key.toLowerCase() === 'd') {
+    if (!settings && e.ctrlKey && e.metaKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); const m = all.find((r) => r.n === Number(e.key)); if (m) pickModel(m); return }
+    if (!settings && isCycleEffortKey(e)) { e.preventDefault(); pickEffort(nextEffort(effort, efforts)); return }
+    if (!settings && e.metaKey && !e.shiftKey && !e.ctrlKey && e.key.toLowerCase() === 'd') {
       e.preventDefault()
       const it = items[at]
       if (legacyShown) { const r = legacyRows[legacyAt]; if (r) toggleFavoriteModel(r.id) }
@@ -150,7 +159,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
       else if (e.key === 'Enter') { e.preventDefault(); pickEffort(efforts[subAt]) }
       return
     }
-    const to = arrowRow(e, at, effortRow + 1)
+    const to = arrowRow(e, at, settings ? items.length : effortRow + 1)
     if (to !== null) { e.preventDefault(); setAt(to) }
     else if (e.key === 'ArrowRight' && at === effortRow) { e.preventDefault(); openSub() }
     else if (e.key === 'ArrowRight' && items[at]?.kind === 'legacy') { e.preventDefault(); openLegacy() }
@@ -168,17 +177,17 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
         <span className="grow" />
         {row.id === model ? <span className="pick-check"><Icon name="check" size={14} /></span> : row.n ? <span className="pick-kbd">^⌘{row.n}</span> : null}
       </button>
-      <button type="button" tabIndex={-1} className="pick-star" aria-pressed={favorites.includes(row.id)} aria-label={`${favorites.includes(row.id) ? 'Remove' : 'Add'} ${row.label} ${favorites.includes(row.id) ? 'from' : 'to'} favorites`}
+      {!settings && <button type="button" tabIndex={-1} className="pick-star" aria-pressed={favorites.includes(row.id)} aria-label={`${favorites.includes(row.id) ? 'Remove' : 'Add'} ${row.label} ${favorites.includes(row.id) ? 'from' : 'to'} favorites`}
         data-tip-kbd="⌘D" onMouseDown={(e) => e.preventDefault()} onClick={() => toggleFavoriteModel(row.id)}>
         <Icon name="star" size={14} />
-      </button>
+      </button>}
     </div>
   )
-  const tabs: { id: Tab; label: string }[] = [{ id: 'favorites', label: 'Favorites' }, ...providers.map((p) => ({ id: p as Tab, label: providerLabel(p) }))]
+  const tabs: { id: Tab; label: string }[] = [...(settings ? [] : [{ id: 'favorites' as Tab, label: 'Favorites' }]), ...providers.map((p) => ({ id: p as Tab, label: providerLabel(p) }))]
   const empty = needle ? `No model matches "${q.trim()}".` : tab === 'favorites' ? 'Star a model to keep it here.' : 'No models to show.'
 
   return (
-    <div ref={ref} className="menu cmp-pop model-pop" role="dialog" aria-label="Model and effort" onKeyDown={onKey} style={{ maxHeight }}>
+    <div ref={ref} className="menu cmp-pop model-pop" role="dialog" aria-label={settings ? 'Model' : 'Model and effort'} data-placement={down ? 'down' : undefined} onKeyDown={onKey} style={{ maxHeight }}>
       <label className="pick-search">
         <Icon name="search" size={14} />
         <input aria-label="Search models" placeholder="Search models" autoComplete="off" spellCheck={false} value={q} onChange={(e) => { setQ(e.target.value); setAt(0); setFlyout(null) }} />
@@ -211,7 +220,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
             {!items.length && <p className="pick-empty">{empty}</p>}
           </div>
         </div>
-        <div className="menu-sep" />
+        {!settings && <><div className="menu-sep" />
         <div className="pick-effort-row">
           <button type="button" tabIndex={-1} className="menu-item pick-row pick-effort-btn" aria-haspopup="menu" aria-expanded={sub} data-active={!sub && !legacyShown && at === effortRow} data-open={sub}
             onMouseEnter={() => { setAt(effortRow); openSub() }} onMouseDown={(e) => e.preventDefault()} onClick={() => (sub ? setSub(false) : openSub())}>
@@ -221,17 +230,17 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
             <Icon name="right" size={14} />
           </button>
           {sub && <EffortMenu efforts={efforts} effort={effort} at={subAt} onAt={setSubAt} onPick={pickEffort} onClose={() => setSub(false)} />}
-        </div>
+        </div></>}
       </div>
       {legacyShown && (
         <LegacyMenu style={legacyStyle} onClose={() => setFlyout(null)}>
           {legacyRows.map((r, i) => modelRow(r, i === legacyAt, () => setLegacyAt(i)))}
         </LegacyMenu>
       )}
-      <div className="pick-foot">
+      {!settings && <div className="pick-foot">
         <button type="button" className="pick-link" onClick={() => { onClose(); actions.ui.go({ name: 'settings', page: 'models' }) }}><Icon name="sliders" size={14} />Edit</button>
         <span className="pick-hint"><kbd className="kbd">⌘⇧/</kbd>Cycle effort</span>
-      </div>
+      </div>}
     </div>
   )
 }

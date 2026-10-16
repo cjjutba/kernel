@@ -1,5 +1,9 @@
 /* Agents group pages: Models and effort, Agents, MCP servers, Permissions, Environment (KERNEL-680). Tokens only. */
 .ag-roles .select, .ag-roles .select-trigger { width: 100%; }
+/* The role menus share the model picker's rows: 36px tall, 10px in, 2px apart (KERNEL-987, KERNEL-988). */
+.ag-roles .select-opt { height: 36px; padding: 0 10px; font-size: var(--fs-row); }
+.ag-roles .select-opt + .select-opt { margin-top: 2px; }
+.ag-model-trigger > .ag-model-name { flex: 1; min-width: 0; }
 .ag-role-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .ag-role-name .set-desc { font-size: var(--fs-meta); }
 .ag-auto { padding-left: 11px; font-size: var(--fs-code); color: var(--muted); }
