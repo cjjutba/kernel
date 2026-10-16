@@ -727,8 +727,14 @@ export class Lead extends Feature {
 
   /** The user's own latest message in a tab, not Kernel's, and when they sent it (KERNEL-678). */
   private userSaidIn(chatId: string): { text: string; at: number } | undefined {
+    if (this.store.chat(chatId)?.terminal?.role) return this.k.seatSignals.userSaid(chatId)
     const last = this.store.items(chatId).reverse().find((i): i is ChatItem & { kind: 'user' } => isSentItem(i) && !i.from)
     return last && { text: last.parts.map((p) => (p.type === 'text' ? p.text : '')).join('\n'), at: last.ts }
+  }
+
+  /** Whether the user started the turn in progress. A terminal seat's hooks say; a chat's session knows who sent the message (KERNEL-999). */
+  private userTurnIn(chatId: string): boolean {
+    return this.store.chat(chatId)?.terminal?.role ? this.k.seatSignals.userTurn(chatId) : !this.sessions.kernelTurn(chatId)
   }
 
   /**
@@ -739,7 +745,7 @@ export class Lead extends Feature {
     const chat = this.store.chat(chatId)
     const ws = chat && this.store.workspace(chat.workspaceId)
     if (!chat || !ws) return false
-    return buildOpen({ planMode: !!chat.plan, userTurn: !this.sessions.kernelTurn(chatId), branch: ws.branch, goAhead: ws.buildGoAhead, userAt: this.userSaidIn(chatId)?.at ?? 0, planAts: this.threadPlans(ws.projectId, chat).map((a) => a.createdAt) })
+    return buildOpen({ planMode: !!chat.plan, userTurn: this.userTurnIn(chatId), branch: ws.branch, goAhead: ws.buildGoAhead, userAt: this.userSaidIn(chatId)?.at ?? 0, planAts: this.threadPlans(ws.projectId, chat).map((a) => a.createdAt) })
   }
 
   /** Saves the go-ahead for this chat's branch, with the time of the message it came from (KERNEL-992). */
@@ -871,7 +877,7 @@ export class Lead extends Feature {
       mergeWorkspace: (id) => this.k.prs.mergePr(id),
       leadMerge: () => this.settings.pr.leadMerge,
       overrule: (id, note) => this.k.reviews.overrule(id, { by: 'lead', note }),
-      userTurn: () => !this.sessions.kernelTurn(chat.id),
+      userTurn: () => this.userTurnIn(chat.id),
       // The user's own latest message in this tab, not Kernel's, which a go_ahead quote has to come from (KERNEL-678).
       userSaid: () => this.userSaidIn(chat.id),
       buildOpen: () => this.buildOpen(chat.id),
