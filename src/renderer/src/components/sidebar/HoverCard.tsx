@@ -6,6 +6,7 @@ import { Icon } from '../../icons'
 import { Button, Spinner } from '../../ui'
 import { useStore } from '../../store'
 import { leadOf, useLeadWaiting } from '../../lead'
+import { useLocalMerge } from '../../screens/workspace/pr/useLocalMerge'
 import { agoShort } from '../../screens/projects/projectInfo'
 import { chatLine, chatSince } from './chatCard'
 import { chatWaits } from './chatWaits'
@@ -206,14 +207,16 @@ export function LeadCard({ projectId, at, id, hold }: { projectId: string; at: D
  * A chat row's card: the project with the diff totals of the workspaces the chat started, the chat's title, and what waits on you, from the
  * pending approval of the tab or workspace that has waited longest. With nothing waiting it says so. Archive shows where the row has it.
  */
-export function ChatCard({ projectId, thread, tabs, owned, at, id, hold, onArchive }: { projectId: string; thread: Thread; tabs: Chat[]; owned: Workspace[]; at: DOMRect; id: string; hold: CardHold; onArchive?: () => void }) {
+export function ChatCard({ projectId, thread, ws, tabs, owned, at, id, hold, onArchive }: { projectId: string; thread: Thread; ws?: Workspace; tabs: Chat[]; owned: Workspace[]; at: DOMRect; id: string; hold: CardHold; onArchive?: () => void }) {
   const project = useStore((s) => s.projects.find((r) => r.id === projectId)?.name)
   const agents = useStore((s) => s.agents[projectId])
   const approvals = useStore((s) => s.approvals)
   const working = useStore((s) => tabs.filter((c) => s.running[c.id]).length)
   const lastItem = useStore((s) => tabs.reduce((t, c) => (s.items[c.id] ?? []).reduce((m, i) => Math.max(m, i.ts), t), 0))
   const waits = useMemo(() => chatWaits({ tabs, owned, approvals }), [tabs, owned, approvals])
-  const g = chatGlyph({ waiting: waits.map((w) => w.approval), running: working > 0 })
+  const local = useLocalMerge(ws)
+  const pending = useStore((s) => (ws ? s.prPending[ws.id] : undefined))
+  const g = chatGlyph({ ws, waiting: waits.map((w) => w.approval), running: working > 0, local, pending })
   const stat = sum(owned)
   return (
     <HoverCard at={at} id={id} hold={hold} label={thread.title}>

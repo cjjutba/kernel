@@ -11,8 +11,10 @@ export interface LocalMergeState { stand: LocalStand; base: string; info?: PrInf
  * The workspace's local merge, or nothing when its project merges through GitHub (KERNEL-478). Every place a local merge shows reads this
  * one state, so the band, the merge line, the sidebar icon and the chat row can't disagree.
  */
-export function useLocalMerge(ws: Pick<Workspace, 'projectId' | 'id' | 'prState' | 'baseRef'>): LocalMergeState | undefined {
-  const local = useStore((s) => s.projects.find((r) => r.id === ws.projectId)?.host === 'local')
-  const info = useStore((s) => s.prs[ws.id])
-  return useMemo(() => (local ? { stand: localStand(ws.prState, info), base: info?.baseRef || stripRemote(ws.baseRef, 'origin'), info } : undefined), [local, ws.prState, ws.baseRef, info])
+export function useLocalMerge(ws: Pick<Workspace, 'projectId' | 'id' | 'prState' | 'baseRef'> | undefined): LocalMergeState | undefined {
+  const local = useStore((s) => !!ws && s.projects.find((r) => r.id === ws.projectId)?.host === 'local')
+  const info = useStore((s) => (ws ? s.prs[ws.id] : undefined))
+  const prState = ws?.prState
+  const baseRef = ws?.baseRef
+  return useMemo(() => (local && prState ? { stand: localStand(prState, info), base: info?.baseRef || stripRemote(baseRef ?? '', 'origin'), info } : undefined), [local, prState, baseRef, info])
 }

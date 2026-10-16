@@ -2,7 +2,7 @@ import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { PrInfo, PrPending, PrState, Workspace } from '../src/shared/types'
-import { workspaceGlyph } from '../src/renderer/src/components/sidebar/workspaceGlyph'
+import { chatGlyph, workspaceGlyph } from '../src/renderer/src/components/sidebar/workspaceGlyph'
 import { PR_STATUS, busyLabel, headerView, localNote, localRow, localStand, localStatus, type PrAction } from '../src/renderer/src/screens/workspace/pr/model'
 import { leadPrs } from '../src/renderer/src/screens/workspace/pr/leadPrList'
 import { MergeSlot, PrStatusTag, mergeView } from '../src/renderer/src/screens/workspace/pr/MergeButton'
@@ -158,5 +158,49 @@ describe('a branch that merges on the Mac', () => {
     expect(localNote('behind', 'main', local({ behind: 1 }))?.title).toBe('main has 1 new commit')
     expect(localNote('conflict', 'main', local({}, ['src/a.ts']), 'Noor')).toMatchObject({ title: 'Merging into main would conflict in 1 file', body: ['Resolve conflicts asks Noor to fix them on this branch.'], files: [{ letter: 'C', path: 'src/a.ts', why: 'both changed' }] })
     expect(localNote('dirty', 'main', local(dirty))?.files).toEqual([{ letter: 'M', path: 'package.json' }, { letter: 'U', path: 'notes.md' }])
+  })
+})
+
+describe('a Lead chat row shows its own pull request (KERNEL-993)', () => {
+  const none: Workspace = { ...ws('none'), prNumber: undefined }
+  const idle = { waiting: [], running: false }
+  const chat = { icon: 'chat', tone: 'muted', label: '' }
+
+  it('keeps the chat icon without a PR, whatever the workspace holds', () => {
+    expect(chatGlyph({ ...idle, ws: none })).toEqual(chat)
+    expect(chatGlyph({ ...idle, ws: { ...none, stat: { files: 2, added: 3, removed: 1 } } as Workspace })).toEqual(chat)
+    expect(chatGlyph({ ...idle })).toEqual(chat)
+  })
+
+  it.each(states)('%s reads on the chat row as on a workspace row', (state) => {
+    expect(chatGlyph({ ...idle, ws: ws(state) })).toEqual(workspaceGlyph(ws(state), idle))
+  })
+
+  it('shows a PR being created, though it has no number yet', () => {
+    expect(chatGlyph({ ...idle, ws: { ...none, prState: 'creating' } })).toMatchObject({ icon: 'spin', label: PR_STATUS.creating.label })
+  })
+
+  it('lets what waits, setup and a running turn win over the PR', () => {
+    expect(chatGlyph({ ...idle, running: true, ws: ws('ready') })).toEqual({ icon: 'spin', tone: 'muted', label: 'Working' })
+    expect(chatGlyph({ ...idle, ws: { ...ws('ready'), status: 'setup' } })).toMatchObject({ label: 'Setting up' })
+    expect(chatGlyph({ ...idle, ws: { ...ws('ready'), folderGone: true } })).toMatchObject({ label: 'Folder missing' })
+  })
+
+  it('spins a pending action, but not once merged', () => {
+    expect(chatGlyph({ ...idle, ws: ws('ready'), pending: 'merge' })).toEqual({ icon: 'spin', tone: 'muted', label: 'Merging' })
+    expect(chatGlyph({ ...idle, ws: ws('merged'), pending: 'merge' })).toMatchObject({ icon: 'merged' })
+    expect(chatGlyph({ ...idle, ws: none, pending: 'merge' })).toEqual({ icon: 'spin', tone: 'muted', label: 'Merging' })
+  })
+
+  it('shows a local merge with the branch icon, and keeps the bubble for a fresh chat', () => {
+    const local = { stand: 'ready' as const, base: 'main' }
+    const changed = { ...none, stat: { files: 1, added: 1, removed: 0 } } as Workspace
+    expect(chatGlyph({ ...idle, ws: changed, local })).toMatchObject({ icon: 'branch' })
+    expect(chatGlyph({ ...idle, ws: none, local: { stand: 'none', base: 'main' } })).toEqual(chat)
+  })
+
+  it('leaves workspace rows as they were', () => {
+    expect(workspaceGlyph(none, idle)).toEqual({ icon: 'branch', tone: 'muted', label: 'No changes yet' })
+    expect(workspaceGlyph({ ...none, stat: { files: 1, added: 1, removed: 0 } } as Workspace, idle)).toEqual({ icon: 'branch', tone: 'muted', label: 'No PR yet' })
   })
 })

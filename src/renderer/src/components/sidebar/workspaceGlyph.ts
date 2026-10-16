@@ -62,6 +62,14 @@ export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running:
   if (ws.status === 'failed') return { icon: 'warning', tone: 'del', label: 'Setup failed' }
   if (ws.status === 'setup') return spin('Setting up')
   if (o.running) return spin('Working')
+  return prGlyph(ws, { local: o.local, pending: o.pending }) ?? { icon: 'branch', tone: 'muted', label: ws.stat?.files ? 'No PR yet' : 'No changes yet' }
+}
+
+/**
+ * The part of a row's icon that comes from the pull request: an action in flight, a branch merging on the Mac, then the PR's own state. It is
+ * shared by a workspace row and a chat row (KERNEL-993). Undefined means there is no PR yet, so each row keeps its own icon for that.
+ */
+function prGlyph(ws: Workspace, o: { local?: { stand: LocalStand; base: string }; pending?: PrAction }): WorkspaceGlyph | undefined {
   // A merged PR is done, though its pending clears a moment later.
   if (o.pending && ws.prState !== 'merged') return spin(busyLabel[o.pending])
   // A branch on the Mac takes the branch glyph in the band's tone, never the PR's. What runs and a merged branch read as a PR does (KERNEL-478).
@@ -84,7 +92,7 @@ export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running:
     case 'draft': return { icon: 'prDraft', tone: 'muted', label: PR_STATUS.draft.label }
     case 'merged': return { icon: 'merged', tone: 'merged', label: 'Merged' }
     case 'closed': return { icon: 'prClosed', tone: 'muted', label: 'PR closed' }
-    case 'none': return { icon: 'branch', tone: 'muted', label: ws.stat?.files ? 'No PR yet' : 'No changes yet' }
+    case 'none': return undefined
   }
 }
 
@@ -111,12 +119,20 @@ export function leadGlyph(status: AgentStatus, waiting: Approval[]): WorkspaceGl
  * The icon in front of a chat's tab: what waits on the user first (a plan to review, or something that needs you), then a running turn, then the plain chat icon.
  * It reads the same signals as `workspaceGlyph`, per chat instead of per workspace, so a tab and its sidebar row agree.
  */
-export function chatGlyph(o: { ws?: Workspace; waiting: Approval[]; running: boolean }): WorkspaceGlyph {
+export function chatGlyph(o: { ws?: Workspace; waiting: Approval[]; running: boolean; local?: { stand: LocalStand; base: string }; pending?: PrAction }): WorkspaceGlyph {
   if (o.waiting.length) return waitingGlyph(o.waiting)
   // The chat's own workspace sets up like a teammate's, and its row says so with the same icons (KERNEL-405).
   if (o.ws?.folderGone) return FOLDER_GONE
   if (o.ws?.status === 'failed') return { icon: 'warning', tone: 'del', label: 'Setup failed' }
   if (o.ws?.status === 'setup') return spin('Setting up')
   if (o.running) return spin('Working')
+  // A chat shows its own pull request once it has one. No PR is the chat icon, never the branch (KERNEL-993).
+  const ws = o.ws
+  if (ws) {
+    const hasPr = !!ws.prNumber || ws.prState === 'creating'
+    const local = o.local && (o.local.stand !== 'none' || !!ws.stat?.files) ? o.local : undefined
+    const g = prGlyph(ws, { local, pending: o.pending })
+    if (g && (hasPr || (o.pending && ws.prState !== 'merged') || (local && g.icon === 'branch'))) return g
+  }
   return { icon: 'chat', tone: 'muted', label: '' }
 }
