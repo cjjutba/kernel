@@ -9,6 +9,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
+import { BUILD_CLOSED } from '../src/main/services/permissions'
 import { forProvider, HANDOFF_NOW, HANDOFF_REMINDER, kernelTool, LEAD_BUILD_RULE, LEAD_RULE, planChanges, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/services/sessions'
 import { mentionNote } from '../src/main/services/mentions'
@@ -40,7 +41,7 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
 const kernel: AgentDef = { ...noor, id: 'kernel', name: 'Kernel', role: 'Lead', lead: true, prompt: 'You are Kernel.' }
 
-async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; references?: string[]; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string }; team?: AgentDef[] } = {}) {
+async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; references?: string[]; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string }; team?: AgentDef[]; buildOpen?: () => boolean } = {}) {
   const fake = await fakeCodex()
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
   const repo = await tempRepo()
@@ -63,7 +64,8 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
     ...(o.account ? { accountFor: () => o.account?.id(), moveNote: (c: Chat, from: string) => `Moved from ${from} to ${c.ranOn}`, emailOf: (_p: string, id?: string) => (id ? `${id}@example.com` : undefined) } : {}),
     disabledFor: () => ({ skills: [], mcp: o.off ?? [] }), aliasesFor: () => o.aliases, accessFor: () => o.access, onMcp: o.onMcp,
     // What a Lead chat owes, on the same store (KERNEL-749).
-    openItems
+    openItems,
+    ...(o.buildOpen ? { buildOpen: o.buildOpen } : {})
   })
   const items = () => store.items(chat.id)
   const of = <K extends ChatItem['kind']>(kind: K) => items().filter((i): i is Extract<ChatItem, { kind: K }> => i.kind === kind)
@@ -1083,6 +1085,20 @@ describe('a chat with Kernel in Hand off or Build here, on Codex (KERNEL-770)', 
     expect(instructions).toContain(forProvider(LEAD_BUILD_RULE, 'codex'))
     expect(instructions).toContain('kernel_suggest_hand_off')
     expect(instructions).not.toContain('mcp__kernel__')
+  })
+
+  it('Build here declines a file change until the go-ahead, shared files excepted, whatever the mode says (KERNEL-992)', async () => {
+    let open = false
+    const t = track(await setup({ agent: kernel, ws: leadWs('build'), mode: 'bypassPermissions', buildOpen: () => open }))
+    await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
+    await t.idle()
+    await t.sessions.send('chat', [{ type: 'text', text: change(join(t.repo, '.kernel/shared/mock.html')) }])
+    await t.idle()
+    open = true
+    await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
+    await t.idle()
+    expect(await t.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'accept' }, { decision: 'accept' }])
+    expect(t.of('note').map((n) => n.text)).toEqual([BUILD_CLOSED])
   })
 
   it('Build here builds an approved plan itself: no hand-off note and no reminder', async () => {

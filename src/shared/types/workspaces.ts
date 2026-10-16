@@ -62,6 +62,11 @@ export interface Workspace {
    * was before. Set from the app's and project's default when the chat starts, then only by `lead.setMode`.
    */
   leadMode?: LeadMode
+  /**
+   * On a Build here chat's workspace: the user's go-ahead to change files, quoted from their message sent at `at`, on `branch`
+   * (KERNEL-992). Saved so a restart mid-build doesn't lock Kernel out. A mode switch clears it.
+   */
+  buildGoAhead?: { quote: string; at: number; branch: string }
   port: number
   status: WorkspaceStatus
   /** For current-branch workspaces: the commit that captures pre-existing changes. */

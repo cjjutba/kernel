@@ -13,6 +13,13 @@ import { removeTree } from './removeTree'
 /** Where agents save files to share. It goes in `info/exclude` like `.kernel/plans/`, so a shared file never lands in a PR. */
 export const SHARED_DIR = '.kernel/shared'
 
+
+/** Whether `path`, as Codex names a changed file, is under the workspace's `.kernel/shared`, where share_file's files go (KERNEL-770). */
+export function sharesFile(workspace: string, path: string): boolean {
+  const rel = relative(resolve(workspace, SHARED_DIR), resolve(workspace, path))
+  return !!rel && !rel.startsWith('..') && !isAbsolute(rel) && !rel.split(sep).includes('..')
+}
+
 const MB = 1024 * 1024
 /** The most versions one file keeps. */
 export const MAX_VERSIONS = 100

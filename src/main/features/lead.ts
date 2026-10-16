@@ -19,7 +19,7 @@ import { cleanupSwitch, loadRepoSettings } from '../services/settings'
 import { gitStatus } from '../services/archive'
 import { firstLine } from '../services/text'
 import { isNudge } from '../services/sessions'
-import { kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
+import { buildOpen, kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
 import { briefParts } from '../services/issueMcp'
 import type { From } from '../services/leadUpdates'
 import { branchType, fastForward, fetchOrigin, folderGone, freeBranch, freeWorktreePath, leadBase, leadBranch, moveWorktree, renameBranch, projectWorktreeRoot, slugify, taskBranch, worktreeFolder } from '../services/worktrees'
@@ -146,7 +146,7 @@ export class Lead extends Feature {
     if (ws.status === 'archived') throw new Error('This chat is archived. Restore it from History first.')
     const was = leadModeOf(ws)
     if (was === mode) return ws
-    const next = this.updateWs(ws.id, { leadMode: mode })
+    const next = this.updateWs(ws.id, { leadMode: mode, buildGoAhead: undefined })
     for (const c of this.chatTabs(ws.id)) {
       if (c.kind === 'terminal') continue
       // The first switch during the turn keeps the mode the turn runs in.
@@ -694,6 +694,30 @@ export class Lead extends Feature {
   /** The Lead chat a tab is in, for the "From" line: its thread's title, or the tab's when it has none. */
   private chatTitleOf(chat: Chat) { return (chat.threadId && this.store.thread(chat.threadId)?.title) || chat.title }
 
+  /** The user's own latest message in a tab, not Kernel's, and when they sent it (KERNEL-678). */
+  private userSaidIn(chatId: string): { text: string; at: number } | undefined {
+    const last = this.store.items(chatId).reverse().find((i): i is ChatItem & { kind: 'user' } => isSentItem(i) && !i.from)
+    return last && { text: last.parts.map((p) => (p.type === 'text' ? p.text : '')).join('\n'), at: last.ts }
+  }
+
+  /**
+   * Whether a Build here chat may change files now (KERNEL-992), read from the saved go-ahead, the plans approved in the chat
+   * and who started the turn, at each call, so a switch or a go-ahead mid-reply counts at once.
+   */
+  buildOpen(chatId: string): boolean {
+    const chat = this.store.chat(chatId)
+    const ws = chat && this.store.workspace(chat.workspaceId)
+    if (!chat || !ws) return false
+    return buildOpen({ planMode: !!chat.plan, userTurn: !this.sessions.kernelTurn(chatId), branch: ws.branch, goAhead: ws.buildGoAhead, userAt: this.userSaidIn(chatId)?.at ?? 0, planAts: this.threadPlans(ws.projectId, chat).map((a) => a.createdAt) })
+  }
+
+  /** Saves the go-ahead for this chat's branch, with the time of the message it came from (KERNEL-992). */
+  recordGoAhead(chatId: string, quote: string) {
+    const chat = this.store.chat(chatId)
+    const ws = chat && this.store.workspace(chat.workspaceId)
+    if (ws) this.updateWs(ws.id, { buildGoAhead: { quote, at: this.userSaidIn(chatId)?.at ?? Date.now(), branch: ws.branch } })
+  }
+
   /** Plans approved in any tab of `chat`'s Lead chat, newest first (KERNEL-337). */
   private threadPlans(projectId: string, chat: Chat): Approval[] {
     const tabs = this.threadTabIds(chat)
@@ -818,10 +842,9 @@ export class Lead extends Feature {
       overrule: (id, note) => this.k.reviews.overrule(id, { by: 'lead', note }),
       userTurn: () => !this.sessions.kernelTurn(chat.id),
       // The user's own latest message in this tab, not Kernel's, which a go_ahead quote has to come from (KERNEL-678).
-      userSaid: () => {
-        const last = this.store.items(chat.id).reverse().find((i): i is ChatItem & { kind: 'user' } => isSentItem(i) && !i.from)
-        return last && { text: last.parts.map((p) => (p.type === 'text' ? p.text : '')).join('\n'), at: last.ts }
-      },
+      userSaid: () => this.userSaidIn(chat.id),
+      buildOpen: () => this.buildOpen(chat.id),
+      recordGoAhead: (quote) => this.recordGoAhead(chat.id, quote),
       setWait: (id, on) => this.k.waits.setWait(id, on),
       refreshPr: (id) => this.k.refreshPr(id, { settle: true }),
       isRunning: (id) => this.k.archive.working(id),

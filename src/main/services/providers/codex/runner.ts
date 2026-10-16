@@ -9,10 +9,11 @@ import { describeTool } from '../../approvals'
 import { planChanges } from '../../handoff'
 import { exec } from '../../exec'
 import { fileMarker, filesNote, IMAGE_DATA_URL, imageMarker, imagesNote, isAttached } from '../../attachments'
-import { ALWAYS_ASK, decide, referenceWrite, REFERENCE_READ_ONLY, rulesOf, saveAlwaysAllow, type Rules, type RunMode, type Step } from '../../permissions'
+import { ALWAYS_ASK, BUILD_CLOSED, decide, referenceWrite, REFERENCE_READ_ONLY, rulesOf, saveAlwaysAllow, type Rules, type RunMode, type Step } from '../../permissions'
 import { handoffRefusal, toolPolicy } from '../../agentTools'
 import { codexStatus } from '../../mcp'
-import { SHARED_DIR } from '../../sharedFiles'
+import { sharesFile } from '../../sharedFiles'
+export { sharesFile }
 import type { LimitPatch } from '../limits'
 import type { Proc, Runner, RunnerHost } from '../types'
 import { appServerArgs, codexEnv, KERNEL_VERSION, loginWithKey } from './client'
@@ -638,6 +639,8 @@ export class CodexRunner implements Runner {
     // Hand off edits nothing but the files it shares under .kernel/shared, whatever the file and the mode say (KERNEL-770).
     // The note says why, and that a switch to Build here during the turn applies from the next message.
     if (this.handoff && !(change?.changes.length && change.changes.every((c) => sharesFile(this.host.workspace.path, c.path)))) return this.declined(handoffRefusal(this.host.leadMode()))
+    // Build here edits only after a go-ahead, whatever the mode says (KERNEL-992).
+    if (this.host.agent?.lead && this.host.buildOpen && this.host.leadMode() === 'build' && !this.host.buildOpen() && !(change?.changes.length && change.changes.every((c) => sharesFile(this.host.workspace.path, c.path)))) return this.declined(BUILD_CLOSED)
     if (decide({ tool: name, sandbox: p.grantRoot ? 'outside' : 'inside' }, this.rules())?.behavior === 'allow') return { decision: 'accept' }
     const d = describeTool(name, { file_path: path })
     const result = await this.host.ask({ kind: 'tool', toolName: name, input: { file_path: path }, title: d.title, detail: p.reason ?? undefined }, { signal })
@@ -675,12 +678,6 @@ export class CodexRunner implements Runner {
     }
     return { answers }
   }
-}
-
-/** Whether `path`, as Codex names a changed file, is under the workspace's `.kernel/shared`, where share_file's files go (KERNEL-770). */
-export function sharesFile(workspace: string, path: string): boolean {
-  const rel = relative(resolve(workspace, SHARED_DIR), resolve(workspace, path))
-  return !!rel && !rel.startsWith('..') && !isAbsolute(rel) && !rel.split(sep).includes('..')
 }
 
 /** The thread's developer instructions, with the project's reference folders named, so the agent knows it may read them (KERNEL-790). */

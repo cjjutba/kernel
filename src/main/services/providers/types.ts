@@ -63,6 +63,8 @@ export interface RunnerHost {
   mode(): RunMode
   /** A chat with Kernel's Hand off or Build here now, read at the call, which a switch during a turn changes before the process restarts (KERNEL-770). */
   leadMode(): LeadMode | undefined
+  /** Whether a Build here chat has the user's go-ahead to change files now, read at each call (KERNEL-992). Left out, it is always open. */
+  buildOpen?(): boolean
   /** Bash rules the user allowed for the project, and saving one ("Always allow in this project"). */
   projectAllow(): string[]
   allowInProject(rule: string): void

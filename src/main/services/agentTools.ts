@@ -129,7 +129,7 @@ export const HANDOFF_SWITCHED = "This reply started while the chat was in Hand o
 export const handoffRefusal = (now?: LeadMode): string => (now === 'build' ? HANDOFF_SWITCHED : HANDOFF_NO_EDIT)
 
 /** A `.md` file right in Claude Code's plans folder, where plan mode writes its plan. */
-const isPlanFile = (path: unknown, plans: string) => typeof path === 'string' && path.endsWith('.md') && dirname(resolve(path)) === plans && !!basename(path)
+export const isPlanFile = (path: unknown, plans: string) => typeof path === 'string' && path.endsWith('.md') && dirname(resolve(path)) === plans && !!basename(path)
 
 /**
  * The project's `[mcp.aliases]` as tool names: each name agent files use, and the server's name as its tools carry it. An
