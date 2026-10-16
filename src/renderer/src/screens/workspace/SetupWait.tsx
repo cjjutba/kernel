@@ -33,6 +33,7 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
             <div className="bubble">
               {q.parts.map((p, j) => (p.type === 'text' ? <span key={j}>{p.text} </span> : <PartChip key={j} part={p} />))}
             </div>
+            {!making && (
             <div className="queued-meta">
               {i === queue.length - 1 && !making && <span>{failed ? 'Waiting for setup' : 'Sends when setup finishes'}</span>}
               {i === queue.length - 1 && running && <Button size="sm" variant="ghost" busy={busy === 'now'} busyPattern="arrow-right" busyLabel="Sending" onClick={() => void now()}>Send now</Button>}
@@ -41,6 +42,7 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
                 <button type="button" className="link-btn" onClick={() => unqueue(q)}>Cancel</button>
               </span>
             </div>
+            )}
           </div>
         ))}
       </div>
