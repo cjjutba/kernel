@@ -182,9 +182,10 @@ function checkRm(words, cwd) {
   }
 }
 
-// Split on control operators and walk the pieces in order, following cd.
+// Split on control operators and walk the pieces in order, following cd. A
+// lone & (background) splits too, but not the & in a redirect (2>&1, &>).
 let cwd = cwd0
-for (const piece of command.split(/&&|\|\||[;|\n]/)) {
+for (const piece of command.split(/&&|\|\||(?<![<>])&(?!>)|[;|\n]/)) {
   let words = piece.trim().split(/\s+/).filter(Boolean).map((w) => w.replace(/^['"]|['"]$/g, ''))
   while (words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]) || ['env', 'command', 'sudo', 'exec'].includes(words[0]))) {
     words = words.slice(1)
