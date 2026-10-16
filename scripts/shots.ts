@@ -64,6 +64,18 @@ async function scrollUp(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// ChatNewMessages: the chat is read from higher up while two replies, a teammate's message and some steps arrive. Only the three messages are counted (KERNEL-922).
+async function scrollUpAndReceive(page: Page, app: ElectronApplication) {
+  await scrollUp(page)
+  const push = (item: object) => app.evaluate(({ BrowserWindow }, i) => BrowserWindow.getAllWindows()[0]?.webContents.send('kernel:event', { type: 'chat.item', chatId: 'chat-invoice-table', item: i }), item)
+  await push({ kind: 'tool', id: 'nm-t1', ts: Date.now(), toolUseId: 'toolu_nm1', name: 'Bash', label: 'Ran tests', detail: 'pnpm test', status: 'done', durationMs: 100 })
+  await push({ kind: 'text', id: 'nm-r1', ts: Date.now(), text: 'The export is wired to the table menu.' })
+  await push({ kind: 'tool', id: 'nm-t2', ts: Date.now(), toolUseId: 'toolu_nm2', name: 'Bash', label: 'Ran lint', detail: 'pnpm lint', status: 'done', durationMs: 100 })
+  await push({ kind: 'text', id: 'nm-r2', ts: Date.now(), text: 'Tests pass for the CSV rows.' })
+  await push({ kind: 'text', id: 'nm-r3', ts: Date.now(), text: 'One more thing: the header row is included.' })
+  await page.waitForTimeout(500)
+}
+
 // WorkspaceJustSent: a send arrives while the chat is open, and the view stays at its end (KERNEL-891).
 async function sendMessage(page: Page, app: ElectronApplication) {
   await page.waitForTimeout(300)
@@ -688,6 +700,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceChatSwitchWorkingMotion: async (page) => { await page.getByRole('tab', { name: 'Snapshot tests' }).click(); await page.waitForTimeout(500); await page.getByRole('tab', { name: 'Empty state copy' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(500) },
   WorkspaceChatSwitchSavedSpotMotion: async (page) => { await scrollUp(page); await page.getByRole('tab', { name: 'Empty state copy' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(500) },
   ChatRestoredSpot: scrollUp,
+  ChatNewMessages: scrollUpAndReceive,
   SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSaved: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSavedLight: (page) => leaveSizeLimit(page, '600'),

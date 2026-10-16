@@ -2187,6 +2187,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     sharedData: sharedStills,
     ui: open
   })),
+  /** The Scroll to bottom button with a count (KERNEL-922): a long chat read from higher up while three messages and some steps arrive. scripts/shots.ts scrolls up and pushes them. */
+  ChatNewMessages: scene(() => ({ items: { [ids.tableChat]: longChat }, ui: open })),
   // KERNEL-599: the chat rail. A teammate's chat read from its 14th message with the right panel hidden, the same with the list open, Kernel's chat with Team updates listed, and the chat at its
   // end with the right panel open, where the rail takes the side padding. The scroll and the hover are local to the transcript and the rail, so scripts/shots.ts does them.
   ChatRail: railScene(),
