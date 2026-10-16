@@ -1,5 +1,6 @@
-import type { AgentDef, ChatPart, GithubIssue, GithubIssueDetail, LinearFilter, LinearIssue, LinearScope, LinearStateType, PrInfo, Workspace } from '@shared/types'
+import type { AgentDef, ChatPart, GithubIssue, GithubIssueDetail, LinearFilter, LinearIssue, LinearScope, LinearStateType, PrInfo, ProjectTracker, Workspace } from '@shared/types'
 import type { IssueStateShape } from '../../icons'
+import type { IssueTracker } from './parts'
 
 /**
  * The groups, top to bottom. Triage comes first as Linear shows it: those issues wait on a decision (IssuesWorking.png). The list holds
@@ -258,4 +259,18 @@ export function githubPlanParts(issue: GithubIssueDetail): ChatPart[] {
     { type: 'issue', name: issue.id, title: issue.title, url: issue.url, source: 'github' },
     { type: 'text', text: `${description}\n\nWhen you hand it off, pass ${issue.id} as issue to create_workspace.` }
   ]
+}
+
+const isAvailable = (a: ProjectTracker['available'], t: IssueTracker) => (t === 'linear' ? a.linear : !!a.github)
+
+/**
+ * The tracker the page lists (KERNEL-938). An open issue names its own: `#41` is GitHub's, any other key is Linear's, so a link never lands
+ * in the wrong list. Without one, the route's `tracker`, then the project's saved choice. Whatever is unavailable falls back to the project's
+ * own (`kind`) for this load. A saved choice that fell back stays saved, so it applies again once it is available.
+ */
+export function activeTracker(t: ProjectTracker, pick: { issueId?: string; route?: IssueTracker; saved: IssueTracker | '' }): IssueTracker {
+  const own: IssueTracker = t.kind === 'github' ? 'github' : 'linear'
+  const named: IssueTracker | undefined = pick.issueId ? (pick.issueId.startsWith('#') ? 'github' : 'linear') : pick.route
+  for (const c of pick.issueId ? [named] : [named, pick.saved]) if (c && isAvailable(t.available, c)) return c
+  return own
 }

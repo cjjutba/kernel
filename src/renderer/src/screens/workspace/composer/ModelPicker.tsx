@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { EFFORT_LABELS, EFFORTS, type Effort, type Provider } from '@shared/types'
 import { actions } from '../../../store'
-import { Icon, ProviderMark } from '../../../ui'
+import { arrowRow, Icon, ProviderMark } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, useEffortMemory } from './modelPrefs'
@@ -112,14 +112,14 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
       return
     }
     if (sub) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setSubAt((i) => Math.min(efforts.length - 1, i + 1)) }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); setSubAt((i) => Math.max(0, i - 1)) }
+      const to = arrowRow(e, subAt, efforts.length)
+      if (to !== null) { e.preventDefault(); setSubAt(to) }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); setSub(false) }
       else if (e.key === 'Enter') { e.preventDefault(); pickEffort(efforts[subAt]) }
       return
     }
-    if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => Math.min(effortRow, i + 1)) }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setAt((i) => Math.max(0, i - 1)) }
+    const to = arrowRow(e, at, effortRow + 1)
+    if (to !== null) { e.preventDefault(); setAt(to) }
     else if (e.key === 'ArrowRight' && at === effortRow) { e.preventDefault(); openSub() }
     else if (e.key === 'Enter') { e.preventDefault(); if (at === effortRow) openSub(); else press(items[at]) }
   }

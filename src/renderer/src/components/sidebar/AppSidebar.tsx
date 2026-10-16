@@ -464,7 +464,7 @@ export function AppSidebar() {
       </div>
       <div className="sb-rule" role="separator" />
       <div ref={projectsAnchor} className="section-label hv sb-projects-label">
-        <span>Your projects</span>
+        <span>My projects</span>
         <button className="icon-btn more" style={{ width: 24, height: 24, opacity: projectsMenu ? 1 : undefined }} aria-label="Projects menu" aria-haspopup="menu" aria-expanded={projectsMenu} onClick={() => actions.ui.toggleMenu('projects')}><Icon name="more" size={14} /></button>
         {projectsMenu && <ProjectsMenu anchorRef={projectsAnchor} />}
       </div>

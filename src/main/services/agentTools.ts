@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { TOOL_KINDS } from '@shared/telemetry'
-import type { AgentReach, AgentWarning, LeadMode, McpStatus } from '@shared/types'
+import type { AgentReach, AgentWarning, LeadMode, McpAccountServer, McpStatus } from '@shared/types'
 import { toolServerName } from './mcp'
 
 // What an agent file's `tools:` line lets the agent do (KERNEL-397).
@@ -213,6 +213,30 @@ export function mcpWarnings(tools: string[] | undefined, servers: KnownServer[],
     return o.complete ? [{ kind: 'mcp-missing', detail: m.server, ...(m.suggestion ? { suggestion: m.suggestion } : {}) }] : []
   })
 }
+
+/**
+ * The servers an agent's tools line names that an account can't give it yet, as `mcp.accounts` has them (KERNEL-939): one
+ * that needs a sign-in there, or that Kernel is still checking. A server is matched by its name or its tools', and through
+ * the project's `[mcp.aliases]`. One that is ready under either name counts as there, and one the account doesn't list says
+ * nothing, since the project's warnings cover it.
+ */
+export function accountSignIns(tools: string[] | undefined, servers: McpAccountServer[], aliases?: Record<string, string>): AccountSignIn[] {
+  const known = new Map(servers.map((s) => [toolServerName(s.name), s]))
+  const alias = aliasMap(aliases)
+  const out = new Map<string, AccountSignIn>()
+  for (const entry of tools ?? []) {
+    const server = mcpEntry(toolName(entry))?.server
+    if (!server || server === '*' || server === 'kernel') continue
+    const there = [server, alias.get(server)].flatMap((n) => (n && known.get(n)) || [])
+    if (there.some((s) => s.state === 'ready')) continue
+    const waiting = there.find((s) => s.state === 'needs-sign-in' || s.state === 'checking')
+    if (waiting && !out.has(waiting.name)) out.set(waiting.name, { name: waiting.name, state: waiting.state as AccountSignIn['state'] })
+  }
+  return [...out.values()]
+}
+
+/** A server an account can't give an agent yet (`accountSignIns`). */
+export interface AccountSignIn { name: string; state: 'needs-sign-in' | 'checking' }
 
 /**
  * The MCP servers an agent's tools line and disallowedTools reach in the project, and the ones the line names that it can't

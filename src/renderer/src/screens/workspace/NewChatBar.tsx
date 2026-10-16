@@ -46,7 +46,7 @@ export function NewChatTab() {
   })
   return (
     <div className="ws-tabs">
-      <div role="tablist" aria-label="Chats and files" className="row" style={{ gap: 2, alignItems: 'flex-end', minWidth: 0 }}>
+      <div role="tablist" aria-label="Chats and files" className="row gap-2" style={{ alignItems: 'flex-end', minWidth: 0 }}>
         <span className="tab-group" data-on data-rest>
           <button type="button" role="tab" aria-selected id="ws-tab-new-chat" className="ws-tab">
             <span className="tab-glyph" aria-hidden="true"><Icon name="chat" size={14} /></span>

@@ -1,10 +1,10 @@
 /* Pull requests page. Tokens only. */
 .prs-bar { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid var(--line); }
-.prs-bar .pill { gap: 6px; font-size: 13px; }
-.prs-n { font-size: 12px; color: var(--muted); font-weight: 400; }
+.prs-bar .pill { gap: 6px; font-size: var(--fs-ui); }
+.prs-n { font-size: var(--fs-meta); color: var(--muted); font-weight: var(--fw-regular); }
 .prs-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; }
 .prs-list { margin: 0; padding: 0; list-style: none; }
-.prs-group { position: sticky; top: -6px; z-index: 2; margin: 4px 0 0; padding: 0; font-size: 12px; font-weight: 500; color: var(--ink-2); background: var(--panel); }
+.prs-group { position: sticky; top: -6px; z-index: 2; margin: 4px 0 0; padding: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-2); background: var(--panel); }
 .prs-fold { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: inherit; font: inherit; text-align: left; }
 .prs-fold:hover { background: var(--nav-hover); }
 .prs-chev { display: inline-flex; color: var(--muted); transition: transform var(--dur-fast) var(--ease-out); }
@@ -15,17 +15,17 @@
 .prs-list .prs-row:hover { background: var(--nav-hover); }
 .prs-list .prs-row:has(.prs-main:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
 .prs-main:focus-visible { outline: none; }
-.prs-head { min-height: 28px; font-size: 12px; color: var(--muted); }
+.prs-head { min-height: 28px; font-size: var(--fs-meta); color: var(--muted); }
 .prs-main { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
 /* The whole row opens the workspace; Merge sits above this layer. */
 .prs-main::after { content: ''; position: absolute; inset: 0; border-radius: var(--r-sm); }
 .prs-main:focus-visible { outline: none; }
 .prs-main:focus-visible::after { outline: 2px solid var(--ink-3); outline-offset: -2px; }
 .prs-main > svg { flex-shrink: 0; color: var(--muted); }
-.prs-title { font-size: 13px; font-weight: 500; color: var(--ink); }
-.prs-sub { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 2px; font-size: 12px; color: var(--muted); white-space: nowrap; }
-.prs-sub .mono { font-size: 11.5px; }
-.prs-cell { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prs-title { font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
+.prs-sub { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 2px; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
+.prs-sub .mono { font-size: var(--fs-chip); }
+.prs-cell { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-code); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .prs-cell[data-tone='bad'] { color: var(--del); }
 .prs-cell[data-tone='faint'] { color: var(--muted); }
 .prs-act { position: relative; z-index: 1; display: flex; justify-content: flex-end; }
@@ -33,7 +33,7 @@
 .prs-merged { grid-template-columns: minmax(0, 1fr) 130px 100px; }
 .prs-merged-icon { display: inline-flex; color: var(--merged); }
 .prs-merged .prs-main > .prs-merged-icon svg { color: var(--merged); }
-.prs-stat { font-size: 12px; text-align: right; }
+.prs-stat { font-size: var(--fs-meta); text-align: right; }
 
 
 @media (max-width: 900px) {
@@ -43,6 +43,6 @@
   .prs-merged .prs-stat { display: none; }
 }
 
-.prs-read { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.prs-read { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-meta); color: var(--muted); }
 .prs-banner { padding: 10px 12px 0; flex-shrink: 0; }
-.prs-cap { margin: 0; padding: 8px 16px 10px; font-size: 12px; color: var(--muted); }
+.prs-cap { margin: 0; padding: 8px 16px 10px; font-size: var(--fs-meta); color: var(--muted); }

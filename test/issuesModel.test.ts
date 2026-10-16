@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GithubIssue, GithubIssueDetail, LinearIssue, LinearScope, Workspace } from '../src/shared/types'
-import { byUpdated, clearedFilter, describeFilter, describeGithub, githubPlanParts, labelsOf, loginInitials, milestonesOf, narrowGithub, rowLabels, stateShape, fitFilter, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces, parseFilter, rowState, rowStatus, workspaceSlug, workspaceState } from '../src/renderer/src/screens/issues/model'
+import { activeTracker, byUpdated, clearedFilter, describeFilter, describeGithub, githubPlanParts, labelsOf, loginInitials, milestonesOf, narrowGithub, rowLabels, stateShape, fitFilter, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces, parseFilter, rowState, rowStatus, workspaceSlug, workspaceState } from '../src/renderer/src/screens/issues/model'
 
 const NOW = Date.parse('2026-10-10T12:00:00Z')
 const ago = (ms: number) => new Date(NOW - ms).toISOString()
@@ -208,5 +208,23 @@ describe('GitHub issues (KERNEL-471)', () => {
       { type: 'text', text: 'Clients want a PDF.\n\nWhen you hand it off, pass #31 as issue to create_workspace.' }
     ])
     expect(githubPlanParts({ ...issue, body: '' })[1]).toMatchObject({ text: expect.stringContaining('The issue has no description.') })
+  })
+})
+
+describe('activeTracker', () => {
+  const both = { kind: 'linear' as const, available: { linear: true, github: { where: 'o/r' } } }
+  it('lets an issue id pick its tracker over the saved choice', () => {
+    expect(activeTracker(both, { issueId: 'KERNEL-31', saved: 'github' })).toBe('linear')
+    expect(activeTracker(both, { issueId: '#41', saved: 'linear' })).toBe('github')
+  })
+  it('uses the route, then the saved choice, then kind when no issue is open', () => {
+    expect(activeTracker(both, { route: 'github', saved: 'linear' })).toBe('github')
+    expect(activeTracker(both, { saved: 'github' })).toBe('github')
+    expect(activeTracker(both, { saved: '' })).toBe('linear')
+  })
+  it('falls back to kind when the pick is unavailable', () => {
+    const noRemote = { kind: 'linear' as const, available: { linear: true } }
+    expect(activeTracker(noRemote, { saved: 'github' })).toBe('linear')
+    expect(activeTracker(noRemote, { issueId: '#41', saved: '' })).toBe('linear')
   })
 })

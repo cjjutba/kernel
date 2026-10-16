@@ -1,7 +1,7 @@
 // The shared parts every screen builds from (KERNEL-9). Import from '../ui', not from the files.
 export { resolveTheme } from './theme'
 export { useBusy, useEscape, useScreenEscape } from './hooks'
-export { useListKeys, listKeyAction, isTyping } from './listKeys'
+export { useListKeys, listKeyAction, arrowRow, isTyping } from './listKeys'
 export { Button, Checkbox, IconButton, Pill, Tabs, Toggle, SegmentedControl } from './controls'
 export { Select } from './Select'
 export { CodeLines, lineCount } from './CodeLines'
