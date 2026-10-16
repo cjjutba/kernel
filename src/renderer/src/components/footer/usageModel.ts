@@ -15,6 +15,8 @@ export interface FooterChip {
   week?: number
   /** Fable 5.1's weekly window, only for an account that reports one. */
   fable?: number
+  /** A switch to this account is running: the chip shows its name and no numbers until fresh usage arrives (KERNEL-986). */
+  switching?: true
 }
 
 export interface FooterGroup {
@@ -35,8 +37,10 @@ const fableOf = (usage: RateLimit[], a: AccountProfile, now: number): number | u
   live(windowsOf(usage, a).find(isFable), now)?.utilization
 
 /** Claude Code, then Codex. A provider whose accounts haven't loaded is left out. */
-export function footerGroups(accounts: AccountProfile[], usage: RateLimit[], now: number): FooterGroup[] {
+export function footerGroups(accounts: AccountProfile[], usage: RateLimit[], now: number, switching?: { provider: Provider; accountId: string } | null): FooterGroup[] {
   return PROVIDERS.filter((p) => accounts.some((a) => a.provider === p.id)).map((p) => {
+    const target = switching?.provider === p.id ? accounts.find((a) => a.provider === p.id && a.id === switching.accountId) : undefined
+    if (target) return { provider: p.id, name: p.label, signedOut: false, chip: { id: target.id, name: target.label, billed: target.auth === 'apiKey', switching: true } }
     const active = accounts.find((a) => a.provider === p.id && a.active)
     if (!active?.signedIn) return { provider: p.id, name: p.label, signedOut: true }
     const billed = active.auth === 'apiKey'
@@ -66,6 +70,7 @@ export const tone = (v: number | undefined): 'near' | 'full' | undefined => (v =
 
 /** The chip's accessible name: the provider and account, then the numbers and what pressing it does. */
 export function chipLabel(g: FooterGroup, c: FooterChip, compact: boolean): string {
+  if (c.switching) return `${g.name}, switching to ${c.name}. Opens usage`
   const say = (title: string, v: number | undefined) => (v === undefined ? `${title} not reported yet` : `${title} ${pct(v)}`)
   const numbers = c.billed ? 'billed per token' : compact ? (() => { const t = tightest(c); return t ? say(t.title.toLowerCase(), t.value) : 'no usage reported yet' })() : [say('5-hour', c.five), say('weekly', c.week), ...(c.fable === undefined ? [] : [say('Fable 5.1 weekly', c.fable)])].join(', ')
   return `${g.name}, ${c.name}, active: ${numbers}. Opens usage`

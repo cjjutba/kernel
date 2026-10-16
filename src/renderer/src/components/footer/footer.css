@@ -6,6 +6,7 @@
 .ft-chip:disabled { color: var(--muted); cursor: default; background: transparent; }
 .ft-chip:focus-visible { outline-offset: 2px; }
 .ft-mark { display: inline-flex; }
+.ft-switching { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 .ft-name { color: var(--ink-2); font-weight: var(--fw-medium); }
 .ft-out { color: var(--muted); }
 .ft-win { display: inline-flex; align-items: center; gap: 5px; }

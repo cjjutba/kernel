@@ -41,4 +41,13 @@ describe('the footer reports and never switches (KERNEL-949)', () => {
     expect(key.chip).toEqual({ id: 'key', name: 'key', billed: true })
     expect(chipLabel(key, key.chip!, false)).toBe('Claude Code, key, active: billed per token. Opens usage')
   })
+
+  it('names the account being switched to, with no numbers, until the switch is done (KERNEL-986)', () => {
+    const accounts = [account('cli', true), account('side', false)]
+    const usage = [window('five_hour', 0.06), window('five_hour', 0.2, 'side')]
+    const [claude] = footerGroups(accounts, usage, now, { provider: 'claude', accountId: 'side' })
+    expect(claude.chip).toEqual({ id: 'side', name: 'side', billed: false, switching: true })
+    expect(chipLabel(claude, claude.chip!, false)).toBe('Claude Code, switching to side. Opens usage')
+    expect(footerGroups(accounts, usage, now, { provider: 'codex', accountId: 'side' })[0].chip?.name).toBe('cli')
+  })
 })

@@ -27,6 +27,8 @@ export interface MenuEntry {
   /** The accessible name, when `content` doesn't read well on its own. */
   ariaLabel?: string
   disabled?: boolean
+  /** The menu stays open after this item is picked, for an action that shows its progress in the menu. Its owner closes the menu when the action is done (KERNEL-986). */
+  keepOpen?: boolean
   /** Red text and icon. For the one destructive entry, such as Remove project (SidebarProjectMenu.png). */
   danger?: boolean
   onSelect?: () => void
@@ -64,7 +66,7 @@ function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { i
           <div key={m.id} className="menu-row" onMouseEnter={() => sub && setOpen(m.id)} onMouseLeave={() => sub && setOpen(null)}>
             <button
               ref={(el) => { openers.current[m.id] = el }} type="button" role={m.checked === undefined ? 'menuitem' : 'menuitemradio'} aria-checked={m.checked} className="menu-item" aria-label={m.ariaLabel} data-danger={m.danger || undefined} disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined} data-rich={m.content ? true : undefined}
-              onClick={() => { if (sub) setOpen(m.id); else { m.onSelect?.(); onClose() } }}
+              onClick={() => { if (sub) setOpen(m.id); else { m.onSelect?.(); if (!m.keepOpen) onClose() } }}
               onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); setOpen(m.id) } }}
             >
               {m.content ?? (

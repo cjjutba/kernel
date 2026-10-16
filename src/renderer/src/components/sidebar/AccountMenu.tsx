@@ -2,9 +2,9 @@ import './account.css'
 import { useRef } from 'react'
 import { chatsLabel, chatsPerAccount } from '../../accountChats'
 import { call, cleanError } from '../../api'
-import { actions, go, useStore } from '../../store'
+import { actions, getState, go, useStore } from '../../store'
 import { openNewChat } from '../../lead'
-import { Icon, Menu, ProviderMark, MENU_SEPARATOR, Spinner, useBusy, type MenuEntry } from '../../ui'
+import { Icon, Menu, ProviderMark, MENU_SEPARATOR, Spinner, type MenuEntry } from '../../ui'
 import { PROVIDERS, type AccountProfile, type Provider } from '@shared/types'
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || 'K'
@@ -25,25 +25,29 @@ export function AccountButton() {
   const anchor = useRef<HTMLDivElement>(null)
   const accounts = useStore((s) => s.accounts)
   const chats = useStore((s) => s.chats)
-  const [busy, run] = useBusy<string>()
+  const switching = useStore((s) => s.ui.switching ?? null)
   const name = account?.name ?? account?.login ?? 'Kernel'
   const who = [account?.login ?? account?.email, account?.plan].filter(Boolean).join(' · ')
   const counts = Object.fromEntries(PROVIDERS.map((p) => [p.id, chatsPerAccount(chats, p.id)]))
   const multi = accounts.length > 2 || accounts.some((a) => a.provider === 'codex' && a.signedIn)
-  const switchTo = (provider: Provider, accountId: string) => void run(`${provider}:${accountId}`, () => actions.accounts.requestSwitch(provider, accountId).catch((e) => actions.ui.toast({ title: 'Could not switch accounts', sub: cleanError(e) })))
+  // The menu stays open while the switch runs, with the spinner on its row, and closes when it is done or has failed (KERNEL-986).
+  const switchTo = (provider: Provider, accountId: string) => void actions.accounts.requestSwitch(provider, accountId)
+    .catch((e) => actions.ui.toast({ title: 'Could not switch accounts', sub: cleanError(e) }))
+    .finally(() => { if (getState().ui.menu === 'account') actions.ui.closeMenu() })
   // One row per account, the whole row the switch button. Usage lives in the footer (KERNEL-674).
   const accountEntry = (a: AccountProfile): MenuEntry => {
     const provider = PROVIDERS.find((p) => p.id === a.provider)?.label
-    const switching = busy === `${a.provider}:${a.id}`
-    const meta = !a.signedIn ? 'Signed out' : [a.auth === 'apiKey' ? 'Billed per token' : a.plan, chatsLabel(counts[a.provider]?.[a.id])].filter(Boolean).join(' · ')
+    const here = switching?.provider === a.provider && switching.accountId === a.id
+    const meta = here ? 'Switching' : !a.signedIn ? 'Signed out' : [a.auth === 'apiKey' ? 'Billed per token' : a.plan, chatsLabel(counts[a.provider]?.[a.id])].filter(Boolean).join(' · ')
     return {
       id: `acct:${a.provider}:${a.id}`,
       label: a.label,
-      disabled: busy !== null,
-      ariaLabel: !a.signedIn ? `${provider}, ${a.label}, signed out. Opens providers` : a.active ? `${provider}, ${a.label}, in use` : `Switch ${provider} to ${a.label}`,
+      disabled: switching !== null,
+      keepOpen: true,
+      ariaLabel: here ? `Switching ${provider} to ${a.label}` : !a.signedIn ? `${provider}, ${a.label}, signed out. Opens providers` : a.active ? `${provider}, ${a.label}, in use` : `Switch ${provider} to ${a.label}`,
       content: (
         <span className="acct-row">
-          <span className="acct-mark">{switching ? <Spinner label={null} pattern="wave-back" /> : a.active ? <Icon name="check" size={14} /> : null}</span>
+          <span className="acct-mark">{here ? <Spinner label={null} pattern="wave-back" /> : a.active ? <Icon name="check" size={14} /> : null}</span>
           <span className="acct-name ellipsis">{a.label}</span>
           <span className="acct-plan ellipsis">{meta}</span>
         </span>

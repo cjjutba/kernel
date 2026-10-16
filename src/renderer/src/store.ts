@@ -216,7 +216,7 @@ let state: State = {
   prs: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, projectSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
-  ui: { route: { name: 'onboarding', step: 'loading' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), panelHeld: [], bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()) }
+  ui: { route: { name: 'onboarding', step: 'loading' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), panelHeld: [], bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()), switching: null }
 }
 const listeners = new Set<() => void>()
 
@@ -432,9 +432,14 @@ let toastSeq = 0
 /** The stack holds this many toasts. A newer one pushes the oldest out (DESIGN.md). */
 const MAX_TOASTS = 3
 
+/** One switch at a time, from every entry point. The state clears when the switch and the fresh usage have both answered, or when the switch fails (KERNEL-986). */
 async function performSwitch(provider: Provider, accountId: string, reason?: 'banner', done?: () => void) {
-  actions.accounts.set(await call('accounts.switch', { provider, accountId, ...(reason ? { reason } : {}) }))
-  void call('usage.get', undefined).then(actions.usage.set).catch(() => undefined)
+  if (state.ui.switching) return
+  setUi({ switching: { provider, accountId } })
+  try {
+    actions.accounts.set(await call('accounts.switch', { provider, accountId, ...(reason ? { reason } : {}) }))
+    await call('usage.get', undefined).then(actions.usage.set).catch(() => undefined)
+  } finally { setUi({ switching: null }) }
   done?.()
 }
 

@@ -527,6 +527,10 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-561: the menu lists every account of both providers with its plan and usage, and Cmd+K switches to any that isn't in use.
   AccountMenu: { ...teamFixtures.Inbox, accounts: richAccounts, usage: providerUsage(), ui: { route: { name: 'inbox' }, menu: 'account' } },
   AccountMenuFooter: usageHome({}, { menu: 'account' }),
+  // KERNEL-986: the menu and the footer in the middle of a switch to 2nd account. The menu stays open with a spinner on that row, and the footer chip names the new account with no numbers.
+  AccountMenuSwitching: { ...teamFixtures.Inbox, accounts: richAccounts, usage: providerUsage(), ui: { route: { name: 'inbox' }, menu: 'account', switching: { provider: 'claude', accountId: 'personal' } } },
+  AccountMenuFooterSwitching: usageHome({}, { menu: 'account', switching: { provider: 'claude', accountId: mainClaude.id } }),
+  UsageFooterSwitching: usageHome({}, { switching: { provider: 'claude', accountId: mainClaude.id } }),
   // KERNEL-674: usage is in the footer all the time. Detailed gives the active account of each provider its name and both windows, and Compact gives it one number.
   UsageFooter: usageHome(),
   UsageFooterCompact: usageHome({}, { usageView: 'compact' }),
