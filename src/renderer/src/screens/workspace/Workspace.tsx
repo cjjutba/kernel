@@ -259,6 +259,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
     <div className="panel ws-panel">
       {isLead ? (
         <OneRowHeader project={project} end={!newChatShown && <>
+          <IssueKey ws={ws} project={project} />
           <OpenIn ws={ws} />
         {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary projectId={ws.projectId} capsule quiet={held} />)}
         {!panels && <PanelToggleSlot />}
