@@ -30,7 +30,7 @@ import { LEAD_MODE_ICON } from './composer/modes'
 import { retryMessage, sendMessage } from './composer/sendMessage'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
-import { opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
+import { leftAtEnd, opensAtEnd, placeTop, readPlace, restoreState, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
 import { createGlider, type Glider } from './scrollGlide'
 import { TranscriptGlide } from './glideContext'
@@ -876,6 +876,10 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const pin = (at: boolean) => { pinned.current = at; show(!at) }
   // Only the reader's own scrolling can unpin a small move, so layout that shifts the view doesn't. Input arms it, and the scroll landing disarms it.
   const byHand = useRef(false)
+  // While a chat is being put back where it was left: the step that sets the view again (the thread calls it when it changes size), and whether it is a spot and not the end.
+  const restoring = useRef<{ put: () => void; stop: () => void } | null>(null)
+  const spot = useRef(false)
+  const endRestore = () => { restoring.current?.stop(); restoring.current = null; spot.current = false }
   const seen = useRef<ScrollView>({ scrollTop: 0, scrollHeight: 0, clientHeight: 0 })
   const remember = (el: ScrollView) => { seen.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight } }
   const letGo = useRef<ReturnType<typeof lapse> | undefined>(undefined)
@@ -894,7 +898,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     if (!el) return
     fade()
     if (byHand.current) letGo.current?.()
-    pinned.current = followsAfterScroll(pinned.current, el, seen.current, byHand.current)
+    // A spot being put back is not the reader's scrolling: a clamped frame near the end must not make the chat follow (KERNEL-918).
+    if (!spot.current) pinned.current = followsAfterScroll(pinned.current, el, seen.current, byHand.current)
     remember(el)
     show(!pinned.current && distFromEnd(el) > PIN_PX)
   }
@@ -906,7 +911,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   glider.current ??= createGlider(() => scroller.current)
   const release = () => { gliding.current = false; glider.current.cancel() }
   // The reader's own scrolling ends a glide and holds the view where they left it.
-  const take = () => { release(); byHand.current = true; letGo.current?.() }
+  const take = () => { release(); endRestore(); byHand.current = true; letGo.current?.() }
   const press = (e: KeyboardEvent) => {
     if (SCROLL_KEYS.has(e.key) && !(e.target as Element).closest('input, textarea, select, [contenteditable="true"]')) take()
     else release()
@@ -929,6 +934,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   }
   const toEnd = () => {
     release()
+    endRestore()
     byHand.current = false
     pin(true)
     const el = scroller.current
@@ -950,6 +956,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
       done: (landed, replaced) => { gliding.current = false; done(landed, replaced) }
     })
     gliding.current = glider.current.live()
+    endRestore()
     byHand.current = true
     letGo.current?.()
   }, [])
@@ -974,23 +981,29 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const place = takePlace(chat.id)
     const lastSent = [...itemsNow.current].reverse().find(followsSend)?.id
     let again = 0
-    const done = () => { cancelAnimationFrame(again); el?.removeAttribute('data-opening') }
-    // The view is put back every frame until the height holds still for a few frames, the opening time is up, or the reader takes over.
-    const hold = (put: () => void, stays: () => boolean) => {
+    const st = restoreState()
+    const done = () => { cancelAnimationFrame(again); again = 0; el?.removeAttribute('data-opening') }
+    const over = () => !st.live || byHand.current
+    // The view is put back every frame until what it is put at holds still for 4 frames. A spot then keeps being corrected whenever the thread changes size
+    // (late layout: code highlighting, images, rows measured after the first paint), until the reader scrolls. `put` returns the scrollTop it set.
+    const hold = (put: () => number, ends: boolean) => {
       if (!el) return
-      put()
-      let height = el.scrollHeight
-      let still = 0
+      st.see(put())
       const from = performance.now()
       const step = () => {
-        if (byHand.current || !stays()) return done()
-        put()
-        still = el.scrollHeight === height ? still + 1 : 0
-        height = el.scrollHeight
-        if (still < 4 && performance.now() - from < OPEN_MS) again = requestAnimationFrame(step)
+        again = 0
+        if (over() || (ends && !pinned.current)) return done()
+        st.see(put())
+        if (!st.settled && !(ends && performance.now() - from >= OPEN_MS)) again = requestAnimationFrame(step)
         else done()
       }
       again = requestAnimationFrame(step)
+      if (ends) return
+      spot.current = true
+      restoring.current = {
+        put: () => { if (!over() && st.see(put()) && !again) { el.setAttribute('data-opening', ''); again = requestAnimationFrame(step) } },
+        stop: () => { st.stop(); done() }
+      }
     }
     if (el && place?.heights) {
       const kids = thread.current?.children
@@ -1004,26 +1017,34 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     if (!el || opensAtEnd(place, lastSent)) {
       pin(true)
       if (el) {
-        hold(() => { el.scrollTop = Math.max(0, rangeOf(el)); remember(el) }, () => pinned.current)
+        hold(() => { const to = Math.max(0, rangeOf(el)); el.scrollTop = to; remember(el); return to }, true)
         remember(el)
       } else followNow()
     } else {
       pinned.current = false
       hold(() => {
         const boxes = new Map(rowBoxes().map((r) => [r.id, r.top]))
-        el.scrollTop = placeTop(place!, (id) => boxes.get(id), rangeOf(el))
+        const to = placeTop(place!, (id) => boxes.get(id), rangeOf(el))
+        el.scrollTop = to
         remember(el)
         show(distFromEnd(el) > PIN_PX)
-      }, () => true)
+        return to
+      }, false)
     }
     return () => {
       cancelAnimationFrame(frame.current)
       cancelAnimationFrame(again)
       el?.removeAttribute('data-opening')
+      const correcting = st.correcting && !byHand.current
+      endRestore()
+      st.stop()
       const view = scroller.current
-      // A chat that was just closed or archived has no spot to keep.
-      if (!view || !getState().chats[workspaceId]?.some((c) => c.id === chat.id && !c.closed)) return
-      savePlace(chat.id, readPlace(rowBoxes(), view.scrollTop, pinned.current, [...itemsNow.current].reverse().find(followsSend)?.id))
+      // A chat that was just closed or archived has no spot to keep, nor has one in an archived workspace.
+      const state = getState()
+      if (!view || !state.chats[workspaceId]?.some((c) => c.id === chat.id && !c.closed) || state.workspaces.find((w) => w.id === workspaceId)?.status === 'archived') return
+      // Still being put back, the view is not where the reader left it: the spot from before stays.
+      if (correcting) return
+      savePlace(chat.id, readPlace(rowBoxes(), view.scrollTop, leftAtEnd(distFromEnd(view)), [...itemsNow.current].reverse().find(followsSend)?.id))
     }
   }, [])
   // Opening a row at the end grows the thread under the reader's click, and following would scroll the row they opened out from under them. They are reading it now,
@@ -1045,6 +1066,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
       if (opening.current && h > height.current) pinned.current = false
       opening.current = false
       height.current = h
+      if (restoring.current) { restoring.current.put(); return }
       if (pinned.current) followNow()
       else if (scroller.current) show(distFromEnd(scroller.current) > PIN_PX)
     })
@@ -1076,6 +1098,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const step = sendFollow(last, sentId.current, arrived.current, postedFromQueue(queuedAt.current, Date.now()), pinned.current)
     if (step === 'follow') {
       release()
+      endRestore()
       byHand.current = false
       pin(true)
     } else if (followsSend(last) && last!.id !== sentId.current && scroller.current) show(distFromEnd(scroller.current) > PIN_PX)
