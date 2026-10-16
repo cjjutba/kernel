@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Workspace } from '@shared/types'
 import { go, useStore } from '../../store'
 import { Banner, Button, EmptyList, Icon, NotConnectedState, Pill, Skeleton, Spinner, useListKeys } from '../../ui'
@@ -8,6 +8,7 @@ import { age } from '../inbox/model'
 import { MergeButton } from '../workspace/pr/MergeButton'
 import type { LeadPr } from '../workspace/pr/leadPrList'
 import { MERGED_LIMIT, checksCell, conflictsCell, groupOpen, issueKey, oldestRead, readFailure, reviewCell, usePullRequests, type Cell } from './model'
+import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import './prs.css'
 
 type Filter = 'open' | 'merged'
@@ -30,7 +31,7 @@ function OpenRow({ row, nav }: { row: LeadPr; nav: Nav }) {
   const title = ws.prTitle ?? ws.title ?? ws.name
   const key = issueKey(ws)
   return (
-    <li className="prs-row">
+    <li className="prs-row" data-keep-id={ws.id}>
       <button type="button" {...nav(ws.id)} className="prs-main" aria-label={`Open ${title}, PR #${ws.prNumber}`} onClick={() => openWorkspace(ws)}>
         <Icon name={ws.prState === 'draft' ? 'prDraft' : 'pr'} size={16} />
         <span className="col" style={{ minWidth: 0 }}>
@@ -51,7 +52,7 @@ function MergedRow({ ws, nav }: { ws: Workspace; nav: Nav }) {
   const agent = useStore((s) => s.agents[ws.projectId]?.find((a) => a.id === ws.agentId))
   const title = ws.prTitle ?? ws.title ?? ws.name
   return (
-    <li className="prs-row prs-merged">
+    <li className="prs-row prs-merged" data-keep-id={ws.id}>
       <button type="button" {...nav(ws.id)} className="prs-main" aria-label={`Open ${title}, PR #${ws.prNumber}`} onClick={() => openWorkspace(ws)}>
         <span className="prs-merged-icon"><Icon name="merged" size={16} /></span>
         <span className="col" style={{ minWidth: 0 }}>
@@ -118,6 +119,9 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   const loading = filter === 'open' && reading && readAt === undefined
   const signedOut = reads.length > 0 && reads.every((r) => r.failed === 'signed-out')
   const readAgo = readAt === undefined ? undefined : age(readAt, now) === 'now' ? 'just now' : `${age(readAt, now)} ago`
+  // Each filter keeps its own spot, and one never opened starts at the top. A PR that merged out of Open while away falls back to its neighbor above (KERNEL-919).
+  const scroll = useRef<HTMLDivElement>(null)
+  useKeptScroll(scroll, { key: spotKey.prs(filter), ready: filter === 'open' ? !loading && open.length > 0 : merged.length > 0 })
   return (
     <div className="panel">
       <WorkHeader tab="prs" allProjects head={{ projects: choices, project, onProject: setProjectId }} counts={{ prs: open.length }} where="GitHub" refreshing={refreshing}
@@ -135,7 +139,7 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
       )}
       {filter === 'open' ? (
         loading ? <PrSkeleton /> : open.length ? (
-          <div className="prs-scroll">
+          <div className="prs-scroll" ref={scroll}>
             <div className="prs-head prs-row" aria-hidden="true"><span>Pull request</span><span>Checks</span><span>Review</span><span>Conflicts</span><span /></div>
             <div aria-label="Open pull requests" onKeyDown={keys.onKeyDown}>
               {groups.map((g) => {
@@ -161,7 +165,7 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
           </EmptyList>
         )
       ) : merged.length ? (
-        <div className="prs-scroll">
+        <div className="prs-scroll" ref={scroll}>
           {mergedTotal > MERGED_LIMIT && <p className="prs-cap">Showing the {MERGED_LIMIT} most recent of {mergedTotal} merged pull requests.</p>}
           <ul className="prs-list" aria-label="Merged pull requests" onKeyDown={keys.onKeyDown}>{merged.map((w) => <MergedRow key={w.id} ws={w} nav={keys.rowProps} />)}</ul>
         </div>
