@@ -5,6 +5,7 @@ import { call, cleanError } from '../../../api'
 import { PROVIDER_NAME } from '../../../accountRows'
 import { actions, useStore } from '../../../store'
 import { Button, Icon, Select, useBusy } from '../../../ui'
+import { ago } from '../../projects/projectInfo'
 import { Page, Section } from '../kit'
 import { SignInLine, serverName, useMcpAccounts, useSignInAll } from './mcpAccounts'
 import { MCP_GROUPS, groupServers, mcpIsOff, mcpIssue } from './mcpGroups'
@@ -92,14 +93,18 @@ export function McpServers() {
             <Button variant="ghost" aria-label={`Stop ignoring ${name} on ${label}`} busy={busy === ignoreKey(s)} disabled={!idle} onClick={() => void ignore(account.provider, account.accountId, s.name, false)}>Undo</Button>
           </>
         )}
-        {!issue && s.state !== 'ignored' && <span className="ag-quiet">{s.state === 'ready' ? 'Ready' : 'Off'}</span>}
+        {!issue && s.state !== 'ignored' && <span className="ag-quiet">{s.state === 'ready' ? 'Ready' : s.state === 'checking' ? 'Checking' : 'Off'}</span>}
       </div>
     )
   }
 
   const total = account.servers.length
   const groups = MCP_GROUPS.map((g) => ({ ...g, all: account.servers.filter((s) => s.kind === g.kind).length, servers: groupServers(account.servers, g.kind, query) })).filter((g) => g.servers.length)
-  const summary = account.error ? `Could not check this account: ${account.error}` : account.checkedAt === undefined ? 'Checking' : `${total} ${total === 1 ? 'server' : 'servers'} · ${account.needsYou ? `${account.needsYou} ${account.needsYou === 1 ? 'needs' : 'need'} you` : 'all ready'}`
+  const lastChecked = account.checkedAt === undefined ? undefined : ago(account.checkedAt)
+  const counts = `${total} ${total === 1 ? 'server' : 'servers'} · ${account.needsYou ? `${account.needsYou} ${account.needsYou === 1 ? 'needs' : 'need'} you` : 'all ready'}`
+  const summary = account.error ? 'Could not check this account' : account.checking ? (lastChecked ? `Checking · last checked ${lastChecked}` : 'Checking') : account.checkedAt === undefined ? 'Checking' : counts
+  const stale = account.error ? `${account.error}${total > 0 && lastChecked ? `. Showing the servers from the last check, ${lastChecked}` : ''}` : undefined
+  const firstCheck = total === 0 && !account.error && (account.checking || account.checkedAt === undefined)
   const action = account.needsYou > 0 ? <Button variant="primary" icon="check" aria-label={`Set up all on ${label}`} disabled={!idle} onClick={setUp}>Set up all</Button> : undefined
   return (
     <Page title="MCP servers" action={action}>
@@ -113,7 +118,9 @@ export function McpServers() {
         </div>
       </div>
       <div className="ag-bar"><SignInLine label={label} needs={0} {...runs.of(account.provider, account.accountId)} canceling={runs.canceling} disabled onSetUp={setUp} onCancel={() => void runs.cancel(account.provider)} /></div>
-      {total === 0 && !account.error && <p className="ag-empty">No MCP servers configured.</p>}
+      {stale && <div className="ag-bar"><span className="set-desc">{stale}</span></div>}
+      {firstCheck && <p className="ag-empty">Checking MCP servers</p>}
+      {total === 0 && !account.error && !firstCheck && <p className="ag-empty">No MCP servers configured.</p>}
       {groups.map((g) => <Section key={g.kind} title={g.title} count={g.all} note={g.note}>{g.servers.map(row)}</Section>)}
       {query.trim() && total > 0 && groups.length === 0 && <p className="ag-empty">No servers match “{query}”</p>}
     </Page>

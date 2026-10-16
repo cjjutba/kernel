@@ -88,7 +88,7 @@ export interface Fixture {
   settings?: AppSettings
   /** When set, `preflight.fix` fails with this message, so a shot can show a fix that did not work (SetupPortBusyFixFailed, KERNEL-865). */
   preflightFixError?: string
-  /** Channels whose calls never answer, so a screenshot can show the wait (IssuesLoading, AccountSwitching, KERNEL-759). */
+  /** Channels whose calls never answer, so a screenshot can show the wait (IssuesLoading, KERNEL-759). */
   hold?: string[]
   /**
    * By project id. `sources` is optional: a fixture without it reads as every value coming from the app default. So is

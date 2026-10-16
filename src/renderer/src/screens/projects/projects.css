@@ -175,7 +175,7 @@
 .rn-owner select { flex: 1; min-width: 0; appearance: none; border: 0; background: transparent; color: var(--ink); font-size: var(--fs-ui); outline: none; }
 .rn-owner > svg { color: var(--muted); pointer-events: none; }
 .rn-owner:focus-within { border-color: var(--ink-3); }
-.rn-av { width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; background: var(--surface-3); display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: var(--fw-semibold); color: var(--ink-2); }
+.rn-av { width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; background: var(--surface-3); display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); color: var(--ink-2); }
 .rn-slash { color: var(--muted); }
 .rn-name { flex: 1; min-width: 0; font-size: var(--fs-ui); }
 .rn-status { margin: 0; display: flex; align-items: center; gap: 6px; min-height: 18px; font-size: var(--fs-meta); color: var(--muted); }

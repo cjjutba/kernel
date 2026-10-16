@@ -536,6 +536,14 @@ const issuesTrackerScene = (f: Fixture, route: { issueId?: string; projectId: st
   ui: { route: { name: 'issues', ...route } }
 })
 
+/** KERNEL-938: Client A on Linear, with a github.com remote too, so the header offers Linear | GitHub. `github: false` drops the remote. */
+const bothTrackers = (f: Fixture, route: { issueId?: string; tracker?: 'linear' | 'github' }, github = true): Partial<Fixture> => ({
+  ...issuesScene(f, { issueId: route.issueId ?? 'KERNEL-31' }),
+  trackers: { [ids.projectA]: { kind: 'linear' as const, where: 'cj-jutba', available: { linear: true, ...(github ? { github: { where: 'samrivera/client-a' } } : {}) } } },
+  githubIssues: { [ids.projectA]: githubIssues() },
+  ui: { route: { name: 'issues', projectId: ids.projectA, ...route } }
+})
+
 /**
  * The Work page's Issues tab with work linked (KERNEL-875): KERNEL-24 has Kai's PR ready to merge and Ivy's tests, KERNEL-27 has Noor's PR
  * with two checks failing, and the rest have none, so they keep their age.
@@ -863,6 +871,12 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesConnect: scene((f) => ({ ...issuesScene(f), integrations: linearIntegrations.map((i) => (i.id === 'linear' ? { ...i, connected: false, detail: 'Create workspaces from issues' } : i)) })),
   // Offline: the screen says Linear can't be reached whatever the last answer was.
   IssuesError: scene((f) => ({ ...issuesScene(f), push: [{ type: 'online', online: false }] })),
+  // KERNEL-938: the Linear | GitHub switch in the Work header. A Linear project on Linear, the same project on GitHub, GitHub disabled with no remote, gh signed out, and a #31 link opening GitHub.
+  IssuesTrackerLinear: scene((f) => bothTrackers(f, {})),
+  IssuesTrackerGitHub: scene((f) => bothTrackers(f, { tracker: 'github' })),
+  IssuesTrackerNoRemote: scene((f) => bothTrackers(f, {}, false)),
+  IssuesTrackerSignedOut: scene((f) => ({ ...bothTrackers(f, { tracker: 'github' }), fails: { 'github.issueList': "GitHubError[signed-out]: The GitHub CLI isn't signed in. Run gh auth login in a terminal." } })),
+  IssuesTrackerHashLink: scene((f) => bothTrackers(f, { issueId: '#31' })),
   // KERNEL-438: a project on GitHub Issues lists its own issues, with the project in the header. Linear's list is the account's and has no project.
   IssuesGitHub: scene((f) => issuesTrackerScene(f, { issueId: '#31', projectId: ids.projectB })),
   // The newest 100 is all GitHub returns, so the list ends with a note saying so.

@@ -82,7 +82,7 @@ export function PlanInline({ a, agents, hasItem }: { a: Approval; agents: AgentD
   // the chat under it, which would leave a plan that fits with its end below the fold, so while it opens the end stays in view. The transcript's glide does both.
   const glide = useContext(TranscriptGlide)
   useEffect(() => {
-    if (a.status === 'pending' && ref.current) glide?.(ref.current, STRIP_OPENS_MS)
+    if (a.status === 'pending' && ref.current) glide?.(ref.current, STRIP_OPENS_MS, a.id)
   }, [a.id])
   const file = a.planFile?.slice(a.planFile.lastIndexOf('/') + 1)
   const answer = planAnswer(a)

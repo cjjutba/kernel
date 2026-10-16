@@ -76,7 +76,7 @@ export function PRs({ s }: { s: AppSettings }) {
           })}
         </Section>
       </Page>
-      {editing && <InstructionSheet title={editing.label} value={p[editing.key] || DEFAULTS[editing.key]} fallback={DEFAULTS[editing.key]} onSave={(text) => set({ [editing.key]: text ?? DEFAULTS[editing.key] })} onClose={() => setEditing(null)} />}
+      {editing && <InstructionSheet title={editing.label} value={p[editing.key] || DEFAULTS[editing.key]} fallback={DEFAULTS[editing.key]} onSave={(text) => patchSettings({ pr: { [editing.key]: text ?? DEFAULTS[editing.key] } })} onClose={() => setEditing(null)} />}
     </>
   )
 }

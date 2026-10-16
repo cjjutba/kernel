@@ -11,7 +11,7 @@ import { FileIcon } from '../../../components/FileIcon'
 import { useModeAvailability } from '../../../permissionModes'
 import { actions, getState, loadWorkspace, setLeadMode, useStore } from '../../../store'
 import { useProjectSettings } from '../../settings/useSettings'
-import { Button, Icon, useBusy } from '../../../ui'
+import { arrowRow, Button, Icon, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { PlanStrip, usePlanStrip } from '../cards/plan'
 import { placeAnswerNow } from '../cards/optimisticAnswer'
@@ -279,8 +279,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.nativeEvent.isComposing) return
     if (acOpen && rows.length) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => (i + 1) % rows.length); return }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setAt((i) => (i - 1 + rows.length) % rows.length); return }
+      const to = arrowRow(e, at, rows.length, true)
+      if (to !== null) { e.preventDefault(); setAt(to); return }
       if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') { e.preventDefault(); pickRow(at, e.key === 'Enter'); return }
     }
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
@@ -418,7 +418,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
           </div>
         )}
         {acOpen && mention && !files.length && !mentionAgents.length && query !== undefined && query.length > 0 && (
-          <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>{agent?.lead ? `No files or teammates match “${mention.query}”.` : `No files match “${mention.query}”.`}</p></div>
+          <div className="cmp-ac" role="status"><p className="cmp-ac-none">{agent?.lead ? `No files or teammates match “${mention.query}”.` : `No files match “${mention.query}”.`}</p></div>
         )}
       </>}
       box={{ 'data-plan': chat.plan || plan ? 'true' : undefined, 'data-blocked': blocked || undefined, 'data-drop': d.over || undefined, style: { opacity: blocked ? 0.5 : 1 } }}

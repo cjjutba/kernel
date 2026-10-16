@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { FileEntry } from '@shared/types'
 import { FileIcon } from '../../components/FileIcon'
-import { Icon } from '../../ui'
+import { Icon, listKeyAction } from '../../ui'
 import { gitDecoration } from './gitStatus'
 import { folderStatus, visibleRows } from './tree'
 
@@ -35,10 +35,8 @@ export function FileTree({ label, entries, expanded, onToggle, onOpen, activePat
   const onKey = (e: KeyboardEvent, i: number) => {
     const { entry, ancestors } = rows[i]
     const open = entry.dir && expanded.has(entry.path)
-    if (e.key === 'ArrowDown') move(i + 1)
-    else if (e.key === 'ArrowUp') move(i - 1)
-    else if (e.key === 'Home') move(0)
-    else if (e.key === 'End') move(rows.length - 1)
+    const action = listKeyAction(e, i, rows.length)
+    if (action?.kind === 'move') move(action.to)
     else if (e.key === 'ArrowRight') { if (entry.dir && !open) onToggle(entry.path); else if (open && rows[i + 1]?.ancestors.at(-1) === entry.path) move(i + 1) }
     else if (e.key === 'ArrowLeft') { if (open) onToggle(entry.path); else if (ancestors.length) move(at(ancestors.at(-1))) }
     else return
