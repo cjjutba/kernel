@@ -518,18 +518,14 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-674: usage is in the footer all the time. Detailed gives the active account of each provider its name and both windows, and Compact gives it one number.
   UsageFooter: usageHome(),
   UsageFooterCompact: usageHome({}, { usageView: 'compact' }),
-  // KERNEL-759: a click on the other account holds main's answer, so its chip shows the swap loader.
-  AccountSwitching: usageHome({ hold: ['accounts.switch'] }),
   // The Help button stays at the footer's right with no update, and its menu opens upward from it.
   UsageFooterNoUpdate: usageHome({ update: undefined }),
   FooterHelpMenu: usageHome({ update: undefined }, { menu: 'help' }),
   // KERNEL-674: Codex's 5-hour window is full, so its bar and number go red.
   UsageFooterCodexFull: usageHome({ usage: footerUsage(100) }),
-  // KERNEL-697: another account's chip has a swap icon and a tooltip. One account shows only the active chip, six fold into "more", a narrow window folds the inline ones too, and an account at its limit keeps its red number.
-  UsageFooterSingleAccount: usageHome({ accounts: [secondClaude, footerCodex] }),
+  // KERNEL-949: the footer shows only the account each provider runs on, however many there are. Switching is in the account menu. A narrow window drops the Fable number.
   UsageFooterManyAccounts: usageHome({ accounts: manyAccounts, usage: manyUsage() }),
   UsageFooterNarrow: usageHome({ accounts: manyAccounts, usage: manyUsage() }),
-  UsageFooterAtLimit: usageHome({ usage: [...footerUsage().filter((l) => !(l.accountId === 'third')), { ...window5('claude', 'third', 100, next(15, 0)), status: 'rejected' }, windowWeek('claude', 'third', 40, nextOn(3, 3, 0))] }),
   // KERNEL-699: every switch shows a notice with Undo. Your own says what you now use, and Kernel's at a limit says why it moved.
   UsageSwitchToast: switchedHome([{ ...secondClaude, active: false }, { ...mainClaude, active: true }, footerKey(), thirdClaude, footerCodex], { type: 'accountSwitched', provider: 'claude', from: 'cli', to: 'main', reason: 'user' }),
   UsageSwitchToastAtLimit: switchedHome([{ ...secondClaude, active: false }, mainClaude, footerKey(), { ...thirdClaude, active: true }, footerCodex], { type: 'accountSwitched', provider: 'claude', from: 'main', to: 'third', reason: 'limit', limit: 'five_hour' }),
