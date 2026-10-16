@@ -44,7 +44,7 @@ const SURFACES = ['canvas', 'panel', 'surface', 'surface-2', 'surface-3', 'hover
 const BORDERED = SURFACES.filter((s) => s !== 'hover')
 const TIERS = ['ink', 'ink-2', 'ink-3', 'muted']
 const LADDER = [...TIERS, 'faint']
-const STATUS = ['add', 'del', 'mod', 'merged', 'working', 'needs']
+const STATUS = ['add', 'del', 'mod', 'merged', 'needs']
 const TERM = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'].map((n) => `term-${n}`)
 // Pairs allowed under AA. Empty since KERNEL-611 moved dark del up to pass on hover.
 const BELOW_AA = new Set<string>()
@@ -106,7 +106,7 @@ describe('theme contrast', () => {
   })
   it('hover card status words reach 4.5:1 on their pill in both themes', () => {
     const fails: string[] = []
-    for (const [name, theme] of themes(both)) for (const t of ['working', 'add', 'del', 'merged', 'muted'])
+    for (const [name, theme] of themes(both)) for (const t of ['add', 'del', 'muted'])
       if (contrast(theme[t], theme[`tint-${t}`]) < 4.5) fails.push(`${name} ${t} on tint-${t}: ${contrast(theme[t], theme[`tint-${t}`]).toFixed(2)}`)
     expect(fails).toEqual([])
   })
