@@ -339,8 +339,8 @@ export class Workspaces extends Feature {
       const now = this.mustWs(ws.id)
       if (now.status === 'archived') return now
       const held = this.updateWs(ws.id, { status: 'ready', waitsFor: { ...(now.waitsFor ?? wait), held: true, ...(base ? { base } : {}) } })
+      // No note: the composer's queue tray shows the wait and its Send now (KERNEL-973).
       const label = this.k.waits.waitLabelOf(held)
-      this.note(ws.id, `Waiting for ${label} to merge. Kernel sends this brief then. Send now starts it sooner.`, undefined, this.k.waits.waitRefsOf(held))
       // The Lead reads it in create_workspace's result while its turn still waits for it (KERNEL-126's pattern).
       this.leadUpdates.waits(held, 'wait.started', { on: held.waitsFor!.on, label, held: true, ...(o.leadChatId && this.sessions.isRunning(o.leadChatId) ? { told: true } : {}) })
       // Something it waits for may have merged while setup ran.
