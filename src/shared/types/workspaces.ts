@@ -140,6 +140,8 @@ export interface Workspace {
   setupRun?: SetupRun
   /** How many local files Kernel copied into the new worktree, for the chat's "Created the worktree" row (KERNEL-951). */
   copied?: number
+  /** Whether this is the project's first worktree chat, which alone shows the setup block at the top of the chat. Absent on chats from before it was stamped, which count as first. */
+  firstInProject?: boolean
 }
 
 /** An overrule of the reviews' blockers on one head commit (KERNEL-732). */
