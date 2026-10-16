@@ -17,7 +17,7 @@ const NONE: EffortMemory = {}
 export const useEffortMemory = (): EffortMemory => useStore((s) => s.settings?.models.effortByModel ?? NONE)
 
 /**
- * What a model you never picked an effort for runs at in an engineer's workspace: the agent's effort, else the Frontend and Backend
+ * What a model you never picked an effort for runs at in an engineer's workspace: the agent's effort, else the Backend
  * row of Settings, Models. Never the open chat's. The boxes that start a Lead chat fall back to the Lead's (`useLeadBox`).
  */
 export const useDefaultEffort = (agentEffort?: Effort): Effort => useStore((s) => agentEffort ?? s.settings?.models.roles.engineers.effort ?? 'high')

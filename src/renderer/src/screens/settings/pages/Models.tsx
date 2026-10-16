@@ -7,7 +7,9 @@ import { patchSettings } from '../useSettings'
 
 const ROLES: { key: Role; title: string }[] = [
   { key: 'lead', title: 'Kernel' },
-  { key: 'engineers', title: 'Frontend and Backend' },
+  { key: 'frontend', title: 'Frontend' },
+  // `engineers` is every engineer but a frontend one. The key kept its name so saved settings still read (KERNEL-974).
+  { key: 'engineers', title: 'Backend' },
   { key: 'qa', title: 'QA' },
   { key: 'reviewer', title: 'Reviewer' }
 ]
