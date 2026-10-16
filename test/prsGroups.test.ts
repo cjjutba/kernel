@@ -29,6 +29,7 @@ describe('parseTitle', () => {
   it('shows a title outside the convention as written, with no scope', () => {
     expect(parseTitle('Landing page: new case study layout')).toEqual({ text: 'Landing page: new case study layout' })
     expect(parseTitle('docs: onboarding questions')).toEqual({ text: 'docs: onboarding questions' })
+    expect(parseTitle('Release notes (KERNEL-200)')).toEqual({ text: 'Release notes (KERNEL-200)', key: 'KERNEL-200' })
   })
 
   it('takes the first of two keys and keeps the other in the text', () => {

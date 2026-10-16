@@ -868,6 +868,8 @@ export const teamFixtures: Record<string, Fixture> = {
   PullRequestsMergedPlain: scene((f) => prsScene(f, { filter: 'merged', plainMerged: true })),
   PullRequestsEmpty: scene((f) => prsScene(f, { filter: 'open', none: 'open' })),
   PullRequestsNoMerged: scene((f) => prsScene(f, { filter: 'merged', none: 'merged' })),
+  // The first read failed and nothing is cached: no 0 on the pill, and the list says it couldn't tell (KERNEL-1010).
+  PullRequestsMergedReadFailed: scene((f) => prsScene(f, { filter: 'merged', none: 'merged', failed: true })),
   // KERNEL-759: the tracker read never answers, so the page shows Loading issues with the load loader.
   IssuesLoading: scene((f) => ({ ...issuesScene(f), hold: ['issues.tracker'] })),
   // KERNEL-892: away to the Inbox and back to Work. The reads lag, and the list and the open issue are still there from the first visit.

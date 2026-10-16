@@ -131,9 +131,11 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   const fold = (id: string) => setFolded((f) => { const n = new Set(f); if (!n.delete(id)) n.add(id); return n })
   const shown = filter === 'open' ? groups.filter((g) => !folded.has(g.id)).flatMap((g) => g.rows.map((r) => r.ws)) : merged
   const keys = useListKeys({ ids: shown.map((w) => w.id), rowId: (id) => `prs-${id}`, onOpen: (id) => { const ws = shown.find((w) => w.id === id); if (ws) openWorkspace(ws) } })
-  const counts: Record<Filter, number> = { open: open.length, merged: mergedTotal }
+  
   const readAt = oldestRead(reads)
   const failed = reads.find((r) => r.failed)
+  // A failed read with nothing cached is not a count of zero: the pill stays blank until a read succeeds.
+  const counts: Record<Filter, number | undefined> = { open: failed && open.length === 0 ? undefined : open.length, merged: failed && mergedTotal === 0 ? undefined : mergedTotal }
   // Nothing read yet while GitHub is asked: the first read is still out. Signed out in every project: there is nothing to read until gh signs in.
   const loading = filter === 'open' && reading && readAt === undefined
   const signedOut = reads.length > 0 && reads.every((r) => r.failed === 'signed-out')
@@ -146,7 +148,7 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
       <WorkHeader tab="prs" allProjects head={{ projects: choices, project, onProject: pick }} counts={{ prs: all.open.length }} where={login ? `GitHub · ${login}` : 'GitHub'} refreshing={refreshing}
         onRefresh={() => { setRefreshing(true); void refresh().finally(() => setRefreshing(false)) }} />
       <div className="prs-bar" role="group" aria-label="Filter pull requests">
-        {filters.map(([id, label]) => <Pill key={id} pressed={filter === id} onClick={() => setFilter(id)}>{label}<span className="prs-n">{counts[id]}</span></Pill>)}
+        {filters.map(([id, label]) => <Pill key={id} pressed={filter === id} onClick={() => setFilter(id)}>{label}{counts[id] !== undefined && <span className="prs-n">{counts[id]}</span>}</Pill>)}
         {filter === 'merged' && loaded.length > 0 && (
           <>
             <Select variant="chip" label="Agent" prefix="Agent" value={agentChoices.includes(agentId) ? agentId : ''} onChange={setAgentId}

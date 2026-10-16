@@ -80,15 +80,16 @@ export interface ParsedTitle { text: string; scope?: string; key?: string }
 const TITLE_KEY = /\s*\(([A-Z][A-Z0-9]+-\d+)\)/
 
 /**
- * The scope and the key come off a title that follows the convention. A title without it is returned as written, with no scope. Of
+ * The scope and the key come off a title that follows the convention. A title without it is returned exactly as written, with no scope, though a parenthesized key in it still fills the key. Of
  * two keys the first is the row's and the second stays in the text.
  */
 export function parseTitle(title: string): ParsedTitle {
   const { scope, rest } = splitScope(title)
   const m = TITLE_KEY.exec(rest)
-  if (!m) return { text: rest, ...(scope ? { scope } : {}) }
+  if (!scope) return { text: title, ...(m ? { key: m[1] } : {}) }
+  if (!m) return { text: rest, scope }
   const text = (rest.slice(0, m.index) + rest.slice(m.index + m[0].length)).trim()
-  return { text: text || rest, ...(scope ? { scope } : {}), key: m[1] }
+  return { text: text || rest, scope, key: m[1] }
 }
 
 /** The issue key a branch like `feat/kernel-995-one-chip` names: "KERNEL-995". */
