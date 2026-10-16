@@ -520,7 +520,7 @@ const githubIssues = (): GithubIssueDetail[] => {
 }
 
 /** Client B reads GitHub Issues and Portfolio has no tracker. The other projects read Linear, as every fixture before KERNEL-438 drew them. */
-const trackerProjects = { trackers: { [ids.projectB]: { kind: 'github' as const, where: 'cjjutba/client-b' }, [ids.projectPortfolio]: { kind: 'none' as const } } }
+const trackerProjects = { trackers: { [ids.projectB]: { kind: 'github' as const, where: 'cjjutba/client-b', available: { linear: false, github: { where: 'cjjutba/client-b' } } }, [ids.projectPortfolio]: { kind: 'none' as const, available: { linear: false } } } }
 
 /** The Issues page on Client B (GitHub) or Portfolio (no tracker). */
 const issuesTrackerScene = (f: Fixture, route: { issueId?: string; projectId: string }): Partial<Fixture> => ({
