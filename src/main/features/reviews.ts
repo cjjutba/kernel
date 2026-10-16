@@ -179,6 +179,14 @@ export class Reviews extends Feature {
     this.notStarted.set(of.id, head)
   }
 
+  /** No review covers the ready PR, so the chat's own ready row is the only sign its checks passed (KERNEL-990). */
+  private noReview(id: string) {
+    const ws = this.store.workspace(id)
+    if (!ws || this.stopped) return
+    const s = this.reviewState(ws)
+    if (!s.inProgress && !s.approved.length && !s.blocking.length && !s.open) this.k.prs.readyNote(id)
+  }
+
   /**
    * A teammate's PR passed checks (KERNEL-549). While `pr.autoReview` is on, Kernel starts a review round on its head
    * (KERNEL-552): a review workspace with a chat per kind the first time, and after that a new chat for a kind it lacks and
@@ -196,7 +204,8 @@ export class Reviews extends Feature {
     if (!of || of.status === 'archived' || of.reviewOf || of.prState !== 'ready' || !of.prNumber || (this.isLeadWorkspace(of) && !buildsHere(of))) return
     if (this.settings.pr.autoReview === false) {
       if (of.reviewPending !== undefined) this.updateWs(of.id, { reviewPending: undefined })
-      return this.noteNotStarted(of)
+      await this.noteNotStarted(of)
+      return this.noReview(of.id)
     }
     this.notStarted.delete(of.id)
     if (this.starting.has(of.id)) return
@@ -212,7 +221,10 @@ export class Reviews extends Feature {
       await this.k.team.agents(of.projectId)
       const { plan, rounds } = await this.planFor(of)
       const now = this.store.workspace(of.id)
-      if (!plan.length || !now || now.status === 'archived' || now.prState !== 'ready' || this.stopped) return
+      if (!plan.length || !now || now.status === 'archived' || now.prState !== 'ready' || this.stopped) {
+        if (!plan.length) this.noReview(of.id)
+        return
+      }
       if (again) {
         const run = plan.filter((p) => this.unreported(now, again).includes(p.kind))
         if (run.length && !this.openReview(now)) await this.startReview(now, run)

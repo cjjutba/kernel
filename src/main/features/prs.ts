@@ -7,13 +7,10 @@ import { BranchConflict, type CodeHost, fingerprintOf, GhReadError, HEAD_MOVED, 
 import { type PrContext, prTextFor } from '../services/conventions'
 import { PrCadence } from '../services/prCadence'
 import { inPaths } from '../services/lenses'
-import { ALWAYS_REVIEW, autoMergeBlock, autoMergeRetry, autoMergeWhy, gatingChecks, kindStates, mergeableState, mergeBlock, mergeNeedsPr, type AutoMergeFacts } from '@shared/merge'
+import { ALWAYS_REVIEW, autoMergeBlock, autoMergeRetry, autoMergeWhy, blockedWhy, gatingChecks, kindStates, mergeableState, mergeBlock, mergeNeedsPr, type AutoMergeFacts } from '@shared/merge'
 import type { Handlers } from '../kernel'
 import { prNoteOf, reviseNote } from './records'
 import { Feature } from './feature'
-
-/** PR states a PR reads as when it was just opened (KERNEL-990). */
-const OPENED: PrState[] = ['draft', 'open', 'checks', 'cifail', 'changes', 'conflict', 'ready']
 
 /** PR states whose next read is likely to differ soon, so the poll runs at its fast rate (KERNEL-388). */
 const MOVING: PrState[] = ['creating', 'checks', 'merging', 'resolving']
@@ -305,6 +302,7 @@ export class Prs extends Feature {
     // becomes ready already blocked goes out with its 'pr' push, which the Lead and the Inbox read prBlocked on.
     if (ws.prState === 'ready' && next.prState === 'ready' && ws.prBlocked !== next.prBlocked) {
       bus.push({ type: 'pr.blocked', workspaceId: id, ...(next.prBlocked ? { blocked: next.prBlocked } : {}) })
+      if (next.prBlocked) this.readyNote(id, `GitHub blocks the merge: ${blockedWhy[next.prBlocked]}`, 'GitHub blocks')
     }
     return next
   }
@@ -315,11 +313,9 @@ export class Prs extends Feature {
     this.changedAt = Date.now()
     bus.push({ type: 'pr', workspaceId: id, state: next.prState })
     bus.activity({ kind: 'pr.changed', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
-    // The chat's own PR in Build here opens and passes checks as rows, never as a turn, and each row shows once per PR (KERNEL-990).
-    if (this.ownChat(next)) {
-      if ((ws.prState === 'none' || ws.prState === 'creating') && OPENED.includes(next.prState)) this.noteOnce(id, ownPrNote('opened', next), 'opened', next.prNumber)
-      if (next.prState === 'ready') this.noteOnce(id, ownPrNote('ready', next), 'ready', next.prNumber)
-    }
+    // The chat's own PR in Build here says nothing when it opens, since the Lead's reply does, and nothing when it is ready,
+    // since an approval or the merge button does, except what the screen doesn't show (KERNEL-990).
+    if (next.prState === 'ready' && next.prBlocked) this.readyNote(id, `GitHub blocks the merge: ${blockedWhy[next.prBlocked]}`, 'GitHub blocks')
     if (text && next.prState === 'merged') this.noteOnce(id, text, 'merged', next.prNumber)
     else if (text) this.note(id, text, next.prState === 'closed' || next.prState === 'cifail' ? next.prState : undefined)
     if (next.prState === 'merged') {
@@ -338,12 +334,21 @@ export class Prs extends Feature {
   /** Why Kernel is merging each Build here chat's own PR by itself, until the merge shows, so its row says so (KERNEL-990). */
   private autoWhy = new Map<string, string>()
 
-  /** The ready row of the chat's own PR says why Kernel didn't merge it by itself, once it knows (KERNEL-990). */
+  /** Auto-merge left the chat's own PR, so its ready row says why Kernel didn't merge it (KERNEL-990). */
   private refusal(id: string, why: string) {
+    this.readyNote(id, `Kernel didn't merge it automatically: ${why}`, "Kernel didn't merge it")
+  }
+
+  /**
+   * The chat's own ready row, posted only when it says what the screen doesn't (KERNEL-990): no review ran, auto-merge
+   * refused, or GitHub blocks the merge. `tail` is that reason, added to the row once per `key`. Hand off chats get none.
+   */
+  readyNote(id: string, tail?: string, key = tail) {
     const ws = this.k.store.workspace(id)
-    if (!ws || !this.ownChat(ws)) return
+    if (!ws || !this.ownChat(ws) || !ws.prNumber || ws.prState !== 'ready') return
     const row = prNoteOf(this.k.store, id, 'ready', ws.prNumber)
-    if (row && !row.item.text.includes("Kernel didn't merge it")) reviseNote(this.k.store, row.chatId, row.item, `${row.item.text}. Kernel didn't merge it automatically: ${why}`)
+    if (!row) return this.noteOnce(id, ownPrNote(ws, tail), 'ready', ws.prNumber)
+    if (tail && key && !row.item.text.includes(key)) reviseNote(this.k.store, row.chatId, row.item, `${row.item.text}. ${tail}`)
   }
 
   /** Creating and Resolving hold while the agent works, and `merging` while Kernel's merge runs. */

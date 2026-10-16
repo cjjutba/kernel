@@ -365,8 +365,8 @@ describe("the Lead's prompt and tools in each mode (KERNEL-770)", () => {
 
 describe("a Build here chat's pull requests (KERNEL-778)", () => {
   /** A chat in Build here with a commit of its own on its branch. */
-  async function building() {
-    const t = await setup()
+  async function building(app?: Record<string, unknown>) {
+    const t = await setup({ app })
     const c = await t.chat()
     t.k.lead.setMode(c.workspaceId, 'build')
     const ws = t.k.store.workspace(c.workspaceId)!
@@ -427,13 +427,55 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
 
   /** A fake GitHub that reads the PR `gh.state` is in. */
   function github(k: Kernel, ws: Workspace, head: string) {
-    const gh = { state: 'open' as PrInfo['state'] }
+    const gh = { state: 'open' as PrInfo['state'], blocked: undefined as PrInfo['blocked'] }
     k.github = {
-      info: async (_cwd, _ref, workspaceId) => ({ workspaceId, number: 54, url: 'https://github.com/o/r/pull/54', title: 'feat: retry', state: gh.state, baseRef: 'main', checks: [{ name: 'Test', state: 'pass' }], comments: [], conflicts: [], head }),
+      info: async (_cwd, _ref, workspaceId) => ({ workspaceId, number: 54, url: 'https://github.com/o/r/pull/54', title: 'feat: retry', state: gh.state, baseRef: 'main', checks: [{ name: 'Test', state: 'pass' }], comments: [], conflicts: [], head, ...(gh.blocked ? { blocked: gh.blocked } : {}) }),
       merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined
     }
     return gh
   }
+
+  /** The chat's own PR going open, then ready, with `approved` reviews on its head. */
+  async function readyPr(o: { approved?: boolean; app?: Record<string, unknown>; blocked?: PrInfo['blocked'] } = {}) {
+    const t = await building(o.app)
+    const head = (await git(t.ws.path, 'rev-parse', 'HEAD')).trim()
+    const gh = github(t.k, t.ws, head)
+    gh.blocked = o.blocked
+    if (o.approved) t.k.store.saveWorkspace({ ...t.ws, reviews: [{ workspaceId: 'rev', agentId: 'theo', verdict: 'approved', summary: 'Fine.', ts: 1, sha: head, prNumber: 54, lens: 'code' }] })
+    await t.k.refreshPr(t.ws.id, { settle: true })
+    gh.state = 'ready'
+    await t.k.refreshPr(t.ws.id, { settle: true })
+    await t.k.refreshPr(t.ws.id, { settle: true })
+    // The reviews feature weighs a ready PR in the background.
+    await new Promise((r) => setTimeout(r, 200))
+    return t
+  }
+
+  it('posts no opened row, and no ready row after an approving review (KERNEL-990)', async () => {
+    const { k, c } = await readyPr({ approved: true })
+    expect(notes(k, c.id)).toEqual([])
+  })
+
+  it('posts the ready row when no review ran, since it is the only sign checks passed', async () => {
+    const { k, c } = await readyPr()
+    expect(notes(k, c.id)).toEqual(['PR #54 is ready to merge'])
+  })
+
+  it('posts the ready row with GitHub\'s block, even after an approval', async () => {
+    const { k, c } = await readyPr({ approved: true, blocked: 'rules' })
+    expect(notes(k, c.id)).toEqual(["PR #54 is ready to merge. GitHub blocks the merge: the branch's rules"])
+  })
+
+  it('posts the ready row with the reason auto-merge left an approved PR, once', async () => {
+    const { k, c, ws } = await readyPr({ approved: true, app: { pr: { autoMerge: { on: true } } } })
+    // GitHub refuses the merge Kernel starts.
+    k.github.merge = async () => { throw new Error('Base branch was protected') }
+    expect(await k.prs.autoMerge(ws.id)).toEqual({ refused: 'Base branch was protected' })
+    await k.prs.autoMerge(ws.id)
+    const rows = notes(k, c.id)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatch(/^PR #54 is ready to merge\. Kernel didn't merge it automatically: the merge Kernel started failed\. Base branch was protected$/)
+  })
 
   it('draws the PR as rows, once each, ends the merge row with the new branch, and tells the next turn (KERNEL-990)', async () => {
     const { k, project, c, ws } = await building()
@@ -444,14 +486,15 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
     gh.state = 'ready'
     await refresh()
     await refresh()
-    expect(notes(k, c.id)).toEqual(['Opened PR #54', 'PR #54 is ready to merge'])
+    // No review covers this PR, so the ready row is the only sign its checks passed. The reviews feature posts it.
+    await vi.waitFor(() => expect(notes(k, c.id)).toEqual(['PR #54 is ready to merge']))
     gh.state = 'merged'
     await refresh()
     await vi.waitFor(() => expect(k.store.workspace(ws.id)).toMatchObject({ prState: 'none' }), { timeout: 10_000, interval: 20 })
     const first = k.store.workspace(ws.id)!
     expect(first.branch).not.toBe(ws.branch)
     // One merge row, which carries the ending, and no second row for the switch. No row names a branch.
-    expect(notes(k, c.id)).toEqual(['Opened PR #54', 'PR #54 is ready to merge', 'PR #54 was merged on GitHub. Next changes start on a new branch'])
+    expect(notes(k, c.id)).toEqual(['PR #54 is ready to merge', 'PR #54 was merged on GitHub. Next changes start on a new branch'])
     expect(notes(k, c.id).join('\n')).not.toContain(ws.branch)
     // The chat's next turn starts with one short line, once.
     const deps = sessionDeps(k)
@@ -463,7 +506,7 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
     await refresh()
     await vi.waitFor(() => expect(k.store.workspace(ws.id)).toMatchObject({ prState: 'none' }), { timeout: 10_000, interval: 20 })
     expect(notes(k, c.id).filter((t) => t.startsWith('PR #54 was merged'))).toHaveLength(1)
-    expect(notes(k, c.id)).toHaveLength(3)
+    expect(notes(k, c.id)).toHaveLength(2)
     expect(k.store.workspace(ws.id)!.branch).not.toBe(first.branch)
     expect(project.id).toBe(ws.projectId)
   })
