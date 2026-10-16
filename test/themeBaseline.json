@@ -61,7 +61,7 @@
   "src/renderer/src/screens/workspace/shared/SharedPanel.tsx": {"inlineStyle":1},
   "src/renderer/src/screens/workspace/shared/SharedView.tsx": {"inlineStyle":1},
   "src/renderer/src/screens/workspace/shared/shared.css": {"fontSize":29,"fontWeight":11,"lineHeight":3},
-  "src/renderer/src/screens/workspace/workspace.css": {"duration":12,"fontSize":80,"fontWeight":18,"lineHeight":13,"unknownVar":1},
-  "src/renderer/src/tokens.css": {"unusedToken":32},
+  "src/renderer/src/screens/workspace/workspace.css": {"duration":12,"fontSize":80,"fontWeight":18,"lineHeight":13},
+  "src/renderer/src/tokens.css": {"unusedToken":30},
   "src/renderer/src/ui/DevUi.tsx": {"inlineStyle":6}
 }
