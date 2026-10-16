@@ -193,10 +193,8 @@
 .rn-labels { display: grid; grid-template-columns: 180px 14px 1fr; column-gap: 8px; }
 .rn-labels > :last-child { grid-column: 3; }
 .rn-row { display: flex; align-items: center; gap: 8px; }
-.rn-owner { position: relative; display: inline-flex; align-items: center; gap: 7px; width: 180px; height: 36px; padding: 0 10px 0 8px; box-sizing: border-box; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); }
-.rn-owner select { flex: 1; min-width: 0; appearance: none; border: 0; background: transparent; color: var(--ink); font-size: var(--fs-ui); outline: none; }
-.rn-owner > svg { color: var(--muted); pointer-events: none; }
-.rn-owner:focus-within { border-color: var(--ink-3); }
+.rn-owner { width: 180px; flex-shrink: 0; }
+.rn-owner .select-trigger { width: 100%; height: 36px; }
 .rn-av { width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; background: var(--surface-3); display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); color: var(--ink-2); }
 .rn-slash { color: var(--muted); }
 .rn-name { flex: 1; min-width: 0; font-size: var(--fs-ui); }
