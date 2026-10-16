@@ -12,11 +12,11 @@ const LEGACY_PRS = 'kernel.prsRoom'
 /**
  * The one project both Work tabs are narrowed to (KERNEL-1009). Pull requests may be on every project; Issues needs one, so while the
  * shared pick is All projects it uses the last single project it was on, then the first project there is. A saved project that was
- * archived or hidden since reads as All projects on Pull requests. Before the first pick, what Pull requests saved under its old key is used.
+ * archived or hidden since reads as All projects on Pull requests. Before the first pick, what Pull requests saved under its old key is used, then the project Issues last used (kernel.lastRoom), so both tabs open on the same one.
  * `routeProjectId` is a project the route names, which becomes the pick.
  */
 export function useWorkProject(choices: Project[], routeProjectId?: string) {
-  const [saved, setSaved] = useRemembered<string>(SHARED, (raw) => raw ?? readSaved(LEGACY_PRS) ?? ALL_PROJECTS)
+  const [saved, setSaved] = useRemembered<string>(SHARED, (raw) => raw ?? readSaved(LEGACY_PRS) ?? lastProject() ?? ALL_PROJECTS)
   const [last, setLast] = useRemembered<string>(LAST_SINGLE, (raw) => raw ?? lastProject() ?? '')
   const pick = (id: string) => { setSaved(id); if (id !== ALL_PROJECTS) setLast(id) }
   const routed = choices.find((r) => r.id === routeProjectId)
