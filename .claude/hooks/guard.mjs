@@ -93,7 +93,14 @@ if (tool !== 'Bash') process.exit(0)
 
 const command = String(args.command ?? '')
 
-if (/\bKERNEL_LIVE=/.test(command)) deny('the live test (KERNEL_LIVE) needs a person.')
+// Live tests CJ approved for agents to run (KERNEL-971). Adding a file is
+// CJ's call in a PR. test/live.test.ts, the SDK bump check, stays off.
+const liveAllowed = ['test/terminalLead.live.test.ts']
+const live = /\bKERNEL_LIVE=/.test(command)
+let liveRuns = 0
+function denyLive(why) {
+  deny(`${why} KERNEL_LIVE may only run these approved live test files, each named on its own: ${liveAllowed.join(', ')}. Ask the Lead to get another file added (KERNEL-971).`)
+}
 if (/\bgh\s+repo\s+(delete|edit)\b/.test(command)) deny('gh repo delete and gh repo edit are off limits.')
 for (const h of ['~', '$HOME', '${HOME}', home]) {
   if (command.includes(`${h}/.claude/settings`)) deny('~/.claude/settings.json is off limits.')
@@ -124,6 +131,31 @@ function checkPush(words, cwd) {
   const onMain = currentBranch(cwd) === 'main'
   if (onMain && (refspecs.length === 0 || refspecs.includes('HEAD'))) {
     deny('pushing to main is off limits. Merge through a PR.')
+  }
+}
+
+// A test run in a KERNEL_LIVE command must name only approved files, and at
+// least one: with no file, vitest runs every test, live ones included.
+function checkLive(words, cwd) {
+  const at = words.findIndex((w) => /^(test(:[\w-]+)?|vitest)$/.test(w))
+  if (at < 0) return
+  liveRuns++
+  const files = []
+  const rest = words.slice(at + 1)
+  for (let i = 0; i < rest.length; i++) {
+    const w = rest[i]
+    if (/^[0-9&]*[<>]/.test(w)) {
+      if (/^[0-9&]*[<>]+&?$/.test(w)) i++
+      continue
+    }
+    if (w === 'run' || w === '--' || w.startsWith('-')) continue
+    files.push(w)
+  }
+  if (!files.length) denyLive('A live test run must name its test file.')
+  for (const f of files) {
+    if (/[$`*?[]/.test(f)) denyLive(`${f} can't be checked.`)
+    const rel = path.relative(root, real(expand(f, cwd)))
+    if (!liveAllowed.includes(rel)) denyLive(`${f} is not an approved live test.`)
   }
 }
 
@@ -164,6 +196,8 @@ for (const piece of command.split(/&&|\|\||[;|\n]/)) {
   }
   if (words[0] === 'git') checkPush(words, cwd)
   if (words[0] === 'rm') checkRm(words, cwd)
+  if (live) checkLive(words, cwd)
 }
+if (live && !liveRuns) denyLive('This command sets KERNEL_LIVE without running a test.')
 
 process.exit(0)
