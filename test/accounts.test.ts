@@ -624,7 +624,7 @@ describe('holds and limits per provider (KERNEL-406)', () => {
     k.account.applyLimits([])
     expect(k.store.project(project.id)?.paused).toBeFalsy()
     // The engineers on Codex, both rows, and the Lead on Claude: the project pauses only when both are limited.
-    const onCodex = { provider: 'codex', model: 'gpt-6-astra', effort: 'low' } as const
+    const onCodex = { prefer: 'codex', codex: { model: 'gpt-6-astra', effort: 'low' } } as const
     await k.config.setSettings({ models: { roles: { frontend: onCodex, engineers: onCodex } } })
     k.account.applyLimits([claude])
     expect(k.store.project(project.id)?.paused).toBeFalsy()
@@ -838,7 +838,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; label: string; auth?: 'apiKey'; createdAt: number }[] } }; save: () => Promise<void> }
     p.load().claude.accounts.push({ id: 'key', label: 'Key', auth: 'apiKey', createdAt: 1 })
     await p.save()
-    await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
+    await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } }, providers: { fallback: false } })
     sdk.usage = { '': 100, [folder('Personal')]: 100 }
     reject(k, { accountId: ids.Personal })
     reject(k)
@@ -1197,7 +1197,7 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     await writeFile(join(repo, '.claude', 'agents', 'christian.md'), '---\nname: christian\ndescription: Engineer. Builds the engine.\nmodel: opus\n---\nYou are Christian.')
     const project = await k.addProject(repo)
     // The user put the Lead on Opus 5.5 themselves, so a Pro plan's defaults don't move it.
-    await k.config.setSettings({ models: { roles: { lead: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' } } } })
+    await k.config.setSettings({ models: { roles: { lead: { prefer: 'claude', claude: { model: 'claude-opus-5-5', effort: 'high' } } } } })
     await k.team.agents(project.id)
     const lead = k.team.agentsSync(project.id).filter((a) => k.team.pickFor(a).model === 'claude-opus-5-5').map((a) => a.name).sort()
     expect(lead).toEqual(['Christian', 'Kernel'])
@@ -1216,7 +1216,7 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     await h['accounts.switch']({ provider: 'claude', accountId: side.id })
     expect(notices()).toHaveLength(1)
     // The Lead moves to a model the account offers. Christian's file still pins Opus.
-    await k.config.setSettings({ models: { roles: { lead: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' } } } })
+    await k.config.setSettings({ models: { roles: { lead: { prefer: 'claude', claude: { model: 'claude-sonnet-5-5', effort: 'high' } } } } })
     expect((await h['accounts.list'](undefined)).find((a) => a.id === side.id)?.missingModels).toEqual([{ model: 'claude-opus-5-5', label: 'Opus 5.5', agents: ['Christian'] }])
     await k.stop({ budgetMs: 0 })
   })

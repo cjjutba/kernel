@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentDef, AgentEdit, Effort, Role } from '@shared/types'
 import { EFFORTS, MODELS } from '@shared/types'
 import { roleOf } from '@shared/team'
+import { roleSide } from '@shared/rolePick'
 import { call } from '../../api'
 import { useStore } from '../../store'
 import { Icon, Pill, SegmentedControl } from '../../ui'
@@ -85,7 +86,7 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
     return order.filter((x) => on.has(x))
   }
   // Kernel's own agents have no model of their own: Settings, Models picks it.
-  const modelId = builtIn ? (agent.lead ? models?.roles.lead.model : models?.roles.reviewer.model) ?? '' : MODELS.find((m) => sameModel(form.model, m.id))?.id ?? ''
+  const modelId = builtIn ? (models ? roleSide(agent.lead ? models.roles.lead : models.roles.reviewer).model : '') : MODELS.find((m) => sameModel(form.model, m.id))?.id ?? ''
   const effort = form.effort ?? defaultEffortOf(agent, models)
   return (
     <>

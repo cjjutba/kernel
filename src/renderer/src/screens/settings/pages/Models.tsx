@@ -2,6 +2,7 @@ import './agents.css'
 import { useRef, useState } from 'react'
 import { EFFORT_LABELS, type AppSettings, type CompactWindow, type Effort, type Provider, type ProviderModel, type Role, type RoleModel } from '@shared/types'
 import { roleOf, takesTasks } from '@shared/team'
+import { roleSide } from '@shared/rolePick'
 import { LinkButton, Icon, Popover, ProviderMark, Select, Toggle } from '../../../ui'
 import { ModelPicker } from '../../workspace/composer/ModelPicker'
 import { agentModelLabel, COMPACT_LABELS, fitEffort, modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
@@ -123,7 +124,7 @@ function RoleLine({ title, roleKey, current, compact }: { title: string; roleKey
   const codex = useProviderModels('codex')
   const listOf = (p: Provider) => (p === 'codex' ? codex : claude)
   const who = useRoleAgents(roleKey, [...claude, ...codex])
-  const save = (next: RoleModel) => void patchSettings({ models: { roles: { [roleKey]: next } } })
+  const save = (next: RoleModel) => void patchSettings({ models: { roles: { [roleKey]: { prefer: next.provider, [next.provider]: { model: next.model, effort: next.effort } } } } })
   const pick = (model: string) => {
     const provider: Provider = codex.some((m) => m.id === model) ? 'codex' : claude.some((m) => m.id === model) ? 'claude' : current.provider
     save({ provider, model, effort: fitEffort(current.effort, model, listOf(provider)) })
@@ -141,7 +142,7 @@ function Roles({ s }: { s: AppSettings }) {
   return (
     <div className="set-card ag-roles" role="table" aria-label="Roles">
       <div className="set-table-head" role="row" style={{ gridTemplateColumns: ROLE_GRID }}>{['Role', 'Model'].map((c) => <span key={c} role="columnheader">{c}</span>)}</div>
-      {ROLES.map((r) => <RoleLine key={r.key} title={r.title} roleKey={r.key} current={s.models.roles[r.key]} compact={s.models.compact[r.key]} />)}
+      {ROLES.map((r) => <RoleLine key={r.key} title={r.title} roleKey={r.key} current={roleSide(s.models.roles[r.key])} compact={s.models.compact[r.key]} />)}
     </div>
   )
 }

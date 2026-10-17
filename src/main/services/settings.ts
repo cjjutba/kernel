@@ -4,7 +4,7 @@ import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
+import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Provider, type Role, type RoleChoice, type RoleSide, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { LEAD_MODES } from '@shared/leadMode'
 import { terminalSettingsOf } from './terminalPresets'
@@ -33,6 +33,9 @@ export function runHookPort(env: NodeJS.ProcessEnv = process.env): number {
   return Number.isInteger(first) && first > 0 && first + PORT_BLOCK <= 65536 ? first + PORT_BLOCK - 1 : HOOK_PORTS.dev + PORT_BLOCK
 }
 
+/** The model a role's Codex side starts on until the user picks one. Codex lists its models at run time, so Settings, Models can change it (KERNEL-1055). */
+const CODEX_DEFAULT_MODEL = 'gpt-6-astra'
+
 export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSettings => ({
   hookPort: build === 'run' ? runHookPort() : HOOK_PORTS[build],
   worktreeRoot: join(home, 'kernel', 'worktrees'),
@@ -47,17 +50,17 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true, timeoutMinutes: 15 },
   models: {
     roles: {
-      lead: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' },
-      frontend: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
-      engineers: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
-      qa: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
-      reviewer: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' }
+      lead: { prefer: 'claude', claude: { model: 'claude-opus-5-5', effort: 'high' }, codex: { model: CODEX_DEFAULT_MODEL, effort: 'high' } },
+      frontend: { prefer: 'claude', claude: { model: 'claude-sonnet-5-5', effort: 'high' }, codex: { model: CODEX_DEFAULT_MODEL, effort: 'medium' } },
+      engineers: { prefer: 'claude', claude: { model: 'claude-sonnet-5-5', effort: 'high' }, codex: { model: CODEX_DEFAULT_MODEL, effort: 'medium' } },
+      qa: { prefer: 'claude', claude: { model: 'claude-sonnet-5-5', effort: 'high' }, codex: { model: CODEX_DEFAULT_MODEL, effort: 'medium' } },
+      reviewer: { prefer: 'claude', claude: { model: 'claude-sonnet-5-5', effort: 'high' }, codex: { model: CODEX_DEFAULT_MODEL, effort: 'high' } }
     },
     // The Lead and engineers hold long work, so they keep the model's window. A QA run or a review is short (feat-compact-window-per-role-with-plan).
     compact: { lead: 'full', frontend: 'full', engineers: 'full', qa: '200k', reviewer: '200k' },
     leadPlanMode: true, agentLimit: 0, agentTeams: false, leadUpdates: true, workspacePlanMode: false, effortByModel: {}
   },
-  providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } },
+  providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' }, fallback: true },
   team: { defaultTemplate: 'starter', leadMode: 'handoff' },
   permissions: { mode: 'auto', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
@@ -85,8 +88,8 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
  * compact window follows the plan too (feat-compact-window-per-role-with-plan).
  */
 export const PLAN_KEYS = [
-  'models.roles.lead.model', 'models.roles.reviewer.model',
-  'models.roles.lead.effort', 'models.roles.frontend.effort', 'models.roles.engineers.effort', 'models.roles.qa.effort', 'models.roles.reviewer.effort',
+  'models.roles.lead.claude.model', 'models.roles.reviewer.claude.model',
+  'models.roles.lead.claude.effort', 'models.roles.frontend.claude.effort', 'models.roles.engineers.claude.effort', 'models.roles.qa.claude.effort', 'models.roles.reviewer.claude.effort',
   'models.agentLimit', 'pr.autoReview',
   'models.compact.lead', 'models.compact.frontend', 'models.compact.engineers', 'models.compact.qa', 'models.compact.reviewer'
 ] as const
@@ -136,13 +139,13 @@ export function planDefaults(plan: ClaudePlan | undefined): DeepPartial<AppSetti
   if (plan === 'pro') {
     return {
       models: {
-        roles: { lead: { model: 'claude-sonnet-5-5', effort: 'medium' }, reviewer: { model: 'claude-sonnet-5-5', effort: 'medium' }, frontend: { effort: 'medium' }, engineers: { effort: 'medium' }, qa: { effort: 'medium' } },
+        roles: { lead: { claude: { model: 'claude-sonnet-5-5', effort: 'medium' } }, reviewer: { claude: { model: 'claude-sonnet-5-5', effort: 'medium' } }, frontend: { claude: { effort: 'medium' } }, engineers: { claude: { effort: 'medium' } }, qa: { claude: { effort: 'medium' } } },
         compact: { lead: '200k', frontend: '200k', engineers: '200k', qa: '200k', reviewer: '200k' },
         agentLimit: 2
       }
     }
   }
-  return { models: { roles: { reviewer: { model: 'claude-sonnet-5-5' } } } }
+  return { models: { roles: { reviewer: { claude: { model: 'claude-sonnet-5-5' } } } } }
 }
 
 const at = (o: unknown, dotted: string): unknown => dotted.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), o)
@@ -281,6 +284,7 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   if (!sparseFile && group('pr')?.autoReview === false) saved.pr = { ...saved.pr, autoReview: false }
   migrateRoles(saved)
   if (!(typeof version === 'number' && version >= SAVED_VERSION)) splitEngineers(saved)
+  migrateSides(saved)
   migratePermissions(saved)
   return { saved, resolved: resolveSettings(defaults, saved, plan) }
 }
@@ -362,19 +366,41 @@ function splitEngineers(saved: DeepPartial<AppSettings>) {
 }
 
 /**
- * Each role keeps a known provider, a model and an effort, else the fallback's. A Claude role needs one of Claude's models
- * and efforts. Codex lists its models at run time, so any id stands, with any of its efforts.
+ * Before KERNEL-1055 a role held one pick, `{ provider, model, effort }`. It becomes the preferred side of the role's choice, and
+ * the other side is left unset, so the defaults apply to it. A file with no `provider` was Claude's, as the default was. A role
+ * that already has `prefer` or a side is the new shape and stays as it is.
  */
-export function roleModels(v: unknown, fallback: Record<Role, RoleModel>): Record<Role, RoleModel> {
-  const given = v && typeof v === 'object' ? (v as Record<string, Partial<RoleModel> | undefined>) : {}
+function migrateSides(saved: DeepPartial<AppSettings>) {
+  const roles = (saved.models as Record<string, unknown> | undefined)?.roles
+  if (!isTable(roles)) return
+  for (const [role, v] of Object.entries(roles)) {
+    if (!isTable(v) || 'prefer' in v || 'claude' in v || 'codex' in v) continue
+    const { provider, model, effort, ...rest } = v
+    if (provider === undefined && model === undefined && effort === undefined) continue
+    const side = provider === 'codex' ? 'codex' : 'claude'
+    roles[role] = { ...rest, ...(side === 'codex' ? { prefer: 'codex' } : {}), [side]: { ...(model !== undefined ? { model } : {}), ...(effort !== undefined ? { effort } : {}) } }
+  }
+}
+
+/**
+ * Each role keeps a known preferred provider, and a model and effort on each provider, else the fallback's. A Claude side needs
+ * one of Claude's models and efforts. Codex lists its models at run time, so any id that isn't Claude's stands, with any of
+ * its efforts.
+ */
+export function roleModels(v: unknown, fallback: Record<Role, RoleChoice>): Record<Role, RoleChoice> {
+  const given = v && typeof v === 'object' ? (v as Record<string, Partial<Record<keyof RoleChoice, unknown>> | undefined>) : {}
   return Object.fromEntries(ROLES.map((r) => {
     const g = given[r]
-    const provider = g?.provider === 'codex' || g?.provider === 'claude' ? g.provider : fallback[r].provider
-    const model = typeof g?.model === 'string' && g.model.trim() && (provider === 'codex' ? !g.model.startsWith('claude-') : MODELS.some((m) => m.id === g.model)) ? g.model : undefined
-    const effort = (provider === 'claude' ? EFFORTS.some((e) => e.id === g?.effort) : typeof g?.effort === 'string' && g.effort in EFFORT_LABELS) ? (g!.effort as Effort) : undefined
-    if (!model) return [r, provider === fallback[r].provider ? { ...fallback[r], ...(effort ? { effort } : {}) } : fallback[r]]
-    return [r, { provider, model, effort: effort ?? fallback[r].effort }]
-  })) as Record<Role, RoleModel>
+    const prefer = g?.prefer === 'codex' || g?.prefer === 'claude' ? g.prefer : fallback[r].prefer
+    return [r, { prefer, claude: roleSideOf(g?.claude, fallback[r].claude, 'claude'), codex: roleSideOf(g?.codex, fallback[r].codex, 'codex') }]
+  })) as Record<Role, RoleChoice>
+}
+
+function roleSideOf(v: unknown, fallback: RoleSide, provider: Provider): RoleSide {
+  const g = v && typeof v === 'object' ? (v as Partial<RoleSide>) : {}
+  const model = typeof g.model === 'string' && g.model.trim() && (provider === 'codex' ? !g.model.startsWith('claude-') : MODELS.some((m) => m.id === g.model)) ? g.model : fallback.model
+  const effort = (provider === 'claude' ? EFFORTS.some((e) => e.id === g.effort) : typeof g.effort === 'string' && g.effort in EFFORT_LABELS) ? (g.effort as Effort) : fallback.effort
+  return { model, effort }
 }
 
 /** `models.compact` as Kernel reads it: each role's window when it is one of the two choices, else the fallback's (feat-compact-window-per-role-with-plan). */

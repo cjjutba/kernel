@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react'
 import { EFFORT_LABELS, EFFORTS, type AgentDef, type AppSettings, type Effort, type RoleModel } from '@shared/types'
 import type { EffortMemory } from '@shared/effort'
-import { rolePick } from '@shared/rolePick'
+import { rolePick, roleSide } from '@shared/rolePick'
 import { roleOf } from '@shared/team'
 import { call } from '../../../api'
 import { useStore } from '../../../store'
@@ -22,7 +22,7 @@ export const useEffortMemory = (): EffortMemory => useStore((s) => s.settings?.m
  * reads, as main has it (KERNEL-974). A chat with no agent reads Backend's.
  */
 export const defaultEffortOf = (agent: AgentDef | undefined, models: AppSettings['models'] | undefined): Effort =>
-  agent?.effort ?? models?.roles[agent ? roleOf(agent) : 'engineers'].effort ?? 'high'
+  agent?.effort ?? (models ? roleSide(models.roles[agent ? roleOf(agent) : 'engineers']).effort : 'high')
 
 /** `defaultEffortOf` in an engineer's workspace. Never the open chat's. The boxes that start a Lead chat fall back to the Lead's (`useLeadBox`). */
 export const useDefaultEffort = (agent?: AgentDef): Effort => useStore((s) => defaultEffortOf(agent, s.settings?.models))
@@ -46,7 +46,7 @@ export interface LeadStart extends RoleModel { plan: boolean }
  */
 export function leadStart(lead: Pick<AgentDef, 'model' | 'provider' | 'effort'> | undefined, settings: Pick<AppSettings, 'models'> | null | undefined, codexUp: boolean): LeadStart {
   const plan = settings?.models.leadPlanMode ?? false
-  const pick = rolePick(lead ?? {}, settings?.models.roles.lead ?? CLAUDE_DEFAULT)
+  const pick = rolePick(lead ?? {}, settings ? roleSide(settings.models.roles.lead) : CLAUDE_DEFAULT)
   if (pick.provider !== 'codex' || codexUp) return { ...pick, plan }
   return { ...CLAUDE_DEFAULT, effort: fitEffort(pick.effort, CLAUDE_DEFAULT.model, []), plan }
 }

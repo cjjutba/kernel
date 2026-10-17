@@ -173,6 +173,23 @@ describe('which reviews a PR gets', () => {
     expect(k.sessions['d'].agentFor(rws, chatOf(rws, 'security'))).toMatchObject({ id: 'wren' })
   })
 
+  it("starts a kind's chat on the reviewer's other side while its own provider is at its limit (KERNEL-1055)", async () => {
+    const { k, pr, reviewsOf, chatOf } = await setup({ settings: '[review.security]\nagent = "wren"\nrequired = false\nmodel = "claude-haiku-4-5-20251001"\n' })
+    ;(k.providers as unknown as { load: () => { codex: { cli?: { signedIn?: boolean } } } }).load().codex.cli = { signedIn: true }
+    k.store.saveMeta('limits', [{ type: 'five_hour', status: 'rejected', resetsAt: Math.round(Date.now() / 1000) + 3600 }])
+    const pushed: unknown[] = []
+    const listen = (e: { type: string }) => { if (e.type === 'providerFellBack') pushed.push(e) }
+    bus.on('push', listen)
+    onTestFinished(() => { bus.off('push', listen) })
+    const ws = await pr({ 'a.txt': 'a\n' })
+    await k.reviews.onReady(ws.id)
+    const [rws] = reviewsOf(ws.id)
+    const reviewer = k.settings.models.roles.reviewer.codex
+    expect(chatOf(rws, 'security')).toMatchObject({ provider: 'codex', model: reviewer.model, effort: reviewer.effort })
+    expect(chatOf(rws, 'code')).toMatchObject({ provider: 'codex', model: reviewer.model })
+    expect(pushed).toContainEqual({ type: 'providerFellBack', workspaceId: rws.id, from: 'claude', to: 'codex' })
+  })
+
   it("never lets an agent review its own PR with its own prompt", async () => {
     const { k, pr, reviewsOf, lenses, chatOf } = await setup({ settings: '[review.ux]\nagent = "wren"\n\n[review.security]\nagent = "christian"\n' })
     const ws = await pr({ 'a.txt': 'a\n' }, 'christian')

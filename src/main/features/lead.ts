@@ -113,15 +113,17 @@ export class Lead extends Feature {
     const project = this.store.project(projectId)
     const leadMode = o.leadMode ?? newChatLeadMode(this.settings, project ? await loadRepoSettings(project.path).catch(() => undefined) : undefined)
     const thread = this.pushThread({ id: newId(), projectId, title: NEW_TAB, createdAt: Date.now() })
+    const said = (workspaceId: string) => { if (!o.model) this.k.team.announce({ id: workspaceId }, role) }
     if (leadMode === 'handoff' && !o.baseRef) {
       const shared = await this.startShared(projectId, thread, o, pick, lead, leadMode).catch((e) => { this.store.deleteThread(thread.id); throw e })
-      if (shared) return shared
+      if (shared) { said(shared.workspaceId); return shared }
     }
     let cut: Awaited<ReturnType<Workspaces['cutWorkspace']>>
     try { cut = await this.k.workspaces.cutWorkspace(projectId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id }, leadMode, worktreeLater: true }) }
     catch (e) { this.store.deleteThread(thread.id); throw e }
     // Its branch and folder take their names from the chat's first title, once (KERNEL-424).
     const ws = this.updateWs(cut.ws.id, { leadMode, ...(cut.ws.mode === 'worktree' ? { naming: 'branch' as const } : {}) })
+    said(ws.id)
     // Through the composer's own path, so Bypass where policy or the workspace doesn't allow it still runs as Accept edits.
     const chat = o.mode ? await this.sessions.configure(this.saveChat(cut.chat).id, { mode: o.mode }) : this.saveChat(cut.chat)
     this.userSpoke(chat.id)
@@ -764,13 +766,13 @@ export class Lead extends Feature {
     const ws = this.newestChatWorkspace(projectId)
     const open = ws && this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     if (open) return open
-    if (ws) return this.saveChat(this.leadTab(ws, NEW_TAB, this.leadPick(await this.leadOf(projectId))))
+    if (ws) return this.saveChat(this.leadTab(ws, NEW_TAB, this.leadPick(await this.leadOf(projectId), ws)))
     return this.newLeadChat(projectId, { prompt: '' })
   }
 
   /** The model, effort and plan mode a Lead tab Kernel opens starts with. */
-  private leadPick(lead: AgentDef) {
-    return { ...this.k.team.pickFor(lead), plan: this.settings.models.leadPlanMode }
+  private leadPick(lead: AgentDef, ws: Workspace) {
+    return { ...this.k.team.announce(ws, this.k.team.pickFor(lead)), plan: this.settings.models.leadPlanMode }
   }
 
   /**
@@ -790,6 +792,7 @@ export class Lead extends Feature {
     // A model picked in New Lead chat runs on its own provider. Otherwise the Lead's pin or its role decides (KERNEL-406).
     const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
     await this.syncLead(ws.projectId, { workspaceId: ws.id })
+    if (!o.model) this.k.team.announce(ws, role)
     const chat = this.saveChat(this.leadTab(this.mustWs(ws.id), NEW_TAB, pick))
     this.userSpoke(chat.id)
     await this.sessions.send(chat.id, messageOf(o.prompt, o.parts))
@@ -1163,7 +1166,7 @@ export class Lead extends Feature {
     if (held && !tab) { held.later.push(parts); this.k.setup.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message goes out with the brief.` } }
     let chat = tab ?? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     const opened = !chat
-    if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { ...(agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers), plan: false }))
+    if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { ...this.k.team.pickIn(ws, agent), plan: false }))
     if (held) { this.sessions.hold(chat.id, parts, { from: 'lead' }); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message goes out once setup passes.`, ...who } }
     const { queued, why } = await this.sessions.send(chat.id, parts, { from: 'lead' })
     if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : kind && kinds.length > 1 ? `Sent to the ${kind} review.` : 'Sent.', ...who }
@@ -1284,7 +1287,7 @@ export class Lead extends Feature {
     const project = this.store.project(projectId)
     if (!lead || !project || project.archived) return undefined
     const ws = this.newestChatWorkspace(projectId)
-    if (ws) { this.saveChat(this.leadTab(ws, NEW_TAB, this.leadPick(lead))); return this.leadUpdateTarget(projectId, owner) }
+    if (ws) { this.saveChat(this.leadTab(ws, NEW_TAB, this.leadPick(lead, ws))); return this.leadUpdateTarget(projectId, owner) }
     if (!this.opening.has(projectId)) {
       const made = this.newLeadChat(projectId, { prompt: '' }).then(() => { if (!this.stopped) this.leadUpdates.flush(projectId) })
         .catch((e) => { if (!this.stopped) console.warn('[lead] could not start a chat for a Team update', e) })

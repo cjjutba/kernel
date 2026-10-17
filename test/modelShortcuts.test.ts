@@ -78,7 +78,7 @@ describe('cycle effort', () => {
 })
 
 describe('the effort a model with none remembered falls back to (KERNEL-974)', () => {
-  const row = (effort: string) => ({ provider: 'claude', model: 'claude-sonnet-5-5', effort })
+  const row = (effort: string) => ({ prefer: 'claude', claude: { model: 'claude-sonnet-5-5', effort }, codex: { model: 'gpt-6-astra', effort } })
   const models = { roles: { lead: row('max'), frontend: row('low'), engineers: row('high'), qa: row('medium'), reviewer: row('xhigh') } } as unknown as AppSettings['models']
   const agent = (o: Partial<AgentDef>) => ({ id: 'a', name: 'A', role: '', description: '', prompt: '', file: '', ...o }) as AgentDef
 

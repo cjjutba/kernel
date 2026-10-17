@@ -151,11 +151,12 @@ describe('bringing the box up when the composer is asked for', () => {
 })
 
 describe("a New chat box opens on the Lead's pick (KERNEL-544)", () => {
+  const choice = (r: RoleModel) => ({ prefer: r.provider, claude: r.provider === 'claude' ? { model: r.model, effort: r.effort } : { model: 'claude-opus-5-5', effort: 'high' }, codex: r.provider === 'codex' ? { model: r.model, effort: r.effort } : { model: 'gpt-6-astra', effort: 'high' } })
   const settings = (lead: RoleModel, over: { leadPlanMode?: boolean; engineers?: RoleModel; effortByModel?: Record<string, string> } = {}) => ({
     models: {
       roles: {
-        lead, engineers: over.engineers ?? { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'xhigh' },
-        qa: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' }, reviewer: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' }
+        lead: choice(lead), engineers: choice(over.engineers ?? { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'xhigh' }),
+        qa: choice({ provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' }), reviewer: choice({ provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' })
       },
       leadPlanMode: over.leadPlanMode ?? false, effortByModel: over.effortByModel ?? {}
     }

@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, Workspace } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
+import type { AgentDef, Chat, Provider, RateLimit, Workspace } from '@shared/types'
+import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { agentFromFile, updateAgent } from '../src/main/services/agents'
 import { tempRepo } from './helpers'
@@ -26,7 +28,7 @@ const agent = (o: Partial<AgentDef>): AgentDef => ({ id: 'christian', name: 'Chr
 describe('which provider, model and effort an agent runs on (KERNEL-406)', () => {
   it("takes the role's default from Settings, and the file's effort over the role's", async () => {
     const { k } = await kernel()
-    await k.config.setSettings({ models: { roles: { frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, qa: { provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' } } } })
+    await k.config.setSettings({ models: { roles: { frontend: { prefer: 'codex', codex: { model: 'gpt-6-astra', effort: 'medium' } }, qa: { prefer: 'claude', claude: { model: 'claude-haiku-4-5-20251001', effort: 'low' } } } } })
     expect(k.team.pickFor(agent({}))).toEqual({ provider: 'codex', model: 'gpt-6-astra', effort: 'medium' })
     expect(k.team.pickFor(agent({ effort: 'xhigh' }))).toEqual({ provider: 'codex', model: 'gpt-6-astra', effort: 'xhigh' })
     expect(k.team.pickFor(agent({ role: 'QA' }))).toEqual({ provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' })
@@ -55,8 +57,8 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
 
   it("lets the agent file's model pin that agent, on its provider line or the one its model belongs to", async () => {
     const { k } = await kernel()
-    await k.config.setSettings({ models: { roles: { frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } } } })
-    expect(k.team.pickFor(agent({ model: 'opus' }))).toEqual({ provider: 'claude', model: 'claude-opus-5-5', effort: 'medium' })
+    await k.config.setSettings({ models: { roles: { frontend: { prefer: 'codex', codex: { model: 'gpt-6-astra', effort: 'medium' } } } } })
+    expect(k.team.pickFor(agent({ model: 'opus' }))).toEqual({ provider: 'claude', model: 'claude-opus-5-5', effort: 'high' })
     expect(k.team.pickFor(agent({ model: 'claude-sonnet-5-5', effort: 'high' }))).toEqual({ provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' })
     expect(k.team.pickFor(agent({ model: 'gpt-5.6-luna' }))).toMatchObject({ provider: 'codex', model: 'gpt-5.6-luna' })
     expect(k.team.pickFor(agent({ model: 'my-local-model', provider: 'codex' }))).toMatchObject({ provider: 'codex', model: 'my-local-model' })
@@ -67,7 +69,7 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
 
   it('starts a hand-off on the role default, and on the agent alone when its file pins a model', async () => {
     const { k, project } = await kernel({ '.claude/agents/christian.md': CHRISTIAN, '.claude/agents/teng.md': IVY.replace('role: QA', 'role: QA\nmodel: gpt-5.6-luna\nprovider: codex') })
-    await k.config.setSettings({ models: { roles: { frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'high' } } } })
+    await k.config.setSettings({ models: { roles: { frontend: { prefer: 'codex', codex: { model: 'gpt-6-astra', effort: 'high' } } } } })
     const christian = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian' })
     expect(k.store.chats(christian.id)[0]).toMatchObject({ provider: 'codex', model: 'gpt-6-astra', effort: 'high' })
     const teng = await k.createWorkspace(project.id, { prompt: 'Test it', agentId: 'teng' })
@@ -95,7 +97,7 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
     // No Codex role: the tab asks for Codex's models, which come from Codex itself, so the test names one.
     const tab = await h['chats.create']({ workspaceId: ws.id, provider: 'codex', model: 'gpt-5.6-terra', effort: 'medium' })
     expect(tab).toMatchObject({ provider: 'codex', model: 'gpt-5.6-terra', effort: 'medium' })
-    await k.config.setSettings({ models: { roles: { frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'low' } } } })
+    await k.config.setSettings({ models: { roles: { frontend: { prefer: 'codex', codex: { model: 'gpt-6-astra', effort: 'low' } } } } })
     expect(await h['chats.create']({ workspaceId: ws.id, provider: 'codex' })).toMatchObject({ provider: 'codex', model: 'gpt-6-astra' })
     // A plain new tab follows the workspace's first chat, as before.
     expect(await h['chats.create']({ workspaceId: ws.id })).toMatchObject({ model: 'claude-sonnet-5-5' })
@@ -141,5 +143,104 @@ describe("an agent file's provider line (KERNEL-406)", () => {
     expect(cleared.model).toBeUndefined()
     expect(cleared.provider).toBeUndefined()
     expect(await readFile(join(repo, '.claude/agents/teng.md'), 'utf8')).toBe('---\nname: teng\ndescription: QA.\ncolor: green\n---\n\nHi\n')
+  })
+})
+
+describe('new work starts on the other provider while every account is at its limit (KERNEL-1055)', () => {
+  const later = () => Math.round(Date.now() / 1000) + 3600
+  const window = (provider: Provider, o: { resetsAt?: number; accountId?: string } = {}): RateLimit => ({ type: 'five_hour', status: 'rejected', resetsAt: o.resetsAt ?? later(), ...(provider === 'codex' ? { provider } : {}), ...(o.accountId ? { accountId: o.accountId } : {}) })
+  const limit = (k: Kernel, ...limits: RateLimit[]) => k.store.saveMeta<RateLimit[]>('limits', limits)
+  const signIn = (k: Kernel, provider: Provider) => {
+    const file = (k.providers as unknown as { load: () => Record<Provider, { cli?: { signedIn?: boolean } }> }).load()
+    ;(file[provider].cli ??= {}).signedIn = true
+  }
+  const claudeSide = { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' }
+  const codexSide = { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }
+  const fellBack = (from: Provider, side: object) => ({ ...side, fellBack: { from } })
+
+  it("returns the role's preferred side, either provider, and the provider of the chat that hands the work off", async () => {
+    const { k } = await kernel()
+    signIn(k, 'codex')
+    expect(k.team.pickFor(agent({}))).toEqual(claudeSide)
+    expect(k.team.pickFor(agent({}), { chatProvider: 'codex' })).toEqual(codexSide)
+    await k.config.setSettings({ models: { roles: { frontend: { prefer: 'codex', codex: { model: 'gpt-6-luna', effort: 'low' } } } } })
+    expect(k.team.pickFor(agent({}))).toEqual({ provider: 'codex', model: 'gpt-6-luna', effort: 'low' })
+    expect(k.team.pickFor(agent({}), { chatProvider: 'claude' })).toEqual(claudeSide)
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('falls back to the other side when the only account on the preferred provider has a rejected window, and says which it left', async () => {
+    const { k } = await kernel()
+    signIn(k, 'codex')
+    limit(k, window('claude'))
+    expect(k.team.pickFor(agent({}))).toEqual(fellBack('claude', codexSide))
+    expect(k.team.pickFor(agent({ effort: 'max' }))).toEqual(fellBack('claude', codexSide))
+    limit(k)
+    expect(k.team.pickFor(agent({}))).toEqual(claudeSide)
+    // The same the other way round.
+    signIn(k, 'claude')
+    await k.config.setSettings({ models: { roles: { frontend: { prefer: 'codex', codex: { model: 'gpt-6-luna', effort: 'low' } } } } })
+    limit(k, window('codex'))
+    expect(k.team.pickFor(agent({}))).toEqual(fellBack('codex', claudeSide))
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('stays put while a spare account has room, the rejection has passed, the setting is off or the other provider has no room', async () => {
+    const { k } = await kernel()
+    signIn(k, 'codex')
+    limit(k, window('claude'))
+    const spare = vi.spyOn(k.providers, 'spareAccount').mockReturnValue('work')
+    expect(k.team.pickFor(agent({}))).toEqual(claudeSide)
+    spare.mockRestore()
+    limit(k, window('claude', { resetsAt: Math.round(Date.now() / 1000) - 5 }))
+    expect(k.team.pickFor(agent({}))).toEqual(claudeSide)
+    limit(k, window('claude'))
+    expect(k.team.pickFor(agent({}))).toEqual(fellBack('claude', codexSide))
+    limit(k, window('claude'), window('codex'))
+    expect(k.team.pickFor(agent({}))).toEqual(claudeSide)
+    limit(k, window('claude'))
+    await k.config.setSettings({ providers: { fallback: false } })
+    expect(k.team.pickFor(agent({}))).toEqual(claudeSide)
+    await k.config.setSettings({ providers: { fallback: true } })
+    const signedOut = (await kernel()).k
+    limit(signedOut, window('claude'))
+    expect(signedOut.team.pickFor(agent({}))).toEqual(claudeSide)
+    await Promise.all([k.stop({ budgetMs: 0 }), signedOut.stop({ budgetMs: 0 })])
+  })
+
+  it("keeps an agent file's pin while its provider has room, and moves it to the role's other side when it hasn't", async () => {
+    const { k } = await kernel()
+    signIn(k, 'codex')
+    const pinned = agent({ model: 'opus' })
+    expect(k.team.pickFor(pinned)).toEqual({ provider: 'claude', model: 'claude-opus-5-5', effort: 'high' })
+    limit(k, window('claude'))
+    expect(k.team.pickFor(pinned)).toEqual(fellBack('claude', codexSide))
+    limit(k, window('codex'))
+    expect(k.team.pickFor(agent({ model: 'gpt-5.6-luna' }))).toMatchObject({ provider: 'codex', model: 'gpt-5.6-luna' })
+    signIn(k, 'claude')
+    expect(k.team.pickFor(agent({ model: 'gpt-5.6-luna' }))).toEqual(fellBack('codex', claudeSide))
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it("starts a Lead chat's hand-off on the role's Codex side, and tells the UI when a pick fell back", async () => {
+    const { k, project } = await kernel()
+    signIn(k, 'codex')
+    const chat: Chat = { id: 'lead-chat', workspaceId: 'lead-ws', title: 'Lead', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'high', plan: false, createdAt: 1 }
+    k.store.saveChat(chat)
+    const events: PushEvent[] = []
+    const listen = (e: PushEvent) => { if (e.type === 'providerFellBack') events.push(e) }
+    bus.on('push', listen)
+    try {
+      const handed = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', leadChatId: chat.id })
+      expect(k.store.chats(handed.id)[0]).toMatchObject({ provider: 'codex', model: 'gpt-6-astra', effort: 'medium' })
+      const own = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian' })
+      expect(k.store.chats(own.id)[0].provider).toBeUndefined()
+      expect(events).toEqual([])
+      limit(k, window('claude'))
+      const fell = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian' })
+      expect(k.store.chats(fell.id)[0]).toMatchObject({ provider: 'codex', model: 'gpt-6-astra' })
+      expect(events).toEqual([{ type: 'providerFellBack', workspaceId: fell.id, from: 'claude', to: 'codex' }])
+    } finally { bus.off('push', listen) }
+    await k.stop({ budgetMs: 0 })
   })
 })

@@ -1,8 +1,7 @@
-import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, type ReviewConfig, type ReviewKind, type BaseUpdate, type ReviewRound, type ReviewVerdict, type RoleModel, type TeamConfig, type Workspace } from '@shared/types'
+import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, type ReviewConfig, type ReviewKind, type BaseUpdate, type ReviewRound, type ReviewVerdict, type ResolvedPick, type TeamConfig, type Workspace } from '@shared/types'
 import { kindStates, lensOf, reviewsText, reviewVerdicts, sameHeads } from '@shared/merge'
 import { KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { providerOf } from '@shared/providers'
-import { rolePick } from '@shared/rolePick'
 import { buildsHere } from '@shared/leadMode'
 import { bus } from '../bus'
 import type { ReviewState } from '../services/leadUpdates'
@@ -412,7 +411,7 @@ export class Reviews extends Feature {
 
   /** A review chat for one kind: `chat` made over, or a new one in the review workspace. */
   private lensChat(rws: Workspace, p: PlannedReview, chat?: Chat): Chat {
-    const pick = this.modelFor(p)
+    const pick = this.k.team.announce(rws, this.modelFor(p))
     const title = `${kindLabel(p.kind)} review`
     const lens: NonNullable<Chat['lens']> = { kind: p.kind, ...(p.agent ? { agent: p.agent.id } : {}), ...(p.optional ? { optional: true as const } : {}) }
     const base = chat ?? this.newChat(rws.id, title, { ...pick, plan: false })
@@ -421,11 +420,13 @@ export class Reviews extends Feature {
   }
 
   /** What a review chat runs on: its kind's `model`, else its agent's pin, else the reviewer role's from Settings, Models. */
-  private modelFor(p: PlannedReview): RoleModel {
-    const role = this.settings.models.roles.reviewer
-    const base = p.agent ? rolePick(p.agent, role) : role
+  private modelFor(p: PlannedReview): ResolvedPick {
+    const base = p.agent ? this.k.team.pickFor(p.agent, { role: 'reviewer' }) : this.k.team.pickRole('reviewer')
     if (!p.model) return base
-    return { provider: p.provider ?? providerOf(p.model), model: p.model, effort: base.effort }
+    const want = p.provider ?? providerOf(p.model)
+    const { use, fellBack } = this.k.team.route(want)
+    if (!fellBack) return { provider: want, model: p.model, effort: base.effort }
+    return { ...this.k.team.pickRole('reviewer', { chatProvider: use }), fellBack }
   }
 
   /** The first message a review chat gets. Its rule says the rest: where the work is and how to report. */
