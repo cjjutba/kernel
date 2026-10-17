@@ -6,6 +6,8 @@ import { actions, go, useStore } from '../../store'
 import { Button, Icon, Spinner, useBusy } from '../../ui'
 import { attempt } from './MessageActions'
 import { bottomKindOf } from './bottomSplit'
+import { StepRows } from './SetupRows'
+import { useProjectSettings } from '../settings/useSettings'
 
 const NO_LINES: ScriptLine[] = []
 
@@ -60,6 +62,8 @@ export function ChatSetupRows({ ws }: { ws: Workspace }) {
   const run = ws.setupRun
   const since = useSince(run && !run.endedAt ? run.startedAt : undefined)
   const showLog = useShowLog(ws)
+  const steps = useStore((s) => s.projectSetup[ws.projectId])
+  const settings = useProjectSettings(ws.projectId)
   const [busy, track] = useBusy<'again' | 'skip' | 'stop'>()
   if (ws.mode !== 'worktree' || (ws.lead && !ws.threadId)) return null
   const pending = ws.worktreePending
@@ -101,6 +105,16 @@ export function ChatSetupRows({ ws }: { ws: Workspace }) {
             {!!ws.copied && <button type="button" className="su-out" aria-label="Review files to copy" onClick={() => go({ name: 'settings', page: 'project', projectId: ws.projectId, section: 'environment' })}><Icon name="ext" size={12} /></button>}
           </div>
         </>
+      )}
+      {/* The project's own steps (hooks, push access, agents, files to copy) speak up only when one warns or fails, with their actions. */}
+      {project && steps && !later && !pending && <StepRows project={project} steps={steps} problems />}
+      {/* No setup script: one quiet line that opens the Setup tab, where the script is added. It is never a warning. */}
+      {!run && !pending && !later && settings && !settings.scripts.setup?.trim() && (
+        <button type="button" className="su-row su-link" onClick={showLog}>
+          <span className="su-ico"><Icon name="term" size={16} /></span>
+          <span className="su-text"><span className="su-link-text">Optional: add a setup script</span></span>
+          <Icon name="ext" size={12} />
+        </button>
       )}
       {run && !pending && (!run.endedAt ? !later && (
         <div className="su-row su-tall" data-state="run" role="status">

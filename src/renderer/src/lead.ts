@@ -59,11 +59,35 @@ export async function openLead(projectId: string): Promise<Workspace | undefined
 }
 
 /**
+ * The project's first chat (`firstChatId`, made when setup finished) while nothing has been said in it: no turn has run, none runs now and nothing is
+ * typed or queued. Once it has history, New chat starts a chat of its own.
+ */
+export function unusedFirstChat(projectId: string, s = getState()): { workspaceId: string; chatId: string } | undefined {
+  const chatId = s.projects.find((p) => p.id === projectId)?.firstChatId
+  if (!chatId) return undefined
+  for (const [workspaceId, list] of Object.entries(s.chats)) {
+    const c = list.find((x) => x.id === chatId)
+    if (!c) continue
+    const used = c.closed || !!c.sessionId || !!s.running[chatId] || !!s.queue[chatId]?.length || !!s.items[chatId]?.length
+    return used || !s.workspaces.some((w) => w.id === workspaceId) ? undefined : { workspaceId, chatId }
+  }
+  return undefined
+}
+
+/**
  * New chat, the one way to start a chat (KERNEL-788): the page on the `leadNew` route, in `projectId` or the project in view, else the first project.
  * `source` arrives in the box as a chip, and `picks` are what the box had chosen when the issue warning sent it back.
  */
 export function openNewChat(projectId: string | undefined, opts?: { source?: WorkspaceSource; picks?: NewChatPicks }): void {
   const project = projectId ?? getState().projects[0]?.id ?? ''
+  // The chat setup made for a new project, while nothing was said in it, is the New chat: it opens instead of the draft page, so the first Send stays in it.
+  const first = !opts?.source && !opts?.picks ? unusedFirstChat(project) : undefined
+  if (first) {
+    focusComposerIn(first.workspaceId)
+    actions.ui.openTab(first.workspaceId, first.chatId)
+    go({ name: 'workspace', workspaceId: first.workspaceId })
+    return
+  }
   // With no project yet, New chat still opens, and asks for a project first (KERNEL-943).
   // The box takes the caret when it mounts, or at once when New chat is already showing.
   if (project) focusComposerIn(leadNewKey(project))

@@ -36,24 +36,18 @@ const ICON: Partial<Record<ProjectSetupStep['id'], 'download' | 'branch' | 'fold
 }
 
 /**
- * Project setup, written into New chat as plain rows (KERNEL-948). Kernel's own code
- * runs every step; nothing here uses a model. A step that warns or fails says so on its row, with its one action.
+ * The rows of project setup steps, each with its one action: Try again, Check hooks, Copy fix, or a link to the files to copy.
+ * `problems` keeps only the steps that warn or fail, for the first chat's setup block.
  */
-export function SetupRows({ project, steps }: { project: Project; steps: ProjectSetupStep[] }) {
-  const settings = useProjectSettings(project.id)
-  const agents = useStore((s) => s.agents[project.id] ?? NO_AGENTS)
+export function StepRows({ project, steps, problems }: { project: Project; steps: ProjectSetupStep[]; problems?: boolean }) {
   const [busy, run] = useBusy<'retry'>()
   const running = steps.some((s) => s.state === 'run')
-  const done = steps.every((s) => s.state === 'ok' || s.state === 'warn' || s.state === 'fail')
   const retry = () => run('retry', async () => {
     try { await call('projects.retrySetup', { projectId: project.id }) } catch (e) { actions.ui.toast({ title: 'Could not try again', sub: cleanError(e) }) }
   })
-  const lead = project.kind === 'repo' ? 'a new project cloned from GitHub' : project.kind === 'scratch' ? 'a new project' : `a new project in ${tilde(project.path)}`
-  const team = agents.filter((a) => !a.retired)
-  const shown = steps.filter((s) => s.id !== 'host' && s.state !== 'wait')
+  const shown = steps.filter((s) => s.id !== 'host' && s.state !== 'wait' && (!problems || s.state === 'warn' || s.state === 'fail'))
   return (
-    <section className="su-rows" aria-label="Project setup" aria-busy={running}>
-      <p className="su-banner">You're in <code>{project.name}</code>, {lead}</p>
+    <>
       {shown.map((s) => (
         <div key={s.id} className="su-row" data-state={s.state}>
           <span className="su-ico">
@@ -69,18 +63,30 @@ export function SetupRows({ project, steps }: { project: Project; steps: Project
           {s.state === 'fail' && !running && <Button size="sm" variant="ghost" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void retry()}>Try again</Button>}
         </div>
       ))}
+    </>
+  )
+}
+
+/**
+ * Project setup, written into New chat as plain rows (KERNEL-948). Kernel's own code
+ * runs every step; nothing here uses a model. A step that warns or fails says so on its row, with its one action.
+ */
+export function SetupRows({ project, steps }: { project: Project; steps: ProjectSetupStep[] }) {
+  const settings = useProjectSettings(project.id)
+  const agents = useStore((s) => s.agents[project.id] ?? NO_AGENTS)
+  const running = steps.some((s) => s.state === 'run')
+  const done = steps.every((s) => s.state === 'ok' || s.state === 'warn' || s.state === 'fail')
+  const lead = project.kind === 'repo' ? 'a new project cloned from GitHub' : project.kind === 'scratch' ? 'a new project' : `a new project in ${tilde(project.path)}`
+  const team = agents.filter((a) => !a.retired)
+  return (
+    <section className="su-rows" aria-label="Project setup" aria-busy={running}>
+      <p className="su-banner">You're in <code>{project.name}</code>, {lead}</p>
+      <StepRows project={project} steps={steps} />
       {/* A repo that brought its own agents: who leads and who reviews, to check, with the Agents page one click away (KERNEL-951). */}
       {done && settings && team.length > 0 && !!steps.find((s) => s.id === 'agents' && s.state === 'ok')?.brought && (
         <button type="button" className="su-row su-link" onClick={() => go(projectAgents(project.id))}>
           <span className="su-ico"><Icon name="team" size={16} /></span>
           <span className="su-text"><span className="su-link-text">{teamLine(team, reviewerChoice(team, settings.team))}</span></span>
-          <Icon name="ext" size={12} />
-        </button>
-      )}
-      {done && settings && !settings.scripts.setup && (
-        <button type="button" className="su-row su-link" onClick={() => go({ name: 'settings', page: 'project', projectId: project.id, section: 'setup' })}>
-          <span className="su-ico"><Icon name="term" size={16} /></span>
-          <span className="su-text"><span className="su-link-text">No setup script yet</span></span>
           <Icon name="ext" size={12} />
         </button>
       )}

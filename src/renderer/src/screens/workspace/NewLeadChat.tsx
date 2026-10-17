@@ -6,7 +6,7 @@ import { useModeAvailability } from '../../permissionModes'
 import { providerOf } from '@shared/providers'
 import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
-import { leadOf } from '../../lead'
+import { leadOf, unusedFirstChat } from '../../lead'
 import { leadNewKey } from '../../components/sidebar/slots'
 import { Icon, useBusy } from '../../ui'
 import { briefParts, pickedLines } from '../new-workspace/brief'
@@ -15,7 +15,7 @@ import { takenFindings } from '../new-workspace/taken'
 import { issueTracker } from './issueKey'
 import { OpenIssue } from './composer/Chip'
 import { useProjectTracker } from '../issues/useProjectTracker'
-import { onComposerFocusAsked, takeComposerFocus } from './composer/bus'
+import { focusComposerIn, onComposerFocusAsked, takeComposerFocus } from './composer/bus'
 import { readBranches, useBaseBranch, useBranches } from './composer/BranchPicker'
 import { useDraft } from './composer/draft'
 import { ComposerInput } from './composer/ComposerInput'
@@ -242,6 +242,17 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   const usable = !!project && !project.archived
   // A project still setting up shows its steps where the title goes (KERNEL-948), and nothing sends until its checkout is there.
   const setupSteps = useStore((s) => s.projectSetup[projectId])
+  // A project added while this page was open makes its first chat when setup finishes, and the page gives way to it, so the first Send stays in that chat.
+  const sawSetup = useRef(false)
+  if (setupSteps) sawSetup.current = true
+  const firstWs = useStore((s) => unusedFirstChat(projectId, s)?.workspaceId)
+  useEffect(() => {
+    const first = firstWs ? unusedFirstChat(projectId) : undefined
+    if (!first || !sawSetup.current || sent || !d.empty || getState().ui.route.name !== 'leadNew') return
+    actions.ui.openTab(first.workspaceId, first.chatId)
+    focusComposerIn(first.workspaceId)
+    actions.ui.go({ name: 'workspace', workspaceId: first.workspaceId }, { history: 'replace' })
+  }, [firstWs])
   const checkedOut = !setupSteps || (['clone', 'github'] as const).every((id) => (setupSteps.find((x) => x.id === id)?.state ?? 'ok') === 'ok')
   const projectPicker = (variant: 'title' | 'button') => (
     <ProjectPicker variant={variant} projects={projects} project={usable ? project : undefined} open={menu === 'project'} disabled={busy} onToggle={() => setMenu(menu === 'project' ? null : 'project')} onClose={() => setMenu((m) => (m === 'project' ? null : m))} onPick={pickProject} onNewProject={() => actions.ui.openModal({ name: 'newProject' })} />
