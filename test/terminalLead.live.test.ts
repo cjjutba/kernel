@@ -24,16 +24,19 @@ name: noor
 description: Engine engineer.
 model: haiku
 role: Backend
+tools: Read, Edit, Write, Bash
 ---
-You build the engine. Do exactly what the brief says, reply in one sentence and stop.
+You build the engine, open pull requests for your work and do exactly what the brief says. Reply in one sentence and stop.
 `
 
 const QUESTION = 'kernel-live-quince-77'
 
 const plain = (s: string) => s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\x1b[()][A-Za-z0-9]/g, '').replace(/\r/g, '')
 
-const PLAN_DIALOG = /Would you like to proceed|Ready to code\?/i
-const TRUST_DIALOG = /Yes, I trust this folder|Do you trust the files/i
+const PLAN_DIALOG = /Would\s*you\s*like\s*to\s*proceed|Ready\s*to\s*code\?/i
+const TRUST_DIALOG = /Yes,\s*I\s*trust\s*this\s*folder|Do\s*you\s*trust\s*the\s*files/i
+const TOOL_PROMPT = /Do\s*you\s*want\s*to\s*proceed\?/i
+const ONBOARDING = /Choose\s*the\s*text\s*style|Press\s*Enter\s*to\s*continue/i
 
 describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
   it('plans, hands off, hears a teammate, refuses a made-up go-ahead and resumes after a restart', { timeout: 1_500_000 }, async () => {
@@ -50,6 +53,9 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
       permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [] },
       scripts: { setupOnCreate: false }
     }))
+
+    const inherited = Object.fromEntries(Object.entries(process.env).filter(([name]) => /^(CLAUDECODE|CLAUDE_CODE_(CHILD_SESSION|SESSION_ID|SESSION_ATTENDED|ENTRYPOINT|EXECPATH|MESSAGING_SOCKET|MESSAGING_TOKEN))$/.test(name)))
+    for (const name of Object.keys(inherited)) delete process.env[name]
 
     const output = new Map<string, string>()
     const counts = new Map<string, number>()
@@ -77,7 +83,14 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
     const mark = () => { handled = screen().length }
     const answerDialogs = async () => {
       const seen = screen().slice(handled)
-      if (TRUST_DIALOG.test(seen)) { handled = screen().length; await k.handlers()['terminal.write']({ chatId: tab.id, data: '\r' }) }
+      const key = (data: string) => k.handlers()['terminal.write']({ chatId: tab.id, data })
+      if (TRUST_DIALOG.test(seen)) {
+        handled = screen().length
+        for (let i = 0; i < 3 && !/❯\s*Yes,\s*I\s*trust(?![\s\S]*❯\s*No)/.test(screen().slice(-400)); i++) { await key('\x1b[B'); await new Promise((r) => setTimeout(r, 1_500)) }
+        await key('\r')
+      }
+      else if (TOOL_PROMPT.test(seen)) { handled = screen().length; await key('\r') }
+      else if (ONBOARDING.test(seen)) { handled = screen().length; await key('\r') }
     }
     const until = async <T>(what: string, check: () => T | undefined | false, timeoutMs = 240_000): Promise<T> => {
       const end = Date.now() + timeoutMs
@@ -107,11 +120,17 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
       const lead = await k.lead.newLeadChat(project.id, { prompt: '' })
       const leadWs = await setUp(k, lead.id, 'settled')
       tab = await h['chats.create']({ workspaceId: leadWs.id, kind: 'terminal', preset: 'lead' })
-      tab = k.store.saveChat({ ...k.store.chat(tab.id)!, terminal: { ...k.store.chat(tab.id)!.terminal!, command: `claude --settings '${claudeSettingsFile}' --permission-mode plan --model claude-sonnet-5-5 --effort low` } })
+      tab = k.store.saveChat({ ...k.store.chat(tab.id)!, terminal: { ...k.store.chat(tab.id)!.terminal!, command: `\\claude --settings '${claudeSettingsFile}' --permission-mode plan --model claude-sonnet-5-5 --effort low` } })
       await h['terminal.write']({ chatId: tab.id, data: '' })
-      await until('the Lead tab to show claude', () => /claude|Claude Code|❯|>/.test(screen()), 90_000)
+      await until('claude to be ready for a prompt', () => /Sonnet\s*5\.5\s*with\s*low\s*effort/.test(screen()), 120_000)
       await new Promise((r) => setTimeout(r, 4_000))
-      await answerDialogs()
+
+      for (let i = 0; i < 5 && !/plan\s*mode\s*on/i.test(screen().slice(-600)); i++) {
+        await k.handlers()['terminal.write']({ chatId: tab.id, data: '\x1b[Z' })
+        await new Promise((r) => setTimeout(r, 1_200))
+      }
+      evidence.mode = screen().slice(-300)
+      expect(screen().slice(-600)).toMatch(/plan\s*mode\s*on/i)
 
       mark()
       await type(`Remember the word kumquat for later. Plan one small task for noor: noor must call the ask_lead tool with exactly the question "${QUESTION}" and then stop. Keep the plan to three lines, don't read any files, then exit plan mode and hand it off with create_workspace.`)
@@ -150,6 +169,8 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
 
       const session = k.store.chat(tab.id)?.terminal?.sessionId
       evidence.sessionBefore = session
+      const transcript = k.store.chat(tab.id)?.terminal?.transcriptPath
+      evidence.transcript = { path: transcript, exists: !!transcript && await readFile(transcript, 'utf8').then(() => true, () => false) }
       expect(session).toBeTruthy()
       await k.stop({ budgetMs: 0 })
       output.delete(tab.id)
@@ -158,7 +179,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
       k = new Kernel(where)
       await k.start()
       await k.handlers()['terminal.reconnect']({ chatId: tab.id })
-      await until('the resumed tab to show claude', () => screen().length > 0, 90_000)
+      await until('the resumed tab to be ready for a prompt', () => /Sonnet\s*5\.5\s*with\s*low\s*effort/.test(screen()), 120_000)
       await new Promise((r) => setTimeout(r, 4_000))
       await turn('Which word did I ask you to remember? Reply with just that word.', 'the resumed turn')
       evidence.resumedReply = sinceMark().slice(-400)
@@ -170,6 +191,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
       await writeFile(out, JSON.stringify(evidence, null, 2))
       await writeFile(out.replace(/\.json$/, '.txt'), screenText(output))
       console.log(`[live] evidence: ${out}`)
+      Object.assign(process.env, inherited)
       bus.off('push', onPush)
       bus.off('track', onTrack)
       for (const w of k.store.workspaces()) if (w.mode === 'worktree') await k.archiveWorkspace(w.id, true).catch(() => undefined)
