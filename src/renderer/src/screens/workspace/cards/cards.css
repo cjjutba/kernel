@@ -6,7 +6,6 @@
 .tcard .reason { margin: 0; display: flex; align-items: flex-start; gap: 7px; font-size: var(--fs-code); line-height: var(--lh-ui); color: var(--ink-3); }
 .tcard .reason svg { flex-shrink: 0; margin-top: 2px; color: var(--muted); }
 .tcard .acts { display: flex; flex-wrap: wrap; gap: 8px; }
-.tcard .acts .btn { height: 30px; }
 /* The hire card's servers row: pills for what the new agent reaches, a warning pill for what it can't (WorkspaceHireServers.png, KERNEL-484). */
 .hire-servers { display: flex; flex-direction: column; gap: 8px; }
 .hire-servers-row { display: flex; align-items: flex-start; gap: 12px; }
@@ -33,7 +32,7 @@
 /* Every row aligns to its first line, with or without a description, and grows with a long label (KERNEL-416). */
 .qrow { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 36px; box-sizing: border-box; padding: 8px 12px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); line-height: 18px; text-align: left; }
 .qrow[data-desc='true'] { padding: 10px 12px; line-height: 19.5px; }
-.qrow:not(:disabled):hover { background: var(--surface-2); border-color: var(--line-4); }
+.qrow:not(:disabled):hover { background: var(--surface-3); }
 .qrow:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .qrow:disabled { opacity: 0.55; cursor: default; }
 .qrow[aria-checked='true'], .qrow[aria-checked='true']:not(:disabled):hover { background: var(--hover); border-color: var(--ink-3); color: var(--ink); }
@@ -74,18 +73,18 @@
 /* A plan in its chat (cards/plan.tsx) */
 .plan-inline { display: flex; flex-direction: column; gap: 14px; scroll-margin: 8px 0 14px; }
 .plan-inline > .trow { gap: 8px; }
-/* The plan reads as part of plan mode: its icon and step numbers take the plan blue (KERNEL-274). */
-.plan-doc-icon { display: inline-flex; color: var(--plan); }
-.plan-inline .md-doc ol > li::marker { color: var(--plan); }
+/* The plan's icon, list markers and step numbers are muted ink; the plan blue is for plan mode controls. */
+.plan-doc-icon { display: inline-flex; color: var(--muted); }
+.plan-inline .md-doc ol > li::marker { color: var(--muted); }
 /* The Lead's plan: a bordered document, its write-up, then one hairline-separated row per task (PlanWaiting.png). */
-.plan-card { border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 16px 18px 4px; }
+.plan-card { border: 1px solid var(--card-line); background: var(--card-bg); border-radius: var(--r-md); padding: 16px 18px 4px; }
 .plan-card .md > .md-h[data-level='1'] { font-size: var(--fs-sub); line-height: var(--lh-snug); margin-bottom: 6px; }
 .plan-card .md > :not(.md-h):not(:last-child) { margin-bottom: 12px; }
 .plan-card .md { font-size: var(--fs-row); color: var(--ink-2); }
 .plan-card .md > p:last-child { margin-bottom: 12px; }
 .plan-tasks { list-style: none; margin: 4px 0 0; padding: 0; }
 .plan-tasks li { display: flex; align-items: baseline; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: var(--fs-row); font-weight: var(--fw-medium); color: var(--ink-2); }
-.plan-n { width: 14px; flex-shrink: 0; color: var(--plan); font-size: var(--fs-meta); font-weight: var(--fw-regular); }
+.plan-n { width: 14px; flex-shrink: 0; color: var(--muted); font-size: var(--fs-meta); font-weight: var(--fw-regular); }
 .plan-task { flex: 1; min-width: 0; }
 .plan-who { margin-left: 6px; color: var(--muted); font-size: var(--fs-code); font-weight: var(--fw-regular); }
 .plan-file { min-width: 0; max-width: 340px; height: 22px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: var(--fs-chip); }
@@ -95,7 +94,7 @@
 /* Kernel's team update in the Lead's chat (cards/TeamUpdateCard.tsx, KERNEL-127): an outline with a small header, one
    row per teammate, the events as a line of text and the reply as plain text (KERNEL-274). */
 .tucard-wrap { align-self: stretch; width: 100%; }
-.tcard.tucard { gap: 0; padding: 0; margin: 0; background: transparent; border-color: var(--card-line); }
+.tcard.tucard { gap: 0; padding: 0; margin: 0; background: var(--card-bg); border-color: var(--card-line); }
 .tucard-head { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 16px; border-bottom: 1px solid var(--line); font-size: var(--fs-meta); }
 .tucard .tucard-title { display: block; margin: 0; color: var(--ink-3); font-size: inherit; font-weight: var(--fw-medium); }
 .tucard-head .muted { color: var(--muted); }
