@@ -27,7 +27,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
 }))
 
 /** Every `git fetch` counts, and waits while `gate` is set, as one on a slow network does. */
-const fetches = vi.hoisted(() => ({ count: 0, gate: undefined as Promise<void> | undefined }))
+const fetches = vi.hoisted(() => ({ count: 0, adds: 0, gate: undefined as Promise<void> | undefined }))
 vi.mock('../src/main/services/exec', async (importOriginal) => {
   const real = await importOriginal<typeof import('../src/main/services/exec')>()
   return {
@@ -35,6 +35,11 @@ vi.mock('../src/main/services/exec', async (importOriginal) => {
     exec: async (cmd: string, args: string[], opts?: Parameters<typeof real.exec>[2]) => {
       if (args.includes('fetch')) { fetches.count++; await fetches.gate }
       return real.exec(cmd, args, opts)
+    },
+    // `git worktree add` goes through `gitSlow`, which the module's own `run` doesn't route through the mock.
+    gitSlow: async (cwd: string, ...args: string[]) => {
+      if (args.includes('worktree') && args.includes('add')) fetches.adds++
+      return (real.gitSlow as (...a: string[]) => Promise<string>)(cwd, ...args)
     }
   }
 })
@@ -299,5 +304,135 @@ describe('what New chat still hears about before anything is saved (KERNEL-542)'
     await expect(k.handlers()['lead.start']({ projectId: r.id, prompt: 'Plan it', ...o })).rejects.toThrow(message)
     expect(k.store.workspaces(r.id)).toEqual([])
     expect(k.store.threads(r.id)).toEqual([])
+  })
+})
+
+// KERNEL-1014: New chat makes a spare worktree in the background and Send claims it, so the first message doesn't wait for `git worktree add`.
+describe('a new chat claims the spare worktree (KERNEL-1014)', () => {
+  const spares = async (repo: string) => (await git(repo, 'worktree', 'list', '--porcelain')).split('\n').filter((l) => l.startsWith('branch refs/heads/kernel-spare/'))
+  const spareBranches = async (repo: string) => (await git(repo, 'branch', '--list', 'kernel-spare/*')).trim()
+
+  it('claims it: the branch and folder take the chat\'s names, no new worktree is added, and the next spare is made', async () => {
+    const { k, project: r } = await project()
+    await k.workspaces.prepareSpare(r.id)
+    expect(await spares(r.path)).toHaveLength(1)
+    const added = fetches.adds
+    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan the PDF export' })
+    await k.workspaces.worktreeMade(chat.workspaceId)
+    const ws = wsOf(k, chat)
+    expect(ws.worktreePending).toBeUndefined()
+    expect(fetches.adds).toBe(added)
+    expect(existsSync(ws.path)).toBe(true)
+    expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(ws.branch)
+    expect((await git(ws.path, 'rev-parse', 'HEAD')).trim()).toBe((await git(r.path, 'rev-parse', 'origin/main')).trim())
+    // The next spare is a different worktree, and the claimed one is not listed as a spare.
+    await vi.waitFor(async () => expect(await spares(r.path)).toHaveLength(1))
+    expect(await git(r.path, 'worktree', 'list')).toContain(ws.path)
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
+  })
+
+  it('makes the worktree as before when there is no spare', async () => {
+    const { k, project: r } = await project()
+    const added = fetches.adds
+    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan the PDF export' })
+    await k.workspaces.worktreeMade(chat.workspaceId)
+    expect(fetches.adds).toBe(added + 1)
+    expect(existsSync(wsOf(k, chat).path)).toBe(true)
+  })
+
+  it('falls back quietly when the claim fails, and leaves no spare behind', async () => {
+    const { k, project: r } = await project()
+    await k.workspaces.prepareSpare(r.id)
+    // The spare's folder is gone, as if the user deleted it: git can't move it.
+    const gone = (await git(r.path, 'worktree', 'list', '--porcelain')).split('\n').find((l) => l.startsWith('worktree ') && l.includes('.spare-'))!.slice(9)
+    await run('rm', ['-rf', gone])
+    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan the PDF export' })
+    await k.workspaces.worktreeMade(chat.workspaceId)
+    const ws = wsOf(k, chat)
+    expect(ws).toMatchObject({ status: 'setup' })
+    expect(ws.worktreePending).toBeUndefined()
+    expect(existsSync(ws.path)).toBe(true)
+    expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(ws.branch)
+  })
+
+  it('fast-forwards the spare when main moved before the message is released', async () => {
+    const { k, project: r } = await project()
+    await k.workspaces.prepareSpare(r.id)
+    const remote = (await git(r.path, 'remote', 'get-url', 'origin')).trim()
+    const other = await mkdtemp(join(tmpdir(), 'kernel-other-'))
+    await run('git', ['clone', '-q', '-b', 'main', remote, other])
+    await writeFile(join(other, 'NEW.md'), 'new\n')
+    await run('git', ['-C', other, '-c', 'user.name=t', '-c', 'user.email=t@t', 'add', '.'])
+    await run('git', ['-C', other, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'main moved'])
+    await run('git', ['-C', other, 'push', '-q', 'origin', 'main'])
+    const added = fetches.adds
+    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan the PDF export' })
+    await k.workspaces.worktreeMade(chat.workspaceId)
+    const ws = wsOf(k, chat)
+    expect(fetches.adds).toBe(added)
+    expect(existsSync(join(ws.path, 'NEW.md'))).toBe(true)
+    expect((await git(ws.path, 'rev-parse', 'HEAD')).trim()).toBe((await git(other, 'rev-parse', 'HEAD')).trim())
+  })
+
+  it('does not claim a spare that starts from another base than the one picked', async () => {
+    const { k, project: r } = await project()
+    await run('git', ['-C', r.path, 'branch', 'dev'])
+    await run('git', ['-C', r.path, 'push', '-q', 'origin', 'dev'])
+    await k.workspaces.prepareSpare(r.id)
+    const added = fetches.adds
+    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan the PDF export', baseRef: 'origin/dev' })
+    await k.workspaces.worktreeMade(chat.workspaceId)
+    expect(fetches.adds).toBe(added + 1)
+    expect(wsOf(k, chat).baseRef).toBe('origin/dev')
+    expect(await spares(r.path)).toHaveLength(1)
+  })
+
+  it('gives two quick Sends in a project distinct branches and folders, the first on the spare and the second not', async () => {
+    const { k, project: r } = await project()
+    await k.workspaces.prepareSpare(r.id)
+    const added = fetches.adds
+    const [a, b] = await Promise.all([k.lead.startLeadChat(r.id, { prompt: 'Plan the release' }), k.lead.startLeadChat(r.id, { prompt: 'Plan the release' })])
+    await Promise.all([k.workspaces.worktreeMade(a.workspaceId), k.workspaces.worktreeMade(b.workspaceId)])
+    const [wa, wb] = [wsOf(k, a), wsOf(k, b)]
+    expect(new Set([wa.branch, wb.branch]).size).toBe(2)
+    expect(new Set([wa.path, wb.path]).size).toBe(2)
+    expect(existsSync(wa.path) && existsSync(wb.path)).toBe(true)
+    // One of the two took the spare. The other, and a possible next spare, were added.
+    expect(fetches.adds - added).toBeLessThanOrEqual(2)
+    expect(fetches.adds - added).toBeGreaterThanOrEqual(1)
+  })
+
+  it('removes the spare, folder and branch, when the project is removed', async () => {
+    const { k, project: r } = await project()
+    await k.workspaces.prepareSpare(r.id)
+    expect(await spares(r.path)).toHaveLength(1)
+    await k.handlers()['projects.remove']({ projectId: r.id, deleteWorktrees: true })
+    expect(await spareBranches(r.path)).toBe('')
+    expect((await git(r.path, 'worktree', 'list')).trim().split('\n')).toHaveLength(1)
+  })
+
+  it('removes the spare at quit', async () => {
+    const { k, project: r } = await project()
+    await k.workspaces.prepareSpare(r.id)
+    await k.stop({ budgetMs: 0 })
+    expect(await spareBranches(r.path)).toBe('')
+    expect((await git(r.path, 'worktree', 'list')).trim().split('\n')).toHaveLength(1)
+  })
+
+  it('removes a spare a crash left, at the next launch', async () => {
+    const { k, project: r } = await project()
+    await k.workspaces.prepareSpare(r.id)
+    // A crash loses what Kernel remembers, not the worktree: forget the spare without removing it.
+    ;(k.workspaces as unknown as { spares: Map<string, unknown> }).spares.clear()
+    expect(await spares(r.path)).toHaveLength(1)
+    await k.workspaces.sweepAllSpares()
+    expect(await spareBranches(r.path)).toBe('')
+    expect((await git(r.path, 'worktree', 'list')).trim().split('\n')).toHaveLength(1)
+  })
+
+  it('never lists a spare as a workspace', async () => {
+    const { k, project: r } = await project()
+    await k.workspaces.prepareSpare(r.id)
+    expect(k.store.workspaces(r.id)).toEqual([])
   })
 })

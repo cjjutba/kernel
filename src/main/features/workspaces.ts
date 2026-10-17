@@ -7,6 +7,7 @@ import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, referencesInProject, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
 import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, projectWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
+import { claimSpare as turnSpareIntoWorktree, fastForward, makeSpare, revParse, sweepSpares } from '../services/worktrees'
 import { linkNodeModules, NoFreePortBlock, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
 import { listTree, readImage, readWorkspaceFile, resolvePaths, scratchpadDir, searchFiles } from '../services/files'
@@ -53,6 +54,9 @@ function gitSaid(e: unknown): string {
   const lines = (/^git .* failed \(\d+\): ([\s\S]*)$/.exec(m)?.[1] ?? m).split('\n').map((l) => l.trim()).filter(Boolean)
   return lines.find((l) => /^(fatal|error):/.test(l)) ?? lines[0] ?? m
 }
+
+/** A project's spare worktree (KERNEL-1014): `ready` once git made it. */
+interface Spare { baseRef: string; ready: boolean; made: Promise<void>; branch?: string; path?: string }
 
 /** Creating workspaces, their ports, and what they changed (KERNEL-328). */
 export class Workspaces extends Feature {
@@ -225,6 +229,94 @@ export class Workspaces extends Feature {
     return { branches: new Set(held.map((w) => w.branch)), paths: new Set(held.map((w) => w.path)) }
   }
 
+  /** The spare worktree of each project, ready or being made (KERNEL-1014). At most one per project. */
+  private spares = new Map<string, Spare>()
+
+  /**
+   * Makes the project's spare worktree in the background, from `<remote>/<default>` as last fetched, for a new Lead chat to claim
+   * (KERNEL-1014). Nothing when the project has one already, has no commit, or keeps its Lead on the checkout. Never throws.
+   */
+  async prepareSpare(projectId: string): Promise<void> {
+    if (this.stopped || this.spares.has(projectId)) return
+    const project = this.store.project(projectId)
+    if (!project) return
+    const spare: Spare = { baseRef: '', ready: false, made: Promise.resolve() }
+    this.spares.set(projectId, spare)
+    spare.made = (async () => {
+      try {
+        const repo = await loadRepoSettings(project.path)
+        const remote = await this.k.config.remoteFor(project.path, repo)
+        const base = await leadBase(project.path, remote)
+        if (!base) throw new Error('no base')
+        spare.baseRef = base
+        const root = projectWorktreeRoot(this.settings.worktreeRoot, project)
+        Object.assign(spare, await makeSpare({ repo: project.path, root, baseRef: base }))
+        // A project removed, or a Kernel stopped, while git worked leaves nothing behind.
+        if (this.stopped || this.spares.get(projectId) !== spare || !this.store.project(projectId)) await this.discard(project.path, spare)
+        else spare.ready = true
+      } catch {
+        if (this.spares.get(projectId) === spare) this.spares.delete(projectId)
+      }
+    })()
+    await spare.made
+  }
+
+  private async discard(repo: string, spare: { branch?: string; path?: string }) {
+    if (!spare.path || !spare.branch) return
+    await removeWorktree(repo, spare.path, { deleteBranch: spare.branch, force: true }).catch(() => undefined)
+  }
+
+  /** Removes the project's spare, as the project goes (KERNEL-1014). */
+  async dropSpare(projectId: string, repo: string): Promise<void> {
+    const spare = this.spares.get(projectId)
+    this.spares.delete(projectId)
+    if (spare) { await spare.made.catch(() => undefined); await this.discard(repo, spare) }
+  }
+
+  /** At quit: every spare goes. At launch, `sweepAllSpares` finds the ones a crash left. */
+  async dropSpares(): Promise<void> {
+    await Promise.all([...this.spares.keys()].map((id) => { const p = this.store.project(id); return p ? this.dropSpare(id, p.path) : undefined }))
+  }
+
+  async sweepAllSpares(): Promise<void> {
+    await Promise.all(this.store.projects().map((p) => sweepSpares(p.path)))
+  }
+
+  /**
+   * Takes the project's spare for the Lead chat `ws`, whose branch and folder `makeWorktree` picks, inside the project's branch
+   * lock so `pendingNames` and `freeBranch` stay right (KERNEL-1014). Undefined, with the spare removed when it was broken, when
+   * there is none, it is still being made, it starts from another base than the chat's, or anything fails: the caller makes the
+   * worktree as it always did. A spare is taken once, so a second Send meanwhile finds none.
+   */
+  private async claimSpare(ws: Workspace, project: Project, remote: string): Promise<{ branch: string; path: string } | undefined> {
+    const spare = this.spares.get(project.id)
+    if (!spare?.ready || spare.baseRef !== ws.baseRef || !spare.path || !spare.branch) return undefined
+    this.spares.delete(project.id)
+    try {
+      return await this.withBranchLock(project.id, async () => {
+        const now = this.mustWs(ws.id)
+        if (this.stopped || now.status === 'archived' || await isWorktreeOf(project.path, now.path)) throw new Error('nothing to claim')
+        const taken = this.pendingNames(project.id, ws.id)
+        const branch = await freeBranch(project.path, now.branch, remote, taken.branches)
+        const root = dirname(now.path)
+        await mkdir(root, { recursive: true })
+        const path = branch === now.branch && !taken.paths.has(now.path) && await folderGone(now.path) ? now.path : await freeWorktreePath(project.path, root, branch, taken.paths)
+        await turnSpareIntoWorktree(project.path, { branch: spare.branch!, path: spare.path! }, { branch, path })
+        return { branch, path }
+      })
+    } catch {
+      await this.discard(project.path, spare)
+      return undefined
+    }
+  }
+
+  /** Brings a claimed spare, which has no changes of its own, up to `baseRef` when main moved since it was made. False when it can't. */
+  private async catchUp(path: string, baseRef: string): Promise<boolean> {
+    const [here, there] = await Promise.all([revParse(path, 'HEAD'), revParse(path, baseRef)])
+    if (!here || !there) return false
+    return here === there || await fastForward(path, baseRef)
+  }
+
   /** Worktrees being made for Lead chats, by workspace (KERNEL-542). */
   private making = new Map<string, Promise<Workspace>>()
 
@@ -254,15 +346,25 @@ export class Workspaces extends Feature {
     try {
       const repo = await loadRepoSettings(project.path)
       const remote = await this.k.config.remoteFor(project.path, repo)
-      const fetched = ws.baseRef.startsWith(`${remote}/`) && (await exec('git', ['-C', project.path, 'remote', 'get-url', remote])).code === 0
-        ? await fetchOrigin(project.path, remote, { check: stripRemote(ws.baseRef, remote) }) : undefined
+      // The claim runs alongside the check that main didn't move (KERNEL-1014).
+      const [fetched, claimed] = await Promise.all([
+        ws.baseRef.startsWith(`${remote}/`) && (await exec('git', ['-C', project.path, 'remote', 'get-url', remote])).code === 0
+          ? fetchOrigin(project.path, remote, { check: stripRemote(ws.baseRef, remote) }) : undefined,
+        this.claimSpare(ws, project, remote)
+      ])
       // A Kernel that stopped meanwhile has closed its database. The next launch finds the workspace in setup and fails it.
       if (this.stopped) return ws
       if (fetched?.ok) void this.k.baseWatch.check(project.id, { fetch: false, fetched: true }).catch(() => undefined)
       // A base other than the default branch was picked in New chat, and a picked base never falls back to another (KERNEL-405).
       const main = `${remote}/${await defaultBranch(project.path, remote).catch(() => 'main')}`
       const baseRef = await resolveBaseRef(project.path, ws.baseRef, { strict: ws.baseRef !== main, remote })
-      const made = await this.withBranchLock(project.id, async () => {
+      // A spare older than its base is brought up to it before the message is released. One that can't be goes, and the worktree is made.
+      let spare = claimed
+      if (spare && !(await this.catchUp(spare.path, baseRef))) {
+        await this.discard(project.path, spare)
+        spare = undefined
+      }
+      const made = spare ?? await this.withBranchLock(project.id, async () => {
         const now = this.mustWs(id)
         if (this.stopped || now.status === 'archived') return undefined
         if (await isWorktreeOf(project.path, now.path) && await currentBranch(now.path).catch(() => undefined) === now.branch) return { branch: now.branch, path: now.path }
@@ -275,6 +377,7 @@ export class Workspaces extends Feature {
         return { branch, path }
       })
       if (this.stopped) return ws
+      if (spare) void this.prepareSpare(project.id)
       if (!made) return this.mustWs(id)
       try {
         if (repo.files.symlinkNodeModules) await linkNodeModules(project.path, made.path)

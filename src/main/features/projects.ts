@@ -496,6 +496,7 @@ export class Projects extends Feature {
     // Each cleanup reads the project and runs its archive script, so the record goes only once every one has ended (KERNEL-702).
     for (const ws of this.store.workspaces(projectId)) await this.k.archive.cleanedUp(ws.id)
     this.k.overlaps.forget(projectId)
+    await this.k.workspaces.dropSpare(projectId, project.path)
     const shared = this.store.sharedFiles({ projectId }).map((f) => f.id)
     this.store.deleteProject(projectId)
     this.k.envStore.dropProject(projectId)
