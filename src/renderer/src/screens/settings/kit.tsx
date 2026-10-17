@@ -4,7 +4,7 @@ import type { Project, ProjectSettings, ProjectSettingsSection, SettingsPage } f
 import { APP_SETTING_TIMING, PROJECT_SETTING_TIMING, type SettingTiming } from '@shared/settingsTiming'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
-import { Button, EmptyState, Icon, Kbd, Menu, Spinner, useBusy, type IconName } from '../../ui'
+import { Button, EmptyState, Icon, Kbd, Menu, Spinner, SplitButton, useBusy, type IconName } from '../../ui'
 import { openNewProject } from '../projects/draft'
 import { useProjectSettings } from './useSettings'
 import { useKeptScroll } from '../../ui/keptScroll'
@@ -404,13 +404,23 @@ function OpenSettingsFiles({ project, rs, shared }: { project: Project; rs: Proj
   })
   return (
     <div className="set-files" ref={anchor}>
-      <div className="set-split">
-        <Button variant="ghost" className="set-split-main" icon="doc" busy={busy === 'open'} busyLabel="Opening" onClick={() => void edit(first)}>Open {first}</Button>
-        {more.length > 0 && (
-          <button type="button" className="set-split-caret" aria-label="More files" aria-haspopup="menu" aria-expanded={open} disabled={busy !== null} onClick={() => actions.ui.toggleMenu('settingsFiles')}><Icon name="chevron" size={12} /></button>
-        )}
-      </div>
-      {open && <Menu label="More files" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ right: 0, top: 36, width: 224 }} items={more.map((f) => ({ id: f, label: `Open ${f}`, icon: 'doc' as const, onSelect: () => void edit(f) }))} />}
+      {more.length === 0 ? (
+        <Button icon="doc" busy={busy === 'open'} busyLabel="Opening" onClick={() => void edit(first)}>Open {first}</Button>
+      ) : (
+        <SplitButton
+          icon="doc"
+          busy={busy === 'open'}
+          busyLabel="Opening"
+          onClick={() => void edit(first)}
+          caretLabel="More files"
+          expanded={open}
+          onCaret={() => actions.ui.toggleMenu('settingsFiles')}
+          caretDisabled={busy !== null}
+        >
+          Open {first}
+        </SplitButton>
+      )}
+      {open && <Menu label="More files" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ right: 0, top: 34, width: 224 }} items={more.map((f) => ({ id: f, label: `Open ${f}`, icon: 'doc' as const, onSelect: () => void edit(f) }))} />}
     </div>
   )
 }

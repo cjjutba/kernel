@@ -6,7 +6,7 @@ import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
-import { Button, Icon, Menu, useBusy } from '../../../ui'
+import { Button, Icon, Menu, SplitButton, useBusy } from '../../../ui'
 import { NO_RULES, actionIcon, actionKey, blockerFacts, blockersHold, busyLabel, failTitle, hasChanges, headerView, overruleOn, overruleText, type PrAction } from './model'
 import { useLocalMerge } from './useLocalMerge'
 import { ConfirmMergeAnyway } from '../ConfirmMergeAnyway'
@@ -147,29 +147,38 @@ export function PrHeader({ ws, spread, capsule, toggle }: { ws: Workspace; sprea
   const b = view.button
   const solid = b?.kind === 'primary' && band === 'ready'
   const icon = b && actionIcon(b.label, b.action)
+  const split = !!b && b.kind !== 'busy' && view.caret
   const main = !b ? null
     : b.kind === 'busy' ? spinner(b.label)
-      : <Button variant="secondary" className={[view.caret && 'split-main', solid ? 'pr-solid' : 'pr-soft'].filter(Boolean).join(' ')} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && press(b.action)}>{icon && <Icon name={icon} size={12} />}{b.label}</Button>
+      : split ? null
+        : <Button variant="secondary" className={solid ? 'pr-solid' : 'pr-soft'} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && press(b.action)}>{icon && <Icon name={icon} size={12} />}{b.label}</Button>
 
   const overrule = facts && <Button className="pr-soft" onClick={() => setOverruling(true)}>Overrule</Button>
-  const buttons = !main && !view.archive ? null : (
+  const buttons = !main && !split && !view.archive ? null : (
     <>
-      {view.caret ? (
-        <span className="pr-split">
-          {main}
-          <span ref={caret} className="pr-caret-anchor">
-            <button type="button" className="split-caret" aria-label="More pull request options" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu('pr')}><Icon name="chevron" size={12} /></button>
-            {menuOpen && (
-              <Menu label="Pull request options" anchorRef={caret} onClose={actions.ui.closeMenu} style={{ right: 0, top: 'calc(100% + 6px)', width: 260 }} items={[
-                { id: 'pr', label: 'Create PR', shortcut: '⌘⇧P', onSelect: () => start('create') },
-                { id: 'draft', label: 'Create draft PR', onSelect: createDraft },
-                { id: 'edit', label: 'Edit PR instructions', onSelect: () => go({ name: 'settings', page: 'project', projectId: ws.projectId, section: 'prs' }) },
-                { id: 'copy', label: 'Copy branch name', onSelect: () => void copyBranch(ws.branch) },
-                { id: 'discard', label: 'Discard changes', disabled: ws.mode === 'current', onSelect: () => actions.ui.openModal({ name: 'confirm', kind: 'discard', workspaceId: id }) }
-              ]} />
-            )}
-          </span>
-        </span>
+      {split ? (
+        <SplitButton
+          size="sm"
+          className={['pr-split', solid ? 'pr-solid' : 'pr-soft'].join(' ')}
+          icon={icon}
+          mainProps={{ 'data-tip': key && b?.label, 'data-tip-kbd': key && `⌘⇧${key.toUpperCase()}` }}
+          onClick={() => b?.action && press(b.action)}
+          caretLabel="More pull request options"
+          expanded={menuOpen}
+          onCaret={() => actions.ui.toggleMenu('pr')}
+          anchorRef={caret}
+          menu={menuOpen && (
+            <Menu label="Pull request options" anchorRef={caret} onClose={actions.ui.closeMenu} style={{ right: 0, top: 'calc(100% + 6px)', width: 260 }} items={[
+              { id: 'pr', label: 'Create PR', shortcut: '⌘⇧P', onSelect: () => start('create') },
+              { id: 'draft', label: 'Create draft PR', onSelect: createDraft },
+              { id: 'edit', label: 'Edit PR instructions', onSelect: () => go({ name: 'settings', page: 'project', projectId: ws.projectId, section: 'prs' }) },
+              { id: 'copy', label: 'Copy branch name', onSelect: () => void copyBranch(ws.branch) },
+              { id: 'discard', label: 'Discard changes', disabled: ws.mode === 'current', onSelect: () => actions.ui.openModal({ name: 'confirm', kind: 'discard', workspaceId: id }) }
+            ]} />
+          )}
+        >
+          {b?.label}
+        </SplitButton>
       ) : main}
       {overrule}
       {view.archive && <Button className="pr-soft" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} />Archive</Button>}

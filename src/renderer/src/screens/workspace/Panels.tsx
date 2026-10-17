@@ -8,7 +8,7 @@ import { collapsedWord } from './bottomWord'
 import { actions, go, useStore, type State } from '../../store'
 import { useRemembered } from '../../remember'
 import { spotKey, useKeptScroll } from '../../ui/keptScroll'
-import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, Skeleton, Spinner, useBusy, type MenuEntry } from '../../ui'
+import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, SplitButton, Tabs, Skeleton, Spinner, useBusy, type MenuEntry } from '../../ui'
 import { stripRemote } from '../settings/remote'
 import { patchProjectSettings, useRemote, useProjectSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
@@ -269,16 +269,18 @@ function OpenPreview({ ws }: { ws: Workspace }) {
   const entry = (t: PreviewTarget): MenuEntry => ({ id: t.id, label: t.label, shortcut: t.address, disabled: !t.url, onSelect: () => open(t.url) })
   const items: (MenuEntry | typeof MENU_SEPARATOR)[] = [...configuredTargets(configured, ws.port).map(entry), ...(configured.length ? [MENU_SEPARATOR] : []), entry(detectedTarget(detected))]
   return (
-    <span className="open-split">
-      <button type="button" className="open-main" disabled={!first} onClick={() => open(first)}>Open</button>
-      <span ref={anchor} className="open-caret-anchor">
-        <button type="button" className="open-caret" aria-label="More preview URLs" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu('preview')}>
-          <Icon name="chevron" size={12} />
-        </button>
-        {/* The menu waits for the project's settings, so it opens with its first row focused and not the one row it had before they loaded. */}
-        {menuOpen && rs && <Menu label="Open preview" heading="Preview URLs" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ right: -10, top: 30, width: 300 }} items={items} />}
-      </span>
-    </span>
+    <SplitButton
+      size="sm"
+      onClick={() => open(first)}
+      disabled={!first}
+      caretLabel="More preview URLs"
+      expanded={menuOpen}
+      onCaret={() => actions.ui.toggleMenu('preview')}
+      anchorRef={anchor}
+      menu={menuOpen && rs && <Menu label="Open preview" heading="Preview URLs" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ right: -10, top: 30, width: 300 }} items={items} />}
+    >
+      Open
+    </SplitButton>
   )
 }
 
@@ -491,17 +493,20 @@ function RunSplit({ label, none, running, names, runningNames, busy, onPlay, onT
     { id: 'configure', label: 'Configure', icon: 'settings', onSelect: onConfigure }
   ]
   return (
-    <span className="run-split">
-      <button type="button" className="run-main" disabled={none || (busy !== null && !playing)} aria-busy={playing || undefined} aria-label={playing ? (running ? 'Stopping' : 'Starting') : none ? 'Run' : `${running ? 'Stop' : 'Run'} ${label}`} onClick={onPlay}>
-        {playing ? <Spinner label={null} pattern="snake" /> : <Icon name={running ? 'stop' : 'play'} size={14} />}
-      </button>
-      <span ref={anchor} className="run-caret-anchor">
-        <button type="button" className="run-caret" aria-label="Run scripts" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          <Icon name="chevron" size={12} />
-        </button>
-        {open && <Menu label="Run scripts" anchorRef={anchor} onClose={() => setOpen(false)} style={{ right: 0, top: 30, width: 220 }} items={items} />}
-      </span>
-    </span>
+    <SplitButton
+      size="sm"
+      icon={running ? 'stop' : 'play'}
+      className="run-split"
+      disabled={none || (busy !== null && !playing)}
+      busy={playing}
+      mainProps={{ 'aria-label': playing ? (running ? 'Stopping' : 'Starting') : none ? 'Run' : `${running ? 'Stop' : 'Run'} ${label}` }}
+      onClick={onPlay}
+      caretLabel="Run scripts"
+      expanded={open}
+      onCaret={() => setOpen((o) => !o)}
+      anchorRef={anchor}
+      menu={open && <Menu label="Run scripts" anchorRef={anchor} onClose={() => setOpen(false)} style={{ right: 0, top: 30, width: 220 }} items={items} />}
+    />
   )
 }
 
