@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
-import { Icon, Kbd } from '../../../ui'
+import { Button, Icon, Kbd } from '../../../ui'
 import { stripRemote } from '../../settings/remote'
 import { useRemote } from '../../settings/useSettings'
 import { branchLine, branchRows, type BranchRow } from './branchRows'
@@ -95,9 +95,9 @@ function BranchMenu({ projectId, target, fallback, remote, anchorRef, onClose, o
               {r.ref === target && <Icon name="check" size={14} />}
             </button>
             {r.workspaceId && (
-              <button type="button" tabIndex={-1} className="where-open" aria-label={`Open the workspace on ${r.name}`} onClick={() => openWorkspace(r.workspaceId)}>
+              <Button size="sm" tabIndex={-1} className="where-open" aria-label={`Open the workspace on ${r.name}`} onClick={() => openWorkspace(r.workspaceId)}>
                 Open workspace <Kbd>⌘↵</Kbd>
-              </button>
+              </Button>
             )}
           </div>
         ))}
