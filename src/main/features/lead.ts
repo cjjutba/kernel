@@ -244,13 +244,16 @@ export class Lead extends Feature {
     return done
   }
 
-  /** Fetches the project's remote without waiting, so the fetch Create needs is done or under way by then (KERNEL-542). */
+  /**
+   * Gets ready for a new chat without waiting: fetches the project's remote, so the fetch Create needs is done or under way by
+   * then (KERNEL-542), and makes the project's spare worktree, which Send claims (KERNEL-1014).
+   */
   prefetch(projectId: string) {
     const project = this.store.project(projectId)
     if (!project) return
     void this.k.config.remoteFor(project.path).then(async (remote) => {
       if ((await exec('git', ['-C', project.path, 'remote', 'get-url', remote])).code === 0) await fetchOrigin(project.path, remote)
-    }).catch(() => undefined)
+    }).catch(() => undefined).then(() => this.k.workspaces.prepareSpare(projectId)).catch(() => undefined)
   }
 
   /** Syncs of each chat's worktree, by workspace, so two never run git in it at once. */
