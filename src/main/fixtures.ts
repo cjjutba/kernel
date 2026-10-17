@@ -287,6 +287,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'notifications.list': async () => f.notifications ?? [],
     'notifications.playSound': async () => ({ ok: true }),
     'notifications.read': async ({ ids }) => (f.notifications ?? []).map((n) => (ids === 'all' || ids.includes(n.id) ? { ...n, read: true } : n)),
+    'notifications.answer': async ({ id }) => ({ ...(f.notifications ?? []).find((n) => n.id === id)!, needsYou: false, read: true, resolved: 'You answered.' }),
     'lead.open': async ({ projectId }) => {
       if (!f.agents[projectId]?.some((a) => a.lead)) throw new Error('This fixture has no Kernel.')
       return leadWs(projectId) ?? null

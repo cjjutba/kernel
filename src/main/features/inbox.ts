@@ -72,6 +72,7 @@ export class Inbox extends Feature {
     return {
       'notifications.list': async () => this.notifications.list(),
       'notifications.read': async ({ ids }) => this.notifications.read(ids),
+      'notifications.answer': async () => { throw new Error('Not answered: no teammate question here.') },
       'notifications.playSound': async ({ sound }) => {
         this.o.showNotification?.({ id: 'n-sound-preview', kind: 'system', title: 'Kernel', sub: 'This is how a notification sounds.', needsYou: false, read: true, createdAt: Date.now() }, bannerSound(sound))
         return { ok: true }
