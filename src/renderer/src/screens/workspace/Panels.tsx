@@ -208,7 +208,7 @@ function ChangesList({ ws, changes: base, onOpenDiff, activePath }: { ws: Worksp
 /** A chat on the shared main folder has no changes, setup or run of its own until it switches to Build here (KERNEL-1052). */
 export const SHARED_NOTHING = 'Nothing of its own yet'
 export const sharedWhy = (ws: Workspace) => ws.leadMode === 'build'
-  ? 'This chat is switching to Build here. Its working copy is made when the current turn ends.'
+  ? 'This chat gets a working copy of its own when you send your next message.'
   : 'This chat reads the project’s main folder. Switch to Build here and it gets a working copy of its own.'
 
 // ---------- Checks

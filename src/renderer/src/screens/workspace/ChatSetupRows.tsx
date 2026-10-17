@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ScriptLine, Workspace } from '@shared/types'
 import { stripAnsi } from '@shared/toolView'
+import { onSharedFolder } from '@shared/leadWorkspace'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, Icon, Spinner, useBusy } from '../../ui'
@@ -51,12 +52,39 @@ function useShowLog(ws: Workspace) {
 }
 
 /**
+ * The one line a project's later chats ever show about their working copy: making it failed and the message is still held
+ * (KERNEL-1053). Try again makes the copy again, Send as Hand off sends the message from the shared folder instead.
+ */
+export function CopyFailedRow({ ws }: { ws: Workspace }) {
+  const [busy, track] = useBusy<'retry' | 'handoff'>()
+  const error = ws.worktreePending?.error
+  if (!error) return null
+  const retry = () => track('retry', () => attempt('Could not try again', () => call('lead.retryCopy', { workspaceId: ws.id })))
+  const handoff = () => track('handoff', () => attempt('Could not send as Hand off', () => call('lead.sendAsHandoff', { workspaceId: ws.id })))
+  return (
+    <div className="su-row su-copy-failed" data-state="fail" role="alert">
+      <span className="su-ico"><Icon name="close" size={16} /></span>
+      <span className="su-text">
+        <span>Couldn't make a working copy</span>
+        <span className="su-error">{error}</span>
+      </span>
+      <span className="grow" />
+      <Button size="sm" variant="ghost" busy={busy === 'retry'} busyPattern="rotate" busyLabel="Trying again" disabled={busy !== null} onClick={() => void retry()}>Try again</Button>
+      <Button size="sm" variant="ghost" busy={busy === 'handoff'} busyPattern="arrow-right" busyLabel="Sending" disabled={busy !== null} onClick={() => void handoff()}>Send as Hand off</Button>
+    </div>
+  )
+}
+
+/**
  * What Kernel did to start a chat's worktree, as plain rows at the top of the chat
  * (KERNEL-951): the branch, the worktree and its copied files, and the setup script, live while it runs with its last output
  * line, then how long it took. A failed setup offers Run again and Send anyway on its row. The log is one click away, never
- * opened for you. A chat on the current branch, the Lead's shared worktree, or a later worktree chat in the project shows nothing unless it fails.
+ * opened for you. Only a project's first chat shows the block (`firstInProject`, KERNEL-1053). Every later chat, and a chat on the current
+ * branch or the Lead's shared worktree, shows nothing unless something fails. A first chat on the shared main folder has no worktree rows,
+ * just a banner that says so, then the project's problems and the setup script line. `underQueue` is set by SetupWait, which draws
+ * the copy failure itself, below the held message.
  */
-export function ChatSetupRows({ ws }: { ws: Workspace }) {
+export function ChatSetupRows({ ws, underQueue }: { ws: Workspace; underQueue?: boolean }) {
   const project = useStore((s) => s.projects.find((p) => p.id === ws.projectId))
   const lines = useStore((s) => s.scripts[ws.id]) ?? NO_LINES
   const run = ws.setupRun
@@ -65,12 +93,16 @@ export function ChatSetupRows({ ws }: { ws: Workspace }) {
   const steps = useStore((s) => s.projectSetup[ws.projectId])
   const settings = useProjectSettings(ws.projectId)
   const [busy, track] = useBusy<'again' | 'skip' | 'stop'>()
-  if (ws.mode !== 'worktree' || (ws.lead && !ws.threadId)) return null
+  if (ws.lead && !ws.threadId) return null
   const pending = ws.worktreePending
+  // A failed copy of a chat that started on the shared folder is its own line, whichever chat it is.
+  if (pending?.fromShared) return pending.error && !underQueue ? <CopyFailedRow ws={ws} /> : null
+  const shared = onSharedFolder(ws)
+  if (!shared && ws.mode !== 'worktree') return null
   const end = endText(ws)
-  // Only the project's first worktree chat shows the whole block. Chats from before the stamp have none and count as first.
+  // Only the project's first chat shows the whole block. A chat without the stamp counts as not first.
   // A later chat shows just a failure, which it needs for Try again, Run again and Send anyway.
-  const later = ws.firstInProject === false
+  const later = ws.firstInProject !== true
   if (later && !pending?.error && !end?.failed) return null
   const tail = run ? lastLine(lines) : undefined
   // Failed with the chat held, Run again and Send anyway. Failed or stopped with nothing held, the chat works on, so only Rerun setup (KERNEL-1012).
@@ -83,7 +115,7 @@ export function ChatSetupRows({ ws }: { ws: Workspace }) {
 
   return (
     <section className="su-rows su-chat" aria-label="Chat setup">
-      {project && !later && <p className="su-banner">You're in a new copy of <code>{project.name}</code> on its own branch</p>}
+      {project && !later && <p className="su-banner">{shared ? <>You're working in the main folder of <code>{project.name}</code>, with no branch of your own yet</> : <>You're in a new copy of <code>{project.name}</code> on its own branch</>}</p>}
       {pending ? (
         <div className="su-row" data-state={pending.error ? 'fail' : 'run'} role="status">
           <span className="su-ico">{pending.error ? <Icon name="close" size={16} /> : <Spinner label={null} pattern="rotate" />}</span>
@@ -93,7 +125,7 @@ export function ChatSetupRows({ ws }: { ws: Workspace }) {
           </span>
           {pending.error && <><span className="grow" /><Button size="sm" variant="ghost" busy={busy === 'again'} busyPattern="rotate" busyLabel="Creating" disabled={busy !== null} onClick={() => void again()}>Try again</Button></>}
         </div>
-      ) : !later && (
+      ) : !later && !shared && (
         <>
           <div className="su-row">
             <span className="su-ico"><Icon name="branch" size={16} /></span>
