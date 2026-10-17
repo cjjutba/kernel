@@ -664,6 +664,8 @@ export const actions = {
     /** Takes an item out when it is still `item` itself: a row the engine has since replaced by id stays. For an optimistic row whose call failed. */
     dropItem: (chatId: string, item: ChatItem) => setState((s) => (s.items[chatId]?.includes(item) ? { items: { ...s.items, [chatId]: s.items[chatId].filter((i) => i !== item) } } : s)),
     setSeatUpdates: (chatId: string, count: number) => setState((s) => ({ seatUpdates: { ...s.seatUpdates, [chatId]: count } })),
+    /** The counts main holds at load. A `seat.updates` push that landed first is newer, so it stays; a missing key was 0. */
+    seedSeatUpdates: (counts: Record<string, number>) => setState((s) => ({ seatUpdates: { ...counts, ...s.seatUpdates } })),
     setRunning: (chatId: string, running: boolean) => setState((s) => ({ running: { ...s.running, [chatId]: running }, assumed: omit(s.assumed, [chatId]) })),
     /**
      * What a user action draws in one render (KERNEL-895): a row in the chat, the queue with its message, and whether the chat is running, so the bubble, the tray and the Working line
@@ -918,6 +920,8 @@ async function start() {
   // A PR action that started before this window loaded has no push to learn it from (KERNEL-519). An older main has no such channel.
   pushedPending = new Set()
   void call('pr.pendingAll', {}).then(applyPending, () => applyPending(null))
+  // A terminal Lead tab's waiting updates from before this window loaded have no push to learn them from (KERNEL-1028). An older main has no such channel.
+  void call('seat.pending', undefined).then(actions.chats.seedSeatUpdates).catch(() => undefined)
   const [projects, workspaces, approvals, notifications, activity, usage, settings, fixture, shared, threads] = await Promise.all([
     call('projects.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
     call('settings.get', undefined), call('system.fixture', undefined),
