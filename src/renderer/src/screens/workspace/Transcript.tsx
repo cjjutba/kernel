@@ -814,7 +814,7 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorks
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
   if (block.kind === 'notes') return <NoteFold block={block} />
   if (block.kind === 'relaunch') return <KernelNote item={block.message} lead={block.note.text} />
-  if (block.kind === 'meta') return block.actions ? <TurnEnd block={block} chatId={chatId} workspaceId={workspaceId} onFork={onFork} onForkWorkspace={onForkWorkspace} /> : <span className="meta">{block.text}</span>
+  if (block.kind === 'meta') return block.actions ? <TurnEnd block={block} chatId={chatId} workspaceId={workspaceId} onFork={onFork} onForkWorkspace={onForkWorkspace} /> : <span className="meta" data-quiet={block.quiet || undefined}>{block.text}</span>
   if (block.kind === 'files') return <TurnFilesCard rowId={block.id} files={block.files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />
   if (block.kind === 'reply') return <ReplyMessage item={block.item} chatId={chatId} workspaceId={workspaceId} checkpointId={block.checkpointId} onFork={onFork} onForkWorkspace={onForkWorkspace} files={block.files} inWorkspace={inWorkspace} meta={block.meta} quiet={block.quiet} onOpenDiff={onOpenDiff} />
   const item = block.item

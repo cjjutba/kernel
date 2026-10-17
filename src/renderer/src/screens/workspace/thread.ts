@@ -175,7 +175,8 @@ export function summarize(items: ChatItem[]): Summary {
   const phrases = all.slice(0, SHOWN).map((t) => count(t, all.length === 1)).map((p, i) => (i ? lower(p) : p))
   const more = all.length - SHOWN
   const text = more > 0 ? `${phrases.join(', ')} and ${more} more` : phrases.join(', ')
-  const untold = all.filter((t) => !told(t))
+  // A category past the shown phrases is only "and N more", which doesn't name its failure, so it keeps its tail.
+  const untold = all.filter((t, i) => i >= SHOWN || !told(t))
   return { text, bad: trouble(untold.reduce((n, t) => n + t.failed, 0), untold.reduce((n, t) => n + t.denied, 0)) }
 }
 
@@ -328,7 +329,7 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
         blocks.push({ kind: 'item', item: body[tail], actions: true })
         foldTurn(body.slice(tail + 1), blocks, info)
       }
-      for (const item of turn) if (item.kind === 'result') blocks.push({ kind: 'meta', id: item.id, text: `${fmtDuration(item.durationMs)} · ${fmtClock(item.ts)}` })
+      for (const item of turn) if (item.kind === 'result') foot({ kind: 'meta', id: item.id, text: `${fmtDuration(item.durationMs)} · ${fmtClock(item.ts)}` })
       turn = []
       return
     }

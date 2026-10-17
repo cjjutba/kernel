@@ -520,6 +520,19 @@ describe('quieter transcript (KERNEL-1025)', () => {
     expect(summarize([bash('a', 'done', 1), bash('b', 'denied', 2)]).bad).toBe('1 denied')
   })
 
+  it('keeps the tail for a failed category that falls past the three shown phrases', () => {
+    const call = (id: string, name: string, n: number, status: 'done' | 'failed' = 'done'): ChatItem => ({ kind: 'tool', id, ts: at(n), toolUseId: `tu-${id}`, name, label: name, detail: '', status, input: {} })
+    const s = summarize([call('a', 'Read', 1), call('b', 'Edit', 2), call('c', 'Bash', 3), call('d', 'Write', 4, 'failed')])
+    expect(s.text).toBe('Read 1 file, edited 1 file, ran 1 command and 1 more')
+    expect(s.bad).toBe('1 failed')
+  })
+
+  it('quiets the time line of an earlier stopped turn', () => {
+    const stopped: ChatItem[] = [user('u1', 0), { kind: 'text', id: 'x1', ts: at(1), text: 'Working' }, { kind: 'interrupted', id: 'i1', ts: at(2) }, { kind: 'result', id: 'r1', ts: at(3), durationMs: 3000, ok: false }]
+    const metas = buildThread([...stopped, ...turn('2', 10)]).filter((b) => b.kind === 'meta' || b.kind === 'reply')
+    expect(metas.map((b) => b.quiet)).toEqual([true, undefined])
+  })
+
   it('marks every footer but the last turn quiet', () => {
     const blocks = buildThread([...turn('1', 0), ...turn('2', 10), ...turn('3', 20)])
     const foots = blocks.filter((b) => b.kind === 'reply' || b.kind === 'meta')
