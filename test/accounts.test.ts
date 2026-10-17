@@ -740,6 +740,29 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await k.stop({ budgetMs: 0 })
   })
 
+  it('reads a rejected account that is not in use, and copies a rejection to its same-login twin (KERNEL-1030)', async () => {
+    const { k, ids, folder } = await setUp(['Side', 'Personal'])
+    const file = (k.providers as unknown as { load: () => { claude: { cli?: { email?: string }; accounts: { id: string; email?: string }[] } } }).load().claude
+    file.cli = { ...file.cli, email: 'cj@example.com' }
+    file.accounts.find((a) => a.id === ids.Side)!.email = 'CJ@example.com'
+    file.accounts.find((a) => a.id === ids.Personal)!.email = 'personal@example.com'
+    const hour = (accountId?: string) => k.sessions.usage([]).then((all) => all.find((l) => l.type === 'five_hour' && limitProvider(l) === 'claude' && l.accountId === accountId))
+    await quiet(); sdk.probes = []
+
+    reject(k, { accountId: ids.Personal })
+    expect(await hour(ids.Personal)).toMatchObject({ status: 'rejected' })
+    expect(await hour(ids.Side)).not.toMatchObject({ status: 'rejected' })
+    expect(await hour(undefined)).not.toMatchObject({ status: 'rejected' })
+    expect(k.providers.active('claude')).toBeUndefined()
+    await k.account.checkLimits()
+    expect(sdk.probes.map((p) => p.dir)).toContain(folder('Personal'))
+
+    reject(k, { accountId: ids.Side })
+    expect(await hour(ids.Side)).toMatchObject({ status: 'rejected' })
+    expect(await hour(undefined)).toMatchObject({ status: 'rejected' })
+    await k.stop({ budgetMs: 0 })
+  })
+
   it('runs each of three logins on its own folder and item through A to B to C to A, and a late refusal signs out only the login it came from', async () => {
     const { k, h, ids, folder, home } = await setUp(['Side', 'Personal'])
     const env = () => sessionEnv({ CLAUDE_SECURESTORAGE_CONFIG_DIR: '' }, k.providers.claudeEnv())

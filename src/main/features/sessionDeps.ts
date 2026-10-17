@@ -71,6 +71,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
     claudeEnv: (account) => k.providers.claudeEnv(account ?? 'cli'),
     startedOn: (chat) => k.placement.startedOn(chat.id),
     usageReads: () => k.providers.usageReads(),
+    sameLoginAccounts: (provider, accountId) => k.providers.sameLoginAccounts(provider, accountId),
+    readUsageNow: (provider, account) => void k.providers.readUsage({ provider, account: account ?? 'cli', force: true }).catch(() => undefined),
     // Undefined is the CLI's own login, which is never a key account.
     authOf: (provider, accountId) => (accountId ? k.providers.auth(provider, accountId) : 'subscription'),
     moveNote: (chat, from, summary) => k.placement.moved(chat, from, summary),

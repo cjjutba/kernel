@@ -13,7 +13,7 @@ import { leadModeName, leadModeOf } from '@shared/leadMode'
 import type { Store } from '../db'
 import { bus } from '../bus'
 import type { Approvals } from './approvals'
-import { blockingLimit, limitedModels, WINDOW_MODEL, type Failure } from './health'
+import { blockingLimit, isRejected, limitedModels, WINDOW_MODEL, type Failure } from './health'
 import { forProvider, Handoffs, leadRule, planApproval } from './handoff'
 import { mentionNote, mentionsOf } from './mentions'
 import { missingServers, type MissingServer } from './agentTools'
@@ -26,7 +26,7 @@ import { endAll } from './processes'
 import { ClaudeRunner, claudeCommands, claudeModels, TOOL_STOPPED } from './providers/claude'
 import { claudeExecutable } from './providers/binary'
 import { chatMode, type ChatAvailability, type RunMode } from './permissions'
-import { limitKey, mergeLimit, type LimitPatch } from './providers/limits'
+import { limitKey, liftedBy, mergeLimit, type LimitPatch } from './providers/limits'
 import { CodexRunner } from './providers/codex/runner'
 import { chatProvider, limitProvider } from '@shared/providers'
 import type { Ask, Proc, Runner, RunnerHost, TurnUsage } from './providers/types'
@@ -120,6 +120,9 @@ interface Turns {
 /** How many chats a usage limit cut off restart at once when it lifts. Each next one starts when one ends its turn (KERNEL-220). */
 export const RESUME_AT_ONCE = 2
 
+/** A restart keeps a rejection with no reset time this long after it began, a 5-hour window's length (KERNEL-1030). */
+export const PROVISIONAL_KEPT_MS = 5 * 60 * 60_000
+
 /**
  * How many chats re-read their history cold at once, as after a switch: the rest wait, smallest first, so a switch doesn't
  * spend a window on every chat's history in the same minutes. The Lead's chats never wait (KERNEL-844).
@@ -204,6 +207,10 @@ export interface SessionDeps {
   startedOn?: (chat: Chat) => void
   /** The accounts `usage()` asks when its caller names none: every one the providers can read, live processes only (KERNEL-567). */
   usageReads?: () => UsageRead[]
+  /** The other accounts on the same login as `accountId` (undefined is the CLI's own), which share its windows (KERNEL-1030). */
+  sameLoginAccounts?: (provider: Provider, accountId: string | undefined) => (string | undefined)[]
+  /** Reads the account's usage now, whatever was read lately (KERNEL-1030). */
+  readUsageNow?: (provider: Provider, accountId: string | undefined) => void
   /** How an account signs in (KERNEL-523). Without it every account is a subscription one. */
   authOf?: (provider: Provider, accountId: string | undefined) => AccountAuth
   /**
@@ -426,7 +433,8 @@ export class Sessions {
    * gate as a limit: a pause, an offline or signed-out hold, a limit and the agent limit all make it wait.
    */
   restore(limits: RateLimit[], cutOff: string[] | Record<string, CutOffReason>, held: Record<string, QueuedMessage[]> = {}, o: { clean?: boolean } = {}) {
-    for (const l of limits) this.limits.set(limitKey(l), l.status === 'rejected' && !l.resetsAt ? { ...l, status: 'allowed' } : l)
+    const now = Date.now()
+    for (const l of limits) this.limits.set(limitKey(l), l.status === 'rejected' && !l.resetsAt && !(l.rejectedAt !== undefined && now - l.rejectedAt < PROVISIONAL_KEPT_MS) ? { ...l, status: 'allowed' } : l)
     const saved: [string, CutOffReason][] = Array.isArray(cutOff) ? cutOff.map((id) => [id, 'limit']) : Object.entries(cutOff ?? {})
     for (const [id, reason] of saved) if (reason === 'limit' || reason === 'quit') this.cutOff.set(id, reason)
     // Chats whose setup failed before Kernel quit still hold their brief, and what was sent after it, for Run again.
@@ -632,7 +640,9 @@ export class Sessions {
   resetLimit(key: string) {
     const l = this.limits.get(key)
     if (!l || (l.status === 'allowed' && !l.utilization)) return
-    this.limits.set(key, { ...l, status: 'allowed', utilization: 0 })
+    const { rejectedAt: _at, provisional: _p, ...rest } = l
+    console.info(`[limits] lifted ${key}: reset timer`)
+    this.limits.set(key, { ...rest, status: 'allowed', utilization: 0 })
     this.pushLimits()
   }
 
@@ -1882,7 +1892,11 @@ export class Sessions {
       reached: () => this.d.onReached?.(),
       replied: () => this.d.onReply?.(ws, this.mustChat(chatId)),
       failed: (failure, o = {}) => { live.failed = failure; if (o.notify) this.d.onFailure?.(failure, ws, chatProvider(this.mustChat(chatId)), live.account) },
-      limited: (o = {}) => { if (o.always || live.running) live.limited = true },
+      limited: (o = {}) => {
+        if (!o.always && !live.running) return
+        live.limited = true
+        this.limitUnknown(this.mustChat(chatId), live)
+      },
       // A window is the provider's and the account's the process runs on. Claude's on the CLI login stay as they always were.
       // An API key account has none, so nothing it reports holds a chat or pauses a project (KERNEL-523).
       mergeLimits: (patches) => { if (!live.onKey) this.mergeLimits(patches.map((p) => ({ ...p, ...(live.account ? { accountId: live.account } : {}) }))) },
@@ -2119,15 +2133,53 @@ export class Sessions {
     this.setStatus(ws, this.d.agentFor(ws), running ? (chat.plan ? 'planning' : 'working') : 'idle')
   }
 
-  private mergeLimits(next: LimitPatch[]) {
+  private mergeLimits(next: LimitPatch[], o: { copied?: boolean } = {}) {
     if (!next.length) return
+    const rejected: RateLimit[] = []
     for (const l of next) {
       const key = limitKey(l)
       // Claude's per-model windows name their model. Codex's windows are the account's.
       const now = Date.now()
-      this.limits.set(key, { ...mergeLimit(this.limits.get(key), limitProvider(l) === 'claude' ? { ...l, model: l.model ?? WINDOW_MODEL[l.type] } : l, now), readAt: now })
+      const prev = this.limits.get(key)
+      const merged = { ...mergeLimit(prev, limitProvider(l) === 'claude' ? { ...l, model: l.model ?? WINDOW_MODEL[l.type] } : l, now), readAt: now }
+      this.limits.set(key, merged)
+      if (prev?.status === 'rejected' && merged.status !== 'rejected') console.info(`[limits] lifted ${key}: ${liftedBy(prev, now)}`)
+      if (merged.status === 'rejected' && merged.rejectedAt !== prev?.rejectedAt) {
+        console.info(`[limits] rejected ${key}${merged.provisional ? ' (temporary)' : ''}${merged.resetsAt ? `, resets at ${new Date(merged.resetsAt * 1000).toISOString()}` : ''}`)
+        rejected.push(merged)
+      }
     }
+    if (!o.copied) for (const l of rejected) this.copyRejection(l)
     this.pushLimits()
+  }
+
+  /** A rejection holds every account on the same login, which shares its windows, the CLI's own login included (KERNEL-1030). */
+  private copyRejection(l: RateLimit) {
+    const provider = limitProvider(l)
+    for (const accountId of this.d.sameLoginAccounts?.(provider, l.accountId) ?? []) {
+      const { accountId: _from, ...rest } = l
+      const twin = limitKey({ type: l.type, provider, accountId })
+      if (this.limits.get(twin)?.status === 'rejected') continue
+      console.info(`[limits] copied rejection ${limitKey(l)} to ${twin}`)
+      this.mergeLimits([{ ...rest, ...(accountId ? { accountId } : {}), status: 'rejected' }], { copied: true })
+    }
+  }
+
+  /**
+   * A turn stopped by a limit with no window that blocks its account: Kernel records a temporary rejected 5-hour window,
+   * which lifts by the usual rule, and reads the account's usage once to learn the real one (KERNEL-1030).
+   */
+  private limitUnknown(chat: Chat, live: Live) {
+    if (live.onKey || this.limitHolds(chat, live)) return
+    const provider = chatProvider(chat)
+    console.info(`[limits] temporary window for ${provider}:${live.account ?? 'cli'}`)
+    this.mergeLimits([{ type: 'five_hour', status: 'rejected', provisional: true, provider, ...(live.account ? { accountId: live.account } : {}) }])
+    this.d.readUsageNow?.(provider, live.account)
+  }
+
+  /** The accounts with a rejected account-wide window, as `provider:accountId` (an empty id is the CLI's own login). */
+  rejectedAccounts(): Set<string> {
+    return new Set([...this.limits.values()].filter((l) => isRejected(l)).map((l) => `${limitProvider(l)}:${l.accountId ?? ''}`))
   }
 
   private pushLimits() {

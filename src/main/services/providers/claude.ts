@@ -430,8 +430,8 @@ export class ClaudeRunner implements Runner {
       }
       case 'rate_limit_event': {
         const info = msg.rate_limit_info
-        if (info.status === 'rejected') host.limited()
         host.mergeLimits(limitsFromEvent(info))
+        if (info.status === 'rejected') host.limited()
         if (info.status === 'rejected' && info.rateLimitType) bus.activity({ kind: 'limit', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, text: `hit the ${info.rateLimitType.replace(/_/g, ' ')} limit`, data: { resetsAt: info.resetsAt } })
         return
       }

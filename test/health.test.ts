@@ -10,6 +10,7 @@ import { Store } from '../src/main/db'
 import { Kernel } from '../src/main/kernel'
 import { Approvals } from '../src/main/services/approvals'
 import { LIMIT_LIFTED, Sessions } from '../src/main/services/sessions'
+import { REJECT_HOLD_MS } from '../src/main/services/providers/limits'
 import type { AppSettings } from '../src/main/services/settings'
 import { blockingLimit, failureOf, fallbackModel, limitedModels, NetworkMonitor, terminalScript } from '../src/main/services/health'
 import { discardChanges, gitStatus, pushBranch } from '../src/main/services/archive'
@@ -75,6 +76,12 @@ const usageAt = (percent: number, resetsAt: number) => ({
 })
 
 /** A Kernel whose Lead chat hit the 5-hour limit and finished its turn, so every project is paused by the limit. */
+/** Ages every rejected window past its hold, so the next reading can lift it (KERNEL-1030). */
+function pastHold(k: Kernel) {
+  const limits = (k.sessions as unknown as { limits: Map<string, { status: string; rejectedAt?: number }> }).limits
+  for (const l of limits.values()) if (l.rejectedAt) l.rejectedAt -= REJECT_HOLD_MS
+}
+
 async function limited() {
   const { k, project } = await kernel()
   const chat = await k.leadChat(project.id)
@@ -725,9 +732,33 @@ describe('kernel recovery paths', () => {
     await flush()
     expect(k.store.project(project.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     expect(k.sessions.isPaused(project.id)).toBe(true)
+    pastHold(k)
     call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', resetsAt: S(Date.now() + 5 * 3600_000), utilization: 0.1 }, uuid: 'l2', session_id: 's' })
     await flush()
     expect(k.store.project(project.id)?.paused).toBe(false)
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('records a temporary window for a limit it had no window for, holds the chat, and lifts it after the hold on a clear reading (KERNEL-1030)', async () => {
+    const { k, project } = await kernel()
+    const chat = await k.leadChat(project.id)
+    await setUp(k, chat.id)
+    await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
+    const call = sdk.calls[sdk.calls.length - 1]
+    call.feed({ type: 'assistant', uuid: 'm1', parent_tool_use_id: null, error: 'rate_limit', message: { content: [{ type: 'text', text: 'Limit reached' }] }, session_id: 's' })
+    call.feed(result())
+    await flush()
+    const window = () => (k.store.meta<{ type: string; provisional?: boolean; status: string; resetsAt?: number }[]>('limits') ?? []).find((l) => l.type === 'five_hour')
+    expect(window()).toMatchObject({ status: 'rejected', provisional: true })
+    expect(window()?.resetsAt).toBeUndefined()
+    expect(k.store.project(project.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
+    sdk.usage = usageAt(0, S(Date.now() + 5 * 3600_000))
+    await k.checkLimits()
+    expect(k.store.project(project.id)?.paused).toBe(true)
+    pastHold(k)
+    await k.checkLimits()
+    expect(k.store.project(project.id)?.paused).toBe(false)
+    sdk.usage = null
     await k.stop({ budgetMs: 0 })
   })
 
@@ -738,6 +769,7 @@ describe('kernel recovery paths', () => {
     await k.checkLimits()
     expect(k.store.project(project.id)?.paused).toBe(true)
     // Reset on claude.ai: the window is empty again an hour before its reset time.
+    pastHold(k)
     sdk.usage = usageAt(0, resetsAt)
     await k.checkLimits()
     expect(k.store.project(project.id)?.paused).toBe(false)
@@ -762,6 +794,7 @@ describe('kernel recovery paths', () => {
     const { k, project, resetsAt } = await limited()
     k.sessions.stopAll()
     const before = sdk.calls.length
+    pastHold(k)
     sdk.usage = usageAt(0, resetsAt)
     await k.checkLimits()
     const probe = sdk.calls[before]
@@ -779,6 +812,7 @@ describe('kernel recovery paths', () => {
     expect(await k.handlers()['chats.sendNow']({ chatId: chat.id, id: q.id })).toEqual([])
     expect(k.sessions.isRunning(chat.id)).toBe(true)
     expect(k.store.project(project.id)?.paused).toBe(true)
+    pastHold(k)
     call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', resetsAt: S(Date.now() + 5 * 3600_000), utilization: 0.01 }, uuid: 'l2', session_id: 's' })
     await flush()
     expect(k.store.project(project.id)?.paused).toBe(false)
@@ -788,6 +822,7 @@ describe('kernel recovery paths', () => {
   it('carries on a chat the limit stopped mid-turn once the limit lifts', async () => {
     const { k, project, chat, call } = await limited()
     expect(k.sessions.isRunning(chat.id)).toBe(false)
+    pastHold(k)
     call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', resetsAt: S(Date.now() + 5 * 3600_000), utilization: 0.01 }, uuid: 'l2', session_id: 's' })
     await flush()
     expect(k.store.project(project.id)?.paused).toBe(false)

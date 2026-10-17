@@ -1023,6 +1023,20 @@ export class Providers extends Feature {
     return s?.to === accountId && s.limit ? `${this.label(provider, s.from)} hit its ${LIMIT_NAME[s.limit]}` : undefined
   }
 
+  /**
+   * The other accounts of the provider signed in to the same login as `accountId` (undefined for the CLI's own), which share
+   * its usage windows: `undefined` stands for the CLI's own login (`sameLogin`, KERNEL-1030).
+   */
+  sameLoginAccounts(provider: Provider, accountId?: string): (string | undefined)[] {
+    const file = this.load()[provider]
+    const cli = !accountId || accountId === CLI_ACCOUNT
+    const me = cli ? file.cli : this.stored(provider, accountId)
+    const out: (string | undefined)[] = []
+    if (!cli && file.cli?.signedIn !== false && sameLogin(me, file.cli)) out.push(undefined)
+    for (const a of file.accounts) if (a.auth !== 'apiKey' && a.id !== accountId && sameLogin(me, a)) out.push(a.id)
+    return out
+  }
+
   /** An account's email as Kernel last read it, by its id in `accounts.*`, undefined or `cli` for the CLI's own login (KERNEL-842). */
   emailOf(provider: Provider, accountId?: string): string | undefined {
     const file = this.load()[provider]

@@ -12,6 +12,7 @@ import { Approvals } from '../src/main/services/approvals'
 import { NO_PROMPTS } from '../src/main/services/exec'
 import { bashVerdict, matchesProjectRule, projectRule } from '../src/main/services/bashGuard'
 import { COMPACT_INSTRUCTIONS, IDLE_STOP_MS, LIMIT_LIFTED, limitsFromEvent, limitsFromUsage, mergeLimit, sessionEnv, SESSION_GONE_NOTE, Sessions, TOO_LONG_NOTE, type CutOffReason, type LimitPatch, type SessionDeps } from '../src/main/services/sessions'
+import { REJECT_HOLD_MS } from '../src/main/services/providers/limits'
 import type { AppSettings } from '../src/main/services/settings'
 import { ClaudeRunner, readUsage } from '../src/main/services/providers/claude'
 import { Kernel } from '../src/main/kernel'
@@ -163,6 +164,47 @@ describe('usage', () => {
     const hit = { type: 'five_hour' as const, status: 'rejected' as const, utilization: 1, resetsAt: 1000 }
     expect(mergeLimit(hit, { type: 'five_hour', utilization: 0 }, 999_000).status).toBe('allowed')
     expect(mergeLimit(hit, { type: 'five_hour', utilization: 1, resetsAt: 1001 }, 999_000).status).toBe('rejected')
+  })
+
+  describe('a rejected window stays rejected until it lifts (KERNEL-1030)', () => {
+    const hit = { type: 'five_hour' as const, status: 'rejected' as const, utilization: 1, resetsAt: 20_000, rejectedAt: 1_000_000 }
+    const within = 1_000_000 + REJECT_HOLD_MS - 1
+    const after = 1_000_000 + REJECT_HOLD_MS
+
+    it("keeps it rejected on another session's allowed_warning event", () => {
+      expect(mergeLimit(hit, { type: 'five_hour', status: 'allowed_warning', utilization: 0.8, resetsAt: 20_000 }, within).status).toBe('rejected')
+      expect(mergeLimit(hit, { type: 'five_hour', status: 'allowed_warning', utilization: 0.97, resetsAt: 20_000 }, after).status).toBe('rejected')
+    })
+
+    it('keeps it rejected on a statusless 0.93 reading inside the hold', () => {
+      expect(mergeLimit(hit, { type: 'five_hour', utilization: 0.93 }, within)).toMatchObject({ status: 'rejected', utilization: 1, rejectedAt: 1_000_000 })
+    })
+
+    it('lifts it on a 0.4 reading after the hold, with or without a status', () => {
+      expect(mergeLimit(hit, { type: 'five_hour', utilization: 0.4 }, after)).toMatchObject({ status: 'allowed', utilization: 0.4 })
+      expect(mergeLimit(hit, { type: 'five_hour', status: 'allowed', utilization: 0.4 }, after).status).toBe('allowed')
+      expect(mergeLimit(hit, { type: 'five_hour', status: 'allowed', utilization: 0.97 }, after).status).toBe('rejected')
+    })
+
+    it('lifts it when the reset time passes, and ignores a later reset time before then', () => {
+      expect(mergeLimit(hit, { type: 'five_hour', utilization: 0.99, resetsAt: 40_000 }, within).status).toBe('rejected')
+      const passed = mergeLimit({ ...hit, resetsAt: 1001, rejectedAt: 1_000_000 }, { type: 'five_hour', utilization: 0.02 }, 1_001_001)
+      expect(passed.status).toBe('allowed')
+      expect(passed.rejectedAt).toBeUndefined()
+    })
+
+    it('stamps rejectedAt when a window becomes rejected and keeps it while it stands', () => {
+      const first = mergeLimit({ type: 'five_hour', status: 'allowed', utilization: 0.9 }, { type: 'five_hour', status: 'rejected', resetsAt: 20_000 }, 500)
+      expect(first.rejectedAt).toBe(500)
+      expect(mergeLimit(first, { type: 'five_hour', status: 'rejected', resetsAt: 20_000 }, 900).rejectedAt).toBe(500)
+    })
+
+    it('holds a temporary window with no reset time for the same hold, then lifts it on a clear reading', () => {
+      const temp = { type: 'five_hour' as const, status: 'rejected' as const, provisional: true, rejectedAt: 1_000_000 }
+      expect(mergeLimit(temp, { type: 'five_hour', utilization: 0.2, resetsAt: 20_000 }, within).status).toBe('rejected')
+      expect(mergeLimit(temp, { type: 'five_hour', utilization: 0.2, resetsAt: 20_000 }, after)).toMatchObject({ status: 'allowed' })
+      expect(mergeLimit(temp, { type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: 20_000 }, within).provisional).toBeUndefined()
+    })
   })
 
   describe.each([
@@ -1265,6 +1307,8 @@ describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
     expect((await run('a', 'Again')).sent).toEqual(['work: Next', 'work: Again'])
     // Work at its limit can't run it, so it moves after all, and asks again.
     long('a', 120_000)
+    // The fake CLI signs every account in as one email, so they would share a window; this test has Side free.
+    vi.spyOn(k.providers, 'sameLoginAccounts').mockReturnValue([])
     ;(k.sessions as unknown as { mergeLimits: (l: object[]) => void }).mergeLimits([{ type: 'five_hour', status: 'rejected', utilization: 1, accountId: 'work', resetsAt: Math.round(Date.now() / 1000) + 3600 }])
     await run('a', 'Later')
     expect(k.sessions.queueReason('a')).toBe('move')
