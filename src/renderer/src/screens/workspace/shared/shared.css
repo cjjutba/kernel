@@ -83,8 +83,8 @@
 .md.shared-md li + li { margin-top: 6px; }
 .md.shared-md > .codeblock { margin: 4px 0 16px; }
 /* The canvas draws no Copy button on a code block, so it waits for hover or focus. */
-.shared-md .codeblock .btn { opacity: 0; }
-.shared-md .codeblock:hover .btn, .shared-md .codeblock:focus-within .btn { opacity: 1; }
+.shared-md .codeblock .icon-btn { opacity: 0; }
+.shared-md .codeblock:hover .icon-btn, .shared-md .codeblock:focus-within .icon-btn { opacity: 1; }
 .shared-outside { margin: 0; height: 32px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; padding: 0 16px; border-top: 1px solid var(--line); font-size: var(--fs-meta); color: var(--muted); }
 
 /* the zoom control in an image's toolbar (KERNEL-598): minus, the percent drawn, plus, in one hairline box the height of Comment beside it */

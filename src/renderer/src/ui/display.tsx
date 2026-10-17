@@ -59,7 +59,7 @@ export function Meter({ value, label }: { value: number; label: string }) {
   )
 }
 
-/** Code with a copy button. The button says "Copied" for 1.5s. `inline` is the setup canvases' command line: Copy beside the command, outlined, with no icon. */
+/** Code with a copy control. The control is the clipboard icon alone, as under a message, and turns into a check for 1.5s. `inline` is the setup canvases' command line: an outlined Copy button beside the command, with no icon. */
 export function CodeBlock({ children, label = 'Copy', inline }: { children: string; label?: string; inline?: boolean }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
@@ -68,7 +68,9 @@ export function CodeBlock({ children, label = 'Copy', inline }: { children: stri
   return (
     <div className="codeblock" data-inline={inline || undefined}>
       <pre className="code">{children}</pre>
-      <Button size="md" variant={inline ? 'secondary' : 'ghost'} icon={inline ? undefined : copied ? 'check' : 'copy'} onClick={copy} aria-label={copied ? 'Copied' : label}>{copied ? 'Copied' : label}</Button>
+      {inline
+        ? <Button size="md" variant="secondary" onClick={copy} aria-label={copied ? 'Copied' : label}>{copied ? 'Copied' : label}</Button>
+        : <IconButton icon={copied ? 'check' : 'copy'} size={14} box="sm" label={copied ? 'Copied' : label} onClick={copy} />}
     </div>
   )
 }
