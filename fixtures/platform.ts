@@ -124,8 +124,8 @@ const thirdClaude = subscription('claude', 'third', '3rd account', 'third@exampl
 const footerKey = (active = false): AccountProfile => ({ id: 'key', provider: 'claude', label: 'API Key', cli: false, auth: 'apiKey', active, signedIn: true })
 const footerCodex = subscription('codex', 'cli', 'cjjutbaofficial', 'cjjutbaofficial@gmail.com', 'ChatGPT Plus', { active: true })
 const workCodex = subscription('codex', 'work', 'work', 'work@example.com', 'ChatGPT Pro')
-const footerUsage = (codex5 = 31): RateLimit[] => [
-  window5('claude', 'cli', 9, next(23, 0)), windowWeek('claude', 'cli', 19, nextOn(1, 3, 0)),
+const footerUsage = (codex5 = 31, claude5 = 9): RateLimit[] => [
+  window5('claude', 'cli', claude5, next(23, 0)), windowWeek('claude', 'cli', 19, nextOn(1, 3, 0)),
   { type: 'seven_day_overage_included', status: 'allowed', utilization: 0.04, resetsAt: secs(nextOn(1, 3, 0)) },
   window5('claude', 'main', 12, next(22, 0)), windowWeek('claude', 'main', 20, nextOn(2, 3, 0)),
   { type: 'seven_day_overage_included', status: 'allowed', utilization: 0.31, resetsAt: secs(nextOn(2, 3, 0)), accountId: 'main' },
@@ -602,6 +602,8 @@ export const platformFixtures: Record<string, Fixture> = {
   FooterHelpMenu: usageHome({ update: undefined }, { menu: 'help' }),
   // KERNEL-674: Codex's 5-hour window is full, so its bar and number go red.
   UsageFooterCodexFull: usageHome({ usage: footerUsage(100) }),
+  // KERNEL-1027: Anthropic reported 101% for the 5-hour window, and the chip reads 100%.
+  UsageFooterOverLimit: usageHome({ usage: footerUsage(31, 101) }),
   // KERNEL-949: the footer shows only the account each provider runs on, however many there are. Switching is in the account menu. A narrow window drops the Fable number.
   UsageFooterManyAccounts: usageHome({ accounts: manyAccounts, usage: manyUsage() }),
   UsageFooterNarrow: usageHome({ accounts: manyAccounts, usage: manyUsage() }),
@@ -613,6 +615,7 @@ export const platformFixtures: Record<string, Fixture> = {
   UsagePopoverManyAccounts: usagePopover({ accounts: manyAccounts, usage: manyUsage() }),
   // KERNEL-674: the popover opens upward from the footer. Claude Code is open in Detailed and Codex shows both windows folded.
   UsagePopover: usagePopover(),
+  UsagePopoverOverLimit: usagePopover({ usage: footerUsage(31, 101) }),
   UsagePopoverCompact: usagePopover({}, { usageView: 'compact', usageOpen: [] }),
   UsagePopoverCompactCodex: usagePopover({ accounts: [secondClaude, mainClaude, footerKey(), thirdClaude, footerCodex, workCodex] }, { usageView: 'compact', usageOpen: ['codex'] }),
   // KERNEL-619: a key is in use on Claude Code, so it says Billed per token and Switch lists the subscriptions.

@@ -1,4 +1,5 @@
 import { PROVIDERS, type AccountProfile, type Provider, type RateLimit } from '@shared/types'
+import { pctLabel as pct } from '@shared/usage'
 import { isFable, live, windowsOf, type PlanWindow } from './planModel'
 
 // What the footer's usage row draws (UsageFooter.png, KERNEL-674): the account each provider runs on, with its numbers. The other accounts' numbers
@@ -28,7 +29,6 @@ export interface FooterGroup {
   chip?: FooterChip
 }
 
-const pct = (v: number) => `${Math.round(v * 100)}%`
 
 const windowOf = (usage: RateLimit[], a: AccountProfile, type: 'five_hour' | 'seven_day', now: number): number | undefined =>
   live(windowsOf(usage, a).find((l) => l.type === type && !l.model), now)?.utilization

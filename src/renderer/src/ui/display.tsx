@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react'
 import type { BannerKind } from '@shared/types'
+import { usagePercent } from '@shared/usage'
 import { Icon, type IconName } from '../icons'
 import { Button, IconButton } from './controls'
 import { useSwipeDismiss } from './useSwipeDismiss'
@@ -52,7 +53,7 @@ export const meterLevel = (value: number): 'near' | 'full' | undefined => (value
 export function Meter({ value, label }: { value: number; label: string }) {
   const v = Math.max(0, Math.min(1, value))
   return (
-    <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(v * 100)} className="meter" data-level={meterLevel(v)}>
+    <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={usagePercent(v)} className="meter" data-level={meterLevel(v)}>
       <span style={{ width: `${v * 100}%` }} />
     </div>
   )

@@ -1,7 +1,7 @@
 import type { AccountProfile, BannerKind, Chat, ClaudeAccount, HookStatus, ModelId, Provider, RateLimit, ScriptLine, Workspace } from '@shared/types'
 import { MODELS, PROVIDERS } from '@shared/types'
 import { chatProvider, limitProvider } from '@shared/providers'
-import { clock, nearLimit, resetPhrase, switchChoices, WEEKLY_WARN } from '@shared/usage'
+import { clock, nearLimit, pctLabel, resetPhrase, switchChoices, WEEKLY_WARN } from '@shared/usage'
 
 export { clock, resetPhrase }
 
@@ -242,7 +242,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
     const key = limitBannerKey('accountNearLimit', near.resetsAt, `${provider}:${active}`)
     if (!i.dismissed?.has(key)) return {
       id: 'accountNearLimit', kind: 'limit',
-      title: `${current.label} is ${near.utilization === undefined ? 'close to' : `at ${Math.round(near.utilization * 100)}% of`} its ${named(near.type === 'five_hour' ? '5-hour limit' : 'weekly limit')}`,
+      title: `${current.label} is ${near.utilization === undefined ? 'close to' : `at ${pctLabel(near.utilization)} of`} its ${named(near.type === 'five_hour' ? '5-hour limit' : 'weekly limit')}`,
       sub: `${roomy.label} has usage left.`,
       actions: [{ id: 'switchAccount', label: `Switch to ${roomy.label}`, primary: true }],
       blocks: false, switchAccount: { provider, accountId: roomy.id, label: roomy.label }, dismissKey: key
@@ -281,7 +281,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
 
   const week = usage.find((l) => l.type === 'seven_day' && l.resetsAt !== undefined && l.resetsAt * 1000 > now && (l.utilization ?? 0) >= WEEKLY_WARN)
   if (week?.resetsAt && i.usageSettings?.warnBeforeWeekly !== false && !closed('weeklyWarn', week.resetsAt) && !closed('nearLimit', week.resetsAt)) return {
-    id: 'weeklyWarn', kind: 'limit', title: `You've used ${Math.round((week.utilization ?? WEEKLY_WARN) * 100)}% of this week's ${named('limit')}`,
+    id: 'weeklyWarn', kind: 'limit', title: `You've used ${pctLabel(week.utilization ?? WEEKLY_WARN)} of this week's ${named('limit')}`,
     sub: `It resets ${resetPhrase(week.resetsAt, now)}.`, actions: usageAction, blocks: false, dismissKey: limitBannerKey('weeklyWarn', week.resetsAt)
   }
 
