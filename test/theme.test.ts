@@ -98,6 +98,16 @@ describe('theme contrast', () => {
     expect(themes(both).flatMap(([name, theme]) => under(name, theme, ['input-line'], BORDERED, 3))).toEqual([])
     for (const theme of [light, dark]) expect(contrast(theme['line-2'], theme.panel)).toBeLessThan(1.5)
   })
+  it('a container edge or row divider stays visibly apart from the fill it sits on, in both themes (KERNEL-1038)', () => {
+    // Hairlines are not text, so 3:1 is out of reach. 1.1:1 is about the smallest step the eye still sees on a dark panel; panel-line on surface was 1.0 in dark and the dividers vanished.
+    const MIN_EDGE = 1.1
+    const pairs = [['card-bg', 'card-line'], ['surface', 'card-line'], ['panel', 'pill-line']]
+    const fails = themes(both).flatMap(([name, theme]) => pairs.flatMap(([fill, line]) => {
+      const c = contrast(theme[line], theme[fill])
+      return c < MIN_EDGE ? [`${name} ${line} on ${fill}: ${c.toFixed(2)}`] : []
+    }))
+    expect(fails).toEqual([])
+  })
   it('the focus ring reaches 3:1 on every surface in both themes', () => {
     const fails: string[] = []
     for (const [name, body] of [['light', block("[data-theme='light']")], ['dark', block(":root, [data-theme='dark']")]] as const)

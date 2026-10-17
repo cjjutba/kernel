@@ -15,7 +15,7 @@
 .sys-preset .set-label.mono { font: var(--fs-code) var(--mono); }
 
 /* About: the header card */
-.sys-about { display: flex; align-items: center; gap: 16px; padding: 18px 16px; border-radius: var(--r-md); border: 1px solid var(--pill-line); background: var(--card-bg); }
+.sys-about { display: flex; align-items: center; gap: 16px; padding: 18px 16px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); }
 .sys-about-mark { width: 48px; height: 48px; flex-shrink: 0; border-radius: var(--r-md); object-fit: cover; }
 .sys-about-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .sys-about-name { font-size: var(--fs-dialog); font-weight: var(--fw-semibold); color: var(--ink); }
