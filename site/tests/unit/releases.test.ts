@@ -35,8 +35,11 @@ describe('release files', () => {
     expect(parseReleaseFile(formatReleaseFile(r))).toEqual(r)
   })
 
-  it('refuses the placeholder title, unknown keys and stray lines', () => {
+  it('refuses the placeholder title for a minor and a patch, unknown keys and stray lines', () => {
     expect(() => parseReleaseFile(formatReleaseFile(release('0.2.0', '2026-11-01', { title: PLACEHOLDER_TITLE })))).toThrow(
+      'write a title'
+    )
+    expect(() => parseReleaseFile(formatReleaseFile(release('0.2.1', '2026-11-05', { title: PLACEHOLDER_TITLE })))).toThrow(
       'write a title'
     )
     expect(() => parseReleaseFile('---\nversion: 0.2.0\ndate: 2026-11-01\ntitle: A\nauthor: me\n---\n## New\n\n- A.\n')).toThrow(

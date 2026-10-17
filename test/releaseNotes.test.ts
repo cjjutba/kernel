@@ -115,7 +115,8 @@ describe('pnpm release:notes', () => {
     expect(parseFragment('app-icon.md', fragment('fixed', 'Fixed the app icon.', 'pr: 44\n')).pr).toBe(44)
     expect(collect(dir).byType.fixed.map((n) => n.pr)).toEqual([44])
     compile({ root: dir, version: '0.1.1', date: '2026-10-20' })
-    expect(readRelease(dir, '0.1.1').sections.map((s) => [s.title, s.items.map((i) => i.pr)])).toEqual([
+    const text = readFileSync(join(dir, 'site/content/releases/0.1.1.md'), 'utf8').replace(PLACEHOLDER_TITLE, 'Catch-up notes')
+    expect(parseReleaseFile(text).sections.map((s) => [s.title, s.items.map((i) => i.pr)])).toEqual([
       ['Improved', [47]],
       ['Fixed', [44]]
     ])
@@ -173,11 +174,12 @@ describe('pnpm release:notes', () => {
     expect(() => readRelease(dir, '0.2.0')).toThrow('write a title')
   })
 
-  it('titles a patch release after its version', async () => {
+  it('gives a patch release the placeholder title too', async () => {
     const dir = await kernelRepo()
     await land(dir, 'fix: stale status (#44)', { '.changes/unreleased/pr-refresh.md': fragment('fixed', 'Fixed a stale status.') })
     compile({ root: dir, version: '0.1.1', date: '2026-10-20' })
-    expect(readRelease(dir, '0.1.1')).toMatchObject({ title: 'Kernel 0.1.1', sections: [{ title: 'Fixed', items: [{ text: 'Fixed a stale status.', pr: 44 }] }] })
+    expect(readFileSync(join(dir, 'site/content/releases/0.1.1.md'), 'utf8')).toContain(`title: "${PLACEHOLDER_TITLE}"`)
+    expect(() => readRelease(dir, '0.1.1')).toThrow('write a title')
   })
 
   it('refuses a bad version, an existing file, nothing to publish and a bad fragment', async () => {
