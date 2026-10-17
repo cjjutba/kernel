@@ -514,7 +514,8 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-995: one chip per role and an agent count. The large fixture is the real setup, to check every row is as tall as the next.
   SettingsModelsLarge: largeModels(),
   SettingsModelsAgents: largeModels(),
-  SettingsModelsAgentsNone: modelsPage(),
+  // No agent follows the QA row, but Teng pins its own model, so the count still opens and lists only that agent.
+  SettingsModelsAgentsNone: settingsPage('models', { agents: { ...modelsAgents(), [ids.projectA]: [...modelsAgents()[ids.projectA], agentFile('teng', 'Teng', 'QA', 'Runs tests, attaches output')] }, status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),
   SettingsModelsPickerEffort: modelsPage(),
   SettingsModelsPickerCompact: modelsPage(),
   SettingsModelsPickerCodexRole: modelsPage(),
