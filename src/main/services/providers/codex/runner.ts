@@ -516,7 +516,11 @@ export class CodexRunner implements Runner {
         if (item.tool === `${CODEX_TOOL_PREFIX}request_plan_approval`) this.planAsked = true
         return this.finish(item.id, item.success !== false && item.status === 'completed', toolOutput(item.contentItems))
       // The compact itself gives no reply, so the turn says what happened (KERNEL-808).
-      case 'contextCompaction': this.host.item({ kind: 'note', id: item.id, ts: now, text: 'Compacted the conversation.' }); return
+      case 'contextCompaction': {
+        const note: ChatItem = { kind: 'note', id: item.id, ts: now, text: 'Compacted the conversation.' }
+        if (!this.host.compacted?.(note)) this.host.item(note)
+        return
+      }
       case 'imageView':
         if (!this.rows.has(item.id)) this.itemStarted(item)
         return this.finish(item.id, true, '')

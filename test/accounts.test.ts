@@ -2019,6 +2019,11 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
     expect(place.shares('codex', 'cli', 'side')).toBe(false)
     // A turn with no numbers says where it moved.
     expect(place.moved(chat('g', { ranOn: 'side' }), 'cli')).toBe('Moved to Side')
+    // A first call that re-read nothing leaves the clause out, and a limit's reason stays after a summary.
+    const none = chat('h', { ranOn: 'side', lastTurn: turn({ account: 'side', email: 'side@example.com', first: { input: 0, cacheRead: 0, cacheWrite: 0 } }) })
+    expect(place.moved(none, 'cli')).toBe('Moved to Side')
+    expect(place.moved(none, 'cli', { pre: 139_000, post: 8_000 })).toBe('Moved to Side, summarized from 139k to 8k tokens')
+    expect(place.moved(none, 'cli', {})).toBe('Moved to Side, summarized')
     await k.stop({ budgetMs: 0 })
   })
 
@@ -2042,6 +2047,12 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
     k.store.saveItem('old', { kind: 'text', id: 't1', ts: at, text: 'y'.repeat(8_000) })
     k.store.saveItem('old', { kind: 'tool', id: 'b1', ts: at, toolUseId: 'b1', name: 'Bash', label: 'ls', detail: '', status: 'done', output: 'z'.repeat(3_998) })
     expect(place.size(old)).toEqual({ tokens: 3_000, estimated: true })
+    // A compaction folded into its move's note still cuts the transcript there.
+    const folded = chat('folded')
+    k.store.saveItem('folded', { kind: 'user', id: 'fu1', ts: at, parts: [{ type: 'text', text: 'x'.repeat(40_000) }] })
+    k.store.saveItem('folded', { kind: 'note', id: 'fn1', ts: at, text: 'Moved to Side, summarized from 150k to 12k tokens.' })
+    k.store.saveItem('folded', { kind: 'text', id: 'ft1', ts: at, text: 'y'.repeat(8_000) })
+    expect(place.size(folded)).toEqual({ tokens: 2_000, estimated: true })
     expect(place.moveCost(old, { account: 'key' })).toEqual({ tokens: 3_000, estimated: true, window: 1_000_000, fits: true, price: 0.02 })
     expect(k.store.chat('old')?.lastTurn).toMatchObject({ account: 'cli', context: 3_000, at, estimated: true })
     expect(place.coldReason(k.store.chat('old')!, { account: 'cli' })).toBeUndefined()
@@ -2206,7 +2217,7 @@ describe('long chats that move accounts, on Codex, and the guards against using 
     await ran('warm', 'next warm')
     await ran('cold', 'next cold')
     expect((await log()).slice(4)).toEqual(['work: compact', 'personal: next warm', 'personal: compact', 'personal: next cold'])
-    expect(notes('warm')).toEqual(['Kernel is summarizing this chat on Work before it moves to Personal, so the move reads the summary rather than the whole chat.', 'Compacted the conversation.', 'Moved to Personal'])
+    expect(notes('warm')).toEqual(['Moved to Personal, summarized'])
 
     await k.config.setSettings({ accounts: { longChatMove: { codex: 'continue' } } })
     await ran('on', 'next on')
@@ -2269,7 +2280,7 @@ describe('long chats that move accounts, on Codex, and the guards against using 
     await moveAll(ids.Side)
     await ran('twice', 'next twice')
     expect((await log()).slice(4)).toEqual(['work: compact', 'side: next twice'])
-    expect(notes('twice').filter((n) => n.startsWith('Moved'))).toEqual(['Moved to Side'])
+    expect(notes('twice').filter((n) => n.startsWith('Moved'))).toEqual(['Moved to Side, summarized'])
     await k.stop({ budgetMs: 0 })
   })
 

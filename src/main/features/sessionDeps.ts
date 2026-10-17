@@ -72,7 +72,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     usageReads: () => k.providers.usageReads(),
     // Undefined is the CLI's own login, which is never a key account.
     authOf: (provider, accountId) => (accountId ? k.providers.auth(provider, accountId) : 'subscription'),
-    moveNote: (chat, from) => k.placement.moved(chat, from),
+    moveNote: (chat, from, summary) => k.placement.moved(chat, from, summary),
     movePlan: (chat, to) => k.moves.plan(chat, to),
     onMoveHold: (chat, held) => k.moves.held(chat, held),
     coldSize: (chat) => k.placement.coldSize(chat),

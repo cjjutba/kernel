@@ -80,6 +80,8 @@ export interface RunnerHost {
 
   /** Save a row in the chat's transcript and show it. */
   item(item: ChatItem): void
+  /** A compaction ended and would write `note`, with its sizes when the provider says them. True when a move's summary takes it, so no note is written. */
+  compacted?(note: ChatItem, sizes?: { pre: number; post?: number }): boolean
   /**
    * The session is up under `sessionId`, which the chat resumes by from now on. Starts the turn's working status.
    * `billedBy` is who pays, when the CLI says (Claude's `apiKeySource`, where 'none' means the plan). `mcpServers` are the

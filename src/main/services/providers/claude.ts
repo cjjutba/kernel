@@ -336,7 +336,8 @@ export class ClaudeRunner implements Runner {
         if (msg.subtype === 'compact_boundary') {
           const { trigger, pre_tokens: pre, post_tokens: post } = msg.compact_metadata
           const span = post === undefined ? `from ${kTokens(pre)}` : `${kTokens(pre)} to ${kTokens(post)}`
-          host.item({ kind: 'note', id: msg.uuid, ts: now, text: trigger === 'auto' ? `Context was full, so the conversation was compacted (${span} tokens).` : `Compacted the conversation${post === undefined ? '' : ','} ${span} tokens.` })
+          const note: ChatItem = { kind: 'note', id: msg.uuid, ts: now, text: trigger === 'auto' ? `Context was full, so the conversation was compacted (${span} tokens).` : `Compacted the conversation${post === undefined ? '' : ','} ${span} tokens.` }
+          if (!host.compacted?.(note, { pre, post })) host.item(note)
           void this.context()
         }
         // A hook's block reason or a prominent status line. Progress lines for one tool share an id, so each replaces the last.
