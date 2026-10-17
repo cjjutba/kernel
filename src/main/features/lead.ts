@@ -7,6 +7,7 @@ import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
 import { providerOf } from '@shared/providers'
 import { isSentItem } from '@shared/approvalAnswer'
 import { lensOf } from '@shared/merge'
+import { teammateRunsIn, type RunsIn } from '@shared/teammateRuns'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { renderAgentFile } from '../services/agents'
@@ -26,6 +27,7 @@ import { branchType, fastForward, fetchOrigin, folderGone, freeBranch, freeWorkt
 import { runningRuns } from '../services/scripts'
 import { exec, git } from '../services/exec'
 import { messageOf, NEW_CHAT, NEW_TAB } from './shared'
+import { pastable } from './teammateSeats'
 import type { Handlers } from '../kernel'
 import type { Workspaces } from './workspaces'
 import { Feature } from './feature'
@@ -50,7 +52,9 @@ export class Lead extends Feature {
     // The Lead chat that handed off the newest of the workspaces hears about it (KERNEL-105), and learns which other Lead chats are
     // involved, by their titles. Other tabs of its own Lead chat aren't another chat (KERNEL-337).
     const owners = o.parties.map((p) => this.store.workspace(p.workspaceId)).filter((w): w is Workspace => !!w).sort((a, b) => b.createdAt - a.createdAt)
-    const chat = (owners.length ? this.leadUpdateTarget(o.projectId, owners[0].leadChatId)?.chat : undefined) ?? await this.leadChat(o.projectId)
+    // A terminal tab can't be sent a message, so the overlap goes to a chat (KERNEL-1000).
+    const owner = owners.length ? this.leadUpdateTarget(o.projectId, owners[0].leadChatId)?.chat : undefined
+    const chat = (owner?.kind === 'terminal' ? undefined : owner) ?? await this.leadChat(o.projectId)
     const threadOf = (w: Workspace) => w.threadId ?? (w.leadChatId ? this.store.chat(w.leadChatId)?.threadId : undefined)
     const others = [...new Set(owners.map(threadOf).filter((id): id is string => !!id && id !== chat.threadId))].map((id) => this.store.thread(id)?.title).filter(Boolean)
     const elsewhere = others.length ? ` Part of this work was handed off in another Lead chat: ${others.map((t) => `"${t}"`).join(', ')}.` : ''
@@ -724,8 +728,14 @@ export class Lead extends Feature {
 
   /** The user's own latest message in a tab, not Kernel's, and when they sent it (KERNEL-678). */
   private userSaidIn(chatId: string): { text: string; at: number } | undefined {
+    if (this.store.chat(chatId)?.terminal?.role) return this.k.seatSignals.userSaid(chatId)
     const last = this.store.items(chatId).reverse().find((i): i is ChatItem & { kind: 'user' } => isSentItem(i) && !i.from)
     return last && { text: last.parts.map((p) => (p.type === 'text' ? p.text : '')).join('\n'), at: last.ts }
+  }
+
+  /** Whether the user started the turn in progress. A terminal seat's hooks say; a chat's session knows who sent the message (KERNEL-999). */
+  private userTurnIn(chatId: string): boolean {
+    return this.store.chat(chatId)?.terminal?.role ? this.k.seatSignals.userTurn(chatId) : !this.sessions.kernelTurn(chatId)
   }
 
   /**
@@ -736,7 +746,7 @@ export class Lead extends Feature {
     const chat = this.store.chat(chatId)
     const ws = chat && this.store.workspace(chat.workspaceId)
     if (!chat || !ws) return false
-    return buildOpen({ planMode: !!chat.plan, userTurn: !this.sessions.kernelTurn(chatId), branch: ws.branch, goAhead: ws.buildGoAhead, userAt: this.userSaidIn(chatId)?.at ?? 0, planAts: this.threadPlans(ws.projectId, chat).map((a) => a.createdAt) })
+    return buildOpen({ planMode: !!chat.plan, userTurn: this.userTurnIn(chatId), branch: ws.branch, goAhead: ws.buildGoAhead, userAt: this.userSaidIn(chatId)?.at ?? 0, planAts: this.threadPlans(ws.projectId, chat).map((a) => a.createdAt) })
   }
 
   /** Saves the go-ahead for this chat's branch, with the time of the message it came from (KERNEL-992). */
@@ -786,7 +796,7 @@ export class Lead extends Feature {
         const source = ws.source?.kind === 'issue' ? ws.source : { id: issue, title: issue }
         return { id: source.id, title: source.title, ...(ws.branch !== before ? { branch: ws.branch } : {}) }
       },
-      createWorkspace: async ({ issue, images, goAhead, ...o }) => {
+      createWorkspace: async ({ issue, images, goAhead, runsIn, ...o }) => {
         // Only plans approved in this Lead chat, in any of its tabs (KERNEL-337). Another chat's plan with a step for the same
         // agent is a different hand-off.
         const tabs = this.threadTabIds(chat)
@@ -799,21 +809,25 @@ export class Lead extends Feature {
         const parts = linked?.issue ? [...briefParts(o.prompt, linked.issue.read, linked.issue.kind), ...images ?? []] : images
         // A review is not a task of the plan, so it takes no plan step or task (KERNEL-130).
         const review = o.reviewOf ?? o.linkReviewOf
-        const ws = await this.k.workspaces.createWorkspace(projectId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(parts ? { parts } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: review ? undefined : (w) => this.tasks.link(projectId, o.agentId, w.id, { approvalIds })?.id })
+        const review0 = o.reviewOf ?? o.linkReviewOf
+        const run = await this.runsIn(projectId, chat, { runsIn, agentId: o.agentId, review: !!review0, wait: !!o.waitFor?.length, parts })
+        const ws = await this.k.workspaces.createWorkspace(projectId, { ...o, ...(run.where === 'terminal' ? { seat: true as const } : {}), ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(parts ? { parts } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: review ? undefined : (w) => this.tasks.link(projectId, o.agentId, w.id, { approvalIds })?.id })
         if (!review) this.linkPlanStep(projectId, o.agentId, ws.id, chat)
         // The user's words that approved it, kept as the record of the go-ahead (KERNEL-678).
         if (goAhead) this.updateWs(ws.id, { goAhead })
         // The Lead named no wait, but the tracker says the issue is blocked by one a teammate is building (KERNEL-263).
         const blocked = !o.waitFor && linked?.blockedBy?.length ? await this.k.waits.waitOnBlockers(ws, linked.blockedBy).catch(() => undefined) : undefined
+        const ran = run.where === 'terminal' ? { ranIn: 'terminal' as const } : run.note ? { ranInNote: run.note } : {}
         if (ws.status !== 'failed') {
           // The brief may still wait in the teammate's chat, for a slot, a pause or the connection (KERNEL-272).
-          const out = blocked ?? ws
-          const brief = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
-          const queued = brief && this.sessions.queueReason(brief.id)
+          const out = { ...(blocked ?? ws), ...ran }
+          const seat = this.k.teammateSeats.seatOf(ws.id)
+          const brief = seat ?? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
+          const queued = seat ? (this.k.teammateSeats.waitsForSlot(seat.id) ? 'capacity' as const : undefined) : brief && this.sessions.queueReason(brief.id)
           return queued ? { ...out, queued } : out
         }
         const code = this.k.setup.setupFailures.get(ws.id)
-        return { ...ws, setupFailed: code === null ? 'it was stopped' : code === 'timeout' ? "it didn't finish in time" : code === undefined ? 'it did not pass' : `exit code ${code}` }
+        return { ...ws, ...ran, setupFailed: code === null ? 'it was stopped' : code === 'timeout' ? "it didn't finish in time" : code === undefined ? 'it did not pass' : `exit code ${code}` }
       },
       handoffBase: (baseRef) => this.k.workspaces.handoffBase(projectId, baseRef),
       // A branch on the remote, an open PR or another assignee says someone else may be on the issue (KERNEL-479).
@@ -868,7 +882,7 @@ export class Lead extends Feature {
       mergeWorkspace: (id) => this.k.prs.mergePr(id),
       leadMerge: () => this.settings.pr.leadMerge,
       overrule: (id, note) => this.k.reviews.overrule(id, { by: 'lead', note }),
-      userTurn: () => !this.sessions.kernelTurn(chat.id),
+      userTurn: () => this.userTurnIn(chat.id),
       // The user's own latest message in this tab, not Kernel's, which a go_ahead quote has to come from (KERNEL-678).
       userSaid: () => this.userSaidIn(chat.id),
       buildOpen: () => this.buildOpen(chat.id),
@@ -901,6 +915,27 @@ export class Lead extends Feature {
       // The same save as Settings, once the user presses Save on the card (KERNEL-683).
       saveProjectScripts: (patch) => this.k.config.setProject(projectId, patch)
     }
+  }
+
+  /**
+   * Where a hand-off's teammate runs (KERNEL-1004): the Lead's `runs_in`, then the project's `[terminal] teammates_run_in`, then
+   * Settings, Terminal, with `lead` following this Lead chat. A review, a Codex agent, a hand-off that waits for a merge and a
+   * brief with files that aren't text run in Kernel. The note says why when a terminal was asked for or chosen and Kernel ran it.
+   */
+  private async runsIn(projectId: string, lead: Chat, o: { runsIn?: RunsIn; agentId: string; review: boolean; wait: boolean; parts?: ChatPart[] }): Promise<{ where: RunsIn; note?: string }> {
+    const project = this.store.project(projectId)
+    const repo = project ? await loadRepoSettings(project.path).catch(() => undefined) : undefined
+    const asked = teammateRunsIn({ runsIn: o.runsIn, project: repo, app: this.settings, leadIsTerminal: lead.kind === 'terminal' })
+    if (asked === 'kernel') return { where: 'kernel' }
+    const agent = this.k.team.agentOf(projectId, o.agentId)
+    const why = o.review ? 'a review' : !agent || this.k.team.pickFor(agent).provider !== 'claude' ? 'a Codex agent' : o.wait ? 'a hand-off that waits for a merge' : !pastable(o.parts) ? 'a brief with attachments' : undefined
+    if (!why) return { where: 'terminal' }
+    return { where: 'kernel', note: `Kernel ran it as a chat in Kernel, not in a terminal, because it is ${why} and those run in Kernel.` }
+  }
+
+  /** The user's answer to a teammate's question, sent from the inbox when the Lead is a terminal that can't be sent a turn (KERNEL-1000). */
+  answerTeammate(projectId: string, workspaceId: string, answer: string) {
+    return this.messageWorkspace(projectId, workspaceId, `The user answered your question in Kernel's inbox: ${answer}`)
   }
 
   /**
@@ -945,6 +980,15 @@ export class Lead extends Feature {
     const held = this.k.setup.setups.get(ws.id)
     // Setup holds the brief of the review workspace's first chat only. A kind's own chat holds its message itself.
     if (held && !tab) { held.later.push(parts); this.k.setup.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message goes out with the brief.` } }
+    // A teammate in a terminal gets the message pasted between its turns, never written into a turn (KERNEL-1004).
+    const seat = tab ? undefined : this.k.teammateSeats.seatOf(ws.id)
+    if (seat) {
+      if (!pastable(parts)) return refuse(`Not sent: ${name} runs in a terminal, which can't take images or attachments. Put the words in the message.`)
+      if (ws.status !== 'ready') { this.sessions.hold(seat.id, parts, { from: 'lead' }); return { ok: true, sent: false, note: `${name}'s workspace is not ready, so the message goes out with the brief once it starts.`, ...who } }
+      const how = this.k.teammateSeats.message(seat, parts)
+      return how === 'sent' ? { ok: true, sent: true, note: 'Pasted into the terminal.', ...who }
+        : { ok: true, sent: false, note: `${name} runs in a terminal and is mid-turn or being typed to, so Kernel pastes the message once the turn ends and nobody is typing.`, ...who }
+    }
     let chat = tab ?? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     const opened = !chat
     if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { ...(agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers), plan: false }))
@@ -1024,6 +1068,11 @@ export class Lead extends Feature {
     return !chat.closed && chat.kind !== 'terminal' && this.store.workspace(chat.workspaceId)?.status !== 'archived'
   }
 
+  /** A terminal tab that is a Lead's or Build here seat, still open in a workspace that isn't archived (KERNEL-1000). */
+  private isOpenSeat(chat: Chat) {
+    return chat.kind === 'terminal' && !chat.closed && (chat.terminal?.role === 'lead' || chat.terminal?.role === 'build') && this.store.workspace(chat.workspaceId)?.status !== 'archived'
+  }
+
   /**
    * Where teammate updates about work handed off in the tab `owner` go (KERNEL-105, KERNEL-337): that tab while it's open,
    * else the newest open tab of its Lead chat (forks included, since a fork stays in the chat), else its newest open fork
@@ -1034,6 +1083,8 @@ export class Lead extends Feature {
   leadUpdateTarget(projectId: string, owner?: string): { chat: Chat; from?: From } | undefined {
     const was = owner ? this.store.chat(owner) : undefined
     if (was && this.isOpenChat(was)) return { chat: was }
+    // A terminal Lead hears about its own hand-offs too, by queue and never by a turn (KERNEL-1000).
+    if (was && this.isOpenSeat(was)) return { chat: was }
     const sibling = was && this.store.threadTabs(was.id).filter((c) => c.id !== was.id && this.isOpenChat(c)).at(-1)
     if (sibling) return { chat: sibling, from: { title: was.title, tab: true } }
     const fork = was && this.store.chats(was.workspaceId).filter((c) => c.forkOf?.chatId === was.id && this.isOpenChat(c)).sort((a, b) => b.createdAt - a.createdAt)[0]

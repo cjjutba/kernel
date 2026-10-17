@@ -271,7 +271,7 @@ export interface AutoMergeFacts {
  * Why Kernel won't merge a PR by itself, or undefined when it may (KERNEL-556). Every condition has to hold: auto-merge on, a
  * PR on GitHub rather than a local merge, green checks required and at least one check that decides the PR, all of them
  * green, no check still running, optional ones included (KERNEL-703), nothing GitHub blocks, every required kind of review
- * approved the head commit and none found blockers on it, overruled or not (KERNEL-732), no review still running, under the line limit, and no
+ * approved the head commit (unless `rules.withoutReview` skips that, KERNEL-1017) and none found blockers on it, overruled or not (KERNEL-732), no review still running, under the line limit, and no
  * always-review path changed. A fact Kernel couldn't read refuses too.
  * A PR with no checks fails here though `allGreen([])` is true: nothing tested it.
  */
@@ -292,9 +292,12 @@ export function autoMergeBlock(f: AutoMergeFacts): string | undefined {
   if (!r) return "Kernel couldn't tell which reviews it needs."
   if (r.blocking.length) return `${reviewsText(r.blocking)} found blockers on the latest commit.`
   if (r.overruled?.length) return `${reviewsText(r.overruled)} found blockers on the latest commit, and auto-merge doesn't merge past an overrule.`
-  if (!r.required.length) return 'None of its reviews is required, and auto-merge needs a required review to approve it.'
-  const missing = r.required.filter((k) => !r.approved.includes(k))
-  if (missing.length) return `${reviewsText(missing)} ${missing.length === 1 ? "hasn't" : "haven't"} approved the latest commit.`
+  if (!f.rules.withoutReview) {
+    if (!r.approved.length) return 'No review approved it. Turn on Merge without a review in Settings, Pull requests to merge on green checks.'
+    if (!r.required.length) return 'None of its reviews is required, and auto-merge needs a required review to approve it.'
+    const missing = r.required.filter((k) => !r.approved.includes(k))
+    if (missing.length) return `${reviewsText(missing)} ${missing.length === 1 ? "hasn't" : "haven't"} approved the latest commit.`
+  }
   if (r.running) return 'A review of it is still running.'
   const d = f.diff
   if (!d) return "Kernel couldn't read what it changes."
@@ -328,8 +331,8 @@ export function autoMergeRetry(f: AutoMergeFacts): boolean {
   if (pr.state !== 'ready' || pr.conflictsUnknown) return true
   const r = f.reviews
   if (!r) return true
-  if (r.blocking.length || r.overruled?.length || !r.required.length) return false
-  if (r.required.some((k) => !r.approved.includes(k))) return false
+  if (r.blocking.length || r.overruled?.length) return false
+  if (!f.rules.withoutReview && (!r.required.length || r.required.some((k) => !r.approved.includes(k)))) return false
   if (r.running) return true
   return !f.diff
 }
@@ -342,9 +345,12 @@ export function autoMergeWhy(f: AutoMergeFacts): { why: string; card: string } |
   if (autoMergeBlock(f) || !f.pr || !f.reviews || !f.diff) return undefined
   const n = gatingChecks(f.pr.checks).length
   const lines = `${f.diff.lines} ${f.diff.lines === 1 ? 'line' : 'lines'}`
+  const tail = `within the user's limit of ${f.rules.maxLines}, and it changes no path that always needs a person's review`
+  const checks = n === 1 ? 'its check' : `its ${n} required checks`
+  if (!f.reviews.approved.length) return { why: `${checks} passed, it changes ${lines}, ${tail}, and no review ran`, card: `Checks passed, ${lines}, no review` }
   const reviews = reviewsText(f.reviews.approved)
   return {
-    why: `${reviews.charAt(0).toLowerCase()}${reviews.slice(1)} approved its latest commit, ${n === 1 ? 'its check' : `its ${n} required checks`} passed, it changes ${lines}, within the user's limit of ${f.rules.maxLines}, and it changes no path that always needs a person's review`,
+    why: `${reviews.charAt(0).toLowerCase()}${reviews.slice(1)} approved its latest commit, ${checks} passed, it changes ${lines}, ${tail}`,
     card: `${kindsText(f.reviews.approved)} approved, checks passed, ${lines}`
   }
 }

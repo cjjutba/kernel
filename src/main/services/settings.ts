@@ -4,7 +4,7 @@ import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
+import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type TeamConfig, type TeamPatch, type TeammatesRunIn, type TrackerKind, type UnlistedTools, REVIEW_KINDS, TEAMMATES_RUN_IN } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { LEAD_MODES } from '@shared/leadMode'
 import { terminalSettingsOf } from './terminalPresets'
@@ -65,7 +65,7 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
     // Each review is a full extra agent run on every PR, so it starts off on every plan (feat-automatic-review-off-by-default).
     autoReview: false,
     // Nothing merges by itself until the user turns this on (KERNEL-556).
-    autoMerge: { on: false, maxLines: 400, alwaysReview: [] },
+    autoMerge: { on: false, maxLines: 400, alwaysReview: [], withoutReview: false },
     // Create PR sends this fitted to the repo's PR template, contributing guide and commitlint (KERNEL-468).
     createInstructions: createPrText(),
     resolveInstructions: resolveText(),
@@ -73,7 +73,7 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
     addressReviewInstructions: addressReviewText()
   },
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
-  terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, connect: true, custom: [] },
+  terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, connect: true, teammatesRunIn: 'kernel', custom: [] },
   experimental: { sharing: true },
   privacy: { telemetry: 'ask' }
 })
@@ -164,7 +164,7 @@ const MAX_LINES = 100_000
 
 /**
  * `pr.autoMerge` as Kernel reads it (KERNEL-556): on only when `on` is `true`, `maxLines` a whole number from 1, and
- * `alwaysReview` a list of paths. A value of the wrong type takes the fallback's, so a hand-edited `"on": "yes"` stays off.
+ * `alwaysReview` a list of paths, `withoutReview` a boolean. A value of the wrong type takes the fallback's, so a hand-edited `"on": "yes"` stays off.
  */
 export function autoMergeOf(v: unknown, fallback: AutoMerge): AutoMerge {
   const t = isTable(v) ? v : {}
@@ -172,7 +172,8 @@ export function autoMergeOf(v: unknown, fallback: AutoMerge): AutoMerge {
   return {
     on: typeof t.on === 'boolean' ? t.on : fallback.on,
     maxLines: Number.isInteger(lines) && (lines as number) >= 1 ? Math.min(lines as number, MAX_LINES) : fallback.maxLines,
-    alwaysReview: Array.isArray(t.alwaysReview) ? pathList(t.alwaysReview) : fallback.alwaysReview
+    alwaysReview: Array.isArray(t.alwaysReview) ? pathList(t.alwaysReview) : fallback.alwaysReview,
+    withoutReview: typeof t.withoutReview === 'boolean' ? t.withoutReview : fallback.withoutReview
   }
 }
 
@@ -482,7 +483,7 @@ const DEFAULT_COPY = ['.env', '.env.local']
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
 
 /** The tables a project's settings files may hold. Anything else in a patch or a file is left alone. */
-const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env', 'tracker', 'mcp', 'agents'] as const
+const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env', 'tracker', 'mcp', 'agents', 'terminal'] as const
 type Group = (typeof GROUPS)[number]
 
 /** The keys that hold a table of names: both files merge it name by name, and a patch changes only the names it lists (KERNEL-432). */
@@ -564,6 +565,7 @@ function projectValues(doc: Record<string, any>): Record<Group, Record<string, u
     // `kind = "jira"` from a project set up before Jira was removed reads as none, and a leftover `[jira]` table is no group.
     tracker: picked({ kind: doc.tracker?.kind === 'jira' ? 'none' : doc.tracker?.kind }, ['kind'], (v) => TRACKER_KINDS.includes(v as TrackerKind)),
     mcp: Object.keys(aliases).length ? { aliases } : {},
+    terminal: picked(doc.terminal, ['teammatesRunIn'], (v) => TEAMMATES_RUN_IN.includes(v as TeammatesRunIn)),
     // `open_workspaces` is a whole number from 0, no limit, to 12 (KERNEL-492).
     agents: {
       ...picked(doc.agents, ['unlistedTools'], (v) => UNLISTED_TOOLS.includes(v as UnlistedTools)),
@@ -619,7 +621,7 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
   const runs = new Map([...sharedRuns, ...localRuns])
   for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
   if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
-  const { scripts, files, workspace, disabled, linear, pr, preview, env, tracker, mcp, agents } = merged
+  const { scripts, files, workspace, disabled, linear, pr, preview, env, tracker, mcp, agents, terminal } = merged
   // `references` only from the personal file: the paths differ per Mac (KERNEL-748).
   const references = referencesOf(localDoc)
   const missingReferences = references.filter((p) => !isFolder(p))
@@ -649,6 +651,7 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
     ...(tracker.kind ? { tracker: { kind: tracker.kind } } : {}),
     ...(mcp.aliases ? { mcp: { aliases: mcp.aliases } } : {}),
     ...(Object.keys(agents).length ? { agents } : {}),
+    ...(terminal.teammatesRunIn ? { terminal: { teammatesRunIn: terminal.teammatesRunIn } } : {}),
     sources
   }
 }
@@ -705,7 +708,7 @@ export function reviewPolicyOf(text: string | undefined): { review: ReviewConfig
 }
 
 /** The `[merge]` keys only the personal settings file may set, as the file names them (KERNEL-556). */
-const PERSONAL_MERGE = ['auto', 'max_lines'] as const
+const PERSONAL_MERGE = ['auto', 'max_lines', 'without_review'] as const
 
 /** What a shared settings file's `[merge]` table says: the paths it adds, and the personal keys it sets, which Kernel ignores. */
 function sharedMerge(doc: Record<string, unknown>): { alwaysReview: string[]; ignored: string[] } {
@@ -734,7 +737,7 @@ export function autoMergeInProject(repo: string, app: AutoMerge): { rules: AutoM
   const { ignored } = sharedMerge(readTomlSync(repoFile(repo, 'settings.toml')))
   const own = readTomlSync(repoFile(repo, 'settings.local.toml')).merge
   if (!isTable(own)) return { rules: app, personal: false, ignored }
-  const rules = autoMergeOf({ on: own.auto, maxLines: own.max_lines, alwaysReview: [...app.alwaysReview, ...pathList(own.always_review)] }, app)
+  const rules = autoMergeOf({ on: own.auto, maxLines: own.max_lines, alwaysReview: [...app.alwaysReview, ...pathList(own.always_review)], withoutReview: own.without_review }, app)
   return { rules, personal: true, ignored }
 }
 

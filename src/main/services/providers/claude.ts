@@ -656,10 +656,10 @@ function modelName(model: string): string {
 }
 
 /** How much of a tool's output, and of each string in its input, a chat row keeps, so a big Write or log can't bloat chat_items. */
-const TOOL_TEXT_MAX = 20_000
+export const TOOL_TEXT_MAX = 20_000
 
 /** The tool's input for its row, with every string longer than TOOL_TEXT_MAX clipped, nested ones too. */
-function clipInput(input: unknown): Record<string, unknown> | undefined {
+export function clipInput(input: unknown): Record<string, unknown> | undefined {
   const clip = (v: unknown): unknown =>
     typeof v === 'string' ? v.slice(0, TOOL_TEXT_MAX)
       : Array.isArray(v) ? v.map(clip)
@@ -668,7 +668,7 @@ function clipInput(input: unknown): Record<string, unknown> | undefined {
   return input && typeof input === 'object' && !Array.isArray(input) ? clip(input) as Record<string, unknown> : undefined
 }
 
-function toolDetail(name: string, input: any): string {
+export function toolDetail(name: string, input: any): string {
   if (name === 'Bash') return String(input?.command ?? '').split('\n')[0]
   if (SUBAGENT_TOOLS.has(name) && input?.description) return String(input.description)
   if (input?.file_path) return String(input.file_path)

@@ -105,7 +105,11 @@ function useRevertable(workspaceId: string, checkpointId: string | undefined): b
 const revertAction = (workspaceId: string, checkpointId: string, label: string, start?: boolean): MessageAction =>
   ({ icon: 'history', label, onClick: () => actions.ui.openModal({ name: 'confirm', kind: 'revert', workspaceId, checkpointId, ...(start ? { start } : {}) }) })
 
+/** A terminal seat's transcript is read from its session, so a row offers Copy and nothing that would send, retry or fork. */
+const ReadOnly = createContext(false)
+
 function UserMessage({ item, workspaceId, onEdit }: { item: Extract<ChatItem, { kind: 'user' }>; workspaceId: string; onEdit: (text: string) => void }) {
+  const readOnly = useContext(ReadOnly)
   const revertable = useRevertable(workspaceId, item.checkpointId)
   const archived = useStore((s) => s.workspaces.find((w) => w.id === workspaceId)?.status === 'archived')
   const more: MessageAction[] = revertable && item.checkpointId ? [revertAction(workspaceId, item.checkpointId, 'Revert files to start of chat', true)] : []
@@ -115,8 +119,8 @@ function UserMessage({ item, workspaceId, onEdit }: { item: Extract<ChatItem, { 
         {item.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : <PartChip key={i} part={p} gone={archived && p.type === 'file' && !!p.path?.startsWith('.kernel/attachments/')} />))}
       </div>
       {/* An answer to a card (KERNEL-838) is not a prompt the reader can edit, so it keeps Copy only. */}
-      <MessageActions align="end" label="Message actions" copy={partsText(item.parts)} items={item.approvalId ? [] : [{ icon: 'pen', label: 'Edit', onClick: () => onEdit(partsText(item.parts)) }]}
-        more={more.length ? { menu: `reply:${item.id}`, items: more } : undefined} />
+      <MessageActions align="end" label="Message actions" copy={partsText(item.parts)} items={item.approvalId || readOnly ? [] : [{ icon: 'pen', label: 'Edit', onClick: () => onEdit(partsText(item.parts)) }]}
+        more={more.length && !readOnly ? { menu: `reply:${item.id}`, items: more } : undefined} />
     </div>
   )
 }
@@ -186,10 +190,12 @@ interface FootProps { id: string; chatId: string; workspaceId: string; copy?: st
 
 /** Copy, Retry and the "..." menu that forks and, where a finished turn changed files, reverts them to that turn (KERNEL-766). `id` is the row Retry and the forks start from. Fork into new workspace only shows where the workspace has its own worktree. */
 function ReplyFoot({ id, chatId, workspaceId, copy, checkpointId, hasFiles, meta, onFork, onForkWorkspace }: FootProps) {
+  const readOnly = useContext(ReadOnly)
   const revertable = useRevertable(workspaceId, hasFiles ? checkpointId : undefined)
   const forks: MessageAction[] = [{ icon: 'fork', label: 'Fork into new tab', busyLabel: 'Forking', onClick: () => onFork(id) }]
   if (onForkWorkspace) forks.push({ icon: 'branch', label: 'Fork into new workspace', busyLabel: 'Forking', onClick: () => onForkWorkspace(id) })
   if (revertable && checkpointId) forks.push(revertAction(workspaceId, checkpointId, 'Revert files to here'))
+  if (readOnly) return <MessageActions label="Message actions" copy={copy} meta={meta} />
   return (
     <MessageActions label="Message actions" copy={copy} meta={meta}
       items={[{ icon: 'refresh', label: 'Retry', busyLabel: 'Retrying', onClick: () => attempt('Could not retry', () => call('chats.retry', { chatId, itemId: id })) }]}
@@ -815,6 +821,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const items = useStore((s) => s.items[chat.id] ?? EMPTY)
   const running = useStore((s) => !!s.running[chat.id])
   const loaded = useStore((s) => !!s.itemsLoaded[chat.id])
+  const readOnly = chat.kind === 'terminal'
   const failed = useStore((s) => !!s.itemsFailed[chat.id]) && !loaded && !items.length
   const loading = !loaded && !failed && !items.length
   const approvals = useStore((s) => s.approvals)
@@ -1062,11 +1069,15 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
           </EmptyState>
         )}
         {/* The worktree and its setup, above the first message (KERNEL-951). Outside the thread, whose children line up with its blocks. */}
-        {ws && !empty && !failed && <ChatSetupRows ws={ws} />}
-        {empty && (
+        {ws && !empty && !failed && !readOnly && <ChatSetupRows ws={ws} />}
+        {empty && readOnly && (
+          <EmptyState icon="term" title="Nothing to show yet">The transcript fills in as this terminal session works.</EmptyState>
+        )}
+        {empty && !readOnly && (
           <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
             onPick={(text) => sendMessage(chat.id, [{ type: 'text', text }])} />
         )}
+        <ReadOnly.Provider value={readOnly}>
         <TranscriptGlide.Provider value={reveal}>
         <TranscriptWorkspace.Provider value={workspaceId}>
         <TranscriptChat.Provider value={chatId}>
@@ -1085,6 +1096,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         </TranscriptChat.Provider>
         </TranscriptWorkspace.Provider>
         </TranscriptGlide.Provider>
+        </ReadOnly.Provider>
       </div>
       {away && !empty && (newCount > 0
         ? <Button icon="arrowDown" className="ws-jump new" aria-label={`Scroll to bottom, ${newCount} new`} onClick={() => owner.toEnd()}>{newCount} new</Button>

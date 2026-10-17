@@ -4,8 +4,9 @@ import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { run } from '../src/main/services/exec'
 import { parseNotes } from '../src/main/updater'
-import { parseReleaseFile, PLACEHOLDER_TITLE, type Release } from '../site/lib/schema.ts'
+import { formatReleaseFile, parseReleaseFile, PLACEHOLDER_TITLE, type Release } from '../site/lib/schema.ts'
 import {
+  buildRelease,
   checkPullRequest,
   collect,
   compile,
@@ -65,9 +66,18 @@ describe('fragments', () => {
     ['a.md', fragment('new', 'Faster — much faster.'), 'em or en dash'],
     ['a.md', fragment('new', 'Something new. (#44)'), 'leave the PR number out'],
     ['a.md', fragment('new', 'Something new'), 'end the sentence with a period'],
-    ['a.md', fragment('fixed', 'A stale status no longer shows.'), 'a fixed note starts with "Fixed"']
+    ['a.md', fragment('fixed', 'A stale status no longer shows.'), 'a fixed note starts with "Fixed"'],
+    ['a.md', fragment('improved', 'Faster.', 'title: Speed\n'), 'only a new note has a title'],
+    ['a.md', fragment('new', 'Something new.', 'title: Something.\n'), 'without a period or a dash'],
+    ['a.md', fragment('new', 'Something new.', 'area: chat\n'), 'only an improved or fixed note has an area'],
+    ['a.md', fragment('fixed', 'Fixed a thing.', 'area: misc\n'), 'area is one of chat, agents']
   ])('refuses %s: %s', (name, text, problem) => {
     expect(() => parseFragment(name, text)).toThrow(problem)
+  })
+
+  it('reads a new note\'s title and an improved note\'s area', () => {
+    expect(parseFragment('a.md', fragment('new', 'Every open pull request in one list.', 'title: Pull requests page\n'))).toEqual({ type: 'new', title: 'Pull requests page', text: 'Every open pull request in one list.' })
+    expect(parseFragment('b.md', fragment('improved', 'The Inbox scrolls faster.', 'area: sidebar\n'))).toEqual({ type: 'improved', area: 'sidebar', text: 'The Inbox scrolls faster.' })
   })
 
   it('reports each bad file by path and skips dotfiles', async () => {
@@ -220,6 +230,54 @@ describe('notes for What\'s new', () => {
     const notes = parseNotesV010(renderApp(r))
     expect(notes.map((n) => n.title)).toEqual(['Statuses from real events', 'Plans you approve', 'Workspaces', 'Inbox', 'Pull requests, end to end', 'Highlights', 'Under the hood'])
     expect(notes[5]!.body).toBe("Checkpoints after every turn, and your agent's own terminal in a tab. Settings and a light theme, plus macOS notifications.")
+  })
+})
+
+describe('titles and areas', () => {
+  const note = (type: 'new' | 'improved' | 'fixed', text: string, extra: { title?: string; area?: string; pr?: number } = {}) => ({ file: `${text}.md`, type, text, ...extra })
+  const release = buildRelease('0.3.0', '2026-11-20', {
+    byType: {
+      new: [note('new', 'Every open pull request in one list.', { title: 'Pull requests page', pr: 50 })],
+      improved: [
+        note('improved', 'The Inbox scrolls faster.', { area: 'sidebar', pr: 51 }),
+        note('improved', 'Replies stream sooner.', { area: 'chat', pr: 52 }),
+        note('improved', 'Undated note.', { pr: 53 }),
+        note('improved', 'Stop answers at once.', { area: 'chat', pr: 54 })
+      ],
+      fixed: []
+    },
+    internal: []
+  })
+
+  it('turns a title into the lead and puts notes without an area first, then each area, the biggest first', () => {
+    expect(release.sections[0]!.items).toEqual([{ lead: 'Pull requests page.', text: 'Every open pull request in one list.', pr: 50 }])
+    expect(release.sections[1]!.items.map((i) => [i.area, i.text])).toEqual([
+      [undefined, 'Undated note.'],
+      ['Chat', 'Replies stream sooner.'],
+      ['Chat', 'Stop answers at once.'],
+      ['Sidebar and navigation', 'The Inbox scrolls faster.']
+    ])
+  })
+
+  it('writes each area as a heading in the release file and reads it back', () => {
+    const file = formatReleaseFile({ ...release, title: 'Pull requests' })
+    expect(file).toContain('## Improved\n\n- Undated note. (#53)\n\n### Chat\n\n- Replies stream sooner. (#52)\n- Stop answers at once. (#54)\n\n### Sidebar and navigation\n\n')
+    expect(parseReleaseFile(file).sections).toEqual(release.sections)
+  })
+
+  it('gives What\'s new one note per area, which older copies still read as titled lists', () => {
+    const app = renderApp(release)
+    expect(parseNotes(app)).toEqual([
+      { title: 'Pull requests page', body: 'Every open pull request in one list.' },
+      { title: 'Improved', body: 'Undated note.' },
+      { title: 'Improved: Chat', body: 'Replies stream sooner.\nStop answers at once.' },
+      { title: 'Improved: Sidebar and navigation', body: 'The Inbox scrolls faster.' }
+    ])
+    expect(parseNotesV010(app).map((n) => n.title)).toEqual(['Pull requests page', 'Improved', 'Improved: Chat', 'Improved: Sidebar and navigation'])
+  })
+
+  it('puts each area under its own heading in the GitHub body', () => {
+    expect(renderGithub(release)).toContain('## Improved\n\n- Undated note. (#53)\n\n### Chat\n\n- Replies stream sooner. (#52)\n- Stop answers at once. (#54)\n\n### Sidebar and navigation\n\n- The Inbox scrolls faster. (#51)')
   })
 })
 

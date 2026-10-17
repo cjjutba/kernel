@@ -34,6 +34,11 @@ export class Ptys {
   /** Each terminal's output from the last 50 ms, pushed as one string, so `pnpm install` is about 20 pushes a second (KERNEL-216). */
   private out = new Batcher<string>((id, chunks) => bus.push({ type: 'terminal.data', chatId: id, data: chunks.join('') }))
 
+  private exits: ((id: string) => void)[] = []
+
+  /** Calls `fn` with the id of a terminal whose process exited on its own. A killed or replaced one doesn't count. */
+  onExit(fn: (id: string) => void) { this.exits.push(fn) }
+
   has(id: string) { return this.procs.has(id) }
 
   start(id: string, o: PtyOptions) {
@@ -51,6 +56,7 @@ export class Ptys {
       this.procs.delete(id)
       this.send(id, `\r\n[process exited with code ${exitCode}]\r\n`)
       this.out.flush(id)
+      for (const fn of this.exits) fn(id)
     })
     if (o.command) proc.write(`${o.command}\r`)
   }

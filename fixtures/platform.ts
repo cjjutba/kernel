@@ -1,4 +1,4 @@
-import type { AccountProfile, AgentDef, AppSettings, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpAccountServer, McpServer, McpSignInAll, Modal, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Project, ProjectSettings, ProjectSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AccountProfile, AgentDef, AppSettings, AppUpdate, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpAccountServer, McpServer, McpSignInAll, Modal, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Project, ProjectSettings, ProjectSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { mcpCounts } from '@shared/mcpCounts'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
@@ -227,7 +227,7 @@ const envProjectA: Partial<Fixture> = {
   ...clientA({ env: { files: envFiles }, sources: { ...kernelFiles.sources, 'env.files': 'local' } }),
   env: { projects: { [ids.projectA]: { names: ['DATABASE_URL', 'STRIPE_SECRET_KEY'], files: envFiles.map((path) => ({ path, missing: path.startsWith('src/') })) } } }
 }
-const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, autoMerge: { on: false, maxLines: 200, alwaysReview: ['infra/**', 'scripts/release.sh'] }, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck', fixChecksInstructions: '# Fix failing checks\n1. Read the failing job log\n2. Fix the cause, not the test\n3. Push and wait for the checks', addressReviewInstructions: '# Address review comments\n1. Read every open thread\n2. Change the code or reply with a reason\n3. Push and resolve the threads' } }
+const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, autoMerge: { on: false, maxLines: 200, alwaysReview: ['infra/**', 'scripts/release.sh'], withoutReview: false }, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck', fixChecksInstructions: '# Fix failing checks\n1. Read the failing job log\n2. Fix the cause, not the test\n3. Push and wait for the checks', addressReviewInstructions: '# Address review comments\n1. Read every open thread\n2. Change the code or reply with a reason\n3. Push and resolve the threads' } }
 /** What approvals saved with Always allow in this project. The gh one is long enough to clamp to two lines. */
 const projectRules = [
   'pnpm test', 'pnpm typecheck',
@@ -389,32 +389,39 @@ const integrationRows: Integration[] = [
 /** The same screen as `src`, drawn in the light theme (HomeLight.png, WorkspaceLight.png). */
 const light = (src: Fixture): Fixture => ({ ...src, ui: { ...src.ui, theme: 'light' } })
 
-// What's new (KERNEL-30): the canvas's four notes on a ready 0.2.0, over UpdateReady's home.
+// What's new: 0.6.0's notes as the updater reads them (scripts/notes.ts renderApp). New features have titles, and
+// Improved and Fixed come as one note per area, long enough to fold into rows.
 const whatsNewNotes = [
-  { title: 'Checkpoints', body: 'Every turn saves the worktree. Revert any workspace to an earlier turn without losing the chat.' },
-  { title: 'Pause project', body: 'Freeze every agent in a project with one click. They finish the current step, then wait.' },
-  { title: 'Big terminal', body: 'Open Claude Code itself in a tab with ⌘⇧T, in the same worktree as your chats.' },
-  { title: 'Overlap warnings', body: 'Kernel flags it when two agents edit the same file in different worktrees.' }
+  { title: 'Pull requests page', body: 'Every open pull request across your projects, with checks, review and conflicts, and Merge on the ready ones.' },
+  { title: 'Work in the sidebar', body: 'Issues and Pull requests share one entry, with a tab for each and an All projects picker. Press 1 or 2 to switch.' },
+  { title: 'History in the bottom bar', body: 'A History button next to Help opens History for all projects.' },
+  { title: 'Attach any file', body: "Up to 50 MB each. The chip shows the file's type and size." },
+  { title: 'Chats reopen where you left them', body: 'Even after a restart. Scroll to bottom shows how many messages arrived while you read higher up.' },
+  { title: 'Switch modes with ⌘⇧H', body: 'Moves a chat with Kernel between Hand off and Build here.' },
+  { title: 'Improved', body: 'Rooms are now called projects everywhere in Kernel.' },
+  { title: 'Improved: Chat', body: 'Sending a message shows it at the end of the chat at once, and the chat stays at the end while the reply streams.\nA long chat opens in place after a restart without moving as it draws.\nA running turn shows its timer on its own line under the work, and says when it is waiting for you.\nKernel answers questions without ending on an offer to file or hand off the work.' },
+  { title: 'Improved: Issues and pull requests', body: 'Work, Issues shows the last list and the last issue you read at once when you come back, then refreshes in the background.\nThe Lead\'s PRs tab shows an approved review in green and a failing state in red, each with a small icon.\nHovering Not reviewed on a pull request says when automatic review is off.' },
+  { title: 'Improved: Message box and models', body: 'The model picker has a rail to switch between Favorites, Claude and Codex, with older models folded under Legacy models.\nA draft in a message box comes back with the cursor and scroll where you left them.\nThe composer no longer suggests your next message.' },
+  { title: 'Improved: Keyboard', body: 'Escape stops a running turn, and Stop stays available while you type.\nInbox, Issues, Projects, Pull requests and History share the same list keys.' },
+  { title: 'Improved: Accounts and usage', body: 'Kernel moves to an account with room before the one in use hits its limit, unless you turn it off in Settings, Accounts.' },
+  { title: 'Fixed: Chat', body: 'Fixed a chat drifting toward the bottom each time you left it and came back.\nFixed long commands in a turn\'s steps running past the edge of the chat.\nFixed Edit and Cancel flashing under a message right after starting a new chat.\nFixed a chat with a plan waiting shaking after you switch to another chat and back.' },
+  { title: 'Fixed: Agents', body: 'Fixed agents being asked to rebase a branch they had already pushed, which they then couldn\'t push.\nFixed a frontend agent\'s profile and composer showing the Backend effort from Settings, Models.' },
+  { title: 'Fixed: Look and feel', body: 'Fixed the window buttons drifting off the top bar after zooming the window in or out.\nFixed the sidebar button shifting slightly when the sidebar is shown or hidden.' }
 ]
+const whatsNewModal = { ...teamFixtures.UpdateReady.ui, modal: { name: 'whatsNew' as const } }
 const whatsNew: Fixture = {
   ...teamFixtures.UpdateReady,
-  update: { status: 'ready', current: '0.1.0', version: '0.2.0', notes: whatsNewNotes },
-  ui: { ...teamFixtures.UpdateReady.ui, modal: { name: 'whatsNew' } }
+  update: { status: 'ready', current: '0.5.0', version: '0.6.0', notes: whatsNewNotes },
+  ui: whatsNewModal
 }
-// What's new opened from the sidebar with no update ready (KERNEL-154): the running 0.1.1's notes and Done. No PNG
-// draws it; it reuses the layout What's new has after an update installs.
-const whatsNewCurrent: Fixture = {
-  ...teamFixtures.UpdateReady,
-  update: {
-    status: 'idle',
-    current: '0.1.1',
-    currentNotes: [
-      { title: 'New', body: 'Hovering a workspace in the sidebar shows an archive button, so you can archive it without opening it.\nA new chat takes a short title from its first message instead of staying "New chat".' },
-      { title: 'Improved', body: 'A file\'s diff opens in its own tab, so the chat stays where you left it.' },
-      { title: 'Fixed', body: 'Fixed Create PR showing in a workspace with no changes.\nFixed Kernel starting a new turn right after you pressed Stop.' }
-    ]
-  },
-  ui: { ...teamFixtures.UpdateReady.ui, modal: { name: 'whatsNew' } }
+// What's new opened from the sidebar with no update ready (KERNEL-154): the running version's notes and Done.
+const whatsNewCurrent: Fixture = { ...teamFixtures.UpdateReady, update: { status: 'idle', current: '0.6.0', currentNotes: whatsNewNotes }, ui: whatsNewModal }
+/** What's new opened from the sidebar while the updater is in `update`'s state, over the running 0.6.0's notes. */
+const whatsNewWith = (update: Partial<AppUpdate>): Fixture => ({ ...whatsNewCurrent, update: { status: 'idle', current: '0.6.0', currentNotes: whatsNewNotes, ...update } })
+// A patch with one short Fixed section lists it flat, with no area rows.
+const whatsNewPatch: Fixture = {
+  ...whatsNew,
+  update: { status: 'ready', current: '0.6.0', version: '0.6.1', notes: [{ title: 'Fixed', body: 'Fixed long commands in a turn\'s steps running past the edge of the chat.\nFixed the Back and Forward buttons missing from the sidebar in Settings.' }] }
 }
 
 /** KERNEL-251: Codex is on the PATH and one custom command is saved, as SettingsBigTerminal.png and WorkspaceTerminalPresets.png draw them. */
@@ -461,7 +468,22 @@ const scriptsPage = projectPage('setup', clientA({
 
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
+  // Restart to update stays busy as Restarting while the install call is out, with Later off beside it.
+  WhatsNewRestarting: { ...whatsNew, lag: { 'update.install': 60_000 }, motion: { action: { click: 'Restart to update' }, ms: 400, area: '.modal' } },
+  // A restart that fails says why above the buttons, and Restart to update becomes Try again.
+  WhatsNewRestartFailed: { ...whatsNew, fails: { 'update.install': 'No update is ready' }, motion: { action: { click: 'Restart to update' }, ms: 400, area: '.modal' } },
+  WhatsNewPatch: whatsNewPatch,
+  WhatsNewInstalled: { ...whatsNew, update: { status: 'idle', current: '0.6.0', version: '0.6.0', installed: true, notes: whatsNewNotes } },
+  WhatsNewLight: light(whatsNew),
   WhatsNewCurrent: whatsNewCurrent,
+  // Opened before Kernel answers update.get: Loading release notes.
+  WhatsNewLoading: { ...whatsNewCurrent, update: undefined, lag: { 'update.get': 60_000 } },
+  // A dev run, or a release without notes.
+  WhatsNewEmpty: whatsNewWith({ currentNotes: [] }),
+  WhatsNewDownloading: whatsNewWith({ status: 'downloading', version: '0.7.0', progress: 42 }),
+  WhatsNewCheckFailed: whatsNewWith({ status: 'error', error: 'net::ERR_INTERNET_DISCONNECTED' }),
+  // Try again on a failed check spins as Trying again until the check answers.
+  WhatsNewCheckRetrying: { ...whatsNewWith({ status: 'error', error: 'net::ERR_INTERNET_DISCONNECTED' }), lag: { 'update.check': 60_000 }, motion: { action: { press: ['Tab', 'Tab', 'Tab', 'Enter'] }, ms: 400, area: '.modal' } },
   // The update card in the light theme (KERNEL-164). UpdateReady shows it in dark; no PNG draws it.
   UpdateReadyLight: light(teamFixtures.UpdateReady),
   WorkspaceLight: light(workspaceFixtures.Workspace),

@@ -45,6 +45,8 @@ import { Lead } from './features/lead'
 import { Tools } from './features/tools'
 import { Mcp } from './features/mcp'
 import { Sharing } from './features/sharing'
+import { SeatSignals } from './features/seatSignals'
+import { TeammateSeats } from './features/teammateSeats'
 import { Seats } from './features/seats'
 import { Prs } from './features/prs'
 import { CodeHosts } from './features/codeHost'
@@ -109,6 +111,8 @@ export class Kernel {
   readonly mcp = new Mcp(this)
   readonly sharing = new Sharing(this)
   readonly seats = new Seats(this)
+  readonly seatSignals = new SeatSignals(this)
+  readonly teammateSeats = new TeammateSeats(this)
   readonly prs = new Prs(this)
   readonly codeHost = new CodeHosts(this)
   readonly autoArchive = new AutoArchive(this)

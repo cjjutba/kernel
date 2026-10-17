@@ -373,7 +373,7 @@ describe('an overrule of the blockers on the head commit (KERNEL-732)', () => {
   })
 
   it('never counts as an approval for auto-merge', () => {
-    const facts = { rules: { on: true, maxLines: 400, alwaysReview: [] }, local: false, requireGreen: true, pr: info({ checks: [{ name: 'Test', state: 'pass' as const }] }), diff: { lines: 1, touched: [] } }
+    const facts = { rules: { on: true, maxLines: 400, alwaysReview: [], withoutReview: false }, local: false, requireGreen: true, pr: info({ checks: [{ name: 'Test', state: 'pass' as const }] }), diff: { lines: 1, touched: [] } }
     const s = kindStates(ws({ reviews: [code('approved'), security('blockers', B, { optional: true })], overruled: over(['security']) }))
     expect(s).toMatchObject({ approved: ['code'], blocking: [], overruled: ['security'] })
     expect(autoMergeBlock({ ...facts, reviews: { required: ['code'], approved: s.approved, blocking: s.blocking, overruled: s.overruled, running: false } }))
@@ -637,7 +637,7 @@ describe('a local merge through the PR feature', () => {
     // The state stays ready: the band reads Behind from the read, and nothing claims the agent is resolving.
     expect(k.store.workspace(ws.id)?.prState).not.toBe('resolving')
 
-    // Once the branch is on the remote, a rebase would need the force push the guard denies, so the merge is pushed as usual.
+    // Once the branch is on the remote, a rebase would need a force push, which the team doesn't make, so the merge is pushed as usual.
     const bare = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
     await run('git', ['init', '-q', '--bare', bare])
     await run('git', ['-C', repo, 'remote', 'add', 'origin', bare])

@@ -263,6 +263,8 @@ export interface KernelApi {
   'commands.list': { req: void; res: BuiltinCommand[] }
   'terminal.write': { req: { chatId: string; data: string }; res: Ok }
   'terminal.resize': { req: { chatId: string; cols: number; rows: number }; res: Ok }
+  /** Starts a terminal seat's pty again, resuming its session, as it was launched (KERNEL-999). A running pty is replaced, an exited one starts. Its output so far stays. */
+  'terminal.reconnect': { req: { chatId: string }; res: Ok }
   /** Pushes the terminal's kept output as one `terminal.data` with `replace`, for a window that wasn't there to see it (KERNEL-340). */
   'terminal.replay': { req: { chatId: string }; res: Ok }
   /** The presets a new big terminal tab can run: the built-ins, the CLIs on the PATH, then the custom ones (KERNEL-248). */
@@ -287,6 +289,8 @@ export interface KernelApi {
   // home and inbox (KERNEL-17)
   'notifications.list': { req: void; res: Notification[] }
   'notifications.read': { req: { ids: string[] | 'all' }; res: Notification[] }
+  /** Answers the teammate question an inbox row (`Notification.ask`) carries, and settles the row (KERNEL-1000). */
+  'notifications.answer': { req: { id: string; text: string }; res: Notification }
   /** Settings, Notifications, Play: shows one macOS banner with the sound, so the user hears it (KERNEL-680). */
   'notifications.playSound': { req: { sound: AppSettings['notifications']['sound'] }; res: Ok }
   /**
@@ -609,7 +613,7 @@ export interface KernelApi {
   /** The page's zoom changed, however it happened. Main reads the zoom itself and puts the traffic lights back on the top row (KERNEL-972). */
   'system.zoomChanged': { req: void; res: Ok }
   /** Fixture mode only (KERNEL_FIXTURES). The UI to force and push events to replay. `persist` (KERNEL_FIXTURE_PERSIST=1) lets remembered choices use real localStorage, so a relaunch keeps them. Null in a real run. */
-  'system.fixture': { req: void; res: { ui: ForcedUi; push: PushEvent[]; persist?: boolean } | null }
+  'system.fixture': { req: void; res: { ui: ForcedUi; push: PushEvent[]; persist?: boolean; saved?: Record<string, string> } | null }
 
   // live previews of shared HTML (KERNEL-303). Each is a locked-down native view main draws over the tab. `preview`
   // events report its state and `preview.key` carries app shortcuts typed inside it.
@@ -655,6 +659,8 @@ export type PushEvent =
   /** /clear started a fresh conversation, so the transcript starts over. */
   | { type: 'chat.cleared'; chatId: string }
   | { type: 'chat.running'; chatId: string; running: boolean }
+  /** How many Team updates wait for a terminal Lead tab's next prompt or check_team, sent when the number changes (KERNEL-1000). */
+  | { type: 'seat.updates'; chatId: string; count: number }
   /**
    * The chat's queue, or what it waits for, changed. `why` is set while the queue holds messages and something holds them,
    * and is absent once it is empty (KERNEL-271).

@@ -9,7 +9,7 @@ import { Feature } from './feature'
 
 const withReading = (text: string, reading: string) => (reading ? `${text} ${reading}` : text)
 
-/** A branch the remote has takes the base by a merge: a rebase would need the force push the guard denies (KERNEL-886). */
+/** A branch the remote has takes the base by a merge: a rebase would need a force push, which the team doesn't make (KERNEL-886). */
 const mergeWhy = (remote: string, pushed: boolean) => (pushed ? ` Your branch is on ${remote}, so merge rather than rebase.` : '')
 
 /**

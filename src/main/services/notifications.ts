@@ -177,7 +177,7 @@ export class Notifications {
    * unless `replace`, which updates the row in place, as a project's list of chats waiting on the user does (KERNEL-844). A row
    * that comes to need the user again is unread and alerts again.
    */
-  notice(n: Pick<Notification, 'id' | 'title' | 'sub'> & Partial<Pick<Notification, 'heading' | 'body' | 'projectId' | 'workspaceId' | 'needsYou' | 'resolved'>>, o: { replace?: boolean } = {}): Notification {
+  notice(n: Pick<Notification, 'id' | 'title' | 'sub'> & Partial<Pick<Notification, 'heading' | 'body' | 'projectId' | 'workspaceId' | 'chatId' | 'ask' | 'needsYou' | 'resolved'>>, o: { replace?: boolean } = {}): Notification {
     const made: Notification = { kind: 'system', needsYou: false, read: false, createdAt: this.d.now?.() ?? Date.now(), ...n }
     if (this.detached) return made
     const had = this.d.store.notification(n.id)

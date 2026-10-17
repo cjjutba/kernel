@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
-import { DEFAULT_SETTINGS, loadAppSettings } from '../src/main/services/settings'
+import { DEFAULT_SETTINGS, loadAppSettings, loadRepoSettings, saveRepoSettings } from '../src/main/services/settings'
 import { foundClis } from '../src/main/services/terminalPresets'
 
 const launchPath = process.env.PATH
@@ -176,7 +176,7 @@ describe('terminal settings', () => {
 
   it('moves the two experimental switches of an existing settings file into terminal', async () => {
     const { resolved: s } = await loadAppSettings(await file({ experimental: { bigTerminal: false, bigTerminalWorktreeOnly: false, walking: false, floor3d: true, voice: true } }), '/home')
-    expect(s.terminal).toEqual({ enabled: false, preset: 'claude', onlyInWorktrees: false, connect: true, custom: [] })
+    expect(s.terminal).toEqual({ enabled: false, preset: 'claude', onlyInWorktrees: false, connect: true, teammatesRunIn: 'kernel', custom: [] })
     // sharing was never in a saved file, so it takes the default (KERNEL-308). Voice briefs went with the Experimental page (KERNEL-540), walking and floor3d with the floor (KERNEL-680).
     expect(s.experimental).toEqual({ sharing: true })
   })
@@ -186,6 +186,23 @@ describe('terminal settings', () => {
     expect(both.terminal).toMatchObject({ enabled: true, onlyInWorktrees: false })
     expect(both.experimental).not.toHaveProperty('bigTerminal')
     expect((await loadAppSettings(await file({}), '/home')).resolved.terminal).toEqual(DEFAULT_SETTINGS('/home').terminal)
+  })
+
+  it('runs teammates in Kernel unless a saved value of the three says otherwise (KERNEL-1004)', async () => {
+    expect(DEFAULT_SETTINGS('/home').terminal.teammatesRunIn).toBe('kernel')
+    for (const v of ['kernel', 'terminal', 'lead']) expect((await loadAppSettings(await file({ terminal: { teammatesRunIn: v } }), '/home')).resolved.terminal.teammatesRunIn).toBe(v)
+    expect((await loadAppSettings(await file({ terminal: { teammatesRunIn: 'both' } }), '/home')).resolved.terminal.teammatesRunIn).toBe('kernel')
+  })
+
+  it("reads and saves a project's [terminal] teammates_run_in, the personal file over the shared one (KERNEL-1004)", async () => {
+    const repo = await tempRepo({ 'README.md': '# x\n', '.kernel/settings.toml': '[terminal]\nteammates_run_in = "terminal"\n' })
+    expect((await loadRepoSettings(repo)).terminal?.teammatesRunIn).toBe('terminal')
+    await saveRepoSettings(repo, { terminal: { teammatesRunIn: 'lead' } })
+    expect((await loadRepoSettings(repo)).terminal?.teammatesRunIn).toBe('lead')
+    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[terminal]\nteammates_run_in = "both"\n')
+    expect((await loadRepoSettings(repo)).terminal?.teammatesRunIn).toBe('terminal')
+    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[terminal]\nteammates_run_in = "kernel"\n')
+    expect((await loadRepoSettings(repo)).terminal?.teammatesRunIn).toBe('kernel')
   })
 
   it('leaves out a custom command with no id, name or command, and a repeated id', async () => {

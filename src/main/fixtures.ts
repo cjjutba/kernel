@@ -213,7 +213,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
       const base = { ...first, id: `fixture-chat-${Date.now()}`, sessionId: undefined, plan: false, terminal: undefined, autoTitle: undefined }
       if (kind !== 'terminal') return { ...base, kind: 'chat', title: 'New chat' }
       if (!settings.terminal.enabled) throw new Error('Big terminal tabs are off. Turn them on in Settings, Big terminal.')
-      const term = resolvePreset(presetList(settings.terminal, f.terminalClis ?? []), settings.terminal, workspace(workspaceId).mode, preset)
+      const term = resolvePreset(presetList(settings.terminal, f.terminalClis ?? [], !!workspace(workspaceId).lead), settings.terminal, workspace(workspaceId).mode, preset)
       return { ...base, kind: 'terminal', title: terminalTitle(term.preset), terminal: term.terminal }
     },
     // What the engine saved: the fixture's items, then the rows its `after` events pushed, so a reload keeps them.
@@ -259,6 +259,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'commands.list': async () => [],
     'terminal.write': async () => ok,
     'terminal.resize': async () => ok,
+    'terminal.reconnect': async () => ok,
     'terminal.replay': async () => ok,
     'checkpoints.list': async ({ workspaceId }) => f.checkpoints?.[workspaceId] ?? [],
     'checkpoints.preview': async ({ workspaceId, checkpointId }) => f.checkpointPreviews?.[workspaceId]?.[checkpointId] ?? { files: [], stat: { files: 0, added: 0, removed: 0 }, commitsAhead: 0, pushed: false, conflicts: [] },
@@ -286,6 +287,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'notifications.list': async () => f.notifications ?? [],
     'notifications.playSound': async () => ({ ok: true }),
     'notifications.read': async ({ ids }) => (f.notifications ?? []).map((n) => (ids === 'all' || ids.includes(n.id) ? { ...n, read: true } : n)),
+    'notifications.answer': async ({ id }) => ({ ...(f.notifications ?? []).find((n) => n.id === id)!, needsYou: false, read: true, resolved: 'You answered.' }),
     'lead.open': async ({ projectId }) => {
       if (!f.agents[projectId]?.some((a) => a.lead)) throw new Error('This fixture has no Kernel.')
       return leadWs(projectId) ?? null
@@ -367,7 +369,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'accounts.mcpSetUp': async ({ accountId }) => ({ accountId, servers: [], done: [], failed: [], finished: true }),
     'accounts.rename': async ({ accountId, label }) => (f.accounts ?? []).map((a) => (a.id === accountId ? { ...a, label: label.trim() || a.email || a.label } : a)),
     'models.list': async ({ provider }) => f.models?.[provider] ?? (provider === 'claude' ? MODELS.map((m) => ({ provider, id: m.id, label: m.label, legacy: !!m.legacy, efforts: EFFORTS.map((e) => e.id), defaultEffort: 'high' as const })) : []),
-    'terminal.presets': async () => presetList(settings.terminal, f.terminalClis ?? []),
+    'terminal.presets': async (r) => presetList(settings.terminal, f.terminalClis ?? [], !!f.workspaces.find((w) => w.id === r?.workspaceId)?.lead),
     'settings.get': async () => settings,
     'settings.set': async ({ patch }) => {
       if (process.env.KERNEL_SLOW_SETTINGS) await new Promise(() => undefined)

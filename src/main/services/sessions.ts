@@ -283,6 +283,8 @@ export interface SessionDeps {
    * (KERNEL-637, KERNEL-651).
    */
   onFreed?: () => void
+  /** How many teammate terminal seats are in a turn, not counting `chatId`'s own. They take slots of the agent limit (KERNEL-1004). */
+  seatsBusy?: (chatId: string) => number
 }
 
 /**
@@ -1319,10 +1321,13 @@ export class Sessions {
   private atCapacity(chatId: string): boolean {
     const max = this.d.settings().models?.agentLimit
     if (!max || max < 1 || this.isLeadChat(chatId)) return false
-    let running = 0
+    let running = this.d.seatsBusy?.(chatId) ?? 0
     for (const [id, l] of this.live) if (l.running && id !== chatId && !this.isLeadChat(id)) running++
     return running >= max
   }
+
+  /** Whether the agent limit is reached for a teammate's terminal seat that wants to start (KERNEL-1004). */
+  atLimit(chatId: string): boolean { return this.atCapacity(chatId) }
 
   /**
    * The chat's next turn re-reads its history cold (`coldSize`) while COLD_AT_ONCE others do (KERNEL-844). It waits for one

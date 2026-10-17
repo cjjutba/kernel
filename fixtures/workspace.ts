@@ -3,6 +3,7 @@ import type { ChatPart, AccountProfile, MoveNotice, AgentReach, AgentScope, Appr
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
+import { seatViewKey } from '../src/renderer/src/screens/workspace/terminal/seat'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
 import { downloadFlowMarkdown, fontsCheckImage, invoiceLayoutStill, invoicePdfStill, pdfNotesMarkdown, pricingStill } from './sharedStills'
 
@@ -164,6 +165,49 @@ function terminalPresets(): Fixture {
     terminalClis: [{ id: 'codex', name: 'Codex', command: 'codex', builtin: true, skipsPermissions: false }],
     ui: { ...open.ui, menu: 'newTab' }
   }
+}
+
+/**
+ * KERNEL-1001: the Lead chat's workspace with a Lead terminal tab open beside the chat. `seat.connected: false` draws the not connected line.
+ */
+function leadTerminal(o: { running?: boolean; connected?: boolean; menu?: boolean; transcript?: boolean }): Fixture {
+  return scene((f) => {
+    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+    const { approvals: _none, ...rest } = s
+    const term: Chat = { id: 'chat-lead-term', workspaceId: ids.lead, title: 'Terminal (lead)', kind: 'terminal', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', terminal: { preset: 'lead', command: 'claude' }, createdAt: at(9, 3), ...(o.connected === false ? { seat: { connected: false } } : {}) }
+    return {
+      ...rest,
+      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
+      chats: [...(rest.chats ?? f.chats), term],
+      ...(o.transcript ? { items: { ...(rest.items ?? f.items), [term.id]: seatItems(term.id, 'Kernel') }, saved: { [seatViewKey(term.id)]: 'transcript' } } : {}),
+      push: [...(rest.push ?? f.push), { type: 'terminal.data', chatId: term.id, data: termScreen }, ...(o.running ? [{ type: 'chat.running' as const, chatId: term.id, running: true }] : [])],
+      ui: { ...rest.ui!, rightPanel: false, ...(o.menu ? { menu: 'newTab' as const } : {}), tabs: { [ids.lead]: { tab: term.id, lastChat: ids.leadChat, files: [], diffs: [] } } }
+    }
+  })
+}
+
+/** KERNEL-1003: what a terminal seat's session reads back as, one turn of Claude Code in the terminal. */
+function seatItems(chatId: string, who: string): ChatItem[] {
+  const id = (n: string) => `${chatId}-${n}`
+  const from = { source: 'terminal' as const }
+  return [
+    { kind: 'user', id: id('u1'), ts: at(10, 20), parts: [{ type: 'text', text: `Add a Download PDF button to the invoice table, and keep ${who}'s file naming.` }], ...from },
+    { kind: 'thinking', id: id('th1'), ts: at(10, 20, 10), text: 'The table rows already carry the invoice number, so the button can build the file name from it.', ...from },
+    { ...tool(id('t1'), 'Read the invoice table', 'src/app/invoices/table.tsx', { name: 'Read', input: { file_path: 'src/app/invoices/table.tsx' } }), ...from } as ChatItem,
+    { ...tool(id('t2'), 'Search for the PDF renderer', 'rg -n "renderPdf" src', { output: 'src/pdf/render.ts:12:export function renderPdf(invoice: Invoice)' }), ...from } as ChatItem,
+    { kind: 'text', id: id('x1'), ts: at(10, 22), text: 'The button is in the table toolbar. It calls `renderPdf` for the selected row and saves the file as `invoice-<number>.pdf`.', ...from }
+  ]
+}
+
+/** KERNEL-1003: a teammate's workspace with its Claude terminal tab open on the Transcript view. */
+function teammateTranscript(): Fixture {
+  return scene((f) => ({
+    chats: [...f.chats, extraChat('chat-term', 'Terminal (claude)', 'terminal')],
+    items: { ...f.items, 'chat-term': seatItems('chat-term', 'Ivy') },
+    saved: { [seatViewKey('chat-term')]: 'transcript' },
+    push: [...f.push, { type: 'terminal.data', chatId: 'chat-term', data: termScreen }],
+    ui: tabsView('chat-term')
+  }))
 }
 
 /** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
@@ -1623,7 +1667,7 @@ const railRounds: RailRound[] = [
   ['Reword that in plain words', 'Reworded. It reads "Nothing asked of you yet" for requests and "No open PRs" for PRs.', 2, 0, 27, [12, 47]],
   ['Squash the last two commits', 'Squashed them into one commit.', 2, 0, 18, [12, 51]],
   ['Why did the rebase drop my D-136 entry?', 'The rebase took main\'s version of `docs/DECISIONS.md`, which already had a D-136. Mine was in the conflict and lost.', 3, 1, 232, [13, 1]],
-  ['Change of method for the conflict on PR #147. The repo\'s guard hook blocks force pushes, so don\'t rebase. Merge origin/main into your branch and push normally, since the repo squash-merges anyway. Everything else stays the same: your entry becomes D-137, check kernel.ts against #149, run typecheck and test, and update the PR body.', RAIL_LONG_REPLY, 9, 12, 232, [13, 1]],
+  ['Change of method for the conflict on PR #147. Force pushes are refused, so don\'t rebase. Merge origin/main into your branch and push normally, since the repo squash-merges anyway. Everything else stays the same: your entry becomes D-137, check kernel.ts against #149, run typecheck and test, and update the PR body.', RAIL_LONG_REPLY, 9, 12, 232, [13, 1]],
   ['Show me the renumber commit', 'It\'s 1440439. It changes 12 comment lines across `ipc.ts`, `kernel.ts`, `db.ts` and `approvals.ts`, and no code.', 1, 1, 21, [13, 4]],
   ['Check the Release note check, then tell me', 'It\'s still running. Vercel passed on the last push.', 2, 0, 34, [13, 6]],
   ['Did Theo review it yet?', 'Not yet. I asked him in his chat 12 minutes ago, and he hasn\'t replied.', 0, 0, 8, [13, 7]],
@@ -2073,6 +2117,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // KERNEL-430: a new chat waiting for setup. KERNEL-951: rows say what Kernel did, the setup script's row counts with its last output line, and the message waits dimmed with Send now.
   SetupRunning: scene((f) => setupWait(f, 'setup', [setupAsk])),
   SetupFollowUp: scene((f) => setupWait(f, 'setup', [setupAsk, setupFollow])),
+  // KERNEL-1018: a restored chat with history, held for setup. The transcript stays, the box is open, and the message waits in the queue above it.
+  SetupRestoredChat: scene((f) => {
+    const w = setupWait(f, 'setup', [setupAsk])
+    return { ...w, items: { [ids.tableChat]: f.items[ids.tableChat] ?? [] } }
+  }),
   // Edit pulled the only queued message back into the box.
   SetupEditQueued: scene((f) => setupWait(f, 'setup', [], { composer: { parts: [...setupAsk.parts, ...setupFollow.parts], draft: '' } })),
   SetupPanelHidden: scene((f) => setupWait(f, 'setup', [setupAsk], { panel: false })),
@@ -3272,6 +3321,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
   WorkspaceTerminalPresets: terminalPresets(),
+  LeadTerminalIdle: leadTerminal({}),
+  LeadTerminalTranscript: leadTerminal({ transcript: true }),
+  WorkspaceTerminalTranscript: teammateTranscript(),
+  LeadTerminalWorking: leadTerminal({ running: true }),
+  LeadTerminalNotConnected: leadTerminal({ connected: false }),
+  LeadTerminalMenu: leadTerminal({ menu: true }),
+  SettingsBigTerminalConnect: scene(() => ({ settings: DEFAULT_SETTINGS('/Users/you'), ui: { route: { name: 'settings', page: 'bigterm' } } })),
   WorkspacePreview: preview(),
   WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
   // A ready PR whose repo requires only Release note: Test failed and Vercel still runs, both optional (KERNEL-388).

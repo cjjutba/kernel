@@ -43,7 +43,7 @@ describe('release files', () => {
       'Unrecognized key'
     )
     expect(() => parseReleaseFile('---\nversion: 0.2.0\ndate: 2026-11-01\ntitle: A\n---\n\nSome prose.\n')).toThrow(
-      'line 7: expected "## Section" or "- item"'
+      'line 7: expected "## Section", "### Area" or "- item"'
     )
   })
 })

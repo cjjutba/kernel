@@ -3,11 +3,30 @@ import { z } from 'zod'
 // Shared with the release scripts at the repo root (scripts/notes.ts), which run this file with Node's type
 // stripping. Keep zod as its only import, with no relative imports, enums or namespaces (D-058).
 
+/**
+ * Where an improved or fixed change lives in the app, so What's new can fold a long section into a few rows. A
+ * fragment names one by `id`. Release files and the app read the `label`. Ties in the dialog keep this order.
+ */
+export const AREAS = [
+  { id: 'chat', label: 'Chat' },
+  { id: 'agents', label: 'Agents' },
+  { id: 'models', label: 'Message box and models' },
+  { id: 'work', label: 'Issues and pull requests' },
+  { id: 'projects', label: 'Projects and setup' },
+  { id: 'sidebar', label: 'Sidebar and navigation' },
+  { id: 'settings', label: 'Settings' },
+  { id: 'accounts', label: 'Accounts and usage' },
+  { id: 'keyboard', label: 'Keyboard' },
+  { id: 'look', label: 'Look and feel' }
+] as const
+
 export const ChangeItem = z.object({
   /** Bold lead in, such as "Checkpoints." */
   lead: z.string().optional(),
   text: z.string(),
-  pr: z.number().int().positive().optional()
+  pr: z.number().int().positive().optional(),
+  /** An AREAS label. Items with one sit under a "### <area>" heading in their section. */
+  area: z.string().optional()
 })
 
 export const Section = z.object({ title: z.string().min(1), items: z.array(ChangeItem).min(1) })
@@ -85,18 +104,35 @@ function parseItem(raw: string): ChangeItem {
   return { ...(m[1] ? { lead: m[1] } : {}), text: m[2]!, ...(m[3] ? { pr: Number(m[3]) } : {}) }
 }
 
-/** "## Section" headings with "- item" bullets. An item is an optional **lead**, the text and an optional (#NN). */
+/**
+ * "## Section" headings with "- item" bullets, and "### Area" headings inside a section that give the items under
+ * them an area. An item is an optional **lead**, the text and an optional (#NN).
+ */
 export function parseSections(body: string, firstLine = 1): Section[] {
   const sections: Section[] = []
+  let area: string | undefined
   for (const [i, line] of body.split('\n').entries()) {
     if (!line.trim()) continue
     const heading = /^## (.+)$/.exec(line)
+    const sub = /^### (.+)$/.exec(line)
     const item = /^- (.+)$/.exec(line)
-    if (heading) sections.push({ title: heading[1]!.trim(), items: [] })
-    else if (item && sections.length) sections[sections.length - 1]!.items.push(parseItem(item[1]!))
-    else throw new Error(`line ${firstLine + i}: expected "## Section" or "- item", got "${line}"`)
+    if (heading) { sections.push({ title: heading[1]!.trim(), items: [] }); area = undefined }
+    else if (sub && sections.length) area = sub[1]!.trim()
+    else if (item && sections.length) sections[sections.length - 1]!.items.push({ ...parseItem(item[1]!), ...(area ? { area } : {}) })
+    else throw new Error(`line ${firstLine + i}: expected "## Section", "### Area" or "- item", got "${line}"`)
   }
   return sections
+}
+
+/** A section's items as runs that share an area, in order. Items without one form runs with no area. */
+export function areaRuns(items: ChangeItem[]): { area?: string; items: ChangeItem[] }[] {
+  const runs: { area?: string; items: ChangeItem[] }[] = []
+  for (const item of items) {
+    const last = runs[runs.length - 1]
+    if (last && last.area === item.area) last.items.push(item)
+    else runs.push({ ...(item.area ? { area: item.area } : {}), items: [item] })
+  }
+  return runs
 }
 
 /** Reads a release file. Throws with every problem found. */
@@ -124,7 +160,10 @@ export function formatReleaseFile(release: Release): string {
   const fm = [`version: ${release.version}`, `date: ${release.date}`, `title: ${frontmatterValue(release.title)}`]
   if (release.image) fm.push(`image: ${frontmatterValue(release.image.src)}`, `imageAlt: ${frontmatterValue(release.image.alt)}`)
   if (release.intro) fm.push(`intro: ${frontmatterValue(release.intro)}`)
-  const sections = release.sections.map((s) => `## ${s.title}\n\n${s.items.map(formatItem).join('\n')}\n`)
+  const sections = release.sections.map((s) => {
+    const runs = areaRuns(s.items).map((r) => `${r.area ? `### ${r.area}\n\n` : ''}${r.items.map(formatItem).join('\n')}\n`)
+    return `## ${s.title}\n\n${runs.join('\n')}`
+  })
   return `---\n${fm.join('\n')}\n---\n\n${sections.join('\n')}`
 }
 

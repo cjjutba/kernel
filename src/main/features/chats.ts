@@ -13,6 +13,7 @@ import { LEAD_PRESET, resolvePreset, terminalCommand, terminalPresets, terminalT
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
+import { TerminalTranscripts } from './terminalTranscript'
 
 const COPY = 'fork:'
 
@@ -24,6 +25,8 @@ const notFound = (e: unknown) => /not found/i.test((e as Error)?.message ?? '')
 
 /** Chat tabs, their names, forks and big terminals (KERNEL-329). */
 export class Chats extends Feature {
+  /** A terminal seat's Claude Code session as a read-only transcript on its chat (KERNEL-1002). */
+  readonly transcripts = new TerminalTranscripts(this.k)
   /** Chats with a turn running. Read from `chat.running` so the quit prompt can count agents (KERNEL-214). */
   private readonly runningChats = new Set<string>()
 
@@ -99,9 +102,9 @@ export class Chats extends Feature {
   }
 
   /** Kernel picks this chat's name. A chat still called "New chat" from before KERNEL-202 counts too. */
-  private autoNamed(c: Chat) { return c.kind !== 'terminal' && (!!c.autoTitle || c.title === NEW_CHAT) }
+  private autoNamed(c: Chat) { return (c.kind !== 'terminal' || !!c.terminal?.role) && (!!c.autoTitle || c.title === NEW_CHAT) }
   /** An auto-named chat that has no real name yet: "New chat", a Lead tab's "New tab" (KERNEL-337), or the Lead's first "Lead". */
-  private unnamed(c: Chat) { return c.title === NEW_CHAT || (!!c.autoTitle && (c.title === NEW_TAB || c.title === LEAD_CHAT)) }
+  private unnamed(c: Chat) { return c.title === NEW_CHAT || (!!c.autoTitle && (c.title === NEW_TAB || c.title === LEAD_CHAT || (c.kind === 'terminal' && /^Terminal \(/.test(c.title)))) }
 
   /** Saves a name Kernel picked. The first tab of a Lead chat names the chat too (KERNEL-337). */
   private autoName(chat: Chat) {
@@ -121,13 +124,14 @@ export class Chats extends Feature {
   async nameChat(ws: Workspace, chat: Chat, turnEnded = false) {
     if (!this.autoNamed(chat)) return
     const resets = this.nameResets.get(chat.id) ?? 0
-    if (this.unnamed(chat) && chat.sessionId && chat.sessionId !== this.clearedSession.get(chat.id)) {
+    const sessionId = chat.terminal?.sessionId ?? chat.sessionId
+    if (this.unnamed(chat) && sessionId && sessionId !== this.clearedSession.get(chat.id)) {
       const last = this.titleChecked.get(chat.id) ?? 0
       if (turnEnded || Date.now() - last >= 3000) {
         this.titleChecked.set(chat.id, Date.now())
         // A Lead chat whose folder moved keeps its transcript in the old folder's project, which only a search of every
         // project finds (KERNEL-424).
-        const info = await this.k.sessionInfo(chat.sessionId, { dir: ws.path }).catch(() => undefined) ?? await this.k.sessionInfo(chat.sessionId).catch(() => undefined)
+        const info = await this.k.sessionInfo(sessionId, { dir: ws.path }).catch(() => undefined) ?? await this.k.sessionInfo(sessionId).catch(() => undefined)
         const title = info?.customTitle?.trim().slice(0, 60)
         if (this.stopped || resets !== (this.nameResets.get(chat.id) ?? 0)) return
         const now = this.store.chat(chat.id)
@@ -324,6 +328,12 @@ export class Chats extends Feature {
     this.ptys.start(id, { ...this.ptyOptions(id), ...size })
   }
 
+  /** Starts a seat's pty from the engine, as a hand-off to a terminal teammate does (KERNEL-1004). */
+  async startSeat(id: string) {
+    await this.seatsUp(id)
+    this.ensurePty(id)
+  }
+
   /** A big terminal chat's pty is about to start: its seat's endpoint is listening by then, when Settings, Terminal has connect on. */
   private async seatsUp(id: string) {
     if (this.settings.terminal.connect && !this.ptys.has(id) && this.store.chat(id)?.kind === 'terminal') await this.k.seats.start()
@@ -343,7 +353,7 @@ export class Chats extends Feature {
 
   /** The workspace's terminals that run a command now, which a folder move waits for (KERNEL-424). */
   busyTerminals(workspaceId: string): boolean {
-    return this.terminalIds(workspaceId).some((id) => this.ptys.busy(id))
+    return this.terminalIds(workspaceId).some((id) => this.ptys.busy(id) || this.k.seatSignals.working(id))
   }
 
   /** The workspace's running terminals start again in its folder as it is now, after the folder moved (KERNEL-424). */
@@ -380,8 +390,17 @@ export class Chats extends Feature {
       'chats.close': async ({ chatId }) => { await this.closeChat(chatId); return { ok: true } },
       'chats.markRead': async ({ chatId }) => { this.markRead(chatId); return { ok: true } },
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
-      'terminal.write': async ({ chatId, data }) => { await this.seatsUp(chatId); this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
+      'terminal.write': async ({ chatId, data }) => { this.k.teammateSeats.typedIn(chatId, data); await this.seatsUp(chatId); this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { await this.seatsUp(chatId); this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
+      'terminal.reconnect': async ({ chatId }) => {
+        const chat = this.mustChat(chatId)
+        if (chat.kind !== 'terminal' || !chat.terminal?.role) throw new Error('That tab is not a terminal seat.')
+        await this.seatsUp(chatId)
+        // A running pty is replaced and an exited one starts, both through the launch path, so `claude` resumes the saved session.
+        if (this.ptys.has(chatId)) this.ptys.restart(chatId, this.ptyOptions(chatId))
+        else this.ensurePty(chatId)
+        return { ok: true }
+      },
       'terminal.replay': async ({ chatId }) => { this.ptys.replay(chatId); return { ok: true } },
       'chats.create': async ({ workspaceId, kind, preset, threadId, provider, model: asked, effort }) => {
         const ws = this.mustWs(workspaceId)

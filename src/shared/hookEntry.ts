@@ -26,12 +26,20 @@ export const BUILD_HEADER = 'X-Kernel-Build'
 const buildArg = `-H "${BUILD_HEADER}: \${${BUILD_ENV}:-}"`
 
 /**
+ * The chat a terminal seat's pty belongs to, set in its environment as `KERNEL_CHAT_ID` (KERNEL-998) and sent back by the hook
+ * command, so Kernel knows which terminal a hook comes from (KERNEL-999). Unset, curl sends no header.
+ */
+export const CHAT_ENV = 'KERNEL_CHAT_ID'
+export const CHAT_HEADER = 'X-Kernel-Chat'
+const chatArg = `-H "${CHAT_HEADER}: \${${CHAT_ENV}:-}"`
+
+/**
  * The hook command (D-050). curl posts the payload from stdin and prints the server's JSON. When nothing listens it prints
  * nothing and `|| true` exits 0, so Claude Code shows no error and a PermissionRequest gets its normal prompt.
  * The server turns away a post without the token with a 401, which `-f` also keeps quiet (KERNEL-206).
  */
 export const hookCommand = (port: number, maxSec: number, token: string, build: HookBuild = 'app') =>
-  `/usr/bin/curl -sf --connect-timeout 1 -m ${maxSec} -H 'Content-Type: application/json' ${tokenArg(token)} ${buildArg} --data-binary @- ${hookUrl(port, build)} || true`
+  `/usr/bin/curl -sf --connect-timeout 1 -m ${maxSec} -H 'Content-Type: application/json' ${tokenArg(token)} ${buildArg} ${chatArg} --data-binary @- ${hookUrl(port, build)} || true`
 
 /**
  * The matcher Kernel writes for one event. The installer and the Settings > Hooks snippet both use it, so they stay the same.
