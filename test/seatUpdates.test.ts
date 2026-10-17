@@ -182,6 +182,14 @@ describe('updates for a terminal Lead', () => {
     sent.mockRestore()
   })
 
+  it('answers seat.pending with the count waiting per tab (KERNEL-1029)', async () => {
+    expect(await k.handlers()['seat.pending']()).toEqual({})
+    await ask(mateWs, 'Counted?')
+    expect(await k.handlers()['seat.pending']()).toEqual({ [lead.id]: 1 })
+    await call(lead, 'check_team', {})
+    expect(await k.handlers()['seat.pending']()).toEqual({})
+  })
+
   it('hands a closed tab\'s queue to the chat Lead for that work (KERNEL-1029)', async () => {
     await ask(mateWs, 'Last one?')
     expect(k.leadUpdates.seatPending(lead.id)).toBe(1)

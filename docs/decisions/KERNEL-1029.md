@@ -9,3 +9,5 @@
 **Archiving a workspace keeps its terminal tabs' updates for the restore.** Restoring a workspace resumes the same session in the same tab, so its queue stays, the inbox row says the updates wait for the restore, and the restore raises the row again. The updates reach the terminal at its next prompt or `check_team`, as before. A workspace deleted from History has no tab to come back to, so its queue is rehomed like a closed tab's. KERNEL-1029.
 
 **The `seat.updates`, `notifications.answer` and `Chat.seat` shapes did not change.** The renderer reads them as before. KERNEL-1029.
+
+**The renderer reads the waiting count with `seat.pending`.** `seat.updates` only fires on a change, so a count that exists at launch needs a read. `seat.pending` takes no arguments and returns `Record<chatId, number>`, with only the terminal Lead tabs that have updates waiting. KERNEL-1029.

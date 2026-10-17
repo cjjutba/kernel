@@ -1125,6 +1125,13 @@ export class LeadUpdates {
     this.d.notify?.({ id: seatId(chat.id), title: `${chat.title} has ${n === 1 ? 'an update' : `${n} updates`} waiting`, sub: `Team update${where}`, heading: `Your team has news for ${chat.title}`, body: `${lines.join('\n')}\nIt reaches the terminal with your next message, or when the agent calls check_team.`.trim(), projectId: ws?.projectId, chatId: chat.id, needsYou: true })
   }
 
+  /** The count of updates waiting for each terminal Lead tab that has any, as `seat.updates` last said (KERNEL-1029). */
+  seatCounts(): Record<string, number> {
+    const counts: Record<string, number> = {}
+    for (const [id, queue] of this.seatQueue) if (queue.length) counts[id] = queue.length
+    return counts
+  }
+
   /** How many updates wait for a terminal Lead tab. */
   seatPending(chatId: string): number { return this.seatQueue.get(chatId)?.length ?? 0 }
 

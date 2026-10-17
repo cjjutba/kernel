@@ -436,7 +436,7 @@ export class Chats extends Feature {
         return { ok: true }
       },
       'terminal.replay': async ({ chatId }) => { this.ptys.replay(chatId); return { ok: true } },
-      'seat.pending': async () => ({}),
+      'seat.pending': async () => this.leadUpdates.seatCounts(),
       'chats.create': async ({ workspaceId, kind, preset, threadId, provider, model: asked, effort }) => {
         const ws = this.mustWs(workspaceId)
         // Right after a restart nothing may have read the team yet, and the agent's effort is the fallback.
