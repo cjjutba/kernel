@@ -1342,7 +1342,7 @@ function blockersTodo(kinds: ReviewKind[], author: string | undefined, at: strin
 /**
  * The To do line for a ready PR GitHub won't merge, in the same words from every event that meets it, so it shows once
  * (KERNEL-401). A branch behind its base is its agent's to update by merging `base` in: a PR's branch is pushed, and a rebase
- * would need the force push the guard denies (KERNEL-886).
+ * would need a force push, which the team doesn't make (KERNEL-886).
  * A required review, or another rule, is the user's to know.
  */
 export function blockedTodo(pr: string, name: string, at: string, blocked: PrBlocked, base: string, self = false): string {

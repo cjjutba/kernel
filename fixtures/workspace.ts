@@ -1667,7 +1667,7 @@ const railRounds: RailRound[] = [
   ['Reword that in plain words', 'Reworded. It reads "Nothing asked of you yet" for requests and "No open PRs" for PRs.', 2, 0, 27, [12, 47]],
   ['Squash the last two commits', 'Squashed them into one commit.', 2, 0, 18, [12, 51]],
   ['Why did the rebase drop my D-136 entry?', 'The rebase took main\'s version of `docs/DECISIONS.md`, which already had a D-136. Mine was in the conflict and lost.', 3, 1, 232, [13, 1]],
-  ['Change of method for the conflict on PR #147. The repo\'s guard hook blocks force pushes, so don\'t rebase. Merge origin/main into your branch and push normally, since the repo squash-merges anyway. Everything else stays the same: your entry becomes D-137, check kernel.ts against #149, run typecheck and test, and update the PR body.', RAIL_LONG_REPLY, 9, 12, 232, [13, 1]],
+  ['Change of method for the conflict on PR #147. Force pushes are refused, so don\'t rebase. Merge origin/main into your branch and push normally, since the repo squash-merges anyway. Everything else stays the same: your entry becomes D-137, check kernel.ts against #149, run typecheck and test, and update the PR body.', RAIL_LONG_REPLY, 9, 12, 232, [13, 1]],
   ['Show me the renumber commit', 'It\'s 1440439. It changes 12 comment lines across `ipc.ts`, `kernel.ts`, `db.ts` and `approvals.ts`, and no code.', 1, 1, 21, [13, 4]],
   ['Check the Release note check, then tell me', 'It\'s still running. Vercel passed on the last push.', 2, 0, 34, [13, 6]],
   ['Did Theo review it yet?', 'Not yet. I asked him in his chat 12 minutes ago, and he hasn\'t replied.', 0, 0, 8, [13, 7]],

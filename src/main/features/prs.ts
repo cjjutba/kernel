@@ -191,7 +191,7 @@ export class Prs extends Feature {
   /**
    * Update branch, for a branch that merges on this Mac and has fallen behind its base (KERNEL-478): asks the agent to merge
    * the base in and re-run the tests. A merge, not a rebase, since a pushed branch could only take a rebase with the force push
-   * the guard denies (KERNEL-886). One the remote has is pushed as usual. GitHub has its own button for a PR, so a project on GitHub refuses. Nothing changes state, so the
+   * a force push, which the team doesn't make (KERNEL-886). One the remote has is pushed as usual. GitHub has its own button for a PR, so a project on GitHub refuses. Nothing changes state, so the
    * band keeps reading Behind until the next read finds the branch caught up.
    */
   updateBranch(id: string) { return this.running(id, 'update', () => this.update(id)) }

@@ -58,7 +58,7 @@ export function createPrText(c: RepoConventions = {}, ctx?: PrContext): string {
 
 /**
  * Kernel's Resolve conflicts text. With a workspace it names the base to merge. A PR's branch is on the remote, so it takes the
- * base by a merge: a rebase would need the force push the guard denies (KERNEL-886).
+ * base by a merge: a rebase would need a force push, which the team doesn't make (KERNEL-886).
  */
 export function resolveText(c: RepoConventions = {}, ctx?: PrContext): string {
   return prText('# Resolve conflicts', [

@@ -25,7 +25,7 @@ export function listFiles(files: string[], max = SHOWN): string {
 
 /**
  * How a teammate takes the base: a rebase while the branch has never been pushed, a merge once `pushedTo` has it, since
- * that rebase would need the force push the guard denies (KERNEL-886).
+ * that rebase would need a force push, which the team doesn't make (KERNEL-886).
  */
 const takeBase = (baseRef: string, pushedTo?: string) => (pushedTo ? `merge ${baseRef} into your branch` : `rebase onto ${baseRef}`)
 const mergeWhy = (pushedTo?: string) => (pushedTo ? ` Your branch is on ${pushedTo}, so merge rather than rebase.` : '')
