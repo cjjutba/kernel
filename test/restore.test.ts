@@ -323,6 +323,28 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     expect(users(k2, christian).at(-1)).toBe(LIMIT_LIFTED)
     expect(callIn(ws.path, before).options.systemPrompt.append).toContain('You are Christian.')
   }, 30000)
+
+  it('keeps a temporary limit window across a restart and still holds the chat, and drops one older than 5 hours (KERNEL-1030)', async () => {
+    const { k, where, christian } = await working()
+    await k.stop()
+    const hour = (rejectedAt: number) => ({ type: 'five_hour', status: 'rejected', provisional: true, rejectedAt })
+    const store = new Store(join(where.dataDir, 'kernel.db'))
+    store.saveMeta('working', [])
+    store.saveMeta('queues', {})
+    store.saveMeta('cutOff', { [christian.id]: 'limit' })
+    store.saveMeta('limits', [hour(Date.now() - 60_000)])
+    store.db.close()
+    const { k: k2 } = await relaunch(where)
+    expect((await k2.sessions.usage([])).find((l) => l.type === 'five_hour')).toMatchObject({ status: 'rejected', provisional: true })
+    expect(users(k2, christian).at(-1)).not.toBe(LIMIT_LIFTED)
+    await k2.stop({ budgetMs: 0 })
+
+    const old = new Store(join(where.dataDir, 'kernel.db'))
+    old.saveMeta('limits', [hour(Date.now() - 6 * 3600_000)])
+    old.db.close()
+    const { k: k3 } = await relaunch(where)
+    expect((await k3.sessions.usage([])).find((l) => l.type === 'five_hour')).toMatchObject({ status: 'allowed' })
+  }, 30000)
 })
 
 describe('restoring a workspace sets it up again (KERNEL-77, KERNEL-1016)', () => {

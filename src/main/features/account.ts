@@ -512,7 +512,11 @@ export class Account extends Feature {
       for (const [key, t] of [...this.limitTimers]) if (t.at <= Date.now()) this.limitReset(key)
       // The accounts in use. Claude's gets a short session of its own while a limit pauses the projects and none is live.
       const paused = this.store.projects().some((r) => r.pausedBy === 'limit')
-      await this.sessions.usage([...this.k.providers.usageReads({ active: true, provider: 'claude', probe: paused }), ...this.k.providers.usageReads({ active: true, provider: 'codex' })])
+      // A rejected account is read too when it isn't in use, with a short session of its own, so a rejection nobody runs on still lifts (KERNEL-1030).
+      const rejected = this.sessions.rejectedAccounts()
+      const idle = (provider: Provider) => this.k.providers.usageReads({ provider, probe: true })
+        .filter((r) => r.accountId !== this.k.providers.active(provider) && rejected.has(`${provider}:${r.accountId ?? ''}`))
+      await this.sessions.usage([...this.k.providers.usageReads({ active: true, provider: 'claude', probe: paused }), ...this.k.providers.usageReads({ active: true, provider: 'codex' }), ...idle('claude'), ...idle('codex')])
     })().catch(() => undefined).finally(() => { this.limitChecking = undefined })
     return this.limitChecking
   }
