@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,6 +10,18 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { NO_GO_AHEAD } from '../src/main/services/kernelMcp'
 import { setUp, tempRepo, freePort } from './helpers'
+
+vi.mock('../src/main/services/seatLaunch', async (original) => {
+  const real = await original<typeof import('../src/main/services/seatLaunch')>()
+  return {
+    ...real,
+    writeSeatDir: (dir: string, f: Parameters<typeof real.writeSeatDir>[1]) => {
+      real.writeSeatDir(dir, f)
+      const file = join(dir, 'claude')
+      writeFileSync(file, readFileSync(file, 'utf8').replace('exec "$real" "$@"', 'exec "$real" $KERNEL_LIVE_SEAT_ARGS "$@"'))
+    }
+  }
+})
 
 const KERNEL = `---
 name: kernel
@@ -39,7 +52,7 @@ const TOOL_PROMPT = /Do\s*you\s*want\s*to\s*(proceed|create|make|edit|overwrite)
 const ONBOARDING = /Choose\s*the\s*text\s*style|Press\s*Enter\s*to\s*continue/i
 
 describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
-  it('plans, hands off, hears a teammate, refuses a made-up go-ahead and resumes after a restart', { timeout: 1_500_000 }, async () => {
+  it.each(['kernel', 'terminal'] as const)('plans, hands off to a teammate running in %s, hears it, refuses a made-up go-ahead and resumes after a restart', { timeout: 1_500_000 }, async (runsIn) => {
     const repo = await tempRepo({ 'README.md': '# demo\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/noor.md': NOOR })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-live-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-live-home-'))
@@ -54,15 +67,17 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
       scripts: { setupOnCreate: false }
     }))
 
+    process.env.KERNEL_LIVE_SEAT_ARGS = `--settings ${claudeSettingsFile} --model claude-haiku-4-5-20251001 --effort low`
     const inherited = Object.fromEntries(Object.entries(process.env).filter(([name]) => /^(CLAUDECODE|CLAUDE_CODE_(CHILD_SESSION|SESSION_ID|SESSION_ATTENDED|ENTRYPOINT|EXECPATH|MESSAGING_SOCKET|MESSAGING_TOKEN))$/.test(name)))
     for (const name of Object.keys(inherited)) delete process.env[name]
 
     const output = new Map<string, string>()
     const counts = new Map<string, number>()
     const tracks: TelemetryEvent[] = []
+    const seen: { chatId: string; count: number }[] = []
     const onPush = (e: PushEvent) => {
       if (e.type === 'terminal.data') output.set(e.chatId, e.replace ? e.data : (output.get(e.chatId) ?? '') + e.data)
-      if (e.type === 'seat.updates') counts.set(e.chatId, e.count)
+      if (e.type === 'seat.updates') { counts.set(e.chatId, e.count); seen.push({ chatId: e.chatId, count: e.count }) }
     }
     const onTrack = (e: TelemetryEvent) => tracks.push(e)
     bus.on('push', onPush)
@@ -81,16 +96,23 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
     }
     const sinceMark = () => screen().slice(handled)
     const mark = () => { handled = screen().length }
-    const answerDialogs = async () => {
-      const seen = screen().slice(handled)
-      const key = (data: string) => k.handlers()['terminal.write']({ chatId: tab.id, data })
+    const answerIn = async (id: string, from: number, setFrom: (n: number) => void) => {
+      const full = () => plain(output.get(id) ?? '')
+      const seen = full().slice(from)
+      const key = (data: string) => k.handlers()['terminal.write']({ chatId: id, data })
       if (TRUST_DIALOG.test(seen)) {
-        handled = screen().length
-        for (let i = 0; i < 3 && !/❯\s*Yes,\s*I\s*trust(?![\s\S]*❯\s*No)/.test(screen().slice(-400)); i++) { await key('\x1b[B'); await new Promise((r) => setTimeout(r, 1_500)) }
+        setFrom(full().length)
+        for (let i = 0; i < 3 && !/❯\s*Yes,\s*I\s*trust(?![\s\S]*❯\s*No)/.test(full().slice(-400)); i++) { await key('\x1b[B'); await new Promise((r) => setTimeout(r, 1_500)) }
         await key('\r')
       }
-      else if (TOOL_PROMPT.test(seen)) { handled = screen().length; await key('\r') }
-      else if (ONBOARDING.test(seen)) { handled = screen().length; await key('\r') }
+      else if (TOOL_PROMPT.test(seen) || ONBOARDING.test(seen)) { setFrom(full().length); await key('\r') }
+    }
+    const seatOffsets = new Map<string, number>()
+    const answerDialogs = async () => {
+      await answerIn(tab.id, handled, (n) => { handled = n })
+      for (const c of k.store.workspaces().flatMap((w) => k.store.chats(w.id))) {
+        if (c.terminal?.handoff) await answerIn(c.id, seatOffsets.get(c.id) ?? 0, (n) => seatOffsets.set(c.id, n))
+      }
     }
     const until = async <T>(what: string, check: () => T | undefined | false, timeoutMs = 240_000): Promise<T> => {
       const end = Date.now() + timeoutMs
@@ -133,7 +155,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
       expect(screen().slice(-600)).toMatch(/plan\s*mode\s*on/i)
 
       mark()
-      await type(`Remember the word kumquat for later. Plan one small task for noor: noor must call the ask_lead tool with exactly the question "${QUESTION}" and then stop. Keep the plan to three lines, don't read any files, then exit plan mode and hand it off with create_workspace.`)
+      await type(`Remember the word kumquat for later. Plan one small task for noor: noor must call the ask_lead tool with exactly the question "${QUESTION}" and then stop. Keep the plan to three lines, don't read any files, then exit plan mode and hand it off with create_workspace${runsIn === 'terminal' ? ', passing runs_in set to terminal' : ''}.`)
       await until('the plan dialog', () => PLAN_DIALOG.test(sinceMark()), 240_000)
       evidence.planDialog = sinceMark().slice(-1200)
       await new Promise((r) => setTimeout(r, 1_000))
@@ -141,6 +163,10 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
       await k.handlers()['terminal.write']({ chatId: tab.id, data: '2' })
       const mine = await until('a workspace handed off by the tab', () => k.store.workspaces(project.id).find((w) => !w.lead && w.leadChatId === tab.id), 300_000)
       evidence.handedOff = { name: mine.name, agent: mine.agentId, leadChatId: mine.leadChatId, threadId: mine.threadId }
+      const seat = k.store.chats(mine.id).find((c) => c.terminal?.handoff)
+      evidence.seat = seat ? { id: seat.id, role: seat.terminal?.role } : null
+      if (runsIn === 'terminal') expect(seat).toMatchObject({ kind: 'terminal', terminal: { role: 'teammate', handoff: true } })
+      else expect(seat).toBeUndefined()
       await until('the first turn to finish', () => idle(tab.id), 240_000)
 
       const plans = k.store.approvals({ projectId: project.id }).filter((a) => a.kind === 'plan' && a.chatId === tab.id)
@@ -190,14 +216,16 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
       expect(sinceMark()).toMatch(/kumquat/i)
       expect(k.store.chat(tab.id)?.terminal?.sessionId).toBe(session)
     } finally {
-      const out = join(process.env.KERNEL_LIVE_OUT ? join(process.env.KERNEL_LIVE_OUT, '..') : tmpdir(), 'kernel-live-terminal-lead.json')
+      evidence.updateCounts = seen
+      const out = join(process.env.KERNEL_LIVE_OUT ? join(process.env.KERNEL_LIVE_OUT, '..') : tmpdir(), `kernel-live-terminal-lead-${runsIn}.json`)
       await writeFile(out, JSON.stringify(evidence, null, 2))
       await writeFile(out.replace(/\.json$/, '.txt'), screenText(output))
       console.log(`[live] evidence: ${out}`)
       Object.assign(process.env, inherited)
+      delete process.env.KERNEL_LIVE_SEAT_ARGS
       bus.off('push', onPush)
       bus.off('track', onTrack)
-      for (const w of k.store.workspaces()) if (w.mode === 'worktree') await k.archiveWorkspace(w.id, true).catch(() => undefined)
+      for (const w of k.store.workspaces()) if (w.mode === 'worktree') await k.archive.archiveWorkspace(w.id, true).catch(() => undefined)
       await k.stop({ budgetMs: 0 })
       for (const dir of [home, dataDir, repo]) await rm(dir, { recursive: true, force: true })
     }
