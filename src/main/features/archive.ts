@@ -1,6 +1,7 @@
 import { basename, dirname } from 'node:path'
 import { stat } from 'node:fs/promises'
 import type { Project, Thread, Workspace } from '@shared/types'
+import { buildsHere } from '@shared/leadMode'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { bus } from '../bus'
 import { cleanupSwitch, loadRepoSettings, type RepoSettings } from '../services/settings'
@@ -308,7 +309,7 @@ export class Archive extends Feature {
         moved = { branch, baseRef: base }
       } else await restoreWorktree({ repo: project.path, path, branch: ws.branch, remote })
       if (repo.files.symlinkNodeModules) await linkNodeModules(project.path, path)
-    } else if (this.settings.workspace.oneCurrentBranchPerProject && !ws.lead && this.store.workspaces(ws.projectId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
+    } else if (this.settings.workspace.oneCurrentBranchPerProject && (!ws.lead || buildsHere(ws)) && this.k.workspaces.onCheckout(ws.projectId, { id, agentId: ws.agentId, lead: buildsHere(ws) })) {
       throw new Error('Another workspace is already working on the current branch in this project.')
     }
     const status = ws.mode === 'worktree' ? 'setup' as const : 'ready' as const
