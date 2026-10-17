@@ -10,7 +10,7 @@ import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
 import { Nudges } from './services/nudges'
 import { SharedFiles } from './services/sharedFiles'
-import { Sessions, type CutOffReason } from './services/sessions'
+import { Sessions, type CutOffEntry, type CutOffReason } from './services/sessions'
 import { Ptys } from './services/pty'
 import type { deleteSession as DeleteSession, forkSession as ForkSession, getSessionInfo as GetSessionInfo, listSessions as ListSessions } from '@anthropic-ai/claude-agent-sdk'
 import { loadAppSettings, type AppSettings } from './services/settings'
@@ -201,7 +201,7 @@ export class Kernel {
     // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on. So do the
     // chats that were working when Kernel quit or closed, after what was queued for them (KERNEL-215).
     for (const r of this.store.projects()) if (r.paused) this.sessions.pause(r.id)
-    const cutOff = this.store.meta<string[] | Record<string, CutOffReason>>('cutOff') ?? {}
+    const cutOff = this.store.meta<string[] | Record<string, CutOffReason | CutOffEntry>>('cutOff') ?? {}
     // Offline or signed out, what carries on must wait instead of spending its turn on the failure, and nothing has run yet
     // to notice either. The chats that carry on wait while the network probe and a sign-in read run in the background, so
     // the window, the rest of start, ordinary sends and other queues don't wait for them.

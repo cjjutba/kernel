@@ -254,17 +254,19 @@ export interface SessionDeps {
   onReset?: (ws: Workspace, chat: Chat, trigger?: string) => void
   /**
    * A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it; `by` sent the message that started
-   * it; `account` is the one it ran on, undefined for the CLI's own login. `limit`: a usage limit Kernel knows cut it off, so
-   * the chat waits to carry on (KERNEL-777).
+   * it; `account` is the one it ran on, undefined for the CLI's own login. `limit`: a usage limit cut it off, so the chat waits
+   * to carry on (KERNEL-777). `refused`: it was a carry-on that a limit refused again within seconds, which is no news unless
+   * `stuck`: the third strike, after which `carryOn` stops (KERNEL-1031).
    */
   /** Whether a Build here chat may change files now, read at each step (`Lead.buildOpen`, KERNEL-992). Left out, it always may. */
   buildOpen?: (chatId: string) => boolean
   /** The user approved a plan in a Build here chat, which counts as the go-ahead (KERNEL-992). */
   onBuildPlanApproved?: (chatId: string) => void
-  onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true }) => void
+  onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true; refused?: true; stuck?: true }) => void
   /**
-   * `carryOn` restarted a chat a usage limit or a quit cut off: its queue went, or Kernel's nudge did. After a limit, the
-   * chat runs on the account its provider uses now (KERNEL-777).
+   * A chat a usage limit or a quit cut off answered its carry-on cleanly: its queue went, or Kernel's nudge did, and the
+   * API replied. A refused carry-on never gets here. After a limit, the chat runs on the account its provider uses now
+   * (KERNEL-777, KERNEL-1031).
    */
   onCarriedOn?: (chatId: string, reason: CutOffReason) => void
   /**
@@ -283,7 +285,7 @@ export interface SessionDeps {
   /** Usage windows changed. Kernel pauses projects on an account-wide rejection and schedules the reset. */
   onLimits?: (limits: RateLimit[]) => void
   /** The chats a limit or a quit stopped changed. Kernel saves them, so they still carry on after a restart. */
-  onCutOff?: (cutOff: Record<string, CutOffReason>) => void
+  onCutOff?: (cutOff: Record<string, CutOffEntry>) => void
   /** What chats held for setup are holding changed. Kernel saves it, so a brief survives a restart (KERNEL-128). */
   onHeld?: (held: Record<string, QueuedMessage[]>) => void
   /**
@@ -319,6 +321,15 @@ export type PostHold = 'busy' | 'queued' | 'crashed' | 'setup' | 'launching' | '
 
 /** What stopped a chat mid-turn that carries on by itself: a usage limit, or Kernel quitting or closing (KERNEL-215). */
 export type CutOffReason = 'limit' | 'quit'
+
+/** A chat on the carry-on list: why, on which account a limit stopped it ('cli' is the CLI's own login), and when (KERNEL-1031). */
+export interface CutOffEntry { reason: CutOffReason; account?: string; at: number }
+
+/** A carry-on that a limit refuses again within this long, on the same account, is a strike for the chat (KERNEL-1031). */
+export const REFUSED_WITHIN_MS = 10_000
+
+/** After this many strikes `carryOn` sends the chat no more nudges until something changes (KERNEL-1031). */
+export const MAX_STRIKES = 3
 
 /** Moved to the shared contract (KERNEL-271). Exported here too for what imports it from Sessions. */
 export type { QueueReason }
@@ -398,7 +409,17 @@ export class Sessions {
   /** Chats whose first prompt waits for the workspace's setup script to pass, or for the PRs it waits for to merge (KERNEL-259). */
   private waiting = new Set<string>()
   /** Chats a usage limit or a quit stopped mid-turn. They carry on by themselves once nothing holds them (`carryOn`). */
-  private cutOff = new Map<string, CutOffReason>()
+  private cutOff = new Map<string, CutOffEntry>()
+  /** Carry-ons of limit-stopped chats in flight: when and on which account each went, so a refusal within seconds is a strike (KERNEL-1031). */
+  private carrying = new Map<string, { reason: CutOffReason; account: string; at: number }>()
+  /** Carry-ons a limit refused again within seconds, in a row, by chat (KERNEL-1031). */
+  private strikes = new Map<string, number>()
+  /** Chats at MAX_STRIKES, with where they are stuck: their target account and model, and how many windows had lifted there. */
+  private stuck = new Map<string, { account: string; model: string; lifted: number }>()
+  /** How many rejected windows lifted, by `provider:account`, which releases a stuck chat (KERNEL-1031). */
+  private lifts = new Map<string, number>()
+  /** The nudge row and result row a refused carry-on left, which the next carry-on reuses instead of adding a pair (KERNEL-1031). */
+  private refusedRows = new Map<string, string>()
   /** Chats `carryOn` restarted after a usage limit and that haven't finished a turn since, so a lifted limit doesn't restart them all at once (KERNEL-220). */
   private resuming = new Set<string>()
   /** Chats with a running turn, saved under `working` at every turn start and end, so a crash leaves the right list (KERNEL-215). */
@@ -425,18 +446,21 @@ export class Sessions {
    * setup (KERNEL-128). A rejection without a reset time is dropped, since nothing could tell when it ends, so it no longer
    * holds anything. A held queue comes back only while its workspace's setup still has to pass, or while a ready workspace's
    * brief waits for a PR to merge (KERNEL-259). One still in setup is left to Kernel's `recoverSetups`, which holds it once.
-   * Before KERNEL-215 `cutOff` was a list of chats a limit stopped, which still loads.
+   * Before KERNEL-215 `cutOff` was a list of chats a limit stopped, and before KERNEL-1031 a reason by chat, which still load.
    *
    * Then what Sessions saved itself (KERNEL-215): every other chat's queue, and the chats whose turn was running when
    * Kernel quit or closed unexpectedly (`clean` says which). Each of those that is still open gets its stuck tool rows
    * closed and a note, and carries on by itself through `carryOn`, after what was queued. Everything goes through the same
    * gate as a limit: a pause, an offline or signed-out hold, a limit and the agent limit all make it wait.
    */
-  restore(limits: RateLimit[], cutOff: string[] | Record<string, CutOffReason>, held: Record<string, QueuedMessage[]> = {}, o: { clean?: boolean } = {}) {
+  restore(limits: RateLimit[], cutOff: string[] | Record<string, CutOffReason | CutOffEntry>, held: Record<string, QueuedMessage[]> = {}, o: { clean?: boolean } = {}) {
     const now = Date.now()
     for (const l of limits) this.limits.set(limitKey(l), l.status === 'rejected' && !l.resetsAt && !(l.rejectedAt !== undefined && now - l.rejectedAt < PROVISIONAL_KEPT_MS) ? { ...l, status: 'allowed' } : l)
-    const saved: [string, CutOffReason][] = Array.isArray(cutOff) ? cutOff.map((id) => [id, 'limit']) : Object.entries(cutOff ?? {})
-    for (const [id, reason] of saved) if (reason === 'limit' || reason === 'quit') this.cutOff.set(id, reason)
+    const saved: [string, CutOffReason | CutOffEntry | undefined][] = Array.isArray(cutOff) ? cutOff.map((id) => [id, 'limit']) : Object.entries(cutOff ?? {})
+    for (const [id, v] of saved) {
+      const entry = typeof v === 'string' ? { reason: v, at: now } : v
+      if (entry?.reason === 'limit' || entry?.reason === 'quit') this.cutOff.set(id, { reason: entry.reason, ...(entry.account ? { account: entry.account } : {}), at: typeof entry.at === 'number' ? entry.at : now })
+    }
     // Chats whose setup failed before Kernel quit still hold their brief, and what was sent after it, for Run again.
     for (const [id, queue] of Object.entries(held)) {
       const chat = this.d.store.chat(id)
@@ -490,14 +514,14 @@ export class Sessions {
     // A chat that was waiting on its plan card waits for the card again: no nudge, and nothing carries it on but what was
     // queued, which still goes first (plan-cards-survive-restart).
     if (plan) {
-      if (queue.length) this.cutOff.set(chatId, 'quit')
+      if (queue.length) this.cutOff.set(chatId, { reason: 'quit', at: Date.now() })
       return
     }
     if (queue.length && !queue.some((q) => q.from === 'kernel' && isNudge(q.parts))) {
       this.queues.set(chatId, [...queue, { id: randomUUID(), chatId, parts: [{ type: 'text', text: RELAUNCH_NUDGE }], ts: Date.now(), from: 'kernel' }])
       this.pushQueue(chatId)
     }
-    this.cutOff.set(chatId, 'quit')
+    this.cutOff.set(chatId, { reason: 'quit', at: Date.now() })
     // A teammate that carries on rides along in the Lead's next update instead of waking it (KERNEL-215).
     this.d.onExit?.(ws, chat, clean ? QUIT_REASON : CRASH_REASON, true, true)
   }
@@ -553,7 +577,7 @@ export class Sessions {
       if (!chat || chatProvider(chat) !== provider) continue
       if (o.moved && live.account === this.d.accountFor?.(provider, chat)) continue
       if ('account' in o && live.account !== o.account) continue
-      if (live.running || (live.tasks.size && this.cutOff.get(id) !== 'limit')) this.markStale(id, o.reason ?? 'account')
+      if (live.running || (live.tasks.size && this.cutOff.get(id)?.reason !== 'limit')) this.markStale(id, o.reason ?? 'account')
       else this.end(id, live)
     }
     // Auto depends on the account's models, which Kernel reads again for this one.
@@ -641,6 +665,7 @@ export class Sessions {
     const l = this.limits.get(key)
     if (!l || (l.status === 'allowed' && !l.utilization)) return
     const { rejectedAt: _at, provisional: _p, ...rest } = l
+    if (l.status === 'rejected') this.lifted(l)
     console.info(`[limits] lifted ${key}: reset timer`)
     this.limits.set(key, { ...rest, status: 'allowed', utilization: 0 })
     this.pushLimits()
@@ -1032,9 +1057,10 @@ export class Sessions {
     // A nudge picks up a turn a limit or a crash cut short, so the turn is still the one whoever started it started.
     // Read before the nudge is saved, which would be the last message.
     const by = o.from === 'kernel' && isNudge(parts) ? this.startedBy(chat.id) : o.from
-    const carrying = this.cutOff.get(chat.id) === 'quit'
+    const carrying = this.cutOff.get(chat.id)?.reason === 'quit'
     // Whatever goes out next picks the chat up again, so it no longer waits for the limit.
     this.setCutOff(chat.id, false)
+    if (!(o.from === 'kernel' && isNudge(parts))) this.refusedRows.delete(chat.id)
     // An idle process kept on another account, for its background tasks, ends here. The turn resumes the conversation on
     // the account the chat runs on now, the one `carryOn` checked for a limit, and the note says so.
     // So does one a change marked stale during its turn, which the queue would otherwise have reused (KERNEL-994).
@@ -1420,10 +1446,11 @@ export class Sessions {
     // A chat that stopped running has finished the turn it was restarted for, so the next one may go.
     for (const id of this.resuming) if (!this.live.get(id)?.running) this.resuming.delete(id)
     for (const id of this.coldLast([...this.cutOff.keys()])) {
-      const reason = this.cutOff.get(id)
+      const reason = this.cutOff.get(id)?.reason
       if (!reason) continue
       const chat = this.d.store.chat(id)
       if (!chat || !this.open(id)) { this.setCutOff(id, false); continue }
+      if (reason === 'limit' && this.stuckHolds(chat)) continue
       if (this.live.get(id)?.running || this.pausedChat(chat) || this.moveHolds.has(id) || this.atCapacity(id) || this.coldHolds(id) || this.limitHolds(chat) || this.nearLimitHolds(id)) continue
       // A lifted limit restarts the chats it cut off two at a time. The next starts when one ends its turn, where `drainWaiting` comes back here (KERNEL-220).
       if (reason === 'limit') {
@@ -1431,10 +1458,37 @@ export class Sessions {
         this.resuming.add(id)
       }
       if (this.queued(id).length) this.drain(id)
-      else this.dispatch(chat, [{ type: 'text', text: reason === 'quit' ? RELAUNCH_NUDGE : LIMIT_LIFTED }], { from: 'kernel' })
-      // A send that started clears the cut-off, so only a chat that really carried on is reported (KERNEL-777).
-      if (!this.cutOff.has(id)) this.d.onCarriedOn?.(id, reason)
+      else this.dispatch(chat, [{ type: 'text', text: reason === 'quit' ? RELAUNCH_NUDGE : LIMIT_LIFTED }], { from: 'kernel', ...(reason === 'limit' && this.refusedRows.has(id) ? { clientId: this.refusedRows.get(id) } : {}) })
+      // A send that started clears the cut-off. The carry-on is reported when the turn's first clean reply arrives (`carriedOn`, KERNEL-1031).
+      if (!this.cutOff.has(id)) this.carrying.set(id, { reason, account: this.targetAccount(chat), at: Date.now() })
     }
+  }
+
+  /** The account the chat's next turn runs on, 'cli' for the CLI's own login. */
+  private targetAccount(chat: Chat): string { return this.d.accountFor?.(chatProvider(chat), chat) ?? 'cli' }
+
+  /**
+   * A chat that took three refusals in a row gets no more nudges until a window on its target account lifts, or the user
+   * switches its account or model, which also starts its count again (KERNEL-1031).
+   */
+  private stuckHolds(chat: Chat): boolean {
+    const s = this.stuck.get(chat.id)
+    if (!s) return false
+    const account = this.targetAccount(chat)
+    if (s.account !== account || s.model !== chat.model) { this.stuck.delete(chat.id); this.strikes.delete(chat.id); return false }
+    if ((this.lifts.get(`${chatProvider(chat)}:${account}`) ?? 0) > s.lifted) { this.stuck.delete(chat.id); return false }
+    return true
+  }
+
+  /** The carried turn's first clean reply: the chat is working again, which clears its strikes and its reusable rows. */
+  private carriedOn(chatId: string) {
+    this.strikes.delete(chatId)
+    this.stuck.delete(chatId)
+    this.refusedRows.delete(chatId)
+    const c = this.carrying.get(chatId)
+    if (!c) return
+    this.carrying.delete(chatId)
+    this.d.onCarriedOn?.(chatId, c.reason)
   }
 
   /**
@@ -1463,9 +1517,9 @@ export class Sessions {
   /** A usage limit or a quit stopped this chat mid-turn and it waits to carry on. */
   private isCutOff(chatId: string) { return this.cutOff.has(chatId) }
 
-  private setCutOff(chatId: string, reason: CutOffReason | false) {
-    if ((this.cutOff.get(chatId) ?? false) === reason) return
-    if (reason) this.cutOff.set(chatId, reason)
+  private setCutOff(chatId: string, entry: CutOffEntry | false) {
+    if ((this.cutOff.get(chatId)?.reason ?? false) === (entry && entry.reason)) return
+    if (entry) this.cutOff.set(chatId, entry)
     else this.cutOff.delete(chatId)
     this.d.onCutOff?.(Object.fromEntries(this.cutOff))
   }
@@ -1889,7 +1943,7 @@ export class Sessions {
       setTasks: (ids) => { live.tasks = new Set(ids) },
       retrying: (retry) => { live.retry = retry; bus.push({ type: 'retry', chatId, retry }) },
       clearRetry: () => this.clearRetry(chatId, live),
-      reached: () => this.d.onReached?.(),
+      reached: () => { this.d.onReached?.(); if (!live.limited) this.carriedOn(chatId) },
       replied: () => this.d.onReply?.(ws, this.mustChat(chatId)),
       failed: (failure, o = {}) => { live.failed = failure; if (o.notify) this.d.onFailure?.(failure, ws, chatProvider(this.mustChat(chatId)), live.account) },
       limited: (o = {}) => {
@@ -2021,22 +2075,39 @@ export class Sessions {
     if (t.tooLong && live.sent && !live.interrupted && !this.shrunk.has(chatId) && !this.closing) { void this.retryShorter(chatId, ws, live, t); return }
     const chat = this.recordTurn(this.mustChat(chatId), live)
     const ok = t.ok
+    const stopped = live.interrupted && !live.sendNext
+    const limited = !!live.limited && !stopped
+    const account = live.account ?? 'cli'
+    const carry = this.carrying.get(chatId)
+    this.carrying.delete(chatId)
+    const refused = limited && carry?.reason === 'limit' && carry.account === account && Date.now() - carry.at < REFUSED_WITHIN_MS
+    // A refused nudge keeps one result row between carry-ons, next to the one nudge row they reuse (KERNEL-1031).
+    const nudge = refused && live.sentItem && live.sentItem.from === 'kernel' && isNudge(live.sentItem.parts) ? live.sentItem.id : undefined
     // An interrupted turn ends with error_during_execution; the interrupted row already says what happened.
-    if ((ok || !live.interrupted) && !live.cleared) this.item(chat, { kind: 'result', id: t.id, ts: Date.now(), durationMs: t.durationMs ?? 0, ok, error: ok ? undefined : t.error })
+    if ((ok || !live.interrupted) && !live.cleared) this.item(chat, { kind: 'result', id: nudge ? `${nudge}-result` : t.id, ts: Date.now(), durationMs: t.durationMs ?? 0, ok, error: ok ? undefined : t.error, ...(limited ? { limit: true as const } : {}) })
+    if (nudge) this.refusedRows.set(chatId, nudge)
     this.noteMove(chat)
     this.clearRetry(chatId, live)
     void live.runner.context()
-    const stopped = live.interrupted && !live.sendNext
     const interrupted = live.interrupted
     // Stop and Send now end the cards the turn put up, on either provider. One answered first keeps its answer (KERNEL-563).
     if (interrupted) this.expireCards(live.cards)
     // Cut off by a limit Kernel knows about, so it can tell when to carry on. An unknown one would loop. The limit is the
     // account's the turn ran on, which a switch at the limit may already have left (KERNEL-568).
-    const limit = live.limited && !stopped && this.limitHolds(chat, live)
-    if (limit) this.setCutOff(chatId, 'limit')
+    // A turn a limit cut off always goes on the list: whether its window still looks closed now says nothing about the next
+    // attempt, and a refusal that came back at once is counted so the carry-on stops (KERNEL-1031). An API key has no windows.
+    let strikes = 0
+    if (limited && !live.onKey) {
+      if (refused) strikes = (this.strikes.get(chatId) ?? 0) + 1
+      if (strikes) this.strikes.set(chatId, strikes)
+      else this.strikes.delete(chatId)
+      if (strikes >= MAX_STRIKES) this.stuck.set(chatId, { account: this.targetAccount(chat), model: chat.model, lifted: this.lifts.get(`${chatProvider(chat)}:${this.targetAccount(chat)}`) ?? 0 })
+      this.setCutOff(chatId, { reason: 'limit', account, at: Date.now() })
+    }
+    const limit = limited && (refused ? strikes === MAX_STRIKES : this.limitHolds(chat, live))
     // A carry-on after a quit that failed on a sign-out or a dropped connection waits for that hold to lift and tries
     // again, as at launch. Without a hold in place nothing would ever lift, so it stays stopped like any failed turn.
-    if (!ok && !stopped && live.carrying && live.failed && this.holding(chatProvider(chat))) this.setCutOff(chatId, 'quit')
+    if (!ok && !stopped && live.carrying && live.failed && this.holding(chatProvider(chat))) this.setCutOff(chatId, { reason: 'quit', at: Date.now() })
     live.carrying = false
     live.failed = undefined
     live.interrupted = false
@@ -2050,7 +2121,7 @@ export class Sessions {
     live.cleared = false
     this.setRunning(chat, ws, live, false)
     // A turn a quit interrupted isn't over: it carries on at the next launch, which reports it then.
-    if (!this.closing) this.turnDone(ws, chat, { ok, interrupted, by: turns.from ?? 'user', account: live.account, ...(limit ? { limit: true as const } : {}) })
+    if (!this.closing) this.turnDone(ws, chat, { ok, interrupted, by: turns.from ?? 'user', account: live.account, ...(limited ? { limit: true as const } : {}), ...(refused ? { refused: true as const } : {}), ...(limit && strikes === MAX_STRIKES ? { stuck: true as const } : {}) })
     // Stop means stop: held messages are dropped, not sent. Send now keeps them.
     if (stopped) this.setQueue(chatId, [])
     else this.drain(chatId)
@@ -2058,7 +2129,7 @@ export class Sessions {
   }
 
   /** What follows a finished turn (`onTurnDone`). A teammate's terminal seat ends its turns here too (KERNEL-1004). */
-  turnDone(ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true }) {
+  turnDone(ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true; refused?: true; stuck?: true }) {
     this.d.onTurnDone?.(ws, chat, turn)
   }
 
@@ -2143,6 +2214,7 @@ export class Sessions {
       const prev = this.limits.get(key)
       const merged = { ...mergeLimit(prev, limitProvider(l) === 'claude' ? { ...l, model: l.model ?? WINDOW_MODEL[l.type] } : l, now), readAt: now }
       this.limits.set(key, merged)
+      if (prev?.status === 'rejected' && merged.status !== 'rejected') this.lifted(merged)
       if (prev?.status === 'rejected' && merged.status !== 'rejected') console.info(`[limits] lifted ${key}: ${liftedBy(prev, now)}`)
       if (merged.status === 'rejected' && merged.rejectedAt !== prev?.rejectedAt) {
         console.info(`[limits] rejected ${key}${merged.provisional ? ' (temporary)' : ''}${merged.resetsAt ? `, resets at ${new Date(merged.resetsAt * 1000).toISOString()}` : ''}`)
@@ -2151,6 +2223,12 @@ export class Sessions {
     }
     if (!o.copied) for (const l of rejected) this.copyRejection(l)
     this.pushLimits()
+  }
+
+  /** A rejected window lifted, which releases the chats on its account that took too many refusals (`stuckHolds`, KERNEL-1031). */
+  private lifted(l: RateLimit) {
+    const key = `${limitProvider(l)}:${l.accountId ?? 'cli'}`
+    this.lifts.set(key, (this.lifts.get(key) ?? 0) + 1)
   }
 
   /** A rejection holds every account on the same login, which shares its windows, the CLI's own login included (KERNEL-1030). */

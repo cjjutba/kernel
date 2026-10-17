@@ -389,7 +389,7 @@ describe('session runner (SDK scripted)', () => {
 
     it('keeps no usage window from it, so a rejected one cuts nothing off', async () => {
       const run = async (deps: Partial<SessionDeps>) => {
-        const cutOff: Record<string, string>[] = []
+        const cutOff: Record<string, { reason: string }>[] = []
         const s = await setup('acceptEdits', { deps: { ...deps, onCutOff: (ids) => { cutOff.push(ids) } } })
         s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: deps === onKey ? 'ANTHROPIC_API_KEY' : 'none' })
         s.call.feed({ type: 'rate_limit_event', uuid: 'l1', session_id: 's', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', utilization: 1, resetsAt: Math.round(Date.now() / 1000) + 3600 } })
@@ -398,7 +398,7 @@ describe('session runner (SDK scripted)', () => {
         return { limits: await s.sessions.usage(), cutOff: cutOff.at(-1) ?? {} }
       }
       // On the CLI's own login the window counts, and the turn waits for it to reset.
-      expect(await run({})).toMatchObject({ limits: [{ type: 'five_hour', status: 'rejected' }], cutOff: { chat: 'limit' } })
+      expect(await run({})).toMatchObject({ limits: [{ type: 'five_hour', status: 'rejected' }], cutOff: { chat: { reason: 'limit' } } })
       expect(await run(onKey)).toEqual({ limits: [], cutOff: {} })
     })
   })
@@ -2223,7 +2223,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
   /** Kernel opening again on the same database: a new Sessions, what the last run left, and `restore`. */
   function relaunch(s: Setup, o: { clean?: boolean; agentLimit?: number; before?: (sessions: Sessions) => void; cutOff?: string[] | Record<string, 'limit' | 'quit'> } = {}) {
     const exits: { reason: string; midTurn: boolean; resumed: boolean }[] = []
-    let cutOff: Record<string, string> = {}
+    let cutOff: Record<string, { reason: string }> = {}
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: o.agentLimit ?? 0 } } as unknown as AppSettings
     // As in Kernel: a sign-out a session reports holds every project until sign-in.
     const sessions: Sessions = new Sessions({
@@ -2392,7 +2392,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     await flush()
     expect(next.sessions.heldFor()).toEqual(['auth'])
     expect(next.sessions.isRunning('chat')).toBe(false)
-    expect(next.cutOff()).toEqual({ chat: 'quit' })
+    expect(next.cutOff()).toMatchObject({ chat: { reason: 'quit' } })
     // Signed in again: it carries on with a new nudge.
     next.sessions.releaseAll('auth')
     expect(next.sessions.isRunning('chat')).toBe(true)
@@ -2461,7 +2461,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     // The Lead's update batch fires while the checks still run: refused, like any held message, and the chat stays cut off.
     expect(next.sessions.post('chat', [{ type: 'text', text: 'Team update from Kernel' }])).toBe(false)
     expect(next.sessions.isRunning('chat')).toBe(false)
-    expect(next.cutOff()).toEqual({ chat: 'quit' })
+    expect(next.cutOff()).toMatchObject({ chat: { reason: 'quit' } })
     next.sessions.releaseCarryOn()
     expect(texts(s.store).at(-1)).toBe(RELAUNCH_NUDGE)
   })
@@ -2509,7 +2509,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     fresh.feed({ type: 'assistant', uuid: 'a2', parent_tool_use_id: null, error: 'authentication_failed', message: { content: [] } })
     fresh.feed(result('r2', 'error_during_execution'))
     await flush()
-    expect(next.cutOff()).toEqual({ chat: 'quit' })
+    expect(next.cutOff()).toMatchObject({ chat: { reason: 'quit' } })
     expect(next.sessions.queued('chat')).toHaveLength(1)
     next.sessions.releaseAll('auth')
     expect(next.sessions.isRunning('chat')).toBe(true)

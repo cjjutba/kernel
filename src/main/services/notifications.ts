@@ -23,7 +23,7 @@ type Deps = {
  * the message that started it (KERNEL-116). `account` is the one it ran on, undefined for the CLI's own login, and `limit`
  * says a usage limit cut it off, so it carries on by itself later (KERNEL-777).
  */
-export interface TurnDone { ok: boolean; interrupted: boolean; lead: boolean; queued: boolean; by: TurnBy; account?: string; limit?: true }
+export interface TurnDone { ok: boolean; interrupted: boolean; lead: boolean; queued: boolean; by: TurnBy; account?: string; limit?: true; refused?: true; stuck?: true }
 
 const IDLE_AFTER_MS = 10 * 60_000
 /** How long a row that no longer needs you stays in the inbox (D-137). */

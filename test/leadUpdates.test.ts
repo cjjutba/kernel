@@ -1816,6 +1816,18 @@ describe('a teammate a usage limit stopped (KERNEL-777)', () => {
     expect(s.updates[0].rows[0].events[0]).toEqual({ kind: 'limit', text: 'Hit its 5-hour limit, now on Account 2', actionable: false })
   })
 
+  it('reads a limit, a carry-on and a limit again in one update as one limit event (KERNEL-1031)', async () => {
+    const { u, s, w1, nc } = await setup()
+    u.turnDone(w1, nc, limited, { ...L, switching: {} })
+    u.limitLifted(w1, { provider: 'claude', account: 'Account 2' })
+    u.turnDone(w1, nc, limited, { ...L, stuck: 'off' })
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    const { body } = parts(s.posts[0])
+    expect(body.filter((l) => l.includes('limit'))).toEqual(['- Hit its 5-hour limit on Account 3. It is paused until ' + until(L.resetsAt!) + '.'])
+    expect(body.join('\n')).not.toContain('carries on')
+  })
+
   it('wakes the Lead once with the earliest reset when no account has headroom, and once more when the teammate carries on', async () => {
     const { u, s, w1, nc, restart } = await setup()
     u.turnDone(w1, nc, limited, { ...L, switching: {} })

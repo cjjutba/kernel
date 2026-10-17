@@ -254,7 +254,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     expect(k2.sessions.isRunning(christian.id)).toBe(false)
     expect(k2.sessions.isRunning(lead.id)).toBe(false)
     expect(notes(k2, christian)).toEqual([QUIT_NOTE])
-    expect(k2.store.meta('cutOff')).toMatchObject({ [christian.id]: 'quit', [lead.id]: 'quit' })
+    expect(k2.store.meta('cutOff')).toMatchObject({ [christian.id]: { reason: 'quit' }, [lead.id]: { reason: 'quit' } })
     // Signed in, as by `claude /login` in a terminal: both carry on, Christian with the queued message first.
     k2.accountReader = async () => ({ signedIn: true })
     await k2.readAccount()

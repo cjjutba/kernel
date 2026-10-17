@@ -918,7 +918,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     // with the numbers it started with, is gone.
     k.sessions.stop('codex')
     process.env.FAKE_CODEX_USED = JSON.stringify({ '': 100 })
-    ;(k.sessions as unknown as { setCutOff: (id: string, r: 'limit') => void }).setCutOff('codex', 'limit')
+    ;(k.sessions as unknown as { setCutOff: (id: string, e: { reason: 'limit'; account: string; at: number }) => void }).setCutOff('codex', { reason: 'limit', account: 'cli', at: Date.now() })
     reject(k, { provider: 'codex' })
     await until(() => k.providers.active('codex') === added.id)
     await until(() => notes(k, 'codex').length && k.store.chat('codex')?.ranOn === added.id && !k.sessions.isRunning('codex'))
