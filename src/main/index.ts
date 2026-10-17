@@ -7,6 +7,7 @@ import Database from 'better-sqlite3'
 import * as pty from 'node-pty'
 import electronUpdater from 'electron-updater'
 import { bus } from './bus'
+import { bootDetail } from './bootError'
 import { Kernel } from './kernel'
 import { fixtureHandlers, fixturePush } from './fixtures'
 import { hookTokenFile } from './services/hookToken'
@@ -286,7 +287,7 @@ function handle(channel: string, fn: (e: IpcMainInvokeEvent, req: any) => Promis
  */
 async function bootFailed(err: unknown, rescue?: { updater: Updater; quit: QuitGuard }) {
   console.error('[kernel] boot failed', err)
-  const detail = err instanceof Error ? err.stack ?? err.message : String(err)
+  const detail = bootDetail(err, log?.file, redaction.home)
   try {
     const version = rescue && (await rescue.updater.readyWithin(BOOT_UPDATE_MS))
     if (rescue && version) {
