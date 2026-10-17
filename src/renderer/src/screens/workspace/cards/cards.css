@@ -73,9 +73,9 @@
 /* A plan in its chat (cards/plan.tsx) */
 .plan-inline { display: flex; flex-direction: column; gap: 14px; scroll-margin: 8px 0 14px; }
 .plan-inline > .trow { gap: 8px; }
-/* The plan's icon, list markers and step numbers are muted ink; the plan blue is for plan mode controls. */
-.plan-doc-icon { display: inline-flex; color: var(--muted); }
-.plan-inline .md-doc ol > li::marker { color: var(--muted); }
+/* The plan reads as part of plan mode, so its icon, list markers and step numbers take the plan blue. */
+.plan-doc-icon { display: inline-flex; color: var(--plan); }
+.plan-inline .md-doc ol > li::marker { color: var(--plan); }
 /* The Lead's plan: a bordered document, its write-up, then one hairline-separated row per task (PlanWaiting.png). */
 .plan-card { border: 1px solid var(--card-line); background: var(--card-bg); border-radius: var(--r-md); padding: 16px 18px 4px; }
 .plan-card .md > .md-h[data-level='1'] { font-size: var(--fs-sub); line-height: var(--lh-snug); margin-bottom: 6px; }
@@ -84,7 +84,7 @@
 .plan-card .md > p:last-child { margin-bottom: 12px; }
 .plan-tasks { list-style: none; margin: 4px 0 0; padding: 0; }
 .plan-tasks li { display: flex; align-items: baseline; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: var(--fs-row); font-weight: var(--fw-medium); color: var(--ink-2); }
-.plan-n { width: 14px; flex-shrink: 0; color: var(--muted); font-size: var(--fs-meta); font-weight: var(--fw-regular); }
+.plan-n { width: 14px; flex-shrink: 0; color: var(--plan); font-size: var(--fs-meta); font-weight: var(--fw-regular); }
 .plan-task { flex: 1; min-width: 0; }
 .plan-who { margin-left: 6px; color: var(--muted); font-size: var(--fs-code); font-weight: var(--fw-regular); }
 .plan-file { min-width: 0; max-width: 340px; height: 22px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: var(--fs-chip); }
