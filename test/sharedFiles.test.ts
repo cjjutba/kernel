@@ -23,6 +23,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   createSdkMcpServer: (o: { name: string; tools: { name: string }[] }) => ({ name: o.name, tools: o.tools.map((t) => t.name) }),
   tool: (name: string, description: string, inputSchema: unknown, handler: unknown) => ({ name, description, inputSchema, handler }),
   query: ({ options }: { options: { cwd?: string } }) => {
+    // The naming request a first message starts (KERNEL-1024) isn't a session: it records nothing and never answers.
+    if ((options as { persistSession?: boolean; maxTurns?: number }).persistSession === false && (options as { maxTurns?: number }).maxTurns === 1) return { [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }) }
     sdk.calls.push(options)
     return {
       [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }),

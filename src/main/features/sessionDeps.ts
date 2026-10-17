@@ -61,6 +61,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     buildOpen: (chatId) => k.lead.buildOpen(chatId),
     onBuildPlanApproved: (chatId) => k.lead.recordGoAhead(chatId, 'plan approved'),
     onReply: (ws, chat) => void k.chats.nameChat(ws, chat),
+    onSent: (ws, chat, parts) => void k.chats.nameFromFirst(ws, chat, parts),
     // A reply proves the network works, so a failing DNS probe behind a proxy doesn't hold every send (KERNEL-231).
     onReached: () => k.account.network?.reached(),
     onReset: (_ws, chat, trigger) => k.chats.resetName(chat, trigger),

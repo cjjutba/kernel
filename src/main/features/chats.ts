@@ -1,4 +1,4 @@
-import type { Chat, ChatItem, Effort, Provider, Workspace } from '@shared/types'
+import type { Chat, ChatItem, ChatPart, Effort, Provider, Workspace } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { isSentItem } from '@shared/approvalAnswer'
 import { effortFor } from '@shared/effort'
@@ -78,6 +78,8 @@ export class Chats extends Feature {
   private nameMisses = new Map<string, number>()
   /** Chats whose naming failure is in the main log already, so a chat that keeps failing logs it once (KERNEL-624). */
   private nameFailLogged = new Set<string>()
+  /** Chats whose first message already started a naming request (`nameFromFirst`), so one conversation asks once. */
+  private namedEarly = new Set<string>()
 
   /** The naming request on each provider. Tests swap them for stubs. */
   askClaude: typeof askTitle = askTitle
@@ -180,6 +182,36 @@ export class Chats extends Feature {
   }
 
   /**
+   * Names a chat from its first message as soon as it is sent, alongside the turn (KERNEL-1024, amends D-089). Whichever name
+   * comes first, this one or Claude Code's transcript title, is kept: both check that the chat is still unnamed before they save.
+   * Once per conversation. A failure leaves the chat to `nameChat`.
+   */
+  async nameFromFirst(ws: Workspace, chat: Chat, parts: ChatPart[]) {
+    const text = parts.flatMap((p) => (p.type === 'text' ? [p.text.trim()] : [])).filter(Boolean).join('\n').slice(0, 1500)
+    const first = this.store.chat(chat.id)
+    if (!text || !first || first.closed || !this.autoNamed(first) || !this.unnamed(first) || this.naming.has(chat.id) || this.namedEarly.has(chat.id)) return
+    this.namedEarly.add(chat.id)
+    this.naming.add(chat.id)
+    const resets = this.nameResets.get(chat.id) ?? 0
+    try {
+      const title = await this.titleFor(`User: ${text}`, { cwd: ws.path }).catch((e) => {
+        if (!this.stopped && !this.nameFailLogged.has(chat.id)) {
+          this.nameFailLogged.add(chat.id)
+          console.warn(`[chats] could not name chat ${chat.id}: ${(e as Error)?.message ?? e}`)
+        }
+        return undefined
+      })
+      if (this.stopped || !title || resets !== (this.nameResets.get(chat.id) ?? 0)) return
+      const now = this.store.chat(chat.id)
+      if (!now || !this.autoNamed(now) || !this.unnamed(now)) return
+      this.nameMisses.delete(chat.id)
+      this.autoName({ ...now, title, autoTitle: now.autoTitle ?? { turns: 0 } })
+    } finally {
+      this.naming.delete(chat.id)
+    }
+  }
+
+  /**
    * /clear starts a new conversation, so an auto name goes back to "New chat", or "New tab" for a Lead tab, and the schedule
    * starts over. The Lead chat keeps its name (KERNEL-337). Other resets keep it.
    */
@@ -190,6 +222,7 @@ export class Chats extends Feature {
     if (now.sessionId) this.clearedSession.set(chat.id, now.sessionId)
     this.nameResets.set(chat.id, (this.nameResets.get(chat.id) ?? 0) + 1)
     this.nameMisses.delete(chat.id)
+    this.namedEarly.delete(chat.id)
     this.titleChecked.delete(chat.id)
     this.saveChat({ ...now, title: now.threadId ? NEW_TAB : NEW_CHAT, autoTitle: { turns: 0 } })
   }

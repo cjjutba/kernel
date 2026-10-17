@@ -60,7 +60,21 @@ async function setup(o: { dataDir?: string; home?: string; repo?: string; answer
 /** The Lead workspace's first chat after a message: "New tab", auto-named, with a session. */
 async function leadChat(s: Awaited<ReturnType<typeof setup>>): Promise<Chat> {
   const project = await s.k.addProject(s.repo)
+  const answer = s.answer
+  s.answer = async () => undefined
   const c = await s.k.startLeadChat(project.id, { prompt: 'Fix the login bug' })
+  // The brief is a first message, so its name request goes out on its own (KERNEL-1024). The turn-end tests start after it answered.
+  await until(() => s.asked.length === 1)
+  await settle()
+  s.answer = answer
+  s.asked.length = 0
+  return s.k.store.saveChat({ ...s.k.store.chat(c.id)!, sessionId: 'session-1' })
+}
+
+/** A Lead tab with no message yet: "New tab", auto-named, with a session. */
+async function emptyTab(s: Awaited<ReturnType<typeof setup>>): Promise<Chat> {
+  const project = await s.k.addProject(s.repo)
+  const c = await s.k.leadChat(project.id)
   return s.k.store.saveChat({ ...s.k.store.chat(c.id)!, sessionId: 'session-1' })
 }
 
@@ -90,7 +104,8 @@ describe('chat names (KERNEL-202)', () => {
     expect(term.autoTitle).toBeUndefined()
 
     for (const c of [wsChat, fork, term]) await s.turn(c.id)
-    expect(s.asked).toEqual([])
+    // Only the Lead chat's brief asks, from its first message (KERNEL-1024). Turn ends on the other chats ask nothing.
+    expect(s.asked).toEqual([{ text: 'User: Plan the release', current: undefined }])
     expect(s.chat(wsChat.id).title).toBe('Tabs')
     expect(s.chat(fork.id).title).toBe('Fork of Tabs')
     expect(s.chat(term.id).title).toBe('Terminal (claude)')
@@ -172,6 +187,71 @@ describe('chat names (KERNEL-202)', () => {
     expect(s.chat(c.id).title).toBe('My own name')
     await s.k.stop({ budgetMs: 0 })
   }, 60_000)
+
+  describe('named from the first message (KERNEL-1024)', () => {
+    const sent = (s: Awaited<ReturnType<typeof setup>>, c: Chat, text = 'Fix the login bug') =>
+      s.d.onSent!(s.k.store.workspace(c.workspaceId)!, s.chat(c.id), [{ type: 'text', text }])
+
+    it('names the chat from its first message before the turn ends, once, and the Lead tab names its chat', async () => {
+      const s = await setup()
+      const c = await emptyTab(s)
+      s.answer = async () => 'Login bug'
+      sent(s, c)
+      await until(() => s.chat(c.id).title === 'Login bug')
+      expect(s.asked).toEqual([{ text: 'User: Fix the login bug', current: undefined }])
+      expect(s.k.store.items(c.id).some((i) => i.kind === 'result')).toBe(false)
+      expect(s.chat(c.id).autoTitle).toEqual({ turns: 0 })
+      sent(s, c, 'And the signup bug')
+      await settle()
+      expect(s.asked).toHaveLength(1)
+      await s.k.stop({ budgetMs: 0 })
+    }, 60_000)
+
+    it('keeps a name the user typed while the request was in flight', async () => {
+      const s = await setup()
+      const c = await emptyTab(s)
+      let release!: (v: string) => void
+      s.answer = () => new Promise((r) => { release = r })
+      sent(s, c)
+      await until(() => s.asked.length === 1)
+      await s.k.handlers()['chats.rename']({ chatId: c.id, title: 'My own name' })
+      release('Kernel name')
+      await settle()
+      expect(s.chat(c.id).title).toBe('My own name')
+      expect(s.chat(c.id).autoTitle).toBeUndefined()
+      await s.k.stop({ budgetMs: 0 })
+    }, 60_000)
+
+    it("doesn't overwrite a transcript title that landed first", async () => {
+      const s = await setup()
+      const c = await emptyTab(s)
+      let release!: (v: string) => void
+      s.answer = () => new Promise((r) => { release = r })
+      sent(s, c)
+      await until(() => s.asked.length === 1)
+      s.customTitle = 'Claude title'
+      await s.reply(c.id)
+      expect(s.chat(c.id).title).toBe('Claude title')
+      release('Haiku title')
+      await settle()
+      expect(s.chat(c.id).title).toBe('Claude title')
+      await s.k.stop({ budgetMs: 0 })
+    }, 60_000)
+
+    it('leaves the chat to the turn-end path when the request fails', async () => {
+      const s = await setup()
+      const c = await emptyTab(s)
+      s.answer = async () => { throw new Error('no haiku') }
+      sent(s, c)
+      await until(() => s.asked.length === 1)
+      await settle()
+      expect(s.chat(c.id).title).toBe('New tab')
+      s.answer = async () => 'Named at turn end'
+      await s.turn(c.id)
+      expect(s.chat(c.id).title).toBe('Named at turn end')
+      await s.k.stop({ budgetMs: 0 })
+    }, 60_000)
+  })
 
   it('puts an auto name back to "New tab" in a Lead tab on /clear only, and keeps a typed name', async () => {
     const s = await setup()
