@@ -62,6 +62,13 @@ async function clickReadImage(page: Page, name: string) {
   await page.waitForTimeout(400)
 }
 
+// KERNEL-1025: the run of grey notes opened from its "and 2 more" button.
+async function openNotes(page: Page) {
+  await page.getByRole('button', { name: /and \d+ more/ }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 // WorkspaceScrolledUp is a long chat read from higher up. The scroll position is the transcript's own, so wheel it up like a reader would.
 async function scrollUp(page: Page) {
   await page.locator('.ws-scroll').hover()
@@ -779,6 +786,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceNewChatJustSent: sendFromNewChat,
   WorkspaceLeaveAndReturn: leaveAndReturn,
   WorkspaceScrolledUp: scrollUp,
+  WorkspaceQuietTranscriptNotes: openNotes,
   WorkspaceChatSwitchWorkingMotion: async (page) => { await page.getByRole('tab', { name: 'Snapshot tests' }).click(); await page.waitForTimeout(500); await page.getByRole('tab', { name: 'Empty state copy' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(500) },
   WorkspaceChatSwitchSavedSpotMotion: async (page) => { await scrollUp(page); await page.getByRole('tab', { name: 'Empty state copy' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(500) },
   ChatRestoredSpot: scrollUp,

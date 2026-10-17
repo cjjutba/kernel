@@ -110,8 +110,8 @@ describe('runs of the same call (KERNEL-784)', () => {
     const denied = (c: string): ChatItem => ({ ...(bash(c, 'failed') as Extract<ChatItem, { kind: 'tool' }>), output: "The user doesn't want to proceed with this tool use. The tool use was rejected." })
     const [failed, refused] = [entriesOf([linear('A', 'failed'), linear('B', 'failed')])[0], entriesOf([denied('a'), denied('b')])[0]]
     if (failed.kind !== 'run' || refused.kind !== 'run') throw new Error('expected runs')
-    expect(runLabel(failed.run)).toEqual({ text: "Couldn't file 2 issues in Linear", bad: '2 failed' })
-    expect(runLabel(refused.run)).toEqual({ text: 'You denied 2 commands', bad: '2 denied' })
+    expect(runLabel(failed.run)).toEqual({ text: "Couldn't file 2 issues in Linear", bad: '' })
+    expect(runLabel(refused.run)).toEqual({ text: 'You denied 2 commands', bad: '' })
   })
 
   it("doesn't list calls the row hides", () => {
@@ -133,7 +133,7 @@ describe('the summary of a turn (KERNEL-784)', () => {
 
   it('counts what worked against what was tried, and puts the failures at the end', () => {
     const items = [read('a'), ...['A', 'B', 'C'].map((t) => linear(t)), linear('D', 'failed'), bash('x', 'failed')]
-    expect(summarize(items)).toEqual({ text: "Read 1 file, filed 3 of 4 issues, couldn't run 1 command", bad: '2 failed' })
+    expect(summarize(items)).toEqual({ text: "Read 1 file, filed 3 of 4 issues, couldn't run 1 command", bad: '1 failed' })
   })
 })
 
@@ -499,5 +499,56 @@ describe('a fold shows its steps while the turn works and folds them when it end
     const hidden: ChatItem = { kind: 'tool', id: `h${++n}`, ts: at, toolUseId: 'h', name: 'TodoWrite', label: '', detail: '', status: 'running' }
     const g = group(buildThread([ask(), hidden], true))
     expect(g.summary.text).toBe('Working')
+  })
+})
+
+describe('quieter transcript (KERNEL-1025)', () => {
+  const at = (n: number) => 1_700_000_000_000 + n * 1000
+  const user = (id: string, n: number): ChatItem => ({ kind: 'user', id, ts: at(n), parts: [{ type: 'text', text: 'Go' }] })
+  const bash = (id: string, status: 'done' | 'denied' | 'failed', n: number): ChatItem => ({ kind: 'tool', id, ts: at(n), toolUseId: `tu-${id}`, name: 'Bash', label: 'Run', detail: 'pnpm test', status: status === 'denied' ? 'failed' : status, ...(status === 'denied' ? { output: "The user doesn't want to proceed with this tool use. The tool use was rejected." } : {}), input: { command: 'pnpm test' } })
+  const note = (id: string, n: number, pr?: 'merged'): ChatItem => ({ kind: 'note', id, ts: at(n), text: `Note ${id}`, ...(pr ? { pr } : {}) })
+  const turn = (id: string, n: number): ChatItem[] => [user(`u-${id}`, n), { kind: 'text', id: `x-${id}`, ts: at(n + 1), text: 'Done.' }, { kind: 'result', id: `r-${id}`, ts: at(n + 2), durationMs: 5000, ok: true }]
+
+  it('says a denied or failed group once, and keeps the tail for mixed results', () => {
+    const run = (statuses: ('done' | 'denied' | 'failed')[]) => entriesOf(statuses.map((s, i) => bash(`b${i}`, s, i)))
+    const label = (e: ReturnType<typeof entriesOf>[number]) => (e.kind === 'run' ? runLabel(e.run) : undefined)
+    expect(label(run(['denied', 'denied'])[0])).toEqual({ text: 'You denied 2 commands', bad: '' })
+    expect(label(run(['failed', 'failed'])[0])).toEqual({ text: "Couldn't run 2 commands", bad: '' })
+    expect(label(run(['done', 'done', 'done', 'denied', 'denied'])[0])).toEqual({ text: 'Ran 3 of 5 commands', bad: '2 denied' })
+    expect(label(run(['failed', 'denied'])[0])).toEqual({ text: "Couldn't run 2 commands", bad: '1 failed, 1 denied' })
+    expect(summarize([bash('a', 'denied', 1), bash('b', 'denied', 2)])).toEqual({ text: 'You denied 2 commands', bad: '' })
+    expect(summarize([bash('a', 'done', 1), bash('b', 'denied', 2)]).bad).toBe('1 denied')
+  })
+
+  it('keeps the tail for a failed category that falls past the three shown phrases', () => {
+    const call = (id: string, name: string, n: number, status: 'done' | 'failed' = 'done'): ChatItem => ({ kind: 'tool', id, ts: at(n), toolUseId: `tu-${id}`, name, label: name, detail: '', status, input: {} })
+    const s = summarize([call('a', 'Read', 1), call('b', 'Edit', 2), call('c', 'Bash', 3), call('d', 'Write', 4, 'failed')])
+    expect(s.text).toBe('Read 1 file, edited 1 file, ran 1 command and 1 more')
+    expect(s.bad).toBe('1 failed')
+  })
+
+  it('quiets the time line of an earlier stopped turn', () => {
+    const stopped: ChatItem[] = [user('u1', 0), { kind: 'text', id: 'x1', ts: at(1), text: 'Working' }, { kind: 'interrupted', id: 'i1', ts: at(2) }, { kind: 'result', id: 'r1', ts: at(3), durationMs: 3000, ok: false }]
+    const metas = buildThread([...stopped, ...turn('2', 10)]).filter((b) => b.kind === 'meta' || b.kind === 'reply')
+    expect(metas.map((b) => b.quiet)).toEqual([true, undefined])
+  })
+
+  it('marks every footer but the last turn quiet', () => {
+    const blocks = buildThread([...turn('1', 0), ...turn('2', 10), ...turn('3', 20)])
+    const foots = blocks.filter((b) => b.kind === 'reply' || b.kind === 'meta')
+    expect(foots.map((b) => b.quiet)).toEqual([true, true, undefined])
+    expect(buildThread(turn('1', 0))[1]).not.toHaveProperty('quiet')
+  })
+
+  it('folds two or more grey notes in a row, and never a PR note or an error', () => {
+    const kinds = (items: ChatItem[]) => buildThread(items).map((b) => b.kind)
+    expect(kinds([note('a', 1)])).toEqual(['item'])
+    expect(kinds([note('a', 1), note('b', 2), note('c', 3)])).toEqual(['notes'])
+    const folded = buildThread([note('a', 1), note('b', 2), note('c', 3)])[0]
+    expect(folded.kind === 'notes' && folded.items.map((n) => n.id)).toEqual(['a', 'b', 'c'])
+    expect(kinds([note('a', 1), note('b', 2), note('p', 3, 'merged'), note('c', 4), note('d', 5)])).toEqual(['notes', 'item', 'notes'])
+    expect(kinds([note('a', 1), user('u', 2), note('b', 3)])).toEqual(['item', 'item', 'item'])
+    const failed: ChatItem[] = [user('u', 1), { kind: 'result', id: 'r', ts: at(2), durationMs: 1, ok: false, error: 'Boom' }]
+    expect(kinds([note('a', 1), note('b', 2), ...failed, note('c', 3), note('d', 4)])).toEqual(['notes', 'item', 'error', 'notes'])
   })
 })
