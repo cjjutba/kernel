@@ -160,9 +160,10 @@ export interface ModeAvailability { auto: boolean; bypass: boolean; reason?: str
  * Kernel merging a PR by itself, a person's own setting that is off by default (KERNEL-556). `maxLines` is the most lines a PR
  * may add and remove together. `alwaysReview` lists globs of repo paths: a PR that changes one never merges by itself. They
  * add to Kernel's own list and the base branch's `[merge] always_review`. A project's `.kernel/settings.local.toml` `[merge]`
- * (`auto`, `max_lines`, `always_review`) overrides it for that project. The shared `.kernel/settings.toml` can't.
+ * (`auto`, `max_lines`, `always_review`, `without_review`) overrides it for that project. The shared `.kernel/settings.toml` can't.
+ * `withoutReview` lets a PR merge with no review approving it, on green checks alone (KERNEL-1017).
  */
-export interface AutoMerge { on: boolean; maxLines: number; alwaysReview: string[] }
+export interface AutoMerge { on: boolean; maxLines: number; alwaysReview: string[]; withoutReview: boolean }
 
 /** How a PR merges: the app's `pr.mergeMethod`, or a project's `[pr] merge_method`. */
 export type MergeMethod = 'squash' | 'merge' | 'rebase'
