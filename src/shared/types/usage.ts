@@ -15,6 +15,10 @@ export interface RateLimit {
   accountId?: string
   /** When Kernel last heard of the window, in epoch ms (KERNEL-406). */
   readAt?: number
+  /** When the window became rejected, in epoch ms (KERNEL-1030). */
+  rejectedAt?: number
+  /** A rejection Kernel recorded itself because a turn hit a limit it had no window for. It has no reset time (KERNEL-1030). */
+  provisional?: boolean
 }
 
 /** The Claude Code login sessions run on (AccountMenu.png, Settings > Account). */
