@@ -7,10 +7,8 @@
 .nav-item .nav-glyph[data-tone='merged'] svg { color: var(--merged); }
 /* A chat in plan mode takes the plan blue on its icon only (DESIGN.md). It wins over the ink of an unread row, but not over the amber of a waiting question or permission, which says the chat needs you. A plan waiting for review stays blue. */
 .nav-item .nav-glyph[data-plan]:not([data-tone='needs']) svg { color: var(--plan); }
-/* Unread is a bold title in ink and a heavier icon, never a dot (KERNEL-508, DESIGN.md). The icon follows the title: ink and a 1.8 stroke in place of the muted 1.4.
-   A glyph with a tone keeps its colour and only gets the stroke. Filled icons have stroke none, so the width leaves their shape alone. A row's title is the one .grow span. */
+/* Unread is a bold title in ink, never a dot (KERNEL-508, DESIGN.md). The icon follows the title in ink, keeping its stroke. A glyph with a tone keeps its colour. A row's title is the one .grow span. */
 .nav-item[data-unread] > .grow { font-weight: var(--fw-semibold); color: var(--ink); }
-.nav-item[data-unread] > svg, .nav-item[data-unread] .nav-glyph svg { stroke-width: 1.8; }
 .nav-item[data-unread] > svg, .nav-item[data-unread] .nav-glyph:not([data-tone]) svg { color: var(--ink); }
 /* A project row keeps its hover fill while the pointer is on its buttons. Hovering it, or reaching it by keyboard, swaps the
    project's letter for a chevron, which points down while the project is expanded. A click alone does not. */
@@ -80,7 +78,7 @@
 .hc-wrap-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
 .hc-wrap { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .hc-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: var(--fs-chip); color: var(--muted); }
-.hc-foot .btn { height: 24px; padding: 0 8px; font-size: var(--fs-meta); }
+.hc-foot .btn { height: 24px; padding: 0 8px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .hc-pr { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: none; font-size: var(--fs-chip); color: var(--ink-3); }
 button.hc-pr { cursor: pointer; }
 button.hc-pr:hover { color: var(--ink); }

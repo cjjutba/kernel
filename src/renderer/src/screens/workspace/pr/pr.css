@@ -74,7 +74,7 @@
 .split-caret:hover { background: var(--ink-hover); }
 
 /* "create-pr.md sent": an instruction file Kernel sent for the user. */
-.pr-sent { align-self: flex-end; width: 82%; border-radius: var(--r-md); background: var(--line); overflow: hidden; }
+.pr-sent { align-self: flex-end; width: 82%; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); overflow: hidden; }
 .pr-sent-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--card-line); font-size: var(--fs-code); color: var(--ink-2); }
 .pr-sent-body { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; font: var(--fs-meta)/var(--lh) var(--mono); color: var(--ink-3); }
 .pr-sent-body span { white-space: pre-wrap; overflow-wrap: anywhere; }
