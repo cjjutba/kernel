@@ -266,7 +266,7 @@ describe('Kernel on quit', () => {
   it('asks before Restart to update, and Cancel leaves the update uninstalled', async () => {
     let installs = 0
     let answer = false
-    const updater = { get: () => ({ status: 'ready', current: '1.0.0' }) as const, check: async () => ({ status: 'ready', current: '1.0.0' }) as const, install: () => { installs++ } }
+    const updater = { get: () => ({ status: 'ready', current: '1.0.0' }) as const, check: async () => ({ status: 'ready', current: '1.0.0' }) as const, whenInstallable: async () => '1.1.0', install: () => { installs++ } }
     const k = await kernel({ updater, confirmQuit: async () => answer })
     const h = k.handlers()
     expect(await h['update.install'](undefined)).toEqual({ ok: true, canceled: true })
@@ -277,9 +277,50 @@ describe('Kernel on quit', () => {
     await k.stop()
   })
 
+  it('Restart to update waits for a newer download before it stops Kernel, and two presses make one stop and one install (KERNEL-1020)', async () => {
+    const order: string[] = []
+    let release!: (v: string) => void
+    const wait = new Promise<string>((r) => { release = r })
+    const relaunch = vi.fn()
+    const updater = {
+      get: () => ({ status: 'ready', current: '1.0.0' }) as const,
+      check: async () => ({ status: 'ready', current: '1.0.0' }) as const,
+      whenInstallable: () => { order.push('wait'); return wait },
+      install: (failed?: () => void) => { order.push('install'); failed?.() }
+    }
+    const k = await kernel({ updater, relaunch, confirmQuit: async () => { order.push('confirm'); return true } })
+    const h = k.handlers()
+    const first = h['update.install'](undefined)
+    const second = h['update.install'](undefined)
+    await settle()
+    expect(order).toEqual(['wait'])
+    release('1.1.0')
+    expect(await first).toEqual({ ok: true })
+    expect(await second).toEqual({ ok: true })
+    expect(order).toEqual(['wait', 'confirm', 'install'])
+    expect(relaunch).toHaveBeenCalledTimes(1)
+    await k.stop()
+  })
+
+  it('Restart to update never stops Kernel when nothing can install', async () => {
+    let asked = 0
+    const updater = {
+      get: () => ({ status: 'ready', current: '1.0.0' }) as const,
+      check: async () => ({ status: 'ready', current: '1.0.0' }) as const,
+      whenInstallable: async (): Promise<string> => { throw new Error('No update is ready') },
+      install: () => undefined
+    }
+    const k = await kernel({ updater, confirmQuit: async () => { asked++; return true } })
+    const h = k.handlers()
+    await expect(h['update.install'](undefined)).rejects.toThrow('No update is ready')
+    await expect(h['update.install'](undefined)).rejects.toThrow('No update is ready')
+    expect(asked).toBe(0)
+    await k.stop()
+  })
+
   it('refuses Restart to update with no update ready, before asking or stopping', async () => {
     let asked = 0
-    const updater = { get: () => ({ status: 'downloading', current: '1.0.0' }) as const, check: async () => ({ status: 'downloading', current: '1.0.0' }) as const, install: () => { throw new Error('No update is ready') } }
+    const updater = { get: () => ({ status: 'downloading', current: '1.0.0' }) as const, check: async () => ({ status: 'downloading', current: '1.0.0' }) as const, whenInstallable: async () => '1.1.0', install: () => { throw new Error('No update is ready') } }
     const k = await kernel({ updater, confirmQuit: async () => { asked++; return true } })
     await expect(k.handlers()['update.install'](undefined)).rejects.toThrow('No update is ready')
     expect(asked).toBe(0)
