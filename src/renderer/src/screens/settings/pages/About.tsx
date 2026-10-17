@@ -4,7 +4,7 @@ import type { AppUpdate } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, useBusy } from '../../../ui'
-import { downloadPercent, updateReason } from '../../../components/footer/updateModel'
+import { downloadPercent, installFailedTitle, installFailure, updateReason } from '../../../components/footer/updateModel'
 import { Page, Row, Section } from '../kit'
 
 /**
@@ -13,11 +13,12 @@ import { Page, Row, Section } from '../kit'
  */
 const checkResult = (u: AppUpdate): { title: string; sub?: string } =>
   u.blocked ? { title: "Kernel can't update itself", sub: u.blocked }
+    : installFailure(u) && !u.error ? { title: updateReason(undefined, true, installFailure(u)) }
     : { title: u.status === 'ready' ? `Version ${u.version} is ready` : u.status === 'downloading' ? `Downloading version ${u.version}` : u.error ? updateReason(u.error) : 'Kernel is up to date' }
 
 /** The words after the version on the header card, from the last update state. */
 export const state = (u: AppUpdate | null): string =>
-  !u ? '' : u.blocked ? 'Can’t update itself' : u.status === 'ready' ? `Version ${u.version} is ready` : u.status === 'downloading' ? `Downloading version ${u.version}, ${downloadPercent(u)}%` : u.status === 'checking' ? 'Checking' : u.status === 'error' || u.error ? updateReason(u.error) : 'Up to date'
+  !u ? '' : u.blocked ? 'Can’t update itself' : u.status === 'ready' ? `Version ${u.version} is ready` : u.status === 'downloading' ? `Downloading version ${u.version}, ${downloadPercent(u)}%` : u.status === 'checking' ? 'Checking' : installFailure(u) && !u.error ? installFailedTitle(installFailure(u)!) : u.status === 'error' || u.error ? updateReason(u.error) : 'Up to date'
 
 const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: cleanError(e) })
 const home = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')

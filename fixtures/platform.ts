@@ -1024,6 +1024,8 @@ export const platformFixtures: Record<string, Fixture> = {
   AuditAboutChecking: settingsPage('about', { preflight: [], update: { status: 'checking', current: '0.1.0' } }),
   AuditAboutDownloading: settingsPage('about', { preflight: [], update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } }),
   AuditAboutUpdateError: settingsPage('about', { preflight: [], update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } }),
+  AboutInstallFailedSignature: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.5.0', installFailed: { version: '0.6.0', reason: 'signature' } } }),
+  AboutInstallFailedOther: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.5.0', installFailed: { version: '0.6.0', reason: 'other' } } }),
   AuditAboutUpdateBlocked: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.1.0', blocked: 'Kernel is running from outside Applications, so it does not check for updates.' } }),
   // The home screen while an update downloads or fails: a quiet footer line.
   AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } },

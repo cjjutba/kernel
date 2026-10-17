@@ -12,6 +12,7 @@ import { call, cleanError, onPush } from './api'
 import { writeSaved } from './remember'
 import { startupTheme } from './ui/theme'
 import { closeAllLayers } from './ui/hooks'
+import { installFailedToast } from './components/footer/updateModel'
 import { hasTab, isChatTab, landing, nearest, placeToSave, restorePlace, projectHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
@@ -955,7 +956,12 @@ async function start() {
   }).catch(() => undefined)
   // After an update installs, What's new opens once with that version's notes (KERNEL-30). It waits for the route above, which closes modals,
   // and carries its own copy, since the updater's first check pushes a new state that drops `installed` and the notes.
-  void update.then((u) => { if (u?.installed) actions.ui.openModal({ name: 'whatsNew', update: u }) })
+  // A failed install toasts once too, on the first load that carries that failure (KERNEL-1021).
+  void update.then((u) => {
+    if (u?.installed) actions.ui.openModal({ name: 'whatsNew', update: u })
+    const failed = installFailedToast(u)
+    if (failed) actions.ui.toast(failed)
+  })
 }
 
 /** Chats a `chat.running` or `retry` push reached while `chats.live` was out. The push came later, so it wins. */
