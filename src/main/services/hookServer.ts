@@ -1,21 +1,25 @@
 import { timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { BUILD_HEADER, TOKEN_HEADER } from '@shared/hookEntry'
+import { BUILD_HEADER, CHAT_HEADER, TOKEN_HEADER } from '@shared/hookEntry'
 import { parseHook, permissionResponse, type HookPayload } from '@shared/hookSchemas'
 import type { ActivityEvent, HookBuild } from '@shared/types'
 import { bus } from '../bus'
 import { describeTool, needsUser, type Approvals } from './approvals'
 import { firstLine } from './text'
 
-export interface HookContext { projectId?: string; workspaceId?: string; agentId?: string }
+export interface HookContext {
+  projectId?: string; workspaceId?: string; agentId?: string
+  /** The terminal seat the hook came from, when its command sent a chat Kernel knows (KERNEL-999). */
+  chatId?: string
+}
 
 export interface HookServerOptions {
   port: number
   /** The secret the installed hook command sends (KERNEL-206). A post without it gets a 401. */
   token: string
   approvals: Approvals
-  /** Map a session's cwd to the project and workspace it belongs to. */
-  resolve: (cwd: string, sessionId: string) => HookContext
+  /** Map a session's cwd to the project and workspace it belongs to, or the chat a seat's hook names (KERNEL-999). */
+  resolve: (cwd: string, sessionId: string, chatId?: string) => HookContext
   /** Sessions Kernel started itself report through in-process hooks, so their posts here are ignored. */
   isManaged: (sessionId: string) => boolean
   /** This server's build. A post from a session, terminal or script the other build started is ignored (KERNEL-675). */
@@ -44,7 +48,7 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
     if (!parsed.ok) { bus.emit('hook.invalid', parsed.error); return json(res, 200, {}) }
     const e = parsed.event
     if (o.isManaged(e.session_id) || fromOtherBuild(req.headers[BUILD_HEADER.toLowerCase()], o.build ?? 'app')) return json(res, 200, {})
-    const ctx = o.resolve(e.cwd, e.session_id)
+    const ctx = o.resolve(e.cwd, e.session_id, sent(req.headers[CHAT_HEADER.toLowerCase()]))
     bus.emit('hook', e, ctx)
     // Kernel installs no SessionStart hook (D-047), so the first event from a new session stands in for it.
     if (e.hook_event_name === 'SessionEnd') sessions.delete(e.session_id)
@@ -66,7 +70,9 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
       res.on('close', () => { if (!res.writableFinished) closed.abort() })
       const { title, detail } = describeTool(ev.tool_name, ev.tool_input)
       // Project only: Kernel can't tell which chat an outside session belongs to, so it asks in Inbox and Home, never in a workspace's chats.
-      const { decision } = o.approvals.request({ kind: 'tool', source: 'hook', projectId: ctx.projectId, toolName: ev.tool_name, input: ev.tool_input, title, detail }, { timeoutMs: typeof o.approvalTimeoutMs === 'function' ? o.approvalTimeoutMs() : o.approvalTimeoutMs, signal: closed.signal })
+      // A terminal seat names its chat, so its question is on that chat and its tab shows it waits (KERNEL-999).
+      const seat = ctx.chatId ? { workspaceId: ctx.workspaceId, chatId: ctx.chatId, agentId: ctx.agentId } : {}
+      const { decision } = o.approvals.request({ kind: 'tool', source: 'hook', projectId: ctx.projectId, ...seat, toolName: ev.tool_name, input: ev.tool_input, title, detail }, { timeoutMs: typeof o.approvalTimeoutMs === 'function' ? o.approvalTimeoutMs() : o.approvalTimeoutMs, signal: closed.signal })
       const d = await decision
       if (!d) return json(res, 200, permissionResponse(null))
       if (d.behavior === 'allow') return json(res, 200, permissionResponse({ behavior: 'allow' }))
@@ -84,7 +90,8 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
 
 /** Translate a hook into a log line for the project. Returns null for events the logs do not show. */
 export function toActivity(e: HookPayload, ctx: HookContext): Omit<ActivityEvent, 'id' | 'ts'> | null {
-  const base = { ...ctx, sessionId: e.session_id }
+  const { chatId: _seat, ...where } = ctx
+  const base = { ...where, sessionId: e.session_id }
   switch (e.hook_event_name) {
     case 'SessionStart': return { ...base, kind: 'session.start', text: 'started a session' }
     case 'SessionEnd': return { ...base, kind: 'session.end', text: 'ended the session', data: { reason: e.reason } }
@@ -140,6 +147,8 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on('error', reject)
   })
 }
+
+const sent = (h: string | string[] | undefined) => (typeof h === 'string' && h !== '' ? h : undefined)
 
 /** Sent by the hook command of a process a Kernel started. None means a session started outside every Kernel. */
 const fromOtherBuild = (sent: string | string[] | undefined, build: HookBuild) => typeof sent === 'string' && sent !== '' && sent !== build

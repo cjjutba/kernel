@@ -24,9 +24,10 @@
 
 /* List */
 .is-body { flex: 1; min-height: 0; display: flex; }
-.is-list { width: 413px; flex-shrink: 0; overflow-y: auto; padding: 6px; border-right: 1px solid var(--line); }
+.is-list { width: clamp(413px, 40%, 480px); flex-shrink: 0; overflow-y: auto; padding: 6px; border-right: 1px solid var(--line); }
 .is-list ul { margin: 0; padding: 0; list-style: none; }
 .is-group { position: sticky; top: -6px; z-index: 1; margin: 4px 0 0; padding: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-2); background: var(--panel); }
+.is-group-plain { display: flex; align-items: center; gap: 12px; height: 30px; padding: 0 10px 0 0; }
 .is-fold { display: flex; align-items: center; gap: 12px; width: 100%; height: 30px; padding: 0 10px 0 0; border: 0; border-radius: var(--r-sm); background: transparent; color: inherit; font: inherit; text-align: left; }
 .is-fold:hover { background: var(--nav-hover); }
 .is-fold .muted { font-weight: var(--fw-regular); margin-left: -4px; }
@@ -51,11 +52,15 @@
 .is-right .is-av { width: 18px; height: 18px; font-size: var(--fs-tile-sm); }
 .is-av-md { width: 24px; height: 24px; font-size: var(--fs-tile); }
 
+/* The open issue is not in the list: one line above it and the way to show it */
+.is-hidden { display: flex; align-items: center; gap: 12px; flex-shrink: 0; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: var(--fs-ui); color: var(--ink-2); }
+
 /* Detail */
 .is-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .is-detail { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .is-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 28px 40px 24px; }
 .is-inner { max-width: 640px; display: flex; flex-direction: column; gap: 18px; }
+.is-cols, .is-main { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .is-key { font-size: var(--fs-code); }
 .is-detail h2 { margin: 0; font-size: var(--fs-title); line-height: var(--lh-ui); font-weight: var(--fw-semibold); color: var(--ink); letter-spacing: -0.4px; }
 .is-facts { margin: 0; padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(72px, max-content) minmax(0, 1fr) minmax(72px, max-content) minmax(0, 1fr); align-items: center; gap: 10px 16px; }
@@ -71,6 +76,7 @@
 
 /* Work on this issue: the card surface, a row per workspace and per PR */
 .is-work { overflow: hidden; }
+.is-work-empty { margin: 0; padding: 14px; border-top: 1px solid var(--card-line); }
 .is-work ul { margin: 0; padding: 0; list-style: none; }
 .is-work-head { display: flex; align-items: center; justify-content: space-between; margin: 0; padding: 10px 14px; font-size: var(--fs-meta); font-weight: var(--fw-regular); color: var(--muted); }
 .is-wrow { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 0 14px; border-top: 1px solid var(--card-line); }
@@ -106,6 +112,16 @@
 .is-project .select-trigger { height: 32px; gap: 8px; border-radius: var(--r-sm); font-size: var(--fs-ui); }
 .is-letter { width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: var(--fs-tile); font-weight: var(--fw-semibold); }
 .is-actions a.btn { text-decoration: none; }
+
+/* Wide enough, the properties stand in a rail beside the description. Narrower, they stay above it. */
+@container panel (min-width: 1150px) {
+  .is-scroll, .is-foot { padding-left: 28px; padding-right: 28px; }
+  .is-inner { max-width: 880px; }
+  .is-cols { display: grid; grid-template-columns: minmax(0, 1fr) 224px; column-gap: 24px; align-items: start; }
+  .is-cols > .is-facts { order: 2; grid-template-columns: minmax(64px, max-content) minmax(0, 1fr); padding: 0 0 0 16px; border: 0; border-left: 1px solid var(--line); align-items: start; }
+  .is-cols > .is-facts dd { min-height: 20px; }
+  .is-facts .is-wide { grid-column: 2; }
+}
 
 @container panel (max-width: 900px) {
   .is-list { width: 300px; }

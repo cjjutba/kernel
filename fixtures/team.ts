@@ -891,6 +891,11 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesGitHubFailed: scene((f) => ({ ...issuesTrackerScene(f, { projectId: ids.projectB }), fails: { 'github.issueList': 'GitHubError[other]: Could not read GitHub issues: unexpected response.' } })),
   IssuesGitHubDetailFailed: scene((f) => ({ ...issuesTrackerScene(f, { issueId: '#31', projectId: ids.projectB }), fails: { 'github.issue': 'GitHubError[other]: Could not read GitHub issues: unexpected response.' } })),
   IssuesWorking: scene((f) => issuesScene(f, { issueId: 'KERNEL-24', working: true })),
+  // KERNEL-1011: the open issue is Maya's, so Mine leaves it out of the list. It is started with no assignee of ours and no workspace, so the facts say No one is on this.
+  IssuesSelectedHidden: scene((f) => issuesScene(f, { issueId: 'KERNEL-50' })),
+  // KERNEL-1011: an issue with no Kernel work, so the Work card says so. Also drawn at 1280, where the properties sit above the description.
+  IssuesNoWork: scene((f) => issuesScene(f, { issueId: 'KERNEL-35' })),
+  IssuesNoWork1280: scene((f) => issuesScene(f, { issueId: 'KERNEL-35' })),
   IssuesNoProject: scene((f) => issuesScene(f, { linkedProject: false })),
   // Nothing assigned to CJ, so the default Mine filter finds nothing.
   IssuesEmpty: scene((f) => issuesScene(f, { issues: linearIssues().map((i) => ({ ...i, assignee: maya })) })),

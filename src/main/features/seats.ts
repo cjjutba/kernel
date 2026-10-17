@@ -23,6 +23,7 @@ export class Seats extends Feature {
   start(): Promise<void> {
     return (this.starting ??= (async () => {
       await rm(seatsDir(this.o.dataDir), { recursive: true, force: true }).catch(() => undefined)
+      this.k.ptys.onExit((id) => this.k.seatSignals.disconnect(id))
       this.http = await startSeatMcp({ registry: this.registry, serve: (seat) => this.serve(seat) })
     })().catch((e) => { this.starting = undefined; throw e }))
   }
@@ -49,9 +50,11 @@ export class Seats extends Feature {
     if (!chat || chat.kind !== 'terminal' || !url || !this.settings.terminal.connect) return undefined
     const ws = this.mustWs(chat.workspaceId)
     const token = this.makeToken(chatId)
+    this.saveRole(chat, this.roleOf(chatId))
+    this.k.seatSignals.disconnect(chatId)
     const dir = seatDir(this.o.dataDir, chatId)
     const agent = this.agentFor(ws, chat)
-    writeSeatDir(dir, { url, token, prompt: agentPrompt(agent, ws, this.k.tools.rulesFor(ws, agent, chat)), sessionId: chat.sessionId })
+    writeSeatDir(dir, { url, token, prompt: agentPrompt(agent, ws, this.k.tools.rulesFor(ws, agent, chat)), sessionId: chat.terminal?.sessionId ?? chat.sessionId })
     return {
       env: { ...env, PATH: withDirFirst(dir, env.PATH), KERNEL_CHAT_ID: chatId, KERNEL_SEAT_TOKEN: token, KERNEL_MCP_URL: url },
       command: (typed) => seatCommand(dir, typed, loginShell(process.env))
@@ -61,18 +64,25 @@ export class Seats extends Feature {
   /** The session the seat's next `claude` resumes, once the chat has one or another (KERNEL-999 reads it from the hooks). */
   sessionChanged(chatId: string) {
     const chat = this.store.chat(chatId)
-    if (chat) writeSeatSession(seatDir(this.o.dataDir, chatId), chat.sessionId)
+    if (chat) writeSeatSession(seatDir(this.o.dataDir, chatId), chat.terminal?.sessionId ?? chat.sessionId)
+  }
+
+  /** Remembers the seat's role on its chat, which its hooks check before they count (KERNEL-999). */
+  private saveRole(chat: Chat, role: SeatRole) {
+    if (chat.terminal?.role === role) return
+    this.saveChat({ ...chat, terminal: { preset: chat.terminal?.preset ?? 'claude', command: chat.terminal ? chat.terminal.command : 'claude', ...chat.terminal, role } })
   }
 
   closeWorkspace(workspaceId: string, chatIds: string[]) {
     this.registry.revokeWorkspace(workspaceId)
-    for (const id of chatIds) removeSeatDir(seatDir(this.o.dataDir, id))
+    for (const id of chatIds) { removeSeatDir(seatDir(this.o.dataDir, id)); this.k.seatSignals.forget(id) }
   }
 
   /** A closed tab's seat: its token and its folder. */
   closeSeat(chatId: string) {
     this.registry.revokeChat(chatId)
     removeSeatDir(seatDir(this.o.dataDir, chatId))
+    this.k.seatSignals.forget(chatId)
   }
 
   /** Where a seat's `claude` finds the endpoint, once started. */
@@ -96,12 +106,13 @@ export class Seats extends Feature {
     return 'teammate'
   }
 
-  private serve(seat: Seat): SeatTools | undefined {
+  serve(seat: Seat): SeatTools | undefined {
     const ws = this.store.workspace(seat.workspaceId)
     const chat = this.store.chat(seat.chatId)
     if (!ws || !chat || chat.workspaceId !== ws.id || ws.status === 'archived') return undefined
     const agent = this.agentFor(ws, chat)
-    return { tools: this.k.tools.toolsFor(ws, agent, chat), instructions: agent?.lead ? LEAD_INSTRUCTIONS : undefined }
+    if (chat.kind === 'terminal') this.k.seatSignals.connect(chat.id)
+    return { tools: chat.kind === 'terminal' ? this.k.seatSignals.wrap(chat.id, this.k.tools.toolsFor(ws, agent, chat)) : this.k.tools.toolsFor(ws, agent, chat), instructions: agent?.lead ? LEAD_INSTRUCTIONS : undefined }
   }
 
   private agentFor(ws: Workspace, chat: Chat): AgentDef | undefined {

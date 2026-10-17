@@ -88,13 +88,17 @@ function PrRow({ ws }: { ws: Workspace }) {
   )
 }
 
-/**
- * "Work on this issue": every workspace started from the issue and the PR each opened, on the card surface. Left out when no work
- * is linked, so the issue reads as it did before.
- */
+/** "Work on this issue": every workspace started from the issue and the PR each opened, on the card surface. With none, the card says so. */
 export function WorkCard({ linked }: { linked: Workspace[] }) {
   useReadPrs(linked)
-  if (linked.length === 0) return null
+  if (linked.length === 0) {
+    return (
+      <section aria-label="Work on this issue" className="card is-work">
+        <h3 className="is-work-head"><span>Work on this issue</span></h3>
+        <p className="is-work-empty muted">No work in Kernel yet</p>
+      </section>
+    )
+  }
   return (
     <section aria-label="Work on this issue" className="card is-work">
       <h3 className="is-work-head"><span>Work on this issue</span><span className="muted">{linked.length === 1 ? '1 workspace' : `${linked.length} workspaces`}</span></h3>
