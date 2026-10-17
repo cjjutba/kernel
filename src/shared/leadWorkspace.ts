@@ -15,3 +15,6 @@ export const isLeadChatWorkspace = (ws: Workspace) => !!ws.lead && !!ws.threadId
 /** The open workspace of the Lead chat `threadId` (KERNEL-405). */
 export const leadChatWorkspaceOf = (workspaces: Workspace[], threadId: string): Workspace | undefined =>
   workspaces.find((w) => isLeadChatWorkspace(w) && w.threadId === threadId && w.status !== 'archived')
+
+/** A chat that runs in the project's shared main folder and has no worktree, branch, ports or setup of its own (KERNEL-1050). */
+export const onSharedFolder = (ws: Workspace) => !!ws.shared
