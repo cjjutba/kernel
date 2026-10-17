@@ -13,10 +13,10 @@ import { useKeptScroll } from '../../ui/keptScroll'
 export const KeepContext = createContext<{ key: string; target: boolean } | null>(null)
 
 /**
- * One settings page: the title, one muted line saying changes save as you make them (KERNEL-721), and its sections. `action` sits at the right of the title, and
- * `back` is the link above it to the page it opened from. `crumb` puts a link before the title, the project on a project's page.
+ * One settings page: the title and its sections, with nothing under the title (KERNEL-1023). `action` sits at the right of the title, and `note` just before it,
+ * for a save that has no field of its own. `back` is the link above it to the page it opened from. `crumb` puts a link before the title, the project on a project's page.
  */
-export function Page({ title, crumb, action, back, saved, note, subtitle, children }: { title: string; crumb?: ReactNode; action?: ReactNode; back?: ReactNode; saved?: Scope; note?: ReactNode; subtitle?: string; children: ReactNode }) {
+export function Page({ title, crumb, action, back, note, children }: { title: string; crumb?: ReactNode; action?: ReactNode; back?: ReactNode; note?: ReactNode; children: ReactNode }) {
   const keep = useContext(KeepContext)
   const scroll = useRef<HTMLDivElement>(null)
   useKeptScroll(scroll, { key: keep?.key ?? '', ready: !!keep, target: keep?.target })
@@ -27,10 +27,9 @@ export function Page({ title, crumb, action, back, saved, note, subtitle, childr
           {back}
           <div className="set-head">
             <h1>{crumb && <>{crumb}<span className="set-crumb-sep" aria-hidden="true"><Icon name="right" size={16} /></span></>}<span>{title}</span></h1>
+            {note}
             {action}
           </div>
-          <p className="set-saves">{subtitle ?? 'Changes save as you make them.'}</p>
-          {saved && <p className="set-saves set-where"><Icon name={saved === 'repo' ? 'team' : 'computer'} size={12} />{saved === 'repo' ? 'Shared with the repo in .kernel/settings.toml' : 'Saved on this Mac in .kernel/settings.local.toml'}{note}</p>}
         </div>
         {children}
       </div>
@@ -420,7 +419,7 @@ function OpenSettingsFiles({ project, rs, shared }: { project: Project; rs: Proj
  * A project page: the project and the page's name as a breadcrumb, the settings files button, and the sections. The project's name goes back to
  * its General page. `shared` is a page the team shares, so its file button opens settings.toml first.
  */
-export function ProjectPage({ project, rs, title, shared, note, subtitle, children }: { project: Project; rs: ProjectSettings | null; title: string; shared?: boolean; note?: ReactNode; subtitle?: string; children: ReactNode }) {
+export function ProjectPage({ project, rs, title, shared, note, children }: { project: Project; rs: ProjectSettings | null; title: string; shared?: boolean; note?: ReactNode; children: ReactNode }) {
   const crumb = <button type="button" className="set-crumb" aria-label={`${project.name} settings`} onClick={() => go({ name: 'settings', page: 'project', projectId: project.id })}>{project.name}</button>
-  return <ProjectScope.Provider value={project.id}><Page title={title} crumb={crumb} saved={shared ? 'repo' : 'mac'} note={note} subtitle={subtitle} action={<OpenSettingsFiles project={project} rs={rs} shared={shared} />}>{children}</Page></ProjectScope.Provider>
+  return <ProjectScope.Provider value={project.id}><Page title={title} crumb={crumb} note={note} action={<OpenSettingsFiles project={project} rs={rs} shared={shared} />}>{children}</Page></ProjectScope.Provider>
 }

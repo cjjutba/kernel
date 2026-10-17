@@ -1,0 +1,3 @@
+**Settings pages no longer carry a muted line under the title.** KERNEL-721's "Changes save as you make them." and the "Saved on this Mac in .kernel/settings.local.toml" or "Shared with the repo in .kernel/settings.toml" line are gone, and so is the Scripts page subtitle, so the title is followed directly by the first section. The Saving and Saved note beside each field already confirms a save, and the Open settings.local.toml button at the top right of a project page already names the file. The one page-level save note, on a project's Pull requests page, now sits beside the title instead of under it. KERNEL-1023.
+
+**About shows Kernel's app icon in its card, not a "K" tile.** The same size and position as the tile. KERNEL-1023.
