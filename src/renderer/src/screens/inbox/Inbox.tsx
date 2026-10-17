@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import type { AgentDef, Approval, Overlap } from '@shared/types'
+import type { AgentDef, Approval, Notification, Overlap } from '@shared/types'
 import { call } from '../../api'
 import { FileLabel } from '../../components/FileIcon'
 import { actions, go, useStore } from '../../store'
@@ -61,6 +61,34 @@ function OverlapDetail({ overlap: o }: { overlap: Overlap }) {
   )
 }
 
+/** A teammate's question to a terminal Lead, answered here. Send hands the answer to the teammate and the row turns to answered (KERNEL-1028). */
+function AnswerField({ n, ask }: { n: Notification; ask: NonNullable<Notification['ask']> }) {
+  const id = useId()
+  const [text, setText] = useState('')
+  const [busy, run] = useBusy()
+  const ready = text.trim().length > 0
+  const send = () => {
+    if (!ready || busy) return
+    void run('answer', () => attempt('Could not send the answer', async () => { actions.notifications.upsert(await call('notifications.answer', { id: n.id, text })) }))
+  }
+  return (
+    <form className="ib-answer" onSubmit={(e) => { e.preventDefault(); send() }}>
+      <label htmlFor={`${id}a`} className="ib-answer-label">Your answer</label>
+      {ask.options && ask.options.length > 0 && (
+        <div className="ib-options" role="group" aria-label="Suggested answers">
+          {ask.options.map((o) => <Pill key={o} pressed={text === o} onClick={() => setText(o)}>{o}</Pill>)}
+        </div>
+      )}
+      <textarea id={`${id}a`} className="ib-answer-input" rows={3} value={text} disabled={!!busy} placeholder="Type an answer for the teammate" onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }} />
+      <div className="ib-acts">
+        <span className="grow" />
+        <Button type="submit" variant="primary" busy={!!busy} busyPattern="arrow-right" busyLabel="Sending" disabled={!ready || !!busy}>Send</Button>
+      </div>
+    </form>
+  )
+}
+
 function Detail({ item }: { item: InboxItem }) {
   const { n, approval: a } = item
   const agents = useStore((s) => s.agents)
@@ -103,7 +131,8 @@ function Detail({ item }: { item: InboxItem }) {
         </>
       )}
       {a && pending && !isTool(a) && <div className="ib-card"><ApprovalCard approval={a} /></div>}
-      {!a && pending && n.workspaceId && (
+      {n.ask && pending && <AnswerField n={n} ask={n.ask} />}
+      {!a && !n.ask && pending && n.workspaceId && (
         <div className="ib-acts">
           <Button variant="primary" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>{n.kind === 'merge' ? 'Open PR' : 'Open workspace'}</Button>
         </div>
@@ -153,7 +182,7 @@ export function Inbox() {
     onOpen: (id) => {
       const i = list.find((x) => x.n.id === id)
       if (i) flushSync(() => open(i))
-      detail.current?.querySelector<HTMLElement>('button, input')?.focus()
+      detail.current?.querySelector<HTMLElement>('textarea, button, input')?.focus()
     },
   })
   const state = useRef({ list, cur, sel })

@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { ChatPart, AccountProfile, MoveNotice, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { ChatPart, Notification, AccountProfile, MoveNotice, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
@@ -170,7 +170,7 @@ function terminalPresets(): Fixture {
 /**
  * KERNEL-1001: the Lead chat's workspace with a Lead terminal tab open beside the chat. `seat.connected: false` draws the not connected line.
  */
-function leadTerminal(o: { running?: boolean; connected?: boolean; menu?: boolean; transcript?: boolean }): Fixture {
+function leadTerminal(o: { running?: boolean; connected?: boolean; menu?: boolean; transcript?: boolean; pending?: number; closing?: boolean }): Fixture {
   return scene((f) => {
     const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
     const { approvals: _none, ...rest } = s
@@ -180,9 +180,25 @@ function leadTerminal(o: { running?: boolean; connected?: boolean; menu?: boolea
       projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
       chats: [...(rest.chats ?? f.chats), term],
       ...(o.transcript ? { items: { ...(rest.items ?? f.items), [term.id]: seatItems(term.id, 'Kernel') }, saved: { [seatViewKey(term.id)]: 'transcript' } } : {}),
-      push: [...(rest.push ?? f.push), { type: 'terminal.data', chatId: term.id, data: termScreen }, ...(o.running ? [{ type: 'chat.running' as const, chatId: term.id, running: true }] : [])],
-      ui: { ...rest.ui!, rightPanel: false, ...(o.menu ? { menu: 'newTab' as const } : {}), tabs: { [ids.lead]: { tab: term.id, lastChat: ids.leadChat, files: [], diffs: [] } } }
+      push: [...(rest.push ?? f.push), { type: 'terminal.data', chatId: term.id, data: termScreen }, ...(o.running ? [{ type: 'chat.running' as const, chatId: term.id, running: true }] : []), ...(o.pending !== undefined ? [{ type: 'seat.updates' as const, chatId: term.id, count: o.pending }] : [])],
+      ui: { ...rest.ui!, rightPanel: false, ...(o.menu ? { menu: 'newTab' as const } : {}), ...(o.closing ? { modal: { name: 'confirm' as const, kind: 'closeChats' as const, workspaceId: ids.lead, chatIds: [term.id] } } : {}), tabs: { [ids.lead]: { tab: term.id, lastChat: ids.leadChat, files: [], diffs: [] } } }
     }
+  })
+}
+
+/**
+ * KERNEL-1028: a teammate's question to a terminal Lead in the Inbox, with the answer field. `answered` is the row after Send: the answer and no field.
+ */
+function teammateQuestion(answered?: boolean): Fixture {
+  return scene((f) => {
+    const q = 'Should the Download PDF button sit in the table toolbar or in each row?'
+    const ask = { workspaceId: ids.table, question: q, options: ['In the toolbar', 'In each row'] }
+    const n: Notification = {
+      id: 'n-ask', kind: 'blocked', projectId: ids.projectA, workspaceId: ids.table, agentId: 'christian', chatId: 'chat-lead-term', ask,
+      title: 'Christian asks about the PDF button', sub: 'Question · Client A', heading: 'Christian asks about the PDF button', body: q,
+      needsYou: !answered, read: !!answered, createdAt: Date.now() - 4 * 60_000, ...(answered ? { resolved: 'You answered: In the toolbar' } : {})
+    }
+    return { notifications: [n], approvals: [], ui: { route: { name: 'inbox' } } }
   })
 }
 
@@ -3385,6 +3401,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   LeadTerminalWorking: leadTerminal({ running: true }),
   LeadTerminalNotConnected: leadTerminal({ connected: false }),
   LeadTerminalMenu: leadTerminal({ menu: true }),
+  LeadTerminalPending: leadTerminal({ pending: 3 }),
+  LeadTerminalCloseConfirm: leadTerminal({ running: true, closing: true }),
+  WorkspaceTerminalTeammateRow: terminalTeammate(),
+  InboxTeammateQuestion: teammateQuestion(),
+  InboxTeammateQuestionAnswered: teammateQuestion(true),
   SettingsBigTerminalConnect: scene(() => ({ settings: DEFAULT_SETTINGS('/Users/you'), ui: { route: { name: 'settings', page: 'bigterm' } } })),
   WorkspacePreview: preview(),
   WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),

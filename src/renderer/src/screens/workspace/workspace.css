@@ -40,6 +40,8 @@ button.ws-issue:hover { background: var(--surface-3); }
 .tab-glyph { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .tab-glyph > svg { flex-shrink: 0; }
 .tab-glyph[data-tone='needs'] svg { color: var(--needs-fill); }
+/* The team updates a terminal Lead tab has not read yet. Quiet: muted, no badge fill. Not drawn at 0. */
+.tab-count { flex-shrink: 0; color: var(--muted); font-size: var(--fs-badge); font-variant-numeric: tabular-nums; }
 .ws-tab:hover { color: var(--ink); }
 .ws-tab[aria-selected='true'] { color: var(--ink); }
 /* A tab with a reply you haven't seen is bold, like its sidebar row (KERNEL-508). The tab on screen is read, so it is never marked. */
