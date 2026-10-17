@@ -1,22 +1,12 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import type { MenuId } from '@shared/types'
 import { actions, useStore } from '../../store'
 import { cleanError } from '../../api'
-import { IconButton, Menu, useBusy, type IconName } from '../../ui'
+import { CopyButton, IconButton, Menu, useBusy, type IconName } from '../../ui'
 
 /** What a failed action says. A channel that no lane has built yet rejects with "Not built yet: ...", which is fine to show as it is. */
 export async function attempt(title: string, fn: () => Promise<unknown>): Promise<boolean> {
   try { await fn(); return true } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }); return false }
-}
-
-/** Copies `text` and says "Copied" for 1.5s. Only a failure toasts. */
-export function useCopy(text: string): [boolean, () => void] {
-  const [copied, setCopied] = useState(false)
-  const copy = () => void navigator.clipboard.writeText(text).then(
-    () => { setCopied(true); setTimeout(() => setCopied(false), 1500) },
-    () => actions.ui.toast({ title: 'Could not copy', sub: 'The clipboard is not available.' })
-  )
-  return [copied, copy]
 }
 
 export interface MessageAction { icon: IconName; label: string; busyLabel?: string; onClick: () => unknown }
@@ -32,11 +22,10 @@ export interface MoreActions { menu: MenuId; items: MessageAction[] }
  * finished turn's time, which stays when the icons hide (KERNEL-346). `quiet` hides the time too until hover or focus, on every turn but the last (KERNEL-1025).
  */
 export function MessageActions({ copy, items = [], more, meta, quiet, align = 'start', label }: { copy?: string; items?: MessageAction[]; more?: MoreActions; meta?: string; quiet?: boolean; align?: 'start' | 'end'; label: string }) {
-  const [copied, onCopy] = useCopy(copy ?? '')
   const [busy, run] = useBusy()
   const acts = (
     <div className="msg-acts" data-align={align} data-busy={(more && more.items.some((a) => a.label === busy)) || undefined} role="group" aria-label={label}>
-      {copy !== undefined && <IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : 'Copy'} onClick={onCopy} />}
+      {copy !== undefined && <CopyButton text={copy} label="Copy" />}
       {items.map((a) => (
         <IconButton key={a.label} icon={a.icon} size={14} label={a.label} busy={busy === a.label} busyLabel={a.busyLabel} disabled={busy !== null}
           onClick={() => void run(a.label, async () => a.onClick())} />
@@ -54,10 +43,9 @@ export function MessageActions({ copy, items = [], more, meta, quiet, align = 's
  * message, and a fork copies the files as they are now, so neither belongs on a line with more work to come.
  */
 export function CopyOverlay({ text }: { text: string }) {
-  const [copied, onCopy] = useCopy(text)
   return (
     <div className="msg-copy">
-      <IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : 'Copy'} onClick={onCopy} />
+      <CopyButton text={text} label="Copy" />
     </div>
   )
 }

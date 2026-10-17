@@ -3,7 +3,7 @@ import { KERNEL_REVIEWER, NO_REVIEWER, reviewerChoice } from '@shared/team'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { projectAgents } from '../../nav'
-import { Button, Icon, Spinner, useBusy } from '../../ui'
+import { Button, CopyButton, Icon, Spinner, useBusy } from '../../ui'
 import { useProjectSettings } from '../settings/useSettings'
 
 const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
@@ -64,7 +64,7 @@ export function SetupRows({ project, steps }: { project: Project; steps: Project
             {s.state === 'fail' && s.error && <span className="su-error">{s.error}</span>}
           </span>
           {s.state === 'warn' && s.id === 'copy' && <button type="button" className="su-out" aria-label="Review files to copy" onClick={() => go({ name: 'settings', page: 'project', projectId: project.id, section: 'environment' })}><Icon name="ext" size={12} /></button>}
-          {s.state === 'warn' && s.fix?.command && <Button size="sm" variant="ghost" icon="copy" onClick={() => void navigator.clipboard.writeText(s.fix!.command!).then(() => actions.ui.toast({ title: 'Copied', sub: 'Run it in Terminal.' }), () => actions.ui.toast({ title: 'Could not copy', sub: s.fix!.command! }))}>Copy fix</Button>}
+          {s.state === 'warn' && s.fix?.command && <CopyButton text={s.fix.command} label="Copy fix" failSub={s.fix.command} />}
           {s.state === 'fail' && s.id === 'hooks' && <Button size="sm" variant="ghost" onClick={() => actions.ui.openModal({ name: 'checkHooks' })}>Check hooks</Button>}
           {s.state === 'fail' && !running && <Button size="sm" variant="ghost" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void retry()}>Try again</Button>}
         </div>

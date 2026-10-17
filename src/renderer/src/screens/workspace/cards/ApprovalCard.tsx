@@ -3,11 +3,11 @@ import type { AgentDef, Approval, AskedQuestion, Decision } from '@shared/types'
 import { call } from '../../../api'
 import { FileLabel } from '../../../components/FileIcon'
 import { go, useStore } from '../../../store'
-import { Button, Icon, IconButton, useBusy } from '../../../ui'
+import { Button, CopyButton, Icon, IconButton, useBusy } from '../../../ui'
 import { Markdown } from '../markdown'
 import { HireServers, hireName } from './HireServers'
 import { leadingTitle, parseBlocks } from '../mdParse'
-import { attempt, useCopy } from '../MessageActions'
+import { attempt } from '../MessageActions'
 import { decideAtOnce, useFoldPhase } from './decideFold'
 import { decideInChat } from './optimisticAnswer'
 import { PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
@@ -312,12 +312,11 @@ const LONG_PLAN_LINES = 28
 
 /** Copy and Open in editor on the Inbox's plan card. Open asks main for the file, which it writes again if it was deleted (D-092). */
 function PlanTools({ a, agents }: { a: Approval; agents: AgentDef[] }) {
-  const [copied, copy] = useCopy(planCopyText(a, agents))
   const file = !!a.workspaceId && !!planText(a).trim()
   const open = () => void attempt('Could not open the plan', async () => { await call('system.openInEditor', { path: (await call('approvals.planFile', { id: a.id })).path }) })
   return (
     <div className="pcard-tools">
-      <IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : 'Copy plan'} onClick={copy} />
+      <CopyButton text={() => planCopyText(a, agents)} label="Copy plan" />
       {file && <IconButton icon="ext" size={14} label="Open in editor" onClick={open} />}
     </div>
   )

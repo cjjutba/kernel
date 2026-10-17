@@ -1,8 +1,9 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react'
 import type { BannerKind } from '@shared/types'
 import { usagePercent } from '@shared/usage'
 import { Icon, type IconName } from '../icons'
-import { Button, IconButton } from './controls'
+import { CopyButton } from './CopyButton'
+import { IconButton } from './controls'
 import { useSwipeDismiss } from './useSwipeDismiss'
 import { dotPatterns, type SpinnerPattern } from './dotPatterns'
 
@@ -59,18 +60,12 @@ export function Meter({ value, label }: { value: number; label: string }) {
   )
 }
 
-/** Code with a copy control. The control is the clipboard icon alone, as under a message, and turns into a check for 1.5s. `inline` is the setup canvases' command line: an outlined Copy button beside the command, with no icon. */
-export function CodeBlock({ children, label = 'Copy', inline }: { children: string; label?: string; inline?: boolean }) {
-  const [copied, setCopied] = useState(false)
-  const copy = () => {
-    void navigator.clipboard?.writeText(children).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
-  }
+/** Code with a copy control in its corner. */
+export function CodeBlock({ children, label = 'Copy' }: { children: string; label?: string }) {
   return (
-    <div className="codeblock" data-inline={inline || undefined}>
+    <div className="codeblock">
       <pre className="code">{children}</pre>
-      {inline
-        ? <Button size="md" variant="secondary" onClick={copy} aria-label={copied ? 'Copied' : label}>{copied ? 'Copied' : label}</Button>
-        : <IconButton icon={copied ? 'check' : 'copy'} size={14} box="sm" label={copied ? 'Copied' : label} onClick={copy} />}
+      <CopyButton text={children} label={label} box="sm" />
     </div>
   )
 }

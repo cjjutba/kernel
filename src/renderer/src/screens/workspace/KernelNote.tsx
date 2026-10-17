@@ -1,7 +1,6 @@
 import { useContext, useId } from 'react'
 import type { ChatItem } from '@shared/types'
-import { Button, Icon } from '../../ui'
-import { useCopy } from './MessageActions'
+import { CopyButton, Icon } from '../../ui'
 import { TranscriptChat, useRowOpen } from './chatPlace'
 
 const textOf = (item: Extract<ChatItem, { kind: 'user' }>) => item.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ').trim()
@@ -15,7 +14,6 @@ export function KernelNote({ item, lead }: { item: Extract<ChatItem, { kind: 'us
   const [open, setOpen] = useRowOpen(useContext(TranscriptChat), item.id, false)
   const body = useId()
   const text = textOf(item)
-  const [copied, copy] = useCopy(text)
   return (
     <div className="msg msg-kernel" data-open={open || undefined}>
       <button type="button" className="note inline knote" aria-expanded={open} aria-controls={body} onClick={() => setOpen(!open)}>
@@ -26,7 +24,7 @@ export function KernelNote({ item, lead }: { item: Extract<ChatItem, { kind: 'us
       {open && (
         <div id={body} className="knote-full">
           {lead && <p className="selectable">{text}</p>}
-          <Button variant="ghost" icon={copied ? 'check' : 'copy'} onClick={copy}>{copied ? 'Copied' : 'Copy'}</Button>
+          <CopyButton text={text} label="Copy note" />
         </div>
       )}
     </div>

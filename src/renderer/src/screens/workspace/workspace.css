@@ -272,7 +272,6 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .tool-body:focus-visible { outline: 1px solid var(--ink-3); outline-offset: -1px; }
 .tool-body .hunk, .tool-body .file { color: var(--faint); }
 .tool-foot { display: flex; padding: 2px 4px; }
-.tool-raw { color: var(--muted); }
 /* The image a Read image row opened, the chip a message draws. The negative margin keeps the row as tall as its neighbours, and a long name is clipped rather than push the row's note off. */
 .step-chip { display: flex; min-width: 0; }
 .step-chip .msg-chip { margin: -2px 0; max-width: 100%; overflow: hidden; white-space: nowrap; }

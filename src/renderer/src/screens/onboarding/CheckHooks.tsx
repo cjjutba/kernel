@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { HookProblem } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
-import { Button, Icon, Modal, useBusy } from '../../ui'
+import { Button, CopyButton, Icon, Modal, useBusy } from '../../ui'
 import './onboarding.css'
 
 export function ago(ts: number | undefined, now = Date.now()): string {
@@ -56,13 +56,6 @@ export function problemCard(p: HookProblem): Card {
 }
 
 const Rich = ({ text }: { text: Text }) => <>{text.map((x, i) => (typeof x === 'string' ? x : <code key={i} className="hk-mono">{x[0]}</code>))}</>
-
-/** A button that copies `text` and says Copied for 1.5s. */
-function CopyButton({ text, label, className }: { text: string; label: string; className?: string }) {
-  const [copied, setCopied] = useState(false)
-  const copy = () => void navigator.clipboard?.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
-  return <Button className={className} onClick={copy} aria-label={copied ? 'Copied' : label}>{copied ? 'Copied' : label}</Button>
-}
 
 /** CheckHooks.png: installs the hooks (the old settings file is kept as a backup), then confirms events arrive. */
 export function CheckHooks() {
@@ -160,9 +153,9 @@ function ProblemModal({ problem, busy, note, retry }: { problem: HookProblem; bu
           </div>
           {c.fixLabel && <div className="hk-fix">
             <p className="hk-fix-label">{c.fixLabel}</p>
-            {c.command && <div className="hk-command"><span>{c.command}</span><CopyButton text={c.command} label="Copy" /></div>}
+            {c.command && <div className="hk-command"><span>{c.command}</span><CopyButton text={c.command} label="Copy command" /></div>}
             {c.line && <div className="hk-line">{c.line}</div>}
-            {c.copy && <div><CopyButton className="hk-admin" text={c.copy.text} label={c.copy.label} /></div>}
+            {c.copy && <div><CopyButton text={c.copy.text} label={c.copy.label} /></div>}
           </div>}
         </div>
         <p className="hk-keep" role="status" aria-live="polite">{note ?? 'Agents keep working. Their statuses stop updating, and approvals fall back to the terminal.'}</p>
