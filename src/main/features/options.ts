@@ -40,7 +40,9 @@ export interface KernelOptions {
   /** Called with the settings at start and after every change, for the parts only the app shell can do (open at login). */
   onSettings?: (s: AppSettings) => void
   /** Auto-update (src/main/updater.ts). Only a packaged app has one; without it Kernel reports no update. */
-  updater?: { get(): AppUpdate; check(): Promise<AppUpdate>; install(): void }
+  updater?: { get(): AppUpdate; check(): Promise<AppUpdate>; whenInstallable(): Promise<string>; install(failed?: () => void): void }
+  /** Starts Kernel again on the running version, once. Restart to update uses it when the install did not start (KERNEL-1020). */
+  relaunch?: () => void
   /** The running version's notes for What's new when there's no updater. A dev run reads them from the repo. */
   currentNotes?: AppUpdate['currentNotes']
   /** What Linear calls and the GitHub avatar download go through. Tests pass a stub; the app leaves it out. */

@@ -16,6 +16,8 @@ class FakeEngine extends EventEmitter implements UpdateEngine {
   installs = 0
   checks = 0
   cancel = vi.fn()
+  /** Squirrel.Mac, which says whether it accepts what electron-updater downloaded. */
+  native = new EventEmitter()
   next: (e: FakeEngine) => void = (e) => e.emit('update-not-available')
   async checkForUpdates() { this.checks++; this.emit('checking-for-update'); this.next(this); return { cancellationToken: { cancel: this.cancel } } }
   quitAndInstall() { this.installs++ }
@@ -218,11 +220,16 @@ describe('Updater recovery', () => {
     engine.next = (e) => { e.emit('update-available', newer); e.emit('download-progress', { percent: 30 }) }
     expect(await u.check()).toMatchObject({ status: 'ready', version: '0.2.0', notes: parseNotes(notes) })
     // Restart to update waits for the newer one rather than install a version the feed moved past.
-    u.install()
-    expect(engine.installs).toBe(0)
+    const installable = u.whenInstallable()
+    let settled = false
+    void installable.then(() => { settled = true })
+    await Promise.resolve()
+    expect(settled).toBe(false)
     engine.emit('update-downloaded', newer)
     bus.off('push', listen)
     expect(pushed.map((p) => [p.status, p.version])).toEqual([['ready', '0.3.0']])
+    expect(await installable).toBe('0.3.0')
+    u.install()
     expect(engine.installs).toBe(1)
     vi.useRealTimers()
     await saved(dataDir, { version: '0.3.0', shown: false })
@@ -240,14 +247,43 @@ describe('Updater recovery', () => {
     expect(await u.check()).toMatchObject({ status: 'ready', version: '0.2.0' })
     u.install()
     expect(engine.installs).toBe(1)
+  })
 
-    // Restart pressed while the newer one downloads, and that download fails: Kernel already stopped, so the ready one installs.
+  it('never installs from a timer, a retry or a failure', async () => {
+    const engine = new FakeEngine()
+    engine.next = download
+    const u = new Updater({ current: '0.1.0', dataDir: await dir(), engine })
+    u.start()
+    await minutes(0)
+    // Restart pressed while the newer one downloads. If that download fails, the ready one is installable, but nothing installs by itself.
     engine.next = (e) => e.emit('update-available', newer)
     await u.check()
-    u.install()
-    expect(engine.installs).toBe(1)
+    const installable = u.whenInstallable()
     engine.emit('error', new Error('net::ERR_CONNECTION_RESET'))
-    expect(engine.installs).toBe(2)
+    expect(await installable).toBe('0.2.0')
+    engine.next = (e) => { e.emit('update-available', newer); e.emit('update-downloaded', newer) }
+    await minutes(60)
+    await vi.advanceTimersByTimeAsync(CHECK_EVERY_MS)
+    expect(engine.installs).toBe(0)
+    u.stop()
+  })
+
+  it('falls back to the ready update when the newer download stalls', async () => {
+    const engine = new FakeEngine()
+    engine.next = download
+    const u = new Updater({ current: '0.1.0', dataDir: await dir(), engine })
+    await u.check()
+    engine.next = (e) => e.emit('update-available', newer)
+    await u.check()
+    const installable = u.whenInstallable()
+    await vi.advanceTimersByTimeAsync(STALL_MS)
+    expect(await installable).toBe('0.2.0')
+    expect(engine.installs).toBe(0)
+  })
+
+  it('whenInstallable rejects with nothing ready', async () => {
+    const u = new Updater({ current: '0.1.0', dataDir: await dir(), engine: new FakeEngine() })
+    await expect(u.whenInstallable()).rejects.toThrow('No update is ready')
   })
 
   it('retries a failure after 5 minutes, 15, then every hour, and goes back to 4 hours after a success', async () => {
@@ -406,6 +442,150 @@ describe('Updater.readyWithin after a failed start', () => {
     stuck.next = (e) => e.emit('update-available', info)
     expect(await new Updater({ current: '0.1.0', dataDir: await dir(), engine: stuck }).readyWithin(50)).toBeUndefined()
     expect(Date.now() - started).toBeLessThan(2000)
+  })
+})
+
+// KERNEL-1020: ready means Squirrel.Mac accepted the update, and a rejected one leaves the offer.
+describe('Updater with Squirrel', () => {
+  const minutes = (n: number) => vi.advanceTimersByTimeAsync(n * 60_000)
+  const newer: UpdateInfo = { version: '0.3.0', releaseNotes: '### Newer\nThe newest one.' }
+  const signature = new Error('Code signature at URL file:///Applications/Kernel.app/ did not pass validation: code failed to satisfy specified code requirement(s)')
+  let warn: ReturnType<typeof vi.spyOn>
+  beforeEach(() => { vi.useFakeTimers(); warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined) })
+  afterEach(() => { vi.useRealTimers(); warn.mockRestore() })
+  const make = async (o: Partial<ConstructorParameters<typeof Updater>[0]> = {}, dataDir?: string) => {
+    const engine = new FakeEngine()
+    const u = new Updater({ current: '0.1.0', dataDir: dataDir ?? await dir(), engine, native: engine.native, ...o })
+    return { engine, u }
+  }
+  /** electron-updater downloads `v`, and Squirrel accepts it. */
+  const accepted = (e: FakeEngine, v: UpdateInfo = info) => { e.emit('update-available', v); e.emit('update-downloaded', v); e.native.emit('update-downloaded') }
+
+  it('stages the download until Squirrel accepts it', async () => {
+    const { engine, u } = await make()
+    engine.next = (e) => { e.emit('update-available', info); e.emit('update-downloaded', info) }
+    expect(await u.check()).toMatchObject({ status: 'downloading', version: '0.2.0', progress: 100, notes: parseNotes(notes) })
+    expect(() => u.install()).toThrow('No update is ready')
+    engine.native.emit('update-downloaded')
+    expect(u.get()).toMatchObject({ status: 'ready', version: '0.2.0', notes: parseNotes(notes), progress: undefined })
+  })
+
+  it('drops a signature rejection, saves it, and cancels the same version on later checks', async () => {
+    const dataDir = await dir()
+    const { engine, u } = await make({}, dataDir)
+    engine.next = (e) => { e.emit('update-available', info); e.emit('update-downloaded', info); e.native.emit('error', signature); e.emit('error', signature) }
+    expect(await u.check()).toMatchObject({ status: 'idle', version: undefined, notes: undefined, installFailed: { version: '0.2.0', reason: 'signature' } })
+    vi.useRealTimers()
+    await saved(dataDir, { installFailed: { version: '0.2.0', reason: 'signature' } })
+    vi.useFakeTimers()
+    expect(new Updater({ current: '0.1.0', dataDir, engine: new FakeEngine() }).get().installFailed).toEqual({ version: '0.2.0', reason: 'signature' })
+    expect(new Updater({ current: '0.2.0', dataDir, engine: new FakeEngine() }).get().installFailed).toBeUndefined()
+
+    engine.next = (e) => e.emit('update-available', info)
+    expect(await u.check()).toMatchObject({ status: 'idle', installFailed: { version: '0.2.0' } })
+    expect(engine.cancel).toHaveBeenCalledTimes(1)
+    await u.check()
+    expect(engine.cancel).toHaveBeenCalledTimes(2)
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('skipping 0.2.0'))).toHaveLength(2)
+
+    engine.next = (e) => accepted(e, newer)
+    expect(await u.check()).toMatchObject({ status: 'ready', version: '0.3.0', installFailed: undefined })
+    expect(engine.cancel).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries another Squirrel failure on the backoff', async () => {
+    const { engine, u } = await make()
+    u.start()
+    await minutes(0)
+    engine.next = (e) => { e.emit('update-available', info); e.emit('update-downloaded', info); e.native.emit('error', new Error('The network connection was lost')) }
+    await minutes(4 * 60)
+    expect(engine.checks).toBe(2)
+    expect(u.get()).toMatchObject({ status: 'idle', version: undefined, installFailed: { version: '0.2.0', reason: 'other' } })
+    await minutes(4)
+    expect(engine.checks).toBe(2)
+    engine.next = (e) => accepted(e)
+    await minutes(1)
+    expect(engine.checks).toBe(3)
+    expect(u.get()).toMatchObject({ status: 'ready', version: '0.2.0', installFailed: undefined })
+    u.stop()
+  })
+
+  it('keeps an accepted ready update when a newer one is rejected, and drops the ready one when it is the rejected one', async () => {
+    const { engine, u } = await make()
+    engine.next = (e) => accepted(e)
+    await u.check()
+    engine.next = (e) => { e.emit('update-available', newer); e.emit('update-downloaded', newer); e.native.emit('error', signature) }
+    expect(await u.check()).toMatchObject({ status: 'ready', version: '0.2.0' })
+    engine.next = (e) => { e.emit('update-available', info); e.emit('update-downloaded', info); e.native.emit('error', new Error('boom')) }
+    expect(await u.check()).toMatchObject({ status: 'idle', installFailed: { version: '0.2.0', reason: 'other' } })
+  })
+
+  it('restart waits for a newer download, and the older accepted one installs if it fails', async () => {
+    const { engine, u } = await make()
+    engine.next = (e) => accepted(e)
+    await u.check()
+    engine.next = (e) => e.emit('update-available', newer)
+    await u.check()
+    const installable = u.whenInstallable()
+    let settled = false
+    void installable.then(() => { settled = true })
+    await minutes(1)
+    expect(settled).toBe(false)
+    engine.emit('update-downloaded', newer)
+    await minutes(1)
+    expect(settled).toBe(false)
+    engine.native.emit('error', new Error('rejected'))
+    expect(await installable).toBe('0.2.0')
+    expect(u.get()).toMatchObject({ status: 'ready', version: '0.2.0' })
+  })
+
+  it('relaunches once when the app does not quit within the cap, and when Squirrel errors', async () => {
+    const quit = await make({ installQuit: 30_000 })
+    quit.engine.next = (e) => accepted(e)
+    await quit.u.check()
+    const relaunch = vi.fn()
+    quit.u.install(relaunch)
+    expect(quit.engine.installs).toBe(1)
+    await vi.advanceTimersByTimeAsync(29_999)
+    expect(relaunch).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(relaunch).toHaveBeenCalledTimes(1)
+    expect(quit.u.get()).toMatchObject({ status: 'idle', installFailed: { version: '0.2.0', reason: 'other' } })
+    quit.engine.native.emit('error', new Error('late'))
+    await minutes(10)
+    expect(relaunch).toHaveBeenCalledTimes(1)
+
+    const err = await make()
+    err.engine.next = (e) => accepted(e)
+    await err.u.check()
+    const again = vi.fn()
+    err.u.install(again)
+    err.engine.native.emit('error', signature)
+    err.engine.emit('error', signature)
+    await minutes(1)
+    expect(again).toHaveBeenCalledTimes(1)
+    expect(err.u.get().installFailed).toEqual({ version: '0.2.0', reason: 'signature' })
+    await minutes(5)
+    expect(again).toHaveBeenCalledTimes(1)
+  })
+
+  it('the update test reports ready only after Squirrel accepts', async () => {
+    class TestEngine extends FakeEngine implements UpdateTestEngine {
+      allowDowngrade = true
+      autoRunAppAfterInstall = true
+      setFeedURL() { return undefined }
+    }
+    const engine = new TestEngine()
+    engine.next = (e) => { e.emit('update-available', info); e.emit('update-downloaded', info) }
+    const lines: string[] = []
+    const exits: number[] = []
+    const run = runUpdateTest({ feed: 'http://f', dir: await dir(), current: '0.1.0', engine, native: engine.native, within: 1000, print: (l) => lines.push(l), exit: (c) => exits.push(c) })
+    await vi.advanceTimersByTimeAsync(10)
+    expect(lines).toEqual([])
+    engine.native.emit('update-downloaded')
+    await run
+    expect(lines).toEqual(['ready 0.2.0'])
+    expect(engine.installs).toBe(1)
   })
 })
 

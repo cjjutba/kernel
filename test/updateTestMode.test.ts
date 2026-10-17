@@ -44,7 +44,7 @@ vi.mock('electron', () => {
     app,
     BrowserWindow: h.window,
     protocol: { registerSchemesAsPrivileged: noop },
-    session: {}, WebContentsView: noop, clipboard: {}, dialog: {}, ipcMain: {}, Menu: {}, nativeImage: {}, nativeTheme: {},
+    session: {}, autoUpdater: { on: noop }, WebContentsView: noop, clipboard: {}, dialog: {}, ipcMain: {}, Menu: {}, nativeImage: {}, nativeTheme: {},
     Notification: {}, powerMonitor: { on: noop }, safeStorage: {}, shell: {}
   }
 })
