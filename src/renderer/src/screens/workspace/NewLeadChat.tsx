@@ -255,6 +255,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
           <div className="thread">
             <div className="msg msg-user">
               <div className="bubble">{sent.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : <PartChip key={i} part={p} />))}</div>
+              <div className="msg-acts-space" aria-hidden />
             </div>
             <TurnLine since={sent.at} waiting={false} />
           </div>
