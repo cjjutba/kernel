@@ -13,6 +13,7 @@ import { LEAD_PRESET, resolvePreset, terminalCommand, terminalPresets, terminalT
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
+import { TerminalTranscripts } from './terminalTranscript'
 
 const COPY = 'fork:'
 
@@ -24,6 +25,8 @@ const notFound = (e: unknown) => /not found/i.test((e as Error)?.message ?? '')
 
 /** Chat tabs, their names, forks and big terminals (KERNEL-329). */
 export class Chats extends Feature {
+  /** A terminal seat's Claude Code session as a read-only transcript on its chat (KERNEL-1002). */
+  readonly transcripts = new TerminalTranscripts(this.k)
   /** Chats with a turn running. Read from `chat.running` so the quit prompt can count agents (KERNEL-214). */
   private readonly runningChats = new Set<string>()
 
