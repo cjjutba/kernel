@@ -146,6 +146,8 @@ export interface Fixture {
   /** Usage data (KERNEL-397): whether this build could send, and what Settings, Privacy lists. Left out, it can't and lists nothing. */
   telemetry?: { canSend?: boolean; recent?: TelemetryRecord[] }
   ui: ForcedUi
+  /** Remembered choices to start with, by storage key (remember.ts), so a screen can open on a choice a person made (KERNEL-1003). */
+  saved?: Record<string, string>
   /** `pnpm shots <Screen> --motion` runs `action` and captures frames for `ms`. `area` is a selector to crop to, else the whole window (KERNEL-831). */
   motion?: { action: MotionAction; ms: number; area?: string }
   /** Channels that reject with this text, so a screen can show a failed load (KERNEL-869). */

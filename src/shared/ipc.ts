@@ -613,7 +613,7 @@ export interface KernelApi {
   /** The page's zoom changed, however it happened. Main reads the zoom itself and puts the traffic lights back on the top row (KERNEL-972). */
   'system.zoomChanged': { req: void; res: Ok }
   /** Fixture mode only (KERNEL_FIXTURES). The UI to force and push events to replay. `persist` (KERNEL_FIXTURE_PERSIST=1) lets remembered choices use real localStorage, so a relaunch keeps them. Null in a real run. */
-  'system.fixture': { req: void; res: { ui: ForcedUi; push: PushEvent[]; persist?: boolean } | null }
+  'system.fixture': { req: void; res: { ui: ForcedUi; push: PushEvent[]; persist?: boolean; saved?: Record<string, string> } | null }
 
   // live previews of shared HTML (KERNEL-303). Each is a locked-down native view main draws over the tab. `preview`
   // events report its state and `preview.key` carries app shortcuts typed inside it.
