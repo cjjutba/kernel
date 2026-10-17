@@ -95,7 +95,7 @@
 /* Kernel's team update in the Lead's chat (cards/TeamUpdateCard.tsx, KERNEL-127): an outline with a small header, one
    row per teammate, the events as a line of text and the reply as plain text (KERNEL-274). */
 .tucard-wrap { align-self: stretch; width: 100%; }
-.tcard.tucard { gap: 0; padding: 0; margin: 0; background: transparent; border-color: var(--line-2); }
+.tcard.tucard { gap: 0; padding: 0; margin: 0; background: transparent; border-color: var(--card-line); }
 .tucard-head { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 16px; border-bottom: 1px solid var(--line); font-size: var(--fs-meta); }
 .tucard .tucard-title { display: block; margin: 0; color: var(--ink-3); font-size: inherit; font-weight: var(--fw-medium); }
 .tucard-head .muted { color: var(--muted); }
