@@ -19,9 +19,6 @@
 .ap-text:focus { border-color: var(--ink-3); }
 .ap-text.mono { padding: 12px 14px; font-family: var(--mono); font-size: var(--fs-code); line-height: var(--lh-code); resize: vertical; }
 .ap-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.ap-chip { height: 28px; padding: 0 12px; border: 1px solid var(--pill-line); border-radius: var(--r-pill); background: transparent; color: var(--muted); font-size: var(--fs-ui); font-weight: var(--fw-medium); }
-.ap-chip[aria-pressed='true'] { border-color: var(--line-3); background: var(--surface-3); color: var(--ink); }
-.ap-chip:hover { color: var(--ink); }
 
 .na-body { display: flex; flex-direction: column; gap: 14px; padding: 18px 18px 20px; }
 .na-body p { margin: 0; color: var(--muted); line-height: var(--lh); }
