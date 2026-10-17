@@ -16,6 +16,8 @@ const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   createSdkMcpServer: () => ({}), tool: () => ({}),
   query: ({ options }: { options: { abortController?: AbortController } }) => {
+    // The naming request a first message starts (KERNEL-1024) isn't a session: it records nothing and never answers.
+    if ((options as { persistSession?: boolean; maxTurns?: number }).persistSession === false && (options as { maxTurns?: number }).maxTurns === 1) return { [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }) }
     sdk.onQuery?.()
     const items: unknown[] = []
     const waiters: { resolve: (r: IteratorResult<unknown>) => void; reject: (e: Error) => void }[] = []

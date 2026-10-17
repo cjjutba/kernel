@@ -239,6 +239,8 @@ export interface SessionDeps {
   allowToolInProject?: (projectId: string, rule: string) => void
   /** The agent sent a message, its subagents' included. Kernel looks for the session's title then. */
   onReply?: (ws: Workspace, chat: Chat) => void
+  /** A message went into the chat, before its turn starts. Kernel names a chat that has no name from the first one (KERNEL-1024). */
+  onSent?: (ws: Workspace, chat: Chat, parts: ChatPart[]) => void
   /** Claude's API answered: a message with no `error`, or a `success` result without `is_error`. The network works, whatever DNS says (KERNEL-231). */
   onReached?: () => void
   /** Claude Code started a fresh conversation in the chat. `trigger` is the SDK's: 'clear' for /clear, absent from older emitters (KERNEL-202). */
@@ -1034,6 +1036,7 @@ export class Sessions {
     const row: ChatItem & { kind: 'user' } = { kind: 'user', id: o.clientId ?? randomUUID(), ts: Date.now(), parts, ...sender(o) }
     this.item(chat, row)
     for (const m of more) this.item(chat, { kind: 'user', id: m.clientId ?? randomUUID(), ts: Date.now(), parts: m.parts, ...sender(m) })
+    this.d.onSent?.(ws, chat, [...(o.from === 'kernel' ? [] : parts), ...more.filter((m) => m.from !== 'kernel').flatMap((m) => m.parts)])
     const live = this.live.get(chat.id) ?? this.start(chat, ws)
     live.sentItem = row
     live.cold = cold
