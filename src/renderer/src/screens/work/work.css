@@ -1,6 +1,6 @@
 /* The Work page header (KERNEL-874). Tokens only. */
-.wk-head { height: 48px; gap: 10px; padding-right: 12px; border-bottom: 1px solid var(--line); }
-.wk-head h1 { margin: 0; font-size: var(--fs-ui); font-weight: var(--fw-semibold); color: var(--ink); }
+.wk-head { height: 44px; gap: 10px; padding-right: 12px; border-bottom: 1px solid var(--line); }
+.wk-head h1 { margin: 0; font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
 .wk-head > svg { color: var(--muted); }
 .wk-tabs { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; height: 30px; box-sizing: border-box; padding: 2px; margin-left: 6px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--input-bg); flex-shrink: 0; }
 .wk-tabs button { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 0; border-radius: calc(var(--r) - 3px); background: transparent; color: var(--muted); font-size: var(--fs-code); font-weight: var(--fw-medium); white-space: nowrap; }

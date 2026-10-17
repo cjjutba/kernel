@@ -459,7 +459,7 @@ function AddSetup({ projectId, onManual }: { projectId: string; onManual: () => 
         <div className="add-setup-pick">
           <div className="add-setup-head">
             <span>{pick.source === 'detected' ? `Detected from ${pick.file}` : `From ${pick.file}`}</span>
-            <Button className="small" aria-label="Use the suggested setup script" busy={busy === 'use'} busyLabel="Saving" disabled={busy !== null} onClick={() => void doing('use', () => patchProjectSettings(projectId, pick.patch))}>Use</Button>
+            <Button size="sm" aria-label="Use the suggested setup script" busy={busy === 'use'} busyLabel="Saving" disabled={busy !== null} onClick={() => void doing('use', () => patchProjectSettings(projectId, pick.patch))}>Use</Button>
           </div>
           <pre className="add-setup-script">{pick.patch.scripts?.setup}</pre>
           {pick.notes.slice(0, 1).map((n) => <span key={n} className="add-setup-note" title={n}>{n}</span>)}
@@ -614,8 +614,8 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       {!collapsed && bottom === 'setup' && !noSetup && hasOutput && (
         <div className="script-actions">
           {setupBusy
-            ? <Button className="small" busy={busy === 'stopSetup'} busyPattern="snake" busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>
-            : <Button className="small" icon="refresh" busy={busy === 'setup'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void startSetup()}>Rerun setup</Button>}
+            ? <Button size="sm" busy={busy === 'stopSetup'} busyPattern="snake" busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>
+            : <Button size="sm" icon="refresh" busy={busy === 'setup'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void startSetup()}>Rerun setup</Button>}
         </div>
       )}
     </div>

@@ -45,7 +45,7 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
   // Comment mode. The workspace that shared the file may be archived by now, and then a comment has nowhere to go.
   const [commenting, setCommenting] = useState(false)
   const archived = useStore((s) => s.workspaces.find((w) => w.id === file.workspaceId)?.status === 'archived')
-  const toggle = useRef<HTMLButtonElement>(null)
+  const toggle = useRef<HTMLSpanElement>(null)
   const layer = useRef<HTMLDivElement>(null)
   const img = useRef<HTMLImageElement>(null)
   const doc = useRef<HTMLDivElement>(null)
@@ -55,7 +55,7 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
   const imageAt = useMemo(() => imageSurface(() => layer.current, () => img.current), [])
   const markdownAt = useMemo(() => markdownSurface(() => layer.current, () => doc.current?.querySelector<HTMLElement>('.shared-md') ?? null), [])
   const ready = page || (file.kind === 'image' && !!read.dataUrl) || (file.kind === 'markdown' && read.text !== undefined)
-  const stop = () => { setCommenting(false); toggle.current?.focus() }
+  const stop = () => { setCommenting(false); toggle.current?.querySelector('button')?.focus() }
 
   const entries: MenuEntry[] = [...file.versions].sort((a, b) => b.n - a.n).map((v) => ({
     id: `v${v.n}`, leading: <span className="shared-menu-ver">v{v.n}</span>, label: v.note ? `${clock(v)} · ${v.note}` : clock(v), checked: v.n === version.n,
@@ -70,21 +70,19 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
       <div className="shared-title"><h2 className="ellipsis">{file.title}</h2><span className="shared-by ellipsis">Shared by {by} · {clock(version)}</span></div>
       <div className="shared-tools">
         <span ref={anchor} style={{ position: 'relative' }}>
-          <button type="button" className="shared-ver" aria-label="Versions" aria-haspopup="menu" aria-expanded={versions} onClick={() => setVersions(!versions)}>
+          <Button size="sm" className="shared-ver" aria-label="Versions" aria-haspopup="menu" aria-expanded={versions} onClick={() => setVersions(!versions)}>
             v{version.n}<Icon name="chevron" size={12} />
-          </button>
+          </Button>
           {versions && <Menu label="Versions" anchorRef={anchor} onClose={() => setVersions(false)} style={{ left: 0, top: 'calc(100% + 6px)', width: 380 }} items={entries} />}
         </span>
         {page && <span className="shared-width"><SegmentedControl label="Preview width" value={width} onChange={(w) => setWidth(w as PreviewWidth)} options={WIDTHS} /></span>}
         {file.kind === 'image' && <ZoomControl zoom={zoom} />}
         {!pdf && (
-          <button ref={toggle} type="button" className="shared-comment" aria-pressed={commenting} disabled={!ready} onClick={() => setCommenting(!commenting)}>
-            <Icon name="comment" size={14} />Comment
-          </button>
+          <span ref={toggle} style={{ display: 'contents' }}><Button size="sm" className="shared-comment" aria-pressed={commenting} disabled={!ready} icon="comment" onClick={() => setCommenting(!commenting)}>Comment</Button></span>
         )}
-        {page && <Button className="small" icon="refresh" onClick={() => setAgain(again + 1)}>Reload</Button>}
-        {pdf && <Button className="small" icon="ext" busy={busy === 'open'} busyLabel="Opening" onClick={() => void openInPreview()}>Open in Preview</Button>}
-        <Button className="small" icon="folder" onClick={reveal}>Show in Finder</Button>
+        {page && <Button size="sm" icon="refresh" onClick={() => setAgain(again + 1)}>Reload</Button>}
+        {pdf && <Button size="sm" icon="ext" busy={busy === 'open'} busyLabel="Opening" onClick={() => void openInPreview()}>Open in Preview</Button>}
+        <Button size="sm" icon="folder" onClick={reveal}>Show in Finder</Button>
       </div>
       </div>
       <div className="shared-body">

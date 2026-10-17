@@ -3,6 +3,7 @@ import type { ChangedFile, CompareTarget, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
 import { actions } from '../../store'
+import { Button } from '../../ui'
 import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import { addToComposer } from './composer/bus'
 import { OpenImage } from './composer/Chip'
@@ -252,7 +253,7 @@ function TextDiff({ ws, path, changes, target, title }: { ws: Workspace; path: s
                 <span className="ln">{l.a}</span><span className="ln">{l.b}</span>
                 <span className="mark">{l.hunk ? '' : l.mark === ' ' ? '' : l.mark}</span>
                 <span className="src">{l.code || ' '}</span>
-                {l.hunk && <button type="button" className="hunk-send" onClick={() => sendHunk(f.path, f.lines, i)}>Send to agent</button>}
+                {l.hunk && <Button size="sm" className="hunk-send" onClick={() => sendHunk(f.path, f.lines, i)}>Send to agent</Button>}
               </div>
             ))}
           </div>
