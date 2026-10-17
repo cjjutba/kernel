@@ -25,8 +25,8 @@
 .set-page h1 { margin: 0; font-size: var(--fs-page); font-weight: var(--fw-semibold); color: var(--ink); letter-spacing: -0.6px; }
 .set-section { display: flex; flex-direction: column; gap: 10px; }
 .set-section h2, .ag-group h2 { margin: 0; padding-left: 2px; font-size: var(--fs-sub); font-weight: var(--fw-medium); color: var(--ink); }
-.set-card { border-radius: var(--r-md); border: 1px solid var(--pill-line); background: var(--surface); }
-.set-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; column-gap: 16px; row-gap: 10px; min-height: 52px; padding: 12px 16px; border-top: 1px solid var(--panel-line); }
+.set-card { border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); }
+.set-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; column-gap: 16px; row-gap: 10px; min-height: 52px; padding: 12px 16px; border-top: 1px solid var(--card-line); }
 .set-row:first-child { border-top: 0; }
 .set-text { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .set-label { font-size: var(--fs-row); font-weight: var(--fw-medium); }
@@ -66,7 +66,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 
 /* Project pages and project overrides (KERNEL-26) */
 .set-row .set-lines.tight { padding: 8px 12px; }
-.set-line { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 8px 18px; border-top: 1px solid var(--panel-line); }
+.set-line { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 8px 18px; border-top: 1px solid var(--card-line); }
 .set-line:first-child { border-top: 0; }
 .set-line code { flex: 1; min-width: 0; overflow-wrap: anywhere; font: var(--fs-code) var(--mono); color: var(--ink-2); }
 .set-empty { padding: 14px 18px; color: var(--muted); font-size: var(--fs-ui); }
@@ -201,11 +201,11 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
    a guide line, rows whose actions show on hover, status lines, tables and tag lists. */
 .set-head h1 { display: flex; align-items: center; gap: 10px; line-height: var(--lh-compact); }
 .set-head h1 > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.set-crumb { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--faint); font: inherit; letter-spacing: inherit; }
+.set-crumb { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--ink-3); font: inherit; letter-spacing: inherit; }
 .set-crumb:hover { color: var(--ink-2); }
 .set-crumb-sep { display: inline-flex; flex-shrink: 0; color: var(--line-4); }
 .set-section h2, .ag-group h2 { display: inline-flex; align-items: baseline; gap: 8px; }
-.set-count { font-size: var(--fs-code); font-weight: var(--fw-regular); font-variant-numeric: tabular-nums; color: var(--faint); }
+.set-count { font-size: var(--fs-code); font-weight: var(--fw-regular); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .set-fold { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
 .set-fold > svg { color: var(--muted); transition: transform var(--dur-turn); }
 .set-fold[aria-expanded='true'] > svg { transform: rotate(90deg); }
@@ -225,20 +225,20 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-acts { display: inline-flex; justify-content: flex-end; gap: 4px; opacity: 0; transition: opacity var(--dur-fast); }
 .set-hoverable:hover .set-acts, .set-hoverable:focus-within .set-acts, .set-table-row:hover .set-acts, .set-table-row:focus-within .set-acts { opacity: 1; }
 .set-card .set-acts .btn { height: 26px; padding: 0 10px; font-size: var(--fs-code); }
-.set-status { display: flex; align-items: center; gap: 12px; min-height: 60px; box-sizing: border-box; padding: 10px 12px 10px 16px; border-radius: var(--r-md); border: 1px solid var(--pill-line); background: var(--surface); }
+.set-status { display: flex; align-items: center; gap: 12px; min-height: 60px; box-sizing: border-box; padding: 10px 12px 10px 16px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); }
 .set-status > svg { flex-shrink: 0; color: var(--ink-2); }
-.set-status[data-tone='warn'] > svg { color: var(--needs); }
+.set-status[data-tone='warn'] > svg { color: var(--needs-fill); }
 .set-status-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .set-status .btn { height: 28px; font-size: var(--fs-code); }
 /* The table is the grid and its rows are subgrids, so the actions column is as wide as the widest row's in the header too. */
 .set-table { display: grid; column-gap: 16px; }
 .set-table-head, .set-table-row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; padding: 0 12px 0 16px; }
-.set-table-head { height: 32px; background: var(--panel); font-size: var(--fs-meta); color: var(--faint); }
-.set-table-row { min-height: 44px; padding-top: 8px; padding-bottom: 8px; border-top: 1px solid var(--panel-line); font-size: var(--fs-ui); color: var(--ink-2); }
+.set-table-head { height: 32px; background: var(--panel); font-size: var(--fs-meta); color: var(--ink-3); }
+.set-table-row { min-height: 44px; padding-top: 8px; padding-bottom: 8px; border-top: 1px solid var(--card-line); font-size: var(--fs-ui); color: var(--ink-2); }
 .set-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .set-cell:first-child { color: var(--ink); }
 .set-cell .mono, .set-cell.mono { font: var(--fs-code) var(--mono); }
-.set-table-empty { grid-column: 1 / -1; padding: 14px 16px; border-top: 1px solid var(--panel-line); font-size: var(--fs-ui); color: var(--muted); }
+.set-table-empty { grid-column: 1 / -1; padding: 14px 16px; border-top: 1px solid var(--card-line); font-size: var(--fs-ui); color: var(--muted); }
 .set-tags { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .set-tag { display: inline-flex; align-items: center; gap: 4px; height: 26px; box-sizing: border-box; padding: 0 3px 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink-2); font-size: var(--fs-meta); max-width: 100%; min-width: 0; }
 .set-tag-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
