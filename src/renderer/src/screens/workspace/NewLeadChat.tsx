@@ -32,7 +32,7 @@ import { newChatLeadMode } from '@shared/leadMode'
 import { useProjectSettings } from '../settings/useSettings'
 import { stripRemote } from '../settings/remote'
 import { UpNext } from './UpNext'
-import { SetupRows } from './SetupRows'
+import { SetupRows, StepRows } from './SetupRows'
 import { ReadinessLine } from './ReadinessLine'
 import { PartChip, TurnLine } from './Transcript'
 
@@ -242,6 +242,10 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   const usable = !!project && !project.archived
   // A project still setting up shows its steps where the title goes (KERNEL-948), and nothing sends until its checkout is there.
   const setupSteps = useStore((s) => s.projectSetup[projectId])
+  // Once setup has ended the rows give way to the normal title and Up next. The store keeps the last steps for the session, so this reads their states. Only a step that warned or failed stays, with its action.
+  const setupEnded = !!setupSteps && !setupSteps.some((x) => x.state === 'run') && (setupSteps.some((x) => x.state === 'fail') || setupSteps.every((x) => x.id === 'host' || x.state !== 'wait'))
+  const setupLive = !!setupSteps && !setupEnded
+  const setupProblems = setupEnded && !!setupSteps.some((x) => x.id !== 'host' && (x.state === 'warn' || x.state === 'fail'))
   // A project added while this page was open makes its first chat when setup finishes, and the page gives way to it, so the first Send stays in that chat.
   const sawSetup = useRef(false)
   if (setupSteps) sawSetup.current = true
@@ -272,8 +276,9 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
           </div>
         </div>
       )}
-      <div ref={topRef} className="lead-top" style={sent ? GONE : undefined} data-setup={setupSteps && project ? '' : undefined}>
-        {setupSteps && project ? <SetupRows project={project} steps={setupSteps} /> :
+      <div ref={topRef} className="lead-top" style={sent ? GONE : undefined} data-setup={setupLive && project ? '' : undefined}>
+        {setupLive && project ? <SetupRows project={project} steps={setupSteps} /> : <>
+        {setupProblems && project && <section className="su-rows su-chat" aria-label="Project setup"><StepRows project={project} steps={setupSteps!} problems /></section>}
         <div ref={titleRef} className="lead-title" style={{ visibility: fits ? undefined : 'hidden' }} aria-hidden={fits ? undefined : true}>
           {usable
             ? <h2 className="lead-ask">What's next for {projectPicker('title')}?</h2>
@@ -286,9 +291,9 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
                 <h2 className="lead-ask">What are we building?</h2>
                 <p className="lead-note">Add a project first. Kernel and its team work inside one repo at a time.</p>
               </>}
-        </div>}
+        </div></>}
       </div>
-      <div className="lead-up" style={sent ? GONE : undefined}>{usable && !setupSteps && <UpNext projectId={projectId} lead={name} onPlan={planIssue} />}</div>
+      <div className="lead-up" style={sent ? GONE : undefined}>{usable && !setupLive && <UpNext projectId={projectId} lead={name} onPlan={planIssue} />}</div>
       <ComposerShell
         above={<>{!projects.length && <FirstProjectPills />}<ReadinessLine /></>}
         input={<>
