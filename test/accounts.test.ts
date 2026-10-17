@@ -202,7 +202,7 @@ describe('Claude accounts (KERNEL-567)', () => {
   /** A Kernel whose Claude is a fake CLI with its own login on Max, and a `~/.claude` and `~/.claude.json` as that login has them. */
   async function claudeKernel() {
     const t = await kernel()
-    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    t.k.accountReader = async () => ({ signedIn: true, name: 'Sam', email: 'cj@example.com', subscriptionType: 'max' })
     const claude = await fakeClaude()
     await t.k.providers.setPath('claude', { path: claude.bin })
     await mkdir(join(t.home, '.claude', 'projects', '-repo'), { recursive: true })
@@ -682,7 +682,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
    */
   async function setUp(names: string[] = [], o: Partial<KernelOptions> = {}) {
     const t = await kernel(o)
-    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    t.k.accountReader = async () => ({ signedIn: true, name: 'Sam', email: 'cj@example.com', subscriptionType: 'max' })
     const claude = await fakeClaude()
     await t.k.providers.setPath('claude', { path: claude.bin })
     const h = t.k.handlers()
@@ -999,7 +999,7 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
   async function setUp(o: Partial<KernelOptions> = {}) {
     const kc = fakeKeychain()
     const t = await kernel({ keychain: kc.keychain, ...o })
-    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    t.k.accountReader = async () => ({ signedIn: true, name: 'Sam', email: 'cj@example.com', subscriptionType: 'max' })
     const claude = await fakeClaude()
     await t.k.providers.setPath('claude', { path: claude.bin })
     const steps: AccountAddStep[] = []
@@ -1128,7 +1128,7 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
 
   it('refuses to add a Claude login that is the CLI login or already added, and lets the same email in another organization in', async () => {
     const { k, h, claude, rows, steps, dataDir } = await setUp().then((t) => ({ ...t, dataDir: t.k.o.dataDir }))
-    process.env.FAKE_EMAIL = 'CJ@example.com'
+    process.env.FAKE_EMAIL = 'Cj@example.com'
     await expect(h['accounts.add']({ provider: 'claude' })).rejects.toThrow('That account is already in Kernel.')
     expect(steps.at(-1)).toMatchObject({ provider: 'claude', step: 'failed', error: 'That account is already in Kernel.' })
     expect(await rows()).toHaveLength(1)
@@ -1208,7 +1208,7 @@ describe('MCP servers added on an account, Keychain prompts and shared organizat
   async function setUp() {
     const kc = fakeKeychain()
     const t = await kernel({ keychain: kc.keychain })
-    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    t.k.accountReader = async () => ({ signedIn: true, name: 'Sam', email: 'cj@example.com', subscriptionType: 'max' })
     const claude = await fakeClaude()
     await t.k.providers.setPath('claude', { path: claude.bin })
     await writeFile(join(t.home, '.claude.json'), JSON.stringify({ mcpServers: { neon: { command: 'neon' } }, projects: { '/repo': {} }, oauthAccount: { emailAddress: 'cj@example.com' } }))
@@ -1374,7 +1374,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
   /** A Kernel whose Claude is a fake CLI with its own login, with the pushes this issue adds. */
   async function setUp(o: Partial<KernelOptions> = {}) {
     const t = await kernel(o)
-    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    t.k.accountReader = async () => ({ signedIn: true, name: 'Sam', email: 'cj@example.com', subscriptionType: 'max' })
     const claude = await fakeClaude()
     await t.k.providers.setPath('claude', { path: claude.bin })
     const runs: McpSignInAll[] = []
@@ -1516,7 +1516,7 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
   /** A Kernel whose Claude is a fake CLI with its own login, with the pushes `mcp.accounts` sends. */
   async function setUp(o: Partial<KernelOptions> = {}) {
     const t = await kernel(o)
-    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    t.k.accountReader = async () => ({ signedIn: true, name: 'Sam', email: 'cj@example.com', subscriptionType: 'max' })
     const claude = await fakeClaude()
     await t.k.providers.setPath('claude', { path: claude.bin })
     const runs: McpSignInAll[] = []
@@ -1691,7 +1691,7 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
 
   async function setUp() {
     const t = await kernel()
-    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    t.k.accountReader = async () => ({ signedIn: true, name: 'Sam', email: 'cj@example.com', subscriptionType: 'max' })
     const claude = await fakeClaude()
     await t.k.providers.setPath('claude', { path: claude.bin })
     const runs: McpSignInAll[] = []
@@ -1830,7 +1830,7 @@ describe('One login, one row (KERNEL-701)', () => {
   /** A Kernel whose Claude is a fake CLI with its own login as cj@example.com on Max, and whose Codex login is cj@example.com. */
   async function setUp() {
     const t = await kernel()
-    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    t.k.accountReader = async () => ({ signedIn: true, name: 'Sam', email: 'cj@example.com', subscriptionType: 'max' })
     const claude = await fakeClaude()
     await t.k.providers.setPath('claude', { path: claude.bin })
     const steps: AccountAddStep[] = []
@@ -1993,7 +1993,7 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
     // The CLI's login changed in a terminal: the same id, another email.
     file.claude.cli = { email: 'other@example.com' }
     expect(place.coldReason(c, { account: 'cli' })).toBe('account')
-    file.claude.cli = { email: 'CJ@example.com' }
+    file.claude.cli = { email: 'Cj@example.com' }
     expect(place.coldReason(c, { account: 'cli' })).toBeUndefined()
     expect(place.coldReason(c, { account: 'cli', model: 'claude-sonnet-5-5' })).toBe('model')
     // A Claude plan keeps the cache an hour, an API key and Codex 5 minutes.

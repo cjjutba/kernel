@@ -1,6 +1,6 @@
 # Draft, to confirm with a live run
 
-Agents can't run the live tests (D-023). So this draft rests on the pinned SDK's types (0.3.292), the Claude Code CLI bundled with that SDK (2.1.292), the Codex protocol and binary (0.153.4) and the live findings in KERNEL-406. `test/live.sandbox.test.ts` checks every answer below. CJ confirms it with:
+Agents can't run the live tests (D-023). So this draft rests on the pinned SDK's types (0.3.292), the Claude Code CLI bundled with that SDK (2.1.292), the Codex protocol and binary (0.153.4) and the live findings in KERNEL-406. `test/live.sandbox.test.ts` checks every answer below. The maintainer confirms it with:
 
 ```
 KERNEL_LIVE=1 KERNEL_LIVE_OUT=shots/sandbox-live.json pnpm test test/live.sandbox.test.ts
@@ -50,6 +50,6 @@ sandbox: {
 - `failIfUnavailable: false`, with a note in the chat when the sandbox falls back (A10). The macOS sandbox is Seatbelt, which ships with the OS, so a fallback should be rare.
 - `enableWeakerNetworkIsolation: true` only if the live run's bare `ghApi` row is denied and its A10 row allowed. It opens `com.apple.trustd.agent`, which the CLI calls a possible exfiltration path. If gh works without it, A10 leaves it off.
 
-The live test doesn't cover git over SSH. The sandbox proxies HTTP and SOCKS, and nothing checks `ssh` to port 22. A repo's own `.claude/settings.json` can also add `allowWrite` paths, since Kernel loads project settings. CJ's call stands: the sandbox runs in Bypass only until a live run confirms these answers. KERNEL-436.
+The live test doesn't cover git over SSH. The sandbox proxies HTTP and SOCKS, and nothing checks `ssh` to port 22. A repo's own `.claude/settings.json` can also add `allowWrite` paths, since Kernel loads project settings. The maintainer's call stands: the sandbox runs in Bypass only until a live run confirms these answers. KERNEL-436.
 
 **Codex keeps KERNEL-406's sandbox for now, and that sandbox leaves the repo's git hooks writable.** Bypass on Codex keeps `untrusted` (the plan's open decision 4), so whatever Kernel accepts runs unsandboxed and A10's list doesn't apply to it. The gap is the common dir. As a writable root, it lets a sandboxed command write `.git/hooks` and `.git/config`, and the live run's `hooks` and `config` rows check that. A patch probably can too, since `approveFiles` accepts any change without a `grantRoot` in Accept edits and Bypass. Nothing tests the patch path yet. A hook planted there runs the next time Kernel itself runs git outside any sandbox, for example `post-checkout` when it adds the next worktree. Codex's Bypass ticket has to close this. One way is narrower roots: `objects`, `refs`, `logs` and `worktrees/<name>` instead of the whole common dir. That breaks git commands that lock a file in the common dir itself, such as packing refs. The other way is a deny entry, once Codex's permission profiles leave experimental. KERNEL-436.

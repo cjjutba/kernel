@@ -261,7 +261,7 @@ describe("the Lead's messages in a teammate's chat (KERNEL-116)", () => {
 describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL-473)", () => {
   const issue: TrackerIssue = {
     id: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/kernel/issue/KERNEL-83', description: 'List open issues with their labels.',
-    comments: [{ author: 'CJ', body: 'Keep the filters.', createdAt: '2026-10-11T09:00:00Z' }], labels: ['Team']
+    comments: [{ author: 'Sam', body: 'Keep the filters.', createdAt: '2026-10-11T09:00:00Z' }], labels: ['Team']
   }
   /** Makes the project's tracker, and the one every key reads from, a Linear that has `issue`, and returns the keys it is asked for. */
   const linear = (k: Kernel) => {

@@ -322,7 +322,7 @@ export class Waits extends Feature {
 
   /**
    * A hand-off whose Linear issue is blocked by issues open teammates are building (KERNEL-263). Once the brief has gone
-   * out, it waits for their PRs without holding anything (CJ chose "tell on merge"), and Kernel asks the teammate to rebase
+   * out, it waits for their PRs without holding anything (the maintainer chose "tell on merge"), and Kernel asks the teammate to rebase
    * when they merge. Blockers with no open workspace, or one that merged, don't count. Returns the workspace when it waits.
    */
   async waitOnBlockers(ws: Workspace, blockedBy: string[]): Promise<Workspace | undefined> {

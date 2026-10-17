@@ -1,4 +1,4 @@
-**Each room's Lead works in its own worktree, detached at the latest main, instead of the main checkout.** CJ runs `pnpm dev` from the checkout, so anything Kernel ran there reloaded the app. The Lead's Changes tab also listed whatever was untracked in the checkout (KERNEL-350). There is one worktree per room, not one per Lead chat: Ask Kernel opens a new Lead chat for every question (D-133), and a worktree per chat would mean a checkout and a link step per question.
+**Each room's Lead works in its own worktree, detached at the latest main, instead of the main checkout.** The maintainer runs `pnpm dev` from the checkout, so anything Kernel ran there reloaded the app. The Lead's Changes tab also listed whatever was untracked in the checkout (KERNEL-350). There is one worktree per room, not one per Lead chat: Ask Kernel opens a new Lead chat for every question (D-133), and a worktree per chat would mean a checkout and a link step per question.
 
 The worktree lives at `<worktreeRoot>/<room slug>/lead`, or `lead-2` when another room with the same name has that folder. It is `git worktree add --detach` at `<remote>/<default>` as last fetched, or at the local default branch when the remote doesn't have it. The record is `mode: 'worktree'`, `lead: true` (KERNEL-353), `branch: 'HEAD'`, that `baseRef` and a port. It gets the `node_modules` link when the room asks for it, and no setup script, no copied files and no trust prompt. A room that isn't a git repo or has no commit yet keeps its Lead on the checkout, as before. One creation promise per room means a brief, Ask Kernel and the sidebar's Lead row arriving together make one worktree. KERNEL-181 keeps the worktree on the latest main; this issue only places it.
 
@@ -15,7 +15,7 @@ The Lead's workspace can't be archived except by removing its room, and archive 
 What changes once the Lead is off the checkout:
 
 - `oneCurrentBranchPerRoom` no longer counts the Lead, so one current-branch teammate can use the checkout.
-- CJ's own `claude` sessions in the checkout no longer resolve to the Lead in `resolveCwd`. They count as the room's, with no agent.
+- The maintainer's own `claude` sessions in the checkout no longer resolve to the Lead in `resolveCwd`. They count as the room's, with no agent.
 - Lead terminals get the skip-permissions flag of presets marked `onlyInWorktrees`, and the "Bypass in worktrees" permission mode now covers the Lead.
 - The checkout's untracked files no longer show in the Lead's Changes.
 - The workspace header reads `lead` and "latest main". The Team screen, the floor card and the agent profile show the Lead's workspace as `lead` instead of "main checkout". The Team canvas still says "main checkout"; KERNEL-356 redrew only the Lead screens.

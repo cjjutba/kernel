@@ -2386,7 +2386,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ...withDraft({ items: { [ids.tableChat]: longChat }, ui: open }, 'Now add a CSV export for the filtered rows.'),
     lag: { 'chats.send': 500 }, after: { 'chats.send': sentAfter(ids.tableChat) }
   })), motion: { action: { click: 'Send' }, ms: 1500, area: '.ws-main' } },
-  /** Composer send in an empty tab (CJ's GIF): three lines in the box. The welcome gives way to the thread, the box clears and the placeholder, Send and the Working line change in the frame of the click. */
+  /** Composer send in an empty tab (the maintainer's GIF): three lines in the box. The welcome gives way to the thread, the box clears and the placeholder, Send and the Working line change in the frame of the click. */
   WorkspaceSendEmptyMotion: { ...scene((f) => ({
     chats: [...f.chats, extraChat('chat-new', 'New chat')],
     items: { 'chat-new': [] },

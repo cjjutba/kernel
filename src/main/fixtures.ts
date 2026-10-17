@@ -17,7 +17,7 @@ import { mustBeInside, OPEN_APPS } from './services/openApps'
 import { presetList, resolvePreset, terminalTitle } from './services/terminalPresets'
 
 const ok = { ok: true } as const
-const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'CJ Jutba', login: 'cjjutba', plan: 'Claude Max' }
+const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'Sam Rivera', login: 'cjjutba', plan: 'Claude Max' }
 
 /**
  * Fixture mode (KERNEL_FIXTURES): every IPC channel answered from one fixture, with no database, hook server or sessions.

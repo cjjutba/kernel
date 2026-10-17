@@ -2,7 +2,7 @@
 
 The approved design for Kernel's landing page and changelog, in a form code can read.
 
-- Canvas (needs CJ's login): https://claude.ai/artifact/QkKTWG8JptN5AaqvPVBn1o
+- Canvas (needs the maintainer's login): https://claude.ai/artifact/QkKTWG8JptN5AaqvPVBn1o
 - Implementation plan: `docs/plans/website.md`
 
 | Folder | Contents |

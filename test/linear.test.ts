@@ -33,7 +33,7 @@ const node = {
   id: 'uuid-83', identifier: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/cj/issue/KERNEL-83', branchName: 'cj/kernel-83-issues-screen',
   priority: 2, updatedAt: '2026-10-09T10:00:00.000Z',
   state: { id: 'st-todo', name: 'Todo', type: 'unstarted', position: 1 },
-  assignee: { name: 'CJ Jutba', isMe: true },
+  assignee: { name: 'Sam Rivera', isMe: true },
   labels: { nodes: [{ name: 'Engine' }, { name: 'Bug' }] },
   team: { id: 'team-1', key: 'KERNEL', name: 'Kernel' },
   project: { id: 'proj-1', name: 'Kernel v1' },
@@ -43,7 +43,7 @@ const node = {
 const mapped = {
   id: 'KERNEL-83', uuid: 'uuid-83', title: 'Issues screen', url: 'https://linear.app/cj/issue/KERNEL-83', branchName: 'cj/kernel-83-issues-screen',
   state: { id: 'st-todo', name: 'Todo', type: 'unstarted', position: 1 }, priority: 2,
-  assignee: { name: 'CJ Jutba', me: true }, labels: ['Engine', 'Bug'],
+  assignee: { name: 'Sam Rivera', me: true }, labels: ['Engine', 'Bug'],
   team: { id: 'team-1', key: 'KERNEL', name: 'Kernel' }, project: { id: 'proj-1', name: 'Kernel v1' }, cycle: { id: 'cyc-1', number: 4 },
   updatedAt: '2026-10-09T10:00:00.000Z'
 }

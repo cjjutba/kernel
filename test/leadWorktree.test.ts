@@ -340,7 +340,7 @@ describe('what waits for setup (KERNEL-490)', () => {
 
 /**
  * The shared Lead workspace from before KERNEL-405, as a database from 0.2.0 holds it: open chats with tabs, one of them closed,
- * one closed chat, a session on each tab. `mode` puts it on the checkout, as CJ's is, or in `<root>/<project>/lead`.
+ * one closed chat, a session on each tab. `mode` puts it on the checkout, as the maintainer's is, or in `<root>/<project>/lead`.
  */
 async function legacy(mode: 'current' | 'worktree') {
   const { repo } = await withOrigin()

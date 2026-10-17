@@ -23,7 +23,7 @@ import { tempRepo } from './helpers'
 
 // KERNEL-433: how a permission decision reaches the user on the pinned Claude Code (SDK 0.3.292) and the pinned Codex
 // (0.153.4). Each probe talks to the CLI straight, not through Kernel, in a temp repo, and records whether Kernel would
-// have been asked. docs/decisions/KERNEL-433.md holds the draft answers these tests check. Model turns on CJ's plans, so
+// have been asked. docs/decisions/KERNEL-433.md holds the draft answers these tests check. Model turns on the maintainer's plans, so
 // they run only when asked:
 //   KERNEL_LIVE=1 KERNEL_LIVE_CODEX=1 pnpm test test/live.permissions.test.ts
 // Leave KERNEL_LIVE_CODEX out to run only the Claude probes. KERNEL_LIVE_MODEL (Haiku 4.5) runs the bypass and plan probes,

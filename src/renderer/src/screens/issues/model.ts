@@ -66,7 +66,7 @@ export function issueAge(iso: string, now = Date.now()): string {
   return `${Math.floor(s / (7 * 86400))}w`
 }
 
-/** "Maya Chen" becomes "MC", "CJ Jutba" becomes "CJ" and a single name takes its first two letters. */
+/** "Maya Chen" becomes "MC", "Sam Rivera" becomes "SR" and a single name takes its first two letters. */
 export function initials(name: string): string {
   const w = name.trim().split(/\s+/).filter(Boolean)
   if (!w.length) return ''
@@ -226,7 +226,7 @@ export function parseGithubFilter(v: unknown): GithubFilter {
   return { mine: mine === true, ...(typeof label === 'string' && label ? { label } : {}), ...(typeof milestone === 'string' && milestone ? { milestone } : {}) }
 }
 
-/** "maya-chen" becomes "MC" and "cjjutba" "CJ": a login splits at its dashes, dots and underscores the way a name splits at spaces. */
+/** "maya-chen" becomes "MC" and "samrivera" "SA": a login splits at its dashes, dots and underscores the way a name splits at spaces. */
 export const loginInitials = (login: string) => initials(login.replace(/[-_.]+/g, ' '))
 
 /** Most recently updated first. A GitHub list has one group, Open, so this is its whole order. */

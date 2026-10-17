@@ -82,7 +82,7 @@ describe('Claude chats keep the account that holds their cache (KERNEL-843)', ()
     await chmod(bin, 0o755)
     const k = new Kernel({ dataDir: await mkdtemp(join(tmpdir(), 'kernel-data-')), home, cipher, fetch: (async () => new Response('{}')) as typeof fetch })
     await k.start()
-    k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    k.accountReader = async () => ({ signedIn: true, name: 'Sam', email: 'cj@example.com', subscriptionType: 'max' })
     await k.providers.setPath('claude', { path: bin })
     const h = k.handlers()
     const work = (await h['accounts.addKey']({ provider: 'claude', label: 'Work', key: KEYS.work })).id

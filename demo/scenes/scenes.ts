@@ -20,7 +20,6 @@ const push = (e: PushEvent) => bus.push(e)
 /** A fixture copy with sample names only: no real person's name or Linear workspace shows in a clip. */
 function sample(name: string): Fixture {
   const json = JSON.stringify(fixtures[name])
-    .replaceAll('CJ Jutba', 'Sam Rivera')
     .replaceAll('cj-jutba', 'acme')
     .replaceAll('cj@example.com', 'sam@example.com')
     .replaceAll('cj@jutba.example', 'sam@rivera.example')
