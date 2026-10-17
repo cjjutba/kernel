@@ -150,9 +150,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // A chat waiting for setup holds its messages in main (KERNEL-430), so you can keep typing: they queue behind it.
   const heldForSetup = useStore((s) => (chat ? !!s.queue[chat.id]?.length && s.queueWhy[chat.id] === 'setup' : false))
   const skips = !!ws && skipsSetup(ws, heldForSetup)
-  const found = useBanner(ws, chat, agent?.name ?? 'The agent', running, skips)
-  const moveNotice = useMoveNotice(chat)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
+  const found = useBanner(ws, chat, agent?.name ?? 'The agent', running, skips, !empty, heldForSetup)
+  const moveNotice = useMoveNotice(chat)
 
   // Images and pasted texts belong to the screen, not the store, so they start empty for each workspace. A tab of one left in the
   // store from before goes back to the chat, or the sidebar and closing a chat would still think it is the one on screen.
@@ -309,7 +309,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                     ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} />
                     : <div className="grow" />}
           </div>
-          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} viewer={viewer ? { held: banner ? banner.actions.length > 0 : !!moveNotice } : undefined} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner ? <WorkspaceBanner view={banner} ws={ws} chat={chat} /> : moveNotice && <ChatMoveNotice chat={chat} notice={moveNotice} />}</>} />}
+          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} setupShown={setupWait} running={running} prefill={prefill} viewer={viewer ? { held: banner ? banner.actions.length > 0 : !!moveNotice } : undefined} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner ? <WorkspaceBanner view={banner} ws={ws} chat={chat} /> : moveNotice && <ChatMoveNotice chat={chat} notice={moveNotice} />}</>} />}
         </section>
       </OpenIssue.Provider>
       </OpenText.Provider>

@@ -64,6 +64,10 @@ export interface BannerInput {
   leadName?: string
   /** A Lead chat with nothing held for setup: setup waiting or failed doesn't hold it, so the composer stays open (KERNEL-490). */
   skipsSetup?: boolean
+  /** The chat has history, so setup doesn't lock its box (KERNEL-1018). */
+  hasHistory?: boolean
+  /** Messages in the chat wait for setup in main. Only then does the banner say messages queue (KERNEL-1018). */
+  heldForSetup?: boolean
   /** The limit banners the user closed, by `limitBannerKey`. Only the near-limit, 80% and switch-account banners look here (KERNEL-595). */
   dismissed?: ReadonlySet<string>
   /** Settings, Providers: Kernel switches this chat's provider on its own at a limit, so the near-limit offer would only nag (KERNEL-569). */
@@ -179,8 +183,8 @@ export function bannerFor(i: BannerInput): BannerView | null {
     const code = i.setupCode
     return {
       id: 'setup', kind: 'setup', title: 'Setup script failed',
-      sub: `${code === null || code === undefined ? `${cmd ?? 'The setup script'} did not finish` : `${what} with code ${code}`}. ${i.skipsSetup ? without : `${name} waits until setup passes.`}`,
-      actions: [{ id: 'editScript', label: 'Edit script' }, { id: 'runAgain', label: 'Run again', primary: true }], blocks: !i.skipsSetup
+      sub: `${code === null || code === undefined ? `${cmd ?? 'The setup script'} did not finish` : `${what} with code ${code}`}.${i.skipsSetup ? ` ${without}` : i.hasHistory ? (i.heldForSetup ? ' Messages you send queue until setup passes.' : '') : ` ${name} waits until setup passes.`}`,
+      actions: [{ id: 'editScript', label: 'Edit script' }, { id: 'runAgain', label: 'Run again', primary: true }], blocks: !i.skipsSetup && !i.hasHistory
     }
   }
 
