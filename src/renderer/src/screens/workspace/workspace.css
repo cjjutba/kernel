@@ -106,7 +106,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 /* The row a message's actions take under it, held empty while the message is only being sent, so the working line sits where the transcript puts it once the row is there. */
 .msg-acts-space { height: var(--msg-acts-h, 24px); flex: none; }
 .msg-user { align-self: flex-end; max-width: 82%; align-items: flex-end; gap: 4px; }
-.bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink-2); font-size: var(--fs-chat); line-height: var(--lh-loose); }
+.bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); color: var(--ink-2); font-size: var(--fs-chat); line-height: var(--lh-loose); }
 /* The setup wait (KERNEL-430): messages waiting for setup sit where they will land, at lower contrast, with one line or card for setup. */
 .msg-user[data-queued] .bubble { background: var(--surface); color: var(--muted); }
 .queued-meta { display: flex; align-items: center; gap: 14px; font-size: var(--fs-meta); color: var(--muted); }
@@ -264,7 +264,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .step-cmd { font-size: var(--fs-meta); }
 /* An opened row is one hairline card. Each section has a small muted heading with its Copy in the corner, always shown, then its text capped
    at 260px with a fade where it is cut. Copy raw call sits in the card's footer. Ink and weight only: red and green are for diff lines. */
-.tool-card { border: 1px solid var(--line-2); border-radius: var(--r-md); overflow: hidden; min-width: 0; }
+.tool-card { border: 1px solid var(--card-line); background: var(--card-bg); border-radius: var(--r-md); overflow: hidden; min-width: 0; }
 .tool-sec + .tool-sec, .tool-foot { border-top: 1px solid var(--line-2); }
 .tool-head { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 4px 0 12px; }
 .tool-title { font-size: var(--fs-chip); font-weight: var(--fw-medium); color: var(--muted); }
