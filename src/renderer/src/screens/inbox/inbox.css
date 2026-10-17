@@ -29,12 +29,6 @@
 .ib-link.muted { color: var(--muted); }
 .ib-link:disabled { opacity: 0.55; cursor: default; }
 .ib-link[aria-busy='true'] { display: inline-flex; align-items: center; gap: 7px; opacity: 1; }
-.ib-answer { display: flex; flex-direction: column; gap: 8px; }
-.ib-answer-label { color: var(--muted); font-size: var(--fs-ui); }
-.ib-options { display: flex; flex-wrap: wrap; gap: 6px; }
-.ib-answer-input { width: 100%; box-sizing: border-box; resize: vertical; min-height: 72px; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink); font: inherit; line-height: var(--lh); outline: none; }
-.ib-answer-input:focus { border-color: var(--ink-3); }
-.ib-answer-input:disabled { opacity: 0.55; }
 .ib-card { margin-top: 4px; }
 .ib-outcome { display: flex; align-items: center; gap: 16px; color: var(--ink-2); }
 .ib-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding-bottom: 20px; }

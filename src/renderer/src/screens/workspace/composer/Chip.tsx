@@ -5,7 +5,7 @@ import { call } from '../../../api'
 import { actions } from '../../../store'
 import { issueFromPart, issueOpen, issueUrl, type IssueTarget } from '../issueKey'
 import { FileIcon } from '../../../components/FileIcon'
-import { Icon, Modal, Spinner, type IconName } from '../../../ui'
+import { Icon, Modal, type IconName } from '../../../ui'
 
 const KIND_LABELS: Record<FileKind, string> = {
   pdf: 'PDF', doc: 'Document', sheet: 'Spreadsheet', slides: 'Slides', archive: 'Archive', audio: 'Audio', video: 'Video', image: 'Image', text: 'Text', binary: 'File'
@@ -210,17 +210,8 @@ export function IssueButton({ issue, children, ...rest }: { issue: IssuePart } &
 }
 
 /** One attachment in a composer: pasted text, an image, a file, a skill, or a linked issue or workspace. Every composer draws them the same way, with an icon for the kind. */
-export function ComposerChip({ part, pending, entering, gone, onRemove }: { part: ChatPart; /** An attached file that no longer exists. */ gone?: boolean; /** A file still being read: its name with the dot loader where the icon goes. */ pending?: boolean; /** A chip that just landed, which fades in. */ entering?: boolean; onRemove: () => void }) {
+export function ComposerChip({ part, entering, gone, onRemove }: { part: ChatPart; /** An attached file that no longer exists. */ gone?: boolean; /** A chip that just landed, which fades in. */ entering?: boolean; onRemove: () => void }) {
   if (part.type === 'text') return null
-  if (pending) {
-    return (
-      <span className="chip cmp-chip" data-kind="pending" aria-busy="true">
-        <Spinner label={`Attaching ${part.name}`} pattern="arrow-down" />
-        <span className="ellipsis" style={{ maxWidth: 220 }}>{part.name}</span>
-        <button type="button" className="chip-x" aria-label={`Cancel ${part.name}`} onClick={onRemove}><Icon name="close" size={12} /></button>
-      </span>
-    )
-  }
   const label = part.type === 'skill' ? `/${part.name}` : part.name
   const view = fileView(part, gone)
   const meta = view ? view.size : chipMeta(part)

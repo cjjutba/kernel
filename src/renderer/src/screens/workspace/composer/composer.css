@@ -69,8 +69,7 @@
 .cmp-chip[data-state='gone'] .chip-name { color: var(--muted); text-decoration: line-through; }
 .chip-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; }
 .chip[data-kind='image'] > .chip-open > svg { color: var(--add); }
-/* Attaching files (KERNEL-815): a placeholder while a file reads, the chip landing, and the drop overlay over the chat pane (draft.tsx) */
-.cmp-chip[data-kind='pending'] { color: var(--muted); }
+/* Attaching files (KERNEL-815): the chip landing, and the drop overlay over the chat pane (draft.tsx) */
 .cmp-chip[data-entering] { animation: chip-in var(--dur-base) var(--ease-enter); }
 @keyframes chip-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .cmp-chip[data-entering] { animation: none; } }
