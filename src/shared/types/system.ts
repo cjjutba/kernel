@@ -103,7 +103,11 @@ export interface AppUpdate {
   /** True on the first `update.get` after Kernel starts on a newly installed version, so What's new opens once. `notes` are that version's. */
   installed?: boolean
   /** The running version's notes, for What's new when no update is ready (KERNEL-154). Release builds carry them; dev runs have none. */
-  currentNotes?: { title: string; body: string }[]
+  currentNotes?: { title: string; body: string }[]  /**
+   * An update Kernel could not install: Squirrel rejected it, or the app did not quit to install it. `signature` means the
+   * build failed the code signature check, so Kernel skips that version. It stays until a different version is offered (KERNEL-1020).
+   */
+  installFailed?: { version: string; reason: 'signature' | 'other' }
 }
 
 /**
