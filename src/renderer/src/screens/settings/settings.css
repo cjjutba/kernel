@@ -85,12 +85,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-head { display: flex; align-items: center; gap: 24px; }
 .set-head h1 { flex: 1; min-width: 0; }
 .set-files { position: relative; flex-shrink: 0; }
-.set-split { display: flex; height: 30px; box-sizing: border-box; border: 1px solid var(--line-3); border-radius: var(--r); }
 .set-card .btn.set-reset, .btn.set-reset { margin-right: -10px; padding: 0 10px; }
-.btn.set-split-main { height: 28px; padding: 0 10px 0 11px; border: 0; border-radius: calc(var(--r) - 1px) 0 0 calc(var(--r) - 1px); color: var(--ink-2); gap: 8px; }
-.set-split-caret { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-left: 1px solid var(--line-3); border-radius: 0 calc(var(--r) - 1px) calc(var(--r) - 1px) 0; background: transparent; color: var(--muted); }
-.set-split-caret:hover, .set-split-caret[aria-expanded='true'] { background: var(--surface-3); }
-.set-split-caret:focus-visible { outline-offset: 1px; }
 
 
 /* Files to copy (KERNEL-252): the preview of what gets copied */

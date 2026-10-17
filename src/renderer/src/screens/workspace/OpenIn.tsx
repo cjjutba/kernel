@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent }
 import type { OpenApp, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState } from '../../store'
-import { Icon, IconButton, Menu, MENU_SEPARATOR, type IconName, type MenuEntry } from '../../ui'
+import { Icon, Menu, MENU_SEPARATOR, SplitButton, type IconName, type MenuEntry } from '../../ui'
 import './openIn.css'
 
 interface OpenApps { apps: OpenApp[]; defaultId?: string }
@@ -106,14 +106,20 @@ export function OpenIn({ ws }: { ws: Workspace }) {
   ]
 
   return (
-    <div className="open-in" role="group" aria-label="Open in" onKeyDown={onKeyDown}>
-      <button type="button" className="open-in-main" aria-label={`Open in ${current?.name ?? 'editor'}`} data-tip-kbd="⌘O" onClick={() => void openIn(ws.path, current)}>
-        {current?.icon ? <img className="open-in-icon" src={current.icon} alt="" /> : <Icon name="code" size={16} />}
-      </button>
-      <span ref={anchor} className="open-in-anchor">
-        <IconButton icon="chevron" size={12} label="Choose app to open in" aria-haspopup="menu" aria-expanded={open} onClick={toggle} />
-        {open && <Menu label="Open in" anchorRef={anchor} onClose={close} style={{ right: 0, top: 'calc(100% + 6px)', width: 244 }} items={items} />}
-      </span>
-    </div>
+    <SplitButton
+      className="open-in"
+      role="group"
+      aria-label="Open in"
+      onKeyDown={onKeyDown}
+      mainProps={{ 'aria-label': `Open in ${current?.name ?? 'editor'}`, 'data-tip-kbd': '⌘O' }}
+      onClick={() => void openIn(ws.path, current)}
+      caretLabel="Choose app to open in"
+      expanded={open}
+      onCaret={toggle}
+      anchorRef={anchor}
+      menu={open && <Menu label="Open in" anchorRef={anchor} onClose={close} style={{ right: 0, top: 'calc(100% + 6px)', width: 244 }} items={items} />}
+    >
+      {current?.icon ? <img className="open-in-icon" src={current.icon} alt="" /> : <Icon name="code" size={16} />}
+    </SplitButton>
   )
 }
