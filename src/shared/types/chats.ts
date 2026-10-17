@@ -102,6 +102,8 @@ export interface Chat {
     sessionId?: string
     /** Where that session's transcript is, as its hooks reported it. */
     transcriptPath?: string
+    /** The seat is a teammate's, made by a hand-off that runs in a terminal: its first tab, started with the Lead's brief (KERNEL-1004). */
+    handoff?: true
   }
   /** Kernel picks this chat's name and may change it. `turns` is the finished-turn count it last named it at. A name the user types clears it (KERNEL-202). */
   autoTitle?: { turns: number }

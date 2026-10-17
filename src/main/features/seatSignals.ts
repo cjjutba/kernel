@@ -44,6 +44,7 @@ export class SeatSignals extends Feature {
       const said = this.said.get(chatId)
       if (said) said.open = false
       this.setRunning(chatId, false)
+      this.k.teammateSeats.exited(chatId)
     }
   }
 
@@ -61,6 +62,7 @@ export class SeatSignals extends Feature {
         this.k.openItems.userSent(chatId)
         this.setRunning(chatId, true)
         void this.name(now)
+        if (now.terminal?.handoff) this.k.teammateSeats.turnStarted(now)
         break
       }
       case 'Stop':
@@ -68,7 +70,9 @@ export class SeatSignals extends Feature {
         const said = this.said.get(chatId)
         if (said) said.open = false
         this.setRunning(chatId, false)
-        void this.name(now, true)
+        // A teammate's seat reports its finished turn the way a teammate in Kernel does (KERNEL-1004), and names itself there.
+        if (now.terminal?.handoff && e.hook_event_name === 'Stop') void this.k.teammateSeats.turnEnded(now)
+        else void this.name(now, true)
         break
       }
       case 'PostToolUse': {
@@ -98,6 +102,7 @@ export class SeatSignals extends Feature {
     this.asking.delete(chatId)
     this.k.chats.transcripts.unfollow(chatId)
     this.setRunning(chatId, false)
+    this.k.teammateSeats.gone(chatId)
   }
 
   /** A seat's tools as the engine serves them: ask_user points at AskUserQuestion, and the tools that check words need hooks. */

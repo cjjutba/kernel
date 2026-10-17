@@ -328,6 +328,12 @@ export class Chats extends Feature {
     this.ptys.start(id, { ...this.ptyOptions(id), ...size })
   }
 
+  /** Starts a seat's pty from the engine, as a hand-off to a terminal teammate does (KERNEL-1004). */
+  async startSeat(id: string) {
+    await this.seatsUp(id)
+    this.ensurePty(id)
+  }
+
   /** A big terminal chat's pty is about to start: its seat's endpoint is listening by then, when Settings, Terminal has connect on. */
   private async seatsUp(id: string) {
     if (this.settings.terminal.connect && !this.ptys.has(id) && this.store.chat(id)?.kind === 'terminal') await this.k.seats.start()
@@ -384,7 +390,7 @@ export class Chats extends Feature {
       'chats.close': async ({ chatId }) => { await this.closeChat(chatId); return { ok: true } },
       'chats.markRead': async ({ chatId }) => { this.markRead(chatId); return { ok: true } },
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
-      'terminal.write': async ({ chatId, data }) => { await this.seatsUp(chatId); this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
+      'terminal.write': async ({ chatId, data }) => { this.k.teammateSeats.typedIn(chatId, data); await this.seatsUp(chatId); this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { await this.seatsUp(chatId); this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
       'terminal.reconnect': async ({ chatId }) => {
         const chat = this.mustChat(chatId)

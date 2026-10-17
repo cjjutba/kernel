@@ -100,8 +100,11 @@ export interface AppSettings {
    */
   pr: { mergeMethod: MergeMethod; draft: boolean; requireGreen: boolean; requireReviewer: boolean; autoReview: boolean; leadMerge: boolean; autoMerge: AutoMerge } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
-  /** The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace. `connect` (on by default) runs a tab's `claude` wired into Kernel's tools (KERNEL-998). */
-  terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; connect: boolean; custom: { id: string; name: string; command: string }[] }
+  /**
+   * The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace. `connect` (on by default) runs a tab's `claude` wired into Kernel's tools (KERNEL-998).
+   * `teammatesRunIn` is where a Lead's hand-off runs: in Kernel, in a terminal, or the same as the Lead that handed it off. A project's `[terminal] teammates_run_in` and `create_workspace`'s `runs_in` win over it (KERNEL-1004).
+   */
+  terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; connect: boolean; teammatesRunIn: TeammatesRunIn; custom: { id: string; name: string; command: string }[] }
   /** `sharing` gives agents share_file (KERNEL-302). On by default since KERNEL-308. No page shows it; `false` in settings.json turns it off. */
   experimental: { sharing?: boolean }
   /**
@@ -110,6 +113,12 @@ export interface AppSettings {
    */
   privacy: { telemetry: 'ask' | 'on' | 'off' }
 }
+
+/** Where a teammate runs: Kernel's own session, a terminal tab, or the same as the Lead that handed it off (KERNEL-1004). */
+export type TeammatesRunIn = 'kernel' | 'terminal' | 'lead'
+
+/** Every place a teammate can run, for settings files and Settings. */
+export const TEAMMATES_RUN_IN: readonly TeammatesRunIn[] = ['kernel', 'terminal', 'lead']
 
 /**
  * The roles Settings, Models and effort sets a default for. `frontend` is the agents whose role says frontend, and
@@ -234,6 +243,8 @@ export interface ProjectSettings {
    * `leadMode` (`lead_mode`) is how a new chat with Kernel works in this project, over the app's `team.leadMode` (KERNEL-770).
    */
   agents?: { unlistedTools?: UnlistedTools; allow?: Record<string, string[]>; openWorkspaces?: number; leadMode?: LeadMode }
+  /** The project's `[terminal] teammates_run_in`, over the app's `terminal.teammatesRunIn` (KERNEL-1004). */
+  terminal?: { teammatesRunIn?: TeammatesRunIn }
   /**
    * The project's preview URLs, a `[[preview.urls]]` array of tables, in order. `url` may use `$KERNEL_PORT` forms that
    * `resolvePreviewUrl` fills in. A patch replaces the whole list (KERNEL-246).
