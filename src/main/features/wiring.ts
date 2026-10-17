@@ -1,3 +1,4 @@
+import type { AnyHook } from '@shared/hookSchemas'
 import type { PushEvent } from '@shared/ipc'
 import type { Kernel } from '../kernel'
 import type { Store } from '../db'
@@ -8,6 +9,7 @@ import type { LeadUpdateDeps } from '../services/leadUpdates'
 import type { OverlapDeps } from '../services/overlap'
 import { mergeBase } from '../services/worktrees'
 import { keepScript } from '../services/scripts'
+import type { HookContext } from '../services/hookServer'
 import type { SettingsError } from '../services/settings'
 import { updateRow } from './records'
 
@@ -76,7 +78,7 @@ export function overlapDeps(k: Kernel): OverlapDeps {
  */
 export function listen(k: Kernel): () => void {
   const onActivity = (e: Parameters<Store['saveActivity']>[0]) => k.store.saveActivity(e)
-  const onHook = (e: { hook_event_name: string }, ctx?: { projectId?: string; agentId?: string }) => k.hooks.onHook(e, ctx)
+  const onHook = (e: AnyHook, ctx?: HookContext) => k.hooks.onHook(e, ctx)
   const onPush = (e: PushEvent) => {
     // Script lines only go out as pushes, so Kernel keeps them for a window that loads later (KERNEL-340).
     keepScript(e)
