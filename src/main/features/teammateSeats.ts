@@ -4,7 +4,6 @@ import type { Chat, ChatPart } from '@shared/types'
 import type { TurnBy } from '../services/sessions'
 import { seatDir } from '../services/seatLaunch'
 import { Feature } from './feature'
-import { turnFinished } from './sessionDeps'
 
 /** A pasted message goes in as one bracketed paste, then Enter, so a multi-line message is one prompt. */
 const PASTE_START = '\x1b[200~'
@@ -12,14 +11,6 @@ const PASTE_END = '\x1b[201~'
 const ENTER_AFTER_MS = 150
 
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
-
-/**
- * What a terminal can be handed as text: the words, and a file that carries its own text (an issue the tracker read). A file
- * that is only a path, or an image, can't be pasted into a prompt, so a hand-off that has one runs in Kernel (KERNEL-1004).
- */
-export function pastable(parts: ChatPart[] | undefined): boolean {
-  return (parts ?? []).every((p) => p.type === 'text' || (p.type === 'file' && !p.dir && p.text !== undefined))
-}
 
 export function partsText(parts: ChatPart[]): string {
   return parts.map((p) => (p.type === 'text' ? p.text : p.type === 'file' ? `<${p.name}>\n${p.text ?? ''}\n</${p.name}>` : '')).filter(Boolean).join('\n\n')
@@ -104,10 +95,10 @@ export class TeammateSeats extends Feature {
     const by = this.turnBy.get(id) ?? 'user'
     this.turnBy.delete(id)
     // The reply is read from the transcript before the Lead's update looks for it.
-    await this.k.chats.transcripts.sync(id).catch(() => undefined)
+    await this.k.transcripts.sync(id).catch(() => undefined)
     const ws = this.store.workspace(chat.workspaceId)
     const now = this.store.chat(id)
-    if (ws && now && ws.status !== 'archived') turnFinished(this.k, ws, now, { ok: true, interrupted: false, by })
+    if (ws && now && ws.status !== 'archived') this.k.chats.turnFinished(ws, now, { ok: true, interrupted: false, by })
     this.deliver(id)
     this.startWaiting()
   }

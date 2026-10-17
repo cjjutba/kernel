@@ -192,6 +192,12 @@ jobs:
             echo "args=--changed $base --passWithNoTests" >> "$GITHUB_OUTPUT"
           fi
 
+      # featureBoundaries reads the feature files from disk instead of importing them, so `--changed` never picks it
+      # for a PR that only edits src/main/features/ (KERNEL-324, #1052). It is fast and needs no git, so it always runs.
+      - name: Check the feature boundaries
+        if: github.event_name == 'pull_request'
+        run: pnpm exec vitest run test/featureBoundaries.test.ts
+
       - name: Run the tests
         run: |
           start=$(date +%s)
