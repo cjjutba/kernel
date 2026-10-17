@@ -3527,6 +3527,54 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ],
     draft: ''
   }),
+  /** KERNEL-1053: one chip of every kind, each icon in the color of its kind. Hover nothing, the last file chip is the unreadable one. */
+  ComposerChipKinds: composing({
+    parts: [
+  { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot },
+  { type: 'file', name: 'Pasted text', text: pastedLog, lines: 212 },
+  { type: 'file', name: 'Client-contract-2026.pdf', src: '/Users/cj/Documents/Client-contract-2026.pdf', size: 3_040_000, kind: 'pdf' },
+  { type: 'file', name: 'brief.docx', src: '/Users/cj/Documents/brief.docx', size: 84_000, kind: 'doc' },
+  { type: 'file', name: 'invoices-q3.xlsx', src: '/Users/cj/Documents/invoices-q3.xlsx', size: 212_000, kind: 'sheet' },
+  { type: 'file', name: 'pitch.pptx', src: '/Users/cj/Documents/pitch.pptx', size: 5_400_000, kind: 'slides' },
+  { type: 'file', name: 'exports-october.zip', src: '/Users/cj/Downloads/exports-october.zip', size: 48_500_000, kind: 'archive' },
+  { type: 'file', name: 'standup.m4a', src: '/Users/cj/Music/standup.m4a', size: 2_300_000, kind: 'audio' },
+  { type: 'file', name: 'walkthrough.mov', src: '/Users/cj/Movies/walkthrough.mov', size: 18_200_000, kind: 'video' },
+  { type: 'file', name: 'notes.txt', src: '/Users/cj/Documents/notes.txt', size: 1_200, kind: 'text' },
+  { type: 'file', name: 'data.bin', src: '/Users/cj/Downloads/data.bin', size: 90_000, kind: 'binary' },
+  { type: 'file', name: 'brand-motion.mov', src: '/Users/cj/Movies/brand-motion.mov', path: '.kernel/attachments/brand-motion.mov', size: 18_200_000, kind: 'video', readable: false },
+  { type: 'file', name: 'src/app/invoices/table.tsx', path: 'src/app/invoices/table.tsx' },
+  { type: 'issue', name: 'KERNEL-429', title: 'A file icon that fails to load shows a broken image', source: 'linear' },
+  { type: 'issue', name: '#41', title: 'Invoice totals round wrong', source: 'github' },
+  { type: 'pr', name: '#162', number: 162, title: 'New chats focus the composer' },
+  { type: 'workspace', name: 'kernel-182-new-chats-focus', workspaceId: 'ws-182', branch: 'kernel-182-new-chats-focus', path: '/Users/cj/kernel/worktrees/kernel-182' },
+  { type: 'agent', name: 'Christian', agentId: 'christian' }
+].flatMap((p, i) => [...(i ? [{ type: 'text' as const, text: ' ' }] : []), p as import('@shared/types').ChatPart]),
+    draft: ''
+  }),
+  /** KERNEL-1053: the same chips on a sent message. */
+  ComposerChipKindsSent: scene(() => ({
+    items: { [ids.tableChat]: [{ kind: 'user', id: 'kinds-1', ts: at(10, 30), parts: [
+  { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot },
+  { type: 'file', name: 'Pasted text', text: pastedLog, lines: 212 },
+  { type: 'file', name: 'Client-contract-2026.pdf', src: '/Users/cj/Documents/Client-contract-2026.pdf', size: 3_040_000, kind: 'pdf' },
+  { type: 'file', name: 'brief.docx', src: '/Users/cj/Documents/brief.docx', size: 84_000, kind: 'doc' },
+  { type: 'file', name: 'invoices-q3.xlsx', src: '/Users/cj/Documents/invoices-q3.xlsx', size: 212_000, kind: 'sheet' },
+  { type: 'file', name: 'pitch.pptx', src: '/Users/cj/Documents/pitch.pptx', size: 5_400_000, kind: 'slides' },
+  { type: 'file', name: 'exports-october.zip', src: '/Users/cj/Downloads/exports-october.zip', size: 48_500_000, kind: 'archive' },
+  { type: 'file', name: 'standup.m4a', src: '/Users/cj/Music/standup.m4a', size: 2_300_000, kind: 'audio' },
+  { type: 'file', name: 'walkthrough.mov', src: '/Users/cj/Movies/walkthrough.mov', size: 18_200_000, kind: 'video' },
+  { type: 'file', name: 'notes.txt', src: '/Users/cj/Documents/notes.txt', size: 1_200, kind: 'text' },
+  { type: 'file', name: 'data.bin', src: '/Users/cj/Downloads/data.bin', size: 90_000, kind: 'binary' },
+  { type: 'file', name: 'brand-motion.mov', src: '/Users/cj/Movies/brand-motion.mov', path: '.kernel/attachments/brand-motion.mov', size: 18_200_000, kind: 'video', readable: false },
+  { type: 'file', name: 'src/app/invoices/table.tsx', path: 'src/app/invoices/table.tsx' },
+  { type: 'issue', name: 'KERNEL-429', title: 'A file icon that fails to load shows a broken image', source: 'linear' },
+  { type: 'issue', name: '#41', title: 'Invoice totals round wrong', source: 'github' },
+  { type: 'pr', name: '#162', number: 162, title: 'New chats focus the composer' },
+  { type: 'workspace', name: 'kernel-182-new-chats-focus', workspaceId: 'ws-182', branch: 'kernel-182-new-chats-focus', path: '/Users/cj/kernel/worktrees/kernel-182' },
+  { type: 'agent', name: 'Christian', agentId: 'christian' }
+].flatMap((p, i) => [...(i ? [{ type: 'text' as const, text: ' ' }] : []), p as import('@shared/types').ChatPart]) }] },
+    ui: open
+  })),
   /** KERNEL-909: a file type the agent has no way to open. Hover the chip for the tooltip. */
   ComposerFileUnreadable: composing({
     parts: [
