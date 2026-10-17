@@ -1,8 +1,8 @@
 import { readFile, rename, rm, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
-import type { AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, Provider, Role, RoleModel, RosterAdvice, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
-import { rolePick } from '@shared/rolePick'
+import type { AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, Provider, ResolvedPick, Role, RoleChoice, RoleModel, RosterAdvice, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
+import { rolePick, roleSide } from '@shared/rolePick'
 import { isReviewer, KERNEL_FILE, KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER, roleOf } from '@shared/team'
 import { countRange } from '@shared/telemetry'
 import { bus } from '../bus'
@@ -598,8 +598,50 @@ export class Team extends Feature {
    * The provider, model and effort an agent's chats start on (KERNEL-406). The agent file's `model:` pins the agent, on its
    * `provider:` or the one the model id belongs to, with the file's `effort:` or the role's. Otherwise it is the role's
    * default from Settings, Models and effort, with the file's `effort:` when it has one.
+   *
+   * It is the role's preferred side, or the provider of `chatProvider`, the Lead chat that hands the work off (KERNEL-1055),
+   * unless that provider is at its limit and the other has room. Then it is the role's other side, with `fellBack` naming the
+   * provider it left. A pin follows the same rule and falls back to the role's other side, the file's model dropped.
    */
-  pickFor(agent: AgentDef): RoleModel { return rolePick(agent, this.roleModel(agent)) }
+  pickFor(agent: AgentDef, o: { chatProvider?: Provider; role?: Role } = {}): ResolvedPick {
+    const choice = o.role ? this.settings.models.roles[o.role] : this.roleModel(agent)
+    const pin = pinOf(agent)
+    const { use, fellBack } = this.route(pin?.provider ?? o.chatProvider ?? choice.prefer)
+    const side = roleSide(choice, use)
+    return fellBack ? { ...side, fellBack } : rolePick(agent, side)
+  }
+
+  /** The pick for a role with no agent file behind it: a chat with no agent starts on its role's choice (KERNEL-1055). */
+  pickRole(role: Role, o: { chatProvider?: Provider } = {}): ResolvedPick {
+    const choice = this.settings.models.roles[role]
+    const { use, fellBack } = this.route(o.chatProvider ?? choice.prefer)
+    return { ...roleSide(choice, use), ...(fellBack ? { fellBack } : {}) }
+  }
+
+  /**
+   * `pickFor` for work that starts in workspace `ws`, or `pickRole('engineers')` for a chat with no agent. A pick that fell back
+   * pushes `providerFellBack` for the workspace (KERNEL-1055). The pick it returns is a plain one, ready to start a chat.
+   */
+  pickIn(ws: Workspace, agent: AgentDef | undefined, o: { chatProvider?: Provider } = {}): RoleModel {
+    return this.announce(ws, agent ? this.pickFor(agent, o) : this.pickRole('engineers', o))
+  }
+
+  /** Pushes `providerFellBack` for a pick that fell back, and returns the pick without it. */
+  announce(ws: Pick<Workspace, 'id'>, pick: ResolvedPick): RoleModel {
+    const { fellBack, ...plain } = pick
+    if (fellBack) bus.push({ type: 'providerFellBack', workspaceId: ws.id, from: fellBack.from, to: plain.provider })
+    return plain
+  }
+
+  /**
+   * The provider new work starts on when it wants `want` (KERNEL-1055): `want`, unless the setting is off, `want` is at its
+   * limit, or the other provider has no room.
+   */
+  route(want: Provider): { use: Provider; fellBack?: { from: Provider } } {
+    const other: Provider = want === 'claude' ? 'codex' : 'claude'
+    if (this.settings.providers.fallback === false || !this.k.providers.atLimit(want) || !this.k.providers.hasRoom(other)) return { use: want }
+    return { use: other, fellBack: { from: want } }
+  }
 
   /** The role Settings, Models and effort reads for this agent. A frontend engineer has a row of its own, every other one reads Backend's (KERNEL-974). */
   roleOf(agent: AgentDef): Role { return roleOf(agent) }
@@ -615,8 +657,8 @@ export class Team extends Feature {
     return ws.lead ? 'lead' : 'engineers'
   }
 
-  /** The agent's role default from Settings, Models and effort (KERNEL-406). */
-  roleModel(agent: AgentDef): RoleModel { return this.settings.models.roles[this.roleOf(agent)] }
+  /** The agent's role choice from Settings, Models and effort (KERNEL-406, KERNEL-1055). */
+  roleModel(agent: AgentDef): RoleChoice { return this.settings.models.roles[this.roleOf(agent)] }
 
   handlers() {
     return {

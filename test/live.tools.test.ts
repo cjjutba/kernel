@@ -91,7 +91,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live agent files', () => {
 // also needs KERNEL_LIVE_CODEX=1 and the ChatGPT sign-in, as in live.test.ts:
 //   KERNEL_LIVE=1 KERNEL_LIVE_CODEX=1 pnpm test test/live.tools.test.ts -t "reads its issue"
 const codexModel = process.env.KERNEL_LIVE_CODEX_MODEL ?? 'gpt-5.6-luna'
-const codexRole = { provider: 'codex', model: codexModel, effort: 'low' }
+const codexRole = { prefer: 'codex', codex: { model: codexModel, effort: 'low' } }
 
 describe.skipIf(!process.env.KERNEL_LIVE)('live issue without a tracker MCP server', () => {
   for (const provider of ['claude', 'codex'] as const) {

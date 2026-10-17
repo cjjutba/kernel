@@ -434,7 +434,7 @@ const liveCodex = !!process.env.KERNEL_LIVE && !!process.env.KERNEL_LIVE_CODEX
 
 /** Settings with every role on Codex, two commands on Always ask and one on Never allow. */
 async function codexSettings(dataDir: string, home: string) {
-  const role = { provider: 'codex', model: codexModel, effort: 'medium' }
+  const role = { prefer: 'codex', codex: { model: codexModel, effort: 'medium' } }
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
     hookPort: await freePort(), worktreeRoot: join(home, 'wt'),
     workspace: { baseRef: process.env.KERNEL_LIVE_BASE ?? 'origin/main' },

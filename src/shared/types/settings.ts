@@ -63,7 +63,7 @@ export interface AppSettings {
     timeoutMinutes: number
   }
   /** `roles` replaced one model per role and a global effort (KERNEL-406). `loadAppSettings` moves the old keys over. */
-  models: { roles: Record<Role, RoleModel>; leadPlanMode: boolean; agentTeams: boolean
+  models: { roles: Record<Role, RoleChoice>; leadPlanMode: boolean; agentTeams: boolean
     /** Where each role's Claude chats compact. One the user never set follows the plan (feat-compact-window-per-role-with-plan). */
     compact: Record<Role, CompactWindow>
     /** Agents working at once, the Lead's chats left out (D-094). 0 means no limit. Was `maxConcurrent`, whose saved 4 was only the old default. */
@@ -78,7 +78,10 @@ export interface AppSettings {
      */
     effortByModel: Partial<Record<string, Effort>> }
   /** Settings, Accounts, Advanced (KERNEL-406, KERNEL-680). Accounts and their credentials live apart from this file. */
-  providers: { claude: ProviderBinary; codex: ProviderBinary & { personality: CodexPersonality } }
+  providers: { claude: ProviderBinary; codex: ProviderBinary & { personality: CodexPersonality }
+    /** Start new work on the other provider while every signed-in subscription on the preferred one is at its limit (KERNEL-1055). On by default. */
+    fallback: boolean
+  }
   /**
    * `defaultTemplate` seeds an empty project (Settings, Agents, New projects start with). `leadMode` is how a new chat with Kernel
    * works, Hand off or Build here, where the project's `[agents] lead_mode` doesn't say (KERNEL-770).
@@ -130,6 +133,20 @@ export const COMPACT_WINDOWS: CompactWindow[] = ['200k', 'full']
 
 /** A role's default: the provider, the model on it, and the effort (KERNEL-406). An agent file's `model:` overrides it. */
 export interface RoleModel { provider: Provider; model: string; effort: Effort }
+
+/** A model and effort on one provider: one side of a role's choice (KERNEL-1055). */
+export interface RoleSide { model: string; effort: Effort }
+
+/**
+ * What Settings, Models and effort holds for a role since KERNEL-1055: the provider new work starts on, and a model and effort
+ * for each provider. `prefer`'s side is the role's default. The other side is what the role runs on when every signed-in
+ * subscription on `prefer` is at its limit and `providers.fallback` is on. It replaces `RoleModel` as the stored shape,
+ * which stays the resolved one.
+ */
+export interface RoleChoice { prefer: Provider; claude: RoleSide; codex: RoleSide }
+
+/** A resolved pick. `fellBack` names the provider the pick left, when the role's own provider was at its limit (KERNEL-1055). */
+export interface ResolvedPick extends RoleModel { fellBack?: { from: Provider } }
 
 /**
  * Which executable a provider runs. An empty `path` uses Kernel's bundled copy, or the one on the PATH while `useSystem`

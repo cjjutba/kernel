@@ -1,4 +1,4 @@
-import type { AccountProfile, AgentDef, AppSettings, AppUpdate, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpAccountServer, McpServer, McpSignInAll, Modal, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Project, ProjectSettings, ProjectSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AccountProfile, AgentDef, AppSettings, RoleModel, Role, AppUpdate, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpAccountServer, McpServer, McpSignInAll, Modal, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Project, ProjectSettings, ProjectSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { mcpCounts } from '@shared/mcpCounts'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
@@ -73,9 +73,10 @@ const settingsPage = (page: SettingsPage, extra: Partial<Fixture> = {}) => scene
 /** One of Client A's project pages (KERNEL-191). */
 const projectPage = (section: ProjectSettingsSection, extra: Partial<Fixture> = {}, menu?: 'settingsFiles') => scene(() => ({ ...extra, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section }, ...(menu ? { menu } : {}) } }))
 /** Settings with some roles moved, the rest as Kernel ships them (KERNEL-406). */
-const withRoles = (roles: Partial<AppSettings['models']['roles']>): AppSettings => {
+const withRoles = (roles: Partial<Record<Role, RoleModel>>): AppSettings => {
   const d = DEFAULT_SETTINGS('/Users/you')
-  return { ...d, models: { ...d.models, roles: { ...d.models.roles, ...roles } } }
+  const picked = Object.fromEntries(Object.entries(roles).map(([r, m]) => [r, { ...d.models.roles[r as Role], prefer: m.provider, [m.provider]: { model: m.model, effort: m.effort } }]))
+  return { ...d, models: { ...d.models, roles: { ...d.models.roles, ...picked } } }
 }
 /** Codex's models as its model/list answers for a ChatGPT Plus account. */
 const codexModels: ProviderModel[] = [

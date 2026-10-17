@@ -331,7 +331,7 @@ export class Archive extends Feature {
     let tabs = this.chatTabs(ws.id).filter((c) => c.kind !== 'terminal')
     if (!tabs.length) {
       const agent = this.agentsSync(ws.projectId).find((a) => a.id === ws.agentId)
-      const pick = { ...(agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers), plan: false }
+      const pick = { ...this.k.team.pickIn(ws, agent), plan: false }
       tabs = [this.saveChat(ws.lead ? this.k.lead.leadTab(ws, NEW_TAB, pick) : this.newChat(ws.id, NEW_CHAT, pick))]
     }
     void this.k.workspaces.setUpWorkspace(ws, project, repo, tabs[0], { checkpoint: false }).then((done) => {

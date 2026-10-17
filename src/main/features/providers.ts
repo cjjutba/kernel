@@ -317,7 +317,7 @@ export class Providers extends Feature {
   /** The providers a project's agents run on, by their picks. A project Kernel hasn't read yet counts every role's. */
   usedIn(projectId: string): Provider[] {
     const agents = this.k.team.agentsSync(projectId)
-    const picks = agents.length ? agents.map((a) => this.k.team.pickFor(a).provider) : Object.values(this.settings.models.roles).map((r) => r.provider)
+    const picks = agents.length ? agents.map((a) => this.k.team.pickFor(a).provider) : (Object.keys(this.settings.models.roles) as Role[]).map((r) => this.k.team.pickRole(r).provider)
     return [...new Set(picks)]
   }
 
@@ -1001,6 +1001,29 @@ export class Providers extends Feature {
   }
 
   /**
+   * Whether `provider` can't take new work now (KERNEL-1055): the account in use has a rejected 5-hour or weekly window and no
+   * other signed-in subscription account has room, as `spareAccount` says. Only a real rejection counts, as in `Account`'s
+   * switch at a limit. A running turn isn't asked: it waits for the reset.
+   */
+  atLimit(provider: Provider, now = Date.now()): boolean {
+    const mine = (this.store.meta<RateLimit[]>('limits') ?? []).filter((l) => limitProvider(l) === provider)
+    const active = this.active(provider) ?? CLI_ACCOUNT
+    if (!blockingLimit(mine.filter((l) => (l.accountId ?? CLI_ACCOUNT) === active), now)) return false
+    return !this.spareAccount(provider, mine, now)
+  }
+
+  /**
+   * Whether `provider` is set up and can take new work now (KERNEL-1055): a login Kernel has read as signed in, or an API key
+   * that works, and no limit stopping the provider (`atLimit`). A provider Kernel never saw signed in has no room, so work never
+   * falls back to one the user hasn't set up.
+   */
+  hasRoom(provider: Provider, now = Date.now()): boolean {
+    const file = this.load()[provider]
+    const signedIn = file.cli?.signedIn === true || file.accounts.some((a) => this.storedSignedIn(provider, a))
+    return signedIn && !this.atLimit(provider, now)
+  }
+
+  /**
    * Every account `spareAccount` could pick, best first. One that is the login in use (`sameLogin`) never is, since it
    * shares that login's limits whatever its own windows say (KERNEL-701).
    */
@@ -1545,7 +1568,10 @@ export class Providers extends Feature {
         if (pick.provider === provider && pick.model) add(pick.model, a.name)
       }
     }
-    if (!read) for (const [role, pick] of Object.entries(this.settings.models.roles) as [Role, { provider: Provider; model: string }][]) if (pick.provider === provider && pick.model) add(pick.model, ROLE_NAMES[role])
+    if (!read) for (const role of Object.keys(this.settings.models.roles) as Role[]) {
+      const pick = this.k.team.pickRole(role)
+      if (pick.provider === provider && pick.model) add(pick.model, ROLE_NAMES[role])
+    }
     return out
   }
 

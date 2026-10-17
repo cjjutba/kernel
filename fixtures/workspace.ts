@@ -226,7 +226,7 @@ const codexModels = [...['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6
 /** Settings with a role on Codex, so the picker offers both providers. */
 const codexRoleSettings = () => {
   const d = DEFAULT_SETTINGS('/Users/you')
-  return { ...d, models: { ...d.models, roles: { ...d.models.roles, qa: { provider: 'codex' as const, model: 'gpt-6-astra', effort: 'medium' as Effort } } } }
+  return { ...d, models: { ...d.models, roles: { ...d.models.roles, qa: { ...d.models.roles.qa, prefer: 'codex' as const, codex: { model: 'gpt-6-astra', effort: 'medium' as Effort } } } } }
 }
 
 const userMsg = (id: string, text: string, plan = false): ChatItem =>

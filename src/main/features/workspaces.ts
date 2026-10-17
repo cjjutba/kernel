@@ -198,7 +198,10 @@ export class Workspaces extends Feature {
     const taskId = o.taskFor?.(ws)
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
 
-    const role = this.k.team.pickFor(agent)
+    // A teammate the Lead hands off to from a chat on Codex starts on its role's Codex side (KERNEL-1055). A review has its own role.
+    const handoff = o.leadChatId && !o.lead && !o.reviewOf && !o.linkReviewOf ? this.store.chat(o.leadChatId) : undefined
+    const resolved = this.k.team.pickFor(agent, handoff && chatProvider(handoff) === 'codex' ? { chatProvider: 'codex' } : {})
+    const role = o.model ? resolved : this.k.team.announce(ws, resolved)
     // A model picked in New workspace runs on its own provider. Otherwise the agent's pin or its role decides (KERNEL-406).
     const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) }
     // A Lead chat's first tab is auto-named, and the chat takes its name (KERNEL-337).

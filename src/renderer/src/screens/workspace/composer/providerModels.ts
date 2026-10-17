@@ -48,7 +48,7 @@ function useCodexSignedIn(): boolean {
  */
 export function useCodexInUse(chatProvider?: Provider): boolean {
   const signedIn = useCodexSignedIn()
-  const configured = useStore((s) => chatProvider === 'codex' || Object.values(s.settings?.models.roles ?? {}).some((r) => r.provider === 'codex'))
+  const configured = useStore((s) => chatProvider === 'codex' || Object.values(s.settings?.models.roles ?? {}).some((r) => r.prefer === 'codex'))
   return signedIn || configured
 }
 

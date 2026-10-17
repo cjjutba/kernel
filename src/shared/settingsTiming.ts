@@ -93,6 +93,8 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   'providers.codex.useSystem': 'nextTurn',
   // The Codex runner passes it to thread/start and thread/resume, when a chat's process starts.
   'providers.codex.personality': 'newChats',
+  // Team.pickFor in features/team.ts, when a chat or workspace starts.
+  'providers.fallback': 'newChats',
   // The renderer seeds a new project's agents with it (screens/projects/draft.ts).
   'team.defaultTemplate': 'newProjects',
   // newLeadChat() in features/lead.ts, when a chat with Kernel starts. Open chats keep their mode (KERNEL-770).

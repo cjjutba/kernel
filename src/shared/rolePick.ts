@@ -1,5 +1,5 @@
 import { providerOf } from './providers'
-import { MODELS, type AgentDef, type RoleModel } from './types'
+import { MODELS, type AgentDef, type Provider, type RoleChoice, type RoleModel } from './types'
 
 /** A model id that is Codex's (gpt-6-astra, o4-mini, codex-mini), for an agent file without `provider:` (KERNEL-406). */
 const CODEX_MODEL = /^(gpt-|o\d|codex-)/i
@@ -17,4 +17,9 @@ export function rolePick(agent: Pick<AgentDef, 'model' | 'provider' | 'effort'>,
   const provider = agent.provider ?? (alias || pinned?.startsWith('claude-') ? 'claude' : pinned && CODEX_MODEL.test(pinned) ? providerOf(pinned) : undefined)
   if (!pinned || !provider) return { ...role, effort: agent.effort ?? role.effort }
   return { provider, model: provider === 'claude' ? alias || pinned : pinned, effort: agent.effort ?? role.effort }
+}
+
+/** One side of a role's choice as a flat pick: `provider`'s model and effort, the preferred provider's by default (KERNEL-1055). */
+export function roleSide(choice: RoleChoice, provider: Provider = choice.prefer): RoleModel {
+  return { provider, ...choice[provider] }
 }
