@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Workspace } from '@shared/types'
 import { mergeableState } from '@shared/merge'
-import { isLeadChatWorkspace } from '@shared/leadWorkspace'
+import { isLeadChatWorkspace, onSharedFolder } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
@@ -124,6 +124,13 @@ export function PrHeader({ ws, spread, capsule, toggle }: { ws: Workspace; sprea
     ? tone(<><div className="pr-r1">{state}{gap}{link}{toggle}</div>{buttons && <div className="pr-r2">{buttons}</div>}{line}{extra}</>)
     : tone(<>{state}{link}{buttons}{overruled && <LinkButton className="pr-undo" data-tip={overruleText(overruled)} onClick={undo}>Undo</LinkButton>}{extra}</>)
 
+  if (onSharedFolder(ws)) {
+    const reason = ws.leadMode === 'build' ? 'Create PR is off until this chat has its working copy, when the current turn ends.' : 'Create PR is off until this chat switches to Build here and has a working copy of its own.'
+    return out(
+      <Button variant="secondary" className="pr-soft" disabled aria-describedby={spread ? `${id}-pr-off` : undefined} data-tip={reason}><Icon name="pr" size={12} />Create PR</Button>,
+      spread ? <div className="pr-r2 pr-r2-text"><span id={`${id}-pr-off`} className="pr-next">{reason}</span></div> : undefined
+    )
+  }
   if (busy) return out(spinner(busy))
 
   // A chat with Kernel in Build here stays open after its PR merges: the band says so and its next change starts a new branch from main (KERNEL-780).

@@ -103,9 +103,21 @@ export function timingOf(path: string, projectId?: string): SettingTiming | unde
   return undefined
 }
 
+const BOTH = 'Applies to teammates and to chats in Build here'
+const TEAMMATES_AND_BUILD = 'Applies to teammates and to chats when they switch to Build here'
+
+/** Settings that reach chats with Kernel as well as teammates. A chat in Hand off has no workspace of its own, so these meet it when it switches to Build here (KERNEL-1052). */
+const CHAT_AUDIENCE: Record<string, string> = {
+  'workspace.mode': TEAMMATES_AND_BUILD,
+  'scripts.setupOnCreate': TEAMMATES_AND_BUILD,
+  'workspace.leadWaitForSetup': BOTH,
+  'workspace.oneCurrentBranchPerProject': BOTH
+}
+
 /** The muted line for a setting whose change doesn't reach running agents, or undefined when it does. */
 export function appliesTo(path: string, projectId?: string): string | undefined {
   if (TERMINAL_TAB_SETTINGS.has(path)) return 'Applies to new terminal tabs'
+  if (CHAT_AUDIENCE[path]) return CHAT_AUDIENCE[path]
   const timing = timingOf(path, projectId)
   return timing && APPLIES[timing]
 }

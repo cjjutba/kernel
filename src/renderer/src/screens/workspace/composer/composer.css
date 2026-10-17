@@ -29,6 +29,10 @@
 .cmp-switch { display: inline-flex; flex-shrink: 0; align-items: center; gap: 2px; height: 28px; padding: 2px; border: 1px solid var(--line-3); border-radius: var(--r-pill); }
 .cmp-switch-side { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px 0 8px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--muted); font: inherit; font-size: var(--fs-ui); font-weight: var(--fw-medium); white-space: nowrap; }
 .cmp-switch-side:hover { color: var(--ink); }
+.cmp-switch-side:disabled { cursor: default; }
+.cmp-switch-side:disabled:not([data-busy]):hover { color: var(--muted); }
+/* While the working copy is made, the side switched to spins and says what is being made (KERNEL-1052). */
+.cmp-switch-side[data-busy] { color: var(--ink); }
 .cmp-switch-side[aria-pressed='true'] { background: var(--surface-3); color: var(--ink); }
 /* The + button, and the chip beside it when New chat's Run in or Branch differs from the default. */
 .cmp-plus { position: relative; display: inline-flex; align-items: center; gap: 4px; }

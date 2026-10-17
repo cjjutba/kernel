@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptSuggestion, Workspace } from '@shared/types'
-import { isLeadChatWorkspace } from '@shared/leadWorkspace'
+import { isLeadChatWorkspace, onSharedFolder } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
 import { call } from '../../api'
 import { isLeadWorkspace, leadOf, openLeadChat } from '../../lead'
@@ -179,7 +179,9 @@ function ChangesList({ ws, changes: base, onOpenDiff, activePath }: { ws: Worksp
         ? <div className="panel-empty"><span className="ink2 t-medium">Could not compare</span><span>{error}</span></div>
         : files === null
           ? null
-          : !changes.length
+          : onSharedFolder(ws)
+            ? <div className="panel-empty"><span className="ink2 t-medium">{SHARED_NOTHING}</span><span>{sharedWhy(ws)}</span></div>
+            : !changes.length
             ? <div className="panel-empty"><span className="ink2 t-medium">{empty.title}</span><span>{empty.sub}</span></div>
             : (
               <>
@@ -202,6 +204,12 @@ function ChangesList({ ws, changes: base, onOpenDiff, activePath }: { ws: Worksp
     </>
   )
 }
+
+/** A chat on the shared main folder has no changes, setup or run of its own until it switches to Build here (KERNEL-1052). */
+export const SHARED_NOTHING = 'Nothing of its own yet'
+export const sharedWhy = (ws: Workspace) => ws.leadMode === 'build'
+  ? 'This chat is switching to Build here. Its working copy is made when the current turn ends.'
+  : 'This chat reads the project’s main folder. Switch to Build here and it gets a working copy of its own.'
 
 // ---------- Checks
 
@@ -573,7 +581,14 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   })
   const addScript = () => go({ name: 'settings', page: 'project', projectId: ws.projectId, section: 'setup' })
   // The log stays mounted, so its first lines are announced; an empty one shows what to do instead (KERNEL-274).
-  const empty = bottom === 'run'
+  const onShared = onSharedFolder(ws)
+  const empty = onShared ? (
+    <div className="script-empty">
+      <span className="script-empty-icon"><Icon name="fork" size={20} /></span>
+      <span className="ink2">{SHARED_NOTHING}</span>
+      <span>{sharedWhy(ws)}</span>
+    </div>
+  ) : bottom === 'run'
     ? noRun ? (
       <div className="script-empty">
         <span className="ink2">No run script</span>
@@ -605,7 +620,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         <TabStrip label="Scripts" value={collapsed ? '' : bottom} onChange={pick} tabs={[{ id: 'setup', label: 'Setup', busy: setupBusy }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
         {/* Folded, the bar says what the scripts are doing, so you can tell the app is up without opening it (KERNEL-529). */}
         {collapsed && word && <span className="bottom-word" role="status">{word}</span>}
-        <RunSplit label={selected} none={names.length === 0} running={selectedRunning} names={names} runningNames={runningNames} busy={busy} onPlay={() => void play()} onToggle={(n) => void toggleScript(n)} onAll={() => void runAll()} onConfigure={addScript} />
+        <RunSplit label={selected} none={names.length === 0 || onShared} running={selectedRunning} names={names} runningNames={runningNames} busy={busy} onPlay={() => void play()} onToggle={(n) => void toggleScript(n)} onAll={() => void runAll()} onConfigure={addScript} />
       </div>
       {!collapsed && bottom === 'run' && names.length > 1 && (
         <div className="run-picker">
