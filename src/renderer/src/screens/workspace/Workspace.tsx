@@ -30,7 +30,7 @@ import { hasChanges } from './pr/model'
 import { copyBranch, PrHeader } from './pr/PrHeader'
 import { SeatNotice } from './terminal/SeatNotice'
 import { SkipNotice } from './terminal/SkipNotice'
-import { TerminalView } from './terminal/Terminal'
+import { SeatView } from './terminal/SeatView'
 import { SetupWait } from './SetupWait'
 import { setupGate, skipsSetup } from './setupGate'
 import { Transcript } from './Transcript'
@@ -304,7 +304,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   : showNewChat
                     ? <NewLeadChat projectId={ws.projectId} focusIn={workspaceId} />
                   : chat?.kind === 'terminal'
-                    ? <><SkipNotice chat={chat} /><SeatNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>
+                    ? <><SkipNotice chat={chat} /><SeatNotice chat={chat} /><SeatView chat={chat} workspaceId={workspaceId} changes={changes} onOpenDiff={openDiff} onForked={select} /></>
                   : chat
                     ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} />
                     : <div className="grow" />}

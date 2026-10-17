@@ -3,6 +3,7 @@ import type { ChatPart, AccountProfile, MoveNotice, AgentReach, AgentScope, Appr
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
+import { seatViewKey } from '../src/renderer/src/screens/workspace/terminal/seat'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
 import { downloadFlowMarkdown, fontsCheckImage, invoiceLayoutStill, invoicePdfStill, pdfNotesMarkdown, pricingStill } from './sharedStills'
 
@@ -169,7 +170,7 @@ function terminalPresets(): Fixture {
 /**
  * KERNEL-1001: the Lead chat's workspace with a Lead terminal tab open beside the chat. `seat.connected: false` draws the not connected line.
  */
-function leadTerminal(o: { running?: boolean; connected?: boolean; menu?: boolean }): Fixture {
+function leadTerminal(o: { running?: boolean; connected?: boolean; menu?: boolean; transcript?: boolean }): Fixture {
   return scene((f) => {
     const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
     const { approvals: _none, ...rest } = s
@@ -178,10 +179,35 @@ function leadTerminal(o: { running?: boolean; connected?: boolean; menu?: boolea
       ...rest,
       projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
       chats: [...(rest.chats ?? f.chats), term],
+      ...(o.transcript ? { items: { ...(rest.items ?? f.items), [term.id]: seatItems(term.id, 'Kernel') }, saved: { [seatViewKey(term.id)]: 'transcript' } } : {}),
       push: [...(rest.push ?? f.push), { type: 'terminal.data', chatId: term.id, data: termScreen }, ...(o.running ? [{ type: 'chat.running' as const, chatId: term.id, running: true }] : [])],
       ui: { ...rest.ui!, rightPanel: false, ...(o.menu ? { menu: 'newTab' as const } : {}), tabs: { [ids.lead]: { tab: term.id, lastChat: ids.leadChat, files: [], diffs: [] } } }
     }
   })
+}
+
+/** KERNEL-1003: what a terminal seat's session reads back as, one turn of Claude Code in the terminal. */
+function seatItems(chatId: string, who: string): ChatItem[] {
+  const id = (n: string) => `${chatId}-${n}`
+  const from = { source: 'terminal' as const }
+  return [
+    { kind: 'user', id: id('u1'), ts: at(10, 20), parts: [{ type: 'text', text: `Add a Download PDF button to the invoice table, and keep ${who}'s file naming.` }], ...from },
+    { kind: 'thinking', id: id('th1'), ts: at(10, 20, 10), text: 'The table rows already carry the invoice number, so the button can build the file name from it.', ...from },
+    { ...tool(id('t1'), 'Read the invoice table', 'src/app/invoices/table.tsx', { name: 'Read', input: { file_path: 'src/app/invoices/table.tsx' } }), ...from } as ChatItem,
+    { ...tool(id('t2'), 'Search for the PDF renderer', 'rg -n "renderPdf" src', { output: 'src/pdf/render.ts:12:export function renderPdf(invoice: Invoice)' }), ...from } as ChatItem,
+    { kind: 'text', id: id('x1'), ts: at(10, 22), text: 'The button is in the table toolbar. It calls `renderPdf` for the selected row and saves the file as `invoice-<number>.pdf`.', ...from }
+  ]
+}
+
+/** KERNEL-1003: a teammate's workspace with its Claude terminal tab open on the Transcript view. */
+function teammateTranscript(): Fixture {
+  return scene((f) => ({
+    chats: [...f.chats, extraChat('chat-term', 'Terminal (claude)', 'terminal')],
+    items: { ...f.items, 'chat-term': seatItems('chat-term', 'Ivy') },
+    saved: { [seatViewKey('chat-term')]: 'transcript' },
+    push: [...f.push, { type: 'terminal.data', chatId: 'chat-term', data: termScreen }],
+    ui: tabsView('chat-term')
+  }))
 }
 
 /** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
@@ -3291,6 +3317,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   WorkspaceTerminalPresets: terminalPresets(),
   LeadTerminalIdle: leadTerminal({}),
+  LeadTerminalTranscript: leadTerminal({ transcript: true }),
+  WorkspaceTerminalTranscript: teammateTranscript(),
   LeadTerminalWorking: leadTerminal({ running: true }),
   LeadTerminalNotConnected: leadTerminal({ connected: false }),
   LeadTerminalMenu: leadTerminal({ menu: true }),

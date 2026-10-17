@@ -9,6 +9,7 @@ import { PROVIDERS } from '@shared/types'
 import { keepData, keepLines, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog'
 import { currentRoute } from '@shared/settingsRoutes'
 import { call, cleanError, onPush } from './api'
+import { writeSaved } from './remember'
 import { startupTheme } from './ui/theme'
 import { closeAllLayers } from './ui/hooks'
 import { hasTab, isChatTab, landing, nearest, placeToSave, restorePlace, projectHome, samePlace, stillThere, tabOf, type Place } from './nav'
@@ -943,7 +944,7 @@ async function start() {
   else go(opening, replace)
   for (const r of projects) void loadProject(r.id).catch(() => undefined)
   actions.system.booted()
-  if (fixture) applyFixture(fixture.ui, fixture.push)
+  if (fixture) applyFixture(fixture.ui, fixture.push, fixture.saved)
   // The checks rerun on every launch, after the app is up: they run claude and gh one after another and can take a while on a slow Mac.
   // They never take the screen (KERNEL-942). A blocking failure shows above New chat's box with its fix, and a launch that opens
   // somewhere else hears about it in a toast.
@@ -1003,7 +1004,8 @@ export function launchRoute(): Route {
 }
 
 /** Fixture mode: force the screen, replay its push events, then tell the screenshot harness it can capture. */
-function applyFixture(ui: ForcedUi, push: PushEvent[]) {
+function applyFixture(ui: ForcedUi, push: PushEvent[], saved?: Record<string, string>) {
+  for (const [key, value] of Object.entries(saved ?? {})) writeSaved(key, value)
   setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace }, tabs: { ...s.ui.tabs, ...ui.tabs } } }))
   // useAppearance applies settings.appearance.theme, so a fixture's theme goes there too or it would be painted over.
   if (ui.theme) setState((s) => (s.settings ? { settings: { ...s.settings, appearance: { ...s.settings.appearance, theme: ui.theme! } } } : {}))
