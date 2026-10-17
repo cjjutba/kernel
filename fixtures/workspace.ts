@@ -210,6 +210,15 @@ function teammateTranscript(): Fixture {
   }))
 }
 
+/** KERNEL-1005: a teammate whose hand-off runs in a terminal, so its tab says so. */
+function terminalTeammate(): Fixture {
+  return scene((f) => ({
+    chats: [...f.chats, { ...extraChat('chat-term', 'Terminal (claude)', 'terminal'), terminal: { preset: 'claude', command: 'claude', role: 'teammate' as const, handoff: true as const }, seat: { connected: true } }],
+    push: [...f.push, { type: 'terminal.data', chatId: 'chat-term', data: termScreen }],
+    ui: tabsView('chat-term')
+  }))
+}
+
 /** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
 const blocked = (f: Fixture): Fixture => ({ ...f, workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, prBlocked: 'review' as const } : w)) })
 
@@ -3324,6 +3333,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   LeadTerminalIdle: leadTerminal({}),
   LeadTerminalTranscript: leadTerminal({ transcript: true }),
   WorkspaceTerminalTranscript: teammateTranscript(),
+  WorkspaceTerminalTeammate: terminalTeammate(),
   LeadTerminalWorking: leadTerminal({ running: true }),
   LeadTerminalNotConnected: leadTerminal({ connected: false }),
   LeadTerminalMenu: leadTerminal({ menu: true }),
