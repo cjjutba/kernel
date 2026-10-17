@@ -3,3 +3,4 @@
 .composer-inner > .banner .muted { font-size: var(--fs-code); }
 .wsb-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .wsb-btn { height: 30px; }
+.composer-inner > .wsb-fell { margin: 0 0 8px; padding: 0 4px; font-size: var(--fs-meta); line-height: var(--lh-ui); color: var(--muted); }

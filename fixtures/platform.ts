@@ -78,6 +78,12 @@ const withRoles = (roles: Partial<Record<Role, RoleModel>>): AppSettings => {
   const picked = Object.fromEntries(Object.entries(roles).map(([r, m]) => [r, { ...d.models.roles[r as Role], prefer: m.provider, [m.provider]: { model: m.model, effort: m.effort } }]))
   return { ...d, models: { ...d.models, roles: { ...d.models.roles, ...picked } } }
 }
+/** Settings with some roles' preferred provider or sides moved, the rest as Kernel ships them (KERNEL-1056). */
+const withSides = (roles: Partial<Record<Role, Partial<AppSettings['models']['roles'][Role]>>>): AppSettings => {
+  const d = DEFAULT_SETTINGS('/Users/you')
+  const picked = Object.fromEntries(Object.entries(roles).map(([r, c]) => [r, { ...d.models.roles[r as Role], ...c }]))
+  return { ...d, models: { ...d.models, roles: { ...d.models.roles, ...picked } } }
+}
 /** Codex's models as its model/list answers for a ChatGPT Plus account. */
 const codexModels: ProviderModel[] = [
   { provider: 'codex', id: 'gpt-6-astra', label: 'GPT-6-Astra', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'low', isDefault: true },
@@ -514,6 +520,8 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-406, KERNEL-974: Frontend runs on Codex and Backend on Opus, each on its own row. The rest stay on their defaults.
   // KERNEL-974: Christian and Sean in two projects, Mira on her own model, and Rio with a custom role that lands under Backend. QA has no one.
   SettingsModels: settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),
+  // KERNEL-1056: every role holds a Claude and a Codex pick. Frontend prefers Codex, QA prefers Claude with its own Codex fallback, and the rest keep their defaults.
+  SettingsModelsFallback: settingsPage('models', { agents: modelsAgents(), status: {}, settings: withSides({ frontend: { prefer: 'codex', codex: { model: 'gpt-6-astra', effort: 'medium' } }, qa: { codex: { model: 'gpt-5.6-sol', effort: 'low' } }, engineers: { claude: { model: 'claude-opus-5-5', effort: 'xhigh' } } }), models: { codex: codexModels } }),
   // KERNEL-988: a role's Model cell opens the model picker under it, on Claude, on Codex, and with the Legacy models flyout open.
   SettingsModelsPicker: modelsPage(),
   SettingsModelsPickerCodex: modelsPage(),
@@ -542,6 +550,9 @@ export const platformFixtures: Record<string, Fixture> = {
     ]
   }),
   SettingsAccountsAlsoCli: providersPage('claude', { accounts: [{ ...workClaude, cli: false, alsoCli: true }, personalClaude, keyAccount('claude'), ownCodex] }),
+  // KERNEL-1056: the fallback switch under Switch accounts at a limit, on with both providers signed in, and off with a reason while Codex is signed out.
+  SettingsAccountsFallback: providersPage('claude', { accounts: [workClaude, personalClaude, ownCodex] }),
+  SettingsAccountsFallbackDisabled: providersPage('claude', { accounts: [workClaude, personalClaude, { ...ownCodex, signedIn: false }] }),
   SettingsAccountsCodex: providersPage('codex'),
   SettingsAccountsCodexSignedOut: providersPage('codex', { accounts: [workClaude, { ...ownCodex, signedIn: false }, personalCodex], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
   // KERNEL-524: an API key account beside the login, on each tab, then with the key in use and the sheet that adds one.
@@ -917,6 +928,12 @@ export const platformFixtures: Record<string, Fixture> = {
     settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
     accounts: claudeAccounts,
     usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }, { type: 'five_hour', status: 'allowed', utilization: 0.12, resetsAt: secs(next(15, 40)), accountId: 'work' }],
+    ui: open
+  })),
+  // KERNEL-1056: Christian's chat started on Codex because every Claude account was at its limit, so one plain line says so above the composer.
+  WorkspaceFellBack: scene((f) => ({
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, provider: 'codex' as const, model: 'gpt-6-astra' } : c)),
+    push: [...f.push, { type: 'providerFellBack', workspaceId: ids.table, from: 'claude', to: 'codex' }],
     ui: open
   })),
   // KERNEL-524: the account on offer is an API key, so the banner says it is billed per token. Christian's project runs on Codex too, as in the one above.

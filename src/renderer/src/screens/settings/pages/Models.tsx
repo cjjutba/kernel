@@ -1,11 +1,11 @@
 import './agents.css'
 import { useRef, useState } from 'react'
-import { EFFORT_LABELS, type AppSettings, type CompactWindow, type Effort, type Provider, type ProviderModel, type Role, type RoleModel } from '@shared/types'
+import { EFFORT_LABELS, type AppSettings, type CompactWindow, type Effort, type Provider, PROVIDERS, type ProviderModel, type Role, type RoleChoice, type RoleModel } from '@shared/types'
 import { roleOf, takesTasks } from '@shared/team'
 import { roleSide } from '@shared/rolePick'
 import { LinkButton, Icon, Popover, ProviderMark, Select, Toggle } from '../../../ui'
 import { ModelPicker } from '../../workspace/composer/ModelPicker'
-import { agentModelLabel, COMPACT_LABELS, fitEffort, modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
+import { agentModelLabel, COMPACT_LABELS, fitEffort, modelLabelOf, providerLabel, useProviderModels } from '../../workspace/composer/providerModels'
 import { appliesTo, Page, Row, Section } from '../kit'
 import { go, useStore } from '../../../store'
 import { patchSettings } from '../useSettings'
@@ -21,7 +21,7 @@ const ROLES: { key: Role; title: string }[] = [
 
 const LIMITS = [1, 2, 3, 4, 5, 6, 8]
 
-const ROLE_GRID = 'minmax(150px, 1fr) minmax(0, 280px)'
+const ROLE_GRID = 'minmax(76px, 1fr) 92px minmax(0, 245px) minmax(0, 215px)'
 
 interface WhoLine { key: string; name: string; right: string; open?: { projectId: string; agentId: string } }
 
@@ -53,8 +53,8 @@ function useRoleAgents(roleKey: Role, models: ProviderModel[]): { follow: WhoLin
   return { follow: [...follow.values()].map((l) => ({ key: l.key, name: l.name, right: l.in.join(', '), open: l.open })), own: [...own.values()] }
 }
 
-/** A role's second line: the provider, then who follows the row as a quiet link that opens the list of agents on it and the ones that set their own model. */
-function RoleAgents({ title, provider, follow, own }: { title: string; provider: Provider; follow: WhoLine[]; own: WhoLine[] }) {
+/** A role's second line: who follows the row as a quiet link that opens the list of agents on it and the ones that set their own model. */
+function RoleAgents({ title, follow, own }: { title: string; follow: WhoLine[]; own: WhoLine[] }) {
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLSpanElement>(null)
   const button = useRef<HTMLButtonElement>(null)
@@ -74,8 +74,6 @@ function RoleAgents({ title, provider, follow, own }: { title: string; provider:
   )
   return (
     <span ref={wrap} className="set-desc ag-role-sub">
-      <span>{provider === 'codex' ? 'Codex' : 'Claude Code'}</span>
-      <span aria-hidden="true">·</span>
       {follow.length || own.length
         ? <button ref={button} type="button" className="ag-count" aria-haspopup="dialog" aria-expanded={open} onClick={() => (open ? close() : setOpen(true))}>{count}</button>
         : <span>{count}</span>}
@@ -87,7 +85,7 @@ function RoleAgents({ title, provider, follow, own }: { title: string; provider:
   )
 }
 
-/** A role's chip: like the composer's model chip, with the model, then the effort and, on Claude, the compact window. Opens the model picker under it (KERNEL-988, KERNEL-995). Escape and a pick return focus to the chip. */
+/** One side of a role, Claude's or Codex's: like the composer's model chip, with the model, then the effort and, on Claude, the compact window. Opens the model picker under it (KERNEL-988, KERNEL-995). Escape and a pick return focus to the chip. */
 function ModelChip({ title, current, compact, models, onPick, onEffort, onCompact }: { title: string; current: RoleModel; compact: CompactWindow; models: ProviderModel[]; onPick: (model: string) => void; onEffort: (e: Effort) => void; onCompact: (w: CompactWindow) => void }) {
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLSpanElement>(null)
@@ -109,31 +107,39 @@ function ModelChip({ title, current, compact, models, onPick, onEffort, onCompac
         <span className="ag-chip-detail ellipsis">{detail}</span>
         <Icon name="chevron" size={12} />
       </button>
-      {open && <ModelPicker variant="settings" placement="down" anchorRef={wrap} provider={current.provider} model={current.model} effort={current.effort} fallback={current.effort} compact={claude ? compact : undefined}
+      {open && <ModelPicker variant="settings" only={current.provider} placement="down" anchorRef={wrap} provider={current.provider} model={current.model} effort={current.effort} fallback={current.effort} compact={claude ? compact : undefined}
         onModel={(m) => { onPick(m); close() }} onEffort={onEffort} onCompact={onCompact} onClose={close} />}
     </span>
   )
 }
 
 /**
- * One role's row (KERNEL-406, KERNEL-680, KERNEL-995): the model picker is grouped by provider, so picking a model also picks the provider, and the
- * effort moves to one the model takes. Codex manages its own context, so a Codex role has no compact window.
+ * One role's row (KERNEL-406, KERNEL-680, KERNEL-995, KERNEL-1056): the provider it prefers, then a chip for its Claude model and one for its Codex model, each with its own effort.
+ * The preferred side is what the role runs on. The other is what it runs on when every account of the preferred provider is at its limit and
+ * Settings, Accounts has the fallback on. Codex manages its own context, so its side has no compact window.
  */
-function RoleLine({ title, roleKey, current, compact }: { title: string; roleKey: Role; current: RoleModel; compact: CompactWindow }) {
+function RoleLine({ title, roleKey, choice, compact }: { title: string; roleKey: Role; choice: RoleChoice; compact: CompactWindow }) {
   const claude = useProviderModels('claude')
   const codex = useProviderModels('codex')
   const listOf = (p: Provider) => (p === 'codex' ? codex : claude)
   const who = useRoleAgents(roleKey, [...claude, ...codex])
-  const save = (next: RoleModel) => void patchSettings({ models: { roles: { [roleKey]: { prefer: next.provider, [next.provider]: { model: next.model, effort: next.effort } } } } })
-  const pick = (model: string) => {
-    const provider: Provider = codex.some((m) => m.id === model) ? 'codex' : claude.some((m) => m.id === model) ? 'claude' : current.provider
-    save({ provider, model, effort: fitEffort(current.effort, model, listOf(provider)) })
+  const save = (provider: Provider, model: string, effort: Effort) => void patchSettings({ models: { roles: { [roleKey]: { [provider]: { model, effort } } } } })
+  const side = (provider: Provider) => {
+    const current = roleSide(choice, provider)
+    return (
+      <span role="cell" className="ag-side">
+        <ModelChip title={`${title} ${providerLabel(provider)}`} current={current} compact={compact} models={listOf(provider)}
+          onPick={(model) => save(provider, model, fitEffort(current.effort, model, listOf(provider)))}
+          onEffort={(effort) => save(provider, current.model, effort)} onCompact={(w) => void patchSettings({ models: { compact: { [roleKey]: w } } })} />
+      </span>
+    )
   }
   return (
     <div className="set-table-row ag-role-row" role="row" aria-label={title} style={{ gridTemplateColumns: ROLE_GRID }}>
-      <span role="cell" className="ag-role-name"><span className="set-label ellipsis">{title}</span><RoleAgents title={title} provider={current.provider} follow={who.follow} own={who.own} /></span>
-      <span role="cell"><ModelChip title={title} current={current} compact={compact} models={listOf(current.provider)} onPick={pick}
-        onEffort={(effort) => save({ ...current, effort })} onCompact={(w) => void patchSettings({ models: { compact: { [roleKey]: w } } })} /></span>
+      <span role="cell" className="ag-role-name"><span className="set-label ellipsis">{title}</span><RoleAgents title={title} follow={who.follow} own={who.own} /></span>
+      <span role="cell"><Select label={`${title} preferred provider`} value={choice.prefer} options={PROVIDERS.map((p) => ({ value: p.id, label: p.id === 'claude' ? 'Claude' : p.label }))} onChange={(v) => void patchSettings({ models: { roles: { [roleKey]: { prefer: v as Provider } } } })} /></span>
+      {side('claude')}
+      {side('codex')}
     </div>
   )
 }
@@ -141,8 +147,8 @@ function RoleLine({ title, roleKey, current, compact }: { title: string; roleKey
 function Roles({ s }: { s: AppSettings }) {
   return (
     <div className="set-card ag-roles" role="table" aria-label="Roles">
-      <div className="set-table-head" role="row" style={{ gridTemplateColumns: ROLE_GRID }}>{['Role', 'Model'].map((c) => <span key={c} role="columnheader">{c}</span>)}</div>
-      {ROLES.map((r) => <RoleLine key={r.key} title={r.title} roleKey={r.key} current={roleSide(s.models.roles[r.key])} compact={s.models.compact[r.key]} />)}
+      <div className="set-table-head" role="row" style={{ gridTemplateColumns: ROLE_GRID }}>{['Role', 'Preferred', 'Claude', 'Codex'].map((c) => <span key={c} role="columnheader">{c}</span>)}</div>
+      {ROLES.map((r) => <RoleLine key={r.key} title={r.title} roleKey={r.key} choice={s.models.roles[r.key]} compact={s.models.compact[r.key]} />)}
     </div>
   )
 }

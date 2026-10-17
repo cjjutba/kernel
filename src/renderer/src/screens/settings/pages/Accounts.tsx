@@ -198,6 +198,9 @@ export function Accounts({ s }: { s: AppSettings }) {
   const usableOf = (p: Provider) => accounts.filter((a) => a.provider === p && a.auth !== 'apiKey' && a.signedIn && !a.keychainWait).length
   const canSwitch = PROVIDERS.some((p) => usableOf(p.id) >= 2)
   const switching = PROVIDERS.every((p) => s.accounts.switchAtLimit[p.id])
+  // Fallback moves new work to the other provider, so it needs a signed-in account on each (KERNEL-1056).
+  const signedOut = PROVIDERS.filter((p) => !accounts.some((a) => a.provider === p.id && a.signedIn))
+  const canFallBack = signedOut.length === 0
 
   const finishSheet = (close: () => void) => () => { close(); readAll() }
   return (
@@ -243,6 +246,9 @@ export function Accounts({ s }: { s: AppSettings }) {
       <Section title="Limits">
         <Row id="switch-at-limit" label="Switch accounts at a limit" desc="Move agents to the subscription with the most headroom.">
           <Toggle label="Switch accounts at a limit" disabled={!canSwitch} checked={canSwitch && switching} onChange={(v) => void patchSettings({ accounts: { switchAtLimit: { claude: v, codex: v } } })} />
+        </Row>
+        <Row id="provider-fallback" label="When every account is at its limit, start new work on the other provider" desc={canFallBack ? 'Uses the role’s model for the other provider, set in Models and effort.' : `Sign in to ${signedOut.map((p) => NAME[p.id]).join(' and ')} to use this.`}>
+          <Toggle label="When every account is at its limit, start new work on the other provider" disabled={!canFallBack} checked={canFallBack && s.providers.fallback} onChange={(v) => void patchSettings({ providers: { fallback: v } })} />
         </Row>
         <Row
           id="pause-near-limit"

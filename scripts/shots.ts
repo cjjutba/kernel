@@ -624,10 +624,9 @@ async function openLegacyModels(page: Page) {
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
-// Settings, Models (KERNEL-988): the Kernel row's Model cell opens the picker, which starts on that role's provider.
-async function openRolePicker(page: Page, tab?: string, legacy = false) {
-  await page.getByRole('button', { name: /^Kernel model/ }).click()
-  if (tab) await page.getByRole('tab', { name: tab }).click()
+// Settings, Models (KERNEL-988, KERNEL-1056): the Kernel row's Claude or Codex cell opens a picker for that provider.
+async function openRolePicker(page: Page, provider = 'Claude Code', legacy = false) {
+  await page.getByRole('button', { name: new RegExp(`^Kernel ${provider} model`) }).click()
   if (legacy) await page.getByRole('button', { name: /Legacy models/ }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
@@ -639,7 +638,7 @@ async function openRoleAgents(page: Page, row = 'Backend') {
   await page.waitForTimeout(300)
 }
 async function openRoleFlyout(page: Page, row: string, flyout: 'Effort' | 'Compact at') {
-  await page.getByRole('row', { name: row }).getByRole('button', { name: new RegExp(`^${row} model`) }).click()
+  await page.getByRole('row', { name: row }).getByRole('button', { name: new RegExp(`^${row} Claude Code model`) }).click()
   await page.getByRole('button', { name: new RegExp(`^${flyout}`) }).hover()
   await page.getByRole('menu', { name: flyout }).waitFor()
   await page.waitForTimeout(300)
@@ -676,7 +675,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsModelsAgentsNone: (page) => openRoleAgents(page, 'QA'),
   SettingsModelsPickerEffort: (page) => openRoleFlyout(page, 'Kernel', 'Effort'),
   SettingsModelsPickerCompact: (page) => openRoleFlyout(page, 'Kernel', 'Compact at'),
-  SettingsModelsPickerCodexRole: async (page) => { await page.getByRole('button', { name: /^Frontend model/ }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  SettingsModelsPickerCodexRole: async (page) => { await page.getByRole('button', { name: /^Frontend Codex model/ }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsModelsNarrow: windowAt(720),
   WorkspaceModelPickerKeys: async (page) => { await page.keyboard.press('ArrowUp'); await page.waitForTimeout(300) },
   WorkspaceModelPickerFavorites: starModels,
