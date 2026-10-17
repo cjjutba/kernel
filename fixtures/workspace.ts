@@ -2237,10 +2237,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: stepCardWriteItems },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
-  /** Rows opened in place (KERNEL-198). Local open state can't be set from a fixture, so scripts/shots.ts clicks the rows named there. */
+  /** Rows opened in place (KERNEL-198). Local open state can't be set from a fixture, so scripts/shots.ts clicks the rows named there. The turn's fold starts open, or the rows sit inside it closed. */
   WorkspaceRowsOpen: scene(() => ({
     items: { [ids.tableChat]: rowsOpenItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
   })),
   /** The folded list with a Thinking and an Edit row opened inside it (KERNEL-198). */
   WorkspaceRowsFolded: scene(() => ({
