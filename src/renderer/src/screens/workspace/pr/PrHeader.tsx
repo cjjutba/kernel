@@ -125,7 +125,7 @@ export function PrHeader({ ws, spread, capsule, toggle }: { ws: Workspace; sprea
     : tone(<>{state}{link}{buttons}{overruled && <LinkButton className="pr-undo" data-tip={overruleText(overruled)} onClick={undo}>Undo</LinkButton>}{extra}</>)
 
   if (onSharedFolder(ws)) {
-    const reason = 'Create PR is off until this chat switches to Build here and has a working copy of its own.'
+    const reason = ws.leadMode === 'build' ? 'Create PR is off until this chat has its working copy, when the current turn ends.' : 'Create PR is off until this chat switches to Build here and has a working copy of its own.'
     return out(
       <Button variant="secondary" className="pr-soft" disabled aria-describedby={spread ? `${id}-pr-off` : undefined} data-tip={reason}><Icon name="pr" size={12} />Create PR</Button>,
       spread ? <div className="pr-r2 pr-r2-text"><span id={`${id}-pr-off`} className="pr-next">{reason}</span></div> : undefined

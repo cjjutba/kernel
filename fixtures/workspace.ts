@@ -2523,6 +2523,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
     mode: 'build', right: 'changes', ws: { status: 'setup', worktreePending: {} },
     items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }]
   })),
+  // Build here pressed while a turn runs: the chat is still on the shared folder, and the switch waits for the turn to end.
+  WorkspaceLeadWaitingForTurn: scene((f) => leadModeScene(f, {
+    mode: 'build', right: 'changes', running: true, ws: { shared: true, branch: 'HEAD' },
+    items: [{ kind: 'leadMode', id: 'lm-d2', ts: at(10, 2), mode: 'build' }]
+  })),
   ChatRailNarrow: railScene(true),
   WorkspaceNewChat: scene((f) => ({
     chats: [...f.chats, extraChat('chat-new', 'New chat')],

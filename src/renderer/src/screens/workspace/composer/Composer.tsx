@@ -112,7 +112,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
   const projectPlace = useProjectSettings(withKernel ? ws.projectId : undefined)?.workspace.mode
   const [switching, runSwitch] = useBusy<LeadMode>()
   const makingCopy = !!ws?.worktreePending && !ws.worktreePending.error
-  const switchingTo = switching ?? (makingCopy ? 'build' : null)
+  const waitingForTurn = !!ws && onSharedFolder(ws) && leadMode === 'build'
+  const switchingTo = switching ?? (makingCopy || waitingForTurn ? 'build' : null)
   const switchLabel = (projectPlace ?? appPlace) === 'current' ? 'Moving to your current branch' : 'Making worktree'
   const pickLeadMode = (mode: LeadMode) => {
     d.focus()
@@ -434,7 +435,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
       input={<ComposerInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
       foot={<ComposerToolbar
         compact={compact}
-        lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(projectLeadMode, appLeadMode), onPick: pickLeadMode, busy: switchingTo ? { to: switchingTo, label: switchingTo === 'build' && (makingCopy || (!!ws && onSharedFolder(ws))) ? switchLabel : 'Switching' } : undefined } : undefined}
+        lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(projectLeadMode, appLeadMode), onPick: pickLeadMode, busy: switchingTo ? { to: switchingTo, label: makingCopy ? switchLabel : waitingForTurn ? 'Waiting for this turn to end' : switchingTo === 'build' && !!ws && onSharedFolder(ws) ? switchLabel : 'Switching' } : undefined } : undefined}
         agent={!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
         model={{ label: model, provider, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x); d.focus() }, onEffort: setEffort } }}
         mode={{ provider, availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
