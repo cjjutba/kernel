@@ -315,7 +315,7 @@ export class Archive extends Feature {
     return back
   }
 
-  /** A restored worktree's setup, in the background: its chats wait for it, as a new workspace's brief does (KERNEL-77). */
+  /** A restored worktree's setup, in the background. Its chats keep working meanwhile, and restart once setup passes to pick up its variables (KERNEL-1016). */
   private setUpRestored(ws: Workspace, project: Project, repo: RepoSettings) {
     let tabs = this.chatTabs(ws.id).filter((c) => c.kind !== 'terminal')
     if (!tabs.length) {
@@ -323,8 +323,9 @@ export class Archive extends Feature {
       const pick = { ...(agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers), plan: false }
       tabs = [this.saveChat(ws.lead ? this.k.lead.leadTab(ws, NEW_TAB, pick) : this.newChat(ws.id, NEW_CHAT, pick))]
     }
-    for (const c of tabs) this.sessions.hold(c.id)
-    void this.k.workspaces.setUpWorkspace(ws, project, repo, tabs[0], { checkpoint: false }).catch((e) => {
+    void this.k.workspaces.setUpWorkspace(ws, project, repo, tabs[0], { checkpoint: false }).then((done) => {
+      if (!this.stopped && done.status === 'ready') this.sessions.restartIdle([ws.id])
+    }).catch((e) => {
       if (this.stopped) return
       console.warn(`[restore] setting up ${ws.name} failed`, e)
       if (this.store.workspace(ws.id)?.status === 'setup') this.updateWs(ws.id, { status: 'failed' })
