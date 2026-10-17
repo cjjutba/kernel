@@ -34,11 +34,8 @@ export const GO_AHEAD_LINE = 'A request for one clear change is a go-ahead, even
 /** The Lead's lines that only hold in Hand off, where it plans and hands tasks to teammates (KERNEL-770). */
 const CHAT_PLAN_LINE = "Ask for plan approval only while the chat is in plan mode, with mcp__kernel__request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn't repeat."
 
-/** The same line for a terminal Lead (KERNEL-1029), which has no plan card: it plans with Claude Code's own plan dialog (KERNEL-1022). */
-const TERMINAL_PLAN_LINE = "Ask for plan approval only while the tab is in plan mode: plan first, then exit plan mode for approval with Claude Code's own plan dialog, which the user answers in this terminal. Kernel has no plan card here."
-
-const handoffLines = (terminal: boolean) => [
-  terminal ? TERMINAL_PLAN_LINE : CHAT_PLAN_LINE,
+const handoffLines = () => [
+  CHAT_PLAN_LINE,
   `With plan mode off, when the user asks for work, say who gets what, ending with one yes-or-no question for one set of tasks. Call mcp__kernel__create_workspace only on a go-ahead that approves it and raises nothing new, quoted in go_ahead. ${GO_AHEAD_LINE} Filing or editing tracker issues with mcp__kernel__file_issue needs the same go-ahead. Fixing approved work, as below, needs none.`,
   'For each teammate the user addressed, call create_workspace, message_agent to their workspace, or ask_user in that turn.',
   'Before you ask for plan approval or suggest a hand-off, check each task against mcp__kernel__list_agents. When no teammate fits a task, say so in the plan and ask the user with mcp__kernel__ask_user, with options like "Give it to Sean" for the closest teammate and "Create a payments engineer agent". When they pick a new agent, propose it with mcp__kernel__create_agent. When nobody on the team takes tasks, stop at the first task: tell the user, and ask with ask_user whether to create an agent with create_agent or to add a starter agent in Team. Never build a task yourself.',
@@ -70,19 +67,16 @@ const SHARED_LINES = [
  * Appended to every Lead's system prompt in Hand off, whatever its agent file says (KERNEL-129 for the wording). KERNEL-678
  * keeps it from growing. Build here takes LEAD_BUILD_RULE instead (KERNEL-770).
  */
-export const LEAD_RULE = [`${LEAD_INTRO}, and you give them work with the mcp__kernel__ tools.`, ANSWER_LINE, ...handoffLines(false), ...SHARED_LINES].join('\n')
-
-/** LEAD_RULE for a Lead in a terminal tab, where the plan goes through Claude Code's own dialog (KERNEL-1029). */
-export const TERMINAL_LEAD_RULE = [`${LEAD_INTRO}, and you give them work with the mcp__kernel__ tools.`, ANSWER_LINE, ...handoffLines(true), ...SHARED_LINES].join('\n')
+export const LEAD_RULE = [`${LEAD_INTRO}, and you give them work with the mcp__kernel__ tools.`, ANSWER_LINE, ...handoffLines(), ...SHARED_LINES].join('\n')
 
 /**
  * The Lead's rule in Build here (KERNEL-770): it makes the change itself in the chat's worktree and opens the PR, hands no
  * tasks out, and suggests Hand off when the work is too big for one PR. The shared lines stay, since teammates it handed work
  * to before a switch carry on.
  */
-const buildRule = (terminal: boolean) => [
+export const LEAD_BUILD_RULE = [
   `${LEAD_INTRO}. This chat is in Build here: you make the change yourself in this chat's worktree, on its branch. Teammates get no tasks from this chat, so never call mcp__kernel__create_workspace, except with review_of to have a PR reviewed.`,
-  `${terminal ? "While the tab is in plan mode, plan the change and exit plan mode for approval with Claude Code's own plan dialog, which the user answers in this terminal." : 'While the chat is in plan mode, plan the change and ask for approval with mcp__kernel__request_plan_approval: the full plan as markdown in plan, and one line per step in steps.'} Once the user approves, build it in the same turn. With plan mode off, call mcp__kernel__start_build with the user\'s words in go_ahead before your first edit, and change nothing until it passes. ${GO_AHEAD_LINE} A reply that builds starts with the approach you chose. Put what you checked in the PR body, or "not checked on screen".`,
+  `While the chat is in plan mode, plan the change and ask for approval with mcp__kernel__request_plan_approval: the full plan as markdown in plan, and one line per step in steps. Once the user approves, build it in the same turn. With plan mode off, call mcp__kernel__start_build with the user\'s words in go_ahead before your first edit, and change nothing until it passes. ${GO_AHEAD_LINE} A reply that builds starts with the approach you chose. Put what you checked in the PR body, or "not checked on screen".`,
   ANSWER_LINE,
   "Build and test as the repo's AGENTS.md or CLAUDE.md says, commit, push the branch and open a pull request with gh pr create. When checks fail, a review finds blockers or the PR has conflicts, fix your own PR in this worktree. File or edit tracker issues with mcp__kernel__file_issue, quoting the user's go-ahead in go_ahead.",
   'When the work spans more than one lane or is bigger than one PR, stop before you build. Say why in one or two lines and call mcp__kernel__suggest_hand_off with that reason, so the user can switch this chat to Hand off. Never hand work off yourself, and never switch the mode: the user does.',
@@ -90,13 +84,8 @@ const buildRule = (terminal: boolean) => [
   ...SHARED_LINES
 ].join('\n')
 
-export const LEAD_BUILD_RULE = buildRule(false)
-
-/** LEAD_BUILD_RULE for a Build here Lead in a terminal tab (KERNEL-1029). */
-export const TERMINAL_LEAD_BUILD_RULE = buildRule(true)
-
-/** The Lead's rule for a chat in `mode` (KERNEL-770), or for a terminal tab's Lead with `terminal` (KERNEL-1029). */
-export const leadRule = (mode: LeadMode, terminal = false) => (mode === 'build' ? (terminal ? TERMINAL_LEAD_BUILD_RULE : LEAD_BUILD_RULE) : terminal ? TERMINAL_LEAD_RULE : LEAD_RULE)
+/** The Lead's rule for a chat in `mode` (KERNEL-770). */
+export const leadRule = (mode: LeadMode) => (mode === 'build' ? LEAD_BUILD_RULE : LEAD_RULE)
 
 /** Appended to the Lead's prompt after LEAD_RULE while sharing is on, which it is by default (KERNEL-302, KERNEL-308). */
 export const LEAD_SHARING_RULE = 'Team updates list files teammates shared. Tell the user what each shows; they open it from the update.'

@@ -70,7 +70,6 @@ export class Hooks extends Feature {
   /** A hook from a session Kernel did not start. The listener on the bus calls it. */
   onHook(e: AnyHook, ctx?: HookContext) {
     this.hookSeen.set(e.hook_event_name, Date.now())
-    if (ctx?.chatId) this.k.seatSignals.onHook(e, ctx.chatId)
     // Only sessions Kernel did not start reach here (the big terminal, or Claude Code run by hand), so Kernel learns their status from the hooks.
     const status = HOOK_STATUS[e.hook_event_name]
     if (!status || !ctx?.projectId || !ctx.agentId) return
@@ -87,9 +86,8 @@ export class Hooks extends Feature {
         approvals: this.approvals,
         approvalTimeoutMs: () => this.settings.permissions.approvalTimeoutSec * 1000,
         isManaged: (id) => this.sessions.isManaged(id),
-        promptContext: (chatId) => this.leadUpdates.takeSeat(chatId),
         build: this.build,
-        resolve: (cwd, _session, chatId) => this.resolveCwd(cwd, chatId)
+        resolve: (cwd) => this.resolveCwd(cwd)
       })
       // A server that closes or errors on its own takes agent statuses and the logs with it (WorkspaceHooksDown.png).
       const server = this.hookServer
@@ -173,11 +171,7 @@ export class Hooks extends Feature {
     return !this.off && !!this.hookServer?.listening && (await this.hooksStatus()).installed
   }
 
-  private resolveCwd(cwd: string, chatId?: string): HookContext {
-    // A seat's own chat, when the hook names one that is an open terminal in a live workspace (KERNEL-999).
-    const chat = chatId ? this.store.chat(chatId) : undefined
-    const home = chat?.kind === 'terminal' && !chat.closed ? this.store.workspace(chat.workspaceId) : undefined
-    if (chat && home && home.status !== 'archived') return { projectId: home.projectId, workspaceId: home.id, agentId: home.agentId, chatId: chat.id }
+  private resolveCwd(cwd: string): HookContext {
     const ws = this.store.workspaces().filter((w) => w.status !== 'archived').sort((a, b) => b.path.length - a.path.length).find((w) => cwd === w.path || cwd.startsWith(w.path + '/'))
     if (ws) return { projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId }
     const project = this.store.projects().find((r) => cwd === r.path || cwd.startsWith(r.path + '/'))

@@ -103,14 +103,13 @@ export function sessionDeps(k: Kernel): SessionDeps {
     onCutOff: (chatIds) => k.store.saveMeta('cutOff', chatIds),
     onHeld: (held) => k.store.saveMeta('held', held),
     // A pause or another hold lifted, so a Team update the Lead couldn't take goes now (KERNEL-637).
-    seatsBusy: (chatId) => k.teammateSeats.busy(chatId),
-    onFreed: () => { k.leadUpdates.flushSoon(); k.teammateSeats.startWaiting() }
+    onFreed: () => k.leadUpdates.flushSoon()
   }
 }
 
 /**
  * What follows a finished turn, in the order that matters: the Lead hears about a turn only after Kernel has read the PR it may
- * have opened. A chat in Kernel and a teammate's terminal seat (KERNEL-1004) both end here.
+ * have opened.
  */
 export function turnFinished(k: Kernel, ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true; refused?: true; stuck?: true }) {
   void k.checkpoints.checkpoint(ws, chat).catch(() => undefined)

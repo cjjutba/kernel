@@ -9,12 +9,10 @@ import { sessionEnv } from '../services/sessions'
 import { shellId } from '../services/pty'
 import { askCodexTitle, askTitle, titleText } from '../services/titles'
 import { claudeExecutable } from '../services/providers/binary'
-import { LEAD_PRESET, resolvePreset, terminalCommand, terminalPresets, terminalTitle } from '../services/terminalPresets'
-import { SEATS_ENABLED } from '../services/seatsFlag'
+import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from '../services/terminalPresets'
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
-import { TerminalTranscripts } from '../services/terminalTranscript'
 
 const COPY = 'fork:'
 
@@ -26,8 +24,6 @@ const notFound = (e: unknown) => /not found/i.test((e as Error)?.message ?? '')
 
 /** Chat tabs, their names, forks and big terminals (KERNEL-329). */
 export class Chats extends Feature {
-  /** A terminal seat's Claude Code session as a read-only transcript on its chat (KERNEL-1002). */
-  readonly transcripts = new TerminalTranscripts(this.k)
   /** Chats with a turn running. Read from `chat.running` so the quit prompt can count agents (KERNEL-214). */
   private readonly runningChats = new Set<string>()
 
@@ -105,9 +101,9 @@ export class Chats extends Feature {
   }
 
   /** Kernel picks this chat's name. A chat still called "New chat" from before KERNEL-202 counts too. */
-  private autoNamed(c: Chat) { return (c.kind !== 'terminal' || !!c.terminal?.role) && (!!c.autoTitle || c.title === NEW_CHAT) }
+  private autoNamed(c: Chat) { return c.kind !== 'terminal' && (!!c.autoTitle || c.title === NEW_CHAT) }
   /** An auto-named chat that has no real name yet: "New chat", a Lead tab's "New tab" (KERNEL-337), or the Lead's first "Lead". */
-  private unnamed(c: Chat) { return c.title === NEW_CHAT || (!!c.autoTitle && (c.title === NEW_TAB || c.title === LEAD_CHAT || (c.kind === 'terminal' && /^Terminal \(/.test(c.title)))) }
+  private unnamed(c: Chat) { return c.title === NEW_CHAT || (!!c.autoTitle && (c.title === NEW_TAB || c.title === LEAD_CHAT)) }
 
   /** Saves a name Kernel picked. The first tab of a Lead chat names the chat too (KERNEL-337). */
   private autoName(chat: Chat) {
@@ -127,7 +123,7 @@ export class Chats extends Feature {
   async nameChat(ws: Workspace, chat: Chat, turnEnded = false) {
     if (!this.autoNamed(chat)) return
     const resets = this.nameResets.get(chat.id) ?? 0
-    const sessionId = chat.terminal?.sessionId ?? chat.sessionId
+    const sessionId = chat.sessionId
     if (this.unnamed(chat) && sessionId && sessionId !== this.clearedSession.get(chat.id)) {
       const last = this.titleChecked.get(chat.id) ?? 0
       if (turnEnded || Date.now() - last >= 3000) {
@@ -272,9 +268,7 @@ export class Chats extends Feature {
     // Closing the tab ends what its agent started too (KERNEL-810).
     this.sessions.stop(chatId, { tree: true })
     this.ptys.kill(chatId)
-    this.k.seats.closeSeat(chatId)
     this.saveChat({ ...chat, closed: true })
-    this.leadUpdates.rehomeSeat(chatId)
     if (this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) return
     if (this.isLeadWorkspace(ws)) return
     this.saveChat(this.newChat(chat.workspaceId, NEW_CHAT, { provider: chat.provider, model: chat.model, effort: this.openedEffort(chat.workspaceId, chat.model), plan: false }))
@@ -363,18 +357,6 @@ export class Chats extends Feature {
     this.ptys.start(id, { ...this.ptyOptions(id), ...size })
   }
 
-  /** Starts a seat's pty from the engine, as a hand-off to a terminal teammate does (KERNEL-1004). */
-  async startSeat(id: string) {
-    await this.seatsUp(id)
-    this.ensurePty(id)
-  }
-
-  /** A big terminal chat's pty is about to start: its seat's endpoint is listening by then, when the chat is a seat. */
-  private async seatsUp(id: string) {
-    const chat = this.store.chat(id)
-    if (chat?.kind === 'terminal' && !this.ptys.has(id) && this.k.seats.seated(chat)) await this.k.seats.start()
-  }
-
   /** Where a terminal starts, with what, and the command it types: its workspace's folder as it is now. */
   private ptyOptions(id: string) {
     const plain = id.startsWith('shell:')
@@ -383,13 +365,12 @@ export class Chats extends Feature {
     const ws = this.mustWs(plain ? id.slice('shell:'.length) : chat!.workspaceId)
     const env = sessionEnv(this.k.env.envFor(ws), {}, { agentTeams: this.settings.models.agentTeams })
     const command = (plain ? null : terminalCommand(chat!)) ?? undefined
-    const seat = plain ? undefined : this.k.seats.launch(id, env)
-    return { cwd: ws.path, env: seat?.env ?? env, command: seat ? seat.command(command) : command }
+    return { cwd: ws.path, env, command }
   }
 
   /** The workspace's terminals that run a command now, which a folder move waits for (KERNEL-424). */
   busyTerminals(workspaceId: string): boolean {
-    return this.terminalIds(workspaceId).some((id) => this.ptys.busy(id) || this.k.seatSignals.working(id))
+    return this.terminalIds(workspaceId).some((id) => this.ptys.busy(id))
   }
 
   /** The workspace's running terminals start again in its folder as it is now, after the folder moved (KERNEL-424). */
@@ -402,14 +383,11 @@ export class Chats extends Feature {
     return [...this.chatTabs(workspaceId).filter((c) => c.kind === 'terminal').map((c) => c.id), shellId(workspaceId)]
   }
 
-  /** Whether the Lead preset is listed: in a Lead workspace, while seats are on (KERNEL-1034). */
-  private leadPreset(ws: Workspace) { return SEATS_ENABLED && this.isLeadWorkspace(ws) }
-
   /** The preset a new big terminal tab runs, resolved here so the renderer never names the command (KERNEL-248). */
   private async terminalFor(ws: Workspace, preset?: string) {
     const t = this.settings.terminal
     if (!t.enabled) throw new Error('Big terminal tabs are off. Turn them on in Settings, Big terminal.')
-    return resolvePreset(await terminalPresets(t, undefined, this.leadPreset(ws)), t, ws.mode, preset)
+    return resolvePreset(await terminalPresets(t), t, ws.mode, preset)
   }
 
 
@@ -429,19 +407,9 @@ export class Chats extends Feature {
       'chats.close': async ({ chatId }) => { await this.closeChat(chatId); return { ok: true } },
       'chats.markRead': async ({ chatId }) => { this.markRead(chatId); return { ok: true } },
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
-      'terminal.write': async ({ chatId, data }) => { this.k.teammateSeats.typedIn(chatId, data); await this.seatsUp(chatId); this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
-      'terminal.resize': async ({ chatId, cols, rows }) => { await this.seatsUp(chatId); this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
-      'terminal.reconnect': async ({ chatId }) => {
-        const chat = this.mustChat(chatId)
-        if (chat.kind !== 'terminal' || !chat.terminal?.role) throw new Error('That tab is not a terminal seat.')
-        await this.seatsUp(chatId)
-        // A running pty is replaced and an exited one starts, both through the launch path, so `claude` resumes the saved session.
-        if (this.ptys.has(chatId)) this.ptys.restart(chatId, this.ptyOptions(chatId))
-        else this.ensurePty(chatId)
-        return { ok: true }
-      },
+      'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
+      'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
       'terminal.replay': async ({ chatId }) => { this.ptys.replay(chatId); return { ok: true } },
-      'seat.pending': async () => this.leadUpdates.seatCounts(),
       'chats.create': async ({ workspaceId, kind, preset, threadId, provider, model: asked, effort }) => {
         const ws = this.mustWs(workspaceId)
         // Right after a restart nothing may have read the team yet, and the agent's effort is the fallback.
@@ -450,16 +418,11 @@ export class Chats extends Feature {
         const on = await this.newTabModel(ws, provider, asked)
         const pick = { provider: on.provider, model: on.model, effort: effort ?? this.openedEffort(workspaceId, on.model), plan: false }
         // A Lead tab joins the chat its workspace hosts (KERNEL-405), or in the shared Lead workspace from before, the Lead chat
-        // `threadId` (KERNEL-337). A big terminal belongs to no Lead chat, except the Lead preset's, a seat of the chat (KERNEL-998).
-        if (term?.preset.id === LEAD_PRESET.id) return this.k.lead.leadTab(ws, terminalTitle(term.preset), { ...pick, kind, terminal: term.terminal }, threadId)
+        // `threadId` (KERNEL-337). A big terminal belongs to no Lead chat.
         if (!term && this.isLeadWorkspace(ws)) return this.k.lead.leadTab(ws, NEW_TAB, pick, threadId)
         return this.newChat(workspaceId, term ? terminalTitle(term.preset) : NEW_CHAT, { ...pick, kind, terminal: term?.terminal })
       },
-      'terminal.presets': async (req) => {
-        const ws = req?.workspaceId ? this.store.workspace(req.workspaceId) : undefined
-        if (ws && !this.k.team.agentCache.has(ws.projectId)) await this.k.team.agents(ws.projectId)
-        return terminalPresets(this.settings.terminal, undefined, !!ws && this.leadPreset(ws))
-      },
+      'terminal.presets': async () => terminalPresets(this.settings.terminal),
       'chats.items': async ({ chatId }) => this.store.items(chatId),
       'commands.list': async () => this.sessions.commands(this.home),
       'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),

@@ -29,8 +29,6 @@ export interface CutWorkspace {
   prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string
   provider?: Provider; model?: string; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string; linkReviewOf?: string
   labels?: string[]; waitFor?: string[]; lead?: { threadId: string }
-  /** The teammate runs in a terminal seat started with the brief, not as a chat in Kernel (KERNEL-1004). */
-  seat?: true
   /**
    * The agent itself, for one that isn't on the project's team: Kernel's own reviewer, which runs the reviews Kernel starts with
    * its own prompts (KERNEL-549). Without it, an `agentId` the team doesn't have falls back to the Lead.
@@ -201,7 +199,6 @@ export class Workspaces extends Feature {
     const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) }
     // A Lead chat's first tab is auto-named, and the chat takes its name (KERNEL-337).
     const chat = o.lead ? this.newChat(ws.id, NEW_TAB, { ...pick, threadId: o.lead.threadId })
-      : o.seat ? this.newChat(ws.id, title, { ...pick, kind: 'terminal', terminal: { preset: 'claude', command: 'claude', role: 'teammate', handoff: true } })
       : this.newChat(ws.id, title, pick)
     if (stale) this.sayStale(ws, remote, stale)
     return { ws, project, repo, chat }
@@ -472,12 +469,6 @@ export class Workspaces extends Feature {
       // it is sent is still caught by `after`.
       const later = this.k.setup.setups.get(ws.id)?.later.splice(0) ?? []
       this.k.setup.saveSetups()
-      // A terminal teammate starts `claude` with the brief, and what the Lead said meanwhile goes in with it (KERNEL-1004).
-      if (chat.terminal?.handoff) {
-        await this.k.teammateSeats.start(chat, [...parts, ...later.flat()])
-        await after((m) => { this.k.teammateSeats.message(chat, m) })
-        return
-      }
       await this.sessions.sendAll(chat.id, [{ parts, from }, ...later.map((m) => ({ parts: m, from: 'lead' as const }))])
       await after((m) => this.sessions.send(chat.id, m, { from: 'lead' }))
     }, { run: !alongside })

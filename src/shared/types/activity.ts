@@ -47,9 +47,5 @@ export interface Notification {
   read: boolean
   /** What the detail pane says after the user acted. */
   resolved?: string
-  /** The terminal Lead tab the row is about (KERNEL-1000). */
-  chatId?: string
-  /** A teammate's question to a terminal Lead, which the user can answer here: `notifications.answer` sends it to the teammate (KERNEL-1000). */
-  ask?: { workspaceId: string; question: string; options?: string[] }
   createdAt: number
 }

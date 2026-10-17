@@ -22,10 +22,3 @@ export async function head(path: string) {
   return r.code === 0 ? r.stdout.trim() : undefined
 }
 
-/**
- * What a terminal can be handed as text: the words, and a file that carries its own text (an issue the tracker read). A file
- * that is only a path, or an image, can't be pasted into a prompt, so a hand-off that has one runs in Kernel (KERNEL-1004).
- */
-export function pastable(parts: ChatPart[] | undefined): boolean {
-  return (parts ?? []).every((p) => p.type === 'text' || (p.type === 'file' && !p.dir && p.text !== undefined))
-}

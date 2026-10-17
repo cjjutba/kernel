@@ -1,7 +1,6 @@
 import type { AgentDef, Chat, PrBlocked, PrState, Provider, ReviewKind, ReviewVerdict, SharedFile, SharedKind, SharedVersion, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import type { Store } from '../db'
-import type { Notification } from '@shared/types'
 import { bus } from '../bus'
 import { UPDATE_HEADER } from './handoff'
 import type { TurnDone } from './notifications'
@@ -56,11 +55,6 @@ export interface LeadUpdateDeps {
   post: (chatId: string, text: string, update: TeamUpdate) => boolean
   /** Why `post` refused the chat, for the delivery log (`Sessions.postHold`, KERNEL-637). */
   holdOf?: (chatId: string) => string | undefined
-  /**
-   * Raises the inbox row and the Mac notification for a terminal Lead tab with an update waiting that needs it, or settles the
-   * row once the tab has it (KERNEL-1000). One row per `id`, replaced in place. Left out, a terminal tab gets none.
-   */
-  notify?: (n: Pick<Notification, 'id' | 'title' | 'sub'> & Partial<Pick<Notification, 'heading' | 'body' | 'projectId' | 'workspaceId' | 'chatId' | 'ask' | 'needsYou' | 'resolved'>>) => void
   /** Called after a delivered update, for the project log. */
   delivered?: (projectId: string, chat: Chat, update: TeamUpdate) => void
   /** Called after a delivered update with each workspace's events as it told them, for what the Lead now owes (KERNEL-749). */
@@ -165,9 +159,6 @@ export interface AutoMerged { why: string; card: string }
  */
 export interface WaitNews { on: string[]; label: string; held?: boolean; target?: string; gone?: 'closed' | 'archived'; told?: boolean; why?: string; onto?: string; pushed?: boolean }
 
-export const seatId = (chatId: string) => `n-seat-${chatId}`
-export const askId = (chatId: string, workspaceId: string) => `n-ask-${chatId}-${workspaceId}`
-
 /** Events waiting for one Lead chat, or for a project's first Lead chat when `owner` is unset. */
 interface Pending { projectId: string; owner?: string; events: TeamEvent[] }
 
@@ -175,13 +166,8 @@ interface Pending { projectId: string; owner?: string; events: TeamEvent[] }
  * What waits for the Lead, saved under the meta key `leadUpdates` so a quit doesn't lose it (KERNEL-123). `toldBlocked` is
  * what the Lead last heard about GitHub's block on each ready PR, so an unblock after a restart still reaches it (KERNEL-401).
  */
-interface Saved { v: 1; seq: number; pending: [string, Pending][]; stopped: string[]; toldBlocked?: [string, PrBlocked][]; toldLimit?: string[]; seatQueue?: [string, SeatUpdate[]][] }
+interface Saved { v: 1; seq: number; pending: [string, Pending][]; stopped: string[]; toldBlocked?: [string, PrBlocked][]; toldLimit?: string[] }
 
-/**
- * An update for a terminal Lead tab, composed as a chat would get it and kept until the tab's next prompt or its check_team
- * (KERNEL-1000). Kernel never types into a terminal. `asks`: the workspaces whose question it carries.
- */
-interface SeatUpdate { text: string; update: TeamUpdate; told: { workspaceId: string; name: string; events: TeamEvent[] }[]; asks: string[] }
 const SAVED = 'leadUpdates'
 
 /** PR states GitHub reports. Moving into one of these from none or creating means the PR was just opened. */
@@ -611,8 +597,6 @@ export class LeadUpdates {
   private auto = new Map<string, AutoMerged>()
   /** Why Kernel didn't merge a ready PR by itself with the user's auto-merge on, until the PR leaves ready (KERNEL-556). */
   private refused = new Map<string, string>()
-  /** Updates waiting for each terminal Lead tab, by chat id, oldest first (KERNEL-1000). */
-  private seatQueue = new Map<string, SeatUpdate[]>()
   private detached = false
   private seq = 0
   private off: () => void = () => undefined
@@ -660,16 +644,15 @@ export class LeadUpdates {
       for (const id of saved.stopped ?? []) { const chat = this.d.store.chat(id); if (chat && !chat.closed) this.stopped.add(id) }
       for (const [id, blocked] of saved.toldBlocked ?? []) if (this.d.store.workspace(id)) this.toldBlocked.set(id, blocked)
       for (const id of saved.toldLimit ?? []) if (this.d.store.workspace(id)) this.toldLimit.add(id)
-      for (const [id, queue] of saved.seatQueue ?? []) if (queue.length) this.seatQueue.set(id, queue)
     } catch (e) {
       this.warn('could not read the saved updates, so they were dropped', e)
-      this.pending.clear(); this.ready.clear(); this.stopped.clear(); this.toldBlocked.clear(); this.toldLimit.clear(); this.seatQueue.clear()
+      this.pending.clear(); this.ready.clear(); this.stopped.clear(); this.toldBlocked.clear(); this.toldLimit.clear()
     }
     this.save()
   }
 
   private save() {
-    this.d.store.saveMeta<Saved>(SAVED, { v: 1, seq: this.seq, pending: [...this.pending], stopped: [...this.stopped], ...(this.toldBlocked.size ? { toldBlocked: [...this.toldBlocked] } : {}), ...(this.toldLimit.size ? { toldLimit: [...this.toldLimit] } : {}), ...(this.seatQueue.size ? { seatQueue: [...this.seatQueue] } : {}) })
+    this.d.store.saveMeta<Saved>(SAVED, { v: 1, seq: this.seq, pending: [...this.pending], stopped: [...this.stopped], ...(this.toldBlocked.size ? { toldBlocked: [...this.toldBlocked] } : {}), ...(this.toldLimit.size ? { toldLimit: [...this.toldLimit] } : {}) })
   }
 
   /**
@@ -968,7 +951,6 @@ export class LeadUpdates {
    * on its PR poll, so a pause or a busy Lead chat only delays its own updates.
    */
   flush(projectId: string) {
-    this.rehomeGone()
     const waiting = [...this.pending].filter(([, p]) => p.projectId === projectId && p.events.length)
     if (!waiting.length) return
     const changed = { any: false }
@@ -1046,10 +1028,7 @@ export class LeadUpdates {
       if (!message || !message.update.rows.length) { for (const key of g.keys) drop(key); continue }
       // Nothing needs the Lead yet. It all waits for the next update that does (KERNEL-121).
       if (!message.wakes) { hold(g.keys, 'quiet'); continue }
-      // A terminal Lead is never sent a turn. What needs it waits for its next prompt or check_team (KERNEL-1000).
-      const seat = g.chat.kind === 'terminal'
-      if (seat) this.enqueue(g.chat, message)
-      else if (!this.d.post(g.chat.id, message.text, message.update)) { hold(g.keys, this.d.holdOf?.(g.chat.id) ?? 'refused'); continue }
+      if (!this.d.post(g.chat.id, message.text, message.update)) { hold(g.keys, this.d.holdOf?.(g.chat.id) ?? 'refused'); continue }
       // Only what went out, or what it overtook, leaves. Workspaces past the 8th wait for the next update (KERNEL-637).
       const now = Date.now()
       const due = Math.min(...g.keys.map((key) => this.ready.get(key) ?? now))
@@ -1085,143 +1064,15 @@ export class LeadUpdates {
           else if (e.kind === 'limit' && message.update.rows[i]?.events.some((x) => x.kind === 'limit' && x.actionable)) { this.toldLimit.add(t.ws.id); changed.any = true }
         }
       })
-      if (!seat) {
-        this.d.delivered?.(projectId, g.chat, message.update)
-        this.d.opened?.(g.chat, message.told)
-      }
+      this.d.delivered?.(projectId, g.chat, message.update)
+      this.d.opened?.(g.chat, message.told)
     }
-  }
-
-  /** Keeps a terminal tab's update, and tells the user a tab of theirs has news that needs it (KERNEL-1000). */
-  private enqueue(chat: Chat, m: { text: string; update: TeamUpdate; told: { ws: Workspace; name: string; events: TeamEvent[] }[] }) {
-    const told = m.told.map((t) => ({ workspaceId: t.ws.id, name: t.name, events: t.events }))
-    const asks = told.filter((t) => t.events.some((e) => e.kind === 'question')).map((t) => t.workspaceId)
-    this.keep(chat, { text: m.text, update: m.update, told, asks })
-  }
-
-  /** Puts `u` on the queue of the terminal tab `chat`, and raises its inbox rows (KERNEL-1000). */
-  private keep(chat: Chat, u: SeatUpdate) {
-    const { told } = u
-    this.seatQueue.set(chat.id, [...(this.seatQueue.get(chat.id) ?? []), u])
-    this.seatChanged(chat)
-    const ws = this.d.store.workspace(chat.workspaceId)
-    const project = ws && this.d.store.project(ws.projectId)
-    const where = project ? ` · ${project.name}` : ''
-    for (const t of told) {
-      const q = t.events.find((e) => e.kind === 'question')?.question
-      if (!q) continue
-      this.d.notify?.({ id: askId(chat.id, t.workspaceId), title: `${t.name} asks: ${capText(q.text, CARD_MAX)}`, sub: `Question${where}`, heading: `${t.name} has a question for ${chat.title}`, body: q.text, projectId: ws?.projectId, workspaceId: t.workspaceId, chatId: chat.id, ask: { workspaceId: t.workspaceId, question: q.text, ...(q.options?.length ? { options: q.options } : {}) }, needsYou: true })
-    }
-    this.raiseSeat(chat)
-  }
-
-  /** The inbox row that says how many updates wait for a terminal Lead tab. */
-  private raiseSeat(chat: Chat) {
-    const ws = this.d.store.workspace(chat.workspaceId)
-    const project = ws && this.d.store.project(ws.projectId)
-    const where = project ? ` · ${project.name}` : ''
-    const lines = (this.seatQueue.get(chat.id) ?? []).flatMap((u) => u.update.rows.flatMap((r) => r.events.filter((e) => e.actionable).map((e) => `${r.name}: ${e.text}`)))
-    const n = this.seatPending(chat.id)
-    this.d.notify?.({ id: seatId(chat.id), title: `${chat.title} has ${n === 1 ? 'an update' : `${n} updates`} waiting`, sub: `Team update${where}`, heading: `Your team has news for ${chat.title}`, body: `${lines.join('\n')}\nIt reaches the terminal with your next message, or when the agent calls check_team.`.trim(), projectId: ws?.projectId, chatId: chat.id, needsYou: true })
-  }
-
-  /** The count of updates waiting for each terminal Lead tab that has any, as `seat.updates` last said (KERNEL-1029). */
-  seatCounts(): Record<string, number> {
-    const counts: Record<string, number> = {}
-    for (const [id, queue] of this.seatQueue) if (queue.length) counts[id] = queue.length
-    return counts
-  }
-
-  /** How many updates wait for a terminal Lead tab. */
-  seatPending(chatId: string): number { return this.seatQueue.get(chatId)?.length ?? 0 }
-
-  /**
-   * Returns the text of every update waiting for a terminal Lead tab, in order, and takes them off its queue, so nothing goes
-   * twice (KERNEL-1000). Called by the tab's next prompt and by check_team. Undefined when none wait.
-   */
-  takeSeat(chatId: string): string | undefined {
-    const queue = this.seatQueue.get(chatId)
-    const chat = this.d.store.chat(chatId)
-    if (!queue?.length) return undefined
-    this.seatQueue.delete(chatId)
-    this.save()
-    if (chat) this.seatChanged(chat, 0)
-    for (const u of queue) {
-      const first = this.d.store.workspace(u.update.rows[0]?.workspaceId ?? '')
-      if (!chat || !first) continue
-      this.d.delivered?.(first.projectId, chat, u.update)
-      this.d.opened?.(chat, u.told.flatMap((t) => { const ws = this.d.store.workspace(t.workspaceId); return ws ? [{ ws, name: t.name, events: t.events }] : [] }))
-    }
-    this.d.notify?.({ id: seatId(chatId), title: `${chat?.title ?? 'The tab'} has its updates`, sub: 'Team update', needsYou: false, resolved: 'The terminal has them.' })
-    return queue.map((u) => u.text).join('\n\n')
-  }
-
-  /** The user answered a teammate's question in the inbox, so a Lead still waiting to hear it is told not to answer again. */
-  seatAnswered(chatId: string, workspaceId: string, answer: string) {
-    const queue = this.seatQueue.get(chatId)
-    if (!queue) return
-    for (const u of queue) if (u.asks.includes(workspaceId)) u.text += `\n\nThe user already answered this question in Kernel's inbox: "${capText(answer, ASK_MAX)}". Kernel sent the answer to the teammate, so don't answer it again.`
-    this.save()
-  }
-
-  /**
-   * A terminal tab's workspace was archived (KERNEL-1029). Restoring the workspace resumes the tab's session, so what waited
-   * for it stays on its queue and reaches it then (`seatRestored`).
-   */
-  seatArchived(chatId: string) {
-    if (!this.seatQueue.has(chatId)) return
-    this.d.notify?.({ id: seatId(chatId), title: 'Terminal archived', sub: 'Team update', needsYou: false, resolved: 'The workspace was archived. The updates wait for it to be restored.' })
-  }
-
-  /** An archived workspace came back with the terminal tab `chat`: what waited for it is its again. */
-  seatRestored(chat: Chat) {
-    if (this.seatPending(chat.id)) this.raiseSeat(chat)
-  }
-
-  /**
-   * A terminal tab is gone for good: closed, or its chat deleted (KERNEL-1029). What waited for it goes to the Lead chat that
-   * `target` names for its work, as a Team update, or to another terminal Lead tab's queue. What no tab can take yet stays on
-   * the dead tab's queue, and the next flush tries again.
-   */
-  rehomeSeat(chatId: string) {
-    const queue = this.seatQueue.get(chatId)
-    if (!queue?.length) return
-    const dead = this.d.store.chat(chatId)
-    const rest: SeatUpdate[] = []
-    for (const u of queue) {
-      const first = this.d.store.workspace(u.update.rows[0]?.workspaceId ?? '')
-      if (!first) continue
-      const to = this.d.target(first.projectId, chatId)
-      if (!to || to.chat.id === chatId || to.chat.closed) { rest.push(u); continue }
-      const text = `Kernel kept these updates from ${dead?.title ?? 'a terminal tab'}, a tab you closed.\n\n${u.text}`
-      if (to.chat.kind === 'terminal') { this.keep(to.chat, { ...u, text }); continue }
-      if (!this.d.post(to.chat.id, text, u.update)) { rest.push(u); continue }
-      this.d.delivered?.(first.projectId, to.chat, u.update)
-      this.d.opened?.(to.chat, u.told.flatMap((t) => { const ws = this.d.store.workspace(t.workspaceId); return ws ? [{ ws, name: t.name, events: t.events }] : [] }))
-    }
-    if (rest.length) this.seatQueue.set(chatId, rest)
-    else this.seatQueue.delete(chatId)
-    this.save()
-    if (!rest.length) this.d.notify?.({ id: seatId(chatId), title: 'Terminal closed', sub: 'Team update', needsYou: false, resolved: 'The tab closed. Its updates went to the Lead.' })
-  }
-
-  /** Tries again for every queue whose tab is gone and found no taker. */
-  private rehomeGone() {
-    for (const id of [...this.seatQueue.keys()]) {
-      const chat = this.d.store.chat(id)
-      if (!chat || chat.closed) this.rehomeSeat(id)
-    }
-  }
-
-  private seatChanged(chat: Chat | undefined, count = this.seatPending(chat?.id ?? ''), id = chat?.id) {
-    this.save()
-    if (id) bus.push({ type: 'seat.updates', chatId: id, count })
   }
 
   /** Draws the rows that cost no turn, and takes their events out of what waits, so each shows once (KERNEL-990). */
   private show(display: { update: TeamUpdate; events: TeamEvent[] }[], g: { chat: Chat; keys: string[] }, changed: { any: boolean }) {
     const gone = new Set(display.flatMap((d) => d.events.map((e) => e.n)))
-    if (g.chat.kind !== 'terminal') for (const d of display) this.d.row?.(g.chat.id, d.update)
+    for (const d of display) this.d.row?.(g.chat.id, d.update)
     for (const key of g.keys) {
       const p = this.pending.get(key)
       if (!p) continue

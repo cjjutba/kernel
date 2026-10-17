@@ -137,6 +137,22 @@ export const migrations: Migration[] = [
         save.run(JSON.stringify(renameKey(v, 'roomId', 'projectId')), r.key)
       }
     }
+  },
+  {
+    // Terminal seats were deleted (KERNEL-1037). Their rows go: the transcript rows read from a terminal's Claude Code session,
+    // the seat fields on a terminal chat, its inbox rows, the Team updates and messages kept for one, and the folder of
+    // per-tab launch files. A terminal chat stays as a plain big terminal.
+    version: 9,
+    up: (db) => {
+      db.exec(`
+        delete from chat_items where json_valid(data) and (json_extract(data, '$.source') = 'terminal' or json_extract(data, '$.kind') = 'plan');
+        update chats set data = json_remove(data, '$.seat', '$.terminal.role', '$.terminal.sessionId', '$.terminal.transcriptPath', '$.terminal.handoff') where json_valid(data) and json_extract(data, '$.kind') = 'terminal';
+        delete from notifications where id like 'n-seat-%' or id like 'n-ask-%';
+        delete from meta where key = 'seatMessages';
+        update meta set data = json_remove(data, '$.seatQueue') where key = 'leadUpdates' and json_valid(data);
+      `)
+      if (db.name && db.name !== ':memory:') rmSync(join(dirname(db.name), 'seats'), { recursive: true, force: true })
+    }
   }
 ]
 

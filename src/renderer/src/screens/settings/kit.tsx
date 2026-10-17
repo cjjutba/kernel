@@ -84,7 +84,7 @@ const ProjectScope = createContext<string | undefined>(undefined)
 /** What the row around a field says about its setting: when a change reaches agents, and the project it is a value of. */
 const RowTiming = createContext<{ timing?: SettingTiming; projectId?: string; shared?: boolean }>({})
 
-const TERMINAL_TAB_SETTINGS = new Set(['terminal.preset', 'terminal.onlyInWorktrees', 'terminal.connect'])
+const TERMINAL_TAB_SETTINGS = new Set(['terminal.preset', 'terminal.onlyInWorktrees'])
 
 const APPLIES: Partial<Record<SettingTiming, string>> = {
   newChats: 'Applies to new chats',
