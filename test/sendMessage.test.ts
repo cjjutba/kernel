@@ -239,3 +239,50 @@ describe('updates that arrive together draw together', () => {
     vi.useRealTimers()
   })
 })
+
+describe('a workspace update that ends setup waits for the message it releases', () => {
+  const ws = (over: Partial<Workspace>) => ({ id: 'w1', status: 'setup', worktreePending: {}, ...over }) as unknown as Workspace
+  beforeEach(() => {
+    vi.useFakeTimers()
+    actions.workspaces.set([ws({})])
+    actions.chats.set('w1', [chat])
+    actions.chats.setItems('c1', [])
+    actions.chats.setQueue('c1', [{ id: 'm1', chatId: 'c1', parts: text('hi'), ts: 1 }], 'setup')
+    actions.chats.setRunning('c1', false)
+  })
+
+  it('never draws the ready workspace with an empty, idle chat and the setup strip', async () => {
+    const { applyTogether } = await import('../src/renderer/src/store')
+    const drawn: string[] = []
+    // A frame is drawn between tasks, so a state counts once the timers that run in one task have all run.
+    const draw = () => { const s = getState(); drawn.push(`${s.workspaces[0].status}|${s.items.c1?.length ?? 0}|${!!s.running.c1}|${s.queueWhy.c1 ?? '-'}`) }
+    applyTogether({ type: 'workspace', workspace: ws({ status: 'ready', worktreePending: undefined }) })
+    applyTogether({ type: 'chat.item', chatId: 'c1', item: { kind: 'user', id: 'm1', ts: 5, parts: text('hi') } })
+    applyTogether({ type: 'chat.running', chatId: 'c1', running: true })
+    applyTogether({ type: 'chat.queue', chatId: 'c1', queue: [] })
+    draw()
+    vi.runAllTimers()
+    draw()
+    expect(getState().workspaces[0].status).toBe('ready')
+    expect(drawn.filter((d) => d.startsWith('ready|0|false|setup'))).toEqual([])
+    expect(drawn.at(-1)).toBe('ready|1|true|-')
+    vi.useRealTimers()
+  })
+
+  it('still applies the update when no release follows', async () => {
+    const { applyTogether } = await import('../src/renderer/src/store')
+    applyTogether({ type: 'workspace', workspace: ws({ status: 'failed', worktreePending: undefined }) })
+    expect(getState().workspaces[0].status).toBe('setup')
+    vi.advanceTimersByTime(250)
+    expect(getState().workspaces[0].status).toBe('failed')
+    vi.useRealTimers()
+  })
+
+  it('applies an update at once when nothing is held for setup', async () => {
+    const { applyTogether } = await import('../src/renderer/src/store')
+    actions.chats.setQueue('c1', [], null)
+    applyTogether({ type: 'workspace', workspace: ws({ status: 'ready', worktreePending: undefined }) })
+    expect(getState().workspaces[0].status).toBe('ready')
+    vi.useRealTimers()
+  })
+})
