@@ -1,0 +1,1 @@
+**The PR band of a Build here chat with changes and no PR shows only Create PR.** KERNEL-780 put a Link issue button beside it, which opened the composer's issue picker. Many people don't track work in Linear or GitHub issues, so the button sat there unused on every change. Link issue stays in the composer's + menu and on ⌘I. Amends KERNEL-780.

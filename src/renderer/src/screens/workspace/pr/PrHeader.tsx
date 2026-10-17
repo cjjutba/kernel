@@ -4,7 +4,6 @@ import type { Workspace } from '@shared/types'
 import { mergeableState } from '@shared/merge'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
-import { commandComposer } from '../composer/bus'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy } from '../../../ui'
@@ -152,12 +151,8 @@ export function PrHeader({ ws, spread, capsule, toggle }: { ws: Workspace; sprea
     : b.kind === 'busy' ? spinner(b.label)
       : <Button variant="secondary" className={[view.caret && 'split-main', solid ? 'pr-solid' : 'pr-soft'].filter(Boolean).join(' ')} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && press(b.action)}>{icon && <Icon name={icon} size={12} />}{b.label}</Button>
 
-  // Kernel links an issue it was given (KERNEL-780): the button opens the composer's issue picker, and the pick goes to Kernel in the message.
-  const linkIssue = building && ws.prState === 'none' && changed && !local && ws.source?.kind !== 'issue'
-    ? <Button className="pr-soft" onClick={() => commandComposer('linkIssue')}><Icon name="link" size={12} /><span className="pr-btn-label">Link issue</span></Button>
-    : null
   const overrule = facts && <Button className="pr-soft" onClick={() => setOverruling(true)}>Overrule</Button>
-  const buttons = !main && !view.archive && !linkIssue ? null : (
+  const buttons = !main && !view.archive ? null : (
     <>
       {view.caret ? (
         <span className="pr-split">
@@ -176,7 +171,6 @@ export function PrHeader({ ws, spread, capsule, toggle }: { ws: Workspace; sprea
           </span>
         </span>
       ) : main}
-      {linkIssue}
       {overrule}
       {view.archive && <Button className="pr-soft" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} />Archive</Button>}
     </>

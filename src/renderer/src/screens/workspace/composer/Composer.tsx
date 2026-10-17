@@ -337,7 +337,6 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
   // Subscribed on every render, so the listener always sees the current draft.
   useEffect(() => onComposerCommand((c) => {
     if (c === 'model') { setMenu('model'); return }
-    if (c === 'linkIssue') { setMenu('linkIssue'); return }
     if (!d.empty) void send()
     else d.focus()
   }))
