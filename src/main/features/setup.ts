@@ -142,7 +142,7 @@ export class Setup extends Feature {
   private async afterSetup(workspaceId: string, o: { note?: string } = {}): Promise<Workspace> {
     const ws = this.mustWs(workspaceId)
     const project = this.mustProject(ws.projectId)
-    const chat = this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
+    const chat = this.briefChat(ws.id)
     const passed = (w: Workspace) => { const now = this.mustWs(w.id); if (now.status === 'ready') this.leadUpdates.setup(now, true); return now }
     // A brief that waits for a PR stays held: the workspace is ready and keeps waiting (KERNEL-259).
     const wait = ws.waitsFor
@@ -198,7 +198,13 @@ export class Setup extends Feature {
     const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
     // A chat that already had a turn, as a restored workspace's has, starts nothing new, so it takes no start checkpoint (KERNEL-77).
     const begun = this.store.items(chat.id).some((i) => i.kind === 'user')
-    return this.setupDone(ws, project, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => { settle(); this.releaseTabs(ws.id, chat.id) }, { checkpoint: !begun, note: o.note })
+    return this.setupDone(ws, project, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => { settle(); if (chat.terminal?.handoff) await this.k.teammateSeats.release(chat); else this.releaseTabs(ws.id, chat.id) }, { checkpoint: !begun, note: o.note })
+  }
+
+  /** The chat a workspace's brief goes to: its hand-off's terminal seat, else its first chat (KERNEL-1004). */
+  briefChat(workspaceId: string): Chat | undefined {
+    const chats = this.store.chats(workspaceId)
+    return chats.find((c) => c.terminal?.handoff && !c.closed) ?? chats.find((c) => c.kind !== 'terminal')
   }
 
   /**
@@ -247,7 +253,7 @@ export class Setup extends Feature {
       if (ws.status !== 'setup') return
       const project = this.mustProject(ws.projectId)
       const repo = await loadRepoSettings(project.path)
-      const chat = this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
+      const chat = this.briefChat(ws.id)
       const ready = await this.prepare(ws, project, repo)
       if (this.mustWs(ws.id).status === 'archived') return
       if (!ready) {
@@ -350,7 +356,7 @@ export class Setup extends Feature {
     for (const ws of this.store.workspaces()) {
       if (this.fresh.has(ws.id)) continue
       const hold = saved[ws.id]
-      const chat = (hold?.chatId && this.store.chat(hold.chatId)) || this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
+      const chat = (hold?.chatId && this.store.chat(hold.chatId)) || this.briefChat(ws.id)
       const unsent = ws.status === 'ready' && !!hold?.brief && !!chat && !this.store.items(chat.id).some((i) => i.kind === 'user')
       if (ws.status !== 'setup' && !unsent) continue
       if (chat && hold?.brief) this.sessions.hold(chat.id, hold.brief, hold.from ? { from: hold.from } : {})

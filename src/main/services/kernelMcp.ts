@@ -32,7 +32,7 @@ export interface KernelToolDeps {
    * `setupFailed` says how setup failed, when it did ("exit code 1"), and `queued` what the brief waits for when it didn't
    * go out (KERNEL-272), so the result can tell the Lead the teammate hasn't started.
    */
-  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[]; images?: ChatPart[]; goAhead?: string }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
+  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[]; images?: ChatPart[]; goAhead?: string; runsIn?: 'kernel' | 'terminal' }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason; ranIn?: 'terminal'; ranInNote?: string }>
   /**
    * How many teammate workspaces may be open in the project at once, read on each call: the project's own limit when it sets one,
    * else Settings, Models' agent limit. 0 is no cap, and so is leaving it out (KERNEL-220, KERNEL-492).
@@ -605,11 +605,12 @@ export function kernelTools(d: KernelToolDeps) {
       issue: z.string().optional().describe('The key of the issue this task builds, as the project\'s tracker shows it, for example "PROJ-83" or "#41". Kernel links the workspace to it, names the branch after it unless you pass branch, puts the issue in the brief, and moves it to In Progress where the tracker has that state'),
       review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review"),
       wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or an issue key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged'),
+      runs_in: z.enum(['kernel', 'terminal']).optional().describe("Where the teammate runs: 'kernel' as a chat in Kernel, 'terminal' in a terminal tab of its workspace that the user can watch and type into. Left out, the project's setting and then Settings, Terminal decide, and a hand-off from a terminal Lead runs in a terminal when they say 'lead'. Not for a review, and Codex agents run in Kernel"),
       user_asked: z.boolean().optional().describe("Set to true only when the user explicitly asked for more teammate workspaces than the project's limit allows. Left out, create_workspace refuses once the limit is reached"),
       confirm: z.boolean().optional().describe('Set to true only after the user said to start anyway, when create_workspace warned that someone else may already be on the issue. Left out, Kernel checks for a branch on the remote, an open PR or another assignee first'),
       go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved this hand-off, quoted from their latest message, for example \"hand it to Noor\". Kernel refuses the hand-off when they aren't in it. Not needed after an approved plan, for a review, or for a follow-up on approved work"),
       images: imagesArg.describe(IMAGES_DESCRIBE)
-    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for, user_asked, confirm, go_ahead, images }) => {
+    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, runs_in, wait_for, user_asked, confirm, go_ahead, images }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
       const team = await d.agents()
       const pick = pickAgent(team, agent)
@@ -667,6 +668,7 @@ export function kernelTools(d: KernelToolDeps) {
         if (open?.status === 'failed') return refuse(`${pick.name} already has a review of this open (workspace ${open.id}), and its setup failed. Tell the user to fix it and click Run again there.`)
         if (open) return refuse(`${pick.name} already has a review of this open (workspace ${open.id}). Ask for another pass with message_agent.`)
       }
+      if (runs_in === 'terminal' && review_of) return refuse('a review runs in Kernel. Leave runs_in out.')
       // Work that merged already is left out; with nothing left, the hand-off starts as usual (KERNEL-259).
       let targets: Workspace[] = []
       if (wait_for?.length) {
@@ -684,7 +686,7 @@ export function kernelTools(d: KernelToolDeps) {
       const key = issue?.trim()
       const taken = key && !review_of && !confirm ? await d.issueTaken?.(key).catch(() => undefined) : undefined
       if (key && taken?.findings.length) return { ...text(takenWarning(key, taken)), isError: true }
-      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(askedReview ? { reviewOf: askedReview } : review_of ? { linkReviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}), ...(attached.parts.length ? { images: attached.parts } : {}), ...(goAhead ? { goAhead } : {}) })
+      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(askedReview ? { reviewOf: askedReview } : review_of ? { linkReviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}), ...(attached.parts.length ? { images: attached.parts } : {}), ...(goAhead ? { goAhead } : {}), ...(runs_in ? { runsIn: runs_in } : {}) })
       bus.activity({ kind: 'workspace.created', projectId: d.projectId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
       d.handedOff?.()
       d.acted?.({ created: pick.id })
@@ -701,7 +703,8 @@ export function kernelTools(d: KernelToolDeps) {
       const left = review_of ? '' : await leftBehind(ws.baseRef)
       // A tool the agent's file names that its account can't give it yet. The agent still starts (KERNEL-939).
       const signIn = await signInLine(pick, true)
-      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${failed}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued)}${unchecked}${signIn}${left ? ` ${left} Tell the user.` : ''}`)
+      const where = ws.ranIn === 'terminal' ? ` ${pick.name} runs in a terminal tab of the workspace, and Kernel pastes messages in between its turns.` : ws.ranInNote ? ` ${ws.ranInNote}` : ''
+      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${where}${stale}${failed}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued)}${unchecked}${signIn}${left ? ` ${left} Tell the user.` : ''}`)
     }),
     tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to bring its branch up to date with them. An empty list ends the wait and sends a held brief now.", {
       workspace_id: z.string().describe('The workspace that waits, from list_workspaces'),
