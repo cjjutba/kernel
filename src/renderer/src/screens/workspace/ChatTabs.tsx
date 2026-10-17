@@ -5,8 +5,8 @@ import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { FileIcon } from '../../components/FileIcon'
 import { isUnread } from '../../components/sidebar/unread'
 import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
-import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
-import { Icon, IconButton, Menu, MENU_SEPARATOR, Spinner, type IconName } from '../../ui'
+import { TERMINAL_SEATS_IN_APP } from '../../seats'
+import { Icon, IconButton, Menu, Spinner, type IconName } from '../../ui'
 import { closeChats, closesThread } from './ConfirmCloseChats'
 import { archiveChatFromSidebar } from './archiveChat'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
@@ -23,7 +23,7 @@ const base = (path: string) => path.split('/').pop() ?? path
 
 /**
  * The row of chat, terminal, file, diff, shared file, image and text tabs, with the new tab menu, the chat tab menu on right-click (rename, fork, close, close others),
- * a close button on hover. The new tab menu lists a New tab row, then every terminal preset (Settings, Big terminal).
+ * a close button on hover. The new tab menu lists Chat and Terminal, which runs the preset chosen in Settings, Big terminal.
  * In the Lead's workspace `chats` are the tabs of the chat on screen (`threadId`), and a new tab joins that chat (KERNEL-338).
  */
 export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewChat, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
@@ -39,12 +39,11 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
   // Only this workspace's tabs: another chat starting or stopping leaves the strip alone.
   const running = useStore((s) => Object.fromEntries(chats.filter((c) => s.running[c.id]).map((c) => [c.id, true])))
   // A terminal Lead tab's team updates waiting to be read, from `seat.updates`. Only this strip's Lead seats.
-  const pendingUpdates = useStore((s) => Object.fromEntries(chats.filter(isLeadSeat).map((c) => [c.id, s.seatUpdates[c.id] ?? 0])))
+  const pendingUpdates = useStore((s) => Object.fromEntries(chats.filter((c) => TERMINAL_SEATS_IN_APP && isLeadSeat(c)).map((c) => [c.id, s.seatUpdates[c.id] ?? 0])))
   const [renaming, setRenaming] = useState<string | null>(null)
   const terminal = useStore((s) => s.settings?.terminal)
   // Main refuses a terminal tab while the big terminal is off, so neither the menu nor ⌘⇧T offers one then.
   const terminalOn = terminal?.enabled === true
-  const presets = useTerminalPresets(menu === 'newTab', workspaceId)
   const closeMenu = () => actions.ui.closeMenu()
 
   /** With no chat open, + and ⌘T put the caret in the New chat box, whichever tab is showing (a terminal, file, diff or shared tab gives way to it). */
@@ -53,10 +52,10 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
     return newChatTab(!!noChat, () => { onNewChat?.(); focusComposerIn(workspaceId) }, () => create('chat'))
   }
 
-  /** `preset` is a menu row's id. ⌘⇧T sends none, so main opens the settings' preset, or Claude when that one is gone. */
-  const create = (kind: 'chat' | 'terminal', preset?: string) => attempt('Could not open a tab', async () => {
+  /** A terminal tab sends no preset, so main opens the one chosen in Settings, Big terminal, or Claude when that one is gone. */
+  const create = (kind: 'chat' | 'terminal') => attempt('Could not open a tab', async () => {
     closeMenu()
-    const c = await call('chats.create', { workspaceId, kind, ...(preset ? { preset } : {}), ...(kind === 'chat' && threadId ? { threadId } : {}) })
+    const c = await call('chats.create', { workspaceId, kind, ...(kind === 'chat' && threadId ? { threadId } : {}) })
     await loadWorkspace(workspaceId)
     if (kind === 'chat') focusComposerWhenOpen(c.id)
     onSelect(c.id)
@@ -71,7 +70,7 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
     if (whole && ws && isLeadChatWorkspace(ws)) return attempt('Could not archive the chat', () => archiveChatFromSidebar(whole))
     // A terminal seat that is working or waits on you asks first, whichever tab strip it is in. An idle seat and a plain terminal close at once.
     const live = getState()
-    const busySeat = (live.chats[workspaceId] ?? chats).some((c) => ids.includes(c.id) && isSeat(c) && (live.running[c.id] || live.approvals.some((a) => a.chatId === c.id && a.status === 'pending')))
+    const busySeat = (live.chats[workspaceId] ?? chats).some((c) => ids.includes(c.id) && TERMINAL_SEATS_IN_APP && isSeat(c) && (live.running[c.id] || live.approvals.some((a) => a.chatId === c.id && a.status === 'pending')))
     if (busySeat) return actions.ui.openModal({ name: 'confirm', kind: 'closeChats', workspaceId, chatIds: ids })
     const asks = !threadId || !!whole
     if (asks && ids.some((id) => getState().running[id])) return actions.ui.openModal({ name: 'confirm', kind: 'closeChats', workspaceId, chatIds: ids })
@@ -135,7 +134,7 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
     requestAnimationFrame(() => document.getElementById(`ws-tab-${next}`)?.focus())
   }
   const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'diff' | 'shared' | 'image' | 'text' | 'terminal'; path?: string; icon?: IconName; file?: string; unread?: boolean }[] = [
-    ...chats.map((c) => ({ id: c.id, title: seatTitle(c), kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const, unread: c.kind === 'chat' && isUnread(c) })),
+    ...chats.map((c) => ({ id: c.id, title: TERMINAL_SEATS_IN_APP ? seatTitle(c) : c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const, unread: c.kind === 'chat' && isUnread(c) })),
     ...files.map((p) => ({ id: fileTab(p), title: base(p), kind: 'file' as const, path: p, file: p })),
     ...diffs.map((p) => ({ id: diffTab(p), title: p ? base(p) : 'All changes', kind: 'diff' as const, path: p, file: p || undefined })),
     ...shared.map((id) => ({ id: sharedTab(id), title: sharedFiles[id]?.title ?? 'Shared file', kind: 'shared' as const, file: kindFile[sharedFiles[id]?.kind ?? 'markdown'] })),
@@ -151,7 +150,7 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
           const editing = renaming === t.id
           // A chat tab's icon shows the chat's state, like its sidebar row. The other kinds keep their own icon.
           // A terminal tab takes the same working and needs-you icons (D-098) and keeps its terminal icon when neither applies.
-          const state = t.kind === 'chat' || t.kind === 'terminal' ? chatGlyph({ waiting: approvals.filter((a) => a.chatId === t.id && a.status === 'pending'), running: !!running[t.id] }) : undefined
+          const state = t.kind === 'chat' || (t.kind === 'terminal' && TERMINAL_SEATS_IN_APP) ? chatGlyph({ waiting: approvals.filter((a) => a.chatId === t.id && a.status === 'pending'), running: !!running[t.id] }) : undefined
           const g = t.kind === 'terminal' && !state?.label ? undefined : state
           // A reply you haven't seen bolds the title. The tab on screen is read, and the chat view is asking main to say so (KERNEL-508).
           const unread = !!t.unread && !on
@@ -200,9 +199,9 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
       <span ref={newAnchor} className="tab-new">
         <IconButton icon="plus" size={14} label="New tab" aria-haspopup="menu" aria-expanded={menu === 'newTab'} onClick={() => actions.ui.toggleMenu('newTab')} />
         {menu === 'newTab' && (
-          <Menu label="New tab" anchorRef={newAnchor} onClose={closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 282 }} items={[
-            { id: 'chat', label: 'New tab', shortcut: '⌘T', onSelect: () => void newTab() },
-            ...(terminalOn && presets && terminal ? [MENU_SEPARATOR, ...presets.map((p) => ({ id: `preset:${p.id}`, label: p.name, shortcut: p.id === selectedPreset(presets, terminal)?.id ? '⌘⇧T' : undefined, onSelect: () => void create('terminal', p.id) }))] : [])
+          <Menu label="New tab" anchorRef={newAnchor} onClose={closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 200 }} items={[
+            { id: 'chat', label: 'Chat', shortcut: '⌘T', onSelect: () => void newTab() },
+            ...(terminalOn ? [{ id: 'terminal', label: 'Terminal', shortcut: '⌘⇧T', onSelect: () => void create('terminal') }] : [])
           ]} />
         )}
       </span>

@@ -1,4 +1,5 @@
 import { useKeptScroll } from '../../ui/keptScroll'
+import { TERMINAL_SEATS_IN_APP } from '../../seats'
 import { memo, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import type { Chat, Project, Thread, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
@@ -226,7 +227,7 @@ function WorkspaceItemRow({ ws, parent, slot, nested, leaving, onSettled }: { ws
   // Running puts the loader in the icon's place, and the icon the workspace has at rest returns when it stops.
   const shown = restIcon(g, workspaceGlyph(ws, { waiting, running: false, local }), 'branch')
   // A teammate whose hand-off runs in a terminal says so on its row (KERNEL-1028).
-  const inTerminal = useStore((s) => (s.chats[ws.id] ?? []).some((c) => c.kind === 'terminal' && !c.closed && c.terminal?.handoff))
+  const inTerminal = useStore((s) => TERMINAL_SEATS_IN_APP && (s.chats[ws.id] ?? []).some((c) => c.kind === 'terminal' && !c.closed && c.terminal?.handoff))
   const current = useStore((s) => same(leaving ? leaving.from ?? s.ui.route : s.ui.route, { name: 'workspace', workspaceId: ws.id }))
   const unread = useStore((s) => workspaceRowUnread(s.chats[ws.id], current))
   const archive = () => void run('archive', () => archiveFromSidebar(ws))

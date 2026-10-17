@@ -14,6 +14,7 @@ import { NoProject, Row, ProjectPage, projectValue, Section, SettingsLink, usePr
 import { patchProjectSettings } from '../useSettings'
 import { agentGroup, cleanDescription, shownRole } from './agentRows'
 import { RUN_IN_NAMES } from './runIn'
+import { TERMINAL_SEATS_IN_APP } from '../../../seats'
 import { TeamPermissions } from './TeamPermissions'
 import { TeamSkills } from './TeamSkills'
 
@@ -174,12 +175,12 @@ export function Team({ projectId, s }: { projectId?: string; s: AppSettings }) {
             { value: 'build', label: leadModeName('build') }
           ]} onChange={(v) => void patchProjectSettings(projectId, { agents: { leadMode: v === 'app' ? null : (v as LeadMode) } })} />
         </Row>
-        <Row id="teammates-run-in" setting="terminal.teammatesRunIn" label="Teammates run in" labelId="rm-teammates-run-in" desc="Overrides Settings, Big terminal for this project.">
+        {TERMINAL_SEATS_IN_APP && <Row id="teammates-run-in" setting="terminal.teammatesRunIn" label="Teammates run in" labelId="rm-teammates-run-in" desc="Overrides Settings, Big terminal for this project.">
           <Select label="Teammates run in" align="right" value={rs?.terminal?.teammatesRunIn ?? 'app'} disabled={busy !== null} options={[
             { value: 'app', label: `Use app setting (${RUN_IN_NAMES[s.terminal.teammatesRunIn]})` },
             ...(Object.keys(RUN_IN_NAMES) as TeammatesRunIn[]).map((value) => ({ value, label: RUN_IN_NAMES[value] }))
           ]} onChange={(v) => void patchProjectSettings(projectId, { terminal: { teammatesRunIn: v === 'app' ? null : (v as TeammatesRunIn) } })} />
-        </Row>
+        </Row>}
         {!!files.length && (
           <Row id="reviewer" label="Reviewer" labelId="rm-reviewer" desc="Reviews each pull request.">
             <ReviewerPicker value={reviewerPick} agents={files.filter((a) => !a.lead)} disabled={busy !== null} labelledBy="rm-reviewer" onChange={(id) => void setTeam('reviewer', { reviewer: id })} />

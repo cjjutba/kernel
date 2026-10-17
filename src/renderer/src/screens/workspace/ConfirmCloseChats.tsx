@@ -13,6 +13,7 @@ import { sharedTab } from './shared/shared'
 import { archiveChatFromSidebar } from './archiveChat'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { isSeat, seatTitle } from './terminal/seat'
+import { TERMINAL_SEATS_IN_APP } from '../../seats'
 import './confirm.css'
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
@@ -118,7 +119,7 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
   const one = chatIds.length === 1
 
   // A terminal seat is a Claude Code session in a pty, so closing it ends the session. It asks only while the seat is working or waits on the user.
-  if (one && chats[0] && isSeat(chats[0])) {
+  if (TERMINAL_SEATS_IN_APP && one && chats[0] && isSeat(chats[0])) {
     return (
       <ConfirmDialog
         title="Close this terminal?" body={working.length ? "It's still working." : waitingOnYou ? "It's waiting on you." : 'Closing ends its session.'}
