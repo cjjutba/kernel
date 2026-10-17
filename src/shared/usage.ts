@@ -1,6 +1,12 @@
 import type { AccountProfile, Provider, RateLimit } from './types'
 import { limitProvider } from './providers'
 
+/** A utilization as a percent for display, clamped to 0 to 100: Anthropic can report slightly over 1.0 when a running turn crosses the limit or extra usage is on. */
+export const usagePercent = (utilization: number): number => Math.round(Math.max(0, Math.min(1, utilization)) * 100)
+
+/** `usagePercent` with its sign: `101%` reads as `100%`. */
+export const pctLabel = (utilization: number): string => `${usagePercent(utilization)}%`
+
 /**
  * How full a usage window is when Settings, Account's "Pause new work when close to the limit" holds teammates (KERNEL-220).
  * 0 to 1, as `RateLimit.utilization`. Main's hold and the workspace banner both read this, so they agree on when it starts.

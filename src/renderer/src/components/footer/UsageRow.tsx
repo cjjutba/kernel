@@ -2,11 +2,11 @@ import { Fragment, useEffect, useRef } from 'react'
 import { actions, useStore } from '../../store'
 import { IconButton, Meter, ProviderMark, Spinner, useBusy } from '../../ui'
 import { call } from '../../api'
+import { pctLabel as pct } from '@shared/usage'
 import { chipLabel, footerGroups, tightest, tone, type FooterChip, type FooterGroup } from './usageModel'
 import { UsagePopover } from './UsagePopover'
 import { useUsageActions } from './useUsageActions'
 
-const pct = (v: number) => `${Math.round(v * 100)}%`
 
 /**
  * Usage for Claude Code and Codex, always in the footer's bottom left (UsageFooter.png, KERNEL-674). Each provider shows the account it runs on: its mark, a 5-hour

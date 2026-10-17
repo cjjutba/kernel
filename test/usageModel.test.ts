@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AccountProfile, RateLimit } from '@shared/types'
+import { pctLabel } from '@shared/usage'
 import { chipLabel, footerGroups } from '../src/renderer/src/components/footer/usageModel'
 
 const now = 1_800_000_000_000
@@ -49,5 +50,16 @@ describe('the footer reports and never switches (KERNEL-949)', () => {
     expect(claude.chip).toEqual({ id: 'side', name: 'side', billed: false, switching: true })
     expect(chipLabel(claude, claude.chip!, false)).toBe('Claude Code, switching to side. Opens usage')
     expect(footerGroups(accounts, usage, now, { provider: 'codex', accountId: 'side' })[0].chip?.name).toBe('cli')
+  })
+})
+
+describe('usage past the limit (KERNEL-1027)', () => {
+  it('never reads over 100% or under 0%', () => {
+    expect([1.01, 1, 0.504, 0, -0.1].map(pctLabel)).toEqual(['100%', '100%', '50%', '0%', '0%'])
+  })
+
+  it('says 100% in the chip label for a 5-hour window at 101%', () => {
+    const [claude] = footerGroups([account('cli', true)], [window('five_hour', 1.01)], now)
+    expect(chipLabel(claude, claude.chip!, false)).toContain('5-hour 100%')
   })
 })

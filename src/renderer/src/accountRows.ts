@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import type { AccountProfile, Provider, RateLimit } from '@shared/types'
 import { limitProvider } from '@shared/providers'
-import { clock, resetPhrase } from '@shared/usage'
+import { clock, resetPhrase, usagePercent } from '@shared/usage'
 import { call } from './api'
 import { actions } from './store'
 
@@ -57,7 +57,7 @@ export function accountRow(a: AccountProfile, usage: RateLimit[], now = Date.now
   const windows = ([['five_hour', '5-hour'], ['seven_day', 'Weekly']] as const).flatMap(([type, title]): RowWindow[] => {
     const w = mine.find((l) => l.type === type)
     if (w?.utilization === undefined || (w.resetsAt !== undefined && w.resetsAt * 1000 <= now)) return []
-    return [{ title, pct: Math.round(w.utilization * 100), ...(w.resetsAt !== undefined ? { reset: resetPhrase(w.resetsAt, now) } : {}) }]
+    return [{ title, pct: usagePercent(w.utilization), ...(w.resetsAt !== undefined ? { reset: resetPhrase(w.resetsAt, now) } : {}) }]
   })
   const sub = a.legacyToken ? 'Sign in again to show email and plan' : a.email && a.email !== a.label ? a.email : undefined
   const near = windows.filter((w) => w.pct >= NEAR && w.reset)

@@ -2,13 +2,13 @@ import { useId, type RefObject } from 'react'
 import type { Provider } from '@shared/types'
 import { actions, go, useStore } from '../../store'
 import { Button, Icon, Meter, Popover, ProviderMark, SegmentedControl } from '../../ui'
+import { pctLabel as pct } from '@shared/usage'
 import { useFreshUsage } from '../../accountRows'
 import { chatsLabel, chatsPerAccount } from '../../accountChats'
 import { planSections, type PlanSection } from './planModel'
 import { tightestWindow, tone } from './usageModel'
 import type { UsageBusy } from './useUsageActions'
 
-const pct = (v: number) => `${Math.round(v * 100)}%`
 /** A row says "Fable 5.1" where Settings, Account and usage says "Weekly, Fable 5.1". */
 const windowTitle = (title: string) => title.replace(/^Weekly, (.+)$/, '$1')
 /** A key's plan is already its name, so "API Key · API key" would say it twice. */

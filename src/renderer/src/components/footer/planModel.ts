@@ -1,6 +1,6 @@
 import { MODELS, PROVIDERS, type AccountProfile, type Provider, type RateLimit } from '@shared/types'
 import { limitProvider } from '@shared/providers'
-import { resetPhrase } from '@shared/usage'
+import { pctLabel, resetPhrase } from '@shared/usage'
 
 // What the footer's Usage popover and its row draw (UsagePopover.png, KERNEL-619, KERNEL-674): one section per provider, each from the account that provider runs on,
 // never from the first window in the list. Every input is what main pushed, so the sections follow `usage` and `accounts` pushes.
@@ -66,7 +66,7 @@ export const live = (l: RateLimit | undefined, now: number): RateLimit | undefin
 
 const note = (l: RateLimit | undefined, now: number): string => {
   if (l?.utilization === undefined) return 'No usage reported yet'
-  const used = `${Math.round(l.utilization * 100)}% used`
+  const used = `${pctLabel(l.utilization)} used`
   return l.resetsAt ? `${used} · resets ${resetPhrase(l.resetsAt, now)}` : used
 }
 
@@ -91,7 +91,7 @@ export function planNums(windows: PlanWindow[]): PlanNum[] {
 /** "5-hour 8% used" for a subscription account that has a 5-hour number, nothing otherwise. */
 const fiveHourUse = (usage: RateLimit[], a: AccountProfile, now: number): string | undefined => {
   const w = live(windowsOf(usage, a).find((l) => l.type === 'five_hour' && !l.model), now)
-  return w?.utilization === undefined ? undefined : `5-hour ${Math.round(w.utilization * 100)}% used`
+  return w?.utilization === undefined ? undefined : `5-hour ${pctLabel(w.utilization)} used`
 }
 
 /** One account on Settings, Account and usage: its label, plan and email, and its own windows, or "billed per token" for a key (KERNEL-665). */
