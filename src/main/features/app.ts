@@ -72,19 +72,39 @@ export class App extends Feature {
     return { status: 'idle', current: this.o.version ?? '0.0.0', currentNotes: this.o.currentNotes }
   }
 
+  /** The Restart to update in flight. A second press awaits it, so there is one stop and one install (KERNEL-1020). */
+  private installing?: Promise<{ ok: true; canceled?: true }>
+
+  private install() {
+    if (this.installing) return this.installing
+    const run = this.runInstall().then(
+      (r) => { if (r.canceled) this.installing = undefined; return r },
+      (err: unknown) => { this.installing = undefined; throw err }
+    )
+    return (this.installing = run)
+  }
+
+  /**
+   * Nothing stops Kernel until an install can start: a ready update, and any newer download behind it settled. After the
+   * stop, an install that doesn't start relaunches the running version (KERNEL-1020).
+   */
+  private async runInstall(): Promise<{ ok: true; canceled?: true }> {
+    const updater = this.o.updater
+    if (!updater) throw new Error('No update to install')
+    if (updater.get().status !== 'ready') throw new Error('No update is ready')
+    await updater.whenInstallable()
+    if (updater.get().status !== 'ready') throw new Error('No update is ready')
+    if (this.o.confirmQuit && !(await this.o.confirmQuit('update'))) return { ok: true, canceled: true }
+    updater.install(() => this.o.relaunch?.())
+    return { ok: true }
+  }
+
   handlers() {
     return {
       'update.get': async () => this.o.updater?.get() ?? this.noUpdate(),
       'update.check': async () => this.o.updater?.check() ?? this.noUpdate(),
       // Electron closes the windows before before-quit on this path, so the shell asks here, before quitAndInstall (KERNEL-214).
-      'update.install': async () => {
-        if (!this.o.updater) throw new Error('No update to install')
-        // Checked before asking: a confirmed restart stops Kernel, and an install that can't happen would leave it stopped.
-        if (this.o.updater.get().status !== 'ready') throw new Error('No update is ready')
-        if (this.o.confirmQuit && !(await this.o.confirmQuit('update'))) return { ok: true, canceled: true }
-        this.o.updater.install()
-        return { ok: true }
-      },
+      'update.install': () => this.install(),
       'app.openTerminal': async ({ cwd, command }) => { await this.openTerminal(cwd, command); return { ok: true } },
       'app.openApps': async () => this.openApps(),
       'app.openIn': async ({ path, app }) => { await this.openIn(path, app); return { ok: true } },

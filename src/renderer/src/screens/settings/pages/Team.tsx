@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AgentDef, AppSettings, LeadMode, TeamPatch } from '@shared/types'
+import type { AgentDef, AppSettings, LeadMode, TeamPatch, TeammatesRunIn } from '@shared/types'
 import { KERNEL_LEAD, reviewerChoice } from '@shared/team'
 import { leadModeName, newChatLeadMode } from '@shared/leadMode'
 import { call, cleanError } from '../../../api'
@@ -13,6 +13,7 @@ import { STARTER_TEAMMATES } from '../../projects/draft'
 import { NoProject, Row, ProjectPage, projectValue, Section, SettingsLink, useProjectPage } from '../kit'
 import { patchProjectSettings } from '../useSettings'
 import { agentGroup, cleanDescription, shownRole } from './agentRows'
+import { RUN_IN_NAMES } from './runIn'
 import { TeamPermissions } from './TeamPermissions'
 import { TeamSkills } from './TeamSkills'
 
@@ -172,6 +173,12 @@ export function Team({ projectId, s }: { projectId?: string; s: AppSettings }) {
             { value: 'handoff', label: leadModeName('handoff') },
             { value: 'build', label: leadModeName('build') }
           ]} onChange={(v) => void patchProjectSettings(projectId, { agents: { leadMode: v === 'app' ? null : (v as LeadMode) } })} />
+        </Row>
+        <Row id="teammates-run-in" setting="terminal.teammatesRunIn" label="Teammates run in" labelId="rm-teammates-run-in" desc="Overrides Settings, Big terminal for this project.">
+          <Select label="Teammates run in" align="right" value={rs?.terminal?.teammatesRunIn ?? 'app'} disabled={busy !== null} options={[
+            { value: 'app', label: `Use app setting (${RUN_IN_NAMES[s.terminal.teammatesRunIn]})` },
+            ...(Object.keys(RUN_IN_NAMES) as TeammatesRunIn[]).map((value) => ({ value, label: RUN_IN_NAMES[value] }))
+          ]} onChange={(v) => void patchProjectSettings(projectId, { terminal: { teammatesRunIn: v === 'app' ? null : (v as TeammatesRunIn) } })} />
         </Row>
         {!!files.length && (
           <Row id="reviewer" label="Reviewer" labelId="rm-reviewer" desc="Reviews each pull request.">

@@ -44,8 +44,11 @@ export function PRs({ s }: { s: AppSettings }) {
     <>
       <Page title="Pull requests">
         <Section title="Automatic merging" scope="mac">
-          <Row id="merge-without-asking" label="Merge without asking me" desc="When reviews pass, checks are green and it’s under the size limit.">
+          <Row id="merge-without-asking" label="Merge without asking me" desc="When checks are green, it’s under the size limit and reviews pass.">
             <Toggle label="Merge without asking me" checked={auto.on} onChange={(on) => setAuto({ on })} />
+          </Row>
+          <Row id="merge-without-review" label="Merge without a review" desc="Green checks and the size limit are enough. Paths you always review still come to you.">
+            <Toggle label="Merge without a review" checked={auto.withoutReview} disabled={!auto.on} onChange={(withoutReview) => setAuto({ withoutReview })} />
           </Row>
           <Row id="size-limit" label="Size limit" desc="Bigger changes come to you."><NumberField label="Size limit" value={auto.maxLines} unit="lines" onSave={(maxLines) => setAuto({ maxLines }).then((saved) => saved?.pr.autoMerge.maxLines)} /></Row>
           <Row id="always-review" label="Paths you always review" desc="Changes here always come to you. Locked ones are built in." full={

@@ -7,7 +7,7 @@ import { CHAT_HEADER } from '@shared/hookEntry'
 import { Kernel } from '../src/main/kernel'
 import { hookToken } from '../src/main/services/hookToken'
 import { seatDir } from '../src/main/services/seatLaunch'
-import { pastable } from '../src/main/features/teammateSeats'
+import { pastable } from '../src/main/features/shared'
 import { setUp, tempRepo, freePort } from './helpers'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))

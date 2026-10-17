@@ -26,8 +26,23 @@ export interface UpdateEngine {
   quitAndInstall(): void
 }
 
-/** What's saved in update.json: the downloaded version's notes, and whether What's new has shown them since it installed. */
-interface Saved { version: string; notes: Note[]; shown: boolean }
+/**
+ * Electron's own autoUpdater, which is Squirrel.Mac. electron-updater reports a download before Squirrel has fetched and
+ * validated it, so only this source's `update-downloaded` means the update can install (KERNEL-1020).
+ */
+export interface NativeUpdater {
+  on(event: 'update-downloaded', fn: () => void): unknown
+  on(event: 'error', fn: (err: Error) => void): unknown
+}
+
+/** What's saved in update.json: the downloaded version's notes, whether What's new has shown them since it installed, and the install that failed. */
+interface Saved { version: string; notes: Note[]; shown: boolean; installFailed?: AppUpdate['installFailed'] }
+
+/** How long Kernel waits for the app to quit after Restart to update before it gives up on the install and relaunches (KERNEL-1020). */
+export const INSTALL_QUIT_MS = 30_000
+
+/** Squirrel's message when the new build's code signature doesn't match the running app's. */
+const SIGNATURE_ERROR = /code signature|did not pass validation|code requirement/i
 
 /** How often a running Kernel checks for a new release. */
 export const CHECK_EVERY_MS = 4 * 3600_000
@@ -74,8 +89,12 @@ export class Updater {
   private fetching?: string
   private cancel?: { cancel(): void }
   private watchdog?: NodeJS.Timeout
-  /** Restart to update was pressed while a newer version downloaded, so it installs once that one is ready. */
-  private installWanted = false
+  /** electron-updater has downloaded this version and Squirrel hasn't said yet whether it accepts it. */
+  private staged?: { version: string; notes: Note[] }
+  /** The skipped version's download was found by the check running now, so the check cancels it. */
+  private skipping = false
+  /** Restart to update has stopped Kernel and the app should quit. `failed` runs once if it doesn't. */
+  private installing?: { failed: () => void; timer: NodeJS.Timeout }
   private tmp = 0
   /** Saves run one after another, so an older write never lands over a newer one. */
   private saving: Promise<void> = Promise.resolve()
@@ -85,11 +104,17 @@ export class Updater {
   constructor(private o: {
     current: string; dataDir: string; engine: UpdateEngine; notesFile?: string; outside?: string
     /** Timings, for tests. They default to the constants above. */
-    every?: number; retry?: number[]; stall?: number; wake?: number
+    every?: number; retry?: number[]; stall?: number; wake?: number; installQuit?: number
+    /** Squirrel.Mac, on macOS. With it, an update is ready only once Squirrel accepts it (KERNEL-1020). Without it, electron-updater's word is enough. */
+    native?: NativeUpdater
   }) {
     this.file = join(o.dataDir, 'update.json')
     this.saved = readSaved(this.file)
-    this.state = { status: 'idle', current: o.current, currentNotes: this.currentNotes(), blocked: o.outside && blockedReason(o.outside) }
+    const failed = this.saved?.installFailed
+    this.state = {
+      status: 'idle', current: o.current, currentNotes: this.currentNotes(), blocked: o.outside && blockedReason(o.outside),
+      installFailed: failed && failed.version !== o.current ? failed : undefined
+    }
     const e = o.engine
     e.autoDownload = true
     // A downloaded update installs on the next quit even without Restart to update.
@@ -106,6 +131,14 @@ export class Updater {
       if (!this.ready()) this.set({ status: 'idle', version: undefined, notes: undefined, progress: undefined, error: undefined })
     })
     e.on('update-available', (info) => {
+      const skip = this.state.installFailed
+      if (skip && skip.reason === 'signature' && skip.version === info.version) {
+        this.log(`skipping ${info.version}: its signature failed Squirrel's check`)
+        this.skipping = true
+        if (!this.ready()) this.set({ status: 'idle', version: undefined, notes: undefined, progress: undefined, error: undefined })
+        return
+      }
+      if (skip && skip.version !== info.version) this.clearInstallFailed()
       this.fetching = info.version
       this.armWatchdog()
       if (this.ready()) return this.log(`downloading ${info.version} behind ready ${this.state.version}`)
@@ -117,19 +150,21 @@ export class Updater {
       if (this.state.status === 'downloading') this.set({ progress: Math.round(p.percent) })
     })
     e.on('update-downloaded', (info) => {
-      this.endDownload()
-      this.succeeded()
       const notes = parseNotes(info.releaseNotes)
-      this.set({ status: 'ready', version: info.version, notes, progress: undefined, error: undefined })
-      this.save({ version: info.version, notes, shown: false })
-      if (this.installWanted) this.o.engine.quitAndInstall()
+      if (!o.native) return this.accept(info.version, notes)
+      // Squirrel has yet to fetch it, so the version is only staged. Its verdict is the native event or an error.
+      this.staged = { version: info.version, notes }
+      this.armWatchdog()
+      this.log(`${info.version} staged, waiting for Squirrel`)
+      if (!this.ready()) this.set({ status: 'downloading', version: info.version, notes, progress: 100 })
     })
-    e.on('error', (err) => {
-      this.log(`check or download failed: ${err.message}`)
-      this.endDownload()
-      if (!this.ready()) this.set({ status: 'idle', version: undefined, notes: undefined, progress: undefined, error: err.message })
-      this.fail()
+    e.on('error', (err) => this.onError(err))
+    o.native?.on('update-downloaded', () => {
+      const staged = this.staged
+      if (!staged) return this.log('Squirrel accepted an update that is not staged')
+      this.accept(staged.version, staged.notes)
     })
+    o.native?.on('error', (err) => this.onError(err))
   }
 
   /** Checks now, then every few hours, sooner after a failure. */
@@ -175,7 +210,10 @@ export class Updater {
       this.fail()
       return undefined
     })
-    if (this.fetching && result?.cancellationToken) this.cancel = result.cancellationToken
+    if (this.skipping) {
+      this.skipping = false
+      result?.cancellationToken?.cancel()
+    } else if (this.fetching && result?.cancellationToken) this.cancel = result.cancellationToken
     return this.state
   }
 
@@ -204,16 +242,88 @@ export class Updater {
   }
 
   /**
-   * Restart to update. While a newer version downloads behind the ready one, it waits for that one, since the feed has
-   * moved past the ready version. If the newer download fails, the ready one installs: Kernel has already stopped (KERNEL-711).
+   * Resolves with the version Restart to update can install, before Kernel stops. While a newer version downloads behind
+   * the ready one it waits for Squirrel to accept that one, since the feed has moved past the ready version. If the newer
+   * one fails or stalls, the ready one is the answer. Rejects when nothing is ready, or the ready one is rejected meanwhile (KERNEL-1020).
    */
-  install() {
+  whenInstallable(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const watch = () => {
+        if (this.state.status !== 'ready') {
+          this.watchers.delete(watch)
+          return reject(new Error('No update is ready'))
+        }
+        if (this.fetching && this.fetching !== this.state.version) return
+        this.watchers.delete(watch)
+        resolve(this.state.version!)
+      }
+      if (this.fetching && this.fetching !== this.state.version) this.log(`install waits for ${this.fetching} to download`)
+      this.watchers.add(watch)
+      watch()
+    })
+  }
+
+  /**
+   * Restart to update, once `whenInstallable` has answered and Kernel has stopped. Squirrel quits the app to install. If it
+   * hasn't quit within `INSTALL_QUIT_MS`, or Squirrel reports an error, the install is recorded as failed and `failed`
+   * runs once, so the caller can relaunch the running version. No timer or retry ever installs.
+   */
+  install(failed: () => void = () => undefined) {
     if (this.state.status !== 'ready') throw new Error('No update is ready')
-    if (this.fetching && this.fetching !== this.state.version) {
-      this.installWanted = true
-      return this.log(`install waits for ${this.fetching} to download`)
-    }
+    clearTimeout(this.installing?.timer)
+    const timer = setTimeout(() => this.installFailedNow(new Error(`Kernel did not quit within ${(this.o.installQuit ?? INSTALL_QUIT_MS) / 1000} s`)), this.o.installQuit ?? INSTALL_QUIT_MS)
+    timer.unref?.()
+    this.installing = { failed, timer }
     this.o.engine.quitAndInstall()
+  }
+
+  /** Squirrel accepted `version` (or electron-updater did, without Squirrel). */
+  private accept(version: string, notes: Note[]) {
+    this.succeeded()
+    this.set({ status: 'ready', version, notes, progress: undefined, error: undefined, installFailed: undefined })
+    // After the status change, so a waiting Restart sees the new version and not the old one.
+    this.endDownload()
+    this.save({ version, notes, shown: false })
+  }
+
+  private onError(err: Error) {
+    this.log(`check or download failed: ${err.message}`)
+    if (this.installing) return this.installFailedNow(err)
+    const rejected = this.staged?.version
+    this.staged = undefined
+    this.endDownload()
+    if (rejected !== undefined) this.rejected(rejected, err)
+    else if (!this.ready()) this.set({ status: 'idle', version: undefined, notes: undefined, progress: undefined, error: err.message })
+    this.fail()
+  }
+
+  /** Squirrel refused `version`. A newer one failing behind an accepted ready one leaves the ready one offered. */
+  private rejected(version: string, err: Error) {
+    if (this.ready() && this.state.version !== version) return
+    this.dropOffer(version, err, err.message)
+  }
+
+  /** The offer leaves, and the failure is kept for Settings, About and, for a signature, to skip the version. */
+  private dropOffer(version: string, err: Error, shown?: string) {
+    const reason = SIGNATURE_ERROR.test(err.message) ? 'signature' : 'other'
+    const installFailed = { version, reason } as const
+    this.set({ status: 'idle', version: undefined, notes: undefined, progress: undefined, error: shown, installFailed })
+    this.save({ ...(this.saved ?? { version: '', notes: [], shown: true }), installFailed })
+  }
+
+  private installFailedNow(err: Error) {
+    const install = this.installing
+    if (!install) return
+    clearTimeout(install.timer)
+    this.installing = undefined
+    this.log(`install failed: ${err.message}`)
+    this.dropOffer(this.state.version ?? '', err)
+    install.failed()
+  }
+
+  private clearInstallFailed() {
+    this.set({ installFailed: undefined })
+    if (this.saved?.installFailed) this.save({ ...this.saved, installFailed: undefined })
   }
 
   /**
@@ -250,8 +360,6 @@ export class Updater {
     this.failures++
     if (this.started) this.log(`retrying in ${Math.round(ms / 60_000)} min`)
     this.next(ms)
-    // The newer version failed, and Kernel stopped for the restart, so the ready one installs.
-    if (this.installWanted && this.ready()) this.o.engine.quitAndInstall()
   }
 
   private armWatchdog() {
@@ -264,6 +372,8 @@ export class Updater {
     clearTimeout(this.watchdog)
     this.fetching = undefined
     this.cancel = undefined
+    this.staged = undefined
+    for (const w of [...this.watchers]) w()
   }
 
   /** No progress for `STALL_MS`: drop the download, so the retry can start a new one. electron-updater waits on the old one otherwise. */
@@ -389,14 +499,14 @@ export interface UpdateTestEngine extends UpdateEngine {
  */
 export async function runUpdateTest(o: {
   feed: string; dir: string; current: string; engine: UpdateTestEngine
-  print(line: string): void; exit(code: number): void; within?: number
+  print(line: string): void; exit(code: number): void; within?: number; native?: NativeUpdater
 }) {
   const within = o.within ?? BOOT_UPDATE_MS
   o.engine.setFeedURL({ provider: 'generic', url: o.feed })
   o.engine.allowDowngrade = false
   o.engine.autoRunAppAfterInstall = false
   // No `outside`: Squirrel replaces the app wherever it runs, and the test runs a copy outside Applications.
-  const updater = new Updater({ current: o.current, dataDir: o.dir, engine: o.engine })
+  const updater = new Updater({ current: o.current, dataDir: o.dir, engine: o.engine, native: o.native })
   const version = await updater.readyWithin(within)
   if (!version) {
     o.print('none')
@@ -407,5 +517,8 @@ export async function runUpdateTest(o: {
     console.error(`[kernel] update test: ${version} did not install within ${within / 1000} s`)
     o.exit(1)
   }, within)
-  updater.install()
+  updater.install(() => {
+    console.error(`[kernel] update test: ${version} did not install`)
+    o.exit(1)
+  })
 }

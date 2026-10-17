@@ -13,7 +13,7 @@ import { LEAD_PRESET, resolvePreset, terminalCommand, terminalPresets, terminalT
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
-import { TerminalTranscripts } from './terminalTranscript'
+import { TerminalTranscripts } from '../services/terminalTranscript'
 
 const COPY = 'fork:'
 

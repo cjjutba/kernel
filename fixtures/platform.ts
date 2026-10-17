@@ -623,6 +623,8 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-455: Auto is the pick, and the fixture's availability has it working on Claude Code and not on Codex.
   SettingsPermissions: settingsPage('permissions', { settings: { ...autoMode(), permissions: { ...autoMode().permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
   SettingsBigTerminal: settingsPage('bigterm', bigTerminal),
+  // KERNEL-1005: Teammates run in is Same as the Lead.
+  SettingsBigTerminalTeammates: settingsPage('bigterm', { ...bigTerminal, settings: { ...bigTerminal.settings!, terminal: { ...bigTerminal.settings!.terminal, teammatesRunIn: 'lead' } } }),
   SettingsAbout: settingsPage('about', { preflight: [] }),
   // KERNEL-397: usage data is opt-in. This build can send, and the user hasn't said yes, so every event is kept on the Mac.
   SettingsPrivacy: settingsPage('privacy', { telemetry: { canSend: true, recent: [
@@ -691,11 +693,18 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsEnvironmentAdd: scene(() => ({ ...envProjectA, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' }, modal: { name: 'envVar', projectId: ids.projectA } } })),
   // KERNEL-914: the Agents page with Permissions, Skills and MCP servers under the agents.
   SettingsProjectAgents: scene((f) => ({ ...projectPermissions(f), skills: ['setup', 'plan', 'feature'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
+  // KERNEL-1005: the project runs teammates in a terminal over an app that uses Kernel, so the select shows the override.
+  SettingsProjectTeammatesRunIn: scene((f) => {
+    const base = projectPermissions(f)
+    const own = base.projectSettings?.[ids.projectA]
+    return { ...base, projectSettings: own && { ...base.projectSettings, [ids.projectA]: { ...own, terminal: { teammatesRunIn: 'terminal' as const } } }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } }
+  }),
   SettingsProjectPermissions: scene((f) => ({ ...projectPermissions(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
   // KERNEL-455: the project's mode menu is open, over Use app default.
   SettingsProjectPermissionsMode: scene((f) => ({ ...projectPermissions(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, menu: 'projectMode' } })),
   // KERNEL-726: Client A changes the merge method, so the app page says so under the row and links to the project.
   SettingsPRs: settingsPage('prs', { settings: prSettings, ...clientA({ pr: { ...kernelFiles.pr, mergeMethod: 'rebase' }, sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' } }) }),
+  SettingsPRsWithoutReview: settingsPage('prs', { settings: { ...prSettings, pr: { ...prSettings.pr, autoMerge: { ...prSettings.pr.autoMerge, on: true, withoutReview: true } } } }),
   // KERNEL-727: a search for "size limit" landed here: the row is highlighted and its field has focus.
   SettingsPRsLanded: scene(() => ({ settings: prSettings, ui: { route: { name: 'settings', page: 'prs', row: 'size-limit' } } })),
   // KERNEL-721: Size limit typed and left, shown while main is still saving, just after it answered and after main clamped it. The typing is in scripts/shots.ts.
@@ -1015,6 +1024,8 @@ export const platformFixtures: Record<string, Fixture> = {
   AuditAboutChecking: settingsPage('about', { preflight: [], update: { status: 'checking', current: '0.1.0' } }),
   AuditAboutDownloading: settingsPage('about', { preflight: [], update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } }),
   AuditAboutUpdateError: settingsPage('about', { preflight: [], update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } }),
+  AboutInstallFailedSignature: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.5.0', installFailed: { version: '0.6.0', reason: 'signature' } } }),
+  AboutInstallFailedOther: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.5.0', installFailed: { version: '0.6.0', reason: 'other' } } }),
   AuditAboutUpdateBlocked: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.1.0', blocked: 'Kernel is running from outside Applications, so it does not check for updates.' } }),
   // The home screen while an update downloads or fails: a quiet footer line.
   AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } },

@@ -2007,11 +2007,16 @@ export class Sessions {
     live.cleared = false
     this.setRunning(chat, ws, live, false)
     // A turn a quit interrupted isn't over: it carries on at the next launch, which reports it then.
-    if (!this.closing) this.d.onTurnDone?.(ws, chat, { ok, interrupted, by: turns.from ?? 'user', account: live.account, ...(limit ? { limit: true as const } : {}) })
+    if (!this.closing) this.turnDone(ws, chat, { ok, interrupted, by: turns.from ?? 'user', account: live.account, ...(limit ? { limit: true as const } : {}) })
     // Stop means stop: held messages are dropped, not sent. Send now keeps them.
     if (stopped) this.setQueue(chatId, [])
     else this.drain(chatId)
     this.drainWaiting()
+  }
+
+  /** What follows a finished turn (`onTurnDone`). A teammate's terminal seat ends its turns here too (KERNEL-1004). */
+  turnDone(ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true }) {
+    this.d.onTurnDone?.(ws, chat, turn)
   }
 
   /**

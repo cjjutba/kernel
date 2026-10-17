@@ -2,9 +2,9 @@ import { open, stat } from 'node:fs/promises'
 import { unwatchFile, watchFile } from 'node:fs'
 import type { ChatItem } from '@shared/types'
 import { bus } from '../bus'
-import { describeTool } from '../services/approvals'
-import { clipInput, TOOL_TEXT_MAX, toolDetail } from '../services/providers/claude'
-import { Feature } from './feature'
+import { describeTool } from './approvals'
+import { clipInput, TOOL_TEXT_MAX, toolDetail } from './providers/claude'
+import { Feature } from '../features/feature'
 
 type Tool = ChatItem & { kind: 'tool' }
 

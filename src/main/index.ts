@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, safeStorage, session, shell, type IpcMainInvokeEvent, type RenderProcessGoneDetails } from 'electron'
+import { app, autoUpdater as nativeUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, safeStorage, session, shell, type IpcMainInvokeEvent, type RenderProcessGoneDetails } from 'electron'
 import { readFileSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -315,6 +315,7 @@ app.whenReady().then(async () => {
       dir: updateTest.dir,
       current: app.getVersion(),
       engine: electronUpdater.autoUpdater,
+      native: nativeUpdater,
       print: (line) => writeSync(1, `${line}\n`),
       exit: (code) => app.exit(code)
     })
@@ -366,6 +367,7 @@ app.whenReady().then(async () => {
           current: app.getVersion(),
           dataDir: app.getPath('userData'),
           engine: electronUpdater.autoUpdater,
+          native: nativeUpdater,
           notesFile: join(app.getAppPath(), 'out', 'release-notes', `${app.getVersion()}.md`),
           outside: runsFrom(copy)
         })
@@ -427,6 +429,7 @@ app.whenReady().then(async () => {
         banner.show()
       },
       confirmQuit: () => quit.confirmUpdate(),
+      relaunch: () => { app.relaunch(); app.exit(0) },
       capture: preview,
       reveal: (path) => shell.showItemInFolder(path),
       // A Quick Look thumbnail, since app.getFileIcon goes by extension on macOS and draws every .app with the same icon.
