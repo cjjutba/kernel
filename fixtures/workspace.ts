@@ -2513,21 +2513,32 @@ export const workspaceFixtures: Record<string, Fixture> = {
     mode: 'handoff', changes: lmFiles,
     items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'handoff' }, ...lmReply('lm-a', 'Sean has it. Your edits in this chat stay where they are.', 3)]
   })),
-  // KERNEL-1052: a Hand off chat on the project's shared main folder. Changes and Run say there is nothing of its own until Build here, and Create PR is off with the reason.
+  // KERNEL-1052: a Hand off chat on the project's shared main folder, not the project's first. Changes and Run say there is nothing of its own until Build here, Create PR is off with the reason, and no setup rows show (KERNEL-1053).
   WorkspaceLeadSharedFolder: scene((f) => leadModeScene(f, {
-    mode: 'handoff', right: 'changes', ws: { shared: true, branch: 'HEAD' },
+    mode: 'handoff', right: 'changes', ws: { shared: true, branch: 'HEAD', firstInProject: false },
     items: lmReply('lm-a', 'Sean has it. I read the latest main, so I do not have a worktree of my own.', 1)
   })),
-  // The first switch to Build here while the working copy is made: the switch spins and says what it makes, and the chat is in setup.
-  WorkspaceLeadMakingWorktree: scene((f) => leadModeScene(f, {
-    mode: 'build', right: 'changes', ws: { status: 'setup', worktreePending: {} },
-    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }]
-  })),
-  // Build here pressed while a turn runs: the chat is still on the shared folder, and the switch waits for the turn to end.
-  WorkspaceLeadWaitingForTurn: scene((f) => leadModeScene(f, {
-    mode: 'build', right: 'changes', running: true, ws: { shared: true, branch: 'HEAD' },
-    items: [{ kind: 'leadMode', id: 'lm-d2', ts: at(10, 2), mode: 'build' }]
-  })),
+  // KERNEL-1053: the first chat of a newly added project is on the shared folder, so its one-time block has a banner for a chat with no branch and the setup script line, but no worktree rows.
+  WorkspaceLeadFirstChat: scene((f) => {
+    const s = leadModeScene(f, { mode: 'handoff', right: 'changes', ws: { shared: true, branch: 'HEAD', firstInProject: true }, items: [] })
+    return {
+      ...s,
+      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, firstChatId: ids.leadChat } : r)),
+      projectSettings: { [ids.projectA]: { scripts: {}, runScripts: [], files: { copy: [] }, workspace: {} } },
+      items: { [ids.leadChat]: [] }
+    }
+  }),
+  // KERNEL-1053: Build here is on and the first message is held because the working copy failed. One line under the message, with Try again and Send as Hand off.
+  WorkspaceLeadBuildFailed: scene((f) => {
+    const q: QueuedMessage[] = [{ id: 'lm-q1', chatId: ids.leadChat, ts: at(10, 3), parts: [{ type: 'text', text: 'The invoice total is off by a cent on refunds. Can you fix it?' }] }]
+    const s = leadModeScene(f, { mode: 'build', right: 'changes', ws: { status: 'failed', shared: true, branch: 'HEAD', firstInProject: false, worktreePending: { fromShared: true, error: "fatal: a branch named 'cjjutba/refund-rounding' already exists" } }, items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }] })
+    return {
+      ...s,
+      items: { [ids.leadChat]: [] },
+      queue: { [ids.leadChat]: q },
+      push: [...(s.push ?? f.push), { type: 'chat.queue' as const, chatId: ids.leadChat, queue: q, why: 'setup' as const }]
+    }
+  }),
   ChatRailNarrow: railScene(true),
   WorkspaceNewChat: scene((f) => ({
     chats: [...f.chats, extraChat('chat-new', 'New chat')],

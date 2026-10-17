@@ -7,7 +7,7 @@ import { attempt } from './MessageActions'
 import { editQueuedInComposer } from './composer/bus'
 import { PartChip, TurnLine } from './Transcript'
 import { sentAt } from './composer/sendMessage'
-import { ChatSetupRows } from './ChatSetupRows'
+import { ChatSetupRows, CopyFailedRow } from './ChatSetupRows'
 
 const NO_QUEUE: QueuedMessage[] = []
 
@@ -38,7 +38,7 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
 
   return (
     <div className="ws-scroll">
-      <ChatSetupRows ws={ws} />
+      <ChatSetupRows ws={ws} underQueue />
       <div className="thread setup-wait">
         {queue.map((q, i) => (
           <div key={q.id} className="msg msg-user" data-queued={going(q) ? undefined : 'true'}>
@@ -47,7 +47,7 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
             </div>
             {going(q) ? <div className="msg-acts-space" aria-hidden /> : (
             <div className="queued-meta">
-              {i === queue.length - 1 && <span>{failed ? 'Waiting for setup' : 'Sends when setup finishes'}</span>}
+              {i === queue.length - 1 && <span>{failed ? (ws.worktreePending?.fromShared ? 'Not sent yet' : 'Waiting for setup') : 'Sends when setup finishes'}</span>}
               {i === queue.length - 1 && running && <Button size="sm" variant="ghost" busy={busy === 'now'} busyPattern="arrow-right" busyLabel="Sending" onClick={() => void now()}>Send now</Button>}
               <span className="queued-edit">
                 <LinkButton variant="quiet" size="meta" onClick={() => editQueuedInComposer(q)}>Edit</LinkButton>
@@ -58,6 +58,7 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
           </div>
         ))}
         {queue.length > 0 && going(queue[0]) && !ws.worktreePending?.error && <TurnLine since={Math.min(queue[0].ts, sentAt(queue[0].id) ?? Infinity)} waiting={false} />}
+        <CopyFailedRow ws={ws} />
       </div>
     </div>
   )
