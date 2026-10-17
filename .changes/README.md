@@ -27,6 +27,33 @@ Fixed a pull request sometimes showing its old status after a quick refresh.
 
 `issue` is the Linear key. Leave the line out when there is no issue.
 
+`title` goes on a `new` note: a few words naming the feature, no period, 40 characters at most. What's new shows it in bold above the sentence, and the changelog uses it as the lead.
+
+```md
+---
+type: new
+title: Pull requests page
+---
+Every open pull request across your projects shows in one list, with Merge on the ready ones.
+```
+
+`area` goes on an `improved` or `fixed` note and says where in the app the change lives. What's new folds a long section into one row per area. Pick one:
+
+| `area` | Shows as |
+| --- | --- |
+| `chat` | Chat |
+| `agents` | Agents |
+| `models` | Message box and models |
+| `work` | Issues and pull requests |
+| `projects` | Projects and setup |
+| `sidebar` | Sidebar and navigation |
+| `settings` | Settings |
+| `accounts` | Accounts and usage |
+| `keyboard` | Keyboard |
+| `look` | Look and feel |
+
+Both are optional so an older note still passes, but add them to every new note. A note without an area lists before the areas.
+
 The body is one sentence. Don't write the PR number: the release finds it from the squash commit on `main` that added the file. A PR that makes more than one change users will notice can add more than one file.
 
 `pr` is only for notes written after the fact, when a later PR adds the note for a change that already merged. Without it the release would credit the later PR. Write the number of the PR that made the change:

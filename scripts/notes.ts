@@ -6,6 +6,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFile
 import { join } from 'node:path'
 import { z } from 'zod'
 import {
+  AREAS,
+  areaRuns,
   compareVersions,
   describeIssues,
   formatReleaseFile,
@@ -42,9 +44,20 @@ export const Fragment = z
     issue: z.string().regex(/^KERNEL-\d+$/, 'issue looks like KERNEL-41. Leave it out when there is no issue').optional(),
     // Only for a note written after the fact, in a later PR than the change. Otherwise the release finds the PR.
     pr: z.string().regex(/^[1-9]\d*$/, 'pr is the number of the PR that made the change, like 44').transform(Number).optional(),
+    // What's new shows a new note's title in bold above its sentence.
+    title: z
+      .string()
+      .min(1)
+      .max(40, 'keep the title to a few words, 40 characters at most')
+      .refine((s) => !/[.–—]$|[–—]/.test(s), 'write the title without a period or a dash')
+      .optional(),
+    // What's new folds improved and fixed notes into one row per area.
+    area: z.enum(AREAS.map((a) => a.id) as [string, ...string[]], { error: `area is one of ${AREAS.map((a) => a.id).join(', ')}` }).optional(),
     text: Sentence
   })
   .refine((f) => f.type !== 'fixed' || f.text.startsWith('Fixed'), { message: 'a fixed note starts with "Fixed"', path: ['text'] })
+  .refine((f) => !f.title || f.type === 'new', { message: 'only a new note has a title', path: ['title'] })
+  .refine((f) => !f.area || f.type === 'improved' || f.type === 'fixed', { message: 'only an improved or fixed note has an area', path: ['area'] })
 
 export type Fragment = z.infer<typeof Fragment>
 export interface FragmentFile { file: string; fragment: Fragment }
@@ -94,7 +107,7 @@ export function prFor(root: string, file: string): number | undefined {
   return m ? Number(m[1]) : undefined
 }
 
-export interface Note { file: string; type: Fragment['type']; text: string; issue?: string; pr?: number }
+export interface Note { file: string; type: Fragment['type']; text: string; issue?: string; pr?: number; title?: string; area?: string }
 
 export interface Collected {
   /** Published notes, grouped by SECTIONS type. */
@@ -111,6 +124,8 @@ export function collect(root: string): Collected {
     type: fragment.type,
     text: fragment.text,
     ...(fragment.issue ? { issue: fragment.issue } : {}),
+    ...(fragment.title ? { title: fragment.title } : {}),
+    ...(fragment.area ? { area: fragment.area } : {}),
     ...withPr(fragment.pr ?? prFor(root, file))
   }))
   // Merge order, so the notes read roughly in the order the changes landed. Notes without a PR go last.
@@ -141,9 +156,25 @@ export function buildRelease(version: string, date: string, c: Collected): Relea
     title: isPatch(version) ? `Kernel ${version}` : PLACEHOLDER_TITLE,
     sections: SECTIONS.filter((s) => c.byType[s.type].length).map((s) => ({
       title: s.title,
-      items: c.byType[s.type].map((n): ChangeItem => ({ text: n.text, ...withPr(n.pr) }))
+      items: byArea(c.byType[s.type]).map((n): ChangeItem => ({
+        ...(n.title ? { lead: `${n.title}.` } : {}),
+        text: n.text,
+        ...withPr(n.pr),
+        ...(n.area ? { area: AREAS.find((a) => a.id === n.area)!.label } : {})
+      }))
     }))
   }
+}
+
+/**
+ * Notes without an area first, then the rest grouped by area, the biggest first and ties in AREAS order, each keeping
+ * merge order. In a release file an area heading runs to the end of its section, so a note without one can't follow it.
+ */
+function byArea(notes: Note[]): Note[] {
+  const rank = (id: string) => AREAS.findIndex((a) => a.id === id)
+  const count = (id: string) => notes.filter((n) => n.area === id).length
+  const ids = [...new Set(notes.flatMap((n) => (n.area ? [n.area] : [])))].sort((a, b) => count(b) - count(a) || rank(a) - rank(b))
+  return [...notes.filter((n) => !n.area), ...ids.flatMap((id) => notes.filter((n) => n.area === id))]
 }
 
 export interface Compiled { file: string; release: Release; collected: Collected; moved: string }
@@ -187,17 +218,20 @@ export function readRelease(root: string, version: string): Release {
  * The notes electron-builder copies into latest-mac.yml for What's new. Installed 0.1.0 copies parse them with the
  * parser they shipped with, which turns each `###` heading into a note and joins the lines under it, so this format
  * has to read well there too (test/fixtures/parseNotes-v0.1.0.ts). An item with a lead that ends in a period becomes
- * its own note (WhatsNew.png). The rest list under their section's title. No PR numbers or markdown emphasis.
+ * its own note (WhatsNew.png). The rest list under their section's title, or under "<section>: <area>" when they have
+ * an area, which the dialog folds into one row each. No PR numbers or markdown emphasis.
  */
 export function renderApp(release: Release): string {
   const out: string[] = []
   for (const section of release.sections) {
-    const lines: string[] = []
+    const rest: ChangeItem[] = []
     for (const item of section.items) {
       if (item.lead?.endsWith('.')) out.push(`### ${item.lead.slice(0, -1)}`, item.text, '')
-      else lines.push(`- ${item.lead ? `${item.lead} ` : ''}${item.text}`)
+      else rest.push(item)
     }
-    if (lines.length) out.push(`### ${section.title}`, ...lines, '')
+    for (const run of areaRuns(rest)) {
+      out.push(`### ${section.title}${run.area ? `: ${run.area}` : ''}`, ...run.items.map((i) => `- ${i.lead ? `${i.lead} ` : ''}${i.text}`), '')
+    }
   }
   return out.join('\n')
 }
@@ -209,8 +243,11 @@ export function renderApp(release: Release): string {
 export function renderGithub(release: Release, fullList?: string): string {
   const parts = release.intro ? [release.intro] : []
   for (const s of release.sections) {
-    const items = s.items.map((i) => `- ${i.lead ? `**${i.lead}** ` : ''}${i.text}${i.pr ? ` (#${i.pr})` : ''}`)
-    parts.push(`## ${s.title}\n\n${items.join('\n')}`)
+    const runs = areaRuns(s.items).map((r) => {
+      const items = r.items.map((i) => `- ${i.lead ? `**${i.lead}** ` : ''}${i.text}${i.pr ? ` (#${i.pr})` : ''}`)
+      return `${r.area ? `### ${r.area}\n\n` : ''}${items.join('\n')}`
+    })
+    parts.push(`## ${s.title}\n\n${runs.join('\n\n')}`)
   }
   const list = fullList?.replace(/^\s*## What's Changed\s*\n/, '').trim()
   if (list) parts.push(`## Full list of changes\n\n${list}`)
