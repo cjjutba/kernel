@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Approval, Chat, Workspace } from '@shared/types'
@@ -285,5 +285,27 @@ describe('connected', () => {
   it('reconnect refuses a chat that is no terminal seat', async () => {
     const plain = k.store.chats(leadWs.id).find((c) => c.kind === 'chat')!
     await expect(k.handlers()['terminal.reconnect']({ chatId: plain.id })).rejects.toThrow('not a terminal seat')
+  })
+})
+
+describe('the seat\'s transcript (KERNEL-1002)', () => {
+  it('stores the session file\'s rows on the seat\'s chat from its hooks, and stops once the seat is forgotten', async () => {
+    const path = join(await mkdtemp(join(tmpdir(), 'kernel-session-')), 's.jsonl')
+    const row = (uuid: string, text: string) => JSON.stringify({ type: 'user', uuid, timestamp: '2026-10-17T05:00:00.000Z', message: { role: 'user', content: text } }) + '\n'
+    await writeFile(path, row('a', 'first'))
+    const pushed: string[] = []
+    const on = (e: any) => { if (e.type === 'chat.item' && e.chatId === mate.id) pushed.push(e.item.id) }
+    bus.on('push', on)
+    await send(mate, { hook_event_name: 'Notification', message: 'hi', transcript_path: path })
+    await expect.poll(() => k.store.items(mate.id).map((i) => i.id)).toEqual(['tt-a'])
+    await appendFile(path, row('b', 'second'))
+    await expect.poll(() => k.store.items(mate.id).map((i) => i.id)).toEqual(['tt-a', 'tt-b'])
+    expect(pushed).toEqual(['tt-a', 'tt-b'])
+    expect(k.store.items(mate.id)[0]).toMatchObject({ kind: 'user', source: 'terminal' })
+    k.seatSignals.forget(mate.id)
+    await appendFile(path, row('c', 'third'))
+    await new Promise((r) => setTimeout(r, 1000))
+    expect(k.store.items(mate.id).map((i) => i.id)).toEqual(['tt-a', 'tt-b'])
+    bus.off('push', on)
   })
 })

@@ -52,6 +52,7 @@ export class SeatSignals extends Feature {
     const chat = this.store.chat(chatId)
     if (!chat || chat.kind !== 'terminal' || !chat.terminal?.role) return
     const now = this.follow(chat, e)
+    if (now.terminal?.transcriptPath) void this.k.chats.transcripts.follow(chatId, now.terminal.transcriptPath)
     this.connect(chatId)
     switch (e.hook_event_name) {
       case 'UserPromptSubmit': {
@@ -95,6 +96,7 @@ export class SeatSignals extends Feature {
   forget(chatId: string) {
     this.said.delete(chatId)
     this.asking.delete(chatId)
+    this.k.chats.transcripts.unfollow(chatId)
     this.setRunning(chatId, false)
   }
 
