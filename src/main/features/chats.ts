@@ -273,6 +273,7 @@ export class Chats extends Feature {
     this.ptys.kill(chatId)
     this.k.seats.closeSeat(chatId)
     this.saveChat({ ...chat, closed: true })
+    this.leadUpdates.rehomeSeat(chatId)
     if (this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) return
     if (this.isLeadWorkspace(ws)) return
     this.saveChat(this.newChat(chat.workspaceId, NEW_CHAT, { provider: chat.provider, model: chat.model, effort: this.openedEffort(chat.workspaceId, chat.model), plan: false }))

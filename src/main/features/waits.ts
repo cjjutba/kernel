@@ -245,6 +245,7 @@ export class Waits extends Feature {
     const parts: ChatPart[] = [{ type: 'text', text }]
     const busy = this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 || !!this.store.project(ws.projectId)?.paused || this.sessions.heldFor().length > 0
     this.releaseSent.add(id)
+    if (this.k.teammateSeats.nudge(chat, parts)) return
     if (busy) await this.sessions.send(chat.id, parts, { from: 'kernel' })
     else if (!this.sessions.post(chat.id, parts)) this.releaseSent.delete(id)
   }

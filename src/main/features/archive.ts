@@ -308,6 +308,7 @@ export class Archive extends Feature {
     const clash = [...this.k.workspaces.openPorts(), ...this.k.workspaces.reservedPorts].some((p) => blocksOverlap(p, ws.port))
     const back = clash ? await this.k.workspaces.withPort((port) => this.updateWs(id, { ...patch, port }, { archived: true })) : this.updateWs(id, patch, { archived: true })
     if (isLeadChatWorkspace(back)) this.markThread(back.threadId!, undefined)
+    for (const c of this.chatTabs(id)) if (c.kind === 'terminal') this.leadUpdates.seatRestored(c)
     // A review the user brings back stays, even though the work it reviewed is done (KERNEL-136).
     this.k.autoArchive.unmarkReviews(id)
     bus.activity({ kind: 'workspace.restored', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, text: 'restored', object: ws.name })

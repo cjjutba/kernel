@@ -10,4 +10,4 @@
 
 **Some hand-offs stay in Kernel, and the Lead is told why in the `create_workspace` result.** Those are reviews (asking for a terminal review is refused), Codex agents, `wait_for` hand-offs, and briefs with images or other non-text attachments. KERNEL-1004.
 
-**Known limits.** Queued messages live in memory and are lost on a Kernel restart. Only `message_agent` is routed to a seat. Kernel's own nudges (`prs.ts`, `waits.ts`, `inbox.ts`) still use `sessions.send` and do not reach terminal teammates. KERNEL-1004.
+**Known limits.** Reviews and Codex agents stay in Kernel. KERNEL-1029 lifted the rest: queued messages survive a restart, and Kernel's own nudges reach a terminal teammate.

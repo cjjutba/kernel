@@ -2249,7 +2249,7 @@ export class Sessions {
   private mustWorkspace(id: string) { const w = this.d.store.workspace(id); if (!w) throw new Error(`Unknown workspace ${id}`); return w }
 }
 
-export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: string): string {
+export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: string, terminal = false): string {
   // Before KERNEL-405 the Lead's shared worktree was detached, on no branch. Each Lead chat now has a branch of its own.
   const where = ws.lead && ws.mode === 'worktree' && ws.branch === 'HEAD'
     ? `You are working in your own git worktree at ${ws.path}, detached at ${ws.baseRef}, not on a branch. It is not the main checkout, which the user may be running. Stay inside it.`
@@ -2258,7 +2258,7 @@ export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: s
     : `You are working directly in the main checkout at ${ws.path} on ${ws.branch}. Some files already had changes before you started; never commit those unless asked.`
   const port = `If you start a dev server, use port ${ws.port} ($KERNEL_PORT).`
   // The chat's mode picks the Lead's rule: Hand off plans and hands off, Build here builds in this worktree (KERNEL-770).
-  return [agent?.prompt, agent?.lead && leadRule(leadModeOf(ws)), rule, where, port].filter(Boolean).join('\n\n')
+  return [agent?.prompt, agent?.lead && leadRule(leadModeOf(ws), terminal), rule, where, port].filter(Boolean).join('\n\n')
 }
 
 /** What Restart session sends, after any messages held for the chat. */

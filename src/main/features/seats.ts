@@ -55,7 +55,7 @@ export class Seats extends Feature {
     this.k.seatSignals.disconnect(chatId)
     const dir = seatDir(this.o.dataDir, chatId)
     const agent = this.agentFor(ws, chat)
-    writeSeatDir(dir, { url, token, prompt: agentPrompt(agent, ws, this.k.tools.rulesFor(ws, agent, chat)), sessionId: chat.terminal?.sessionId ?? chat.sessionId })
+    writeSeatDir(dir, { url, token, prompt: agentPrompt(agent, ws, this.k.tools.rulesFor(ws, agent, chat), true), sessionId: chat.terminal?.sessionId ?? chat.sessionId })
     return {
       env: { ...env, PATH: withDirFirst(dir, env.PATH), KERNEL_CHAT_ID: chatId, KERNEL_SEAT_TOKEN: token, KERNEL_MCP_URL: url },
       command: (typed) => seatCommand(dir, typed, loginShell(process.env))
@@ -76,7 +76,7 @@ export class Seats extends Feature {
 
   closeWorkspace(workspaceId: string, chatIds: string[]) {
     this.registry.revokeWorkspace(workspaceId)
-    for (const id of chatIds) { removeSeatDir(seatDir(this.o.dataDir, id)); this.k.seatSignals.forget(id); this.leadUpdates.seatClosed(id) }
+    for (const id of chatIds) { removeSeatDir(seatDir(this.o.dataDir, id)); this.k.seatSignals.forget(id); this.leadUpdates.seatArchived(id) }
   }
 
   /** A closed tab's seat: its token and its folder. */
@@ -84,7 +84,6 @@ export class Seats extends Feature {
     this.registry.revokeChat(chatId)
     removeSeatDir(seatDir(this.o.dataDir, chatId))
     this.k.seatSignals.forget(chatId)
-    this.leadUpdates.seatClosed(chatId)
   }
 
   /** Where a seat's `claude` finds the endpoint, once started. */
