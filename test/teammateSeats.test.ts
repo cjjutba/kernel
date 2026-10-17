@@ -12,6 +12,8 @@ import { agentPrompt } from '../src/main/services/sessions'
 import { setUp, tempRepo, freePort } from './helpers'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
+// Seats are off in v1 (KERNEL-1034). These tests run with them on, so the code stays covered.
+vi.mock('../src/main/services/seatsFlag', () => ({ SEATS_ENABLED: true }))
 
 // KERNEL-1004: a teammate can run in a terminal tab. The seat starts with the brief, hears messages between turns and reports
 // its finished turns the way a teammate in Kernel does.

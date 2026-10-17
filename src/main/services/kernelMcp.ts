@@ -9,6 +9,7 @@ import { kernelServer } from './kernelServer'
 import { canOpenPr, type AccountSignIn } from './agentTools'
 import { agentFromFile, hireDefaults, renderAgentFile } from './agents'
 import { HANDOFF_NOW } from './handoff'
+import { SEATS_ENABLED } from './seatsFlag'
 import { firstLine } from './text'
 import { archiveSkip, CLOSED_PR } from './archiveGuard'
 import { isMerged, joinLabels, waitLabel, waitRefusal, waitTargets } from './waits'
@@ -607,7 +608,8 @@ export function kernelTools(d: KernelToolDeps) {
       issue: z.string().optional().describe('The key of the issue this task builds, as the project\'s tracker shows it, for example "PROJ-83" or "#41". Kernel links the workspace to it, names the branch after it unless you pass branch, puts the issue in the brief, and moves it to In Progress where the tracker has that state'),
       review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review"),
       wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or an issue key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged'),
-      runs_in: z.enum(['kernel', 'terminal']).optional().describe("Where the teammate runs: 'kernel' as a chat in Kernel, 'terminal' in a terminal tab of its workspace that the user can watch and type into. Left out, the project's setting and then Settings, Terminal decide, and a hand-off from a terminal Lead runs in a terminal when they say 'lead'. Not for a review, and Codex agents run in Kernel"),
+      // Offered only while terminal seats are on (KERNEL-1034).
+      ...(SEATS_ENABLED ? { runs_in: z.enum(['kernel', 'terminal']).optional().describe("Where the teammate runs: 'kernel' as a chat in Kernel, 'terminal' in a terminal tab of its workspace that the user can watch and type into. Left out, the project's setting and then Settings, Terminal decide, and a hand-off from a terminal Lead runs in a terminal when they say 'lead'. Not for a review, and Codex agents run in Kernel") } : {}),
       user_asked: z.boolean().optional().describe("Set to true only when the user explicitly asked for more teammate workspaces than the project's limit allows. Left out, create_workspace refuses once the limit is reached"),
       confirm: z.boolean().optional().describe('Set to true only after the user said to start anyway, when create_workspace warned that someone else may already be on the issue. Left out, Kernel checks for a branch on the remote, an open PR or another assignee first'),
       go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved this hand-off, quoted from their latest message, for example \"hand it to Sean\". Kernel refuses the hand-off when they aren't in it. Not needed after an approved plan, for a review, or for a follow-up on approved work"),

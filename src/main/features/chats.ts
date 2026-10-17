@@ -10,6 +10,7 @@ import { shellId } from '../services/pty'
 import { askCodexTitle, askTitle, titleText } from '../services/titles'
 import { claudeExecutable } from '../services/providers/binary'
 import { LEAD_PRESET, resolvePreset, terminalCommand, terminalPresets, terminalTitle } from '../services/terminalPresets'
+import { SEATS_ENABLED } from '../services/seatsFlag'
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
@@ -368,9 +369,10 @@ export class Chats extends Feature {
     this.ensurePty(id)
   }
 
-  /** A big terminal chat's pty is about to start: its seat's endpoint is listening by then, when Settings, Terminal has connect on. */
+  /** A big terminal chat's pty is about to start: its seat's endpoint is listening by then, when the chat is a seat. */
   private async seatsUp(id: string) {
-    if (this.settings.terminal.connect && !this.ptys.has(id) && this.store.chat(id)?.kind === 'terminal') await this.k.seats.start()
+    const chat = this.store.chat(id)
+    if (chat?.kind === 'terminal' && !this.ptys.has(id) && this.k.seats.seated(chat)) await this.k.seats.start()
   }
 
   /** Where a terminal starts, with what, and the command it types: its workspace's folder as it is now. */
@@ -400,11 +402,14 @@ export class Chats extends Feature {
     return [...this.chatTabs(workspaceId).filter((c) => c.kind === 'terminal').map((c) => c.id), shellId(workspaceId)]
   }
 
+  /** Whether the Lead preset is listed: in a Lead workspace, while seats are on (KERNEL-1034). */
+  private leadPreset(ws: Workspace) { return SEATS_ENABLED && this.isLeadWorkspace(ws) }
+
   /** The preset a new big terminal tab runs, resolved here so the renderer never names the command (KERNEL-248). */
   private async terminalFor(ws: Workspace, preset?: string) {
     const t = this.settings.terminal
     if (!t.enabled) throw new Error('Big terminal tabs are off. Turn them on in Settings, Big terminal.')
-    return resolvePreset(await terminalPresets(t, undefined, this.isLeadWorkspace(ws)), t, ws.mode, preset)
+    return resolvePreset(await terminalPresets(t, undefined, this.leadPreset(ws)), t, ws.mode, preset)
   }
 
 
@@ -453,7 +458,7 @@ export class Chats extends Feature {
       'terminal.presets': async (req) => {
         const ws = req?.workspaceId ? this.store.workspace(req.workspaceId) : undefined
         if (ws && !this.k.team.agentCache.has(ws.projectId)) await this.k.team.agents(ws.projectId)
-        return terminalPresets(this.settings.terminal, undefined, !!ws && this.isLeadWorkspace(ws))
+        return terminalPresets(this.settings.terminal, undefined, !!ws && this.leadPreset(ws))
       },
       'chats.items': async ({ chatId }) => this.store.items(chatId),
       'commands.list': async () => this.sessions.commands(this.home),

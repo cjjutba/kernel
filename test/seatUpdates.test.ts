@@ -14,6 +14,8 @@ import { askId, seatId } from '../src/main/services/leadUpdates'
 import { setUp, tempRepo, freePort } from './helpers'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
+// Seats are off in v1 (KERNEL-1034). These tests run with them on, so the code stays covered.
+vi.mock('../src/main/services/seatsFlag', () => ({ SEATS_ENABLED: true }))
 
 // KERNEL-1000: a terminal Lead hears what its teammates did, by hook and by tool, and Kernel never types into the terminal.
 

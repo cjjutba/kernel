@@ -17,6 +17,7 @@ import { PLANS_DIR, revisedPlanFile, savePlan } from '../services/plans'
 import { attachedFiles } from '../services/attachments'
 import { dropCheckpoints } from '../services/checkpoints'
 import { cleanupSwitch, loadRepoSettings } from '../services/settings'
+import { SEATS_ENABLED } from '../services/seatsFlag'
 import { gitStatus } from '../services/archive'
 import { firstLine } from '../services/text'
 import { isNudge } from '../services/sessions'
@@ -923,8 +924,10 @@ export class Lead extends Feature {
    * Where a hand-off's teammate runs (KERNEL-1004): the Lead's `runs_in`, then the project's `[terminal] teammates_run_in`, then
    * Settings, Terminal, with `lead` following this Lead chat. A review, a Codex agent, a hand-off that waits for a merge and a
    * brief with files that aren't text run in Kernel. The note says why when a terminal was asked for or chosen and Kernel ran it.
+   * With seats off, every hand-off runs in Kernel, whatever was asked or saved (KERNEL-1034).
    */
   private async runsIn(projectId: string, lead: Chat, o: { runsIn?: RunsIn; agentId: string; review: boolean; wait: boolean; parts?: ChatPart[] }): Promise<{ where: RunsIn; note?: string }> {
+    if (!SEATS_ENABLED) return { where: 'kernel' }
     const project = this.store.project(projectId)
     const repo = project ? await loadRepoSettings(project.path).catch(() => undefined) : undefined
     const asked = teammateRunsIn({ runsIn: o.runsIn, project: repo, app: this.settings, leadIsTerminal: lead.kind === 'terminal' })
