@@ -209,11 +209,9 @@ export function Inbox() {
               A project is one repo with its own team of agents. Nothing needs you until you add one.
             </EmptyList>
           ) : (
-            <div className="ib-empty">
-              <h2>You're all caught up</h2>
-              <p>Approvals, plans to review and finished work land here. Nothing needs you right now.</p>
-              {firstProject && <button type="button" className="ib-link" onClick={() => void openProject(firstProject)}>{lead ? `Open ${lead.name}'s chat` : 'Open the team'}</button>}
-            </div>
+            <EmptyList icon="inbox" title="You're all caught up" action={firstProject ? <Button onClick={() => void openProject(firstProject)}>{lead ? `Open ${lead.name}'s chat` : 'Open the team'}</Button> : undefined}>
+              Approvals, plans to review and finished work land here. Nothing needs you right now.
+            </EmptyList>
           )}
         </div>
       </div>
