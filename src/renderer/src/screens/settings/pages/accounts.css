@@ -31,7 +31,7 @@
 .ac-absent { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-code); color: var(--muted); }
 .ac-acts { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 4px; opacity: 0; transition: opacity var(--dur-fast); }
 .ac-row:hover .ac-acts, .ac-row:focus-within .ac-acts, .ac-row[data-open] .ac-acts, .ac-acts[data-keep] { opacity: 1; }
-.ac-card .ac-acts .btn { height: 26px; padding: 0 10px; font-size: var(--fs-code); white-space: nowrap; }
+.ac-card .ac-acts .btn { height: 26px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .ac-more { width: 26px; height: 26px; }
 .ac-more.on { background: var(--surface-3); color: var(--ink); }
 .ac-details { padding: 0 16px 18px 34px; }
@@ -42,14 +42,14 @@
 .ac-kv .set-warn { margin-top: 0; }
 .ac-details > .set-warn, .ac-details > .set-warn-note { margin-top: 8px; }
 .ac-renaming { display: flex; align-items: center; gap: 8px; min-height: 60px; box-sizing: border-box; padding: 10px 12px 10px 34px; }
-.ac-rename { flex: 1; min-width: 0; max-width: 300px; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--line-4); background: var(--surface-2); color: var(--ink); font: var(--fw-medium) var(--fs-row) var(--font); outline: none; user-select: text; }
+.ac-rename { flex: 1; min-width: 0; max-width: 300px; box-sizing: border-box; color: var(--ink); font: var(--fw-medium) var(--fs-row) var(--font); user-select: text; }
 .ac-renaming .btn:nth-of-type(1) { margin-left: auto; }
 .ac-empty { display: flex; align-items: center; gap: 24px; padding: 16px 18px; }
 .ac-empty .set-text { flex: 1; min-width: 0; }
-.ac-hold { display: flex; align-items: center; gap: 10px; min-height: 44px; box-sizing: border-box; margin-top: -16px; padding: 6px 7px 6px 14px; border-radius: var(--r-md); border: 1px solid var(--pr-fail-line); background: var(--tint-del); font-size: var(--fs-ui); color: var(--ink-3); }
+.ac-hold { display: flex; align-items: center; gap: 10px; min-height: 44px; box-sizing: border-box; margin-top: -16px; padding: 6px 7px 6px 14px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); font-size: var(--fs-ui); color: var(--ink-3); }
 .ac-hold b { font-weight: var(--fw-medium); color: var(--ink); }
 .ac-hold span { flex: 1; min-width: 0; }
-.ac-hold .btn { flex-shrink: 0; height: 28px; padding: 0 12px; font-size: var(--fs-code); }
+.ac-hold .btn { flex-shrink: 0; }
 .ac-add { position: relative; }
 .ac-info { width: 20px; height: 20px; position: relative; vertical-align: middle; }
 .ac-adv-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 2px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }

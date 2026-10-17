@@ -88,7 +88,7 @@ export function AccountRow({ account, line2, back, note, cells, active, action, 
       <div className="ac-row" data-open="true">
         <div className="ac-renaming">
           <input
-            className="ac-rename" aria-label={`Name for ${account.label}`} autoComplete="off" spellCheck={false} autoFocus placeholder={account.email} disabled={rename.saving} value={rename.value}
+            className="input ac-rename" aria-label={`Name for ${account.label}`} autoComplete="off" spellCheck={false} autoFocus placeholder={account.email} disabled={rename.saving} value={rename.value}
             onFocus={(e) => e.currentTarget.select()} onChange={(e) => { renameDone.current = false; rename.onChange(e.target.value) }}
             onBlur={() => { if (renameDone.current || rename.saving) return; if (rename.value.trim()) rename.onSave(); else rename.onCancel() }}
             onKeyDown={(e) => {
