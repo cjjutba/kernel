@@ -159,7 +159,7 @@ async function kernelProject(files: Record<string, string> = {}) {
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop())
@@ -361,7 +361,7 @@ describe('archiving a chat with Kernel (KERNEL-405)', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...workspace } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...workspace } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
@@ -477,5 +477,56 @@ describe('archiving a chat with Kernel (KERNEL-405)', () => {
     expect(r.deleted).toEqual([own.id])
     expect(k.store.thread(chat.threadId!)).toBeUndefined()
     expect(existsSync(join(dataDir, 'setup-env', `${own.id}.env`))).toBe(false)
+  })
+})
+
+describe('a chat on the shared main folder (KERNEL-1050)', () => {
+  const sharedChat = async () => {
+    const { k, repo, project } = await kernelProject({ '.kernel/settings.toml': '[scripts]\narchive = "touch archive-ran.txt"\n' })
+    const chat = await k.lead.newLeadChat(project.id, { prompt: 'Plan it', leadMode: 'handoff' })
+    const ws = k.store.workspace(chat.workspaceId)!
+    expect(ws.shared).toBe(true)
+    return { k, repo, project, chat, ws }
+  }
+
+  it('archives without removing the folder or running the archive script, and shows nothing to lose', async () => {
+    const { k, project, chat, ws } = await sharedChat()
+    await writeFile(join(ws.path, 'README.md'), '# edited\n')
+    expect((await k.lead.archivePreview(chat.threadId!)).workspaces).toEqual([{ id: ws.id, name: ws.name, own: true, running: false, dirty: 0, unpushed: 0 }])
+    await k.lead.archiveLeadChat(chat.threadId!)
+    await k.archive.cleanedUp(ws.id)
+    expect(k.store.workspace(ws.id)?.status).toBe('archived')
+    expect(existsSync(ws.path)).toBe(true)
+    expect(await readFile(join(ws.path, 'README.md'), 'utf8')).toBe('# edited\n')
+    expect(existsSync(join(ws.path, 'archive-ran.txt'))).toBe(false)
+    expect((await git(project.path, 'worktree', 'list')).includes('.main')).toBe(true)
+  })
+
+  it('restores on the folder with no setup, and makes the folder again when it is gone', async () => {
+    const { k, chat, ws } = await sharedChat()
+    await k.lead.archiveLeadChat(chat.threadId!)
+    await k.archive.cleanedUp(ws.id)
+    await rm(ws.path, { recursive: true, force: true })
+    const back = await k.restoreWorkspace(ws.id)
+    expect(back).toMatchObject({ status: 'ready', shared: true, path: ws.path })
+    expect(existsSync(join(ws.path, 'README.md'))).toBe(true)
+    expect(k.store.thread(chat.threadId!)!.closedAt).toBeUndefined()
+    expect(k.chatTabs(ws.id).map((c) => c.id)).toEqual([chat.id])
+  })
+
+  it('leaves the folder when History deletes the chat', async () => {
+    const { k, chat, ws } = await sharedChat()
+    await k.lead.archiveLeadChat(chat.threadId!)
+    await k.archive.cleanedUp(ws.id)
+    const r = await k.handlers()['workspaces.delete']({ workspaceIds: [ws.id], deleteUnpushed: false })
+    expect(r.deleted).toEqual([ws.id])
+    expect(k.store.workspace(ws.id)).toBeUndefined()
+    expect(existsSync(join(ws.path, 'README.md'))).toBe(true)
+  })
+
+  it('removes the folder with its project', async () => {
+    const { k, project, ws } = await sharedChat()
+    await k.removeProject(project.id, false)
+    expect(existsSync(ws.path)).toBe(false)
   })
 })

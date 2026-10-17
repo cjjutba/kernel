@@ -39,7 +39,7 @@ async function setup(o: { app?: Record<string, unknown>; files?: Record<string, 
   k.sessions.send = async () => ({ queued: false })
   const project = await k.addProject(repo)
   const chat = async () => {
-    const c = await k.lead.newLeadChat(project.id, { prompt: '' })
+    const c = await k.lead.newLeadChat(project.id, { prompt: '', baseRef: 'main' })
     await setUp(k, c.id, 'settled')
     return k.store.chat(c.id)!
   }

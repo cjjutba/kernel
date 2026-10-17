@@ -57,6 +57,8 @@ export interface Workspace {
    * One with no `threadId` is the shared workspace every chat lived in before. Read it through `isLeadChatWorkspace`.
    */
   lead?: true
+  /** A chat with Kernel in Hand off that runs in the project's shared main folder and has no worktree of its own (KERNEL-1050). Read it through `onSharedFolder`. */
+  shared?: true
   /**
    * On a Lead chat's workspace: how the chat works, Hand off or Build here (KERNEL-770). Unset is Hand off, as every chat
    * was before. Set from the app's and project's default when the chat starts, then only by `lead.setMode`.

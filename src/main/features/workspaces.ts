@@ -581,7 +581,7 @@ export class Workspaces extends Feature {
   }
 
   /** The first port of every open workspace's block. */
-  openPorts() { return this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port) }
+  openPorts() { return this.store.workspaces().filter((w) => w.status !== 'archived' && !w.shared).map((w) => w.port) }
 
   /**
    * The one way a workspace gets ports: a free block (`portBlock`), held in memory while `use` runs, through its awaits,
@@ -605,7 +605,7 @@ export class Workspaces extends Feature {
    */
   async checkFolder(id: string): Promise<boolean> {
     const ws = this.mustWs(id)
-    if (ws.mode !== 'worktree' || ws.status === 'archived' || ws.worktreePending) return false
+    if (ws.mode !== 'worktree' || ws.status === 'archived' || ws.worktreePending || ws.shared) return false
     const gone = await folderGone(ws.path).catch(() => false)
     if (gone !== !!this.mustWs(id).folderGone) this.updateWs(id, { folderGone: gone ? true : undefined })
     return gone
@@ -659,11 +659,14 @@ export class Workspaces extends Feature {
     return Object.fromEntries(paths.map((p) => [p, cache.paths.get(p) ?? null]))
   }
 
-  /** A Lead chat whose worktree isn't made yet: nothing reads its folder, and the right panel gets empty lists (KERNEL-542). */
-  private unmade(id: string) { return !!this.mustWs(id).worktreePending }
+  /**
+   * A Lead chat whose worktree isn't made yet, or one on the shared main folder, which has no worktree of its own: nothing reads
+   * its folder for changes, and the right panel gets empty lists (KERNEL-542, KERNEL-1050).
+   */
+  private unmade(id: string) { const ws = this.mustWs(id); return !!ws.worktreePending || !!ws.shared }
 
   /** Refuses what needs the folder of a Lead chat whose worktree isn't made yet (KERNEL-542). */
-  private mustBeMade(id: string) { if (this.unmade(id)) throw new Error("This chat's worktree isn't made yet.") }
+  private mustBeMade(id: string) { if (this.mustWs(id).worktreePending) throw new Error("This chat's worktree isn't made yet.") }
 
   /** What the diff compares against: the baseline for current-branch workspaces, the merge base with the base branch otherwise. */
   private async since(ws: Workspace) {
@@ -734,7 +737,7 @@ export class Workspaces extends Feature {
       'workspaces.diff': async ({ workspaceId, file, target }) => this.unmade(workspaceId) ? '' : target && target.kind !== 'base' ? this.compareDiff(workspaceId, target, file) : this.diff(workspaceId, file),
       'workspaces.commits': async ({ workspaceId }) => this.unmade(workspaceId) ? [] : this.commits(workspaceId),
       'workspaces.compareBranches': async ({ workspaceId }) => this.compareBranches(workspaceId),
-      'workspaces.tree': async ({ workspaceId }) => this.unmade(workspaceId) ? [] : listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
+      'workspaces.tree': async ({ workspaceId }) => this.mustWs(workspaceId).worktreePending ? [] : listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
       // A file in the agent's own scratchpad opens too, by its absolute path (clickable file mentions).
       'workspaces.readFile': async ({ workspaceId, path }) => {
         this.mustBeMade(workspaceId)
@@ -750,7 +753,7 @@ export class Workspaces extends Feature {
         return readImage(ws.path, path, at === 'base' ? range.from : range.to)
       },
       'workspaces.files': async ({ workspaceId, query, limit }) => {
-        if (this.unmade(workspaceId)) return []
+        if (this.mustWs(workspaceId).worktreePending) return []
         const ws = this.mustWs(workspaceId)
         // The project's reference folders too, those that are there now (KERNEL-748).
         const project = this.k.store.project(ws.projectId)
@@ -759,6 +762,7 @@ export class Workspaces extends Feature {
       'workspaces.hunks': async ({ workspaceId, path }) => this.unmade(workspaceId) ? [] : this.hunks(workspaceId, path),
       'workspaces.commit': async ({ workspaceId, hunkIds, message }) => {
         this.mustBeMade(workspaceId)
+        if (this.mustWs(workspaceId).shared) throw new Error('This chat has no worktree of its own. Switch it to Build here first.')
         const picked = (await this.hunks(workspaceId)).filter((h) => hunkIds.includes(h.id))
         if (picked.length !== hunkIds.length) throw new Error('Those changes moved on. Open the card again and pick again.')
         await commitHunks(this.mustWs(workspaceId).path, picked, message?.trim() || `Update ${[...new Set(picked.map((h) => h.path))].join(', ')}`)

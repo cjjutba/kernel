@@ -112,7 +112,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
  * have opened.
  */
 export function turnFinished(k: Kernel, ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true; refused?: true; stuck?: true }) {
-  void k.checkpoints.checkpoint(ws, chat).catch(() => undefined)
+  // A chat on the shared main folder has nothing of its own to save or revert to (KERNEL-1050).
+  if (!ws.shared) void k.checkpoints.checkpoint(ws, chat).catch(() => undefined)
   void k.chats.nameChat(ws, chat, true)
   // A turn the user stopped is one they were watching (KERNEL-507).
   if (!turn.interrupted) k.chats.markUnread(chat)

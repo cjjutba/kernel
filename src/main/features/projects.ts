@@ -516,6 +516,7 @@ export class Projects extends Feature {
     for (const ws of this.store.workspaces(projectId)) await this.k.archive.cleanedUp(ws.id)
     this.k.overlaps.forget(projectId)
     await this.k.workspaces.dropSpare(projectId, project.path)
+    await this.k.mainFolder.remove(projectId)
     const shared = this.store.sharedFiles({ projectId }).map((f) => f.id)
     this.store.deleteProject(projectId)
     this.k.envStore.dropProject(projectId)

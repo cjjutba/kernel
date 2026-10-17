@@ -878,7 +878,7 @@ describe('Lead tabs (KERNEL-145)', () => {
     // Nothing sent yet, so the engine sees it as unused, but the composer may hold a draft.
     const drafting = k.store.saveChat({ ...k.newChat(icons.workspaceId, 'Lead', { model: 'claude-fable-5-1', effort: 'xhigh', plan: true }), threadId: icons.threadId })
     // The New chat modal leaves it alone and starts a chat of its own with the brief (KERNEL-242, KERNEL-405, KERNEL-490).
-    const brief = await k.startLeadChat(project.id, { prompt: 'Add PDF export' })
+    const brief = await k.lead.newLeadChat(project.id, { prompt: 'Add PDF export', leadMode: 'build' })
     expect(brief.id).not.toBe(drafting.id)
     expect(brief.workspaceId).not.toBe(icons.workspaceId)
     // It waits in the new chat's own queue until the chat's worktree exists (KERNEL-542).
@@ -919,13 +919,13 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     // Bypass waits on Claude Code's policy, read in the background, which allows it here.
     k.permissions.readPolicy = async () => ({})
     // As the composer's picker does, a mode comes with plan off, since plan mode wins over the chat's own mode.
-    const bypass = await h['lead.start']({ projectId: project.id, prompt: 'Ship it', mode: 'bypassPermissions', plan: false })
+    const bypass = await h['lead.start']({ projectId: project.id, prompt: 'Ship it', mode: 'bypassPermissions', plan: false, leadMode: 'build' })
     // Set before the held first message goes, so the turn it starts reads it.
     expect(k.sessions.queued(bypass.id)).toHaveLength(1)
     expect(k.store.chat(bypass.id)?.mode).toBe('bypassPermissions')
     await new Promise((r) => setTimeout(r, 10))
     expect(k.sessions.runMode(bypass.id)).toMatchObject({ mode: 'bypassPermissions', picked: 'bypassPermissions', pickedIn: 'chat' })
-    const plain = await h['lead.start']({ projectId: project.id, prompt: 'Plan it', plan: false })
+    const plain = await h['lead.start']({ projectId: project.id, prompt: 'Plan it', plan: false, leadMode: 'build' })
     expect(k.store.chat(plain.id)?.mode).toBeUndefined()
     expect(k.sessions.runMode(plain.id).pickedIn).not.toBe('chat')
     await setUp(k, bypass.id)
@@ -964,13 +964,12 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     await k.chats.closeChat(icons.id)
     expect(k.lead.chatWorkspaces(project.id)).toEqual([])
     expect(k.store.threads(project.id).map((t) => t.id)).toEqual([first.threadId, icons.threadId])
-    // Restore opens the chat again, and it sets up before Kernel goes on.
+    // Restore opens the chat again on the shared main folder, which has no setup to wait for (KERNEL-1050).
     const back = await k.restoreWorkspace(first.workspaceId)
-    expect(back.status).toBe('setup')
+    expect(back.status).toBe('ready')
     expect(k.store.thread(first.threadId!)!.closedAt).toBeUndefined()
     expect(pushed.at(-1)).toBe(`${first.threadId}:open`)
     expect(k.chatTabs(first.workspaceId).map((c) => c.id)).toEqual([second.id])
-    await setUp(k, first.workspaceId)
   })
 
   it("names the Lead chat after its first tab's auto name until the user names it", async () => {

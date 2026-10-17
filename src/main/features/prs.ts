@@ -80,6 +80,7 @@ export class Prs extends Feature {
   private async create(id: string, draft: boolean) {
     const ws = this.mustWs(id)
     if (ws.prState !== 'none') throw new Error('This workspace already has a pull request.')
+    if (ws.shared) throw new Error('Switch this chat to Build here first.')
     if (this.isLocal(ws)) throw new Error('This project merges on this Mac, so there is no pull request to open. Its branch can merge once it has commits.')
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
@@ -253,7 +254,7 @@ export class Prs extends Feature {
   async refreshPr(id: string, o: { settle?: boolean } = {}): Promise<Workspace> {
     const asked = await this.syncBranch(id)
     // A Lead chat whose worktree isn't made yet has no branch on GitHub to read (KERNEL-542).
-    if (asked.status === 'archived' || asked.worktreePending) return asked
+    if (asked.status === 'archived' || asked.worktreePending || asked.shared) return asked
     const remote = await this.k.config.remoteOfWs(asked)
     let read: PrInfo | null
     try {
@@ -778,7 +779,7 @@ export class Prs extends Feature {
   async syncBranch(id: string): Promise<Workspace> {
     const ws = this.mustWs(id)
     // A Lead chat whose worktree isn't made yet is on the branch it picked (KERNEL-542).
-    if (ws.mode !== 'worktree' || ws.status === 'archived' || ws.worktreePending) return ws
+    if (ws.mode !== 'worktree' || ws.status === 'archived' || ws.worktreePending || ws.shared) return ws
     const now = await currentBranch(ws.path).catch(() => null)
     if (!now || now === 'HEAD' || now === ws.branch) return this.mustWs(id)
     const next = this.updateWs(id, { branch: now, prState: ws.prState === 'creating' ? 'creating' : 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })

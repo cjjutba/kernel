@@ -87,6 +87,7 @@ export class Checkpoints extends Feature {
   /** Restore a workspace's files to a checkpoint. Later changes go to a backup branch, and the chat gets a note saying so. */
   private async revertCheckpoint(workspaceId: string, checkpointId: string): Promise<{ backupBranch: string }> {
     const ws = this.mustWs(workspaceId)
+    if (ws.shared) throw new Error('This chat has no checkpoints, because it works in the shared main folder.')
     // Current-branch workspaces share the checkout with the Lead and each other, so any agent working in the same folder blocks a revert.
     const sharing = this.store.workspaces().filter((w) => w.path === ws.path && w.status !== 'archived')
     if (sharing.some((w) => this.store.chats(w.id).some((c) => this.sessions.isRunning(c.id)))) throw new Error('An agent is still working in this workspace. Stop it, then revert.')
@@ -113,7 +114,7 @@ export class Checkpoints extends Feature {
   handlers() {
     return {
       // A Lead chat whose worktree isn't made yet has none (KERNEL-542).
-      'checkpoints.list': async ({ workspaceId }) => { const ws = this.mustWs(workspaceId); return ws.worktreePending ? [] : listCheckpoints(ws) },
+      'checkpoints.list': async ({ workspaceId }) => { const ws = this.mustWs(workspaceId); return ws.worktreePending || ws.shared ? [] : listCheckpoints(ws) },
       'checkpoints.preview': async ({ workspaceId, checkpointId }) => previewRevert(this.mustWs(workspaceId), checkpointId),
       'checkpoints.revert': async ({ workspaceId, checkpointId }) => this.revertCheckpoint(workspaceId, checkpointId)
     } satisfies Partial<Handlers>
