@@ -15,7 +15,7 @@ import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, CopyOverlay, MessageActions, type MessageAction } from './MessageActions'
-import { ChipIcon, fileView, HoverPreview, ImageButton, IssueButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
+import { ChipIcon, chipFileKind, fileView, HoverPreview, ImageButton, IssueButton, isPastedText, OpenImage, TextButton, usePrState, type ImagePart } from './composer/Chip'
 import { foldHeader, settle, wantOpen, windowEntries, WAITING, WINDOW } from './fold'
 import { buildThread, countsLabel, fmtDuration, messageLabel, runLabel, turnFiles, type Entry, type NoteItem, type Run, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
@@ -88,13 +88,15 @@ export function lapse(ms: number, fn: () => void) {
 const partsText =(parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ')
 
 export function PartChip({ part, gone }: { part: ChatPart; gone?: boolean }) {
+  const prState = usePrState(part)
   if (part.type === 'text') return null
   const view = fileView(part, gone)
+  const kind = { 'data-file-kind': chipFileKind(part), 'data-pr-state': prState }
   const body = <>{part.type === 'skill' ? <span aria-hidden="true" className="muted">/</span> : <ChipIcon part={part} />}<span className="chip-name">{view ? view.label : part.name}</span>{view?.size && <span className="chip-meta">{view.size}</span>}</>
-  if (part.type === 'image' && part.dataUrl) return <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="msg-chip" data-kind="image">{body}</ImageButton>
-  if (isPastedText(part)) return <TextButton paste={part} className="msg-chip" data-kind="file">{body}</TextButton>
-  if (part.type === 'issue') return <IssueButton issue={part} className="msg-chip" data-kind="issue">{body}</IssueButton>
-  return <span className="msg-chip" data-tip={view?.tip} data-tip-hint={view?.hint} data-state={view?.state} data-kind={part.type}>{body}</span>
+  if (part.type === 'image' && part.dataUrl) return <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="msg-chip" data-kind="image" {...kind}>{body}</ImageButton>
+  if (isPastedText(part)) return <TextButton paste={part} className="msg-chip" data-kind="file" {...kind}>{body}</TextButton>
+  if (part.type === 'issue') return <IssueButton issue={part} className="msg-chip" data-kind="issue" {...kind}>{body}</IssueButton>
+  return <span className="msg-chip" data-tip={view?.tip} data-tip-hint={view?.hint} data-state={view?.state} data-kind={part.type} {...kind}>{body}</span>
 }
 
 /** True when a revert to this checkpoint would change something: it is linked and the worktree isn't already there. */

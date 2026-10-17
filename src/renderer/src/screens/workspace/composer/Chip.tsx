@@ -2,10 +2,11 @@ import { createContext, useContext, useEffect, useRef, useState, type ButtonHTML
 import { createPortal } from 'react-dom'
 import type { ChatPart, FileKind, Project, ProjectTracker } from '@shared/types'
 import { call } from '../../../api'
-import { actions } from '../../../store'
+import { actions, useStore } from '../../../store'
+import { ServiceMark } from '../../../icons'
 import { issueFromPart, issueOpen, issueUrl, type IssueTarget } from '../issueKey'
 import { FileIcon } from '../../../components/FileIcon'
-import { Icon, Modal, type IconName } from '../../../ui'
+import { Avatar, Icon, Modal, type IconName } from '../../../ui'
 
 const KIND_LABELS: Record<FileKind, string> = {
   pdf: 'PDF', doc: 'Document', sheet: 'Spreadsheet', slides: 'Slides', archive: 'Archive', audio: 'Audio', video: 'Video', image: 'Image', text: 'Text', binary: 'File'
@@ -66,10 +67,22 @@ function chipMeta(p: ChatPart): string {
 /** The icon for a chip's kind: an image, a linked issue or workspace, else a file. */
 export const chipIcon = (p: ChatPart): IconName => (p.type === 'image' ? 'image' : p.type === 'issue' ? 'link' : p.type === 'pr' ? 'pr' : p.type === 'workspace' ? 'branch' : p.type === 'agent' ? 'user' : 'doc')
 
-/** A chip's icon. A file from the repo (an @ file, a picked file or a hunk) shows its VS Code icon, the rest the glyph for their kind (KERNEL-399). */
+/** A chip's icon. An image and a file from the repo (an @ file, a picked file or a hunk) show their VS Code icon, an issue its tracker's mark, an agent its avatar, the rest the glyph for their kind (KERNEL-399, KERNEL-1053). */
 export function ChipIcon({ part }: { part: ChatPart }) {
   if (part.type === 'file' && isAttachment(part)) return <Icon name={part.readable === false ? 'eyeoff' : 'doc'} size={12} />
+  if (part.type === 'image') return <FileIcon path={part.name} size={14} />
+  if (part.type === 'issue') return <ServiceMark name={part.source} size={12} />
+  if (part.type === 'agent') return <Avatar name={part.name} size={14} />
   return part.type === 'file' && (part.path || part.src) ? <FileIcon path={part.path ?? part.name} dir={part.dir} size={14} /> : <Icon name={chipIcon(part)} size={12} />
+}
+
+/** What a chip's icon color follows, for `data-file-kind`: pasted text, or an attached file's kind. The rest take their color from `data-kind`. */
+export const chipFileKind = (p: ChatPart): string | undefined => (isPastedText(p) ? 'paste' : p.type === 'file' && isAttachment(p) ? (p.kind ?? 'binary') : undefined)
+
+/** A pull request chip's state for its icon color: merged or closed when a workspace of ours holds that PR, else open. */
+export function usePrState(p: ChatPart): 'merged' | 'closed' | undefined {
+  const state = useStore((s) => (p.type === 'pr' ? s.workspaces.find((w) => w.prNumber === p.number)?.prState : undefined))
+  return state === 'merged' || state === 'closed' ? state : undefined
 }
 
 export type ImagePart = Extract<ChatPart, { type: 'image' }> & { dataUrl: string }
@@ -211,6 +224,7 @@ export function IssueButton({ issue, children, ...rest }: { issue: IssuePart } &
 
 /** One attachment in a composer: pasted text, an image, a file, a skill, or a linked issue or workspace. Every composer draws them the same way, with an icon for the kind. */
 export function ComposerChip({ part, entering, gone, onRemove }: { part: ChatPart; /** An attached file that no longer exists. */ gone?: boolean; /** A chip that just landed, which fades in. */ entering?: boolean; onRemove: () => void }) {
+  const prState = usePrState(part)
   if (part.type === 'text') return null
   const label = part.type === 'skill' ? `/${part.name}` : part.name
   const view = fileView(part, gone)
@@ -223,7 +237,7 @@ export function ComposerChip({ part, entering, gone, onRemove }: { part: ChatPar
     </>
   )
   return (
-    <span className="chip cmp-chip" data-tip={view?.tip} data-tip-hint={view?.hint} data-state={view?.state} data-entering={entering || undefined} data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'pr' || part.type === 'workspace' || part.type === 'agent' ? part.type : 'file'}>
+    <span className="chip cmp-chip" data-tip={view?.tip} data-tip-hint={view?.hint} data-state={view?.state} data-file-kind={chipFileKind(part)} data-pr-state={prState} data-entering={entering || undefined} data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'pr' || part.type === 'workspace' || part.type === 'agent' ? part.type : 'file'}>
       {part.type === 'image' && part.dataUrl ? <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="chip-open">{body}</ImageButton>
         : isPastedText(part) ? <TextButton paste={part} className="chip-open">{body}</TextButton>
         : part.type === 'issue' ? <IssueButton issue={part} className="chip-open">{body}</IssueButton> : body}

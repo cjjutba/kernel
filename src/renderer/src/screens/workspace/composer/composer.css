@@ -68,7 +68,23 @@
 .cmp-chip { gap: 6px; padding: 0 5px 0 8px; font: var(--fs-chip) var(--mono); }
 .cmp-chip .chip-meta { color: var(--muted); }
 /* Attached files (KERNEL-909): a monochrome icon, and the status as a dim or a strike, never as text */
-.cmp-chip[data-tip] > svg { color: var(--muted); }
+/* An icon's color follows what the chip is, never its status (KERNEL-1053). A gone or unreadable chip goes back to muted. Sent messages' chips (.msg-chip) read the same variable. */
+.cmp-chip, .msg-chip { --kind: var(--muted); }
+.cmp-chip[data-kind='image'], .msg-chip[data-kind='image'] { --kind: var(--kind-image); }
+.cmp-chip[data-file-kind='paste'], .msg-chip[data-file-kind='paste'] { --kind: var(--kind-text); }
+.cmp-chip[data-file-kind='pdf'], .msg-chip[data-file-kind='pdf'] { --kind: var(--kind-pdf); }
+.cmp-chip[data-file-kind='doc'], .msg-chip[data-file-kind='doc'] { --kind: var(--kind-doc); }
+.cmp-chip[data-file-kind='sheet'], .msg-chip[data-file-kind='sheet'] { --kind: var(--kind-sheet); }
+.cmp-chip[data-file-kind='slides'], .msg-chip[data-file-kind='slides'] { --kind: var(--kind-slides); }
+.cmp-chip[data-file-kind='archive'], .msg-chip[data-file-kind='archive'] { --kind: var(--kind-archive); }
+.cmp-chip[data-file-kind='audio'], .msg-chip[data-file-kind='audio'], .cmp-chip[data-file-kind='video'], .msg-chip[data-file-kind='video'] { --kind: var(--kind-media); }
+.cmp-chip[data-kind='issue'], .msg-chip[data-kind='issue'] { --kind: var(--kind-doc); }
+.cmp-chip[data-kind='pr'], .msg-chip[data-kind='pr'] { --kind: var(--pr-ready-text); }
+.cmp-chip[data-pr-state='closed'], .msg-chip[data-pr-state='closed'] { --kind: var(--muted); }
+.cmp-chip[data-pr-state='merged'], .msg-chip[data-pr-state='merged'] { --kind: var(--pr-merged-text); }
+.cmp-chip[data-kind='workspace'], .msg-chip[data-kind='workspace'] { --kind: var(--kind-branch); }
+.cmp-chip[data-state], .msg-chip[data-state] { --kind: var(--muted); }
+.cmp-chip.chip > svg, .cmp-chip.chip > .chip-open > svg, .msg-chip > svg { color: var(--kind); }
 .cmp-chip[data-state='unreadable'] { opacity: 0.6; }
 .cmp-chip[data-state='gone'] .chip-name { color: var(--muted); text-decoration: line-through; }
 .chip-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; }

@@ -4,7 +4,28 @@ These are the system rules every screen follows. A screenshot or mock in a task'
 
 ## Character
 
-Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries meaning. Dense but calm: 13px UI text, generous line height, hairline borders.
+Linear-inspired, dark first, quiet. Monochrome UI, colored content kinds: surfaces, text and controls are monochrome, and color carries meaning, either a status or what a thing is (see Content kinds). Dense but calm: 13px UI text, generous line height, hairline borders.
+
+## Content kinds
+
+A chip's icon, and only the icon, takes the color of what the chip is, in the composer and on sent messages. It never shows a status, and a gone or unreadable chip goes back to `--muted`. Purple stays for merged. The colors are the `--kind-*` tokens, and each light value reaches 3:1 on `surface-3`.
+
+| Chip | Icon | Color |
+|---|---|---|
+| Image | the image's file icon | green, `--kind-image` |
+| Pasted text | document glyph | blue, `--kind-text` |
+| Attached PDF | file glyph | red, `--kind-pdf` |
+| Attached document | file glyph | blue, `--kind-doc` |
+| Attached spreadsheet | file glyph | green, `--kind-sheet` |
+| Attached slides | file glyph | orange, `--kind-slides` |
+| Attached archive | file glyph | amber, `--kind-archive` |
+| Attached audio or video | file glyph | pink, `--kind-media` |
+| Any other attached file | file glyph | muted |
+| @ repo file | its file icon | the icon's own colors |
+| Issue | the tracker's mark | blue for Linear, muted for GitHub |
+| Pull request | pr glyph | green while open, muted when closed, purple when merged |
+| Workspace | branch glyph | teal, `--kind-branch` |
+| Agent | the agent's avatar | the avatar's own color |
 
 ## Color (dark)
 
@@ -158,7 +179,7 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - One modal shell: a blur scrim over the whole window (sidebar included) at z-index 40, the modal at 50, 18px radius, 1px border.
 - Dropdowns (KERNEL-680): every dropdown is `Select` from `ui`, never a native `<select>` (`test/noNativeSelect.test.ts`). The button is 28px, in a Settings card too with an `--input-line` hairline and a chevron, and takes the open fill only while its list is open. The list is a `.menu`: groups get a heading, a choice can have a muted second line, the picked one has a check, and an action row (Custom folder…, Choose image…) sits under a rule. `variant="chip"` is the filled filter chip and `variant="plain"` text and a chevron at the end of a menu row.
 - Segmented controls (KERNEL-680): every option is the same width, so none reads as the default.
-- File names (KERNEL-399): wherever a repo file shows (file trees, the Changes list, file and diff tabs, view headers, the @ menu, file chips, Read, Edit and Write rows, approvals, the Inbox, Settings file lists), its Material icon sits in front, drawn by `FileIcon` or `FileLabel`. Pasted text, attached images and folders on disk keep their stroke glyphs. A tree row is 24px with 12px steps, a 16px chevron, the icon, the name and the status letter (M, A, U, R, D) at the right. 1px indent guides in `line-2` run down each open folder, the one beside the focused row in `line-4`. A folder with changes inside takes its strongest child's color, modified over deleted over the rest, with no dot. Folders that hold only one folder share a row (`src/renderer/src`). The open file's row is selected in `surface-3`. A tree is one tab stop: arrows move, open and close, Home and End jump.
+- File names (KERNEL-399): wherever a repo file shows (file trees, the Changes list, file and diff tabs, view headers, the @ menu, file chips, Read, Edit and Write rows, approvals, the Inbox, Settings file lists), its Material icon sits in front, drawn by `FileIcon` or `FileLabel`. Pasted text and folders on disk keep their stroke glyphs, colored by kind (see Content kinds), and an image's chip shows its file icon. A tree row is 24px with 12px steps, a 16px chevron, the icon, the name and the status letter (M, A, U, R, D) at the right. 1px indent guides in `line-2` run down each open folder, the one beside the focused row in `line-4`. A folder with changes inside takes its strongest child's color, modified over deleted over the rest, with no dot. Folders that hold only one folder share a row (`src/renderer/src`). The open file's row is selected in `surface-3`. A tree is one tab stop: arrows move, open and close, Home and End jump.
 - Hover actions: message actions (copy, retry, edit, and a reply's `...` menu with its forks) and sidebar `...` menus appear on hover and on keyboard focus. A finished turn's reply ends in one line: the turn's time (`4m 12s · 10:31`), always shown, then those actions (KERNEL-346).
 - Hover fills: a sidebar or Settings nav row hovers on `--nav-hover`, and a row that sits on `--panel` (Inbox, Issues, Projects, Pull requests, History) on `--panel-hover`. A menu item hovers on `--hover`.
 - Sidebar rows sit 3px apart, so hover and selected fills never touch.
