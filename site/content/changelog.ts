@@ -46,3 +46,11 @@ export async function changelogPage(page: number) {
 
 /** Every page number a release file could fill, published or not, for static generation. */
 export const changelogPageCount = () => Math.max(1, Math.ceil(changelog.releases.length / RELEASES_PER_PAGE))
+
+/** A release's own page, which the changelog's titles link to. */
+export const releaseHref = (version: string) => `/changelog/${version}`
+
+/** A published release by version, or null when there is no such file or GitHub hasn't published it yet. */
+export async function publishedRelease(version: string): Promise<Release | null> {
+  return (await publishedChangelog()).releases.find((r) => r.version === version) ?? null
+}
