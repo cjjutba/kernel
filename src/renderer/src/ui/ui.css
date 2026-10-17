@@ -143,7 +143,7 @@
 .code.boxed { border: 1px solid var(--line-2); overflow-wrap: anywhere; }
 .codeblock { position: relative; }
 .codeblock .code { margin: 0; padding-right: 96px; }
-.codeblock .btn { position: absolute; top: 5px; right: 5px; height: 24px; font-size: var(--fs-meta); }
+.codeblock > .icon-btn { position: absolute; top: 6px; right: 6px; }
 /* The command line the setup canvases draw (ProjectSetupWarnings.png): the command and an outlined Copy on one row. */
 .codeblock[data-inline='true'] { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--r); background: var(--code-bg); }
 .codeblock[data-inline='true'] .code { flex: 1; min-width: 0; padding: 0; background: transparent; font-size: var(--fs-code); line-height: var(--lh-ui); color: var(--ink-2); }
