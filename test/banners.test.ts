@@ -221,11 +221,18 @@ describe('workspace banners', () => {
     expect(bannerFor(input({ ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))?.sub).toBe('pnpm install exited with code 1. Christian waits until setup passes.')
   })
 
-  it("keeps a Lead chat that doesn't wait for setup open after setup fails, and says Kernel keeps answering (KERNEL-490)", () => {
+  it('names the agent and doesn\'t block when setup failed and the chat works on (KERNEL-1012)', () => {
+    const ran = { ...ws, status: 'ready' as const, setupRun: { startedAt: 1, endedAt: 2, end: 1 } }
+    expect(bannerFor(input({ ws: ran, skipsSetup: true }))).toMatchObject({ id: 'setup', title: 'Setup failed', sub: 'Kai keeps working without it.', blocks: false, actions: [{ label: 'Edit script' }, { label: 'Rerun setup' }] })
+    expect(bannerFor(input({ ws: { ...ran, setupRun: { startedAt: 1, endedAt: 2, end: 0 } }, skipsSetup: true }))).toBeNull()
+    expect(bannerFor(input({ ws: { ...ran, setupRun: { startedAt: 1, endedAt: 2, end: null } }, skipsSetup: true }))).toBeNull()
+  })
+
+  it("keeps a chat that isn't held open after setup fails, and says the agent keeps working (KERNEL-490)", () => {
     const scripts = [{ kind: 'setup' as const, line: '$ pnpm install', stream: 'stdout' as const }]
     const kernel = { agentName: 'Kernel', skipsSetup: true }
     expect(bannerFor(input({ ...kernel, ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))).toMatchObject({
-      id: 'setup', sub: 'pnpm install exited with code 1. Kernel keeps answering without it.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
+      id: 'setup', sub: 'Kernel keeps working without it.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
     })
   })
 

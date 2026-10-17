@@ -40,7 +40,7 @@ const SETUP = [
   'echo ANTHROPIC_BASE_URL=http://proxy.invalid >> "$KERNEL_ENV"'
 ].join(' && ')
 
-async function projectWith(setup: string) {
+async function projectWith(setup: string, wait = true) {
   const repo = await tempRepo({
     'README.md': '# client\n',
     '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
@@ -49,7 +49,7 @@ async function projectWith(setup: string) {
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: wait } }))
   const k = new Kernel({ dataDir, home })
   k.signedInReader = async () => true
   await k.start()
@@ -60,7 +60,7 @@ async function projectWith(setup: string) {
 
 describe('$KERNEL_ENV (KERNEL-405)', () => {
   it("hands setup's variables to Kernel's session, a run script and a terminal, and Kernel's own names keep Kernel's values", async () => {
-    const { k, project, dataDir } = await projectWith(`sleep 1 && ${SETUP}`)
+    const { k, project, dataDir } = await projectWith(`sleep 1 && ${SETUP}`, false)
     const lines: string[] = []
     const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'setup') lines.push(...e.lines.map((l) => l.line)) }
     bus.on('push', on)

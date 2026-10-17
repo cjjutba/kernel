@@ -235,7 +235,7 @@ describe('scripts.suggest in a project (KERNEL-682)', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await tempHome()
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     onTestFinished(() => k.stop({ budgetMs: 0 }))

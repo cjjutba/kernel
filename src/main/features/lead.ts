@@ -232,7 +232,7 @@ export class Lead extends Feature {
     const repo = await loadRepoSettings(project.path)
     const chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     if (!chat || gone()) return this.mustWs(id)
-    const wait = cleanupSwitch(repo, this.settings.workspace, 'leadWaitForSetup') && !!repo.scripts.setup?.trim() && this.settings.scripts.setupOnCreate
+    const wait = this.k.setup.holdsForSetup(repo)
     if (!wait) {
       this.k.setup.releaseTabs(ws.id, chat.id)
       // A Team update that started this chat goes now, not after setup.
@@ -240,20 +240,20 @@ export class Lead extends Feature {
     }
     const done = await this.k.workspaces.setUpWorkspace(ws, project, repo, chat)
     if (this.stopped) return done
-    // A message that went before setup started the Lead before setup handed over its variables. Its sessions end once idle, and
-    // the next message resumes each with them, as after a folder move (KERNEL-490).
-    if (!wait && done.status === 'ready') this.sessions.restartIdle([ws.id])
     this.leadUpdates.flush(ws.projectId)
     return done
   }
 
-  /** Fetches the project's remote without waiting, so the fetch Create needs is done or under way by then (KERNEL-542). */
+  /**
+   * Gets ready for a new chat without waiting: fetches the project's remote, so the fetch Create needs is done or under way by
+   * then (KERNEL-542), and makes the project's spare worktree, which Send claims (KERNEL-1014).
+   */
   prefetch(projectId: string) {
     const project = this.store.project(projectId)
     if (!project) return
     void this.k.config.remoteFor(project.path).then(async (remote) => {
       if ((await exec('git', ['-C', project.path, 'remote', 'get-url', remote])).code === 0) await fetchOrigin(project.path, remote)
-    }).catch(() => undefined)
+    }).catch(() => undefined).then(() => this.k.workspaces.prepareSpare(projectId)).catch(() => undefined)
   }
 
   /** Syncs of each chat's worktree, by workspace, so two never run git in it at once. */

@@ -404,7 +404,7 @@ async function kernel(files: Record<string, string> = {}, o: { settings?: object
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.settings }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true }, ...o.settings }))
   const k = new Kernel({ dataDir, home, ...o.options })
   await k.start()
   const project = await k.addProject(repo)
@@ -413,11 +413,11 @@ async function kernel(files: Record<string, string> = {}, o: { settings?: object
 
 describe('kernel recovery paths', () => {
   /** A Kernel on a temp repo that can quit and start again on the same data, as the app does (KERNEL-128). */
-  async function restartable(files: Record<string, string>) {
+  async function restartable(files: Record<string, string>, wait = true) {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nYou are Christian.', ...files })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: wait } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const project = await k.addProject(repo)
@@ -426,6 +426,24 @@ describe('kernel recovery paths', () => {
     return { k, project, again }
   }
   const texts = (k: Kernel, chatId: string) => k.sessions.queued(chatId).map((q) => [(q.parts[0] as { text: string }).text, q.from])
+
+  it('leaves a started teammate alone when Kernel quits during setup: nothing is held, the setup line says it stopped, and Run again works (KERNEL-1012)', async () => {
+    const { k, project, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 30"\n' }, false)
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table' })
+    expect(ws.status).toBe('ready')
+    const chat = k.store.chats(ws.id)[0]
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)!.setupRun?.startedAt).toBeDefined())
+    await vi.waitFor(() => expect(k.store.items(chat.id).filter((i) => i.kind === 'user')).toHaveLength(1))
+    expect(k.store.workspace(ws.id)!.setupRun?.endedAt).toBeUndefined()
+    await k.stop({ budgetMs: 0 })
+    const k2 = await again()
+    expect(k2.store.workspace(ws.id)).toMatchObject({ status: 'ready', setupRun: { end: null } })
+    expect(k2.store.workspace(ws.id)!.setupRun?.endedAt).toBeDefined()
+    expect(texts(k2, chat.id)).toEqual([])
+    expect(k2.sessions.isHeld(chat.id)).toBe(false)
+    expect(k2.store.items(chat.id).filter((i) => i.kind === 'user')).toHaveLength(1)
+    await k2.stop({ budgetMs: 0 })
+  })
 
   it('keeps a held brief, and the Lead\'s message behind it, across a restart, and Run again sends them in order (KERNEL-128)', async () => {
     const { k, project, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
@@ -442,8 +460,8 @@ describe('kernel recovery paths', () => {
     expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
     await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
     expect((await k2.retrySetup(ws.id)).status).toBe('ready')
-    // Nothing of Christian's is held any more, so nothing comes back after another restart. Kernel's chat never waited for its setup (KERNEL-490).
-    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toEqual([])
+    // Nothing of Christian's is held any more, so nothing comes back after another restart.
+    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).not.toContain(chat.id)
     sdk.calls[sdk.calls.length - 1].feed(result('r1'))
     await flush()
     const users = k2.store.items(chat.id).filter((i) => i.kind === 'user').map((i) => [((i as { parts: { text: string }[] }).parts[0]).text, (i as { from?: string }).from])
@@ -485,7 +503,7 @@ describe('kernel recovery paths', () => {
     await k.stop({ budgetMs: 0 })
     const k2 = await again()
     expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead']])
-    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toEqual([chat.id])
+    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toContain(chat.id)
     await k2.stop({ budgetMs: 0 })
   })
 

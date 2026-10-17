@@ -14,7 +14,7 @@ async function boot(files: Record<string, string> = {}) {
   const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/christian.md': CHRISTIAN, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
   const k = new Kernel({ dataDir, home })
   onTestFinished(() => k.stop())
   await k.start()

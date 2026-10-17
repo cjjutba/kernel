@@ -693,6 +693,17 @@ describe("a teammate's setup (KERNEL-126)", () => {
     await wait()
     expect(s.posts).toEqual([])
   })
+
+  it('says a teammate whose brief already went out keeps working without a failed setup (KERNEL-1012)', async () => {
+    const { u, s, w1 } = await setup()
+    u.setup(w1, false, { code: 2, started: true })
+    await wait()
+    expect(parts(s.posts.pop()!)).toEqual({
+      header: UPDATE_HEADER,
+      body: [NOOR, '- Setup failed with exit code 2. Noor already started and keeps working without it. The user can fix setup and click Run again in that workspace.'],
+      todo: ["- Setup failed in Noor's workspace. Noor already started and keeps working without it. Tell the user it can be fixed and run again there."]
+    })
+  })
 })
 
 describe('a teammate that waits for another PR (KERNEL-259)', () => {

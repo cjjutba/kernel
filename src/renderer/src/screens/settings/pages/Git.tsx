@@ -60,7 +60,7 @@ export function Git({ s }: { s: AppSettings }) {
       </Section>
       <Section title="Setup and archive" note="The scripts live on each project’s Scripts page.">
         <Row id="run-setup" setting="scripts.setupOnCreate" label="Run setup when a workspace is created"><Toggle label="Run setup when a workspace is created" checked={a.setupOnCreate} onChange={(v) => setScripts({ setupOnCreate: v })} /></Row>
-        <Row id="wait-for-setup" setting="workspace.leadWaitForSetup" child label="Wait for setup before the first message" desc="The first message holds until setup passes."><Toggle label="Wait for setup before the first message" checked={w.leadWaitForSetup} onChange={(v) => set({ leadWaitForSetup: v })} /></Row>
+        <Row id="wait-for-setup" setting="workspace.leadWaitForSetup" child label="Wait for setup before agents start" desc="Briefs and first messages hold until setup passes."><Toggle label="Wait for setup before agents start" checked={w.leadWaitForSetup} onChange={(v) => set({ leadWaitForSetup: v })} /></Row>
         <Row id="run-after-setup" setting="scripts.runAfterSetup" label="Start the run script after setup"><Toggle label="Start the run script after setup" checked={a.runAfterSetup} onChange={(v) => setScripts({ runAfterSetup: v })} /></Row>
         <Row id="run-archive" label="Run the archive script on archive"><Toggle label="Run the archive script on archive" checked={a.archiveOnArchive} onChange={(v) => setScripts({ archiveOnArchive: v })} /></Row>
         <Row id="script-timeout" label="Stop setup and archive scripts after" desc="Run scripts have no limit.">

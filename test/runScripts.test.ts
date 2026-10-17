@@ -34,7 +34,7 @@ async function kernelOn(files: Record<string, string>, app: object = {}) {
   const repo = await tempRepo({ ...christian, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true }, ...app }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   kernels.push(k)

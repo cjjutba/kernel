@@ -223,6 +223,7 @@ export class Kernel {
     this.setup.recoverHeld(held)
     this.setup.recoverSetups()
     this.autoArchive.start()
+    void this.workspaces.sweepAllSpares()
     // After the waits, which read each project's team first, so the Lead's workspace is known.
     void this.waits.sweepWaits().catch(() => undefined).then(() => this.autoArchive.sweepMerged()).catch(() => undefined)
     this.archive.start()
@@ -259,6 +260,7 @@ export class Kernel {
     this.telemetry.stop()
     this.archive.stop()
     await this.sessions.shutdown(o.budgetMs)
+    await this.workspaces.dropSpares()
     this.ptys.killAll()
     stopAllScripts()
     // The next start tells a quit from a crash by this. It goes before the hook server closes, the one step left that can

@@ -67,8 +67,11 @@ export function ChatSetupRows({ ws }: { ws: Workspace }) {
   // Only the project's first worktree chat shows the whole block. Chats from before the stamp have none and count as first.
   // A later chat shows just a failure, which it needs for Try again, Run again and Send anyway.
   const later = ws.firstInProject === false
-  if (later && !pending?.error && !(end?.failed && ws.status === 'failed')) return null
+  if (later && !pending?.error && !end?.failed) return null
   const tail = run ? lastLine(lines) : undefined
+  // Failed with the chat held, Run again and Send anyway. Failed or stopped with nothing held, the chat works on, so only Rerun setup (KERNEL-1012).
+  const held = ws.status === 'failed'
+  const rerun = !held && !!end && (end.failed || run?.end === null)
   const again = () => track('again', () => attempt(pending ? 'Could not create the worktree' : 'Could not run setup', () => call('scripts.run', { workspaceId: ws.id, kind: 'setup' })))
   const skip = () => track('skip', () => attempt('Could not send', () => call('scripts.skipSetup', { workspaceId: ws.id })))
   const stop = () => track('stop', () => attempt('Could not stop setup', () => call('scripts.stop', { workspaceId: ws.id, kind: 'setup' })))
@@ -117,13 +120,14 @@ export function ChatSetupRows({ ws }: { ws: Workspace }) {
             <span className={end.failed ? 'su-ink' : undefined}>{end.text}</span>
             {end.failed && tail && <span className="su-error">{tail}</span>}
           </span>
-          {!end.failed && logLink}
-          {end.failed && <span className="grow" />}
-          {end.failed && ws.status === 'failed' && <>
+          {!end.failed && !rerun && logLink}
+          {(end.failed || rerun) && <span className="grow" />}
+          {end.failed && held && <>
             <Button size="sm" variant="ghost" busy={busy === 'again'} busyPattern="rotate" busyLabel="Starting" disabled={busy !== null} onClick={() => void again()}>Run again</Button>
             <Button size="sm" variant="ghost" busy={busy === 'skip'} busyPattern="arrow-right" busyLabel="Sending" disabled={busy !== null} onClick={() => void skip()}>Send anyway</Button>
           </>}
-          {end.failed && logLink}
+          {rerun && <Button size="sm" variant="ghost" busy={busy === 'again'} busyPattern="rotate" busyLabel="Starting" disabled={busy !== null} onClick={() => void again()}>Rerun setup</Button>}
+          {(end.failed || rerun) && logLink}
         </div>
       ))}
     </section>

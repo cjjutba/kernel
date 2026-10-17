@@ -2,7 +2,7 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Chat, ChatPart, Project, QueuedMessage, ScriptSuggestion, WaitsFor, Workspace } from '@shared/types'
 import { bus } from '../bus'
-import { loadRepoSettings, type RepoSettings } from '../services/settings'
+import { cleanupSwitch, loadRepoSettings, type RepoSettings } from '../services/settings'
 import { copyLocalFiles, replayScripts, resizeScript, runScript, scriptNote, scriptTimeout, stopRuns, stopScript, timeoutText, type ScriptEnd } from '../services/scripts'
 import { snapshot } from '../services/checkpoints'
 import { readSetupEnv, resetSetupEnv, setupEnvPath } from '../services/env'
@@ -30,7 +30,7 @@ export function askLeadPrompt(found: ScriptSuggestion[]): string {
 }
 
 /** A workspace's brief waiting for setup, and the Lead's messages that go after it (KERNEL-118, KERNEL-128). */
-export interface SetupHold { chatId?: string; brief?: ChatPart[]; from?: 'lead'; later: ChatPart[][] }
+export interface SetupHold { chatId?: string; brief?: ChatPart[]; from?: 'lead'; hold?: boolean; later: ChatPart[][] }
 
 /** A workspace's setup script, the brief that waits for it, and the run scripts (KERNEL-327). */
 export class Setup extends Feature {
@@ -41,12 +41,57 @@ export class Setup extends Feature {
   readonly setups = new Map<string, SetupHold>()
   /** How a workspace's last failed setup ended: its exit code, null when it was stopped, or `timeout`. Cleared when setup passes. */
   readonly setupFailures = new Map<string, ScriptEnd>()
+  private readonly tails = new Map<string, Promise<void>>()
+
+  runsOnCreate(repo: RepoSettings): boolean {
+    return !!repo.scripts.setup?.trim() && this.settings.scripts.setupOnCreate
+  }
+
+  holdsForSetup(repo: RepoSettings): boolean {
+    return cleanupSwitch(repo, this.settings.workspace, 'leadWaitForSetup') && this.runsOnCreate(repo)
+  }
+
+  settled(workspaceId: string): Promise<void> {
+    return this.tails.get(workspaceId) ?? Promise.resolve()
+  }
+
+  runInBackground(ws: Workspace, project: Project, repo: RepoSettings, o: { again?: boolean } = {}): Promise<void> {
+    const running = this.tails.get(ws.id)
+    if (running) return running
+    const run: Promise<void> = this.tail(ws.id, project, repo, !!o.again).catch(() => undefined).finally(() => { if (this.tails.get(ws.id) === run) this.tails.delete(ws.id) })
+    this.tails.set(ws.id, run)
+    return run
+  }
+
+  private async tail(id: string, project: Project, repo: RepoSettings, again: boolean) {
+    const script = repo.scripts.setup
+    if (!script) return
+    const code = await this.setupScript(this.mustWs(id), script)
+    const passed = this.setupPassed(this.mustWs(id), code)
+    const now = this.store.workspace(id)
+    if (!now || now.status === 'archived') return
+    if (passed) {
+      this.sessions.restartIdle([id])
+      if (!now.lead) this.sessions.noteSetup(id, 'Kernel: setup finished and passed. Dependencies are in place, so you can run tests and builds now.')
+      if (this.settings.scripts.runAfterSetup && repo.scripts.run) this.startRun(now, project, repo)
+      if (again) this.leadUpdates.setup(now, true, { started: true })
+      return
+    }
+    const why = code === null ? 'was stopped before it finished' : code === 'timeout' ? "didn't finish in time" : `failed with exit code ${code}`
+    if (!now.lead) this.sessions.noteSetup(id, `Kernel: setup ${why}. Don't run your own install. Dependencies may be missing, so tests and builds may fail until the user reruns setup.`)
+    if (code !== null) this.leadUpdates.setup(now, false, { code, started: true })
+  }
+
+  private failedRun(ws: Workspace): boolean {
+    const run = ws.setupRun
+    return ws.status === 'ready' && !!run?.endedAt && run.end !== 0
+  }
 
   /**
    * Setup passed: the workspace is ready, the run script starts, the start-of-chat checkpoint is taken, and the agent gets its
    * prompt. A restored workspace's chat started long ago, so it takes no checkpoint (`checkpoint: false`, KERNEL-77).
    */
-  async setupDone(ws: Workspace, project: Project, chat: Chat, prompt: string, start: () => Promise<void>, o: { checkpoint?: boolean; note?: string } = {}) {
+  async setupDone(ws: Workspace, project: Project, chat: Chat, prompt: string, start: () => Promise<void>, o: { checkpoint?: boolean; note?: string; run?: boolean } = {}) {
     const repo = await loadRepoSettings(project.path)
     if (this.mustWs(ws.id).status === 'archived') return this.mustWs(ws.id)
     // The start of chat: reverting to it undoes everything the agent did. Taken before the workspace counts as ready, so
@@ -58,7 +103,7 @@ export class Setup extends Feature {
     if (start0) bus.push({ type: 'checkpoint', checkpoint: start0 })
     // Only a skipped setup leaves a line above the brief. A passed one is silent (KERNEL-430, KERNEL-533).
     if (o.note) this.note(ws.id, o.note)
-    if (this.settings.scripts.runAfterSetup && repo.scripts.run) this.startRun(done, project, repo)
+    if (o.run !== false && this.settings.scripts.runAfterSetup && repo.scripts.run) this.startRun(done, project, repo)
     await start()
     // Linked once the brief is a message in the chat, so the transcript can revert to before it (KERNEL-764).
     if (start0) this.k.checkpoints.linkStart(chat.id, start0.id)
@@ -104,6 +149,12 @@ export class Setup extends Feature {
     const ws = this.mustWs(workspaceId)
     const project = this.mustProject(ws.projectId)
     const repo = await loadRepoSettings(project.path)
+    if (repo.scripts.setup && !this.holdsForSetup(repo)) {
+      this.setupFailures.delete(ws.id)
+      const started = await this.afterSetup(workspaceId, { quiet: true })
+      if (started.status === 'ready') void this.runInBackground(started, project, repo, { again: true })
+      return started
+    }
     if (repo.scripts.setup) {
       const code = await this.setupScript(ws, repo.scripts.setup)
       if (!this.setupPassed(ws, code)) {
@@ -139,11 +190,11 @@ export class Setup extends Feature {
   }
 
   /** Setup passed, or was skipped: the brief goes out, or keeps waiting for the PRs it waits for. */
-  private async afterSetup(workspaceId: string, o: { note?: string } = {}): Promise<Workspace> {
+  private async afterSetup(workspaceId: string, o: { note?: string; quiet?: boolean } = {}): Promise<Workspace> {
     const ws = this.mustWs(workspaceId)
     const project = this.mustProject(ws.projectId)
     const chat = this.briefChat(ws.id)
-    const passed = (w: Workspace) => { const now = this.mustWs(w.id); if (now.status === 'ready') this.leadUpdates.setup(now, true); return now }
+    const passed = (w: Workspace) => { const now = this.mustWs(w.id); if (now.status === 'ready' && !o.quiet) this.leadUpdates.setup(now, true); return now }
     // A brief that waits for a PR stays held: the workspace is ready and keeps waiting (KERNEL-259).
     const wait = ws.waitsFor
     if (wait?.held && chat) {
@@ -155,7 +206,7 @@ export class Setup extends Feature {
       }
       const base = await head(ws.path)
       const held = this.updateWs(ws.id, { status: 'ready', waitsFor: { ...wait, ...(base ? { base } : {}) } })
-      if (held.status === 'ready') this.leadUpdates.setup(held, true, { wait: { on: wait.on, label: this.k.waits.waitLabelOf(held), held: true } })
+      if (held.status === 'ready' && !o.quiet) this.leadUpdates.setup(held, true, { wait: { on: wait.on, label: this.k.waits.waitLabelOf(held), held: true } })
       return held
     }
     return passed(await this.startBrief(ws, project, chat, { note: o.note }))
@@ -179,7 +230,8 @@ export class Setup extends Feature {
   async startBrief(ws: Workspace, project: Project, chat: Chat | undefined, o: { setup?: boolean; released?: WaitsFor; left?: string[]; note?: string } = {}): Promise<Workspace> {
     const repo = o.setup && this.settings.scripts.setupOnCreate ? await loadRepoSettings(project.path) : undefined
     const script = repo?.scripts.setup
-    if (script) {
+    const alongside = !!script && !this.holdsForSetup(repo!)
+    if (script && !alongside) {
       const code = await this.setupScript(ws, script)
       if (!this.setupPassed(ws, code)) {
         const failed = this.updateWs(ws.id, { status: 'failed', waitsFor: undefined })
@@ -194,11 +246,15 @@ export class Setup extends Feature {
       const ended = o.released && w?.on.join() === o.released.on.join()
       if (w) this.updateWs(ws.id, { waitsFor: !ended ? { on: w.on, held: false } : o.left?.length ? { on: o.left, held: false } : undefined })
     }
-    if (!chat) { settle(); return this.updateWs(ws.id, { status: 'ready' }) }
+    const finish = (done: Workspace) => {
+      if (alongside && done.status === 'ready') void this.runInBackground(done, project, repo!)
+      return done
+    }
+    if (!chat) { settle(); return finish(this.updateWs(ws.id, { status: 'ready' })) }
     const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
     // A chat that already had a turn, as a restored workspace's has, starts nothing new, so it takes no start checkpoint (KERNEL-77).
     const begun = this.store.items(chat.id).some((i) => i.kind === 'user')
-    return this.setupDone(ws, project, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => { settle(); if (chat.terminal?.handoff) await this.k.teammateSeats.release(chat); else this.releaseTabs(ws.id, chat.id) }, { checkpoint: !begun, note: o.note })
+    return finish(await this.setupDone(ws, project, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => { settle(); if (chat.terminal?.handoff) await this.k.teammateSeats.release(chat); else this.releaseTabs(ws.id, chat.id) }, { checkpoint: !begun, note: o.note, run: !alongside }))
   }
 
   /** The chat a workspace's brief goes to: its hand-off's terminal seat, else its first chat (KERNEL-1004). */
@@ -225,12 +281,13 @@ export class Setup extends Feature {
   }
 
   /** Copy the local files into a new worktree, then run setup. */
-  async prepare(ws: Workspace, project: Project, repo: RepoSettings): Promise<boolean> {
+  async prepare(ws: Workspace, project: Project, repo: RepoSettings, o: { background?: boolean } = {}): Promise<boolean> {
     // An archive can land while the copy waits: then nothing starts in the removed folder, and the
     // caller sees the workspace archived.
     const archived = () => this.mustWs(ws.id).status === 'archived'
     if (ws.mode === 'worktree' && !archived()) await this.copyFiles(ws, project, repo)
     if (archived()) return false
+    if (o.background) return true
     return this.runSetup(ws, project, repo.scripts.setup)
   }
 
@@ -358,6 +415,11 @@ export class Setup extends Feature {
       const hold = saved[ws.id]
       const chat = (hold?.chatId && this.store.chat(hold.chatId)) || this.briefChat(ws.id)
       const unsent = ws.status === 'ready' && !!hold?.brief && !!chat && !this.store.items(chat.id).some((i) => i.kind === 'user')
+      if (ws.status === 'ready' && ws.setupRun && !ws.setupRun.endedAt && !this.tails.has(ws.id)) {
+        // The brief went out while setup ran, so nothing waits: the setup line says it stopped, and Run again works.
+        this.updateWs(ws.id, { setupRun: { ...ws.setupRun, endedAt: Date.now(), end: null } })
+        this.note(ws.id, 'Setup stopped when Kernel quit. Click Run again.')
+      }
       if (ws.status !== 'setup' && !unsent) continue
       if (chat && hold?.brief) this.sessions.hold(chat.id, hold.brief, hold.from ? { from: hold.from } : {})
       // A forked workspace has no brief, and its chat still waits for Run again (KERNEL-346).
@@ -387,6 +449,7 @@ export class Setup extends Feature {
         if (kind === 'setup' && ws.status === 'failed') { void this.retrySetup(workspaceId).catch(() => undefined); return { ok: true } }
         if (kind === 'run') { this.startRun(ws, project, repo, name); return { ok: true } }
         // Setup run by hand writes `$KERNEL_ENV` again, and the agents get what it wrote once it passes (KERNEL-405).
+        if (kind === 'setup' && ws.status === 'ready' && this.failedRun(ws) && !this.tails.has(ws.id)) { void this.runInBackground(ws, project, repo, { again: true }); return { ok: true } }
         if (kind === 'setup') { void this.setupScript(ws, script!).then((code) => { if (code === 0) this.sayLoaded(this.mustWs(workspaceId)) }); return { ok: true } }
         void runScript({ workspaceId, kind, script: script!, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) })
         return { ok: true }
