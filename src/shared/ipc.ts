@@ -739,6 +739,11 @@ export type PushEvent =
   /** Accounts changed: one added, removed, signed out or switched to (KERNEL-406). */
   | { type: 'accounts'; accounts: AccountProfile[] }
   /**
+   * New work in `workspaceId` started on `to` because every signed-in subscription on `from`, the provider its role or agent
+   * prefers, was at its limit (KERNEL-1055). Sent when the pick is made, never from a timer.
+   */
+  | { type: 'providerFellBack'; workspaceId: string; from: Provider; to: Provider }
+  /**
    * The provider's account in use changed, from `from` to `to` (account ids, `cli` for the CLI's own login), and `reason`
    * says who switched. `limit` is the window the old account hit, on a switch from the limit banner or by Kernel at a limit
    * (KERNEL-694). Never sent when the account stayed the same.
