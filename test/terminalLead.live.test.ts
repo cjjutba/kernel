@@ -33,9 +33,9 @@ const QUESTION = 'kernel-live-quince-77'
 
 const plain = (s: string) => s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\x1b[()][A-Za-z0-9]/g, '').replace(/\r/g, '')
 
-const PLAN_DIALOG = /Would\s*you\s*like\s*to\s*proceed|Ready\s*to\s*code\?/i
+const PLAN_DIALOG = /Yes,\s*manually\s*approve\s*edits/i
 const TRUST_DIALOG = /Yes,\s*I\s*trust\s*this\s*folder|Do\s*you\s*trust\s*the\s*files/i
-const TOOL_PROMPT = /Do\s*you\s*want\s*to\s*proceed\?/i
+const TOOL_PROMPT = /Do\s*you\s*want\s*to\s*(proceed|create|make|edit|overwrite)/i
 const ONBOARDING = /Choose\s*the\s*text\s*style|Press\s*Enter\s*to\s*continue/i
 
 describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
@@ -136,8 +136,9 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
       await type(`Remember the word kumquat for later. Plan one small task for noor: noor must call the ask_lead tool with exactly the question "${QUESTION}" and then stop. Keep the plan to three lines, don't read any files, then exit plan mode and hand it off with create_workspace.`)
       await until('the plan dialog', () => PLAN_DIALOG.test(sinceMark()), 240_000)
       evidence.planDialog = sinceMark().slice(-1200)
+      await new Promise((r) => setTimeout(r, 1_000))
       mark()
-      await k.handlers()['terminal.write']({ chatId: tab.id, data: '\r' })
+      await k.handlers()['terminal.write']({ chatId: tab.id, data: '2' })
       const mine = await until('a workspace handed off by the tab', () => k.store.workspaces(project.id).find((w) => !w.lead && w.leadChatId === tab.id), 300_000)
       evidence.handedOff = { name: mine.name, agent: mine.agentId, leadChatId: mine.leadChatId, threadId: mine.threadId }
       await until('the first turn to finish', () => idle(tab.id), 240_000)
@@ -179,9 +180,11 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live terminal lead', () => {
       k = new Kernel(where)
       await k.start()
       await k.handlers()['terminal.reconnect']({ chatId: tab.id })
-      await until('the resumed tab to be ready for a prompt', () => /Sonnet\s*5\.5\s*with\s*low\s*effort/.test(screen()), 120_000)
+      await until('the resumed tab to be ready for a prompt', () => /shift\+tab\s*to\s*cycle/.test(screen()), 120_000)
       await new Promise((r) => setTimeout(r, 4_000))
-      await turn('Which word did I ask you to remember? Reply with just that word.', 'the resumed turn')
+      mark()
+      await type('Which word did I ask you to remember? Reply with just that word.')
+      await until('the remembered word', () => /kumquat/i.test(sinceMark()), 120_000)
       evidence.resumedReply = sinceMark().slice(-400)
       evidence.sessionAfter = k.store.chat(tab.id)?.terminal?.sessionId
       expect(sinceMark()).toMatch(/kumquat/i)
