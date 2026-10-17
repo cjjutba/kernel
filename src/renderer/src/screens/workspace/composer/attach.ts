@@ -50,28 +50,39 @@ export async function partOf(file: File, textOnly = false): Promise<ChatPart> {
   return { type: 'file', name: file.name, lines: pasteLines(text), text }
 }
 
-/** The files a composer is still reading, by placeholder id. A cancelled one leaves at once, so the count is right before its read ends. */
-export class Held {
-  private names = new Map<string, string>()
-  get size() { return this.names.size }
-  ids() { return [...this.names.keys()] }
-  all() { return [...this.names.values()] }
-  add(id: string, name: string) { this.names.set(id, name) }
-  nameOf(id: string) { return this.names.get(id) }
-  /** Takes the file out, for a read that ended or a cancel. False when it was already out. */
-  release(id: string) { return this.names.delete(id) }
-  clear() { this.names.clear() }
+/**
+ * The chip a file shows while it is read: its name and the icon of its kind, as it will look. A file on disk is already whole.
+ * An image or a text file fills in its size or line count when the read ends.
+ */
+export function previewOf(file: File, textOnly = false): ChatPart {
+  if (file.type?.startsWith('image/')) return { type: 'image', name: file.name || 'image.png' }
+  const src = textOnly ? '' : pathOf(file)
+  return src ? { type: 'file', name: file.name, src, size: file.size } : { type: 'file', name: file.name }
 }
 
-/** What a composer gives `attachFiles`: a place for each file while it reads, and what to do with it once it is read or fails. */
+/** The files a composer is still reading, by chip id. A cancelled one leaves at once, so the count is right before its read ends. */
+export class Held {
+  private parts = new Map<string, ChatPart>()
+  get size() { return this.parts.size }
+  ids() { return [...this.parts.keys()] }
+  /** The names of the files being read, which new images are numbered after. */
+  all() { return [...this.parts.values()].map((p) => (p.type === 'text' ? '' : p.name)) }
+  add(id: string, part: ChatPart) { this.parts.set(id, part) }
+  get(id: string) { return this.parts.get(id) }
+  /** Takes the file out, for a read that ended or a cancel. False when it was already out. */
+  release(id: string) { return this.parts.delete(id) }
+  clear() { this.parts.clear() }
+}
+
+/** What a composer gives `attachFiles`: a chip for each file while it reads, and what to do with it once it is read or fails. */
 export interface AttachHost {
-  /** Puts a placeholder chip with the file's name at the caret, and returns its id. */
-  hold: (name: string) => string
-  /** The placeholder becomes the real chip, where it stands. */
+  /** Puts the file's chip at the caret, drawn from `previewOf`, and returns its id. */
+  hold: (part: ChatPart) => string
+  /** The read ended: the chip takes the whole part, where it stands. */
   settle: (id: string, part: ChatPart) => void
-  /** The placeholder goes. */
+  /** The chip goes. */
   drop: (id: string) => void
-  /** The names already in the message, chips and placeholders, which new images are numbered after. */
+  /** The names already in the message, chips and files being read, which new images are numbered after. */
   taken?: string[]
   /** What the message already holds, files and images, which the count and size caps add to. */
   used?: { count: number; bytes: number }
@@ -127,11 +138,11 @@ export function numberImages(files: File[], taken: string[] = []): File[] {
 }
 
 /**
- * Files as parts, in order. Every file gets its placeholder before the first is read, so the chips show at once and keep the order the
- * files came in. One that can't be attached loses its placeholder and gets a toast, and the rest still go.
+ * Files as parts, in order. Every file gets its chip before the first is read, so the chips show at once and keep the order the
+ * files came in. One that can't be attached loses its chip and gets a toast, and the rest still go.
  */
 export async function attachFiles(files: File[], host: AttachHost, read: (file: File) => Promise<ChatPart> = (f) => partOf(f, host.textOnly)) {
-  const held = numberImages(await allowed(files, host.used, host.textOnly), host.taken).map((f) => ({ file: f, id: host.hold(f.name || 'image.png') }))
+  const held = numberImages(await allowed(files, host.used, host.textOnly), host.taken).map((f) => ({ file: f, id: host.hold(previewOf(f, host.textOnly)) }))
   for (const { file, id } of held) {
     try { host.settle(id, await read(file)) } catch (e) {
       host.drop(id)
