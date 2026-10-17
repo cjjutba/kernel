@@ -54,10 +54,11 @@ type Tab = 'favorites' | Provider
  * `variant="settings"` is the role picker in Settings, Models (KERNEL-988, KERNEL-995): the rail lists Claude and Codex with neither locked, and favorites,
  * ^⌘N hints, footer and their keys are gone. The Effort row stays, and a Claude role also gets a Compact at row (`compact`, `onCompact`). Each model
  * row shows the effort the role would get on it, `fitEffort(effort, model)`. A flyout opens to the left when there is no room on the right.
+ * `only` limits the Settings picker to one provider, for a role's Claude and Codex columns (KERNEL-1056).
  * `placement="down"` opens it under its anchor, sized to the space below, and its Legacy flyout opens downward too.
  */
-export function ModelPicker({ provider = 'claude', grouped = false, started = false, variant = 'composer', placement = 'up', model, effort, fallback, compact, onCompact, onModel, onEffort, onClose, anchorRef }: {
-  anchorRef: React.RefObject<HTMLElement | null>; provider?: Provider; grouped?: boolean; started?: boolean; variant?: 'composer' | 'settings'; placement?: 'up' | 'down'; model: string; effort: Effort; fallback: Effort; compact?: CompactWindow; onCompact?: (w: CompactWindow) => void
+export function ModelPicker({ provider = 'claude', grouped = false, started = false, variant = 'composer', only, placement = 'up', model, effort, fallback, compact, onCompact, onModel, onEffort, onClose, anchorRef }: {
+  anchorRef: React.RefObject<HTMLElement | null>; provider?: Provider; grouped?: boolean; started?: boolean; variant?: 'composer' | 'settings'; only?: Provider; placement?: 'up' | 'down'; model: string; effort: Effort; fallback: Effort; compact?: CompactWindow; onCompact?: (w: CompactWindow) => void
   onModel: (m: string, effort: Effort) => void; onEffort: (e: Effort) => void; onClose: () => void
 }) {
   const codex = useProviderModels('codex')
@@ -75,7 +76,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
     const below = window.innerHeight - a.bottom
     return below >= 460 || below >= a.top
   })
-  const providers: Provider[] = settings || grouped || provider === 'codex' ? ['claude', 'codex'] : ['claude']
+  const providers: Provider[] = only ? [only] : settings || grouped || provider === 'codex' ? ['claude', 'codex'] : ['claude']
   /** The other provider can't take over a chat that has started. */
   const locked = (p: Provider) => !settings && started && p !== provider
   const [q, setQ] = useState('')
@@ -83,7 +84,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   // A row shows ^⌘N only when that key works: it picks the Nth current model of the chat's own provider (useModelKeys).
   const all: Row[] = useMemo(() => {
     const row = (p: Provider, m: { id: string; label: string; legacy?: boolean }): Row => ({ provider: p, id: m.id, label: m.label, legacy: !!m.legacy, n: settings ? undefined : shortcutNumber({ id: m.id, provider: p }, provider, own) })
-    return [...claude.map((m) => row('claude', m)), ...(providers.includes('codex') ? codex.map((m) => row('codex', m)) : [])]
+    return [...(providers.includes('claude') ? claude.map((m) => row('claude', m)) : []), ...(providers.includes('codex') ? codex.map((m) => row('codex', m)) : [])]
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claude, codex, grouped, provider])
   const current = all.find((m) => m.id === model)

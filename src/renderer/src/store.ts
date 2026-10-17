@@ -76,6 +76,8 @@ export interface State {
   queue: Record<string, QueuedMessage[]>
   /** By chat id. What the queue waits for, absent while it is empty (KERNEL-273). */
   queueWhy: Record<string, QueueReason>
+  /** By workspace id. The provider new work in it started on instead of its preferred one, and the one it left (`providerFellBack`, KERNEL-1056). Lives until the window closes. */
+  fellBack: Record<string, { from: Provider; to: Provider }>
   /** By chat id. The permission mode each chat runs in, the mode picked for it and why they differ (`chats.runMode`, KERNEL-572). */
   runModes: Record<string, ChatRunMode>
   /** By chat id. Raw pty output for terminal chats. */
@@ -213,7 +215,7 @@ let state: State = {
   projects: [], projectSetup: {}, overlaps: {},
   agents: {}, status: {}, globalAgents: null,
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, scriptData: {}, scriptReplays: {}, checkpoints: {},
-  chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, itemsLoaded: {}, itemsFailed: {}, running: {}, assumed: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
+  chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, itemsLoaded: {}, itemsFailed: {}, running: {}, assumed: {}, queue: {}, queueWhy: {}, fellBack: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, projectSettings: {}, shared: {},
@@ -921,6 +923,7 @@ export function apply(e: PushEvent) {
     case 'update': return actions.system.setUpdate(e.update)
     case 'account': return actions.account.set(e.account)
     case 'accounts': return actions.accounts.set(e.accounts)
+    case 'providerFellBack': return setState((s) => ({ fellBack: { ...s.fellBack, [e.workspaceId]: { from: e.from, to: e.to } } }))
     case 'accountSwitched': return accountSwitchedToast(e)
     case 'account.add': return actions.accounts.adding(e.add)
     case 'account.mcpSignInAll': return actions.accounts.mcpRun(e.run)

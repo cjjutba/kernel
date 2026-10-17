@@ -17,8 +17,9 @@
 .ag-who-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 28px; box-sizing: border-box; padding: 4px 8px; font-size: var(--fs-code); color: var(--ink-2); }
 .ag-who-name { min-width: 0; flex: 0 1 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: inherit; }
 .ag-who-right { min-width: 0; flex: 1 1 auto; text-align: right; color: var(--muted); }
-.ag-chip { width: 100%; gap: 8px; white-space: nowrap; }
-.ag-chip-name { flex-shrink: 0; }
+.ag-chip { width: 100%; min-width: 0; gap: 8px; white-space: nowrap; overflow: hidden; }
+.ag-side { min-width: 0; }
+.ag-chip-name { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ag-chip-detail { flex: 1; min-width: 0; text-align: left; color: var(--muted); }
 
 .ag-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
