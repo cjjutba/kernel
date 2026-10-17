@@ -43,12 +43,12 @@
 
 /* The PR buttons are 26px, 12px type and 10px sides, as the redesign draws them. That fits Continue and Archive side by side at the
    panel's widest, and leaves the capsule 2px above and below. */
-.pr-tone .btn { height: 26px; gap: 6px; padding: 0 10px; font-size: var(--fs-meta); }
+.pr-tone .btn { height: 26px; gap: 6px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .pr-tone .split-caret { height: 26px; }
-/* Soft buttons sit in the band's tone; Merge PR and Archive take its solid. Create PR stays ink on the neutral band. */
+/* Soft buttons sit in the band's tone; Merge PR and Archive take its solid. Create PR is soft like them, and turns solid only once it is the one step left. */
 /* Merge anyway in a PRs tab or Team update row is an outline: the row's red state already says what is wrong (KERNEL-757). */
 .pr-tone .btn.pr-outline { background: transparent; border-color: var(--line-3); color: var(--ink-2); }
-.pr-tone .btn.pr-outline:hover { background: var(--surface-2); color: var(--ink); }
+.pr-tone .btn.pr-outline:hover { background: var(--surface-3); border-color: var(--line-4); color: var(--ink); }
 .pr-tone .btn.pr-soft { background: var(--b-soft); border-color: var(--b-edge); color: var(--b-fg); }
 .pr-tone .btn.pr-soft:hover { background: color-mix(in srgb, var(--b-soft) 85%, var(--b-fg)); }
 .pr-tone .btn.pr-solid { background: var(--b-solid); border-color: var(--b-solid); color: var(--b-on); }
@@ -104,7 +104,7 @@ section:first-child > .lp-sec { padding-top: 6px; }
 .lp-open::after { content: ''; position: absolute; inset: 0; border-radius: var(--r-sm); }
 .lp-act, .lp-num { position: relative; z-index: 1; }
 .lp-act { flex-shrink: 0; display: flex; align-items: center; }
-.lp-row .pr-tone .btn { height: 22px; padding: 0 9px; }
+.lp-row .pr-tone .btn { height: 22px; padding: 0 9px; border-radius: var(--r-sm); }
 /* Rows with nothing to press show where a click goes, on hover or focus. */
 .lp-chev { flex-shrink: 0; display: inline-flex; color: var(--ink-3); opacity: 0; }
 .lp-row:hover .lp-chev, .lp-row:has(.lp-open:focus-visible) .lp-chev { opacity: 1; }
