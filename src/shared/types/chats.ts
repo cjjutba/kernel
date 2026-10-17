@@ -254,7 +254,7 @@ export type ChatItem =
    * End of a turn. `files` is the "Changed" chip row under the reply. `checkpointId` is the checkpoint taken as the turn ended,
    * set on every turn that wrote a result, with or without files (KERNEL-764). Both arrive a moment after the row, in a `chat.item` push.
    */
-  | { kind: 'result'; id: string; ts: number; durationMs: number; ok: boolean; error?: string; files?: ChangedFile[]; checkpointId?: string }
+  | { kind: 'result'; id: string; ts: number; durationMs: number; ok: boolean; error?: string; limit?: true; files?: ChangedFile[]; checkpointId?: string }
   /**
    * `pr` is the PR state a note about a PR is for, so the row can draw that state's icon (KERNEL-313). Older notes and other notes have none.
    * `refs` are spans of `text`, in the order they appear, that open another workspace, such as the PRs a held brief waits for.
