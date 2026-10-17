@@ -128,6 +128,12 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - Merged is the only purple: the PR link, the Merged label, the merged PR band, the merged History row.
 - Resize edges (KERNEL-419): hovering, keyboard focus or dragging the sidebar, Settings nav or right panel edge lights the content panel's border with a glow, `--ink` at 45% fading to transparent, about 2px at the middle of the edge and thinning toward the top and bottom. It stays at the middle and does not follow the cursor. The handle between the right panel's top and bottom panes (KERNEL-512) lights the hairline between them the same way, turned horizontal.
 
+## Split button (KERNEL-1046)
+
+- Every split button is `SplitButton` (`src/renderer/src/ui/SplitButton.tsx`): Run, Open in, Create PR, Open file and Settings' Open settings files. One joined control inside a 1px `--line-3` frame, a main half that acts and a caret half that opens a menu, with a hairline between them. Never a detached caret, never its own fill.
+- Two sizes: `sm` is 26px with `--r-sm`, `md` is 28px with `--r`. The halves carry no border and no background of their own, so a tone is set once on the frame (`color`, `background`, `border-color`), as the PR band does. Hover is a faint fill, and an open menu holds a stronger one on the caret.
+- Both halves are real buttons in the tab order, and focus is `--focus` drawn inside the frame. The caret has an `aria-label` and `aria-expanded`. The main half spins and can't be pressed twice while `busy`.
+
 ## Attaching files (KERNEL-815)
 
 Dragging, dropping, pasting and picking a file all answer at once, in the workspace chat, the Lead chat and New chat alike.
