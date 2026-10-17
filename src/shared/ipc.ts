@@ -310,12 +310,24 @@ export interface KernelApi {
   /**
    * Switches a chat with Kernel to Hand off or Build here, by its workspace (KERNEL-770). It applies from the next turn: a running
    * turn finishes in the mode it started in. The chat's transcript gets a `leadMode` divider. Refuses a workspace that isn't a
-   * chat with Kernel. The first switch to Build here of a chat on the shared main folder (`Workspace.shared`) may make the
-   * chat's working copy, by Settings, Git and worktrees, Workspace type (KERNEL-1051). It resolves once that has started, while
-   * the workspace is `setup` with `worktreePending`, and a failure later puts the chat back in Hand off on the shared folder with a
-   * row saying why. It throws a sentence when it refuses: a current-branch copy while another workspace is on the checkout.
+   * chat with Kernel. On a chat on the shared main folder (`Workspace.shared`) it only records `leadMode` and makes nothing: the
+   * working copy, by Settings, Git and worktrees, Workspace type, is made when the first message is sent in Build here (KERNEL-1053,
+   * amending KERNEL-1051). It throws a sentence, and the chat stays in Hand off, when the copy couldn't be made: a current-branch
+   * copy while another workspace is on the checkout.
    */
   'lead.setMode': { req: { workspaceId: string; mode: LeadMode }; res: Workspace }
+  /**
+   * Makes the working copy again for a chat whose copy failed (KERNEL-1053): its record has `worktreePending.error` with
+   * `fromShared`, and its first message is still held. Answers at once. The held message goes out in the new copy once it is
+   * ready, and a failure records the new error. Refuses a chat that has no failed copy.
+   */
+  'lead.retryCopy': { req: { workspaceId: string }; res: Workspace }
+  /**
+   * Gives up the working copy of a chat whose copy failed (KERNEL-1053) and sends its held message in Hand off on the shared
+   * main folder. The chat is shared again, `leadMode` is `handoff`, and nothing of the failed copy is left. Refuses a chat that
+   * has no failed copy.
+   */
+  'lead.sendAsHandoff': { req: { workspaceId: string }; res: Workspace }
   /** The Lead chats, each holding one or more Lead tabs, in every project or in `projectId`, oldest first (KERNEL-337). */
   'threads.list': { req: { projectId?: string }; res: Thread[] }
   /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */
