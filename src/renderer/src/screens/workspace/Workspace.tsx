@@ -149,7 +149,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
   // A chat waiting for setup holds its messages in main (KERNEL-430), so you can keep typing: they queue behind it.
   const heldForSetup = useStore((s) => (chat ? !!s.queue[chat.id]?.length && s.queueWhy[chat.id] === 'setup' : false))
-  const skips = !!ws && skipsSetup(ws, heldForSetup)
+  const skips = !!ws && skipsSetup(heldForSetup)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
   const found = useBanner(ws, chat, agent?.name ?? 'The agent', running, skips, !empty, heldForSetup)
   const moveNotice = useMoveNotice(chat)

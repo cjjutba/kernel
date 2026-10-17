@@ -90,6 +90,8 @@ describe('a PR action pending (KERNEL-520)', () => {
   it('waits behind what needs you and what is working, and never covers a merged PR', () => {
     expect(workspaceGlyph(ws({}), { waiting: [plan], running: false, pending: 'merge' })).toMatchObject({ icon: 'plan' })
     expect(workspaceGlyph(ws({ status: 'setup' }), { ...idle, pending: 'merge' })).toMatchObject({ label: 'Setting up' })
+    // A chat already working while setup runs reads as working (KERNEL-1012).
+    expect(workspaceGlyph(ws({ status: 'setup' }), { waiting: [], running: true })).toMatchObject({ label: 'Working' })
     expect(workspaceGlyph(ws({}), { waiting: [], running: true, pending: 'merge' })).toMatchObject({ label: 'Working' })
     expect(workspaceGlyph(ws({ prState: 'merged' }), { ...idle, pending: 'merge' })).toEqual({ icon: 'merged', tone: 'merged', label: 'Merged' })
   })
