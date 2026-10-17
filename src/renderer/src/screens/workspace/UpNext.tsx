@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ChatPart, IssueSummary, ProjectTracker, TrackerKind } from '@shared/types'
-import { call } from '../../api'
+import type { ChatPart, TrackerKind } from '@shared/types'
 import { Icon, IssuePriority } from '../../icons'
 import { go, useStore } from '../../store'
 import { LinkButton } from '../../ui'
-import { readUpNext, storeUpNext } from './upNextCache'
+import { readUpNext, refreshUpNext } from './upNextCache'
 
 /** Up next shows this many issues. */
 const SHOWN = 3
@@ -24,19 +23,7 @@ export function UpNext({ projectId, lead, onPlan }: { projectId: string; lead: s
   const current = view.projectId === projectId ? view : { projectId, entry: readUpNext(projectId) }
   useEffect(() => {
     let live = true
-    let rows: IssueSummary[] | undefined
-    let kind: ProjectTracker['kind'] | undefined
-    let pending = 2
-    const done = () => {
-      if (--pending || !live) return
-      const old = readUpNext(projectId)
-      // Each call that failed keeps what the cache had; both failing leaves the cached entry as it was.
-      const entry = rows || kind !== undefined ? storeUpNext(projectId, { kind: kind ?? old?.kind, rows: rows ?? old?.rows ?? [] }) : old
-      setView({ projectId, entry })
-    }
-    // Both calls start now: main resolves the tracker for `issues.next` itself, so the list never waits on the kind.
-    call('issues.next', { projectId }).then((r) => { rows = r }, () => undefined).then(done)
-    call('issues.tracker', { projectId }).then((t) => { kind = t.kind }, () => undefined).then(done)
+    void refreshUpNext(projectId).then((entry) => { if (live) setView({ projectId, entry }) })
     setView((v) => (v.projectId === projectId ? v : { projectId, entry: readUpNext(projectId) }))
     return () => { live = false }
   }, [projectId])
