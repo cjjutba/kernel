@@ -4,7 +4,7 @@
 .ib-n { font-size: var(--fs-meta); color: var(--muted); font-weight: var(--fw-regular); }
 .ib-body-wrap { flex: 1; min-height: 0; display: flex; }
 .ib-list { width: clamp(260px, 40%, 413px); flex-shrink: 0; overflow-y: auto; padding: 6px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 0; }
-.ib-row { display: flex; align-items: center; gap: 12px; width: 100%; height: 62px; padding: 0 10px 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; flex-shrink: 0; }
+.ib-row { display: flex; align-items: center; gap: 12px; width: 100%; height: 60px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; flex-shrink: 0; }
 .ib-row:hover { background: var(--nav-hover); }
 .ib-row:focus-visible { outline-offset: -2px; }
 .ib-row[aria-current='true'] { background: var(--surface-3); color: var(--ink); }
@@ -31,10 +31,6 @@
 .ib-link[aria-busy='true'] { display: inline-flex; align-items: center; gap: 7px; opacity: 1; }
 .ib-card { margin-top: 4px; }
 .ib-outcome { display: flex; align-items: center; gap: 16px; color: var(--ink-2); }
-.ib-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding-bottom: 20px; }
-.ib-empty h2 { margin: 0; font-size: var(--fs-sub); font-weight: var(--fw-semibold); color: var(--ink); }
-.ib-empty p { margin: 0 0 8px; max-width: 330px; color: var(--muted); line-height: var(--lh); }
-.ib-empty .ib-link { text-decoration: underline; color: var(--ink-2); }
 
 @container panel (max-width: 760px) { .ib-pane { padding: 20px 24px; } }
 .ib-first { display: flex; gap: 8px; margin-top: 4px; }

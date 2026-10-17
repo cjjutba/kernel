@@ -7,8 +7,8 @@
 .hs-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 24px 24px; }
 .hs-group { margin: 14px 0 0; padding: 0 8px; height: 30px; display: flex; align-items: center; font-size: var(--fs-meta); font-weight: var(--fw-regular); color: var(--muted); }
 .hs-list { margin: 0; padding: 0; list-style: none; }
-.hs-row { display: grid; grid-template-columns: minmax(0, 1fr) 314px 126px 136px 129px auto; align-items: center; height: 53px; padding: 0 8px; border-top: 1px solid var(--line); font-size: var(--fs-ui); }
-.hs-row:first-child { border-top: 0; }
+.hs-row { display: grid; grid-template-columns: minmax(0, 1fr) 314px 126px 136px 129px auto; align-items: center; height: 60px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-ui); }
+.hs-row:hover { background: var(--nav-hover); }
 .hs-name { min-width: 0; gap: 1px; }
 .hs-title { font-size: var(--fs-row); }
 /* A Lead chat in History carries the chat icon before its title (KERNEL-405). */
