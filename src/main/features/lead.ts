@@ -22,7 +22,7 @@ import { isNudge } from '../services/sessions'
 import { buildOpen, kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
 import { briefParts } from '../services/issueMcp'
 import type { From } from '../services/leadUpdates'
-import { branchType, fastForward, fetchOrigin, folderGone, freeBranch, freeWorktreePath, leadBase, leadBranch, moveWorktree, renameBranch, projectWorktreeRoot, slugify, taskBranch, worktreeFolder } from '../services/worktrees'
+import { branchType, fastForward, fetchOrigin, folderGone, freeBranch, freeWorktreePath, leadBase, leadBranch, moveWorktree, renameBranch, projectWorktreeRoot, slugify, snapshotBaseline, currentBranch, taskBranch, worktreeFolder } from '../services/worktrees'
 import { runningRuns } from '../services/scripts'
 import { exec, git } from '../services/exec'
 import { messageOf, NEW_CHAT, NEW_TAB } from './shared'
@@ -118,7 +118,7 @@ export class Lead extends Feature {
       if (shared) return shared
     }
     let cut: Awaited<ReturnType<Workspaces['cutWorkspace']>>
-    try { cut = await this.k.workspaces.cutWorkspace(projectId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id }, worktreeLater: true }) }
+    try { cut = await this.k.workspaces.cutWorkspace(projectId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id }, leadMode, worktreeLater: true }) }
     catch (e) { this.store.deleteThread(thread.id); throw e }
     // Its branch and folder take their names from the chat's first title, once (KERNEL-424).
     const ws = this.updateWs(cut.ws.id, { leadMode, ...(cut.ws.mode === 'worktree' ? { naming: 'branch' as const } : {}) })
@@ -173,13 +173,19 @@ export class Lead extends Feature {
    * Switches a chat with Kernel to Hand off or Build here (KERNEL-770). Each tab gets a divider, or its last one updates, and the chat's idle processes
    * end, so the next turn starts with the mode's prompt and tools. A running turn finishes in the mode it started in, and its
    * process restarts after it. That tab's divider waits for the turn to end, so it sits before the first reply in the new mode.
+   * A chat on the shared main folder that switches to Build here gets its own working copy first (`ownFolder`, KERNEL-1051):
+   * this answers once that has started, or at once while a turn runs, and refuses with a sentence when it can't be made.
    */
-  setMode(workspaceId: string, mode: LeadMode): Workspace {
+  setMode(workspaceId: string, mode: LeadMode): Workspace | Promise<Workspace> {
     if (!LEAD_MODES.includes(mode)) throw new Error(`${String(mode)} is not a mode. Use handoff or build.`)
     const ws = this.store.workspace(workspaceId)
     if (!ws || !isLeadChatWorkspace(ws)) throw new Error('Only a chat with Kernel can switch between Hand off and Build here.')
     if (ws.status === 'archived') throw new Error('This chat is archived. Restore it from History first.')
-    if (ws.shared) throw new Error('This chat works in the shared main folder, so it stays in Hand off for now.')
+    if (ws.shared && mode === 'build' && leadModeOf(ws) !== 'build') return this.switchShared(ws)
+    return this.applyMode(ws, mode)
+  }
+
+  private applyMode(ws: Workspace, mode: LeadMode): Workspace {
     const was = leadModeOf(ws)
     if (was === mode) return ws
     const next = this.updateWs(ws.id, { leadMode: mode, buildGoAhead: undefined })
@@ -192,6 +198,101 @@ export class Lead extends Feature {
     this.noteSwitch(ws.id, was, mode)
     this.sessions.restartIdle([ws.id], 'mode')
     return next
+  }
+
+  /** Chats whose working copy is being made, by workspace, so a second switch to Build here meanwhile starts nothing more. */
+  private owning = new Map<string, Promise<void>>()
+  /** Callers waiting for a turn to end, woken by `turnEnded`. */
+  private turnWaiters = new Set<() => void>()
+
+  private async switchShared(ws: Workspace): Promise<Workspace> {
+    const id = ws.id
+    const project = this.mustProject(ws.projectId)
+    const type = (await loadRepoSettings(project.path)).workspace.mode ?? this.settings.workspace.mode
+    if (type === 'current') this.checkoutFree(ws)
+    const now = this.store.workspace(id)
+    if (!now || now.status === 'archived' || !now.shared) return now ?? ws
+    const next = this.applyMode(now, 'build')
+    if (this.owning.has(id)) return next
+    let begun!: () => void
+    const started = new Promise<void>((resolve) => { begun = resolve })
+    const run = this.ownFolder(id, type, begun).finally(() => { begun(); this.owning.delete(id) })
+    this.owning.set(id, run)
+    if (!this.chatTabs(id).some((c) => c.kind !== 'terminal' && this.sessions.isRunning(c.id))) await started
+    return this.store.workspace(id) ?? next
+  }
+
+  /** Refuses with a sentence when "One current-branch workspace per project" is on and another open workspace is on the checkout. */
+  private checkoutFree(ws: Workspace) {
+    if (this.settings.workspace.oneCurrentBranchPerProject && this.k.workspaces.onCheckout(ws.projectId, { id: ws.id, agentId: ws.agentId, lead: true }))
+      throw new Error('Another workspace is already working on the current branch in this project. Archive it, or turn off "One current-branch workspace per project" in Settings, Git and worktrees, then switch again.')
+  }
+
+  /**
+   * Gives a chat on the shared main folder the working copy Settings, Git and worktrees, Workspace type picks, the first time it
+   * switches to Build here (KERNEL-1051), and keeps it from then on. Its tabs are held, then it waits until no turn runs.
+   * A worktree on a branch named from the chat's title, cut like a new chat's, or the main checkout with the baseline. Then ports,
+   * files.copy and setup, and the sessions resume by id in the new folder (KERNEL-348). A failure puts the chat back in Hand off
+   * on the shared folder, with a row saying why. `begun` is called once the record is `setup`, or the switch gave up.
+   */
+  private async ownFolder(id: string, type: Workspace['mode'], begun: () => void): Promise<void> {
+    const from = this.mustWs(id)
+    for (const c of this.chatTabs(id)) if (c.kind !== 'terminal') this.sessions.hold(c.id)
+    let handed = false
+    try {
+      for (;;) {
+        await this.k.checkpoints.settled(id)
+        const now = this.k.stopped ? undefined : this.store.workspace(id)
+        if (!now || now.status === 'archived' || !now.shared || leadModeOf(now) !== 'build') return
+        if (!this.chatTabs(id).some((c) => c.kind !== 'terminal' && this.sessions.isRunning(c.id))) break
+        await new Promise<void>((resolve) => this.turnWaiters.add(resolve))
+      }
+      const project = this.mustProject(from.projectId)
+      const repo = await loadRepoSettings(project.path)
+      if (type === 'current') {
+        this.checkoutFree(from)
+        const baselineRef = this.settings.workspace.baselineCurrentBranch ? (await snapshotBaseline(project.path)).ref : undefined
+        const branch = await currentBranch(project.path)
+        await this.k.workspaces.withPort((port) => this.updateWs(id, { shared: undefined, mode: 'current', path: project.path, branch, baseRef: project.defaultBranch, baselineRef, port, status: 'setup', fetchFailed: undefined }))
+        begun()
+      } else {
+        const named = from.threadId ? this.store.thread(from.threadId)?.title : undefined
+        const title = (named && named !== NEW_TAB && named !== NEW_CHAT ? named : undefined) || from.title || from.name
+        await this.k.workspaces.cutOwnWorktree(id, title, this.agentsSync(project.id).find((a) => a.lead)?.name, begun)
+      }
+      if (this.k.stopped) return
+      handed = true
+      this.sessions.restartIdle([id])
+      this.k.chats.restartTerminals(id)
+      const chat = this.chatTabs(id).find((c) => c.kind !== 'terminal')
+      if (!chat) return
+      if (!this.k.setup.holdsForSetup(repo)) this.k.setup.releaseTabs(id, chat.id)
+      await this.k.workspaces.setUpWorkspace(this.mustWs(id), project, repo, chat, { checkpoint: false })
+      if (!this.stopped) this.leadUpdates.flush(project.id)
+    } catch (e) {
+      if (this.stopped) return
+      const why = e instanceof Error ? e.message : String(e)
+      if (handed) {
+        console.warn(`[lead] setting up ${from.name} failed`, e)
+        if (this.store.workspace(id)?.status === 'setup') this.updateWs(id, { status: 'failed' })
+        return
+      }
+      this.putBack(from, why)
+    } finally {
+      if (!handed && !this.stopped) for (const c of this.chatTabs(id)) if (c.kind !== 'terminal') this.sessions.release(c.id)
+    }
+  }
+
+  /** A chat whose working copy couldn't be made goes back to Hand off on the shared folder, and says why. */
+  private putBack(from: Workspace, why: string) {
+    const now = this.store.workspace(from.id)
+    if (!now || now.status === 'archived') return
+    const back = this.updateWs(from.id, {
+      shared: true, mode: from.mode, path: from.path, branch: from.branch, baseRef: from.baseRef, baselineRef: undefined, port: from.port,
+      status: 'ready', worktreePending: undefined, naming: undefined, firstInProject: undefined, fetchFailed: undefined
+    })
+    this.applyMode(back, 'handoff')
+    this.note(from.id, `Kernel couldn't switch this chat to Build here: ${why.replace(/\.$/, '')}. It stays in Hand off on the shared main folder.`)
   }
 
   /**
@@ -227,6 +328,9 @@ export class Lead extends Feature {
    * is the mode the turn ran in.
    */
   turnEnded(chatId: string) {
+    const waiting = [...this.turnWaiters]
+    this.turnWaiters.clear()
+    for (const wake of waiting) wake()
     const ran = this.switchedDuring()[chatId]
     if (!ran) return
     this.markSwitchedDuring(chatId, undefined)

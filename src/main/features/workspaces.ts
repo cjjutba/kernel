@@ -1,12 +1,14 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Project, type ResolvedPath, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
+import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type LeadMode, type Provider, type Project, type ResolvedPath, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
 import { chatProvider, providerOf } from '@shared/providers'
+import { buildsHere } from '@shared/leadMode'
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, referencesInProject, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
-import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, projectWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
+import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, leadBranch, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, projectWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
 import { claimSpare as turnSpareIntoWorktree, fastForward, isAncestor, makeSpare, revParse, sweepSpares } from '../services/worktrees'
 import { linkNodeModules, NoFreePortBlock, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
@@ -29,6 +31,8 @@ export interface CutWorkspace {
   prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string
   provider?: Provider; model?: string; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string; linkReviewOf?: string
   labels?: string[]; waitFor?: string[]; lead?: { threadId: string }
+  /** A Lead chat that starts in Build here follows Workspace type, one in Hand off gets a worktree (KERNEL-1051). */
+  leadMode?: LeadMode
   /**
    * The agent itself, for one that isn't on the project's team: Kernel's own reviewer, which runs the reviews Kernel starts with
    * its own prompts (KERNEL-549). Without it, an `agentId` the team doesn't have falls back to the Lead.
@@ -108,7 +112,7 @@ export class Workspaces extends Feature {
     if (o.reviewOf && (!reviewed || reviewed.projectId !== projectId || reviewed.status === 'archived')) throw new Error('The workspace to review is not open in this project.')
     const remote = await this.k.config.remoteFor(project.path, repo)
     const main = o.lead ? await leadBase(project.path, remote) : undefined
-    const mode = reviewed ? 'worktree' : o.lead ? (main ? 'worktree' : 'current') : o.mode ?? repo.workspace.mode ?? s.workspace.mode
+    const mode = reviewed ? 'worktree' : o.lead ? (main ? (o.leadMode === 'build' ? o.mode ?? repo.workspace.mode ?? s.workspace.mode : 'worktree') : 'current') : o.mode ?? repo.workspace.mode ?? s.workspace.mode
     // A project Kernel ran git init in waits for the user's first commit (KERNEL-231). Without one, a worktree has nothing to start from.
     // The Lead's base was found above, so its project has one.
     if (mode === 'worktree' && !o.lead && !(await hasCommit(project.path))) throw new Error(`${project.name} has no commit yet, so a new workspace has nothing to branch from. Make the first commit in ${project.path}, then try again.`)
@@ -178,10 +182,10 @@ export class Workspaces extends Feature {
         return save(made.path, made.branch)
       }
       // A project with no commit to start from keeps the Lead on the checkout, with no baseline, as before KERNEL-355.
-      if (o.lead) return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch))
-      if (s.workspace.oneCurrentBranchPerProject && this.store.workspaces(projectId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
+      if (o.lead && !main) return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch))
+      if (s.workspace.oneCurrentBranchPerProject && this.onCheckout(projectId, { agentId: agent.id, lead: !!o.lead }))
         throw new Error('Another workspace is already working on the current branch in this project.')
-      return save(project.path, await currentBranch(project.path), s.workspace.baselineCurrentBranch ? (await snapshotBaseline(project.path)).ref : undefined)
+      return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch), s.workspace.baselineCurrentBranch ? (await snapshotBaseline(project.path)).ref : undefined)
     })
     // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118). Nobody messages the Lead's own workspace.
     if (!o.lead) this.k.setup.setSetup(ws.id, { later: [] })
@@ -578,6 +582,46 @@ export class Workspaces extends Feature {
       await mkdir(root, { recursive: true })
       return { branch, path: await createWorktree({ repo: project.path, root, branch, baseRef, path: await freeWorktreePath(project.path, root, branch, taken.paths) }) }
     })
+  }
+
+  /**
+   * Another open workspace on the project's checkout, which "One current-branch workspace per project" refuses a second to
+   * share: a teammate's, or a chat with Kernel that builds there (KERNEL-1051). `self` is the one asking, so it never counts, nor
+   * does a chat of the same agent unless both build.
+   */
+  onCheckout(projectId: string, self: { id?: string; agentId: string; lead?: boolean }): Workspace | undefined {
+    return this.store.workspaces(projectId).find((w) => w.mode === 'current' && w.status !== 'archived' && w.id !== self.id
+      && (w.agentId !== self.agentId || (!!self.lead && isLeadChatWorkspace(w) && buildsHere(w))))
+  }
+
+  /**
+   * Gives a chat on the shared main folder its own worktree (KERNEL-1051): a branch named by the Lead branch pattern from the
+   * chat's title, cut from `<remote>/<default>` through `makeWorktree` (the spare, the fetch, the KERNEL-653 check), and ports.
+   * The record is `setup` with `worktreePending` meanwhile. Throws git's reason when the worktree can't be made, with the
+   * record left as `makeWorktree` leaves it, for the caller to put back.
+   */
+  async cutOwnWorktree(id: string, title: string, leadName: string | undefined, pending?: () => void): Promise<Workspace> {
+    const ws = this.mustWs(id)
+    const project = this.mustProject(ws.projectId)
+    const repo = await loadRepoSettings(project.path)
+    const remote = await this.k.config.remoteFor(project.path, repo)
+    const base = await leadBase(project.path, remote)
+    if (!base) throw new Error(`${project.name} has no commit yet, so there is nothing for a worktree to start from.`)
+    const wanted = leadBranch(repo.workspace.leadBranchPattern || this.settings.workspace.leadBranchPattern, title, leadName)
+    if (!(await validBranchName(project.path, wanted))) throw new Error(`${wanted} is not a valid branch name. Change the branch names for chats with Kernel in Settings, Git.`)
+    await this.withPort((port) => this.withBranchLock(project.id, async () => {
+      const taken = this.pendingNames(project.id, id)
+      const branch = await freeBranch(project.path, wanted, remote, taken.branches)
+      const root = projectWorktreeRoot(this.settings.worktreeRoot, project)
+      await mkdir(root, { recursive: true })
+      const path = await freeWorktreePath(project.path, root, branch, taken.paths)
+      const first = !this.store.workspaces(project.id).some((x) => x.id !== id && !x.shared && x.mode === 'worktree' && !(x.lead && !x.threadId))
+      this.updateWs(id, { shared: undefined, mode: 'worktree', branch, path, baseRef: base, port, status: 'setup', worktreePending: {}, naming: 'branch', firstInProject: first, fetchFailed: undefined })
+    }))
+    pending?.()
+    const made = await this.makeWorktree(id)
+    if (made.worktreePending) throw new Error(made.worktreePending.error ?? "Kernel couldn't make the worktree.")
+    return made
   }
 
   /** The first port of every open workspace's block. */
