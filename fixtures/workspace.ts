@@ -3,7 +3,6 @@ import type { ChatPart, Notification, AccountProfile, MoveNotice, AgentReach, Ag
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
-import { seatViewKey } from '../src/renderer/src/screens/workspace/terminal/seat'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
 import { downloadFlowMarkdown, fontsCheckImage, invoiceLayoutStill, invoicePdfStill, pdfNotesMarkdown, pricingStill } from './sharedStills'
 
@@ -152,87 +151,15 @@ function preview(): Fixture {
   }
 }
 
-/**
- * KERNEL-251: the tab strip's + menu with every terminal preset, on the open PR the KERNEL-274 look draws. Codex is on the PATH, one custom
- * command is saved and a Codex terminal tab is open next to the chat.
- */
-function terminalPresets(): Fixture {
+/** KERNEL-1035: the tab strip's + menu with Chat and Terminal, over an open PR and a terminal tab. */
+function newTabMenu(): Fixture {
   const open = prScene('open', [], { prs: prInfo('open') })
   return {
     ...open,
-    chats: [...open.chats, extraChat('chat-term', 'Terminal (codex)', 'terminal')],
-    settings: { ...DEFAULT_SETTINGS('/Users/you'), terminal: { ...DEFAULT_SETTINGS('/Users/you').terminal, custom: [{ id: 'custom-dev-server-logs', name: 'Dev server logs', command: 'tail -f logs/dev.log' }] } },
-    terminalClis: [{ id: 'codex', name: 'Codex', command: 'codex', builtin: true, skipsPermissions: false }],
+    chats: [...open.chats, extraChat('chat-term', 'Terminal (claude)', 'terminal')],
+    settings: DEFAULT_SETTINGS('/Users/you'),
     ui: { ...open.ui, menu: 'newTab' }
   }
-}
-
-/**
- * KERNEL-1001: the Lead chat's workspace with a Lead terminal tab open beside the chat. `seat.connected: false` draws the not connected line.
- */
-function leadTerminal(o: { running?: boolean; connected?: boolean; menu?: boolean; transcript?: boolean; pending?: number; closing?: boolean }): Fixture {
-  return scene((f) => {
-    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
-    const { approvals: _none, ...rest } = s
-    const term: Chat = { id: 'chat-lead-term', workspaceId: ids.lead, title: 'Terminal (lead)', kind: 'terminal', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', terminal: { preset: 'lead', command: 'claude' }, createdAt: at(9, 3), ...(o.connected === false ? { seat: { connected: false } } : {}) }
-    return {
-      ...rest,
-      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
-      chats: [...(rest.chats ?? f.chats), term],
-      ...(o.transcript ? { items: { ...(rest.items ?? f.items), [term.id]: seatItems(term.id, 'Kernel') }, saved: { [seatViewKey(term.id)]: 'transcript' } } : {}),
-      push: [...(rest.push ?? f.push), { type: 'terminal.data', chatId: term.id, data: termScreen }, ...(o.running ? [{ type: 'chat.running' as const, chatId: term.id, running: true }] : []), ...(o.pending !== undefined ? [{ type: 'seat.updates' as const, chatId: term.id, count: o.pending }] : [])],
-      ui: { ...rest.ui!, rightPanel: false, ...(o.menu ? { menu: 'newTab' as const } : {}), ...(o.closing ? { modal: { name: 'confirm' as const, kind: 'closeChats' as const, workspaceId: ids.lead, chatIds: [term.id] } } : {}), tabs: { [ids.lead]: { tab: term.id, lastChat: ids.leadChat, files: [], diffs: [] } } }
-    }
-  })
-}
-
-/**
- * KERNEL-1028: a teammate's question to a terminal Lead in the Inbox, with the answer field. `answered` is the row after Send: the answer and no field.
- */
-function teammateQuestion(answered?: boolean): Fixture {
-  return scene((f) => {
-    const q = 'Should the Download PDF button sit in the table toolbar or in each row?'
-    const ask = { workspaceId: ids.table, question: q, options: ['In the toolbar', 'In each row'] }
-    const n: Notification = {
-      id: 'n-ask', kind: 'blocked', projectId: ids.projectA, workspaceId: ids.table, agentId: 'christian', chatId: 'chat-lead-term', ask,
-      title: 'Christian asks about the PDF button', sub: 'Question · Client A', heading: 'Christian asks about the PDF button', body: q,
-      needsYou: !answered, read: !!answered, createdAt: Date.now() - 4 * 60_000, ...(answered ? { resolved: 'You answered: In the toolbar' } : {})
-    }
-    return { notifications: [n], approvals: [], ui: { route: { name: 'inbox' } } }
-  })
-}
-
-/** KERNEL-1003: what a terminal seat's session reads back as, one turn of Claude Code in the terminal. */
-function seatItems(chatId: string, who: string): ChatItem[] {
-  const id = (n: string) => `${chatId}-${n}`
-  const from = { source: 'terminal' as const }
-  return [
-    { kind: 'user', id: id('u1'), ts: at(10, 20), parts: [{ type: 'text', text: `Add a Download PDF button to the invoice table, and keep ${who}'s file naming.` }], ...from },
-    { kind: 'thinking', id: id('th1'), ts: at(10, 20, 10), text: 'The table rows already carry the invoice number, so the button can build the file name from it.', ...from },
-    { ...tool(id('t1'), 'Read the invoice table', 'src/app/invoices/table.tsx', { name: 'Read', input: { file_path: 'src/app/invoices/table.tsx' } }), ...from } as ChatItem,
-    { ...tool(id('t2'), 'Search for the PDF renderer', 'rg -n "renderPdf" src', { output: 'src/pdf/render.ts:12:export function renderPdf(invoice: Invoice)' }), ...from } as ChatItem,
-    { kind: 'text', id: id('x1'), ts: at(10, 22), text: 'The button is in the table toolbar. It calls `renderPdf` for the selected row and saves the file as `invoice-<number>.pdf`.', ...from }
-  ]
-}
-
-/** KERNEL-1003: a teammate's workspace with its Claude terminal tab open on the Transcript view. */
-function teammateTranscript(): Fixture {
-  return scene((f) => ({
-    chats: [...f.chats, extraChat('chat-term', 'Terminal (claude)', 'terminal')],
-    items: { ...f.items, 'chat-term': seatItems('chat-term', 'Teng') },
-    saved: { [seatViewKey('chat-term')]: 'transcript' },
-    push: [...f.push, { type: 'terminal.data', chatId: 'chat-term', data: termScreen }],
-    ui: tabsView('chat-term')
-  }))
-}
-
-/** KERNEL-1005: a teammate whose hand-off runs in a terminal, so its tab says so. */
-function terminalTeammate(): Fixture {
-  return scene((f) => ({
-    chats: [...f.chats, { ...extraChat('chat-term', 'Terminal (claude)', 'terminal'), terminal: { preset: 'claude', command: 'claude', role: 'teammate' as const, handoff: true as const }, seat: { connected: true } }],
-    push: [...f.push, { type: 'terminal.data', chatId: 'chat-term', data: termScreen }],
-    ui: tabsView('chat-term')
-  }))
 }
 
 /** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
@@ -3393,20 +3320,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
-  WorkspaceTerminalPresets: terminalPresets(),
-  LeadTerminalIdle: leadTerminal({}),
-  LeadTerminalTranscript: leadTerminal({ transcript: true }),
-  WorkspaceTerminalTranscript: teammateTranscript(),
-  WorkspaceTerminalTeammate: terminalTeammate(),
-  LeadTerminalWorking: leadTerminal({ running: true }),
-  LeadTerminalNotConnected: leadTerminal({ connected: false }),
-  LeadTerminalMenu: leadTerminal({ menu: true }),
-  LeadTerminalPending: leadTerminal({ pending: 3 }),
-  LeadTerminalCloseConfirm: leadTerminal({ running: true, closing: true }),
-  WorkspaceTerminalTeammateRow: terminalTeammate(),
-  InboxTeammateQuestion: teammateQuestion(),
-  InboxTeammateQuestionAnswered: teammateQuestion(true),
-  SettingsBigTerminalConnect: scene(() => ({ settings: DEFAULT_SETTINGS('/Users/you'), ui: { route: { name: 'settings', page: 'bigterm' } } })),
+  NewTabMenu: newTabMenu(),
   WorkspacePreview: preview(),
   WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
   // A ready PR whose repo requires only Release note: Test failed and Vercel still runs, both optional (KERNEL-388).

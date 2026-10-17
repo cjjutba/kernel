@@ -2,6 +2,7 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import type { AgentDef, Approval, Notification, Overlap } from '@shared/types'
 import { call } from '../../api'
+import { TERMINAL_SEATS_IN_APP } from '../../seats'
 import { FileLabel } from '../../components/FileIcon'
 import { actions, go, useStore } from '../../store'
 import { oneOf, useRemembered } from '../../remember'
@@ -131,8 +132,8 @@ function Detail({ item }: { item: InboxItem }) {
         </>
       )}
       {a && pending && !isTool(a) && <div className="ib-card"><ApprovalCard approval={a} /></div>}
-      {n.ask && pending && <AnswerField n={n} ask={n.ask} />}
-      {!a && !n.ask && pending && n.workspaceId && (
+      {TERMINAL_SEATS_IN_APP && n.ask && pending && <AnswerField n={n} ask={n.ask} />}
+      {!a && !(TERMINAL_SEATS_IN_APP && n.ask) && pending && n.workspaceId && (
         <div className="ib-acts">
           <Button variant="primary" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>{n.kind === 'merge' ? 'Open PR' : 'Open workspace'}</Button>
         </div>

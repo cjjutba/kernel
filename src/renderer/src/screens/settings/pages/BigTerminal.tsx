@@ -7,6 +7,7 @@ import { Button, Icon, Modal, SegmentedControl, Toggle, useBusy } from '../../..
 import { appliesTo, Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 import { RUN_IN_NAMES } from './runIn'
+import { TERMINAL_SEATS_IN_APP } from '../../../seats'
 
 type Custom = AppSettings['terminal']['custom'][number]
 
@@ -42,17 +43,17 @@ export function BigTerminal({ s }: { s: AppSettings }) {
         <Section label="Tab">
           <Row id="big-terminal-tab" label="Big terminal tab" desc="Opens in the workspace folder."><Toggle label="Big terminal tab" checked={t.enabled} onChange={(v) => set({ enabled: v })} /></Row>
           <Row id="terminal-only-worktrees" setting="terminal.onlyInWorktrees" label="Terminal tabs only in worktrees" desc="Never on your current branch."><Toggle label="Terminal tabs only in worktrees" checked={t.onlyInWorktrees} onChange={(v) => set({ onlyInWorktrees: v })} /></Row>
-          <Row id="terminal-connect" setting="terminal.connect" label="Connect terminals to Kernel" desc="Claude in a terminal tab uses Kernel's tools, and the tab shows when it is working or needs you."><Toggle label="Connect terminals to Kernel" checked={t.connect} onChange={(v) => set({ connect: v })} /></Row>
+          {TERMINAL_SEATS_IN_APP && <Row id="terminal-connect" setting="terminal.connect" label="Connect terminals to Kernel" desc="Claude in a terminal tab uses Kernel's tools, and the tab shows when it is working or needs you."><Toggle label="Connect terminals to Kernel" checked={t.connect} onChange={(v) => set({ connect: v })} /></Row>}
         </Section>
-        <Section title="Teammates">
+        {TERMINAL_SEATS_IN_APP && <Section title="Teammates">
           <Row id="teammates-run-in" setting="terminal.teammatesRunIn" label="Teammates run in" desc="Kernel runs them as chats. Terminal gives each a terminal tab. Same as the Lead follows the chat or terminal that handed the task off. A project can say otherwise.">
             <SegmentedControl label="Teammates run in" value={t.teammatesRunIn} onChange={(v) => set({ teammatesRunIn: v as TeammatesRunIn })} options={(Object.keys(RUN_IN_NAMES) as TeammatesRunIn[]).map((value) => ({ value, label: RUN_IN_NAMES[value] }))} />
           </Row>
-        </Section>
+        </Section>}
         <Section
           title="New tab opens"
           action={<Button disabled={!presets} onClick={() => setEditing('new')}>Add command</Button>}
-          footnote={`The + menu in the tab strip lists every preset. ${appliesTo('terminal.preset')}.`}
+          footnote={`The + menu in the tab strip opens a Terminal tab with this preset. ${appliesTo('terminal.preset')}.`}
         >
           {presets
             ? <PresetList presets={presets} selected={selected} onlyInWorktrees={t.onlyInWorktrees} onPick={(id) => set({ preset: id })} onEdit={(id) => setEditing(t.custom.find((c) => c.id === id) ?? null)} onRemove={(id) => { const c = t.custom.find((x) => x.id === id); if (c) remove(c) }} />
