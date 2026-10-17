@@ -252,7 +252,6 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-tag-input.mono { font-family: var(--mono); }
 .set-sheet-text { min-height: 320px; max-height: 60vh; overflow: auto; white-space: pre-wrap; }
 
-.set-saves { margin: 6px 0 0; font-size: var(--fs-code); line-height: var(--lh); color: var(--muted); }
 .set-save { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-code); line-height: var(--lh); color: var(--muted); transition: opacity var(--dur-enter) ease-out; }
 .set-save[data-state="fading"] { opacity: 0; }
 .set-field { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
@@ -260,10 +259,8 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-tags > .set-save { align-self: center; padding-left: 4px; }
 @media (prefers-reduced-motion: reduce) { .set-save { transition: none; } }
 
-.set-where { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .set-from .set-link { color: var(--muted); text-decoration: none; }
 .set-from .set-link:hover { color: var(--ink-2); text-decoration: underline; }
-.set-where .set-save { margin-left: 8px; }
 
 .set-row[data-hit], .set-section[data-hit] { animation: set-hit var(--dur-sweep) ease-out forwards; }
 @keyframes set-hit { from { background: var(--surface-3); } to { background: transparent; } }
