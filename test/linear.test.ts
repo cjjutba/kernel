@@ -309,18 +309,18 @@ describe('the saved Linear token (KERNEL-445)', () => {
 
 describe('Linear in the kernel', () => {
   const KERNEL = '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.'
-  const NOOR = '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor. Open a PR for each task.'
+  const NOOR = '---\nname: sean\ndescription: Engine.\nrole: Engine\n---\nYou are Sean. Open a PR for each task.'
   const kernels: Kernel[] = []
   afterEach(async () => { vi.unstubAllEnvs(); for (const k of kernels.splice(0)) await k.stop() })
 
   /**
-   * A Kernel on a temp repo with Kernel and Noor, whose Linear calls go to `answer`. Sessions only record what they are sent.
+   * A Kernel on a temp repo with Kernel and Sean, whose Linear calls go to `answer`. Sessions only record what they are sent.
    * `plain` saves the token the way Kernel did before KERNEL-445; `cipher` is the Kernel's Keychain. The project names its
    * Linear team, so with a token its tracker is Linear (KERNEL-462).
    */
   async function kernel(answer: (c: Call) => unknown, o: { token?: string; plain?: boolean; cipher?: Cipher } = { token: 'lin_stored' }) {
     vi.stubEnv('LINEAR_API_KEY', '')
-    const repo = await tempRepo({ 'README.md': '# app\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/noor.md': NOOR })
+    const repo = await tempRepo({ 'README.md': '# app\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/sean.md': NOOR })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -364,8 +364,8 @@ describe('Linear in the kernel', () => {
     const chat = await k.leadChat(projectId)
     const deps = k.lead.leadToolDeps(projectId, lead, chat)
     const tool = kernelTools(deps).find((t) => t.name === 'create_workspace')!
-    const out = await tool.handler({ agent: 'noor', title: 'Build the screen', brief: 'Goal, files, acceptance criteria', ...args } as never, {})
-    return { text: (out.content[0] as { text: string }).text, ws: k.store.workspaces(projectId).find((w) => w.agentId === 'noor')! }
+    const out = await tool.handler({ agent: 'sean', title: 'Build the screen', brief: 'Goal, files, acceptance criteria', ...args } as never, {})
+    return { text: (out.content[0] as { text: string }).text, ws: k.store.workspaces(projectId).find((w) => w.agentId === 'sean')! }
   }
 
   const until = async (ok: () => boolean) => { for (let i = 0; i < 100 && !ok(); i++) await new Promise((r) => setTimeout(r, 20)) }
@@ -397,7 +397,7 @@ describe('Linear in the kernel', () => {
     expect(ws.source).toEqual({ kind: 'issue', id: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/cj/issue/KERNEL-83', tracker: 'linear' })
     // The Bug label makes it a fix, and Linear's own cj/kernel-83-issues-screen is not used (KERNEL-275).
     expect(ws.branch).toBe('fix/kernel-83-issues-screen')
-    expect(text).toBe(`Created ${ws.id} on fix/kernel-83-issues-screen for noor.`)
+    expect(text).toBe(`Created ${ws.id} on fix/kernel-83-issues-screen for sean.`)
     await until(() => calls.some((c) => c.query.includes('mutation')))
     expect(calls.find((c) => c.query.includes('mutation'))?.variables).toEqual({ id: 'uuid-83', stateId: 'st-progress' })
   })
@@ -414,7 +414,7 @@ describe('Linear in the kernel', () => {
     expect(branch).toHaveLength(90)
     const { text, ws } = await createWorkspace(k, project.id, { issue: 'KERNEL-83', branch })
     expect(ws.branch).toBe('cjjutbaofficial/kernel-83-the-issues-screen-lists-open')
-    expect(text).toBe(`Created ${ws.id} on ${ws.branch} for noor.`)
+    expect(text).toBe(`Created ${ws.id} on ${ws.branch} for sean.`)
     expect(ws.status).toBe('ready')
   })
 

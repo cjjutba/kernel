@@ -79,7 +79,7 @@ describe('issueAge and initials', () => {
 })
 
 const ws = (id: string, extra: Partial<Workspace> = {}): Workspace => ({
-  id, projectId: 'r', name: id, branch: id, baseRef: 'origin/main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1,
+  id, projectId: 'r', name: id, branch: id, baseRef: 'origin/main', path: `/w/${id}`, mode: 'worktree', agentId: 'christian', port: 1, status: 'ready', prState: 'none', createdAt: 1,
   source: { kind: 'issue', id: 'K-1', title: 'T' }, ...extra
 })
 
@@ -105,15 +105,15 @@ describe('linked workspaces', () => {
   })
 
   it('shows the workspace furthest along on the row', () => {
-    const agents = { r: [{ id: 'kai', name: 'Kai' }, { id: 'ivy', name: 'Ivy' }] } as never
-    const list = [ws('tests', { agentId: 'ivy', createdAt: 9 }), ws('table', { prState: 'open', createdAt: 1 })]
-    expect(rowStatus(list, agents, (w) => w.id === 'tests')).toBe('Kai · PR open')
+    const agents = { r: [{ id: 'christian', name: 'Christian' }, { id: 'teng', name: 'Teng' }] } as never
+    const list = [ws('tests', { agentId: 'teng', createdAt: 9 }), ws('table', { prState: 'open', createdAt: 1 })]
+    expect(rowStatus(list, agents, (w) => w.id === 'tests')).toBe('Christian · PR open')
     expect(rowStatus([], agents, () => false)).toBeNull()
   })
 
   it('reads a PR that can merge green and one with failing checks red, with the count from GitHub', () => {
-    const agents = { r: [{ id: 'kai', name: 'Kai' }] } as never
-    expect(rowState([ws('a', { prState: 'ready' })], agents, () => false)).toMatchObject({ who: 'Kai', word: 'Ready to merge', tone: 'ready' })
+    const agents = { r: [{ id: 'christian', name: 'Christian' }] } as never
+    expect(rowState([ws('a', { prState: 'ready' })], agents, () => false)).toMatchObject({ who: 'Christian', word: 'Ready to merge', tone: 'ready' })
     const failing = ws('b', { prState: 'cifail' })
     const pr = { checks: [{ name: 'lint', state: 'fail' }, { name: 'vitest', state: 'fail' }, { name: 'e2e', state: 'fail', optional: true }, { name: 'build', state: 'pass' }] } as never
     expect(rowState([failing], agents, () => false, { b: pr })).toMatchObject({ word: '2 checks failing', tone: 'bad' })

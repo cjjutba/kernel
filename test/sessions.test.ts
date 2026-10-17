@@ -256,7 +256,7 @@ describe('usage', () => {
 
 describe('Always allow in this project', () => {
   it('saves the rule on the project once, and it survives a restart', async () => {
-    const repo = await tempRepo({ 'README.md': '# demo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const repo = await tempRepo({ 'README.md': '# demo\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     const open = () => new Kernel({ dataDir, home })
@@ -277,15 +277,15 @@ describe('Always allow in this project', () => {
 describe('idle stop (KERNEL-183)', () => {
   afterEach(() => { vi.useRealTimers(); bus.removeAllListeners('push'); bus.removeAllListeners('activity') })
 
-  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
-  const kernel: AgentDef = { ...noor, id: 'kernel', name: 'Kernel', role: 'Lead', lead: true }
+  const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Sean.' } as AgentDef
+  const kernel: AgentDef = { ...sean, id: 'kernel', name: 'Kernel', role: 'Lead', lead: true }
   // Lets the scripted stream reach Kernel. Fake timers move by a millisecond, which no idle clock notices.
   const flush = () => vi.advanceTimersByTimeAsync(1)
 
   async function setup(o: { agent?: AgentDef; agentLimit?: number } = {}) {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-idle-')), 'kernel.db'))
-    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: (o.agent ?? noor).id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: (o.agent ?? sean).id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat(chat)
@@ -294,7 +294,7 @@ describe('idle stop (KERNEL-183)', () => {
     const exits: string[] = []
     const cutOff: Record<string, CutOffReason>[] = []
     const sessions = new Sessions({
-      store, approvals: new Approvals(store), settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined,
+      store, approvals: new Approvals(store), settings: () => settings, agentFor: () => o.agent ?? sean, mcpFor: () => undefined,
       projectAllow: () => [], allowInProject: () => {}, onExit: (_ws, c) => { exits.push(c.id) }, onCutOff: (ids) => { cutOff.push(ids) }
     })
     const pushes: PushEvent[] = []
@@ -516,7 +516,7 @@ describe('idle stop (KERNEL-183)', () => {
     await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
     expect(stopped(call)).toBe(true)
 
-    expect(sessions.post('chat', [{ type: 'text', text: 'Noor opened PR #12' }])).toBe(true)
+    expect(sessions.post('chat', [{ type: 'text', text: 'Sean opened PR #12' }])).toBe(true)
     expect(sdk.calls.at(-1)!.options).toMatchObject({ resume: sid })
     expect(sessions.isRunning('chat')).toBe(true)
     expect(sessions.kernelTurn('chat')).toBe(true)
@@ -526,18 +526,18 @@ describe('idle stop (KERNEL-183)', () => {
 describe('a card whose turn or session is gone, on Claude (KERNEL-563)', () => {
   afterEach(() => { bus.removeAllListeners('push') })
 
-  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Sean.' } as AgentDef
   const flush = () => new Promise((r) => setTimeout(r, 10))
   type Call = (typeof sdk.calls)[number]
 
   async function setup() {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-cards-')), 'kernel.db'))
-    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const approvals = new Approvals(store)
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
-    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
+    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => sean, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
     const statuses: string[] = []
     bus.on('push', (e: PushEvent) => { if (e.type === 'agent.status') statuses.push(e.status) })
     /** Sends a message and starts the turn it begins. */
@@ -636,17 +636,17 @@ describe('a card whose turn or session is gone, on Claude (KERNEL-563)', () => {
 describe("the user's answer to a card is their message, never the agent's prompt (KERNEL-836)", () => {
   afterEach(() => { bus.removeAllListeners('push') })
 
-  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Sean.' } as AgentDef
   const flush = () => new Promise((r) => setTimeout(r, 10))
   const image = { type: 'image' as const, name: 'mock.png', dataUrl: 'data:image/png;base64,iVBORw0KGgo=', path: '.kernel/attachments/mock.png' }
 
   async function setup() {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-answers-')), 'kernel.db'))
-    store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const approvals = new Approvals(store)
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
-    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
+    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => sean, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
     /** A card in the chat, placed as its process places one, then settled the way the user settles it. */
     const card = (kind: 'plan' | 'question' | 'agent' | 'tool') => {
       const { approval } = approvals.request({ kind, source: 'sdk', projectId: 'project', workspaceId: 'ws', chatId: 'chat', title: kind })
@@ -722,18 +722,18 @@ describe("the user's answer to a card is their message, never the agent's prompt
 describe("a message keeps the id the window gave it (KERNEL-894)", () => {
   afterEach(() => { bus.removeAllListeners('push') })
 
-  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Sean.' } as AgentDef
   const flush = () => new Promise((r) => setTimeout(r, 10))
   const text = (t: string) => [{ type: 'text' as const, text: t }]
 
   async function setup() {
     const dir = await mkdtemp(join(tmpdir(), 'kernel-ids-'))
     const store = new Store(join(dir, 'kernel.db'))
-    store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: dir, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: dir, mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const approvals = new Approvals(store)
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
-    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
+    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => sean, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
     const users = () => store.items('chat').filter((i) => i.kind === 'user')
     const calls = sdk.calls.length
     /** The sessions this test started, so a turn can be ended. */
@@ -831,13 +831,13 @@ describe("a message keeps the id the window gave it (KERNEL-894)", () => {
 describe('switching accounts while a chat waits on the user, on Claude (KERNEL-618)', () => {
   afterEach(() => { bus.removeAllListeners('push') })
 
-  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Sean.' } as AgentDef
   const flush = () => new Promise((r) => setTimeout(r, 10))
 
   /** A chat on Work, a Claude account whose folder each process gets, and `switchTo`, which does what `Providers.switchTo` asks of Sessions. */
   async function setup(o: { plan?: boolean } = {}) {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-switch-')), 'kernel.db'))
-    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: !!o.plan, createdAt: 1 })
     const approvals = new Approvals(store)
@@ -845,7 +845,7 @@ describe('switching accounts while a chat waits on the user, on Claude (KERNEL-6
     let active = 'work'
     const failures: { failure: string; account: string | undefined }[] = []
     const sessions = new Sessions({
-      store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {},
+      store, approvals, settings: () => settings, agentFor: () => sean, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {},
       accountFor: () => active, claudeEnv: () => ({ CLAUDE_CONFIG_DIR: `/homes/${active}` }),
       moveNote: (chat, from) => `Moved from ${from} to ${chat.ranOn}${chat.lastTurn ? `, ${chat.lastTurn.cacheWrite} written` : ''}`,
       emailOf: (_p, id) => (id ? `${id}@example.com` : undefined),
@@ -1006,7 +1006,7 @@ describe('a limit cut-off and its carry-on, for the Lead (KERNEL-777)', () => {
 
   async function setup() {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-limit-')), 'kernel.db'))
-    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
@@ -1068,7 +1068,7 @@ describe('a limit cut-off and its carry-on, for the Lead (KERNEL-777)', () => {
 })
 
 describe("what an agent started, on Stop, Close chat and archive (KERNEL-810)", () => {
-  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Sean.' } as AgentDef
   const flush = () => new Promise((r) => setTimeout(r, 10))
   const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch { return false } }
   const gone = async (pid: number) => { const t = Date.now(); while (alive(pid) && Date.now() - t < 5000) await new Promise((r) => setTimeout(r, 50)); return !alive(pid) }
@@ -1079,10 +1079,10 @@ describe("what an agent started, on Stop, Close chat and archive (KERNEL-810)", 
 
   async function setup() {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-tree-')), 'kernel.db'))
-    store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
-    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
+    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => sean, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {} })
     /** Runs a turn whose process is a real shell, started through Kernel's spawn, that leaves a `sleep` running. */
     const turn = async () => {
       await sessions.send('chat', [{ type: 'text', text: 'Start the dev server' }])
@@ -1173,7 +1173,7 @@ describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
     await h['accounts.switch']({ provider: 'claude', accountId: 'work' })
     const repo = await tempRepo()
     const project = await k.addProject(repo)
-    k.store.saveWorkspace({ id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    k.store.saveWorkspace({ id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     for (const id of ids) k.store.saveChat({ id, workspaceId: 'ws', title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 } satisfies Chat)
     const answered = new Map<(typeof sdk.calls)[number], number>()
     const sent: string[] = []
@@ -1335,19 +1335,19 @@ describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
 describe('cold re-reads start two at a time (KERNEL-844)', () => {
   afterEach(() => { sdk.calls = [] })
   const flush = () => new Promise((r) => setTimeout(r, 10))
-  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
-  const lead: AgentDef = { ...noor, id: 'lead', name: 'Lead', lead: true }
+  const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Sean.' } as AgentDef
+  const lead: AgentDef = { ...sean, id: 'lead', name: 'Lead', lead: true }
 
   it('holds the third cold chat, starts the smallest waiting one first, and never holds the Lead', async () => {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-cold-')), 'kernel.db'))
     const sizes: Record<string, number> = { big: 300_000, mid: 200_000, small: 50_000, tiny: 40_000, lead: 500_000 }
     for (const id of Object.keys(sizes)) {
-      store.saveWorkspace({ id, projectId: 'project', name: id, branch: id, baseRef: 'main', path: `/tmp/${id}`, mode: 'worktree', agentId: id === 'lead' ? 'lead' : 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+      store.saveWorkspace({ id, projectId: 'project', name: id, branch: id, baseRef: 'main', path: `/tmp/${id}`, mode: 'worktree', agentId: id === 'lead' ? 'lead' : 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
       store.saveChat({ id, workspaceId: id, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, ranOn: 'work', createdAt: 1 })
     }
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
     const sessions = new Sessions({
-      store, approvals: new Approvals(store), settings: () => settings, agentFor: (ws) => (ws.agentId === 'lead' ? lead : noor), mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {},
+      store, approvals: new Approvals(store), settings: () => settings, agentFor: (ws) => (ws.agentId === 'lead' ? lead : sean), mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {},
       accountFor: () => 'side', coldSize: (chat) => sizes[chat.id]
     })
     const started = () => sdk.calls.map((c) => c.options.cwd)

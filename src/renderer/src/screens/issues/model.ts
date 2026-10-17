@@ -128,7 +128,7 @@ export function rowState(linked: Workspace[], agents: Record<string, AgentDef[]>
   return { ...workState(w, runningOf(w), prs[w.id]), who }
 }
 
-/** `rowState` as one line, "Kai · PR open", for a screen reader and for tests. */
+/** `rowState` as one line, "Christian · PR open", for a screen reader and for tests. */
 export function rowStatus(linked: Workspace[], agents: Record<string, AgentDef[]>, runningOf: (w: Workspace) => boolean, prs: Record<string, PrInfo> = {}): string | null {
   const s = rowState(linked, agents, runningOf, prs)
   return s ? (s.who ? `${s.who} · ${s.word}` : s.word) : null

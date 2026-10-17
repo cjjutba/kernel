@@ -25,7 +25,7 @@ const REPO = {
   'src/a.ts': 'one\ntwo\nthree\n',
   'src/b.ts': 'alpha\nbeta\ngamma\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
 
 async function dirs() {
@@ -50,7 +50,7 @@ const landOnMain = async (repo: string, files: Record<string, string>) => {
 
 const SAME_LINE = (side: string) => `one\ntwo ${side}\nthree\n`
 
-/** A project with an `origin`, and a Kai workspace started from origin/main. Messages to Kai are recorded, not run. */
+/** A project with an `origin`, and a Christian workspace started from origin/main. Messages to Christian are recorded, not run. */
 async function setUp() {
   const repo = await tempRepo(REPO)
   const bare = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
@@ -64,9 +64,9 @@ async function setUp() {
   const gh = { pr: null as PrInfo | null }
   k.github = { info: async (_cwd, _ref, workspaceId) => (gh.pr ? { ...gh.pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
   const project = await k.addProject(repo)
-  const kai = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
-  expect(kai).toMatchObject({ status: 'ready', mode: 'worktree', baseRef: 'origin/main', prState: 'none' })
-  const chat = k.store.chats(kai.id)[0]
+  const christian = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Build' })
+  expect(christian).toMatchObject({ status: 'ready', mode: 'worktree', baseRef: 'origin/main', prState: 'none' })
+  const chat = k.store.chats(christian.id)[0]
   const posts: { chatId: string; text: string }[] = []
   const state = { busy: false }
   k.sessions.post = (chatId, parts) => {
@@ -78,12 +78,12 @@ async function setUp() {
   const check = (o: { fetch?: boolean; only?: string } = {}) => k.baseWatch.check(project.id, { fetch: o.fetch ?? false, ...(o.only ? { only: o.only } : {}) })
   const notes = () => k.store.activity(project.id, 500).filter((a) => a.actor === 'kernel' && a.text.startsWith('told ')).reverse()
   const saved = () => k.store.meta<Record<string, { sha: string; behind: number; conflicts: string[]; told?: string }>>('baseWatch') ?? {}
-  return { k, repo, bare, project, kai, chat, posts, state, check, notes, saved, gh }
+  return { k, repo, bare, project, christian, chat, posts, state, check, notes, saved, gh }
 }
 
-/** Kai committed a change to src/a.ts, and main changed the same line. */
+/** Christian committed a change to src/a.ts, and main changed the same line. */
 async function conflictOnMain(s: Awaited<ReturnType<typeof setUp>>) {
-  await commit(s.kai.path, { 'src/a.ts': SAME_LINE('kai') }, 'kai')
+  await commit(s.christian.path, { 'src/a.ts': SAME_LINE('christian') }, 'christian')
   await landOnMain(s.repo, { 'src/a.ts': SAME_LINE('main') })
 }
 
@@ -119,55 +119,55 @@ describe('the message', () => {
 describe('git helpers', () => {
   it('counts the commits the base has that the branch does not', async () => {
     const s = await setUp()
-    expect(await behindCount(s.kai.path, 'origin/main')).toBe(0)
+    expect(await behindCount(s.christian.path, 'origin/main')).toBe(0)
     await landOnMain(s.repo, { 'README.md': '# 1\n' })
     await landOnMain(s.repo, { 'README.md': '# 2\n' })
-    expect(await behindCount(s.kai.path, 'origin/main')).toBe(2)
-    expect(await behindCount(s.kai.path, 'origin/nope')).toBeUndefined()
+    expect(await behindCount(s.christian.path, 'origin/main')).toBe(2)
+    expect(await behindCount(s.christian.path, 'origin/nope')).toBeUndefined()
   })
 
   it('finds the files a merge would conflict in, and says nothing when git cannot tell', async () => {
     const s = await setUp()
     await conflictOnMain(s)
-    expect(await mergeTreeConflicts(s.kai.path, 'HEAD', 'origin/main')).toEqual(['src/a.ts'])
-    expect(await mergeTreeConflicts(s.kai.path, 'HEAD', 'HEAD')).toEqual([])
-    expect(await mergeTreeConflicts(s.kai.path, 'HEAD', 'origin/nope')).toBeUndefined()
+    expect(await mergeTreeConflicts(s.christian.path, 'HEAD', 'origin/main')).toEqual(['src/a.ts'])
+    expect(await mergeTreeConflicts(s.christian.path, 'HEAD', 'HEAD')).toEqual([])
+    expect(await mergeTreeConflicts(s.christian.path, 'HEAD', 'origin/nope')).toBeUndefined()
     expect(await mergeTreeConflicts('/nowhere', 'HEAD', 'origin/main')).toBeUndefined()
   })
 
   it('makes a commit of the uncommitted changes without touching the worktree, the index or the stash list', async () => {
     const s = await setUp()
-    expect(await snapshotCommit(s.kai.path)).toBe('HEAD')
-    await writeFile(join(s.kai.path, 'src/a.ts'), SAME_LINE('dirty'))
-    await run('git', ['-C', s.kai.path, 'add', 'src/a.ts'])
-    await writeFile(join(s.kai.path, 'src/b.ts'), 'alpha\nbeta unstaged\ngamma\n')
-    await writeFile(join(s.kai.path, 'untracked.txt'), 'new\n')
-    const index = (await git(s.kai.path, 'rev-parse', '--path-format=absolute', '--git-path', 'index')).trim()
-    const before = { status: await status(s.kai.path), head: await sha(s.kai.path, 'HEAD'), diff: await git(s.kai.path, 'diff', '--cached') }
+    expect(await snapshotCommit(s.christian.path)).toBe('HEAD')
+    await writeFile(join(s.christian.path, 'src/a.ts'), SAME_LINE('dirty'))
+    await run('git', ['-C', s.christian.path, 'add', 'src/a.ts'])
+    await writeFile(join(s.christian.path, 'src/b.ts'), 'alpha\nbeta unstaged\ngamma\n')
+    await writeFile(join(s.christian.path, 'untracked.txt'), 'new\n')
+    const index = (await git(s.christian.path, 'rev-parse', '--path-format=absolute', '--git-path', 'index')).trim()
+    const before = { status: await status(s.christian.path), head: await sha(s.christian.path, 'HEAD'), diff: await git(s.christian.path, 'diff', '--cached') }
     // Read after `git status`, which may refresh the index itself, so the snapshot is the only thing between the two reads.
     const file = { bytes: await readFile(index), at: (await stat(index)).mtimeMs }
-    const made = await snapshotCommit(s.kai.path)
+    const made = await snapshotCommit(s.christian.path)
     expect({ bytes: await readFile(index), at: (await stat(index)).mtimeMs }).toEqual(file)
     expect(made).toMatch(/^[0-9a-f]{40,64}$/)
     expect(made).not.toBe(before.head)
-    expect(await git(s.kai.path, 'show', `${made}:src/a.ts`)).toBe(SAME_LINE('dirty'))
-    expect(await git(s.kai.path, 'show', `${made}:src/b.ts`)).toBe('alpha\nbeta unstaged\ngamma\n')
+    expect(await git(s.christian.path, 'show', `${made}:src/a.ts`)).toBe(SAME_LINE('dirty'))
+    expect(await git(s.christian.path, 'show', `${made}:src/b.ts`)).toBe('alpha\nbeta unstaged\ngamma\n')
     // Tracked changes only, on top of HEAD.
-    await expect(git(s.kai.path, 'cat-file', '-e', `${made}:untracked.txt`)).rejects.toThrow()
-    expect((await git(s.kai.path, 'rev-parse', `${made}^`)).trim()).toBe(before.head)
-    const after = { status: await status(s.kai.path), head: await sha(s.kai.path, 'HEAD'), diff: await git(s.kai.path, 'diff', '--cached') }
+    await expect(git(s.christian.path, 'cat-file', '-e', `${made}:untracked.txt`)).rejects.toThrow()
+    expect((await git(s.christian.path, 'rev-parse', `${made}^`)).trim()).toBe(before.head)
+    const after = { status: await status(s.christian.path), head: await sha(s.christian.path, 'HEAD'), diff: await git(s.christian.path, 'diff', '--cached') }
     expect(after).toEqual(before)
-    expect((await git(s.kai.path, 'stash', 'list')).trim()).toBe('')
+    expect((await git(s.christian.path, 'stash', 'list')).trim()).toBe('')
   })
 
   it('never takes the index lock, so a teammate running git at that moment is not turned away', async () => {
     const s = await setUp()
-    await writeFile(join(s.kai.path, 'src/a.ts'), SAME_LINE('dirty'))
-    const index = (await git(s.kai.path, 'rev-parse', '--path-format=absolute', '--git-path', 'index')).trim()
+    await writeFile(join(s.christian.path, 'src/a.ts'), SAME_LINE('dirty'))
+    const index = (await git(s.christian.path, 'rev-parse', '--path-format=absolute', '--git-path', 'index')).trim()
     // Another git command holds the lock, as `git add` or `git commit` does while it writes.
     await writeFile(`${index}.lock`, '')
     try {
-      expect(await snapshotCommit(s.kai.path)).toMatch(/^[0-9a-f]{40,64}$/)
+      expect(await snapshotCommit(s.christian.path)).toMatch(/^[0-9a-f]{40,64}$/)
       await s.check()
       expect(await readFile(`${index}.lock`, 'utf8')).toBe('')
     } finally { await run('rm', ['-f', `${index}.lock`]) }
@@ -175,24 +175,24 @@ describe('git helpers', () => {
 
   it('reads the committed work alone when the index has unmerged paths', async () => {
     const s = await setUp()
-    await commit(s.kai.path, { 'src/a.ts': SAME_LINE('kai') }, 'kai')
+    await commit(s.christian.path, { 'src/a.ts': SAME_LINE('christian') }, 'christian')
     await landOnMain(s.repo, { 'src/a.ts': SAME_LINE('main') })
-    await run('git', ['-C', s.kai.path, 'merge', 'origin/main'], ).catch(() => undefined)
-    expect((await git(s.kai.path, 'ls-files', '--unmerged')).trim()).not.toBe('')
-    expect(await snapshotCommit(s.kai.path)).toBe('HEAD')
-    await run('git', ['-C', s.kai.path, 'merge', '--abort'])
+    await run('git', ['-C', s.christian.path, 'merge', 'origin/main'], ).catch(() => undefined)
+    expect((await git(s.christian.path, 'ls-files', '--unmerged')).trim()).not.toBe('')
+    expect(await snapshotCommit(s.christian.path)).toBe('HEAD')
+    await run('git', ['-C', s.christian.path, 'merge', '--abort'])
   })
 })
 
 describe('telling a teammate that main moved (KERNEL-180)', () => {
   it('says nothing when the branch is behind but a merge would be clean', async () => {
     const s = await setUp()
-    await commit(s.kai.path, { 'src/a.ts': SAME_LINE('kai') }, 'kai')
+    await commit(s.christian.path, { 'src/a.ts': SAME_LINE('christian') }, 'christian')
     await landOnMain(s.repo, { 'src/b.ts': 'alpha\nbeta main\ngamma\n' })
     await s.check()
     expect(s.posts).toEqual([])
     expect(s.notes()).toEqual([])
-    expect(s.saved()[s.kai.id]).toMatchObject({ behind: 1, conflicts: [] })
+    expect(s.saved()[s.christian.id]).toMatchObject({ behind: 1, conflicts: [] })
   })
 
   it('sends one Kernel message naming the files and logs one line, and sends nothing for the same base commit again', async () => {
@@ -201,11 +201,11 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     await s.check()
     expect(s.posts).toEqual([{ chatId: s.chat.id, text: baseMessage('origin/main', 1, ['src/a.ts']) }])
     expect(s.posts[0].text).toContain('origin/main moved 1 commit since your branch started, and merging it now would conflict in src/a.ts.')
-    expect(s.notes().map((a) => [a.workspaceId, a.agentId, a.object])).toEqual([[s.kai.id, s.kai.agentId, 'src/a.ts']])
+    expect(s.notes().map((a) => [a.workspaceId, a.agentId, a.object])).toEqual([[s.christian.id, s.christian.agentId, 'src/a.ts']])
     expect(s.notes()[0].text).toMatch(/^told \w+ to rebase, since origin\/main moved 1 commit and would conflict in$/)
-    expect(s.saved()[s.kai.id]).toEqual({ sha: await sha(s.repo, 'origin/main'), behind: 1, conflicts: ['src/a.ts'], told: await sha(s.repo, 'origin/main') })
+    expect(s.saved()[s.christian.id]).toEqual({ sha: await sha(s.repo, 'origin/main'), behind: 1, conflicts: ['src/a.ts'], told: await sha(s.repo, 'origin/main') })
     await s.check()
-    await s.check({ only: s.kai.id })
+    await s.check({ only: s.christian.id })
     expect(s.posts).toHaveLength(1)
     expect(s.notes()).toHaveLength(1)
     // Main moves again and the conflict is still there: that is news.
@@ -218,14 +218,14 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
 
   it('catches a conflict that exists only in uncommitted changes, and leaves status and the stash list alone', async () => {
     const s = await setUp()
-    await writeFile(join(s.kai.path, 'src/a.ts'), SAME_LINE('kai, not committed'))
+    await writeFile(join(s.christian.path, 'src/a.ts'), SAME_LINE('christian, not committed'))
     await landOnMain(s.repo, { 'src/a.ts': SAME_LINE('main') })
-    const before = { status: await status(s.kai.path), head: await sha(s.kai.path, 'HEAD'), stash: (await git(s.kai.path, 'stash', 'list')).trim() }
+    const before = { status: await status(s.christian.path), head: await sha(s.christian.path, 'HEAD'), stash: (await git(s.christian.path, 'stash', 'list')).trim() }
     expect(before.status).toBe('M src/a.ts')
     await s.check()
     expect(s.posts.map((p) => p.text)).toEqual([baseMessage('origin/main', 1, ['src/a.ts'])])
-    expect({ status: await status(s.kai.path), head: await sha(s.kai.path, 'HEAD'), stash: (await git(s.kai.path, 'stash', 'list')).trim() }).toEqual(before)
-    expect(await git(s.kai.path, 'show', ':src/a.ts')).toBe('one\ntwo\nthree\n')
+    expect({ status: await status(s.christian.path), head: await sha(s.christian.path, 'HEAD'), stash: (await git(s.christian.path, 'stash', 'list')).trim() }).toEqual(before)
+    expect(await git(s.christian.path, 'show', ':src/a.ts')).toBe('one\ntwo\nthree\n')
   })
 
   it('tells a busy teammate at its next turn end, never mid-turn', async () => {
@@ -235,16 +235,16 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     await s.check()
     expect(s.posts).toEqual([])
     expect(s.notes()).toEqual([])
-    expect(s.saved()[s.kai.id]).toMatchObject({ conflicts: ['src/a.ts'] })
-    expect(s.saved()[s.kai.id].told).toBeUndefined()
+    expect(s.saved()[s.christian.id]).toMatchObject({ conflicts: ['src/a.ts'] })
+    expect(s.saved()[s.christian.id].told).toBeUndefined()
     // Still busy at the next check, as a long turn is.
-    await s.check({ only: s.kai.id })
+    await s.check({ only: s.christian.id })
     expect(s.posts).toEqual([])
     // Its turn ends: the hook checks that workspace, without a fetch.
     s.state.busy = false
     const check = vi.spyOn(s.k.baseWatch, 'check')
-    sessionDeps(s.k).onTurnDone!(s.k.store.workspace(s.kai.id)!, s.chat, { ok: true, interrupted: false, by: 'user' })
-    expect(check).toHaveBeenCalledWith(s.project.id, { fetch: false, only: s.kai.id })
+    sessionDeps(s.k).onTurnDone!(s.k.store.workspace(s.christian.id)!, s.chat, { ok: true, interrupted: false, by: 'user' })
+    expect(check).toHaveBeenCalledWith(s.project.id, { fetch: false, only: s.christian.id })
     await check.mock.results[0].value
     expect(s.posts).toHaveLength(1)
     expect(s.notes()).toHaveLength(1)
@@ -269,16 +269,16 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
   ])('never messages %s', async (_name, patch) => {
     const s = await setUp()
     await conflictOnMain(s)
-    s.k.store.saveWorkspace({ ...s.kai, ...patch })
+    s.k.store.saveWorkspace({ ...s.christian, ...patch })
     await s.check()
     expect(s.posts).toEqual([])
-    expect(s.saved()[s.kai.id]).toBeUndefined()
+    expect(s.saved()[s.christian.id]).toBeUndefined()
   })
 
   it("still tells a workspace whose PR is being opened", async () => {
     const s = await setUp()
     await conflictOnMain(s)
-    s.k.store.saveWorkspace({ ...s.kai, prState: 'creating' })
+    s.k.store.saveWorkspace({ ...s.christian, prState: 'creating' })
     await s.check()
     expect(s.posts).toHaveLength(1)
   })
@@ -293,7 +293,7 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     await s.check()
     expect(s.posts.filter((p) => p.chatId === leadChat.id)).toEqual([])
     expect(s.saved()[lead.id]).toBeUndefined()
-    // Kai wasn't in conflict, so nobody was told anything.
+    // Christian wasn't in conflict, so nobody was told anything.
     expect(s.posts).toEqual([])
   })
 
@@ -319,7 +319,7 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote')])
     await expect(s.check({ fetch: true })).resolves.toBeUndefined()
     expect(s.posts).toEqual([])
-    expect(s.saved()[s.kai.id]).toBeUndefined()
+    expect(s.saved()[s.christian.id]).toBeUndefined()
     await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', s.bare])
     await s.check({ fetch: true })
     expect(s.posts).toHaveLength(1)
@@ -327,7 +327,7 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
 
   it('fetches first when asked, so a merge made elsewhere is seen', async () => {
     const s = await setUp()
-    await commit(s.kai.path, { 'src/a.ts': SAME_LINE('kai') }, 'kai')
+    await commit(s.christian.path, { 'src/a.ts': SAME_LINE('christian') }, 'christian')
     const other = await mkdtemp(join(tmpdir(), 'kernel-clone-'))
     await run('git', ['clone', '-q', '-b', 'main', s.bare, other])
     await commit(other, { 'src/a.ts': SAME_LINE('elsewhere') }, 'elsewhere')
@@ -348,11 +348,11 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     const path = process.env.PATH
     process.env.PATH = `${bin}:${path}`
     try {
-      expect(await mergeTreeConflicts(s.kai.path, 'HEAD', 'origin/main')).toBeUndefined()
+      expect(await mergeTreeConflicts(s.christian.path, 'HEAD', 'origin/main')).toBeUndefined()
       await expect(s.check()).resolves.toBeUndefined()
     } finally { process.env.PATH = path }
     expect(s.posts).toEqual([])
-    expect(s.saved()[s.kai.id]).toBeUndefined()
+    expect(s.saved()[s.christian.id]).toBeUndefined()
     // With a git that can, the same check tells it.
     await s.check()
     expect(s.posts).toHaveLength(1)
@@ -362,12 +362,12 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     const s = await setUp()
     await conflictOnMain(s)
     await s.check()
-    expect(s.saved()[s.kai.id]).toBeDefined()
-    await run('git', ['-C', s.kai.path, 'reset', '-q', '--hard', 'origin/main'])
+    expect(s.saved()[s.christian.id]).toBeDefined()
+    await run('git', ['-C', s.christian.path, 'reset', '-q', '--hard', 'origin/main'])
     await s.check()
-    expect(s.saved()[s.kai.id]).toBeUndefined()
+    expect(s.saved()[s.christian.id]).toBeUndefined()
     // A new conflict at a new base commit is told again, with nothing left over from the old one.
-    await commit(s.kai.path, { 'src/a.ts': SAME_LINE('kai again') }, 'kai again')
+    await commit(s.christian.path, { 'src/a.ts': SAME_LINE('christian again') }, 'christian again')
     await landOnMain(s.repo, { 'src/a.ts': SAME_LINE('main again') })
     await s.check()
     expect(s.posts).toHaveLength(2)
@@ -377,8 +377,8 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     const s = await setUp()
     await conflictOnMain(s)
     await s.check()
-    expect(Object.keys(s.saved())).toEqual([s.kai.id])
-    s.k.store.saveWorkspace({ ...s.kai, status: 'archived' })
+    expect(Object.keys(s.saved())).toEqual([s.christian.id])
+    s.k.store.saveWorkspace({ ...s.christian, status: 'archived' })
     await s.check()
     expect(s.saved()).toEqual({})
   })
@@ -388,19 +388,19 @@ describe('what starts a check', () => {
   it("runs after a PR in the project merges, with a fetch", async () => {
     const s = await setUp()
     const check = vi.spyOn(s.k.baseWatch, 'check').mockResolvedValue(undefined)
-    const pr = (state: PrInfo['state']): PrInfo => ({ workspaceId: s.kai.id, number: 7, url: 'https://github.com/o/r/pull/7', title: 'feat: build', state, baseRef: 'main', checks: [], comments: [], conflicts: [] })
+    const pr = (state: PrInfo['state']): PrInfo => ({ workspaceId: s.christian.id, number: 7, url: 'https://github.com/o/r/pull/7', title: 'feat: build', state, baseRef: 'main', checks: [], comments: [], conflicts: [] })
     s.gh.pr = pr('ready')
-    await s.k.refreshPr(s.kai.id)
+    await s.k.refreshPr(s.christian.id)
     expect(check).not.toHaveBeenCalled()
     s.gh.pr = pr('merged')
-    await s.k.refreshPr(s.kai.id)
+    await s.k.refreshPr(s.christian.id)
     expect(check).toHaveBeenCalledWith(s.project.id, { fetch: true })
   })
 
   it('runs after a new workspace fetched, and not when the fetch failed', async () => {
     const s = await setUp()
     const check = vi.spyOn(s.k.baseWatch, 'check').mockResolvedValue(undefined)
-    await s.k.createWorkspace(s.project.id, { prompt: 'More', agentId: 'kai', title: 'More' })
+    await s.k.createWorkspace(s.project.id, { prompt: 'More', agentId: 'christian', title: 'More' })
     expect(check).toHaveBeenCalledWith(s.project.id, { fetch: false, fetched: true })
     check.mockClear()
     await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote')])
@@ -408,7 +408,7 @@ describe('what starts a check', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     onTestFinished(() => { vi.useRealTimers() })
     vi.setSystemTime(Date.now() + FETCH_REUSE_MS + 1)
-    await s.k.createWorkspace(s.project.id, { prompt: 'Again', agentId: 'kai', title: 'Again' })
+    await s.k.createWorkspace(s.project.id, { prompt: 'Again', agentId: 'christian', title: 'Again' })
     expect(check).not.toHaveBeenCalled()
   })
 })
@@ -416,8 +416,8 @@ describe('what starts a check', () => {
 describe('a branch already on the remote (KERNEL-886)', () => {
   it('is asked to merge the base in, not to rebase, and the log says so', async () => {
     const s = await setUp()
-    await commit(s.kai.path, { 'src/a.ts': SAME_LINE('kai') }, 'kai')
-    await run('git', ['-C', s.kai.path, 'push', '-q', '-u', 'origin', 'HEAD'])
+    await commit(s.christian.path, { 'src/a.ts': SAME_LINE('christian') }, 'christian')
+    await run('git', ['-C', s.christian.path, 'push', '-q', '-u', 'origin', 'HEAD'])
     await landOnMain(s.repo, { 'src/a.ts': SAME_LINE('main') })
     await s.check()
     expect(s.posts).toEqual([{ chatId: s.chat.id, text: baseMessage('origin/main', 1, ['src/a.ts'], 'origin') }])
@@ -427,10 +427,10 @@ describe('a branch already on the remote (KERNEL-886)', () => {
 })
 
 describe('catching up a workspace that started when the fetch failed (KERNEL-653)', () => {
-  /** A Kai workspace made while origin was unreachable, with origin back afterwards. */
+  /** A Christian workspace made while origin was unreachable, with origin back afterwards. */
   async function staleWorkspace(s: Awaited<ReturnType<typeof setUp>>) {
     await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote')])
-    const ws = await s.k.createWorkspace(s.project.id, { prompt: 'Stale', agentId: 'kai', title: 'Stale' })
+    const ws = await s.k.createWorkspace(s.project.id, { prompt: 'Stale', agentId: 'christian', title: 'Stale' })
     expect(ws.fetchFailed).toMatch(/^Fetching origin failed/)
     await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', s.bare])
     return { ws, chat: s.k.store.chats(ws.id)[0] }
@@ -451,7 +451,7 @@ describe('catching up a workspace that started when the fetch failed (KERNEL-653
   it('sends one rebase message to one with commits of its own, and leaves its branch alone', async () => {
     const s = await setUp()
     const { ws, chat } = await staleWorkspace(s)
-    await commit(ws.path, { 'src/b.ts': 'alpha\nbeta kai\ngamma\n' }, 'kai')
+    await commit(ws.path, { 'src/b.ts': 'alpha\nbeta christian\ngamma\n' }, 'christian')
     const head = await sha(ws.path, 'HEAD')
     await landOnMain(s.repo, { 'README.md': '# moved\n' })
     await s.check({ fetch: true })
@@ -466,7 +466,7 @@ describe('catching up a workspace that started when the fetch failed (KERNEL-653
   it('asks one already on the remote to merge the base in instead (KERNEL-886)', async () => {
     const s = await setUp()
     const { ws, chat } = await staleWorkspace(s)
-    await commit(ws.path, { 'src/b.ts': 'alpha\nbeta kai\ngamma\n' }, 'kai')
+    await commit(ws.path, { 'src/b.ts': 'alpha\nbeta christian\ngamma\n' }, 'christian')
     await run('git', ['-C', ws.path, 'push', '-q', '-u', 'origin', 'HEAD'])
     await landOnMain(s.repo, { 'README.md': '# moved\n' })
     await s.check({ fetch: true })

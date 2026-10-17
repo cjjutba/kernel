@@ -44,7 +44,7 @@ async function projectWith(setup: string) {
   const repo = await tempRepo({
     'README.md': '# client\n',
     '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-    '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+    '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.',
     '.kernel/settings.toml': `[scripts]\nsetup = '${setup}'\nrun = 'echo "$A $B $KERNEL_PORT $KERNEL_BRANCH" > run.txt'\n`
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -100,7 +100,7 @@ describe('$KERNEL_ENV (KERNEL-405)', () => {
   it("passes nothing on until setup passed, or from a failed setup, and Run again writes the file over", async () => {
     const { k, project, repo } = await projectWith('echo A=1 >> "$KERNEL_ENV" && test -f ok.txt')
     k.sessions.send = async () => ({ queued: false })
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Build' })
     expect(ws.status).toBe('failed')
     expect(k.env.envFor(ws)).not.toHaveProperty('A')
     await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = 'echo C=3 >> "$KERNEL_ENV"'\n`)
@@ -113,7 +113,7 @@ describe('$KERNEL_ENV (KERNEL-405)', () => {
   it('keeps the file through an archive, and Delete removes it', async () => {
     const { k, project, dataDir } = await projectWith('echo A=1 >> "$KERNEL_ENV"')
     k.sessions.send = async () => ({ queued: false })
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Build' })
     const file = setupEnvPath(dataDir, ws.id)
     expect(existsSync(file)).toBe(true)
     await k.archiveWorkspace(ws.id)
@@ -133,7 +133,7 @@ describe('One database per workspace (KERNEL-449)', () => {
     onTestFinished(() => { vi.unstubAllEnvs() })
     const { k, project, dataDir } = await projectWith('echo "$KERNEL_WORKSPACE_SLUG|$COMPOSE_PROJECT_NAME" > names.txt && echo DB=app_\\${KERNEL_WORKSPACE_SLUG} >> "$KERNEL_ENV"')
     k.sessions.send = async () => ({ queued: false })
-    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Build' })
     expect(ws.status).toBe('ready')
     const slug = workspaceSlug(ws)
     expect(await readFile(join(ws.path, 'names.txt'), 'utf8')).toBe(`${slug}|${slug}\n`)

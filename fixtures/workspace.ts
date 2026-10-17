@@ -11,7 +11,7 @@ import { downloadFlowMarkdown, fontsCheckImage, invoiceLayoutStill, invoicePdfSt
 
 const open = { route: { name: 'workspace', workspaceId: ids.table } } as const
 const pr = { prNumber: 42, prUrl: 'https://github.com/cjjutba/client-a/pull/42' }
-/** The transcript up to the last tool call, before Kai's summary. */
+/** The transcript up to the last tool call, before Christian's summary. */
 const midTurn = tableItems.filter((i) => i.kind !== 'text' && i.kind !== 'result')
 
 const prTitle = 'feat(invoices): table and empty states'
@@ -35,7 +35,7 @@ const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partia
   }))
 
 /**
- * KERNEL-413: the header. Noor's PR #147 for KERNEL-155 in the project Kernel, with the issue's title where
+ * KERNEL-413: the header. Sean's PR #147 for KERNEL-155 in the project Kernel, with the issue's title where
  * the workspace's name was, in one PR state. The right panel is hidden unless `panel`, which puts the PR cluster in the panel head.
  */
 const HEADER_BRANCH = 'cjjutbaofficial/kernel-155-home-and-inbox-keep-asking-about-requests-and-prs'
@@ -43,7 +43,7 @@ const headerScene = (prState: Workspace['prState'], note: ChatItem[], opts: { pa
   scene((f) => ({
     projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
     workspaces: withWorkspace(f, ids.table, {
-      name: 'kernel-155-home-and-inbox-keep-asking-about-requests-and-prs', branch: HEADER_BRANCH, agentId: 'noor', prState,
+      name: 'kernel-155-home-and-inbox-keep-asking-about-requests-and-prs', branch: HEADER_BRANCH, agentId: 'sean', prState,
       title: opts.title ?? 'KERNEL-155 Home and Inbox keep asking about requests and the PRs',
       source: { kind: 'issue', id: 'KERNEL-155', title: 'Home and Inbox keep asking about requests and the PRs' },
       prNumber: 147, prUrl: 'https://github.com/cjjutba/client-a/pull/147', prTitle: 'feat(home): ask about requests and PRs'
@@ -55,7 +55,7 @@ const headerScene = (prState: Workspace['prState'], note: ChatItem[], opts: { pa
   }))
 
 /**
- * KERNEL-478: a branch that merges on the Mac, as the PrLocal fixtures show it. Noor's discount code branch in the Shop project, a local
+ * KERNEL-478: a branch that merges on the Mac, as the PrLocal fixtures show it. Sean's discount code branch in the Shop project, a local
  * folder with no GitHub remote, 3 commits ahead of main. `behind`, `conflicts` and `dirty` are what git said about it. The project's merge
  * method is a squash, and `merged` is the commit it left on main.
  */
@@ -80,7 +80,7 @@ const localScene = (state: LocalState) => scene((f) => {
   return {
     projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Shop', path: SHOP, repo: undefined, host: 'local' as const } : r)),
     workspaces: withWorkspace(f, ids.table, {
-      name: 'add-discount-code-checkout', branch: 'feat/add-discount-code-to-checkout', baseRef: 'main', agentId: 'noor', title: 'Add a discount code to checkout', prState,
+      name: 'add-discount-code-checkout', branch: 'feat/add-discount-code-to-checkout', baseRef: 'main', agentId: 'sean', title: 'Add a discount code to checkout', prState,
       stat: { files: 8, added: 304, removed: 15 }, ...(merged ? { mergedAt: at(10, 44), mergeCommit: '4e1b9c2f0a7d3b5c8e1a9d6f2b4c7e0a3d5f8b1c' } : {})
     }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Discount code field' } : c)),
@@ -203,7 +203,7 @@ function seatItems(chatId: string, who: string): ChatItem[] {
 function teammateTranscript(): Fixture {
   return scene((f) => ({
     chats: [...f.chats, extraChat('chat-term', 'Terminal (claude)', 'terminal')],
-    items: { ...f.items, 'chat-term': seatItems('chat-term', 'Ivy') },
+    items: { ...f.items, 'chat-term': seatItems('chat-term', 'Teng') },
     saved: { [seatViewKey('chat-term')]: 'transcript' },
     push: [...f.push, { type: 'terminal.data', chatId: 'chat-term', data: termScreen }],
     ui: tabsView('chat-term')
@@ -234,12 +234,12 @@ const withSetup = { [ids.projectA]: { scripts: { setup: 'pnpm install', run: 'pn
 /** The same fixture with the bottom pane folded to its tab bar, in Kernel's chats and in teammates' workspaces (KERNEL-513). */
 const bottomFolded = (f: Fixture): Fixture => ({ ...f, ui: { ...f.ui, bottomCollapsed: { lead: true, teammate: true } } })
 
-/** The invoice table's PR with two blockers from Theo on its latest commit, the only thing that holds the merge (KERNEL-501). */
+/** The invoice table's PR with two blockers from Artkin on its latest commit, the only thing that holds the merge (KERNEL-501). */
 const withBlockers = (f: Fixture): Fixture => ({
   ...f,
   workspaces: f.workspaces.map((w) => (w.id === ids.table ? {
     ...w, prHead: 'h147',
-    reviews: [{ workspaceId: 'ws-review-147', agentId: 'theo', verdict: 'blockers' as const, summary: 'Two blockers.', blockers: [{ text: 'The download never retries.' }, { text: 'No test covers the failure toast.' }], sha: 'h147', prNumber: 147, ts: at(10, 38) }]
+    reviews: [{ workspaceId: 'ws-review-147', agentId: 'artkin', verdict: 'blockers' as const, summary: 'Two blockers.', blockers: [{ text: 'The download never retries.' }, { text: 'No test covers the failure toast.' }], sha: 'h147', prNumber: 147, ts: at(10, 38) }]
   } : w)),
   prs: Object.fromEntries(Object.entries(f.prs ?? {}).map(([id, info]) => [id, id === ids.table ? { ...info, head: 'h147' } : info]))
 })
@@ -298,7 +298,7 @@ const folded = (prefix: string, tools: number, messages: number): ChatItem[] => 
 const tool = (id: string, label: string, detail: string, extra: Partial<Extract<ChatItem, { kind: 'tool' }>> = {}): ChatItem =>
   ({ kind: 'tool', id, ts: at(10, 28), toolUseId: `toolu_${id}`, name: 'Bash', label, detail, status: 'done', durationMs: 100, ...extra })
 
-/** Ivy's snapshot-test turn, still going (WorkspaceRunning.png). Times count back from now so the clock reads 2m 14s. */
+/** Teng's snapshot-test turn, still going (WorkspaceRunning.png). Times count back from now so the clock reads 2m 14s. */
 const runningItems = (): ChatItem[] => {
   const now = Date.now()
   const t = (secs: number) => now - secs * 1000
@@ -317,7 +317,7 @@ const runningItems = (): ChatItem[] => {
   ]
 }
 
-/** Ivy's turn after its tests ran: the same steps, a reply and a result that took 2m 14s (WorkspaceFoldDone). */
+/** Teng's turn after its tests ran: the same steps, a reply and a result that took 2m 14s (WorkspaceFoldDone). */
 const finishedFoldItems = (): ChatItem[] => {
   const items = runningItems()
   const last = items[items.length - 1]
@@ -357,7 +357,7 @@ const longRunningItems = (): ChatItem[] => {
   ]
 }
 
-/** Ivy's turn with a long shell command in flight (WorkspaceRunningLongCommand). */
+/** Teng's turn with a long shell command in flight (WorkspaceRunningLongCommand). */
 const runningLongCommandItems = (): ChatItem[] => {
   const command = "printf -- 'type: internal. A test of shared MCP sign-ins no longer leaking between projects and the chats that open them' > .changes/unreleased/shared-mcp-sign-ins.md && git add -A && git commit -m 'test(mcp): shared sign-ins stay inside their project'"
   return [
@@ -436,7 +436,7 @@ const leadSteps: ChatItem[] = [
   { kind: 'thinking', id: 'ls-th3', ts: at(10, 24), text: 'Now I need to check list_workspaces for the limit and the KERNEL-716 workspace, then plan the new ones.' },
   mcpCall('ls-t5', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Project settings title misaligned (in review)\nws-714 Replace the ring spinner (ready to merge)' }),
   { kind: 'thinking', id: 'ls-th4', ts: at(10, 25), text: 'KERNEL-721 and KERNEL-716 both touch kit.tsx and settings.css, since the title alignment logic lives in Page.' },
-  ...[['kai', 'KERNEL-721', 'Settings say Saving and Saved next to the control'], ['noor', 'KERNEL-723', 'Project settings update when the TOML changes'], ['noor', 'KERNEL-724', 'Record when each setting takes effect'], ['kai', 'KERNEL-722', 'Settings pages line up']].map(([agent, issue, title], i) =>
+  ...[['christian', 'KERNEL-721', 'Settings say Saving and Saved next to the control'], ['sean', 'KERNEL-723', 'Project settings update when the TOML changes'], ['sean', 'KERNEL-724', 'Record when each setting takes effect'], ['christian', 'KERNEL-722', 'Settings pages line up']].map(([agent, issue, title], i) =>
     mcpCall(`ls-w${i}`, 'kernel', 'create_workspace', { agent, issue, title, brief: `Build ${issue}.` }, { output: `Created a workspace for ${agent}.` }))
 ]
 
@@ -446,7 +446,7 @@ const stepRunItems = (done: boolean): ChatItem[] => {
   const titles = ['Settings say Saving and Saved next to the control', 'Settings pages line up', 'Project settings update when the TOML changes', 'Record when each setting takes effect', 'Settings rows say Applies to new chats', 'Settings tabs keep their scroll position', 'Settings search finds a row by its hint']
   const issues = titles.map((title, i) => mcpCall(`sr-s${i}`, 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', parentId: 'KERNEL-720', title }, i === 5
     ? { status: 'failed', output: 'Validation failed: title is a duplicate of KERNEL-731' } : { output: `KERNEL-72${i + 1}` }))
-  const hands = [['kai', 'KERNEL-721'], ['noor', 'KERNEL-723'], ['noor', 'KERNEL-724'], ['kai', 'KERNEL-722'], ['kai', 'KERNEL-725']].map(([agent, issue], i) =>
+  const hands = [['christian', 'KERNEL-721'], ['sean', 'KERNEL-723'], ['sean', 'KERNEL-724'], ['christian', 'KERNEL-722'], ['christian', 'KERNEL-725']].map(([agent, issue], i) =>
     mcpCall(`sr-w${i}`, 'kernel', 'create_workspace', { agent, issue, title: titles[i], brief: `Build ${issue}.` }, { output: `Created a workspace for ${agent}.` }))
   return [
     { kind: 'user', id: 'sr-u', ts: t(649), parts: [{ type: 'text', text: 'Approved' }] },
@@ -465,7 +465,7 @@ const stepRunItems = (done: boolean): ChatItem[] => {
     mcpCall('sr-t5', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Project settings title misaligned (in review)' }),
     ...hands,
     ...(done
-      ? [{ kind: 'text' as const, id: 'sr-x3', ts: t(20), text: 'Filed KERNEL-720 with six sub-issues, and handed five tasks to Kai and Noor. One issue was a duplicate of KERNEL-731, so I left it out.' }, { kind: 'result' as const, id: 'sr-res', ts: t(10), durationMs: 640_000, ok: true }]
+      ? [{ kind: 'text' as const, id: 'sr-x3', ts: t(20), text: 'Filed KERNEL-720 with six sub-issues, and handed five tasks to Christian and Sean. One issue was a duplicate of KERNEL-731, so I left it out.' }, { kind: 'result' as const, id: 'sr-res', ts: t(10), durationMs: 640_000, ok: true }]
       : [mcpCall('sr-t6', 'kernel', 'wait_for_merge', { on: 'KERNEL-721' }, { status: 'running', durationMs: undefined })])
   ]
 }
@@ -486,7 +486,7 @@ const longSteps = (): ChatItem[] => [
   tool('sl-live', 'Run the shots', 'pnpm shots --all', { status: 'running', durationMs: undefined, input: { command: 'pnpm shots --all' } })
 ]
 
-/** One turn of Kai's invoice work in each state (KERNEL-828): narration between calls, then how the turn ended. */
+/** One turn of Christian's invoice work in each state (KERNEL-828): narration between calls, then how the turn ended. */
 const narrated = (id: string, end: ChatItem[]): ChatItem[] => [
   tableItems[0],
   tool(`${id}-t1`, 'Read the plan', 'cat plans/t-14-invoice-table.md', { name: 'Read', ts: at(10, 28) }),
@@ -767,7 +767,7 @@ const skills: Skill[] = [
 
 const hunk = (owner: Hunk['owner'], lines: string, added: number, removed: number): Hunk => ({ id: `src/lib/checkout.ts#${owner}#0`, path: 'src/lib/checkout.ts', owner, lines, added, removed, patch: '' })
 
-/** WorkspaceQueued.png: Kai is mid-turn with two follow-ups waiting. */
+/** WorkspaceQueued.png: Christian is mid-turn with two follow-ups waiting. */
 const queuedItems = (): ChatItem[] => {
   const now = Date.now()
   const t = (secs: number) => now - secs * 1000
@@ -799,7 +799,7 @@ const newChatBranches = (f: Fixture): Partial<Fixture> => ({
   branches: ['origin/main', 'origin/feat/t-14-invoice-table', 'origin/feat/t-12-invoice-schema', 'origin/feat/t-09-org-invites', 'origin/fix/t-17-pdf-fonts', 'origin/feat/t-21-saving-saved', 'origin/feat/t-23-project-settings', 'spike/pdf-fonts']
 })
 
-/** Ivy's reply with paths in it (clickable file mentions), and what the workspace resolves them to. */
+/** Teng's reply with paths in it (clickable file mentions), and what the workspace resolves them to. */
 function fileLinks(f: Fixture, click?: { click: string }): Partial<Fixture> {
   const text = [
     'The sort lives in `src/app/invoices/table.tsx:12-14`, and the empty state is in empty-state.tsx.',
@@ -844,7 +844,7 @@ function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatIt
 const LEAD_PLAN = [
   '# Export invoices as PDF',
   '',
-  'Invoices get a PDF renderer and a Download PDF action in each row. Four tasks, run in parallel, and Theo reviews each PR as it lands.',
+  'Invoices get a PDF renderer and a Download PDF action in each row. Four tasks, run in parallel, and Artkin reviews each PR as it lands.',
   '',
   'T-15b needs the renderer from T-15a to merge first, since both change `row-actions.tsx`. Each PR runs `pnpm test`, `pnpm typecheck` and `pnpm shots`.'
 ].join('\n')
@@ -855,7 +855,7 @@ const planWaiting = (f: Fixture): Partial<Fixture> => leadPlan(f, { agentId: 'ke
 /** The same plan once approved: it keeps its place with your Approved bubble under it, plan mode is off and each task has a workspace to open. */
 const planApproved = (f: Fixture): Partial<Fixture> => {
   const s = planWaiting(f)
-  const reply: ChatItem = { kind: 'text', id: 'pl-go', ts: at(10, 31), text: 'Handed off. Noor has the renderer, Kai has the button and Ivy has the tests. Theo reviews each PR as it lands.' }
+  const reply: ChatItem = { kind: 'text', id: 'pl-go', ts: at(10, 31), text: 'Handed off. Sean has the renderer, Christian has the button and Teng has the tests. Artkin reviews each PR as it lands.' }
   return {
     ...s,
     chats: s.chats?.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)),
@@ -877,7 +877,7 @@ const planApprovedItem = (f: Fixture): Partial<Fixture> => {
 /** Kernel's plan after you asked for changes: your notes are the bubble. The Kernel message that carried them after a restart names the approval and stays hidden. */
 const planChanges = (f: Fixture): Partial<Fixture> => {
   const s = planWaiting(f)
-  const notes = 'Split step 2 into its own PR, after step 1 merges.\nAnd have Theo review each PR as it lands.'
+  const notes = 'Split step 2 into its own PR, after step 1 merges.\nAnd have Artkin review each PR as it lands.'
   const kernel: ChatItem = { kind: 'user', id: 'pl-kernel', ts: at(10, 30), from: 'kernel', approvalId: s.approvals?.[0].id, parts: [{ type: 'text', text: `The user asked for changes to the plan: ${notes}` }] }
   const reply: ChatItem = { kind: 'text', id: 'pl-rev', ts: at(10, 31), text: 'Understood. I will split step 2 out and bring the revised plan back.' }
   return {
@@ -949,31 +949,31 @@ const revisedPlan = (f: Fixture): PushEvent[] => {
   ]
 }
 
-/** Kai's plan for T-15b from ExitPlanMode, waiting on you in plan mode: markdown in `detail` and `input`, no `steps` (KERNEL-374). */
-const planExit = (f: Fixture): Partial<Fixture> => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Plan T-15b', [
+/** Christian's plan for T-15b from ExitPlanMode, waiting on you in plan mode: markdown in `detail` and `input`, no `steps` (KERNEL-374). */
+const planExit = (f: Fixture): Partial<Fixture> => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Plan T-15b', [
   userMsg('pl1', 'Plan T-15b: a Download PDF button on each invoice row. Do not edit anything yet.'),
   { kind: 'thinking', id: 'pl-th', ts: at(10, 28), text: 'Row actions already live in a menu. A second button would crowd the row.' },
   tool('pl-t1', 'Read the row actions', 'cat src/app/invoices/row-actions.tsx', { name: 'Read' }),
   tool('pl-t2', 'Check the PDF endpoint', 'rg -n "renderInvoicePdf" src')
 ], {
-  approvals: [pending('plan', 'kai', { toolName: 'ExitPlanMode', input: { plan: EXIT_PLAN }, title: 'Plan for invoice-pdf-button', detail: EXIT_PLAN }), ...f.approvals]
+  approvals: [pending('plan', 'christian', { toolName: 'ExitPlanMode', input: { plan: EXIT_PLAN }, title: 'Plan for invoice-pdf-button', detail: EXIT_PLAN }), ...f.approvals]
 }, { plan: true, model: 'claude-opus-5-5' })
 
 /** A scene that passes no approvals keeps the seed's: scene2 would otherwise set them to undefined. */
 const noApprovals = ({ approvals: _none, ...patch }: Partial<Fixture>): Partial<Fixture> => patch
 
-/** Kernel's own message in Kai's chat after a limit switch: one note line. */
-const kernelNote = scene((f) => noApprovals(scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+/** Kernel's own message in Christian's chat after a limit switch: one note line. */
+const kernelNote = scene((f) => noApprovals(scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
     userMsg('kn1', 'Build T-15b from the approved plan.', true),
     { kind: 'text', id: 'kn-tx', ts: at(10, 28), text: 'Starting with the row actions menu.' },
     { kind: 'result', id: 'kn-res', ts: at(10, 29), durationMs: 60_000, ok: true },
     { kind: 'user', id: 'kn-msg', ts: at(10, 30), from: 'kernel', parts: [{ type: 'text', text: 'You hit your usage limit and Kernel moved this chat to your other account. Carry on from where you stopped, and check git status first, since some edits may be unsaved.' }] }
   ], {})))
 
-/** The same chat in plan mode with nothing waiting: Kai answered and the box waits for the next message. */
+/** The same chat in plan mode with nothing waiting: Christian answered and the box waits for the next message. */
 const planMode = (f: Fixture): Partial<Fixture> => {
   // scene2 sets approvals from the ones a scene passes. This one passes none and keeps the seed's.
-  const { approvals: _none, ...patch } = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Invoice row actions', [
+  const { approvals: _none, ...patch } = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Invoice row actions', [
     userMsg('pm1', 'Look at how the invoice rows show their actions.'),
     tool('pm-t1', 'Read the row actions', 'cat src/app/invoices/row-actions.tsx', { name: 'Read' }),
     { kind: 'text', id: 'pm-reply', ts: at(10, 28), text: 'Each row ends in a menu with Duplicate, Send and Void. A new action fits there without crowding the row.' },
@@ -999,16 +999,16 @@ const errorItems: ChatItem[] = [
 const withDraft = (p: Partial<Fixture>, draft: string): Partial<Fixture> =>
   ({ ...p, ui: { ...p.ui, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft } } } })
 
-/** Two team updates in Kernel's chat after a hand-off: Kai's PR passed checks, then Theo approved it (KERNEL-127). */
+/** Two team updates in Kernel's chat after a hand-off: Christian's PR passed checks, then Artkin approved it (KERNEL-127). */
 const leadUpdate = (f: Fixture): Partial<Fixture> => {
   const header = 'Team update from Kernel, not from the user.'
-  const kai: TeamUpdateRow = {
-    workspaceId: ids.table, agentId: 'kai', name: 'Kai', task: 'Remove the Try section from the sidebar', prNumber: 108,
+  const christian: TeamUpdateRow = {
+    workspaceId: ids.table, agentId: 'christian', name: 'Christian', task: 'Remove the Try section from the sidebar', prNumber: 108,
     events: [{ kind: 'pr.opened', text: 'Opened PR #108', actionable: false }, { kind: 'pr.ready', text: 'Ready to merge', actionable: true }, { kind: 'pr.review', text: 'Not reviewed', actionable: false }],
     reply: 'Removed the Try section from the sidebar. Connect a repo and Open a folder stay in the projects plus menu and on Home\'s empty state, and Check hooks stays in the footer.\n\nOpened https://github.com/cjjutba/client-a/pull/108'
   }
-  const theo: TeamUpdateRow = {
-    workspaceId: 'ws-review-108', agentId: 'theo', name: 'Theo', task: 'Review PR #108',
+  const artkin: TeamUpdateRow = {
+    workspaceId: 'ws-review-108', agentId: 'artkin', name: 'Artkin', task: 'Review PR #108',
     events: [{ kind: 'review', text: 'Approved PR #108', actionable: true }],
     reply: 'The Try rows are gone and nothing else in the sidebar moved. Connect a repo and Open a folder are still reachable from the projects plus menu. No blockers.'
   }
@@ -1018,17 +1018,17 @@ const leadUpdate = (f: Fixture): Partial<Fixture> => {
   })
   const done = (id: string, m: number): ChatItem => ({ kind: 'result', id, ts: at(10, m), durationMs: 9_000, ok: true })
   const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Remove the Try section', [
-    userMsg('lu1', 'Remove the Try section from the sidebar, and have Theo review it before I merge.'),
-    { kind: 'text', id: 'lu1-r', ts: at(10, 28), text: 'Kai has it. Once its checks pass, Theo reviews the PR.' },
+    userMsg('lu1', 'Remove the Try section from the sidebar, and have Artkin review it before I merge.'),
+    { kind: 'text', id: 'lu1-r', ts: at(10, 28), text: 'Christian has it. Once its checks pass, Artkin reviews the PR.' },
     done('lu1-res', 28),
-    update('lu2', 41, kai, 'PR #108 needs a review. Theo (theo) reviews on this team: call create_workspace with agent "theo" and review_of "ws-invoice-table".'),
-    { kind: 'text', id: 'lu2-r', ts: at(10, 41), text: "Kai's PR #108 passed checks. Theo is reviewing it." },
+    update('lu2', 41, christian, 'PR #108 needs a review. Artkin (artkin) reviews on this team: call create_workspace with agent "artkin" and review_of "ws-invoice-table".'),
+    { kind: 'text', id: 'lu2-r', ts: at(10, 41), text: "Christian's PR #108 passed checks. Artkin is reviewing it." },
     done('lu2-res', 41),
-    update('lu3', 49, theo, 'PR #108 passed checks, has no conflicts and Theo approved it. Tell the user it is ready to merge.'),
-    { kind: 'text', id: 'lu3-r', ts: at(10, 49), text: 'Theo approved PR #108. It is ready for you to merge.' },
+    update('lu3', 49, artkin, 'PR #108 passed checks, has no conflicts and Artkin approved it. Tell the user it is ready to merge.'),
+    { kind: 'text', id: 'lu3-r', ts: at(10, 49), text: 'Artkin approved PR #108. It is ready for you to merge.' },
     done('lu3-res', 49)
   ], {}, { model: 'claude-opus-5-5' })
-  const review: Workspace = { id: 'ws-review-108', projectId: ids.projectA, name: 'review-pr-108', title: 'Review PR #108', branch: 'feat/t-14-invoice-table-review', baseRef: 'feat/t-14-invoice-table', path: '/Users/you/kernel/worktrees/client-a/review-pr-108', mode: 'worktree', agentId: 'theo', port: 4316, status: 'ready', prState: 'none', reviewOf: ids.table, createdAt: at(10, 42) }
+  const review: Workspace = { id: 'ws-review-108', projectId: ids.projectA, name: 'review-pr-108', title: 'Review PR #108', branch: 'feat/t-14-invoice-table-review', baseRef: 'feat/t-14-invoice-table', path: '/Users/you/kernel/worktrees/client-a/review-pr-108', mode: 'worktree', agentId: 'artkin', port: 4316, status: 'ready', prState: 'none', reviewOf: ids.table, createdAt: at(10, 42) }
   // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
   const { approvals: _none, ...rest } = s
   return { ...rest, workspaces: [...(s.workspaces ?? f.workspaces), review] }
@@ -1044,32 +1044,32 @@ const tuCard = (id: string, m: number, rows: TeamUpdateRow[], todo = 'Tell the u
 const withOmitted = (item: ChatItem, omitted: number): ChatItem => (item.kind === 'user' && item.update ? { ...item, update: { ...item.update, omitted } } : item)
 const tuWork = (id: string, agentId: string, name: string, n: number, over: Partial<Workspace>): Workspace =>
   ({ id, projectId: ids.projectA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4330 + n % 50, status: 'ready', prState: 'ready', prNumber: n, prUrl: `https://github.com/cjjutba/client-a/pull/${n}`, createdAt: at(19, 40), ...over })
-const tuVerdict = (workspaceId: string, prNumber: number, sha: string): ReviewVerdict => ({ workspaceId, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha, prNumber, ts: at(20, 12) })
+const tuVerdict = (workspaceId: string, prNumber: number, sha: string): ReviewVerdict => ({ workspaceId, agentId: 'artkin', verdict: 'approved', summary: 'No blockers.', sha, prNumber, ts: at(20, 12) })
 const tuChecks: PrInfo['checks'] = [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
 const tuInfo = (workspaceId: string, number: number, head: string): PrInfo => ({ workspaceId, number, url: `https://github.com/cjjutba/client-a/pull/${number}`, title: '', state: 'ready', baseRef: 'main', checks: tuChecks, comments: [], conflicts: [], head })
 
 /**
  * Team updates with Merge (TeamUpdateMerge.png, KERNEL-351): an older card about PR #162 that no longer offers it, then a card where #162 and
- * a reviewer's row (#161) can merge, #158 waits for Theo's approval of its latest commit, #155 is merging and #150 merged and sits in History.
+ * a reviewer's row (#161) can merge, #158 waits for Artkin's approval of its latest commit, #155 is merging and #150 merged and sits in History.
  */
 const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
   const row = tuRow, ev = tuEv, work = tuWork, verdict = tuVerdict, info = tuInfo
   const card = (id: string, m: number, rows: TeamUpdateRow[]) => tuCard(id, m, rows)
   // Tasks come as the engine sends them, the workspace title with no key: the card reads the key from the issue the
-  // workspace started on (KERNEL-411). A reviewer's workspace started on no issue, so Theo's task carries it.
+  // workspace started on (KERNEL-411). A reviewer's workspace started on no issue, so Artkin's task carries it.
   const rows = [
-    { ...row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', [ev('turn', 'Finished a turn'), ev('pr.opened', 'Pushed a fix'), ev('pr.ready', 'Ready to merge', true), ev('pr.review', 'Theo approved')]),
+    { ...row('ws-182', 'christian', 'Christian', 'New chats focus the composer, and ⌘L focuses it', [ev('turn', 'Finished a turn'), ev('pr.opened', 'Pushed a fix'), ev('pr.ready', 'Ready to merge', true), ev('pr.review', 'Artkin approved')]),
       reply: 'Fixed the focus race: `useLayoutEffect` now focuses the composer after the tab mounts. `pnpm test:changed` and `pnpm typecheck` pass.' },
-    row('ws-review-161', 'theo', 'Theo', 'KERNEL-176 Kernel asks when a brief is unclear', [ev('turn', 'Reviewed PR #161'), ev('review', 'Approved', true)]),
-    row('ws-172', 'noor', 'Noor', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('setup.passed', 'Checks passed')]),
-    row('ws-160', 'kai', 'Kai', 'Issues screen with search', [ev('turn', 'Finished a turn'), ev('turn', 'Merging PR #155')]),
-    row('ws-163', 'noor', 'Noor', "Linear service, contracts and Kernel's issue link", [ev('pr.merged', 'Merged PR #150')])
+    row('ws-review-161', 'artkin', 'Artkin', 'KERNEL-176 Kernel asks when a brief is unclear', [ev('turn', 'Reviewed PR #161'), ev('review', 'Approved', true)]),
+    row('ws-172', 'sean', 'Sean', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('setup.passed', 'Checks passed')]),
+    row('ws-160', 'christian', 'Christian', 'Issues screen with search', [ev('turn', 'Finished a turn'), ev('turn', 'Merging PR #155')]),
+    row('ws-163', 'sean', 'Sean', "Linear service, contracts and Kernel's issue link", [ev('pr.merged', 'Merged PR #150')])
   ]
   const issue = (key: string, i: number): Partial<Workspace> => ({ title: rows[i].task, source: { kind: 'issue', id: key, title: rows[i].task } })
   const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', [
     { kind: 'result', id: 'tum-res0', ts: at(20, 11), durationMs: 24 * 60_000 + 6_000, ok: true },
     // Workspaces past the 8th: the card says they didn't fit (KERNEL-654).
-    withOmitted(card('tum-1', 11, [row('ws-182', 'kai', 'Kai', rows[0].task, [ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed', true)])]), 3),
+    withOmitted(card('tum-1', 11, [row('ws-182', 'christian', 'Christian', rows[0].task, [ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed', true)])]), 3),
     { kind: 'result', id: 'tum-res1', ts: at(20, 15), durationMs: 10_000, ok: true },
     card('tum-2', 15, rows),
     { kind: 'result', id: 'tum-res2', ts: at(20, 16), durationMs: 55_000, ok: true }
@@ -1079,13 +1079,13 @@ const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
     ...rest,
     workspaces: [
       ...(s.workspaces ?? f.workspaces),
-      work('ws-182', 'kai', 'kernel-182-new-chats-focus', 162, { prHead: 'h162', ...issue('KERNEL-182', 0) }),
-      work('ws-176', 'kai', 'kernel-176-kernel-asks', 161, { prHead: 'h161', reviews: [verdict('ws-review-161', 161, 'h161')], title: 'Kernel asks when a brief is unclear', source: { kind: 'issue', id: 'KERNEL-176', title: 'Kernel asks when a brief is unclear' } }),
-      work('ws-review-161', 'theo', 'review-pr-161-kernel-176', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, reviewOf: 'ws-176' }),
-      work('ws-172', 'noor', 'kernel-172-duplicates', 158, { prHead: 'h158b', reviews: [verdict('ws-review-158', 158, 'h158a')], ...issue('KERNEL-172', 2) }),
+      work('ws-182', 'christian', 'kernel-182-new-chats-focus', 162, { prHead: 'h162', ...issue('KERNEL-182', 0) }),
+      work('ws-176', 'christian', 'kernel-176-kernel-asks', 161, { prHead: 'h161', reviews: [verdict('ws-review-161', 161, 'h161')], title: 'Kernel asks when a brief is unclear', source: { kind: 'issue', id: 'KERNEL-176', title: 'Kernel asks when a brief is unclear' } }),
+      work('ws-review-161', 'artkin', 'review-pr-161-kernel-176', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, reviewOf: 'ws-176' }),
+      work('ws-172', 'sean', 'kernel-172-duplicates', 158, { prHead: 'h158b', reviews: [verdict('ws-review-158', 158, 'h158a')], ...issue('KERNEL-172', 2) }),
       // Kernel started this merge, and the row spins Merging all the same, as every place showing the PR does (KERNEL-417).
-      work('ws-160', 'kai', 'kernel-160-issues-screen', 155, { prState: 'merging', ...issue('KERNEL-160', 3) }),
-      work('ws-163', 'noor', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9), ...issue('KERNEL-163', 4) })
+      work('ws-160', 'christian', 'kernel-160-issues-screen', 155, { prState: 'merging', ...issue('KERNEL-160', 3) }),
+      work('ws-163', 'sean', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9), ...issue('KERNEL-163', 4) })
     ],
     prs: { 'ws-182': info('ws-182', 162, 'h162'), 'ws-176': info('ws-176', 161, 'h161'), 'ws-172': info('ws-172', 158, 'h158b') }
   }
@@ -1099,10 +1099,10 @@ const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
 const teamUpdateReview = (f: Fixture): Partial<Fixture> => {
   const row = tuRow, ev = tuEv
   const rows = [
-    { ...row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', [ev('pr.opened', 'Opened PR #162'), ev('pr.merged', 'Merged automatically'), ev('pr.review', 'Reviews approved, checks passed, 84 lines')]), prNumber: 162,
+    { ...row('ws-182', 'christian', 'Christian', 'New chats focus the composer, and ⌘L focuses it', [ev('pr.opened', 'Opened PR #162'), ev('pr.merged', 'Merged automatically'), ev('pr.review', 'Reviews approved, checks passed, 84 lines')]), prNumber: 162,
       reply: 'Merged without asking you. Every review passed, checks were green and the change was 84 lines, under your 200 line limit.' },
-    { ...row('ws-172', 'noor', 'Noor', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), { ...ev('pr.ready', 'Checks passed'), held: true }, ev('pr.review', 'Still blocked after 2 review rounds')]), prNumber: 158 },
-    { ...row('ws-176', 'ivy', 'Ivy', 'Kernel asks when a brief is unclear', [ev('pr.opened', 'Opened PR #161'), ev('pr.review', 'Code approved'), ev('pr.review', 'Skipped the UX review to save usage')]), prNumber: 161,
+    { ...row('ws-172', 'sean', 'Sean', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), { ...ev('pr.ready', 'Checks passed'), held: true }, ev('pr.review', 'Still blocked after 2 review rounds')]), prNumber: 158 },
+    { ...row('ws-176', 'teng', 'Teng', 'Kernel asks when a brief is unclear', [ev('pr.opened', 'Opened PR #161'), ev('pr.review', 'Code approved'), ev('pr.review', 'Skipped the UX review to save usage')]), prNumber: 161,
       reply: 'Your usage is at 91% of the 5-hour limit, so Kernel left out the optional UX review.' }
   ]
   const issue = (key: string, i: number): Partial<Workspace> => ({ title: rows[i].task, source: { kind: 'issue', id: key, title: rows[i].task } })
@@ -1117,29 +1117,29 @@ const teamUpdateReview = (f: Fixture): Partial<Fixture> => {
     ...rest,
     workspaces: [
       ...(s.workspaces ?? f.workspaces),
-      tuWork('ws-182', 'kai', 'kernel-182-new-chats-focus', 162, { prState: 'merged', status: 'archived', mergedAt: at(20, 29), prHead: 'h162', ...issue('KERNEL-182', 0) }),
-      tuWork('ws-172', 'noor', 'kernel-172-duplicates', 158, { prHead: 'h158', reviews: [blocker('security', 'ws-review-158-security', 'The new route reads the issue id without checking the project'), blocker('code', 'ws-review-158-code', 'The retry in dedupe() has no test')], ...issue('KERNEL-172', 1) }),
-      tuWork('ws-176', 'ivy', 'kernel-176-kernel-asks', 161, { prHead: 'h161', reviews: [tuVerdict('ws-review-161', 161, 'h161')], ...issue('KERNEL-176', 2) })
+      tuWork('ws-182', 'christian', 'kernel-182-new-chats-focus', 162, { prState: 'merged', status: 'archived', mergedAt: at(20, 29), prHead: 'h162', ...issue('KERNEL-182', 0) }),
+      tuWork('ws-172', 'sean', 'kernel-172-duplicates', 158, { prHead: 'h158', reviews: [blocker('security', 'ws-review-158-security', 'The new route reads the issue id without checking the project'), blocker('code', 'ws-review-158-code', 'The retry in dedupe() has no test')], ...issue('KERNEL-172', 1) }),
+      tuWork('ws-176', 'teng', 'kernel-176-kernel-asks', 161, { prHead: 'h161', reviews: [tuVerdict('ws-review-161', 161, 'h161')], ...issue('KERNEL-176', 2) })
     ],
     prs: { 'ws-172': tuInfo('ws-172', 158, 'h158'), 'ws-176': tuInfo('ws-176', 161, 'h161') }
   }
 }
 
 /**
- * A teammate's question and a proposed hand-off (TeamUpdateAsk.png, KERNEL-747): Kai asked with ask_lead and ended the turn, and
- * Noor proposed a task for Kai with propose_handoff and carries on. Both need the Lead, so both read brighter than the rest.
+ * A teammate's question and a proposed hand-off (TeamUpdateAsk.png, KERNEL-747): Christian asked with ask_lead and ended the turn, and
+ * Sean proposed a task for Christian with propose_handoff and carries on. Both need the Lead, so both read brighter than the rest.
  */
 const teamUpdateAsk = (f: Fixture): Partial<Fixture> => {
   const row = tuRow, ev = tuEv
   const rows = [
-    { ...row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', [ev('question', 'Asks: Should ⌘L focus the composer in every tab, or only in the tab that is open?', true), ev('turn', 'Finished a turn')]),
+    { ...row('ws-182', 'christian', 'Christian', 'New chats focus the composer, and ⌘L focuses it', [ev('question', 'Asks: Should ⌘L focus the composer in every tab, or only in the tab that is open?', true), ev('turn', 'Finished a turn')]),
       reply: 'The focus fix works for the open tab. I asked how far ⌘L should reach before I wire it.' },
-    row('ws-172', 'noor', 'Noor', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('handoff.proposed', 'Proposes Kai for: Merge duplicate issues from the issue menu', true)])
+    row('ws-172', 'sean', 'Sean', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('handoff.proposed', 'Proposes Christian for: Merge duplicate issues from the issue menu', true)])
   ]
   const issue = (key: string, i: number): Partial<Workspace> => ({ title: rows[i].task, source: { kind: 'issue', id: key, title: rows[i].task } })
   const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', [
     { kind: 'result', id: 'tua-res0', ts: at(20, 41), durationMs: 6 * 60_000 + 12_000, ok: true },
-    tuCard('tua-1', 41, rows, "Answer Kai's question, and propose Noor's hand-off to the user."),
+    tuCard('tua-1', 41, rows, "Answer Christian's question, and propose Sean's hand-off to the user."),
     { kind: 'result', id: 'tua-res1', ts: at(20, 42), durationMs: 21_000, ok: true }
   ], {}, { model: 'claude-opus-5-5' })
   const { approvals: _none, ...rest } = s
@@ -1147,8 +1147,8 @@ const teamUpdateAsk = (f: Fixture): Partial<Fixture> => {
     ...rest,
     workspaces: [
       ...(s.workspaces ?? f.workspaces),
-      tuWork('ws-182', 'kai', 'kernel-182-new-chats-focus', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, ...issue('KERNEL-182', 0) }),
-      tuWork('ws-172', 'noor', 'kernel-172-duplicates', 158, { prState: 'checks', ...issue('KERNEL-172', 1) })
+      tuWork('ws-182', 'christian', 'kernel-182-new-chats-focus', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, ...issue('KERNEL-182', 0) }),
+      tuWork('ws-172', 'sean', 'kernel-172-duplicates', 158, { prState: 'checks', ...issue('KERNEL-172', 1) })
     ]
   }
 }
@@ -1171,7 +1171,7 @@ const leadPlan = (f: Fixture, ws: Partial<Workspace>, plan: Partial<Approval> = 
 interface OpenPr {
   id: string; agentId: string; key: string; n: number; title: string; state: Workspace['prState']; stat: [number, number]
   /**
-   * Theo's review: `approved` of the head commit, `stale` an approval of an earlier one, `blockers` two blockers on the head
+   * Artkin's review: `approved` of the head commit, `stale` an approval of an earlier one, `blockers` two blockers on the head
    * commit, `planned` a code review round started on the head that hasn't reported (KERNEL-717). None is not reviewed.
    */
   review?: 'approved' | 'secure' | 'stale' | 'blockers' | 'planned'
@@ -1184,9 +1184,9 @@ interface OpenPr {
  */
 const commitTitle = (title: string, key: string) => `feat(workspace): ${title.charAt(0).toLowerCase()}${title.slice(1)} (${key})`
 
-/** The fields of a workspace that has `p` open: the PR, the issue it builds, its changes and Theo's review. */
+/** The fields of a workspace that has `p` open: the PR, the issue it builds, its changes and Artkin's review. */
 const prFields = (p: OpenPr): Partial<Workspace> => {
-  const verdict = (o: Partial<ReviewVerdict>): ReviewVerdict => ({ workspaceId: `${p.id}-review`, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha: `h${p.n}`, prNumber: p.n, ts: at(20, 12), ...o })
+  const verdict = (o: Partial<ReviewVerdict>): ReviewVerdict => ({ workspaceId: `${p.id}-review`, agentId: 'artkin', verdict: 'approved', summary: 'No blockers.', sha: `h${p.n}`, prNumber: p.n, ts: at(20, 12), ...o })
   const reviews = p.review === 'approved' ? [verdict({})] : p.review === 'secure' ? [verdict({ lens: 'code' }), verdict({ lens: 'security', workspaceId: `${p.id}-security` })] : p.review === 'stale' ? [verdict({ sha: `h${p.n}-old` })] : p.review === 'blockers' ? [verdict({ verdict: 'blockers', blockers: [{ text: 'The download never retries.' }, { text: 'No test covers the failure toast.' }] })] : undefined
   return {
     title: p.title, prState: p.state, prNumber: p.n, prUrl: `https://github.com/cjjutba/client-a/pull/${p.n}`, prTitle: commitTitle(p.title, p.key), prHead: `h${p.n}`, source: { kind: 'issue', id: p.key, title: p.title },
@@ -1207,7 +1207,7 @@ const openPrInfo = (p: OpenPr): PrInfo => ({
   checks: p.state === 'checks' ? [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'running' }] : p.state === 'cifail' ? [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'fail', meta: '48s' }] : [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
 })
 
-/** The PRs the project has open, as workspaces and as GitHub reads them. Kai's org-invites workspace of the seed gives way to them. */
+/** The PRs the project has open, as workspaces and as GitHub reads them. Christian's org-invites workspace of the seed gives way to them. */
 const openPrs = (f: Fixture, list: OpenPr[]): Pick<Fixture, 'workspaces' | 'prs'> => ({
   workspaces: [...withWorkspace(f, ids.invites, { prNumber: undefined, prUrl: undefined, prState: 'none' }), ...list.map(openPrWorkspace)],
   prs: Object.fromEntries(list.map((p) => [p.id, openPrInfo(p)]))
@@ -1232,27 +1232,27 @@ const leadPrsScene = (f: Fixture, list: OpenPr[], ask: string, reply: string, pu
   }
 }
 
-/** Kai's org invites PR, ready to merge. */
-const INVITES_PR: OpenPr = { id: ids.invites, agentId: 'kai', key: 'T-09', n: 41, title: 'Org invites', state: 'ready', stat: [212, 34], review: 'approved' }
+/** Christian's org invites PR, ready to merge. */
+const INVITES_PR: OpenPr = { id: ids.invites, agentId: 'christian', key: 'T-09', n: 41, title: 'Org invites', state: 'ready', stat: [212, 34], review: 'approved' }
 
-/** Kai's download button PR from the Export chat, ready to merge. */
-const PDF_BUTTON_PR: OpenPr = { id: 'ws-pdf-button', agentId: 'kai', key: 'T-15b', n: 43, title: 'Download PDF in the row actions', state: 'ready', stat: [96, 12], review: 'approved' }
+/** Christian's download button PR from the Export chat, ready to merge. */
+const PDF_BUTTON_PR: OpenPr = { id: 'ws-pdf-button', agentId: 'christian', key: 'T-15b', n: 43, title: 'Download PDF in the row actions', state: 'ready', stat: [96, 12], review: 'approved' }
 
 const LEAD_PRS: OpenPr[] = [
-  { id: 'ws-182', agentId: 'kai', key: 'KERNEL-182', n: 162, title: 'New chats focus the composer, and ⌘L focuses it', state: 'ready', stat: [49, 5], review: 'approved' },
-  { id: 'ws-176', agentId: 'noor', key: 'KERNEL-176', n: 161, title: 'Kernel asks when a brief is unclear', state: 'ready', stat: [117, 16], review: 'approved' },
-  { id: 'ws-172', agentId: 'noor', key: 'KERNEL-172', n: 158, title: 'Duplicates show once in Issues', state: 'ready', stat: [28, 7], review: 'stale' },
-  { id: 'ws-183', agentId: 'noor', key: 'KERNEL-183', n: 166, title: 'Stop idle chat sessions', state: 'checks', stat: [117, 16] },
-  { id: 'ws-184', agentId: 'ivy', key: 'KERNEL-184', n: 165, title: 'Run the test suite from a chat', state: 'cifail', stat: [28, 7] },
-  { id: 'ws-189', agentId: 'kai', key: 'KERNEL-189', n: 167, title: 'Download PDF in the row actions', state: 'changes', stat: [64, 9], review: 'blockers' },
-  { id: 'ws-188', agentId: 'noor', key: 'KERNEL-188', n: 168, title: 'PDF renderer with embedded fonts', state: 'conflict', stat: [1050, 8] },
-  { id: 'ws-173', agentId: 'ivy', key: 'KERNEL-173', n: 169, title: 'Screen list test', state: 'draft', stat: [4, 4] }
+  { id: 'ws-182', agentId: 'christian', key: 'KERNEL-182', n: 162, title: 'New chats focus the composer, and ⌘L focuses it', state: 'ready', stat: [49, 5], review: 'approved' },
+  { id: 'ws-176', agentId: 'sean', key: 'KERNEL-176', n: 161, title: 'Kernel asks when a brief is unclear', state: 'ready', stat: [117, 16], review: 'approved' },
+  { id: 'ws-172', agentId: 'sean', key: 'KERNEL-172', n: 158, title: 'Duplicates show once in Issues', state: 'ready', stat: [28, 7], review: 'stale' },
+  { id: 'ws-183', agentId: 'sean', key: 'KERNEL-183', n: 166, title: 'Stop idle chat sessions', state: 'checks', stat: [117, 16] },
+  { id: 'ws-184', agentId: 'teng', key: 'KERNEL-184', n: 165, title: 'Run the test suite from a chat', state: 'cifail', stat: [28, 7] },
+  { id: 'ws-189', agentId: 'christian', key: 'KERNEL-189', n: 167, title: 'Download PDF in the row actions', state: 'changes', stat: [64, 9], review: 'blockers' },
+  { id: 'ws-188', agentId: 'sean', key: 'KERNEL-188', n: 168, title: 'PDF renderer with embedded fonts', state: 'conflict', stat: [1050, 8] },
+  { id: 'ws-173', agentId: 'teng', key: 'KERNEL-173', n: 169, title: 'Screen list test', state: 'draft', stat: [4, 4] }
 ]
 
 /** What Kernel says under the PRs tab: two PRs ready, one waiting on an approval and one running checks. */
-const LEAD_PRS_REPLY = "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. #158 is waiting for it, and #166 is still running checks. Merge them from the PRs tab, or tell me which one and I will."
+const LEAD_PRS_REPLY = "Two PRs are ready. #162 from Christian and #161 from Sean both have Artkin's approval. #158 is waiting for it, and #166 is still running checks. Merge them from the PRs tab, or tell me which one and I will."
 
-/** Kai's download button PR with two blockers from Theo on its latest commit: GitHub calls it ready, and it still isn't (KERNEL-501). */
+/** Christian's download button PR with two blockers from Artkin on its latest commit: GitHub calls it ready, and it still isn't (KERNEL-501). */
 const BLOCKERS_PR: OpenPr = { ...LEAD_PRS[5], state: 'ready' }
 
 const OVERRULED_PR: OpenPr = { ...BLOCKERS_PR, overruled: true }
@@ -1261,16 +1261,16 @@ const OVERRULED_PR: OpenPr = { ...BLOCKERS_PR, overruled: true }
 const LEAD_RUN: PushEvent[] = ['$ pnpm dev --port 4303', 'VITE v6.3.5  ready in 412 ms', 'Local:   http://localhost:4303/', 'Compiled /inbox in 1.2s', 'GET /api/requests 200 in 84ms', 'GET /inbox 200 in 31ms']
   .map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.lead, kind: 'run', lines: [{ line, stream: 'stdout' }] }))
 
-/** Three open PRs (KERNEL-411): two ready, approved by Theo, and one still running checks. */
-const MERGE_A: OpenPr = { id: 'ws-395', agentId: 'kai', key: 'KERNEL-395', n: 331, title: 'Home and Inbox count a workspace waiting for script trust', state: 'ready', stat: [99, 16], review: 'approved' }
-const MERGE_B: OpenPr = { id: 'ws-398', agentId: 'noor', key: 'KERNEL-398', n: 330, title: 'Lead worktree tests call the features, not Kernel', state: 'ready', stat: [2, 2], review: 'approved' }
-const MERGE_C: OpenPr = { id: 'ws-400', agentId: 'noor', key: 'KERNEL-400', n: 333, title: "New workspaces start from the project's default branch", state: 'checks', stat: [125, 4], review: 'stale' }
+/** Three open PRs (KERNEL-411): two ready, approved by Artkin, and one still running checks. */
+const MERGE_A: OpenPr = { id: 'ws-395', agentId: 'christian', key: 'KERNEL-395', n: 331, title: 'Home and Inbox count a workspace waiting for script trust', state: 'ready', stat: [99, 16], review: 'approved' }
+const MERGE_B: OpenPr = { id: 'ws-398', agentId: 'sean', key: 'KERNEL-398', n: 330, title: 'Lead worktree tests call the features, not Kernel', state: 'ready', stat: [2, 2], review: 'approved' }
+const MERGE_C: OpenPr = { id: 'ws-400', agentId: 'sean', key: 'KERNEL-400', n: 333, title: "New workspaces start from the project's default branch", state: 'checks', stat: [125, 4], review: 'stale' }
 
 /** Five PRs that can all merge, two of them not reviewed (KERNEL-757). */
 const ALL_READY: OpenPr[] = [LEAD_PRS[0], LEAD_PRS[1], MERGE_A, { ...MERGE_B, review: undefined }, { ...MERGE_C, state: 'ready', review: undefined }]
 
 /**
- * KERNEL-515: the panel's strip for each tab, as the PanelToolbar* fixtures and PanelFilter show it. Noor's PR #147 for KERNEL-155 changed 16 files, which the Changes tab lists, the
+ * KERNEL-515: the panel's strip for each tab, as the PanelToolbar* fixtures and PanelFilter show it. Sean's PR #147 for KERNEL-155 changed 16 files, which the Changes tab lists, the
  * All files tree marks and the Checks tab counts. Its run script is on port 4303.
  */
 const PANEL_CHANGES: ChangedFile[] = [
@@ -1312,7 +1312,7 @@ const PANEL_COMMITS: BranchCommit[] = ([
   ['9a2d6f1', 'Cover the stale-row sweep in tests', 60 * 60_000],
   ['f565c3d', 'Merge origin/main into the branch', 3 * 3600_000],
   ['7c2c03f', 'Add the stale-row sweep to the inbox feature', 30 * 3600_000]
-] as const).map(([short, subject, age]) => ({ sha: short.padEnd(40, '0'), subject, author: 'Noor', time: Date.now() - age }))
+] as const).map(([short, subject, age]) => ({ sha: short.padEnd(40, '0'), subject, author: 'Sean', time: Date.now() - age }))
 
 /** PR #147 on `right`, the bottom folded to its tab bar unless `open`, and its run script idle unless `running`. */
 const panelScene = (right: 'files' | 'changes' | 'checks', o: { tree?: boolean; open?: boolean; running?: boolean } = {}): Fixture => {
@@ -1332,9 +1332,9 @@ const panelScene = (right: 'files' | 'changes' | 'checks', o: { tree?: boolean; 
 /** A ready PR, then one PR in each state the band, the PRs tab, a Team update row and the sidebar all say the same way (KERNEL-417). */
 const PR_STATES: OpenPr[] = [
   LEAD_PRS[0],
-  { id: 'ws-160', agentId: 'kai', key: 'KERNEL-160', n: 155, title: 'Issues screen with search', state: 'merging', stat: [212, 30], review: 'approved' },
+  { id: 'ws-160', agentId: 'christian', key: 'KERNEL-160', n: 155, title: 'Issues screen with search', state: 'merging', stat: [212, 30], review: 'approved' },
   LEAD_PRS[3],
-  { id: 'ws-190', agentId: 'noor', key: 'KERNEL-190', n: 170, title: 'Sidebar keeps its scroll on a new chat', state: 'resolving', stat: [40, 12] },
+  { id: 'ws-190', agentId: 'sean', key: 'KERNEL-190', n: 170, title: 'Sidebar keeps its scroll on a new chat', state: 'resolving', stat: [40, 12] },
   LEAD_PRS[6],
   LEAD_PRS[4],
   LEAD_PRS[5],
@@ -1353,12 +1353,12 @@ const teamUpdatePrStates = (f: Fixture): Partial<Fixture> => {
       case 'checks': return [ev('pr.opened', `Opened PR #${p.n}`)]
       case 'resolving': case 'conflict': return [ev('pr.conflict', `Merge conflicts on PR #${p.n}`, true)]
       case 'cifail': return [ev('pr.cifail', `Checks failed on PR #${p.n}`, true)]
-      case 'changes': return [ev('pr.changes', `Theo requested changes on PR #${p.n}`, true)]
+      case 'changes': return [ev('pr.changes', `Artkin requested changes on PR #${p.n}`, true)]
       case 'draft': return [ev('pr.opened', `Opened draft PR #${p.n}`)]
-      default: return [ev('pr.ready', 'Ready to merge', true), ev('pr.review', 'Theo approved')]
+      default: return [ev('pr.ready', 'Ready to merge', true), ev('pr.review', 'Artkin approved')]
     }
   }
-  const names: Record<string, string> = { kai: 'Kai', noor: 'Noor', ivy: 'Ivy' }
+  const names: Record<string, string> = { christian: 'Christian', sean: 'Sean', teng: 'Teng' }
   const rows = PR_STATES.map((p): TeamUpdateRow => ({ workspaceId: p.id, agentId: p.agentId, name: names[p.agentId], task: p.title, events: events(p) }))
   const card: ChatItem = { kind: 'user', id: 'tus-1', ts: at(20, 30), from: 'kernel', update: { rows }, parts: [{ type: 'text', text: 'Team update from Kernel, not from the user.' }] }
   const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', [card, { kind: 'result', id: 'tus-res', ts: at(20, 31), durationMs: 14_000, ok: true }], {}, { model: 'claude-opus-5-5' })
@@ -1445,7 +1445,7 @@ const extraChat = (id: string, title: string, kind: 'chat' | 'terminal' = 'chat'
 const termScreen = '\r\n'.repeat(24) + [
   'you@mac t-14-invoice-table % claude --dangerously-skip-permissions', '',
   '\x1b[1mClaude Code v2.1\x1b[0m', 'Opus 5.5 with high effort · Claude Max', '~/kernel/worktrees/client-a/t-14-invoice-table', '',
-  'Hooks connected. This session reports to Kernel as Kai.', '', '> Try "fix lint errors"', '',
+  'Hooks connected. This session reports to Kernel as Christian.', '', '> Try "fix lint errors"', '',
   'bypass permissions on · worktree only                    Opus 5.5 · high'
 ].join('\r\n')
 
@@ -1458,21 +1458,21 @@ const sharedFile = (id: string, agentId: string, workspaceId: string, title: str
   ({ id, projectId: ids.projectA, workspaceId, agentId, source, title, kind, versions, createdAt: versions[0].at, updatedAt: Date.now() - ago })
 
 /**
- * The five files the canvas shares, newest first. Noor shares four in the PDF renderer's workspace and Kai one in org-invites. `html` is
+ * The five files the canvas shares, newest first. Sean shares four in the PDF renderer's workspace and Christian one in org-invites. `html` is
  * on v3 unless a shot draws the chat card, which says v2 because that is the newest version the file has there. Times in the
  * panel are relative to now, so they read 2h to 1d on any day, and the clocks in the tab are fixed.
  */
 export const sharedFiles = (htmlLatest = 3): SharedFile[] => [
-  sharedFile('sh-html', 'noor', ids.table, 'Invoice layout options', 'html', '.kernel/shared/invoice-layout.html', [
+  sharedFile('sh-html', 'sean', ids.table, 'Invoice layout options', 'html', '.kernel/shared/invoice-layout.html', [
     sharedVersion(1, 13, 12, 'text/html', { outside: 1 }), sharedVersion(2, 13, 58, 'text/html', { note: 'Totals moved under the table', outside: 1 }),
     sharedVersion(3, 14, 41, 'text/html', { note: 'Added the detailed layout', outside: 1 })
   ].slice(0, htmlLatest), 2 * HOUR),
-  sharedFile('sh-image', 'noor', ids.table, 'Embedded fonts check', 'image', '.kernel/shared/fonts-check.png', [sharedVersion(1, 13, 20, 'image/png', { width: 616, height: 385 })], 3 * HOUR),
-  sharedFile('sh-pdf', 'noor', ids.table, 'Invoice 009 sample', 'pdf', '.kernel/shared/invoices-009.pdf', [sharedVersion(1, 12, 5, 'application/pdf')], 4 * HOUR),
-  sharedFile('sh-md', 'noor', ids.table, 'PDF renderer notes', 'markdown', '.kernel/shared/notes.md', [
+  sharedFile('sh-image', 'sean', ids.table, 'Embedded fonts check', 'image', '.kernel/shared/fonts-check.png', [sharedVersion(1, 13, 20, 'image/png', { width: 616, height: 385 })], 3 * HOUR),
+  sharedFile('sh-pdf', 'sean', ids.table, 'Invoice 009 sample', 'pdf', '.kernel/shared/invoices-009.pdf', [sharedVersion(1, 12, 5, 'application/pdf')], 4 * HOUR),
+  sharedFile('sh-md', 'sean', ids.table, 'PDF renderer notes', 'markdown', '.kernel/shared/notes.md', [
     sharedVersion(1, 10, 52, 'text/markdown', { thumb: false }), sharedVersion(2, 11, 48, 'text/markdown', { note: 'Added the open questions', thumb: false })
   ], 5 * HOUR),
-  sharedFile('sh-flow', 'kai', ids.invites, 'Download button flow', 'markdown', '.kernel/shared/download-flow.md', [sharedVersion(1, 9, 12, 'text/markdown', { thumb: false })], 24 * HOUR)
+  sharedFile('sh-flow', 'christian', ids.invites, 'Download button flow', 'markdown', '.kernel/shared/download-flow.md', [sharedVersion(1, 9, 12, 'text/markdown', { thumb: false })], 24 * HOUR)
 ]
 export const sharedStills: NonNullable<Fixture['sharedData']> = {
   'sh-html': { 1: { text: '', thumb: invoiceLayoutStill }, 2: { text: '', thumb: invoiceLayoutStill }, 3: { text: '', thumb: invoiceLayoutStill } },
@@ -1482,9 +1482,9 @@ export const sharedStills: NonNullable<Fixture['sharedData']> = {
   'sh-flow': { 1: { text: downloadFlowMarkdown } }
 }
 
-/** Noor's workspace on the canvas: invoice-pdf-renderer, whose chat shared the layout, a sample PDF and the notes. */
+/** Sean's workspace on the canvas: invoice-pdf-renderer, whose chat shared the layout, a sample PDF and the notes. */
 const renderer = (f: Fixture) => ({
-  workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor', stat: { files: 2, added: 194, removed: 1 } }),
+  workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean', stat: { files: 2, added: 194, removed: 1 } }),
   chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'PDF renderer' } : c)),
   items: { [ids.tableChat]: [
     userMsg('sh-u', 'Show me the invoice layout as a page I can click through.'),
@@ -1509,9 +1509,9 @@ const sharedTabScene = (f: Fixture, file?: string, htmlLatest = 3): Partial<Fixt
 })
 const sharedTab = (file?: string, htmlLatest = 3) => scene((f) => sharedTabScene(f, file, htmlLatest))
 
-// Comment mode on a shared file (KERNEL-311). The canvas comments on a pricing page Noor shared, so these shots swap it in for the invoice layout.
+// Comment mode on a shared file (KERNEL-311). The canvas comments on a pricing page Sean shared, so these shots swap it in for the invoice layout.
 // A fixture run has no live page: `sharedHits` is what `system.preview.hit` finds, and the pins come from `sharedComments`.
-const pricingFile = (latest = 2): SharedFile => sharedFile('sh-pricing', 'noor', ids.table, 'Pricing page draft', 'html', '.kernel/shared/pricing.html', [
+const pricingFile = (latest = 2): SharedFile => sharedFile('sh-pricing', 'sean', ids.table, 'Pricing page draft', 'html', '.kernel/shared/pricing.html', [
   sharedVersion(1, 14, 20, 'text/html'), sharedVersion(2, 15, 7, 'text/html', { note: 'Prices are placeholders' }), sharedVersion(3, 15, 32, 'text/html', { note: 'Added the Team plan' })
 ].slice(0, latest), HOUR)
 const commentFiles = (latest = 2): SharedFile[] => [pricingFile(latest), ...sharedFiles().filter((x) => x.id !== 'sh-html')]
@@ -1533,7 +1533,7 @@ const commentNotes: SharedComment[] = [
   comment('cm-4', 'sh-image', 1, 'The digits need more space.', { x: 481, y: 342, viewport: { width: 616, height: 385, scrollY: 0 } })
 ]
 
-/** Noor's workspace with one of the two files open in a tab, in comment shots. `latest` is how many versions the page has. */
+/** Sean's workspace with one of the two files open in a tab, in comment shots. `latest` is how many versions the page has. */
 const commentTab = (file: 'sh-pricing' | 'sh-image', latest = 2, picked?: number) => scene((f) => ({
   ...renderer(f),
   shared: commentFiles(latest).filter((x) => x.workspaceId === ids.table),
@@ -1566,11 +1566,11 @@ const commentSent = scene((f) => ({
     ...open,
     workspace: { right: 'changes', bottom: 'run' },
     tabs: { [ids.table]: { tab: ids.tableChat, lastChat: ids.tableChat, files: [], diffs: [], shared: ['sh-pricing'] } },
-    toasts: [{ id: 'cs-toast', title: 'Sent to Noor', action: { label: 'Open chat', tab: { workspaceId: ids.table, id: ids.tableChat } } }]
+    toasts: [{ id: 'cs-toast', title: 'Sent to Sean', action: { label: 'Open chat', tab: { workspaceId: ids.table, id: ids.tableChat } } }]
   }
 }))
 
-/** Kernel's workspace, with the page Noor shared from a workspace that has been archived since (WorkspaceSharedCommentArchived). */
+/** Kernel's workspace, with the page Sean shared from a workspace that has been archived since (WorkspaceSharedCommentArchived). */
 const commentArchived = (f: Fixture): Partial<Fixture> => {
   const p = sharedPanel(f)
   return {
@@ -1589,7 +1589,7 @@ const sharedPanel = (f: Fixture): Partial<Fixture> => {
   // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
   const { approvals: _none, ...lead } = scene2(f, { id: ids.lead, name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', mode: 'worktree', lead: undefined, agentId: 'kernel-lead', stat: { files: 1, added: 64, removed: 0 } }, 'Export invoices as PDF', [
     userMsg('sp-u', 'Add PDF export to invoices. Spec first.'),
-    { kind: 'text', id: 'sp-t', ts: at(14, 41), text: 'I split PDF export into four tasks. Noor shared the layout, a sample and the notes in the meantime.' }
+    { kind: 'text', id: 'sp-t', ts: at(14, 41), text: 'I split PDF export into four tasks. Sean shared the layout, a sample and the notes in the meantime.' }
   ], {}, { model: 'claude-opus-5-5' })
   return {
     ...lead,
@@ -1606,26 +1606,26 @@ const sharedPanel = (f: Fixture): Partial<Fixture> => {
 /** Kernel's Team update in Kernel's chat with a file under each of two teammates (TeamUpdateShared.png). */
 const teamUpdateShared = (f: Fixture): Partial<Fixture> => {
   const header = 'Team update from Kernel, not from the user.'
-  const noor: TeamUpdateRow = {
-    workspaceId: ids.table, agentId: 'noor', name: 'Noor', task: 'KERNEL-188 PDF renderer with embedded fonts',
+  const sean: TeamUpdateRow = {
+    workspaceId: ids.table, agentId: 'sean', name: 'Sean', task: 'KERNEL-188 PDF renderer with embedded fonts',
     events: [{ kind: 'turn', text: 'Finished a turn', actionable: false }],
     reply: "The layout options are ready as a page you can click through, and I rendered a sample PDF from the compact one. I'd go with compact, since the line items stay readable at twelve rows.",
     shared: [{ sharedId: 'sh-html', version: 3, title: 'Invoice layout options', kind: 'html' }]
   }
-  const kai: TeamUpdateRow = {
-    workspaceId: ids.invites, agentId: 'kai', name: 'Kai', task: 'KERNEL-189 Download PDF in the row actions',
+  const christian: TeamUpdateRow = {
+    workspaceId: ids.invites, agentId: 'christian', name: 'Christian', task: 'KERNEL-189 Download PDF in the row actions',
     events: [{ kind: 'turn', text: 'Finished a turn', actionable: false }],
     reply: 'The button flow is written up in a short note, so you can check the states before I build them.',
     shared: [{ sharedId: 'sh-flow', version: 1, title: 'Download button flow', kind: 'markdown' }]
   }
-  const rows = [noor, kai]
+  const rows = [sean, christian]
   const update: ChatItem = {
     kind: 'user', id: 'tus-u', ts: at(14, 41), from: 'kernel', update: { rows },
     parts: [{ type: 'text', text: [header, '', ...rows.flatMap((r) => [`${r.name} (${r.agentId}) · ${r.task} · workspace ${r.workspaceId}`, ...r.events.map((e) => `- ${e.text}.`), ...(r.shared ?? []).map((x) => `- Shared "${x.title}" (v${x.version}).`), '']), 'To do:', '- Look at both files, then tell the user what you found.'].join('\n') }]
   }
   const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', [
     update,
-    { kind: 'text', id: 'tus-r', ts: at(14, 42), text: "Noor shared the invoice layouts and Kai shared a note on the download button. I'll look at both before I pass anything on." },
+    { kind: 'text', id: 'tus-r', ts: at(14, 42), text: "Sean shared the invoice layouts and Christian shared a note on the download button. I'll look at both before I pass anything on." },
     { kind: 'result', id: 'tus-res', ts: at(14, 42), durationMs: 45_000, ok: true }
   ], {}, { model: 'claude-opus-5-5' })
   const { approvals: _none, ...rest } = s
@@ -1633,7 +1633,7 @@ const teamUpdateShared = (f: Fixture): Partial<Fixture> => {
 }
 
 /**
- * KERNEL-599: the chat rail. Noor's chat on PR #147 for KERNEL-155 holds 18 messages, each with a short turn,
+ * KERNEL-599: the chat rail. Sean's chat on PR #147 for KERNEL-155 holds 18 messages, each with a short turn,
  * and the 14th has the long reply. ChatRail and ChatRailOpen are read from the 14th message (the shot script scrolls it under the tab row), ChatRailNarrow is
  * at the bottom with the right panel open.
  */
@@ -1656,7 +1656,7 @@ const RAIL_LONG_REPLY = [
   '',
   '- **Release note check:** still running on Vercel\'s side. I\'ll look again before I stop.',
   '- **PR body:** updated to D-137 and D-138, and it lists the renumber commit.',
-  '- **Review:** Theo hasn\'t been asked yet.',
+  '- **Review:** Artkin hasn\'t been asked yet.',
   '',
   '**Next**',
   '',
@@ -1672,15 +1672,15 @@ const railRounds: RailRound[] = [
   ['Checks failed on #147, can you look?', 'One check failed, Vercel\'s build, with a rate limit error. Nothing in the code failed.', 3, 1, 52, [12, 31]],
   ['The Vercel build is rate limited, leave it alone', 'Understood, I left it. It will pass when the limit resets.', 1, 0, 9, [12, 33]],
   ['Rebase onto main', 'Rebased onto origin/main. One conflict in `docs/DECISIONS.md`, which I resolved.', 5, 2, 131, [12, 38]],
-  ['Theo wants the empty state to say what\'s missing', 'The empty state now says "No requests yet" or "No PRs yet", whichever list is empty.', 4, 1, 88, [12, 44]],
+  ['Artkin wants the empty state to say what\'s missing', 'The empty state now says "No requests yet" or "No PRs yet", whichever list is empty.', 4, 1, 88, [12, 44]],
   ['Reword that in plain words', 'Reworded. It reads "Nothing asked of you yet" for requests and "No open PRs" for PRs.', 2, 0, 27, [12, 47]],
   ['Squash the last two commits', 'Squashed them into one commit.', 2, 0, 18, [12, 51]],
   ['Why did the rebase drop my D-136 entry?', 'The rebase took main\'s version of `docs/DECISIONS.md`, which already had a D-136. Mine was in the conflict and lost.', 3, 1, 232, [13, 1]],
   ['Change of method for the conflict on PR #147. Force pushes are refused, so don\'t rebase. Merge origin/main into your branch and push normally, since the repo squash-merges anyway. Everything else stays the same: your entry becomes D-137, check kernel.ts against #149, run typecheck and test, and update the PR body.', RAIL_LONG_REPLY, 9, 12, 232, [13, 1]],
   ['Show me the renumber commit', 'It\'s 1440439. It changes 12 comment lines across `ipc.ts`, `kernel.ts`, `db.ts` and `approvals.ts`, and no code.', 1, 1, 21, [13, 4]],
   ['Check the Release note check, then tell me', 'It\'s still running. Vercel passed on the last push.', 2, 0, 34, [13, 6]],
-  ['Did Theo review it yet?', 'Not yet. I asked him in his chat 12 minutes ago, and he hasn\'t replied.', 0, 0, 8, [13, 7]],
-  ['Ping him again if there\'s nothing by 13:30, and tell me when PR #147 is ready to merge so I can tell Kernel.', 'Will do. Right now PR #147 passes checks and has no conflicts, so only Theo\'s review is missing. I\'ll ask him again at 13:30 and write to you the moment he approves, with the PR number so you can merge from the panel.', 0, 0, 77, [13, 9]]
+  ['Did Artkin review it yet?', 'Not yet. I asked him in his chat 12 minutes ago, and he hasn\'t replied.', 0, 0, 8, [13, 7]],
+  ['Ping him again if there\'s nothing by 13:30, and tell me when PR #147 is ready to merge so I can tell Kernel.', 'Will do. Right now PR #147 passes checks and has no conflicts, so only Artkin\'s review is missing. I\'ll ask him again at 13:30 and write to you the moment he approves, with the PR number so you can merge from the panel.', 0, 0, 77, [13, 9]]
 ]
 const railChat = (): ChatItem[] => railRounds.flatMap(([ask, reply, tools, thoughts, secs, clock], i): ChatItem[] => [
   { kind: 'user', id: `rc-u${i}`, ts: at(...clock) - secs * 1000, parts: [{ type: 'text', text: ask }] },
@@ -1695,7 +1695,7 @@ const railScene = (panel = false): Fixture => {
 
 /**
  * ChatRailLead: Kernel's chat with 11 things to list, 6 of them Team updates. The updates are the ones the PNG's rail names, and each row of each is the engine's own wording.
- * Noor's PR #161 and Kai's #162 can merge, so the newest card offers Merge for both, and #150 is in History.
+ * Sean's PR #161 and Christian's #162 can merge, so the newest card offers Merge for both, and #150 is in History.
  */
 const railLead = (f: Fixture): Partial<Fixture> => {
   const row = tuRow, ev = tuEv
@@ -1704,31 +1704,31 @@ const railLead = (f: Fixture): Partial<Fixture> => {
     { kind: 'text', id: `${id}-x`, ts: at(20, m), text },
     { kind: 'result', id: `${id}-r`, ts: at(20, m), durationMs: secs * 1000, ok: true }
   ]
-  const kai = (events: TeamUpdateRow['events']) => row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', events)
-  const noor = (events: TeamUpdateRow['events']) => row('ws-176', 'noor', 'Noor', 'Kernel asks when a brief is unclear', events)
+  const christian = (events: TeamUpdateRow['events']) => row('ws-182', 'christian', 'Christian', 'New chats focus the composer, and ⌘L focuses it', events)
+  const sean = (events: TeamUpdateRow['events']) => row('ws-176', 'sean', 'Sean', 'Kernel asks when a brief is unclear', events)
   const items: ChatItem[] = [
     ask('rl-u1', 'Plan the week: what\'s ready, what\'s blocked?', 0),
-    ...answer('rl-u1', 'Three tasks are in flight. Noor has the Linear service, Kai has the composer focus and Theo is free to review. Nothing is blocked yet.', 42, 0),
+    ...answer('rl-u1', 'Three tasks are in flight. Sean has the Linear service, Christian has the composer focus and Artkin is free to review. Nothing is blocked yet.', 42, 0),
     ask('rl-u2', 'Who can take KERNEL-189?', 1),
-    ...answer('rl-u2', 'Noor can, once KERNEL-163 merges.', 11, 1),
-    tuCard('rl-t3', 2, [noor([ev('pr.opened', 'Opened PR #161')])]),
-    ...answer('rl-t3', 'Noor opened PR #161. I will ask Theo to review it once checks pass.', 15, 2),
-    ask('rl-u4', 'Ask Kai to fix the composer focus', 3),
-    ...answer('rl-u4', 'Kai has it.', 9, 3),
-    tuCard('rl-t5', 4, [kai([ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162')])]),
-    ...answer('rl-t5', 'Kai opened PR #162 for the composer focus.', 12, 4),
-    ask('rl-u6', 'Ask Theo to review #161 and #162', 5),
-    ...answer('rl-u6', 'Theo is reviewing both PRs.', 14, 5),
-    tuCard('rl-t7', 6, [row('ws-review-161', 'theo', 'Theo', 'KERNEL-176 Kernel asks when a brief is unclear', [ev('review', 'Approved PR #161', true)]), kai([ev('turn', 'Finished a turn')])]),
-    ...answer('rl-t7', 'Theo approved #161. #162 is still in review.', 18, 6),
-    tuCard('rl-t8', 8, [row('ws-163', 'noor', 'Noor', "Linear service, contracts and Kernel's issue link", [ev('pr.merged', 'Merged PR #150')])]),
+    ...answer('rl-u2', 'Sean can, once KERNEL-163 merges.', 11, 1),
+    tuCard('rl-t3', 2, [sean([ev('pr.opened', 'Opened PR #161')])]),
+    ...answer('rl-t3', 'Sean opened PR #161. I will ask Artkin to review it once checks pass.', 15, 2),
+    ask('rl-u4', 'Ask Christian to fix the composer focus', 3),
+    ...answer('rl-u4', 'Christian has it.', 9, 3),
+    tuCard('rl-t5', 4, [christian([ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162')])]),
+    ...answer('rl-t5', 'Christian opened PR #162 for the composer focus.', 12, 4),
+    ask('rl-u6', 'Ask Artkin to review #161 and #162', 5),
+    ...answer('rl-u6', 'Artkin is reviewing both PRs.', 14, 5),
+    tuCard('rl-t7', 6, [row('ws-review-161', 'artkin', 'Artkin', 'KERNEL-176 Kernel asks when a brief is unclear', [ev('review', 'Approved PR #161', true)]), christian([ev('turn', 'Finished a turn')])]),
+    ...answer('rl-t7', 'Artkin approved #161. #162 is still in review.', 18, 6),
+    tuCard('rl-t8', 8, [row('ws-163', 'sean', 'Sean', "Linear service, contracts and Kernel's issue link", [ev('pr.merged', 'Merged PR #150')])]),
     { kind: 'result', id: 'rl-t8-r', ts: at(20, 9), durationMs: 4 * 60_000 + 9_000, ok: true },
-    tuCard('rl-t9', 14, [kai([ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed', true)])]),
-    ...answer('rl-t9', 'Nothing in Kai\'s code failed. Vercel\'s build rate limit is the only failure on PR #162.', 10, 15),
-    tuCard('rl-t10', 15, [kai([ev('turn', 'Finished a turn'), ev('turn', 'Pushed a fix'), ev('pr.ready', 'Ready to merge', true)]), noor([ev('pr.opened', 'Opened PR #161'), ev('pr.ready', 'Ready to merge', true)])]),
+    tuCard('rl-t9', 14, [christian([ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed', true)])]),
+    ...answer('rl-t9', 'Nothing in Christian\'s code failed. Vercel\'s build rate limit is the only failure on PR #162.', 10, 15),
+    tuCard('rl-t10', 15, [christian([ev('turn', 'Finished a turn'), ev('turn', 'Pushed a fix'), ev('pr.ready', 'Ready to merge', true)]), sean([ev('pr.opened', 'Opened PR #161'), ev('pr.ready', 'Ready to merge', true)])]),
     { kind: 'result', id: 'rl-t10-r', ts: at(20, 16), durationMs: 55_000, ok: true },
     ask('rl-u11', 'What can I merge?', 30),
-    ...answer('rl-u11', 'Two PRs are ready to merge, #162 from Kai and #161 from Noor. #158 waits for Theo\'s review. Merge from the PRs tab, or tell me which one and I will.', 12, 31)
+    ...answer('rl-u11', 'Two PRs are ready to merge, #162 from Christian and #161 from Sean. #158 waits for Artkin\'s review. Merge from the PRs tab, or tell me which one and I will.', 12, 31)
   ]
   const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', items, {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
   const { approvals: _none, ...rest } = s
@@ -1741,10 +1741,10 @@ const railLead = (f: Fixture): Partial<Fixture> => {
     chats: [tab('chat-lead-week', 'Plan the week', 1), tab('chat-lead-inbox', 'Inbox rows', 2), tab('chat-lead-linear', 'Linear setup', 3), ...(s.chats ?? f.chats)],
     workspaces: [
       ...(s.workspaces ?? f.workspaces),
-      tuWork('ws-182', 'kai', 'kernel-182-new-chats-focus', 162, { prHead: 'h162', ...issue('KERNEL-182', 'New chats focus the composer, and ⌘L focuses it') }),
-      tuWork('ws-176', 'noor', 'kernel-176-kernel-asks', 161, { prHead: 'h161', reviews: [tuVerdict('ws-review-161', 161, 'h161')], ...issue('KERNEL-176', 'Kernel asks when a brief is unclear') }),
-      tuWork('ws-review-161', 'theo', 'review-pr-161-kernel-176', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, reviewOf: 'ws-176' }),
-      tuWork('ws-163', 'noor', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9), ...issue('KERNEL-163', "Linear service, contracts and Kernel's issue link") })
+      tuWork('ws-182', 'christian', 'kernel-182-new-chats-focus', 162, { prHead: 'h162', ...issue('KERNEL-182', 'New chats focus the composer, and ⌘L focuses it') }),
+      tuWork('ws-176', 'sean', 'kernel-176-kernel-asks', 161, { prHead: 'h161', reviews: [tuVerdict('ws-review-161', 161, 'h161')], ...issue('KERNEL-176', 'Kernel asks when a brief is unclear') }),
+      tuWork('ws-review-161', 'artkin', 'review-pr-161-kernel-176', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, reviewOf: 'ws-176' }),
+      tuWork('ws-163', 'sean', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9), ...issue('KERNEL-163', "Linear service, contracts and Kernel's issue link") })
     ],
     prs: { 'ws-182': tuInfo('ws-182', 162, 'h162'), 'ws-176': tuInfo('ws-176', 161, 'h161') }
   }
@@ -1774,22 +1774,22 @@ const lmFiles: ChangedFile[] = [
 ]
 const lmPr = { prNumber: 171, prUrl: 'https://github.com/cjjutba/client-a/pull/171', prTitle: 'fix(money): round refunds half away from zero' }
 
-/** Build here's own PR as quiet rows (KERNEL-990): the notes Kernel draws, and Theo's review as a card Kernel draws without a turn. */
+/** Build here's own PR as quiet rows (KERNEL-990): the notes Kernel draws, and Artkin's review as a card Kernel draws without a turn. */
 const bhNote = (id: string, m: number, text: string, pr?: 'opened' | 'ready' | 'merged'): ChatItem => ({ kind: 'note', id, ts: at(10, m), text, ...(pr ? { pr } : {}) })
 const bhReview = (id: string, m: number, approved: boolean): ChatItem => ({
   kind: 'update', id, ts: at(10, m),
   update: { rows: [{
-    workspaceId: 'ws-review-171', agentId: 'theo', name: 'Theo', task: 'Review PR #171', prNumber: 171,
+    workspaceId: 'ws-review-171', agentId: 'artkin', name: 'Artkin', task: 'Review PR #171', prNumber: 171,
     events: [{ kind: 'review', text: approved ? 'Approved PR #171' : 'Found 2 blockers on PR #171', actionable: !approved }],
     reply: approved
       ? 'The rounding now goes half away from zero for refunds and the cent case has a test. I checked credit notes and the export and neither calls the changed function. No blockers.'
       : 'Two blockers. The export still rounds half to even, so a refund exported as CSV is a cent off from the invoice. The new test covers only positive amounts, so negative refunds are untested.'
   }] }
 })
-/** Theo's review workspace for the card's In History link, and the Lead chat that reviewed PR #171. */
+/** Artkin's review workspace for the card's In History link, and the Lead chat that reviewed PR #171. */
 const bhScene = (f: Fixture, items: ChatItem[], ws: Partial<Workspace> = {}): Partial<Fixture> => {
   const s = leadModeScene(f, { mode: 'build', right: 'changes', ws: { ...lmPr, ...ws }, items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...items] })
-  const review: Workspace = { id: 'ws-review-171', projectId: ids.projectA, name: 'review-pr-171', title: 'Review PR #171', branch: 'feat/refund-rounding-review', baseRef: 'feat/refund-rounding', path: '/Users/you/kernel/worktrees/client-a/review-pr-171', mode: 'worktree', agentId: 'theo', port: 4317, status: 'archived', prState: 'none', reviewOf: ids.lead, createdAt: at(10, 8) }
+  const review: Workspace = { id: 'ws-review-171', projectId: ids.projectA, name: 'review-pr-171', title: 'Review PR #171', branch: 'feat/refund-rounding-review', baseRef: 'feat/refund-rounding', path: '/Users/you/kernel/worktrees/client-a/review-pr-171', mode: 'worktree', agentId: 'artkin', port: 4317, status: 'archived', prState: 'none', reviewOf: ids.lead, createdAt: at(10, 8) }
   return { ...s, workspaces: [...(s.workspaces ?? f.workspaces), review] }
 }
 const bhReady = bhNote('bh-n2', 12, 'PR #171 is ready to merge', 'ready')
@@ -1814,8 +1814,8 @@ const handedOff = (id: string, name: string, task: string, agentId: string, port
   ({ id, projectId: ids.projectA, name, branch: `feat/${task}-${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port, status: 'ready', prState: 'none', createdAt: at(10, 2), threadId: GROUPED.export, leadChatId: ids.leadChat, ...over })
 
 const T15_STEPS = [
-  { title: 'T-15a PDF renderer with embedded fonts', taskId: 'T-15a', agentId: 'noor' }, { title: 'T-15b Download PDF in the row actions', taskId: 'T-15b', agentId: 'kai' },
-  { title: 'T-15c Snapshot tests for three invoice types', taskId: 'T-15c', agentId: 'ivy' }, { title: 'T-15d Review each PR as it lands', taskId: 'T-15d', agentId: 'theo' }
+  { title: 'T-15a PDF renderer with embedded fonts', taskId: 'T-15a', agentId: 'sean' }, { title: 'T-15b Download PDF in the row actions', taskId: 'T-15b', agentId: 'christian' },
+  { title: 'T-15c Snapshot tests for three invoice types', taskId: 'T-15c', agentId: 'teng' }, { title: 'T-15d Review each PR as it lands', taskId: 'T-15d', agentId: 'artkin' }
 ]
 
 /** The first tab of the Export chat: the plan Kernel wrote and you approved, then the hand-off. */
@@ -1826,7 +1826,7 @@ const exportItems = (): ChatItem[] => [
   tool('g1-t2', 'Write the plan', 'cat > plans/t-15-invoice-pdf.md', { name: 'Write' }),
   { kind: 'text', id: 'g1-tx', ts: at(10, 9), text: 'I split PDF export into four tasks that can run in parallel.' },
   { kind: 'approval', id: 'approval-ap-plan-kernel', ts: at(10, 12), approvalId: 'ap-plan-kernel' },
-  { kind: 'text', id: 'g1-done', ts: at(10, 13), text: 'Handed off. Noor has the renderer, Kai has the button and Ivy has the tests. Theo reviews each PR as it lands.' }
+  { kind: 'text', id: 'g1-done', ts: at(10, 13), text: 'Handed off. Sean has the renderer, Christian has the button and Teng has the tests. Artkin reviews each PR as it lands.' }
 ]
 
 /** The Lead's workspace on the sidebar the Grouped PNGs share: four Lead chats, two of them with several tabs, and their workspaces. Each shot picks what is open. */
@@ -1834,7 +1834,7 @@ export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?:
   const T = GROUPED
   const chats = [
     leadTab(ids.leadChat, T.export, 'Export invoices as PDF', 5),
-    leadTab('chat-kai-pr', T.export, "How is Kai's PR going?", 6),
+    leadTab('chat-christian-pr', T.export, "How is Christian's PR going?", 6),
     leadTab('chat-per-client', T.export, 'One PDF per client', 7),
     leadTab('chat-table', T.table, 'Invoice table and empty states', 8),
     leadTab('chat-table-copy', T.table, 'Empty state copy', 9),
@@ -1849,9 +1849,9 @@ export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?:
   const plan: Approval = { ...pending('plan', 'kernel-lead', { workspaceId: ids.lead, chatId: ids.leadChat, title: 'Plan for T-15', steps: T15_STEPS }), status: 'allowed', createdAt: at(10, 12) }
   const tab = o.tab ?? ids.leadChat
   const handed: Workspace[] = [
-    handedOff('ws-pdf-renderer', 'invoice-pdf-renderer', 't-15a', 'noor', 4320, { stat: { files: 3, added: 188, removed: 0 } }),
-    handedOff('ws-pdf-button', 'invoice-pdf-button', 't-15b', 'kai', 4321, prFields(PDF_BUTTON_PR)),
-    handedOff('ws-pdf-tests', 'invoice-pdf-tests', 't-15c', 'ivy', 4322, { stat: { files: 2, added: 138, removed: 9 } })
+    handedOff('ws-pdf-renderer', 'invoice-pdf-renderer', 't-15a', 'sean', 4320, { stat: { files: 3, added: 188, removed: 0 } }),
+    handedOff('ws-pdf-button', 'invoice-pdf-button', 't-15b', 'christian', 4321, prFields(PDF_BUTTON_PR)),
+    handedOff('ws-pdf-tests', 'invoice-pdf-tests', 't-15c', 'teng', 4322, { stat: { files: 2, added: 138, removed: 9 } })
   ]
   const allThreads = (o.threads ?? ((t) => t))(threads)
   const allChats = (o.chats ?? ((c) => c))(chats)
@@ -1864,7 +1864,7 @@ export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?:
     // The seed's single Lead chat gives way to the tabs above. The table and schema workspaces were handed off by the table chat.
     chats: [...allChats, ...f.chats.filter((c) => c.workspaceId !== ids.lead)],
     workspaces: [...own, ...handed, ...withWorkspace(f, ids.table, { threadId: T.table }).filter((w) => w.id !== ids.lead).map((w) => (w.id === ids.schema ? { ...w, threadId: T.table, stat: { files: 2, added: 54, removed: 6 } } : w.id === ids.invites ? { ...w, ...prFields(INVITES_PR) } : w))],
-    // Kai's two PRs are ready and approved, which the tab and the header count (KERNEL-354).
+    // Christian's two PRs are ready and approved, which the tab and the header count (KERNEL-354).
     prs: { 'ws-pdf-button': openPrInfo(PDF_BUTTON_PR), [ids.invites]: openPrInfo(INVITES_PR) },
     items: { [ids.leadChat]: exportItems(), [ids.tableChat]: [], ...o.items },
     approvals: [plan, ...f.approvals],
@@ -1891,14 +1891,14 @@ function sidebarUnread(f: Fixture): Partial<Fixture> {
   const unread = new Set(['chat-table-copy', 'chat-login-redirect', ids.schemaChat, ids.invitesChat, 'chat-pdf-button', 'chat-landing'])
   const owned = (id: string, workspaceId: string, title: string): Chat => ({ id, workspaceId, title, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 5) })
   const g = grouped(f, { tab: 'chat-table', running: ['chat-login'] })
-  const landing = handedOff('ws-landing-copy', 'landing-copy', 't-31', 'kai', 4330, { projectId: ids.projectB, threadId: undefined, leadChatId: undefined, branch: 'feat/t-31-landing-copy', path: '/Users/you/kernel/worktrees/client-b/landing-copy' })
-  const question = pending('question', 'kai', { workspaceId: ids.invites, chatId: ids.invitesChat, title: 'Should invites expire after 7 days?', options: ['Yes, 7 days', 'No expiry'] })
+  const landing = handedOff('ws-landing-copy', 'landing-copy', 't-31', 'christian', 4330, { projectId: ids.projectB, threadId: undefined, leadChatId: undefined, branch: 'feat/t-31-landing-copy', path: '/Users/you/kernel/worktrees/client-b/landing-copy' })
+  const question = pending('question', 'christian', { workspaceId: ids.invites, chatId: ids.invitesChat, title: 'Should invites expire after 7 days?', options: ['Yes, 7 days', 'No expiry'] })
   return {
     ...g,
     chats: [...g.chats!, owned('chat-pdf-button', 'ws-pdf-button', 'Download PDF button'), owned('chat-landing', landing.id, 'Landing page copy')].map((c) => (unread.has(c.id) ? { ...c, unreadAt } : c)),
     workspaces: [...g.workspaces!, landing],
     approvals: [...g.approvals!, question],
-    items: { ...g.items, 'chat-table': groupedTurn('su', 38, 'Build the invoice table with sorting, plus the empty, loading and error states.', 'The table and the schema change are independent. Kai and Noor can start together.', [], 'Kai has the table and its states. Noor has the schema change the table needs.') },
+    items: { ...g.items, 'chat-table': groupedTurn('su', 38, 'Build the invoice table with sorting, plus the empty, loading and error states.', 'The table and the schema change are independent. Christian and Sean can start together.', [], 'Christian has the table and its states. Sean has the schema change the table needs.') },
     ui: { ...g.ui!, foldedChats: [GROUPED.export] }
   }
 }
@@ -1935,15 +1935,15 @@ function sidebarPlanChat(f: Fixture): Partial<Fixture> {
   return { ...g, chats: g.chats!.map((c) => (c.id === 'chat-table' || c.id === 'chat-login' ? { ...c, plan: true } : c)) }
 }
 
-/** WorkspaceLead with three open items on the Export chat: Noor's question, blockers in Kai's work and Ivy's proposed hand-off. */
+/** WorkspaceLead with three open items on the Export chat: Sean's question, blockers in Christian's work and Teng's proposed hand-off. */
 function leadOpenItems(f: Fixture): Partial<Fixture> {
   const base = { projectId: ids.projectA, threadId: GROUPED.export, chatId: ids.leadChat, createdAt: at(10, 20) }
   return {
     ...leadWaiting(f),
     openItems: [
-      { ...base, id: 'oi-q', kind: 'question', workspaceId: 'ws-176', agentId: 'noor', name: 'Noor', text: 'Should the PDF include the VAT breakdown?' },
-      { ...base, id: 'oi-b', kind: 'blockers', workspaceId: 'ws-182', agentId: 'kai', name: 'Kai', blockers: 2 },
-      { ...base, id: 'oi-h', kind: 'handoff.proposed', workspaceId: 'ws-176', agentId: 'noor', name: 'Noor', text: 'Snapshot tests for three invoice types', proposed: { agentId: 'ivy', name: 'Ivy' } }
+      { ...base, id: 'oi-q', kind: 'question', workspaceId: 'ws-176', agentId: 'sean', name: 'Sean', text: 'Should the PDF include the VAT breakdown?' },
+      { ...base, id: 'oi-b', kind: 'blockers', workspaceId: 'ws-182', agentId: 'christian', name: 'Christian', blockers: 2 },
+      { ...base, id: 'oi-h', kind: 'handoff.proposed', workspaceId: 'ws-176', agentId: 'sean', name: 'Sean', text: 'Snapshot tests for three invoice types', proposed: { agentId: 'teng', name: 'Teng' } }
     ]
   }
 }
@@ -1981,14 +1981,14 @@ const hireScene = (tools: string[], servers?: AgentReach, scope?: AgentScope) =>
     { kind: 'text', id: 'h-tx', ts: at(10, 29), text: 'Here is the agent file. Once you approve, I will save it and Wren joins the team.' }
   ], {
     approvals: [pending('agent', 'kernel-lead', { workspaceId: ids.lead, title: 'Add wren to the team', agentFile: { path: '.claude/agents/wren.md', ...(servers ? { servers } : {}), ...(scope ? { scope } : {}), text: [
-      '---', 'name: wren', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', ...tools, '---'
+      '---', 'name: wren', 'description: Designer. Checks every screen against DESIGN.md', '  before Artkin reviews it. Flags spacing, type and color drift.', 'model: sonnet', ...tools, '---'
     ].join('\n') } }), ...f.approvals]
   }, { plan: false, model: 'claude-opus-5-5' }),
   changes: { [ids.lead]: [{ path: '.claude/agents/wren.md', status: 'A', added: 28, removed: 0 }] }
 }))
 
 /**
- * KERNEL-586: the turn files card, in Noor's chat for KERNEL-155. A first answer, then a turn that ends in `reply` (or in
+ * KERNEL-586: the turn files card, in Sean's chat for KERNEL-155. A first answer, then a turn that ends in `reply` (or in
  * its tool calls, with no reply) and the files it changed. The right panel lists everything PR #147 changed so far, which is `panel`.
  */
 const tf = (path: string, status: ChangedFile['status'], added: number, removed: number): ChangedFile => ({ path, status, added, removed })
@@ -2058,20 +2058,20 @@ function startedFromNewChat(f: Fixture, opened: boolean): Partial<Fixture> {
     threads: (t) => t.map((x) => (x.id === GROUPED.export ? { ...x, title } : x)),
     ...(opened ? {} : { items: { [ids.leadChat]: [ask, tool('ns-t1', 'Reading the settings search code', 'rg search src/renderer/src/screens/settings', { name: 'Read', status: 'running', ts: Date.now() - 4000, durationMs: undefined })] } })
   })
-  // Just started, it has handed nothing off, so the project shows no PR yet. Opened, it has Kai's PRs the frame lists.
+  // Just started, it has handed nothing off, so the project shows no PR yet. Opened, it has Christian's PRs the frame lists.
   const own = g.workspaces!.map((w) => (w.id === ids.lead ? { ...w, title } : w)).filter((w) => opened || (!w.leadChatId && !w.prNumber))
   const kept = new Set(own.map((w) => w.id))
   return { ...g, workspaces: own, chats: g.chats!.filter((c) => kept.has(c.workspaceId)), ...(opened ? {} : { prs: {} }), ui: { ...g.ui!, rightPanel: true, panelHeld: opened ? [] : [ids.lead] } }
 }
 
 /** The Bash permission card for pnpm drizzle-kit push in the PDF renderer chat (WorkspacePerm, KERNEL-834). */
-const permWaiting = (f: Fixture) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+const permWaiting = (f: Fixture) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
     userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
     ...folded('p', 11, 2),
     { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. The schema needs a pdf_url column, so I need to push it to the dev database.' },
     { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
   ], {
-    approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
+    approvals: [pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
   })
 
 export const workspaceFixtures: Record<string, Fixture> = {
@@ -2357,7 +2357,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: errorItems },
     lag: { 'chats.send': 500 }, after: { 'chats.send': sentAfter(ids.tableChat) },
     ui: open
-  })), motion: { action: { click: 'Ask Kai to fix' }, ms: 1500, area: '.ws-main' } },
+  })), motion: { action: { click: 'Ask Christian to fix' }, ms: 1500, area: '.ws-main' } },
   /** Retry on a failed turn: the copy of the message and the Working line appear together. */
   WorkspaceRetryMotion: { ...scene(() => ({
     items: { [ids.tableChat]: errorItems },
@@ -2429,7 +2429,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ChatRailOpen: railScene(),
   ChatRailLead: scene((f) => railLead(f)),
   // KERNEL-780: Hand off and Build here. Hand off is the default and is drawn as before, with the mode chip first in the composer.
-  WorkspaceLeadHandOff: scene((f) => leadModeScene(f, { mode: 'handoff', items: lmReply('lm-a', 'Noor has it. I will tell you when the PR is ready.', 1) })),
+  WorkspaceLeadHandOff: scene((f) => leadModeScene(f, { mode: 'handoff', items: lmReply('lm-a', 'Sean has it. I will tell you when the PR is ready.', 1) })),
   WorkspaceLeadBuildHere: scene((f) => leadModeScene(f, {
     mode: 'build', right: 'changes', changes: lmFiles,
     items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'I rounded refunds half away from zero in money.ts and added a test for the cent case.', 3)]
@@ -2446,11 +2446,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceLeadBuildHereReadyNoReview: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReady], { prState: 'ready' })),
   WorkspaceLeadBuildHereMergedRows: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReview('bh-u1', 10, true), bhNote('bh-n3', 20, 'PR #171 was squashed into main. Next changes start on a new branch', 'merged')], { prState: 'merged', mergedAt: at(10, 20) })),
   WorkspaceLeadBuildHereKept: scene((f) => bhScene(f, [...lmReply('lm-b', 'I opened PR #171.', 6), bhReview('bh-u1', 10, true), bhNote('bh-n3', 20, 'PR #171 was squashed into main.', 'merged'), bhNote('bh-n4', 20, 'Kernel kept this branch because it has uncommitted changes. A new branch starts once nothing here is left out of the merge.')], { prState: 'merged', mergedAt: at(10, 20) })),
-  WorkspaceLeadBuildHereBlockers: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReview('bh-u1', 10, false), ...lmReply('lm-c', 'Theo found two blockers in PR #171. I am fixing the export rounding and adding a test for negative refunds.', 11)], { prState: 'open' })),
+  WorkspaceLeadBuildHereBlockers: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReview('bh-u1', 10, false), ...lmReply('lm-c', 'Artkin found two blockers in PR #171. I am fixing the export rounding and adding a test for negative refunds.', 11)], { prState: 'open' })),
   WorkspaceLeadOldSelfCard: scene((f) => bhScene(f, [
     ...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6),
     tuCard('bh-old1', 7, [{ ...tuRow(ids.lead, 'kernel-lead', 'Kernel', 'Refund rounding', [tuEv('pr.opened', 'Opened PR #171'), tuEv('pr.ready', 'Ready to merge', true), tuEv('pr.review', 'Code approved')]), prNumber: 171 }]),
-    ...lmReply('lm-c', 'PR #171 is ready to merge. Theo approved it.', 12),
+    ...lmReply('lm-c', 'PR #171 is ready to merge. Artkin approved it.', 12),
     tuCard('bh-old2', 13, [{ ...tuRow(ids.lead, 'kernel-lead', 'Kernel', 'Refund rounding', [tuEv('pr.cifail', 'Checks failed', true)]), prNumber: 171 }]),
     ...lmReply('lm-d', 'A check failed on PR #171. I am looking at it.', 14)
   ], { prState: 'cifail' })),
@@ -2476,7 +2476,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   WorkspaceLeadHandOffDirty: scene((f) => leadModeScene(f, {
     mode: 'handoff', changes: lmFiles,
-    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'handoff' }, ...lmReply('lm-a', 'Noor has it. Your edits in this chat stay where they are.', 3)]
+    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'handoff' }, ...lmReply('lm-a', 'Sean has it. Your edits in this chat stay where they are.', 3)]
   })),
   ChatRailNarrow: railScene(true),
   WorkspaceNewChat: scene((f) => ({
@@ -2489,9 +2489,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { 'chat-copy': [userMsg('c1', 'Shorten the empty state copy.'), tool('c-t1', 'Read the empty state', 'cat src/app/invoices/empty-state.tsx', { name: 'Read' }), tool('c-t2', 'Edit the copy', 'sed -i empty-state.tsx'), { kind: 'text', id: 'c-reply:0', ts: at(10, 31), text: 'Changed it to "No invoices yet. Create your first one."' }, { kind: 'result', id: 'c-res', ts: at(10, 31), durationMs: 20_000, ok: true }] },
     ui: { ...tabsView('chat-copy'), menu: 'tab' }
   })),
-  // The "..." menu under Kai's summary, open: both forks (KERNEL-346). The time and the actions share the summary's last line.
+  // The "..." menu under Christian's summary, open: both forks (KERNEL-346). The time and the actions share the summary's last line.
   WorkspaceReplyMenu: scene(() => ({ ui: { ...open, menu: 'reply:x1' } })),
-  // KERNEL-766: revert from the turn. Kai's summary has Revert files to here in its "..." menu, since a later turn is the current checkpoint. Choosing it opens the confirm with the files that change,
+  // KERNEL-766: revert from the turn. Christian's summary has Revert files to here in its "..." menu, since a later turn is the current checkpoint. Choosing it opens the confirm with the files that change,
   // and the same confirm for an earlier checkpoint adds the line about the commits made since.
   WorkspaceRevertMenu: revertScene({ menu: 'reply:x1' }),
   // KERNEL-841: the notice of a chat that waits for the user to choose how it moves, before its next turn re-reads 310k tokens on another account. The key variant adds the price.
@@ -2526,7 +2526,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
       extraChat('chat-run', 'Snapshot tests for the invoice PDF renderer'),
       extraChat('chat-term', 'Terminal (claude)', 'terminal')
     ],
-    approvals: [{ ...pending('question', 'kai', { title: 'Keep the invoice number in the file name?', options: ['Yes', 'No'] }), chatId: 'chat-ask' }, ...f.approvals],
+    approvals: [{ ...pending('question', 'christian', { title: 'Keep the invoice number in the file name?', options: ['Yes', 'No'] }), chatId: 'chat-ask' }, ...f.approvals],
     push: [...f.push, { type: 'chat.running', chatId: 'chat-run', running: true }],
     ui: open
   })),
@@ -2583,7 +2583,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // A bare name that two files have: the link opens a menu of the paths instead of guessing.
   WorkspaceFileLinksMenu: { ...scene((f) => fileLinks(f)), motion: { action: { click: 'Choose a file named page.tsx' }, ms: 600, area: '.ws-main' } },
   WorkspaceRunning: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
     items: { [ids.tableChat]: runningItems() },
     changes: { [ids.table]: [
@@ -2595,7 +2595,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   /** A running turn with a command in flight: one summary line and the clock, and nothing from inside the fold (the fold-of-everything change). */
   WorkspaceRunningFold: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
     items: { [ids.tableChat]: runningItems() },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
@@ -2604,7 +2604,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   /** The same turn stepped through two more calls after Send: the summary grows, the command text never shows. */
   WorkspaceRunningFoldSteps: { ...scene((f) => ({
     ...withDraft({
-      workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+      workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
       chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
       items: { [ids.tableChat]: runningItems() },
       push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
@@ -2617,7 +2617,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })), motion: { action: { click: 'Queue message' }, ms: 900, area: '.ws-main' } },
   /** A running turn with its fold open and the live header: "Working · 2m 14s · ..." with every step listed, the newest at the bottom. */
   WorkspaceFoldWorking: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
     items: { [ids.tableChat]: runningItems() },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
@@ -2625,7 +2625,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   /** A long running turn: the fold lists its last 8 steps, with "12 earlier steps" at the top. */
   WorkspaceFoldWorkingLong: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
     items: { [ids.tableChat]: longRunningItems() },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
@@ -2653,7 +2653,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })), motion: { action: { click: 'Invoice table' }, ms: 1000, area: '.ws-main' } },
   /** A running turn with an open fold of very long commands: they end in "…" at the column edge, and the thread doesn't shift sideways. */
   WorkspaceFoldLongCommands: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
     items: { [ids.tableChat]: longCommandItems() },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
@@ -2661,16 +2661,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   /** A running turn waiting on an approval: the line under the fold reads "Waiting for you", with no spinner and no clock. */
   WorkspaceFoldWaiting: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
     items: { [ids.tableChat]: runningItems().slice(0, -1) },
-    approvals: [{ ...pending('tool', 'ivy', { toolName: 'Bash', input: { command: 'pnpm vitest run tests/invoice-pdf.spec.ts' }, title: 'Run pnpm vitest run tests/invoice-pdf.spec.ts' }), workspaceId: ids.table, chatId: ids.tableChat }, ...f.approvals],
+    approvals: [{ ...pending('tool', 'teng', { toolName: 'Bash', input: { command: 'pnpm vitest run tests/invoice-pdf.spec.ts' }, title: 'Run pnpm vitest run tests/invoice-pdf.spec.ts' }), workspaceId: ids.table, chatId: ids.tableChat }, ...f.approvals],
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
   })),
   /** The same turn finished: one folded line with only its summary, and the reply right under it. */
   WorkspaceFoldDone: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
     items: { [ids.tableChat]: finishedFoldItems() },
     ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
@@ -2678,7 +2678,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   /** A turn ending: Queue message steps it from running to done, and the open fold closes to its "Worked for" line with the reply under it. */
   WorkspaceFoldEnding: { ...scene((f) => ({
     ...withDraft({
-      workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+      workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
       chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
       items: { [ids.tableChat]: runningItems() },
       push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
@@ -2692,7 +2692,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })), motion: { action: { click: 'Queue message' }, ms: 1900, area: '.ws-main' } },
   /** A long command in flight: the step stays one row and the clock sits on its own row under it (KERNEL-823). */
   WorkspaceRunningLongCommand: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
     items: { [ids.tableChat]: runningLongCommandItems() },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
@@ -2700,7 +2700,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   /** The moment between two steps: the last one is done and the next has not started, so only the clock row shows (KERNEL-823). */
   WorkspaceRunningBetweenSteps: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
     items: { [ids.tableChat]: runningItems().map((i) => (i.kind === 'tool' && i.status === 'running' ? { ...i, status: 'done' as const, durationMs: 6200 } : i)) },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
@@ -2724,42 +2724,42 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePerm: scene(permWaiting),
   WorkspacePermAllowOnce: { ...scene(permWaiting), motion: { action: { click: 'Allow once' }, ms: 700, area: '.ws-main' } },
   // KERNEL-834: the same card once the approval was allowed. The buttons have folded away and the result line stands in their place.
-  WorkspacePermAllowed: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+  WorkspacePermAllowed: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
     userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
     ...folded('p', 11, 2),
     { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. The schema needs a pdf_url column, so I need to push it to the dev database.' },
     { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
   ], {
-    approvals: [{ ...pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), status: 'allowed' as const }, ...f.approvals]
+    approvals: [{ ...pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), status: 'allowed' as const }, ...f.approvals]
   })),
   // KERNEL-459: an approval says why it asked, on one line under the command: the classifier's reason on Claude in Auto, the sandbox's on Codex.
-  WorkspacePermReason: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+  WorkspacePermReason: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
     userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
     ...folded('p', 11, 2),
     { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. I want to save a few sample PDFs where you can open them.' },
     { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
   ], {
-    approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm pdf:export --out ~/Documents/invoices' }, title: 'Run pnpm pdf:export --out ~/Documents/invoices', detail: 'Saves three sample invoices as PDF.', reason: 'The classifier wants you to decide: writes outside the workspace' }), ...f.approvals]
+    approvals: [pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm pdf:export --out ~/Documents/invoices' }, title: 'Run pnpm pdf:export --out ~/Documents/invoices', detail: 'Saves three sample invoices as PDF.', reason: 'The classifier wants you to decide: writes outside the workspace' }), ...f.approvals]
   }, { mode: 'auto' })),
   WorkspacePermReasonCodex: scene((f) => ({
-    ...scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+    ...scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
       userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
       ...folded('p', 11, 2),
       { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works. The embedded font comes from a package I have not installed yet.' },
       { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
     ], {
-      approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm add @fontsource/inter' }, title: 'Run pnpm add @fontsource/inter', detail: 'Installs the font package the renderer embeds.', reason: 'Codex runs it outside its sandbox' }), ...f.approvals]
+      approvals: [pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm add @fontsource/inter' }, title: 'Run pnpm add @fontsource/inter', detail: 'Installs the font package the renderer embeds.', reason: 'Codex runs it outside its sandbox' }), ...f.approvals]
     }, { provider: 'codex', model: 'gpt-6-astra', effort: 'medium', mode: 'acceptEdits' }),
     models: { codex: codexModels }
   })),
   // KERNEL-785: an MCP call's approval card says what the chat's row says, not the server and tool names.
-  WorkspacePermMcp: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+  WorkspacePermMcp: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
     userMsg('p1', 'T-15a: PDF renderer with embedded fonts. File a follow-up for the export button.', true),
     ...folded('p', 11, 2),
     { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works. I am filing the follow-up for the export button in Linear.' },
     { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
   ], {
-    approvals: [pending('tool', 'noor', { toolName: 'mcp__claude_ai_Linear__save_issue', input: { title: 'Export invoices as PDF', team: 'Kernel' }, ...describeTool('mcp__claude_ai_Linear__save_issue', { title: 'Export invoices as PDF', team: 'Kernel' }) }), ...f.approvals]
+    approvals: [pending('tool', 'sean', { toolName: 'mcp__claude_ai_Linear__save_issue', input: { title: 'Export invoices as PDF', team: 'Kernel' }, ...describeTool('mcp__claude_ai_Linear__save_issue', { title: 'Export invoices as PDF', team: 'Kernel' }) }), ...f.approvals]
   })),
   WorkspacePlan: scene(planWaiting),
   /** KERNEL-950: back to a Lead chat with a plan waiting from another tab. The transcript must not move once the strip has opened. */
@@ -2797,20 +2797,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePlanModeTyping: scene((f) => withDraft(planMode(f), 'Plan the Download PDF action for the row menu. Do not edit anything yet.')),
   WorkspacePlanTyping: scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')),
   WorkspacePlanApproveDraft: { ...scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')), motion: { action: { click: 'Approve' }, ms: 900, area: '.cmp' } },
-  WorkspaceQuestion: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+  WorkspaceQuestion: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
     userMsg('q1', 'Build T-15b from the approved plan.', true),
     ...folded('q', 6, 0),
     { kind: 'result', id: 'q-res', ts: at(10, 29), durationMs: 60_000, ok: true }
   ], {
-    approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
+    approvals: [pending('question', 'christian', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
   })),
   // One option picked, the next hovered and the one after focused from the keyboard: the pick is the strongest of the three (KERNEL-676, scripts/shots.ts).
-  WorkspaceQuestionStates: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+  WorkspaceQuestionStates: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
     userMsg('qst1', 'Build T-15b from the approved plan.', true),
     ...folded('qst', 6, 0),
     { kind: 'result', id: 'qst-res', ts: at(10, 29), durationMs: 60_000, ok: true }
   ], {
-    approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf', 'Use a random name'] }), ...f.approvals]
+    approvals: [pending('question', 'christian', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf', 'Use a random name'] }), ...f.approvals]
   })),
   // Long options read as an ink label with a muted description, and the recommended one carries a tag (KERNEL-414, KERNEL-416). Nothing is picked, so Send waits.
   WorkspaceQuestionLong: scene((f) => {
@@ -2835,12 +2835,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { label: 'I have signed in', description: `The code came from ${url}` },
       { label: 'Use an API key instead' }
     ]
-    return scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'noor' }, 'Download button', [
+    return scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'sean' }, 'Download button', [
       userMsg('qu1', 'Build T-15b from the approved plan.', true),
       tool('qu-t1', 'Read the PDF renderer', 'cat src/pdf/render.ts', { name: 'Read' }),
       tool('qu-ask', 'AskUserQuestion', JSON.stringify({ questions: [{ question, options }] }), { name: 'AskUserQuestion', status: 'running', input: { questions: [{ question, options }] } })
     ], {
-      approvals: [pending('question', 'noor', { title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
+      approvals: [pending('question', 'sean', { title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
     })
   }),
   // set_project_scripts' card: every script in full, as Save writes it, multi-line setup included (KERNEL-683).
@@ -2855,30 +2855,30 @@ export const workspaceFixtures: Record<string, Fixture> = {
       approvals: [pending('question', 'kernel-lead', { workspaceId: ids.lead, title: question, detail, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
     }, { model: 'claude-opus-5-5' })
   }),
-  WorkspaceQuestionSteps:scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+  WorkspaceQuestionSteps:scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
     userMsg('qs1', 'Build T-15b from the approved plan.', true),
     ...folded('qs', 6, 0),
     { kind: 'result', id: 'qs-res', ts: at(10, 29), durationMs: 60_000, ok: true }
   ], {
-    approvals: [pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }), ...f.approvals]
+    approvals: [pending('question', 'christian', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }), ...f.approvals]
   })),
   // Drawn on question 3 with the first two answered and Something else typed; the step and the typing are local to the card (scripts/shots.ts).
-  WorkspaceQuestionOther: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+  WorkspaceQuestionOther: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
     userMsg('qo1', 'Build T-15b from the approved plan.', true),
     ...folded('qo', 6, 0),
     { kind: 'result', id: 'qo-res', ts: at(10, 29), durationMs: 60_000, ok: true }
   ], {
-    approvals: [pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }), ...f.approvals]
+    approvals: [pending('question', 'christian', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }), ...f.approvals]
   })),
   // The card keeps its place in the transcript once answered, and the agent's reply comes after it.
   WorkspaceQuestionAnswers: scene((f) => {
-    const s = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    const s = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
       userMsg('qa1', 'Build T-15b from the approved plan.', true),
       ...folded('qa', 6, 0),
       { kind: 'result', id: 'qa-res', ts: at(10, 29), durationMs: 60_000, ok: true }
     ], {
       approvals: [{
-        ...pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }),
+        ...pending('question', 'christian', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }),
         status: 'answered',
         answer: 'Yes, invoice-009.pdf · Row actions menu, Invoice detail header · Show a toast with a retry action',
         answers: {
@@ -2894,20 +2894,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return { ...s, items: { [ids.tableChat]: [...(s.items?.[ids.tableChat] ?? []), ...reply] } }
   }),
   // One question, answered: the card keeps the question and your answer is the bubble under it.
-  WorkspaceQuestionAnswered: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+  WorkspaceQuestionAnswered: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
     userMsg('q1a', 'Build T-15b from the approved plan.', true),
     ...folded('q1', 6, 0),
     { kind: 'result', id: 'q1-res', ts: at(10, 29), durationMs: 60_000, ok: true }
   ], {
-    approvals: [{ ...pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: [DOWNLOAD_QUESTIONS[0]] }), status: 'answered', answer: 'Yes, invoice-009.pdf' }, ...f.approvals]
+    approvals: [{ ...pending('question', 'christian', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: [DOWNLOAD_QUESTIONS[0]] }), status: 'answered', answer: 'Yes, invoice-009.pdf' }, ...f.approvals]
   })),
   // The same with your answer as the chat's own message (KERNEL-838): the card draws no bubble of its own.
   WorkspaceQuestionAnsweredItem: scene((f) => {
-    const s = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    const s = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
       userMsg('q1a', 'Build T-15b from the approved plan.', true),
       ...folded('q1', 6, 0)
     ], {
-      approvals: [{ ...pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: [DOWNLOAD_QUESTIONS[0]] }), status: 'answered', answer: 'Yes, invoice-009.pdf' }, ...f.approvals]
+      approvals: [{ ...pending('question', 'christian', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: [DOWNLOAD_QUESTIONS[0]] }), status: 'answered', answer: 'Yes, invoice-009.pdf' }, ...f.approvals]
     })
     const chatId = Object.keys(s.items ?? {})[0]
     const id = s.approvals?.[0]?.id ?? ''
@@ -2917,7 +2917,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's own message is one note line that opens to its full text with Copy, and after a quit it folds into the quit note's line.
   WorkspaceKernelNote: kernelNote,
   WorkspaceKernelNoteOpen: kernelNote, // the same, opened by scripts/shots.ts
-  WorkspaceRelaunch: scene((f) => noApprovals(scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+  WorkspaceRelaunch: scene((f) => noApprovals(scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
     userMsg('rl1', 'Build T-15b from the approved plan.', true),
     tool('rl-t1', 'Read the row actions', 'cat src/app/invoices/row-actions.tsx', { name: 'Read' }),
     { kind: 'note', id: 'rl-note', ts: at(10, 29), text: 'Kernel quit while this agent was working.' },
@@ -2967,20 +2967,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // The same chat as WorkspaceScrolledUp, then a click on Scroll to bottom (scripts/shots.ts scrolls it up first).
   AuditScrollToBottomMotion: { ...scene(() => ({ items: { [ids.tableChat]: longChat }, ui: open })), motion: { action: { click: 'Scroll to bottom' }, ms: 1000, area: '.ws-main' } },
   // Answering a question: the first option is picked by scripts/shots.ts, the answer is not sent.
-  AuditQuestionPicked: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+  AuditQuestionPicked: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
     userMsg('qa1', 'Build T-15b from the approved plan.', true),
     ...folded('qa', 6, 0),
     { kind: 'result', id: 'qa-res', ts: at(10, 29), durationMs: 60_000, ok: true }
   ], {
-    approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
+    approvals: [pending('question', 'christian', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
   })),
   /** The answer sent as motion: the option is ticked first, then Send is pressed. The call is answered by the fixture, so the card folds the way a real answer does. */
-  AuditQuestionAnswerMotion: { ...scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+  AuditQuestionAnswerMotion: { ...scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
     userMsg('qm1', 'Build T-15b from the approved plan.', true),
     ...folded('qm', 6, 0),
     { kind: 'result', id: 'qm-res', ts: at(10, 29), durationMs: 60_000, ok: true }
   ], {
-    approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
+    approvals: [pending('question', 'christian', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
   })), motion: { action: { press: ['Enter'] }, ms: 1000, area: '.ws-main' } },
   /** A jump from the chat rail as motion: the list is opened from the keyboard on the chat's end, Home picks the first message and Enter jumps to it. */
   AuditRailJumpMotion: { ...railScene(), motion: { action: { press: ['Home', 'Enter'] }, ms: 1400, area: '.ws-main' } },
@@ -3038,19 +3038,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return { ...f, commits: { [ids.table]: PANEL_COMMITS }, branches: ['origin/main', 'origin/develop', 'origin/kernel-154-inbox-rows'] }
   })(),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
-  LeadPrsReviewPlanned: scene((f) => leadPrsScene(f, [LEAD_PRS[0], { id: 'ws-705', agentId: 'kai', key: 'KERNEL-705', n: 170, title: 'Toasts rise from the bottom', state: 'ready', stat: [63, 42], review: 'planned' }, LEAD_PRS[3]], 'What can I merge?', "#162 from Kai is ready. #170 passed its checks and its code review is running, so it waits for that approval. #166 is still running checks.")),
+  LeadPrsReviewPlanned: scene((f) => leadPrsScene(f, [LEAD_PRS[0], { id: 'ws-705', agentId: 'christian', key: 'KERNEL-705', n: 170, title: 'Toasts rise from the bottom', state: 'ready', stat: [63, 42], review: 'planned' }, LEAD_PRS[3]], 'What can I merge?', "#162 from Christian is ready. #170 passed its checks and its code review is running, so it waits for that approval. #166 is still running checks.")),
   // A PR with blockers on its latest commit isn't ready: it sits under Needs attention, says Blockers found and offers Merge anyway (KERNEL-501, KERNEL-757).
-  LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. Theo found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
+  LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Christian and #161 from Sean both have Artkin's approval. Artkin found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
   // One row per state word (KERNEL-897): both approvals and code alone in green, a failure in red, a spinner, a clock, and two plain muted rows.
   LeadPrsStateWords: scene((f) => leadPrsScene(f, [
     { ...LEAD_PRS[0], review: 'secure' }, LEAD_PRS[1], { ...LEAD_PRS[0], id: 'ws-190', n: 190, key: 'KERNEL-190', title: 'Plain ready PR, not reviewed', review: undefined },
     LEAD_PRS[2], LEAD_PRS[3], LEAD_PRS[4], LEAD_PRS[5], LEAD_PRS[7]
   ], 'What can I merge?', LEAD_PRS_REPLY)),
-  LeadPrsOverruled: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], OVERRULED_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Three PRs are ready. #162 from Kai and #161 from Noor have Theo's approval. You overruled Theo's 2 blockers on #167, so it can merge. #158 is waiting for his approval, and #166 is still running checks.")),
+  LeadPrsOverruled: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], OVERRULED_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Three PRs are ready. #162 from Christian and #161 from Sean have Artkin's approval. You overruled Artkin's 2 blockers on #167, so it can merge. #158 is waiting for his approval, and #166 is still running checks.")),
   // A PR merging keeps its row in Ready to merge and spins there, though this tab didn't start it (KERNEL-411, KERNEL-417).
   LeadPrsMerging: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'Merge #331.', 'Merging #331 now. #330 is ready too, and #333 is still running checks.')),
   // Every open PR ready: one Merge per row and nothing to merge them all at once (KERNEL-757).
-  LeadPrsAllReady: scene((f) => leadPrsScene(f, ALL_READY, 'What can I merge?', "All five are ready. Theo approved #162, #161 and #331. #330 and #333 haven't been reviewed. Tell me which ones to merge, or merge them from the PRs tab.")),
+  LeadPrsAllReady: scene((f) => leadPrsScene(f, ALL_READY, 'What can I merge?', "All five are ready. Artkin approved #162, #161 and #331. #330 and #333 haven't been reviewed. Tell me which ones to merge, or merge them from the PRs tab.")),
   // The PRs tab at the panel's narrowest, 320px, with every list and a blocked PR's Merge anyway: titles end in an ellipsis and nothing overlaps (KERNEL-757).
   LeadPrsNarrow: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[3], LEAD_PRS[4], LEAD_PRS[6], LEAD_PRS[7]], 'What can I merge?', LEAD_PRS_REPLY)),
   // Open PRs, none of them ready: the band counts them instead of saying there are none (KERNEL-411).
@@ -3080,23 +3080,23 @@ export const workspaceFixtures: Record<string, Fixture> = {
   GroupedTabs: scene((f) => grouped(f)),
   GroupedSwitchChat: scene((f) => grouped(f, {
     tab: 'chat-table', right: 'files', files: ['src/app/invoices/table.tsx'],
-    items: { 'chat-table': groupedTurn('gt', 38, 'Build the invoice table with sorting, plus the empty, loading and error states.', 'The table and the schema change are independent. Kai and Noor can start together.', [
+    items: { 'chat-table': groupedTurn('gt', 38, 'Build the invoice table with sorting, plus the empty, loading and error states.', 'The table and the schema change are independent. Christian and Sean can start together.', [
       tool('gt-t1', 'Write the plan', 'cat > plans/t-14-invoice-table.md', { name: 'Write' })
-    ], 'Kai has the table and its states. Noor has the schema change the table needs. I will tell you when either opens a PR.').concat([
-      tool('gt-t2', 'Check on Kai and Noor', 'kernel workspaces')
+    ], 'Christian has the table and its states. Sean has the schema change the table needs. I will tell you when either opens a PR.').concat([
+      tool('gt-t2', 'Check on Christian and Sean', 'kernel workspaces')
     ]) }
   })),
   GroupedNewTabMenu: scene((f) => { const g = grouped(f); return { ...g, ui: { ...g.ui!, menu: 'newTab' } } }),
   GroupedSharedWork: scene((f) => grouped(f, {
-    tab: 'chat-kai-pr',
-    items: { 'chat-kai-pr': [
-      userMsg('sw', "How is Kai's PR going?"),
+    tab: 'chat-christian-pr',
+    items: { 'chat-christian-pr': [
+      userMsg('sw', "How is Christian's PR going?"),
       tool('sw-t1', "List this chat's workspaces", 'kernel workspaces', { name: 'Bash' }),
       tool('sw-t2', 'Read the approved plan', 'cat plans/t-15-invoice-pdf.md', { name: 'Read' }),
       { kind: 'text', id: 'sw-tx', ts: at(10, 56), text: [
-        "Kai's PR is open as #43 on invoice-pdf-button. Checks pass and Theo is reviewing it. Here is where your other workspaces in this chat stand.", '',
-        '**Your workspaces in this chat**', '', '```', 'invoice-pdf-renderer  Noor  working', 'invoice-pdf-button    Kai   PR #43 open', 'invoice-pdf-tests     Ivy   waiting on the renderer', '```', '',
-        '**From the plan you approved in the first tab**', '', '1. T-15a PDF renderer with embedded fonts · Noor', '2. T-15b Download PDF in the row actions · Kai', '3. T-15c Snapshot tests for three invoice types · Ivy'
+        "Christian's PR is open as #43 on invoice-pdf-button. Checks pass and Artkin is reviewing it. Here is where your other workspaces in this chat stand.", '',
+        '**Your workspaces in this chat**', '', '```', 'invoice-pdf-renderer  Sean  working', 'invoice-pdf-button    Christian   PR #43 open', 'invoice-pdf-tests     Teng   waiting on the renderer', '```', '',
+        '**From the plan you approved in the first tab**', '', '1. T-15a PDF renderer with embedded fonts · Sean', '2. T-15b Download PDF in the row actions · Christian', '3. T-15c Snapshot tests for three invoice types · Teng'
       ].join('\n') },
       { kind: 'result', id: 'sw-res', ts: at(10, 56), durationMs: 11_000, ok: true }
     ] }
@@ -3104,19 +3104,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
   GroupedContextFull: scene((f) => grouped(f, { chats: (c) => c.map((x) => (x.id === ids.leadChat ? { ...x, context: 92 } : x)) })),
   // The same chat after New tab in the banner: a fourth tab, empty, in the same chat.
   GroupedContextFullAfter: scene((f) => grouped(f, { tab: 'chat-new', chats: (c) => [...c.slice(0, 3), leadTab('chat-new', GROUPED.export, 'New tab', 14), ...c.slice(3)] })),
-  // Kai finished in the first tab, which you closed since. The update goes to a tab that is still open, and says where the work came from.
+  // Christian finished in the first tab, which you closed since. The update goes to a tab that is still open, and says where the work came from.
   GroupedUpdateRouted: scene((f) => {
     const row: TeamUpdateRow = {
-      workspaceId: 'ws-pdf-button', agentId: 'kai', name: 'Kai', task: 'T-15b Download PDF in the row actions', prNumber: 43, fromChat: 'Export invoices as PDF', fromTab: true,
+      workspaceId: 'ws-pdf-button', agentId: 'christian', name: 'Christian', task: 'T-15b Download PDF in the row actions', prNumber: 43, fromChat: 'Export invoices as PDF', fromTab: true,
       events: [{ kind: 'turn', text: 'Finished a turn', actionable: false }, { kind: 'pr.opened', text: 'Opened PR #43', actionable: false }],
-      reply: 'PR #43 is ready to merge. Checks pass and Theo approved it.'
+      reply: 'PR #43 is ready to merge. Checks pass and Artkin approved it.'
     }
     return grouped(f, {
-      tab: 'chat-kai-pr', chats: (c) => c.map((x) => (x.id === ids.leadChat ? { ...x, closed: true } : x)),
-      items: { 'chat-kai-pr': [
-        userMsg('ur', "How is Kai's PR going?"),
-        { kind: 'text', id: 'ur-tx', ts: at(10, 30), text: "Kai's PR is open as #43 on invoice-pdf-button. Checks are still running." },
-        { kind: 'user', id: 'ur-up', ts: at(10, 41), from: 'kernel', update: { rows: [row] }, parts: [{ type: 'text', text: ['Team update from Kernel, not from the user.', '', 'From "Export invoices as PDF", a tab you closed:', '- Kai (kai) · T-15b Download PDF in the row actions · workspace ws-pdf-button: PR #43 is ready to merge.'].join('\n') }] }
+      tab: 'chat-christian-pr', chats: (c) => c.map((x) => (x.id === ids.leadChat ? { ...x, closed: true } : x)),
+      items: { 'chat-christian-pr': [
+        userMsg('ur', "How is Christian's PR going?"),
+        { kind: 'text', id: 'ur-tx', ts: at(10, 30), text: "Christian's PR is open as #43 on invoice-pdf-button. Checks are still running." },
+        { kind: 'user', id: 'ur-up', ts: at(10, 41), from: 'kernel', update: { rows: [row] }, parts: [{ type: 'text', text: ['Team update from Kernel, not from the user.', '', 'From "Export invoices as PDF", a tab you closed:', '- Christian (christian) · T-15b Download PDF in the row actions · workspace ws-pdf-button: PR #43 is ready to merge.'].join('\n') }] }
       ] }
     })
   }),
@@ -3138,7 +3138,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   SidebarPlanChat: scene(sidebarPlanChat),
   SidebarChatPrs: scene(sidebarChatPrs),
   SidebarChatPrPlan: scene(sidebarChatPrPlan),
-  // Archiving the export chat would stop Kai's open PR and drop the renderer's uncommitted changes, so it asks first (KERNEL-405).
+  // Archiving the export chat would stop Christian's open PR and drop the renderer's uncommitted changes, so it asks first (KERNEL-405).
   ConfirmArchiveChat: scene((f) => {
     const g = grouped(f, { running: [] })
     return { ...g, ui: { ...g.ui!, modal: { name: 'confirm', kind: 'archiveChat', threadId: GROUPED.export } } }
@@ -3205,7 +3205,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [issue, { type: 'text', text: ' ' }], draft: '' } } }, motion: { action: { hold: 'Open issue T-17, Email an invoice to the client from the row actions' }, ms: 500 } }
   }),
   ChatComposer: scene(() => ({ ui: open })),
-  // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
+  // Shared files (KERNEL-305). The canvas draws them in Sean's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),
   WorkspaceSharedMissing: scene((f) => ({ ...renderer(f), shared: sharedFiles(2).filter((x) => x.workspaceId === ids.table && x.id !== 'sh-html'), ui: { ...open, workspace: { right: 'changes', bottom: 'run' } } })), // the chat's HTML card with its file gone from the store (KERNEL-870)
@@ -3253,7 +3253,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     blocked: [{ name: 'claude_ai_Linear', why: 'needs-auth' }, { name: 'neon', why: 'failed' }, { name: 'playwright', why: 'off' }]
   }),
   WorkspacePRMenu: scene(() => ({ ui: { ...open, menu: 'pr' } })),
-  WorkspaceDraftPR: prScene('draft', prTurn('d', ['# Create a pull request', 'Open as draft'], 5, 'Opened draft PR #42. Mark it ready when you want Theo to review.'), { prs: prInfo('draft') }),
+  WorkspaceDraftPR: prScene('draft', prTurn('d', ['# Create a pull request', 'Open as draft'], 5, 'Opened draft PR #42. Mark it ready when you want Artkin to review.'), { prs: prInfo('draft') }),
   WorkspaceCIFailed: prScene('cifail', [
     ...prTurn('c', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42.'),
     prNote('c-note', 'playwright failed on the PR: the download test timed out in CI.', 'cifail')
@@ -3261,24 +3261,24 @@ export const workspaceFixtures: Record<string, Fixture> = {
     prs: prInfo('cifail', {
       checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'typecheck', state: 'pass', meta: '31s' }, { name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'fail' }],
       comments: [
-        { id: 'rc1', author: 'Theo', body: 'Empty state copy', resolved: true },
-        { id: 'rc2', author: 'Theo', body: 'Shorten empty state copy', resolved: false }
+        { id: 'rc1', author: 'Artkin', body: 'Empty state copy', resolved: true },
+        { id: 'rc2', author: 'Artkin', body: 'Shorten empty state copy', resolved: false }
       ]
     })
   }, 'checks'),
   WorkspaceChangesRequested: prScene('changes', [
-    ...prTurn('r', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42 and asked Theo for review.')
+    ...prTurn('r', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42 and asked Artkin for review.')
   ], {
     prs: prInfo('changes', {
       reviewDecision: 'changes',
       comments: [
-        { id: 'rv1', author: 'Theo', path: 'src/app/invoices/table.tsx', line: 42, body: 'Use the shared EmptyState from components/ui.', resolved: false },
-        { id: 'rv2', author: 'Theo', path: 'src/app/invoices/page.tsx', line: 18, body: 'Keep the skeleton up for at least 200ms to avoid flashing.', resolved: false }
+        { id: 'rv1', author: 'Artkin', path: 'src/app/invoices/table.tsx', line: 42, body: 'Use the shared EmptyState from components/ui.', resolved: false },
+        { id: 'rv2', author: 'Artkin', path: 'src/app/invoices/page.tsx', line: 18, body: 'Keep the skeleton up for at least 200ms to avoid flashing.', resolved: false }
       ]
     })
   }),
   WorkspaceMerged: prScene('merged', [
-    ...prTurn('m', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test', '2. Title it as a Conventional Commit'], 6, 'Opened PR #42. Theo approved it and every check passed.'),
+    ...prTurn('m', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test', '2. Title it as a Conventional Commit'], 6, 'Opened PR #42. Artkin approved it and every check passed.'),
     prNote('m-note', 'PR #42 was squashed into main.', 'merged')
   ], { prs: prInfo('merged') }),
   WorkspacePRClosed: prScene('closed', [prNote('x-note', 'PR #42 was closed without merging on GitHub.', 'closed')], { prs: prInfo('closed') }),
@@ -3516,7 +3516,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceModelPicker: scene((f) => {
     return {
       settings: codexRoleSettings(),
-      chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+      chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)),
       models: { codex: codexModels },
       ui: { ...open, menu: 'model' }
     }
@@ -3524,51 +3524,51 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // The picker with the Effort row's levels open to its right. The shot hovers the row.
   WorkspaceModelPickerEffort: scene((f) => ({
     settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)),
     models: { codex: codexModels },
     ui: { ...open, menu: 'model' }
   })),
   // The picker with the cursor moved up one row by the arrow key.
   WorkspaceModelPickerKeys: scene((f) => ({
     settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)),
     models: { codex: codexModels },
     ui: { ...open, menu: 'model' }
   })),
   // The picker of a chat that started on Codex: it opens on Codex and Claude is dimmed. The shot opens the Legacy models flyout.
   WorkspaceModelPickerCodex: scene((f) => ({
     settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, provider: 'codex' as const, model: 'gpt-6-astra', effort: 'medium' as Effort, sessionId: 'session-kai' } : c)),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, provider: 'codex' as const, model: 'gpt-6-astra', effort: 'medium' as Effort, sessionId: 'session-christian' } : c)),
     models: { codex: codexModels },
     ui: { ...open, menu: 'model' }
   })),
   // KERNEL-987: the Legacy models row opens its older models in a flyout to the right. The shot clicks the row.
   WorkspaceModelPickerLegacy: scene((f) => ({
     settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)),
     models: { codex: codexModels },
     ui: { ...open, menu: 'model' }
   })),
   // KERNEL-987: a chat on a legacy model. The Legacy row names it and the cursor starts there. The shot opens the flyout, with the cursor on that model.
   WorkspaceModelPickerLegacyChat: scene((f) => ({
     settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, model: 'claude-opus-4-8', sessionId: 'session-kai' } : c)),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, model: 'claude-opus-4-8', sessionId: 'session-christian' } : c)),
     models: { codex: codexModels },
     ui: { ...open, menu: 'model' }
   })),
   // KERNEL-987: the keyboard path. Down to the Legacy row, Right opens the flyout.
-  WorkspaceModelPickerLegacyKeys: { ...scene((f) => ({ settings: codexRoleSettings(), chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)), models: { codex: codexModels }, ui: { ...open, menu: 'model' } })), motion: { action: { press: ['ArrowDown', 'ArrowDown', 'ArrowRight'] }, ms: 600 } },
+  WorkspaceModelPickerLegacyKeys: { ...scene((f) => ({ settings: codexRoleSettings(), chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)), models: { codex: codexModels }, ui: { ...open, menu: 'model' } })), motion: { action: { press: ['ArrowDown', 'ArrowDown', 'ArrowRight'] }, ms: 600 } },
   // Stars on two Claude models, then the Favorites tab.
   WorkspaceModelPickerFavorites: scene((f) => ({
     settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)),
     models: { codex: codexModels },
     ui: { ...open, menu: 'model' }
   })),
   // The other provider in a chat that has started: its rail icon is dimmed and the tooltip says why.
   WorkspaceModelPickerLocked: scene((f) => ({
     settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)),
     models: { codex: codexModels },
     ui: { ...open, menu: 'model' }
   })),
@@ -3576,7 +3576,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ComposerMentionAgent: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@no' } } } })),
   ComposerMentionAgentEmpty: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@zzz' } } } })),
   ComposerMentionAgentSent: scene((f) => ({
-    items: { [ids.leadChat]: [{ kind: 'user', id: 'u-agent', ts: at(10, 41), parts: [{ type: 'agent', name: 'Noor', agentId: 'noor' }, { type: 'text', text: 'take the invoice export, and ask Kai for the table first' }] }] },
+    items: { [ids.leadChat]: [{ kind: 'user', id: 'u-agent', ts: at(10, 41), parts: [{ type: 'agent', name: 'Sean', agentId: 'sean' }, { type: 'text', text: 'take the invoice export, and ask Christian for the table first' }] }] },
     chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)),
     ui: { route: { name: 'workspace', workspaceId: ids.lead } }
   })),
@@ -3653,13 +3653,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: open
     }
   }),
-  /** A brief Kernel handed off with wait_for, held until Noor's PR merges, with Send now to start it sooner (KERNEL-259, KERNEL-361). */
+  /** A brief Kernel handed off with wait_for, held until Sean's PR merges, with Send now to start it sooner (KERNEL-259, KERNEL-361). */
   WorkspaceQueuedMerge: scene((f) => {
     const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 2), from: 'lead' as const, parts: [{ type: 'text' as const, text: 'Build the invoice table on top of the new schema' }] }]
     const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/cjjutba/client-a/pull/43', prState: 'open' })
     return {
       workspaces: withWorkspace({ ...f, workspaces: schema }, ids.table, { stat: undefined, waitsFor: { on: [ids.schema], held: true } }),
-      items: { [ids.tableChat]: [{ kind: 'note', id: 'n1', ts: at(10, 2), text: 'Waiting for PR #43 by Noor to merge. Kernel sends this brief then. Send now starts it sooner.', refs: [{ text: 'PR #43 by Noor', workspaceId: ids.schema }] }] },
+      items: { [ids.tableChat]: [{ kind: 'note', id: 'n1', ts: at(10, 2), text: 'Waiting for PR #43 by Sean to merge. Kernel sends this brief then. Send now starts it sooner.', refs: [{ text: 'PR #43 by Sean', workspaceId: ids.schema }] }] },
       queue: { [ids.tableChat]: queue },
       // A held brief has no run script and no changes yet (KERNEL-259).
       changes: { ...f.changes, [ids.table]: [] },
@@ -3667,7 +3667,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: open
     }
   }),
-  /** Noor's PR #43 with Kai's T-14 brief held until it merges: the line above the box names Kai's workspace and opens it. */
+  /** Sean's PR #43 with Christian's T-14 brief held until it merges: the line above the box names Christian's workspace and opens it. */
   WorkspaceWaitedOn: scene((f) => {
     const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/cjjutba/client-a/pull/43', prState: 'open', prTitle: 'feat(invoices): schema and migrations' })
     return {

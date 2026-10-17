@@ -155,7 +155,7 @@ export interface LimitNews {
 export interface AutoMerged { why: string; card: string }
 
 /**
- * What a wait event says (KERNEL-259). `label` names the PRs ("PR #164 by Noor"). `held`: the brief hasn't gone out, as
+ * What a wait event says (KERNEL-259). `label` names the PRs ("PR #164 by Sean"). `held`: the brief hasn't gone out, as
  * opposed to a teammate that already started. `target` and `gone`: the PR that broke the wait and how. `told`: the Lead
  * read it in its own tool's result, so it rides along. `why`: what a teammate that set its own wait said it needs (KERNEL-262).
  * `onto`: the base Kernel asked the teammate to bring in, which its branch doesn't contain yet (KERNEL-691). `pushed`: the

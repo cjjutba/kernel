@@ -6,7 +6,7 @@ import { buildThread } from '../src/renderer/src/screens/workspace/thread'
 
 describe('turn cards', () => {
   it('reads plan steps from steps or numbered text', () => {
-    expect(planSteps({ steps: [{ title: 'A', agentId: 'kai' }] })).toEqual([{ title: 'A', agentId: 'kai' }])
+    expect(planSteps({ steps: [{ title: 'A', agentId: 'christian' }] })).toEqual([{ title: 'A', agentId: 'christian' }])
     expect(planSteps({ detail: '1. Build it\n2) Test it\n- Ship it' }).map((s) => s.title)).toEqual(['Build it', 'Test it', 'Ship it'])
   })
 
@@ -90,10 +90,10 @@ describe('turn cards', () => {
 describe('Lead requests', () => {
   it('turns "task · agent" lines into steps with the agent id and task id', async () => {
     const { parsePlanSteps } = await import('../src/main/services/approvals')
-    const agents = [{ id: 'noor', name: 'Noor' }, { id: 'kai', name: 'Kai' }]
-    expect(parsePlanSteps(['T-15a PDF renderer · Noor', 'T-15b Button · kai', 'Write the docs'], agents)).toEqual([
-      { title: 'T-15a PDF renderer', taskId: 'T-15a', agentId: 'noor' },
-      { title: 'T-15b Button', taskId: 'T-15b', agentId: 'kai' },
+    const agents = [{ id: 'sean', name: 'Sean' }, { id: 'christian', name: 'Christian' }]
+    expect(parsePlanSteps(['T-15a PDF renderer · Sean', 'T-15b Button · christian', 'Write the docs'], agents)).toEqual([
+      { title: 'T-15a PDF renderer', taskId: 'T-15a', agentId: 'sean' },
+      { title: 'T-15b Button', taskId: 'T-15b', agentId: 'christian' },
       { title: 'Write the docs' }
     ])
   })
@@ -104,8 +104,8 @@ describe('Lead requests', () => {
     const { mkdtemp } = await import('node:fs/promises'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path')
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-ap-')), 'kernel.db'))
     const approvals = new Approvals(store)
-    const { approval } = approvals.request({ kind: 'plan', source: 'sdk', projectId: 'r', title: 'Plan', steps: [{ title: 'A', agentId: 'kai' }] })
-    approvals.update(approval.id, { steps: [{ title: 'A', agentId: 'kai', workspaceId: 'ws1' }] })
+    const { approval } = approvals.request({ kind: 'plan', source: 'sdk', projectId: 'r', title: 'Plan', steps: [{ title: 'A', agentId: 'christian' }] })
+    approvals.update(approval.id, { steps: [{ title: 'A', agentId: 'christian', workspaceId: 'ws1' }] })
     expect(store.approvals().find((a) => a.id === approval.id)?.steps?.[0].workspaceId).toBe('ws1')
   })
 
@@ -114,21 +114,21 @@ describe('Lead requests', () => {
   })
 
   it('shows the Lead write-up next to its steps, and an older plan tasks once', () => {
-    const steps = [{ title: 'Build it', agentId: 'kai' }, { title: 'Test it', agentId: 'ivy' }]
-    const agents = [{ id: 'kai', name: 'Kai' }, { id: 'ivy', name: 'Ivy' }] as never[]
+    const steps = [{ title: 'Build it', agentId: 'christian' }, { title: 'Test it', agentId: 'teng' }]
+    const agents = [{ id: 'christian', name: 'Christian' }, { id: 'teng', name: 'Teng' }] as never[]
     const write = { title: 'Plan for T-1', steps, detail: '# Ship it\n\nTwo tasks.\n\n1. Build it\n2. Test it\n3. Mention it' }
     expect(planText(write)).toBe(write.detail)
     expect(planTitle(write)).toBe('Ship it')
     expect(isStepList(write)).toBe(false)
-    expect(planCopyText({ ...write, id: 'a', kind: 'plan' } as never, agents)).toBe(`${write.detail}\n\n1. Build it · Kai\n2. Test it · Ivy`)
+    expect(planCopyText({ ...write, id: 'a', kind: 'plan' } as never, agents)).toBe(`${write.detail}\n\n1. Build it · Christian\n2. Test it · Teng`)
     // Before KERNEL-373, `detail` was only the numbered steps, which the rows already show.
     const older = { title: 'Plan for T-1', steps, detail: '1. Build it\n2. Test it' }
     expect(planText(older)).toBe('')
     expect(isStepList(older)).toBe(true)
     expect(planTitle(older)).toBe('Plan for T-1')
-    expect(planCopyText({ ...older, id: 'a', kind: 'plan' } as never, agents)).toBe('# Plan for T-1\n\n1. Build it · Kai\n2. Test it · Ivy')
+    expect(planCopyText({ ...older, id: 'a', kind: 'plan' } as never, agents)).toBe('# Plan for T-1\n\n1. Build it · Christian\n2. Test it · Teng')
     // A write-up with its own title but no heading is kept and titled by the approval.
-    expect(planCopyText({ title: 'Plan for T-1', steps, detail: 'Two tasks, in order.', id: 'a', kind: 'plan' } as never, agents)).toBe('# Plan for T-1\n\nTwo tasks, in order.\n\n1. Build it · Kai\n2. Test it · Ivy')
+    expect(planCopyText({ title: 'Plan for T-1', steps, detail: 'Two tasks, in order.', id: 'a', kind: 'plan' } as never, agents)).toBe('# Plan for T-1\n\nTwo tasks, in order.\n\n1. Build it · Christian\n2. Test it · Teng')
     // ExitPlanMode has no steps and reads as before.
     expect(planText({ input: { plan: '# Plan\n\n- a' } })).toBe('# Plan\n\n- a')
   })
@@ -173,7 +173,7 @@ describe('who sent a message, as the transcript draws it (KERNEL-120)', () => {
     expect(userView(user({ from: 'lead' }))).toBe('bubble')
     expect(userView(user({ from: 'kernel' }))).toBe('note')
     expect(userView(user({ from: 'kernel', update: { rows: [] } }))).toBe('update')
-    expect(userView({ kind: 'user', id: 'u', ts: 0, parts: [{ type: 'text', text: 'Update from Kernel (not the user):\n- Kai · X (workspace w): PR #1 is ready to merge' }] })).toBe('update')
+    expect(userView({ kind: 'user', id: 'u', ts: 0, parts: [{ type: 'text', text: 'Update from Kernel (not the user):\n- Christian · X (workspace w): PR #1 is ready to merge' }] })).toBe('update')
     // The user typing the old header themselves gets their own bubble.
     expect(userView({ kind: 'user', id: 'u', ts: 0, parts: [{ type: 'text', text: 'Update from Kernel (not the user): what does this line mean?' }] })).toBe('bubble')
   })

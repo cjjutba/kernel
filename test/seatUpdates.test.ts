@@ -20,7 +20,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const REPO = {
   'README.md': '# shop\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
 
 let k: Kernel
@@ -69,7 +69,7 @@ beforeAll(async () => {
   k.store.saveProject({ ...project, host: 'local' })
   const c = await k.lead.newLeadChat(project.id, { prompt: '' })
   leadWs = await setUp(k, c.id, 'settled')
-  mateWs = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
+  mateWs = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Build the cart', agentId: 'christian', title: 'Cart' })).id)
   lead = await open(leadWs, 'lead')
   mate = await open(mateWs, 'claude')
 }, 60_000)
@@ -120,7 +120,7 @@ describe('updates for a terminal Lead', () => {
   })
 
   it('hands it to the next prompt as additionalContext, once', async () => {
-    const out = await prompt(lead, 'What did Kai ask?')
+    const out = await prompt(lead, 'What did Christian ask?')
     expect(context(out)).toContain('Team update, not from the user.')
     expect(context(out)).toContain('Which colour for the cart badge?')
     expect(k.leadUpdates.seatPending(lead.id)).toBe(0)
@@ -171,7 +171,7 @@ describe('updates for a terminal Lead', () => {
 
   it('goes to the tab that handed the work off when a chat Lead tab exists too', async () => {
     const chat = k.store.chats(leadWs.id).find((c) => c.kind === 'chat')!
-    const mine = await k.workspaces.createWorkspace(leadWs.projectId, { prompt: 'Footer', agentId: 'kai', title: 'Footer', leadChatId: chat.id })
+    const mine = await k.workspaces.createWorkspace(leadWs.projectId, { prompt: 'Footer', agentId: 'christian', title: 'Footer', leadChatId: chat.id })
     const sent = vi.spyOn(k.sessions, 'post').mockReturnValue(true)
     k.leadUpdates.asked(k.store.workspace(mine.id)!, 'Footer links?')
     bus.push({ type: 'chat.running', chatId: k.store.chats(mine.id)[0].id, running: false })

@@ -40,7 +40,7 @@ describe('restore', () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
       '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -50,7 +50,7 @@ describe('restore', () => {
     k.sessions.send = async () => ({ queued: false })
 
     const project = await k.addProject(repo)
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
     const chats = k.store.chats(ws.id).map((c) => c.id)
     // Archive keeps the branch, so Restore can find it again.
     await k.archiveWorkspace(ws.id, false)
@@ -68,7 +68,7 @@ describe('restore', () => {
     await setUp(k, ws.id)
 
     // A workspace made while this one was archived may take its port. Restore picks another.
-    const other = await k.createWorkspace(project.id, { prompt: 'Another', agentId: 'kai', title: 'Other' })
+    const other = await k.createWorkspace(project.id, { prompt: 'Another', agentId: 'christian', title: 'Other' })
     k.store.saveWorkspace({ ...other, port: ws.port })
     await k.archiveWorkspace(ws.id, false)
     await k.archive.cleanedUp(ws.id)
@@ -100,12 +100,12 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     throw new Error('timed out')
   }
 
-  /** Kernel planning and Kai building, both mid-turn, with a message queued for Kai and Kai's Bash call still running. */
+  /** Kernel planning and Christian building, both mid-turn, with a message queued for Christian and Christian's Bash call still running. */
   async function working() {
     const repo = await tempRepo({
       'README.md': '# client\n',
       '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -118,14 +118,14 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     const leadWs = await setUp(k, lead.id)
     await k.sessions.send(lead.id, text('Plan the invoice table'))
     callIn(leadWs.path).feed({ type: 'system', subtype: 'init', session_id: 'kernel-session', apiKeySource: 'none' })
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
-    const kai = k.store.chats(ws.id)[0]
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
+    const christian = k.store.chats(ws.id)[0]
     const call = callIn(ws.path)
-    call.feed({ type: 'system', subtype: 'init', session_id: 'kai-session', apiKeySource: 'none' })
+    call.feed({ type: 'system', subtype: 'init', session_id: 'christian-session', apiKeySource: 'none' })
     call.feed({ type: 'assistant', uuid: 'a1', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'pnpm test' } }] } })
     await flush()
-    expect(await k.sessions.send(kai.id, text('Then add a test'))).toMatchObject({ queued: true })
-    return { k, where, project, lead, leadWs, ws, kai }
+    expect(await k.sessions.send(christian.id, text('Then add a test'))).toMatchObject({ queued: true })
+    return { k, where, project, lead, leadWs, ws, christian }
   }
 
   async function relaunch(where: { dataDir: string; home: string }, o: { signedIn?: () => Promise<boolean> } = {}) {
@@ -140,22 +140,22 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
   }
 
   it('carries every working agent on after a quit, the Lead with its Kernel tools, and what was queued goes first', async () => {
-    const { k, where, lead, leadWs, ws, kai } = await working()
+    const { k, where, lead, leadWs, ws, christian } = await working()
     await k.stop()
     const { k: k2, before } = await relaunch(where)
 
-    // Kai: the stuck Bash row failed, the note says Kernel quit, and the queued message went out first, in the same conversation.
-    expect(k2.store.items(kai.id).find((i) => i.kind === 'tool')).toMatchObject({ status: 'failed', output: TOOL_STOPPED })
-    expect(notes(k2, kai)).toEqual([QUIT_NOTE])
-    expect(k2.sessions.isRunning(kai.id)).toBe(true)
-    expect(users(k2, kai).at(-1)).toBe('Then add a test')
-    expect(k2.sessions.queued(kai.id).map((q) => (q.parts[0] as { text: string }).text)).toEqual([RELAUNCH_NUDGE])
+    // Christian: the stuck Bash row failed, the note says Kernel quit, and the queued message went out first, in the same conversation.
+    expect(k2.store.items(christian.id).find((i) => i.kind === 'tool')).toMatchObject({ status: 'failed', output: TOOL_STOPPED })
+    expect(notes(k2, christian)).toEqual([QUIT_NOTE])
+    expect(k2.sessions.isRunning(christian.id)).toBe(true)
+    expect(users(k2, christian).at(-1)).toBe('Then add a test')
+    expect(k2.sessions.queued(christian.id).map((q) => (q.parts[0] as { text: string }).text)).toEqual([RELAUNCH_NUDGE])
     const kaiCall = callIn(ws.path, before)
-    expect(kaiCall.options.resume).toBe('kai-session')
-    expect(kaiCall.options.systemPrompt.append).toContain('You are Kai.')
+    expect(kaiCall.options.resume).toBe('christian-session')
+    expect(kaiCall.options.systemPrompt.append).toContain('You are Christian.')
     kaiCall.feed({ type: 'result', subtype: 'success', uuid: 'r2', duration_ms: 1 })
     await flush()
-    expect(users(k2, kai).at(-1)).toBe(RELAUNCH_NUDGE)
+    expect(users(k2, christian).at(-1)).toBe(RELAUNCH_NUDGE)
 
     // Kernel carries on by itself too, with its prompt and its Kernel tools (amends D-116).
     const leadCall = callIn(leadWs.path, before)
@@ -165,13 +165,13 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     expect(leadCall.options.systemPrompt.append).toContain('You are Kernel.')
     expect(leadCall.options.mcpServers?.kernel).toBeDefined()
 
-    // Kai's crash rides along in Kernel's next update: it carries on, so it doesn't wake Kernel.
+    // Christian's crash rides along in Kernel's next update: it carries on, so it doesn't wake Kernel.
     const saved = k2.store.meta<{ pending: [string, { events: { kind: string; resumed?: boolean; workspaceId: string }[] }][] }>('leadUpdates')
     expect(saved?.pending.flatMap(([, p]) => p.events)).toContainEqual(expect.objectContaining({ kind: 'crash', resumed: true, workspaceId: ws.id }))
   }, 30000)
 
   it('says Kernel closed unexpectedly after a crash, and ends its leftover claude process before anything resumes', async () => {
-    const { k, where, kai } = await working()
+    const { k, where, christian } = await working()
     await k.stop()
     // What a kill -9 leaves: no clean exit marker, and a claude process from that run still going.
     const dir = await mkdtemp(join(tmpdir(), 'kernel-pids-'))
@@ -190,30 +190,30 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
       expect(left.signalCode).toBe('SIGTERM')
       expect(aliveAtResume.length).toBeGreaterThan(0)
       expect(aliveAtResume.every((alive) => !alive)).toBe(true)
-      expect(notes(k2, kai)).toEqual([CRASH_NOTE])
-      expect(k2.sessions.isRunning(kai.id)).toBe(true)
+      expect(notes(k2, christian)).toEqual([CRASH_NOTE])
+      expect(k2.sessions.isRunning(christian.id)).toBe(true)
     } finally { sdk.onQuery = undefined }
   }, 30000)
 
   it('says the agent waited for an answer when a permission or a question was up at the quit, and still carries it on', async () => {
-    const { k, where, ws, kai } = await working()
+    const { k, where, ws, christian } = await working()
     const call = callIn(ws.path)
     void call.options.canUseTool('AskUserQuestion', { questions: [{ question: 'Which table?', header: 'Table', options: [{ label: 'Invoices', description: '' }, { label: 'Refunds', description: '' }], multiSelect: false }] }, { signal: call.options.abortController.signal, toolUseID: 't2', suggestions: [] })
-    const asked = await until(() => k.store.approvals({}).find((a) => a.chatId === kai.id))
+    const asked = await until(() => k.store.approvals({}).find((a) => a.chatId === christian.id))
     await k.stop()
     const { k: k2 } = await relaunch(where)
     expect(k2.store.approval(asked.id)?.status).toBe('expired')
-    expect(notes(k2, kai)).toEqual([QUIT_WAIT_NOTE])
-    expect(k2.sessions.isRunning(kai.id)).toBe(true)
-    expect(users(k2, kai).at(-1)).toBe('Then add a test')
-    expect(k2.sessions.queued(kai.id).map((q) => (q.parts[0] as { text: string }).text)).toEqual([RELAUNCH_NUDGE])
+    expect(notes(k2, christian)).toEqual([QUIT_WAIT_NOTE])
+    expect(k2.sessions.isRunning(christian.id)).toBe(true)
+    expect(users(k2, christian).at(-1)).toBe('Then add a test')
+    expect(k2.sessions.queued(christian.id).map((q) => (q.parts[0] as { text: string }).text)).toEqual([RELAUNCH_NUDGE])
   }, 30000)
 
   it('says the same after a crash, where only the launch finds the question still pending', async () => {
-    const { k, where, ws, kai } = await working()
+    const { k, where, ws, christian } = await working()
     const call = callIn(ws.path)
     void call.options.canUseTool('AskUserQuestion', { questions: [{ question: 'Which table?', header: 'Table', options: [{ label: 'Invoices', description: '' }, { label: 'Refunds', description: '' }], multiSelect: false }] }, { signal: call.options.abortController.signal, toolUseID: 't2', suggestions: [] })
-    const asked = await until(() => k.store.approvals({}).find((a) => a.chatId === kai.id))
+    const asked = await until(() => k.store.approvals({}).find((a) => a.chatId === christian.id))
     await k.stop()
     // What a kill leaves: no clean exit marker, nothing written down at a quit, and the question saved as pending.
     const store = new Store(join(where.dataDir, 'kernel.db'))
@@ -223,20 +223,20 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     store.db.close()
     const { k: k2 } = await relaunch(where)
     expect(k2.store.approval(asked.id)?.status).toBe('expired')
-    expect(notes(k2, kai)).toEqual([CRASH_WAIT_NOTE])
-    expect(k2.sessions.isRunning(kai.id)).toBe(true)
+    expect(notes(k2, christian)).toEqual([CRASH_WAIT_NOTE])
+    expect(k2.sessions.isRunning(christian.id)).toBe(true)
   }, 30000)
 
   it('carries on once the launch check finishes, and lets go of every project even when the check throws', async () => {
-    const { k, where, kai } = await working()
+    const { k, where, christian } = await working()
     await k.stop()
     const { k: k2 } = await relaunch(where, { signedIn: async () => { throw new Error('claude is not installed') } })
     expect(k2.sessions.heldFor()).toEqual([])
-    expect(k2.sessions.isRunning(kai.id)).toBe(true)
+    expect(k2.sessions.isRunning(christian.id)).toBe(true)
   }, 30000)
 
   it('waits for sign-in when Claude Code is signed out at launch, then carries on', async () => {
-    const { k, where, lead, kai } = await working()
+    const { k, where, lead, christian } = await working()
     await k.stop()
     // The sign-in read is slow, as `claude auth status` can be. start() doesn't wait for it.
     let answer!: (signedIn: boolean) => void
@@ -249,21 +249,21 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     await flush()
     expect(sdk.calls.length).toBe(before)
     expect(k2.sessions.heldFor()).toEqual(['auth'])
-    expect(k2.sessions.isRunning(kai.id)).toBe(false)
+    expect(k2.sessions.isRunning(christian.id)).toBe(false)
     expect(k2.sessions.isRunning(lead.id)).toBe(false)
-    expect(notes(k2, kai)).toEqual([QUIT_NOTE])
-    expect(k2.store.meta('cutOff')).toMatchObject({ [kai.id]: 'quit', [lead.id]: 'quit' })
-    // Signed in, as by `claude /login` in a terminal: both carry on, Kai with the queued message first.
+    expect(notes(k2, christian)).toEqual([QUIT_NOTE])
+    expect(k2.store.meta('cutOff')).toMatchObject({ [christian.id]: 'quit', [lead.id]: 'quit' })
+    // Signed in, as by `claude /login` in a terminal: both carry on, Christian with the queued message first.
     k2.accountReader = async () => ({ signedIn: true })
     await k2.readAccount()
-    expect(k2.sessions.isRunning(kai.id)).toBe(true)
+    expect(k2.sessions.isRunning(christian.id)).toBe(true)
     expect(k2.sessions.isRunning(lead.id)).toBe(true)
-    expect(users(k2, kai).at(-1)).toBe('Then add a test')
+    expect(users(k2, christian).at(-1)).toBe('Then add a test')
     expect(users(k2, lead).at(-1)).toBe(RELAUNCH_NUDGE)
   }, 30000)
 
   it("stops inside KERNEL-214's 5 second quit cap when a turn ignores the interrupt and an outside approval is waiting", async () => {
-    const { k, where, kai } = await working()
+    const { k, where, christian } = await working()
     const port = JSON.parse(await readFile(join(where.dataDir, 'settings.json'), 'utf8')).hookPort
     const repo = k.store.projects()[0].path
     // A Claude Code session outside Kernel waits on an approval in the Inbox, which holds its request to the hook server open.
@@ -288,51 +288,51 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     const store = new Store(join(where.dataDir, 'kernel.db'))
     expect(store.approvals({}).filter((a) => a.source === 'hook').map((a) => a.status)).toEqual(['expired'])
     expect(store.meta('cleanExit')).toBe(true)
-    expect(store.meta('working')).toContain(kai.id)
+    expect(store.meta('working')).toContain(christian.id)
     store.db.close()
   }, 30000)
 
   it('sends the nudge to a chat a quit cut off by the abort once the launch check finishes (KERNEL-396)', async () => {
-    const { k, where, kai } = await working()
-    for (const q of k.sessions.queued(kai.id)) k.sessions.unqueue(kai.id, q.id)
+    const { k, where, christian } = await working()
+    for (const q of k.sessions.queued(christian.id)) k.sessions.unqueue(christian.id, q.id)
     // The turn ignores the interrupt and there is no budget, as in the live test's abort case.
     sdk.deaf = true
     try { await k.stop({ budgetMs: 0 }) } finally { sdk.deaf = false }
     let answer!: (signedIn: boolean) => void
     const { k: k2 } = await relaunch(where, { signedIn: () => new Promise((r) => { answer = r }) })
     // `claude auth status` is still running when start() returns, so the nudge hasn't gone out yet.
-    expect(notes(k2, kai)).toEqual([QUIT_NOTE])
-    expect(users(k2, kai)).not.toContain(RELAUNCH_NUDGE)
+    expect(notes(k2, christian)).toEqual([QUIT_NOTE])
+    expect(users(k2, christian)).not.toContain(RELAUNCH_NUDGE)
     answer(true)
     await flush()
-    expect(k2.sessions.isRunning(kai.id)).toBe(true)
-    expect(users(k2, kai).at(-1)).toBe(RELAUNCH_NUDGE)
+    expect(k2.sessions.isRunning(christian.id)).toBe(true)
+    expect(users(k2, christian).at(-1)).toBe(RELAUNCH_NUDGE)
   }, 30000)
 
   it("loads a cut-off list saved before KERNEL-215 as a limit, and the chat carries on with its agent's prompt", async () => {
-    const { k, where, ws, kai } = await working()
+    const { k, where, ws, christian } = await working()
     await k.stop()
     const store = new Store(join(where.dataDir, 'kernel.db'))
     store.saveMeta('working', [])
     store.saveMeta('queues', {})
-    store.saveMeta('cutOff', [kai.id])
+    store.saveMeta('cutOff', [christian.id])
     store.db.close()
     const { k: k2, before } = await relaunch(where)
-    expect(users(k2, kai).at(-1)).toBe(LIMIT_LIFTED)
-    expect(callIn(ws.path, before).options.systemPrompt.append).toContain('You are Kai.')
+    expect(users(k2, christian).at(-1)).toBe(LIMIT_LIFTED)
+    expect(callIn(ws.path, before).options.systemPrompt.append).toContain('You are Christian.')
   }, 30000)
 })
 
 describe('restoring a workspace sets it up again (KERNEL-77, KERNEL-1016)', () => {
   const text = (t: string) => [{ type: 'text' as const, text: t }]
-  /** A project whose setup logs each run and fails while `fail.txt` was copied in, with Kai's workspace set up once. */
+  /** A project whose setup logs each run and fails while `fail.txt` was copied in, with Christian's workspace set up once. */
   async function restorable(mode: 'worktree' | 'current' = 'worktree') {
     const log = join(await mkdtemp(join(tmpdir(), 'kernel-log-')), 'setup.txt')
     const repo = await tempRepo({
       'README.md': '# client\n',
       '.gitignore': '.env.local\nfail.txt\n',
       '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.',
       '.kernel/settings.toml': `[scripts]\nsetup = "echo run >> ${log} && test ! -f fail.txt"\n\n[files]\ncopy = [".env.local", "fail.txt"]\n`
     })
     await writeFile(join(repo, '.env.local'), 'V=1\n')
@@ -344,7 +344,7 @@ describe('restoring a workspace sets it up again (KERNEL-77, KERNEL-1016)', () =
     await k.start()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
     const project = await k.addProject(repo)
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', mode })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table', mode })
     const chat = k.store.chats(ws.id)[0]
     const runs = async () => (await readFile(log, 'utf8')).trim().split('\n').length
     const starts = async () => (await k.handlers()['checkpoints.list']({ workspaceId: ws.id })).filter((c) => c.start).length

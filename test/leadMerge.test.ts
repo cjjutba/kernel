@@ -27,7 +27,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   }
 }))
 
-const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, projectId: 'project', name: id, agentId: 'kai', mode: 'worktree', status: 'ready', prState: 'ready', ...o }) as Workspace
+const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, projectId: 'project', name: id, agentId: 'christian', mode: 'worktree', status: 'ready', prState: 'ready', ...o }) as Workspace
 
 /**
  * The Lead's merge_workspace over `list`, with the switch `on` and a user turn unless told otherwise. `blocked` ids'
@@ -47,7 +47,7 @@ function leadTools(list: Workspace[], o: { on?: boolean; userTurn?: boolean; blo
     return w
   })
   const deps: KernelToolDeps = {
-    projectId: 'project', lead: { id: 'kernel', lead: true } as AgentDef, agents: async () => [{ id: 'theo', name: 'Theo' } as AgentDef], workspaces: () => list,
+    projectId: 'project', lead: { id: 'kernel', lead: true } as AgentDef, agents: async () => [{ id: 'artkin', name: 'Artkin' } as AgentDef], workspaces: () => list,
     createWorkspace: async () => list[0], messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
     archiveWorkspace: async () => undefined, refreshPr, isRunning: () => false, unsaved: async () => false,
     mergeWorkspace, leadMerge: () => o.on ?? true, userTurn: () => o.userTurn ?? true
@@ -87,24 +87,24 @@ describe('merge_workspace (KERNEL-352)', () => {
   })
 
   it("merges the reviewed PR for a review's id", async () => {
-    const t = leadTools([ws('author', { prNumber: 42, prTitle: 'Invoice table' }), ws('review', { agentId: 'theo', reviewOf: 'author', prState: 'none' })])
+    const t = leadTools([ws('author', { prNumber: 42, prTitle: 'Invoice table' }), ws('review', { agentId: 'artkin', reviewOf: 'author', prState: 'none' })])
     expect(await t.merge(['review'])).toBe('Merged #42 (Invoice table).')
     expect(t.mergeWorkspace.mock.calls).toEqual([['author']])
   })
 
   it('skips a PR the merge rule blocks, with its reason', async () => {
     const t = leadTools([ws('green', { prNumber: 266 }), ws('unreviewed', { prNumber: 267 })], {
-      blocked: { green: 'Checks have not passed yet. Merging needs green checks (Settings, Pull requests).', unreviewed: "Theo hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests)." }
+      blocked: { green: 'Checks have not passed yet. Merging needs green checks (Settings, Pull requests).', unreviewed: "Artkin hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests)." }
     })
     expect(await t.merge(['green', 'unreviewed'])).toBe([
       'Skipped #266: Checks have not passed yet. Merging needs green checks (Settings, Pull requests).',
-      "Skipped #267: Theo hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests)."
+      "Skipped #267: Artkin hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests)."
     ].join('\n'))
   })
 
   it('skips a PR with blockers on its latest commit without trying to merge it, since only a person overrides them (KERNEL-497)', async () => {
     const B = 'b'.repeat(40)
-    const blockers = (sha: string, n: number) => [{ workspaceId: 'rev', agentId: 'theo', verdict: 'blockers' as const, summary: '', sha, prNumber: 42, ts: 1, blockers: Array.from({ length: n }, (_, i) => ({ text: `b${i}` })) }]
+    const blockers = (sha: string, n: number) => [{ workspaceId: 'rev', agentId: 'artkin', verdict: 'blockers' as const, summary: '', sha, prNumber: 42, ts: 1, blockers: Array.from({ length: n }, (_, i) => ({ text: `b${i}` })) }]
     const t = leadTools([
       ws('one', { prNumber: 42, prHead: B, reviews: blockers(B, 1) }), ws('two', { prNumber: 42, prHead: B, reviews: blockers(B, 2) }),
       ws('moved', { prNumber: 42, prHead: B, reviews: blockers('a'.repeat(40), 1) })
@@ -138,7 +138,7 @@ describe('merge_workspace (KERNEL-352)', () => {
   it('handles a mixed batch one id at a time, one line each', async () => {
     const t = leadTools([
       ws('first', { prNumber: 1, prTitle: 'One' }), ws('lead', { agentId: 'kernel', mode: 'current', lead: true, prState: 'none' }), ws('blocked', { prNumber: 3 }),
-      ws('done', { prState: 'merged', prNumber: 4 }), ws('gone', { status: 'archived', prNumber: 5 }), ws('review', { agentId: 'theo', reviewOf: 'last', prState: 'none' }), ws('last', { prNumber: 6, prTitle: 'Six' })
+      ws('done', { prState: 'merged', prNumber: 4 }), ws('gone', { status: 'archived', prNumber: 5 }), ws('review', { agentId: 'artkin', reviewOf: 'last', prState: 'none' }), ws('last', { prNumber: 6, prTitle: 'Six' })
     ], { blocked: { blocked: 'Could not read the pull request from GitHub.' } })
     expect(await t.merge(['first', 'lead', 'missing', 'blocked', 'done', 'gone', 'review', 'first'])).toBe([
       'Merged #1 (One).',
@@ -155,12 +155,12 @@ describe('merge_workspace (KERNEL-352)', () => {
 })
 
 /**
- * A started Kernel on a repo with a bare origin and a fake GitHub, Kernel as Lead, Kai and Noor. A merge lands a commit on
+ * A started Kernel on a repo with a bare origin and a fake GitHub, Kernel as Lead, Christian and Sean. A merge lands a commit on
  * origin's main and marks the PR merged, as GitHub does.
  */
 async function kernelProject() {
   const agent = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.\n${extra}---\nYou are ${id}.`
-  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': agent('kernel', 'lead: true\n'), '.claude/agents/kai.md': agent('kai'), '.claude/agents/noor.md': agent('noor') })
+  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': agent('kernel', 'lead: true\n'), '.claude/agents/christian.md': agent('christian'), '.claude/agents/sean.md': agent('sean') })
   const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
   await run('git', ['clone', '-q', '--bare', repo, origin])
   await run('git', ['-C', repo, 'remote', 'add', 'origin', origin])
@@ -183,9 +183,9 @@ async function kernelProject() {
   const kernel = (await k.agents(project.id)).find((a) => a.lead)!
   const tool = kernelTools(k.lead.leadToolDeps(project.id, kernel, lead)).find((t) => t.name === 'merge_workspace')!
   const merge = async (ids: string[]) => ((await tool.handler({ workspace_ids: ids } as never, {})).content[0] as { text: string }).text
-  /** Noor's workspace with PR `number` open and green. */
+  /** Sean's workspace with PR `number` open and green. */
   const target = async (number: number, title: string) => {
-    const w = await k.createWorkspace(project.id, { prompt: title, agentId: 'noor', title, leadChatId: lead.id })
+    const w = await k.createWorkspace(project.id, { prompt: title, agentId: 'sean', title, leadChatId: lead.id })
     prs.set(w.branch, { workspaceId: '', number, url: `https://github.com/x/y/pull/${number}`, title, state: 'ready', baseRef: 'main', checks: [{ name: 'test', state: 'pass' }], comments: [], conflicts: [] })
     return k.refreshPr(w.id)
   }
@@ -197,33 +197,33 @@ const result = (uuid: string) => ({ type: 'result', subtype: 'success', uuid, du
 describe('merge_workspace in the Kernel (KERNEL-352)', () => {
   it('reads the switch and the turn live, merges through the Merge button path and releases a teammate waiting on it', async () => {
     const { k, project, lead, merge, target, merged } = await kernelProject()
-    const noor = await target(265, 'Trim the 0.1.0 changelog')
-    expect(noor.prState).toBe('ready')
-    const kai = await k.createWorkspace(project.id, { prompt: 'Build on it', agentId: 'kai', title: 'Next step', leadChatId: lead.id, waitFor: [noor.id] })
-    expect(kai.waitsFor).toMatchObject({ on: [noor.id], held: true })
+    const sean = await target(265, 'Trim the 0.1.0 changelog')
+    expect(sean.prState).toBe('ready')
+    const christian = await k.createWorkspace(project.id, { prompt: 'Build on it', agentId: 'christian', title: 'Next step', leadChatId: lead.id, waitFor: [sean.id] })
+    expect(christian.waitsFor).toMatchObject({ on: [sean.id], held: true })
 
     // Off by default, and the Lead's tools were built before the switch changed.
     expect(k.settings.pr.leadMerge).toBe(false)
-    expect(await merge([noor.id])).toBe(MERGE_OFF)
+    expect(await merge([sean.id])).toBe(MERGE_OFF)
     await k.handlers()['settings.set']({ patch: { pr: { leadMerge: true } } })
 
     // A Team update is a turn Kernel started. Answering inside it doesn't make it the user's.
     const before = sdk.calls.length
     expect(k.sessions.post(lead.id, [{ type: 'text', text: 'Team update' }])).toBe(true)
-    expect(await merge([noor.id])).toBe(MERGE_NOT_ASKED)
+    expect(await merge([sean.id])).toBe(MERGE_NOT_ASKED)
     const leadPath = k.store.workspace(lead.workspaceId)!.path
     const update = await vi.waitFor(() => { const c = sdk.calls.slice(before).find((x) => x.options.cwd === leadPath); expect(c).toBeDefined(); return c! })
     update.feed(result('u1'))
     await vi.waitFor(() => expect(k.sessions.isRunning(lead.id)).toBe(false))
-    expect(await merge([noor.id])).toBe(MERGE_NOT_ASKED)
+    expect(await merge([sean.id])).toBe(MERGE_NOT_ASKED)
     expect(merged).toEqual([])
 
     // The user's own message starts a user turn.
     await k.sessions.send(lead.id, [{ type: 'text', text: 'Merge the ready ones' }])
-    expect(await merge([noor.id])).toBe('Merged #265 (Trim the 0.1.0 changelog).')
-    expect(merged).toEqual([noor.branch])
-    expect(k.store.workspace(noor.id)?.prState).toBe('merged')
-    // The pr event releases Kai's held brief, as a merge from the PR panel does (KERNEL-259).
-    await vi.waitFor(() => expect(k.store.workspace(kai.id)?.waitsFor).toBeUndefined(), { timeout: 10_000 })
+    expect(await merge([sean.id])).toBe('Merged #265 (Trim the 0.1.0 changelog).')
+    expect(merged).toEqual([sean.branch])
+    expect(k.store.workspace(sean.id)?.prState).toBe('merged')
+    // The pr event releases Christian's held brief, as a merge from the PR panel does (KERNEL-259).
+    await vi.waitFor(() => expect(k.store.workspace(christian.id)?.waitsFor).toBeUndefined(), { timeout: 10_000 })
   })
 })

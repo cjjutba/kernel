@@ -10,7 +10,7 @@ import { gh, type CodeHost } from '../src/main/services/github'
 
 // KERNEL-453: the PR feature asks each project's code host, and a project that merges locally never reaches GitHub.
 
-const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+const CHRISTIAN = '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 
 const kernels: Kernel[] = []
 afterEach(async () => { for (const k of kernels.splice(0)) await k.stop() })
@@ -28,9 +28,9 @@ async function kernel() {
 
 /** A project with one workspace whose PR #42 reads ready, on the host given. A local one has no number. */
 async function projectWithPr(k: Kernel, host?: Project['host']) {
-  const project = await k.addProject(await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': KAI }))
+  const project = await k.addProject(await tempRepo({ 'README.md': '# client\n', '.claude/agents/christian.md': CHRISTIAN }))
   if (host) k.store.saveProject({ ...project, host })
-  const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+  const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
   k.store.saveWorkspace({ ...ws, prState: 'ready', ...(host === 'local' ? {} : { prNumber: 42 }) })
   return k.store.workspace(ws.id)!
 }

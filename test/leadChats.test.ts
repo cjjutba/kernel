@@ -33,7 +33,7 @@ vi.mock('../src/main/services/kernelMcp', async (original) => {
 const REPO = {
   'README.md': '# client\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai. Open a PR for each task.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian. Open a PR for each task.'
 }
 
 async function dirs() {
@@ -103,8 +103,8 @@ async function build(files: Record<string, string> = {}) {
 describe('Lead chats and the work they hand off (KERNEL-105)', () => {
   it('stamps each workspace with the chat that created it, and Restore keeps it', async () => {
     const { k, first, icons, call, byTitle } = await setup()
-    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).toMatch(/^Created /)
-    await call(icons, 'create_workspace', { agent: 'kai', title: 'Chat tab state icons', brief: 'Go' })
+    expect(await call(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })).toMatch(/^Created /)
+    await call(icons, 'create_workspace', { agent: 'christian', title: 'Chat tab state icons', brief: 'Go' })
     expect(byTitle('Drafts per chat').leadChatId).toBe(first.id)
     const iconsWs = byTitle('Chat tab state icons')
     expect(iconsWs.leadChatId).toBe(icons.id)
@@ -116,11 +116,11 @@ describe('Lead chats and the work they hand off (KERNEL-105)', () => {
     const { k, project, first, icons, call, byTitle } = await setup()
     const plan = (id: string, chat: Chat, createdAt: number) => k.store.saveApproval({
       id, kind: 'plan', source: 'sdk', projectId: project.id, workspaceId: chat.workspaceId, chatId: chat.id, agentId: 'kernel', title: id,
-      steps: [{ title: `${id} step`, agentId: 'kai' }], status: 'allowed', createdAt
+      steps: [{ title: `${id} step`, agentId: 'christian' }], status: 'allowed', createdAt
     } as Approval)
     k.tasks.fromPlan(plan('icons-plan', icons, Date.now() - 1000))
     k.tasks.fromPlan(plan('first-plan', first, Date.now()))
-    await call(icons, 'create_workspace', { agent: 'kai', title: 'Chat tab state icons', brief: 'Go' })
+    await call(icons, 'create_workspace', { agent: 'christian', title: 'Chat tab state icons', brief: 'Go' })
     const ws = byTitle('Chat tab state icons')
     const step = (id: string) => k.store.approvals({ projectId: project.id }).find((a) => a.id === id)!.steps![0].workspaceId
     expect(step('icons-plan')).toBe(ws.id)
@@ -150,9 +150,9 @@ describe('Lead chats and the work they hand off (KERNEL-105)', () => {
 
   it("marks this chat's workspaces in list_workspaces, and says where another chat's workspace reports", async () => {
     const { k, project, first, icons, call, byTitle } = await setup()
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
-    await call(icons, 'create_workspace', { agent: 'kai', title: 'Chat tab state icons', brief: 'Go' })
-    const mine = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Made by hand' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
+    await call(icons, 'create_workspace', { agent: 'christian', title: 'Chat tab state icons', brief: 'Go' })
+    const mine = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Made by hand' })
     const drafts = byTitle('Drafts per chat')
     const iconsWs = byTitle('Chat tab state icons')
     const lines = (await call(first, 'list_workspaces', {})).split('\n')
@@ -167,12 +167,12 @@ describe('Lead chats and the work they hand off (KERNEL-105)', () => {
 
   it('asks the chat that handed off the newer workspace to sort out an overlap, and names the other chat', async () => {
     const { k, project, first, icons, call, byTitle, sent } = await setup()
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Pasted text preview', brief: 'Go' })
-    await call(icons, 'create_workspace', { agent: 'kai', title: 'Chat tab state icons', brief: 'Go' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Pasted text preview', brief: 'Go' })
+    await call(icons, 'create_workspace', { agent: 'christian', title: 'Chat tab state icons', brief: 'Go' })
     const older = byTitle('Pasted text preview')
     const newer = byTitle('Chat tab state icons')
     k['overlaps']['known'].set('o1', { id: 'o1', projectId: project.id, path: 'src/renderer/src/components/ChatTabs.tsx', ts: 1, parties: [
-      { agentId: 'kai', workspaceId: older.id, lines: '+3 -1' }, { agentId: 'kai', workspaceId: newer.id, lines: '+5 -2' }
+      { agentId: 'christian', workspaceId: older.id, lines: '+3 -1' }, { agentId: 'christian', workspaceId: newer.id, lines: '+5 -2' }
     ] })
     sent.length = 0
     await k.sortOverlap('o1')
@@ -190,11 +190,11 @@ describe('backfilling the Lead chat on workspaces from before KERNEL-105', () =>
     old.sessions.send = async () => ({ queued: false })
     const project = await old.addProject(repo)
     const lead = await old.leadChat(project.id)
-    const handed = await old.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Old hand-off' })
-    const stamped = await old.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Stamped', leadChatId: 'elsewhere' })
-    const failed = await old.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Failed call' })
+    const handed = await old.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Old hand-off' })
+    const stamped = await old.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Stamped', leadChatId: 'elsewhere' })
+    const failed = await old.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Failed call' })
     const item = (id: string, wsId: string, status: 'done' | 'failed') => old.store.saveItem(lead.id, {
-      kind: 'tool', id, ts: 1, toolUseId: id, name: 'mcp__kernel__create_workspace', label: '', detail: '', status, output: `Created ${wsId} on some-branch for kai.`
+      kind: 'tool', id, ts: 1, toolUseId: id, name: 'mcp__kernel__create_workspace', label: '', detail: '', status, output: `Created ${wsId} on some-branch for christian.`
     })
     item('t1', handed.id, 'done'); item('t2', stamped.id, 'done'); item('t3', failed.id, 'failed')
     // As if this database came from a version before the field existed.
@@ -223,7 +223,7 @@ describe("marking the Lead's workspace (KERNEL-353)", () => {
     const shutLead = old.store.workspace((await old.lead.leadChat(shut.id)).workspaceId)!
     expect(lead.lead).toBe(true)
     // A worktree handed to the Lead when its agent retired is the Lead agent's too, and isn't the Lead's workspace.
-    const handed = await old.workspaces.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Handed over' })
+    const handed = await old.workspaces.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Handed over' })
     old.store.saveWorkspace({ ...old.store.workspace(handed.id)!, agentId: 'kernel' })
     // As if this database came from a version before the mark existed, when the Lead worked on the main checkout.
     for (const ws of [lead, shutLead]) old.store.saveWorkspace({ ...ws, lead: undefined, threadId: undefined, name: 'lead', mode: 'current', path: old.store.project(ws.projectId)!.path, branch: 'main' })
@@ -250,7 +250,7 @@ describe("marking the Lead's workspace (KERNEL-353)", () => {
 describe("the Lead's messages in a teammate's chat (KERNEL-116)", () => {
   it("sends the hand-off brief and message_agent as the Lead's, not the user's", async () => {
     const { first, call, byTitle, sent } = await setup()
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Keep one draft per chat.' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Keep one draft per chat.' })
     const ws = byTitle('Drafts per chat')
     expect(sent.at(-1)).toMatchObject({ text: 'Keep one draft per chat.', from: 'lead' })
     await call(first, 'message_agent', { workspace_id: ws.id, text: 'Rebase on main first.' })
@@ -285,7 +285,7 @@ describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL
     const { k, first, call, byTitle } = await setup()
     linear(k)
     const briefs = record(k)
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Build the Issues screen.', issue: 'KERNEL-83' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Build the Issues screen.', issue: 'KERNEL-83' })
     expect(byTitle('Issues screen').source).toEqual({ kind: 'issue', id: 'KERNEL-83', title: 'Issues screen', url: issue.url, tracker: 'linear' })
     expect(briefs.at(-1)).toEqual([{ type: 'text', text: 'Build the Issues screen.' }, expect.objectContaining({ type: 'file', name: 'KERNEL-83 from Linear' })])
     const pasted = briefs.at(-1)![1] as { text: string; lines: number }
@@ -296,18 +296,18 @@ describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL
   it('sends the brief alone when the project has no tracker', async () => {
     const { k, first, call, byTitle } = await setup()
     const briefs = record(k)
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Build the Issues screen.', issue: 'KERNEL-83' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Build the Issues screen.', issue: 'KERNEL-83' })
     expect(byTitle('Issues screen').source).toEqual({ kind: 'issue', id: 'KERNEL-83', title: 'Issues screen' })
     expect(briefs.at(-1)).toEqual([{ type: 'text', text: 'Build the Issues screen.' }])
   })
 
   it("gives the Lead, a teammate and a reviewer get_issue, which reads the workspace's issue, or the reviewed work's", async () => {
-    // Noor opens PRs, so Noor takes tasks and can review (KERNEL-465).
-    const { k, project, first, call, byTitle } = await setup({ '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor. Open a PR for each task.' })
+    // Sean opens PRs, so Sean takes tasks and can review (KERNEL-465).
+    const { k, project, first, call, byTitle } = await setup({ '.claude/agents/sean.md': '---\nname: sean\ndescription: Engine engineer.\n---\nYou are Sean. Open a PR for each task.' })
     const asked = linear(k)
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
     const work = byTitle('Issues screen')
-    await call(first, 'create_workspace', { agent: 'noor', title: 'Review it', brief: 'Review', review_of: work.id })
+    await call(first, 'create_workspace', { agent: 'sean', title: 'Review it', brief: 'Review', review_of: work.id })
     const agents = await k.team.agents(project.id)
     const read = async (ws: Workspace, args: { key?: string } = {}) => {
       const tools = k.tools.toolsFor(ws, agents.find((a) => a.id === ws.agentId), k.store.chats(ws.id)[0])
@@ -324,22 +324,22 @@ describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL
     // The hand-off read it to see who else is on it (KERNEL-479) and again for the brief, then each get_issue read it again.
     expect(asked).toEqual(['KERNEL-83', 'KERNEL-83', 'KERNEL-83', 'KERNEL-83', 'KERNEL-83', 'KERNEL-99'])
     // Codex gets the same tools as dynamic tools. teammateWait.test.ts checks the `kernel` server Claude gets.
-    expect(k.tools.codexTools(work, agents.find((a) => a.id === 'kai'), k.store.chats(work.id)[0]).tools.map((t) => t.name)).toEqual(['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue', 'share_file'])
+    expect(k.tools.codexTools(work, agents.find((a) => a.id === 'christian'), k.store.chats(work.id)[0]).tools.map((t) => t.name)).toEqual(['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue', 'share_file'])
   })
 })
 
 describe("create_workspace when the teammate's setup fails (KERNEL-126)", () => {
   it('says so with the exit code after the Created prefix, which the backfill still reads', async () => {
     const { first, call } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "exit 3"\n' })
-    const said = await call(first, 'create_workspace', { agent: 'kai', title: 'Invoice table', brief: 'Build T-14' })
-    expect(said).toMatch(/^Created \S+ on \S+ for kai\. Setup failed \(exit code 3\), so Kai hasn't started\. The brief waits until the user fixes setup and clicks Run again in that workspace\.$/)
+    const said = await call(first, 'create_workspace', { agent: 'christian', title: 'Invoice table', brief: 'Build T-14' })
+    expect(said).toMatch(/^Created \S+ on \S+ for christian\. Setup failed \(exit code 3\), so Christian hasn't started\. The brief waits until the user fixes setup and clicks Run again in that workspace\.$/)
     // Kernel's backfill of older chats parses this prefix (backfillLeadChats).
     expect(/^Created (\S+) on /.exec(said)?.[1]).toBeTruthy()
   })
 })
 
 describe('create_workspace when every agent slot is in use (KERNEL-272)', () => {
-  it("says Kai hasn't started after the Created prefix, while the brief waits in Kai's queue", async () => {
+  it("says Christian hasn't started after the Created prefix, while the brief waits in Christian's queue", async () => {
     const { k, first, call, byTitle } = await setup()
     // The real send, so the brief meets the agent limit. One slot, taken by another teammate's running turn.
     delete (k.sessions as { send?: unknown }).send
@@ -347,8 +347,8 @@ describe('create_workspace when every agent slot is in use (KERNEL-272)', () => 
     const live = k.sessions['live'] as Map<string, unknown>
     live.set('busy', { running: true, abort: new AbortController(), query: {} })
     try {
-      const said = await call(first, 'create_workspace', { agent: 'kai', title: 'Back and forward', brief: 'Build KERNEL-200' })
-      expect(said).toMatch(/^Created \S+ on \S+ for kai\. Every agent slot in Settings, Models is in use, so Kai hasn't started\. The brief goes out when a slot frees up\.$/)
+      const said = await call(first, 'create_workspace', { agent: 'christian', title: 'Back and forward', brief: 'Build KERNEL-200' })
+      expect(said).toMatch(/^Created \S+ on \S+ for christian\. Every agent slot in Settings, Models is in use, so Christian hasn't started\. The brief goes out when a slot frees up\.$/)
       expect(/^Created (\S+) on /.exec(said)?.[1]).toBe(byTitle('Back and forward').id)
       const brief = k.chatTabs(byTitle('Back and forward').id).find((c) => c.kind !== 'terminal')!
       expect(k.sessions.queued(brief.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build KERNEL-200' }]])
@@ -373,7 +373,7 @@ describe("the user's screenshots passed on to a teammate (KERNEL-658)", () => {
   it("sends the brief with the image, which lands in the teammate's worktree out of git and shows in their chat", async () => {
     const { k, first, call, byTitle } = await attached()
     delete (k.sessions as { send?: unknown }).send
-    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Fix the login layout in the screenshot', images: [{ path: '.kernel/attachments/login.png' }] })).toMatch(/^Created /)
+    expect(await call(first, 'create_workspace', { agent: 'christian', title: 'Login layout', brief: 'Fix the login layout in the screenshot', images: [{ path: '.kernel/attachments/login.png' }] })).toMatch(/^Created /)
     const ws = byTitle('Login layout')
     const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
     const file = join(ws.path, '.kernel/attachments/1/login.png')
@@ -390,7 +390,7 @@ describe("the user's screenshots passed on to a teammate (KERNEL-658)", () => {
     delete (k.sessions as { send?: unknown }).send
     const lead = k.store.workspace(first.workspaceId)!.path
     await writeFile(join(lead, '.kernel/attachments/spec.pdf'), '%PDF-1.4\n<< /Type /Pages /Count 4 >>\n%%EOF\n')
-    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Spec', brief: 'Build what the spec says', images: [{ path: '.kernel/attachments/spec.pdf' }] })).toMatch(/^Created /)
+    expect(await call(first, 'create_workspace', { agent: 'christian', title: 'Spec', brief: 'Build what the spec says', images: [{ path: '.kernel/attachments/spec.pdf' }] })).toMatch(/^Created /)
     const ws = byTitle('Spec')
     const file = join(ws.path, '.kernel/attachments/1/spec.pdf')
     await vi.waitFor(() => access(file), { timeout: 10_000 })
@@ -405,7 +405,7 @@ describe("the user's screenshots passed on to a teammate (KERNEL-658)", () => {
     const live = k.sessions['live'] as Map<string, unknown>
     live.set('busy', { running: true, abort: new AbortController(), query: {} })
     try {
-      expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Fix it', images: [{ path: '.kernel/attachments/login.png' }] })).toMatch(/so Kai hasn't started\./)
+      expect(await call(first, 'create_workspace', { agent: 'christian', title: 'Login layout', brief: 'Fix it', images: [{ path: '.kernel/attachments/login.png' }] })).toMatch(/so Christian hasn't started\./)
       const brief = k.chatTabs(byTitle('Login layout').id).find((c) => c.kind !== 'terminal')!
       expect(k.sessions.queued(brief.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Fix it' }, image]])
     } finally { live.delete('busy') }
@@ -413,7 +413,7 @@ describe("the user's screenshots passed on to a teammate (KERNEL-658)", () => {
 
   it('sends a follow-up with the image, and refuses one that can not go without sending anything', async () => {
     const { k, first, call, byTitle } = await attached()
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Fix it' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Login layout', brief: 'Fix it' })
     const ws = byTitle('Login layout')
     const parts: ChatPart[][] = []
     k.sessions.send = async (_: string, p: ChatPart[]) => { parts.push(p); return { queued: false } }
@@ -424,8 +424,8 @@ describe("the user's screenshots passed on to a teammate (KERNEL-658)", () => {
     expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'x', images: [{ path: 'notes.png' }] })).toBe("Not sent: notes.png isn't in .kernel/attachments/ of your workspace. Send only files the user attached in this chat.")
     expect(parts).toHaveLength(1)
     // create_workspace refuses the same way, and no workspace is made.
-    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Too many', brief: 'x', images: four })).toBe('Not created: 4 files is over the limit of 3. Send only the ones the teammate needs to act on.')
-    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Gone', brief: 'x', images: [{ path: '.kernel/attachments/gone.png' }] })).toBe('Not created: there is no file at .kernel/attachments/gone.png.')
+    expect(await call(first, 'create_workspace', { agent: 'christian', title: 'Too many', brief: 'x', images: four })).toBe('Not created: 4 files is over the limit of 3. Send only the ones the teammate needs to act on.')
+    expect(await call(first, 'create_workspace', { agent: 'christian', title: 'Gone', brief: 'x', images: [{ path: '.kernel/attachments/gone.png' }] })).toBe('Not created: there is no file at .kernel/attachments/gone.png.')
     expect(byTitle('Too many')).toBeUndefined()
     expect(byTitle('Gone')).toBeUndefined()
   })
@@ -434,10 +434,10 @@ describe("the user's screenshots passed on to a teammate (KERNEL-658)", () => {
 describe("a teammate's shared image passed on to another teammate (KERNEL-659)", () => {
   const png = (what: string) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(what)])
   const image = (what: string) => ({ type: 'image', name: 'login.png', dataUrl: `data:image/png;base64,${png(what).toString('base64')}` })
-  /** `setup` with Kai's "Shots" workspace, from which `share` shares a file as share_file does. */
+  /** `setup` with Christian's "Shots" workspace, from which `share` shares a file as share_file does. */
   async function sharer() {
     const s = await setup()
-    await s.call(s.first, 'create_workspace', { agent: 'kai', title: 'Shots', brief: 'Take the shots' })
+    await s.call(s.first, 'create_workspace', { agent: 'christian', title: 'Shots', brief: 'Take the shots' })
     const shots = s.byTitle('Shots')
     const share = async (rel: string, data: Buffer | string) => {
       await mkdir(join(shots.path, '.kernel/shared'), { recursive: true })
@@ -453,7 +453,7 @@ describe("a teammate's shared image passed on to another teammate (KERNEL-659)",
     const { k, first, call, byTitle, share } = await sharer()
     delete (k.sessions as { send?: unknown }).send
     const file = await share('login.png', png('first take'))
-    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Match the shot', images: [{ shared: file.id, version: 1 }] })).toMatch(/^Created /)
+    expect(await call(first, 'create_workspace', { agent: 'christian', title: 'Login layout', brief: 'Match the shot', images: [{ shared: file.id, version: 1 }] })).toMatch(/^Created /)
     const ws = byTitle('Login layout')
     const saved = join(ws.path, '.kernel/attachments/1/login.png')
     await vi.waitFor(() => access(saved), { timeout: 10_000 })
@@ -471,7 +471,7 @@ describe("a teammate's shared image passed on to another teammate (KERNEL-659)",
     await writeFile(join(root, '.kernel/attachments/user.png'), png('from the user'))
     const file = await share('login.png', png('first take'))
     await share('login.png', png('second take'))
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Fix it' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Login layout', brief: 'Fix it' })
     const parts: ChatPart[][] = []
     k.sessions.send = async (_: string, p: ChatPart[]) => { parts.push(p); return { queued: false } }
     const id = byTitle('Login layout').id
@@ -486,7 +486,7 @@ describe("a teammate's shared image passed on to another teammate (KERNEL-659)",
     const pdf = await share('spec.pdf', '%PDF-1.4 spec')
     const svg = await share('logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>')
     const shot = await share('login.png', png('first take'))
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Fix it' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Login layout', brief: 'Fix it' })
     const parts: ChatPart[][] = []
     k.sessions.send = async (_: string, p: ChatPart[]) => { parts.push(p); return { queued: false } }
     const id = byTitle('Login layout').id
@@ -500,7 +500,7 @@ describe("a teammate's shared image passed on to another teammate (KERNEL-659)",
     expect(await send([{ shared: shot.id, version: 1 }, { shared: shot.id, version: 2 }])).toBe('Not sent: "login.png" has no v2. It has v1.')
     expect(await send(Array.from({ length: 4 }, () => ({ shared: shot.id, version: 1 })))).toBe('Not sent: 4 files is over the limit of 3. Send only the ones the teammate needs to act on.')
     expect(parts).toEqual([])
-    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Mock', brief: 'x', images: [{ shared: html.id, version: 1 }] })).toBe('Not created: "mock.html" is HTML. Only shared images can be passed on.')
+    expect(await call(first, 'create_workspace', { agent: 'christian', title: 'Mock', brief: 'x', images: [{ shared: html.id, version: 1 }] })).toBe('Not created: "mock.html" is HTML. Only shared images can be passed on.')
     expect(byTitle('Mock')).toBeUndefined()
   })
 })
@@ -509,9 +509,9 @@ describe("create_workspace in a repo that commits its scripts (KERNEL-913)", () 
   it('runs a multi-line setup script with no prompt, then sends the brief', async () => {
     const setupScript = '[scripts]\nsetup = """\necho one > one.txt\necho two > two.txt\n"""\n'
     const { k, first, call, byTitle, sent } = await setup({ '.kernel/settings.toml': setupScript, '.gitignore': 'one.txt\ntwo.txt\n' })
-    const said = await call(first, 'create_workspace', { agent: 'kai', title: 'Invoice table', brief: 'Build T-14' })
+    const said = await call(first, 'create_workspace', { agent: 'christian', title: 'Invoice table', brief: 'Build T-14' })
     const ws = byTitle('Invoice table')
-    expect(said).toMatch(new RegExp(`^Created ${ws.id} on ${ws.branch} for kai\\.`))
+    expect(said).toMatch(new RegExp(`^Created ${ws.id} on ${ws.branch} for christian\\.`))
     expect(said).not.toContain('trust')
     await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
     expect(await readFile(join(ws.path, 'one.txt'), 'utf8')).toBe('one\n')
@@ -527,8 +527,8 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
     const onActivity = (e: { kind: string }) => { if (e.kind === 'agent.talk') talks.push(e) }
     bus.on('activity', onActivity)
     onTestFinished(() => { bus.off('activity', onActivity) })
-    await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
-    await run(first, 'create_workspace', { agent: 'kai', title: 'Chat tab icons', brief: 'Go' })
+    await run(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
+    await run(first, 'create_workspace', { agent: 'christian', title: 'Chat tab icons', brief: 'Go' })
     const drafts = byTitle('Drafts per chat')
     const icons = byTitle('Chat tab icons')
     sent.length = 0
@@ -540,7 +540,7 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
     expect(await run(first, 'message_agent', { workspace_id: first.workspaceId, text: 'Rebase' })).toEqual({ isError: true, text: 'Not sent: that is your own workspace.' })
     // A real workspace, but in another project.
     const other = await k.addProject(await tempRepo(REPO))
-    const elsewhere = await k.createWorkspace(other.id, { prompt: 'Go', agentId: 'kai', title: 'Elsewhere' })
+    const elsewhere = await k.createWorkspace(other.id, { prompt: 'Go', agentId: 'christian', title: 'Elsewhere' })
     expect(await run(first, 'message_agent', { workspace_id: elsewhere.id, text: 'Rebase' })).toEqual({ isError: true, text: `Not sent: there is no workspace ${elsewhere.id} in this project. Call list_workspaces for the ids.` })
     expect(sent.filter((x) => x.text === 'Rebase')).toEqual([])
     expect(talks).toEqual([])
@@ -548,11 +548,11 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
 
   it('says when the message waits, and why', async () => {
     const { first, call, byTitle, answer } = await setup()
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
     const id = byTitle('Drafts per chat').id
     const said: [QueueReason, string][] = [
-      ['running', 'Kai is mid-turn, so the message goes out when that turn ends.'],
-      ['setup', "Setup failed in Kai's workspace, so the message waits until the user clicks Run again."],
+      ['running', 'Christian is mid-turn, so the message goes out when that turn ends.'],
+      ['setup', "Setup failed in Christian's workspace, so the message waits until the user clicks Run again."],
       ['paused', 'The project is paused, so the message goes out when the user resumes it.'],
       ['offline', 'Kernel is offline or signed out, so the message goes out once it is back.'],
       ['capacity', 'Every agent slot in Settings, Models is in use, so the message goes out when a slot frees up.']
@@ -565,10 +565,10 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
 
   it('opens a chat in a workspace whose chats are all closed, and sends there', async () => {
     const { k, first, call, byTitle, sent } = await setup()
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
     const ws = byTitle('Drafts per chat')
     for (const c of k.store.chats(ws.id)) k.store.saveChat({ ...c, closed: true })
-    expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Rebase' })).toBe("Opened a new chat in Kai's workspace and sent it.")
+    expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Rebase' })).toBe("Opened a new chat in Christian's workspace and sent it.")
     const open = k.chatTabs(ws.id)
     expect(open).toHaveLength(1)
     expect(open[0]).toMatchObject({ model: k.settings.models.roles.engineers.model, effort: k.settings.models.roles.engineers.effort, plan: false })
@@ -581,10 +581,10 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
       // The brief and the Lead's message come in one call, as the chat's first turn (KERNEL-393).
       const sentAll: { chatId: string; messages: (string | undefined)[][] }[] = []
       k.sessions.sendAll = async (chatId: string, messages: { parts: ChatPart[]; from?: string }[]) => { sentAll.push({ chatId, messages: messages.map((m) => [m.parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), m.from]) }); return { queued: false } }
-      const made = k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: first.id })
+      const made = k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: first.id })
       const ws = await vi.waitFor(() => { const w = k.store.workspaces(project.id).find((x) => x.title === 'Invoice table'); if (!w) throw new Error('not yet'); return w })
       expect(ws.status).toBe('setup')
-      expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Use EmptyState' })).toBe("Kai's workspace is still setting up, so the message goes out with the brief.")
+      expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Use EmptyState' })).toBe("Christian's workspace is still setting up, so the message goes out with the brief.")
       await made
       const chat = k.store.chats(ws.id)[0]
       if (fails) expect(k.sessions.queued(chat.id).map((q) => [(q.parts[0] as { text: string }).text, q.from])).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
@@ -595,11 +595,11 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
 
 describe('the loop guard on automatic requests (KERNEL-125)', () => {
   const ASK = { text: 'Fix the failing check' }
-  const SPENT = 'Not sent: Kernel has passed 3 automatic requests to Kai on this workspace and it still needs help. Tell the user what keeps failing and ask how to go on.'
+  const SPENT = 'Not sent: Kernel has passed 3 automatic requests to Christian on this workspace and it still needs help. Tell the user what keeps failing and ask how to go on.'
 
   async function guarded() {
     const t = await setup()
-    await t.call(t.first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    await t.call(t.first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
     const ws = t.byTitle('Drafts per chat')
     const ask = () => t.run(t.first, 'message_agent', { workspace_id: ws.id, ...ASK })
     const spend = async () => { for (let i = 0; i < 3; i++) expect((await ask()).isError).toBe(false) }
@@ -725,7 +725,7 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
     expect(new Nudges(k.store).count(ws.id)).toBe(0)
     await spend()
     // A first message in a new chat of its own hears none of this workspace's updates.
-    const fresh = await k.startLeadChat(project.id, { prompt: 'How is Kai doing?' })
+    const fresh = await k.startLeadChat(project.id, { prompt: 'How is Christian doing?' })
     await setUp(k, fresh.id)
     expect(new Nudges(k.store).count(ws.id)).toBe(3)
     bus.push({ type: 'pr', workspaceId: ws.id, state: 'merged' })
@@ -814,7 +814,7 @@ describe("a card whose turn stopped before the user answered (KERNEL-496)", () =
   const shared = sharedSetup()
   const asks = [
     { tool: 'ask_user', args: { question: 'Raise the workspace limit to 8?', options: ['Yes', 'No'] }, kind: 'question', reply: 'No answer yet.' },
-    { tool: 'request_plan_approval', args: { title: 'Raise the workspace limit', plan: '## Plan\nRaise it to 8.', steps: ['Raise the limit · Kai'] }, kind: 'plan', reply: 'No answer yet. Wait and ask again later.' },
+    { tool: 'request_plan_approval', args: { title: 'Raise the workspace limit', plan: '## Plan\nRaise it to 8.', steps: ['Raise the limit · Christian'] }, kind: 'plan', reply: 'No answer yet. Wait and ask again later.' },
     { tool: 'create_agent', args: { id: 'qa', description: 'Tests releases.', prompt: 'You are QA.' }, kind: 'agent', reply: 'The user did not approve this agent.' }
   ] as const
 
@@ -937,7 +937,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     const h = k.handlers()
     const fork = await h['chats.fork']({ chatId: first.id })
     expect(fork.threadId).toBe(first.threadId)
-    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Tabs' })
     expect((await h['chats.create']({ workspaceId: ws.id })).threadId).toBeUndefined()
     expect(k.store.chats(ws.id).every((c) => !c.threadId)).toBe(true)
   })
@@ -1014,8 +1014,8 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     const sibling = await tab(first.threadId)
     const elsewhere = await tab()
     k.store.saveThread({ ...k.store.thread(elsewhere.threadId!)!, title: 'Composer unit tests' })
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
-    await call(elsewhere, 'create_workspace', { agent: 'kai', title: 'Composer tests', brief: 'Go' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
+    await call(elsewhere, 'create_workspace', { agent: 'christian', title: 'Composer tests', brief: 'Go' })
     const drafts = byTitle('Drafts per chat')
     const composer = byTitle('Composer tests')
     const lines = (await call(sibling, 'list_workspaces', {})).split('\n')
@@ -1023,7 +1023,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     expect(lines.find((l) => l.startsWith(composer.id))).toMatch(/ · from Lead chat "Composer unit tests"$/)
     expect(await call(sibling, 'message_agent', { workspace_id: drafts.id, text: 'Rebase on main.' })).toBe('Sent.')
     // The same task from another tab of the chat is the one already handed off.
-    expect(await call(sibling, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).toBe(`Not created: this task is already handed off to Kai (workspace ${drafts.id}). Follow up with message_agent.`)
+    expect(await call(sibling, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })).toBe(`Not created: this task is already handed off to Christian (workspace ${drafts.id}). Follow up with message_agent.`)
     expect(drafts.leadChatId).toBe(first.id)
   })
 
@@ -1033,7 +1033,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     const elsewhere = await tab()
     const plan = (id: string, chat: Chat, createdAt: number, status: Approval['status'] = 'allowed') => k.store.saveApproval({
       id, kind: 'plan', source: 'sdk', projectId: project.id, workspaceId: chat.workspaceId, chatId: chat.id, agentId: 'kernel', title: id, detail: `${id} text`,
-      steps: [{ title: `${id} step`, agentId: 'kai' }], status, createdAt
+      steps: [{ title: `${id} step`, agentId: 'christian' }], status, createdAt
     } as Approval)
     const now = Date.now()
     plan('first-plan', first, now - 3000)
@@ -1046,7 +1046,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     ].join('\n\n'))
     expect(await call(await tab(), 'read_plans', {})).toBe('No plan has been approved in this chat yet.')
     // The step goes to the newest plan of the chat, approved in the other tab.
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
     const ws = byTitle('Drafts per chat')
     const step = (id: string) => k.store.approvals({ projectId: project.id }).find((a) => a.id === id)!.steps![0].workspaceId
     expect(step('sibling-plan')).toBe(ws.id)
@@ -1058,7 +1058,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     const { k, first, call, byTitle, run, tab } = await setup()
     const sibling = await tab(first.threadId)
     const elsewhere = await tab()
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
     const ws = byTitle('Drafts per chat')
     k.sessions.kernelTurn = (id) => id === first.id
     for (let i = 0; i < 3; i++) expect((await run(first, 'message_agent', { workspace_id: ws.id, text: 'Fix the failing check' })).isError).toBe(false)
@@ -1071,7 +1071,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
 
   it('keeps a workspace with its Lead chat after the tab that handed it off closes and Kernel restarts', async () => {
     const { k, project, first, call, byTitle, tab, where } = await setup()
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
     const ws = byTitle('Drafts per chat')
     expect(ws).toMatchObject({ leadChatId: first.id, threadId: first.threadId })
     const sibling = await tab(first.threadId)
@@ -1096,14 +1096,14 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     const elsewhere = await tab()
     k.store.saveChat({ ...k.store.chat(elsewhere.id)!, title: 'Tab title' })
     k.store.saveThread({ ...k.store.thread(elsewhere.threadId!)!, title: 'Composer unit tests' })
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Pasted text preview', brief: 'Go' })
-    await call(sibling, 'create_workspace', { agent: 'kai', title: 'Chat tab state icons', brief: 'Go' })
-    await call(elsewhere, 'create_workspace', { agent: 'kai', title: 'Composer tests', brief: 'Go' })
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Composer snapshots', brief: 'Go' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Pasted text preview', brief: 'Go' })
+    await call(sibling, 'create_workspace', { agent: 'christian', title: 'Chat tab state icons', brief: 'Go' })
+    await call(elsewhere, 'create_workspace', { agent: 'christian', title: 'Composer tests', brief: 'Go' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Composer snapshots', brief: 'Go' })
     // The newest hand-off decides who hears about it, so they get apart in time.
     const age = (...titles: string[]) => titles.forEach((t, i) => k.store.saveWorkspace({ ...byTitle(t), createdAt: 1000 + i }))
     age('Pasted text preview', 'Chat tab state icons', 'Composer tests', 'Composer snapshots')
-    const overlap = (id: string, ...titles: string[]) => k['overlaps']['known'].set(id, { id, projectId: project.id, path: 'src/a.ts', ts: 1, parties: titles.map((t) => ({ agentId: 'kai', workspaceId: byTitle(t).id, lines: '+1 -1' })) })
+    const overlap = (id: string, ...titles: string[]) => k['overlaps']['known'].set(id, { id, projectId: project.id, path: 'src/a.ts', ts: 1, parties: titles.map((t) => ({ agentId: 'christian', workspaceId: byTitle(t).id, lines: '+1 -1' })) })
     overlap('o1', 'Pasted text preview', 'Chat tab state icons')
     overlap('o2', 'Pasted text preview', 'Composer tests')
     sent.length = 0
@@ -1127,7 +1127,7 @@ describe('the sidebar order of chats with Kernel (KERNEL-498)', () => {
     // Starting a chat is its first send.
     expect(sentAt(first)).toBeGreaterThan(0)
     expect(sentAt(icons)).toBeGreaterThan(0)
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
     const teammate = byTitle('Drafts per chat')
     const second = await tab(icons.threadId)
     const was = { first: sentAt(first), icons: sentAt(icons) }
@@ -1198,7 +1198,7 @@ describe('a project with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
     expect(k.store.thread(first.threadId!)!.closedAt).toBeGreaterThan(0)
     expect(k.store.workspace(first.workspaceId)?.status).toBe('archived')
     expect(k.store.threads(project.id)).toHaveLength(2)
-    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Tabs' })
     const [brief] = k.chats['chatTabs'](ws.id)
     await k.chats.closeChat(brief.id)
     const left = k.chats['chatTabs'](ws.id)
@@ -1222,8 +1222,8 @@ describe('a project with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
     const s = await setup()
     const { k, first, call, byTitle, tab } = s
     const sibling = await tab(first.threadId)
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
-    await call(sibling, 'create_workspace', { agent: 'kai', title: 'Composer tests', brief: 'Go' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
+    await call(sibling, 'create_workspace', { agent: 'christian', title: 'Composer tests', brief: 'Go' })
     const { posts, flush, open } = await quiet(s)
     // Two batches from two tabs of the same archived chat, flushed twice while the new chat is made: one chat, one message.
     k.leadUpdates.crashed(byTitle('Drafts per chat'), 'Out of memory')
@@ -1263,7 +1263,7 @@ describe('a project with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
   it('opens no chat for an update that needs nothing from the Lead yet', async () => {
     const s = await setup()
     const { k, project, first, call, byTitle } = s
-    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    await call(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
     const { posts, flush, open } = await quiet(s)
     const before = k.store.workspaces(project.id).length
     k.leadUpdates.crashed(byTitle('Drafts per chat'), 'Out of memory', { resumed: true })
@@ -1277,25 +1277,25 @@ describe('a project with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
 describe('create_workspace when the task is already handed off (KERNEL-287)', () => {
   it('refuses a second hand-off of the same issue from any Lead chat, and hands it off again once the first is archived', async () => {
     const { k, project, first, icons, run } = await setup()
-    const made = await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
+    const made = await run(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
     expect(made.text).toMatch(/^Created /)
     const ws = k.store.workspaces(project.id).find((w) => w.title === 'Issues screen')!
-    const again = { isError: true, text: `Not created: KERNEL-83 is already handed off to Kai (workspace ${ws.id}). Follow up with message_agent.` }
-    expect(await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).toEqual(again)
+    const again = { isError: true, text: `Not created: KERNEL-83 is already handed off to Christian (workspace ${ws.id}). Follow up with message_agent.` }
+    expect(await run(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).toEqual(again)
     // Another title, another chat, the key in another case: still the same issue.
-    expect(await run(icons, 'create_workspace', { agent: 'kai', title: 'Build the issues list', brief: 'Go', issue: 'kernel-83' })).toEqual({ ...again, text: again.text.replace('KERNEL-83 is', 'kernel-83 is') })
+    expect(await run(icons, 'create_workspace', { agent: 'christian', title: 'Build the issues list', brief: 'Go', issue: 'kernel-83' })).toEqual({ ...again, text: again.text.replace('KERNEL-83 is', 'kernel-83 is') })
     expect(k.store.workspaces(project.id).filter((w) => w.title === 'Issues screen' || w.title === 'Build the issues list')).toHaveLength(1)
     await k.archiveWorkspace(ws.id)
-    expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).text).toMatch(/^Created /)
+    expect((await run(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).text).toMatch(/^Created /)
   })
 
   it('refuses the same agent and title from the same Lead chat, but not from another chat or for another agent', async () => {
-    const { k, project, first, icons, run } = await setup({ '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor. Open a PR for each task.' })
-    expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
+    const { k, project, first, icons, run } = await setup({ '.claude/agents/sean.md': '---\nname: sean\ndescription: Engine engineer.\n---\nYou are Sean. Open a PR for each task.' })
+    expect((await run(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
     const ws = k.store.workspaces(project.id).find((w) => w.title === 'Drafts per chat')!
-    expect(await run(first, 'create_workspace', { agent: 'kai', title: ' drafts per chat ', brief: 'Go again' })).toEqual({ isError: true, text: `Not created: this task is already handed off to Kai (workspace ${ws.id}). Follow up with message_agent.` })
-    expect((await run(icons, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
-    expect((await run(first, 'create_workspace', { agent: 'noor', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
+    expect(await run(first, 'create_workspace', { agent: 'christian', title: ' drafts per chat ', brief: 'Go again' })).toEqual({ isError: true, text: `Not created: this task is already handed off to Christian (workspace ${ws.id}). Follow up with message_agent.` })
+    expect((await run(icons, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
+    expect((await run(first, 'create_workspace', { agent: 'sean', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
     expect(k.store.workspaces(project.id).filter((w) => w.title === 'Drafts per chat')).toHaveLength(3)
   })
 
@@ -1303,62 +1303,62 @@ describe('create_workspace when the task is already handed off (KERNEL-287)', ()
     const { k, project, first, run } = await setup()
     for (const [i, prState] of (['merged', 'closed'] as PrState[]).entries()) {
       const issue = `KERNEL-${90 + i}`
-      expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Fix it', brief: 'Go', issue })).text).toMatch(/^Created /)
+      expect((await run(first, 'create_workspace', { agent: 'christian', title: 'Fix it', brief: 'Go', issue })).text).toMatch(/^Created /)
       const ws = k.store.workspaces(project.id).find((w) => w.source?.kind === 'issue' && w.source.id === issue)!
       k.store.saveWorkspace({ ...ws, prState })
-      expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Fix it', brief: 'Go', issue })).text).toMatch(/^Created /)
+      expect((await run(first, 'create_workspace', { agent: 'christian', title: 'Fix it', brief: 'Go', issue })).text).toMatch(/^Created /)
     }
   })
 
   it('counts a task that waits for another PR as handed off', async () => {
     const { k, project, first, run } = await setup()
-    await run(first, 'create_workspace', { agent: 'kai', title: 'Base', brief: 'Go' })
+    await run(first, 'create_workspace', { agent: 'christian', title: 'Base', brief: 'Go' })
     const base = k.store.workspaces(project.id).find((w) => w.title === 'Base')!
     k.store.saveWorkspace({ ...base, prState: 'open', prNumber: 164 })
-    expect((await run(first, 'create_workspace', { agent: 'kai', title: 'On top', brief: 'Go', wait_for: [base.id] })).text).toMatch(/^Created /)
+    expect((await run(first, 'create_workspace', { agent: 'christian', title: 'On top', brief: 'Go', wait_for: [base.id] })).text).toMatch(/^Created /)
     const waiting = k.store.workspaces(project.id).find((w) => w.title === 'On top')!
     expect(waiting.waitsFor?.on).toEqual([base.id])
-    expect(await run(first, 'create_workspace', { agent: 'kai', title: 'On top', brief: 'Go', wait_for: [base.id] })).toEqual({ isError: true, text: `Not created: this task is already handed off to Kai (workspace ${waiting.id}). Follow up with message_agent.` })
+    expect(await run(first, 'create_workspace', { agent: 'christian', title: 'On top', brief: 'Go', wait_for: [base.id] })).toEqual({ isError: true, text: `Not created: this task is already handed off to Christian (workspace ${waiting.id}). Follow up with message_agent.` })
   })
 })
 
 describe('create_workspace when the handed-off task is a review, failed setup or older work (KERNEL-287)', () => {
-  const NOOR = { '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor. Open a PR for each task.' }
+  const NOOR = { '.claude/agents/sean.md': '---\nname: sean\ndescription: Engine engineer.\n---\nYou are Sean. Open a PR for each task.' }
 
   it('says when the task is handed off but its setup failed, with or without an issue key', async () => {
     const { k, project, first, run } = await setup()
-    await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
-    await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    await run(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
+    await run(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
     const keyed = k.store.workspaces(project.id).find((w) => w.title === 'Issues screen')!
     const plain = k.store.workspaces(project.id).find((w) => w.title === 'Drafts per chat')!
     k.store.saveWorkspace({ ...keyed, status: 'failed' })
     k.store.saveWorkspace({ ...plain, status: 'failed' })
-    expect(await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).toEqual({ isError: true, text: `Not created: KERNEL-83 is already handed off to Kai (workspace ${keyed.id}), and its setup failed. Tell the user to fix it and click Run again there.` })
-    expect(await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).toEqual({ isError: true, text: `Not created: this task is already handed off to Kai (workspace ${plain.id}), and its setup failed. Tell the user to fix it and click Run again there.` })
+    expect(await run(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).toEqual({ isError: true, text: `Not created: KERNEL-83 is already handed off to Christian (workspace ${keyed.id}), and its setup failed. Tell the user to fix it and click Run again there.` })
+    expect(await run(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })).toEqual({ isError: true, text: `Not created: this task is already handed off to Christian (workspace ${plain.id}), and its setup failed. Tell the user to fix it and click Run again there.` })
   })
 
   it('never lets an open review block a hand-off with the same issue, or the same agent and title', async () => {
     const { k, project, first, run } = await setup(NOOR)
-    await run(first, 'create_workspace', { agent: 'kai', title: 'Base work', brief: 'Go' })
+    await run(first, 'create_workspace', { agent: 'christian', title: 'Base work', brief: 'Go' })
     const base = k.store.workspaces(project.id).find((w) => w.title === 'Base work')!
-    expect((await run(first, 'create_workspace', { agent: 'noor', title: 'Review it', brief: 'Review', issue: 'KERNEL-83', review_of: base.id })).text).toMatch(/^Created /)
+    expect((await run(first, 'create_workspace', { agent: 'sean', title: 'Review it', brief: 'Review', issue: 'KERNEL-83', review_of: base.id })).text).toMatch(/^Created /)
     expect(k.store.workspaces(project.id).find((w) => w.title === 'Review it')).toMatchObject({ reviewOf: base.id, source: { kind: 'issue', id: 'KERNEL-83' } })
-    expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).text).toMatch(/^Created /)
-    expect((await run(first, 'create_workspace', { agent: 'noor', title: 'Review it', brief: 'Go' })).text).toMatch(/^Created /)
+    expect((await run(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).text).toMatch(/^Created /)
+    expect((await run(first, 'create_workspace', { agent: 'sean', title: 'Review it', brief: 'Go' })).text).toMatch(/^Created /)
   })
 
   it('leaves a review to its own guard when open work has the same issue', async () => {
     const { k, project, first, run } = await setup(NOOR)
-    await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
+    await run(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
     const work = k.store.workspaces(project.id).find((w) => w.title === 'Issues screen')!
-    expect((await run(first, 'create_workspace', { agent: 'noor', title: 'Review issues screen', brief: 'Review', issue: 'KERNEL-83', review_of: work.id })).text).toMatch(/^Created /)
+    expect((await run(first, 'create_workspace', { agent: 'sean', title: 'Review issues screen', brief: 'Review', issue: 'KERNEL-83', review_of: work.id })).text).toMatch(/^Created /)
   })
 
   it('never refuses a task without an issue key because of a workspace from before Lead chats', async () => {
     const { k, project, first, run } = await setup()
-    await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    await run(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
     const old = k.store.workspaces(project.id).find((w) => w.title === 'Drafts per chat')!
     k.store.saveWorkspace({ ...old, leadChatId: undefined })
-    expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
+    expect((await run(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
   })
 })

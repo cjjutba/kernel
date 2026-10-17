@@ -16,12 +16,12 @@ import { mergeView } from '../src/renderer/src/screens/workspace/pr/MergeButton'
 // The one rule every Merge button and the Lead use for whether a PR can merge (KERNEL-115, KERNEL-349).
 
 const A = 'a'.repeat(40), B = 'b'.repeat(40)
-const v = (verdict: 'approved' | 'blockers', sha: string, ts: number, o: Partial<NonNullable<Workspace['reviews']>[number]> = {}) => ({ workspaceId: 'rev', agentId: 'theo', verdict, summary: '', sha, prNumber: 42, ts, ...o })
+const v = (verdict: 'approved' | 'blockers', sha: string, ts: number, o: Partial<NonNullable<Workspace['reviews']>[number]> = {}) => ({ workspaceId: 'rev', agentId: 'artkin', verdict, summary: '', sha, prNumber: 42, ts, ...o })
 const ws = (o: Partial<Workspace> = {}) => ({ id: 'w', prState: 'ready', prNumber: 42, prHead: B, ...o }) as Workspace
 const info = (o: Partial<PrInfo> = {}): PrInfo => ({ workspaceId: 'w', number: 42, url: 'https://github.com/o/r/pull/42', title: 'feat: table', state: 'ready', baseRef: 'main', checks: [], comments: [], conflicts: [], head: B, ...o })
 const both = { requireGreen: true, requireReviewer: true }
 const reviewer = { requireGreen: false, requireReviewer: true }
-const name = (id: string) => (id === 'theo' ? 'Theo' : id)
+const name = (id: string) => (id === 'artkin' ? 'Artkin' : id)
 // Verdicts from before review kinds count as the code review's (KERNEL-549).
 const held = "The code review hasn't approved the latest commit. Merging waits for every required review (Settings, Pull requests)."
 const found = 'The code review found 1 blocker on the latest commit. Merge anyway to go ahead.'
@@ -158,7 +158,7 @@ describe('the review', () => {
 
   it('holds on blockers on the head commit, naming the review that found them and how many', () => {
     expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), both, name)).toBe(found)
-    expect(mergeBlock(ws({ reviews: [v('approved', B, 1, { agentId: 'ivy', workspaceId: 'r2' }), v('blockers', B, 2)] }), info(), both, name)).toBe(found)
+    expect(mergeBlock(ws({ reviews: [v('approved', B, 1, { agentId: 'teng', workspaceId: 'r2' }), v('blockers', B, 2)] }), info(), both, name)).toBe(found)
     const three = [{ text: 'a' }, { text: 'b' }, { text: 'c' }]
     expect(mergeBlock(ws({ reviews: [v('blockers', B, 1, { blockers: three })] }), info(), both, name)).toBe('The code review found 3 blockers on the latest commit. Merge anyway to go ahead.')
   })
@@ -248,7 +248,7 @@ describe('reviews Kernel planned for the head commit (KERNEL-717)', () => {
   })
 
   it('lists the PR as waiting for approval, not ready', () => {
-    const w = { ...ws({ reviewRound: round(), projectId: 'project', agentId: 'kai', status: 'ready' }) } as Workspace
+    const w = { ...ws({ reviewRound: round(), projectId: 'project', agentId: 'christian', status: 'ready' }) } as Workspace
     const [row] = leadPrs([w], { leadId: undefined, projectId: 'project', prs: { w: info() }, rules: both, agents: [] })
     expect(row).toMatchObject({ ready: false, state: { label: 'Waiting for approval' } })
     expect(row.blockers).toBeUndefined()
@@ -288,11 +288,11 @@ describe('blockers on the head commit (KERNEL-497)', () => {
   const override = { override: true }
 
   it('names the reviewer who found blockers on the head commit and how many, built on reviewVerdicts', () => {
-    expect(headBlockers(ws({ reviews: [v('blockers', B, 1, { blockers: [{ text: 'a' }, { text: 'b' }] })] }))).toEqual({ agentId: 'theo', count: 2, lenses: ['code'] })
+    expect(headBlockers(ws({ reviews: [v('blockers', B, 1, { blockers: [{ text: 'a' }, { text: 'b' }] })] }))).toEqual({ agentId: 'artkin', count: 2, lenses: ['code'] })
     // A verdict with no list of blockers still found one.
-    expect(headBlockers(ws({ reviews: [v('blockers', B, 1)] }))).toEqual({ agentId: 'theo', count: 1, lenses: ['code'] })
+    expect(headBlockers(ws({ reviews: [v('blockers', B, 1)] }))).toEqual({ agentId: 'artkin', count: 1, lenses: ['code'] })
     // The latest review with blockers of a kind counts them.
-    expect(headBlockers(ws({ reviews: [v('blockers', B, 2, { agentId: 'ivy', workspaceId: 'r2' }), v('blockers', B, 1)] }))).toEqual({ agentId: 'ivy', count: 1, lenses: ['code'] })
+    expect(headBlockers(ws({ reviews: [v('blockers', B, 2, { agentId: 'teng', workspaceId: 'r2' }), v('blockers', B, 1)] }))).toEqual({ agentId: 'teng', count: 1, lenses: ['code'] })
     // Blockers on an earlier commit, or on another PR from this branch, aren't on the head commit.
     expect(headBlockers(ws({ reviews: [v('blockers', A, 1)] }))).toBeUndefined()
     expect(headBlockers(ws({ reviews: [v('blockers', B, 1, { prNumber: 7 })] }))).toBeUndefined()
@@ -401,8 +401,8 @@ async function repoWithBranch(o: { moved?: boolean } = {}) {
   const repo = await tempRepo({ 'a.txt': 'one\n', 'b.txt': 'two\n' })
   const wt = join(await mkdtemp(join(tmpdir(), 'kernel-wt-')), 'x')
   await git(repo, 'worktree', 'add', '-q', '-b', 'feat/x', wt, 'main')
-  await commit(wt, { 'a.txt': 'one!\n' }, 'feat: louder a', 'Kai')
-  await commit(wt, { 'c.txt': 'three\n' }, 'feat: add c', 'Kai')
+  await commit(wt, { 'a.txt': 'one!\n' }, 'feat: louder a', 'Christian')
+  await commit(wt, { 'c.txt': 'three\n' }, 'feat: add c', 'Christian')
   if (o.moved) await commit(repo, { 'b.txt': 'two!\n' }, 'fix: b on main')
   return { repo, wt, main: await sha(repo, 'main'), head: await sha(repo, 'feat/x') }
 }
@@ -477,7 +477,7 @@ describe('the local merge, by method', () => {
     const done = await localMerge({ repo, branch: 'feat/x', base: 'main', method: 'rebase' })
     expect(done.sha).not.toBe(head)
     expect(await sha(repo, 'main~2')).toBe(main)
-    expect((await git(repo, 'log', '--format=%an|%s', `${main}..main`)).trim().split('\n')).toEqual(['Kai|feat: add c', 'Kai|feat: louder a'])
+    expect((await git(repo, 'log', '--format=%an|%s', `${main}..main`)).trim().split('\n')).toEqual(['Christian|feat: add c', 'Christian|feat: louder a'])
     expect((await git(repo, 'rev-list', '--merges', `${main}..main`)).trim()).toBe('')
     expect(await readFile(join(repo, 'b.txt'), 'utf8')).toBe('two!\n')
     expect(await clean(repo)).toBe('')
@@ -581,10 +581,10 @@ describe('a local merge through the PR feature', () => {
     kernels.push(k)
     await k.start()
     k.sessions.send = async () => ({ queued: false })
-    const repo = await tempRepo({ 'README.md': '# shop\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.', '.kernel/settings.toml': '[pr]\nmerge_method = "merge"\n' })
+    const repo = await tempRepo({ 'README.md': '# shop\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.', '.kernel/settings.toml': '[pr]\nmerge_method = "merge"\n' })
     const project = await k.addProject(repo)
     k.store.saveProject({ ...project, host: 'local' })
-    const ws = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
+    const ws = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Build the cart', agentId: 'christian', title: 'Cart' })).id)
     await expect(k.prs.createPr(ws.id)).rejects.toThrow('This project merges on this Mac')
     await commit(ws.path, { 'cart.ts': 'export const cart = []\n' }, 'feat: cart')
 
@@ -617,9 +617,9 @@ describe('a local merge through the PR feature', () => {
     await k.start()
     const sent: unknown[] = []
     k.sessions.send = async (_chat, parts) => { sent.push(parts); return { queued: false } }
-    const repo = await tempRepo({ 'README.md': '# shop\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const repo = await tempRepo({ 'README.md': '# shop\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
     const project = await k.addProject(repo)
-    const ws = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
+    const ws = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Build the cart', agentId: 'christian', title: 'Cart' })).id)
     await commit(ws.path, { 'cart.ts': 'export const cart = []\n' }, 'feat: cart')
     // The brief the workspace started with went through the same stand-in.
     sent.length = 0
@@ -665,10 +665,10 @@ describe("the project's merge method (KERNEL-468)", () => {
 
   /** A project whose repo has `files`, with a workspace per title, each with a PR that reads ready. */
   async function project(k: Kernel, titles: string[], files: Record<string, string> = {}) {
-    const r = await k.addProject(await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nYou are Kai.', ...files }))
+    const r = await k.addProject(await tempRepo({ 'README.md': '# client\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Builds.\n---\nYou are Christian.', ...files }))
     const out: Workspace[] = []
     for (const title of titles) {
-      const ws = await k.workspaces.createWorkspace(r.id, { prompt: title, agentId: 'kai', title })
+      const ws = await k.workspaces.createWorkspace(r.id, { prompt: title, agentId: 'christian', title })
       out.push(k.store.saveWorkspace({ ...ws, prState: 'ready', prNumber: 42 }))
     }
     return out

@@ -96,12 +96,12 @@ describe("a repo's own agents (KERNEL-397)", () => {
       isError: true, text: "Not created: Architect is a helper in this project and doesn't take tasks. Use an id from list_agents: api (Api, Backend), web (Web, Frontend)."
     })
     expect(tracked).toContainEqual({ name: 'handoff.refused', reason: 'helper' })
-    // Kernel's Theo is no agent the Lead can hand work to (KERNEL-553).
+    // Kernel's Artkin is no agent the Lead can hand work to (KERNEL-553).
     expect(await call('create_workspace', { agent: 'kernel-reviewer', title: 'Build', brief: 'Build it.' })).toMatchObject({ isError: true })
     const work = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'web', title: 'Cart' })
     // The repo's own agent, whose file says nothing about Kernel, gets Kernel's teammate and sharing rules.
     expect(k.tools.rulesFor(work, team.find((a) => a.id === 'web'))).toBe(`${TEAMMATE_RULE}\n${SHARE_RULE}`)
-    // No agent reviews, so Kernel's code review runs, and the reviewer comes from `builtin` as Theo did.
+    // No agent reviews, so Kernel's code review runs, and the reviewer comes from `builtin` as Artkin did.
     expect(tracked.slice(0, 2)).toEqual([
       { name: 'team.resolved', leadFrom: 'builtin', reviewerFrom: 'builtin', agents: '1-5', helpers: '1-5', warnings: '1-5' },
       { name: 'agent.warning', kind: 'cant-open-pr' }
@@ -160,18 +160,18 @@ describe("a repo's own agents (KERNEL-397)", () => {
     expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
   })
 
-  it('adds one starter agent to a team that has agents, Theo as its reviewer (KERNEL-553)', async () => {
+  it('adds one starter agent to a team that has agents, Artkin as its reviewer (KERNEL-553)', async () => {
     const { k, h, repo, project } = await boot()
-    expect((await h['agents.addStarter']({ projectId: project.id, id: 'ivy' })).id).toBe('ivy')
-    expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['api.md', 'architect.md', 'ivy.md', 'web.md'])
-    await expect(h['agents.addStarter']({ projectId: project.id, id: 'ivy' })).rejects.toThrow('Ivy is already on the team.')
+    expect((await h['agents.addStarter']({ projectId: project.id, id: 'teng' })).id).toBe('teng')
+    expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['api.md', 'architect.md', 'teng.md', 'web.md'])
+    await expect(h['agents.addStarter']({ projectId: project.id, id: 'teng' })).rejects.toThrow('Teng is already on the team.')
     await expect(h['agents.addStarter']({ projectId: project.id, id: 'ghost' })).rejects.toThrow("isn't one of Kernel's starter agents")
-    expect((await k.agents(project.id)).find((a) => a.id === 'ivy')).toMatchObject({ member: true })
-    // Theo's tools line can't edit, so Theo reviews and takes no tasks.
-    const theo = await h['agents.addStarter']({ projectId: project.id, id: 'theo' })
-    expect(theo).toMatchObject({ id: 'theo', name: 'Theo', reviewer: true, member: false, tools: ['Read', 'Grep', 'Glob', 'Bash'], file: join(repo, '.claude', 'agents', 'theo.md') })
-    expect(theo.builtIn).toBeUndefined()
-    expect(theo.warnings).toBeUndefined()
+    expect((await k.agents(project.id)).find((a) => a.id === 'teng')).toMatchObject({ member: true })
+    // Artkin's tools line can't edit, so Artkin reviews and takes no tasks.
+    const artkin = await h['agents.addStarter']({ projectId: project.id, id: 'artkin' })
+    expect(artkin).toMatchObject({ id: 'artkin', name: 'Artkin', reviewer: true, member: false, tools: ['Read', 'Grep', 'Glob', 'Bash'], file: join(repo, '.claude', 'agents', 'artkin.md') })
+    expect(artkin.builtIn).toBeUndefined()
+    expect(artkin.warnings).toBeUndefined()
   })
 
   it("hands a retired reviewer's open reviews to the reviewer that takes over", async () => {
@@ -276,9 +276,9 @@ describe('moving the file that customizes Kernel to kernel.md (KERNEL-741)', () 
   })
 })
 
-// KERNEL-553: the Lead is Kernel's only built-in agent, and Theo is a starter. Kernel's code review (KERNEL-549) covers a project
-// that has no reviewer, so a project whose reviewer was Kernel's Theo keeps a review on every PR.
-describe("a project whose reviewer was Kernel's Theo (KERNEL-553)", () => {
+// KERNEL-553: the Lead is Kernel's only built-in agent, and Artkin is a starter. Kernel's code review (KERNEL-549) covers a project
+// that has no reviewer, so a project whose reviewer was Kernel's Artkin keeps a review on every PR.
+describe("a project whose reviewer was Kernel's Artkin (KERNEL-553)", () => {
   /** Web's work, committed in its own worktree, on a PR that passed checks. */
   async function pr(k: Kernel, projectId: string, n: number) {
     const ws = await k.createWorkspace(projectId, { prompt: 'Build it', agentId: 'web', title: `Task ${n}` })
@@ -289,15 +289,15 @@ describe("a project whose reviewer was Kernel's Theo (KERNEL-553)", () => {
     return k.store.workspace(ws.id)!
   }
 
-  // Before the upgrade, a project with no reviewer file had Kernel's Theo, and one that picked Theo in Settings saved its id.
+  // Before the upgrade, a project with no reviewer file had Kernel's Artkin, and one that picked Artkin in Settings saved its id.
   for (const [what, settings] of [['no [team] reviewer', SETTINGS], ['[team] reviewer = "kernel-reviewer"', `${SETTINGS}\n[team]\nreviewer = "kernel-reviewer"\n`]]) {
-    it(`gets Kernel's code review on every PR with ${what}, and its old reviews still run Theo`, async () => {
+    it(`gets Kernel's code review on every PR with ${what}, and its old reviews still run Artkin`, async () => {
       const { k, h, project } = await boot({ ...AGENTS, '.kernel/settings.toml': settings })
       const team = await k.agents(project.id)
       expect(team.filter((a) => a.builtIn).map((a) => a.id)).toEqual(['kernel-lead'])
       expect(team.some((a) => a.reviewer)).toBe(false)
 
-      // A review Kernel's Theo had open when the app upgraded: a workspace on its reserved id, with a chat from before review kinds.
+      // A review Kernel's Artkin had open when the app upgraded: a workspace on its reserved id, with a chat from before review kinds.
       const old = await pr(k, project.id, 1)
       const made = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'web', title: 'Review PR #101', reviewOf: old.id })
       const review = k.store.saveWorkspace({ ...made, agentId: 'kernel-reviewer' })
@@ -341,7 +341,7 @@ describe("a project whose reviewer was Kernel's Theo (KERNEL-553)", () => {
     expect((await h['agents.setTeam']({ projectId: project.id, team: {} })).find((a) => a.id === 'kernel-reviewer')).toEqual(theo)
   })
 
-  it('names an archived review Theo ran before the upgrade, so History shows Theo (KERNEL-593)', async () => {
+  it('names an archived review Artkin ran before the upgrade, so History shows Artkin (KERNEL-593)', async () => {
     const { k, h, project } = await boot()
     const old = await pr(k, project.id, 1)
     const made = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'web', title: 'Review PR #101', reviewOf: old.id })

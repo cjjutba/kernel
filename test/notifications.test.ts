@@ -19,19 +19,19 @@ afterEach(() => { open.forEach((n) => n.detach()); open.length = 0 })
 async function setup(o: { background?: boolean; sound?: 'none' | 'subtle' | 'chime'; quiet?: { from: string; to: string } | null; off?: 'permission' | 'merge' | 'finished'; idle?: boolean } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-n-')), 'k.db'))
   store.saveProject({ id: 'r', name: 'Client A', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
-  store.saveWorkspace({ id: 'w', projectId: 'r', name: 'org-invites', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'open', prNumber: 41, createdAt: 1 } as Workspace)
+  store.saveWorkspace({ id: 'w', projectId: 'r', name: 'org-invites', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'christian', port: 1, status: 'ready', prState: 'open', prNumber: 41, createdAt: 1 } as Workspace)
   const settings = DEFAULT_SETTINGS('/h')
   settings.notifications = { ...settings.notifications, quietHours: o.quiet ?? null, sound: o.sound ?? 'subtle', idle: o.idle ?? false, ...(o.off ? { [o.off]: false } : {}) }
   const shown: Notification[] = []
   const silent: boolean[] = []
   const sounds: (string | undefined)[] = []
-  const n = new Notifications({ store, settings: () => settings, agentName: (_r, a) => (a === 'noor' ? 'Noor' : undefined), show: (x, opts) => { shown.push(x); silent.push(opts.silent); sounds.push(opts.sound) }, inBackground: () => o.background ?? true, now: () => new Date(2026, 0, 1, 12, 0).getTime(), idleAfterMs: 30 })
+  const n = new Notifications({ store, settings: () => settings, agentName: (_r, a) => (a === 'sean' ? 'Sean' : undefined), show: (x, opts) => { shown.push(x); silent.push(opts.silent); sounds.push(opts.sound) }, inBackground: () => o.background ?? true, now: () => new Date(2026, 0, 1, 12, 0).getTime(), idleAfterMs: 30 })
   n.attach()
   open.push(n)
   return { store, n, shown, silent, sounds }
 }
 
-const approval = (extra: Partial<Approval> = {}): Approval => ({ id: 'a1', kind: 'tool', source: 'sdk', projectId: 'r', agentId: 'noor', toolName: 'Bash', title: 'Run pnpm drizzle-kit push', status: 'pending', createdAt: Date.now(), ...extra })
+const approval = (extra: Partial<Approval> = {}): Approval => ({ id: 'a1', kind: 'tool', source: 'sdk', projectId: 'r', agentId: 'sean', toolName: 'Bash', title: 'Run pnpm drizzle-kit push', status: 'pending', createdAt: Date.now(), ...extra })
 
 describe('notifications service', () => {
   it('lands a pending approval in the inbox and shows a banner in the background', async () => {
@@ -39,7 +39,7 @@ describe('notifications service', () => {
     bus.push({ type: 'approval', approval: approval() })
     const [row] = n.list()
     expect(row).toMatchObject({ id: approvalNotificationId('a1'), kind: 'approval', needsYou: true, read: false, sub: 'Permission · Client A', title: 'Wants to run pnpm drizzle-kit push' })
-    expect(row.heading).toBe('Noor wants to run pnpm drizzle-kit push')
+    expect(row.heading).toBe('Sean wants to run pnpm drizzle-kit push')
     expect(shown).toHaveLength(1)
   })
 
@@ -48,8 +48,8 @@ describe('notifications service', () => {
     const q = (question: string) => ({ question, options: [] })
     bus.push({ type: 'approval', approval: approval({ kind: 'question', toolName: 'AskUserQuestion', title: 'Which store?', questions: [q('Which store?'), q('Which region?'), q('Which plan?')] }) })
     bus.push({ type: 'approval', approval: approval({ id: 'a2', kind: 'question', toolName: 'AskUserQuestion', title: 'Which store?', questions: [q('Which store?')] }) })
-    expect(n.list().find((x) => x.approvalId === 'a1')).toMatchObject({ title: 'Which store?', heading: 'Noor has 3 questions' })
-    expect(n.list().find((x) => x.approvalId === 'a2')?.heading).toBe('Noor has a question')
+    expect(n.list().find((x) => x.approvalId === 'a1')).toMatchObject({ title: 'Which store?', heading: 'Sean has 3 questions' })
+    expect(n.list().find((x) => x.approvalId === 'a2')?.heading).toBe('Sean has a question')
   })
 
   it('plays its own sound for Chime and the default for Subtle (KERNEL-538)', async () => {
@@ -175,7 +175,7 @@ describe('finished and idle rows (KERNEL-71)', () => {
 
   async function teammate(o: Parameters<typeof setup>[0] = {}) {
     const t = await setup(o)
-    const ws = { id: 'w2', projectId: 'r', name: 'symlink-node-modules', title: 'Symlink node_modules', branch: 'b2', baseRef: 'main', path: '/y', mode: 'worktree', agentId: 'noor', port: 2, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
+    const ws = { id: 'w2', projectId: 'r', name: 'symlink-node-modules', title: 'Symlink node_modules', branch: 'b2', baseRef: 'main', path: '/y', mode: 'worktree', agentId: 'sean', port: 2, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
     const chat = { id: 'c2', workspaceId: 'w2', title: 'Symlink node_modules', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 } as Chat
     t.store.saveWorkspace(ws)
     t.store.saveChat(chat)
@@ -187,8 +187,8 @@ describe('finished and idle rows (KERNEL-71)', () => {
     const { n, ws, chat, finished, shown } = await teammate()
     n.turnDone(ws, chat, done)
     expect(finished()).toEqual([expect.objectContaining({
-      id: 'n-finished-w2', workspaceId: 'w2', agentId: 'noor', needsYou: false, read: false,
-      title: 'Finished Symlink node_modules', sub: 'Workspace ready · Client A', heading: 'Noor finished Symlink node_modules',
+      id: 'n-finished-w2', workspaceId: 'w2', agentId: 'sean', needsYou: false, read: false,
+      title: 'Finished Symlink node_modules', sub: 'Workspace ready · Client A', heading: 'Sean finished Symlink node_modules',
       body: 'Linked node_modules into the worktree and added the exclude line.'
     })])
     expect(shown.map((x) => x.kind)).toEqual(['finished'])
@@ -225,7 +225,7 @@ describe('finished and idle rows (KERNEL-71)', () => {
     const on = await teammate({ idle: true })
     on.n.turnDone(on.ws, on.chat, done)
     await wait(80)
-    expect(on.idle()).toEqual([expect.objectContaining({ id: 'n-idle-w2', title: 'Noor is idle', heading: 'Noor has been idle for 10 minutes', needsYou: false })])
+    expect(on.idle()).toEqual([expect.objectContaining({ id: 'n-idle-w2', title: 'Sean is idle', heading: 'Sean has been idle for 10 minutes', needsYou: false })])
 
     const busy = await teammate({ idle: true })
     busy.n.turnDone(busy.ws, busy.chat, done)
@@ -293,7 +293,7 @@ describe('rows that are over (KERNEL-155)', () => {
     const { store } = await setup()
     const approvals = new Approvals(store)
     const port = await freePort()
-    const server = await startHookServer({ port, token: 'ab'.repeat(32), approvals, approvalTimeoutMs: 60_000, isManaged: () => false, resolve: () => ({ projectId: 'r', workspaceId: 'w', agentId: 'kai' }) })
+    const server = await startHookServer({ port, token: 'ab'.repeat(32), approvals, approvalTimeoutMs: 60_000, isManaged: () => false, resolve: () => ({ projectId: 'r', workspaceId: 'w', agentId: 'christian' }) })
     try {
       const started = Date.now()
       const held = fetch(`http://127.0.0.1:${port}/hooks`, {
@@ -377,7 +377,7 @@ describe('Kernel start (KERNEL-155)', () => {
     const before = new Store(join(dataDir, 'kernel.db'))
     const plan = approval({ id: 'plan', kind: 'plan', toolName: undefined, title: 'Plan for the Ulat release' })
     before.saveApproval(plan)
-    before.saveNotification({ id: approvalNotificationId('plan'), kind: 'approval', projectId: 'r', agentId: 'noor', approvalId: 'plan', title: 'Plan ready: the Ulat release', sub: 'Plan review', needsYou: true, read: false, createdAt: plan.createdAt })
+    before.saveNotification({ id: approvalNotificationId('plan'), kind: 'approval', projectId: 'r', agentId: 'sean', approvalId: 'plan', title: 'Plan ready: the Ulat release', sub: 'Plan review', needsYou: true, read: false, createdAt: plan.createdAt })
     before.db.close()
 
     const k = new Kernel({ dataDir, home })

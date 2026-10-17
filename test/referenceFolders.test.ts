@@ -96,16 +96,16 @@ describe('edits under a reference folder (KERNEL-748)', () => {
 })
 
 describe('Claude sessions with reference folders (KERNEL-748)', () => {
-  const noor = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const sean = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Engine', description: 'Engine', lead: false, prompt: 'You are Sean.' } as AgentDef
 
   async function start(references: string[] | undefined) {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-ref-db-')), 'kernel.db'))
-    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'ui', branch: 'feat/ui', baseRef: 'main', path: await folder(), mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'ui', branch: 'feat/ui', baseRef: 'main', path: await folder(), mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'UI', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat(chat)
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
-    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {}, referencesFor: () => references })
+    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => sean, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {}, referencesFor: () => references })
     await sessions.send(chat.id, [{ type: 'text', text: 'Match the API' }])
     return sdk.calls.at(-1)!.options
   }

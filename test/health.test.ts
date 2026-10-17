@@ -53,7 +53,7 @@ function listen() {
 
 async function runner(o: { onFailure?: (f: string) => void; onReached?: () => void } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-health-')), 'kernel.db'))
-  const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-table', branch: 'feat/x', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+  const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-table', branch: 'feat/x', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'christian', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Table', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
   store.saveWorkspace(ws)
   store.saveChat(chat)
@@ -399,7 +399,7 @@ async function kernel(files: Record<string, string> = {}, o: { settings?: object
   const repo = await tempRepo({
     'README.md': '# client\n',
     '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-    '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nYou are Kai.',
+    '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nYou are Christian.',
     ...files
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -414,7 +414,7 @@ async function kernel(files: Record<string, string> = {}, o: { settings?: object
 describe('kernel recovery paths', () => {
   /** A Kernel on a temp repo that can quit and start again on the same data, as the app does (KERNEL-128). */
   async function restartable(files: Record<string, string>) {
-    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nYou are Kai.', ...files })
+    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nYou are Christian.', ...files })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -432,7 +432,7 @@ describe('kernel recovery paths', () => {
     const lead = await k.leadChat(project.id)
     // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
     await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
     expect(ws.status).toBe('failed')
     await k.lead['messageWorkspace'](project.id, ws.id, 'Use EmptyState')
     const chat = k.store.chats(ws.id)[0]
@@ -442,7 +442,7 @@ describe('kernel recovery paths', () => {
     expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
     await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
     expect((await k2.retrySetup(ws.id)).status).toBe('ready')
-    // Nothing of Kai's is held any more, so nothing comes back after another restart. Kernel's chat never waited for its setup (KERNEL-490).
+    // Nothing of Christian's is held any more, so nothing comes back after another restart. Kernel's chat never waited for its setup (KERNEL-490).
     expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toEqual([])
     sdk.calls[sdk.calls.length - 1].feed(result('r1'))
     await flush()
@@ -457,7 +457,7 @@ describe('kernel recovery paths', () => {
     const lead = await k.leadChat(project.id)
     // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
     await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
     const chat = k.store.chats(ws.id)[0]
     expect(ws.waitsFor).toBeUndefined()
     await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
@@ -475,8 +475,8 @@ describe('kernel recovery paths', () => {
     const lead = await k.leadChat(project.id)
     // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
     await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
-    const other = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
+    const other = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Invoice export', leadChatId: lead.id })
     await k.lead['messageWorkspace'](project.id, ws.id, 'Use EmptyState')
     const chat = k.store.chats(ws.id)[0]
     k.sessions.unqueue(chat.id, k.sessions.queued(chat.id)[1].id)
@@ -491,7 +491,7 @@ describe('kernel recovery paths', () => {
 
   it('saves the brief before setup runs, so a quit during setup keeps it (KERNEL-128)', async () => {
     const { k, project } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 5"\n' })
-    const made = k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table' })
+    const made = k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table' })
     const ws = await vi.waitFor(() => { const w = k.store.workspaces(project.id).find((x) => x.title === 'Invoice table' && x.status === 'setup'); if (!w || !k.store.meta<Record<string, { brief?: unknown }>>('setups')?.[w.id]?.brief) throw new Error('not yet'); return w })
     expect(k.store.meta<Record<string, { brief: unknown }>>('setups')![ws.id].brief).toEqual([{ type: 'text', text: 'Build T-14' }])
     await k.archiveWorkspace(ws.id)
@@ -503,7 +503,7 @@ describe('kernel recovery paths', () => {
 
   it('turns a workspace Kernel quit during setup into a failed one, with its brief held and a note (KERNEL-128)', async () => {
     const { k, project, again } = await restartable({})
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table' })
     const chat = k.store.chats(ws.id)[0]
     // As if Kernel quit while setup ran: the workspace says setup, and the brief and a message wait in the saved hold.
     k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, status: 'setup' })
@@ -525,7 +525,7 @@ describe('kernel recovery paths', () => {
     // Kernel's turn waits on create_workspace, so its result tells Kernel.
     const running = k.sessions.isRunning
     k.sessions.isRunning = (id) => id === lead.id
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
     k.sessions.isRunning = running
     const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string; told?: boolean; code?: number | null }[] }> }).pending.values()].flatMap((p) => p.events)
     expect(waiting()).toEqual([expect.objectContaining({ kind: 'setup.failed', told: true, code: 1 })])
@@ -543,7 +543,7 @@ describe('kernel recovery paths', () => {
     const lead = await k.leadChat(project.id)
     // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
     await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
     const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string; code?: number | null }[] }> }).pending.values()].flatMap((p) => p.events)
     const before = waiting()
     const rerun = k.retrySetup(ws.id)
@@ -559,7 +559,7 @@ describe('kernel recovery paths', () => {
     const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt || (sleep 2 && false)"\n' })
     const lead = await k.leadChat(project.id)
     await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
     const chat = k.store.chats(ws.id)[0]
     const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string }[] }> }).pending.values()].flatMap((p) => p.events)
     const before = waiting()
@@ -580,7 +580,7 @@ describe('kernel recovery paths', () => {
     const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "false"\n' })
     const lead = await k.leadChat(project.id)
     await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
     const chat = k.store.chats(ws.id)[0]
     expect(ws.status).toBe('failed')
     // A second Send anyway while the first is on its way does nothing.
@@ -603,7 +603,7 @@ describe('kernel recovery paths', () => {
     const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt || (sleep 2 && false)"\n' })
     const lead = await k.leadChat(project.id)
     await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
     const chat = k.store.chats(ws.id)[0]
     const rerun = k.setup.retrySetup(ws.id)
     await new Promise((r) => setTimeout(r, 300))
@@ -621,7 +621,7 @@ describe('kernel recovery paths', () => {
     const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(project.id)
     await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
     const chat = k.store.chats(ws.id)[0]
     await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
     expect((await k.setup.retrySetup(ws.id)).status).toBe('ready')
@@ -634,7 +634,7 @@ describe('kernel recovery paths', () => {
     const { k, project } = await kernel()
     const lead = await k.leadChat(project.id)
     await setUp(k, lead.id)
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
     const call = sdk.calls[sdk.calls.length - 1]
     await flush()
     call.end()
@@ -670,7 +670,7 @@ describe('kernel recovery paths', () => {
 
   it('Retry now sends an update past a limit pause, as Send now does (KERNEL-116)', async () => {
     const { k, chat } = await limited()
-    k.store.saveItem(chat.id, { kind: 'user', id: 'old', ts: 2, parts: [{ type: 'text', text: 'Update from Kernel (not the user):\n- Kai · Inbox actions (workspace w2): PR #60 is ready to merge' }] })
+    k.store.saveItem(chat.id, { kind: 'user', id: 'old', ts: 2, parts: [{ type: 'text', text: 'Update from Kernel (not the user):\n- Christian · Inbox actions (workspace w2): PR #60 is ready to merge' }] })
     await k.handlers()['chats.retry']({ chatId: chat.id, itemId: 'old', now: true })
     expect(k.sessions.queued(chat.id)).toEqual([])
     expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ from: 'kernel' })
@@ -680,7 +680,7 @@ describe('kernel recovery paths', () => {
   it('holds the first prompt while setup fails, and sends it once Run again passes', async () => {
     const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const before = sdk.calls.length
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table' })
     expect(ws.status).toBe('failed')
     const chat = k.store.chats(ws.id)[0]
     expect(k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build T-14' }]])
@@ -866,9 +866,9 @@ describe('kernel recovery paths', () => {
   it('refuses to discard on the current branch or while the agent works, and checkpoints before it does', async () => {
     const { k, project } = await kernel({ 'a.ts': 'one\n' })
     const h = k.handlers()
-    const cur = await k.createWorkspace(project.id, { prompt: 'Look around', agentId: 'kai', title: 'Here', mode: 'current' })
+    const cur = await k.createWorkspace(project.id, { prompt: 'Look around', agentId: 'christian', title: 'Here', mode: 'current' })
     await expect(h['workspaces.discard']({ workspaceId: cur.id })).rejects.toThrow('current branch')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Edit a.ts', agentId: 'kai', title: 'Edit' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Edit a.ts', agentId: 'christian', title: 'Edit' })
     await expect(h['workspaces.discard']({ workspaceId: ws.id })).rejects.toThrow('still working')
     sdk.calls[sdk.calls.length - 1].feed(result('done'))
     await flush()
@@ -883,7 +883,7 @@ describe('kernel recovery paths', () => {
   it('keeps a branch with unpushed commits on archive, even when asked to delete it', async () => {
     const { k, project } = await kernel()
     const h = k.handlers()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Keep me' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Keep me' })
     await writeFile(join(ws.path, 'c.ts'), 'c\n')
     await run('git', ['-C', ws.path, 'add', '-A'])
     await run('git', ['-C', ws.path, 'commit', '-q', '-m', 'only here'])
@@ -892,7 +892,7 @@ describe('kernel recovery paths', () => {
     await k.archive.cleanedUp(ws.id)
     expect((await run('git', ['-C', project.path, 'branch', '--list', ws.branch])).trim()).toContain(ws.branch)
     // With nothing unpushed, the branch goes as asked.
-    const empty = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Drop me' })
+    const empty = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Drop me' })
     await h['workspaces.archive']({ workspaceId: empty.id, deleteBranch: true })
     await k.archive.cleanedUp(empty.id)
     expect((await run('git', ['-C', project.path, 'branch', '--list', empty.branch])).trim()).toBe('')
@@ -1007,7 +1007,7 @@ describe('the usage guards in a Kernel (KERNEL-220)', () => {
 
   it('sends what a held teammate waited for when the window resets, by its own timer', async () => {
     const { k, project } = await kernel()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Table' })
     const chat = k.store.chats(ws.id)[0]
     const call = sdk.calls[sdk.calls.length - 1]
     call.feed(result())

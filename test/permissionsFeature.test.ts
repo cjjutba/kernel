@@ -143,7 +143,7 @@ describe("the mode a chat runs in, for the renderer (KERNEL-572)", () => {
   /** A chat with no process, in a current-branch workspace unless `worktree`, and every `chat.runMode` push Kernel sends for it. */
   async function idleChat(o: Parameters<typeof kernel>[0] & { worktree?: boolean } = {}) {
     const t = await kernel(o)
-    t.k.store.saveWorkspace({ id: 'ws', projectId: t.project.id, name: 'invoices', branch: 'main', baseRef: 'main', path: '/tmp/invoices', mode: o.worktree ? 'worktree' : 'current', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    t.k.store.saveWorkspace({ id: 'ws', projectId: t.project.id, name: 'invoices', branch: 'main', baseRef: 'main', path: '/tmp/invoices', mode: o.worktree ? 'worktree' : 'current', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     t.k.store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoices', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const pushed: ChatRunMode[] = []
     const onPush = (e: PushEvent) => { if (e.type === 'chat.runMode' && e.chatId === 'chat') pushed.push(e.mode) }
@@ -203,7 +203,7 @@ describe("the mode a chat runs in, for the renderer (KERNEL-572)", () => {
     const { k, h, pushed, runMode } = await idleChat()
     await h['chats.configure']({ chatId: 'chat', mode: 'acceptEdits' })
     expect(await runMode()).toEqual({ mode: 'acceptEdits', picked: 'acceptEdits', pickedIn: 'chat' })
-    vi.spyOn(k.team, 'agentOf').mockReturnValue({ id: 'noor', permissionMode: 'default' } as AgentDef)
+    vi.spyOn(k.team, 'agentOf').mockReturnValue({ id: 'sean', permissionMode: 'default' } as AgentDef)
     k.sessions.restartIdle(['ws'])
     expect(pushed.at(-1)).toEqual({ mode: 'default', picked: 'acceptEdits', pickedIn: 'chat', why: 'agentFile' })
   })

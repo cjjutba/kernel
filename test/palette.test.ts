@@ -4,7 +4,7 @@ import { groupOf, inTab, matches, prLabel } from '../src/renderer/src/screens/hi
 import type { AgentDef, Chat, Project, SharedFile, Thread, Workspace } from '../src/shared/types'
 
 const project = (id: string, name: string): Project => ({ id, name, path: `/p/${id}`, defaultBranch: 'main', paused: false, createdAt: 0 })
-const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, projectId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
+const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, projectId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'christian', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
 const act = { go: () => undefined, openNewChat: () => undefined, newProject: () => undefined, whatsNew: () => undefined, approve: () => undefined, newChat: () => undefined, openChat: () => undefined, openLead: () => undefined, openProject: () => undefined, openShared: () => undefined, openSharedInLead: () => undefined, toast: () => undefined }
 const kernel: AgentDef = { id: 'kernel', name: 'Kernel', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/kernel.md' }
 
@@ -85,13 +85,13 @@ describe('command palette', () => {
 
 describe('command palette, shared files', () => {
   const projects = [project('a', 'Client A'), project('b', 'Client B')]
-  const noor: AgentDef = { ...kernel, id: 'noor', name: 'Noor', role: 'Engine', lead: false }
-  const agents = { a: [kernel, noor], b: [kernel] }
+  const sean: AgentDef = { ...kernel, id: 'sean', name: 'Sean', role: 'Engine', lead: false }
+  const agents = { a: [kernel, sean], b: [kernel] }
   const file = (id: string, over: Partial<SharedFile> = {}): SharedFile => ({
-    id, projectId: 'a', workspaceId: 'w1', agentId: 'noor', source: `.kernel/shared/${id}.html`, title: `File ${id}`, kind: 'html',
+    id, projectId: 'a', workspaceId: 'w1', agentId: 'sean', source: `.kernel/shared/${id}.html`, title: `File ${id}`, kind: 'html',
     versions: [{ n: 1, at: 1, file: 'v1', mime: 'text/html', bytes: 10, sha256: id }], createdAt: 1, updatedAt: 1, ...over
   })
-  const workspaces = [ws('w1', { projectId: 'a' }), ws('w2', { projectId: 'a', agentId: 'noor' }), ws('lead', { projectId: 'a', name: 'lead', agentId: 'kernel', mode: 'current', lead: true }), ws('wb', { projectId: 'b', agentId: 'kernel' })]
+  const workspaces = [ws('w1', { projectId: 'a' }), ws('w2', { projectId: 'a', agentId: 'sean' }), ws('lead', { projectId: 'a', name: 'lead', agentId: 'kernel', mode: 'current', lead: true }), ws('wb', { projectId: 'b', agentId: 'kernel' })]
   const base = { projects, workspaces, approvals: [], agents, act }
   const shared = (list: SharedFile[], route: Parameters<typeof buildItems>[0]['route'] = { name: 'workspace', workspaceId: 'w1' }, extra: Partial<Parameters<typeof buildItems>[0]> = {}) => buildItems({ ...base, shared: list, route, ...extra })
   const ids = (list: { id: string }[]) => list.map((x) => x.id)
@@ -155,20 +155,20 @@ describe('command palette, shared files', () => {
   it('finds a file by title, type, source path or the agent that shared it, best match first', () => {
     const list = [
       file('layout', { title: 'Invoice layout options', updatedAt: 5 }),
-      file('fonts', { title: 'Embedded fonts check', kind: 'image', source: '.kernel/shared/fonts-check.png', agentId: 'kai', updatedAt: 4, versions: [{ n: 1, at: 1, file: 'v1', mime: 'image/png', bytes: 1, sha256: 'c' }] }),
+      file('fonts', { title: 'Embedded fonts check', kind: 'image', source: '.kernel/shared/fonts-check.png', agentId: 'christian', updatedAt: 4, versions: [{ n: 1, at: 1, file: 'v1', mime: 'image/png', bytes: 1, sha256: 'c' }] }),
       file('notes', { title: 'PDF renderer notes', kind: 'markdown', source: 'docs/renderer.md', updatedAt: 3 }),
       file('theirs', { title: 'Totals page', projectId: 'b', workspaceId: 'wb', agentId: 'kernel', updatedAt: 9 })
     ]
-    const found = (q: string) => { const b = shared(list, { name: 'workspace', workspaceId: 'w1' }, { agents: { ...agents, a: [kernel, noor, { ...noor, id: 'kai', name: 'Kai' }] } }); return visibleItems(b.items, b.more, q).flatMap((g) => g.list).filter((i) => i.section === 'Shared').map((i) => i.id) }
+    const found = (q: string) => { const b = shared(list, { name: 'workspace', workspaceId: 'w1' }, { agents: { ...agents, a: [kernel, sean, { ...sean, id: 'christian', name: 'Christian' }] } }); return visibleItems(b.items, b.more, q).flatMap((g) => g.list).filter((i) => i.section === 'Shared').map((i) => i.id) }
     // Title, with the best match first.
     expect(found('layout')[0]).toBe('shared-layout')
     expect(found('renderer')[0]).toBe('shared-notes')
     // Agent name, type and source path. The search is fuzzy, so a looser file may follow; the right one is first.
-    expect(found('kai')[0]).toBe('shared-fonts')
+    expect(found('christian')[0]).toBe('shared-fonts')
     expect(found('markdown')[0]).toBe('shared-notes')
     expect(found('fonts-check.png')[0]).toBe('shared-fonts')
     // Every project's files, not only the one in view.
-    expect(found('totals')).toEqual(['shared-theirs'])
+    expect(found('totals page')).toEqual(['shared-theirs'])
     expect(found('kernel')[0]).toBe('shared-theirs')
     // Two files with one title are both listed.
     const twins = shared([file('x', { title: 'Same' }), file('y', { title: 'Same', projectId: 'b', workspaceId: 'wb' })])
@@ -207,9 +207,9 @@ describe('command palette, shared files', () => {
     // The Lead workspace exists: no round trip to the engine.
     pick(file('s', { title: 'Totals page' }), { workspaces: [archived, ws('lead', { projectId: 'a', agentId: 'kernel', mode: 'current', lead: true })] })
     // A project with no Lead agent opens in its first workspace that is still open.
-    pick(file('s', { title: 'Totals page' }), { workspaces: [archived, ws('w3', { projectId: 'a' })], agents: { a: [noor] } })
+    pick(file('s', { title: 'Totals page' }), { workspaces: [archived, ws('w3', { projectId: 'a' })], agents: { a: [sean] } })
     // No Lead agent and no workspace that is open: say what to do.
-    pick(file('s', { title: 'Totals page' }), { workspaces: [archived], agents: { a: [noor] } })
+    pick(file('s', { title: 'Totals page' }), { workspaces: [archived], agents: { a: [sean] } })
     expect(calls).toEqual(['lead a:s', 'open lead:s', 'open w3:s', 'toast Open a workspace in Client A to view this file'])
   })
 })
@@ -224,8 +224,8 @@ describe('history', () => {
     expect([inTab(merged, 'merged'), inTab(merged, 'notMerged'), inTab(ws('x'), 'notMerged')]).toEqual([true, false, true])
     expect(prLabel(merged)).toBe('#41 merged')
     expect(prLabel(ws('x'))).toBe('No PR')
-    expect(matches(merged, 'feat client noor', 'Client A', 'Kai')).toBe(false)
-    expect(matches(merged, 'feat client kai', 'Client A', 'Kai')).toBe(true)
+    expect(matches(merged, 'feat client sean', 'Client A', 'Christian')).toBe(false)
+    expect(matches(merged, 'feat client christian', 'Client A', 'Christian')).toBe(true)
   })
 })
 

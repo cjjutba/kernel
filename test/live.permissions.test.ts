@@ -297,7 +297,7 @@ describe.skipIf(!liveCodex)("live Bypass permissions through Kernel's Codex runn
     await symlink(auth, join(home, 'auth.json'))
     const never = 'touch kernel-probe-447-never.txt'
     const store = new Store(join(data, 'kernel.db'))
-    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'probe', branch: 'feat/probe', baseRef: 'main', path: cwd, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: 'project', name: 'probe', branch: 'feat/probe', baseRef: 'main', path: cwd, mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Probe', kind: 'chat', provider: 'codex', model: CODEX_MODEL, effort: 'low', plan: false, createdAt: 1 })
     const settings = { permissions: { mode: 'bypassPermissions', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['touch'], neverAllow: [never], protectedBranches: ['main'], approvalTimeoutSec: 300 }, providers: { codex: { path: bin, useSystem: false, personality: 'pragmatic' } } } as unknown as AppSettings

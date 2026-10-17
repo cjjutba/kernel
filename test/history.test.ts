@@ -7,7 +7,7 @@ import type { AgentDef, Chat, Project, Route, Workspace } from '../src/shared/ty
 
 const project = (id: string): Project => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1 }) as Project
 const ws = (id: string, projectId: string, over: Partial<Workspace> = {}): Workspace =>
-  ({ id, projectId, name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', ...over }) as Workspace
+  ({ id, projectId, name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'christian', port: 0, status: 'ready', ...over }) as Workspace
 const chat = (id: string, workspaceId: string, over: Partial<Chat> = {}): Chat => ({ id, workspaceId, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: 1, ...over }) as Chat
 const lead = { id: 'kernel', lead: true } as AgentDef
 

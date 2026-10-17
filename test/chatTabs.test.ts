@@ -73,7 +73,7 @@ describe('terminal output replay', () => {
 
 describe('chat tabs', () => {
   it('renames, forks with the SDK, closes, and replaces the last tab', async () => {
-    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     const hookPort = await freePort()
@@ -84,7 +84,7 @@ describe('chat tabs', () => {
     const forks: unknown[] = []
     k.forkSession = (async (id: string, o: unknown) => { forks.push([id, o]); return { sessionId: 'forked-session' } }) as typeof k.forkSession
     const project = await k.addProject(repo)
-    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Tabs' })
     const h = k.handlers()
     const first = k.store.chats(ws.id)[0]
     k.store.saveChat({ ...first, sessionId: 'src-session' })
@@ -128,7 +128,7 @@ describe('chat tabs', () => {
 
     // Hooks from the big terminal set the agent's status.
     const statuses: string[] = []
-    const onPush = (e: any) => { if (e.type === 'agent.status' && e.agentId === 'kai') statuses.push(e.status) }
+    const onPush = (e: any) => { if (e.type === 'agent.status' && e.agentId === 'christian') statuses.push(e.status) }
     bus.on('push', onPush)
     const hook = (name: string, extra: object = {}) => fetch(`http://127.0.0.1:${hookPort}/hooks`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-kernel-token': hookToken(dataDir) }, body: JSON.stringify({ session_id: 'big-terminal', transcript_path: '/t', cwd: ws.path, hook_event_name: name, ...extra }) })
     await hook('UserPromptSubmit', { prompt: 'go' })
@@ -153,8 +153,8 @@ describe('chat tabs', () => {
   it('starts a chat you open at the effort you last picked for its model, and hand-offs at the agent effort (KERNEL-141)', async () => {
     const repo = await tempRepo({
       'README.md': '# x\n',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
-      '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\neffort: low\n---\nYou are Noor.'
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.',
+      '.claude/agents/sean.md': '---\nname: sean\ndescription: Engine engineer.\neffort: low\n---\nYou are Sean.'
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -164,30 +164,30 @@ describe('chat tabs', () => {
     await k.start()
     k.sessions.send = async () => ({ queued: false })
     const project = await k.addProject(repo)
-    const kai = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Kai' })
-    const noor = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'noor', title: 'Noor' })
+    const christian = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Christian' })
+    const sean = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'sean', title: 'Sean' })
     const h = k.handlers()
     const sonnet = 'claude-sonnet-5-5'
-    expect(k.store.chats(kai.id)[0]).toMatchObject({ model: sonnet, effort: 'medium' })
+    expect(k.store.chats(christian.id)[0]).toMatchObject({ model: sonnet, effort: 'medium' })
 
     // Nothing remembered: the agent's effort, else Settings, Models. Never the first chat's effort.
-    k.store.saveChat({ ...k.store.chats(kai.id)[0], effort: 'low' })
-    expect(await h['chats.create']({ workspaceId: kai.id })).toMatchObject({ model: sonnet, effort: 'medium' })
-    expect(await h['chats.create']({ workspaceId: noor.id })).toMatchObject({ model: sonnet, effort: 'low' })
+    k.store.saveChat({ ...k.store.chats(christian.id)[0], effort: 'low' })
+    expect(await h['chats.create']({ workspaceId: christian.id })).toMatchObject({ model: sonnet, effort: 'medium' })
+    expect(await h['chats.create']({ workspaceId: sean.id })).toMatchObject({ model: sonnet, effort: 'low' })
 
     // Remembered for the model: every chat you open on it starts there.
     await h['settings.set']({ patch: { models: { effortByModel: { [sonnet]: 'xhigh' } } } })
-    expect(await h['chats.create']({ workspaceId: kai.id })).toMatchObject({ model: sonnet, effort: 'xhigh' })
-    expect(await h['chats.create']({ workspaceId: noor.id })).toMatchObject({ model: sonnet, effort: 'xhigh' })
+    expect(await h['chats.create']({ workspaceId: christian.id })).toMatchObject({ model: sonnet, effort: 'xhigh' })
+    expect(await h['chats.create']({ workspaceId: sean.id })).toMatchObject({ model: sonnet, effort: 'xhigh' })
 
     // Closing the last chat tab opens a replacement by the same rule.
-    for (const c of await h['chats.list']({ workspaceId: kai.id })) await h['chats.close']({ chatId: c.id })
-    const left = await h['chats.list']({ workspaceId: kai.id })
+    for (const c of await h['chats.list']({ workspaceId: christian.id })) await h['chats.close']({ chatId: c.id })
+    const left = await h['chats.list']({ workspaceId: christian.id })
     expect(left).toHaveLength(1)
     expect(left[0]).toMatchObject({ model: sonnet, effort: 'xhigh' })
 
     // The Lead's hand-offs follow the agent file, not the last effort picked by hand.
-    const handoff = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Kai again' })
+    const handoff = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Christian again' })
     expect(k.store.chats(handoff.id)[0]).toMatchObject({ model: sonnet, effort: 'medium' })
     await k.stop()
 
@@ -196,7 +196,7 @@ describe('chat tabs', () => {
     await again.start()
     expect(again.settings.models.effortByModel).toEqual({ [sonnet]: 'xhigh' })
     await again.handlers()['settings.set']({ patch: { models: { effortByModel: { [sonnet]: undefined } } } })
-    expect(await again.handlers()['chats.create']({ workspaceId: noor.id })).toMatchObject({ model: sonnet, effort: 'low' })
+    expect(await again.handlers()['chats.create']({ workspaceId: sean.id })).toMatchObject({ model: sonnet, effort: 'low' })
     await again.stop()
   }, 60_000)
 })

@@ -44,7 +44,7 @@ function eventWords(e: TeamUpdateEvent): string {
   }
 }
 
-/** A Team update as the first teammate in it and that teammate's newest event, "Kai, PR ready", and how many more rows it has. Nothing for an update that has no rows, which the thread draws as Kernel's note. */
+/** A Team update as the first teammate in it and that teammate's newest event, "Christian, PR ready", and how many more rows it has. Nothing for an update that has no rows, which the thread draws as Kernel's note. */
 export function updateLabel(item: UserItem): { label: string; more: number } | undefined {
   const rows = cardData(item).rows
   const row = rows[0]

@@ -24,7 +24,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const REPO = {
   'README.md': '# client\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
 
 /** A started Kernel on a temp repo, with `app` as the app's settings. Sends are recorded, not run. */
@@ -113,8 +113,8 @@ describe('lead.setMode (KERNEL-770)', () => {
     expect(dividers().map((d) => d.mode)).toEqual(['handoff'])
     expect(leadModeSwitched('build')).toBe("Switched to Build here. Kernel can edit files in this chat's worktree.")
 
-    const kai = (await k.agents(project.id)).find((a) => a.id === 'kai')!
-    const teammate = await k.workspaces.createWorkspace(project.id, { prompt: 'Fix the padding', agentId: kai.id, title: 'Padding' })
+    const christian = (await k.agents(project.id)).find((a) => a.id === 'christian')!
+    const teammate = await k.workspaces.createWorkspace(project.id, { prompt: 'Fix the padding', agentId: christian.id, title: 'Padding' })
     await expect(k.handlers()['lead.setMode']({ workspaceId: teammate.id, mode: 'build' })).rejects.toThrow('Only a chat with Kernel')
     await expect(k.handlers()['lead.setMode']({ workspaceId: 'nope', mode: 'build' })).rejects.toThrow('Only a chat with Kernel')
     await expect(k.handlers()['lead.setMode']({ workspaceId: c.workspaceId, mode: 'solo' as never })).rejects.toThrow('is not a mode')
@@ -283,15 +283,15 @@ describe('lead.setMode (KERNEL-770)', () => {
 
 describe("Kernel's tools in each mode (KERNEL-770)", () => {
   const kernel = { id: 'kernel', name: 'Kernel', role: 'Lead', description: '', lead: true, prompt: '' } as AgentDef
-  const kai = { id: 'kai', name: 'Kai', role: 'Frontend', description: '', lead: false, prompt: '' } as AgentDef
-  const theo = { id: 'theo', name: 'Theo', role: 'Reviewer', description: '', lead: false, prompt: '' } as AgentDef
-  const target: Workspace = { id: 'w-kai', projectId: 'project', name: 'padding', branch: 'feat/padding', baseRef: 'main', path: '/tmp/w-kai', mode: 'worktree', agentId: 'kai', port: 4301, status: 'ready', prState: 'open', createdAt: 1 }
+  const christian = { id: 'christian', name: 'Christian', role: 'Frontend', description: '', lead: false, prompt: '' } as AgentDef
+  const artkin = { id: 'artkin', name: 'Artkin', role: 'Reviewer', description: '', lead: false, prompt: '' } as AgentDef
+  const target: Workspace = { id: 'w-christian', projectId: 'project', name: 'padding', branch: 'feat/padding', baseRef: 'main', path: '/tmp/w-christian', mode: 'worktree', agentId: 'christian', port: 4301, status: 'ready', prState: 'open', createdAt: 1 }
   function tools(o: Partial<KernelToolDeps>) {
     const created: unknown[] = []
     const asked: { detail?: string }[] = []
     const suggested: string[] = []
     const deps = {
-      projectId: 'project', lead: kernel, chatId: 'chat', agents: async () => [kernel, kai, theo], workspaces: () => [target],
+      projectId: 'project', lead: kernel, chatId: 'chat', agents: async () => [kernel, christian, artkin], workspaces: () => [target],
       createWorkspace: async (c: { agentId: string; baseRef?: string }) => { created.push(c); return { ...target, id: `new-${created.length}`, agentId: c.agentId, branch: 'feat/x', baseRef: 'origin/main' } },
       messageWorkspace: async () => ({ ok: true, sent: true, note: '' }), askUser: async (a: { detail?: string }) => { asked.push(a); return { behavior: 'allow' } }, hireAgent: async () => '', archiveWorkspace: async () => {},
       isRunning: () => false, unsaved: async () => false, planMode: () => true, planApproved: () => 'Plan approved.', suggestHandoff: (why: string) => { suggested.push(why) }, ...o
@@ -305,25 +305,25 @@ describe("Kernel's tools in each mode (KERNEL-770)", () => {
 
   it('create_workspace refuses a task in Build here and still starts a review', async () => {
     const t = tools({ leadMode: 'build' })
-    expect(await t.call('create_workspace', { agent: 'kai', title: 'Padding', brief: 'Fix it' })).toEqual({ text: BUILD_HERE_REFUSAL, isError: true })
+    expect(await t.call('create_workspace', { agent: 'christian', title: 'Padding', brief: 'Fix it' })).toEqual({ text: BUILD_HERE_REFUSAL, isError: true })
     expect(BUILD_HERE_REFUSAL).toContain('Switch this chat to Hand off to give tasks to teammates.')
     expect(t.created).toEqual([])
-    const review = await t.call('create_workspace', { agent: 'theo', title: 'Review padding', brief: 'Review it', review_of: 'w-kai' })
+    const review = await t.call('create_workspace', { agent: 'artkin', title: 'Review padding', brief: 'Review it', review_of: 'w-christian' })
     expect(review.isError).toBe(false)
-    expect(t.created).toMatchObject([{ agentId: 'theo', reviewOf: 'w-kai' }])
+    expect(t.created).toMatchObject([{ agentId: 'artkin', reviewOf: 'w-christian' }])
   })
 
   it('a hand-off or plan from a chat with uncommitted changes says teammates start without them, and goes ahead', async () => {
     const t = tools({ ownChanges: async () => 2, handoffBase: async () => ({ remote: 'origin', base: 'origin/main' }) })
-    const handed = await t.call('create_workspace', { agent: 'kai', title: 'Padding', brief: 'Fix it' })
+    const handed = await t.call('create_workspace', { agent: 'christian', title: 'Padding', brief: 'Fix it' })
     expect(handed.isError).toBe(false)
     expect(handed.text).toContain(uncommittedNote(2, 'origin/main'))
     expect(uncommittedNote(2, 'origin/main')).toBe("This chat's worktree has 2 uncommitted changes. Teammates start from origin/main and won't see them.")
-    await t.call('request_plan_approval', { title: 'Padding', plan: 'Fix the padding.', steps: ['Padding · Kai'] })
+    await t.call('request_plan_approval', { title: 'Padding', plan: 'Fix the padding.', steps: ['Padding · Christian'] })
     expect(t.asked[0].detail).toBe(`Fix the padding.\n\n${uncommittedNote(2, 'origin/main')}`)
     // A clean worktree adds nothing.
     const clean = tools({ ownChanges: async () => 0 })
-    expect((await clean.call('create_workspace', { agent: 'kai', title: 'Padding', brief: 'Fix it' })).text).not.toContain('uncommitted')
+    expect((await clean.call('create_workspace', { agent: 'christian', title: 'Padding', brief: 'Fix it' })).text).not.toContain('uncommitted')
   })
 
   it('suggest_hand_off shows the suggestion in Build here and refuses in Hand off', async () => {
@@ -381,8 +381,8 @@ describe("the Lead's prompt and tools in each mode (KERNEL-770)", () => {
     expect(forProvider(LEAD_BUILD_RULE, 'codex')).toContain('kernel_suggest_hand_off')
     expect(forProvider(LEAD_BUILD_RULE, 'codex')).not.toContain('mcp__kernel__')
     // A teammate gets neither.
-    const noor = { ...kernel, id: 'noor', lead: false, prompt: 'You are Noor.' }
-    expect(agentPrompt(noor, { ...ws, leadMode: 'build' })).not.toContain(LEAD_BUILD_RULE)
+    const sean = { ...kernel, id: 'sean', lead: false, prompt: 'You are Sean.' }
+    expect(agentPrompt(sean, { ...ws, leadMode: 'build' })).not.toContain(LEAD_BUILD_RULE)
   })
 
   it('Hand off refuses edits whatever the tools line says, keeping the plan file, and Build here grants Edit and Write', () => {
@@ -508,7 +508,7 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
     const head = (await git(t.ws.path, 'rev-parse', 'HEAD')).trim()
     const gh = github(t.k, t.ws, head)
     gh.blocked = o.blocked
-    if (o.approved) t.k.store.saveWorkspace({ ...t.ws, reviews: [{ workspaceId: 'rev', agentId: 'theo', verdict: 'approved', summary: 'Fine.', ts: 1, sha: head, prNumber: 54, lens: 'code' }] })
+    if (o.approved) t.k.store.saveWorkspace({ ...t.ws, reviews: [{ workspaceId: 'rev', agentId: 'artkin', verdict: 'approved', summary: 'Fine.', ts: 1, sha: head, prNumber: 54, lens: 'code' }] })
     await t.k.refreshPr(t.ws.id, { settle: true })
     gh.state = 'ready'
     await t.k.refreshPr(t.ws.id, { settle: true })

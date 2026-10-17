@@ -15,8 +15,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const REPO = {
   'README.md': '# client\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
-  '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.',
+  '.claude/agents/artkin.md': '---\nname: artkin\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Artkin.'
 }
 
 /** Archiving runs git, which takes seconds when the whole suite runs at once (KERNEL-187). */
@@ -41,11 +41,11 @@ async function setup(o: { other?: boolean } = {}) {
   k.github = { info: async (_cwd, _ref, workspaceId) => (gh.pr ? { ...gh.pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
   const project = await k.addProject(repo)
   const lead = await k.leadChat(project.id)
-  const author = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
-  const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
+  const author = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
+  const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'artkin', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
   // Other work and its own review, which a merge of the first PR must leave alone.
-  const other = o.other ? await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id }) : undefined
-  const otherReview = other ? await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review the export', leadChatId: lead.id, reviewOf: other.id }) : undefined
+  const other = o.other ? await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'christian', title: 'Invoice export', leadChatId: lead.id }) : undefined
+  const otherReview = other ? await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'artkin', title: 'Review the export', leadChatId: lead.id, reviewOf: other.id }) : undefined
   // The PR is open and adopted first, so a later merge or close counts.
   gh.pr = info('ready')
   await k.refreshPr(author.id)

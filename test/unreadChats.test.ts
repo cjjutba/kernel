@@ -14,10 +14,10 @@ import type { PushEvent } from '../src/shared/ipc'
 
 const REPO = {
   'README.md': '# client\n',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
 
-/** Kai's workspace on a temp repo, with GitHub, naming and sends stubbed. `pushed` collects the chat pushes for Kai's chat. */
+/** Christian's workspace on a temp repo, with GitHub, naming and sends stubbed. `pushed` collects the chat pushes for Christian's chat. */
 async function setup() {
   const repo = await tempRepo(REPO)
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -30,7 +30,7 @@ async function setup() {
   k.chats.titleFor = async () => undefined
   k.github = { info: async () => null, merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
   const project = await k.addProject(repo)
-  const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+  const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
   const chatId = k.store.chats(ws.id)[0].id
   const pushed: Chat[] = []
   const onPush = (e: PushEvent) => { if (e.type === 'chat' && e.chat.id === chatId) pushed.push(e.chat) }

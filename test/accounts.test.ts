@@ -584,10 +584,10 @@ describe('Claude accounts (KERNEL-567)', () => {
 describe('holds and limits per provider (KERNEL-406)', () => {
   async function twoChats() {
     const { k } = await kernel()
-    const repo = await tempRepo({ '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const repo = await tempRepo({ '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
     const project = await k.addProject(repo)
     await k.team.agents(project.id)
-    const ws: Workspace = { id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'christian', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     k.store.saveWorkspace(ws)
     k.store.saveChat({ id: 'claude', workspaceId: 'ws', title: 'c', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     k.store.saveChat({ id: 'codex', workspaceId: 'ws', title: 'x', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'low', plan: false, createdAt: 2 })
@@ -1169,15 +1169,15 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
   it("names the agents whose model the account switched to doesn't offer, on its row and once in the Inbox", async () => {
     const { k, h } = await setUp({ checkPins: true, starterDir: STARTERS })
     const repo = await tempRepo()
-    // Kai's file pins Opus.
+    // Christian's file pins Opus.
     await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
-    await writeFile(join(repo, '.claude', 'agents', 'kai.md'), '---\nname: kai\ndescription: Engineer. Builds the engine.\nmodel: opus\n---\nYou are Kai.')
+    await writeFile(join(repo, '.claude', 'agents', 'christian.md'), '---\nname: christian\ndescription: Engineer. Builds the engine.\nmodel: opus\n---\nYou are Christian.')
     const project = await k.addProject(repo)
     // The user put the Lead on Opus 5.5 themselves, so a Pro plan's defaults don't move it.
     await k.config.setSettings({ models: { roles: { lead: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' } } } })
     await k.team.agents(project.id)
     const lead = k.team.agentsSync(project.id).filter((a) => k.team.pickFor(a).model === 'claude-opus-5-5').map((a) => a.name).sort()
-    expect(lead).toEqual(['Kai', 'Kernel'])
+    expect(lead).toEqual(['Christian', 'Kernel'])
     const side = await h['accounts.add']({ provider: 'claude' })
     k.providers.readModels = async (_p, id) => (id === side.id ? ['claude-sonnet-5-5', 'claude-haiku-4-5-20251001'] : ['claude-opus-5-5', 'claude-sonnet-5-5'])
     const rows = await h['accounts.switch']({ provider: 'claude', accountId: side.id })
@@ -1192,9 +1192,9 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     expect((await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })).find((a) => a.id === 'cli')?.missingModels).toBeUndefined()
     await h['accounts.switch']({ provider: 'claude', accountId: side.id })
     expect(notices()).toHaveLength(1)
-    // The Lead moves to a model the account offers. Kai's file still pins Opus.
+    // The Lead moves to a model the account offers. Christian's file still pins Opus.
     await k.config.setSettings({ models: { roles: { lead: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' } } } })
-    expect((await h['accounts.list'](undefined)).find((a) => a.id === side.id)?.missingModels).toEqual([{ model: 'claude-opus-5-5', label: 'Opus 5.5', agents: ['Kai'] }])
+    expect((await h['accounts.list'](undefined)).find((a) => a.id === side.id)?.missingModels).toEqual([{ model: 'claude-opus-5-5', label: 'Opus 5.5', agents: ['Christian'] }])
     await k.stop({ budgetMs: 0 })
   })
 })
@@ -1979,7 +1979,7 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
     file.claude.cli = { email: 'cj@example.com' }
     file.claude.accounts.push({ id: 'side', label: 'Side', email: 'side@example.com', createdAt: 1 }, { id: 'key', label: 'Key', auth: 'apiKey', createdAt: 1 })
     file.codex.accounts.push({ id: 'cx', label: 'Personal', email: 'p@example.com', createdAt: 1 })
-    t.k.store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'b', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    t.k.store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'b', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     const chat = (id: string, o: Partial<Chat> = {}) => t.k.store.saveChat({ id, workspaceId: 'ws', title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'low', plan: false, ranOn: 'cli', createdAt: 1, ...o })
     const turn = (o: Partial<LastTurn> = {}): LastTurn => ({ at: Date.now(), account: 'cli', email: 'cj@example.com', model: 'claude-opus-5-5', context: 200_000, input: 10, cacheRead: 199_000, cacheWrite: 990, ...o })
     return { ...t, file, chat, turn, place: t.k.placement }
@@ -2179,7 +2179,7 @@ describe('long chats that move accounts, on Codex, and the guards against using 
     await quiet()
     const repo = await tempRepo()
     const project = await t.k.addProject(repo)
-    t.k.store.saveWorkspace({ id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    t.k.store.saveWorkspace({ id: 'ws', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     const homes = new Map<string | null, string>([[null, 'work'], ...Object.entries(ids).map(([name, id]) => [t.k.providers.codexHome(id)!, name.toLowerCase()] as [string, string])])
     const chat = (id: string) => t.k.store.saveChat({ id, workspaceId: 'ws', title: id, kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'low', plan: false, createdAt: 2 })
     const idle = (id: string) => until(() => !t.k.sessions.isRunning(id) && !t.k.sessions.queued(id).length)

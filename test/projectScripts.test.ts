@@ -15,10 +15,10 @@ import { tempRepo, freePort } from './helpers'
 // Kernel starts the chat that proposes them.
 
 const KERNEL = '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.\n'
-const KAI = '---\nname: kai\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash, Grep, Glob\n---\nYou are Kai.\n'
+const CHRISTIAN = '---\nname: christian\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash, Grep, Glob\n---\nYou are Christian.\n'
 
 async function boot(files: Record<string, string> = {}) {
-  const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/kai.md': KAI, ...files })
+  const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/christian.md': CHRISTIAN, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -118,7 +118,7 @@ describe('set_project_scripts (KERNEL-683)', () => {
     const { k, project, team, chat } = await boot()
     const names = (agentId: string) => k.tools.toolsFor({ id: chat.workspaceId, projectId: project.id } as Workspace, team.find((a) => a.id === agentId), chat).map((t) => t.name)
     expect(names('kernel-lead')).toContain('set_project_scripts')
-    expect(names('kai')).not.toContain('set_project_scripts')
+    expect(names('christian')).not.toContain('set_project_scripts')
   })
 
   it('carries the Conductor and Superset mapping in its description, not in LEAD_RULE', () => {

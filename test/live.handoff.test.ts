@@ -26,7 +26,7 @@ You are Kernel, the lead for building this project. You plan, you don't write fe
 - Break work so each piece fits one PR and stays inside one lane's files.
 `
 const NOOR = `---
-name: noor
+name: sean
 description: Engine engineer.
 model: haiku
 role: Backend
@@ -36,7 +36,7 @@ You build the engine. Reply in one sentence and stop.
 
 describe.skipIf(!process.env.KERNEL_LIVE)('live hand-off', () => {
   it('a plan-only Lead creates a workspace after Approve and hand off', { timeout: 600_000 }, async () => {
-    const repo = await tempRepo({ 'README.md': '# demo\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/noor.md': NOOR })
+    const repo = await tempRepo({ 'README.md': '# demo\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/sean.md': NOOR })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-live-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-live-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
@@ -65,7 +65,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live hand-off', () => {
       const created = await waitFor('a workspace from the Lead', () => activity.find((a) => a.kind === 'workspace.created' && a.projectId === project.id && a.data?.assignee), 300_000)
       const said = k.store.items(chatId).flatMap((i) => (i.kind === 'text' ? [i.text.slice(0, 200)] : []))
       console.log(`[live] ${created.text} ${created.object}. Stop reminders: ${reminders}. Kernel's last words: ${JSON.stringify(said.slice(-2))}`)
-      expect(created.data?.assignee).toBe('noor')
+      expect(created.data?.assignee).toBe('sean')
     } finally {
       bus.off('activity', onActivity)
       for (const w of k.store.workspaces()) if (w.mode === 'worktree') await k.archiveWorkspace(w.id, true).catch(() => undefined)

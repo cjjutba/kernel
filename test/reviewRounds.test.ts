@@ -17,11 +17,11 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const AGENTS = {
   'README.md': '# shop\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash\n---\nYou are Christian.'
 }
 const UX_ON = '[review.ux]\npaths = ["src/renderer/**"]\n'
 
-/** A project with no reviewer agent, its `[review]` committed on main, and Kai's PR on one commit that passed checks. */
+/** A project with no reviewer agent, its `[review]` committed on main, and Christian's PR on one commit that passed checks. */
 async function setup(o: { settings?: string; files?: Record<string, string> } = {}) {
   const repo = await tempRepo({ ...AGENTS, ...(o.settings ? { '.kernel/settings.toml': o.settings } : {}) })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -31,8 +31,8 @@ async function setup(o: { settings?: string; files?: Record<string, string> } = 
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))
   const project = await k.addProject(repo)
-  const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Task 1' })
-  /** Kai commits `files` and the PR passes checks on that commit. */
+  const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Task 1' })
+  /** Christian commits `files` and the PR passes checks on that commit. */
   const push = async (files: Record<string, string>) => {
     for (const [f, c] of Object.entries(files)) { await mkdir(dirname(join(ws.path, f)), { recursive: true }); await writeFile(join(ws.path, f), c) }
     await git(ws.path, 'add', '-A')
@@ -110,14 +110,14 @@ describe('review rounds', () => {
     expect(sent).toEqual(['code'])
     await verdict('code', 'blockers')
     expect(k.reviews.reviewState(of())).toMatchObject({ blocking: ['code'], stillBlocked: { rounds: 2, kinds: ['code'] } })
-    // The verdict of the last round Kernel runs goes to the user, not back to Kai.
+    // The verdict of the last round Kernel runs goes to the user, not back to Christian.
     const [r] = k.store.workspaces(of().projectId).filter((w) => w.reviewOf === of().id)
-    const review: TeamEvent = { n: 1, workspaceId: r.id, kind: 'review', pr: 101, review: { verdict: 'blockers', lens: 'code', summary: 'No.', blockers: [{ text: 'x' }], of: of().id, ofName: 'Kai', ofPr: 101, current: true } }
+    const review: TeamEvent = { n: 1, workspaceId: r.id, kind: 'review', pr: 101, review: { verdict: 'blockers', lens: 'code', summary: 'No.', blockers: [{ text: 'x' }], of: of().id, ofName: 'Christian', ofPr: 101, current: true } }
     const ctx = { allMerged: () => false, workspace: (id: string) => k.store.workspace(id), stateOf: (id: string) => k.reviews.reviewState(k.store.workspace(id)!) }
     expect(decide({ ws: r, name: 'Code review', events: [review] }, ctx).todo).toEqual([
-      "PR #101 is still blocked after 2 review rounds, so Kernel won't review it again by itself. Don't send it back to Kai: tell the user what the code review found that is still open, and ask with ask_user how they want to go on."
+      "PR #101 is still blocked after 2 review rounds, so Kernel won't review it again by itself. Don't send it back to Christian: tell the user what the code review found that is still open, and ask with ask_user how they want to go on."
     ])
-    // Kai pushes anyway, once the review chat's turn is over. Nothing starts, and the update on the new commits asks the user too.
+    // Christian pushes anyway, once the review chat's turn is over. Nothing starts, and the update on the new commits asks the user too.
     k.sessions.stop(chatOf('code').id)
     const round = of().reviewRound
     await push({ 'src/main/a.ts': 'try 2\n' })
@@ -126,8 +126,8 @@ describe('review rounds', () => {
     expect(of().reviewRound).toEqual(round)
     const state = k.reviews.reviewState(of())
     expect(state).toMatchObject({ blockers: false, inProgress: false, stillBlocked: { rounds: 2, kinds: ['code'] } })
-    expect(decide({ ws: of(), name: 'Kai', events: [ready(of())] }, { ...ctx, review: state }).todo).toEqual([
-      "PR #101 has new commits, but it was still blocked after 2 review rounds, so Kernel didn't review them. Don't send it back to Kai: tell the user what the code review found that is still open, and ask with ask_user how they want to go on."
+    expect(decide({ ws: of(), name: 'Christian', events: [ready(of())] }, { ...ctx, review: state }).todo).toEqual([
+      "PR #101 has new commits, but it was still blocked after 2 review rounds, so Kernel didn't review them. Don't send it back to Christian: tell the user what the code review found that is still open, and ask with ask_user how they want to go on."
     ])
   })
 
@@ -162,7 +162,7 @@ describe('review rounds', () => {
     }
     await k.reviews.onReady(of().id)
     await verdict('code', 'blockers')
-    // Round 1 of 2 left blockers, so they go back to Kai. Then the base branch lowers `rounds` to 1.
+    // Round 1 of 2 left blockers, so they go back to Christian. Then the base branch lowers `rounds` to 1.
     expect(k.reviews.reviewState(of()).stillBlocked).toBeUndefined()
     await policy('[review]\nrounds = 1\n')
     k.sessions.stop(chatOf('code').id)
@@ -173,8 +173,8 @@ describe('review rounds', () => {
     expect(of().reviewRound).toMatchObject({ n: 1, rounds: 1 })
     const state = k.reviews.reviewState(of())
     expect(state.stillBlocked).toEqual({ rounds: 1, kinds: ['code'] })
-    expect(decide({ ws: of(), name: 'Kai', events: [ready(of())] }, { allMerged: () => false, review: state }).todo).toEqual([
-      "PR #101 has new commits, but it was still blocked after 1 review round, so Kernel didn't review them. Don't send it back to Kai: tell the user what the code review found that is still open, and ask with ask_user how they want to go on."
+    expect(decide({ ws: of(), name: 'Christian', events: [ready(of())] }, { allMerged: () => false, review: state }).todo).toEqual([
+      "PR #101 has new commits, but it was still blocked after 1 review round, so Kernel didn't review them. Don't send it back to Christian: tell the user what the code review found that is still open, and ask with ask_user how they want to go on."
     ])
     // Raising it again lets the next push start round 2.
     await policy('[review]\nrounds = 3\n')
@@ -215,7 +215,7 @@ describe('review rounds', () => {
 })
 
 describe("Kernel's own update of a PR from its base (KERNEL-832)", () => {
-  /** Main moves on, and Kai's branch merges it, the way `gh pr update-branch` would. `extra` adds a change of its own to the merge. */
+  /** Main moves on, and Christian's branch merges it, the way `gh pr update-branch` would. `extra` adds a change of its own to the merge. */
   async function update(t: Awaited<ReturnType<typeof setup>>, extra?: Record<string, string>) {
     await writeFile(join(t.repo, 'README.md'), '# shop, moved on\n')
     await git(t.repo, 'commit', '-qam', 'main moves on')
@@ -361,7 +361,7 @@ describe('review rounds near the usage limit', () => {
     await vi.waitFor(() => expect(k.sessions.queueReason(chatOf('code').id)).toBe('limit'), { timeout: 10_000, interval: 20 })
     const state = k.reviews.reviewState(of())
     expect(state).toMatchObject({ inProgress: true, reviewing: [], held: ['code'], skipped: ['ux'] })
-    expect(decide({ ws: of(), name: 'Kai', events: [ready(of())] }, { allMerged: () => false, review: state }).todo).toEqual([])
+    expect(decide({ ws: of(), name: 'Christian', events: [ready(of())] }, { allMerged: () => false, review: state }).todo).toEqual([])
   })
 
   it('runs every kind with "Pause new work when close to the limit" off', async () => {
@@ -382,10 +382,10 @@ describe('review rounds near the usage limit', () => {
     // Still in progress, so auto-merge counts the UX review as not done.
     expect(state).toMatchObject({ inProgress: true, reviewing: [], held: ['ux'], blocking: ['code'] })
     const [r] = rws()
-    const review: TeamEvent = { n: 1, workspaceId: r.id, kind: 'review', pr: 101, review: { verdict: 'blockers', lens: 'code', summary: 'No.', blockers: [{ text: 'x' }], of: of().id, ofName: 'Kai', ofPr: 101, current: true } }
+    const review: TeamEvent = { n: 1, workspaceId: r.id, kind: 'review', pr: 101, review: { verdict: 'blockers', lens: 'code', summary: 'No.', blockers: [{ text: 'x' }], of: of().id, ofName: 'Christian', ofPr: 101, current: true } }
     const ctx = { allMerged: () => false, workspace: (id: string) => k.store.workspace(id), stateOf: (id: string) => k.reviews.reviewState(k.store.workspace(id)!) }
     expect(decide({ ws: r, name: 'Code review', events: [review] }, ctx).todo).toEqual([
-      `Send the code review's blockers to Kai with message_agent (workspace ${of().id}). The UX review waits for usage to drop below the limit, and its findings come in a later update.`
+      `Send the code review's blockers to Christian with message_agent (workspace ${of().id}). The UX review waits for usage to drop below the limit, and its findings come in a later update.`
     ])
   })
 })

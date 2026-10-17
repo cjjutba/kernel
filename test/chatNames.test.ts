@@ -17,7 +17,7 @@ const until = async (ok: () => boolean, ms = 8000) => { const t = Date.now(); wh
 const AGENTS = {
   'README.md': '# x\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
 
 /** A kernel on a temp repo with the SDK calls stubbed. `answer` is what the naming request returns; `customTitle` is Claude Code's. */
@@ -77,7 +77,7 @@ describe('chat names (KERNEL-202)', () => {
     expect(s.chat(started.id)).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
     expect(s.chat(first.id)).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
 
-    const ws = await s.k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
+    const ws = await s.k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Tabs' })
     const h = s.k.handlers()
     const opened = await h['chats.create']({ workspaceId: ws.id })
     expect(opened).toMatchObject({ title: 'New chat', autoTitle: { turns: 0 } })

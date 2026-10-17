@@ -24,7 +24,7 @@ export function useReadPrs(list: Workspace[]) {
   }, [list, prs])
 }
 
-/** The agent and the words of a row's right end: "Kai · Ready to merge". Color is only on the words, red for what needs a person and green for what can merge. */
+/** The agent and the words of a row's right end: "Christian · Ready to merge". Color is only on the words, red for what needs a person and green for what can merge. */
 export function RowStatus({ who, state }: { who?: string; state: WorkState }) {
   return (
     <span className="is-status">

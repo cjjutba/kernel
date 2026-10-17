@@ -12,7 +12,7 @@ export interface InboxItem {
 
 const NUMBERS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-/** "Kai", "Kai and Noor", "Kai, Noor and Ivy". */
+/** "Christian", "Christian and Sean", "Christian, Sean and Teng". */
 export const names = (list: string[]) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`)
 export const fileName = (path: string) => path.split('/').pop() ?? path
 /** "Two agents changed the same file". */

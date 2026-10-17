@@ -42,16 +42,16 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 const flush = () => new Promise((r) => setTimeout(r, 10))
 const starter = join(__dirname, '..', 'docs', 'starter-agents')
-const noor: AgentDef = { id: 'noor', name: 'Noor', role: 'Engine', description: '', lead: false, prompt: '', file: 'noor.md' }
+const sean: AgentDef = { id: 'sean', name: 'Sean', role: 'Engine', description: '', lead: false, prompt: '', file: 'sean.md' }
 
 async function runner() {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-states-')), 'kernel.db'))
-  const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/x', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+  const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/x', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
   store.saveWorkspace(ws)
   store.saveChat(chat)
   const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 } } as unknown as AppSettings
-  const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => undefined })
+  const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => sean, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => undefined })
   const pushes: PushEvent[] = []
   const on = (e: PushEvent) => pushes.push(e)
   bus.on('push', on)
@@ -88,7 +88,7 @@ describe('pausing a project', () => {
     call.feed({ type: 'result', subtype: 'success', uuid: 'r', duration_ms: 1 })
     await flush()
     expect(sessions.queued(chat.id)).toHaveLength(1)
-    expect(statuses().at(-1)).toMatchObject({ agentId: 'noor', status: 'paused' })
+    expect(statuses().at(-1)).toMatchObject({ agentId: 'sean', status: 'paused' })
 
     sessions.resume('project')
     await waiting
@@ -270,7 +270,7 @@ describe('agent states from real events', () => {
 
     sessions.stop(chat.id)
     await flush()
-    expect(statuses().at(-1)).toMatchObject({ agentId: 'noor', status: 'idle' })
+    expect(statuses().at(-1)).toMatchObject({ agentId: 'sean', status: 'idle' })
     done()
   })
 
@@ -301,7 +301,7 @@ describe('agent states from real events', () => {
     await flush()
     call.fail(new Error('exit code 137'))
     await flush()
-    expect(statuses().at(-1)).toMatchObject({ agentId: 'noor', status: 'offline' })
+    expect(statuses().at(-1)).toMatchObject({ agentId: 'sean', status: 'offline' })
     expect(events.find((e) => e.kind === 'session.end')).toMatchObject({ text: 'went offline in', data: { detail: expect.stringContaining('exit code 137') } })
     expect(sessions.isRunning(chat.id)).toBe(false)
 
@@ -353,12 +353,12 @@ describe('project pause and team templates', () => {
     const k = await kernel()
     const h = k.handlers()
     const a = await k.addProject(await tempRepo()), b = await k.addProject(await tempRepo()), c = await k.addProject(await tempRepo())
-    // The templates seat starter files, Theo among them, and Kernel's own Kernel leads (KERNEL-397, KERNEL-553).
+    // The templates seat starter files, Artkin among them, and Kernel's own Kernel leads (KERNEL-397, KERNEL-553).
     const team = await h['agents.seed']({ projectId: a.id, template: { kind: 'starter' } })
-    expect(team.map((x) => x.id).sort()).toEqual(['ivy', 'kai', 'kernel-lead', 'noor', 'theo'])
-    expect(team.find((x) => x.id === 'theo')).toMatchObject({ reviewer: true, member: false, file: join(a.path, '.claude', 'agents', 'theo.md') })
+    expect(team.map((x) => x.id).sort()).toEqual(['artkin', 'christian', 'kernel-lead', 'sean', 'teng'])
+    expect(team.find((x) => x.id === 'artkin')).toMatchObject({ reviewer: true, member: false, file: join(a.path, '.claude', 'agents', 'artkin.md') })
     // The pair has no reviewer, so Kernel's code review covers it.
-    expect((await h['agents.seed']({ projectId: b.id, template: { kind: 'pair' } })).map((x) => x.id).sort()).toEqual(['kai', 'kernel-lead'])
+    expect((await h['agents.seed']({ projectId: b.id, template: { kind: 'pair' } })).map((x) => x.id).sort()).toEqual(['christian', 'kernel-lead'])
     await expect(h['agents.seed']({ projectId: b.id, template: { kind: 'starter' } })).rejects.toThrow('already has agents')
     expect((await h['agents.seed']({ projectId: c.id, template: { kind: 'copy', fromProjectId: a.id } })).length).toBe(5)
     expect(await readdir(join(c.path, '.claude', 'agents'))).toHaveLength(4)
@@ -367,18 +367,18 @@ describe('project pause and team templates', () => {
 
   it('keeps needs, blocked and offline through a pause and a resume', async () => {
     const k = await kernel()
-    const project = await k.addProject(await tempRepo({ '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou lead.', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.', '.claude/agents/ivy.md': '---\nname: ivy\ndescription: QA.\n---\nIvy.', '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\n---\nNoor.' }))
+    const project = await k.addProject(await tempRepo({ '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou lead.', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nKai.', '.claude/agents/teng.md': '---\nname: teng\ndescription: QA.\n---\nIvy.', '.claude/agents/sean.md': '---\nname: sean\ndescription: Engine.\n---\nNoor.' }))
     await k.agents(project.id)
     const seen: Record<string, string> = {}
     const on = (e: PushEvent) => { if (e.type === 'agent.status') seen[e.agentId] = e.status }
     bus.on('push', on)
-    bus.push({ type: 'agent.status', projectId: project.id, agentId: 'kai', status: 'needs' })
-    bus.push({ type: 'agent.status', projectId: project.id, agentId: 'noor', status: 'blocked' })
-    bus.push({ type: 'agent.status', projectId: project.id, agentId: 'ivy', status: 'offline' })
+    bus.push({ type: 'agent.status', projectId: project.id, agentId: 'christian', status: 'needs' })
+    bus.push({ type: 'agent.status', projectId: project.id, agentId: 'sean', status: 'blocked' })
+    bus.push({ type: 'agent.status', projectId: project.id, agentId: 'teng', status: 'offline' })
     k.pauseProject(project.id, 'you')
-    expect(seen).toMatchObject({ 'kernel-lead': 'paused', kai: 'needs', noor: 'blocked', ivy: 'offline' })
+    expect(seen).toMatchObject({ 'kernel-lead': 'paused', christian: 'needs', sean: 'blocked', teng: 'offline' })
     k.resumeProject(project.id)
-    expect(seen).toMatchObject({ 'kernel-lead': 'idle', kai: 'needs', noor: 'blocked', ivy: 'offline' })
+    expect(seen).toMatchObject({ 'kernel-lead': 'idle', christian: 'needs', sean: 'blocked', teng: 'offline' })
     bus.off('push', on)
     await k.stop()
   })
@@ -419,8 +419,8 @@ describe('project pause and team templates', () => {
 describe('switched-off skills and MCP servers (KERNEL-226)', () => {
   const agents = {
     '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou lead.',
-    '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.',
-    '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.'
+    '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nKai.',
+    '.claude/agents/artkin.md': '---\nname: artkin\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Artkin.'
   }
   const started = async (cwd: string) => {
     for (let i = 0; i < 200 && !sdk.calls.some((c) => c.options.cwd === cwd); i++) await flush()
@@ -438,8 +438,8 @@ describe('switched-off skills and MCP servers (KERNEL-226)', () => {
     const leadOptions = await started(k.store.workspace(lead.workspaceId)!.path)
     expect(Object.keys(leadOptions.mcpServers ?? {})).toEqual(['kernel'])
     expect(leadOptions.settings).toEqual(off)
-    const author = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
-    const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
+    const author = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
+    const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'artkin', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
     const reviewOptions = await started(review.path)
     expect(Object.keys(reviewOptions.mcpServers ?? {})).toEqual(['kernel'])
     expect(reviewOptions.settings).toEqual(off)

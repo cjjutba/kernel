@@ -8,7 +8,7 @@ import { takesTasks } from '@shared/team'
 
 type Mentioned = Extract<ChatPart, { type: 'agent' }>
 
-/** "Noor", "Noor and Kai", "Noor, Kai and Mira". */
+/** "Sean", "Sean and Christian", "Sean, Christian and Mira". */
 export const namesText = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`)
 
 /** The agents a message mentions, once each, without the Lead itself. `team` is the project's, when Kernel has read it. */

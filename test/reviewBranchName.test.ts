@@ -15,8 +15,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const REPO = {
   'README.md': '# client\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
-  '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.',
+  '.claude/agents/artkin.md': '---\nname: artkin\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Artkin.'
 }
 
 const LONG = 'cjjutbaofficial/kernel-237-draw-a-question-card-that-steps-through-several-questions'
@@ -33,13 +33,13 @@ async function setup() {
   const project = await k.addProject(repo)
   const lead = await k.leadChat(project.id)
   // The author moves its work onto a branch over 80 characters, which the review starts from (KERNEL-136).
-  const author = await k.createWorkspace(project.id, { prompt: 'Draw the card', agentId: 'kai', title: 'Draw a question card', leadChatId: lead.id })
+  const author = await k.createWorkspace(project.id, { prompt: 'Draw the card', agentId: 'christian', title: 'Draw a question card', leadChatId: lead.id })
   await git(author.path, 'checkout', '-qb', LONG)
   await writeFile(join(author.path, 'card.txt'), 'card\n')
   await git(author.path, 'add', '.')
   await git(author.path, 'commit', '-qm', 'card')
   const tip = (await git(author.path, 'rev-parse', 'HEAD')).trim()
-  const review = (branch?: string) => k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #213', leadChatId: lead.id, reviewOf: author.id, ...(branch ? { branch } : {}) })
+  const review = (branch?: string) => k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'artkin', title: 'Review PR #213', leadChatId: lead.id, reviewOf: author.id, ...(branch ? { branch } : {}) })
   return { k, repo, author, tip, review }
 }
 

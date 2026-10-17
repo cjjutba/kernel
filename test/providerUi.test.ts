@@ -12,7 +12,7 @@ const claudeChat = { id: 'c', workspaceId: 'ws', model: 'claude-sonnet-5-5', eff
 const codexChat = { ...claudeChat, provider: 'codex', model: 'gpt-6-astra' } as Chat
 const now = 1_000_000_000_000
 const later = now / 1000 + 3600
-const input = (o: Partial<BannerInput>): BannerInput => ({ ws, chat: claudeChat, agentName: 'Kai', running: false, usage: [], account: { signedIn: true }, online: true, hooks: null, now, ...o })
+const input = (o: Partial<BannerInput>): BannerInput => ({ ws, chat: claudeChat, agentName: 'Christian', running: false, usage: [], account: { signedIn: true }, online: true, hooks: null, now, ...o })
 const accounts: AccountProfile[] = [
   { id: 'cli', provider: 'claude', label: 'cj@example.com', email: 'cj@example.com', plan: 'Claude Max', cli: true, auth: 'subscription', active: true, signedIn: true },
   { id: 'work', provider: 'claude', label: 'Work', email: 'cj@acme.dev', plan: 'Claude Team', cli: false, auth: 'subscription', active: false, signedIn: true },

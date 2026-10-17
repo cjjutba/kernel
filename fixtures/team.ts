@@ -28,12 +28,12 @@ const projectsScene = (f: Fixture): Partial<Fixture> => {
     activity: [],
     // Three things wait on Client A, the Inbox count in the sidebar.
     approvals: f.approvals.map((a) => ({ ...a, projectId: ids.projectA })),
-    agents: { [ids.projectA]: team, [ids.projectB]: crew('kernel-lead', 'kai'), [ids.projectOwn]: crew('kernel-lead', 'kai', 'ivy'), [ids.projectPortfolio]: crew('kernel-lead', 'kai'), 'project-sandbox': crew('kernel-lead') },
+    agents: { [ids.projectA]: team, [ids.projectB]: crew('kernel-lead', 'christian'), [ids.projectOwn]: crew('kernel-lead', 'christian', 'teng'), [ids.projectPortfolio]: crew('kernel-lead', 'christian'), 'project-sandbox': crew('kernel-lead') },
     status: {
-      [ids.projectA]: { 'kernel-lead': 'idle', kai: 'idle', noor: 'idle', theo: 'idle', ivy: 'idle' },
-      [ids.projectB]: { 'kernel-lead': 'working', kai: 'idle' },
-      [ids.projectOwn]: { 'kernel-lead': 'idle', kai: 'working', ivy: 'idle' },
-      [ids.projectPortfolio]: { 'kernel-lead': 'idle', kai: 'idle' },
+      [ids.projectA]: { 'kernel-lead': 'idle', christian: 'idle', sean: 'idle', artkin: 'idle', teng: 'idle' },
+      [ids.projectB]: { 'kernel-lead': 'working', christian: 'idle' },
+      [ids.projectOwn]: { 'kernel-lead': 'idle', christian: 'working', teng: 'idle' },
+      [ids.projectPortfolio]: { 'kernel-lead': 'idle', christian: 'idle' },
       'project-sandbox': { 'kernel-lead': 'idle' }
     },
     // +412 -38 on invoice-table, as in the sidebar of Projects.png.
@@ -49,7 +49,7 @@ const setupSteps: ProjectSetupStep[] = [
   { id: 'copy', title: 'Copy local files', detail: '.env.local, .env.test', state: 'run', meta: 'running' },
   { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'wait' },
   { id: 'push', title: 'Check push access', detail: 'cjjutba can push to cjjutba/client-c', state: 'wait' },
-  { id: 'agents', title: 'Seat agents', detail: 'Kernel, Kai, Noor, Ivy, Theo from .claude/agents', state: 'wait' }
+  { id: 'agents', title: 'Seat agents', detail: 'Kernel, Christian, Sean, Teng, Artkin from .claude/agents', state: 'wait' }
 ]
 // KERNEL-449: setup is done, and two of the copied files look like production. KERNEL-460: git can't push, because it
 // isn't using gh's login. Both are warnings, so the project still opens.
@@ -59,7 +59,7 @@ const warnSteps: ProjectSetupStep[] = [
   { id: 'copy', title: 'Copy local files', detail: '.env, .env.local, .env.production', state: 'warn', production: ['.env', '.env.production'] },
   { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'ok' },
   { id: 'push', title: 'Git can\u2019t push to cjjutba/client-c', detail: 'gh is signed in as cjjutba, but git isn\u2019t using that login, so agents can\u2019t push yet.', state: 'warn', fix: { command: 'gh auth setup-git', action: 'recheck' } },
-  { id: 'agents', title: 'Seat agents', detail: 'Kernel, Kai, Noor, Ivy, Theo from .claude/agents', state: 'ok' }
+  { id: 'agents', title: 'Seat agents', detail: 'Kernel, Christian, Sean, Teng, Artkin from .claude/agents', state: 'ok' }
 ]
 
 /** An owner's GitHub avatar, drawn here since fixtures load nothing remote (KERNEL-951). */
@@ -99,16 +99,16 @@ const clock = (daysAgo: number, h: number, m: number) => { const d = new Date();
 
 /** The three things waiting on the user in Client A (Inbox.png): two approvals and a PR ready to merge. */
 const homeApprovals: Approval[] = [
-  { id: 'ap-push', kind: 'tool', source: 'sdk', projectId: ids.projectA, workspaceId: ids.schema, agentId: 'noor', toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'T-12 adds the invoices table. Kai is waiting on it to finish T-14.', status: 'pending', createdAt: ago(2 * MIN) },
-  { id: 'ap-plan15', kind: 'plan', source: 'sdk', projectId: ids.projectA, agentId: 'kernel-lead', title: 'Plan for T-15', detail: '1. T-15a PDF renderer · Noor\n2. T-15b Export button · Kai', status: 'pending', createdAt: ago(6 * MIN) }
+  { id: 'ap-push', kind: 'tool', source: 'sdk', projectId: ids.projectA, workspaceId: ids.schema, agentId: 'sean', toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'T-12 adds the invoices table. Christian is waiting on it to finish T-14.', status: 'pending', createdAt: ago(2 * MIN) },
+  { id: 'ap-plan15', kind: 'plan', source: 'sdk', projectId: ids.projectA, agentId: 'kernel-lead', title: 'Plan for T-15', detail: '1. T-15a PDF renderer · Sean\n2. T-15b Export button · Christian', status: 'pending', createdAt: ago(6 * MIN) }
 ]
 const note = (n: Partial<Notification> & Pick<Notification, 'id' | 'title' | 'sub' | 'createdAt'>): Notification => ({ kind: 'system', projectId: ids.projectA, needsYou: false, read: false, ...n })
 const homeNotifications: Notification[] = [
-  note({ id: 'n1', kind: 'approval', agentId: 'noor', approvalId: 'ap-push', title: 'Wants to run drizzle-kit push', sub: 'Permission · Client A', heading: 'Noor wants to run a command that changes the database', needsYou: true, createdAt: ago(2 * MIN) }),
+  note({ id: 'n1', kind: 'approval', agentId: 'sean', approvalId: 'ap-push', title: 'Wants to run drizzle-kit push', sub: 'Permission · Client A', heading: 'Sean wants to run a command that changes the database', needsYou: true, createdAt: ago(2 * MIN) }),
   note({ id: 'n2', kind: 'approval', agentId: 'kernel-lead', approvalId: 'ap-plan15', title: 'Plan ready: Export invoices as PDF', sub: 'Plan review · Client A', heading: 'Kernel has a plan for you to review', needsYou: true, createdAt: ago(6 * MIN) }),
-  note({ id: 'n3', kind: 'merge', agentId: 'theo', workspaceId: ids.invites, title: 'PR #41 is ready to merge', sub: 'Merge · Client A', heading: 'PR #41 is ready to merge', body: 'org-invites has passing checks and no open review comments.', needsYou: true, createdAt: ago(12 * MIN) }),
-  note({ id: 'n4', kind: 'blocked', agentId: 'ivy', title: 'T-11 was blocked by a hook', sub: 'Check failed · Client A', heading: 'T-11 was blocked by a hook', body: 'The test-output hook stopped Ivy. She needs the run output attached.', createdAt: ago(18 * MIN) }),
-  note({ id: 'n5', kind: 'finished', agentId: 'kai', workspaceId: ids.table, title: 'Finished T-14 invoice table', sub: 'Workspace ready · Client A', heading: 'Finished T-14 invoice table', body: 'Kai pushed the table, its states and the tests. Vitest and Playwright pass.', createdAt: ago(31 * MIN) }),
+  note({ id: 'n3', kind: 'merge', agentId: 'artkin', workspaceId: ids.invites, title: 'PR #41 is ready to merge', sub: 'Merge · Client A', heading: 'PR #41 is ready to merge', body: 'org-invites has passing checks and no open review comments.', needsYou: true, createdAt: ago(12 * MIN) }),
+  note({ id: 'n4', kind: 'blocked', agentId: 'teng', title: 'T-11 was blocked by a hook', sub: 'Check failed · Client A', heading: 'T-11 was blocked by a hook', body: 'The test-output hook stopped Teng. She needs the run output attached.', createdAt: ago(18 * MIN) }),
+  note({ id: 'n5', kind: 'finished', agentId: 'christian', workspaceId: ids.table, title: 'Finished T-14 invoice table', sub: 'Workspace ready · Client A', heading: 'Finished T-14 invoice table', body: 'Christian pushed the table, its states and the tests. Vitest and Playwright pass.', createdAt: ago(31 * MIN) }),
   note({ id: 'n6', kind: 'standup', agentId: 'kernel-lead', title: 'Daily standup', sub: 'Summary · Client A', heading: 'Daily standup', body: 'T-11 passed, T-12 and T-14 are in progress, T-09 waits on your merge.', read: true, createdAt: ago(9 * HOUR) }),
   note({ id: 'n7', title: 'Hooks reconnected', sub: 'System', projectId: undefined, heading: 'Hooks reconnected', body: 'Kernel is listening on localhost:7420 again.', read: true, createdAt: ago(11 * HOUR) })
 ]
@@ -122,19 +122,19 @@ const homeScene = (f: Fixture): Partial<Fixture> => {
     projects: projectsScene(f).projects!.filter((r) => !r.archived),
     approvals: homeApprovals,
     notifications: homeNotifications,
-    agents: { [ids.projectA]: team, [ids.projectB]: crew('kernel-lead', 'kai'), [ids.projectOwn]: crew('kernel-lead', 'kai', 'ivy'), [ids.projectPortfolio]: crew('kernel-lead', 'kai') },
+    agents: { [ids.projectA]: team, [ids.projectB]: crew('kernel-lead', 'christian'), [ids.projectOwn]: crew('kernel-lead', 'christian', 'teng'), [ids.projectPortfolio]: crew('kernel-lead', 'christian') },
     status: {
-      [ids.projectA]: { 'kernel-lead': 'idle', kai: 'working', noor: 'working', theo: 'idle', ivy: 'idle' },
-      [ids.projectB]: { 'kernel-lead': 'working', kai: 'working' },
-      [ids.projectOwn]: { 'kernel-lead': 'working', kai: 'working', ivy: 'working' },
-      [ids.projectPortfolio]: { 'kernel-lead': 'idle', kai: 'idle' }
+      [ids.projectA]: { 'kernel-lead': 'idle', christian: 'working', sean: 'working', artkin: 'idle', teng: 'idle' },
+      [ids.projectB]: { 'kernel-lead': 'working', christian: 'working' },
+      [ids.projectOwn]: { 'kernel-lead': 'working', christian: 'working', teng: 'working' },
+      [ids.projectPortfolio]: { 'kernel-lead': 'idle', christian: 'idle' }
     },
     workspaces: [
       ...f.workspaces,
-      merged('ws-m1', ids.projectA, 'kai', 'feat(invoices): table and empty states', 412, 38, clock(0, 10, 31)),
-      merged('ws-m2', ids.projectA, 'noor', 'fix(auth): invite links expire after 7 days', 26, 9, clock(0, 9, 58)),
-      merged('ws-m3', ids.projectOwn, 'kai', 'chore(db): seed realistic data', 188, 4, clock(0, 9, 12)),
-      merged('ws-m4', ids.projectPortfolio, 'kai', 'Landing page polish', 926, 383, clock(1, 18, 40)),
+      merged('ws-m1', ids.projectA, 'christian', 'feat(invoices): table and empty states', 412, 38, clock(0, 10, 31)),
+      merged('ws-m2', ids.projectA, 'sean', 'fix(auth): invite links expire after 7 days', 26, 9, clock(0, 9, 58)),
+      merged('ws-m3', ids.projectOwn, 'christian', 'chore(db): seed realistic data', 188, 4, clock(0, 9, 12)),
+      merged('ws-m4', ids.projectPortfolio, 'christian', 'Landing page polish', 926, 383, clock(1, 18, 40)),
       merged('ws-m5', ids.projectB, 'kernel-lead', 'docs: onboarding questions', 18, 11, clock(1, 16, 5))
     ].map((w) => (w.id === ids.table ? { ...w, stat: { files: 4, added: 412, removed: 38 } } : w))
   }
@@ -152,58 +152,58 @@ const historyScene = (f: Fixture): Partial<Fixture> => {
     projects: projectsScene(f).projects!.filter((r) => !r.archived),
     workspaces: [
       ...f.workspaces,
-      archived('ws-h1', 'org-invites', 'feat/t-10-org-invites', ids.projectA, 'theo', { n: 41, state: 'merged' }, clock(0, 14, 2)),
-      archived('ws-h2', 'docker-local-startup', 'fix/docker-local-startup', ids.projectA, 'noor', { n: 40, state: 'merged' }, clock(0, 11, 20)),
-      archived('ws-h3', 'try-datatable', 'spike/try-datatable', ids.projectA, 'kai', null, clock(0, 9, 48)),
-      archived('ws-h4', 'auth-orgs', 'feat/t-08-auth-orgs', ids.projectA, 'noor', { n: 36, state: 'merged' }, clock(3, 10, 12)),
-      archived('ws-h5', 'landing-polish', 'feat/landing-polish', ids.projectPortfolio, 'kai', { n: 12, state: 'merged' }, clock(3, 9, 30)),
+      archived('ws-h1', 'org-invites', 'feat/t-10-org-invites', ids.projectA, 'artkin', { n: 41, state: 'merged' }, clock(0, 14, 2)),
+      archived('ws-h2', 'docker-local-startup', 'fix/docker-local-startup', ids.projectA, 'sean', { n: 40, state: 'merged' }, clock(0, 11, 20)),
+      archived('ws-h3', 'try-datatable', 'spike/try-datatable', ids.projectA, 'christian', null, clock(0, 9, 48)),
+      archived('ws-h4', 'auth-orgs', 'feat/t-08-auth-orgs', ids.projectA, 'sean', { n: 36, state: 'merged' }, clock(3, 10, 12)),
+      archived('ws-h5', 'landing-polish', 'feat/landing-polish', ids.projectPortfolio, 'christian', { n: 12, state: 'merged' }, clock(3, 9, 30)),
       archived('ws-h6', 'pricing-experiment', 'spike/pricing-experiment', ids.projectOwn, 'kernel-lead', { n: 7, state: 'closed' }, clock(4, 16, 4))
     ].map((w) => (w.id === ids.table ? { ...w, stat: { files: 4, added: 412, removed: 38 } } : w))
   }
 }
 
-/** Six agents in Client A with the canvas's models, states and workspaces. Kai's recent work is four tasks. */
+/** Six agents in Client A with the canvas's models, states and workspaces. Christian's recent work is four tasks. */
 const teamScene = (f: Fixture): Partial<Fixture> => {
   const A = ids.projectA
   const who = (id: string, name: string, role: string, model: string, description: string, o: Partial<AgentDef> = {}): AgentDef =>
     ({ ...agent(id, name, role, model, !!o.lead), description, effort: 'high', prompt: `You are ${name}, the ${role.toLowerCase()} in this project. ${description} Work in your own worktree and tell Kernel when you finish.`, ...o })
   const crew: AgentDef[] = [
     who('kernel-lead', 'Kernel', 'Lead', 'opus', 'Plans, splits tasks, hands them out. Never edits code.', { lead: true, tools: ['Read', 'Grep', 'Glob'], skills: ['/plan'] }),
-    who('kai', 'Kai', 'Frontend', 'sonnet', 'UI work. Follows DESIGN.md.', {
+    who('christian', 'Christian', 'Frontend', 'sonnet', 'UI work. Follows DESIGN.md.', {
       tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'], skills: ['/feature', '/verify', '/image'],
-      prompt: 'You are Kai, the frontend engineer in this project. Build the screens in the plan exactly as the PNGs show them.\n\nFollow DESIGN.md: tokens only, no hex values, hairlines instead of shadows.\nOpen the compare image after every change and fix what a person would notice.\nAdd a Playwright test for each state before you ask for review.'
+      prompt: 'You are Christian, the frontend engineer in this project. Build the screens in the plan exactly as the PNGs show them.\n\nFollow DESIGN.md: tokens only, no hex values, hairlines instead of shadows.\nOpen the compare image after every change and fix what a person would notice.\nAdd a Playwright test for each state before you ask for review.'
     }),
-    who('noor', 'Noor', 'Backend', 'sonnet', 'Schema, API and migrations.', { tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] }),
-    who('ivy', 'Ivy', 'QA', 'sonnet', 'Runs tests and attaches the output.', { tools: ['Read', 'Bash', 'Grep', 'Glob'], skills: ['/verify'] }),
-    who('theo', 'Theo', 'Reviewer', 'opus', 'Types at boundaries, security, tenant isolation.', { tools: ['Read', 'Grep', 'Glob'] }),
+    who('sean', 'Sean', 'Backend', 'sonnet', 'Schema, API and migrations.', { tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] }),
+    who('teng', 'Teng', 'QA', 'sonnet', 'Runs tests and attaches the output.', { tools: ['Read', 'Bash', 'Grep', 'Glob'], skills: ['/verify'] }),
+    who('artkin', 'Artkin', 'Reviewer', 'opus', 'Types at boundaries, security, tenant isolation.', { tools: ['Read', 'Grep', 'Glob'] }),
     who('wren', 'Wren', 'Designer', 'sonnet', 'Checks every screen against DESIGN.md.', { tools: ['Read', 'Grep', 'Glob', 'Bash'], joinedAt: Date.now() - 2 * HOUR })
   ]
   const table = f.workspaces.find((w) => w.id === ids.table)!
   const open = (id: string, name: string, agentId: string, mins: number): Workspace => ({ ...table, id, name, branch: `wt/${name}`, agentId, prState: 'none', prNumber: undefined, prUrl: undefined, stat: undefined, createdAt: at(10, mins) })
-  const done = (id: string, name: string, n: number, mins: number): Workspace => ({ ...table, id, name, branch: `wt/${name}`, agentId: 'kai', status: 'archived', prState: 'merged', prNumber: n, createdAt: at(8, mins), archivedAt: at(8, mins + 30) })
+  const done = (id: string, name: string, n: number, mins: number): Workspace => ({ ...table, id, name, branch: `wt/${name}`, agentId: 'christian', status: 'archived', prState: 'merged', prNumber: n, createdAt: at(8, mins), archivedAt: at(8, mins + 30) })
   const workspaces = [
     ...f.workspaces,
-    open('ws-pdf-button', 'invoice-pdf-button', 'kai', 41), open('ws-pdf-renderer', 'invoice-pdf-renderer', 'noor', 42), open('ws-pdf-tests', 'invoice-pdf-tests', 'ivy', 43), open('ws-pdf-review', 'invoice-pdf-review', 'theo', 44),
+    open('ws-pdf-button', 'invoice-pdf-button', 'christian', 41), open('ws-pdf-renderer', 'invoice-pdf-renderer', 'sean', 42), open('ws-pdf-tests', 'invoice-pdf-tests', 'teng', 43), open('ws-pdf-review', 'invoice-pdf-review', 'artkin', 44),
     done('ws-t14', 'invoice-table-v1', 42, 5), done('ws-t09', 'org-settings-page', 38, 3), done('ws-t06', 'sign-in-screens', 31, 1)
   ]
   const task = (id: string, title: string, column: Task['column'], agentId: string, workspaceId: string | undefined, hour: number, min: number): Task =>
     ({ id, projectId: A, title, column, state: column === 'done' ? 'done' : 'working', agentId, workspaceId, steps: [], createdAt: at(8, 0), updatedAt: at(hour, min) })
   const skills: Skill[] = [['plan', 'Plan before editing'], ['feature', 'Build a feature from a spec'], ['verify', 'Run tests and attach the output'], ['image', 'Generate or edit an image']].map(([name, description]) => ({ name, description, source: 'project' as const, enabled: true }))
   return {
-    agents: { [A]: crew, [ids.projectB]: crew.slice(0, 1), [ids.projectOwn]: crew.filter((a) => ['kernel-lead', 'kai', 'ivy'].includes(a.id)), [ids.projectPortfolio]: crew.slice(0, 1) },
-    status: { [A]: { 'kernel-lead': 'idle', kai: 'working', noor: 'needs', ivy: 'working', theo: 'idle', wren: 'idle' } },
+    agents: { [A]: crew, [ids.projectB]: crew.slice(0, 1), [ids.projectOwn]: crew.filter((a) => ['kernel-lead', 'christian', 'teng'].includes(a.id)), [ids.projectPortfolio]: crew.slice(0, 1) },
+    status: { [A]: { 'kernel-lead': 'idle', christian: 'working', sean: 'needs', teng: 'working', artkin: 'idle', wren: 'idle' } },
     workspaces, skills,
     // The other projects only seat some of the crew, so a question from someone who is not there comes from Kernel.
     approvals: f.approvals.map((a) => (a.projectId === ids.projectB || a.projectId === ids.projectPortfolio ? { ...a, agentId: 'kernel-lead' } : a)),
     tasks: { [A]: [
-      task('T-15b', 'Download PDF button', 'build', 'kai', 'ws-pdf-button', 10, 41), task('T-14', 'Invoice table', 'done', 'kai', 'ws-t14', 9, 40),
-      task('T-09', 'Org settings page', 'done', 'kai', 'ws-t09', 9, 10), task('T-06', 'Sign-in screens', 'done', 'kai', 'ws-t06', 8, 40)
+      task('T-15b', 'Download PDF button', 'build', 'christian', 'ws-pdf-button', 10, 41), task('T-14', 'Invoice table', 'done', 'christian', 'ws-t14', 9, 40),
+      task('T-09', 'Org settings page', 'done', 'christian', 'ws-t09', 9, 10), task('T-06', 'Sign-in screens', 'done', 'christian', 'ws-t06', 8, 40)
     ] }
   }
 }
 
 /**
- * A repo that brought its own agents and has no Lead or reviewer, so Kernel's own Kernel and Theo fill in (KERNEL-397).
+ * A repo that brought its own agents and has no Lead or reviewer, so Kernel's own Kernel and Artkin fill in (KERNEL-397).
  * Architect's tools can't open a PR, so it is a helper. ProjectSetupTeam.png and SettingsTeam.
  */
 const ownCrew: AgentDef[] = [
@@ -219,7 +219,7 @@ const ownCrew: AgentDef[] = [
   },
   {
     id: 'kernel-reviewer', name: 'Theo', role: 'Reviewer', builtIn: 'reviewer', lead: false, reviewer: true, member: false, file: '', tools: ['Read', 'Grep', 'Glob', 'Bash'],
-    description: 'Reviewer. Reviews diffs for correctness, security and maintainability before merge. Read-only.', prompt: 'You are Theo, the reviewer.'
+    description: 'Reviewer. Reviews diffs for correctness, security and maintainability before merge. Read-only.', prompt: 'You are Artkin, the reviewer.'
   },
   { id: 'web', name: 'Web', role: 'Frontend', description: 'Frontend engineer.', lead: false, reviewer: false, member: true, prompt: 'You build the UI.', file: '.claude/agents/web.md' }
 ]
@@ -228,7 +228,7 @@ const ownCrew: AgentDef[] = [
 const ownTeamScene = (f: Fixture): Partial<Fixture> => {
   const A = ids.projectA
   const t = teamScene(f)
-  const swap: Record<string, string> = { kai: 'web', noor: 'api', ivy: 'web', theo: 'kernel-reviewer', wren: 'web' }
+  const swap: Record<string, string> = { christian: 'web', sean: 'api', teng: 'web', artkin: 'kernel-reviewer', wren: 'web' }
   const mapped = <T extends { projectId?: string; agentId?: string }>(x: T): T => (x.projectId === A && x.agentId && swap[x.agentId] ? { ...x, agentId: swap[x.agentId] } : x)
   return {
     ...t,
@@ -250,7 +250,7 @@ const beforeWren = (f: Fixture): Partial<Fixture> => {
 const wrenDraft: AgentDraft = {
   id: 'wren', name: 'Wren', model: 'sonnet', tools: ['Read', 'Grep', 'Glob', 'Bash(pnpm screenshot:*)'], file: '.claude/agents/wren.md',
   description: 'A designer who checks every screen against DESIGN.md before review.',
-  text: '---\nname: wren\ndescription: A designer who checks every screen against DESIGN.md before review.\nmodel: sonnet\ntools: Read, Grep, Glob, Bash(pnpm screenshot:*)\n---\nYou are Wren. Before Theo reviews a PR, open each changed screen, compare it with DESIGN.md, and list drift in spacing, type and color with file and line.\n'
+  text: '---\nname: wren\ndescription: A designer who checks every screen against DESIGN.md before review.\nmodel: sonnet\ntools: Read, Grep, Glob, Bash(pnpm screenshot:*)\n---\nYou are Wren. Before Artkin reviews a PR, open each changed screen, compare it with DESIGN.md, and list drift in spacing, type and color with file and line.\n'
 }
 const wrenPrefill = { name: 'Wren', description: 'A designer who checks every screen against DESIGN.md before review.', model: 'sonnet' }
 
@@ -276,7 +276,7 @@ const leadChatRow = (id: string, title: string, minute: number) => ({ id, worksp
 const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
   const chat = leadChatRow
   const ownedBy = (leadChatId: string) => ({ leadChatId })
-  const review: Workspace = { ...f.workspaces.find((w) => w.id === ids.schema)!, id: 'ws-review-pr-146', name: 'review-pr-146', branch: 'feat/t-14-invoice-table-review', agentId: 'theo', port: 4315, prNumber: undefined }
+  const review: Workspace = { ...f.workspaces.find((w) => w.id === ids.schema)!, id: 'ws-review-pr-146', name: 'review-pr-146', branch: 'feat/t-14-invoice-table-review', agentId: 'artkin', port: 4315, prNumber: undefined }
   const projects = projectsScene(f)
   return {
     ...projects,
@@ -292,7 +292,7 @@ const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
     ],
     approvals: [
       ...(projects.approvals ?? []),
-      { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', projectId: ids.projectA, agentId: 'kernel-lead', workspaceId: ids.lead, chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Kai lists the chats\n2. Ivy checks the shots', status: 'pending', createdAt: at(10, 44) }
+      { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', projectId: ids.projectA, agentId: 'kernel-lead', workspaceId: ids.lead, chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Christian lists the chats\n2. Teng checks the shots', status: 'pending', createdAt: at(10, 44) }
     ],
     push: [{ type: 'chat.running', chatId: 'chat-lead-inbox', running: true }],
     ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: 'chat-lead-tools', files: [], diffs: [] } } }
@@ -360,7 +360,7 @@ const sidebarChatGroups = (f: Fixture): Partial<Fixture> => {
       const id = `ws-${c.key}-${j}`
       workspaces.push({
         id, projectId: A, name: slug(w.title), branch: `feat/${slug(w.title)}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/kernel/${slug(w.title)}`, mode: 'worktree',
-        agentId: 'kai', port: 4400 + workspaces.length, status: 'ready', prState: 'none', createdAt: at(10, 51 - i * 10 + j), title: w.title, threadId: `t-${c.key}`,
+        agentId: 'christian', port: 4400 + workspaces.length, status: 'ready', prState: 'none', createdAt: at(10, 51 - i * 10 + j), title: w.title, threadId: `t-${c.key}`,
         ...(w.stat ? { stat: { files: 3, added: w.stat[0], removed: w.stat[1] } } : {})
       })
       chats.push({ id: `chat-${id}`, workspaceId: id, title: w.title, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 51 - i * 10 + j), ...(w.unread ? { unreadAt: at(10, 45) } : {}) })
@@ -375,15 +375,15 @@ const sidebarChatGroups = (f: Fixture): Partial<Fixture> => {
       id, projectId: A, name: `${issue.toLowerCase()}-${key}`, branch: `feat/${issue.toLowerCase()}-${key}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/kernel/${issue.toLowerCase()}-${key}`, mode: 'worktree',
       agentId, port: 4500 + n % 50, status: 'ready', createdAt: at(10, 12), threadId: 't-changed', title, source: { kind: 'issue', id: issue, title }, prState: 'ready', prNumber: n,
       prUrl: `https://github.com/cjjutba/kernel/pull/${n}`, prTitle, prHead: `h${n}`, stat: { files: 3, added: stat[0], removed: stat[1] },
-      reviews: [{ workspaceId: `${id}-review`, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha: `h${n}`, prNumber: n, ts: at(10, 30) }]
+      reviews: [{ workspaceId: `${id}-review`, agentId: 'artkin', verdict: 'approved', summary: 'No blockers.', sha: `h${n}`, prNumber: n, ts: at(10, 30) }]
     })
     chats.push({ id: `chat-${id}`, workspaceId: id, title, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 12) })
     const info: PrInfo = { workspaceId: id, number: n, url: `https://github.com/cjjutba/kernel/pull/${n}`, title: prTitle, state: 'ready', baseRef: 'main', comments: [], conflicts: [], head: `h${n}`, checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }] }
     return [id, info] as const
   }
   const prs: Record<string, PrInfo> = Object.fromEntries([
-    pr('review-states', 'kai', 524, 'KERNEL-557', 'Reviews page and the review states', [110, 10]),
-    pr('project-setup', 'ivy', 522, 'KERNEL-590', 'Project setup says No reviewer when review is off', [23, 4])
+    pr('review-states', 'christian', 524, 'KERNEL-557', 'Reviews page and the review states', [110, 10]),
+    pr('project-setup', 'teng', 522, 'KERNEL-590', 'Project setup says No reviewer when review is off', [23, 4])
   ])
   const open = { ws: 'ws-chat-review', tab: 'chat-review' }
   const items: ChatItem[] = [
@@ -484,13 +484,13 @@ const issuesScene = (f: Fixture, opts: { issueId?: string; working?: boolean; li
   const { issueId = 'KERNEL-31', working = false, linkedProject = true, issues = linearIssues() } = opts
   const home = homeScene(f)
   const fromIssue = (id: string, title: string) => ({ source: { kind: 'issue' as const, id, title, url: `https://linear.app/cj-jutba/issue/${id}` } })
-  // KERNEL-24 has Kai's PR. Working adds Ivy's tests and Noor on KERNEL-27, with their chats running.
+  // KERNEL-24 has Christian's PR. Working adds Teng's tests and Sean on KERNEL-27, with their chats running.
   const table = { ...fromIssue('KERNEL-24', 'Invoice table with sorting and empty states'), branch: 'feat/kernel-24-invoice-table', prNumber: 41, prUrl: 'https://github.com/cjjutba/client-a/pull/41', prState: 'open' as const }
   const links: Record<string, Partial<Workspace>> = linkedProject || working ? { [ids.table]: table } : {}
   if (working) links[ids.schema] = fromIssue('KERNEL-27', 'Rate limit the invite endpoint')
   const tests: Workspace = {
     id: 'ws-invoice-tests', projectId: ids.projectA, name: 'invoice-table-tests', branch: 'feat/kernel-24-invoice-tests', baseRef: 'origin/main', path: '/Users/you/kernel/worktrees/client-a/invoice-table-tests',
-    mode: 'worktree', agentId: 'ivy', port: 4315, status: 'ready', prState: 'none', createdAt: at(10, 6), ...fromIssue('KERNEL-24', 'Invoice table with sorting and empty states')
+    mode: 'worktree', agentId: 'teng', port: 4315, status: 'ready', prState: 'none', createdAt: at(10, 6), ...fromIssue('KERNEL-24', 'Invoice table with sorting and empty states')
   }
   return {
     ...home,
@@ -519,7 +519,7 @@ const githubIssues = (): GithubIssueDetail[] => {
       comments: [comment('c31a', 'maya-chen', 'Billing asked for this twice this week. One page per invoice is fine, no custom templates yet.', 3 * DAY), comment('c31b', 'cjjutba', 'Use the on-screen design as the layout. Kernel can split it once we agree on the scope.', DAY)]
     }),
     gh(33, 'Send a reminder for overdue invoices', ['feature', 'billing'], [], 3 * DAY),
-    gh(35, 'Show the invoice total in the page title', ['bug'], ['kai-okoye'], 4 * DAY),
+    gh(35, 'Show the invoice total in the page title', ['bug'], ['christian-okoye'], 4 * DAY),
     gh(36, 'Invoice emails send twice', ['bug', 'billing'], ['maya-chen'], 4 * DAY + 2 * HOUR),
     gh(40, 'Dark mode for the invoice PDF', ['enhancement'], [], 7 * DAY),
     gh(42, 'Import clients from a CSV file', ['feature', 'accounts'], [], 7 * DAY + 3 * HOUR),
@@ -545,7 +545,7 @@ const bothTrackers = (f: Fixture, route: { issueId?: string; tracker?: 'linear' 
 })
 
 /**
- * The Work page's Issues tab with work linked (KERNEL-875): KERNEL-24 has Kai's PR ready to merge and Ivy's tests, KERNEL-27 has Noor's PR
+ * The Work page's Issues tab with work linked (KERNEL-875): KERNEL-24 has Christian's PR ready to merge and Teng's tests, KERNEL-27 has Sean's PR
  * with two checks failing, and the rest have none, so they keep their age.
  */
 const workIssuesScene = (f: Fixture): Partial<Fixture> => {
@@ -579,15 +579,15 @@ const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'm
     const pr: PrInfo = { workspaceId: id, number: n, url: w.prUrl!, title, state, baseRef: 'main', comments: [], conflicts: [], head: `h${n}`, checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }], ...info }
     return [w, pr] as const
   }
-  const approved = (n: number) => ({ reviews: [{ workspaceId: `ws-prs-${n}-review`, agentId: 'theo', verdict: 'approved' as const, summary: 'No blockers.', sha: `h${n}`, prNumber: n, ts: at(10, 30) }] })
+  const approved = (n: number) => ({ reviews: [{ workspaceId: `ws-prs-${n}-review`, agentId: 'artkin', verdict: 'approved' as const, summary: 'No blockers.', sha: `h${n}`, prNumber: n, ts: at(10, 30) }] })
   const rows = [
-    mk(61, ids.projectA, 'kai', 'feat(invoices): PDF export for a single invoice', 'ready', [212, 18], { ...approved(61), source: { kind: 'issue' as const, id: 'KERNEL-31', title: 'Export invoices as PDF' } }, { reviewDecision: 'approved' }),
-    mk(58, ids.projectB, 'kai', 'fix(portal): keep the session after a refresh', 'ready', [34, 6], approved(58)),
-    mk(60, ids.projectA, 'noor', 'feat(billing): proration for mid-cycle upgrades', 'cifail', [305, 41], { source: { kind: 'issue' as const, id: 'KERNEL-27', title: 'Rate limit the invite endpoint' } }, { checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'fail', meta: '51s' }] }),
-    mk(57, ids.projectOwn, 'ivy', 'test(auth): cover the invite expiry', 'changes', [96, 3], {}, { reviewDecision: 'changes' }),
-    mk(55, ids.projectPortfolio, 'kai', 'Landing page: new case study layout', 'conflict', [188, 77], {}, { conflicts: ['src/pages/index.tsx', 'src/styles/home.css'] }),
-    mk(62, ids.projectA, 'kai', 'refactor(table): share the sort hook', 'checks', [64, 52], {}, { checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'running' }] }),
-    mk(59, ids.projectOwn, 'kai', 'chore(db): index invoice lookups', 'draft', [12, 0], {}, { checks: [] })
+    mk(61, ids.projectA, 'christian', 'feat(invoices): PDF export for a single invoice', 'ready', [212, 18], { ...approved(61), source: { kind: 'issue' as const, id: 'KERNEL-31', title: 'Export invoices as PDF' } }, { reviewDecision: 'approved' }),
+    mk(58, ids.projectB, 'christian', 'fix(portal): keep the session after a refresh', 'ready', [34, 6], approved(58)),
+    mk(60, ids.projectA, 'sean', 'feat(billing): proration for mid-cycle upgrades', 'cifail', [305, 41], { source: { kind: 'issue' as const, id: 'KERNEL-27', title: 'Rate limit the invite endpoint' } }, { checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'fail', meta: '51s' }] }),
+    mk(57, ids.projectOwn, 'teng', 'test(auth): cover the invite expiry', 'changes', [96, 3], {}, { reviewDecision: 'changes' }),
+    mk(55, ids.projectPortfolio, 'christian', 'Landing page: new case study layout', 'conflict', [188, 77], {}, { conflicts: ['src/pages/index.tsx', 'src/styles/home.css'] }),
+    mk(62, ids.projectA, 'christian', 'refactor(table): share the sort hook', 'checks', [64, 52], {}, { checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'running' }] }),
+    mk(59, ids.projectOwn, 'christian', 'chore(db): index invoice lookups', 'draft', [12, 0], {}, { checks: [] })
   ]
   const none = o.none === 'open'
   const minutes = (n: number) => Date.now() - n * 60_000
@@ -597,7 +597,7 @@ const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'm
     const when = Date.now() - (i + 1) * 5 * 3_600_000
     return { id: `ws-prs-m${n}`, projectId, name: `merged-${n}`, branch, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/merged-${n}`, mode: 'worktree', agentId, port: 4700 + i, status: 'archived', createdAt: when - 3_600_000, mergedAt: when, title, prTitle: title, prState: 'merged', prNumber: n, prUrl: `https://github.com/cjjutba/pr/pull/${n}`, stat: { files: 2, added: stat[0], removed: stat[1] } }
   }
-  const crew: [string, string][] = [['kai', ids.projectA], ['noor', ids.projectA], ['ivy', ids.projectA], ['theo', ids.projectA]]
+  const crew: [string, string][] = [['christian', ids.projectA], ['sean', ids.projectA], ['teng', ids.projectA], ['artkin', ids.projectA]]
   const more = Array.from({ length: o.manyMerged ?? 0 }, (_, i): Workspace => {
     const n = 100 + i
     const [agentId, projectId] = crew[i % crew.length]
@@ -694,7 +694,7 @@ export const teamFixtures: Record<string, Fixture> = {
   SearchNoMatches: { ...scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })), motion: { action: { press: ['z', 'z', 'z', 'z'] }, ms: 400, area: '.modal' } },
   // KERNEL-339: the palette in Kernel's chat. It lists the project's open chats with their tab counts, and New tab adds a tab to this one.
   GroupedPalette: scene((f) => { const g = grouped(f); return { ...g, ui: { ...g.ui!, modal: { name: 'search' } } } }),
-  // KERNEL-307: the palette in Noor's workspace, with the four files she shared in it. Kai's file is in another workspace, so it only turns up by typing.
+  // KERNEL-307: the palette in Sean's workspace, with the four files she shared in it. Christian's file is in another workspace, so it only turns up by typing.
   SearchShared: scene((f) => ({ ...homeScene(f), shared: sharedFiles().filter((x) => x.workspaceId === ids.table), sharedData: sharedStills, ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
   // No PNG: Lead chat 3, then Settings and back, then another workspace and back (KERNEL-199). The test opens it in Electron.
   NavMemory: scene(navMemory),
@@ -730,7 +730,7 @@ export const teamFixtures: Record<string, Fixture> = {
     const retired: AgentDef = { id: 'scout', name: 'Scout', role: 'Research', description: 'Reads the repo and reports.', lead: false, reviewer: false, member: true, prompt: 'You research.', file: '.claude/retired-agents/scout.md', retired: true }
     return { ...t, agents: { ...t.agents, [ids.projectA]: [...t.agents![ids.projectA], retired] }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } }
   }),
-  ConfirmRetire: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents', agentId: 'kai' }, modal: { name: 'confirm', kind: 'retire', projectId: ids.projectA, agentId: 'kai' } } })),
+  ConfirmRetire: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents', agentId: 'christian' }, modal: { name: 'confirm', kind: 'retire', projectId: ids.projectA, agentId: 'christian' } } })),
   // KERNEL-438: someone else may be on the issue. New chat opens it when the issue it starts from has findings (KERNEL-500).
   ConfirmIssueTaken: scene((f) => ({
     ...teamScene(f),
@@ -747,9 +747,9 @@ export const teamFixtures: Record<string, Fixture> = {
     const home = homeScene(f)
     const input = { title: 'Export invoices as PDF', team: 'Kernel' }
     const { title } = describeTool('mcp__claude_ai_Linear__save_issue', input)
-    const ap: Approval = { id: 'ap-linear', kind: 'tool', source: 'sdk', projectId: ids.projectA, workspaceId: ids.schema, agentId: 'noor', toolName: 'mcp__claude_ai_Linear__save_issue', input, title, status: 'pending', createdAt: ago(MIN) }
+    const ap: Approval = { id: 'ap-linear', kind: 'tool', source: 'sdk', projectId: ids.projectA, workspaceId: ids.schema, agentId: 'sean', toolName: 'mcp__claude_ai_Linear__save_issue', input, title, status: 'pending', createdAt: ago(MIN) }
     const said = `${title.charAt(0).toLowerCase()}${title.slice(1)}`
-    const n = note({ id: 'n-linear', kind: 'approval', agentId: 'noor', approvalId: ap.id, title: `Wants to ${said}`, sub: 'Permission · Client A', heading: `Noor wants to ${said}`, needsYou: true, createdAt: ap.createdAt })
+    const n = note({ id: 'n-linear', kind: 'approval', agentId: 'sean', approvalId: ap.id, title: `Wants to ${said}`, sub: 'Permission · Client A', heading: `Sean wants to ${said}`, needsYou: true, createdAt: ap.createdAt })
     return { ...home, approvals: [ap, ...home.approvals!], notifications: [n, ...home.notifications!], ui: { route: { name: 'inbox' } } }
   }),
   InboxEmpty: scene((f) => ({ ...homeScene(f), approvals: [], notifications: [], ui: { route: { name: 'inbox' } } })),
@@ -764,7 +764,7 @@ export const teamFixtures: Record<string, Fixture> = {
     ...homeScene(f),
     overlaps: [{
       id: 'ov-invoices', projectId: ids.projectA, path: 'src/app/invoices/invoices.ts', ts: Date.now(),
-      parties: [{ agentId: 'kai', workspaceId: ids.table, lines: 'lines 20-34' }, { agentId: 'noor', workspaceId: ids.schema, lines: 'lines 18-40' }]
+      parties: [{ agentId: 'christian', workspaceId: ids.table, lines: 'lines 20-34' }, { agentId: 'sean', workspaceId: ids.schema, lines: 'lines 18-40' }]
     }],
     ui: { route: { name: 'inbox' } }
   })),
@@ -873,9 +873,9 @@ export const teamFixtures: Record<string, Fixture> = {
   // KERNEL-759: the tracker read never answers, so the page shows Loading issues with the load loader.
   IssuesLoading: scene((f) => ({ ...issuesScene(f), hold: ['issues.tracker'] })),
   // KERNEL-892: away to the Inbox and back to Work. The reads lag, and the list and the open issue are still there from the first visit.
-  IssuesReturn: { ...scene((f) => ({ ...issuesScene(f), lag: { 'issues.tracker': 300, 'integrations.list': 300, 'linear.scope': 300, 'linear.issues': 300, 'linear.issue': 150 } })), motion: { action: { press: ['click:Invoice table with sorting and empty states High priority KERNEL-24 Invoices Kai PR open', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'g', 'i', 'click:Work'] }, ms: 1500 } },
-  IssuesReturnOffline: { ...scene((f) => ({ ...issuesScene(f), lag: { 'issues.tracker': 300, 'integrations.list': 300, 'linear.scope': 300, 'linear.issues': 300, 'linear.issue': 150 }, push: [{ type: 'online', online: false }] })), motion: { action: { press: ['click:Invoice table with sorting and empty states High priority KERNEL-24 Invoices Kai PR open', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'g', 'i', 'click:Work'] }, ms: 1500 } },
-  IssueDetailReturn: { ...scene((f) => ({ ...issuesScene(f), lag: { 'issues.tracker': 300, 'integrations.list': 300, 'linear.scope': 300, 'linear.issues': 300, 'linear.issue': 150 } })), motion: { action: { press: ['click:Invoice table with sorting and empty states High priority KERNEL-24 Invoices Kai PR open', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'click:Invoice emails send twice Urgent priority KERNEL-36 Billing 4d', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'click:Invoice table with sorting and empty states High priority KERNEL-24 Invoices Kai PR open'] }, ms: 1500 } },
+  IssuesReturn: { ...scene((f) => ({ ...issuesScene(f), lag: { 'issues.tracker': 300, 'integrations.list': 300, 'linear.scope': 300, 'linear.issues': 300, 'linear.issue': 150 } })), motion: { action: { press: ['click:Invoice table with sorting and empty states High priority KERNEL-24 Invoices Christian PR open', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'g', 'i', 'click:Work'] }, ms: 1500 } },
+  IssuesReturnOffline: { ...scene((f) => ({ ...issuesScene(f), lag: { 'issues.tracker': 300, 'integrations.list': 300, 'linear.scope': 300, 'linear.issues': 300, 'linear.issue': 150 }, push: [{ type: 'online', online: false }] })), motion: { action: { press: ['click:Invoice table with sorting and empty states High priority KERNEL-24 Invoices Christian PR open', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'g', 'i', 'click:Work'] }, ms: 1500 } },
+  IssueDetailReturn: { ...scene((f) => ({ ...issuesScene(f), lag: { 'issues.tracker': 300, 'integrations.list': 300, 'linear.scope': 300, 'linear.issues': 300, 'linear.issue': 150 } })), motion: { action: { press: ['click:Invoice table with sorting and empty states High priority KERNEL-24 Invoices Christian PR open', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'click:Invoice emails send twice Urgent priority KERNEL-36 Billing 4d', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'Shift', 'click:Invoice table with sorting and empty states High priority KERNEL-24 Invoices Christian PR open'] }, ms: 1500 } },
   // Audit: the list is there and the opened issue never answers; 120 issues with long titles; and the same two for GitHub.
   IssuesDetailLoading: scene((f) => ({ ...issuesScene(f), hold: ['linear.issue'] })),
   IssuesMany: scene((f) => issuesScene(f, { issueId: 'KERNEL-200', issues: manyIssues() })),

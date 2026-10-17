@@ -113,8 +113,8 @@ describe('mentions in chat (clickable file mentions)', () => {
     try {
       await k.start()
       k.sessions.send = async () => ({ queued: false })
-      const project = await k.addProject(await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' }))
-      const ws = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })).id)
+      const project = await k.addProject(await tempRepo({ 'README.md': '# client\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' }))
+      const ws = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Build' })).id)
       const chat = k.store.chats(ws.id)[0]
       k.store.saveChat({ ...chat, sessionId: 'sess-1' })
       const dir = scratchpadDir(ws.path, 'sess-1')

@@ -62,7 +62,7 @@ export const isPlanApproval = (a: Pick<Approval, 'kind' | 'toolName'>) => a.kind
 export const planReadyLine = (a: Pick<Approval, 'title'>): string => (/^Plan\b/i.test(a.title) ? `${a.title} is ready` : `Plan ready: ${a.title}`)
 
 /**
- * What a tool permission asks, by the agent who asks: "Noor wants to run a command", "wants to edit a file", "wants to file
+ * What a tool permission asks, by the agent who asks: "Sean wants to run a command", "wants to edit a file", "wants to file
  * issue in Linear: Export invoices as PDF" or "wants to use WebFetch". The approval card and the chat hover card say it this way.
  */
 export function permissionTitle(a: Pick<Approval, 'toolName' | 'input'>, who: string): string {

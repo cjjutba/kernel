@@ -308,7 +308,7 @@ export function toolTitle(name: string, input: Record<string, unknown> = {}): st
 
 /**
  * A call as the user is asked to allow it, in the verb's base form: "File issue in Linear: Export invoices as PDF". The
- * running and done tenses are the chat row's, and this is the third, which reads after "Noor wants to" (KERNEL-785).
+ * running and done tenses are the chat row's, and this is the third, which reads after "Sean wants to" (KERNEL-785).
  */
 export function toolAsk(name: string, input: Record<string, unknown> = {}, ctx: ToolCtx = {}): string {
   const v = toolView({ name, input, status: 'running' }, ctx)

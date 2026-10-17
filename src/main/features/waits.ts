@@ -33,12 +33,12 @@ export class Waits extends Feature {
 
   nameOf(ws: Workspace) { return this.agentsSync(ws.projectId).find((a) => a.id === ws.agentId)?.name ?? ws.agentId }
 
-  /** "PR #164 by Noor and PR #170 by Ivy": what the workspace waits for. */
+  /** "PR #164 by Sean and PR #170 by Teng": what the workspace waits for. */
   waitLabelOf(ws: Workspace) {
     return joinLabels(this.waitRefsOf(ws).map((r) => r.text)) || 'another PR'
   }
 
-  /** Each target's label and workspace, so a note's "PR #164 by Noor" opens Noor's workspace. */
+  /** Each target's label and workspace, so a note's "PR #164 by Sean" opens Sean's workspace. */
   waitRefsOf(ws: Workspace): NoteRef[] {
     const targets = (ws.waitsFor?.on ?? []).map((id) => this.store.workspace(id)).filter((t): t is Workspace => !!t)
     return targets.map((t) => ({ text: waitLabel(t, this.nameOf(t)), workspaceId: t.id }))
@@ -188,7 +188,7 @@ export class Waits extends Feature {
   }
 
   /**
-   * "Started without waiting for PR #170 by Noor. Kernel asks Ivy to rebase once it merges.": who takes the base later
+   * "Started without waiting for PR #170 by Sean. Kernel asks Teng to rebase once it merges.": who takes the base later
    * when the brief went with the wait kept. Only then, since the queue tray showed the wait and Send now ended it (KERNEL-973).
    */
   private earlyNote(skipped: Workspace, left: string[], pushed: boolean) {

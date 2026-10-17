@@ -10,7 +10,7 @@ import { KERNEL_LEAD, RESERVED_AGENT_IDS } from '@shared/team'
 // Kernel reads the same files Claude Code reads, so the team works outside the app too.
 //
 //   ---
-//   name: kai
+//   name: christian
 //   description: Frontend engineer. Builds UI from approved plans and follows DESIGN.md.
 //   model: sonnet
 //   effort: high            (optional, Kernel only)
@@ -20,7 +20,7 @@ import { KERNEL_LEAD, RESERVED_AGENT_IDS } from '@shared/team'
 //   lead: false             (optional, Kernel only)
 //   skills: /feature, /verify  (optional, Kernel only)
 //   ---
-//   You are Kai, the frontend engineer in this project...
+//   You are Christian, the frontend engineer in this project...
 
 /** Claude Code's frontmatter: the first `---` line, then everything up to the next `---`, wherever it falls. */
 const FRONTMATTER = /^---\s*\n([\s\S]*?)---\s*\n?/

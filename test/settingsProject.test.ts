@@ -102,12 +102,12 @@ describe('repo settings files', () => {
 
   it('reads an agent\'s unlisted_tools and allow from both files, the personal one winning (KERNEL-537)', async () => {
     const repo = await tempRepo()
-    expect(agentAccessInProject(repo, 'kai')).toEqual({ unlisted: 'ask', allow: [] })
-    await saveRepoSettings(repo, { agents: { unlistedTools: 'hide', allow: { kai: ['figma'], noor: ['linear'] } } }, true)
-    expect(agentAccessInProject(repo, 'kai')).toEqual({ unlisted: 'hide', allow: ['figma'] })
-    await saveRepoSettings(repo, { agents: { unlistedTools: 'ask', allow: { kai: ['sentry'] } } })
-    expect(agentAccessInProject(repo, 'kai')).toEqual({ unlisted: 'ask', allow: ['sentry'] })
-    expect(agentAccessInProject(repo, 'noor').allow).toEqual(['linear'])
+    expect(agentAccessInProject(repo, 'christian')).toEqual({ unlisted: 'ask', allow: [] })
+    await saveRepoSettings(repo, { agents: { unlistedTools: 'hide', allow: { christian: ['figma'], sean: ['linear'] } } }, true)
+    expect(agentAccessInProject(repo, 'christian')).toEqual({ unlisted: 'hide', allow: ['figma'] })
+    await saveRepoSettings(repo, { agents: { unlistedTools: 'ask', allow: { christian: ['sentry'] } } })
+    expect(agentAccessInProject(repo, 'christian')).toEqual({ unlisted: 'ask', allow: ['sentry'] })
+    expect(agentAccessInProject(repo, 'sean').allow).toEqual(['linear'])
     expect(agentAccessInProject(repo).allow).toEqual([])
   })
 
@@ -176,25 +176,25 @@ describe('repo settings files', () => {
 
   it('reads and writes the tracker, the merge method, MCP aliases and what each agent may use, name by name (KERNEL-432)', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
-    await saveRepoSettings(repo, { tracker: { kind: 'github' }, pr: { mergeMethod: 'rebase' }, mcp: { aliases: { linear: 'claude_ai_Linear', figma: 'Figma' } }, agents: { unlistedTools: 'hide', allow: { kai: ['linear'], noor: ['figma'] } } }, true)
+    await saveRepoSettings(repo, { tracker: { kind: 'github' }, pr: { mergeMethod: 'rebase' }, mcp: { aliases: { linear: 'claude_ai_Linear', figma: 'Figma' } }, agents: { unlistedTools: 'hide', allow: { christian: ['linear'], sean: ['figma'] } } }, true)
     const shared = await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')
-    for (const text of ['[tracker]\nkind = "github"', 'merge_method = "rebase"', '[mcp.aliases]\nlinear = "claude_ai_Linear"', '[agents]\nunlisted_tools = "hide"', '[agents.kai]\nallow = [ "linear" ]']) expect(shared).toContain(text)
+    for (const text of ['[tracker]\nkind = "github"', 'merge_method = "rebase"', '[mcp.aliases]\nlinear = "claude_ai_Linear"', '[agents]\nunlisted_tools = "hide"', '[agents.christian]\nallow = [ "linear" ]']) expect(shared).toContain(text)
     // The personal file overrides one alias and one agent's list, and the shared file's other names show through.
-    let rs = await saveRepoSettings(repo, { tracker: { kind: 'none' }, mcp: { aliases: { linear: 'linear-mine' } }, agents: { allow: { kai: ['sentry'] } } })
+    let rs = await saveRepoSettings(repo, { tracker: { kind: 'none' }, mcp: { aliases: { linear: 'linear-mine' } }, agents: { allow: { christian: ['sentry'] } } })
     expect(rs.tracker).toEqual({ kind: 'none' })
     expect(rs.pr).toEqual({ mergeMethod: 'rebase' })
     expect(rs.mcp).toEqual({ aliases: { linear: 'linear-mine', figma: 'Figma' } })
-    expect(rs.agents).toEqual({ unlistedTools: 'hide', allow: { kai: ['sentry'], noor: ['figma'] } })
+    expect(rs.agents).toEqual({ unlistedTools: 'hide', allow: { christian: ['sentry'], sean: ['figma'] } })
     expect(rs.sources).toEqual({
       'tracker.kind': 'override', 'pr.mergeMethod': 'shared', 'mcp.aliases.linear': 'override', 'mcp.aliases.figma': 'shared',
-      'agents.unlistedTools': 'shared', 'agents.allow.kai': 'override', 'agents.allow.noor': 'shared'
+      'agents.unlistedTools': 'shared', 'agents.allow.christian': 'override', 'agents.allow.sean': 'shared'
     })
     // A null, a blank alias or an empty list removes one name, and a table left empty goes.
-    rs = await saveRepoSettings(repo, { mcp: { aliases: { linear: null } }, agents: { allow: { kai: [] } } })
+    rs = await saveRepoSettings(repo, { mcp: { aliases: { linear: null } }, agents: { allow: { christian: [] } } })
     expect(rs.mcp).toEqual({ aliases: { linear: 'claude_ai_Linear', figma: 'Figma' } })
-    expect(rs.agents?.allow).toEqual({ kai: ['linear'], noor: ['figma'] })
+    expect(rs.agents?.allow).toEqual({ christian: ['linear'], sean: ['figma'] })
     expect((await readFile(join(repo, '.kernel', 'settings.local.toml'), 'utf8')).trim()).toBe('[tracker]\nkind = "none"')
-    rs = await saveRepoSettings(repo, { pr: { mergeMethod: null }, mcp: { aliases: { linear: ' ', figma: null } }, agents: { unlistedTools: null, allow: { kai: null, noor: null } } }, true)
+    rs = await saveRepoSettings(repo, { pr: { mergeMethod: null }, mcp: { aliases: { linear: ' ', figma: null } }, agents: { unlistedTools: null, allow: { christian: null, sean: null } } }, true)
     expect([rs.pr, rs.mcp, rs.agents]).toEqual([undefined, undefined, undefined])
     expect((await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).trim()).toBe('[tracker]\nkind = "github"')
   })
@@ -204,13 +204,13 @@ describe('repo settings files', () => {
     await mkdir(join(repo, '.kernel'))
     await writeFile(join(repo, '.kernel', 'settings.toml'), [
       '[tracker]', 'kind = "trello"', '[pr]', 'merge_method = "fast-forward"', '[mcp.aliases]', 'linear = 3', 'figma = " "', 'sentry = "Sentry"',
-      '[agents]', 'unlisted_tools = "maybe"', '[agents.kai]', 'allow = "linear"', '[agents.noor]', 'allow = ["", "figma"]', ''
+      '[agents]', 'unlisted_tools = "maybe"', '[agents.christian]', 'allow = "linear"', '[agents.sean]', 'allow = ["", "figma"]', ''
     ].join('\n'))
     const rs = await loadRepoSettings(repo)
     expect([rs.tracker, rs.pr]).toEqual([undefined, undefined])
     expect(rs.mcp).toEqual({ aliases: { sentry: 'Sentry' } })
-    expect(rs.agents).toEqual({ allow: { noor: ['figma'] } })
-    expect(rs.sources).toEqual({ 'mcp.aliases.sentry': 'shared', 'agents.allow.noor': 'shared' })
+    expect(rs.agents).toEqual({ allow: { sean: ['figma'] } })
+    expect(rs.sources).toEqual({ 'mcp.aliases.sentry': 'shared', 'agents.allow.sean': 'shared' })
   })
 
   it("reads a project's open workspace limit, 0 to 12, the personal file winning, and clears it with null (KERNEL-492)", async () => {
@@ -246,8 +246,8 @@ describe('repo settings files', () => {
 
   it("reads and writes the team's roster in [team] (KERNEL-432)", async () => {
     const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
-    expect((await saveTeamSettings(repo, { roster: ['kai', 'noor'] })).team).toEqual({ roster: ['kai', 'noor'] })
-    expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toBe('[team]\nroster = ["kai", "noor"]\n')
+    expect((await saveTeamSettings(repo, { roster: ['christian', 'sean'] })).team).toEqual({ roster: ['christian', 'sean'] })
+    expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toBe('[team]\nroster = ["christian", "sean"]\n')
     expect((await loadRepoSettings(repo)).sources).toEqual({ 'team.roster': 'shared' })
     expect((await saveTeamSettings(repo, { roster: [] })).team).toBeUndefined()
   })
@@ -366,7 +366,7 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
   })
 
   it("sends Kernel's text fitted to the repo on Create PR, and the user's or the project's own text as written", async () => {
-    const repo = await tempRepo({ '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nHi', '.github/pull_request_template.md': '## Summary\n', 'package.json': JSON.stringify({ commitlint: {} }) })
+    const repo = await tempRepo({ '.claude/agents/christian.md': '---\nname: christian\ndescription: Builds.\n---\nHi', '.github/pull_request_template.md': '## Summary\n', 'package.json': JSON.stringify({ commitlint: {} }) })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -376,7 +376,7 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
       const sent: string[] = []
       k.sessions.send = async (_chatId, parts) => { for (const p of parts) if (p.type === 'file' && p.name === 'create-pr.md') sent.push(p.text ?? ''); return { queued: false } }
       const project = await k.addProject(repo)
-      const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+      const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
       const create = async () => { k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prState: 'none' }); await k.prs.createPr(ws.id); return sent[sent.length - 1] }
 
       const fitted = createPrText({ template: '.github/pull_request_template.md', commitlint: 'package.json' }, { branch: ws.branch, base: 'main', remote: 'origin' })
@@ -408,7 +408,7 @@ describe('a settings file with a typo (KERNEL-231)', () => {
   })
 
   it('warns in the project once, with the line, and again only when the mistake changes', async () => {
-    const repo = await tempRepo({ '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nHi' })
+    const repo = await tempRepo({ '.claude/agents/christian.md': '---\nname: christian\ndescription: Builds.\n---\nHi' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
@@ -439,13 +439,13 @@ describe('a settings file with a typo (KERNEL-231)', () => {
 })
 
 describe('the project remote (KERNEL-190)', () => {
-  const kai = { 'README.md': '# demo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.' }
+  const christian = { 'README.md': '# demo\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nKai.' }
 
   /** A repo whose only remote is `upstream`, a bare repo that has a commit the local main doesn't. */
   async function upstreamRepo() {
     const bare = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
     await run('git', ['init', '-q', '--bare', '-b', 'main', bare])
-    const repo = await tempRepo(kai)
+    const repo = await tempRepo(christian)
     await git(repo, 'remote', 'add', 'upstream', bare)
     await git(repo, 'push', '-q', 'upstream', 'main')
     const other = join(await mkdtemp(join(tmpdir(), 'kernel-clone-')), 'repo')
@@ -482,7 +482,7 @@ describe('the project remote (KERNEL-190)', () => {
     await h['settings.setProject']({ projectId: project.id, patch: { workspace: { remote: 'upstream' } } })
 
     // The origin/main default means the project's remote, fetched first, so the worktree has the commit local main lacks.
-    const a = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const a = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'christian', title: 'One' })
     expect(a.baseRef).toBe('upstream/main')
     await expect(stat(join(a.path, 'later.md'))).resolves.toBeTruthy()
     expect(await h['git.branches']({ projectId: project.id })).toEqual(expect.arrayContaining(['main', 'upstream/main']))
@@ -495,7 +495,7 @@ describe('the project remote (KERNEL-190)', () => {
     expect(await localBranch(repo, a.branch)).toBe(false)
 
     // Pushed without -u, so the branch still tracks upstream/main: only upstream/<branch> says the commit is safe.
-    const b = await k.createWorkspace(project.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
+    const b = await k.createWorkspace(project.id, { prompt: 'b', agentId: 'christian', title: 'Two' })
     await commit(b.path, 'b.md')
     await git(b.path, 'push', '-q', 'upstream', b.branch)
     await k.archiveWorkspace(b.id, true)
@@ -507,11 +507,11 @@ describe('the project remote (KERNEL-190)', () => {
   it("uses the app's remote when the project sets none, and origin when neither does", async () => {
     const { repo } = await upstreamRepo()
     const app = await kernelOn(repo, { workspace: { remote: 'upstream' } })
-    expect((await app.k.createWorkspace(app.project.id, { prompt: 'a', agentId: 'kai', title: 'One' })).baseRef).toBe('upstream/main')
+    expect((await app.k.createWorkspace(app.project.id, { prompt: 'a', agentId: 'christian', title: 'One' })).baseRef).toBe('upstream/main')
     await app.k.stop()
     // No remote anywhere: origin, which this repo doesn't have, so the base falls back to local main as before.
-    const none = await kernelOn(await tempRepo(kai))
-    expect((await none.k.createWorkspace(none.project.id, { prompt: 'b', agentId: 'kai', title: 'Two' })).baseRef).toBe('main')
+    const none = await kernelOn(await tempRepo(christian))
+    expect((await none.k.createWorkspace(none.project.id, { prompt: 'b', agentId: 'christian', title: 'Two' })).baseRef).toBe('main')
     await none.k.stop()
   })
 })
@@ -656,9 +656,9 @@ async function startKernel(files?: Record<string, string>) {
 
 describe('archiving a project', () => {
   it('archives every open workspace and keeps the project record', async () => {
-    const { k, project } = await startKernel({ 'README.md': '# demo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.' })
-    const a = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'One' })
-    const b = await k.createWorkspace(project.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
+    const { k, project } = await startKernel({ 'README.md': '# demo\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nKai.' })
+    const a = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'christian', title: 'One' })
+    const b = await k.createWorkspace(project.id, { prompt: 'b', agentId: 'christian', title: 'Two' })
     const updated = await k.handlers()['projects.update']({ projectId: project.id, patch: { archived: true } })
     expect(updated.archived).toBe(true)
     expect(k.store.project(project.id)?.path).toBe(project.path)
@@ -667,8 +667,8 @@ describe('archiving a project', () => {
   })
 
   it('keeps the project open and names the workspace when one cannot be archived', async () => {
-    const { k, project } = await startKernel({ 'README.md': '# demo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.' })
-    const ws = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'kai', title: 'Stuck' })
+    const { k, project } = await startKernel({ 'README.md': '# demo\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nKai.' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'christian', title: 'Stuck' })
     k.archiveWorkspace = async () => { throw new Error('git is locked') }
     await expect(k.handlers()['projects.update']({ projectId: project.id, patch: { archived: true } })).rejects.toThrow(/stays open.*git is locked/)
     expect(k.store.project(project.id)?.archived).toBeFalsy()
@@ -857,7 +857,7 @@ describe("a project's scripts run without asking (KERNEL-913)", () => {
     'README.md': '# client\n',
     '.gitignore': '.env.local\nran.txt\nok.txt\n',
     '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-    '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+    '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.',
     '.kernel/settings.toml': `[scripts]\nsetup = ${JSON.stringify(setup)}\n\n[files]\ncopy = [".env.local"]\n`
   })
 
@@ -865,7 +865,7 @@ describe("a project's scripts run without asking (KERNEL-913)", () => {
     const repo = await clonedRepo()
     await writeFile(join(repo, '.env.local'), 'SECRET=1\n')
     const { k, project, sent } = await kernelFor(repo)
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
     expect(ws.status).toBe('ready')
     expect(await readFile(join(ws.path, 'ran.txt'), 'utf8')).toBe('ran\n')
     expect(await readFile(join(ws.path, '.env.local'), 'utf8')).toBe('SECRET=1\n')
@@ -879,7 +879,7 @@ describe("a project's scripts run without asking (KERNEL-913)", () => {
     await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\narchive = "touch ${marker}"\n`)
     const archived = async (app: object) => {
       const { k, project } = await kernelFor(repo, undefined, app)
-      const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
+      const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'christian', title: 'Build' })
       await k.archiveWorkspace(ws.id)
       await k.archive.cleanedUp(ws.id)
       await k.stop()
@@ -894,7 +894,7 @@ describe("a project's scripts run without asking (KERNEL-913)", () => {
     const marker = join(await mkdtemp(join(tmpdir(), 'kernel-marker-')), 'web')
     await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = "true"\n\n[run_scripts]\nweb = "touch ${marker}"\n`)
     const { k, project, h } = await kernelFor(repo)
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'christian', title: 'Build' })
     await h['scripts.run']({ workspaceId: ws.id, kind: 'run', name: 'web' })
     await vi.waitFor(() => expect(stat(marker)).resolves.toBeTruthy(), { timeout: 15000 })
     await k.stop()
@@ -917,7 +917,7 @@ describe("a project's scripts run without asking (KERNEL-913)", () => {
     expect(read.scripts).toMatchObject({ setup: undefined, run: undefined })
     expect(read.files.copy).toEqual(['.env', '.env.local'])
     const { k, project } = await kernelFor(repo)
-    expect((await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })).status).toBe('ready')
+    expect((await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'christian', title: 'Build' })).status).toBe('ready')
     await expect(stat(marker)).rejects.toThrow()
     await k.stop()
   }, 60000)
@@ -931,7 +931,7 @@ describe("a project's scripts run without asking (KERNEL-913)", () => {
       const repo = await clonedRepo('sleep 0.3 && test -f ok.txt')
       const first = await kernelFor(repo)
       const made: Workspace[] = []
-      for (const title of titles) made.push(await first.k.createWorkspace(first.project.id, { prompt: `Build the ${title}`, agentId: 'kai', title, ...(made.length ? { waitFor: [made[0].id] } : {}) }))
+      for (const title of titles) made.push(await first.k.createWorkspace(first.project.id, { prompt: `Build the ${title}`, agentId: 'christian', title, ...(made.length ? { waitFor: [made[0].id] } : {}) }))
       expect(made.map((w) => first.k.store.workspace(w.id)?.status)).toEqual(titles.map(() => 'failed'))
       const chats = made.map((w) => first.k.store.chats(w.id).find((c) => c.kind !== 'terminal')!)
       await first.k.stop()

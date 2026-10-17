@@ -8,10 +8,10 @@ import { agentFromFile, updateAgent } from '../src/main/services/agents'
 import { tempRepo } from './helpers'
 import { fakeCodex } from './helpers/fakeCodex'
 
-const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
-const IVY = '---\nname: ivy\nrole: QA\ndescription: Tests things.\n---\nYou are Ivy.'
+const CHRISTIAN = '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
+const IVY = '---\nname: teng\nrole: QA\ndescription: Tests things.\n---\nYou are Teng.'
 
-async function kernel(files: Record<string, string> = { '.claude/agents/kai.md': KAI }) {
+async function kernel(files: Record<string, string> = { '.claude/agents/christian.md': CHRISTIAN }) {
   const repo = await tempRepo({ 'README.md': '# demo\n', ...files })
   const k = new Kernel({ dataDir: await mkdtemp(join(tmpdir(), 'kernel-data-')), home: await mkdtemp(join(tmpdir(), 'kernel-home-')) })
   await k.start()
@@ -21,7 +21,7 @@ async function kernel(files: Record<string, string> = { '.claude/agents/kai.md':
   return { k, project, repo }
 }
 
-const agent = (o: Partial<AgentDef>): AgentDef => ({ id: 'kai', name: 'Kai', role: 'Frontend', description: '', lead: false, prompt: '', file: '', ...o })
+const agent = (o: Partial<AgentDef>): AgentDef => ({ id: 'christian', name: 'Christian', role: 'Frontend', description: '', lead: false, prompt: '', file: '', ...o })
 
 describe('which provider, model and effort an agent runs on (KERNEL-406)', () => {
   it("takes the role's default from Settings, and the file's effort over the role's", async () => {
@@ -36,7 +36,7 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
 
   it("reads a review chat as the reviewer's, and a chat with no agent as the Lead's or an engineer's (feat-compact-window-per-role-with-plan)", async () => {
     const { k, project } = await kernel()
-    const ws = (o: Partial<Workspace>): Workspace => ({ id: 'ws', projectId: project.id, name: 'w', branch: 'feat/w', baseRef: 'main', path: '/tmp/w', mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...o })
+    const ws = (o: Partial<Workspace>): Workspace => ({ id: 'ws', projectId: project.id, name: 'w', branch: 'feat/w', baseRef: 'main', path: '/tmp/w', mode: 'worktree', agentId: 'christian', port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...o })
     expect(k.team.roleFor(ws({}), agent({}))).toBe('frontend')
     expect(k.team.roleFor(ws({}), agent({ role: 'Backend' }))).toBe('engineers')
     expect(k.team.roleFor(ws({}), agent({ role: 'Platform' }))).toBe('engineers')
@@ -66,14 +66,14 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
   })
 
   it('starts a hand-off on the role default, and on the agent alone when its file pins a model', async () => {
-    const { k, project } = await kernel({ '.claude/agents/kai.md': KAI, '.claude/agents/ivy.md': IVY.replace('role: QA', 'role: QA\nmodel: gpt-5.6-luna\nprovider: codex') })
+    const { k, project } = await kernel({ '.claude/agents/christian.md': CHRISTIAN, '.claude/agents/teng.md': IVY.replace('role: QA', 'role: QA\nmodel: gpt-5.6-luna\nprovider: codex') })
     await k.config.setSettings({ models: { roles: { frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'high' } } } })
-    const kai = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai' })
-    expect(k.store.chats(kai.id)[0]).toMatchObject({ provider: 'codex', model: 'gpt-6-astra', effort: 'high' })
-    const ivy = await k.createWorkspace(project.id, { prompt: 'Test it', agentId: 'ivy' })
-    expect(k.store.chats(ivy.id)[0]).toMatchObject({ provider: 'codex', model: 'gpt-5.6-luna' })
+    const christian = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian' })
+    expect(k.store.chats(christian.id)[0]).toMatchObject({ provider: 'codex', model: 'gpt-6-astra', effort: 'high' })
+    const teng = await k.createWorkspace(project.id, { prompt: 'Test it', agentId: 'teng' })
+    expect(k.store.chats(teng.id)[0]).toMatchObject({ provider: 'codex', model: 'gpt-5.6-luna' })
     // A model picked in New workspace runs on its own provider.
-    const picked = await k.createWorkspace(project.id, { prompt: 'Again', agentId: 'kai', model: 'claude-opus-5-5', effort: 'low' })
+    const picked = await k.createWorkspace(project.id, { prompt: 'Again', agentId: 'christian', model: 'claude-opus-5-5', effort: 'low' })
     expect(k.store.chats(picked.id)[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'low' })
     expect(k.store.chats(picked.id)[0].provider).toBeUndefined()
     await k.stop()
@@ -81,7 +81,7 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
 
   it('leaves chats exactly as before while every role runs on Claude', async () => {
     const { k, project } = await kernel()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian' })
     const chat = k.store.chats(ws.id)[0]
     expect(chat).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'high' })
     expect(chat).not.toHaveProperty('provider')
@@ -90,7 +90,7 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
 
   it('opens "New chat on Codex" on the agent\'s Codex pick, and keeps a started chat on its provider', async () => {
     const { k, project } = await kernel()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian' })
     const h = k.handlers()
     // No Codex role: the tab asks for Codex's models, which come from Codex itself, so the test names one.
     const tab = await h['chats.create']({ workspaceId: ws.id, provider: 'codex', model: 'gpt-5.6-terra', effort: 'medium' })
@@ -132,14 +132,14 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
 
 describe("an agent file's provider line (KERNEL-406)", () => {
   it('reads provider with a model, and drops it with the model when the pin is cleared', async () => {
-    expect(agentFromFile('/r/.claude/agents/ivy.md', '---\nname: ivy\ndescription: QA.\nmodel: gpt-5.6-luna\nprovider: codex\neffort: max\n---\nHi')).toMatchObject({ model: 'gpt-5.6-luna', provider: 'codex', effort: 'max' })
-    expect(agentFromFile('/r/.claude/agents/ivy.md', '---\nname: ivy\ndescription: QA.\nprovider: codex\n---\nHi').provider).toBeUndefined()
-    const repo = await tempRepo({ '.claude/agents/ivy.md': '---\nname: ivy\ndescription: QA.\ncolor: green\n---\nHi' })
-    expect(await updateAgent(repo, 'ivy', { model: 'gpt-6-astra', provider: 'codex' })).toMatchObject({ model: 'gpt-6-astra', provider: 'codex' })
-    expect(await readFile(join(repo, '.claude/agents/ivy.md'), 'utf8')).toBe('---\nname: ivy\ndescription: QA.\ncolor: green\nmodel: gpt-6-astra\nprovider: codex\n---\n\nHi\n')
-    const cleared = await updateAgent(repo, 'ivy', { model: '' })
+    expect(agentFromFile('/r/.claude/agents/teng.md', '---\nname: teng\ndescription: QA.\nmodel: gpt-5.6-luna\nprovider: codex\neffort: max\n---\nHi')).toMatchObject({ model: 'gpt-5.6-luna', provider: 'codex', effort: 'max' })
+    expect(agentFromFile('/r/.claude/agents/teng.md', '---\nname: teng\ndescription: QA.\nprovider: codex\n---\nHi').provider).toBeUndefined()
+    const repo = await tempRepo({ '.claude/agents/teng.md': '---\nname: teng\ndescription: QA.\ncolor: green\n---\nHi' })
+    expect(await updateAgent(repo, 'teng', { model: 'gpt-6-astra', provider: 'codex' })).toMatchObject({ model: 'gpt-6-astra', provider: 'codex' })
+    expect(await readFile(join(repo, '.claude/agents/teng.md'), 'utf8')).toBe('---\nname: teng\ndescription: QA.\ncolor: green\nmodel: gpt-6-astra\nprovider: codex\n---\n\nHi\n')
+    const cleared = await updateAgent(repo, 'teng', { model: '' })
     expect(cleared.model).toBeUndefined()
     expect(cleared.provider).toBeUndefined()
-    expect(await readFile(join(repo, '.claude/agents/ivy.md'), 'utf8')).toBe('---\nname: ivy\ndescription: QA.\ncolor: green\n---\n\nHi\n')
+    expect(await readFile(join(repo, '.claude/agents/teng.md'), 'utf8')).toBe('---\nname: teng\ndescription: QA.\ncolor: green\n---\n\nHi\n')
   })
 })

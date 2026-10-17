@@ -25,7 +25,7 @@ describe('Kernel env in a shell', () => {
       'README.md': '# shell\n',
       '.env.shell': 'ZDOTDIR=zd\nFROM_REPO=yes\n',
       'zd/.zshenv': 'touch "$PWD/zshenv-ran"\n',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.',
       '.kernel/settings.toml': '[env]\nfiles = [".env.shell"]\n'
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -40,7 +40,7 @@ describe('Kernel env in a shell', () => {
       const h = k.handlers()
       const project = await k.addProject(repo)
       await h['env.set']({ projectId: project.id, name: 'MINE', value: 'set-by-me' })
-      const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Shell' })
+      const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Shell' })
       expect(ws.status).toBe('ready')
       // The user's own variables and the repo's file both apply, and the shell runs the repo's .zshenv.
       expect(k.envFor(ws)).toMatchObject({ MINE: 'set-by-me', FROM_REPO: 'yes' })

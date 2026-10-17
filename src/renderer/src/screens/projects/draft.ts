@@ -6,10 +6,10 @@ import { actions, getState } from '../../store'
  * The teammates a new project starts with, starter files copied into .claude/agents (KERNEL-397, KERNEL-553). Kernel leads from the app itself, so it is not listed.
  */
 export const STARTER_TEAM = [
-  { id: 'kai', name: 'Kai', role: 'Frontend', builtIn: false },
-  { id: 'noor', name: 'Noor', role: 'Backend', builtIn: false },
-  { id: 'ivy', name: 'Ivy', role: 'QA', builtIn: false },
-  { id: 'theo', name: 'Theo', role: 'Reviewer', builtIn: false }
+  { id: 'christian', name: 'Christian', role: 'Frontend', builtIn: false },
+  { id: 'sean', name: 'Sean', role: 'Backend', builtIn: false },
+  { id: 'teng', name: 'Teng', role: 'QA', builtIn: false },
+  { id: 'artkin', name: 'Artkin', role: 'Reviewer', builtIn: false }
 ] as const
 
 /** The starter teammates Team can add to a team that has agents. */
@@ -26,10 +26,10 @@ export interface ProjectDraft extends Omit<NewProjectRequest, 'source' | 'from' 
   named: boolean
 }
 
-/** The starter files a new project gets: Settings, Agents, New projects start with. The pair is Kai. */
+/** The starter files a new project gets: Settings, Agents, New projects start with. The pair is Christian. */
 export function defaultTeam(): string[] {
   const pair = getState().settings?.team.defaultTemplate === 'pair'
-  return STARTER_TEAMMATES.filter((m) => !pair || m.id === 'kai').map((m) => m.id)
+  return STARTER_TEAMMATES.filter((m) => !pair || m.id === 'christian').map((m) => m.id)
 }
 
 const blank = (): ProjectDraft => ({ source: 'repo', name: '', named: false, desc: '', from: '', baseBranch: '', team: defaultTeam(), autostart: true })

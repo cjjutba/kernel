@@ -18,7 +18,7 @@ async function setup(o: { link: boolean; modules?: boolean; copy?: string[]; loc
     '.env.example': 'KEY=\n',
     'apps/web/index.ts': '',
     '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-    '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+    '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
   })
   if (o.modules ?? true) {
     await mkdir(join(repo, 'node_modules/pkg'), { recursive: true })
@@ -34,7 +34,7 @@ async function setup(o: { link: boolean; modules?: boolean; copy?: string[]; loc
   await k.start()
   k.sessions.send = async () => ({ queued: false })
   const project = await k.addProject(repo)
-  const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+  const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
   return { k, repo, ws }
 }
 
@@ -42,11 +42,11 @@ describe('the setup block of a project\'s chats', () => {
   it('stamps the first worktree chat and no later one, archived or not', async () => {
     const { k, ws } = await setup({ link: false })
     expect(k.store.workspace(ws.id)?.firstInProject).toBe(true)
-    const second = await k.createWorkspace(ws.projectId, { prompt: 'Next', agentId: 'kai', title: 'Second chat' })
+    const second = await k.createWorkspace(ws.projectId, { prompt: 'Next', agentId: 'christian', title: 'Second chat' })
     expect(k.store.workspace(second.id)?.firstInProject).toBe(false)
     await k.archiveWorkspace(ws.id, false)
     await k.archiveWorkspace(second.id, false)
-    const third = await k.createWorkspace(ws.projectId, { prompt: 'Again', agentId: 'kai', title: 'Third chat' })
+    const third = await k.createWorkspace(ws.projectId, { prompt: 'Again', agentId: 'christian', title: 'Third chat' })
     expect(k.store.workspace(third.id)?.firstInProject).toBe(false)
     await k.stop({ budgetMs: 0 })
   }, 30000)
@@ -167,7 +167,7 @@ describe('files.copy stays inside the repo (KERNEL-209)', () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
       '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -181,7 +181,7 @@ describe('files.copy stays inside the repo (KERNEL-209)', () => {
     const lines: string[] = []
     const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'setup') lines.push(...e.lines.map((l) => l.line)) }
     bus.on('push', on)
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build', agentId: 'christian', title: 'Build' })
     bus.off('push', on)
     expect(ws.status).toBe('ready')
     expect(lines).toContain('Did not copy ../../.ssh/id_rsa: files.copy can only copy files inside the repo.')

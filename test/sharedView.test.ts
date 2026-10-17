@@ -5,11 +5,11 @@ import { sharedHere } from '../src/renderer/src/screens/workspace/shared/SharedP
 import type { AgentDef, SharedFile, Workspace } from '../src/shared/types'
 
 const file = (id: string, workspaceId: string, updatedAt: number, versions = [1], mime = 'text/html'): SharedFile => ({
-  id, projectId: 'r1', workspaceId, agentId: 'noor', source: `${id}.html`, title: id, kind: 'html', createdAt: 1, updatedAt,
+  id, projectId: 'r1', workspaceId, agentId: 'sean', source: `${id}.html`, title: id, kind: 'html', createdAt: 1, updatedAt,
   versions: versions.map((n) => ({ n, at: n, file: 'f', mime, bytes: 1, sha256: `${id}${n}` }))
 })
 const ws = (id: string, agentId: string, threadId?: string) => ({ id, projectId: 'r1', agentId, ...(threadId ? { threadId } : {}) }) as Workspace
-const agents = { r1: [{ id: 'kernel', lead: true }, { id: 'noor' }] as AgentDef[] }
+const agents = { r1: [{ id: 'kernel', lead: true }, { id: 'sean' }] as AgentDef[] }
 
 describe('versionLine', () => {
   it('names the kind and version, and says "of" when newer versions exist', () => {
@@ -27,20 +27,20 @@ describe('sharedHere', () => {
   const shared = { a: file('a', 'w1', 10), b: file('b', 'w2', 30), c: file('c', 'w1', 20) }
   const ids = (files: SharedFile[]) => files.map((f) => f.id)
   it("lists a teammate's workspace's own files, newest first", () => {
-    expect(ids(sharedHere({ shared, agents, workspaces: [] }, ws('w1', 'noor')))).toEqual(['c', 'a'])
+    expect(ids(sharedHere({ shared, agents, workspaces: [] }, ws('w1', 'sean')))).toEqual(['c', 'a'])
   })
   it('lists every file in the project in the Lead workspace from before each chat had its own', () => {
     expect(ids(sharedHere({ shared, agents, workspaces: [] }, ws('lead', 'kernel')))).toEqual(['b', 'c', 'a'])
   })
   it('lists nothing when nothing was shared', () => {
-    expect(sharedHere({ shared: {}, agents, workspaces: [] }, ws('w1', 'noor'))).toEqual([])
+    expect(sharedHere({ shared: {}, agents, workspaces: [] }, ws('w1', 'sean'))).toEqual([])
   })
 
   describe('with two chats with Kernel in one project', () => {
     const chat1 = ws('lead1', 'kernel', 't1')
     const chat2 = ws('lead2', 'kernel', 't2')
-    const noor1 = ws('noor1', 'noor', 't1')
-    const noor2 = ws('noor2', 'noor', 't2')
+    const noor1 = ws('noor1', 'sean', 't1')
+    const noor2 = ws('noor2', 'sean', 't2')
     const workspaces = [chat1, chat2, noor1, noor2, ws('legacy', 'kernel')]
     const all = {
       own1: file('own1', 'lead1', 10), team1: file('team1', 'noor1', 30),
@@ -77,7 +77,7 @@ describe('a card opens its own version', () => {
   it('shows the newer version a card is for, even after an older one was picked', () => {
     actions.ui.openShared('w1', 'a', 1)
     expect(pick()).toBe(1)
-    // Noor shares v3 and its card appears.
+    // Sean shares v3 and its card appears.
     actions.shared.upsert(file('a', 'w1', 1, [1, 2, 3]))
     actions.ui.openShared('w1', 'a', 3)
     expect(pick()).toBeUndefined()

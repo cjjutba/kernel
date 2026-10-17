@@ -85,9 +85,9 @@ describe('create_agent', () => {
     const reviews = await hireTool({ answer: { behavior: 'allow' }, reach, team: (a) => [agent(a.id, { role: 'Reviewer', reviewer: true, member: false, tools: a.tools })] })
       .run({ id: 'sec', description: 'Reviews security.', prompt: 'x', role: 'Reviewer' })
     expect(reviews.text).toBe("Saved /repo/.claude/agents/sec.md, just for the user on this Mac. Sec joins the team and reviews PRs. Sec can reach no MCP servers besides Kernel's own. Sec can't use 3 servers its file names. neon failed to connect. slack is not a server in this project. lin is not a server in this project, but claude_ai_Linear may be the one it means. Don't hand Sec work that needs those until the user fixes that.")
-    const helper = await hireTool({ answer: { behavior: 'allow' }, team: (a) => [agent(a.id, { tools: a.tools, member: false })] }).run({ id: 'kai', description: 'Frontend.', prompt: 'x' })
+    const helper = await hireTool({ answer: { behavior: 'allow' }, team: (a) => [agent(a.id, { tools: a.tools, member: false })] }).run({ id: 'christian', description: 'Frontend.', prompt: 'x' })
     // No `reach` in the deps: nothing about servers.
-    expect(helper.text).toBe("Saved /repo/.claude/agents/kai.md, just for the user on this Mac. Kai joins as a helper and doesn't take tasks.")
+    expect(helper.text).toBe("Saved /repo/.claude/agents/christian.md, just for the user on this Mac. Christian joins as a helper and doesn't take tasks.")
   })
 
   it('saves nothing when the user says no', async () => {
@@ -114,14 +114,14 @@ describe('a plan that needs an agent the team lacks', () => {
   it('lists members in full and 30 plugin helpers as one line of names', () => {
     const helpers = Array.from({ length: 30 }, (_, i) => agent(`plug-${i}`, { name: `Plug ${i}`, origin: 'plugin', member: false, description: 'A plugin agent with a long description. '.repeat(5) }))
     const team = [
-      agent('kernel', { role: 'Lead', lead: true, description: 'Plans.' }), agent('noor', { role: 'Backend', member: true, description: 'Builds the API.' }),
-      agent('theo', { role: 'Reviewer', reviewer: true, member: false, description: 'Reviews PRs.' }), ...helpers
+      agent('kernel', { role: 'Lead', lead: true, description: 'Plans.' }), agent('sean', { role: 'Backend', member: true, description: 'Builds the API.' }),
+      agent('artkin', { role: 'Reviewer', reviewer: true, member: false, description: 'Reviews PRs.' }), ...helpers
     ]
     const lines = agentList(team).split('\n')
     expect(lines).toEqual([
       'kernel: Kernel, Lead (the Lead, you). Plans.',
-      'noor: Noor, Backend. Builds the API.',
-      'theo: Theo, Reviewer (reviews PRs). Reviews PRs.',
+      'sean: Sean, Backend. Builds the API.',
+      'artkin: Artkin, Reviewer (reviews PRs). Reviews PRs.',
       `Helpers, which don't take tasks: ${helpers.map((a) => a.name).join(', ')}.`
     ])
     expect(agentList(team)).not.toContain('A plugin agent')
@@ -129,7 +129,7 @@ describe('a plan that needs an agent the team lacks', () => {
 
   it('tells the Lead to check the team before asking, to offer a new agent, and never to build a task itself', () => {
     expect(LEAD_RULE).toContain('Before you ask for plan approval or suggest a hand-off, check each task against mcp__kernel__list_agents.')
-    expect(LEAD_RULE).toContain('"Give it to Noor" for the closest teammate and "Create a payments engineer agent"')
+    expect(LEAD_RULE).toContain('"Give it to Sean" for the closest teammate and "Create a payments engineer agent"')
     expect(LEAD_RULE).toContain('When nobody on the team takes tasks, stop at the first task')
     expect(LEAD_RULE).toContain('whether to create an agent with create_agent or to add a starter agent in Team. Never build a task yourself.')
     expect(LEAD_RULE).not.toMatch(/hire/i)
@@ -164,7 +164,7 @@ describe('creating an agent in a real project', () => {
     // Only the Lead so far: list_agents says how to get a teammate, and create_workspace builds nothing (KERNEL-554).
     expect((await call('list_agents', {})).text).toBe('kernel-lead: Kernel, Lead (the Lead, you). Lead.\nNobody on this team takes tasks yet. Before planning work, ask the user whether to create an agent with create_agent or to add a starter agent in Team.')
     const before = k.store.workspaces().length
-    expect(await call('create_workspace', { agent: 'kai', title: 'Checkout', brief: 'Build checkout.' })).toEqual({ isError: true, text: NO_TEAMMATES })
+    expect(await call('create_workspace', { agent: 'christian', title: 'Checkout', brief: 'Build checkout.' })).toEqual({ isError: true, text: NO_TEAMMATES })
     expect(await call('create_workspace', { agent: 'kernel-lead', title: 'Checkout', brief: 'Build checkout.' })).toMatchObject({ isError: true })
     expect(k.store.workspaces()).toHaveLength(before)
 
@@ -176,8 +176,8 @@ describe('creating an agent in a real project', () => {
     expect((await call('list_agents', {})).text).toBe('kernel-lead: Kernel, Lead (the Lead, you). Lead.\nwren: Wren, Designer. Designer. Checks every screen against DESIGN.md.')
 
     const tools = ['Read', 'Edit', 'Write', 'Bash', 'mcp__figma', 'mcp__claude_ai_Linear', 'mcp__neon__run_sql', 'mcp__slack']
-    expect(await run({ id: 'ivy', description: 'Frontend engineer.', prompt: 'You are Ivy.', tools })).toBe(
-      `Saved ${join(home, '.claude', 'agents', 'ivy.md')}, just for the user on this Mac. Ivy joins the team and takes tasks. MCP servers Ivy can reach: figma. Ivy can't use 3 servers its file names. claude.ai Linear needs the user to sign in with /mcp in Claude Code. neon failed to connect. slack is not a server in this project. Don't hand Ivy work that needs those until the user fixes that.`
+    expect(await run({ id: 'teng', description: 'Frontend engineer.', prompt: 'You are Teng.', tools })).toBe(
+      `Saved ${join(home, '.claude', 'agents', 'teng.md')}, just for the user on this Mac. Teng joins the team and takes tasks. MCP servers Teng can reach: figma. Teng can't use 3 servers its file names. claude.ai Linear needs the user to sign in with /mcp in Claude Code. neon failed to connect. slack is not a server in this project. Don't hand Teng work that needs those until the user fixes that.`
     )
     // The project was checked by then, so the second card knew every server.
     expect(cards[1]!.servers).toEqual({ reach: ['figma'], blocked: [{ name: 'claude.ai Linear', why: 'needs-auth' }, { name: 'neon', why: 'failed' }, { name: 'slack', why: 'missing' }] })

@@ -69,7 +69,7 @@ describe('workspaces.readImage (KERNEL-409)', () => {
     const repo = await tempRepo({
       'README.md': '# demo\n',
       '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
     })
     await writeFile(join(repo, 'logo.png'), png(1))
     await git(repo, 'add', '-A')
@@ -82,7 +82,7 @@ describe('workspaces.readImage (KERNEL-409)', () => {
     onTestFinished(() => k.stop())
     k.sessions.send = async () => ({ queued: false })
     const project = await k.projects.addProject(repo)
-    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Swap the logo', agentId: 'kai' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Swap the logo', agentId: 'christian' })
     // The agent commits a new logo, then adds a page it hasn't committed yet.
     await writeFile(join(ws.path, 'logo.png'), png(2))
     await git(ws.path, 'commit', '-qam', 'new logo')

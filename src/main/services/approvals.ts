@@ -235,7 +235,7 @@ function answerOf(prev: Approval, decision: Decision, typed?: Typed): Pick<Appro
 /** Tools that are a question to the user, not a permission. No setting may answer them for the user. */
 export const needsUser = (toolName: string) => toolName === 'ExitPlanMode' || toolName === 'AskUserQuestion'
 
-/** "T-15a PDF renderer · Noor" becomes a step with the agent's id. Lines without a known name stay as plain text. */
+/** "T-15a PDF renderer · Sean" becomes a step with the agent's id. Lines without a known name stay as plain text. */
 export function parsePlanSteps(lines: string[], agents: { id: string; name: string }[]): PlanStep[] {
   return lines.map((line) => {
     const at = line.lastIndexOf(' · ')
@@ -247,7 +247,7 @@ export function parsePlanSteps(lines: string[], agents: { id: string; name: stri
 }
 
 /**
- * Short human title for a tool call, used in the Inbox, on Home and in notifications, which put "Noor wants to" before it.
+ * Short human title for a tool call, used in the Inbox, on Home and in notifications, which put "Sean wants to" before it.
  * It is the chat row's sentence in the verb's base form, "File issue in Linear: Export invoices as PDF" (KERNEL-785), with
  * a file's folder kept so the user sees which file. Bash shows the exact command the user is allowing, and WebFetch the
  * whole address.

@@ -27,7 +27,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => {
 const AGENTS = {
   'README.md': '# shop\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash\n---\nYou are Kai.',
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash\n---\nYou are Christian.',
   // Can edit by its tools line, which a review chat overrides.
   '.claude/agents/wren.md': '---\nname: wren\ndescription: Designer.\nrole: Designer\ntools: Read, Edit, Write, NotebookEdit, Bash\n---\nYou are Wren, and you look at screens.'
 }
@@ -43,8 +43,8 @@ async function setup(o: { settings?: string; files?: Record<string, string>; app
   onTestFinished(() => k.stop({ budgetMs: 0 }))
   const project = await k.addProject(repo)
   let n = 0
-  /** Kai's work in its own worktree, committed and on a PR that passed checks. */
-  const pr = async (files: Record<string, string>, agentId = 'kai') => {
+  /** Christian's work in its own worktree, committed and on a PR that passed checks. */
+  const pr = async (files: Record<string, string>, agentId = 'christian') => {
     const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId, title: `Task ${++n}` })
     for (const [f, c] of Object.entries(files)) { await mkdir(dirname(join(ws.path, f)), { recursive: true }); await writeFile(join(ws.path, f), c) }
     await git(ws.path, 'add', '-A')
@@ -128,7 +128,7 @@ describe('which reviews a PR gets', () => {
     const [code, ux] = k.store.chats(rws.id)
     expect(sent.map((m) => m.chatId)).toEqual([code.id, ux.id])
     expect(sent[0].text).toMatch(new RegExp(`^PR #${ws.prNumber} has new commits, up to [0-9a-f]{7}\\. Review it again`))
-    expect(sent[1].text).toBe(`Run the UX review of PR #${ws.prNumber} "Task 1" by Kai.`)
+    expect(sent[1].text).toBe(`Run the UX review of PR #${ws.prNumber} "Task 1" by Christian.`)
     await k.reviews.onReady(ws.id)
     expect(sent).toHaveLength(2)
   })
@@ -142,22 +142,22 @@ describe('which reviews a PR gets', () => {
     const agent = k.sessions['d'].agentFor(rws, chat)!
     expect(agent).toMatchObject({ id: 'kernel-reviewer', name: 'Code review', prompt: expect.stringMatching(/^You run the code review of a pull request\./) })
     const rule = k.tools.rulesFor(rws, agent, chat)!
-    expect(rule).toContain("You are reviewing Kai's work")
+    expect(rule).toContain("You are reviewing Christian's work")
     expect(rule).toContain('You run the code review of it.')
     expect(rule).toContain('mcp__kernel__submit_review')
   })
 
   it("runs the code review with the project's reviewer, as the base branch's [team] picks it, and none with reviewer = \"none\"", async () => {
-    const theo = { '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer.\nrole: Reviewer\ntools: Read, Grep, Bash\n---\nYou are Theo.' }
-    const own = await setup({ files: theo })
+    const artkin = { '.claude/agents/artkin.md': '---\nname: artkin\ndescription: Reviewer.\nrole: Reviewer\ntools: Read, Grep, Bash\n---\nYou are Artkin.' }
+    const own = await setup({ files: artkin })
     const ws = await own.pr({ 'a.txt': 'a\n' })
     await own.k.reviews.onReady(ws.id)
     const [rws] = own.reviewsOf(ws.id)
-    expect(rws.agentId).toBe('theo')
-    expect(own.lenses(rws)).toEqual([{ kind: 'code', agent: 'theo' }])
-    expect(own.k.sessions['d'].agentFor(rws, own.chatOf(rws, 'code'))).toMatchObject({ id: 'theo', prompt: 'You are Theo.' })
+    expect(rws.agentId).toBe('artkin')
+    expect(own.lenses(rws)).toEqual([{ kind: 'code', agent: 'artkin' }])
+    expect(own.k.sessions['d'].agentFor(rws, own.chatOf(rws, 'code'))).toMatchObject({ id: 'artkin', prompt: 'You are Artkin.' })
 
-    const none = await setup({ files: theo, settings: '[team]\nreviewer = "none"\n' })
+    const none = await setup({ files: artkin, settings: '[team]\nreviewer = "none"\n' })
     const quiet = await none.pr({ 'a.txt': 'a\n' })
     await none.k.reviews.onReady(quiet.id)
     expect(none.reviewsOf(quiet.id)).toEqual([])
@@ -174,11 +174,11 @@ describe('which reviews a PR gets', () => {
   })
 
   it("never lets an agent review its own PR with its own prompt", async () => {
-    const { k, pr, reviewsOf, lenses, chatOf } = await setup({ settings: '[review.ux]\nagent = "wren"\n\n[review.security]\nagent = "kai"\n' })
-    const ws = await pr({ 'a.txt': 'a\n' }, 'kai')
+    const { k, pr, reviewsOf, lenses, chatOf } = await setup({ settings: '[review.ux]\nagent = "wren"\n\n[review.security]\nagent = "christian"\n' })
+    const ws = await pr({ 'a.txt': 'a\n' }, 'christian')
     await k.reviews.onReady(ws.id)
     const [rws] = reviewsOf(ws.id)
-    // Kai wrote it, so the security review runs Kernel's prompt. Wren didn't, so the UX review is Wren's.
+    // Christian wrote it, so the security review runs Kernel's prompt. Wren didn't, so the UX review is Wren's.
     expect(lenses(rws)).toEqual([{ kind: 'code' }, { kind: 'security' }, { kind: 'ux', agent: 'wren' }])
     expect(k.sessions['d'].agentFor(rws, chatOf(rws, 'security'))).toMatchObject({ id: 'kernel-reviewer', prompt: expect.stringMatching(/^You run the security review/) })
     const wrens = await setup({ settings: '[review.ux]\nagent = "wren"\n' })
@@ -481,7 +481,7 @@ describe('paths and prompts', () => {
     for (const kind of ['code', 'security', 'ux'] as const) expect(lensAgent(kind)).toMatchObject({ id: 'kernel-reviewer', tools: ['Read', 'Grep', 'Glob', 'Bash'], builtIn: 'reviewer' })
     expect(lensAgent('security').prompt).toContain('The code review covers those.')
     expect(lensAgent('ux').prompt).toContain('The code and security reviews cover those.')
-    const rule = reviewRule({ author: 'Kai', task: 'T', workspaceId: 'w', branch: 'feat/x', base: 'origin/main', lens: 'security', others: ['code', 'ux'] })
+    const rule = reviewRule({ author: 'Christian', task: 'T', workspaceId: 'w', branch: 'feat/x', base: 'origin/main', lens: 'security', others: ['code', 'ux'] })
     expect(rule).toContain('You run the security review of it. The code and UX reviews run in other chats of this workspace, so block only on what the security review covers and leave the rest to them.')
   })
 })

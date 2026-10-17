@@ -19,7 +19,7 @@ export function openItemText(i: OpenItem): string {
   }
 }
 
-/** The collapsed line: "2 open: Noor asked a question, blockers in Kai's work". */
+/** The collapsed line: "2 open: Sean asked a question, blockers in Christian's work". */
 const SHORT: Record<OpenItem['kind'], (i: OpenItem) => string> = {
   question: (i) => `${i.name} asked a question`,
   blockers: (i) => `blockers in ${i.name}'s work`,

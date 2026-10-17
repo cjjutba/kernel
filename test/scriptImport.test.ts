@@ -230,7 +230,7 @@ describe('scripts.suggest in a project (KERNEL-682)', () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
       '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.',
       ...files
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -263,7 +263,7 @@ describe('scripts.suggest in a project (KERNEL-682)', () => {
     const saved = await h['settings.setProject']({ projectId: project.id, patch: found.patch })
     expect(saved.scripts.setup).toBe(found.patch.scripts!.setup)
     expect(saved.sources['scripts.setup']).toBe('local')
-    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Build' })
     expect(ws.status).toBe('ready')
     expect(await readFile(join(ws.path, 'name.txt'), 'utf8')).toBe(`${ws.name}\n`)
     expect(await readFile(join(ws.path, 'port.txt'), 'utf8')).toBe(`port ${ws.port + 1}\n`)

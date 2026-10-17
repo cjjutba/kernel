@@ -81,7 +81,7 @@ async function nextSent(call: Call): Promise<string> {
 
 async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; aliasesFor?: SessionDeps['aliasesFor']; onMcp?: SessionDeps['onMcp']; agent?: AgentDef; agentFor?: (ws: Workspace) => AgentDef | undefined; models?: Partial<AppSettings['models']>; usage?: AppSettings['usage']; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit']; ws?: Partial<Workspace>; chat?: Partial<Chat>; project?: Partial<Project>; availability?: SessionDeps['availability']; permissions?: Partial<AppSettings['permissions']>; deps?: Partial<SessionDeps> } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
-  const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...hooks.ws }
+  const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...hooks.ws }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1, ...hooks.chat }
   store.saveWorkspace(ws)
   store.saveChat(chat)
@@ -404,7 +404,7 @@ describe('session runner (SDK scripted)', () => {
   })
 
   it("says once when the agent file lists an MCP server the session doesn't have", async () => {
-    const agent = { id: 'theo', name: 'Theo', role: 'Reviewer', description: 'Reviews.', lead: false, prompt: 'You review.', file: '/r/theo.md', tools: ['Read', 'mcp__linear', 'mcp__kernel__submit_review'] } as AgentDef
+    const agent = { id: 'artkin', name: 'Artkin', role: 'Reviewer', description: 'Reviews.', lead: false, prompt: 'You review.', file: '/r/artkin.md', tools: ['Read', 'mcp__linear', 'mcp__kernel__submit_review'] } as AgentDef
     // Claude Code lists a claude.ai connector by its own name, and its tools by the name made from it (KERNEL-464).
     const servers = [{ name: 'kernel', status: 'connected', source: 'sdk' }, { name: 'claude.ai Linear', status: 'connected', source: 'claudeai' }]
     const { call, options, store, chat } = await setup('acceptEdits', { agent })
@@ -420,7 +420,7 @@ describe('session runner (SDK scripted)', () => {
 
   // KERNEL-464: a server whose name matches but that can't be used says why, and every init's statuses reach the project.
   it('says why a listed MCP server the session has can\'t be used, and tells the project each init\'s statuses', async () => {
-    const agent = { id: 'noor', name: 'Noor', role: 'Backend', description: 'APIs.', lead: false, prompt: 'You build.', file: '/r/noor.md', tools: ['Read', 'mcp__neon', 'mcp__claude_ai_Notion__search', 'mcp__fal-ai', 'mcp__figma', 'mcp__linear__get_issue', 'mcp__claude_ai_Gmail'] } as AgentDef
+    const agent = { id: 'sean', name: 'Sean', role: 'Backend', description: 'APIs.', lead: false, prompt: 'You build.', file: '/r/sean.md', tools: ['Read', 'mcp__neon', 'mcp__claude_ai_Notion__search', 'mcp__fal-ai', 'mcp__figma', 'mcp__linear__get_issue', 'mcp__claude_ai_Gmail'] } as AgentDef
     const reports: unknown[][] = []
     // The project heard from a probe that the Gmail connector is up, before this session's first init lists it.
     const project = [{ name: 'claude.ai Gmail', status: 'connected' as const, source: 'claudeai' }]
@@ -539,7 +539,7 @@ describe('model and effort (D-093)', () => {
 describe('Approve and hand off (KERNEL-67)', () => {
   // The kernel repo's own Lead, which only plans and says nothing about create_workspace.
   const kernel: AgentDef = { id: 'kernel', file: '.claude/agents/kernel.md', name: 'Kernel', role: 'Lead', description: 'Plans sprint work', lead: true, prompt: "You are Kernel, the lead for building Kernel itself. You plan, you don't write feature code." }
-  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Backend', description: 'Engine', lead: false, prompt: 'You build the engine.' }
+  const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Backend', description: 'Engine', lead: false, prompt: 'You build the engine.' }
 
   const hooksFor = (options: Options, event: 'PostToolUse' | 'Stop', matcher?: string) => options.hooks![event]!.filter((m) => m.matcher === matcher).flatMap((m) => m.hooks)
   /** Runs every hook for one event and returns the context they send the model. */
@@ -551,7 +551,7 @@ describe('Approve and hand off (KERNEL-67)', () => {
     return outs.map((o: any) => o?.hookSpecificOutput?.additionalContext).filter(Boolean)
   }
   async function approvePlan(s: Awaited<ReturnType<typeof setup>>) {
-    const answer = (s.options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Symlink node_modules into worktrees · Noor' }, { signal: new AbortController().signal, toolUseID: 'p9', requestId: 'r9' })
+    const answer = (s.options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Symlink node_modules into worktrees · Sean' }, { signal: new AbortController().signal, toolUseID: 'p9', requestId: 'r9' })
     await flush()
     s.approvals.decide(s.store.approvals({ pendingOnly: true })[0].id, { behavior: 'allow' })
     expect(await answer).toMatchObject({ behavior: 'allow' })
@@ -564,7 +564,7 @@ describe('Approve and hand off (KERNEL-67)', () => {
     expect(LEAD_RULE).toContain('mcp__kernel__create_workspace')
     // KERNEL-129: what the rule asks of the Lead beyond the hand-off.
     for (const part of ['Never hand a task to yourself', 'Team update', 'Never leave a teammate waiting', 'mcp__kernel__ask_user', 'pass on the details', 'tell the user it is ready to merge', 'Call teammates by name, not he or she', 'one or two short lines', 'Leave workspace ids out', 'tell the user what is stuck']) expect(LEAD_RULE).toContain(part)
-    const builder = (await setup('acceptEdits', { agent: noor })).options.systemPrompt as { append: string }
+    const builder = (await setup('acceptEdits', { agent: sean })).options.systemPrompt as { append: string }
     expect(builder.append).not.toContain(LEAD_RULE)
   })
 
@@ -582,7 +582,7 @@ describe('Approve and hand off (KERNEL-67)', () => {
   })
 
   it("gives every agent the approval's note once with ExitPlanMode's answer, and adds no note to the chat", async () => {
-    const s = await setup('acceptEdits', { agent: noor })
+    const s = await setup('acceptEdits', { agent: sean })
     await approvePlan(s)
     // The agent still has its plan in context, so the note names no file and carries no plan.
     expect(await contexts(s.options, 'PostToolUse', 'ExitPlanMode')).toEqual(['Plan approved.'])
@@ -631,7 +631,7 @@ describe('Approve and hand off (KERNEL-67)', () => {
   })
 
   it('gives agents that are not the Lead no hand-off', async () => {
-    const s = await setup('acceptEdits', { agent: noor })
+    const s = await setup('acceptEdits', { agent: sean })
     await approvePlan(s)
     expect((await contexts(s.options, 'PostToolUse', 'ExitPlanMode'))[0]).not.toContain(HANDOFF_NOW)
     expect(hooksFor(s.options, 'Stop').length).toBe(1)
@@ -639,14 +639,14 @@ describe('Approve and hand off (KERNEL-67)', () => {
   })
 
   describe('teammates the user addressed (KERNEL-745)', () => {
-    const kai: AgentDef = { ...noor, id: 'kai', name: 'Kai', role: 'Frontend' }
+    const christian: AgentDef = { ...sean, id: 'christian', name: 'Christian', role: 'Frontend' }
     const at = (a: AgentDef): ChatPart => ({ type: 'agent', name: a.name, agentId: a.id })
     const reminded = (...names: string[]) => openReminder(names.map((name) => ({ kind: 'mention', name }) as OpenItem))
     /** A Lead chat whose first turn has ended, then a message from the user to `mentioned`. */
     async function addressed(...mentioned: AgentDef[]) {
       // What the Lead chat owes lives in its feature, on the same store, built once setup has the store (KERNEL-749).
       const items: { open?: OpenItems } = {}
-      const s = await setup('acceptEdits', { agent: kernel, deps: { teamOf: () => [kernel, noor, kai], openItems: {
+      const s = await setup('acceptEdits', { agent: kernel, deps: { teamOf: () => [kernel, sean, christian], openItems: {
         mentioned: (c, m) => items.open?.mentioned(c, m), userSent: (id) => items.open?.userSent(id), atStop: (id) => items.open?.atStop(id)
       } } })
       items.open = new OpenItems({ store: s.store } as unknown as Kernel)
@@ -660,47 +660,47 @@ describe('Approve and hand off (KERNEL-67)', () => {
     }
 
     it('tells the Lead who the user addressed, and keeps the chat row as the user wrote it', async () => {
-      const s = await addressed(noor, kai)
-      expect(s.read).toEqual(['@Noor', '@Kai', 'take the Stop hook', 'The user addressed this to Noor and Kai.'])
-      expect(s.store.items('chat').filter((i) => i.kind === 'user').at(-1)).toMatchObject({ parts: [at(noor), at(kai), { type: 'text', text: 'take the Stop hook' }] })
+      const s = await addressed(sean, christian)
+      expect(s.read).toEqual(['@Sean', '@Christian', 'take the Stop hook', 'The user addressed this to Sean and Christian.'])
+      expect(s.store.items('chat').filter((i) => i.kind === 'user').at(-1)).toMatchObject({ parts: [at(sean), at(christian), { type: 'text', text: 'take the Stop hook' }] })
     })
 
     it('reminds the Lead once when the turn ends without acting for each one', async () => {
-      const s = await addressed(noor)
-      expect(await contexts(s.options, 'Stop')).toEqual([reminded('Noor')])
+      const s = await addressed(sean)
+      expect(await contexts(s.options, 'Stop')).toEqual([reminded('Sean')])
       expect(await contexts(s.options, 'Stop')).toEqual([])
     })
 
     it('reminds only for the teammates the Lead has not acted for', async () => {
-      const s = await addressed(noor, kai)
-      s.open.created('chat', 'noor') // what create_workspace for Noor does
-      expect(await contexts(s.options, 'Stop')).toEqual([reminded('Kai')])
+      const s = await addressed(sean, christian)
+      s.open.created('chat', 'sean') // what create_workspace for Sean does
+      expect(await contexts(s.options, 'Stop')).toEqual([reminded('Christian')])
     })
 
     it('drops the reminder when the user stops the turn or writes again', async () => {
-      const stopped = await addressed(noor)
+      const stopped = await addressed(sean)
       await stopped.sessions.interrupt('chat')
       expect(await contexts(stopped.options, 'Stop')).toEqual([])
-      const redirected = await addressed(noor)
+      const redirected = await addressed(sean)
       await redirected.sessions.send('chat', [{ type: 'text', text: 'Never mind' }])
       expect(await contexts(redirected.options, 'Stop')).toEqual([])
     })
 
     it('reminds about the hand-off and the mention in one Stop', async () => {
-      const s = await addressed(noor)
+      const s = await addressed(sean)
       await approvePlan(s)
-      expect(await contexts(s.options, 'Stop')).toEqual([`${HANDOFF_REMINDER}\n\n${reminded('Noor')}`])
+      expect(await contexts(s.options, 'Stop')).toEqual([`${HANDOFF_REMINDER}\n\n${reminded('Sean')}`])
     })
 
     it('gives a teammate who is mentioned nothing extra', async () => {
-      const s = await setup('acceptEdits', { agent: noor, deps: { teamOf: () => [kernel, noor] } })
+      const s = await setup('acceptEdits', { agent: sean, deps: { teamOf: () => [kernel, sean] } })
       s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: 'none' })
       s.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 10 })
       await flush()
       await nextSent(s.call)
-      await s.sessions.send('chat', [at(kai), { type: 'text', text: 'ask Kai' }])
+      await s.sessions.send('chat', [at(christian), { type: 'text', text: 'ask Christian' }])
       const { value } = await s.call.prompt[Symbol.asyncIterator]().next()
-      expect((value.message.content as { text: string }[]).map((c) => c.text)).toEqual(['@Kai', 'ask Kai'])
+      expect((value.message.content as { text: string }[]).map((c) => c.text)).toEqual(['@Christian', 'ask Christian'])
       expect(s.store.openItems('chat')).toEqual([])
     })
   })
@@ -726,7 +726,7 @@ describe('a note before the next turn (KERNEL-764)', () => {
 describe('compact window per role (feat-compact-window-per-role-with-plan)', () => {
   const WINDOW = 'CLAUDE_CODE_AUTO_COMPACT_WINDOW'
   const compact: AppSettings['models']['compact'] = { lead: 'full', frontend: 'full', engineers: '200k', qa: '200k', reviewer: '200k' }
-  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Backend', description: 'Engine', lead: false, prompt: 'You build the engine.' }
+  const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Backend', description: 'Engine', lead: false, prompt: 'You build the engine.' }
   const envOf = (call: Call) => call.options.env as Record<string, string>
   const stopped = (call: Call) => !!call.options.abortController?.signal.aborted
   const done = async (call: Call, uuid: string) => { call.feed({ type: 'result', subtype: 'success', uuid, duration_ms: 5 }); await flush() }
@@ -736,9 +736,9 @@ describe('compact window per role (feat-compact-window-per-role-with-plan)', () 
     process.env[WINDOW] = '500000'
     onTestFinished(() => { if (mac === undefined) delete process.env[WINDOW]; else process.env[WINDOW] = mac })
     const roles: unknown[] = []
-    const engineer = await setup('acceptEdits', { models: { compact }, agent: noor, deps: { roleFor: (ws, agent) => { roles.push([ws.id, agent?.id]); return 'engineers' } } })
+    const engineer = await setup('acceptEdits', { models: { compact }, agent: sean, deps: { roleFor: (ws, agent) => { roles.push([ws.id, agent?.id]); return 'engineers' } } })
     expect(envOf(engineer.call)[WINDOW]).toBe('200000')
-    expect(roles).toEqual([['ws', 'noor']])
+    expect(roles).toEqual([['ws', 'sean']])
     const lead = await setup('acceptEdits', { models: { compact }, deps: { roleFor: () => 'lead' } })
     expect(envOf(lead.call)).not.toHaveProperty(WINDOW)
     // Changing the model mid-chat keeps the process, and so its window.
@@ -789,7 +789,7 @@ describe('agent teams (KERNEL-73)', () => {
 })
 
 describe("an agent file's tools line (KERNEL-397)", () => {
-  const theo = { id: 'theo', name: 'Theo', role: 'Reviewer', description: 'Reviews.', lead: false, prompt: 'You review.', file: '/r/theo.md', tools: ['Read', 'Grep', 'Glob', 'Bash', 'mcp__linear__get_issue'] } as AgentDef
+  const artkin = { id: 'artkin', name: 'Artkin', role: 'Reviewer', description: 'Reviews.', lead: false, prompt: 'You review.', file: '/r/artkin.md', tools: ['Read', 'Grep', 'Glob', 'Bash', 'mcp__linear__get_issue'] } as AgentDef
   const gateOf = (options: Options) => {
     const hooks = options.hooks!.PreToolUse!.filter((m) => !m.matcher).flatMap((m) => m.hooks)
     return hooks.length > 2 ? hooks[hooks.length - 1] as HookCallback : undefined
@@ -797,7 +797,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
   const use = (gate: HookCallback, tool: string) => gate({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: {}, tool_use_id: tool, session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, tool, { signal: new AbortController().signal } as never)
 
   it('leaves out the built-in tools the file leaves out, and refuses any other tool it does not list', async () => {
-    const { options } = await setup('acceptEdits', { agent: theo, deps: { accessFor: () => ({ unlisted: 'hide', allow: [] }) } })
+    const { options } = await setup('acceptEdits', { agent: artkin, deps: { accessFor: () => ({ unlisted: 'hide', allow: [] }) } })
     expect(options.disallowedTools).toEqual(['WebFetch', 'WebSearch', 'NotebookEdit', 'Agent'])
     const gate = gateOf(options)!
     expect(await use(gate, 'mcp__linear__save_issue')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file doesn't list mcp__linear__save_issue. Use another tool, or ask the user to add mcp__linear__save_issue to the tools line in your agent file." } })
@@ -806,7 +806,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
   })
 
   it('asks about an MCP server the file does not list, unless the project hides it or allows it (KERNEL-537)', async () => {
-    const { options, store, approvals, allowTools } = await setup('acceptEdits', { agent: theo })
+    const { options, store, approvals, allowTools } = await setup('acceptEdits', { agent: artkin })
     const gate = gateOf(options)!
     const answer = use(gate, 'mcp__linear__save_issue')
     await flush()
@@ -818,7 +818,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
     // Built-in tools the file leaves out are still refused without asking.
     expect(await use(gate, 'Write')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
     // A server the project's allow names counts as listed.
-    const allowed = await setup('acceptEdits', { agent: theo, deps: { accessFor: () => ({ unlisted: 'hide', allow: ['github'] }) } })
+    const allowed = await setup('acceptEdits', { agent: artkin, deps: { accessFor: () => ({ unlisted: 'hide', allow: ['github'] }) } })
     expect(await use(gateOf(allowed.options)!, 'mcp__github__merge_pull_request')).toEqual({})
   })
 
@@ -835,7 +835,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
 
     it('runs an MCP server the file does not list with no card, while the project asks about it', async () => {
       for (const access of [undefined, { unlisted: 'ask' as const, allow: [] }]) {
-        const t = await setup('bypassPermissions', { agent: theo, deps: access ? { accessFor: () => access } : {} })
+        const t = await setup('bypassPermissions', { agent: artkin, deps: access ? { accessFor: () => access } : {} })
         expect(await use(gateOf(t.options)!, 'mcp__linear__save_issue')).toEqual(allowed)
         expect(await use(gateOf(t.options)!, 'mcp__claude_ai_Linear__get_issue')).toEqual(allowed)
         expect(t.store.approvals({ pendingOnly: true })).toEqual([])
@@ -845,21 +845,21 @@ describe("an agent file's tools line (KERNEL-397)", () => {
     })
 
     it('still asks in every other mode', async () => {
-      for (const mode of ['default', 'acceptEdits', 'auto']) await asks(await setup(mode, { agent: theo, availability: () => ({ auto: true, bypass: true }) }), 'mcp__linear__save_issue')
+      for (const mode of ['default', 'acceptEdits', 'auto']) await asks(await setup(mode, { agent: artkin, availability: () => ({ auto: true, bypass: true }) }), 'mcp__linear__save_issue')
       // Plan mode in a Bypass chat runs in plan, so it asks too.
-      await asks(await setup('bypassPermissions', { agent: theo, chat: { plan: true } }), 'mcp__linear__save_issue')
+      await asks(await setup('bypassPermissions', { agent: artkin, chat: { plan: true } }), 'mcp__linear__save_issue')
     })
 
     it('still refuses what the project hides and what disallowedTools takes away, with the same reasons', async () => {
-      const hidden = await setup('bypassPermissions', { agent: theo, deps: { accessFor: () => ({ unlisted: 'hide', allow: [] }) } })
+      const hidden = await setup('bypassPermissions', { agent: artkin, deps: { accessFor: () => ({ unlisted: 'hide', allow: [] }) } })
       expect(await use(gateOf(hidden.options)!, 'mcp__linear__save_issue')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file doesn't list mcp__linear__save_issue. Use another tool, or ask the user to add mcp__linear__save_issue to the tools line in your agent file." } })
-      const taken = await setup('bypassPermissions', { agent: { ...theo, disallowedTools: ['mcp__github'] } })
+      const taken = await setup('bypassPermissions', { agent: { ...artkin, disallowedTools: ['mcp__github'] } })
       expect(await use(gateOf(taken.options)!, 'mcp__github__merge_pull_request')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file's disallowedTools takes away mcp__github__merge_pull_request. Use another tool, or ask the user to take mcp__github__merge_pull_request off disallowedTools in your agent file." } })
       expect(taken.store.approvals({ pendingOnly: true })).toEqual([])
     })
 
     it('asks again once the chat leaves Bypass permissions, while the switch is pending and after it lands', async () => {
-      const t = await setup('bypassPermissions', { agent: theo })
+      const t = await setup('bypassPermissions', { agent: artkin })
       t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none', permissionMode: 'bypassPermissions' })
       await flush()
       let answer!: () => void
@@ -874,7 +874,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
     })
 
     it('asks while Claude Code reports a stricter mode, until it reports Bypass permissions again', async () => {
-      const t = await setup('bypassPermissions', { agent: theo })
+      const t = await setup('bypassPermissions', { agent: artkin })
       t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none', permissionMode: 'default' })
       await flush()
       await asks(t, 'mcp__linear__save_issue')
@@ -885,7 +885,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
   })
 
   it("leaves out what disallowedTools takes away, and the gate says which line refused (KERNEL-451)", async () => {
-    const { options } = await setup('acceptEdits', { agent: { ...theo, tools: undefined, disallowedTools: ['WebFetch', 'mcp__github', 'mcp__linear__save_issue'] } })
+    const { options } = await setup('acceptEdits', { agent: { ...artkin, tools: undefined, disallowedTools: ['WebFetch', 'mcp__github', 'mcp__linear__save_issue'] } })
     expect(options.disallowedTools).toEqual(['WebFetch', 'mcp__github', 'mcp__linear__save_issue'])
     const gate = gateOf(options)!
     expect(await use(gate, 'mcp__github__merge_pull_request')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file's disallowedTools takes away mcp__github__merge_pull_request. Use another tool, or ask the user to take mcp__github__merge_pull_request off disallowedTools in your agent file." } })
@@ -893,13 +893,13 @@ describe("an agent file's tools line (KERNEL-397)", () => {
   })
 
   it('restricts nothing for an agent with no tools line', async () => {
-    const { options } = await setup('acceptEdits', { agent: { ...theo, tools: undefined } })
+    const { options } = await setup('acceptEdits', { agent: { ...artkin, tools: undefined } })
     expect(options).not.toHaveProperty('disallowedTools')
     expect(gateOf(options)).toBeUndefined()
   })
 
   it('starts a changed agent fresh once its turn ends, and keeps the conversation', async () => {
-    const { sessions, call, options, chat } = await setup('acceptEdits', { agent: theo })
+    const { sessions, call, options, chat } = await setup('acceptEdits', { agent: artkin })
     call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
     await flush()
     sessions.restartIdle(['ws'])
@@ -916,7 +916,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
 })
 
 describe('asking from inside a hook (KERNEL-446)', () => {
-  const noor = { id: 'noor', name: 'Noor', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/noor.md' } as AgentDef
+  const sean = { id: 'sean', name: 'Sean', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/sean.md' } as AgentDef
   const ask: Ask = { kind: 'tool', toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push' }
   // The host Sessions gave the chat's runner, so the card and the status are the ones a canUseTool ask gets.
   const hostOf = (sessions: Sessions) => (sessions['live'].get('chat') as unknown as { runner: ClaudeRunner }).runner['host']
@@ -925,7 +925,7 @@ describe('asking from inside a hook (KERNEL-446)', () => {
   const late = denied('No decision was made in time.')
 
   it('puts the card in the chat, shows the agent as needing the user, and allows the call on yes', async () => {
-    const { sessions, call, options, store, approvals, kinds } = await setup('acceptEdits', { agent: noor })
+    const { sessions, call, options, store, approvals, kinds } = await setup('acceptEdits', { agent: sean })
     const statuses: string[] = []
     const onPush = (e: PushEvent) => { if (e.type === 'agent.status') statuses.push(e.status) }
     bus.on('push', onPush)
@@ -1000,7 +1000,7 @@ describe('asking from inside a hook (KERNEL-446)', () => {
 
 describe('who sent a message (KERNEL-116)', () => {
   const lead: AgentDef = { id: 'kernel', file: '.claude/agents/kernel.md', name: 'Kernel', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Kernel.' }
-  const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'kai', name: 'Kai', task: 'Remove the Try section', prNumber: 108, events: [{ kind: 'pr.ready', text: 'Passed checks, no conflicts. Not reviewed yet', actionable: true }] }] }
+  const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'christian', name: 'Christian', task: 'Remove the Try section', prNumber: 108, events: [{ kind: 'pr.ready', text: 'Passed checks, no conflicts. Not reviewed yet', actionable: true }] }] }
   const HEADER = 'Team update from Kernel, not from the user.'
   const users = (s: Awaited<ReturnType<typeof setup>>) => s.store.items('chat').filter((i: ChatItem): i is Extract<ChatItem, { kind: 'user' }> => i.kind === 'user')
   const init = (s: Awaited<ReturnType<typeof setup>>) => s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: 'none' })
@@ -1029,7 +1029,7 @@ describe('who sent a message (KERNEL-116)', () => {
     await finish(s, 'r1')
     s.sessions.handoffs.approved('chat')
     s.sessions.post('chat', [{ type: 'text', text: HEADER }], { update })
-    reply(s, 'a2', "Kai's PR #108 passed checks. Theo is reviewing it.")
+    reply(s, 'a2', "Christian's PR #108 passed checks. Artkin is reviewing it.")
     await finish(s, 'r2')
     const answer = s.store.items('chat').find((i: ChatItem) => i.kind === 'text')!
     // Idle, so the copy goes out at once and nothing waits.
@@ -1043,7 +1043,7 @@ describe('who sent a message (KERNEL-116)', () => {
     const s = await setup('acceptEdits', { agent: lead })
     init(s)
     await finish(s, 'r1')
-    s.store.saveItem('chat', { kind: 'user', id: 'old', ts: 2, parts: [{ type: 'text', text: `${LEGACY_UPDATE_HEADER}\n- Kai · Inbox actions (workspace w2): PR #60 is ready to merge` }] })
+    s.store.saveItem('chat', { kind: 'user', id: 'old', ts: 2, parts: [{ type: 'text', text: `${LEGACY_UPDATE_HEADER}\n- Christian · Inbox actions (workspace w2): PR #60 is ready to merge` }] })
     s.sessions.handoffs.approved('chat')
     // The id of the user message itself works too, as Retry now on the limit banner passes it.
     await s.sessions.retry('chat', 'old')
@@ -1265,7 +1265,7 @@ describe('permission modes on Claude (KERNEL-447)', () => {
   it("takes the chat's mode over the project's, the project's over the app's, and an agent file's only when it is stricter", async () => {
     expect((await setup('default', { project: { permissionMode: 'acceptEdits' } })).options.permissionMode).toBe('acceptEdits')
     expect((await setup('default', { project: { permissionMode: 'acceptEdits' }, chat: { mode: 'bypassPermissions' } })).options.permissionMode).toBe('bypassPermissions')
-    const careful = { id: 'noor', name: 'Noor', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/noor.md', permissionMode: 'acceptEdits' } as AgentDef
+    const careful = { id: 'sean', name: 'Sean', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/sean.md', permissionMode: 'acceptEdits' } as AgentDef
     const tightened = (await setup('bypassPermissions', { agent: careful })).options
     expect(tightened.permissionMode).toBe('acceptEdits')
     expect(tightened).not.toHaveProperty('allowDangerouslySkipPermissions')
@@ -1510,7 +1510,7 @@ describe('permission modes on Claude (KERNEL-447)', () => {
   })
 
   it("doesn't ask about an Always ask command the agent file's tools line refuses, which the gate denies", async () => {
-    const reader = { id: 'noor', name: 'Noor', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/noor.md', tools: ['Read', 'Grep'] } as AgentDef
+    const reader = { id: 'sean', name: 'Sean', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/sean.md', tools: ['Read', 'Grep'] } as AgentDef
     const t = await setup('acceptEdits', { agent: reader })
     expect(await t.runGuard('t1', 'pnpm drizzle-kit push')).toEqual({})
     expect(t.store.approvals({})).toEqual([])
@@ -1690,7 +1690,7 @@ describe("a project's Always allow rules on Claude (KERNEL-454)", () => {
     expect(await runTool(off.options, 'WebSearch', { query: 'zod' })).toEqual({})
     expect(await (off.options.canUseTool as CanUseTool)('WebSearch', { query: 'zod' }, { signal: signal(), toolUseID: 'w1', requestId: 'r' })).toEqual({ behavior: 'deny', message: NETWORK_OFF })
 
-    const reader = { id: 'noor', name: 'Noor', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/noor.md', tools: ['Read', 'mcp__linear__get_issue'] } as AgentDef
+    const reader = { id: 'sean', name: 'Sean', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/sean.md', tools: ['Read', 'mcp__linear__get_issue'] } as AgentDef
     const gated = await setup('acceptEdits', { agent: reader })
     gated.allow.push('pnpm test')
     gated.allowTools.push('mcp__linear')
@@ -2046,7 +2046,7 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
   function cutOffChats(s: Awaited<ReturnType<typeof project>>, count: number) {
     const ids = Array.from({ length: count }, (_, i) => `c${i + 1}`)
     ids.forEach((id, i) => {
-      s.store.saveWorkspace({ id: `w-${id}`, projectId: 'project', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/tmp/${id}`, mode: 'worktree', agentId: 'noor', port: 4400 + i, status: 'ready', prState: 'none', createdAt: 10 + i })
+      s.store.saveWorkspace({ id: `w-${id}`, projectId: 'project', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/tmp/${id}`, mode: 'worktree', agentId: 'sean', port: 4400 + i, status: 'ready', prState: 'none', createdAt: 10 + i })
       s.store.saveChat({ ...s.chat, id, workspaceId: `w-${id}`, title: id })
     })
     const runningNow = () => ids.filter((id) => s.sessions.isRunning(id))
@@ -2113,8 +2113,8 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
 
   it('tells the Lead why a hand-off waits (the tools word it for Kernel)', async () => {
     const { queuedNote } = await import('../src/main/services/kernelMcp')
-    expect(queuedNote('limit', { name: 'Kai', brief: true })).toBe("Usage is close to the limit, so Kai hasn't started. The brief goes out when it resets or usage drops.")
-    expect(queuedNote('limit', { name: 'Kai' })).toBe('Usage is close to the limit, so the message goes out when it resets or usage drops.')
+    expect(queuedNote('limit', { name: 'Christian', brief: true })).toBe("Usage is close to the limit, so Christian hasn't started. The brief goes out when it resets or usage drops.")
+    expect(queuedNote('limit', { name: 'Christian' })).toBe('Usage is close to the limit, so the message goes out when it resets or usage drops.')
   })
 })
 
@@ -2125,7 +2125,7 @@ describe('Send now past the agent limit, and why a queue waits (KERNEL-271)', ()
   /** The limit at 1 and `chat` running. `other` is a second teammate's chat in the same project, idle. */
   async function busy() {
     const s = await setup('acceptEdits', { models: { agentLimit: 1 } })
-    s.store.saveWorkspace({ id: 'ws2', projectId: 'project', name: 'pdf-export', branch: 'feat/pdf-export', baseRef: 'main', path: '/tmp/ws2', mode: 'worktree', agentId: 'kai', port: 4301, status: 'ready', prState: 'none', createdAt: 2 })
+    s.store.saveWorkspace({ id: 'ws2', projectId: 'project', name: 'pdf-export', branch: 'feat/pdf-export', baseRef: 'main', path: '/tmp/ws2', mode: 'worktree', agentId: 'christian', port: 4301, status: 'ready', prState: 'none', createdAt: 2 })
     s.store.saveChat({ ...s.chat, id: 'other', workspaceId: 'ws2', title: 'PDF export' })
     const why: Record<string, (string | undefined)[]> = {}
     const onPush = (e: PushEvent) => { if (e.type === 'chat.queue') (why[e.chatId] ??= []).push(e.why) }
@@ -2723,7 +2723,7 @@ describe('a chat whose Claude Code session is gone (KERNEL-286)', () => {
 
   it("moves a team update to a Lead chat whose session is gone, and it stays Kernel's turn", async () => {
     const lead: AgentDef = { id: 'kernel', file: '.claude/agents/kernel.md', name: 'Kernel', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Kernel.' }
-    const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'kai', name: 'Kai', task: 'Remove the Try section', prNumber: 108, events: [{ kind: 'pr.ready', text: 'Passed checks, no conflicts. Not reviewed yet', actionable: true }] }] }
+    const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'christian', name: 'Christian', task: 'Remove the Try section', prNumber: 108, events: [{ kind: 'pr.ready', text: 'Passed checks, no conflicts. Not reviewed yet', actionable: true }] }] }
     const s = await setup('acceptEdits', { agent: lead })
     s.store.saveChat({ ...s.chat, id: 'old', sessionId: 'gone-1' })
     expect(s.sessions.post('old', [{ type: 'text', text: 'Team update from Kernel, not from the user.' }], { update })).toBe(true)

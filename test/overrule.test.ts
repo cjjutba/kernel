@@ -17,11 +17,11 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const GREEN: PrCheck[] = [{ name: 'Test', state: 'pass' }]
 
 /**
- * A project on a fake GitHub, with the app's settings `app`. `pr` opens Kai's work on a PR that passed its checks, with the
+ * A project on a fake GitHub, with the app's settings `app`. `pr` opens Christian's work on a PR that passed its checks, with the
  * approvals and the blockers of the kinds named, all on its head commit.
  */
 async function setup(app: object = {}) {
-  const repo = await tempRepo({ 'README.md': '# shop\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+  const repo = await tempRepo({ 'README.md': '# shop\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
@@ -42,7 +42,7 @@ async function setup(app: object = {}) {
   bus.on('activity', onActivity)
   onTestFinished(() => { bus.off('activity', onActivity) })
   const pr = async (r: { approved?: ReviewKind[]; blockers?: ReviewKind[] } = {}) => {
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Task' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Task' })
     await writeFile(join(ws.path, 'a.ts'), 'export const a = 1\n')
     await git(ws.path, 'add', '-A')
     await git(ws.path, 'commit', '-qm', 'work')
@@ -128,13 +128,13 @@ describe('auto-merge and an overrule', () => {
 })
 
 describe("the Team update's To do", () => {
-  const ws = { id: 'w1', projectId: 'project', name: 'w1', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 54, baseRef: 'main' } as Workspace
+  const ws = { id: 'w1', projectId: 'project', name: 'w1', agentId: 'christian', status: 'ready', prState: 'ready', prNumber: 54, baseRef: 'main' } as Workspace
   const review = (o: Partial<ReviewState> = {}): ReviewState => ({ approved: [], blocking: [], blockers: false, reviewing: [], inProgress: false, waiting: [], ...o })
-  const verdict: TeamEvent = { n: 1, workspaceId: 'rv', kind: 'review', review: { verdict: 'blockers', lens: 'code', summary: '', of: 'w1', ofName: 'Noor', ofPr: 54, current: true } }
-  const todo = (state: ReviewState) => decide({ ws: { ...ws, id: 'rv', reviewOf: 'w1' }, name: 'Theo', events: [verdict] }, { allMerged: () => false, workspace: () => ws, stateOf: () => state }).todo
+  const verdict: TeamEvent = { n: 1, workspaceId: 'rv', kind: 'review', review: { verdict: 'blockers', lens: 'code', summary: '', of: 'w1', ofName: 'Sean', ofPr: 54, current: true } }
+  const todo = (state: ReviewState) => decide({ ws: { ...ws, id: 'rv', reviewOf: 'w1' }, name: 'Artkin', events: [verdict] }, { allMerged: () => false, workspace: () => ws, stateOf: () => state }).todo
 
   it("doesn't send overruled blockers to the author, and reads the PR ready to merge when nothing else holds it", () => {
-    expect(todo(review({ blocking: ['code'], blockers: true }))).toEqual(["Send the code review's blockers to Noor with message_agent (workspace w1)."])
+    expect(todo(review({ blocking: ['code'], blockers: true }))).toEqual(["Send the code review's blockers to Sean with message_agent (workspace w1)."])
     const [line] = todo(review({ approved: ['security'], overruled: ['code'] }))
     expect(line).toMatch(/^PR #54 passed checks, has no conflicts and the security review approved it\. The user overruled the code review's blockers on its latest commit\. Tell the user it is ready to merge/)
     expect(todo(review({ overruled: ['code'] }))[0]).toMatch(/^PR #54 passed checks and has no conflicts\. The user overruled the code review's blockers/)
@@ -143,15 +143,15 @@ describe("the Team update's To do", () => {
   it("still passes on another kind's blockers", () => {
     expect(todo(review({ blocking: ['security'], blockers: true, overruled: ['code'] }))).toEqual([])
     const security: TeamEvent = { ...verdict, review: { ...verdict.review!, lens: 'security' } }
-    expect(decide({ ws: { ...ws, id: 'rv', reviewOf: 'w1' }, name: 'Theo', events: [security] }, { allMerged: () => false, workspace: () => ws, stateOf: () => review({ blocking: ['security'], blockers: true, overruled: ['code'] }) }).todo)
-      .toEqual(["Send the security review's blockers to Noor with message_agent (workspace w1)."])
+    expect(decide({ ws: { ...ws, id: 'rv', reviewOf: 'w1' }, name: 'Artkin', events: [security] }, { allMerged: () => false, workspace: () => ws, stateOf: () => review({ blocking: ['security'], blockers: true, overruled: ['code'] }) }).todo)
+      .toEqual(["Send the security review's blockers to Sean with message_agent (workspace w1)."])
   })
 })
 
 describe('overrule_blockers', () => {
   const list = (): Workspace[] => [
-    { id: 'w1', projectId: 'project', name: 'w1', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 54 } as Workspace,
-    { id: 'rv', projectId: 'project', name: 'rv', agentId: 'theo', status: 'ready', prState: 'none', reviewOf: 'w1' } as Workspace
+    { id: 'w1', projectId: 'project', name: 'w1', agentId: 'christian', status: 'ready', prState: 'ready', prNumber: 54 } as Workspace,
+    { id: 'rv', projectId: 'project', name: 'rv', agentId: 'artkin', status: 'ready', prState: 'none', reviewOf: 'w1' } as Workspace
   ]
   function lead(o: { said?: string; userTurn?: boolean; fails?: string } = {}) {
     const all = list()

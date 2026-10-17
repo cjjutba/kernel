@@ -92,8 +92,8 @@ describe('approvals while Kernel quits (KERNEL-215)', () => {
 describe('plan cards outlive a quit (plan-cards-survive-restart)', () => {
   it('keeps a plan pending through quitting and at launch while its chat is open, and ends every other kind as before', async () => {
     const store = await tempStore()
-    store.saveWorkspace({ id: 'ws', projectId: 'r', name: 'invoices', branch: 'feat/invoices', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
-    store.saveWorkspace({ id: 'gone', projectId: 'r', name: 'old', branch: 'feat/old', baseRef: 'main', path: '/tmp/old', mode: 'worktree', agentId: 'kai', port: 4301, status: 'archived', prState: 'none', createdAt: 1 })
+    store.saveWorkspace({ id: 'ws', projectId: 'r', name: 'invoices', branch: 'feat/invoices', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'christian', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    store.saveWorkspace({ id: 'gone', projectId: 'r', name: 'old', branch: 'feat/old', baseRef: 'main', path: '/tmp/old', mode: 'worktree', agentId: 'christian', port: 4301, status: 'archived', prState: 'none', createdAt: 1 })
     const chat = { kind: 'chat' as const, model: 'claude-sonnet-5-5', effort: 'low' as const, plan: true, createdAt: 1, title: 'Plan' }
     store.saveChat({ ...chat, id: 'open', workspaceId: 'ws' })
     store.saveChat({ ...chat, id: 'closed', workspaceId: 'ws', closed: true })
@@ -129,7 +129,7 @@ describe('approval titles say what the chat says (KERNEL-785)', () => {
     const input = { title: 'Export invoices as PDF', team: 'Kernel' }
     expect(describeTool('mcp__claude_ai_Linear__save_issue', input)).toEqual({ title: 'File issue in Linear: Export invoices as PDF' })
     expect(describeTool('mcp__claude_ai_Linear__save_issue', { id: 'KERNEL-785' }).title).toBe('Update KERNEL-785 in Linear')
-    expect(describeTool('mcp__kernel__create_workspace', { agent: 'kai', title: 'Toasts rise from the bottom' }).title).toBe('Hand to Kai: Toasts rise from the bottom')
+    expect(describeTool('mcp__kernel__create_workspace', { agent: 'christian', title: 'Toasts rise from the bottom' }).title).toBe('Hand to Christian: Toasts rise from the bottom')
     expect(describeTool('mcp__acme__sync_widgets', {}).title).toBe('Sync widgets in Acme')
   })
 
@@ -152,10 +152,10 @@ describe('approval titles say what the chat says (KERNEL-785)', () => {
     expect(line?.object).toBe('File issue in Linear: Export invoices as PDF')
   })
   it("heads the approval card with the same words, and keeps the command and file wording", () => {
-    expect(permissionTitle({ toolName: 'mcp__claude_ai_Linear__save_issue', input: { title: 'Export invoices as PDF' } }, 'Noor')).toBe('Noor wants to file issue in Linear: Export invoices as PDF')
-    expect(permissionTitle({ toolName: 'mcp__kernel__share_file', input: { path: '.kernel/shared/checkout.html' } }, 'Noor')).toBe('Noor wants to share checkout.html')
-    expect(permissionTitle({ toolName: 'Bash', input: { command: 'pnpm test' } }, 'Noor')).toBe('Noor wants to run a command')
-    expect(permissionTitle({ toolName: 'Edit', input: { file_path: 'src/a.ts' } }, 'Noor')).toBe('Noor wants to edit a file')
+    expect(permissionTitle({ toolName: 'mcp__claude_ai_Linear__save_issue', input: { title: 'Export invoices as PDF' } }, 'Sean')).toBe('Sean wants to file issue in Linear: Export invoices as PDF')
+    expect(permissionTitle({ toolName: 'mcp__kernel__share_file', input: { path: '.kernel/shared/checkout.html' } }, 'Sean')).toBe('Sean wants to share checkout.html')
+    expect(permissionTitle({ toolName: 'Bash', input: { command: 'pnpm test' } }, 'Sean')).toBe('Sean wants to run a command')
+    expect(permissionTitle({ toolName: 'Edit', input: { file_path: 'src/a.ts' } }, 'Sean')).toBe('Sean wants to edit a file')
   })
 })
 

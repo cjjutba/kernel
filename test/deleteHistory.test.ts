@@ -13,11 +13,11 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 
 // KERNEL-333: Delete in History forgets archived workspaces with their branches, checkpoints and Claude Code transcripts.
 
-const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+const CHRISTIAN = '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 const KERNEL = '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.'
 
 async function setup() {
-  const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': KAI, '.claude/agents/kernel.md': KERNEL })
+  const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/christian.md': CHRISTIAN, '.claude/agents/kernel.md': KERNEL })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -56,7 +56,7 @@ async function setup() {
    * that remembers a session, and one more session on disk that the chat forgot. `commit` leaves a commit nobody has pushed.
    */
   async function archived(title: string, o: { commit?: boolean; merged?: boolean } = {}) {
-    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title })
     if (o.commit) {
       await writeFile(join(ws.path, `${title}.ts`), 'work\n')
       await run('git', ['-C', ws.path, 'add', '-A'])
@@ -108,7 +108,7 @@ describe('deleting workspaces from History', () => {
     const src = await archived('source')
     // Fork into new workspace leaves the forked session in the source worktree's project folder, next to the source's own.
     onDisk[src.path].push({ sessionId: 'fork-session', fileSize: 500 })
-    const fork = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'source-fork' })
+    const fork = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'source-fork' })
     k.store.saveChat({ ...k.store.chats(fork.id)[0], sessionId: 'fork-session' })
 
     expect(await k.deleteWorkspaces([src.id], { deleteUnpushed: false })).toMatchObject({ deleted: [src.id], freedBytes: 1250 })
@@ -174,7 +174,7 @@ describe('deleting workspaces from History', () => {
 
   it('deletes only the recorded sessions of a current-branch workspace and never lists the main checkout', async () => {
     const { k, repo, project, onDisk, listed, deleted, hasBranch, archived } = await setup()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'on main' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'on main' })
     const chat = k.store.chats(ws.id)[0]
     k.store.saveChat({ ...chat, sessionId: 'mine' })
     k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, mode: 'current', path: repo, branch: 'main', status: 'archived', archivedAt: 1 })
@@ -199,7 +199,7 @@ describe('deleting workspaces from History', () => {
     const { k, project, hasBranch, archived } = await setup()
     const a = await archived('waited-on', { commit: true, merged: true })
     const free = await archived('free')
-    const waiter = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Waiter' })
+    const waiter = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Waiter' })
     k.store.saveWorkspace({ ...k.store.workspace(waiter.id)!, waitsFor: { on: [a.id], held: true } })
 
     const p = await k.deletePreview([a.id, free.id])
@@ -215,7 +215,7 @@ describe('deleting workspaces from History', () => {
 
   it('skips an id that is not archived, not found or the shared Lead workspace from before KERNEL-405, and touches nothing of theirs', async () => {
     const { k, project, hasBranch } = await setup()
-    const live = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Still working' })
+    const live = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Still working' })
     const lead = { ...await k.leadChat(project.id).then((c) => setUp(k, c.workspaceId)), id: 'shared-lead', name: 'lead', threadId: undefined, status: 'archived' as const, archivedAt: 1 }
     k.store.saveWorkspace(lead)
 

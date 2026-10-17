@@ -130,7 +130,7 @@ function newest(list: ActivityEvent[], match: (e: ActivityEvent) => boolean): Ac
   return best
 }
 
-/** "Kai edited table.tsx". A line the agent said out loud reads as it was said. */
+/** "Christian edited table.tsx". A line the agent said out loud reads as it was said. */
 function lineOf(e: ActivityEvent, who: string | undefined): string {
   if (e.kind === 'agent.say') return e.text
   const actor = e.actor === 'you' ? 'You' : e.actor === 'kernel' ? 'Kernel' : who ?? 'The agent'

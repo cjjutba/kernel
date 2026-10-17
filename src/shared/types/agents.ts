@@ -13,7 +13,7 @@ export interface AgentLook {
 export interface AgentDef {
   /** File stem in .claude/agents, also the Claude Code subagent name. */
   id: string
-  /** Display name, for example "Kai". */
+  /** Display name, for example "Christian". */
   name: string
   /** Short role, for example "Frontend". */
   role: string

@@ -19,7 +19,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const REPO = {
   'README.md': '# shop\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
 
 let k: Kernel
@@ -68,7 +68,7 @@ beforeAll(async () => {
   k.store.saveProject({ ...project, host: 'local' })
   const c = await k.lead.newLeadChat(project.id, { prompt: '' })
   leadWs = await setUp(k, c.id, 'settled')
-  mateWs = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
+  mateWs = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Build the cart', agentId: 'christian', title: 'Cart' })).id)
   lead = await open(leadWs, 'lead')
   mate = await open(mateWs, 'claude')
 }, 60_000)

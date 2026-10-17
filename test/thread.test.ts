@@ -80,7 +80,7 @@ describe('runs of the same call (KERNEL-784)', () => {
   })
 
   it('says "Handed off 5 tasks" without a service, and counts kernel and other verbs apart', () => {
-    const entries = entriesOf([...['kai', 'noor', 'kai', 'ivy', 'noor'].map(handoff), bash('ls'), bash('pwd')])
+    const entries = entriesOf([...['christian', 'sean', 'christian', 'teng', 'sean'].map(handoff), bash('ls'), bash('pwd')])
     expect(entries.map((e) => e.kind)).toEqual(['run', 'run'])
     expect(entries.map((e) => (e.kind === 'run' ? runLabel(e.run).text : ''))).toEqual(['Handed off 5 tasks', 'Ran 2 commands'])
   })
@@ -127,7 +127,7 @@ describe('the summary of a turn (KERNEL-784)', () => {
   })
 
   it('shows three phrases at most, then how many more', () => {
-    const items = [read('a'), bash('x'), linear('A'), handoff('kai'), linear('B', 'done', { id: 'KERNEL-1' })]
+    const items = [read('a'), bash('x'), linear('A'), handoff('christian'), linear('B', 'done', { id: 'KERNEL-1' })]
     expect(summarize(items).text).toBe('Read 1 file, ran 1 command, filed 1 issue and 2 more')
   })
 
@@ -370,13 +370,13 @@ describe('workspace views', () => {
   })
 
   it('nests indented lists under their item and keeps numbering across a break', () => {
-    const blocks = parseBlocks('1. Noor\n- a\n2. Kai\n   - c\n     - d\n3. Ivy')
+    const blocks = parseBlocks('1. Sean\n- a\n2. Christian\n   - c\n     - d\n3. Teng')
     expect(blocks.map((b) => b.type)).toEqual(['ol', 'ul', 'ol'])
-    const kai = blocks[2]
-    if (kai.type !== 'ol') throw new Error('expected a list')
-    expect(kai.start).toBe(2)
-    expect(kai.items.map((i) => i.text)).toEqual(['Kai', 'Ivy'])
-    expect(kai.items[0].children).toEqual([{ type: 'ul', items: [{ text: 'c', children: [{ type: 'ul', items: [{ text: 'd', children: [] }] }] }] }])
+    const christian = blocks[2]
+    if (christian.type !== 'ol') throw new Error('expected a list')
+    expect(christian.start).toBe(2)
+    expect(christian.items.map((i) => i.text)).toEqual(['Christian', 'Teng'])
+    expect(christian.items[0].children).toEqual([{ type: 'ul', items: [{ text: 'c', children: [{ type: 'ul', items: [{ text: 'd', children: [] }] }] }] }])
   })
 
   it('keeps a list going over blank lines and reads task boxes', () => {

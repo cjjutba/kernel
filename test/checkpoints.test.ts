@@ -518,7 +518,7 @@ describe('a revert keeps what arrived from the base (KERNEL-797)', () => {
 
 describe('checkpoints in the kernel', () => {
   it('saves the start and each turn, reverts with a note in the chat, and waits for a running agent', async () => {
-    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -526,7 +526,7 @@ describe('checkpoints in the kernel', () => {
     await k.start()
     k.sessions.send = async () => ({ queued: false })
     const project = await k.addProject(repo)
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14 from the plan', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14 from the plan', agentId: 'christian', title: 'Invoice table' })
     const chat = k.store.chats(ws.id)[0]
     const h = k.handlers()
     expect((await h['checkpoints.list']({ workspaceId: ws.id })).map((c) => [c.title, !!c.start])).toEqual([['Build T-14 from the plan', true]])
@@ -558,7 +558,7 @@ describe('checkpoints in the kernel', () => {
   })
 
   it('links each turn and the first message to their checkpoints, and tells only the next turn about a revert (KERNEL-764)', async () => {
-    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -568,7 +568,7 @@ describe('checkpoints in the kernel', () => {
     // The brief becomes the chat's first message, as a real send makes it.
     k.sessions.send = async (chatId, parts) => { k.store.saveItem(chatId, { kind: 'user', id: 'brief', ts: 1, parts }); return { queued: false } }
     const project = await k.addProject(repo)
-    const ws = await setUp(k, (await k.createWorkspace(project.id, { prompt: 'Build T-14 from the plan', agentId: 'kai', title: 'Invoice table' })).id)
+    const ws = await setUp(k, (await k.createWorkspace(project.id, { prompt: 'Build T-14 from the plan', agentId: 'christian', title: 'Invoice table' })).id)
     const chat = k.store.chats(ws.id)[0]
     const row = (id: string) => k.store.items(chat.id).find((i) => i.id === id)
     // Linked just after the workspace counts as ready.
@@ -595,7 +595,7 @@ describe('checkpoints in the kernel', () => {
   })
 
   it('links the start checkpoint when the brief goes out after it, at the end of the first turn (KERNEL-764)', async () => {
-    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -604,7 +604,7 @@ describe('checkpoints in the kernel', () => {
     onTestFinished(() => k.stop())
     k.sessions.send = async () => ({ queued: true })
     const project = await k.addProject(repo)
-    const ws = await setUp(k, (await k.createWorkspace(project.id, { prompt: 'Build T-14 from the plan', agentId: 'kai', title: 'Invoice table' })).id)
+    const ws = await setUp(k, (await k.createWorkspace(project.id, { prompt: 'Build T-14 from the plan', agentId: 'christian', title: 'Invoice table' })).id)
     const chat = k.store.chats(ws.id)[0]
     // The brief is still waiting, so the start checkpoint waits for it.
     await vi.waitFor(() => expect((k.checkpoints as unknown as { starts: Map<string, string> }).starts.get(chat.id)).toBe('0'))
@@ -619,7 +619,7 @@ describe('checkpoints of archived workspaces (KERNEL-221)', () => {
   const DAY = 24 * 60 * 60 * 1000
 
   async function setup() {
-    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -631,7 +631,7 @@ describe('checkpoints of archived workspaces (KERNEL-221)', () => {
     const refs = async (prefix = 'refs/kernel/') => (await git(repo, 'for-each-ref', '--format=%(refname)', prefix)).trim().split('\n').filter(Boolean)
     /** A workspace with a turn that left a file only its checkpoint holds, archived `daysAgo` days ago by a faked clock. */
     async function archived(title: string, daysAgo: number) {
-      const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title })
+      const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title })
       await writeFile(join(ws.path, 'draft.md'), `only in a checkpoint of ${title}\n`)
       const c = await snapshot(ws, { chatId: k.store.chats(ws.id)[0].id, title: 'Draft' })
       const blob = (await git(repo, 'rev-parse', `${c.ref}:draft.md`)).trim()

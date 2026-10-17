@@ -24,11 +24,11 @@ vi.mock('../src/renderer/src/screens/workspace/pr/MergeButton', async (original)
 const LEGACY = [
   'Update from Kernel (not the user):',
   '- 2 earlier updates are left out.',
-  '- Kai · Remove the Try section (workspace w1): opened PR #108 "feat(sidebar): remove the Try section"',
-  '- Kai · Remove the Try section (workspace w1): PR #108 is ready to merge',
-  '- Theo · Review PR 108 (workspace w2): finished a turn: "PR #108 is ready to merge. I found no blockers."',
+  '- Christian · Remove the Try section (workspace w1): opened PR #108 "feat(sidebar): remove the Try section"',
+  '- Christian · Remove the Try section (workspace w1): PR #108 is ready to merge',
+  '- Artkin · Review PR 108 (workspace w2): finished a turn: "PR #108 is ready to merge. I found no blockers."',
   'From "Chat icons sizing", a Lead chat that is now closed:',
-  '- Noor · Chat icons (workspace w3): checks failed on PR #54'
+  '- Sean · Chat icons (workspace w3): checks failed on PR #54'
 ].join('\n')
 
 describe('reading an update from before KERNEL-117', () => {
@@ -36,34 +36,34 @@ describe('reading an update from before KERNEL-117', () => {
     expect(legacyRows(LEGACY)).toEqual({
       omitted: 2,
       rows: [
-        { workspaceId: 'w1', agentId: '', name: 'Kai', task: 'Remove the Try section', prNumber: 108, events: [
+        { workspaceId: 'w1', agentId: '', name: 'Christian', task: 'Remove the Try section', prNumber: 108, events: [
           { kind: 'pr.opened', text: 'Opened PR #108 "feat(sidebar): remove the Try section"', actionable: true },
           { kind: 'pr.ready', text: 'PR #108 is ready to merge', actionable: true }
         ] },
-        { workspaceId: 'w2', agentId: '', name: 'Theo', task: 'Review PR 108', events: [{ kind: 'turn', text: 'Finished a turn', actionable: true }], reply: 'PR #108 is ready to merge. I found no blockers.' },
-        { workspaceId: 'w3', agentId: '', name: 'Noor', task: 'Chat icons', prNumber: 54, fromChat: 'Chat icons sizing', events: [{ kind: 'pr.cifail', text: 'Checks failed on PR #54', actionable: true }] }
+        { workspaceId: 'w2', agentId: '', name: 'Artkin', task: 'Review PR 108', events: [{ kind: 'turn', text: 'Finished a turn', actionable: true }], reply: 'PR #108 is ready to merge. I found no blockers.' },
+        { workspaceId: 'w3', agentId: '', name: 'Sean', task: 'Chat icons', prNumber: 54, fromChat: 'Chat icons sizing', events: [{ kind: 'pr.cifail', text: 'Checks failed on PR #54', actionable: true }] }
       ]
     })
   })
 
   it('uses the saved card data when there is some, and reads the lines otherwise', () => {
-    const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'kai', name: 'Kai', task: 'T', events: [] }] }
+    const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'christian', name: 'Christian', task: 'T', events: [] }] }
     const item = (extra: object): Extract<ChatItem, { kind: 'user' }> => ({ kind: 'user', id: 'u', ts: 0, parts: [{ type: 'text', text: LEGACY }], ...extra })
     expect(cardData(item({ from: 'kernel', update }))).toBe(update)
     expect(cardData(item({})).rows).toHaveLength(3)
   })
 
   it('groups rows under the closed chat they came from, in order', () => {
-    expect(sections(legacyRows(LEGACY).rows).map((s) => [s.fromChat, s.rows.map((r) => r.name)])).toEqual([[undefined, ['Kai', 'Theo']], ['Chat icons sizing', ['Noor']]])
+    expect(sections(legacyRows(LEGACY).rows).map((s) => [s.fromChat, s.rows.map((r) => r.name)])).toEqual([[undefined, ['Christian', 'Artkin']], ['Chat icons sizing', ['Sean']]])
   })
 
   it('reads a reply with quotes in it, and a task with brackets, whole', () => {
     const text = [
       'Update from Kernel (not the user):',
-      '- Kai · Fix the (beta) toggle (workspace w1): finished a turn: "Renamed it to "Beta" (workspace w9): done"'
+      '- Christian · Fix the (beta) toggle (workspace w1): finished a turn: "Renamed it to "Beta" (workspace w9): done"'
     ].join('\n')
     expect(legacyRows(text).rows).toEqual([
-      { workspaceId: 'w1', agentId: '', name: 'Kai', task: 'Fix the (beta) toggle', events: [{ kind: 'turn', text: 'Finished a turn', actionable: true }], reply: 'Renamed it to "Beta" (workspace w9): done' }
+      { workspaceId: 'w1', agentId: '', name: 'Christian', task: 'Fix the (beta) toggle', events: [{ kind: 'turn', text: 'Finished a turn', actionable: true }], reply: 'Renamed it to "Beta" (workspace w9): done' }
     ])
   })
 
@@ -76,7 +76,7 @@ describe('reading an update from before KERNEL-117', () => {
     expect([tone('review', 'Approved PR #108'), tone('review', 'Found 2 blockers in PR #108')]).toEqual(['add', 'del'])
     // A review with its kind in front (KERNEL-549) reads the same: approvals green, blockers red (KERNEL-581).
     expect([tone('review', 'Code review approved PR #491'), tone('review', 'Security review approved PR #491'), tone('review', 'UX review approved PR #491'), tone('review', 'Approved')]).toEqual(['add', 'add', 'add', 'add'])
-    expect([tone('review', 'Code review found 2 blockers in PR #491'), tone('review', 'UX review found 1 blocker in Kai\'s work')]).toEqual(['del', 'del'])
+    expect([tone('review', 'Code review found 2 blockers in PR #491'), tone('review', 'UX review found 1 blocker in Christian\'s work')]).toEqual(['del', 'del'])
     expect([tone('turn'), tone('turn', '', true), tone('pr.opened')]).toEqual(['muted', 'ink2', 'muted'])
     // GitHub lifting its block reads like the PR being ready; a block takes the grey of anything else (KERNEL-401).
     expect([tone('pr.unblocked'), tone('pr.blocked'), tone('pr.blocked', '', true)]).toEqual(['add', 'muted', 'ink2'])
@@ -91,7 +91,7 @@ describe('the Team update card', () => {
   const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/cards/TeamUpdateCard' as string) as Promise<{ TeamUpdateView: View }>
   const item: ChatItem = {
     kind: 'user', id: 'u', ts: 0, from: 'kernel', parts: [{ type: 'text', text: 'Team update from Kernel, not from the user.' }],
-    update: { omitted: 1, rows: [{ workspaceId: 'w1', agentId: 'kai', name: 'Kai', task: 'Remove the Try section', prNumber: 108, reply: 'x'.repeat(300),
+    update: { omitted: 1, rows: [{ workspaceId: 'w1', agentId: 'christian', name: 'Christian', task: 'Remove the Try section', prNumber: 108, reply: 'x'.repeat(300),
       events: [{ kind: 'pr.opened', text: 'Opened PR #108', actionable: false }, { kind: 'pr.ready', text: 'Passed checks, no conflicts', actionable: true }] }] }
   }
 
@@ -112,7 +112,7 @@ describe('the Team update card', () => {
     const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest: () => false, workspaceOf: (id) => (id === 'w1' ? { id: 'w1', status: 'ready' } : undefined) }))
     expect(html).toContain('aria-label="Team update"')
     expect(html).toContain('Team update')
-    expect(html).toContain('<span class="tucard-name">Kai</span>')
+    expect(html).toContain('<span class="tucard-name">Christian</span>')
     // Events read as one line between dots; only what passed, failed or merged takes a color (KERNEL-274).
     expect(html).toContain('<span class="tucard-ev" data-tone="muted">Opened PR #108<span class="sr-only">. </span></span>')
     expect(html).toContain('<span class="tucard-sep" aria-hidden="true">·</span>')
@@ -126,7 +126,7 @@ describe('the Team update card', () => {
     expect(many).toContain("Updates on 3 more workspaces didn&#x27;t fit here")
     expect(html).not.toContain('aria-label="Copy"')
     expect(html).not.toContain('aria-label="Edit"')
-    expect(html).toMatch(/<button[^>]*aria-label="Open Kai&#x27;s workspace for Remove the Try section"[^>]*>Open<\/button>/)
+    expect(html).toMatch(/<button[^>]*aria-label="Open Christian&#x27;s workspace for Remove the Try section"[^>]*>Open<\/button>/)
   })
 
   it('counts what an older update left out in updates, and shows one with no rows it can read as a note', async () => {
@@ -142,19 +142,19 @@ describe('the Team update card', () => {
 
   it('names a closed tab of this chat apart from a closed Lead chat, from saved rows and from the lines (KERNEL-337)', async () => {
     const { TeamUpdateView } = await load()
-    const row = (workspaceId: string, extra: object) => ({ workspaceId, agentId: 'kai', name: 'Kai', task: 'T', events: [], ...extra })
+    const row = (workspaceId: string, extra: object) => ({ workspaceId, agentId: 'christian', name: 'Christian', task: 'T', events: [], ...extra })
     const saved: ChatItem = { ...item, update: { rows: [row('w1', { fromChat: 'Icons', fromTab: true }), row('w2', { fromChat: 'Icons' })] } }
     const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: saved, useNewest: () => false, workspaceOf: () => undefined }))
     expect(html).toContain('From &quot;Icons&quot;, a tab you closed')
     expect(html).toContain('From &quot;Icons&quot;, a Lead chat that is now closed')
-    const text = ['Update from Kernel (not the user):', 'From "Icons", a tab you closed:', '- Kai · T (workspace w1): checks failed on PR #54', 'From "Icons", a Lead chat that is now closed:', '- Kai · T (workspace w1): checks failed on PR #54'].join('\n')
+    const text = ['Update from Kernel (not the user):', 'From "Icons", a tab you closed:', '- Christian · T (workspace w1): checks failed on PR #54', 'From "Icons", a Lead chat that is now closed:', '- Christian · T (workspace w1): checks failed on PR #54'].join('\n')
     expect(sections(legacyRows(text).rows).map((s) => [s.fromChat, s.fromTab, s.rows.length])).toEqual([['Icons', true, 1], ['Icons', undefined, 1]])
   })
 
   it('sends an archived workspace to History, and shows no Open for one that is gone', async () => {
     const { TeamUpdateView } = await load()
     const archived = renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest: () => false, workspaceOf: () => ({ id: 'w1', status: 'archived' }) }))
-    expect(archived).toMatch(/aria-label="Find Kai&#x27;s workspace for Remove the Try section in History"[^>]*>In History</)
+    expect(archived).toMatch(/aria-label="Find Christian&#x27;s workspace for Remove the Try section in History"[^>]*>In History</)
     const gone = renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest: () => false, workspaceOf: () => undefined }))
     expect(gone).not.toContain('tucard-open')
   })
@@ -162,10 +162,10 @@ describe('the Team update card', () => {
 
 describe('Merge on a Team update row (KERNEL-351)', () => {
   const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/cards/TeamUpdateCard' as string) as Promise<{ TeamUpdateView: (p: { item: ChatItem; workspaceOf: (id: string) => object | undefined; useNewest: (target: string, itemId: string, rowId: string) => boolean }) => React.ReactElement }>
-  const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, projectId: 'r', name: id, branch: id, baseRef: 'main', path: `/${id}`, mode: 'worktree', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 7, createdAt: 0, ...over } as Workspace)
+  const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, projectId: 'r', name: id, branch: id, baseRef: 'main', path: `/${id}`, mode: 'worktree', agentId: 'christian', status: 'ready', prState: 'ready', prNumber: 7, createdAt: 0, ...over } as Workspace)
   const card = (id: string, ...rows: [workspaceId: string, name?: string][]): ChatItem => ({
     kind: 'user', id, ts: 0, from: 'kernel', parts: [{ type: 'text', text: 'Team update' }],
-    update: { rows: rows.map(([workspaceId, name]) => ({ workspaceId, agentId: 'kai', name: name ?? 'Kai', task: 'T', events: [] })) }
+    update: { rows: rows.map(([workspaceId, name]) => ({ workspaceId, agentId: 'christian', name: name ?? 'Christian', task: 'T', events: [] })) }
   })
   const workspaces = [ws('w1', { prNumber: 162 }), ws('w2', { prNumber: 161 }), ws('review', { reviewOf: 'w2', prState: 'none', prNumber: undefined }), ws('review2', { reviewOf: 'w2', prState: 'none', prNumber: undefined })]
   // What the card's store hook answers, from the same map.
@@ -200,33 +200,33 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
   it('offers one Merge for a PR in a card, on the author\'s row when it is there, wherever it sits (KERNEL-581)', async () => {
     const { TeamUpdateView } = await load()
     // Two reviewers come first and the author last, the order the card draws its rows in.
-    const items = [card('new', ['review', 'Theo'], ['review2', 'Mira'], ['w2', 'Noor'])]
+    const items = [card('new', ['review', 'Artkin'], ['review2', 'Mira'], ['w2', 'Sean'])]
     const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: items[0], useNewest: newestIn(items), workspaceOf: (id) => workspaces.find((w) => w.id === id) }))
     expect(html.match(/stub-merge/g)).toHaveLength(1)
-    expect(mergeByName(html)).toEqual({ Theo: false, Mira: false, Noor: true })
+    expect(mergeByName(html)).toEqual({ Artkin: false, Mira: false, Sean: true })
     // Every row still has its Open.
     expect(html.match(/>Open</g)).toHaveLength(3)
     // A PR of its own in the same card keeps its Merge.
-    const two = [card('two', ['w1', 'Kai'], ['review', 'Theo'], ['w2', 'Noor'])]
-    expect(mergeByName(renderToStaticMarkup(React.createElement(TeamUpdateView, { item: two[0], useNewest: newestIn(two), workspaceOf: (id) => workspaces.find((w) => w.id === id) })))).toEqual({ Kai: true, Theo: false, Noor: true })
+    const two = [card('two', ['w1', 'Christian'], ['review', 'Artkin'], ['w2', 'Sean'])]
+    expect(mergeByName(renderToStaticMarkup(React.createElement(TeamUpdateView, { item: two[0], useNewest: newestIn(two), workspaceOf: (id) => workspaces.find((w) => w.id === id) })))).toEqual({ Christian: true, Artkin: false, Sean: true })
   })
 
   it('puts the one Merge on the first reviewer row when the author has none in the card (KERNEL-581)', async () => {
     const { TeamUpdateView } = await load()
-    const items = [card('new', ['review', 'Theo'], ['review2', 'Mira'])]
+    const items = [card('new', ['review', 'Artkin'], ['review2', 'Mira'])]
     const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: items[0], useNewest: newestIn(items), workspaceOf: (id) => workspaces.find((w) => w.id === id) }))
     expect(html.match(/stub-merge/g)).toHaveLength(1)
-    expect(mergeByName(html)).toEqual({ Theo: true, Mira: false })
+    expect(mergeByName(html)).toEqual({ Artkin: true, Mira: false })
     expect(html).toContain('Merge #161')
   })
 
   it('keeps Merge off an older card, even when only that card has the author row (KERNEL-351, KERNEL-581)', async () => {
     const { TeamUpdateView } = await load()
-    const items = [card('old', ['w2', 'Noor']), card('new', ['review', 'Theo'])]
+    const items = [card('old', ['w2', 'Sean']), card('new', ['review', 'Artkin'])]
     expect(newestRows(items, workspaces).get('w2')).toEqual({ itemId: 'new', workspaceId: 'review' })
     const draw = (item: ChatItem) => mergeByName(renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest: newestIn(items), workspaceOf: (id) => workspaces.find((w) => w.id === id) })))
-    expect(draw(items[0])).toEqual({ Noor: false })
-    expect(draw(items[1])).toEqual({ Theo: true })
+    expect(draw(items[0])).toEqual({ Sean: false })
+    expect(draw(items[1])).toEqual({ Artkin: true })
   })
 
   it('spins a row whose merge is pending, wherever it was pressed, and leaves the other rows on Merge (KERNEL-520)', async () => {
@@ -271,8 +271,8 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(mergeView(ws('w1'), pr(), rules, undefined, 'merge')).toEqual({ kind: 'merging' })
     expect(mergeView(ws('w1', { prState: 'merged' }), pr(), rules, undefined, 'merge')).toEqual({ kind: 'merged' })
     expect(mergeView(ws('w1'), pr({ checks: [{ name: 'ci', state: 'fail' }] }), rules)).toMatchObject({ kind: 'blocked', reason: expect.stringContaining('Checks have not passed') })
-    const reviewed = ws('w1', { prHead: 'new', reviews: [{ workspaceId: 'r1', agentId: 'theo', verdict: 'approved', summary: '', sha: 'old', prNumber: 7, ts: 1 }] })
-    expect(mergeView(reviewed, pr({ head: 'new' }), rules, () => 'Theo')).toMatchObject({ kind: 'blocked', reason: expect.stringContaining("The code review hasn't approved") })
+    const reviewed = ws('w1', { prHead: 'new', reviews: [{ workspaceId: 'r1', agentId: 'artkin', verdict: 'approved', summary: '', sha: 'old', prNumber: 7, ts: 1 }] })
+    expect(mergeView(reviewed, pr({ head: 'new' }), rules, () => 'Artkin')).toMatchObject({ kind: 'blocked', reason: expect.stringContaining("The code review hasn't approved") })
   })
 
   it('draws the button, the reason, the spinner and the merged label, and toasts a failed merge', async () => {
@@ -298,7 +298,7 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(bare({ kind: 'merging' })).toMatch(/aria-busy="true"[^>]*><span[^>]*>.*<\/span>Merging<\/span>$/)
     expect(bare({ kind: 'state', label: 'Checks failed', tone: 'fail', glyph: 'prCifail', spin: false })).toBe('<span class="pr-word pr-run" data-tone="fail">Checks failed</span>')
     expect(bare({ kind: 'merged' })).toBe('<span class="tucard-merged">Merged</span>')
-    expect(draw({ kind: 'blocked', reason: "Theo hasn't approved the latest commit. Merging waits (Settings, Pull requests)." })).toContain("Theo hasn&#x27;t approved the latest commit.</span>")
+    expect(draw({ kind: 'blocked', reason: "Artkin hasn't approved the latest commit. Merging waits (Settings, Pull requests)." })).toContain("Artkin hasn&#x27;t approved the latest commit.</span>")
     expect(draw({ kind: 'blocked', reason: 'x' })).not.toContain('<button')
     expect(draw({ kind: 'merged' })).toContain('tucard-merged')
     expect(draw({ kind: 'none' })).toBe('')

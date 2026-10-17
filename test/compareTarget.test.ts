@@ -19,7 +19,7 @@ const TEAM = {
   'src/old.ts': 'one\ntwo\nthree\nfour\nfive\n',
   'src/keep.ts': 'a\nb\nc\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
 
 /** A PNG's first bytes. The zero bytes make git treat it as binary. */
@@ -40,7 +40,7 @@ async function workspace() {
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
   const project = await k.projects.addProject(repo)
-  const ws = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Rename old', agentId: 'kai' })).id)
+  const ws = await setUp(k, (await k.workspaces.createWorkspace(project.id, { prompt: 'Rename old', agentId: 'christian' })).id)
   return { k, remote, repo, ws, h: k.handlers() }
 }
 

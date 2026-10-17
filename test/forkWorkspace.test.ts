@@ -13,14 +13,14 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 
 // KERNEL-346: Fork into new workspace, from the "..." menu under a reply.
 
-const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+const CHRISTIAN = '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 const KERNEL = '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.'
 
 const until = async (ok: () => boolean, ms = 8000) => { const t = Date.now(); while (!ok()) { if (Date.now() - t > ms) throw new Error('timed out'); await new Promise((r) => setTimeout(r, 25)) } }
 const git = (cwd: string, ...args: string[]) => run('git', ['-C', cwd, ...args]).then((s) => s.replace(/\s+$/, ''))
 
 async function setup(files: Record<string, string> = {}) {
-  const repo = await tempRepo({ 'README.md': '# x\n', 'a.txt': 'one\n', '.claude/agents/kai.md': KAI, '.claude/agents/kernel.md': KERNEL, ...files })
+  const repo = await tempRepo({ 'README.md': '# x\n', 'a.txt': 'one\n', '.claude/agents/christian.md': CHRISTIAN, '.claude/agents/kernel.md': KERNEL, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -36,7 +36,7 @@ async function setup(files: Record<string, string> = {}) {
   const deletedSessions: string[] = []
   k.deleteSession = (async (id: string) => { deletedSessions.push(id) }) as typeof k.deleteSession
   const project = await k.addProject(repo)
-  const src = await k.createWorkspace(project.id, { prompt: 'Build the home screen', agentId: 'kai', title: 'Home screen' })
+  const src = await k.createWorkspace(project.id, { prompt: 'Build the home screen', agentId: 'christian', title: 'Home screen' })
   const chat = k.store.saveChat({ ...k.store.chats(src.id)[0], title: 'Home screen', sessionId: 'src-session' })
   const items: ChatItem[] = [
     { kind: 'user', id: 'u1', ts: 1, parts: [{ type: 'text', text: 'Build the home screen' }] },
@@ -64,7 +64,7 @@ describe('fork into new workspace (KERNEL-346)', () => {
 
     const ws = await k.handlers()['workspaces.fork']({ chatId: chat.id, itemId: 'u2' })
 
-    expect(ws).toMatchObject({ projectId: src.projectId, agentId: 'kai', mode: 'worktree', baseRef: src.baseRef, branch: `${src.branch}-fork`, name: `${src.name}-fork`, title: 'Home screen' })
+    expect(ws).toMatchObject({ projectId: src.projectId, agentId: 'christian', mode: 'worktree', baseRef: src.baseRef, branch: `${src.branch}-fork`, name: `${src.name}-fork`, title: 'Home screen' })
     expect(ws.path).not.toBe(src.path)
     expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(src.path, 'rev-parse', 'HEAD'))
     expect(await readFile(join(ws.path, 'a.txt'), 'utf8')).toBe('edited\n')
@@ -114,7 +114,7 @@ describe('fork into new workspace (KERNEL-346)', () => {
     await expect(k.workspaces.forkWorkspace(term.id)).rejects.toThrow('cannot be forked')
     const leadChat = await k.lead.leadChat(project.id)
     await expect(k.workspaces.forkWorkspace(leadChat.id)).rejects.toThrow("A chat with Kernel can't fork")
-    const other = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Other' })
+    const other = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Other' })
     await k.archiveWorkspace(other.id, false)
     await expect(k.workspaces.forkWorkspace(k.store.chats(other.id)[0].id)).rejects.toThrow('Restore the workspace')
   })

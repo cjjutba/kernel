@@ -13,7 +13,7 @@ import { MergeSlot, PrStatusTag, mergeView } from '../src/renderer/src/screens/w
 Object.assign(globalThis, { React })
 
 const rules = { requireGreen: false, requireReviewer: false }
-const ws = (prState: PrState): Workspace => ({ id: 'w1', projectId: 'project', agentId: 'kai', status: 'ready', prState, prNumber: 7 }) as Workspace
+const ws = (prState: PrState): Workspace => ({ id: 'w1', projectId: 'project', agentId: 'christian', status: 'ready', prState, prNumber: 7 }) as Workspace
 const states = Object.keys(PR_STATUS) as (keyof typeof PR_STATUS)[]
 const html = (el: React.ReactElement) => renderToStaticMarkup(el)
 
@@ -156,7 +156,7 @@ describe('a branch that merges on the Mac', () => {
     expect(localRow('dirty', 'main', local(dirty))).toBe('Merge refused. ~/Projects/shop has uncommitted changes.')
     expect(localRow('merged', 'main', local())).toBeUndefined()
     expect(localNote('behind', 'main', local({ behind: 1 }))?.title).toBe('main has 1 new commit')
-    expect(localNote('conflict', 'main', local({}, ['src/a.ts']), 'Noor')).toMatchObject({ title: 'Merging into main would conflict in 1 file', body: ['Resolve conflicts asks Noor to fix them on this branch.'], files: [{ letter: 'C', path: 'src/a.ts', why: 'both changed' }] })
+    expect(localNote('conflict', 'main', local({}, ['src/a.ts']), 'Sean')).toMatchObject({ title: 'Merging into main would conflict in 1 file', body: ['Resolve conflicts asks Sean to fix them on this branch.'], files: [{ letter: 'C', path: 'src/a.ts', why: 'both changed' }] })
     expect(localNote('dirty', 'main', local(dirty))?.files).toEqual([{ letter: 'M', path: 'package.json' }, { letter: 'U', path: 'notes.md' }])
   })
 })
