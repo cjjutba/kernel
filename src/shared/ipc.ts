@@ -310,7 +310,10 @@ export interface KernelApi {
   /**
    * Switches a chat with Kernel to Hand off or Build here, by its workspace (KERNEL-770). It applies from the next turn: a running
    * turn finishes in the mode it started in. The chat's transcript gets a `leadMode` divider. Refuses a workspace that isn't a
-   * chat with Kernel.
+   * chat with Kernel. The first switch to Build here of a chat on the shared main folder (`Workspace.shared`) may make the
+   * chat's working copy, by Settings, Git and worktrees, Workspace type (KERNEL-1051). It resolves once that has started, while
+   * the workspace is `setup` with `worktreePending`, and a failure later puts the chat back in Hand off on the shared folder with a
+   * row saying why. It throws a sentence when it refuses: a current-branch copy while another workspace is on the checkout.
    */
   'lead.setMode': { req: { workspaceId: string; mode: LeadMode }; res: Workspace }
   /** The Lead chats, each holding one or more Lead tabs, in every project or in `projectId`, oldest first (KERNEL-337). */
