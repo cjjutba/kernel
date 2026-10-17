@@ -136,6 +136,8 @@ export function turnFinished(k: Kernel, ws: Workspace, chat: Chat, turn: { ok: b
   if (prPath) {
     void k.refreshPr(ws.id).catch((e) => { if (!k.stopped) console.warn(`[lead-updates] could not read the PR of ${ws.id} after its turn: ${(e as Error)?.message ?? e}`) })
       .then(() => k.leadUpdates.readPr(ws.id)).catch((e) => console.warn(`[lead-updates] could not send the update for ${ws.id}: ${(e as Error)?.message ?? e}`))
+      // A PR opened seconds before the turn ended can be missing from that read, so a pushed branch is read again.
+      .then(() => k.prs.lookAgain(ws.id)).catch(() => undefined)
   }
   // A Lead chat can open a PR from its own branch too (KERNEL-405). Nobody else hears about it.
   else if (ws.prNumber) void k.refreshPr(ws.id).catch(() => undefined)

@@ -152,6 +152,25 @@ describe('the PR poll (KERNEL-216)', () => {
     expect(k.store.workspace(a)?.prState).toBe('ready')
   })
 
+  it('reads a pushed branch with no PR again after its turn, since GitHub can take seconds to find a new PR, and leaves an unpushed one alone', async () => {
+    const { k, ws: [ws], prs, reads } = await setup()
+    k.prs.lookAgainMs = [20, 40]
+    // Nothing on the remote yet: no PR to find, so nothing is read.
+    await k.prs.lookAgain(ws.id)
+    await new Promise((r) => setTimeout(r, 80))
+    expect(reads).toEqual([])
+    // Pushed, and the read after the turn found nothing. GitHub finds the PR by the second look.
+    await git(ws.path, 'update-ref', `refs/remotes/origin/${ws.branch}`, 'HEAD')
+    await k.prs.lookAgain(ws.id)
+    await vi.waitFor(() => expect(reads).toEqual([ws.id]))
+    prs[ws.id] = info(ws.id, 'open')
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.prNumber).toBe(42))
+    expect(reads).toEqual([ws.id, ws.id])
+    // Linked, so no more reads.
+    await new Promise((r) => setTimeout(r, 80))
+    expect(reads).toHaveLength(2)
+  })
+
   it('waits twice as long after each failed read, up to 10 minutes, and goes back to every poll once gh answers', async () => {
     const { k, ws, prs, reads } = await setup()
     const id = ws[0].id

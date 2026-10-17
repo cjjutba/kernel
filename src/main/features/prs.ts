@@ -1,7 +1,7 @@
 import type { AutoMerge, ChatPart, GitHubErrorKind, GitHubStatus, MergeMethod, PrInfo, PrReads, PrPending, PrState, Project, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { type AppSettings, autoMergeInProject, loadRepoSettings, localSettingsOwn, prInstructions, sharedMergeOf } from '../services/settings'
-import { branchExists, currentBranch, fastForward, fetchOrigin, folderGone, freeBranch, isAncestor, isPushed, stripRemote } from '../services/worktrees'
+import { branchExists, currentBranch, fastForward, fetchOrigin, folderGone, freeBranch, isAncestor, isPushed, revParse, stripRemote } from '../services/worktrees'
 import { exec, git } from '../services/exec'
 import { BranchConflict, type CodeHost, fingerprintOf, GhReadError, HEAD_MOVED, ownPrNote, prNote, resolveFile } from '../services/github'
 import { type PrContext, prTextFor } from '../services/conventions'
@@ -1017,6 +1017,28 @@ export class Prs extends Feature {
     for (const id of ids) await this.k.refreshPr(id).catch(() => undefined)
   }
 
+  /** When the reads after a turn go again, counted from the read before. */
+  lookAgainMs = [10_000, 30_000]
+  private lookTimers = new Map<string, NodeJS.Timeout>()
+
+  /**
+   * Reads again after a turn whose read found no PR on a branch it had pushed. GitHub can take seconds to find a PR by its
+   * branch, and the poll skips a workspace with no PR, so a PR opened just before the turn ended stayed unlinked. A branch
+   * whose last commit isn't on the remote has no PR to find yet, so nothing is read.
+   */
+  async lookAgain(id: string, n = 0) {
+    const ws = this.store.workspace(id)
+    if (this.stopped || !ws || ws.status === 'archived' || ws.prState !== 'none' || ws.mode !== 'worktree' || this.isLocal(ws) || n >= this.lookAgainMs.length) return
+    const remote = await this.k.config.remoteOfWs(ws)
+    const [head, pushed] = await Promise.all([revParse(ws.path, 'HEAD'), revParse(ws.path, `refs/remotes/${remote}/${ws.branch}`)])
+    if (!head || head !== pushed || this.stopped) return
+    clearTimeout(this.lookTimers.get(id))
+    this.lookTimers.set(id, setTimeout(() => {
+      this.lookTimers.delete(id)
+      void this.k.refreshPr(id).then(() => this.lookAgain(id, n + 1)).catch(() => undefined)
+    }, this.lookAgainMs[n]))
+  }
+
   /** Drops the workspace from the quick read, as when GitHub has settled on it. */
   cancelRecheck(id: string) { this.rechecks.delete(id) }
 
@@ -1095,6 +1117,8 @@ export class Prs extends Feature {
     clearTimeout(this.recheckTimer)
     this.recheckTimer = undefined
     this.rechecks.clear()
+    for (const t of this.lookTimers.values()) clearTimeout(t)
+    this.lookTimers.clear()
     this.weighed.clear()
     this.retries.clear()
   }
