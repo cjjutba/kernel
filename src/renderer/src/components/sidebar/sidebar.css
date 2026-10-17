@@ -78,7 +78,6 @@
 .hc-wrap-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
 .hc-wrap { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .hc-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: var(--fs-chip); color: var(--muted); }
-.hc-foot .btn { height: 24px; padding: 0 8px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .hc-pr { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: none; font-size: var(--fs-chip); color: var(--ink-3); }
 button.hc-pr { cursor: pointer; }
 button.hc-pr:hover { color: var(--ink); }

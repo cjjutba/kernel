@@ -5,7 +5,7 @@ import { call } from '../../api'
 import { FileLabel } from '../../components/FileIcon'
 import { actions, go, useStore } from '../../store'
 import { oneOf, useRemembered } from '../../remember'
-import { Button, EmptyList, Icon, Pill, useBusy, useListKeys, listKeyAction } from '../../ui'
+import { Button, LinkButton, EmptyList, Icon, Pill, useBusy, useListKeys, listKeyAction } from '../../ui'
 import { ApprovalCard } from '../workspace/cards/ApprovalCard'
 import { outcome } from '../workspace/cards/steps'
 import { attempt } from '../workspace/MessageActions'
@@ -51,7 +51,7 @@ function OverlapDetail({ overlap: o }: { overlap: Overlap }) {
           <Fragment key={r.workspaceId}>
             <dt>{r.name}</dt>
             <dd className="mono">
-              {r.ws ? <button type="button" className="ib-link mono" aria-label={`Open ${r.name}'s workspace ${r.ws.name}`} onClick={() => go({ name: 'workspace', workspaceId: r.ws!.id })}>{r.ws.name}</button> : r.workspaceId}, {r.lines}
+              {r.ws ? <LinkButton variant="action" size="ui" className="mono" aria-label={`Open ${r.name}'s workspace ${r.ws.name}`} onClick={() => go({ name: 'workspace', workspaceId: r.ws!.id })}>{r.ws.name}</LinkButton> : r.workspaceId}, {r.lines}
             </dd>
           </Fragment>
         ))}
@@ -95,7 +95,7 @@ function Detail({ item }: { item: InboxItem }) {
           {phase !== 'folded' && (
             <div className={`ib-acts${phase ? ' decide-fold' : ''}`}>
               <Button onClick={() => decideAtOnce(a, { behavior: 'deny', message: 'Denied in Kernel.' })}>Deny</Button>
-              <button type="button" className="ib-link" onClick={() => decideAtOnce(a, { behavior: 'allow', always: true })}>Always allow in this project</button>
+              <LinkButton variant="action" size="ui" onClick={() => decideAtOnce(a, { behavior: 'allow', always: true })}>Always allow in this project</LinkButton>
               <span className="grow" />
               <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>Approve</Button>
             </div>
@@ -111,7 +111,7 @@ function Detail({ item }: { item: InboxItem }) {
       {!pending && phase !== 'folding' && (
         <div className="ib-outcome">
           {result && <span>{result}</span>}
-          {n.workspaceId && <button type="button" className="ib-link" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>{n.kind === 'finished' ? 'Review diff' : 'Open workspace'}</button>}
+          {n.workspaceId && <LinkButton variant="action" size="ui" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>{n.kind === 'finished' ? 'Review diff' : 'Open workspace'}</LinkButton>}
         </div>
       )}
     </article>
@@ -185,7 +185,7 @@ export function Inbox() {
         <Icon name="inbox" />
         <h1>Inbox</h1>
         <span className="grow" />
-        <button type="button" className="ib-link muted" disabled={!all.some((i) => !i.n.read)} onClick={() => markRead('all')}>Mark all read</button>
+        <LinkButton variant="quiet" size="ui" disabled={!all.some((i) => !i.n.read)} onClick={() => markRead('all')}>Mark all read</LinkButton>
       </header>
       <div className="ib-tabs" role="group" aria-label="Filter the inbox">
         {tabs.map(([id, label]) => <Pill key={id} pressed={tab === id} onClick={() => setTab(id)}>{label}<span className="ib-n">{count(id)}</span></Pill>)}

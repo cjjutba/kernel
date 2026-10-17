@@ -3,7 +3,7 @@ import type { NewProjectPrefill } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions } from '../../store'
 import { openNewChat } from '../../lead'
-import { Button, Modal, useBusy } from '../../ui'
+import { Button, LinkButton, Modal, useBusy } from '../../ui'
 import { defaultTeam } from './draft'
 import { RepoNameField, useRepoName } from './RepoName'
 import './projects.css'
@@ -52,7 +52,7 @@ export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
       title="New project" onClose={actions.ui.closeModal} width={560} top={112}
       footer={
         <>
-          <span className="nps-other">Or <button type="button" className="cr-link" onClick={() => actions.ui.openModal({ name: 'connectRepo' })}>clone a repo</button> or <button type="button" className="cr-link" onClick={() => actions.ui.openModal({ name: 'openFolder' })}>open a folder</button></span>
+          <span className="nps-other">Or <LinkButton size="meta" onClick={() => actions.ui.openModal({ name: 'connectRepo' })}>clone a repo</LinkButton> or <LinkButton size="meta" onClick={() => actions.ui.openModal({ name: 'openFolder' })}>open a folder</LinkButton></span>
           <span className="grow" />
           <Button variant="ghost" size="lg" onClick={actions.ui.closeModal}>Cancel</Button>
           <Button variant="primary" size="lg" disabled={!ready} busy={busy !== null} busyLabel="Creating" onClick={() => void create()}>Create project</Button>

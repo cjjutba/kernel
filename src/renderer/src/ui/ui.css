@@ -4,7 +4,8 @@
 .icon-btn[aria-pressed='true'] { background: var(--surface-3); color: var(--ink); }
 .input:focus { border-color: var(--ink-3); }
 
-/* button sm and icon button boxes (Button size, IconButton box). The 28px default is .btn and .icon-btn in tokens.css. */
+/* button xs and sm and icon button boxes (Button size, IconButton box). The 28px default is .btn and .icon-btn in tokens.css. */
+.btn.xs { height: 24px; padding: 0 8px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .btn.sm { height: 26px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .icon-btn.md { width: 26px; height: 26px; }
 .icon-btn.sm { width: 24px; height: 24px; border-radius: var(--r-sm); }
@@ -182,7 +183,7 @@
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } .toggle span { transition: none; } .toast-slot, .toast-slot > .toast { animation: none !important; transition: none !important; } .toast-slot[data-leaving] { visibility: hidden; } }
 
 /* CodeLines: a script field with a line-number gutter (KERNEL-914) */
-.code-lines { display: flex; width: 100%; min-width: 0; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--code-bg); overflow: hidden; }
+.code-lines { display: flex; width: 100%; min-width: 0; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--code-bg); overflow: hidden; }
 .code-lines:focus-within { border-color: var(--ink-3); }
 .code-lines[data-invalid='true'] { border-color: var(--ink); }
 .code-lines[data-disabled='true'] { opacity: 0.6; }
@@ -197,6 +198,18 @@
 .card.devui-pad { padding: 12px; }
 
 /* Work list parts (KERNEL-1009): the muted scope before a title and a day group header. */
-.scope-label { color: var(--faint); font-size: var(--fs-meta); font-weight: var(--fw-regular); white-space: nowrap; }
+.scope-label { color: var(--ink-3); font-size: var(--fs-meta); font-weight: var(--fw-regular); white-space: nowrap; }
 .day-group { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 10px; height: 30px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-2); }
 .day-group-n { font-weight: var(--fw-regular); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* LinkButton (KERNEL-1047): the one text button that acts like a link. */
+.link-button { display: inline-flex; align-items: center; gap: 7px; padding: 0; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.link-button[data-size='meta'] { font-size: var(--fs-meta); }
+.link-button[data-size='ui'] { font-size: var(--fs-ui); }
+.link-button[data-variant='inline'] { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
+.link-button[data-variant='action'] { color: var(--ink-2); }
+.link-button[data-variant='quiet'] { color: var(--muted); }
+.link-button:hover:not(:disabled) { color: var(--ink); }
+.link-button[data-variant='action']:hover:not(:disabled) { text-decoration: underline; }
+.link-button:disabled { opacity: 0.55; cursor: default; }
+.link-button[aria-busy='true'] { opacity: 1; color: var(--ink-3); text-decoration: none; }

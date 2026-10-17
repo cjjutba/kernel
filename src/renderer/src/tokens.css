@@ -69,6 +69,7 @@
   --ink-hover: #ffffff;
   --panel-line: #212121;
   --nav-hover: #1c1c1c;
+  --panel-hover: #262626;
   --input-bg: #1e1e1e;
   --card-bg: #212121;
   --card-line: #2c2c2c;
@@ -145,6 +146,7 @@
   --ink-hover: #000000;
   --panel-line: #e8e8e8;
   --nav-hover: #ebebeb;
+  --panel-hover: #ebebeb;
   --input-bg: #f8f8f8;
   --card-bg: #f8f8f8;
   --card-line: #e2e2e2;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { McpAccount, McpSignInAll, Provider } from '@shared/types'
 import { call, cleanError, onPush } from '../../../api'
 import { actions, mcpNeedYou, mcpRunKey, useStore } from '../../../store'
-import { Icon, Spinner, useBusy } from '../../../ui'
+import { LinkButton, Icon, useBusy } from '../../../ui'
 
 // Every account's MCP servers (KERNEL-627): the pieces the MCP servers page, Set up this account, the Providers row and a project's
 // Skills and MCP share (KERNEL-661).
@@ -85,7 +85,7 @@ export function SignInLine({ label, needs, run, running, canceling, disabled, on
         <span className="set-warn" role="status">
           <Icon name="warning" size={12} />
           {run?.current ? `Signing in to ${serverName(run.current)}, ${at} of ${total}` : 'Signing in'}
-          <button type="button" className="set-link" aria-label={`Cancel setting up ${label}`} aria-busy={canceling || undefined} disabled={canceling} onClick={onCancel}>{canceling ? <><Spinner label={null} pattern="scatter" />Canceling</> : 'Cancel'}</button>
+          <LinkButton aria-label={`Cancel setting up ${label}`} busy={canceling} busyLabel="Canceling" busyPattern="scatter" onClick={onCancel}>Cancel</LinkButton>
         </span>
       )}
       {!live && needs > 0 && (
@@ -93,7 +93,7 @@ export function SignInLine({ label, needs, run, running, canceling, disabled, on
           <Icon name="warning" size={12} />
           {mcpNeedYou(needs)}
           <span aria-hidden="true">·</span>
-          <button type="button" className="set-link" aria-label={`Set up ${label}`} disabled={disabled} onClick={onSetUp}>Set up</button>
+          <LinkButton aria-label={`Set up ${label}`} disabled={disabled} onClick={onSetUp}>Set up</LinkButton>
         </span>
       )}
       {failed.map((f) => (

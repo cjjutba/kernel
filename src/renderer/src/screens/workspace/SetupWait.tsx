@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import type { Chat, QueuedMessage, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { actions, useStore } from '../../store'
-import { Button, useBusy } from '../../ui'
+import { Button, LinkButton, useBusy } from '../../ui'
 import { attempt } from './MessageActions'
 import { editQueuedInComposer } from './composer/bus'
 import { PartChip, TurnLine } from './Transcript'
@@ -50,8 +50,8 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
               {i === queue.length - 1 && <span>{failed ? 'Waiting for setup' : 'Sends when setup finishes'}</span>}
               {i === queue.length - 1 && running && <Button size="sm" variant="ghost" busy={busy === 'now'} busyPattern="arrow-right" busyLabel="Sending" onClick={() => void now()}>Send now</Button>}
               <span className="queued-edit">
-                <button type="button" className="link-btn" onClick={() => editQueuedInComposer(q)}>Edit</button>
-                <button type="button" className="link-btn" onClick={() => unqueue(q)}>Cancel</button>
+                <LinkButton variant="quiet" size="meta" onClick={() => editQueuedInComposer(q)}>Edit</LinkButton>
+                <LinkButton variant="quiet" size="meta" onClick={() => unqueue(q)}>Cancel</LinkButton>
               </span>
             </div>
             )}

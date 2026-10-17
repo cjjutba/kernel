@@ -4,7 +4,7 @@ import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { openLeadChat } from '../../lead'
 import { KernelMark } from '../../icons'
-import { Button, Modal, Pill, SegmentedControl, Spinner, useBusy } from '../../ui'
+import { Button, LinkButton, Modal, Pill, SegmentedControl, useBusy } from '../../ui'
 import { shirtOf, shortFile } from './model'
 import './agent.css'
 
@@ -114,7 +114,7 @@ export function NewAgent({ projectId, step, prefill }: { projectId?: string; ste
             <div className="na-file-head">{draft.file}<span className="na-tag">new file</span></div>
             <textarea className="na-code" aria-label={`Contents of ${draft.file}`} value={text} spellCheck={false} onChange={(e) => setText(e.target.value)} />
           </div>
-          {projectId && <button type="button" className="na-link" disabled={busy !== null} aria-busy={busy === 'refine' || undefined} onClick={() => void refine()}>{busy === 'refine' ? <><Spinner label={null} pattern="arrow-right" />Sending to {author}</> : `Refine it in a chat with ${author}`}</button>}
+          {projectId && <LinkButton size="ui" className="na-link" disabled={busy !== null} busy={busy === 'refine'} busyLabel={`Sending to ${author}`} busyPattern="arrow-right" onClick={() => void refine()}>{`Refine it in a chat with ${author}`}</LinkButton>}
         </div>
       </Modal>
     )

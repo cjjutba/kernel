@@ -5,7 +5,7 @@
 .ib-body-wrap { flex: 1; min-height: 0; display: flex; }
 .ib-list { width: clamp(260px, 40%, 413px); flex-shrink: 0; overflow-y: auto; padding: 6px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 0; }
 .ib-row { display: flex; align-items: center; gap: 12px; width: 100%; height: 60px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; flex-shrink: 0; }
-.ib-row:hover { background: var(--nav-hover); }
+.ib-row:hover { background: var(--panel-hover); }
 .ib-row:focus-visible { outline-offset: -2px; }
 .ib-row[aria-current='true'] { background: var(--surface-3); color: var(--ink); }
 .ib-title { font-size: var(--fs-ui); font-weight: var(--fw-regular); }
@@ -24,11 +24,6 @@
 .ib-facts dd { margin: 0; color: var(--ink-2); }
 .ib-facts dd.mono { font-size: var(--fs-code); }
 .ib-acts { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
-.ib-link { padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); }
-.ib-link:hover:not(:disabled) { color: var(--ink); text-decoration: underline; }
-.ib-link.muted { color: var(--muted); }
-.ib-link:disabled { opacity: 0.55; cursor: default; }
-.ib-link[aria-busy='true'] { display: inline-flex; align-items: center; gap: 7px; opacity: 1; }
 .ib-card { margin-top: 4px; }
 .ib-outcome { display: flex; align-items: center; gap: 16px; color: var(--ink-2); }
 

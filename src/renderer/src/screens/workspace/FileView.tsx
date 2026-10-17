@@ -3,7 +3,7 @@ import type { ChangedFile, CompareTarget, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
 import { actions } from '../../store'
-import { Button } from '../../ui'
+import { LinkButton, Button } from '../../ui'
 import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import { addToComposer } from './composer/bus'
 import { OpenImage } from './composer/Chip'
@@ -98,7 +98,7 @@ function ImageChange({ wsId, path, status, target, onSize, inline, keep }: { wsI
 
 /** A file in the scratchpad has an absolute path, a file in the worktree one relative to it. */
 function OpenInEditor({ ws, path }: { ws: Workspace; path: string }) {
-  return <button type="button" className="open-editor" onClick={() => void call('system.openInEditor', { path: path.startsWith('/') ? path : `${ws.path}/${path}` })}>Open in editor</button>
+  return <LinkButton size="meta" onClick={() => void call('system.openInEditor', { path: path.startsWith('/') ? path : `${ws.path}/${path}` })}>Open in editor</LinkButton>
 }
 
 /** A file in the worktree, read only, with line numbers (WorkspaceFile.png). */

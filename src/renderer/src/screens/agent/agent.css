@@ -35,10 +35,7 @@
 .na-file-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--line-2); font-family: var(--mono); font-size: var(--fs-meta); }
 .na-tag { height: 18px; padding: 0 7px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-family: var(--font); font-size: var(--fs-badge); line-height: 16px; color: var(--muted); }
 .na-code { display: block; width: 100%; box-sizing: border-box; height: 224px; padding: 12px; border: 0; background: var(--code-bg); color: var(--ink-2); font: var(--fs-code)/ var(--lh-loose) var(--mono); outline: none; resize: none; }
-.na-link { align-self: flex-start; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); text-decoration: underline; }
-.na-link:hover { color: var(--ink); }
-.na-link:disabled { opacity: 0.55; cursor: default; }
-.na-link[aria-busy='true'] { display: inline-flex; align-items: center; gap: 7px; opacity: 1; text-decoration: none; }
+.na-link { align-self: flex-start; }
 .na-done { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 40px 26px; text-align: center; }
 .na-done h3 { margin: 6px 0 0; font-size: var(--fs-dialog); font-weight: var(--fw-semibold); color: var(--ink); }
 .na-done p { margin: 0; max-width: 420px; color: var(--muted); line-height: var(--lh); }

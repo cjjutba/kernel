@@ -159,9 +159,7 @@ section:first-child > .lp-sec { padding-top: 6px; }
 
 .pr-overruled { display: flex; align-items: baseline; gap: 6px; padding: 0 12px 8px 14px; font-size: var(--fs-meta); color: var(--ink-3); }
 .pr-overruled .pr-overruled-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pr-undo { flex-shrink: 0; padding: 0; border: 0; background: none; font: inherit; color: var(--ink-2); text-decoration: underline; cursor: pointer; }
-.pr-undo:hover { color: var(--ink); }
-.pr-undo:disabled { cursor: default; opacity: 0.6; }
+.pr-undo { flex-shrink: 0; }
 
 /* A chat with Kernel's merged band: its next change starts a new branch, so there is no Continue or Archive (KERNEL-780). */
 .pr-next { font-size: var(--fs-code); color: var(--b-fg); }

@@ -4,7 +4,7 @@ import type { Project, ProjectSettings, ProjectSettingsSection, SettingsPage } f
 import { APP_SETTING_TIMING, PROJECT_SETTING_TIMING, type SettingTiming } from '@shared/settingsTiming'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
-import { Button, EmptyState, Icon, Kbd, Menu, Spinner, SplitButton, useBusy, type IconName } from '../../ui'
+import { Button, LinkButton, EmptyState, Icon, Kbd, Menu, Spinner, SplitButton, useBusy, type IconName, type LinkVariant } from '../../ui'
 import { openNewProject } from '../projects/draft'
 import { useProjectSettings } from './useSettings'
 import { useKeptScroll } from '../../ui/keptScroll'
@@ -242,9 +242,9 @@ export function Row({ id, label, shared, inherited, changed, changedIn, desc, se
       {lead && <span className="set-lead">{lead}</span>}
       <div className="set-text">
         <span className="set-label" id={labelId}>{label}</span>
-        {inherited && <span className="set-desc set-from"><SettingsLink to={inherited.to}>Default, from {inherited.label}</SettingsLink></span>}
+        {inherited && <span className="set-desc set-from"><SettingsLink variant="quiet" to={inherited.to}>Default, from {inherited.label}</SettingsLink></span>}
         {changed && <span className="set-desc set-from">Changed for this project</span>}
-        {changedIn && changedIn.length > 0 && <span className="set-desc set-from">Changed in {changedIn.map((r, i) => <span key={r.id}>{i > 0 && ', '}<SettingsLink to={r.to}>{r.name}</SettingsLink></span>)}</span>}
+        {changedIn && changedIn.length > 0 && <span className="set-desc set-from">Changed in {changedIn.map((r, i) => <span key={r.id}>{i > 0 && ', '}<SettingsLink variant="quiet" to={r.to}>{r.name}</SettingsLink></span>)}</span>}
         {desc && <span className="set-desc">{desc}</span>}
         {note && <span className="set-desc set-applies">{note}</span>}
       </div>
@@ -343,8 +343,8 @@ export function TagList({ label, value, onChange, locked = [], addLabel = 'Add',
 export type SettingsTarget = { page: SettingsPage; projectId?: string; section?: ProjectSettingsSection; agentId?: string; row?: string }
 
 /** "Settings, Models and effort" you can click: a cross-reference to another Settings page (KERNEL-680). */
-export function SettingsLink({ to, children }: { to: SettingsTarget; children: ReactNode }) {
-  return <button type="button" className="set-link" onClick={() => go({ name: 'settings', ...to })}>{children}</button>
+export function SettingsLink({ to, children, variant }: { to: SettingsTarget; children: ReactNode; variant?: LinkVariant }) {
+  return <LinkButton variant={variant} onClick={() => go({ name: 'settings', ...to })}>{children}</LinkButton>
 }
 
 export function Keys({ keys }: { keys: string[] }) {
