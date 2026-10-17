@@ -4,7 +4,7 @@ import { kernelHookMatcher } from '@shared/hookEntry'
 import type { AppSettings, HookStatus } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { Button, useBusy } from '../../../ui'
+import { Button, CopyButton, useBusy } from '../../../ui'
 import { DataTable, Page, Row, Section, StatusLine } from '../kit'
 
 const SETTINGS_FILE = '~/.claude/settings.json'
@@ -48,12 +48,6 @@ export function Hooks({ s }: { s: AppSettings }) {
   const workspaceRun = status?.problem?.kind === 'workspace-run'
   const seen = Math.max(0, ...(status?.events.map((e) => e.lastSeen ?? 0) ?? []))
   const count = status?.events.filter((e) => e.installed).length ?? 0
-  // Copy says "Copied" for 1.5s, like a code block's. Only a failure toasts.
-  const [copied, setCopied] = useState(false)
-  const copy = async () => {
-    if (!status) return
-    try { await navigator.clipboard.writeText(hooksSnippet(status, timeout)); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { actions.ui.toast({ title: 'Could not copy', sub: 'Try again.' }) }
-  }
   const openFile = () => track('open', async () => {
     try { await call('system.openInEditor', { path: SETTINGS_FILE }) } catch (e) { actions.ui.toast({ title: 'Could not open the file', sub: cleanError(e) }) }
   })
@@ -80,7 +74,7 @@ export function Hooks({ s }: { s: AppSettings }) {
         <Row id="settings-file" label="Settings file">
           <span className="set-actions">
             <span className="set-value">{SETTINGS_FILE}</span>
-            {!workspaceRun && <Button disabled={!status} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy snippet'}</Button>}
+            {!workspaceRun && <CopyButton disabled={!status} text={() => (status ? hooksSnippet(status, timeout) : '')} label="Copy snippet" failSub="Try again." />}
             <Button busy={busy === 'open'} busyLabel="Opening" disabled={busy !== null} onClick={() => void openFile()}>Open</Button>
           </span>
         </Row>

@@ -2,10 +2,10 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentDef, Approval, PlanStep } from '@shared/types'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
-import { Button, Icon, IconButton, useScreenEscape } from '../../../ui'
+import { Button, CopyButton, Icon, useScreenEscape } from '../../../ui'
 import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
-import { attempt, useCopy } from '../MessageActions'
+import { attempt } from '../MessageActions'
 import { AnswerBubble } from './AnswerBubble'
 import { TranscriptGlide } from '../glideContext'
 import { decideInChat } from './optimisticAnswer'
@@ -73,7 +73,6 @@ function LeadPlan({ a, agents }: { a: Approval; agents: AgentDef[] }) {
 export function PlanInline({ a, agents, hasItem }: { a: Approval; agents: AgentDef[]; hasItem?: boolean }) {
   const text = planText(a)
   const blocks = useMemo(() => parseBlocks(text), [text])
-  const [copied, copy] = useCopy(planCopyText(a, agents))
   const ref = useRef<HTMLDivElement>(null)
   // The transcript follows its end, which would open a long plan at its last line. One taller than the chat opens at its top. The Approve strip opens over a second and shortens
   // the chat under it, which would leave a plan that fits with its end below the fold, so while it opens the end stays in view. The transcript's glide does both.
@@ -90,7 +89,7 @@ export function PlanInline({ a, agents, hasItem }: { a: Approval; agents: AgentD
           <span className="plan-doc-icon"><Icon name="doc" size={16} /></span>
           <span className="ink2">Propose plan</span>
           {file && <button type="button" className="plan-file mono ellipsis" aria-label={`Open ${file} in editor`} data-tip="Open in editor" onClick={() => openPlanFile(a)}>{file}</button>}
-          <IconButton icon={copied ? 'check' : 'copy'} size={14} className="plan-copy" label={copied ? 'Copied' : 'Copy plan'} onClick={copy} />
+          <CopyButton className="plan-copy" text={() => planCopyText(a, agents)} label="Copy plan" />
         </div>
         {a.steps?.length || !text ? <LeadPlan a={a} agents={agents} /> : <Markdown blocks={blocks} className="md-doc" />}
         {a.status === 'expired' && <PlanExpired a={a} />}
@@ -163,7 +162,6 @@ export function PlanBar({ a, hasText, onApprove, onSendChanges, onBack }: {
   onBack: () => void
 }) {
   const agents = useStore((s) => (a.projectId ? s.agents[a.projectId] : undefined)) ?? EMPTY
-  const [copied, copy] = useCopy(planCopyText(a, agents))
   const [asked, setAsked] = useState(false)
   const asking = asked && hasText
   const group = useRef<HTMLDivElement>(null)
@@ -203,7 +201,7 @@ export function PlanBar({ a, hasText, onApprove, onSendChanges, onBack }: {
       ) : (
         <>
           <span className="grow" />
-          <Button variant="ghost" icon={copied ? 'check' : 'copy'} onClick={copy}>{copied ? 'Copied' : 'Copy'}</Button>
+          <CopyButton text={() => planCopyText(a, agents)} label="Copy plan" />
           <Button variant="primary" aria-keyshortcuts="Meta+Shift+Enter" onClick={press}>Approve<span className="cmp-planbar-kbd" aria-hidden="true">⌘⇧↵</span></Button>
         </>
       )}

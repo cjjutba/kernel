@@ -144,10 +144,6 @@
 .codeblock { position: relative; }
 .codeblock .code { margin: 0; padding-right: 96px; }
 .codeblock > .icon-btn { position: absolute; top: 6px; right: 6px; }
-/* The command line the setup canvases draw (ProjectSetupWarnings.png): the command and an outlined Copy on one row. */
-.codeblock[data-inline='true'] { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--r); background: var(--code-bg); }
-.codeblock[data-inline='true'] .code { flex: 1; min-width: 0; padding: 0; background: transparent; font-size: var(--fs-code); line-height: var(--lh-ui); color: var(--ink-2); }
-.codeblock[data-inline='true'] .btn { position: static; flex-shrink: 0; padding: 0 8px; border-radius: var(--r-sm); font-weight: var(--fw-regular); color: var(--ink-2); }
 
 /* kbd, avatar */
 .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface); font: var(--fs-badge) var(--mono); color: var(--muted); }

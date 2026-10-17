@@ -57,9 +57,8 @@
 .hk-fix-label { font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
 .hk-command { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--r); background: var(--code-bg); font: var(--fs-code)/ var(--lh-prose) var(--mono); user-select: text; }
 .hk-command span { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.hk-command .btn { flex-shrink: 0; height: 24px; padding: 0 8px; border-radius: var(--r-sm); font-size: var(--fs-meta); font-weight: var(--fw-regular); color: var(--ink-2); }
+.hk-command .icon-btn { flex-shrink: 0; }
 .hk-line { padding: 9px 12px; border-radius: var(--r); background: var(--code-bg); font: var(--fs-code) var(--mono); color: var(--ink-2); white-space: pre; user-select: text; }
-.hk-admin.btn { height: 30px; }
 .hk-keep { margin: 0; padding: 0 2px; font-size: var(--fs-meta); color: var(--muted); }
 
 /* Permission mode step (KERNEL-457): SetupPermissions.png. A radio list in the Checks list's card. */

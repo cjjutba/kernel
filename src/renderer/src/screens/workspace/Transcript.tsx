@@ -4,7 +4,7 @@ import { leadModeName, leadModeOf, leadModeSwitched } from '@shared/leadMode'
 import { maskSecrets, stripAnsi, toolView } from '@shared/toolView'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
-import { Avatar, Button, Card, EmptyState, Icon, IconButton, Spinner, useBusy, type IconName } from '../../ui'
+import { Avatar, Button, Card, CopyButton, EmptyState, Icon, IconButton, Spinner, useBusy, type IconName } from '../../ui'
 import { ServiceMark } from '../../icons'
 import { actions, getState, go, loadWorkspace, setLeadMode, useStore } from '../../store'
 import { openProject } from '../../lead'
@@ -14,7 +14,7 @@ import { ApprovalCard } from './cards/ApprovalCard'
 import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
-import { attempt, CopyOverlay, MessageActions, useCopy, type MessageAction } from './MessageActions'
+import { attempt, CopyOverlay, MessageActions, type MessageAction } from './MessageActions'
 import { ChipIcon, fileView, HoverPreview, ImageButton, IssueButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
 import { foldHeader, settle, wantOpen, windowEntries, WAITING, WINDOW } from './fold'
 import { buildThread, countsLabel, fmtDuration, messageLabel, runLabel, turnFiles, type Entry, type NoteItem, type Run, type ThreadBlock } from './thread'
@@ -354,13 +354,12 @@ const ThinkingRow = memo(function ThinkingRow({ item }: { item: Extract<ChatItem
 
 /** An in-between message as a step (KERNEL-840): its first line as the label, the whole message as Markdown once open, in the muted ink of thinking, with Copy on hover and focus. */
 const MessageRow = memo(function MessageRow({ item }: { item: Extract<ChatItem, { kind: 'text' }> }) {
-  const [copied, copy] = useCopy(item.text)
   const label = messageLabel(item.text)
   return (
     <StepRow icon="chat" label={label} name={`Message: ${label}`}>
       <div className="step-msg">
         <div className="step-text"><Markdown text={item.text} /></div>
-        <div className="step-copy"><IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : 'Copy message'} onClick={copy} /></div>
+        <div className="step-copy"><CopyButton text={item.text} label="Copy message" /></div>
       </div>
     </StepRow>
   )
@@ -404,7 +403,6 @@ function prettyJson(t: string): string {
  * is cut a fade shows at the bottom, and goes once it is scrolled to the end. `text` is what Copy copies.
  */
 function ToolSection({ title, note, text, label, children }: { title: string; note?: string; text: string; label: string; children: ReactNode }) {
-  const [copied, copy] = useCopy(text)
   const body = useRef<HTMLDivElement>(null)
   const [cut, setCut] = useState({ scrolls: false, more: false })
   const measure = useCallback(() => {
@@ -420,7 +418,7 @@ function ToolSection({ title, note, text, label, children }: { title: string; no
       <header className="tool-head">
         <span id={id} className="tool-title">{title}</span>
         {note && <span className="tool-note">{note}</span>}
-        <IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : label} onClick={copy} />
+        <CopyButton text={text} label={label} />
       </header>
       <div ref={body} className="tool-body" data-more={cut.more || undefined} tabIndex={cut.scrolls ? 0 : undefined} role={cut.scrolls ? 'region' : undefined} aria-labelledby={cut.scrolls ? id : undefined} onScroll={measure}>{children}</div>
     </section>
@@ -487,8 +485,7 @@ const inputIsText = (item: Tool) => TEXT_INPUT.has(item.name)
 const rawCall = (item: Tool) => maskSecrets(JSON.stringify({ name: item.name, input: item.input, output: item.output }, null, 2))
 
 function CopyRaw({ item }: { item: Tool }) {
-  const [copied, copy] = useCopy(rawCall(item))
-  return <Button variant="ghost" icon={copied ? 'check' : 'copy'} className="tool-raw" onClick={copy}>{copied ? 'Copied' : 'Copy raw call'}</Button>
+  return <CopyButton text={() => rawCall(item)} label="Copy raw call" />
 }
 
 /** The tool calls whose output the turn's error card already shows, by item id, so their rows don't say it twice. */
