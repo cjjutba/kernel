@@ -369,7 +369,7 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
     const repo = await tempRepo({ '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nHi', '.github/pull_request_template.md': '## Summary\n', 'package.json': JSON.stringify({ commitlint: {} }) })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
     const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') })
     await k.start()
     try {
@@ -647,7 +647,7 @@ async function startKernel(files?: Record<string, string>) {
   const repo = await tempRepo(files)
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   k.sessions.send = async () => ({ queued: false })
@@ -843,7 +843,7 @@ describe("a project's scripts run without asking (KERNEL-913)", () => {
   async function kernelFor(repo: string, dataDir?: string, app: object = {}) {
     dataDir ??= await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true }, ...app }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const sent: string[] = [], released: string[] = []

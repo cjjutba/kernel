@@ -399,6 +399,7 @@ export class Sessions {
   private renewed = new Set<string>()
   /** A Claude chat's approved plan note, until ExitPlanMode's PostToolUse hook hands it to the agent (`afterPlan`). */
   private approvedPlans = new Map<string, string>()
+  private setupNotes = new Map<string, string>()
   /** Claude Code's own slash commands. They come with the CLI, so one read lasts the whole run. */
   private builtins?: Promise<BuiltinCommand[]>
   constructor(private d: SessionDeps) {}
@@ -1662,6 +1663,10 @@ export class Sessions {
     this.pushModes(workspaceIds.flatMap((id) => this.d.store.chats(id).map((c) => c.id)))
   }
 
+  noteSetup(workspaceId: string, text: string) {
+    for (const c of this.d.store.chats(workspaceId)) if (c.kind !== 'terminal') this.setupNotes.set(c.id, text)
+  }
+
   /** The workspace is archived. Chats held for its setup let go of what they held, so a restore doesn't find them still waiting. */
   dropHeld(workspaceId: string) {
     for (const c of this.d.store.chats(workspaceId)) if (this.waiting.delete(c.id)) { this.setQueue(c.id, []); this.saveHeld() }
@@ -1866,6 +1871,7 @@ export class Sessions {
       ask: (a, o) => this.ask(chatId, ws, agent, a, o),
       requestPlan: (plan, o) => this.requestPlan(chatId, ws, agent, plan, o),
       afterPlan: () => { const t = this.approvedPlans.get(chatId); this.approvedPlans.delete(chatId); return t },
+      setupNote: () => { const t = this.setupNotes.get(chatId); this.setupNotes.delete(chatId); return t },
       // A plan approved and not handed off reminds once, and so does what the chat owes, until a new item opens (KERNEL-745, KERNEL-749).
       handoffAtStop: () => {
         const t = this.handoffs.reminder(chatId)

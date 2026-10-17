@@ -595,7 +595,7 @@ export function kernelTools(d: KernelToolDeps) {
       if (!decision) return text('No answer yet.')
       return text(decision.behavior === 'answer' ? decision.text : decision.behavior)
     }),
-    tool('create_workspace', 'Create a workspace for one task and hand it to an agent. The agent starts once setup passes, or, with wait_for, once those PRs merge.', {
+    tool('create_workspace', 'Create a workspace for one task and hand it to an agent. The agent starts right away while the setup script runs alongside, or, with wait_for, once those PRs merge. When the user turned on Wait for setup, it starts once setup passes.', {
       agent: z.string().describe('Agent id from list_agents, for example "kai"'),
       title: z.string().describe('Task title, used to name the branch'),
       brief: z.string().describe('Everything the agent needs: goal, files, acceptance criteria'),

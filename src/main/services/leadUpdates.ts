@@ -98,6 +98,8 @@ export interface TeamEvent {
   code?: number | null | 'timeout'
   /** A failed setup the Lead already heard about in create_workspace's result. It doesn't wake the Lead again. */
   told?: boolean
+  /** The teammate's brief went out while setup ran, so a failure holds nothing and it keeps working without it (KERNEL-1012). */
+  started?: boolean
   /**
    * A review: the verdict, its kind (KERNEL-549), and the work it is about, with its author's name and PR number (KERNEL-130).
    * `asked`: the Lead started the turn that sent it, with message_agent, and `reply` is what the reviewer wrote back in that
@@ -294,8 +296,8 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
       // Kernel itself quit or closed (KERNEL-215). Nothing went wrong in the session, and it may still wait for a hold to lift.
       if (relaunched(e)) return `${e.reason} while ${name} was partway through a turn. ${name} carries on by itself once nothing holds it, such as a paused project or the agent limit.`
       return `${name}'s session ended unexpectedly${e.reason ? ` (${e.reason})` : ''}, partway through a turn. ${e.resumed ? `A message waiting for ${name} started a new session, so ${name} is working again.` : 'The worktree and chat are saved; the user can restart it from the workspace.'}`
-    case 'setup.failed': return `Setup failed${e.code === null ? ' (it was stopped)' : e.code === 'timeout' ? " (it didn't finish in time)" : e.code !== undefined ? ` with exit code ${e.code}` : ''}, so ${name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.`
-    case 'setup.passed': return e.wait ? `Setup passed on Run again. ${name} still waits for ${e.wait.label} to merge, and Kernel sends the brief then.` : `Setup passed on Run again, and ${name}'s brief was released.`
+    case 'setup.failed': return `Setup failed${e.code === null ? ' (it was stopped)' : e.code === 'timeout' ? " (it didn't finish in time)" : e.code !== undefined ? ` with exit code ${e.code}` : ''}${e.started ? `. ${name} already started and keeps working without it. The user can fix setup and click Run again in that workspace.` : `, so ${name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.`}`
+    case 'setup.passed': return e.wait ? `Setup passed on Run again. ${name} still waits for ${e.wait.label} to merge, and Kernel sends the brief then.` : e.started ? `Setup passed on Run again. ${name} was working already, and Kernel told it.` : `Setup passed on Run again, and ${name}'s brief was released.`
     case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'} to merge.${e.wait?.why ? ` ${name} says: ${e.wait.why}` : ''} Kernel ${e.wait?.held === false ? `tells ${name} to bring its branch up to date with it` : `sends ${name} the brief`} when it does.`
     case 'wait.released': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged, so Kernel ${e.wait?.held === false ? `told ${name} to bring its branch up to date with it and carry on` : `sent ${name} the brief`}.`
     case 'wait.broken': return `${name} is waiting for ${e.wait?.label ?? 'a PR'}, which was ${e.wait?.gone ?? 'closed'} without merging.`
@@ -738,9 +740,9 @@ export class LeadUpdates {
    * A teammate's workspace setup failed, or passed on Run again (KERNEL-126). `told` marks a failure the Lead already read in create_workspace's result, which rides along
    * instead of waking it again.
    */
-  setup(ws: Workspace, ok: boolean, o: { told?: boolean; code?: number | null | 'timeout'; wait?: WaitNews } = {}) {
+  setup(ws: Workspace, ok: boolean, o: { told?: boolean; started?: boolean; code?: number | null | 'timeout'; wait?: WaitNews } = {}) {
     if (this.d.isLead(ws)) return
-    this.add(ws, ok ? { kind: 'setup.passed', ...(o.wait ? { wait: o.wait } : {}) } : { kind: 'setup.failed', ...(o.code !== undefined ? { code: o.code } : {}), ...(o.told ? { told: true } : {}) })
+    this.add(ws, ok ? { kind: 'setup.passed', ...(o.wait ? { wait: o.wait } : {}), ...(o.started ? { started: true } : {}) } : { kind: 'setup.failed', ...(o.code !== undefined ? { code: o.code } : {}), ...(o.told ? { told: true } : {}), ...(o.started ? { started: true } : {}) })
   }
 
   /**
@@ -1323,7 +1325,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
     switch (e.kind) {
       case 'error': if (e.by !== 'user') wake(`${name} stopped with an error. Ask ${name} what happened with message_agent ${at}, or tell the user.`); break
       case 'crash': if (!e.resumed) wake(`${name}'s session ended. Tell the user they can restart it from the workspace.`); break
-      case 'setup.failed': if (!e.told) wake(`Setup failed in ${name}'s workspace. Tell the user to fix it and click Run again there.`); break
+      case 'setup.failed': if (!e.told) wake(e.started ? `Setup failed in ${name}'s workspace. ${name} already started and keeps working without it. Tell the user it can be fixed and run again there.` : `Setup failed in ${name}'s workspace. Tell the user to fix it and click Run again there.`); break
       case 'review': {
         const r = e.review
         if (!r) { wake(`Read ${name}'s review and pass on what it found.`, true); break }

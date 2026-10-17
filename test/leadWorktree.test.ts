@@ -249,7 +249,8 @@ describe('what waits for setup (KERNEL-490)', () => {
     const { k, project: r } = await project(SETUP)
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     await sentAtOnce(k, chat)
-    expect(k.store.workspace(chat.workspaceId)!.status).toBe('setup')
+    await vi.waitFor(() => expect(k.store.workspace(chat.workspaceId)!.setupRun?.startedAt).toBeDefined())
+    expect(k.store.workspace(chat.workspaceId)!.setupRun?.endedAt).toBeUndefined()
     expect((await setUp(k, chat.id)).setupRun).toMatchObject({ end: 0 })
   })
 
@@ -297,14 +298,43 @@ describe('what waits for setup (KERNEL-490)', () => {
     await setUp(k, chat.id)
   })
 
-  it.each([false, true])("holds a teammate's brief through a failed setup, with Wait for setup %s", async (leadWaitForSetup) => {
-    const { k, project: r } = await project({ '.kernel/settings.toml': '[scripts]\nsetup = "exit 3"\n' }, { leadWaitForSetup })
+  const FAILS = { '.kernel/settings.toml': '[scripts]\nsetup = "exit 3"\n' }
+
+  it("holds a teammate's brief through a failed setup with Wait for setup on", async () => {
+    const { k, project: r } = await project(FAILS, { leadWaitForSetup: true })
     const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'kai' })
     expect(ws.status).toBe('failed')
     const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
     expect(queuedText(k, brief.id)).toEqual(['Build the invoice list'])
     expect(k.sessions.queueReason(brief.id)).toBe('setup')
     expect(callIn(ws.path)).toHaveLength(0)
+  })
+
+  it("sends the Lead's message to a started teammate at once, after the brief, while setup runs (KERNEL-1012)", async () => {
+    const { k, project: r } = await project(SETUP)
+    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'kai' })
+    const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
+    expect(k.store.workspace(ws.id)!.setupRun?.endedAt).toBeUndefined()
+    const sent = await k.lead['messageWorkspace'](r.id, ws.id, 'Use EmptyState')
+    expect(sent).toMatchObject({ ok: true })
+    // The brief's turn is running, so the message follows it in order. Setup holds nothing.
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
+    expect(queuedText(k, brief.id)).toEqual(['Use EmptyState'])
+    expect(k.sessions.queueReason(brief.id)).not.toBe('setup')
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)!.setupRun).toMatchObject({ end: 0 }), { timeout: 10_000 })
+  })
+
+  it("starts a teammate's brief while setup runs, and a failed setup holds nothing (KERNEL-1012)", async () => {
+    const { k, project: r } = await project({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && exit 3"\n' })
+    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'kai' })
+    expect(ws.status).toBe('ready')
+    const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
+    expect(k.store.workspace(ws.id)!.setupRun?.endedAt).toBeUndefined()
+    expect(k.sessions.queued(brief.id)).toEqual([])
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)!.setupRun).toMatchObject({ end: 3 }), { timeout: 10_000 })
+    expect(k.store.workspace(ws.id)!.status).toBe('ready')
+    expect(k.sessions.isHeld(brief.id)).toBe(false)
   })
 })
 
@@ -370,12 +400,7 @@ describe('moving the open chats out of the shared Lead workspace at startup (KER
       expect(k.store.thread('done')!.closedAt).toBe(5)
       // The plans its chats wrote come along.
       expect(await readFile(join(plan.path, '.kernel', 'plans', 'wave-3.md'), 'utf8')).toBe('# Wave 3\n')
-      // Setup runs with the chats held, and they carry on once it passes. A quit didn't cut this setup short, so it isn't failed.
-      expect(moved.map((w) => w.status)).toEqual(['setup', 'setup'])
-      expect(k.sessions.isHeld('plan-1')).toBe(true)
-      expect(k.sessions.isHeld('plan-3')).toBe(true)
-      expect(queuedText(k, 'plan-1')).toEqual(['Carry on'])
-      sdk.calls.length = 0
+      // Setup runs alongside, so the chats carry on without waiting for it (KERNEL-1012).
       for (const w of moved) await setUp(k, w.id)
       expect(k.sessions.isHeld('plan-1')).toBe(false)
       // What waited goes once setup passed, in the new folder, resuming the chat's session.

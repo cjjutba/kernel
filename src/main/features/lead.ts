@@ -229,7 +229,7 @@ export class Lead extends Feature {
     const repo = await loadRepoSettings(project.path)
     const chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     if (!chat || gone()) return this.mustWs(id)
-    const wait = cleanupSwitch(repo, this.settings.workspace, 'leadWaitForSetup') && !!repo.scripts.setup?.trim() && this.settings.scripts.setupOnCreate
+    const wait = this.k.setup.holdsForSetup(repo)
     if (!wait) {
       this.k.setup.releaseTabs(ws.id, chat.id)
       // A Team update that started this chat goes now, not after setup.
@@ -237,9 +237,6 @@ export class Lead extends Feature {
     }
     const done = await this.k.workspaces.setUpWorkspace(ws, project, repo, chat)
     if (this.stopped) return done
-    // A message that went before setup started the Lead before setup handed over its variables. Its sessions end once idle, and
-    // the next message resumes each with them, as after a folder move (KERNEL-490).
-    if (!wait && done.status === 'ready') this.sessions.restartIdle([ws.id])
     this.leadUpdates.flush(ws.projectId)
     return done
   }
