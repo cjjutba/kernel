@@ -15,6 +15,7 @@ const describe = (p: TerminalPreset, onlyInWorktrees: boolean): string => {
   if (p.id === 'claude') return 'In the workspace folder.'
   if (p.id === 'claude-skip') return onlyInWorktrees ? 'Worktrees only.' : 'Any workspace, your current branch included.'
   if (p.id === 'shell') return 'Your login shell.'
+  if (p.id === 'lead') return 'Joins the Lead chat, in its workspace folder.'
   return 'Found on your PATH.'
 }
 
@@ -40,6 +41,7 @@ export function BigTerminal({ s }: { s: AppSettings }) {
         <Section label="Tab">
           <Row id="big-terminal-tab" label="Big terminal tab" desc="Opens in the workspace folder."><Toggle label="Big terminal tab" checked={t.enabled} onChange={(v) => set({ enabled: v })} /></Row>
           <Row id="terminal-only-worktrees" setting="terminal.onlyInWorktrees" label="Terminal tabs only in worktrees" desc="Never on your current branch."><Toggle label="Terminal tabs only in worktrees" checked={t.onlyInWorktrees} onChange={(v) => set({ onlyInWorktrees: v })} /></Row>
+          <Row id="terminal-connect" setting="terminal.connect" label="Connect terminals to Kernel" desc="Claude in a terminal tab uses Kernel's tools, and the tab shows when it is working or needs you."><Toggle label="Connect terminals to Kernel" checked={t.connect} onChange={(v) => set({ connect: v })} /></Row>
         </Section>
         <Section
           title="New tab opens"

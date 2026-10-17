@@ -166,6 +166,24 @@ function terminalPresets(): Fixture {
   }
 }
 
+/**
+ * KERNEL-1001: the Lead chat's workspace with a Lead terminal tab open beside the chat. `seat.connected: false` draws the not connected line.
+ */
+function leadTerminal(o: { running?: boolean; connected?: boolean; menu?: boolean }): Fixture {
+  return scene((f) => {
+    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+    const { approvals: _none, ...rest } = s
+    const term: Chat = { id: 'chat-lead-term', workspaceId: ids.lead, title: 'Terminal (lead)', kind: 'terminal', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', terminal: { preset: 'lead', command: 'claude' }, createdAt: at(9, 3), ...(o.connected === false ? { seat: { connected: false } } : {}) }
+    return {
+      ...rest,
+      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
+      chats: [...(rest.chats ?? f.chats), term],
+      push: [...(rest.push ?? f.push), { type: 'terminal.data', chatId: term.id, data: termScreen }, ...(o.running ? [{ type: 'chat.running' as const, chatId: term.id, running: true }] : [])],
+      ui: { ...rest.ui!, rightPanel: false, ...(o.menu ? { menu: 'newTab' as const } : {}), tabs: { [ids.lead]: { tab: term.id, lastChat: ids.leadChat, files: [], diffs: [] } } }
+    }
+  })
+}
+
 /** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
 const blocked = (f: Fixture): Fixture => ({ ...f, workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, prBlocked: 'review' as const } : w)) })
 
@@ -3272,6 +3290,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
   WorkspaceTerminalPresets: terminalPresets(),
+  LeadTerminalIdle: leadTerminal({}),
+  LeadTerminalWorking: leadTerminal({ running: true }),
+  LeadTerminalNotConnected: leadTerminal({ connected: false }),
+  LeadTerminalMenu: leadTerminal({ menu: true }),
+  SettingsBigTerminalConnect: scene(() => ({ settings: DEFAULT_SETTINGS('/Users/you'), ui: { route: { name: 'settings', page: 'bigterm' } } })),
   WorkspacePreview: preview(),
   WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
   // A ready PR whose repo requires only Release note: Test failed and Vercel still runs, both optional (KERNEL-388).

@@ -14,6 +14,7 @@ import { kindFile, sharedTab } from './shared/shared'
 import { attempt } from './MessageActions'
 import { focusComposerIn, focusComposerWhenOpen } from './composer/bus'
 import { newChatTab, tabAfterKey, tabStop } from './leadNoChat'
+import { seatTitle } from './terminal/seat'
 
 export const fileTab = (path: string) => `file:${path}`
 /** An empty path is the diff of every changed file. */
@@ -41,7 +42,7 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
   const terminal = useStore((s) => s.settings?.terminal)
   // Main refuses a terminal tab while the big terminal is off, so neither the menu nor ⌘⇧T offers one then.
   const terminalOn = terminal?.enabled === true
-  const presets = useTerminalPresets(menu === 'newTab')
+  const presets = useTerminalPresets(menu === 'newTab', workspaceId)
   const closeMenu = () => actions.ui.closeMenu()
 
   /** With no chat open, + and ⌘T put the caret in the New chat box, whichever tab is showing (a terminal, file, diff or shared tab gives way to it). */
@@ -128,7 +129,7 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
     requestAnimationFrame(() => document.getElementById(`ws-tab-${next}`)?.focus())
   }
   const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'diff' | 'shared' | 'image' | 'text' | 'terminal'; path?: string; icon?: IconName; file?: string; unread?: boolean }[] = [
-    ...chats.map((c) => ({ id: c.id, title: c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const, unread: c.kind === 'chat' && isUnread(c) })),
+    ...chats.map((c) => ({ id: c.id, title: seatTitle(c), kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const, unread: c.kind === 'chat' && isUnread(c) })),
     ...files.map((p) => ({ id: fileTab(p), title: base(p), kind: 'file' as const, path: p, file: p })),
     ...diffs.map((p) => ({ id: diffTab(p), title: p ? base(p) : 'All changes', kind: 'diff' as const, path: p, file: p || undefined })),
     ...shared.map((id) => ({ id: sharedTab(id), title: sharedFiles[id]?.title ?? 'Shared file', kind: 'shared' as const, file: kindFile[sharedFiles[id]?.kind ?? 'markdown'] })),
@@ -143,7 +144,9 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
           const on = t.id === active
           const editing = renaming === t.id
           // A chat tab's icon shows the chat's state, like its sidebar row. The other kinds keep their own icon.
-          const g = t.kind === 'chat' ? chatGlyph({ waiting: approvals.filter((a) => a.chatId === t.id && a.status === 'pending'), running: !!running[t.id] }) : undefined
+          // A terminal tab takes the same working and needs-you icons (D-098) and keeps its terminal icon when neither applies.
+          const state = t.kind === 'chat' || t.kind === 'terminal' ? chatGlyph({ waiting: approvals.filter((a) => a.chatId === t.id && a.status === 'pending'), running: !!running[t.id] }) : undefined
+          const g = t.kind === 'terminal' && !state?.label ? undefined : state
           // A reply you haven't seen bolds the title. The tab on screen is read, and the chat view is asking main to say so (KERNEL-508).
           const unread = !!t.unread && !on
           const name = [t.title, g?.label || undefined, unread ? 'Unread' : undefined].filter(Boolean).join(', ')
