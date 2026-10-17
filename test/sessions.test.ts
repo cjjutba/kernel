@@ -1543,17 +1543,71 @@ describe('cold re-reads start two at a time (KERNEL-844)', () => {
     })
     const started = () => sdk.calls.map((c) => c.options.cwd)
     const end = async (id: string) => { sdk.calls.find((c) => c.options.cwd === `/tmp/${id}`)!.feed({ type: 'result', subtype: 'success', uuid: `r-${id}`, duration_ms: 5 }); await flush() }
-    for (const id of ['big', 'mid', 'small', 'tiny']) await sessions.send(id, [{ type: 'text', text: 'Go on' }])
+    for (const id of ['big', 'mid', 'small', 'tiny']) await sessions.send(id, [{ type: 'text', text: 'Go on' }], { from: 'kernel' })
     expect(await sessions.send('lead', [{ type: 'text', text: 'Go on' }])).toMatchObject({ queued: false })
     await flush()
     expect(started()).toEqual(['/tmp/big', '/tmp/mid', '/tmp/lead'])
-    expect([sessions.queueReason('small'), sessions.queueReason('tiny')]).toEqual(['capacity', 'capacity'])
+    expect([sessions.queueReason('small'), sessions.queueReason('tiny')]).toEqual(['moving', 'moving'])
     await end('big')
     expect(started().at(-1)).toBe('/tmp/tiny')
     await end('lead')
     expect(started()).toHaveLength(4)
     await end('mid')
     expect(started().at(-1)).toBe('/tmp/small')
+  })
+
+  async function cold(agentLimit = 0) {
+    const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-cold-')), 'kernel.db'))
+    for (const id of ['a', 'b', 'c']) {
+      store.saveWorkspace({ id, projectId: 'project', name: id, branch: id, baseRef: 'main', path: `/tmp/${id}`, mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+      store.saveChat({ id, workspaceId: id, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, ranOn: 'work', createdAt: 1 })
+    }
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit } } as unknown as AppSettings
+    const sessions = new Sessions({
+      store, approvals: new Approvals(store), settings: () => settings, agentFor: () => sean, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {},
+      accountFor: () => 'side', coldSize: () => 100_000
+    })
+    const text = (t: string) => [{ type: 'text' as const, text: t }]
+    return { sessions, text, started: () => sdk.calls.map((c) => c.options.cwd) }
+  }
+
+  it('sends the user\'s message at once while two others re-read', async () => {
+    const { sessions, text, started } = await cold()
+    await sessions.send('a', text('Go on'))
+    await sessions.send('b', text('Go on'))
+    expect(await sessions.send('c', text('From the user'))).toMatchObject({ queued: false })
+    await flush()
+    expect(started()).toEqual(['/tmp/a', '/tmp/b', '/tmp/c'])
+  })
+
+  it('sends the Lead\'s message at once while two others re-read', async () => {
+    const { sessions, text, started } = await cold()
+    await sessions.send('a', text('Go on'))
+    await sessions.send('b', text('Go on'))
+    expect(await sessions.send('c', text('From the Lead'), { from: 'lead' })).toMatchObject({ queued: false })
+    await flush()
+    expect(started()).toEqual(['/tmp/a', '/tmp/b', '/tmp/c'])
+  })
+
+  it('holds Kernel\'s carry-on as moving, and sends it with Send now', async () => {
+    const { sessions, text, started } = await cold()
+    await sessions.send('a', text('Go on'))
+    await sessions.send('b', text('Go on'))
+    expect(sessions.postHold('c')).toBe('moving')
+    expect(await sessions.send('c', text('Carry on'), { from: 'kernel' })).toMatchObject({ queued: true, why: 'moving' })
+    expect(sessions.queueReason('c')).toBe('moving')
+    expect(started()).toEqual(['/tmp/a', '/tmp/b'])
+    await sessions.sendNow('c', sessions.queued('c')[0].id)
+    await flush()
+    expect(started()).toEqual(['/tmp/a', '/tmp/b', '/tmp/c'])
+  })
+
+  it('still says capacity when the agent limit is reached', async () => {
+    const { sessions, text } = await cold(2)
+    await sessions.send('a', text('Go on'))
+    await sessions.send('b', text('Go on'))
+    expect(sessions.postHold('c')).toBe('capacity')
+    expect(await sessions.send('c', text('Carry on'), { from: 'kernel' })).toMatchObject({ queued: true, why: 'capacity' })
   })
 })
 

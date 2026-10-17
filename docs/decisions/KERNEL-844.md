@@ -12,6 +12,6 @@
 
 **Kernel stops switching by itself when an account it switched to fills within 30 minutes.** "Fills" means a rejection, or crossing the move threshold. Kernel doesn't switch that provider by itself again, one Inbox item says why, and the rooms wait for the limit as with the switch off. Any switch the user makes, from Settings, the banner or Undo, lets Kernel switch by itself again. KERNEL-844.
 
-**Cold re-reads start two at a time, smallest first.** A turn counts as cold when it runs on another account or model than the chat's last turn (`coldSize`). One only idle past the cache lifetime doesn't count: it would re-read wherever it ran, and holding it would slow ordinary work. The Lead's chats neither wait nor take one of the two, as with the agent limit (D-094). KERNEL-844.
+**Cold re-reads start two at a time, smallest first.** A turn counts as cold when it runs on another account or model than the chat's last turn (`coldSize`). One only idle past the cache lifetime doesn't count: it would re-read wherever it ran, and holding it would slow ordinary work. The Lead's chats neither wait nor take one of the two, as with the agent limit (D-094). Only Kernel's own messages and carry-ons wait for one, under the queue reason `moving`, which is not the agent limit's `capacity`. A message from the user or the Lead goes at once, whatever else is re-reading. KERNEL-844, KERNEL-1032.
 
 **Each switch Kernel makes by itself posts one Inbox item** naming the account it left and why, and the long chats that move with what the policy does to them. KERNEL-844.

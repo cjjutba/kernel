@@ -225,6 +225,7 @@ export function capRefusal(open: number, { cap, own, project }: OpenCap): string
 /** Why a brief or message waits, and when it goes out, for the reasons that hold a whole chat rather than one turn. */
 const WAITS: Partial<Record<QueueReason, { because: string; until: string }>> = {
   capacity: { because: 'Every agent slot in Settings, Models is in use', until: 'when a slot frees up' },
+  moving: { because: 'Other chats are moving to the new account, two at a time', until: 'when one of them is done' },
   paused: { because: 'The project is paused', until: 'when the user resumes it' },
   offline: { because: 'Kernel is offline or signed out', until: 'once it is back' },
   limit: { because: 'Usage is close to the limit', until: 'when it resets or usage drops' }
