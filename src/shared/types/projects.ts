@@ -54,6 +54,11 @@ export interface Project {
    * file or a variable that isn't in here warns again (KERNEL-449).
    */
   keepCopying?: string[]
+  /**
+   * The chat that setup made for the project, with its worktree, so the first Send stays in it instead of making another
+   * (see docs/decisions/feat-create-new-projects-first-chat-and.md). Set once, when setup finishes. It stays after the chat is archived, and a project made before has none.
+   */
+  firstChatId?: string
   createdAt: number
 }
 
