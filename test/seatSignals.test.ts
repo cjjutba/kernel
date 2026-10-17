@@ -13,6 +13,8 @@ import { ASK_IN_TERMINAL, NO_HOOKS_REFUSAL } from '../src/main/features/seatSign
 import { setUp, tempRepo, freePort } from './helpers'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
+// Seats are off in v1 (KERNEL-1034). These tests run with them on, so the code stays covered.
+vi.mock('../src/main/services/seatsFlag', () => ({ SEATS_ENABLED: true }))
 
 // KERNEL-999: a terminal seat's hooks name its chat and give Kernel what the SDK transcript gives a chat.
 

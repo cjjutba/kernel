@@ -6,6 +6,7 @@ import { agentPrompt } from '../services/sessions'
 import { removeSeatDir, seatCommand, seatDir, seatsDir, withDirFirst, writeSeatDir, writeSeatSession } from '../services/seatLaunch'
 import { startSeatMcp, SeatRegistry, type Seat, type SeatMcp, type SeatRole, type SeatTools } from '../services/seatMcp'
 import { loginShell } from '../services/pty'
+import { SEATS_ENABLED } from '../services/seatsFlag'
 import { Feature } from './feature'
 
 /**
@@ -43,12 +44,12 @@ export class Seats extends Feature {
    * What a terminal chat's pty starts with when the seat is connected (KERNEL-998): the chat's id, a new token and the endpoint
    * in its environment, and a folder first on the PATH whose `claude` runs the real one wired into Kernel. `command` is what the
    * tab types, with `claude` spelled as that script, so a login shell that rewrites the PATH still starts the seat, and a later `claude` too. Undefined
-   * when Settings, Terminal has connect off, or the chat is not a terminal.
+   * when the chat is no seat (`seated`), or not a terminal.
    */
   launch(chatId: string, env: Record<string, string>): { env: Record<string, string>; command: (typed: string | undefined) => string } | undefined {
     const chat = this.store.chat(chatId)
     const url = this.url
-    if (!chat || chat.kind !== 'terminal' || !url || !this.settings.terminal.connect) return undefined
+    if (!chat || chat.kind !== 'terminal' || !url || !this.seated(chat)) return undefined
     const ws = this.mustWs(chat.workspaceId)
     const token = this.makeToken(chatId)
     this.saveRole(chat, this.roleOf(chatId))
@@ -60,6 +61,14 @@ export class Seats extends Feature {
       env: { ...env, PATH: withDirFirst(dir, env.PATH), KERNEL_CHAT_ID: chatId, KERNEL_SEAT_TOKEN: token, KERNEL_MCP_URL: url },
       command: (typed) => seatCommand(dir, typed, loginShell(process.env))
     }
+  }
+
+  /**
+   * Whether a terminal chat's pty starts as a seat: when Settings, Terminal has connect on, while seats are on. With them off
+   * (KERNEL-1034) only a teammate seat a hand-off made before does, so it runs until its work is done, and the setting is ignored.
+   */
+  seated(chat: Chat): boolean {
+    return SEATS_ENABLED ? this.settings.terminal.connect : !!chat.terminal?.handoff
   }
 
   /** The session the seat's next `claude` resumes, once the chat has one or another (KERNEL-999 reads it from the hooks). */

@@ -10,6 +10,8 @@ import { seatCommand, seatDir } from '../src/main/services/seatLaunch'
 import { setUp, tempRepo, freePort } from './helpers'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
+// Seats are off in v1 (KERNEL-1034). These tests run with them on, so the code stays covered.
+vi.mock('../src/main/services/seatsFlag', () => ({ SEATS_ENABLED: true }))
 
 // KERNEL-998: a seat's terminal runs claude wired into Kernel, resumes its session and can be turned off.
 
