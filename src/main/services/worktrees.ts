@@ -230,7 +230,7 @@ export async function isAncestor(path: string, commit: string, ref: string): Pro
 
 /**
  * The branch is on `remote` as far as its remote-tracking ref says, which a push sets. Such a branch takes its base by a
- * merge, since a rebase needs a force push and the guard denies every one (D-023, KERNEL-886). A ref git can't read counts
+ * merge, since a rebase needs a force push and the team doesn't force-push (KERNEL-886). A ref git can't read counts
  * as pushed: a merge is never wrong, a rebase of a pushed branch is.
  */
 export async function isPushed(repo: string, branch: string, remote = 'origin'): Promise<boolean> {
