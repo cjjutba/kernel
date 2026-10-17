@@ -831,12 +831,13 @@ function accountSwitchedToast(e: Extract<PushEvent, { type: 'accountSwitched' }>
 let burst: PushEvent[] | undefined
 
 /**
- * A queued message that posts is three events sent together: the tray loses it (`chat.queue`), its row arrives (`chat.item`) and the chat runs (`chat.running`). Each
- * is its own message from main, so each could draw in a frame of its own. A `chat.queue` or a turn ending (`chat.running` false, which Send now follows with the next message) opens a burst that takes what follows, in order, and draws it as one (KERNEL-895).
+ * A queued message that posts is three events, in the order main sends them: its row arrives (`chat.item`), the chat runs (`chat.running`), and the tray loses it
+ * (`chat.queue`, deferred a microtask in `pushQueue`, so it goes last). Each is its own message from main, so each could draw in a frame of its own. A user row, a
+ * `chat.queue` or a turn ending (`chat.running` false, which Send now follows with the next message) opens a burst that takes what follows, in order, and draws it as one (KERNEL-895).
  */
-function applyTogether(e: PushEvent) {
+export function applyTogether(e: PushEvent) {
   if (burst) { burst.push(e); return }
-  if (e.type !== 'chat.queue' && !(e.type === 'chat.running' && !e.running)) return apply(e)
+  if (!(e.type === 'chat.queue' || (e.type === 'chat.item' && e.item.kind === 'user') || (e.type === 'chat.running' && !e.running))) return apply(e)
   const mine = (burst = [e])
   setTimeout(() => {
     if (burst === mine) burst = undefined
