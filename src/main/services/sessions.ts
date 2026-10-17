@@ -317,7 +317,7 @@ export type TurnBy = MessageFrom | 'user'
  * choose how it moves to another account, it is held near a usage limit, over the agent limit or behind cold re-reads, or
  * Kernel is closing.
  */
-export type PostHold = 'busy' | 'queued' | 'crashed' | 'setup' | 'launching' | 'paused' | 'offline' | 'move' | 'limit' | 'capacity' | 'closing'
+export type PostHold = 'busy' | 'queued' | 'crashed' | 'setup' | 'launching' | 'paused' | 'offline' | 'move' | 'limit' | 'capacity' | 'moving' | 'closing'
 
 /** What stopped a chat mid-turn that carries on by itself: a usage limit, or Kernel quitting or closing (KERNEL-215). */
 export type CutOffReason = 'limit' | 'quit'
@@ -884,7 +884,7 @@ export class Sessions {
       this.setQueue(chatId, [...this.queued(chatId), queuedOf(chatId, parts, o)])
       return { queued: true }
     }
-    const why = this.waitsFor(chat.id)
+    const why = this.waitsFor(chat.id, o)
     if (why) {
       this.setQueue(chatId, [...this.queued(chatId), queuedOf(chatId, parts, o)])
       return { queued: true, why }
@@ -938,7 +938,7 @@ export class Sessions {
   turnRow(chatId: string): (ChatItem & { kind: 'user' }) | undefined { return this.live.get(chatId)?.sentItem }
 
   /** What a message sent now would wait for, or nothing when it can go at once. */
-  waitsFor(chatId: string): QueueReason | undefined {
+  waitsFor(chatId: string, next: { from?: MessageFrom } | undefined = this.queued(chatId)[0]): QueueReason | undefined {
     const chat = this.d.store.chat(chatId)
     if (!chat) return undefined
     if (this.live.get(chat.id)?.running) return 'running'
@@ -948,7 +948,8 @@ export class Sessions {
     if (this.pausedChat(chat)) return 'paused'
     if (this.moveHolds.has(chat.id)) return 'move'
     if (this.nearLimitHolds(chat.id) || this.accountLimitHolds(chat)) return 'limit'
-    if (this.atCapacity(chat.id) || this.coldHolds(chat.id)) return 'capacity'
+    if (this.atCapacity(chat.id)) return 'capacity'
+    if (this.coldHolds(chat.id, next)) return 'moving'
     return undefined
   }
 
@@ -979,7 +980,8 @@ export class Sessions {
     if (this.pausedChat(chat)) return 'paused'
     if (this.moveHolds.has(chatId)) return 'move'
     if (this.nearLimitHolds(chatId) || this.accountLimitHolds(chat)) return 'limit'
-    if (this.atCapacity(chatId) || this.coldHolds(chatId)) return 'capacity'
+    if (this.atCapacity(chatId)) return 'capacity'
+    if (this.coldHolds(chatId)) return 'moving'
     return undefined
   }
 
@@ -1018,7 +1020,7 @@ export class Sessions {
     if (this.closing) return this.queued(chatId)
     if (live?.running) { live.sendNext = true; await this.interrupt(chatId, true) }
     // Pressing Send now is the user choosing to go over the agent limit (KERNEL-271), or past the near-limit hold (KERNEL-220).
-    else if (why === 'capacity' || why === 'limit' || (why === 'paused' && o.pastPause)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
+    else if (why === 'capacity' || why === 'moving' || why === 'limit' || (why === 'paused' && o.pastPause)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
     else this.drain(chatId)
     return this.queued(chatId)
   }
@@ -1351,7 +1353,7 @@ export class Sessions {
     const queue = this.queued(chatId)
     const [next] = queue
     const chat = this.d.store.chat(chatId)
-    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.unmade(chat) || this.pausedChat(chat) || this.moveHolds.has(chatId) || this.nearLimitHolds(chatId) || this.accountLimitHolds(chat) || this.atCapacity(chatId) || this.coldHolds(chatId)) return
+    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.unmade(chat) || this.pausedChat(chat) || this.moveHolds.has(chatId) || this.nearLimitHolds(chatId) || this.accountLimitHolds(chat) || this.atCapacity(chatId) || this.coldHolds(chatId, next)) return
     const batch = queue.length > 1 && !this.d.store.items(chatId).some((i) => i.kind === 'user') ? firstTurn(queue) : [next]
     this.setQueue(chatId, queue.slice(batch.length))
     this.dispatch(chat, next.parts, next, batch.slice(1))
@@ -1390,9 +1392,11 @@ export class Sessions {
   /**
    * The chat's next turn re-reads its history cold (`coldSize`) while COLD_AT_ONCE others do (KERNEL-844). It waits for one
    * to end, and the smallest waiting goes first (`coldLast`). The Lead's chats neither wait nor take a turn, as with the agent
-   * limit, so the Lead can always answer the user.
+   * limit, so the Lead can always answer the user. Neither does a chat whose next message is the user's or the Lead's, which
+   * goes at once (KERNEL-1032): `next` is that message, and none means Kernel's own.
    */
-  private coldHolds(chatId: string): boolean {
+  private coldHolds(chatId: string, next?: { from?: MessageFrom }): boolean {
+    if (next && next.from !== 'kernel') return false
     const chat = this.d.coldSize && !this.isLeadChat(chatId) ? this.d.store.chat(chatId) : undefined
     if (!chat || this.d.coldSize!(chat) === undefined) return false
     let cold = 0
