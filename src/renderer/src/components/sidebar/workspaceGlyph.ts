@@ -7,9 +7,10 @@ import { BLOCKERS_STATUS, busyLabel, localStatus, PR_STATUS, type LocalStand, ty
 
 /**
  * The colors a workspace's sidebar icon takes. Green, red and purple mean what they mean in a diff and on GitHub. Amber
- * (`needs`) is what waits on you, the same color as the hover card's "needs you" (KERNEL-274).
+ * (`needs`) is what waits on you, the same color as the hover card's "needs you" (KERNEL-274). A plan waiting for review takes
+ * the plan blue (`plan`) instead, the color of plan mode and its Approve button (plan-waiting-icon-blue).
  */
-export type GlyphTone = 'muted' | 'needs' | 'add' | 'del' | 'merged'
+export type GlyphTone = 'muted' | 'needs' | 'plan' | 'add' | 'del' | 'merged'
 
 export interface WorkspaceGlyph {
   /** `spin` draws the spinner instead of an icon. */
@@ -27,7 +28,7 @@ const spin = (label: string): WorkspaceGlyph => ({ icon: 'spin', tone: 'muted', 
  */
 const waitingGlyph = (waiting: Approval[]): WorkspaceGlyph =>
   waiting.every(isPlanApproval)
-    ? { icon: 'plan', tone: 'needs', label: 'Plan to review' }
+    ? { icon: 'plan', tone: 'plan', label: 'Plan to review' }
     : { icon: 'question', tone: 'needs', label: 'Needs you' }
 
 /** A worktree deleted outside Kernel (KERNEL-291). It waits on you to archive it. */

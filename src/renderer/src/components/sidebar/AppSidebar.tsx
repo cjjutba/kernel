@@ -144,7 +144,7 @@ function ChatItemRow({ projectId, thread, ws, tabs, owned, folded, slot, leaving
     return r.name === 'workspace' && (ws ? r.workspaceId === ws.id : r.workspaceId === tabs[0]?.workspaceId && currentThread(s, r.workspaceId) === thread.id)
   })
   const arrive = useArriving(current && !leaving)
-  // Plan mode tints the icon `plan` blue, like the composer: a tab that plans, or a plan waiting for approval. A waiting icon stays amber and the shape still says the state.
+  // Plan mode tints the icon `plan` blue, like the composer: a tab that plans, or a plan waiting for approval. A waiting question or permission stays amber and the shape still says the state.
   const local = useLocalMerge(ws)
   const pending = useStore((s) => (ws ? s.prPending[ws.id] : undefined))
   const g = chatGlyph({ ws, waiting, running, local, pending })
