@@ -12,7 +12,7 @@ Release Kernel, following docs/RELEASING.md. I start it, I read the notes, and I
    - `git checkout -b release/<version>`
    - `pnpm release:notes <version>`. It refuses a version that isn't above `package.json`, so it runs before the bump.
    - `pnpm version <version> --no-git-tag-version --no-git-checks`. It changes only `package.json`. `--no-git-checks` is needed because the release notes are not committed yet, and pnpm refuses a dirty tree without it.
-   - For a minor version, the file's title is `TITLE: write me`, which the site and the release refuse. Draft a short title and a one-paragraph intro from the notes, put them in `site/content/releases/<version>.md`, and show me the file to edit. A patch keeps its "Kernel <version>" title and needs no intro.
+   - Every release file starts with the title `TITLE: write me`, which the site and the release refuse, because the changelog links each release title to its own page. Draft a short title from the notes and put it in `site/content/releases/<version>.md`. A minor also gets a one-paragraph intro, and a patch needs none. Show me the file to edit.
    - Refresh the landing page demo: `pnpm demo:refresh`. It type-checks `demo/`, rebuilds `site/public/demo`, retakes `site/public/images/lead-plan.png` and lists the clips older than a change to what they show. Show me that list with each `pnpm demo:clips <name>` command. Re-recording is my call: run one only if I say so, and commit its output too. The refresh's own output goes in the release commit.
    - Check the file: `pnpm --dir site test`.
 
