@@ -61,7 +61,7 @@ export function teammateTools(d: TeammateToolDeps) {
         const target = resolveTarget(all, on)!
         const what = target.prNumber ? `PR #${target.prNumber}` : `${d.nameOf(target)}'s work`
         if (isMerged(target)) {
-          // A branch the remote has takes the base by a merge: a rebase would need the force push the guard denies (KERNEL-886).
+          // A branch the remote has takes the base by a merge: a rebase would need a force push, which the team doesn't make (KERNEL-886).
           const remote = await d.remote?.() ?? 'origin'
           const take = await isPushed(ws.path, ws.branch, remote) ? `Merge ${remote}/${stripRemote(ws.baseRef, remote)} into your branch` : 'Rebase onto it'
           return text(`${what} already merged, so there is nothing to wait for. ${take} and carry on.`)

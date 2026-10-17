@@ -637,7 +637,7 @@ describe('a local merge through the PR feature', () => {
     // The state stays ready: the band reads Behind from the read, and nothing claims the agent is resolving.
     expect(k.store.workspace(ws.id)?.prState).not.toBe('resolving')
 
-    // Once the branch is on the remote, a rebase would need the force push the guard denies, so the merge is pushed as usual.
+    // Once the branch is on the remote, a rebase would need a force push, which the team doesn't make, so the merge is pushed as usual.
     const bare = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
     await run('git', ['init', '-q', '--bare', bare])
     await run('git', ['-C', repo, 'remote', 'add', 'origin', bare])
