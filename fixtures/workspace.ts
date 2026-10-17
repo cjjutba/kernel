@@ -2131,6 +2131,23 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const w = setupWait(f, 'setup', [setupAsk])
     return { ...w, items: { [ids.tableChat]: f.items[ids.tableChat] ?? [] } }
   }),
+  // KERNEL-1012: Wait for setup is off, the default. The brief went out at once, so the chat shows its transcript and the agent works while setup runs. No card, no queue row, the box is open.
+  SetupWorkingAlongside: scene((f) => {
+    const w = setupWait(f, 'setup', [])
+    return { ...w, items: { [ids.tableChat]: [userMsg('sa-u', 'In a setup script tab in the right sidebar panel, there is a redundancy in terms of Run. Can you fix that?'), ...midTurn] }, push: [...(w.push ?? []), { type: 'chat.running', chatId: ids.tableChat, running: true }] }
+  }),
+  // KERNEL-1012: setup failed and nothing waited for it. The workspace is ready, the agent keeps working, and the banner doesn't block the box.
+  SetupFailedKeepsWorking: scene((f) => {
+    const w = setupWait(f, 'failed', [], { end: 1 })
+    return {
+      ...w,
+      workspaces: withWorkspace(f, ids.table, { status: 'ready', setupRun: { startedAt: Date.now() - 68_000, endedAt: Date.now() - 26_000, end: 1 }, copied: 2 }),
+      items: { [ids.tableChat]: [userMsg('sf-u', 'In a setup script tab in the right sidebar panel, there is a redundancy in terms of Run. Can you fix that?'), ...midTurn] },
+      push: [...(w.push ?? []), { type: 'chat.running', chatId: ids.tableChat, running: true }]
+    }
+  }),
+  // KERNEL-1012: Wait for setup before agents start is on. The brief is held, so the card, the queue row and Send now show as before.
+  SetupHeldWaitOn: scene((f) => setupWait(f, 'setup', [setupAsk])),
   // Edit pulled the only queued message back into the box.
   SetupEditQueued: scene((f) => setupWait(f, 'setup', [], { composer: { parts: [...setupAsk.parts, ...setupFollow.parts], draft: '' } })),
   SetupPanelHidden: scene((f) => setupWait(f, 'setup', [setupAsk], { panel: false })),
