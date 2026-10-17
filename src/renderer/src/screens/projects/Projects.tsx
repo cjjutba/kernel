@@ -3,8 +3,8 @@ import type { Project } from '@shared/types'
 import { actions, useStore } from '../../store'
 import { openProject } from '../../lead'
 import { KernelMark } from '../../icons'
-import { Button, Icon, Pill, useListKeys } from '../../ui'
-import { call } from '../../api'
+import { Button, Icon, Pill, useBusy, useListKeys } from '../../ui'
+import { call, cleanError } from '../../api'
 import { oneOf, useRemembered } from '../../remember'
 import { openNewProject } from './draft'
 import { ago, initial, projectState, sourceOf, stateLabel, teamOf } from './projectInfo'
@@ -23,6 +23,8 @@ function ProjectRow({ project, nav }: { project: Project; nav: ReturnType<typeof
   const state = projectState(project, approvals, status)
   const open = () => void openProject(project.id)
   const show = () => void call('projects.update', { projectId: project.id, patch: { hidden: false } }).then((r) => actions.projects.upsert(r))
+  const [restoring, run] = useBusy()
+  const restore = () => run('restore', () => call('projects.update', { projectId: project.id, patch: { archived: false } }).then((r) => actions.projects.upsert(r), (e) => actions.ui.toast({ title: 'Could not restore the project', sub: cleanError(e) })))
   return (
     <div className="rm-row" data-keep-id={project.id} onClick={open}>
       <span className="rm-name">
@@ -32,6 +34,7 @@ function ProjectRow({ project, nav }: { project: Project; nav: ReturnType<typeof
           <span className="rm-desc ellipsis">{project.desc}</span>
         </span>
         {project.hidden && <button type="button" className="rm-show" aria-label={`Show ${project.name} in the sidebar`} onClick={(e) => { e.stopPropagation(); show() }}>Show in sidebar</button>}
+        {project.archived && <button type="button" className="rm-show" disabled={!!restoring} aria-label={`Restore ${project.name}`} onClick={(e) => { e.stopPropagation(); void restore() }}>{restoring ? 'Restoring' : 'Restore'}</button>}
       </span>
       <span className="rm-source">
         <Icon name={project.kind === 'folder' || (!project.repo && project.kind !== 'scratch') ? 'folder' : project.kind === 'scratch' ? 'burst' : 'branch'} size={16} />
