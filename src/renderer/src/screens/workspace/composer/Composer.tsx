@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, typ
 import type { AgentDef, BuiltinCommand, Chat, ChatPart, Decision, Effort, FileEntry, ModelId, PermissionMode, QueuedMessage, Skill, Workspace } from '@shared/types'
 import type { LeadMode } from '@shared/types'
 import { chatProvider } from '@shared/providers'
-import { isLeadChatWorkspace } from '@shared/leadWorkspace'
+import { isLeadChatWorkspace, onSharedFolder } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
 import { modelLabelOf, useCodexInUse, useProviderModels } from './providerModels'
 import { call, cleanError } from '../../../api'
@@ -108,14 +108,20 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
   const leadMode = leadModeOf(ws)
   const projectLeadMode = useProjectSettings(withKernel ? ws.projectId : undefined)?.agents?.leadMode
   const appLeadMode = useStore((s) => s.settings?.team.leadMode)
+  const appPlace = useStore((s) => s.settings?.workspace.mode)
+  const projectPlace = useProjectSettings(withKernel ? ws.projectId : undefined)?.workspace.mode
+  const [switching, runSwitch] = useBusy<LeadMode>()
+  const makingCopy = !!ws?.worktreePending && !ws.worktreePending.error
+  const switchingTo = switching ?? (makingCopy ? 'build' : null)
+  const switchLabel = (projectPlace ?? appPlace) === 'current' ? 'Moving to your current branch' : 'Making worktree'
   const pickLeadMode = (mode: LeadMode) => {
     d.focus()
-    if (!ws || mode === leadMode) return
-    void attempt('Could not switch', async () => {
+    if (!ws || mode === leadMode || switchingTo) return
+    void runSwitch(mode, () => attempt('Could not switch', async () => {
       await setLeadMode(ws.id, mode)
       // Build here is a teammate's panel, with its changes first. Hand off goes back to the Lead's PR list.
       actions.ui.setWorkspaceView({ leadRight: mode === 'build' ? 'changes' : 'prs' })
-    })
+    }))
   }
   // The edits Kernel can't carry into a hand-off: teammates start from main and won't see them.
   const [dirty, setDirty] = useState<string[]>([])
@@ -428,7 +434,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
       input={<ComposerInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
       foot={<ComposerToolbar
         compact={compact}
-        lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(projectLeadMode, appLeadMode), onPick: pickLeadMode } : undefined}
+        lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(projectLeadMode, appLeadMode), onPick: pickLeadMode, busy: switchingTo ? { to: switchingTo, label: switchingTo === 'build' && (makingCopy || (!!ws && onSharedFolder(ws))) ? switchLabel : 'Switching' } : undefined } : undefined}
         agent={!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
         model={{ label: model, provider, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x); d.focus() }, onEffort: setEffort } }}
         mode={{ provider, availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}

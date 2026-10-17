@@ -2,7 +2,7 @@ import { useEffect, useRef, type KeyboardEvent } from 'react'
 import { getState } from '../../../store'
 import type { LeadMode, Provider } from '@shared/types'
 import type { ModeAvailabilities } from '../../../permissionModes'
-import { Button, Icon, Kbd, listKeyAction } from '../../../ui'
+import { Button, Icon, Kbd, listKeyAction, Spinner } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 import { MODE_ICON, buttonName, leadModeRows, modeAria, modeRows, type ComposerMode, type Shown } from './modes'
 
@@ -79,10 +79,10 @@ export function ModeButton({ provider, availability, shown, open, onOpen, onPick
  * side from anywhere in the page while the switch is on screen, as a click on it does. It leaves a text field outside the box and an open modal
  * alone. Shift+Tab stays with the permission modes.
  */
-export function LeadModeSwitch({ mode, footer, onPick }: { mode: LeadMode; footer: string; onPick: (mode: LeadMode) => void }) {
+export function LeadModeSwitch({ mode, footer, onPick, busy }: { mode: LeadMode; footer: string; onPick: (mode: LeadMode) => void; busy?: { to: LeadMode; label: string } }) {
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.defaultPrevented || e.isComposing || getState().ui.modal) return
+      if (busy || e.defaultPrevented || e.isComposing || getState().ui.modal) return
       if (!(e.metaKey && e.shiftKey && !e.altKey && !e.ctrlKey && e.code === 'KeyH')) return
       const t = e.target as HTMLElement | null
       const typing = !!t && (t.isContentEditable || t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement)
@@ -96,12 +96,15 @@ export function LeadModeSwitch({ mode, footer, onPick }: { mode: LeadMode; foote
     return () => window.removeEventListener('keydown', onKey)
   })
   return (
-    <div className="cmp-switch" role="group" aria-label="How Kernel works in this chat">
-      {leadModeRows(mode).map((r) => (
-        <button key={r.mode} type="button" className="cmp-switch-side" aria-pressed={r.checked} aria-label={r.name} data-tip={r.name} data-tip-kbd="⌘⇧H" data-tip-hint={`${r.desc} ${footer}`} onClick={() => { if (!r.checked) onPick(r.mode) }}>
-          <Icon name={r.icon} size={14} /><span className="cmp-switch-name">{r.name}</span>
-        </button>
-      ))}
+    <div className="cmp-switch" role="group" aria-label="How Kernel works in this chat" aria-busy={!!busy || undefined}>
+      {leadModeRows(busy ? busy.to : mode).map((r) => {
+        const making = !!busy && r.mode === busy.to
+        return (
+          <button key={r.mode} type="button" className="cmp-switch-side" aria-pressed={r.checked} aria-label={making ? busy.label : r.name} disabled={!!busy} data-busy={making || undefined} data-tip={making ? undefined : r.name} data-tip-kbd="⌘⇧H" data-tip-hint={`${r.desc} ${footer}`} onClick={() => { if (!r.checked) onPick(r.mode) }}>
+            {making ? <Spinner label={null} pattern="snake" /> : <Icon name={r.icon} size={14} />}<span className={making ? 'cmp-switch-busy' : 'cmp-switch-name'}>{making ? busy.label : r.name}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }

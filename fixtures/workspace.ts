@@ -2513,6 +2513,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
     mode: 'handoff', changes: lmFiles,
     items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'handoff' }, ...lmReply('lm-a', 'Sean has it. Your edits in this chat stay where they are.', 3)]
   })),
+  // KERNEL-1052: a Hand off chat on the project's shared main folder. Changes and Run say there is nothing of its own until Build here, and Create PR is off with the reason.
+  WorkspaceLeadSharedFolder: scene((f) => leadModeScene(f, {
+    mode: 'handoff', right: 'changes', ws: { shared: true, branch: 'HEAD' },
+    items: lmReply('lm-a', 'Sean has it. I read the latest main, so I do not have a worktree of my own.', 1)
+  })),
+  // The first switch to Build here while the working copy is made: the switch spins and says what it makes, and the chat is in setup.
+  WorkspaceLeadMakingWorktree: scene((f) => leadModeScene(f, {
+    mode: 'build', right: 'changes', ws: { status: 'setup', worktreePending: {} },
+    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }]
+  })),
   ChatRailNarrow: railScene(true),
   WorkspaceNewChat: scene((f) => ({
     chats: [...f.chats, extraChat('chat-new', 'New chat')],
