@@ -2,7 +2,7 @@ import { constants } from 'node:fs'
 import { access, stat } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
 import { skipsPermissions, withoutSkip } from '@shared/skipFlag'
-import { KNOWN_CLIS, SKIP_FLAG, type AppSettings, type Chat, type TerminalPreset, type WorkspaceMode } from '@shared/types'
+import { KNOWN_CLIS, SKIP_FLAG, TEAMMATES_RUN_IN, type AppSettings, type Chat, type TeammatesRunIn, type TerminalPreset, type WorkspaceMode } from '@shared/types'
 
 type TerminalSettings = AppSettings['terminal']
 
@@ -83,6 +83,7 @@ export function terminalSettingsOf(v: unknown, defaults: TerminalSettings): Term
     preset: typeof t.preset === 'string' && t.preset ? t.preset : defaults.preset,
     onlyInWorktrees: bool(t.onlyInWorktrees, defaults.onlyInWorktrees),
     connect: bool(t.connect, defaults.connect),
+    teammatesRunIn: TEAMMATES_RUN_IN.includes(t.teammatesRunIn as TeammatesRunIn) ? (t.teammatesRunIn as TeammatesRunIn) : defaults.teammatesRunIn,
     custom
   }
 }
