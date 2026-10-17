@@ -716,3 +716,48 @@ export function overlaps(a: ChangedFile[], b: ChangedFile[]): string[] {
   const set = new Set(a.map((f) => f.path))
   return b.filter((f) => set.has(f.path)).map((f) => f.path)
 }
+
+/** The placeholder branch of a spare worktree (KERNEL-1014). A claim renames it, so none outlives its spare. */
+export const SPARE_PREFIX = 'kernel-spare/'
+
+/**
+ * A spare worktree for a new Lead chat to claim (KERNEL-1014): a hidden folder in the project's worktree root, on a placeholder
+ * branch from `baseRef`. The folder starts with a dot, which `slugify` never makes, so no chat's folder can be it.
+ */
+export async function makeSpare(o: { repo: string; root: string; baseRef: string }): Promise<{ branch: string; path: string }> {
+  const id = randomUUID().slice(0, 8)
+  const branch = `${SPARE_PREFIX}${id}`
+  const path = join(o.root, `.spare-${id}`)
+  await createWorktree({ repo: o.repo, root: o.root, branch, baseRef: o.baseRef, path })
+  return { branch, path }
+}
+
+/**
+ * Turns a spare into the chat's worktree: the branch gets the chat's name and the folder moves to its path. A failure removes
+ * the spare, whatever state it was left in, and throws.
+ */
+export async function claimSpare(repo: string, spare: { branch: string; path: string }, to: { branch: string; path: string }): Promise<void> {
+  let branch = spare.branch
+  let path = spare.path
+  try {
+    await renameBranch(path, to.branch)
+    branch = to.branch
+    await moveWorktree(repo, path, to.path)
+    path = to.path
+  } catch (e) {
+    await removeWorktree(repo, path, { deleteBranch: branch, force: true }).catch(() => undefined)
+    throw e
+  }
+}
+
+/** Removes every spare worktree and placeholder branch of `repo`, as at launch after a crash. Never throws. */
+export async function sweepSpares(repo: string): Promise<void> {
+  try {
+    for (const w of await listWorktrees(repo)) {
+      if (w.branch?.startsWith(SPARE_PREFIX)) await removeWorktree(repo, w.path, { deleteBranch: w.branch, force: true }).catch(() => undefined)
+    }
+    await exec('git', ['-C', repo, 'worktree', 'prune'])
+    const left = await exec('git', ['-C', repo, 'for-each-ref', '--format=%(refname:short)', `refs/heads/${SPARE_PREFIX}`])
+    for (const b of left.stdout.split('\n').map((l) => l.trim()).filter(Boolean)) await dropBranch(repo, b)
+  } catch { /* a repo that is gone has no spares */ }
+}
