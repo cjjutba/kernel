@@ -24,6 +24,12 @@ describe('a chat while its workspace sets up', () => {
     expect(setupGate({ status: 'ready', skips: false, held: false, empty: true })).toEqual({ wait: false, shut: false })
   })
 
+  it("keeps a teammate's chat with history open while setup runs, on its transcript (KERNEL-1018)", () => {
+    expect(setupGate({ status: 'setup', skips: false, held: false, empty: false })).toEqual({ wait: false, shut: false })
+    expect(setupGate({ status: 'setup', skips: false, held: true, empty: false })).toEqual({ wait: false, shut: false })
+    expect(setupGate({ status: 'failed', skips: false, held: true, empty: false })).toEqual({ wait: false, shut: false })
+  })
+
   it("keeps a chat with Kernel whose message went at once open, on its transcript, while setup runs", () => {
     expect(setupGate({ status: 'setup', skips: true, held: false, empty: false })).toEqual({ wait: false, shut: false })
     // Kernel opened it with no message: still the transcript, and what you send goes at once.

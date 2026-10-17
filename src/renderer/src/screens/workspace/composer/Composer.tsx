@@ -56,12 +56,14 @@ type MenuName = 'model' | 'context' | 'mode' | PlusPanel
  * permission mode, which the dropdown after the model button shows and picks (KERNEL-456), Backspace takes a chip like a
  * character. While the agent works, a sent message waits in the queue above the box.
  */
-export function Composer({ chat, agent, blocked, running, prefill, banner, viewer }: {
+export function Composer({ chat, agent, blocked, running, prefill, banner, viewer, setupShown }: {
   chat: Chat
   agent?: AgentDef
   blocked: boolean
   running: boolean
   prefill?: { text: string; n: number }
+  /** SetupWait is on screen, so it shows the messages waiting for setup and the queue doesn't (KERNEL-1018). */
+  setupShown?: boolean
   /** A failure banner, drawn right above the box (KERNEL-28). */
   banner?: ReactNode
   /** Set while the active tab is a viewer (a shared page, file, image, text or diff). The box is then one line until something opens it (KERNEL-934). `held` is a banner or notice above that asks something, which keeps it open. */
@@ -289,7 +291,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
     // ⌘⇧ Enter sends the first queued message now, whatever Send messages with says.
     if (e.key === 'Enter' && e.shiftKey && (e.metaKey || e.ctrlKey) && queue.length && canSendNow(queueWhy)) { e.preventDefault(); sendNow(queue[0]); return }
     // Up in an empty box pulls the last queued message back, as clicking its text does.
-    if (e.key === 'ArrowUp' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && d.empty && queue.length && queueWhy !== 'setup') { e.preventDefault(); editQueued(queue[queue.length - 1]); return }
+    if (e.key === 'ArrowUp' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && d.empty && queue.length && !(queueWhy === 'setup' && setupShown)) { e.preventDefault(); editQueued(queue[queue.length - 1]); return }
     if (sendsOn(e, sendWith)) { e.preventDefault(); void send(); return }
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); cycleMode(); return }
     if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) run.current = null
@@ -377,6 +379,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
             sending={sendingNow}
             onEdit={editQueued}
             onNow={sendNow}
+            setupShown={setupShown}
             onRemove={(q) => void attempt('Could not remove the message', async () => actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id })))}
           />
         )}

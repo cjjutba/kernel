@@ -2117,6 +2117,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // KERNEL-430: a new chat waiting for setup. KERNEL-951: rows say what Kernel did, the setup script's row counts with its last output line, and the message waits dimmed with Send now.
   SetupRunning: scene((f) => setupWait(f, 'setup', [setupAsk])),
   SetupFollowUp: scene((f) => setupWait(f, 'setup', [setupAsk, setupFollow])),
+  // KERNEL-1018: a restored chat with history, held for setup. The transcript stays, the box is open, and the message waits in the queue above it.
+  SetupRestoredChat: scene((f) => {
+    const w = setupWait(f, 'setup', [setupAsk])
+    return { ...w, items: { [ids.tableChat]: f.items[ids.tableChat] ?? [] } }
+  }),
   // Edit pulled the only queued message back into the box.
   SetupEditQueued: scene((f) => setupWait(f, 'setup', [], { composer: { parts: [...setupAsk.parts, ...setupFollow.parts], draft: '' } })),
   SetupPanelHidden: scene((f) => setupWait(f, 'setup', [setupAsk], { panel: false })),

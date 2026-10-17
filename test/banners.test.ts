@@ -229,6 +229,17 @@ describe('workspace banners', () => {
     })
   })
 
+  it('keeps a chat with history open after setup fails, and says messages queue only while some are held (KERNEL-1018)', () => {
+    const scripts = [{ kind: 'setup' as const, line: '$ pnpm install', stream: 'stdout' as const }]
+    const failed = { ws: { ...ws, status: 'failed' as const }, scripts, setupCode: 1, hasHistory: true }
+    expect(bannerFor(input({ ...failed, heldForSetup: true }))).toMatchObject({
+      sub: 'pnpm install exited with code 1. Messages you send queue until setup passes.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
+    })
+    expect(bannerFor(input({ ...failed, heldForSetup: false }))).toMatchObject({
+      sub: 'pnpm install exited with code 1.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
+    })
+  })
+
   it('shows the hook server going down last', () => {
     expect(bannerFor(input({ hooks: { port: 7420, listening: false, installed: true, events: [] } }))).toMatchObject({ id: 'hooks', actions: [{ id: 'checkHooks' }, { id: 'reconnect' }] })
   })

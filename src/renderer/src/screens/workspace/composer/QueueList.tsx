@@ -21,6 +21,7 @@ function extras(parts: ChatPart[]): string {
 const WAITING: Partial<Record<QueueReason, string>> = {
   offline: 'Queued. Sends when you are back online.',
   capacity: 'Queued. Sends when an agent slot frees up. Change the limit in Settings, Models and effort.',
+  setup: 'Queued. Sends when setup finishes.',
   paused: 'Queued. Sends when you resume the project.',
   merge: 'Queued. Sends when the work it waits for merges.',
   move: 'Queued. Sends when you choose how this chat moves to another account.',
@@ -34,7 +35,7 @@ export const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 's
  * Messages typed while the agent works, or held for another reason (`why`), docked to the top of the composer. They go out in
  * order once nothing holds them. Edit one to pull it back into the box.
  */
-export function QueueList({ queue, why, held, running, sending, onEdit, onNow, onRemove }: {
+export function QueueList({ queue, why, held, running, sending, onEdit, onNow, onRemove, setupShown }: {
   queue: QueuedMessage[]
   /** What the queue waits for (KERNEL-273). */
   why?: QueueReason
@@ -47,9 +48,11 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
   onEdit: (q: QueuedMessage) => void
   onNow: (q: QueuedMessage) => void
   onRemove: (q: QueuedMessage) => void
+  /** SetupWait is on screen and already shows the messages waiting for setup. */
+  setupShown?: boolean
 }) {
-  // Messages waiting for setup are bubbles in the chat, with their own Edit and Cancel (SetupWait, KERNEL-430).
-  if (!queue.length || why === 'setup') return null
+  // SetupWait shows the messages waiting for setup, with their own Edit and Cancel (KERNEL-430). Without it they show here (KERNEL-1018).
+  if (!queue.length || (why === 'setup' && setupShown)) return null
   const waiting = why ? WAITING[why] : undefined
   const named = why === 'merge' ? held : undefined
   const stops = !!running && !why
