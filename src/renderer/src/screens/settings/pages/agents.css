@@ -79,7 +79,7 @@
 
 .ag-mask { font: var(--fs-code) var(--mono); letter-spacing: 1px; color: var(--ink-3); }
 .ag-value { font: var(--fs-code) var(--mono); color: var(--ink-2); user-select: text; }
-.ag-kernel { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); column-gap: 16px; align-items: center; min-height: 38px; box-sizing: border-box; padding: 7px 16px; border-top: 1px solid var(--panel-line); }
+.ag-kernel { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); column-gap: 16px; align-items: center; min-height: 38px; box-sizing: border-box; padding: 7px 16px; border-top: 1px solid var(--card-line); }
 .ag-kernel:first-child { border-top: 0; }
 .ag-kernel code { font: var(--fs-meta) var(--mono); color: var(--ink-2); }
 .ag-kernel span { font-size: var(--fs-code); color: var(--muted); }
