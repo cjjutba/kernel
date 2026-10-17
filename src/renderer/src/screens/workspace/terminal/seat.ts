@@ -5,8 +5,5 @@ export const isLeadSeat = (chat: Chat): boolean => chat.kind === 'terminal' && c
 /** A Lead seat's tab is named as the Lead's terminal until its title is changed. */
 export const seatTitle = (chat: Chat): string => (isLeadSeat(chat) && chat.title === 'Terminal (lead)' ? 'Lead terminal' : chat.title)
 
-/**
- * Whether the tab's seat is connected to Kernel. A tab with no signal reads as connected.
- * TODO(KERNEL-999): read the per-chat seat connection signal Noor adds there, and drop this cast.
- */
-export const seatConnected = (chat: Chat): boolean => (chat as Chat & { seat?: { connected: boolean } }).seat?.connected !== false
+/** Whether the tab is a seat that Kernel does not hear from now. A terminal that is not a seat has no signal and reads as connected. */
+export const seatConnected = (chat: Chat): boolean => chat.seat?.connected !== false
