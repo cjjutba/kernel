@@ -1039,6 +1039,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const unreadAt = chat.unreadAt
   useEffect(() => { if (unreadAt !== undefined) void call('chats.markRead', { chatId: chat.id }).catch(() => undefined) }, [chat.id, unreadAt])
 
+  // The project's first chat, made when the project was added: its setup block stands where it will stay once the first message is sent, so Send moves nothing.
+  const firstChat = useStore((s) => s.projects.find((p) => p.id === ws?.projectId)?.firstChatId === chat.id)
   // An empty chat shows the centred welcome in place of the thread, which sits at the bottom of the scroll area.
   // A chat whose items have not arrived is not empty, whatever it holds: it shows nothing until they do, or Try again when the load failed (KERNEL-860).
   const empty = !loading && !failed && !items.length && !loose.length && !running && !(ws?.prState === 'changes' && pr)
@@ -1091,8 +1093,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
           </EmptyState>
         )}
         {/* The worktree and its setup, above the first message (KERNEL-951). Outside the thread, whose children line up with its blocks. */}
-        {ws && !empty && !failed && <ChatSetupRows ws={ws} />}
-        {empty && (
+        {ws && !failed && (!empty || firstChat) && <ChatSetupRows ws={ws} />}
+        {empty && !firstChat && (
           <ChatWelcome title={`New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
             onPick={(text) => sendMessage(chat.id, [{ type: 'text', text }])} />
         )}

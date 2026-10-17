@@ -641,6 +641,24 @@ function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[
   }
 }
 
+/**
+ * A project's first chat, made when the project was added, before anything is sent: one setup block at the top, the box below. `script` is the project's
+ * setup script, which runs (`running`) or has finished; without one the block offers to add it.
+ */
+function firstChat(f: Fixture, o: { script?: boolean; running?: boolean; sent?: boolean } = {}): Partial<Fixture> {
+  const started = Date.now() - 18_000
+  const setupRun = !o.script ? undefined : o.running ? { startedAt: started } : { startedAt: started - 40_000, endedAt: started - 28_000, end: 0 }
+  return {
+    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'aurahire', firstChatId: ids.tableChat } : r)),
+    workspaces: withWorkspace(f, ids.table, { status: o.running ? 'setup' : 'ready', branch: 'cjjutba/yx6r7', baseRef: 'origin/main', copied: 1028, setupRun }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'New tab', autoTitle: { turns: 0 } } : c)),
+    items: { [ids.tableChat]: o.sent ? [{ kind: 'user', id: 'fc-u', ts: at(10, 0), parts: [{ type: 'text', text: 'hi' }] }, { kind: 'text', id: 'fc-t', ts: at(10, 0, 11), text: "Hi. I'm in the tbilisi workspace on branch cjjutba/yx6r7. The tree is clean.\n\nWhat do you want to work on?" }] : [] },
+    projectSettings: { [ids.projectA]: { scripts: o.script ? { setup: 'pnpm install' } : {}, runScripts: [], files: { copy: [] }, workspace: {} } },
+    push: [...f.push, ...(o.script ? setupLog('running') : [])],
+    ui: { ...open, rightPanel: true, workspace: { right: 'files', bottom: 'setup' } }
+  }
+}
+
 /** A project whose setup script runs on create, with Wait for setup left at its default, off. */
 const handoverSettings: NonNullable<Fixture['projectSettings']> = { [ids.projectA]: { scripts: { setup: 'pnpm install' }, runScripts: [], files: { copy: [] }, workspace: {} } }
 /** The updates after a New chat message whose worktree was pending, in main's order: `worktreePending` clears alone, the setup script starts, then the row, the running state and the empty tray arrive together. */
@@ -2159,6 +2177,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   SetupLaterChatCreatingWorktree: scene((f) => setupWait(f, 'setup', [setupAsk], { pending: {}, later: true })),
   // A later worktree chat whose setup failed: only the failed row, with Run again and Send anyway.
   SetupLaterChatFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { end: 1, later: true })),
+  // A project's first chat, made when the project was added: one block at the top, the same before and after the first message. No setup script offers to add one, and is never a warning.
+  FirstChatNoScript: scene((f) => firstChat(f)),
+  FirstChatSetupRunning: scene((f) => firstChat(f, { script: true, running: true })),
+  FirstChatSetupDone: scene((f) => firstChat(f, { script: true })),
+  FirstChatAfterSend: scene((f) => firstChat(f, { sent: true })),
   SetupDone: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', copied: 2, setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
     items: { [ids.tableChat]: [{ kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
