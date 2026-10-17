@@ -117,7 +117,7 @@ function HoverCard({ at, id, hold, label, children }: { at: DOMRect; id: string;
 
 function State({ g, merged }: { g: WorkspaceGlyph; merged?: boolean }) {
   return (
-    <span className="hc-state" data-tone={merged ? 'merged' : g.tone === 'needs' ? 'needs' : undefined} aria-hidden="true">
+    <span className="hc-state" data-tone={merged ? 'merged' : g.tone === 'needs' || g.tone === 'plan' ? 'needs' : undefined} aria-hidden="true">
       {g.icon === 'spin' ? <Spinner label={null} /> : <Icon name={g.icon} size={14} />}
     </span>
   )
