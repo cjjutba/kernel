@@ -186,7 +186,7 @@ describe('Files to copy exclusions and the production warning (KERNEL-449)', () 
       const on = (e: PushEvent) => { if (e.type === 'project.setup' && !e.steps.some((s) => s.state === 'wait' || s.state === 'run')) { bus.off('push', on); resolve(e.steps) } }
       bus.on('push', on)
     })
-    const project = await k.projects.createProject({ source: 'folder', name: 'Prod', from: repo, team: ['kai'], autostart: false })
+    const project = await k.projects.createProject({ source: 'folder', name: 'Prod', from: repo, team: ['christian'], autostart: false })
     expect((await steps).find((s) => s.id === 'copy')).toMatchObject({ state: 'warn', detail: '.env, .env.local, .env.production', production: ['.env', '.env.production'] })
 
     const h = k.handlers()

@@ -10,10 +10,10 @@ import { Kernel } from '../src/main/kernel'
 
 // KERNEL-75: removing a project archives its workspaces for real (ConfirmRemoveProject.png), then forgets the project.
 
-const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+const CHRISTIAN = '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 
 async function setup(files: Record<string, string> = {}) {
-  const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': KAI, ...files })
+  const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/christian.md': CHRISTIAN, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', deleteBranchOnArchive: true } }))
@@ -21,8 +21,8 @@ async function setup(files: Record<string, string> = {}) {
   await k.start()
   k.sessions.send = async () => ({ queued: false })
   const project = await k.addProject(repo)
-  const done = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Nothing unpushed' })
-  const busy = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Unpushed work' })
+  const done = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Nothing unpushed' })
+  const busy = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Unpushed work' })
   await writeFile(join(busy.path, 'work.ts'), 'work\n')
   await run('git', ['-C', busy.path, 'add', '-A'])
   await run('git', ['-C', busy.path, 'commit', '-q', '-m', 'only here'])

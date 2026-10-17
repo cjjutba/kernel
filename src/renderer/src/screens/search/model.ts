@@ -140,7 +140,7 @@ export function projectInView(route: Route, projects: Project[], workspaces: Wor
 /** A workspace row of the sidebar. A Lead chat's own workspace is its chat, listed under Chats (KERNEL-405). */
 const live = (w: Workspace) => w.status !== 'archived' && !w.lead
 
-/** "Run pnpm drizzle-kit push" becomes "pnpm drizzle-kit push", for "Approve Noor: pnpm drizzle-kit push". */
+/** "Run pnpm drizzle-kit push" becomes "pnpm drizzle-kit push", for "Approve Sean: pnpm drizzle-kit push". */
 const approvalLabel = (a: Approval, who?: string) => `Approve ${who ? `${who}: ` : ''}${a.title.replace(/^Run (?:(?:pnpm|npm|yarn|npx) )?/, '')}`
 
 /** Everything the palette can run. Actions depend on where you are; Pages and Projects are the same everywhere. */

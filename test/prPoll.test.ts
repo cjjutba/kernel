@@ -28,7 +28,7 @@ afterEach(async () => {
  * share one worktree, which is all a read needs, so ten open PRs don't cost ten checkouts.
  */
 async function setup(n = 1) {
-  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: false } }))
@@ -37,7 +37,7 @@ async function setup(n = 1) {
   await k.start()
   k.sessions.send = async () => ({ queued: false })
   const project = await k.addProject(repo)
-  const first = await k.workspaces.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+  const first = await k.workspaces.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
   const ws: Workspace[] = [first]
   for (let i = 1; i < n; i++) {
     const copy: Workspace = { ...first, id: `${first.id}-${i}`, name: `${first.name}-${i}` }

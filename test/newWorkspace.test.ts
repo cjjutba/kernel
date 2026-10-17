@@ -117,7 +117,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
   afterEach(() => { vi.unstubAllEnvs() })
   const team = {
     '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-    '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\n---\nYou are Noor. Open a PR for each task.'
+    '.claude/agents/sean.md': '---\nname: sean\ndescription: Engine.\n---\nYou are Sean. Open a PR for each task.'
   }
   const crash = { number: 41, title: 'Crash on save', url: 'https://github.com/acme/app/issues/41', body: 'Steps', labels: [{ name: 'bug' }], comments: [] }
 
@@ -143,8 +143,8 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
     const { k, project } = await kernel('acme/app')
     const lead = (await k.team.agents(project.id)).find((a) => a.lead) as AgentDef
     const deps = k.lead.leadToolDeps(project.id, lead, await k.lead.leadChat(project.id))
-    await kernelTools(deps).find((t) => t.name === 'create_workspace')!.handler({ agent: 'noor', title: 'Fix saving', brief: 'Go', issue: '41' } as never, {})
-    const ws = k.store.workspaces(project.id).find((w) => w.agentId === 'noor')!
+    await kernelTools(deps).find((t) => t.name === 'create_workspace')!.handler({ agent: 'sean', title: 'Fix saving', brief: 'Go', issue: '41' } as never, {})
+    const ws = k.store.workspaces(project.id).find((w) => w.agentId === 'sean')!
     expect(ws.source).toEqual({ kind: 'issue', id: '#41', title: 'Crash on save', url: crash.url, tracker: 'github' })
     expect(ws.branch).toBe('fix/41-crash-on-save')
     // Once to see whether someone else is on it, once to link it (KERNEL-479).
@@ -194,7 +194,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
       const create = kernelTools(k.lead.leadToolDeps(projectId, lead, await k.lead.leadChat(projectId))).find((t) => t.name === 'create_workspace')!
       const [get] = issueTools({ issueKey: () => undefined, tracker: (key) => k.integrations.trackerOf(projectId, { id: key }) })
       return {
-        create: async (issue: string) => { await create.handler({ agent: 'noor', title: 'Fix it', brief: 'Go', issue, confirm: true } as never, {}); return k.store.workspaces(projectId).find((w) => w.agentId === 'noor')! },
+        create: async (issue: string) => { await create.handler({ agent: 'sean', title: 'Fix it', brief: 'Go', issue, confirm: true } as never, {}); return k.store.workspaces(projectId).find((w) => w.agentId === 'sean')! },
         get: async (key: string) => { const r = await get.handler({ key } as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } }
       }
     }
@@ -272,7 +272,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
       const lead = (await k.team.agents(project.id)).find((a) => a.lead) as AgentDef
       const tool = kernelTools(k.lead.leadToolDeps(project.id, lead, await k.lead.leadChat(project.id))).find((t) => t.name === 'create_workspace')!
       const create = async (args: object) => {
-        const r = await tool.handler({ agent: 'noor', title: 'Fix saving', brief: 'Go', issue: '41', ...args } as never, {})
+        const r = await tool.handler({ agent: 'sean', title: 'Fix saving', brief: 'Go', issue: '41', ...args } as never, {})
         return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
       }
       return { k, project, create }
@@ -291,11 +291,11 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
       // Named as Kernel passed it, as the refusal for a task already handed off does.
       expect(await create({})).toEqual({ isError: true, text: takenWarning('41', taken as IssueTaken) })
       expect(takenWarning('41', taken as IssueTaken)).toContain('Kernel found the branch origin/fix/41-crash-on-save, the open PR #52 (Fix saving on slow disks) and mchen assigned to it.')
-      expect(k.store.workspaces(r.id).filter((w) => w.agentId === 'noor')).toEqual([])
+      expect(k.store.workspaces(r.id).filter((w) => w.agentId === 'sean')).toEqual([])
       const started = await create({ confirm: true })
       expect(started.isError).toBe(false)
       // The name origin has is taken, so Kernel never pushes over someone else's branch.
-      expect(k.store.workspaces(r.id).find((w) => w.agentId === 'noor')?.branch).toBe('fix/41-crash-on-save-2')
+      expect(k.store.workspaces(r.id).find((w) => w.agentId === 'sean')?.branch).toBe('fix/41-crash-on-save-2')
     })
 
     it("leaves out the user's own assignment and the project's own workspaces", async () => {
@@ -322,11 +322,11 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
       const { k, project: r, create } = await project(join(tmpdir(), 'kernel-no-such-remote'))
       const started = await create({})
       expect(started.isError).toBe(false)
-      expect(started.text).toMatch(/^Created \S+ on fix\/41-crash-on-save for noor\./)
+      expect(started.text).toMatch(/^Created \S+ on fix\/41-crash-on-save for sean\./)
       expect(started.text).toContain("Couldn't check origin for a branch named after #41: fatal:")
       expect(started.text).toContain("Couldn't check for an open pull request that names #41: not stubbed.")
       expect(started.text).toContain("Couldn't tell whether mchen, assigned to #41, is you.")
-      expect(k.store.workspaces(r.id).some((w) => w.agentId === 'noor')).toBe(true)
+      expect(k.store.workspaces(r.id).some((w) => w.agentId === 'sean')).toBe(true)
     })
   })
 })
@@ -433,7 +433,7 @@ describe('the base a workspace starts from', () => {
   })
 
   describe('when fetching origin fails (KERNEL-179)', () => {
-    const team = { ...lead, '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' }
+    const team = { ...lead, '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' }
     const warnings = (k: Kernel, projectId: string) => k.store.activity(projectId).filter((a) => a.warn)
     const notes = (k: Kernel, wsId: string) => k.store.items(k.store.chats(wsId)[0].id).flatMap((i) => i.kind === 'note' ? [i.text] : [])
 
@@ -603,14 +603,14 @@ describe('the base a workspace starts from', () => {
       const k = await kernel()
       const project = await k.addProject(repo)
       const tool = kernelTools({
-        projectId: project.id, lead: undefined, agents: async () => [{ id: 'kai', name: 'Kai', role: 'Frontend', lead: false } as AgentDef], workspaces: () => [],
+        projectId: project.id, lead: undefined, agents: async () => [{ id: 'christian', name: 'Christian', role: 'Frontend', lead: false } as AgentDef], workspaces: () => [],
         createWorkspace: (o) => k.createWorkspace(project.id, o), messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null,
         hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
       }).find((t) => t.name === 'create_workspace')!
-      const r = await tool.handler({ agent: 'kai', title: 'Inbox actions', brief: 'Go' } as never, {})
+      const r = await tool.handler({ agent: 'christian', title: 'Inbox actions', brief: 'Go' } as never, {})
       const ws = k.store.workspaces(project.id)[0]
       // A clone has no FETCH_HEAD, so the time is unknown.
-      expect((r.content[0] as { text: string }).text).toBe(`Created ${ws.id} on ${ws.branch} for kai. Fetching origin failed (timed out after 30 seconds), so it started from origin/main as of its last fetch.`)
+      expect((r.content[0] as { text: string }).text).toBe(`Created ${ws.id} on ${ws.branch} for christian. Fetching origin failed (timed out after 30 seconds), so it started from origin/main as of its last fetch.`)
       expect(warnings(k, project.id).map((a) => [a.text, a.object])).toEqual([[`started ${ws.name} from origin/main as last fetched, because fetching origin failed:`, 'timed out after 30 seconds']])
       expect(notes(k, ws.id)).toEqual(["Couldn't fetch origin (timed out after 30 seconds), so this workspace started from origin/main as of its last fetch. It may be missing recent merges."])
       await k.stop()
@@ -630,7 +630,7 @@ describe('the base a workspace starts from', () => {
 
 describe('plan mode for new workspaces (KERNEL-74)', () => {
   async function kernel(workspacePlanMode?: boolean) {
-    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(workspacePlanMode === undefined ? {} : { models: { workspacePlanMode } }) }))
@@ -644,17 +644,17 @@ describe('plan mode for new workspaces (KERNEL-74)', () => {
 
   it('starts workspaces from New workspace in plan mode with the setting on, unless the modal says otherwise', async () => {
     const { k, project, h, planOf } = await kernel(true)
-    expect(planOf((await h['workspaces.create']({ projectId: project.id, prompt: 'Go', agentId: 'kai' })).id)).toBe(true)
-    expect(planOf((await h['workspaces.create']({ projectId: project.id, prompt: 'Go', agentId: 'kai', plan: false })).id)).toBe(false)
+    expect(planOf((await h['workspaces.create']({ projectId: project.id, prompt: 'Go', agentId: 'christian' })).id)).toBe(true)
+    expect(planOf((await h['workspaces.create']({ projectId: project.id, prompt: 'Go', agentId: 'christian', plan: false })).id)).toBe(false)
     // The Lead's hand-offs call createWorkspace directly and start without it.
-    expect(planOf((await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Handed off' })).id)).toBe(false)
+    expect(planOf((await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Handed off' })).id)).toBe(false)
     await k.stop()
   })
 
   it('is off by default', async () => {
     const { k, project, h, planOf } = await kernel()
     expect(k.settings.models.workspacePlanMode).toBe(false)
-    expect(planOf((await h['workspaces.create']({ projectId: project.id, prompt: 'Go', agentId: 'kai' })).id)).toBe(false)
+    expect(planOf((await h['workspaces.create']({ projectId: project.id, prompt: 'Go', agentId: 'christian' })).id)).toBe(false)
     await k.stop()
   })
 })

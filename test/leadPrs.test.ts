@@ -5,9 +5,9 @@ import { leadPrs, reviewLine, rowGlyph, rowState } from '../src/renderer/src/scr
 // The Lead's PRs tab: which workspaces it lists, which come first, and what each row says (KERNEL-354).
 
 const rules = { requireGreen: false, requireReviewer: true }
-const agents = [{ id: 'kernel', name: 'Kernel', lead: true }, { id: 'kai', name: 'Kai' }, { id: 'theo', name: 'Theo' }] as AgentDef[]
-const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, projectId: 'project', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 1, prHead: 'h', ...o }) as Workspace
-const verdict = (verdict: 'approved' | 'blockers', o: object = {}) => ({ workspaceId: 'rev', agentId: 'theo', verdict, summary: '', sha: 'h', prNumber: 1, ts: 1, ...o })
+const agents = [{ id: 'kernel', name: 'Kernel', lead: true }, { id: 'christian', name: 'Christian' }, { id: 'artkin', name: 'Artkin' }] as AgentDef[]
+const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, projectId: 'project', agentId: 'christian', status: 'ready', prState: 'ready', prNumber: 1, prHead: 'h', ...o }) as Workspace
+const verdict = (verdict: 'approved' | 'blockers', o: object = {}) => ({ workspaceId: 'rev', agentId: 'artkin', verdict, summary: '', sha: 'h', prNumber: 1, ts: 1, ...o })
 // A PR as GitHub reads it, typed in full so a field the merge rule needs can't go missing (KERNEL-394).
 const info = (workspaceId: string, o: Partial<PrInfo> = {}): PrInfo => ({ workspaceId, number: 1, url: '', title: '', state: 'ready', baseRef: 'main', checks: [], comments: [], conflicts: [], head: 'h', ...o })
 const list = (workspaces: Workspace[], prs: Record<string, PrInfo> = {}) => leadPrs(workspaces, { leadId: 'kernel', projectId: 'project', prs, rules, agents })

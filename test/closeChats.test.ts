@@ -48,7 +48,7 @@ describe('closesThread', () => {
   })
 
   it('has no chat to close outside the Lead\'s workspace, or for a terminal', () => {
-    setState({ workspaces: [{ ...lead, agentId: 'kai' }] })
+    setState({ workspaces: [{ ...lead, agentId: 'christian' }] })
     expect(closesThread(getState(), 'lead', ['b1'])).toBeUndefined()
     seed([tab('a1', 't1'), tab('term', 't1', { kind: 'terminal' })])
     expect(closesThread(getState(), 'lead', ['term'])).toBeUndefined()

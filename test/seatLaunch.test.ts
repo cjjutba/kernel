@@ -16,7 +16,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const REPO = {
   'README.md': '# shop\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
 
 let k: Kernel
@@ -46,7 +46,7 @@ beforeAll(async () => {
   projectId = project.id
   const c = await k.lead.newLeadChat(projectId, { prompt: '' })
   leadWs = await setUp(k, c.id, 'settled')
-  mateWs = await setUp(k, (await k.workspaces.createWorkspace(projectId, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
+  mateWs = await setUp(k, (await k.workspaces.createWorkspace(projectId, { prompt: 'Build the cart', agentId: 'christian', title: 'Cart' })).id)
 }, 60_000)
 
 afterAll(async () => { await k?.stop({ budgetMs: 0 }) })
@@ -84,7 +84,7 @@ describe('terminal seats, launch wiring', () => {
     const argv = out.stdout.split('\0')
     expect(argv.slice(0, 2)).toEqual(['--mcp-config', join(dir, 'mcp.json')])
     expect(argv[2]).toBe('--append-system-prompt')
-    expect(argv[3]).toContain('You are Kai.')
+    expect(argv[3]).toContain('You are Christian.')
     expect(argv[3]).toContain(mateWs.path)
     expect(argv.slice(4, 6)).toEqual(['--model', 'opus'])
     expect(out.stdout).not.toContain(seat.env.KERNEL_SEAT_TOKEN)

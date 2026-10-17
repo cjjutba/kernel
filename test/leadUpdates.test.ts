@@ -29,7 +29,7 @@ const open: LeadUpdates[] = []
 afterEach(() => { open.forEach((u) => u.detach()); open.length = 0 })
 const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms))
 const done = { ok: true, interrupted: false, lead: false, queued: false, by: 'lead' as const }
-const NAMES: Record<string, string> = { kernel: 'Kernel', noor: 'Noor', kai: 'Kai' }
+const NAMES: Record<string, string> = { kernel: 'Kernel', sean: 'Sean', christian: 'Christian' }
 const REPLY = 'Linked node_modules into the worktree.\n\nTests pass.'
 
 /** `defaults`: Kernel's own delays, two seconds after the newest event and five after the oldest, for tests on fake timers. */
@@ -40,8 +40,8 @@ async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boole
   const ws = (id: string, agentId: string, extra: Partial<Workspace> = {}) => store.saveWorkspace({ id, projectId: 'r', name: id, branch: id, baseRef: 'main', path: `/x/${id}`, mode: 'worktree', agentId, port: 1, status: 'ready', prState: 'none', createdAt: 1, ...(agentId === 'kernel' ? {} : { leadChatId: 'lc' }), ...extra } as Workspace)
   const chat = (id: string, workspaceId: string) => store.saveChat({ id, workspaceId, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 } as Chat)
   ws('lead', 'kernel', { mode: 'current' })
-  ws('w1', 'noor', { title: 'Symlink node_modules' })
-  ws('w2', 'kai', { title: 'Inbox actions' })
+  ws('w1', 'sean', { title: 'Symlink node_modules' })
+  ws('w2', 'christian', { title: 'Inbox actions' })
   chat('lc', 'lead'); chat('lc2', 'lead'); chat('nc', 'w1'); chat('kc', 'w2')
   store.saveItem('nc', { kind: 'text', id: 't1', ts: 1, text: REPLY })
   const s = { enabled: true, hasLead: o.leadChat ?? true, accept: true, busy: new Set<string>(), posts: [] as string[], updates: [] as TeamUpdate[], to: [] as string[], rows: [] as { chatId: string; update: TeamUpdate }[], delivered: [] as TeamUpdate[], reviewer: undefined as AgentDef | undefined, review: undefined as ReviewState | undefined, autoReview: true,
@@ -84,19 +84,19 @@ async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boole
   return { store, u, s, pr, own, ws, chat, restart, w1: store.workspace('w1')!, nc: store.chat('nc')!, kc: store.chat('kc')!, lead: store.workspace('lead')!, lc: store.chat('lc')! }
 }
 
-const NOOR = 'Noor (noor) · Symlink node_modules · workspace w1'
-const KAI = 'Kai (kai) · Inbox actions · workspace w2'
+const NOOR = 'Sean (sean) · Symlink node_modules · workspace w1'
+const CHRISTIAN = 'Christian (christian) · Inbox actions · workspace w2'
 const OPENED_54 = '- Opened PR #54 "feat(workspace): symlink node_modules".'
 const OPENED_60 = '- Opened PR #60 "feat(workspace): symlink node_modules".'
-const QUOTED = ["- Noor's last reply:", '  > Linked node_modules into the worktree.', '  >', '  > Tests pass.']
+const QUOTED = ["- Sean's last reply:", '  > Linked node_modules into the worktree.', '  >', '  > Tests pass.']
 const READY = (pr: string) => `- ${pr} passed checks and has no conflicts. No review runs on it, so tell the user it is ready for them to review and merge.`
 const READ = (name: string, id: string) => `- Read ${name}'s reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed (workspace ${id}).`
 const ALL_MERGED = '- Every task you handed off in this chat has merged. Tell the user in one line.'
-const THEO: AgentDef = { id: 'theo', name: 'Theo', role: 'Reviewer', description: 'Reviews PRs', lead: false, prompt: '', file: '.claude/agents/theo.md' }
+const THEO: AgentDef = { id: 'artkin', name: 'Artkin', role: 'Reviewer', description: 'Reviews PRs', lead: false, prompt: '', file: '.claude/agents/artkin.md' }
 /** A PR's reviews as Kernel knows them, kind by kind (KERNEL-549): nothing ran, unless `o` says. */
 const rs = (o: Partial<ReviewState> = {}): ReviewState => ({ approved: [], blocking: [], blockers: false, reviewing: [], inProgress: false, waiting: [], ...o })
 /** The To do line for a PR nobody reviewed while Kernel starts reviews itself (KERNEL-549). */
-const anotherReviewLine = '- PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).'
+const anotherReviewLine = '- PR #54 needs another review: the last one was of a different commit. Ask Artkin to review it again with message_agent (workspace rv).'
 const UNREVIEWED = 'PR #54 passed checks and has no conflicts. No review runs on it, so tell the user it is ready for them to review and merge.'
 
 /** The lines of a message, split into its blocks and its To do list. */
@@ -126,11 +126,11 @@ describe('teammate updates to the Lead', () => {
       '',
       'To do:',
       READY('PR #54'),
-      READ('Noor', 'w1')
+      READ('Sean', 'w1')
     ])
     expect(s.updates[0]).toEqual({
       rows: [{
-        workspaceId: 'w1', agentId: 'noor', name: 'Noor', task: 'Symlink node_modules', prNumber: 54, reply: REPLY,
+        workspaceId: 'w1', agentId: 'sean', name: 'Sean', task: 'Symlink node_modules', prNumber: 54, reply: REPLY,
         events: [
           { kind: 'pr.opened', text: 'Opened PR #54', actionable: false },
           { kind: 'pr.ready', text: 'Ready to merge', actionable: true },
@@ -148,9 +148,9 @@ describe('teammate updates to the Lead', () => {
     // An opening alone doesn't need the Lead. It rides along with the next update that does.
     expect(s.posts).toEqual([])
     const said: [PrState, string, string][] = [
-      ['cifail', '- Checks failed on PR #54.', '- Tell Noor about the failed checks on PR #54 with message_agent (workspace w1).'],
-      ['changes', '- Changes were requested on PR #54.', '- Tell Noor about the changes requested on PR #54 with message_agent (workspace w1).'],
-      ['conflict', '- PR #54 has conflicts with its base branch.', '- Ask Noor to resolve the conflicts on PR #54 with message_agent (workspace w1).'],
+      ['cifail', '- Checks failed on PR #54.', '- Tell Sean about the failed checks on PR #54 with message_agent (workspace w1).'],
+      ['changes', '- Changes were requested on PR #54.', '- Tell Sean about the changes requested on PR #54 with message_agent (workspace w1).'],
+      ['conflict', '- PR #54 has conflicts with its base branch.', '- Ask Sean to resolve the conflicts on PR #54 with message_agent (workspace w1).'],
       ['ready', '- PR #54 passed checks and has no conflicts.', READY('PR #54')]
     ]
     for (const [i, [state, line, todo]] of said.entries()) {
@@ -166,7 +166,7 @@ describe('teammate updates to the Lead', () => {
     pr('w2', 'open', 60)
     pr('w2', 'closed', 60)
     await wait()
-    expect(parts(s.posts.pop()!)).toEqual({ header: UPDATE_HEADER, body: [KAI, OPENED_60, '- PR #60 was closed without merging.'], todo: ["- PR #60 was closed without merging. Ask the user whether Kai's work is still wanted."] })
+    expect(parts(s.posts.pop()!)).toEqual({ header: UPDATE_HEADER, body: [CHRISTIAN, OPENED_60, '- PR #60 was closed without merging.'], todo: ["- PR #60 was closed without merging. Ask the user whether Christian's work is still wanted."] })
   })
 
   it("leaves out a PR state the PR has left by the time the update goes out, and sends nothing when that's all there was", async () => {
@@ -192,7 +192,7 @@ describe('teammate updates to the Lead', () => {
     store.saveItem('nc', { kind: 'text', id: 't2', ts: 2, text: 'Should the link be relative?' })
     u.turnDone(w1, nc, done)
     await wait()
-    expect(parts(s.posts[0])).toEqual({ header: UPDATE_HEADER, body: [NOOR, "- Noor's last reply:", '  > Should the link be relative?'], todo: [READ('Noor', 'w1')] })
+    expect(parts(s.posts[0])).toEqual({ header: UPDATE_HEADER, body: [NOOR, "- Sean's last reply:", '  > Should the link be relative?'], todo: [READ('Sean', 'w1')] })
   })
 
   it('holds updates while the Lead is busy and sends them when its turn ends, losing none', async () => {
@@ -240,7 +240,7 @@ describe('teammate updates to the Lead', () => {
     expect(s.posts).toEqual([])
     u.turnDone(w1, nc, { ...done, ok: false })
     await wait()
-    expect(parts(s.posts[0])).toEqual({ header: UPDATE_HEADER, body: [NOOR, '- Stopped with an error. Open the workspace to see it.'], todo: ['- Noor stopped with an error. Ask Noor what happened with message_agent (workspace w1), or tell the user.'] })
+    expect(parts(s.posts[0])).toEqual({ header: UPDATE_HEADER, body: [NOOR, '- Stopped with an error. Open the workspace to see it.'], todo: ['- Sean stopped with an error. Ask Sean what happened with message_agent (workspace w1), or tell the user.'] })
   })
 
   it('sends nothing with the setting off', async () => {
@@ -255,13 +255,13 @@ describe('teammate updates to the Lead', () => {
   it('carries at most 8 workspaces, the newest, and says how many it left out', async () => {
     const { store, u, s, ws, chat } = await setup()
     for (let i = 1; i <= 10; i++) {
-      const w = ws(`x${i}`, 'kai', { title: `Task ${i}` })
+      const w = ws(`x${i}`, 'christian', { title: `Task ${i}` })
       chat(`xc${i}`, w.id)
       u.turnDone(w, store.chat(`xc${i}`)!, done)
     }
     await wait()
     const lines = s.posts[0].split('\n')
-    expect(lines.filter((l) => l.startsWith('Kai (kai) · '))).toEqual([3, 4, 5, 6, 7, 8, 9, 10].map((i) => `Kai (kai) · Task ${i} · workspace x${i}`))
+    expect(lines.filter((l) => l.startsWith('Christian (christian) · '))).toEqual([3, 4, 5, 6, 7, 8, 9, 10].map((i) => `Christian (christian) · Task ${i} · workspace x${i}`))
     expect(lines).toContain("Updates on 2 more workspaces didn't fit here. Kernel sends them in its next update.")
     expect(s.updates[0].omitted).toBe(2)
     expect(s.updates[0].rows).toHaveLength(8)
@@ -274,16 +274,16 @@ describe('teammate updates to the Lead', () => {
     store.saveItem('nc', { kind: 'text', id: 't2', ts: 2, text: `${'word '.repeat(298)}${link} and more` })
     u.turnDone(w1, nc, done)
     await wait()
-    const [noor] = s.updates[0].rows
-    expect(noor.reply!.endsWith('…')).toBe(true)
-    expect(noor.reply).not.toContain('https://')
-    expect(noor.reply!.length).toBeLessThanOrEqual(1501)
+    const [sean] = s.updates[0].rows
+    expect(sean.reply!.endsWith('…')).toBe(true)
+    expect(sean.reply).not.toContain('https://')
+    expect(sean.reply!.length).toBeLessThanOrEqual(1501)
   })
 
   it("shares 6,000 characters between one message's replies", async () => {
     const { store, u, s, ws, chat } = await setup()
     for (let i = 1; i <= 5; i++) {
-      const w = ws(`y${i}`, 'kai', { title: `Reply ${i}` })
+      const w = ws(`y${i}`, 'christian', { title: `Reply ${i}` })
       chat(`yc${i}`, w.id)
       store.saveItem(`yc${i}`, { kind: 'text', id: `y${i}`, ts: 2, text: 'word '.repeat(800) })
       u.turnDone(w, store.chat(`yc${i}`)!, done)
@@ -388,16 +388,16 @@ describe('what wakes the Lead (KERNEL-121)', () => {
     pr('w2', 'merged', 60)
     await wait()
     const last = parts(s.posts.pop()!)
-    expect(last.body).toEqual([NOOR, '- PR #54 was merged.', '', KAI, '- PR #60 was merged.'])
+    expect(last.body).toEqual([NOOR, '- PR #54 was merged.', '', CHRISTIAN, '- PR #60 was merged.'])
     expect(last.todo).toEqual([ALL_MERGED])
     expect(s.updates.at(-1)?.allMerged).toBe(true)
   })
 
   it('leaves out review workspaces and archived unmerged work when it checks for the last merge', async () => {
     const { s, pr, ws } = await setup()
-    ws('rv', 'kai', { title: 'Review PR #54', reviewOf: 'w1' })
-    ws('gone', 'kai', { title: 'Dropped', status: 'archived' })
-    ws('w2', 'kai', { title: 'Inbox actions', leadChatId: 'elsewhere' })
+    ws('rv', 'christian', { title: 'Review PR #54', reviewOf: 'w1' })
+    ws('gone', 'christian', { title: 'Dropped', status: 'archived' })
+    ws('w2', 'christian', { title: 'Inbox actions', leadChatId: 'elsewhere' })
     pr('w2', 'merged', 60); pr('w1', 'merged')
     await wait()
     expect(s.to.pop()).toBe('lc')
@@ -419,7 +419,7 @@ describe('what wakes the Lead (KERNEL-121)', () => {
     expect(s.posts).toEqual([])
     u.turnDone(w1, nc, { ...done, by: 'kernel' })
     await wait()
-    expect(parts(s.posts.pop()!).todo).toEqual([READ('Noor', 'w1')])
+    expect(parts(s.posts.pop()!).todo).toEqual([READ('Sean', 'w1')])
     pr('w1', 'checks')
     u.turnDone(store.workspace('w1')!, nc, done)
     await wait()
@@ -435,42 +435,42 @@ describe('what wakes the Lead (KERNEL-121)', () => {
     pr('w1', 'cifail')
     await wait()
     const sent = parts(s.posts.pop()!)
-    expect(sent.body).toEqual([KAI, OPENED_60, '- Checks failed on PR #60.', '', NOOR, OPENED_54, '- Checks failed on PR #54.'])
-    expect(sent.todo).toEqual(['- Tell Noor about the failed checks on PR #54 with message_agent (workspace w1).'])
+    expect(sent.body).toEqual([CHRISTIAN, OPENED_60, '- Checks failed on PR #60.', '', NOOR, OPENED_54, '- Checks failed on PR #54.'])
+    expect(sent.todo).toEqual(['- Tell Sean about the failed checks on PR #54 with message_agent (workspace w1).'])
     expect(s.updates.at(-1)?.rows.map((r) => r.events.map((e) => e.actionable))).toEqual([[false, false], [false, true]])
   })
 })
 
 describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
-  const ws = (prState: PrState): Workspace => ({ id: 'w1', projectId: 'r', name: 'w1', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'noor', port: 1, status: 'ready', prState, createdAt: 1, leadChatId: 'lc' })
+  const ws = (prState: PrState): Workspace => ({ id: 'w1', projectId: 'r', name: 'w1', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'sean', port: 1, status: 'ready', prState, createdAt: 1, leadChatId: 'lc' })
   const ev = (kind: TeamEventKind, extra: Partial<TeamEvent> = {}): TeamEvent => ({ n: 1, workspaceId: 'w1', kind, pr: 54, ...extra })
   const at = '(workspace w1)'
-  const BEHIND = "Ask Noor to update PR #54: fetch, merge main into the branch, re-run the tests and push as usual, with message_agent (workspace w1). GitHub won't merge it while its branch is behind."
+  const BEHIND = "Ask Sean to update PR #54: fetch, merge main into the branch, re-run the tests and push as usual, with message_agent (workspace w1). GitHub won't merge it while its branch is behind."
 
   const rows: [string, TeamEvent[], PrState, Partial<WakeContext>, string[]][] = [
-    ['an error in a turn Kernel started', [ev('error', { by: 'lead' })], 'none', {}, [`Noor stopped with an error. Ask Noor what happened with message_agent ${at}, or tell the user.`]],
+    ['an error in a turn Kernel started', [ev('error', { by: 'lead' })], 'none', {}, [`Sean stopped with an error. Ask Sean what happened with message_agent ${at}, or tell the user.`]],
     ['an error in a turn the user started', [ev('error', { by: 'user' })], 'none', {}, []],
-    ['a crashed session', [ev('crash')], 'none', {}, ["Noor's session ended. Tell the user they can restart it from the workspace."]],
+    ['a crashed session', [ev('crash')], 'none', {}, ["Sean's session ended. Tell the user they can restart it from the workspace."]],
     ['a crash a waiting message already restarted', [ev('crash', { resumed: true })], 'none', {}, []],
-    ['a failed setup', [ev('setup.failed')], 'none', {}, ["Setup failed in Noor's workspace. Tell the user to fix it and click Run again there."]],
+    ['a failed setup', [ev('setup.failed')], 'none', {}, ["Setup failed in Sean's workspace. Tell the user to fix it and click Run again there."]],
     ['a failed setup create_workspace already reported', [ev('setup.failed', { told: true })], 'none', {}, []],
     ['a setup that passed on retry', [ev('setup.passed')], 'none', {}, []],
-    ['a review verdict', [ev('review')], 'none', {}, ["Read Noor's review and pass on what it found."]],
-    ['failed checks', [ev('pr.cifail')], 'cifail', {}, [`Tell Noor about the failed checks on PR #54 with message_agent ${at}.`]],
-    ['requested changes', [ev('pr.changes')], 'changes', {}, [`Tell Noor about the changes requested on PR #54 with message_agent ${at}.`]],
-    ['conflicts', [ev('pr.conflict')], 'conflict', {}, [`Ask Noor to resolve the conflicts on PR #54 with message_agent ${at}.`]],
-    ['a PR closed without merging', [ev('pr.closed')], 'closed', {}, ["PR #54 was closed without merging. Ask the user whether Noor's work is still wanted."]],
+    ['a review verdict', [ev('review')], 'none', {}, ["Read Sean's review and pass on what it found."]],
+    ['failed checks', [ev('pr.cifail')], 'cifail', {}, [`Tell Sean about the failed checks on PR #54 with message_agent ${at}.`]],
+    ['requested changes', [ev('pr.changes')], 'changes', {}, [`Tell Sean about the changes requested on PR #54 with message_agent ${at}.`]],
+    ['conflicts', [ev('pr.conflict')], 'conflict', {}, [`Ask Sean to resolve the conflicts on PR #54 with message_agent ${at}.`]],
+    ['a PR closed without merging', [ev('pr.closed')], 'closed', {}, ["PR #54 was closed without merging. Ask the user whether Sean's work is still wanted."]],
     ['a PR closed and opened again', [ev('pr.closed')], 'open', {}, []],
     ['a merge that leaves other tasks open', [ev('pr.merged')], 'merged', { allMerged: () => false }, []],
-    ['a wait the Lead set itself (KERNEL-259)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true, told: true } })], 'none', {}, []],
-    ['a held brief the Lead heard nothing about', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true } })], 'none', {}, ['Noor is waiting for PR #60 by Kai. Kernel sends Noor the brief when it merges. Tell the user in one line that merging it unblocks Noor.']],
-    ['a wait the teammate set itself (KERNEL-262)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: false } })], 'none', {}, ['Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.']],
-    ['the turn that set its own wait (KERNEL-262)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: false } }), ev('turn', { n: 2, by: 'lead', pr: undefined })], 'none', {}, ['Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.']],
-    ['a turn after a wait the Lead set', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: false, told: true } }), ev('turn', { n: 2, by: 'lead', pr: undefined })], 'none', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
-    ['a merge that released a wait', [ev('wait.released', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true } })], 'none', {}, []],
-    ['a wait whose PR closed without merging', [ev('wait.broken', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true, target: 'w2', gone: 'closed' } })], 'none', { workspace: () => ({ ...ws('closed'), id: 'w2', prNumber: 60 }) }, ["Noor is waiting for PR #60 by Kai, which was closed without merging. Ask the user whether Noor should start anyway (wait_for_merge with an empty list) or archive Noor's workspace."]],
-    ['a wait whose PR closed and opened again', [ev('wait.broken', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true, target: 'w2', gone: 'closed' } })], 'none', { workspace: () => ({ ...ws('open'), id: 'w2', prNumber: 60 }) }, []],
-    ['a started teammate whose wait broke', [ev('wait.broken', { wait: { on: ['w2'], label: "Kai's work", held: false, target: 'w2', gone: 'archived' } })], 'none', { workspace: () => ({ ...ws('none'), id: 'w2', status: 'archived' }) }, ["Noor is waiting for Kai's work, which was archived without merging. Ask the user whether Noor should carry on without it (wait_for_merge with an empty list) or archive Noor's workspace."]],
+    ['a wait the Lead set itself (KERNEL-259)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Christian', held: true, told: true } })], 'none', {}, []],
+    ['a held brief the Lead heard nothing about', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Christian', held: true } })], 'none', {}, ['Sean is waiting for PR #60 by Christian. Kernel sends Sean the brief when it merges. Tell the user in one line that merging it unblocks Sean.']],
+    ['a wait the teammate set itself (KERNEL-262)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Christian', held: false } })], 'none', {}, ['Sean is waiting for PR #60 by Christian. Kernel starts Sean again when it merges. Tell the user in one line that merging it unblocks Sean.']],
+    ['the turn that set its own wait (KERNEL-262)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Christian', held: false } }), ev('turn', { n: 2, by: 'lead', pr: undefined })], 'none', {}, ['Sean is waiting for PR #60 by Christian. Kernel starts Sean again when it merges. Tell the user in one line that merging it unblocks Sean.']],
+    ['a turn after a wait the Lead set', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Christian', held: false, told: true } }), ev('turn', { n: 2, by: 'lead', pr: undefined })], 'none', {}, [`Read Sean's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
+    ['a merge that released a wait', [ev('wait.released', { wait: { on: ['w2'], label: 'PR #60 by Christian', held: true } })], 'none', {}, []],
+    ['a wait whose PR closed without merging', [ev('wait.broken', { wait: { on: ['w2'], label: 'PR #60 by Christian', held: true, target: 'w2', gone: 'closed' } })], 'none', { workspace: () => ({ ...ws('closed'), id: 'w2', prNumber: 60 }) }, ["Sean is waiting for PR #60 by Christian, which was closed without merging. Ask the user whether Sean should start anyway (wait_for_merge with an empty list) or archive Sean's workspace."]],
+    ['a wait whose PR closed and opened again', [ev('wait.broken', { wait: { on: ['w2'], label: 'PR #60 by Christian', held: true, target: 'w2', gone: 'closed' } })], 'none', { workspace: () => ({ ...ws('open'), id: 'w2', prNumber: 60 }) }, []],
+    ['a started teammate whose wait broke', [ev('wait.broken', { wait: { on: ['w2'], label: "Christian's work", held: false, target: 'w2', gone: 'archived' } })], 'none', { workspace: () => ({ ...ws('none'), id: 'w2', status: 'archived' }) }, ["Sean is waiting for Christian's work, which was archived without merging. Ask the user whether Sean should carry on without it (wait_for_merge with an empty list) or archive Sean's workspace."]],
     ["the chat's last merge", [ev('pr.merged')], 'merged', { allMerged: () => true }, ['Every task you handed off in this chat has merged. Tell the user in one line.']],
     ['a PR opening', [ev('pr.opened')], 'checks', {}, []],
     ['a PR that passed checks that no review covers (KERNEL-549)', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs() }, [UNREVIEWED]],
@@ -480,55 +480,55 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a PR that passed checks and was approved', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ approved: ['code'] }) }, ['PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.']],
     ['a PR that passed checks and every kind of review approved (KERNEL-549)', [ev('pr.ready')], 'ready', { review: rs({ approved: ['code', 'security', 'ux'] }) }, ['PR #54 passed checks, has no conflicts and the code, security and UX reviews approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.']],
     ['a PR that passed checks with no review state at all', [ev('pr.ready')], 'ready', {}, [UNREVIEWED]],
-    ['a PR that passed checks with an idle review workspace open', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } }) }, ['PR #54 needs a review. Ask Theo to review it with message_agent (workspace rv).']],
-    ['a PR whose review was of an earlier commit', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ stale: true, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } }) }, ['PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).']],
-    ['a PR one kind approved while another still has to look at the latest commit (KERNEL-549)', [ev('pr.ready')], 'ready', { review: rs({ approved: ['code'], waiting: ['security'], open: { workspaceId: 'rv', agentId: 'kernel-reviewer', name: 'Theo' } }) }, ['PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).']],
-    ['a PR whose review workspace failed setup', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo', failed: true } }) }, ['PR #54 needs a review, and setup failed in its review workspace. Tell the user to fix it and click Run again there (workspace rv).']],
+    ['a PR that passed checks with an idle review workspace open', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'artkin', name: 'Artkin' } }) }, ['PR #54 needs a review. Ask Artkin to review it with message_agent (workspace rv).']],
+    ['a PR whose review was of an earlier commit', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ stale: true, open: { workspaceId: 'rv', agentId: 'artkin', name: 'Artkin' } }) }, ['PR #54 needs another review: the last one was of a different commit. Ask Artkin to review it again with message_agent (workspace rv).']],
+    ['a PR one kind approved while another still has to look at the latest commit (KERNEL-549)', [ev('pr.ready')], 'ready', { review: rs({ approved: ['code'], waiting: ['security'], open: { workspaceId: 'rv', agentId: 'kernel-reviewer', name: 'Artkin' } }) }, ['PR #54 needs another review: the last one was of a different commit. Ask Artkin to review it again with message_agent (workspace rv).']],
+    ['a PR whose review workspace failed setup', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'artkin', name: 'Artkin', failed: true } }) }, ['PR #54 needs a review, and setup failed in its review workspace. Tell the user to fix it and click Run again there (workspace rv).']],
     ['a PR that passed checks with auto review off (KERNEL-115)', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: rs() }, ['PR #54 passed checks and has no conflicts. Tell the user it is ready to merge.']],
     ['a PR that passed checks with auto review off, which gets the plain ready-to-merge line', [ev('pr.ready')], 'ready', { autoReview: false, review: rs({ notStarted: true }) }, [`PR #54 passed checks and has no conflicts. Tell the user it is ready to merge.`]],
     ['a PR that passed checks with auto review on, whatever the review state says', [ev('pr.ready')], 'ready', { autoReview: true, review: rs({ notStarted: true }) }, [UNREVIEWED]],
     ['a PR that passed checks with auto review off and no reviewer', [ev('pr.ready')], 'ready', { autoReview: false }, ['PR #54 passed checks and has no conflicts. Tell the user it is ready to merge.']],
     ['a PR the user had reviewed, approved, with auto review off', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: rs({ approved: ['code'] }) }, ['PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.']],
     ['a PR reviewed at an earlier commit, with its review workspace closed', [ev('pr.ready')], 'ready', { autoReview: false, review: rs({ stale: true }) }, ['PR #54 passed checks and has no conflicts, but its last review was of an earlier commit and its review workspace is closed. Tell the user the review is out of date.']],
-    ['a PR the user had reviewed, of an earlier commit, with auto review off', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: rs({ stale: true, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } }) }, ['PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).']],
-    ['a review with blockers, from before review kinds', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', {}, ["Send Noor's blockers to Kai with message_agent (workspace w2). When Kai is done, ask Noor to review again with message_agent (workspace w1)."]],
+    ['a PR the user had reviewed, of an earlier commit, with auto review off', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: rs({ stale: true, open: { workspaceId: 'rv', agentId: 'artkin', name: 'Artkin' } }) }, ['PR #54 needs another review: the last one was of a different commit. Ask Artkin to review it again with message_agent (workspace rv).']],
+    ['a review with blockers, from before review kinds', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Christian', ofPr: 60, current: true } })], 'none', {}, ["Send Sean's blockers to Christian with message_agent (workspace w2). When Christian is done, ask Sean to review again with message_agent (workspace w1)."]],
     // Kernel runs a review of a kind again once the fix passes checks, so the Lead only passes the blockers on (KERNEL-549).
-    ['a security review with blockers (KERNEL-549)', [ev('review', { review: { verdict: 'blockers', lens: 'security', summary: 'One issue.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', {}, ["Send the security review's blockers to Kai with message_agent (workspace w2)."]],
+    ['a security review with blockers (KERNEL-549)', [ev('review', { review: { verdict: 'blockers', lens: 'security', summary: 'One issue.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Christian', ofPr: 60, current: true } })], 'none', {}, ["Send the security review's blockers to Christian with message_agent (workspace w2)."]],
     // A kind's blockers wait for the rest of their review round, then go out together. Each verdict says the same line,
     // which the update lists once (KERNEL-552).
-    ['security blockers while the UX review of the same commit still runs (KERNEL-552)', [ev('review', { review: { verdict: 'blockers', lens: 'security', summary: 'One issue.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ blockers: true, blocking: ['security'], inProgress: true, reviewing: ['ux'] }) }, []],
-    ['blockers from two kinds of one review round (KERNEL-552)', [ev('review', { review: { verdict: 'blockers', lens: 'security', summary: 'One issue.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } }), ev('review', { n: 2, review: { verdict: 'blockers', lens: 'ux', summary: 'One issue.', blockers: [{ text: 'y' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ blockers: true, blocking: ['security', 'ux'] }) }, Array(2).fill("Send the security and UX reviews' blockers to Kai in one message with message_agent (workspace w2). If blockers from two reviews contradict each other, don't pass both on: ask the user which to follow with ask_user first.")],
-    ['blockers after the last review round Kernel runs (KERNEL-552)', [ev('review', { review: { verdict: 'blockers', lens: 'ux', summary: 'One issue.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ blockers: true, blocking: ['ux'], stillBlocked: { rounds: 2, kinds: ['ux'] } }) }, ["PR #60 is still blocked after 2 review rounds, so Kernel won't review it again by itself. Don't send it back to Kai: tell the user what the UX review found that is still open, and ask with ask_user how they want to go on."]],
-    ['a PR with new commits after the last review round Kernel runs (KERNEL-552)', [ev('pr.ready')], 'ready', { review: rs({ stale: true, stillBlocked: { rounds: 2, kinds: ['code', 'ux'] }, open: { workspaceId: 'rv', agentId: 'kernel-reviewer', name: 'Code review' } }) }, ["PR #54 has new commits, but it was still blocked after 2 review rounds, so Kernel didn't review them. Don't send it back to Noor: tell the user what the code and UX reviews found that is still open, and ask with ask_user how they want to go on."]],
+    ['security blockers while the UX review of the same commit still runs (KERNEL-552)', [ev('review', { review: { verdict: 'blockers', lens: 'security', summary: 'One issue.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Christian', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ blockers: true, blocking: ['security'], inProgress: true, reviewing: ['ux'] }) }, []],
+    ['blockers from two kinds of one review round (KERNEL-552)', [ev('review', { review: { verdict: 'blockers', lens: 'security', summary: 'One issue.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Christian', ofPr: 60, current: true } }), ev('review', { n: 2, review: { verdict: 'blockers', lens: 'ux', summary: 'One issue.', blockers: [{ text: 'y' }], of: 'w2', ofName: 'Christian', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ blockers: true, blocking: ['security', 'ux'] }) }, Array(2).fill("Send the security and UX reviews' blockers to Christian in one message with message_agent (workspace w2). If blockers from two reviews contradict each other, don't pass both on: ask the user which to follow with ask_user first.")],
+    ['blockers after the last review round Kernel runs (KERNEL-552)', [ev('review', { review: { verdict: 'blockers', lens: 'ux', summary: 'One issue.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Christian', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ blockers: true, blocking: ['ux'], stillBlocked: { rounds: 2, kinds: ['ux'] } }) }, ["PR #60 is still blocked after 2 review rounds, so Kernel won't review it again by itself. Don't send it back to Christian: tell the user what the UX review found that is still open, and ask with ask_user how they want to go on."]],
+    ['a PR with new commits after the last review round Kernel runs (KERNEL-552)', [ev('pr.ready')], 'ready', { review: rs({ stale: true, stillBlocked: { rounds: 2, kinds: ['code', 'ux'] }, open: { workspaceId: 'rv', agentId: 'kernel-reviewer', name: 'Code review' } }) }, ["PR #54 has new commits, but it was still blocked after 2 review rounds, so Kernel didn't review them. Don't send it back to Sean: tell the user what the code and UX reviews found that is still open, and ask with ask_user how they want to go on."]],
     ['a PR whose required review waits for usage (KERNEL-552)', [ev('pr.ready')], 'ready', { review: rs({ inProgress: true, held: ['code'], skipped: ['ux'] }) }, []],
     ['a PR every review that ran approved, one skipped to save usage (KERNEL-552)', [ev('pr.ready')], 'ready', { review: rs({ approved: ['code'], skipped: ['ux'] }) }, ["PR #54 passed checks, has no conflicts and the code review approved it. Kernel skipped the UX review to save usage. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran and that the UX review didn't, and anything they should know."]],
-    ['a code review approval while the UX review still runs (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'code', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ approved: ['code'], inProgress: true, reviewing: ['ux'] }) }, []],
-    ['a code review approval after another kind found blockers (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'code', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ approved: ['code'], blockers: true, blocking: ['security'] }) }, []],
-    ['the last approval of a ready PR (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'ux', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ approved: ['code', 'ux'] }) }, ['PR #60 passed checks, has no conflicts and the code and UX reviews approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.']],
-    ['an approval of an earlier commit, which Kernel asks for again (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'code', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: false } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }) }, []],
-    ['an approval of work that merged before the verdict came', [ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('merged'), id: 'w2', prNumber: 60 }) }, []],
-    ['blockers found after the work was closed', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('closed'), id: 'w2', prNumber: 60 }) }, ['Noor found blockers in PR #60 after it was closed. Tell the user what they are in a line or two.']],
-    ['blockers found in work the user archived', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', current: true } })], 'none', { workspace: () => ({ ...ws('none'), id: 'w2', status: 'archived' }) }, ["Noor found blockers in Kai's work after it was archived. Tell the user what they are in a line or two."]],
-    ['an approval of work with no PR yet', [ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', current: true } })], 'none', {}, ["Noor approved Kai's work. Ask Kai to open a pull request with message_agent (workspace w2)."]],
-    ['a turn Kernel started, with no PR', [ev('turn', { by: 'lead', pr: undefined })], 'none', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
-    ['a turn Kernel started', [ev('turn', { by: 'kernel' })], 'ready', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
+    ['a code review approval while the UX review still runs (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'code', summary: 'Good.', of: 'w2', ofName: 'Christian', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ approved: ['code'], inProgress: true, reviewing: ['ux'] }) }, []],
+    ['a code review approval after another kind found blockers (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'code', summary: 'Good.', of: 'w2', ofName: 'Christian', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ approved: ['code'], blockers: true, blocking: ['security'] }) }, []],
+    ['the last approval of a ready PR (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'ux', summary: 'Good.', of: 'w2', ofName: 'Christian', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ approved: ['code', 'ux'] }) }, ['PR #60 passed checks, has no conflicts and the code and UX reviews approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.']],
+    ['an approval of an earlier commit, which Kernel asks for again (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'code', summary: 'Good.', of: 'w2', ofName: 'Christian', ofPr: 60, current: false } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }) }, []],
+    ['an approval of work that merged before the verdict came', [ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Christian', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('merged'), id: 'w2', prNumber: 60 }) }, []],
+    ['blockers found after the work was closed', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Christian', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('closed'), id: 'w2', prNumber: 60 }) }, ['Sean found blockers in PR #60 after it was closed. Tell the user what they are in a line or two.']],
+    ['blockers found in work the user archived', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Christian', current: true } })], 'none', { workspace: () => ({ ...ws('none'), id: 'w2', status: 'archived' }) }, ["Sean found blockers in Christian's work after it was archived. Tell the user what they are in a line or two."]],
+    ['an approval of work with no PR yet', [ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Christian', current: true } })], 'none', {}, ["Sean approved Christian's work. Ask Christian to open a pull request with message_agent (workspace w2)."]],
+    ['a turn Kernel started, with no PR', [ev('turn', { by: 'lead', pr: undefined })], 'none', {}, [`Read Sean's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
+    ['a turn Kernel started', [ev('turn', { by: 'kernel' })], 'ready', {}, [`Read Sean's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
     ['a ready PR GitHub starts blocking for a review (KERNEL-401)', [ev('pr.blocked', { blocked: 'review' })], 'ready', {}, ["PR #54 can't merge until someone approves it on GitHub. Tell the user."]],
     ['a ready PR that falls behind its base (KERNEL-401)', [ev('pr.blocked', { blocked: 'behind' })], 'ready', { reviewer: THEO }, [BEHIND]],
     ["a ready PR GitHub's branch rules block (KERNEL-401)", [ev('pr.blocked', { blocked: 'rules' })], 'ready', {}, ["GitHub's branch rules block PR #54. Tell the user."]],
     ['a PR GitHub stops blocking, approved (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, review: rs({ approved: ['code'] }) }, ['PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.']],
     ['a PR GitHub stops blocking, with auto review off (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, autoReview: false, review: rs() }, ['GitHub no longer blocks PR #54, so it is ready to merge. Tell the user.']],
     ['a PR GitHub stops blocking while its review runs (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, review: rs({ inProgress: true }) }, []],
-    ['a PR GitHub stops blocking with a review open and no verdict yet (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } }) }, []],
+    ['a PR GitHub stops blocking with a review open and no verdict yet (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'artkin', name: 'Artkin' } }) }, []],
     ['a PR GitHub stops blocking that no review covers (KERNEL-549)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, review: rs() }, ['GitHub no longer blocks PR #54, so it is ready to merge. Tell the user.']],
-    ['a turn an unblock rides along with (KERNEL-401)', [ev('turn', { by: 'lead' }), ev('pr.unblocked', { n: 2 })], 'ready', { reviewer: THEO, review: rs({ inProgress: true }) }, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
+    ['a turn an unblock rides along with (KERNEL-401)', [ev('turn', { by: 'lead' }), ev('pr.unblocked', { n: 2 })], 'ready', { reviewer: THEO, review: rs({ inProgress: true }) }, [`Read Sean's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
     ['a turn the user started', [ev('turn', { by: 'user' })], 'none', {}, []],
     ['a turn while the PR is being created', [ev('turn', { by: 'lead' })], 'creating', {}, []],
     ['a turn while checks run', [ev('turn', { by: 'lead' })], 'checks', {}, []],
     ['a turn a newer PR event follows', [ev('turn', { by: 'lead' }), ev('pr.ready', { n: 2 })], 'ready', {}, [UNREVIEWED]],
-    ['a turn after an older PR event', [ev('pr.opened', { n: 0 }), ev('turn', { by: 'lead' })], 'ready', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]]
+    ['a turn after an older PR event', [ev('pr.opened', { n: 0 }), ev('turn', { by: 'lead' })], 'ready', {}, [`Read Sean's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]]
   ]
   it.each(rows)('%s', (_label, events, prState, c, todo) => {
-    const out = decide({ ws: { ...ws(prState), waitsFor: { on: ['w2'], held: true } }, name: 'Noor', events }, { allMerged: () => false, workspace: () => undefined, ...c })
+    const out = decide({ ws: { ...ws(prState), waitsFor: { on: ['w2'], held: true } }, name: 'Sean', events }, { allMerged: () => false, workspace: () => undefined, ...c })
     expect(out.todo).toEqual(todo)
     expect(out.wake.size).toBe(todo.length)
   })
@@ -536,38 +536,38 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
   it("says why a PR that passed checks can't merge yet when GitHub blocks it (KERNEL-388, KERNEL-401)", () => {
     const blocked = (prBlocked: NonNullable<Workspace['prBlocked']>) => ({ ...ws('ready'), prBlocked })
     const off = { allMerged: () => false, autoReview: false, review: rs() }
-    expect(decide({ ws: blocked('review'), name: 'Noor', events: [ev('pr.ready')] }, off).todo)
+    expect(decide({ ws: blocked('review'), name: 'Sean', events: [ev('pr.ready')] }, off).todo)
       .toEqual(["PR #54 can't merge until someone approves it on GitHub. Tell the user."])
     // A branch behind its base is its agent's to update, approved or not.
-    expect(decide({ ws: blocked('behind'), name: 'Noor', events: [ev('pr.ready')] }, { ...off, review: rs({ approved: ['code'] }) }).todo)
+    expect(decide({ ws: blocked('behind'), name: 'Sean', events: [ev('pr.ready')] }, { ...off, review: rs({ approved: ['code'] }) }).todo)
       .toEqual([BEHIND])
     // A reviewer's approval of a ready PR GitHub still blocks: the author's to update, or the user's to know.
-    const approval = ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })
-    expect(decide({ ws: ws('none'), name: 'Noor', events: [approval] }, { allMerged: () => false, workspace: () => ({ ...blocked('rules'), id: 'w2', prNumber: 60 }) }).todo)
+    const approval = ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Christian', ofPr: 60, current: true } })
+    expect(decide({ ws: ws('none'), name: 'Sean', events: [approval] }, { allMerged: () => false, workspace: () => ({ ...blocked('rules'), id: 'w2', prNumber: 60 }) }).todo)
       .toEqual(["GitHub's branch rules block PR #60. Tell the user."])
-    expect(decide({ ws: ws('none'), name: 'Noor', events: [approval] }, { allMerged: () => false, workspace: () => ({ ...blocked('behind'), id: 'w2', prNumber: 60 }) }).todo)
-      .toEqual(['Ask Kai to update PR #60: fetch, merge main into the branch, re-run the tests and push as usual, with message_agent (workspace w2). GitHub won\'t merge it while its branch is behind.'])
+    expect(decide({ ws: ws('none'), name: 'Sean', events: [approval] }, { allMerged: () => false, workspace: () => ({ ...blocked('behind'), id: 'w2', prNumber: 60 }) }).todo)
+      .toEqual(['Ask Christian to update PR #60: fetch, merge main into the branch, re-run the tests and push as usual, with message_agent (workspace w2). GitHub won\'t merge it while its branch is behind.'])
     // The review flow itself goes on as for any ready PR, except on a branch that is behind.
-    expect(decide({ ws: blocked('review'), name: 'Noor', events: [ev('pr.ready')] }, { allMerged: () => false, reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } }) }).todo).toEqual(['PR #54 needs a review. Ask Theo to review it with message_agent (workspace rv).'])
-    expect(decide({ ws: blocked('behind'), name: 'Noor', events: [ev('pr.ready')] }, { allMerged: () => false, reviewer: THEO }).todo).toEqual([BEHIND])
+    expect(decide({ ws: blocked('review'), name: 'Sean', events: [ev('pr.ready')] }, { allMerged: () => false, reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'artkin', name: 'Artkin' } }) }).todo).toEqual(['PR #54 needs a review. Ask Artkin to review it with message_agent (workspace rv).'])
+    expect(decide({ ws: blocked('behind'), name: 'Sean', events: [ev('pr.ready')] }, { allMerged: () => false, reviewer: THEO }).todo).toEqual([BEHIND])
   })
 
   it('asks nothing of an archived workspace, and still says when the last task merged', () => {
     const archived = (prState: PrState) => ({ ...ws(prState), status: 'archived' as const })
     for (const [kind, prState] of [['pr.cifail', 'cifail'], ['pr.changes', 'changes'], ['pr.conflict', 'conflict'], ['pr.ready', 'ready'], ['error', 'none'], ['crash', 'none'], ['turn', 'none'], ['pr.closed', 'closed']] as [TeamEventKind, PrState][]) {
-      expect(decide({ ws: archived(prState), name: 'Noor', events: [ev(kind, { by: 'lead' })] }, { allMerged: () => false, reviewer: THEO }).todo).toEqual([])
+      expect(decide({ ws: archived(prState), name: 'Sean', events: [ev(kind, { by: 'lead' })] }, { allMerged: () => false, reviewer: THEO }).todo).toEqual([])
     }
-    expect(decide({ ws: archived('merged'), name: 'Noor', events: [ev('pr.merged')] }, { allMerged: () => true }).todo).toEqual(['Every task you handed off in this chat has merged. Tell the user in one line.'])
+    expect(decide({ ws: archived('merged'), name: 'Sean', events: [ev('pr.merged')] }, { allMerged: () => true }).todo).toEqual(['Every task you handed off in this chat has merged. Tell the user in one line.'])
   })
 
   it("still passes on a verdict from a review workspace the user archived, without asking it to review again", () => {
     const archived = { ...ws('none'), status: 'archived' as const }
-    const blockers = ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })
-    expect(decide({ ws: archived, name: 'Noor', events: [blockers] }, { allMerged: () => false, workspace: () => ({ ...ws('cifail'), id: 'w2', prNumber: 60 }) }).todo).toEqual(["Send Noor's blockers to Kai with message_agent (workspace w2)."])
+    const blockers = ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Christian', ofPr: 60, current: true } })
+    expect(decide({ ws: archived, name: 'Sean', events: [blockers] }, { allMerged: () => false, workspace: () => ({ ...ws('cifail'), id: 'w2', prNumber: 60 }) }).todo).toEqual(["Send Sean's blockers to Christian with message_agent (workspace w2)."])
   })
 
   it("names the closed chat whose last task merged", () => {
-    const out = decide({ ws: ws('merged'), name: 'Noor', events: [ev('pr.merged')], fromChat: 'Chat icons sizing' }, { allMerged: () => true })
+    const out = decide({ ws: ws('merged'), name: 'Sean', events: [ev('pr.merged')], fromChat: 'Chat icons sizing' }, { allMerged: () => true })
     expect(out.todo).toEqual(['Every task handed off in the closed Lead chat "Chat icons sizing" has merged. Tell the user in one line.'])
   })
 })
@@ -599,8 +599,8 @@ describe('review rounds in Team updates (KERNEL-552)', () => {
     u.reviewed(store.workspace('rv')!, store.workspace('w1')!, { workspaceId: 'rv', agentId: 'kernel-reviewer', verdict: 'blockers', summary: 'Still unlabelled.', blockers: [{ text: 'The button has no label.' }], sha: 'abc', prNumber: 54, lens: 'ux', ts: 1 })
     await wait()
     const sent = parts(s.posts.pop()!)
-    expect(sent.body[1]).toBe('- The UX review found 1 blocker in PR #54 by Noor (workspace w1), and it is still blocked after 2 review rounds:')
-    expect(sent.todo).toEqual(["- PR #54 is still blocked after 2 review rounds, so Kernel won't review it again by itself. Don't send it back to Noor: tell the user what the UX review found that is still open, and ask with ask_user how they want to go on."])
+    expect(sent.body[1]).toBe('- The UX review found 1 blocker in PR #54 by Sean (workspace w1), and it is still blocked after 2 review rounds:')
+    expect(sent.todo).toEqual(["- PR #54 is still blocked after 2 review rounds, so Kernel won't review it again by itself. Don't send it back to Sean: tell the user what the UX review found that is still open, and ask with ask_user how they want to go on."])
     expect(s.updates.at(-1)?.rows[0].events).toEqual([
       { kind: 'review', text: 'UX review found 1 blocker in PR #54', actionable: true },
       { kind: 'pr.review', text: 'Still blocked after 2 review rounds', actionable: false }
@@ -631,7 +631,7 @@ describe('waiting updates (KERNEL-121)', () => {
   it('keeps a block that needs the Lead over newer ones that do not, when it has to leave some out', async () => {
     const { store, u, s, pr, ws, chat } = await setup()
     pr('w1', 'cifail')
-    for (let i = 1; i <= 8; i++) { const w = ws(`q${i}`, 'kai', { title: `Quiet ${i}` }); chat(`qc${i}`, w.id); u.turnDone(w, store.chat(`qc${i}`)!, { ...done, by: 'user' }) }
+    for (let i = 1; i <= 8; i++) { const w = ws(`q${i}`, 'christian', { title: `Quiet ${i}` }); chat(`qc${i}`, w.id); u.turnDone(w, store.chat(`qc${i}`)!, { ...done, by: 'user' }) }
     await wait()
     const tasks = s.posts[0].split('\n').filter((l) => / · workspace /.test(l)).map((l) => l.split(' · ')[1])
     expect(tasks).toEqual(['Symlink node_modules', 'Quiet 2', 'Quiet 3', 'Quiet 4', 'Quiet 5', 'Quiet 6', 'Quiet 7', 'Quiet 8'])
@@ -656,7 +656,7 @@ describe('waiting updates (KERNEL-121)', () => {
     store.saveWorkspace({ ...store.workspace('w1')!, prState: 'none', prNumber: undefined })
     bus.push({ type: 'pr', workspaceId: 'w1', state: 'none' })
     await wait()
-    expect(parts(s.posts.pop()!).todo).toEqual([READ('Noor', 'w1')])
+    expect(parts(s.posts.pop()!).todo).toEqual([READ('Sean', 'w1')])
   })
 })
 
@@ -668,8 +668,8 @@ describe("a teammate's session that dies (KERNEL-124)", () => {
     await wait()
     expect(parts(s.posts.pop()!)).toEqual({
       header: UPDATE_HEADER,
-      body: [NOOR, "- Noor's session ended unexpectedly (Claude Code process exited with code 1), partway through a turn. The worktree and chat are saved; the user can restart it from the workspace."],
-      todo: ["- Noor's session ended. Tell the user they can restart it from the workspace."]
+      body: [NOOR, "- Sean's session ended unexpectedly (Claude Code process exited with code 1), partway through a turn. The worktree and chat are saved; the user can restart it from the workspace."],
+      todo: ["- Sean's session ended. Tell the user they can restart it from the workspace."]
     })
     expect(s.updates.at(-1)?.rows[0].events).toEqual([{ kind: 'crash', text: 'Session ended unexpectedly', actionable: true }])
     expect(s.posts).toEqual([])
@@ -686,8 +686,8 @@ describe("a teammate's setup (KERNEL-126)", () => {
     await wait()
     expect(parts(s.posts.pop()!)).toEqual({
       header: UPDATE_HEADER,
-      body: [NOOR, "- Setup failed with exit code 2, so Noor hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace."],
-      todo: ["- Setup failed in Noor's workspace. Tell the user to fix it and click Run again there."]
+      body: [NOOR, "- Setup failed with exit code 2, so Sean hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace."],
+      todo: ["- Setup failed in Sean's workspace. Tell the user to fix it and click Run again there."]
     })
     u.setup(w1, true)
     await wait()
@@ -700,14 +700,14 @@ describe("a teammate's setup (KERNEL-126)", () => {
     await wait()
     expect(parts(s.posts.pop()!)).toEqual({
       header: UPDATE_HEADER,
-      body: [NOOR, '- Setup failed with exit code 2. Noor already started and keeps working without it. The user can fix setup and click Run again in that workspace.'],
-      todo: ["- Setup failed in Noor's workspace. Noor already started and keeps working without it. Tell the user it can be fixed and run again there."]
+      body: [NOOR, '- Setup failed with exit code 2. Sean already started and keeps working without it. The user can fix setup and click Run again in that workspace.'],
+      todo: ["- Setup failed in Sean's workspace. Sean already started and keeps working without it. Tell the user it can be fixed and run again there."]
     })
   })
 })
 
 describe('a teammate that waits for another PR (KERNEL-259)', () => {
-  const KAI_60 = { on: ['w2'], label: 'PR #60 by Kai', held: true }
+  const KAI_60 = { on: ['w2'], label: 'PR #60 by Christian', held: true }
   async function waiting() {
     const t = await setup()
     t.store.saveWorkspace({ ...t.store.workspace('w1')!, waitsFor: { on: ['w2'], held: true } })
@@ -723,7 +723,7 @@ describe('a teammate that waits for another PR (KERNEL-259)', () => {
     expect(s.posts).toEqual([])
     pr('w1', 'cifail')
     await wait()
-    expect(parts(s.posts.pop()!).body).toEqual([NOOR, '- Setup passed on Run again. Noor still waits for PR #60 by Kai to merge, and Kernel sends the brief then.', '- PR #60 by Kai merged, so Kernel sent Noor the brief.', OPENED_54, '- Checks failed on PR #54.'])
+    expect(parts(s.posts.pop()!).body).toEqual([NOOR, '- Setup passed on Run again. Sean still waits for PR #60 by Christian to merge, and Kernel sends the brief then.', '- PR #60 by Christian merged, so Kernel sent Sean the brief.', OPENED_54, '- Checks failed on PR #54.'])
   })
 
   it('wakes the Lead when the PR it waits for closes, and says nothing once it opened again', async () => {
@@ -733,8 +733,8 @@ describe('a teammate that waits for another PR (KERNEL-259)', () => {
     await wait()
     expect(parts(s.posts.pop()!)).toEqual({
       header: UPDATE_HEADER,
-      body: [NOOR, '- Noor is waiting for PR #60 by Kai, which was closed without merging.'],
-      todo: ["- Noor is waiting for PR #60 by Kai, which was closed without merging. Ask the user whether Noor should start anyway (wait_for_merge with an empty list) or archive Noor's workspace."]
+      body: [NOOR, '- Sean is waiting for PR #60 by Christian, which was closed without merging.'],
+      todo: ["- Sean is waiting for PR #60 by Christian, which was closed without merging. Ask the user whether Sean should start anyway (wait_for_merge with an empty list) or archive Sean's workspace."]
     })
     s.accept = false
     u.waits(w1, 'wait.broken', { ...KAI_60, target: 'w2', gone: 'closed' })
@@ -746,7 +746,7 @@ describe('a teammate that waits for another PR (KERNEL-259)', () => {
 
   it('wakes the Lead once when a teammate sets its own wait, with the turn that set it and no line to read the reply (KERNEL-262)', async () => {
     const { u, s, w1, nc } = await setup()
-    u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Kai', held: false, why: 'It needs the inbox actions.' })
+    u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Christian', held: false, why: 'It needs the inbox actions.' })
     // The turn runs on well past the update delay. Its wait goes out with its end, not before.
     await wait(120)
     expect(s.posts).toEqual([])
@@ -755,25 +755,25 @@ describe('a teammate that waits for another PR (KERNEL-259)', () => {
     expect(s.posts).toHaveLength(1)
     expect(parts(s.posts[0])).toEqual({
       header: UPDATE_HEADER,
-      body: [NOOR, '- Waits for PR #60 by Kai to merge. Noor says: It needs the inbox actions. Kernel tells Noor to bring its branch up to date with it when it does.', ...QUOTED],
-      todo: ['- Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.']
+      body: [NOOR, '- Waits for PR #60 by Christian to merge. Sean says: It needs the inbox actions. Kernel tells Sean to bring its branch up to date with it when it does.', ...QUOTED],
+      todo: ['- Sean is waiting for PR #60 by Christian. Kernel starts Sean again when it merges. Tell the user in one line that merging it unblocks Sean.']
     })
   })
 
   it('asks the Lead to get a missing rebase, or a merge for a branch on the remote (KERNEL-691, KERNEL-886)', async () => {
     for (const pushed of [false, true]) {
       const { u, s, w1 } = await setup()
-      u.waits(w1, 'wait.rebase_missing', { on: ['w2'], label: 'PR #60 by Kai', held: false, onto: 'origin/main', ...(pushed ? { pushed } : {}) })
+      u.waits(w1, 'wait.rebase_missing', { on: ['w2'], label: 'PR #60 by Christian', held: false, onto: 'origin/main', ...(pushed ? { pushed } : {}) })
       await wait()
       const take = pushed ? 'merge origin/main into the branch' : 'rebase onto origin/main'
-      expect(parts(s.posts[0]).todo).toEqual([`- Ask Noor with message_agent (workspace w1) to fetch, ${take} and re-run the tests. Kernel ends the wait when a turn ends with the branch containing it.`])
-      expect(parts(s.posts[0]).body).toContain("- PR #60 by Kai merged and Kernel asked Noor to bring in origin/main, but the turn ended with Noor's branch still missing it.")
+      expect(parts(s.posts[0]).todo).toEqual([`- Ask Sean with message_agent (workspace w1) to fetch, ${take} and re-run the tests. Kernel ends the wait when a turn ends with the branch containing it.`])
+      expect(parts(s.posts[0]).body).toContain("- PR #60 by Christian merged and Kernel asked Sean to bring in origin/main, but the turn ended with Sean's branch still missing it.")
     }
   })
 
   it("doesn't hold a teammate's wait, or the Lead chat's other updates, past a turn stopped by archive or close (KERNEL-262)", async () => {
     const { u, s, w1, pr } = await setup()
-    u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Kai', held: false })
+    u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Christian', held: false })
     pr('w2', 'cifail', 60)
     await wait(120)
     expect(s.posts).toEqual([])
@@ -782,18 +782,18 @@ describe('a teammate that waits for another PR (KERNEL-259)', () => {
     await wait()
     expect(s.posts).toHaveLength(1)
     expect(parts(s.posts[0]).todo).toEqual([
-      '- Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.',
-      '- Tell Kai about the failed checks on PR #60 with message_agent (workspace w2).'
+      '- Sean is waiting for PR #60 by Christian. Kernel starts Sean again when it merges. Tell the user in one line that merging it unblocks Sean.',
+      '- Tell Christian about the failed checks on PR #60 with message_agent (workspace w2).'
     ])
   })
 
   it("doesn't hold a teammate's wait past a crash (KERNEL-262)", async () => {
     const { u, s, w1 } = await setup()
-    u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Kai', held: false })
+    u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Christian', held: false })
     u.crashed(w1, 'exit 1')
     await wait()
     expect(s.posts).toHaveLength(1)
-    expect(parts(s.posts[0]).todo).toContain('- Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.')
+    expect(parts(s.posts[0]).todo).toContain('- Sean is waiting for PR #60 by Christian. Kernel starts Sean again when it merges. Tell the user in one line that merging it unblocks Sean.')
   })
 })
 
@@ -825,7 +825,7 @@ describe("a Build here chat's own PR (KERNEL-778)", () => {
     pr('w1', 'cifail')
     await wait()
     expect(s.to.pop()).toBe('lc')
-    expect(parts(s.posts.pop()!).todo).toEqual(['- Tell Noor about the failed checks on PR #54 with message_agent (workspace w1).'])
+    expect(parts(s.posts.pop()!).todo).toEqual(['- Tell Sean about the failed checks on PR #54 with message_agent (workspace w1).'])
   })
 
   it("keeps sending a teammate's PR news to the chat that handed the work off, and the teammate gets the blockers and the fixes", async () => {
@@ -834,19 +834,19 @@ describe("a Build here chat's own PR (KERNEL-778)", () => {
     pr('w1', 'cifail')
     await wait()
     expect(s.to.pop()).toBe('bc')
-    expect(parts(s.posts.pop()!).todo).toEqual(['- Tell Noor about the failed checks on PR #54 with message_agent (workspace w1).'])
+    expect(parts(s.posts.pop()!).todo).toEqual(['- Tell Sean about the failed checks on PR #54 with message_agent (workspace w1).'])
     pr('bh', 'cifail')
     await wait()
     expect(s.to.pop()).toBe('bc')
     expect(parts(s.posts.pop()!).todo).toEqual(["- Fix the failed checks on PR #54 in this chat's worktree, then push."])
-    ws('rv', 'theo', { title: 'Review PR #54', reviewOf: 'w1', leadChatId: 'bc' })
+    ws('rv', 'artkin', { title: 'Review PR #54', reviewOf: 'w1', leadChatId: 'bc' })
     chat('rv-c', 'rv')
-    NAMES.theo = 'Theo'
+    NAMES.artkin = 'Artkin'
     s.reviewer = THEO
-    u.reviewed(store.workspace('rv')!, { ...store.workspace('w1')!, prNumber: 54 }, { workspaceId: 'rv', agentId: 'theo', verdict: 'blockers', summary: 'One thing.', blockers: [{ text: 'No test.' }], ts: 1 })
+    u.reviewed(store.workspace('rv')!, { ...store.workspace('w1')!, prNumber: 54 }, { workspaceId: 'rv', agentId: 'artkin', verdict: 'blockers', summary: 'One thing.', blockers: [{ text: 'No test.' }], ts: 1 })
     await wait()
     expect(s.to.pop()).toBe('bc')
-    expect(parts(s.posts.pop()!).todo).toEqual(["- Send Theo's blockers to Noor with message_agent (workspace w1). When Noor is done, ask Theo to review again with message_agent (workspace rv)."])
+    expect(parts(s.posts.pop()!).todo).toEqual(["- Send Artkin's blockers to Sean with message_agent (workspace w1). When Sean is done, ask Artkin to review again with message_agent (workspace rv)."])
   })
 
   it('draws the chat\'s own success as rows and takes no turn: opened, ready, unblocked, merged and merged by Kernel (KERNEL-990)', async () => {
@@ -884,13 +884,13 @@ describe("a Build here chat's own PR (KERNEL-778)", () => {
 
   it('wakes the chat for a review of an earlier commit and for blockers, and draws an approval as a row with only the reviewer (KERNEL-990)', async () => {
     const { u, s, ws, chat, store, restart } = await buildSetup()
-    ws('rv', 'theo', { title: 'Review PR #54', reviewOf: 'bh', leadChatId: 'bc' })
+    ws('rv', 'artkin', { title: 'Review PR #54', reviewOf: 'bh', leadChatId: 'bc' })
     chat('rvc', 'rv')
-    NAMES.theo = 'Theo'
+    NAMES.artkin = 'Artkin'
     s.reviewer = THEO
     store.saveWorkspace({ ...store.workspace('bh')!, prState: 'ready', prNumber: 54, prHead: 'abc' })
     s.review = rs({ approved: ['code'] })
-    const verdict = (o: Partial<ReviewVerdict>): ReviewVerdict => ({ workspaceId: 'rv', agentId: 'theo', verdict: 'approved', summary: 'No blockers.', lens: 'code', sha: 'abc', ts: 1, ...o })
+    const verdict = (o: Partial<ReviewVerdict>): ReviewVerdict => ({ workspaceId: 'rv', agentId: 'artkin', verdict: 'approved', summary: 'No blockers.', lens: 'code', sha: 'abc', ts: 1, ...o })
     u.reviewed(store.workspace('rv')!, store.workspace('bh')!, verdict({}))
     await wait()
     expect(s.posts).toEqual([])
@@ -898,7 +898,7 @@ describe("a Build here chat's own PR (KERNEL-778)", () => {
     expect(s.rows[0].chatId).toBe('bc')
     const [row, ...more] = s.rows[0].update.rows
     expect(more).toEqual([])
-    expect(row).toMatchObject({ workspaceId: 'rv', name: 'Theo', reply: 'No blockers.', events: [{ kind: 'review', actionable: false }] })
+    expect(row).toMatchObject({ workspaceId: 'rv', name: 'Artkin', reply: 'No blockers.', events: [{ kind: 'review', actionable: false }] })
     // Once: a later flush, even after Kernel restarts, shows it again for nothing.
     u.flush('r'); restart().flush('r')
     await wait()
@@ -946,48 +946,48 @@ describe("a Build here chat's own PR (KERNEL-778)", () => {
 
   it("sends a review's blockers on the chat's PR to the chat, to fix itself", async () => {
     const { u, s, ws, chat, store } = await buildSetup()
-    ws('rv', 'theo', { title: 'Review PR #54', reviewOf: 'bh', leadChatId: 'bc' })
+    ws('rv', 'artkin', { title: 'Review PR #54', reviewOf: 'bh', leadChatId: 'bc' })
     chat('rvc', 'rv')
-    NAMES.theo = 'Theo'
+    NAMES.artkin = 'Artkin'
     s.reviewer = THEO
-    u.reviewed(store.workspace('rv')!, { ...store.workspace('bh')!, prNumber: 54 }, { workspaceId: 'rv', agentId: 'theo', verdict: 'blockers', summary: 'One thing.', blockers: [{ text: 'No test.' }], ts: 1 })
+    u.reviewed(store.workspace('rv')!, { ...store.workspace('bh')!, prNumber: 54 }, { workspaceId: 'rv', agentId: 'artkin', verdict: 'blockers', summary: 'One thing.', blockers: [{ text: 'No test.' }], ts: 1 })
     await wait()
     expect(s.to.pop()).toBe('bc')
-    expect(parts(s.posts.pop()!).todo).toEqual(["- Fix Theo's blockers in this chat's worktree, then push. Then ask Theo to review again with message_agent (workspace rv)."])
+    expect(parts(s.posts.pop()!).todo).toEqual(["- Fix Artkin's blockers in this chat's worktree, then push. Then ask Artkin to review again with message_agent (workspace rv)."])
     s.review = rs({ blocking: ['code'], blockers: true })
-    u.reviewed(store.workspace('rv')!, { ...store.workspace('bh')!, prNumber: 54 }, { workspaceId: 'rv', agentId: 'theo', verdict: 'blockers', summary: 'Still one.', blockers: [{ text: 'No test.' }], lens: 'code', ts: 2 })
+    u.reviewed(store.workspace('rv')!, { ...store.workspace('bh')!, prNumber: 54 }, { workspaceId: 'rv', agentId: 'artkin', verdict: 'blockers', summary: 'Still one.', blockers: [{ text: 'No test.' }], lens: 'code', ts: 2 })
     await wait()
     expect(parts(s.posts.pop()!).todo[0]).toMatch(/^- Fix the code review's blockers in this chat's worktree, then push\. Kernel reviews the PR again once its checks pass\./)
   })
 })
 
 describe('reviews (KERNEL-130)', () => {
-  const verdict = (o: Partial<ReviewVerdict> = {}): ReviewVerdict => ({ workspaceId: 'rv', agentId: 'theo', verdict: 'approved', summary: 'The Try rows are gone. No blockers.', ts: 1, ...o })
+  const verdict = (o: Partial<ReviewVerdict> = {}): ReviewVerdict => ({ workspaceId: 'rv', agentId: 'artkin', verdict: 'approved', summary: 'The Try rows are gone. No blockers.', ts: 1, ...o })
   async function reviewSetup() {
     const t = await setup()
-    t.ws('rv', 'theo', { title: 'Review PR #54', reviewOf: 'w1' })
+    t.ws('rv', 'artkin', { title: 'Review PR #54', reviewOf: 'w1' })
     t.chat('rvc', 'rv')
-    NAMES.theo = 'Theo'
+    NAMES.artkin = 'Artkin'
     t.s.reviewer = THEO
     return { ...t, rv: t.store.workspace('rv')!, rvc: t.store.chat('rvc')! }
   }
-  const THEO_BLOCK = 'Theo (theo) · Review PR #54 · workspace rv'
+  const THEO_BLOCK = 'Artkin (artkin) · Review PR #54 · workspace rv'
 
   it("tells the Lead a PR that passed checks was approved, once, and folds the reviewer's turn into the verdict", async () => {
     const { u, s, pr, rv, rvc, store } = await reviewSetup()
     pr('w1', 'ready')
-    s.review = rs({ inProgress: true, reviewing: ['code'], open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } })
+    s.review = rs({ inProgress: true, reviewing: ['code'], open: { workspaceId: 'rv', agentId: 'artkin', name: 'Artkin' } })
     await wait()
     // The review runs, so passing checks rides along, saying so.
     expect(s.posts).toEqual([])
-    s.review = rs({ approved: ['code'], open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } })
+    s.review = rs({ approved: ['code'], open: { workspaceId: 'rv', agentId: 'artkin', name: 'Artkin' } })
     u.reviewed(rv, { ...store.workspace('w1')!, prHead: 'abc' }, verdict({ sha: 'abc', prNumber: 54 }))
     u.turnDone(rv, rvc, done)
     await wait()
     const sent = parts(s.posts.pop()!)
     expect(sent.body).toEqual([
       NOOR, OPENED_54, '- PR #54 passed checks and has no conflicts. The code review approved it.', '',
-      THEO_BLOCK, '- Approved PR #54 by Noor (workspace w1), at its latest commit.', "- Theo's summary:", '  > The Try rows are gone. No blockers.'
+      THEO_BLOCK, '- Approved PR #54 by Sean (workspace w1), at its latest commit.', "- Artkin's summary:", '  > The Try rows are gone. No blockers.'
     ])
     expect(sent.todo).toEqual(['- PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.'])
     expect(s.updates.at(-1)?.rows[1].events).toEqual([{ kind: 'review', text: 'Approved PR #54', actionable: true }])
@@ -1004,10 +1004,10 @@ describe('reviews (KERNEL-130)', () => {
     await wait()
     const sent = parts(s.posts.pop()!)
     expect(sent.body).toEqual([
-      THEO_BLOCK, '- Found 2 blockers in PR #54 by Noor (workspace w1):', '  1. src/Sidebar.tsx:212: The Check hooks row still renders.', '  2. No test covers the removed rows.',
-      "- Theo's summary:", '  > Two things block it.'
+      THEO_BLOCK, '- Found 2 blockers in PR #54 by Sean (workspace w1):', '  1. src/Sidebar.tsx:212: The Check hooks row still renders.', '  2. No test covers the removed rows.',
+      "- Artkin's summary:", '  > Two things block it.'
     ])
-    expect(sent.todo).toEqual(["- Send Theo's blockers to Noor with message_agent (workspace w1). When Noor is done, ask Theo to review again with message_agent (workspace rv)."])
+    expect(sent.todo).toEqual(["- Send Artkin's blockers to Sean with message_agent (workspace w1). When Sean is done, ask Artkin to review again with message_agent (workspace rv)."])
   })
 
   it("asks for another review when the approval was of a different commit, even if the PR moved after the verdict", async () => {
@@ -1021,8 +1021,8 @@ describe('reviews (KERNEL-130)', () => {
     s.accept = true
     u.flushAll()
     const sent = parts(s.posts.pop()!)
-    expect(sent.body[1]).toBe('- Approved PR #54 by Noor (workspace w1).')
-    expect(sent.todo).toEqual(['- PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).'])
+    expect(sent.body[1]).toBe('- Approved PR #54 by Sean (workspace w1).')
+    expect(sent.todo).toEqual(['- PR #54 needs another review: the last one was of a different commit. Ask Artkin to review it again with message_agent (workspace rv).'])
   })
 
   it('waits for checks when a current approval comes before they pass', async () => {
@@ -1030,7 +1030,7 @@ describe('reviews (KERNEL-130)', () => {
     store.saveWorkspace({ ...store.workspace('w1')!, prNumber: 54, prState: 'checks', prHead: 'abc' })
     u.reviewed(rv, store.workspace('w1')!, verdict({ sha: 'abc', prNumber: 54 }))
     await wait()
-    expect(parts(s.posts.pop()!).todo).toEqual(["- Theo approved PR #54. Its checks haven't passed yet; tell the user it is ready to merge once they do."])
+    expect(parts(s.posts.pop()!).todo).toEqual(["- Artkin approved PR #54. Its checks haven't passed yet; tell the user it is ready to merge once they do."])
   })
 
   it("folds the reviewer's turn into its verdict even when the verdict already went out, and reports the next turn", async () => {
@@ -1038,11 +1038,11 @@ describe('reviews (KERNEL-130)', () => {
     u.reviewed(rv, { ...store.workspace('w1')!, prNumber: 54 }, verdict({ verdict: 'blockers', blockers: [{ text: 'x' }] }))
     await wait()
     expect(s.posts).toHaveLength(1)
-    // Theo writes a closing reply long after the verdict went out: the turn's end still isn't news.
+    // Artkin writes a closing reply long after the verdict went out: the turn's end still isn't news.
     u.turnDone(rv, rvc, done)
     await wait()
     expect(s.posts).toHaveLength(1)
-    // Kernel asks Theo something, and that answer is.
+    // Kernel asks Artkin something, and that answer is.
     u.turnDone(rv, rvc, done)
     await wait()
     expect(s.posts).toHaveLength(2)
@@ -1072,13 +1072,13 @@ describe('reviews (KERNEL-130)', () => {
     const sent = parts(s.posts.pop()!)
     expect(sent.body).toEqual([
       THEO_BLOCK,
-      '- The code review found 1 blocker in PR #54 by Noor (workspace w1):', '  1. a.ts:3: The count is off by one.',
-      '- The security review found 1 blocker in PR #54 by Noor (workspace w1):', '  1. The path escapes the folder.',
-      "- Theo's summary:", '  > Code review: One bug.', '  >', '  > Security review: One hole.'
+      '- The code review found 1 blocker in PR #54 by Sean (workspace w1):', '  1. a.ts:3: The count is off by one.',
+      '- The security review found 1 blocker in PR #54 by Sean (workspace w1):', '  1. The path escapes the folder.',
+      "- Artkin's summary:", '  > Code review: One bug.', '  >', '  > Security review: One hole.'
     ])
     expect(sent.todo).toEqual([
-      "- Send the code review's blockers to Noor with message_agent (workspace w1).",
-      "- Send the security review's blockers to Noor with message_agent (workspace w1)."
+      "- Send the code review's blockers to Sean with message_agent (workspace w1).",
+      "- Send the security review's blockers to Sean with message_agent (workspace w1)."
     ])
     expect(s.updates.at(-1)?.rows[0].events.map((e) => e.text)).toEqual(['Code review found 1 blocker in PR #54', 'Security review found 1 blocker in PR #54'])
   })
@@ -1102,9 +1102,9 @@ describe('reviews (KERNEL-130)', () => {
     await wait()
     expect(s.posts).toHaveLength(1)
     const sent = parts(s.posts[0])
-    expect(sent.body.slice(-4)).toEqual(["- Theo's summary:", '  > The Try rows are gone. No blockers.', '  >', '  > Reply to your message: Approved again. You asked the code review: the security review is the one that blocked.'])
+    expect(sent.body.slice(-4)).toEqual(["- Artkin's summary:", '  > The Try rows are gone. No blockers.', '  >', '  > Reply to your message: Approved again. You asked the code review: the security review is the one that blocked.'])
     expect(s.posts[0]).not.toContain('Reviewed it.')
-    expect(sent.todo).toEqual(['- Theo, in the code review, answered your message and approved PR #54. Tell the user what it replied. PR #54 is still blocked by the security review.'])
+    expect(sent.todo).toEqual(['- Artkin, in the code review, answered your message and approved PR #54. Tell the user what it replied. PR #54 is still blocked by the security review.'])
     // The same approval from a turn Kernel started stays quiet while the security review blocks.
     u.reviewed(rv, of, verdict({ lens: 'code', sha: 'abc', prNumber: 54 }), 'rvc')
     u.turnDone(rv, rvc, { ...done, by: 'kernel' })
@@ -1113,7 +1113,7 @@ describe('reviews (KERNEL-130)', () => {
   })
 
   it('keeps the last verdict of each kind, not only the last one (KERNEL-549)', () => {
-    const at = (n: number, lens: 'code' | 'ux', verdict: 'approved' | 'blockers'): TeamEvent => ({ n, workspaceId: 'rv', kind: 'review', review: { verdict, lens, summary: '', of: 'w1', ofName: 'Noor', current: true } })
+    const at = (n: number, lens: 'code' | 'ux', verdict: 'approved' | 'blockers'): TeamEvent => ({ n, workspaceId: 'rv', kind: 'review', review: { verdict, lens, summary: '', of: 'w1', ofName: 'Sean', current: true } })
     const kept = collapse([at(1, 'code', 'blockers'), at(2, 'ux', 'approved'), at(3, 'code', 'approved')], undefined)
     expect(kept.map((e) => [e.review?.lens, e.review?.verdict])).toEqual([['ux', 'approved'], ['code', 'approved']])
   })
@@ -1124,7 +1124,7 @@ describe('reviews (KERNEL-130)', () => {
     u.reviewed(rv, { ...store.workspace('w1')!, prNumber: 54 }, verdict({ verdict: 'blockers', blockers: Array.from({ length: 15 }, () => ({ text: long })) }))
     await wait()
     const body = parts(s.posts.pop()!).body
-    expect(body[1]).toBe('- Found 15 blockers in PR #54 by Noor (workspace w1) (the first 10 below):')
+    expect(body[1]).toBe('- Found 15 blockers in PR #54 by Sean (workspace w1) (the first 10 below):')
     const listed = body.filter((l) => /^ {2}\d+\. /.test(l))
     expect(listed).toHaveLength(10)
     for (const l of listed) expect(l.length).toBeLessThan(320)
@@ -1175,7 +1175,7 @@ describe("a teammate's turn and its PR (KERNEL-136)", () => {
     expect(s.posts).toEqual([])
     u.readPr('w1')
     await wait()
-    expect(parts(s.posts.pop()!).todo).toEqual([READ('Noor', 'w1')])
+    expect(parts(s.posts.pop()!).todo).toEqual([READ('Sean', 'w1')])
   })
 
   it('says a crash a waiting message already restarted is over, without waking the Lead', async () => {
@@ -1185,7 +1185,7 @@ describe("a teammate's turn and its PR (KERNEL-136)", () => {
     expect(s.posts).toEqual([])
     pr('w1', 'cifail')
     await wait()
-    expect(s.posts.pop()).toContain("- Noor's session ended unexpectedly (exit 1), partway through a turn. A message waiting for Noor started a new session, so Noor is working again.")
+    expect(s.posts.pop()).toContain("- Sean's session ended unexpectedly (exit 1), partway through a turn. A message waiting for Sean started a new session, so Sean is working again.")
     expect(store.workspace('w1')).toBeTruthy()
   })
 
@@ -1197,13 +1197,13 @@ describe("a teammate's turn and its PR (KERNEL-136)", () => {
     pr('w1', 'cifail')
     await wait()
     const post = s.posts.pop()!
-    expect(post).toContain('- Kernel quit while Noor was partway through a turn. Noor carries on by itself once nothing holds it, such as a paused project or the agent limit.')
+    expect(post).toContain('- Kernel quit while Sean was partway through a turn. Sean carries on by itself once nothing holds it, such as a paused project or the agent limit.')
     expect(post).not.toMatch(/unexpectedly|working again/)
     expect(s.updates.at(-1)?.rows[0].events[0]).toEqual({ kind: 'crash', text: 'Stopped when Kernel quit', actionable: false })
     u.crashed(w1, 'Kernel closed unexpectedly', { resumed: true })
     pr('w1', 'conflict')
     await wait()
-    expect(s.posts.pop()).toContain('- Kernel closed unexpectedly while Noor was partway through a turn.')
+    expect(s.posts.pop()).toContain('- Kernel closed unexpectedly while Sean was partway through a turn.')
   })
 
   it('drops a close the PR left by opening again', async () => {
@@ -1237,7 +1237,7 @@ describe('Stop on the Lead (KERNEL-122)', () => {
     expect(s.posts).toEqual([])
     // The user's next message ends normally, and the held update goes out.
     u.turnDone(lead, lc, { ...done, lead: true, by: 'user' })
-    expect(parts(s.posts.pop()!).todo).toEqual(['- Ask Noor to resolve the conflicts on PR #54 with message_agent (workspace w1).'])
+    expect(parts(s.posts.pop()!).todo).toEqual(['- Ask Sean to resolve the conflicts on PR #54 with message_agent (workspace w1).'])
   })
 
   it("doesn't hold another Lead chat's updates", async () => {
@@ -1264,7 +1264,7 @@ describe('waiting updates across a restart (KERNEL-123)', () => {
     await wait()
     expect(s.posts).toEqual([])
     again.turnDone(lead, lc, { ...done, lead: true, by: 'user' })
-    expect(parts(s.posts.pop()!).todo).toEqual(['- Tell Noor about the failed checks on PR #54 with message_agent (workspace w1).', READ('Noor', 'w1')])
+    expect(parts(s.posts.pop()!).todo).toEqual(['- Tell Sean about the failed checks on PR #54 with message_agent (workspace w1).', READ('Sean', 'w1')])
   })
 
   it("drops what waited for a workspace that is gone, and keeps a stopped chat's mark", async () => {
@@ -1347,7 +1347,7 @@ describe('teammate updates with several Lead chats (KERNEL-105)', () => {
     expect(s.to.sort()).toEqual(['lc', 'lc2'])
     const of = (chatId: string) => parts(s.posts[s.to.indexOf(chatId)])
     expect(of('lc')).toEqual({ header: UPDATE_HEADER, body: [NOOR, OPENED_54, '- PR #54 passed checks and has no conflicts.'], todo: [READY('PR #54')] })
-    expect(of('lc2')).toEqual({ header: UPDATE_HEADER, body: [KAI, OPENED_60, '- PR #60 has conflicts with its base branch.'], todo: ['- Ask Kai to resolve the conflicts on PR #60 with message_agent (workspace w2).'] })
+    expect(of('lc2')).toEqual({ header: UPDATE_HEADER, body: [CHRISTIAN, OPENED_60, '- PR #60 has conflicts with its base branch.'], todo: ['- Ask Christian to resolve the conflicts on PR #60 with message_agent (workspace w2).'] })
     expect(s.delivered).toHaveLength(2)
   })
 
@@ -1383,13 +1383,13 @@ describe('teammate updates with several Lead chats (KERNEL-105)', () => {
       '',
       'From "Chat icons sizing", a Lead chat that is now closed. This work is yours now.',
       '',
-      KAI,
+      CHRISTIAN,
       OPENED_60,
       '- PR #60 has conflicts with its base branch.',
       '',
       'To do:',
       READY('PR #54'),
-      '- Ask Kai to resolve the conflicts on PR #60 with message_agent (workspace w2).'
+      '- Ask Christian to resolve the conflicts on PR #60 with message_agent (workspace w2).'
     ])
     expect(s.updates[0].rows.map((r) => r.fromChat)).toEqual([undefined, 'Chat icons sizing'])
     expect(s.delivered).toHaveLength(1)
@@ -1400,7 +1400,7 @@ describe('teammate updates with several Lead chats (KERNEL-105)', () => {
     store.saveChat({ ...store.chat('lc2')!, title: 'Chat icons sizing', closed: true })
     chat('lc3', 'lead')
     store.saveChat({ ...store.chat('lc3')!, title: 'Composer unit tests', closed: true })
-    const turn = (id: string, owner: string, title: string) => { ws(id, 'kai', { title }); own(id, owner); chat(`${id}c`, id); u.turnDone(store.workspace(id)!, store.chat(`${id}c`)!, done) }
+    const turn = (id: string, owner: string, title: string) => { ws(id, 'christian', { title }); own(id, owner); chat(`${id}c`, id); u.turnDone(store.workspace(id)!, store.chat(`${id}c`)!, done) }
     turn('i1', 'lc2', 'Icons 1')
     turn('c1', 'lc3', 'Composer 1')
     turn('i2', 'lc2', 'Icons 2')
@@ -1414,8 +1414,8 @@ describe('teammate updates with several Lead chats (KERNEL-105)', () => {
   it('keeps the newest 8 workspaces across chats in one message', async () => {
     const { store, u, s, own, ws, chat } = await setup()
     store.saveChat({ ...store.chat('lc2')!, title: 'Composer unit tests', closed: true })
-    for (let i = 1; i <= 6; i++) { const w = ws(`a${i}`, 'kai', { title: `Own ${i}` }); chat(`ac${i}`, w.id); u.turnDone(w, store.chat(`ac${i}`)!, done) }
-    for (let i = 1; i <= 4; i++) { const w = ws(`b${i}`, 'noor', { title: `Closed ${i}`, leadChatId: 'lc2' }); chat(`bc${i}`, w.id); own(w.id, 'lc2'); u.turnDone(store.workspace(w.id)!, store.chat(`bc${i}`)!, done) }
+    for (let i = 1; i <= 6; i++) { const w = ws(`a${i}`, 'christian', { title: `Own ${i}` }); chat(`ac${i}`, w.id); u.turnDone(w, store.chat(`ac${i}`)!, done) }
+    for (let i = 1; i <= 4; i++) { const w = ws(`b${i}`, 'sean', { title: `Closed ${i}`, leadChatId: 'lc2' }); chat(`bc${i}`, w.id); own(w.id, 'lc2'); u.turnDone(store.workspace(w.id)!, store.chat(`bc${i}`)!, done) }
     await wait()
     const lines = s.posts[0].split('\n')
     expect(lines.filter((l) => / · workspace /.test(l)).map((l) => l.split(' · ')[1])).toEqual(['Own 3', 'Own 4', 'Own 5', 'Own 6', 'Closed 1', 'Closed 2', 'Closed 3', 'Closed 4'])
@@ -1460,7 +1460,7 @@ describe('teammate updates with several Lead chats (KERNEL-105)', () => {
 describe('shared files in Team updates (KERNEL-302)', () => {
   const file = (id: string, workspaceId: string, title: string, n: number, kind: SharedFile['kind'] = 'html'): [SharedFile, SharedVersion] => {
     const v: SharedVersion = { n, at: n, file: `${id}.html`, mime: 'text/html', bytes: 10, sha256: String(n) }
-    return [{ id, projectId: 'r', workspaceId, agentId: 'noor', source: `.kernel/shared/${id}.html`, title, kind, versions: [v], createdAt: 1, updatedAt: n }, v]
+    return [{ id, projectId: 'r', workspaceId, agentId: 'sean', source: `.kernel/shared/${id}.html`, title, kind, versions: [v], createdAt: 1, updatedAt: n }, v]
   }
   const SHARED = (title: string, n: number, source: string, id: string, kind = 'HTML') => `- Shared "${title}" v${n} (${kind}, ${source}, id ${id}). The user can open it from this update.`
 
@@ -1505,13 +1505,13 @@ describe('shared files in Team updates (KERNEL-302)', () => {
 
 describe("GitHub's merge block on a ready PR (KERNEL-401)", () => {
   const BEHIND_LINE = "- GitHub won't merge PR #54 yet: the branch is behind its base."
-  const BEHIND_TODO = "- Ask Noor to update PR #54: fetch, merge main into the branch, re-run the tests and push as usual, with message_agent (workspace w1). GitHub won't merge it while its branch is behind."
+  const BEHIND_TODO = "- Ask Sean to update PR #54: fetch, merge main into the branch, re-run the tests and push as usual, with message_agent (workspace w1). GitHub won't merge it while its branch is behind."
   const UNBLOCKED_TODO = '- GitHub no longer blocks PR #54, so it is ready to merge. Tell the user.'
   const blocked = (store: Store, id: string, prBlocked?: Workspace['prBlocked']) => {
     store.saveWorkspace({ ...store.workspace(id)!, prBlocked })
     bus.push({ type: 'pr.blocked', workspaceId: id, ...(prBlocked ? { blocked: prBlocked } : {}) })
   }
-  /** Noor's PR passed checks on h1, and the Lead heard it. */
+  /** Sean's PR passed checks on h1, and the Lead heard it. */
   const told = async () => {
     const x = await setup()
     x.store.saveWorkspace({ ...x.store.workspace('w1')!, prHead: 'h1' })
@@ -1588,12 +1588,12 @@ describe("GitHub's merge block on a ready PR (KERNEL-401)", () => {
   })
 
   it("asks the author, not the reviewer, to update a PR that fell behind, in one line with the author's own news", () => {
-    const of = { id: 'w2', projectId: 'r', name: 'w2', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'ready', prNumber: 60, prBlocked: 'behind', createdAt: 1 } as Workspace
-    const approval: TeamEvent = { n: 1, workspaceId: 'rv', kind: 'review', review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } }
-    const fromReview = decide({ ws: { ...of, id: 'rv', agentId: 'theo', prState: 'none', prBlocked: undefined }, name: 'Theo', events: [approval] }, { allMerged: () => false, workspace: () => of }).todo
-    const fromAuthor = decide({ ws: of, name: 'Kai', events: [{ n: 2, workspaceId: 'w2', kind: 'pr.blocked', pr: 60, blocked: 'behind' }] }, { allMerged: () => false }).todo
+    const of = { id: 'w2', projectId: 'r', name: 'w2', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'christian', port: 1, status: 'ready', prState: 'ready', prNumber: 60, prBlocked: 'behind', createdAt: 1 } as Workspace
+    const approval: TeamEvent = { n: 1, workspaceId: 'rv', kind: 'review', review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Christian', ofPr: 60, current: true } }
+    const fromReview = decide({ ws: { ...of, id: 'rv', agentId: 'artkin', prState: 'none', prBlocked: undefined }, name: 'Artkin', events: [approval] }, { allMerged: () => false, workspace: () => of }).todo
+    const fromAuthor = decide({ ws: of, name: 'Christian', events: [{ n: 2, workspaceId: 'w2', kind: 'pr.blocked', pr: 60, blocked: 'behind' }] }, { allMerged: () => false }).todo
     expect(fromReview).toEqual(fromAuthor)
-    expect(fromAuthor).toEqual(["Ask Kai to update PR #60: fetch, merge main into the branch, re-run the tests and push as usual, with message_agent (workspace w2). GitHub won't merge it while its branch is behind."])
+    expect(fromAuthor).toEqual(["Ask Christian to update PR #60: fetch, merge main into the branch, re-run the tests and push as usual, with message_agent (workspace w2). GitHub won't merge it while its branch is behind."])
   })
 })
 
@@ -1668,7 +1668,7 @@ describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () =
     settings = { ...settings, models: { ...settings.models, agentLimit: 1 } }
     // No Lead agent, so "lc" takes a slot like any teammate's chat.
     const sessions = new Sessions({ store: t.store, approvals: new Approvals(t.store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {}, onFreed: () => t.u.flushSoon() })
-    // Kai's turn takes the only slot.
+    // Christian's turn takes the only slot.
     ;(sessions as unknown as { live: Map<string, { running: boolean }> }).live.set('kc', { running: true })
     t.s.hold = (chatId) => sessions.postHold(chatId)
     expect(sessions.postHold('lc')).toBe('capacity')
@@ -1751,7 +1751,7 @@ describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () =
   it('sends 8 of 12 workspaces, keeps the other 4 for the next update across a restart, and sends nothing twice', async () => {
     const { store, u, s, ws, chat, lead, lc, restart } = await setup()
     for (let i = 1; i <= 12; i++) {
-      const w = ws(`x${i}`, 'kai', { title: `Task ${i}` })
+      const w = ws(`x${i}`, 'christian', { title: `Task ${i}` })
       chat(`xc${i}`, w.id)
       u.turnDone(w, store.chat(`xc${i}`)!, done)
     }
@@ -1796,8 +1796,8 @@ describe('a teammate a usage limit stopped (KERNEL-777)', () => {
   const L: LimitNews = { provider: 'claude', window: '5-hour limit', account: 'Account 3', resetsAt: S(Date.now() + 3600_000) }
   /** When it resets, as the limit banner says it, without the "at " of a time later today. */
   const until = (resetsAt: number) => resetPhrase(resetsAt, Date.now()).replace(/^at /, '')
-  const PAUSED = (at: number) => `Noor is paused until ${until(at)} because every account is at its limit. If an account is signed out or waits for Keychain access, tell the user to sign in or allow it, and Kernel moves Noor there. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`
-  const LIFTED = 'Noor is working again on Account 2. If you told the user it was paused, correct that in one line.'
+  const PAUSED = (at: number) => `Sean is paused until ${until(at)} because every account is at its limit. If an account is signed out or waits for Keychain access, tell the user to sign in or allow it, and Kernel moves Sean there. Kernel carries Sean on by itself then, and any message you sent waits in its chat, so don't send it again.`
+  const LIFTED = 'Sean is working again on Account 2. If you told the user it was paused, correct that in one line.'
 
   it('stays quiet while Kernel moves the teammate to another account, and the next update says it carried on there', async () => {
     const { u, s, pr, w1, nc } = await setup()
@@ -1812,7 +1812,7 @@ describe('a teammate a usage limit stopped (KERNEL-777)', () => {
     expect(s.posts).toHaveLength(1)
     const { body, todo } = parts(s.posts[0])
     expect(body).toEqual([NOOR, '- Hit its 5-hour limit on Account 3. Kernel moved it to Account 2 and it carries on.', OPENED_54, '- Checks failed on PR #54.'])
-    expect(todo).toEqual(['- Tell Noor about the failed checks on PR #54 with message_agent (workspace w1).'])
+    expect(todo).toEqual(['- Tell Sean about the failed checks on PR #54 with message_agent (workspace w1).'])
     expect(s.updates[0].rows[0].events[0]).toEqual({ kind: 'limit', text: 'Hit its 5-hour limit, now on Account 2', actionable: false })
   })
 
@@ -1864,15 +1864,15 @@ describe('a teammate a usage limit stopped (KERNEL-777)', () => {
     await wait()
     expect(s.posts).toHaveLength(1)
     expect(until(weekly)).toMatch(/^\w+day at /)
-    expect(parts(s.posts[0]).todo).toEqual([`- Noor is paused until ${until(weekly)} by its weekly limit on Account 3. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`])
+    expect(parts(s.posts[0]).todo).toEqual([`- Sean is paused until ${until(weekly)} by its weekly limit on Account 3. Kernel carries Sean on by itself then, and any message you sent waits in its chat, so don't send it again.`])
     expect(s.updates[0].rows[0].events).toEqual([{ kind: 'limit', text: `Paused by its weekly limit until ${until(weekly)}`, actionable: true }])
   })
 
   it('asks for a sign-in when the switch failed, and names the model on a limit of the model alone', () => {
     const ws = { id: 'w1', status: 'ready', prState: 'none' } as Workspace
-    const todo = (limit: LimitNews) => decide({ ws, name: 'Noor', events: [{ n: 1, workspaceId: 'w1', kind: 'limit', limit }] }, { allMerged: () => false }).todo
-    expect(todo({ ...L, stuck: 'signIn' })).toEqual([`Noor is paused until ${until(L.resetsAt!)} by its 5-hour limit on Account 3. If an account is signed out or waits for Keychain access, tell the user to sign in or allow it, and Kernel moves Noor there. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`])
-    expect(todo({ ...L, window: 'Opus limit', model: 'Opus 5.5', stuck: 'model' })).toEqual([`Noor is paused until ${until(L.resetsAt!)} because Opus 5.5 is at its limit on Account 3. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`])
+    const todo = (limit: LimitNews) => decide({ ws, name: 'Sean', events: [{ n: 1, workspaceId: 'w1', kind: 'limit', limit }] }, { allMerged: () => false }).todo
+    expect(todo({ ...L, stuck: 'signIn' })).toEqual([`Sean is paused until ${until(L.resetsAt!)} by its 5-hour limit on Account 3. If an account is signed out or waits for Keychain access, tell the user to sign in or allow it, and Kernel moves Sean there. Kernel carries Sean on by itself then, and any message you sent waits in its chat, so don't send it again.`])
+    expect(todo({ ...L, window: 'Opus limit', model: 'Opus 5.5', stuck: 'model' })).toEqual([`Sean is paused until ${until(L.resetsAt!)} because Opus 5.5 is at its limit on Account 3. Kernel carries Sean on by itself then, and any message you sent waits in its chat, so don't send it again.`])
     // A switch under way, and a limit the user's own message in the teammate's chat met, don't wake the Lead.
     expect(todo({ ...L, switching: { to: 'Account 2' } })).toEqual([])
   })

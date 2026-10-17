@@ -31,7 +31,7 @@ const REPO = {
   'README.md': '# client\n',
   '.gitignore': '.env.local\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
 
 async function dirs(workspace: Record<string, unknown> = {}) {
@@ -192,11 +192,11 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
     const options = callIn(ws.path)[0].options
     expect(options).toMatchObject({ cwd: ws.path, projectConfigRoot: repo })
     expect(options.systemPrompt.append).toContain(`You are working in a git worktree at ${ws.path} on branch ${ws.branch}, created from main. It is not the main checkout, which the user may be running.`)
-    const kai = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
-    await vi.waitFor(() => expect(callIn(kai.path)).toHaveLength(1))
-    expect(callIn(kai.path)[0].options).not.toHaveProperty('projectConfigRoot')
-    expect(agentPrompt(undefined, kai)).not.toContain('It is not the main checkout')
-    expect(agentPrompt(undefined, kai)).toContain(`Push with \`git push -u origin ${kai.branch}\` (or \`HEAD\`), never a bare \`git push\`.`)
+    const christian = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Build' })
+    await vi.waitFor(() => expect(callIn(christian.path)).toHaveLength(1))
+    expect(callIn(christian.path)[0].options).not.toHaveProperty('projectConfigRoot')
+    expect(agentPrompt(undefined, christian)).not.toContain('It is not the main checkout')
+    expect(agentPrompt(undefined, christian)).toContain(`Push with \`git push -u origin ${christian.branch}\` (or \`HEAD\`), never a bare \`git push\`.`)
   })
 
   it("reads the project's env files from the chat's own worktree, where files.copy put them", async () => {
@@ -302,7 +302,7 @@ describe('what waits for setup (KERNEL-490)', () => {
 
   it("holds a teammate's brief through a failed setup with Wait for setup on", async () => {
     const { k, project: r } = await project(FAILS, { leadWaitForSetup: true })
-    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'kai' })
+    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'christian' })
     expect(ws.status).toBe('failed')
     const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
     expect(queuedText(k, brief.id)).toEqual(['Build the invoice list'])
@@ -312,7 +312,7 @@ describe('what waits for setup (KERNEL-490)', () => {
 
   it("sends the Lead's message to a started teammate at once, after the brief, while setup runs (KERNEL-1012)", async () => {
     const { k, project: r } = await project(SETUP)
-    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'kai' })
+    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'christian' })
     const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
     expect(k.store.workspace(ws.id)!.setupRun?.endedAt).toBeUndefined()
     const sent = await k.lead['messageWorkspace'](r.id, ws.id, 'Use EmptyState')
@@ -326,7 +326,7 @@ describe('what waits for setup (KERNEL-490)', () => {
 
   it("starts a teammate's brief while setup runs, and a failed setup holds nothing (KERNEL-1012)", async () => {
     const { k, project: r } = await project({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && exit 3"\n' })
-    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'kai' })
+    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'christian' })
     expect(ws.status).toBe('ready')
     const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
     await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
@@ -488,10 +488,10 @@ describe("keeping each chat's worktree on the latest main (KERNEL-181, KERNEL-40
 
   it('fetches once when a PR in the project merges, then moves every chat', async () => {
     const { k, bare, project, wa, wb } = await syncedProject()
-    const kai = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    const christian = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Build' })
     const merged = await pushElsewhere(bare, 'merged')
     const sync = vi.spyOn(k.lead, 'syncLead')
-    bus.push({ type: 'pr', workspaceId: kai.id, state: 'merged' })
+    bus.push({ type: 'pr', workspaceId: christian.id, state: 'merged' })
     expect(sync.mock.calls).toEqual([[project.id, { fetch: true }]])
     await Promise.all(sync.mock.results.map((r) => r.value))
     expect(await sha(wa.path, 'HEAD')).toBe(merged)

@@ -18,7 +18,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const REPO = {
   'README.md': '# shop\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\nrole: Engine\n---\nYou are Kai. Open a PR for each task.',
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\nrole: Engine\n---\nYou are Christian. Open a PR for each task.',
   '.claude/agents/cody.md': '---\nname: cody\ndescription: Codex engineer.\nrole: Engine\nmodel: gpt-6-astra\nprovider: codex\n---\nYou are Cody. Open a PR for each task.'
 }
 
@@ -49,11 +49,11 @@ const seatOf = (wsId: string) => k.store.chats(wsId).find((c) => c.terminal?.han
 async function handOff(from: 'terminal' | 'chat', args: Record<string, unknown> = {}) {
   const chat = from === 'terminal' ? termLead : chatLead
   const ws = k.store.workspace(chat.workspaceId)!
-  if (from === 'terminal') await prompt(termLead, 'hand it to Kai')
+  if (from === 'terminal') await prompt(termLead, 'hand it to Christian')
   const tools = from === 'terminal'
     ? k.seats.serve({ chatId: chat.id, workspaceId: ws.id, role: k.seats.roleOf(chat.id) })!.tools
     : k.tools.toolsFor(ws, k.team.agentOf(projectId, ws.agentId), chat)
-  const out = await tools.find((t) => t.name === 'create_workspace')!.handler({ agent: 'kai', title: `Cart ${++session}`, brief: 'Build the cart.', go_ahead: 'hand it to Kai', ...args } as never, {})
+  const out = await tools.find((t) => t.name === 'create_workspace')!.handler({ agent: 'christian', title: `Cart ${++session}`, brief: 'Build the cart.', go_ahead: 'hand it to Christian', ...args } as never, {})
   const text = out.content.map((c: any) => c.text).join('\n')
   const id = /^Created (\S+) on/.exec(text)?.[1]
   return { text, isError: !!out.isError, ws: id ? k.store.workspace(id)! : undefined }
@@ -164,7 +164,7 @@ describe('where a teammate runs', () => {
   it('refuses runs_in terminal on a review', async () => {
     const built = await handOff('chat')
     await setUp(k, built.ws!.id)
-    const r = await handOff('chat', { agent: 'kai', review_of: built.ws!.id, runs_in: 'terminal' })
+    const r = await handOff('chat', { agent: 'christian', review_of: built.ws!.id, runs_in: 'terminal' })
     expect(r.isError).toBe(true)
     expect(r.text).toContain('runs in Kernel')
   })

@@ -44,7 +44,7 @@ export const pdfNotesMarkdown = [
   'Should credit notes get their own layout? I would keep one and change the title.'
 ].join('\n')
 
-/** The short note Kai shared with the Team update (TeamUpdateShared). */
+/** The short note Christian shared with the Team update (TeamUpdateShared). */
 export const downloadFlowMarkdown = [
   '# Download button flow',
   '',

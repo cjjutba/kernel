@@ -67,7 +67,7 @@ function Controls() {
         </div>
       </Section>
       <Section title="Chips">
-        <div className="devui-row"><Chip kind="file" onRemove={() => undefined}>plan.md</Chip><Chip kind="image" onRemove={() => undefined}>screenshot.png</Chip><Chip kind="mention">Noor</Chip><Chip kind="skill">review</Chip></div>
+        <div className="devui-row"><Chip kind="file" onRemove={() => undefined}>plan.md</Chip><Chip kind="image" onRemove={() => undefined}>screenshot.png</Chip><Chip kind="mention">Sean</Chip><Chip kind="skill">review</Chip></div>
       </Section>
       <Section title="Meter, code, kbd, avatar, spinner, skeleton">
         <div className="col devui-gap-10">

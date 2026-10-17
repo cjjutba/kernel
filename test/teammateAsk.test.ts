@@ -32,10 +32,10 @@ const AGENT = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.
 const result = (uuid: string) => ({ type: 'result', subtype: 'success', uuid, duration_ms: 1, session_id: 's' })
 const callsIn = (ws: Workspace) => sdk.calls.filter((c) => c.options.cwd === ws.path)
 
-/** A project with Kai and Noor at work, each handed off from its own Lead tab, and Scout, a helper that can't open a PR. */
+/** A project with Christian and Sean at work, each handed off from its own Lead tab, and Scout, a helper that can't open a PR. */
 async function setup() {
   const repo = await tempRepo({
-    'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'),
+    'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/christian.md': AGENT('christian'), '.claude/agents/sean.md': AGENT('sean'),
     '.claude/agents/scout.md': AGENT('scout', 'tools: Read, Grep\n')
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -46,8 +46,8 @@ async function setup() {
   const project = await k.addProject(repo)
   const lead = await k.leadChat(project.id)
   const other = await k.lead.newLeadChat(project.id, { prompt: '' })
-  const kai = await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id })
-  const noor = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'noor', title: 'Invoice table', leadChatId: other.id })
+  const christian = await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'christian', title: 'Invoice export', leadChatId: lead.id })
+  const sean = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'sean', title: 'Invoice table', leadChatId: other.id })
   const posts: { chatId: string; text: string; update?: TeamUpdate }[] = []
   k.sessions.post = (chatId: string, parts: ChatPart[], o: { update?: TeamUpdate } = {}) => { posts.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), update: o.update }); return true }
   ;(k.leadUpdates as unknown as { d: { delayMs?: number } }).d.delayMs = 20
@@ -58,26 +58,26 @@ async function setup() {
   }
   const pending = () => (k.store.meta<{ pending: [string, { owner?: string; events: { kind: string; workspaceId: string; question?: unknown; proposal?: unknown }[] }][] }>('leadUpdates')?.pending ?? [])
     .flatMap(([, p]) => p.events.map((e) => ({ ...e, owner: p.owner })))
-  return { k, project, lead, other, kai, noor, posts, call, pending }
+  return { k, project, lead, other, christian, sean, posts, call, pending }
 }
 
 describe('ask_lead', () => {
   it("records the question for the Lead chat that handed the work off, which hears it once the teammate's turn ends", async () => {
-    const { k, lead, kai, posts, call, pending } = await setup()
-    expect(await call(kai, 'ask_lead', { question: 'Keep drafts per tab or one per chat?', options: ['Per tab', 'One per chat'] }))
+    const { k, lead, christian, posts, call, pending } = await setup()
+    expect(await call(christian, 'ask_lead', { question: 'Keep drafts per tab or one per chat?', options: ['Per tab', 'One per chat'] }))
       .toEqual({ isError: false, text: 'Kernel passed your question to the Lead. End your turn now. The answer arrives as a message.' })
-    expect(pending()).toEqual([expect.objectContaining({ kind: 'question', workspaceId: kai.id, owner: lead.id, question: { text: 'Keep drafts per tab or one per chat?', options: ['Per tab', 'One per chat'] } })])
+    expect(pending()).toEqual([expect.objectContaining({ kind: 'question', workspaceId: christian.id, owner: lead.id, question: { text: 'Keep drafts per tab or one per chat?', options: ['Per tab', 'One per chat'] } })])
     // The question waits for the turn the teammate ends right after, so the Lead wakes once for both.
     await new Promise((r) => setTimeout(r, 100))
     expect(posts).toEqual([])
-    callsIn(kai)[0].feed(result('r1'))
+    callsIn(christian)[0].feed(result('r1'))
     await vi.waitFor(() => expect(posts).toHaveLength(1), SLOW)
     const [post] = posts
     expect(post.chatId).toBe(lead.id)
-    expect(post.text).toContain('- Asked you: "Keep drafts per tab or one per chat?"\n  Options: "Per tab", "One per chat".\n  Kai ended the turn and waits for your answer.')
-    expect(post.text).toContain(`- Answer Kai's question with message_agent (workspace ${kai.id}): from the approved plan if it covers it, otherwise ask the user with ask_user first. Kai waits until you do.`)
+    expect(post.text).toContain('- Asked you: "Keep drafts per tab or one per chat?"\n  Options: "Per tab", "One per chat".\n  Christian ended the turn and waits for your answer.')
+    expect(post.text).toContain(`- Answer Christian's question with message_agent (workspace ${christian.id}): from the approved plan if it covers it, otherwise ask the user with ask_user first. Christian waits until you do.`)
     // The question speaks for the turn, so there is no second To do line asking the Lead to read the reply.
-    expect(post.text).not.toContain("Read Kai's reply")
+    expect(post.text).not.toContain("Read Christian's reply")
     expect(post.update?.rows[0].events).toEqual([
       { kind: 'question', text: 'Asks: Keep drafts per tab or one per chat?', actionable: true },
       { kind: 'turn', text: 'Finished a turn', actionable: false }
@@ -86,8 +86,8 @@ describe('ask_lead', () => {
   })
 
   it('refuses an empty question', async () => {
-    const { k, kai, call, pending } = await setup()
-    expect(await call(kai, 'ask_lead', { question: '  ' })).toEqual({ isError: true, text: 'Not sent: the question is empty.' })
+    const { k, christian, call, pending } = await setup()
+    expect(await call(christian, 'ask_lead', { question: '  ' })).toEqual({ isError: true, text: 'Not sent: the question is empty.' })
     expect(pending()).toEqual([])
     await k.stop()
   })
@@ -95,29 +95,29 @@ describe('ask_lead', () => {
 
 describe('propose_handoff', () => {
   it("records the proposal for the Lead chat that handed the work off, and wakes it without waiting for the teammate's turn", async () => {
-    const { k, lead, other, kai, noor, posts, call, pending } = await setup()
-    expect(await call(noor, 'propose_handoff', { agent: 'Kai', task: 'Retry button on failed exports', why: 'Exports are Kai\'s area.' }))
-      .toEqual({ isError: false, text: 'Kernel passed your proposal for Kai to the Lead, who asks the user. Carry on with your own work, and leave that task out of it.' })
-    expect(pending()).toEqual([expect.objectContaining({ kind: 'handoff.proposed', workspaceId: noor.id, owner: other.id, proposal: { agentId: 'kai', agent: 'Kai', task: 'Retry button on failed exports', why: "Exports are Kai's area." } })])
+    const { k, lead, other, christian, sean, posts, call, pending } = await setup()
+    expect(await call(sean, 'propose_handoff', { agent: 'Christian', task: 'Retry button on failed exports', why: 'Exports are Christian\'s area.' }))
+      .toEqual({ isError: false, text: 'Kernel passed your proposal for Christian to the Lead, who asks the user. Carry on with your own work, and leave that task out of it.' })
+    expect(pending()).toEqual([expect.objectContaining({ kind: 'handoff.proposed', workspaceId: sean.id, owner: other.id, proposal: { agentId: 'christian', agent: 'Christian', task: 'Retry button on failed exports', why: "Exports are Christian's area." } })])
     await vi.waitFor(() => expect(posts).toHaveLength(1), SLOW)
     const [post] = posts
-    // Noor was handed off from the other Lead chat, so it hears, not the one that handed off Kai.
+    // Sean was handed off from the other Lead chat, so it hears, not the one that handed off Christian.
     expect(post.chatId).toBe(other.id)
     expect(other.id).not.toBe(lead.id)
-    expect(post.text).toContain(`- Proposed handing a task to Kai (kai): "Retry button on failed exports". Why: Exports are Kai's area. Noor carries on with the rest.`)
-    expect(post.text).toContain('- Noor proposes handing "Retry button on failed exports" to Kai. Propose it to the user and ask for a go-ahead. Call create_workspace for it only on a go-ahead that approves it.')
-    expect(post.update?.rows[0].events).toEqual([{ kind: 'handoff.proposed', text: 'Proposes Kai for: Retry button on failed exports', actionable: true }])
+    expect(post.text).toContain(`- Proposed handing a task to Christian (christian): "Retry button on failed exports". Why: Exports are Christian's area. Sean carries on with the rest.`)
+    expect(post.text).toContain('- Sean proposes handing "Retry button on failed exports" to Christian. Propose it to the user and ask for a go-ahead. Call create_workspace for it only on a go-ahead that approves it.')
+    expect(post.update?.rows[0].events).toEqual([{ kind: 'handoff.proposed', text: 'Proposes Christian for: Retry button on failed exports', actionable: true }])
     // Kernel never creates the workspace itself.
-    expect(k.store.workspaces(kai.projectId).filter((w) => w.agentId === 'kai')).toHaveLength(1)
+    expect(k.store.workspaces(christian.projectId).filter((w) => w.agentId === 'christian')).toHaveLength(1)
     await k.stop()
   })
 
   it('refuses an unknown agent, the Lead, a helper and the teammate itself, and records nothing', async () => {
-    const { k, kai, call, pending } = await setup()
-    const refused = async (agent: string) => { const r = await call(kai, 'propose_handoff', { agent, task: 'Retry button', why: 'Not mine.' }); expect(r.isError).toBe(true); return r.text }
-    expect(await refused('ivy')).toMatch(/^Not proposed: no agent "ivy" on this team\. Use an id from list_agents: .*kai.*noor/)
+    const { k, christian, call, pending } = await setup()
+    const refused = async (agent: string) => { const r = await call(christian, 'propose_handoff', { agent, task: 'Retry button', why: 'Not mine.' }); expect(r.isError).toBe(true); return r.text }
+    expect(await refused('teng')).toMatch(/^Not proposed: no agent "teng" on this team\. Use an id from list_agents: .*christian.*sean/)
     expect(await refused('scout')).toBe("Not proposed: Scout is a helper in this project and doesn't take tasks.")
-    expect(await refused('kai')).toBe('Not proposed: that is you. Carry on with it yourself, or ask the Lead with ask_lead if it is outside your task.')
+    expect(await refused('christian')).toBe('Not proposed: that is you. Carry on with it yourself, or ask the Lead with ask_lead if it is outside your task.')
     expect(await refused('kernel')).toMatch(/^Not proposed: .* is the Lead, who hands work out and builds none\./)
     expect(pending()).toEqual([])
     await k.stop()
@@ -135,9 +135,9 @@ describe('the rules and Codex', () => {
   })
 
   it("gives a Codex teammate both tools as Kernel's dynamic tools", async () => {
-    const { k, project, kai } = await setup()
+    const { k, project, christian } = await setup()
     const agents = await k.agents(project.id)
-    const tools = k.tools.codexTools(kai, agents.find((a) => a.id === 'kai'), k.store.chats(kai.id)[0]).tools.map((t) => t.name)
+    const tools = k.tools.codexTools(christian, agents.find((a) => a.id === 'christian'), k.store.chats(christian.id)[0]).tools.map((t) => t.name)
     expect(tools).toEqual(expect.arrayContaining(['ask_lead', 'propose_handoff']))
     await k.stop()
   })

@@ -16,8 +16,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const TEAM = {
   'README.md': '# quarter\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
-  '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.',
+  '.claude/agents/artkin.md': '---\nname: artkin\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Artkin.'
 }
 
 /** A clone of a repo with `main` and `dev`, where `dev` holds a merged PR `main` lacks. `head` is the remote's default. Both are local branches too. */
@@ -49,7 +49,7 @@ async function kernel(workspace: Record<string, string> = { baseRef: 'origin/mai
   return k
 }
 
-const task = (k: Kernel, projectId: string, o: { baseRef?: string } = {}) => k.workspaces.createWorkspace(projectId, { prompt: 'Change one line', agentId: 'kai', ...o })
+const task = (k: Kernel, projectId: string, o: { baseRef?: string } = {}) => k.workspaces.createWorkspace(projectId, { prompt: 'Change one line', agentId: 'christian', ...o })
 
 describe('the base of a new workspace (KERNEL-400)', () => {
   it('starts from origin/dev in a dev project when no base was set, as the Lead does, and counts only its own change', async () => {
@@ -96,11 +96,11 @@ describe('the base of a new workspace (KERNEL-400)', () => {
     const k = await kernel()
     const project = await k.projects.addProject(await clone('dev'))
     const tool = kernelTools({
-      projectId: project.id, lead: undefined, agents: async () => [{ id: 'kai', name: 'Kai', role: 'Frontend', lead: false } as AgentDef], workspaces: () => [],
+      projectId: project.id, lead: undefined, agents: async () => [{ id: 'christian', name: 'Christian', role: 'Frontend', lead: false } as AgentDef], workspaces: () => [],
       createWorkspace: (o) => k.workspaces.createWorkspace(project.id, o), messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null,
       hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
     }).find((t) => t.name === 'create_workspace')!
-    await tool.handler({ agent: 'kai', title: 'Inbox actions', brief: 'Go', base_ref: 'origin/main' } as never, {})
+    await tool.handler({ agent: 'christian', title: 'Inbox actions', brief: 'Go', base_ref: 'origin/main' } as never, {})
     expect(k.store.workspaces(project.id)[0].baseRef).toBe('origin/main')
   })
 
@@ -108,7 +108,7 @@ describe('the base of a new workspace (KERNEL-400)', () => {
     const k = await kernel()
     const project = await k.projects.addProject(await clone('dev'))
     const author = await task(k, project.id)
-    const review = await k.workspaces.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', reviewOf: author.id })
+    const review = await k.workspaces.createWorkspace(project.id, { prompt: 'Review it', agentId: 'artkin', reviewOf: author.id })
     expect(review.baseRef).toBe(author.branch)
   })
 })

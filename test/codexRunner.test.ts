@@ -38,14 +38,14 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
   }
 }
 
-const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
-const kernel: AgentDef = { ...noor, id: 'kernel', name: 'Kernel', role: 'Lead', lead: true, prompt: 'You are Kernel.' }
+const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Sean.' } as AgentDef
+const kernel: AgentDef = { ...sean, id: 'kernel', name: 'Kernel', role: 'Lead', lead: true, prompt: 'You are Kernel.' }
 
 async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; references?: string[]; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string }; team?: AgentDef[]; buildOpen?: () => boolean } = {}) {
   const fake = await fakeCodex()
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
   const repo = await tempRepo()
-  const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: repo, mode: 'worktree', agentId: (o.agent ?? noor).id, port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...(o.agent?.lead ? { lead: true } : {}), ...o.ws }
+  const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: repo, mode: 'worktree', agentId: (o.agent ?? sean).id, port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...(o.agent?.lead ? { lead: true } : {}), ...o.ws }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'medium', plan: false, createdAt: 1, ...o.chat }
   store.saveWorkspace(ws)
   store.saveChat(chat)
@@ -58,7 +58,7 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
   const tools = [tool('ping', 'Ping Kernel.', { text: z.string() }, async ({ text }) => { pings.push(text); return { content: [{ type: 'text' as const, text: `pong ${text}` }] } }), ...(o.tools ?? [])]
   const openItems = new OpenItems({ store } as unknown as Kernel)
   const sessions = new Sessions({
-    store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, teamOf: () => o.team, mcpFor: () => undefined, envFor: () => (o.mcp ? { ...fake.env, FAKE_CODEX_MCP: o.mcp } : fake.env),
+    store, approvals, settings: () => settings, agentFor: () => o.agent ?? sean, teamOf: () => o.team, mcpFor: () => undefined, envFor: () => (o.mcp ? { ...fake.env, FAKE_CODEX_MCP: o.mcp } : fake.env),
     projectAllow: () => allow, allowInProject: (_project, rule) => { allow.push(rule) }, projectTools: () => allowTools, allowToolInProject: (_project, rule) => { allowTools.push(rule) }, onReached: () => { reached.count++ }, availability: o.availability, referencesFor: () => o.references,
     codexFor: () => ({ bin: fake.bin, home: o.account?.home(), personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined }),
     ...(o.account ? { accountFor: () => o.account?.id(), moveNote: (c: Chat, from: string) => `Moved from ${from} to ${c.ranOn}`, emailOf: (_p: string, id?: string) => (id ? `${id}@example.com` : undefined) } : {}),
@@ -87,7 +87,7 @@ describe('a chat on Codex (KERNEL-406)', () => {
     await t.idle()
     const [start] = await t.sent('thread/start')
     expect(start.params).toMatchObject({ cwd: t.repo, model: 'gpt-6-astra', approvalPolicy: 'untrusted', sandbox: 'workspace-write', personality: 'pragmatic' })
-    expect(start.params.developerInstructions).toContain('You are Noor.')
+    expect(start.params.developerInstructions).toContain('You are Sean.')
     expect(start.params.dynamicTools).toEqual([{ type: 'function', name: 'kernel_ping', description: 'Ping Kernel.', inputSchema: expect.objectContaining({ type: 'object', required: ['text'] }) }])
     const [turn] = await t.sent('turn/start')
     expect(turn.params).toMatchObject({ threadId: 'thread-1', input: [{ type: 'text', text: 'hello' }], model: 'gpt-6-astra', effort: 'medium', summary: 'auto', approvalPolicy: 'untrusted', collaborationMode: { mode: 'default' } })
@@ -102,7 +102,7 @@ describe('a chat on Codex (KERNEL-406)', () => {
     t.sessions.stop('chat')
     await t.sessions.send('chat', [{ type: 'text', text: 'again' }])
     await until(async () => (await t.sent('thread/resume')).length === 1)
-    expect((await t.sent('thread/resume'))[0].params).toMatchObject({ threadId: 'thread-1', developerInstructions: expect.stringContaining('You are Noor.') })
+    expect((await t.sent('thread/resume'))[0].params).toMatchObject({ threadId: 'thread-1', developerInstructions: expect.stringContaining('You are Sean.') })
   })
 
   it('says a compact happened, once per item (KERNEL-808)', async () => {
@@ -503,7 +503,7 @@ describe("an agent file's tools on Codex (KERNEL-451)", () => {
     sentry: { command: 'sentry-mcp', enabled: true },
     old: { command: 'old-mcp', enabled: false }
   }
-  const scoped = { ...noor, tools: ['Read', 'Edit', 'Bash', 'mcp__linear__get_issue', 'mcp__github'], disallowedTools: ['mcp__github__merge_pull_request'] } as AgentDef
+  const scoped = { ...sean, tools: ['Read', 'Edit', 'Bash', 'mcp__linear__get_issue', 'mcp__github'], disallowedTools: ['mcp__github__merge_pull_request'] } as AgentDef
 
   it("starts and resumes the thread without the MCP servers and tools the agent file doesn't reach", async () => {
     const t = track(await setup({ agent: scoped, mcp: JSON.stringify(servers) }))
@@ -528,7 +528,7 @@ describe("an agent file's tools on Codex (KERNEL-451)", () => {
     await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
     await t.idle()
     expect((await t.sent('thread/start'))[0].params).not.toHaveProperty('config')
-    expect(t.of('note').map((n) => n.text)).toContain("Kernel couldn't read Codex's MCP servers, so Noor's file doesn't limit them in this chat.")
+    expect(t.of('note').map((n) => n.text)).toContain("Kernel couldn't read Codex's MCP servers, so Sean's file doesn't limit them in this chat.")
   })
 
   // KERNEL-464: a server the project switched off is off on Codex too, and the tools line reads through the project's aliases.
@@ -577,7 +577,7 @@ describe("an agent file's tools on Codex (KERNEL-451)", () => {
   })
 
   it("turns off a Lead's tracker issue writes and declines its gh issue create, in Bypass permissions too (feat-lead-files-tracker-issues-only-with)", async () => {
-    const lead = { ...noor, id: 'kernel', name: 'Kernel', lead: true } as AgentDef
+    const lead = { ...sean, id: 'kernel', name: 'Kernel', lead: true } as AgentDef
     const t = track(await setup({ mode: 'bypassPermissions', agent: lead, mcp: JSON.stringify(servers) }))
     const ask = (id: string, command: string) => ({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1, environmentId: 'local', command } })
     await t.sessions.send('chat', [{ type: 'text', text: script(ask('c1', '/bin/zsh -lc "gh issue create --title Crash"'), ask('c2', 'gh issue view 41')) }])
@@ -589,14 +589,14 @@ describe("an agent file's tools on Codex (KERNEL-451)", () => {
     expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'accept' }])
     expect(t.of('note').map((n) => n.text)).toEqual([LEAD_GH_ISSUE])
     // A teammate keeps them.
-    const mate = track(await setup({ mode: 'bypassPermissions', agent: noor, mcp: JSON.stringify(servers) }))
+    const mate = track(await setup({ mode: 'bypassPermissions', agent: sean, mcp: JSON.stringify(servers) }))
     await mate.sessions.send('chat', [{ type: 'text', text: script(ask('c1', 'gh issue create --title Crash')) }])
     await mate.idle()
     expect(await mate.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'accept' }])
   })
 
   it("turns off a Lead's issue writes on a server the project aliases to Linear (feat-lead-files-tracker-issues-only-with)", async () => {
-    const lead = { ...noor, id: 'kernel', name: 'Kernel', lead: true } as AgentDef
+    const lead = { ...sean, id: 'kernel', name: 'Kernel', lead: true } as AgentDef
     const t = track(await setup({ agent: lead, mcp: JSON.stringify({ tracker: { command: 'linear-mcp', enabled: true }, sentry: { command: 'sentry-mcp', enabled: true } }), aliases: { linear: 'tracker' } }))
     await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
     await t.idle()
@@ -717,15 +717,15 @@ describe('plan mode on Codex (KERNEL-406)', () => {
   })
 
   it('tells a Codex Lead who the user addressed, and reminds it once with the tools named as Codex calls them (KERNEL-745)', async () => {
-    const helper = { ...noor, id: 'mira', name: 'Mira', member: false } as AgentDef
-    const t = track(await setup({ agent: kernel, team: [kernel, noor, helper] }))
-    await t.sessions.send('chat', [{ type: 'agent', name: 'Noor', agentId: 'noor' }, { type: 'agent', name: 'Mira', agentId: 'mira' }, { type: 'text', text: 'take the Stop hook' }])
+    const helper = { ...sean, id: 'mira', name: 'Mira', member: false } as AgentDef
+    const t = track(await setup({ agent: kernel, team: [kernel, sean, helper] }))
+    await t.sessions.send('chat', [{ type: 'agent', name: 'Sean', agentId: 'sean' }, { type: 'agent', name: 'Mira', agentId: 'mira' }, { type: 'text', text: 'take the Stop hook' }])
     await until(async () => (await t.sent('turn/start')).length === 2)
     await t.idle()
     const inputs = (await t.sent('turn/start')).map((m) => m.params.input[0].text)
-    expect(inputs[0]).toBe(`@Noor @Mira take the Stop hook ${forProvider(mentionNote([{ type: 'agent', name: 'Noor', agentId: 'noor' }, { type: 'agent', name: 'Mira', agentId: 'mira' }], [kernel, noor, helper])!, 'codex')}`)
+    expect(inputs[0]).toBe(`@Sean @Mira take the Stop hook ${forProvider(mentionNote([{ type: 'agent', name: 'Sean', agentId: 'sean' }, { type: 'agent', name: 'Mira', agentId: 'mira' }], [kernel, sean, helper])!, 'codex')}`)
     expect(inputs[0]).toContain("Mira doesn't take tasks in this project, so tell the user or ask with kernel_ask_user")
-    expect(inputs[1]).toBe(forProvider(openReminder(['Noor', 'Mira'].map((name) => ({ kind: 'mention', name }) as OpenItem)), 'codex'))
+    expect(inputs[1]).toBe(forProvider(openReminder(['Sean', 'Mira'].map((name) => ({ kind: 'mention', name }) as OpenItem)), 'codex'))
     expect(inputs[1]).toContain('kernel_create_workspace')
     await new Promise((r) => setTimeout(r, 100))
     expect(await t.sent('turn/start')).toHaveLength(2)
@@ -733,15 +733,15 @@ describe('plan mode on Codex (KERNEL-406)', () => {
 
   it("reminds a Codex Lead once of a teammate's open question, with the tools named as Codex calls them (KERNEL-749)", async () => {
     const t = track(await setup({ agent: kernel }))
-    const kai = { ...t.ws, id: 'ws-kai', agentId: 'kai', name: 'invoice-export' }
-    t.store.saveWorkspace(kai)
-    t.openItems.delivered(t.chat, [{ ws: kai, name: 'Kai', events: [{ n: 1, workspaceId: kai.id, kind: 'question', question: { text: 'Keep drafts per tab?' } }] }])
+    const christian = { ...t.ws, id: 'ws-christian', agentId: 'christian', name: 'invoice-export' }
+    t.store.saveWorkspace(christian)
+    t.openItems.delivered(t.chat, [{ ws: christian, name: 'Christian', events: [{ n: 1, workspaceId: christian.id, kind: 'question', question: { text: 'Keep drafts per tab?' } }] }])
     await t.sessions.send('chat', [{ type: 'text', text: 'how is it going' }])
     await until(async () => (await t.sent('turn/start')).length === 2)
     await t.idle()
     const [, reminder] = (await t.sent('turn/start')).map((m) => m.params.input[0].text)
     expect(reminder).toBe(forProvider(openReminder(t.openItems.owed('chat')), 'codex'))
-    expect(reminder).toContain('Kai asked you: "Keep drafts per tab?" (workspace ws-kai). Answer with kernel_message_agent to it.')
+    expect(reminder).toContain('Christian asked you: "Keep drafts per tab?" (workspace ws-christian). Answer with kernel_message_agent to it.')
     await new Promise((r) => setTimeout(r, 100))
     expect(await t.sent('turn/start')).toHaveLength(2)
   })
@@ -859,7 +859,7 @@ describe('a card whose turn or process is gone, on Codex (KERNEL-563)', () => {
 
   it.each([
     ['ask_user', { question: 'Raise the workspace limit to 8?' }],
-    ['request_plan_approval', { title: 'T-1 Export invoices', plan: '1. Export them as PDF', steps: ['Export invoices · Noor'] }],
+    ['request_plan_approval', { title: 'T-1 Export invoices', plan: '1. Export them as PDF', steps: ['Export invoices · Sean'] }],
     ['create_agent', { id: 'scribe', description: 'Writes the docs', prompt: 'You write the docs.' }]
   ] as const)("ends Kernel's %s card on Stop through the tool call's signal (KERNEL-496)", async (name, args) => {
     const signals: (AbortSignal | undefined)[] = []
@@ -891,7 +891,7 @@ describe('a card whose turn or process is gone, on Codex (KERNEL-563)', () => {
     await t.sessions.send('chat', [{ type: 'text', text: planTurn }])
     const card = await t.pending()
     await t.idle()
-    expect(t.sessions.post('chat', [{ type: 'text', text: 'Kai opened PR #12.' }])).toBe(true)
+    expect(t.sessions.post('chat', [{ type: 'text', text: 'Christian opened PR #12.' }])).toBe(true)
     await until(async () => (await t.sent('turn/start')).length === 2)
     await t.idle()
     expect(t.store.approval(card.id)?.status).toBe('pending')
@@ -901,7 +901,7 @@ describe('a card whose turn or process is gone, on Codex (KERNEL-563)', () => {
     await t.idle()
     await new Promise((r) => setTimeout(r, 100))
     // The message is the next plan-mode turn. The plan sends neither an approval nor changes.
-    expect((await t.sent('turn/start')).map((m) => m.params.input[0].text).slice(1)).toEqual(['Kai opened PR #12.', 'Backfill it in batches instead'])
+    expect((await t.sent('turn/start')).map((m) => m.params.input[0].text).slice(1)).toEqual(['Christian opened PR #12.', 'Backfill it in batches instead'])
     expect(t.store.chat('chat')?.plan).toBe(true)
   })
 

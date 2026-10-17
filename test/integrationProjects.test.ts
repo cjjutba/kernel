@@ -12,7 +12,7 @@ import type { PushEvent } from '../src/shared/ipc'
 vi.mock('../src/renderer/src/api', () => ({ call: vi.fn() }))
 process.env.SHELL = '/bin/sh'
 
-const kai = { 'README.md': '# demo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.' }
+const christian = { 'README.md': '# demo\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nKai.' }
 const events: PushEvent[] = []
 bus.on('push', (e) => { if (e.type === 'script.output') events.push(e) })
 const kernels: Kernel[] = []
@@ -31,7 +31,7 @@ async function kernelWith(...tomls: string[]) {
   k.sessions.send = async () => ({ queued: false })
   const projects = []
   for (const toml of tomls) {
-    const project = await k.addProject(await tempRepo({ ...kai, '.kernel/settings.toml': toml }))
+    const project = await k.addProject(await tempRepo({ ...christian, '.kernel/settings.toml': toml }))
     projects.push(project)
   }
   return { k, h: k.handlers(), projects, dataDir }
@@ -62,8 +62,8 @@ describe('two projects keep their own scripts', () => {
     expect(untouched.sources['scripts.run']).toBe('shared')
 
     // Each project's workspace runs its own project's script.
-    const wsA = await k.createWorkspace(a.id, { prompt: 'a', agentId: 'kai', title: 'A' })
-    const wsB = await k.createWorkspace(b.id, { prompt: 'b', agentId: 'kai', title: 'B' })
+    const wsA = await k.createWorkspace(a.id, { prompt: 'a', agentId: 'christian', title: 'A' })
+    const wsB = await k.createWorkspace(b.id, { prompt: 'b', agentId: 'christian', title: 'B' })
     await h['scripts.run']({ workspaceId: wsA.id, kind: 'run' })
     await h['scripts.run']({ workspaceId: wsB.id, kind: 'run' })
     const said = (id: string, line: string) => events.some((e) => e.type === 'script.output' && e.workspaceId === id && e.lines.some((l) => l.line === line))

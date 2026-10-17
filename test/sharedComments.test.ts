@@ -39,7 +39,7 @@ const ANCHOR: SharedAnchor = {
 const IMAGE = { dataUrl: 'data:image/png;base64,iVBORw0KGgo=', width: 320, height: 200 }
 
 async function setup() {
-  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/noor.md': AGENT('noor') })
+  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/sean.md': AGENT('sean') })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, experimental: { sharing: true } }))
@@ -55,8 +55,8 @@ async function setup() {
   const project = await k.projects.addProject(repo)
   const lead = await k.lead.leadChat(project.id)
   const leadWs = k.store.workspace(lead.workspaceId)!
-  const noor = await k.workspaces.createWorkspace(project.id, { prompt: 'Build the pricing page', agentId: 'noor', title: 'Pricing', leadChatId: lead.id })
-  await git(noor.path, 'commit', '--allow-empty', '-qm', 'start')
+  const sean = await k.workspaces.createWorkspace(project.id, { prompt: 'Build the pricing page', agentId: 'sean', title: 'Pricing', leadChatId: lead.id })
+  await git(sean.path, 'commit', '--allow-empty', '-qm', 'start')
   const firstChat = (ws: Workspace) => k.store.chats(ws.id).find((c) => c.kind !== 'terminal')!
   /** Writes the file in the workspace and shares it from a chat there, as share_file does. */
   const share = async (ws: Workspace, rel: string, data: string, chatId = ws.id === leadWs.id ? lead.id : firstChat(ws).id) => {
@@ -70,23 +70,23 @@ async function setup() {
     k.sharing.comment({ sharedId: file.id, version, note, anchor: o.anchor ?? ANCHOR, image: o.image ?? IMAGE })
   sent.length = 0
   const restart = async () => { await k.stop(); k = await make(); return k }
-  return { k: () => k, project, lead, leadWs, noor, firstChat, share, comment, sent, restart }
+  return { k: () => k, project, lead, leadWs, sean, firstChat, share, comment, sent, restart }
 }
 
 describe('a comment on a shared file (KERNEL-310)', () => {
   it('reaches the chat that shared the version, with the text and the crop', async () => {
     const s = await setup()
-    const v1 = await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(1))
-    await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(2))
+    const v1 = await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(1))
+    await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(2))
     const pushed: PushEvent[] = []
     const on = (e: PushEvent) => pushed.push(e)
     bus.on('push', on)
     onTestFinished(() => { bus.off('push', on) })
-    const chat = s.firstChat(s.noor)
+    const chat = s.firstChat(s.sean)
 
     const r = await s.comment(v1, 2)
 
-    expect(r).toEqual({ chatId: chat.id, workspaceId: s.noor.id, queued: false })
+    expect(r).toEqual({ chatId: chat.id, workspaceId: s.sean.id, queued: false })
     expect(s.sent).toEqual([{
       chatId: chat.id,
       parts: [
@@ -101,9 +101,9 @@ describe('a comment on a shared file (KERNEL-310)', () => {
 
   it('says when newer versions were shared since', async () => {
     const s = await setup()
-    const f = await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(1))
-    await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(2))
-    await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(3))
+    const f = await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(1))
+    await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(2))
+    await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(3))
     await s.comment(f, 2, 'Too much padding.\nAnd the font is small.')
     const text = (s.sent[0].parts[0] as { text: string }).text
     expect(text.split('\n')[0]).toBe('Comment on "Pricing page draft" v2 (.kernel/shared/pricing.html). You have shared v3 since.')
@@ -112,38 +112,38 @@ describe('a comment on a shared file (KERNEL-310)', () => {
 
   it("goes to the workspace's first open chat once the version's chat is closed, skipping terminals", async () => {
     const s = await setup()
-    const f = await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(1))
+    const f = await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(1))
     const k = s.k()
-    const first = s.firstChat(s.noor)
+    const first = s.firstChat(s.sean)
     k.store.saveChat({ ...first, closed: true })
-    newChat(k.store, s.noor.id, 'Terminal', { model: first.model, effort: first.effort, plan: false, kind: 'terminal' })
-    const other = newChat(k.store, s.noor.id, 'Second', { model: first.model, effort: first.effort, plan: false })
+    newChat(k.store, s.sean.id, 'Terminal', { model: first.model, effort: first.effort, plan: false, kind: 'terminal' })
+    const other = newChat(k.store, s.sean.id, 'Second', { model: first.model, effort: first.effort, plan: false })
     expect((await s.comment(f, 1)).chatId).toBe(other.id)
     expect(s.sent.map((x) => x.chatId)).toEqual([other.id])
   })
 
   it('opens a new chat when the workspace has none open', async () => {
     const s = await setup()
-    const f = await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(1))
+    const f = await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(1))
     const k = s.k()
-    for (const c of k.store.chats(s.noor.id)) k.store.saveChat({ ...c, closed: true })
+    for (const c of k.store.chats(s.sean.id)) k.store.saveChat({ ...c, closed: true })
     const r = await s.comment(f, 1)
     const opened = k.store.chat(r.chatId)!
-    expect(opened).toMatchObject({ workspaceId: s.noor.id, title: NEW_CHAT, kind: 'chat', plan: false })
+    expect(opened).toMatchObject({ workspaceId: s.sean.id, title: NEW_CHAT, kind: 'chat', plan: false })
     expect(opened.closed).toBeUndefined()
     expect(s.sent.map((x) => x.chatId)).toEqual([opened.id])
   })
 
   it('queues behind a busy turn, as a plain message with its image', async () => {
     const s = await setup()
-    const f = await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(1))
+    const f = await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(1))
     const k = s.k()
-    const chat = s.firstChat(s.noor)
+    const chat = s.firstChat(s.sean)
     k.sessions.send = Sessions.prototype.send.bind(k.sessions)
     await k.sessions.send(chat.id, [{ type: 'text', text: 'go' }])
-    await vi.waitFor(() => { if (!sdk.calls.some((c) => c.cwd === s.noor.path)) throw new Error('no session yet') })
+    await vi.waitFor(() => { if (!sdk.calls.some((c) => c.cwd === s.sean.path)) throw new Error('no session yet') })
 
-    expect(await s.comment(f, 1)).toEqual({ chatId: chat.id, workspaceId: s.noor.id, queued: true, why: 'running' })
+    expect(await s.comment(f, 1)).toEqual({ chatId: chat.id, workspaceId: s.sean.id, queued: true, why: 'running' })
     const [queued] = k.sessions.queued(chat.id)
     expect(queued.parts.map((p) => p.type)).toEqual(['text', 'image'])
     expect(queued.from).toBeUndefined()
@@ -152,9 +152,9 @@ describe('a comment on a shared file (KERNEL-310)', () => {
 
   it('keeps the message it became in an idle chat', async () => {
     const s = await setup()
-    const f = await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(1))
+    const f = await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(1))
     const k = s.k()
-    const chat = s.firstChat(s.noor)
+    const chat = s.firstChat(s.sean)
     k.sessions.send = Sessions.prototype.send.bind(k.sessions)
     expect(await s.comment(f, 1)).toMatchObject({ chatId: chat.id, queued: false })
     const item = k.store.items(chat.id).filter((i) => i.kind === 'user').at(-1)!
@@ -165,9 +165,9 @@ describe('a comment on a shared file (KERNEL-310)', () => {
 
   it('waits for setup', async () => {
     const s = await setup()
-    const f = await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(1))
+    const f = await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(1))
     const k = s.k()
-    const chat = s.firstChat(s.noor)
+    const chat = s.firstChat(s.sean)
     k.sessions.send = Sessions.prototype.send.bind(k.sessions)
     // What Run again does: the chat waits until setup passes.
     k.sessions.hold(chat.id, [{ type: 'text', text: 'Build the pricing page' }])
@@ -177,9 +177,9 @@ describe('a comment on a shared file (KERNEL-310)', () => {
 
   it('is refused for an archived workspace, with the way back', async () => {
     const s = await setup()
-    const f = await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(1))
-    await s.k().archive.archiveWorkspace(s.noor.id)
-    await expect(s.comment(f, 1)).rejects.toThrow("Noor's workspace is archived, so the comment can't reach Noor. Restore it from History to send.")
+    const f = await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(1))
+    await s.k().archive.archiveWorkspace(s.sean.id)
+    await expect(s.comment(f, 1)).rejects.toThrow("Sean's workspace is archived, so the comment can't reach Sean. Restore it from History to send.")
     expect(s.sent).toEqual([])
     expect(s.k().store.sharedComments(f.id)).toEqual([])
   })
@@ -198,8 +198,8 @@ describe('a comment on a shared file (KERNEL-310)', () => {
 
   it('keeps comments per version, after a restart, and deletes them with the project', async () => {
     const s = await setup()
-    const f = await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(1))
-    await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(2))
+    const f = await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(1))
+    await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(2))
     await s.comment(f, 1, 'One')
     await s.comment(f, 2, 'Two')
     await s.comment(f, 1, 'Three')
@@ -213,10 +213,10 @@ describe('a comment on a shared file (KERNEL-310)', () => {
 
   it('refuses a PDF, an empty note and a version Kernel lacks', async () => {
     const s = await setup()
-    const f = await s.share(s.noor, '.kernel/shared/pricing.html', PAGE(1))
+    const f = await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(1))
     await expect(s.comment(f, 1, '   ')).rejects.toThrow('Write a comment first.')
     await expect(s.comment(f, 9)).rejects.toThrow('That shared file or version is gone.')
-    await s.share(s.noor, '.kernel/shared/terms.pdf', '%PDF-1.7\n')
+    await s.share(s.sean, '.kernel/shared/terms.pdf', '%PDF-1.7\n')
     const pdf = s.k().store.sharedFiles().find((x) => x.kind === 'pdf')!
     await expect(s.comment(pdf, 1)).rejects.toThrow('PDFs take no comments.')
     expect(s.sent).toEqual([])
@@ -225,7 +225,7 @@ describe('a comment on a shared file (KERNEL-310)', () => {
 
 describe('the message a comment makes', () => {
   const file = (kind: SharedFile['kind'], o: Partial<SharedFile> = {}): SharedFile => ({
-    id: 'f', projectId: 'r', workspaceId: 'w', agentId: 'noor', source: '.kernel/shared/x', title: 'Logo ideas', kind,
+    id: 'f', projectId: 'r', workspaceId: 'w', agentId: 'sean', source: '.kernel/shared/x', title: 'Logo ideas', kind,
     versions: [{ n: 1, at: 0, file: 'x', mime: 'x', bytes: 0, sha256: '', width: 616, height: 400 }], createdAt: 0, updatedAt: 0, ...o
   })
 

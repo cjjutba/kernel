@@ -23,7 +23,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
       'README.md': '# client\n',
       '.gitignore': '.env.local\nnode_modules\n',
       '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead. Plans and hands out tasks.\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer. Builds UI.\n---\nYou are Kai.',
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer. Builds UI.\n---\nYou are Christian.',
       '.kernel/settings.toml': '[scripts]\nsetup = "echo setting up && test -f .env.local"\n\n[files]\ncopy = [".env.local"]\n'
     })
     await writeFile(join(repo, '.env.local'), 'SECRET=1\n')
@@ -37,13 +37,13 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
 
     const project = await k.addProject(repo)
     const agents = await k.agents(project.id)
-    expect(agents.map((a) => [a.id, a.lead])).toEqual([['kernel-lead', true], ['kai', false]])
+    expect(agents.map((a) => [a.id, a.lead])).toEqual([['kernel-lead', true], ['christian', false]])
     // The preview reads the project's saved list, or the patterns the user is typing (KERNEL-245).
     expect(await k.handlers()['files.preview']({ projectId: project.id })).toEqual([{ path: '.env.local', size: 9 }])
     expect(await k.handlers()['files.preview']({ projectId: project.id, patterns: ['*.md', '.env*'] })).toEqual([{ path: '.env.local', size: 9 }])
 
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build the invoice table with empty states', agentId: 'kai', title: 'Invoice table' })
-    expect(ws).toMatchObject({ status: 'ready', branch: 'feat/invoice-table', mode: 'worktree', agentId: 'kai' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the invoice table with empty states', agentId: 'christian', title: 'Invoice table' })
+    expect(ws).toMatchObject({ status: 'ready', branch: 'feat/invoice-table', mode: 'worktree', agentId: 'christian' })
     expect(await readFile(join(ws.path, '.env.local'), 'utf8')).toBe('SECRET=1\n')
     expect(sent).toEqual(['Build the invoice table with empty states'])
     expect(k.store.chats(ws.id)).toHaveLength(1)
@@ -51,7 +51,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     await writeFile(join(ws.path, 'table.tsx'), 'export {}\n')
     expect((await k.changes(ws.id)).map((f) => f.path)).toEqual(['table.tsx'])
 
-    const second = await k.createWorkspace(project.id, { prompt: 'Another pass', agentId: 'kai', title: 'Invoice table' })
+    const second = await k.createWorkspace(project.id, { prompt: 'Another pass', agentId: 'christian', title: 'Invoice table' })
     expect(second.branch).toBe('feat/invoice-table-2')
     // Each workspace gets its own block of ports, $KERNEL_PORT to $KERNEL_PORT + 9 (KERNEL-244).
     expect(second.port % PORT_BLOCK).toBe(0)
@@ -78,7 +78,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     expect(await readFile(join(opened.path, '.env.local'), 'utf8')).toBe('SECRET=1\n')
     expect((await k.handlers()['lead.open']({ projectId: project.id }))?.id).toBe(opened.id)
     expect((await k.leadChat(project.id)).id).toBe(lead.id)
-    expect(k.statusOf(project.id)).toEqual({ 'kernel-lead': 'idle', kai: 'idle' })
+    expect(k.statusOf(project.id)).toEqual({ 'kernel-lead': 'idle', christian: 'idle' })
 
     // A brief logs an activity line with the brief quoted.
     const logged: ActivityEvent[] = []
@@ -95,9 +95,9 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
       '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead. Plans and hands out tasks.\nlead: true\neffort: medium\n---\nYou are Kernel.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer. Builds UI.\n---\nYou are Kai.'
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer. Builds UI.\n---\nYou are Christian.'
     })
-    const leadless = await tempRepo({ 'README.md': '# solo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const leadless = await tempRepo({ 'README.md': '# solo\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     // The first message goes once the chat's worktree exists, while setup runs (KERNEL-405, KERNEL-542).

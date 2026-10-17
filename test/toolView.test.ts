@@ -67,8 +67,8 @@ describe('toolView verbs and tenses', () => {
   })
 
   it('reads Kernel tools', () => {
-    expect(toolView(call('mcp__kernel__create_workspace', { agent: 'kai', title: 'Tool rows' }))).toMatchObject({ verb: 'Handed to Kai', object: 'Tool rows', agent: 'kai', service: 'kernel' })
-    expect(toolView(call('mcp__kernel__message_agent', { workspace_id: 'w1', text: 'Rebase please' }), { agentOf: () => 'noor' })).toMatchObject({ verb: 'Messaged Noor', object: 'Rebase please' })
+    expect(toolView(call('mcp__kernel__create_workspace', { agent: 'christian', title: 'Tool rows' }))).toMatchObject({ verb: 'Handed to Christian', object: 'Tool rows', agent: 'christian', service: 'kernel' })
+    expect(toolView(call('mcp__kernel__message_agent', { workspace_id: 'w1', text: 'Rebase please' }), { agentOf: () => 'sean' })).toMatchObject({ verb: 'Messaged Sean', object: 'Rebase please' })
     expect(toolView(call('mcp__kernel__list_workspaces')).verb).toBe('Checked workspaces')
     expect(toolView(call('mcp__kernel__get_issue', { key: 'KERNEL-5' })).verb).toBe('Read KERNEL-5')
     expect(toolView(call('mcp__kernel__share_file', { path: '.kernel/shared/mock.html' })).verb).toBe('Shared mock.html')

@@ -55,7 +55,7 @@ function template(files: Record<string, string>) {
   const key = JSON.stringify(files)
   if (!templates.has(key)) templates.set(key, (async () => {
     // The run script's file is ignored, so the chat's worktree has no change a hand-off would mention (KERNEL-770).
-    const repo = await tempRepo({ 'README.md': '# client\n', '.gitignore': 'ran.txt\nset-up.txt\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.kernel/settings.toml': '[scripts]\nrun = "touch ran.txt"\n', ...files })
+    const repo = await tempRepo({ 'README.md': '# client\n', '.gitignore': 'ran.txt\nset-up.txt\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/christian.md': AGENT('christian'), '.claude/agents/sean.md': AGENT('sean'), '.kernel/settings.toml': '[scripts]\nrun = "touch ran.txt"\n', ...files })
     const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
     await run('git', ['clone', '-q', '--bare', repo, origin])
     await run('git', ['-C', repo, 'remote', 'add', 'origin', origin])
@@ -99,7 +99,7 @@ async function setup(files: Record<string, string> = {}, o: { fetch?: typeof fet
   const again = async () => { const next = fake(new Kernel({ dataDir, home, fetch: o.fetch })); await next.start(); return next }
   /** A teammate's workspace with an open PR, the work others wait for. */
   const target = async (k: Kernel, number: number, title = `Work ${number}`, issue?: string) => {
-    const ws = await k.createWorkspace(project.id, { prompt: title, agentId: 'noor', title, leadChatId: lead.id, ...(issue ? { source: { kind: 'issue' as const, id: issue, title } } : {}) })
+    const ws = await k.createWorkspace(project.id, { prompt: title, agentId: 'sean', title, leadChatId: lead.id, ...(issue ? { source: { kind: 'issue' as const, id: issue, title } } : {}) })
     gh.prs.set(ws.branch, prInfo('open', number))
     return k.refreshPr(ws.id)
   }
@@ -164,11 +164,11 @@ function reasonsPushed() {
 describe('a hand-off that waits for a merge', () => {
   it('creates the worktree and runs setup, then holds the brief with no checkpoint, run script or turn', async () => {
     const { k, project, lead, target } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "touch set-up.txt"\nrun = "touch ran.txt"\n' })
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     const chat = chatOf(k, w)
     expect(existsSync(join(w.path, 'set-up.txt'))).toBe(true)
-    expect(w).toMatchObject({ status: 'ready', waitsFor: { on: [noor.id], held: true, base: await head(w.path) } })
+    expect(w).toMatchObject({ status: 'ready', waitsFor: { on: [sean.id], held: true, base: await head(w.path) } })
     expect(queue(k, chat)).toEqual([['Build T-15', 'lead']])
     expect(users(k, chat)).toEqual([])
     // The queue tray shows the wait and Send now, so no note says it again (KERNEL-973).
@@ -178,19 +178,19 @@ describe('a hand-off that waits for a merge', () => {
     expect(await listCheckpoints(w)).toEqual([])
     // The Lead's message waits for the brief's turn and goes in it, and the Lead hears why.
     const sent = await k.lead['messageWorkspace'](project.id, w.id, 'Use the new rows', lead.id)
-    expect(sent.note).toBe('Kai waits for PR #164 by Noor to merge, so this goes out with the brief. To start Kai now, call wait_for_merge with an empty list.')
+    expect(sent.note).toBe('Christian waits for PR #164 by Sean to merge, so this goes out with the brief. To start Christian now, call wait_for_merge with an empty list.')
     expect(queue(k, chat)).toEqual([['Build T-15', 'lead'], ['Use the new rows', 'lead']])
     await k.stop()
   })
 
   it.each(['GitHub', 'Kernel'])('fast-forwards onto origin and sends the brief with the Lead\'s message, in one turn, when the PR merges on %s', async (where) => {
     const { k, project, lead, target, mergeOnGitHub, origin } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     await k.lead['messageWorkspace'](project.id, w.id, 'Use the new rows', lead.id)
     const chat = chatOf(k, w)
-    if (where === 'GitHub') await mergeOnGitHub(k, noor)
-    else await k.mergePr(noor.id)
+    if (where === 'GitHub') await mergeOnGitHub(k, sean)
+    else await k.mergePr(sean.id)
     await released(k, w)
     expect(await head(w.path)).toBe((await run('git', ['-C', origin, 'rev-parse', 'main'])).trim())
     expect(existsSync(join(w.path, 'pr-164.txt'))).toBe(true)
@@ -201,15 +201,15 @@ describe('a hand-off that waits for a merge', () => {
     expect(notes(k, chat)).toEqual([])
     expect(k.store.items(chat.id)[0]).toMatchObject({ kind: 'user', from: 'lead' })
     // All rows are there as soon as the PR merges, and one message reached the SDK, so no turn waits behind the brief's.
-    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor'), ['Use the new rows', 'lead']])
+    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Sean'), ['Use the new rows', 'lead']])
     expect(queue(k, chat)).toEqual([])
     await vi.waitFor(() => expect(existsSync(join(w.path, 'ran.txt'))).toBe(true), SLOW)
     expect(callsIn(w)).toHaveLength(1)
-    expect((await firstInput(callsIn(w)[0])).map(plain)).toEqual(['Build T-15', ahead('PR #164 by Noor')[0], 'Use the new rows'])
+    expect((await firstInput(callsIn(w)[0])).map(plain)).toEqual(['Build T-15', ahead('PR #164 by Sean')[0], 'Use the new rows'])
     callsIn(w)[0].feed(result('r1'))
     await idle(k, w)
     expect(queue(k, chat)).toEqual([])
-    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor'), ['Use the new rows', 'lead']])
+    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Sean'), ['Use the new rows', 'lead']])
     // The save after the turn is titled for the brief that started it, not for the note that came last.
     await vi.waitFor(async () => expect((await listCheckpoints(k.store.workspace(w.id)!)).filter((c) => !c.start).map((c) => c.title)).toEqual(['Build T-15']), SLOW)
     expect(pending(k).some((e) => e.kind === 'wait.released' && e.workspaceId === w.id)).toBe(true)
@@ -218,33 +218,33 @@ describe('a hand-off that waits for a merge', () => {
 
   it('leaves a dirty tree where it is, and asks for a rebase with the brief', async () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     const base = await head(w.path)
     await writeFile(join(w.path, 'README.md'), '# changed by hand\n')
-    await mergeOnGitHub(k, noor)
+    await mergeOnGitHub(k, sean)
     await released(k, w)
     const chat = chatOf(k, w)
     expect(await head(w.path)).toBe(base)
-    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ['PR #164 by Noor merged after your branch started. Rebase onto origin/main before you build on it.', 'kernel']])
+    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ['PR #164 by Sean merged after your branch started. Rebase onto origin/main before you build on it.', 'kernel']])
     expect(queue(k, chat)).toEqual([])
     await k.stop()
   })
 
   it('puts a message with a skill chip in its own turn, after the first', async () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     const chat = chatOf(k, w)
     await k.lead['messageWorkspace'](project.id, w.id, 'Use the new rows', lead.id)
     // Claude Code reads a slash command only at the start of a message, so the chip ends the first turn's batch (D-030).
     await k.sessions.send(chat.id, [{ type: 'skill', name: 'review' }, { type: 'text', text: 'the header' }])
     await k.sessions.send(chat.id, [{ type: 'text', text: 'And the footer' }])
-    await mergeOnGitHub(k, noor)
+    await mergeOnGitHub(k, sean)
     await released(k, w)
-    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor'), ['Use the new rows', 'lead']])
+    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Sean'), ['Use the new rows', 'lead']])
     expect(queue(k, chat)).toEqual([['the header', undefined], ['And the footer', undefined]])
-    expect((await firstInput(callsIn(w)[0])).map(plain)).toEqual(['Build T-15', ahead('PR #164 by Noor')[0], 'Use the new rows'])
+    expect((await firstInput(callsIn(w)[0])).map(plain)).toEqual(['Build T-15', ahead('PR #164 by Sean')[0], 'Use the new rows'])
     // The chat has a turn behind it now, so the rest go one at a time, as before.
     callsIn(w)[0].feed(result('r1'))
     await vi.waitFor(() => expect(users(k, chat)).toHaveLength(4), SLOW)
@@ -256,7 +256,7 @@ describe('a hand-off that waits for a merge', () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup()
     const a = await target(k, 164)
     const b = await target(k, 170)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [a.id, b.id] })
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [a.id, b.id] })
     await mergeOnGitHub(k, a)
     await flush()
     expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ on: [a.id, b.id], held: true })
@@ -265,7 +265,7 @@ describe('a hand-off that waits for a merge', () => {
     await released(k, w)
     expect(existsSync(join(w.path, 'pr-164.txt')) && existsSync(join(w.path, 'pr-170.txt'))).toBe(true)
     expect(notes(k, chatOf(k, w))).toEqual([])
-    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor and PR #170 by Noor', 'them')])
+    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Sean and PR #170 by Sean', 'them')])
     await k.stop()
   })
 
@@ -275,7 +275,7 @@ describe('a hand-off that waits for a merge', () => {
     const b = await target(k, 170)
     // One PR with a title and one without: the one without leaves its title out.
     gh.prs.set(a.branch, { ...gh.prs.get(a.branch)!, title: 'Fix the header' })
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [a.id, b.id] })
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [a.id, b.id] })
     const before = await head(w.path)
     await mergeOnGitHub(k, a)
     // A refresh keeps the title it had when GitHub sends none.
@@ -283,7 +283,7 @@ describe('a hand-off that waits for a merge', () => {
     gh.prs.set(b.branch, { ...gh.prs.get(b.branch)!, title: '' })
     await mergeOnGitHub(k, b)
     await released(k, w)
-    const told = `PR #164 by Noor and PR #170 by Noor merged before your brief went out. Your branch already starts from them. PR #164 is "Fix the header". Read what changed with \`gh pr view 164\`, \`gh pr view 170\` and \`git log ${before}..origin/main\`.`
+    const told = `PR #164 by Sean and PR #170 by Sean merged before your brief went out. Your branch already starts from them. PR #164 is "Fix the header". Read what changed with \`gh pr view 164\`, \`gh pr view 170\` and \`git log ${before}..origin/main\`.`
     expect(fullNotes(k, chatOf(k, w))).toEqual([])
     await vi.waitFor(() => expect(callsIn(w)).toHaveLength(1), SLOW)
     expect(await firstInput(callsIn(w)[0])).toEqual(['Build T-15', told])
@@ -292,26 +292,26 @@ describe('a hand-off that waits for a merge', () => {
 
   it('names what merged in the rebase message that goes with a held brief (KERNEL-695)', async () => {
     const { k, project, lead, target, mergeOnGitHub, gh } = await setup()
-    const noor = await target(k, 164)
-    gh.prs.set(noor.branch, { ...gh.prs.get(noor.branch)!, title: 'Fix the header' })
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    gh.prs.set(sean.branch, { ...gh.prs.get(sean.branch)!, title: 'Fix the header' })
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     const base = await head(w.path)
     await writeFile(join(w.path, 'README.md'), '# changed by hand\n')
-    await mergeOnGitHub(k, noor)
+    await mergeOnGitHub(k, sean)
     await released(k, w)
     const read = `PR #164 is "Fix the header". Read what changed with \`gh pr view 164\` and \`git log ${base}..origin/main\`.`
-    expect(fullUsers(k, chatOf(k, w)).at(-1)).toEqual([`PR #164 by Noor merged after your branch started. Rebase onto origin/main before you build on it. ${read}`, 'kernel'])
+    expect(fullUsers(k, chatOf(k, w)).at(-1)).toEqual([`PR #164 by Sean merged after your branch started. Rebase onto origin/main before you build on it. ${read}`, 'kernel'])
     // Something went wrong, so the user hears it in one short note, without what the agent reads (KERNEL-973).
-    expect(fullNotes(k, chatOf(k, w))).toEqual(["PR #164 by Noor merged, but Kernel couldn't move your branch onto it. A message with the brief asks for a rebase."])
+    expect(fullNotes(k, chatOf(k, w))).toEqual(["PR #164 by Sean merged, but Kernel couldn't move your branch onto it. A message with the brief asks for a rebase."])
     await k.stop()
   })
 
   it('tells the Lead once when a PR it waits for closes without merging, and keeps the brief held', async () => {
     const { k, project, lead, target, setPr } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
-    setPr(noor, 'closed')
-    await k.refreshPr(noor.id)
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
+    setPr(sean, 'closed')
+    await k.refreshPr(sean.id)
     await vi.waitFor(() => expect(pending(k).filter((e) => e.kind === 'wait.broken' && e.workspaceId === w.id)).toHaveLength(1), SLOW)
     expect(k.store.workspace(w.id)?.waitsFor?.held).toBe(true)
     expect(queue(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])
@@ -320,9 +320,9 @@ describe('a hand-off that waits for a merge', () => {
 
   it('tells the Lead when work it waits for is archived without merging', async () => {
     const { k, project, lead } = await setup()
-    const noor = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'noor', title: 'Tool rows', leadChatId: lead.id })
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
-    await k.archiveWorkspace(noor.id)
+    const sean = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'sean', title: 'Tool rows', leadChatId: lead.id })
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
+    await k.archiveWorkspace(sean.id)
     expect(pending(k).filter((e) => e.kind === 'wait.broken' && e.workspaceId === w.id).map((e) => e.wait?.gone)).toEqual(['archived'])
     expect(k.store.workspace(w.id)?.waitsFor?.held).toBe(true)
     await k.stop()
@@ -330,8 +330,8 @@ describe('a hand-off that waits for a merge', () => {
 
   it('starts at once on wait_for_merge with an empty list, and says nothing when the PR merges later', async () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     await k.setWait(w.id, [])
     expect(k.store.workspace(w.id)?.waitsFor).toBeUndefined()
     expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])
@@ -339,7 +339,7 @@ describe('a hand-off that waits for a merge', () => {
     expect(notes(k, chatOf(k, w))).toEqual([])
     callsIn(w)[0].feed(result('r1'))
     await idle(k, w)
-    await mergeOnGitHub(k, noor)
+    await mergeOnGitHub(k, sean)
     await flush()
     expect(k.store.workspace(w.id)?.waitsFor).toBeUndefined()
     expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])
@@ -348,17 +348,17 @@ describe('a hand-off that waits for a merge', () => {
 
   it('keeps the wait on Send now of a held brief, and asks for a rebase when the PR merges (KERNEL-689)', async () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     const chat = chatOf(k, w)
     await k.chats['sendNow'](chat.id, k.sessions.queued(chat.id)[0].id)
-    expect(k.store.workspace(w.id)?.waitsFor).toEqual({ on: [noor.id], held: false })
+    expect(k.store.workspace(w.id)?.waitsFor).toEqual({ on: [sean.id], held: false })
     expect(users(k, chat)).toEqual([['Build T-15', 'lead']])
-    expect(notes(k, chat)).toContain('Started without waiting for PR #164 by Noor. Kernel asks Kai to rebase once it merges.')
+    expect(notes(k, chat)).toContain('Started without waiting for PR #164 by Sean. Kernel asks Christian to rebase once it merges.')
     callsIn(w)[0].feed(result('r1'))
     await idle(k, w)
-    await mergeOnGitHub(k, noor)
-    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.', 'kernel']), SLOW)
+    await mergeOnGitHub(k, sean)
+    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Sean merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.', 'kernel']), SLOW)
     await rebase(w)
     callsIn(w)[0].feed(result('r2'))
     await released(k, w)
@@ -367,16 +367,16 @@ describe('a hand-off that waits for a merge', () => {
 
   it('on Send now of a pushed branch, asks for a merge of the base instead, and the merge ends the wait (KERNEL-886)', async () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     await push(w)
     const chat = chatOf(k, w)
     await k.chats['sendNow'](chat.id, k.sessions.queued(chat.id)[0].id)
-    expect(notes(k, chat)).toContain('Started without waiting for PR #164 by Noor. Kernel asks Kai to merge it in once it merges.')
+    expect(notes(k, chat)).toContain('Started without waiting for PR #164 by Sean. Kernel asks Christian to merge it in once it merges.')
     callsIn(w)[0].feed(result('r1'))
     await idle(k, w)
-    await mergeOnGitHub(k, noor)
-    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, merge origin/main into your branch and re-run the tests. Your branch is on origin, so merge rather than rebase. Then carry on with your task.', 'kernel']), SLOW)
+    await mergeOnGitHub(k, sean)
+    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Sean merged into main. Fetch origin, merge origin/main into your branch and re-run the tests. Your branch is on origin, so merge rather than rebase. Then carry on with your task.', 'kernel']), SLOW)
     await mergeBase(w)
     callsIn(w)[0].feed(result('r2'))
     await released(k, w)
@@ -387,21 +387,21 @@ describe('a hand-off that waits for a merge', () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup()
     const a = await target(k, 164)
     const b = await target(k, 170)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [a.id, b.id] })
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [a.id, b.id] })
     await mergeOnGitHub(k, a)
     const chat = chatOf(k, w)
     await k.chats['sendNow'](chat.id, k.sessions.queued(chat.id)[0].id)
     expect(k.store.workspace(w.id)?.waitsFor).toEqual({ on: [b.id], held: false })
     expect(existsSync(join(w.path, 'pr-164.txt'))).toBe(true)
-    expect(notes(k, chat)).toEqual(['Started without waiting for PR #170 by Noor. Kernel asks Kai to rebase once it merges.'])
-    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor')])
+    expect(notes(k, chat)).toEqual(['Started without waiting for PR #170 by Sean. Kernel asks Christian to rebase once it merges.'])
+    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Sean')])
     await k.stop()
   })
 
   it('sends everything queued with a held brief, in queue order, on Send now of a later message', async () => {
     const { k, project, lead, target } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     const chat = chatOf(k, w)
     await k.lead['messageWorkspace'](project.id, w.id, 'Use the new rows', lead.id)
     await k.lead['messageWorkspace'](project.id, w.id, 'Keep the old header', lead.id)
@@ -419,90 +419,90 @@ describe('a hand-off that waits for a merge', () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup()
     const a = await target(k, 164)
     const b = await target(k, 170)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [a.id, b.id] })
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [a.id, b.id] })
     await mergeOnGitHub(k, a)
     const kernel = (await k.agents(project.id)).find((x) => x.lead)!
     const tool = kernelTools(k.lead['leadToolDeps'](project.id, kernel, lead)).find((t) => t.name === 'wait_for_merge')!
     const out = (await tool.handler({ workspace_id: w.id, on: [] } as never, {})).content[0] as { text: string }
-    expect(out.text).toBe('Kai no longer waits. Kernel sent the brief, so Kai starts now.')
+    expect(out.text).toBe('Christian no longer waits. Kernel sent the brief, so Christian starts now.')
     expect(k.store.workspace(w.id)?.waitsFor).toBeUndefined()
     expect(existsSync(join(w.path, 'pr-164.txt'))).toBe(true)
     expect(notes(k, chatOf(k, w))).toEqual([])
-    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor')])
+    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Sean')])
     await k.stop()
   })
 
   it("asks for a rebase when origin can't be fetched, instead of claiming the merge", async () => {
     const { k, project, lead, target, repo, gh } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     const base = await head(w.path)
     await run('git', ['-C', repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'no-such-origin.git')])
-    gh.prs.set(noor.branch, { ...gh.prs.get(noor.branch)!, state: 'merged' })
-    await k.refreshPr(noor.id)
+    gh.prs.set(sean.branch, { ...gh.prs.get(sean.branch)!, state: 'merged' })
+    await k.refreshPr(sean.id)
     await released(k, w)
     expect(await head(w.path)).toBe(base)
-    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ['PR #164 by Noor merged after your branch started. Rebase onto origin/main before you build on it.', 'kernel']])
+    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ['PR #164 by Sean merged after your branch started. Rebase onto origin/main before you build on it.', 'kernel']])
     expect(queue(k, chatOf(k, w))).toEqual([])
     await k.stop()
   })
 
   it("asks a branch origin has for a merge instead when origin can't be fetched (KERNEL-886)", async () => {
     const { k, project, lead, target, repo, gh } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     await push(w)
     await run('git', ['-C', repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'no-such-origin.git')])
-    gh.prs.set(noor.branch, { ...gh.prs.get(noor.branch)!, state: 'merged' })
-    await k.refreshPr(noor.id)
+    gh.prs.set(sean.branch, { ...gh.prs.get(sean.branch)!, state: 'merged' })
+    await k.refreshPr(sean.id)
     await released(k, w)
-    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ['PR #164 by Noor merged after your branch started. Merge origin/main into your branch before you build on it. Your branch is on origin, so merge rather than rebase.', 'kernel']])
-    expect(notes(k, chatOf(k, w))).toEqual(["PR #164 by Noor merged, but Kernel couldn't move your branch onto it. A message with the brief asks for a merge."])
+    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ['PR #164 by Sean merged after your branch started. Merge origin/main into your branch before you build on it. Your branch is on origin, so merge rather than rebase.', 'kernel']])
+    expect(notes(k, chatOf(k, w))).toEqual(["PR #164 by Sean merged, but Kernel couldn't move your branch onto it. A message with the brief asks for a merge."])
     await k.stop()
   })
 
   it("asks for a rebase when the merge went into another base, which the fast-forward doesn't bring (KERNEL-693)", async () => {
     const { k, project, lead, target, origin, gh } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     const base = await head(w.path)
-    // A wait set before Kernel compared bases: Noor's PR goes into a release branch, and Kai starts from main.
+    // A wait set before Kernel compared bases: Sean's PR goes into a release branch, and Christian starts from main.
     await run('git', ['-C', origin, 'branch', 'release/1.2', 'main'])
-    k.store.saveWorkspace({ ...k.store.workspace(noor.id)!, baseRef: 'origin/release/1.2' })
+    k.store.saveWorkspace({ ...k.store.workspace(sean.id)!, baseRef: 'origin/release/1.2' })
     await land(origin, 'pr-164.txt', 'release/1.2')
-    gh.prs.set(noor.branch, { ...gh.prs.get(noor.branch)!, state: 'merged' })
-    await k.refreshPr(noor.id)
+    gh.prs.set(sean.branch, { ...gh.prs.get(sean.branch)!, state: 'merged' })
+    await k.refreshPr(sean.id)
     await released(k, w)
     // origin/main didn't move, so the fast-forward was "already up to date".
     expect(await head(w.path)).toBe(base)
-    expect(notes(k, chatOf(k, w))).toEqual(["PR #164 by Noor merged, but Kernel couldn't move your branch onto it. A message with the brief asks for a rebase."])
-    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ['PR #164 by Noor merged after your branch started. Rebase onto origin/main before you build on it.', 'kernel']])
+    expect(notes(k, chatOf(k, w))).toEqual(["PR #164 by Sean merged, but Kernel couldn't move your branch onto it. A message with the brief asks for a rebase."])
+    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ['PR #164 by Sean merged after your branch started. Rebase onto origin/main before you build on it.', 'kernel']])
     await k.stop()
   })
 
   it('runs setup again when the branch moved, and a failure there leaves Run again to send the brief', async () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "test ! -f pr-164.txt || test -f ok.txt"\n' })
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     expect(w.status).toBe('ready')
-    await mergeOnGitHub(k, noor)
+    await mergeOnGitHub(k, sean)
     await vi.waitFor(() => expect(k.store.workspace(w.id)?.status).toBe('failed'), SLOW)
     expect(k.store.workspace(w.id)?.waitsFor).toBeUndefined()
     const chat = chatOf(k, w)
-    expect(queue(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor')])
+    expect(queue(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Sean')])
     await writeFile(join(w.path, 'ok.txt'), 'ok\n')
     expect((await k.retrySetup(w.id)).status).toBe('ready')
-    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor')])
+    expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Sean')])
     await k.stop()
   })
 
   it('keeps the brief held when Run again passes while the wait still stands', async () => {
     const { k, project, lead, target } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     expect(w).toMatchObject({ status: 'failed', waitsFor: { held: true } })
     await writeFile(join(w.path, 'ok.txt'), 'ok\n')
-    expect(await k.retrySetup(w.id)).toMatchObject({ status: 'ready', waitsFor: { on: [noor.id], held: true } })
+    expect(await k.retrySetup(w.id)).toMatchObject({ status: 'ready', waitsFor: { on: [sean.id], held: true } })
     const chat = chatOf(k, w)
     expect(queue(k, chat)).toEqual([['Build T-15', 'lead']])
     expect(users(k, chat)).toEqual([])
@@ -515,8 +515,8 @@ describe('a hand-off that waits for a merge', () => {
     const { k, project, lead, target } = await setup()
     const pushed = reasonsPushed()
     try {
-      const noor = await target(k, 164)
-      const w = await k.workspaces.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+      const sean = await target(k, 164)
+      const w = await k.workspaces.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
       const chat = chatOf(k, w)
       expect(k.sessions.queueReason(chat.id)).toBe('merge')
       await vi.waitFor(() => expect(pushed.last(chat.id)).toBe('merge'))
@@ -528,8 +528,8 @@ describe('a hand-off that waits for a merge', () => {
     const { k, project, lead, target } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const pushed = reasonsPushed()
     try {
-      const noor = await target(k, 164)
-      const w = await k.workspaces.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+      const sean = await target(k, 164)
+      const w = await k.workspaces.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
       const chat = chatOf(k, w)
       expect(k.sessions.queueReason(chat.id)).toBe('setup')
       await writeFile(join(w.path, 'ok.txt'), 'ok\n')
@@ -542,8 +542,8 @@ describe('a hand-off that waits for a merge', () => {
 
   it('archives a held waiter through archive_workspace, and ends its wait', async () => {
     const { k, project, lead, target } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     const kernel = (await k.agents(project.id)).find((a) => a.lead)!
     const archive = kernelTools(k.lead['leadToolDeps'](project.id, kernel, lead)).find((t) => t.name === 'archive_workspace')!
     const out = await archive.handler({ workspace_ids: [w.id] } as never, {})
@@ -555,17 +555,17 @@ describe('a hand-off that waits for a merge', () => {
 
   it("doesn't release on a target that merged an earlier PR and pressed Continue", async () => {
     const { k, project, lead, target, gh, mergeOnGitHub } = await setup()
-    const noor = await target(k, 160)
-    await mergeOnGitHub(k, noor)
-    await k.continuePr(noor.id)
-    expect(k.store.workspace(noor.id)).toMatchObject({ prState: 'none', mergedAt: expect.any(Number) })
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 160)
+    await mergeOnGitHub(k, sean)
+    await k.continuePr(sean.id)
+    expect(k.store.workspace(sean.id)).toMatchObject({ prState: 'none', mergedAt: expect.any(Number) })
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     await k.waits['retryWaits']()
-    const next = k.store.workspace(noor.id)!
+    const next = k.store.workspace(sean.id)!
     gh.prs.set(next.branch, prInfo('open', 164))
-    await k.refreshPr(noor.id)
+    await k.refreshPr(sean.id)
     await flush()
-    expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ on: [noor.id], held: true })
+    expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ on: [sean.id], held: true })
     expect(users(k, chatOf(k, w))).toEqual([])
     await k.stop()
   })
@@ -574,14 +574,14 @@ describe('a hand-off that waits for a merge', () => {
 describe('a teammate that already started', () => {
   it('gets the rebase message posted when its chat is idle, and the wait ends once the turn rebased', async () => {
     const { k, project, lead, repo, target, mergeOnGitHub } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id })
     callsIn(w)[0].feed(result('r1'))
     await idle(k, w)
-    expect((await k.setWait(w.id, [noor.id])).waitsFor).toEqual({ on: [noor.id], held: false })
-    await mergeOnGitHub(k, noor)
+    expect((await k.setWait(w.id, [sean.id])).waitsFor).toEqual({ on: [sean.id], held: false })
+    await mergeOnGitHub(k, sean)
     const chat = chatOf(k, w)
-    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.', 'kernel']), SLOW)
+    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Sean merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.', 'kernel']), SLOW)
     const tip = (await exec('git', ['-C', repo, 'rev-parse', 'origin/main'])).stdout.trim()
     expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ releasing: true, tip })
     await rebase(w)
@@ -593,32 +593,32 @@ describe('a teammate that already started', () => {
 
   it('names what merged in the rebase message, with a log from where the branch is (KERNEL-695)', async () => {
     const { k, project, lead, target, mergeOnGitHub, gh } = await setup()
-    const noor = await target(k, 164)
-    gh.prs.set(noor.branch, { ...gh.prs.get(noor.branch)!, title: 'Fix the header' })
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id })
+    const sean = await target(k, 164)
+    gh.prs.set(sean.branch, { ...gh.prs.get(sean.branch)!, title: 'Fix the header' })
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id })
     callsIn(w)[0].feed(result('r1'))
     await idle(k, w)
-    await k.setWait(w.id, [noor.id])
-    await mergeOnGitHub(k, noor)
+    await k.setWait(w.id, [sean.id])
+    await mergeOnGitHub(k, sean)
     const chat = chatOf(k, w)
-    await vi.waitFor(() => expect(fullUsers(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task. PR #164 is "Fix the header". Read what changed with `gh pr view 164` and `git log HEAD..origin/main`.', 'kernel']), SLOW)
+    await vi.waitFor(() => expect(fullUsers(k, chat).at(-1)).toEqual(['PR #164 by Sean merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task. PR #164 is "Fix the header". Read what changed with `gh pr view 164` and `git log HEAD..origin/main`.', 'kernel']), SLOW)
     await k.stop()
   })
 
   it("keeps the wait and tells the Lead when the turn ends without the rebase, and ends it once a later turn rebased (KERNEL-691)", async () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id })
     callsIn(w)[0].feed(result('r1'))
     await idle(k, w)
-    await k.setWait(w.id, [noor.id])
-    await mergeOnGitHub(k, noor)
+    await k.setWait(w.id, [sean.id])
+    await mergeOnGitHub(k, sean)
     const chat = chatOf(k, w)
     await vi.waitFor(() => expect(users(k, chat).at(-1)?.[1]).toBe('kernel'), SLOW)
     callsIn(w)[0].feed(result('r2'))
     await vi.waitFor(() => expect(pending(k).filter((e) => e.kind === 'wait.rebase_missing' && e.workspaceId === w.id)).toHaveLength(1), SLOW)
     const kept = k.store.workspace(w.id)!.waitsFor!
-    expect(kept).toMatchObject({ on: [noor.id], held: false, tip: expect.any(String) })
+    expect(kept).toMatchObject({ on: [sean.id], held: false, tip: expect.any(String) })
     expect(kept.releasing).toBeUndefined()
     // The next poll and start look at the wait again, and find nothing to send.
     const sent = users(k, chat).length
@@ -638,23 +638,23 @@ describe('a teammate that already started', () => {
 
   it('asks a pushed branch to merge the base in, and a merge in a later turn ends the wait kept for it (KERNEL-886)', async () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id })
     callsIn(w)[0].feed(result('r1'))
     await idle(k, w)
     await writeFile(join(w.path, 'rows.ts'), 'export const rows = []\n')
     await run('git', ['-C', w.path, 'add', '-A'])
     await run('git', ['-C', w.path, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-m', 'feat: rows'])
     await push(w)
-    await k.setWait(w.id, [noor.id])
+    await k.setWait(w.id, [sean.id])
     const chat = chatOf(k, w)
-    expect(notes(k, chat)).toContain('Waiting for PR #164 by Noor to merge. Kernel asks Kai to merge it in then.')
-    await mergeOnGitHub(k, noor)
-    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, merge origin/main into your branch and re-run the tests. Your branch is on origin, so merge rather than rebase. Then carry on with your task.', 'kernel']), SLOW)
+    expect(notes(k, chat)).toContain('Waiting for PR #164 by Sean to merge. Kernel asks Christian to merge it in then.')
+    await mergeOnGitHub(k, sean)
+    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Sean merged into main. Fetch origin, merge origin/main into your branch and re-run the tests. Your branch is on origin, so merge rather than rebase. Then carry on with your task.', 'kernel']), SLOW)
     // The turn ends without the merge, so the wait is kept.
     callsIn(w)[0].feed(result('r2'))
     await vi.waitFor(() => expect(pending(k).filter((e) => e.kind === 'wait.rebase_missing' && e.workspaceId === w.id)).toHaveLength(1), SLOW)
-    expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ on: [noor.id], tip: expect.any(String) })
+    expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ on: [sean.id], tip: expect.any(String) })
     expect(pending(k).find((e) => e.kind === 'wait.rebase_missing' && e.workspaceId === w.id)?.wait).toMatchObject({ onto: 'origin/main', pushed: true })
     // A merge commit, not a rebase: the branch contains the base by ancestry, which is what the kept wait checks.
     expect((await k.lead['messageWorkspace'](project.id, w.id, 'Merge origin/main in, please.', lead.id)).sent).toBe(true)
@@ -667,12 +667,12 @@ describe('a teammate that already started', () => {
 
   it('queues it behind a busy turn, and sends it again after a restart until a turn Kernel started ends', async () => {
     const { k, project, lead, target, mergeOnGitHub, again } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id })
-    await k.setWait(w.id, [noor.id])
-    await mergeOnGitHub(k, noor)
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id })
+    await k.setWait(w.id, [sean.id])
+    await mergeOnGitHub(k, sean)
     const chat = chatOf(k, w)
-    const REBASE = 'PR #164 by Noor merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.'
+    const REBASE = 'PR #164 by Sean merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.'
     await vi.waitFor(() => expect(queue(k, chat)).toEqual([[REBASE, 'kernel']]), SLOW)
     // The brief's turn ends and the message goes out. Kernel quits before that turn ends.
     callsIn(w)[0].feed(result('r1'))
@@ -697,12 +697,12 @@ describe('a teammate that already started', () => {
 describe('across a restart', () => {
   it('keeps the brief held, and a merge made while Kernel was closed releases it at the first poll', async () => {
     const { k, project, lead, target, again, origin, gh } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     const chat = chatOf(k, w)
     await k.stop()
     await land(origin, 'pr-164.txt')
-    gh.prs.set(noor.branch, { ...gh.prs.get(noor.branch)!, state: 'merged' })
+    gh.prs.set(sean.branch, { ...gh.prs.get(sean.branch)!, state: 'merged' })
     const k2 = await again()
     await flush()
     expect(k2.store.workspace(w.id)).toMatchObject({ status: 'ready', waitsFor: { held: true } })
@@ -718,11 +718,11 @@ describe('across a restart', () => {
 
   it("doesn't hold up the PR poll while the brief it released is still setting up (KERNEL-216)", async () => {
     const { k, project, lead, target, again, origin, gh } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     await k.stop()
     await land(origin, 'pr-164.txt')
-    gh.prs.set(noor.branch, { ...gh.prs.get(noor.branch)!, state: 'merged' })
+    gh.prs.set(sean.branch, { ...gh.prs.get(sean.branch)!, state: 'merged' })
     const k2 = await again()
     await flush()
     // Setup reruns for the released brief, and can take up to the script timeout.
@@ -751,15 +751,15 @@ describe('across a restart', () => {
 
   it('releases at start a merge saved just before the quit', async () => {
     const { k, project, lead, target, again, origin } = await setup()
-    const noor = await target(k, 164)
-    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const sean = await target(k, 164)
+    const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     await land(origin, 'pr-164.txt')
     // Saved, but Kernel quit before anything acted on it, so no push will say so again.
-    k.store.saveWorkspace({ ...k.store.workspace(noor.id)!, prState: 'merged' })
+    k.store.saveWorkspace({ ...k.store.workspace(sean.id)!, prState: 'merged' })
     await k.stop()
     const k2 = await again()
     await released(k2, w)
-    expect(users(k2, chatOf(k2, w))).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Noor')])
+    expect(users(k2, chatOf(k2, w))).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Sean')])
     await k2.stop()
   })
 })
@@ -767,28 +767,28 @@ describe('across a restart', () => {
 describe('the Lead\'s tools', () => {
   it('create_workspace waits by PR number, says which merge starts the teammate, and list_workspaces shows it', async () => {
     const { k, project, lead, target } = await setup()
-    const noor = await target(k, 164)
+    const sean = await target(k, 164)
     const kernel = (await k.agents(project.id)).find((a) => a.lead)!
     const tools = kernelTools(k.lead['leadToolDeps'](project.id, kernel, lead))
     const create = tools.find((t) => t.name === 'create_workspace')!
-    const out = (await create.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', wait_for: ['#164'] } as never, {})).content[0] as { text: string }
+    const out = (await create.handler({ agent: 'christian', title: 'Thinking rows', brief: 'Build T-15', wait_for: ['#164'] } as never, {})).content[0] as { text: string }
     const w = k.store.workspaces(project.id).find((x) => x.title === 'Thinking rows')!
-    expect(out.text).toBe(`Created ${w.id} on ${w.branch} for kai. Kai waits for PR #164 by Noor to merge, and Kernel sends the brief then. Tell the user that merging it starts Kai.`)
-    expect(w.waitsFor).toMatchObject({ on: [noor.id], held: true })
+    expect(out.text).toBe(`Created ${w.id} on ${w.branch} for christian. Christian waits for PR #164 by Sean to merge, and Kernel sends the brief then. Tell the user that merging it starts Christian.`)
+    expect(w.waitsFor).toMatchObject({ on: [sean.id], held: true })
     const list = (await tools.find((t) => t.name === 'list_workspaces')!.handler({} as never, {})).content[0] as { text: string }
-    expect(list.text).toContain(`${w.id} · kai · ${w.branch} · PR none · waits for PR #164 · yours`)
+    expect(list.text).toContain(`${w.id} · christian · ${w.branch} · PR none · waits for PR #164 · yours`)
     await k.stop()
   })
 
   it('create_workspace starts as usual when what it waits for already merged', async () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup()
-    const noor = await target(k, 164)
-    await mergeOnGitHub(k, noor)
+    const sean = await target(k, 164)
+    await mergeOnGitHub(k, sean)
     const kernel = (await k.agents(project.id)).find((a) => a.lead)!
     const create = kernelTools(k.lead['leadToolDeps'](project.id, kernel, lead)).find((t) => t.name === 'create_workspace')!
-    const out = (await create.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', wait_for: [noor.id] } as never, {})).content[0] as { text: string }
+    const out = (await create.handler({ agent: 'christian', title: 'Thinking rows', brief: 'Build T-15', wait_for: [sean.id] } as never, {})).content[0] as { text: string }
     const w = k.store.workspaces(project.id).find((x) => x.title === 'Thinking rows')!
-    expect(out.text).toBe(`Created ${w.id} on ${w.branch} for kai.`)
+    expect(out.text).toBe(`Created ${w.id} on ${w.branch} for christian.`)
     expect(w.waitsFor).toBeUndefined()
     expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])
     await k.stop()
@@ -796,26 +796,26 @@ describe('the Lead\'s tools', () => {
 
   it('create_workspace and wait_for_merge refuse work that merges into another base (KERNEL-693)', async () => {
     const { k, project, lead, target } = await setup()
-    const noor = k.store.saveWorkspace({ ...await target(k, 164), baseRef: 'origin/release/1.2' })
+    const sean = k.store.saveWorkspace({ ...await target(k, 164), baseRef: 'origin/release/1.2' })
     const leadAgent = (await k.agents(project.id)).find((a) => a.lead)!
     const tools = kernelTools(k.lead['leadToolDeps'](project.id, leadAgent, lead))
     const call = async (name: string, input: object) => { const r = await tools.find((t) => t.name === name)!.handler(input as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } }
     // The hand-off would start from the base Settings set, main.
-    expect(await call('create_workspace', { agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', wait_for: ['#164'] })).toEqual({ isError: true, text: 'Not created: PR #164 merges into release/1.2, and the new workspace would start from main, so its merge never reaches that branch.' })
+    expect(await call('create_workspace', { agent: 'christian', title: 'Thinking rows', brief: 'Build T-15', wait_for: ['#164'] })).toEqual({ isError: true, text: 'Not created: PR #164 merges into release/1.2, and the new workspace would start from main, so its merge never reaches that branch.' })
     expect(k.store.workspaces(project.id).some((x) => x.title === 'Thinking rows')).toBe(false)
-    const kai = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Other rows', leadChatId: lead.id })
-    expect(await call('wait_for_merge', { workspace_id: kai.id, on: [noor.id] })).toEqual({ isError: true, text: `Not set: PR #164 merges into release/1.2, and ${kai.name} starts from main, so its merge never reaches that branch.` })
-    expect(k.store.workspace(kai.id)!.waitsFor).toBeUndefined()
+    const christian = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Other rows', leadChatId: lead.id })
+    expect(await call('wait_for_merge', { workspace_id: christian.id, on: [sean.id] })).toEqual({ isError: true, text: `Not set: PR #164 merges into release/1.2, and ${christian.name} starts from main, so its merge never reaches that branch.` })
+    expect(k.store.workspace(christian.id)!.waitsFor).toBeUndefined()
     // The remote's copy of the same branch is the same base.
-    k.store.saveWorkspace({ ...k.store.workspace(noor.id)!, baseRef: 'origin/main' })
-    expect((await call('wait_for_merge', { workspace_id: kai.id, on: [noor.id] })).isError).toBe(false)
+    k.store.saveWorkspace({ ...k.store.workspace(sean.id)!, baseRef: 'origin/main' })
+    expect((await call('wait_for_merge', { workspace_id: christian.id, on: [sean.id] })).isError).toBe(false)
     await k.stop()
   })
 
   it('wait_for_merge sets a wait on a teammate and refuses what it can\'t wait for', async () => {
-    const team = [{ id: 'kernel', name: 'Kernel', lead: true }, { id: 'kai', name: 'Kai', lead: false }, { id: 'noor', name: 'Noor', lead: false }] as AgentDef[]
-    const ws = (id: string, extra: Partial<Workspace> = {}) => ({ id, name: id, agentId: 'noor', status: 'ready', mode: 'worktree', prState: 'open', createdAt: 1, ...extra }) as Workspace
-    const list = [ws('w1', { prNumber: 164 }), ws('k1', { agentId: 'kai', prState: 'none' })]
+    const team = [{ id: 'kernel', name: 'Kernel', lead: true }, { id: 'christian', name: 'Christian', lead: false }, { id: 'sean', name: 'Sean', lead: false }] as AgentDef[]
+    const ws = (id: string, extra: Partial<Workspace> = {}) => ({ id, name: id, agentId: 'sean', status: 'ready', mode: 'worktree', prState: 'open', createdAt: 1, ...extra }) as Workspace
+    const list = [ws('w1', { prNumber: 164 }), ws('k1', { agentId: 'christian', prState: 'none' })]
     const set: [string, string[]][] = []
     const deps: KernelToolDeps = {
       projectId: 'project', lead: team[0], agents: async () => team, workspaces: () => list,
@@ -826,12 +826,12 @@ describe('the Lead\'s tools', () => {
     }
     const tools = kernelTools(deps)
     const call = async (name: string, input: object) => { const r = await tools.find((t) => t.name === name)!.handler(input as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } }
-    expect(await call('wait_for_merge', { workspace_id: 'k1', on: ['164'] })).toEqual({ isError: false, text: 'Kai waits for PR #164 by Noor to merge, and Kernel tells Kai to bring its branch up to date with it then. Tell the user that merging it moves Kai on.' })
+    expect(await call('wait_for_merge', { workspace_id: 'k1', on: ['164'] })).toEqual({ isError: false, text: 'Christian waits for PR #164 by Sean to merge, and Kernel tells Christian to bring its branch up to date with it then. Tell the user that merging it moves Christian on.' })
     expect(set).toEqual([['k1', ['w1']]])
     expect(await call('wait_for_merge', { workspace_id: 'nope', on: [] })).toEqual({ isError: true, text: 'Not set: there is no open workspace nope in this project. Call list_workspaces for the ids.' })
     expect(await call('wait_for_merge', { workspace_id: 'k1', on: ['k1'] })).toEqual({ isError: true, text: "Not set: k1 can't wait for itself." })
-    expect(await call('create_workspace', { agent: 'kai', title: 'x', brief: 'x', wait_for: ['w1'], review_of: 'w1' })).toEqual({ isError: true, text: 'Not created: a review starts from the work it reviews, so it never waits for another PR.' })
-    expect(await call('create_workspace', { agent: 'kai', title: 'x', brief: 'x', wait_for: ['w1'], mode: 'current' })).toEqual({ isError: true, text: "Not created: a workspace on the main checkout has no branch of its own to start later, so it can't wait for a PR. Use worktree mode." })
+    expect(await call('create_workspace', { agent: 'christian', title: 'x', brief: 'x', wait_for: ['w1'], review_of: 'w1' })).toEqual({ isError: true, text: 'Not created: a review starts from the work it reviews, so it never waits for another PR.' })
+    expect(await call('create_workspace', { agent: 'christian', title: 'x', brief: 'x', wait_for: ['w1'], mode: 'current' })).toEqual({ isError: true, text: "Not created: a workspace on the main checkout has no branch of its own to start later, so it can't wait for a PR. Use worktree mode." })
   })
 })
 
@@ -862,24 +862,24 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
   const handOff = async (k: Kernel, project: { id: string }, lead: Chat, input: object) => {
     const kernel = (await k.agents(project.id)).find((a) => a.lead)!
     const create = kernelTools(k.lead['leadToolDeps'](project.id, kernel, lead)).find((t) => t.name === 'create_workspace')!
-    const out = (await create.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', ...input } as never, {})).content[0] as { text: string }
+    const out = (await create.handler({ agent: 'christian', title: 'Thinking rows', brief: 'Build T-15', ...input } as never, {})).content[0] as { text: string }
     return { text: out.text, w: k.store.workspace(/^Created (\S+) on/.exec(out.text)![1])! }
   }
 
   it('starts the teammate, waits without holding the brief, says so, and asks for a rebase when the blocking PR merges', async () => {
     const l = linear({ 'KERNEL-198': ['KERNEL-197'] })
     const { k, project, lead, target, mergeOnGitHub } = await setup({}, { fetch: l.fetch, linearToken: 'k' })
-    const noor = await target(k, 164, 'Tool rows', 'KERNEL-197')
+    const sean = await target(k, 164, 'Tool rows', 'KERNEL-197')
     const { text: out, w } = await handOff(k, project, lead, { issue: 'KERNEL-198' })
-    expect(out).toBe(`Created ${w.id} on ${w.branch} for kai. Linear marks KERNEL-198 as blocked by KERNEL-197, which Noor is building. Kai starts now, and Kernel messages Kai when PR #164 merges. Pass wait_for to hold the brief instead.`)
-    expect(w.waitsFor).toEqual({ on: [noor.id], held: false })
+    expect(out).toBe(`Created ${w.id} on ${w.branch} for christian. Linear marks KERNEL-198 as blocked by KERNEL-197, which Sean is building. Christian starts now, and Kernel messages Christian when PR #164 merges. Pass wait_for to hold the brief instead.`)
+    expect(w.waitsFor).toEqual({ on: [sean.id], held: false })
     const chat = chatOf(k, w)
     expect(users(k, chat)).toEqual([['Build T-15', 'lead']])
-    expect(notes(k, chat)).toContain('Waiting for PR #164 by Noor to merge. Kernel asks Kai to rebase onto it then.')
+    expect(notes(k, chat)).toContain('Waiting for PR #164 by Sean to merge. Kernel asks Christian to rebase onto it then.')
     callsIn(w)[0].feed(result('r1'))
     await idle(k, w)
-    await mergeOnGitHub(k, noor)
-    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.', 'kernel']), SLOW)
+    await mergeOnGitHub(k, sean)
+    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Sean merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.', 'kernel']), SLOW)
     await k.stop()
   }, 20_000)
 
@@ -887,9 +887,9 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
     const l = linear({ 'KERNEL-198': ['KERNEL-197', 'KERNEL-199'] })
     const { k, project, lead, target } = await setup({}, { fetch: l.fetch, linearToken: 'k' })
     const one = await target(k, 164, 'Tool rows', 'KERNEL-197')
-    const two = await k.createWorkspace(project.id, { prompt: 'Rows', agentId: 'noor', title: 'Rows', leadChatId: lead.id, source: { kind: 'issue', id: 'KERNEL-199', title: 'Rows' } })
+    const two = await k.createWorkspace(project.id, { prompt: 'Rows', agentId: 'sean', title: 'Rows', leadChatId: lead.id, source: { kind: 'issue', id: 'KERNEL-199', title: 'Rows' } })
     const { text: out, w } = await handOff(k, project, lead, { issue: 'KERNEL-198' })
-    expect(out).toBe(`Created ${w.id} on ${w.branch} for kai. Linear marks KERNEL-198 as blocked by KERNEL-197 and KERNEL-199, which Noor is building. Kai starts now, and Kernel messages Kai when PR #164 and Noor's PR merge. Pass wait_for to hold the brief instead.`)
+    expect(out).toBe(`Created ${w.id} on ${w.branch} for christian. Linear marks KERNEL-198 as blocked by KERNEL-197 and KERNEL-199, which Sean is building. Christian starts now, and Kernel messages Christian when PR #164 and Sean's PR merge. Pass wait_for to hold the brief instead.`)
     expect(w.waitsFor).toEqual({ on: [one.id, two.id], held: false })
     await k.stop()
   }, 20_000)
@@ -901,10 +901,10 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
     const gone = await target(k, 170, 'Old rows', 'KERNEL-301')
     await k.archiveWorkspace(gone.id)
     const reviewed = await target(k, 171, 'Reviewed', 'KERNEL-303')
-    const review = await k.createWorkspace(project.id, { prompt: 'Review', agentId: 'noor', title: 'Review', leadChatId: lead.id, reviewOf: reviewed.id })
+    const review = await k.createWorkspace(project.id, { prompt: 'Review', agentId: 'sean', title: 'Review', leadChatId: lead.id, reviewOf: reviewed.id })
     k.store.saveWorkspace({ ...k.store.workspace(review.id)!, source: { kind: 'issue', id: 'KERNEL-302', title: 'Review' } })
     const { text: out, w } = await handOff(k, project, lead, { issue: 'KERNEL-198' })
-    expect(out).toBe(`Created ${w.id} on ${w.branch} for kai.`)
+    expect(out).toBe(`Created ${w.id} on ${w.branch} for christian.`)
     expect(w.waitsFor).toBeUndefined()
     expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])
     await k.stop()
@@ -919,7 +919,7 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
     const old = await target(k, 170, 'Old rows')
     k.store.saveWorkspace({ ...old, source: { kind: 'issue', id: 'KERNEL-199', title: 'Old rows' } })
     const { text: out, w } = await handOff(k, project, lead, { issue: 'KERNEL-198' })
-    expect(out).toBe(`Created ${w.id} on ${w.branch} for kai. Linear marks KERNEL-198 as blocked by KERNEL-199, which Noor is building. Kai starts now, and Kernel messages Kai when PR #170 merges. Pass wait_for to hold the brief instead.`)
+    expect(out).toBe(`Created ${w.id} on ${w.branch} for christian. Linear marks KERNEL-198 as blocked by KERNEL-199, which Sean is building. Christian starts now, and Kernel messages Christian when PR #170 merges. Pass wait_for to hold the brief instead.`)
     expect(w.waitsFor).toEqual({ on: [old.id], held: false })
     await k.stop()
   }, 20_000)
@@ -933,7 +933,7 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
         const { text: out, w } = await handOff(k, project, lead, { issue: 'KERNEL-198' })
         // A Linear that fails doesn't hold the start up either, and the Lead hears what went unchecked (KERNEL-479).
         const note = o.linearToken ? " Couldn't check who KERNEL-198 is assigned to in Linear: Linear answered 500." : ''
-        expect(out).toBe(`Created ${w.id} on ${w.branch} for kai.${note}`)
+        expect(out).toBe(`Created ${w.id} on ${w.branch} for christian.${note}`)
         expect(w).toMatchObject({ status: 'ready', source: { kind: 'issue', id: 'KERNEL-198', title: 'Thinking rows' } })
         expect(w.waitsFor).toBeUndefined()
         expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])
@@ -943,21 +943,21 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
   }, 20_000)
 
   it("says the teammate starts once the brief goes out when the brief waits for a free slot", async () => {
-    const team = [{ id: 'kernel', name: 'Kernel', lead: true }, { id: 'kai', name: 'Kai', lead: false }, { id: 'noor', name: 'Noor', lead: false }] as AgentDef[]
-    const noor = { id: 'w1', name: 'w1', agentId: 'noor', status: 'ready', mode: 'worktree', prState: 'open', prNumber: 164, createdAt: 1, source: { kind: 'issue', id: 'KERNEL-197', title: 'Tool rows' } } as Workspace
+    const team = [{ id: 'kernel', name: 'Kernel', lead: true }, { id: 'christian', name: 'Christian', lead: false }, { id: 'sean', name: 'Sean', lead: false }] as AgentDef[]
+    const sean = { id: 'w1', name: 'w1', agentId: 'sean', status: 'ready', mode: 'worktree', prState: 'open', prNumber: 164, createdAt: 1, source: { kind: 'issue', id: 'KERNEL-197', title: 'Tool rows' } } as Workspace
     const handOff = async (tracker?: 'linear') => {
-      const kai = { id: 'k1', name: 'k1', branch: 'feat/x', agentId: 'kai', status: 'ready', mode: 'worktree', prState: 'none', createdAt: 2, source: { kind: 'issue', id: 'KERNEL-198', title: 'Thinking rows', ...(tracker ? { tracker } : {}) }, waitsFor: { on: ['w1'], held: false } } as Workspace
+      const christian = { id: 'k1', name: 'k1', branch: 'feat/x', agentId: 'christian', status: 'ready', mode: 'worktree', prState: 'none', createdAt: 2, source: { kind: 'issue', id: 'KERNEL-198', title: 'Thinking rows', ...(tracker ? { tracker } : {}) }, waitsFor: { on: ['w1'], held: false } } as Workspace
       let created = false
       const deps: KernelToolDeps = {
-        // Kai's workspace exists once it is created, so KERNEL-287's check for a second hand-off doesn't see it first.
-        projectId: 'project', lead: team[0], agents: async () => team, workspaces: () => (created ? [noor, kai] : [noor]),
-        createWorkspace: async () => { created = true; return { ...kai, queued: 'capacity' as const } },
+        // Christian's workspace exists once it is created, so KERNEL-287's check for a second hand-off doesn't see it first.
+        projectId: 'project', lead: team[0], agents: async () => team, workspaces: () => (created ? [sean, christian] : [sean]),
+        createWorkspace: async () => { created = true; return { ...christian, queued: 'capacity' as const } },
         messageWorkspace: async () => ({ ok: true, note: '' }), askUser: async () => null, hireAgent: async () => '',
         archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
       }
-      return ((await kernelTools(deps).find((t) => t.name === 'create_workspace')!.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', issue: 'KERNEL-198' } as never, {})).content[0] as { text: string }).text
+      return ((await kernelTools(deps).find((t) => t.name === 'create_workspace')!.handler({ agent: 'christian', title: 'Thinking rows', brief: 'Build T-15', issue: 'KERNEL-198' } as never, {})).content[0] as { text: string }).text
     }
-    expect(await handOff('linear')).toBe("Created k1 on feat/x for kai. Every agent slot in Settings, Models is in use, so Kai hasn't started. The brief goes out when a slot frees up. Linear marks KERNEL-198 as blocked by KERNEL-197, which Noor is building. Kai starts once the brief goes out, and Kernel messages Kai when PR #164 merges. Pass wait_for to hold the brief instead.")
+    expect(await handOff('linear')).toBe("Created k1 on feat/x for christian. Every agent slot in Settings, Models is in use, so Christian hasn't started. The brief goes out when a slot frees up. Linear marks KERNEL-198 as blocked by KERNEL-197, which Sean is building. Christian starts once the brief goes out, and Kernel messages Christian when PR #164 merges. Pass wait_for to hold the brief instead.")
     // An issue saved before KERNEL-462 has no tracker, so the line names none (KERNEL-473).
     expect(await handOff()).toContain('. The issue tracker marks KERNEL-198 as blocked by KERNEL-197,')
   })
@@ -968,30 +968,30 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
     await target(k, 164, 'Tool rows', 'KERNEL-197')
     const other = await target(k, 170, 'Other')
     const held = await handOff(k, project, lead, { issue: 'KERNEL-198', wait_for: ['#170'] })
-    expect(held.text).toBe(`Created ${held.w.id} on ${held.w.branch} for kai. Kai waits for PR #170 by Noor to merge, and Kernel sends the brief then. Tell the user that merging it starts Kai.`)
+    expect(held.text).toBe(`Created ${held.w.id} on ${held.w.branch} for christian. Christian waits for PR #170 by Sean to merge, and Kernel sends the brief then. Tell the user that merging it starts Christian.`)
     expect(held.w.waitsFor).toMatchObject({ on: [other.id], held: true })
     await k.archiveWorkspace(held.w.id)
     await mergeOnGitHub(k, other)
     const started = await handOff(k, project, lead, { issue: 'KERNEL-198', wait_for: ['#170'] })
-    expect(started.text).toBe(`Created ${started.w.id} on ${started.w.branch} for kai.`)
+    expect(started.text).toBe(`Created ${started.w.id} on ${started.w.branch} for christian.`)
     expect(started.w.waitsFor).toBeUndefined()
     await k.stop()
   }, 20_000)
 })
 
 describe('waits, the rules', () => {
-  const ws = (id: string, extra: Partial<Workspace> = {}): Workspace => ({ id, projectId: 'r', name: id, branch: id, baseRef: 'main', path: `/x/${id}`, mode: 'worktree', agentId: 'noor', port: 1, status: 'ready', prState: 'open', createdAt: 1, ...extra })
+  const ws = (id: string, extra: Partial<Workspace> = {}): Workspace => ({ id, projectId: 'r', name: id, branch: id, baseRef: 'main', path: `/x/${id}`, mode: 'worktree', agentId: 'sean', port: 1, status: 'ready', prState: 'open', createdAt: 1, ...extra })
   const all = [
     ws('w1', { prNumber: 164, source: { kind: 'issue', id: 'KERNEL-197', title: 'Tool rows' } }),
     ws('old', { prNumber: 164, status: 'archived', prState: 'merged', createdAt: 9 }),
     ws('lead', { agentId: 'kernel', mode: 'current' }),
-    ws('rv', { agentId: 'theo', reviewOf: 'w1' }),
+    ws('rv', { agentId: 'artkin', reviewOf: 'w1' }),
     ws('main', { mode: 'current' }),
     ws('shut', { prState: 'closed', prNumber: 150 }),
     ws('gone', { status: 'archived', prState: 'none' }),
-    ws('k1', { agentId: 'kai', prState: 'none' }),
-    ws('k2', { agentId: 'kai', prState: 'none', waitsFor: { on: ['k3'], held: true } }),
-    ws('k3', { agentId: 'kai', prState: 'none', waitsFor: { on: ['k1'], held: true } })
+    ws('k1', { agentId: 'christian', prState: 'none' }),
+    ws('k2', { agentId: 'christian', prState: 'none', waitsFor: { on: ['k3'], held: true } }),
+    ws('k3', { agentId: 'christian', prState: 'none', waitsFor: { on: ['k1'], held: true } })
   ]
   const isLead = (w: Workspace) => w.agentId === 'kernel'
   const refuse = (refs: string[], o: Partial<Parameters<typeof waitRefusal>[0]> = {}) => waitRefusal({ workspaces: all, refs, isLead, ...o })
@@ -1067,40 +1067,40 @@ describe('waits, the rules', () => {
 
 // KERNEL-442 pins where waits stop today: at the project. Linked projects (docs/decisions/KERNEL-442.md) change the first two.
 describe('a wait on work in another project', () => {
-  /** A second project on a repo of its own, with Ivy on its team, and Ivy's workspace there with PR #`number` open. */
+  /** A second project on a repo of its own, with Teng on its team, and Teng's workspace there with PR #`number` open. */
   async function otherProject(k: Kernel, gh: { prs: Map<string, PrInfo> }, number: number) {
-    const repo = await tempRepo({ 'README.md': '# api\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/ivy.md': AGENT('ivy') })
+    const repo = await tempRepo({ 'README.md': '# api\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/teng.md': AGENT('teng') })
     const api = await k.projects.addProject(repo)
-    const ivy = await k.workspaces.createWorkspace(api.id, { prompt: 'Add the invoices endpoint', agentId: 'ivy', title: `Invoices endpoint ${number}` })
-    gh.prs.set(ivy.branch, prInfo('open', number))
-    return k.prs.refreshPr(ivy.id)
+    const teng = await k.workspaces.createWorkspace(api.id, { prompt: 'Add the invoices endpoint', agentId: 'teng', title: `Invoices endpoint ${number}` })
+    gh.prs.set(teng.branch, prInfo('open', number))
+    return k.prs.refreshPr(teng.id)
   }
 
   it("is refused by the Lead's tools, which see only their own project", async () => {
     const { k, project, lead, gh } = await setup()
-    const ivy = await otherProject(k, gh, 12)
+    const teng = await otherProject(k, gh, 12)
     const kernel = (await k.team.agents(project.id)).find((a) => a.lead)!
     const tools = kernelTools(k.lead.leadToolDeps(project.id, kernel, lead))
     const call = async (name: string, input: object) => ((await tools.find((t) => t.name === name)!.handler(input as never, {})).content[0] as { text: string }).text
     const missing = (ref: string) => `there is no workspace "${ref}" in this project to wait for. Pass a workspace id from list_workspaces, a PR number like #164, or an issue key.`
-    expect(await call('create_workspace', { agent: 'kai', title: 'Invoice list', brief: 'Show invoices', wait_for: [ivy.id] })).toBe(`Not created: ${missing(ivy.id)}`)
-    expect(await call('create_workspace', { agent: 'kai', title: 'Invoice list', brief: 'Show invoices', wait_for: ['#12'] })).toBe(`Not created: ${missing('#12')}`)
-    const kai = await k.workspaces.createWorkspace(project.id, { prompt: 'Show invoices', agentId: 'kai', title: 'Invoice list', leadChatId: lead.id })
-    expect(await call('wait_for_merge', { workspace_id: kai.id, on: [ivy.id] })).toBe(`Not set: ${missing(ivy.id)}`)
-    expect(await call('list_workspaces', {})).not.toContain(ivy.id)
+    expect(await call('create_workspace', { agent: 'christian', title: 'Invoice list', brief: 'Show invoices', wait_for: [teng.id] })).toBe(`Not created: ${missing(teng.id)}`)
+    expect(await call('create_workspace', { agent: 'christian', title: 'Invoice list', brief: 'Show invoices', wait_for: ['#12'] })).toBe(`Not created: ${missing('#12')}`)
+    const christian = await k.workspaces.createWorkspace(project.id, { prompt: 'Show invoices', agentId: 'christian', title: 'Invoice list', leadChatId: lead.id })
+    expect(await call('wait_for_merge', { workspace_id: christian.id, on: [teng.id] })).toBe(`Not set: ${missing(teng.id)}`)
+    expect(await call('list_workspaces', {})).not.toContain(teng.id)
     await k.stop()
   })
 
   it('set on the feature, stays held when that PR merges, since the merge finds the waiter but settling reads only its project', async () => {
     const { k, project, lead, gh } = await setup()
-    const ivy = await otherProject(k, gh, 12)
-    const w = await k.workspaces.createWorkspace(project.id, { prompt: 'Show invoices', agentId: 'kai', title: 'Invoice list', leadChatId: lead.id, waitFor: [ivy.id] })
-    expect(w.waitsFor).toMatchObject({ on: [ivy.id], held: true })
-    gh.prs.set(ivy.branch, prInfo('merged', 12))
-    expect((await k.prs.refreshPr(ivy.id)).prState).toBe('merged')
-    expect(k.waits.waitersOn(ivy.id).map((x) => x.id)).toEqual([w.id])
+    const teng = await otherProject(k, gh, 12)
+    const w = await k.workspaces.createWorkspace(project.id, { prompt: 'Show invoices', agentId: 'christian', title: 'Invoice list', leadChatId: lead.id, waitFor: [teng.id] })
+    expect(w.waitsFor).toMatchObject({ on: [teng.id], held: true })
+    gh.prs.set(teng.branch, prInfo('merged', 12))
+    expect((await k.prs.refreshPr(teng.id)).prState).toBe('merged')
+    expect(k.waits.waitersOn(teng.id).map((x) => x.id)).toEqual([w.id])
     await k.waits.settleWait(w.id)
-    expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ on: [ivy.id], held: true })
+    expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ on: [teng.id], held: true })
     expect(queue(k, chatOf(k, w))).toEqual([['Show invoices', 'lead']])
     expect(users(k, chatOf(k, w))).toEqual([])
     await k.stop()
@@ -1108,10 +1108,10 @@ describe('a wait on work in another project', () => {
 
   it('still breaks, and tells the Lead, when that PR closes without merging', async () => {
     const { k, project, lead, gh } = await setup()
-    const ivy = await otherProject(k, gh, 12)
-    const w = await k.workspaces.createWorkspace(project.id, { prompt: 'Show invoices', agentId: 'kai', title: 'Invoice list', leadChatId: lead.id, waitFor: [ivy.id] })
-    gh.prs.set(ivy.branch, prInfo('closed', 12))
-    await k.prs.refreshPr(ivy.id)
+    const teng = await otherProject(k, gh, 12)
+    const w = await k.workspaces.createWorkspace(project.id, { prompt: 'Show invoices', agentId: 'christian', title: 'Invoice list', leadChatId: lead.id, waitFor: [teng.id] })
+    gh.prs.set(teng.branch, prInfo('closed', 12))
+    await k.prs.refreshPr(teng.id)
     await vi.waitFor(() => expect(pending(k).filter((e) => e.kind === 'wait.broken' && e.workspaceId === w.id)).toHaveLength(1), SLOW)
     expect(k.store.workspace(w.id)?.waitsFor?.held).toBe(true)
     await k.stop()

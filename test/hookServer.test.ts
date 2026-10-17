@@ -27,7 +27,7 @@ beforeAll(async () => {
   server = await startHookServer({
     port, token, approvals, approvalTimeoutMs: 400,
     isManaged: (id) => id === 'managed',
-    resolve: (cwd) => (cwd.startsWith('/repo') ? { projectId: 'project', workspaceId: 'ws', agentId: 'kai' } : {})
+    resolve: (cwd) => (cwd.startsWith('/repo') ? { projectId: 'project', workspaceId: 'ws', agentId: 'christian' } : {})
   })
 })
 afterAll(() => new Promise<void>((r) => server.close(() => r())))
@@ -41,7 +41,7 @@ describe('hook server', () => {
     await post({ ...base, hook_event_name: 'Stop' })
     bus.off('activity', off)
     expect(seen.map((e) => e.kind)).toEqual(['session.start', 'tool.end', 'turn.done'])
-    expect(seen[1]).toMatchObject({ kind: 'tool.end', text: 'edited', object: 'table.tsx', projectId: 'project', agentId: 'kai', sessionId: 'outside' })
+    expect(seen[1]).toMatchObject({ kind: 'tool.end', text: 'edited', object: 'table.tsx', projectId: 'project', agentId: 'christian', sessionId: 'outside' })
   })
 
   it('holds a permission request from a project until it is approved', async () => {

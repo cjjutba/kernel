@@ -39,7 +39,7 @@ const REPO = {
   'README.md': '# client\n',
   'src/table.tsx': 'export const Table = () => null\n',
   'src/old.ts': 'a\nb\n',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
 const text = (t: string) => [{ type: 'text' as const, text: t }]
 
@@ -75,11 +75,11 @@ describe('the files a turn changed (KERNEL-584)', () => {
     const where = await dirs()
     const { k, pushed } = await kernel(where)
     const project = await k.addProject(await tempRepo(REPO))
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
     const chat = k.store.chats(ws.id)[0]
     await vi.waitFor(() => expect(sdk.calls.find((c) => c.options.cwd === ws.path)).toBeDefined())
     const call = sdk.calls.find((c) => c.options.cwd === ws.path)!
-    call.feed({ type: 'system', subtype: 'init', session_id: 'kai-session', apiKeySource: 'none' })
+    call.feed({ type: 'system', subtype: 'init', session_id: 'christian-session', apiKeySource: 'none' })
 
     // The turn's edits are made by Bash, which no Edit or Write tool call would show.
     await writeFile(join(ws.path, 'src/table.tsx'), 'export const Table = () => <table />\nexport const Row = () => <tr />\n')
@@ -147,7 +147,7 @@ describe('the files a turn changed (KERNEL-584)', () => {
       await k.providers.setPath('codex', { path: fake.bin })
       const repo = await tempRepo(REPO)
       const project = await k.addProject(repo)
-      const ws: Workspace = { id: 'ws-codex', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+      const ws: Workspace = { id: 'ws-codex', projectId: project.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'christian', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
       k.store.saveWorkspace(ws)
       const chat: Chat = { id: 'codex', workspaceId: ws.id, title: 'x', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'low', plan: false, createdAt: 1 }
       k.store.saveChat(chat)

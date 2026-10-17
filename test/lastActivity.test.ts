@@ -8,7 +8,7 @@ import { bus } from '../src/main/bus'
 import { actions, apply, getState } from '../src/renderer/src/store'
 import type { ActivityEvent } from '../src/shared/types'
 
-const TEAM = ['eli', 'eli-opus', 'ivy', 'kai', 'noor', 'kernel', 'theo', 'wren']
+const TEAM = ['eli', 'eli-opus', 'teng', 'christian', 'sean', 'kernel', 'artkin', 'wren']
 const agentFile = (id: string) => `---\nname: ${id}\ndescription: ${id}.\n${id === 'kernel' ? 'lead: true\n' : ''}---\nYou are ${id}.`
 
 describe('projects.lastActivity (KERNEL-104)', () => {
@@ -25,7 +25,7 @@ describe('projects.lastActivity (KERNEL-104)', () => {
 
       // Everyone acted once, a while ago. Then Eli logged 250 events, which push the others out of any 200-event window.
       const t = Date.now() + 10_000
-      const once: Record<string, number> = { theo: t + 50, noor: t + 40, kernel: t + 60, kai: t + 30, ivy: t + 20 }
+      const once: Record<string, number> = { artkin: t + 50, sean: t + 40, kernel: t + 60, christian: t + 30, teng: t + 20 }
       for (const [agentId, ts] of Object.entries(once)) bus.activity({ kind: 'note', projectId: project.id, agentId, text: 'did something', ts })
       bus.activity({ kind: 'note', projectId: other.id, agentId: 'wren', text: 'worked in another project', ts: t + 5000 })
       for (let i = 0; i < 250; i++) bus.activity({ kind: 'tool.end', projectId: project.id, agentId: 'eli', text: 'ran a tool', ts: t + 100 + i })
@@ -46,22 +46,22 @@ describe('store lastActivity', () => {
   const ev = (agentId: string, ts: number, projectId = 'r-last'): ActivityEvent => ({ id: `${agentId}-${ts}-${projectId}`, kind: 'note', projectId, agentId, text: 'did something', ts })
 
   it('keeps an agent\'s time after its events leave the window, and new events move it forward', () => {
-    actions.activity.setLast('r-last', { noor: 40, theo: 50, eli: 10 })
-    for (let i = 0; i < 250; i++) apply({ type: 'activity', event: ev('kai', 100 + i) })
-    expect(getState().activity.some((e) => e.agentId === 'noor')).toBe(false)
-    expect(getState().lastActivity['r-last']).toEqual({ noor: 40, theo: 50, eli: 10, kai: 349 })
+    actions.activity.setLast('r-last', { sean: 40, artkin: 50, eli: 10 })
+    for (let i = 0; i < 250; i++) apply({ type: 'activity', event: ev('christian', 100 + i) })
+    expect(getState().activity.some((e) => e.agentId === 'sean')).toBe(false)
+    expect(getState().lastActivity['r-last']).toEqual({ sean: 40, artkin: 50, eli: 10, christian: 349 })
 
-    apply({ type: 'activity', event: ev('noor', 400) })
-    expect(getState().lastActivity['r-last']).toEqual({ noor: 400, theo: 50, eli: 10, kai: 349 })
+    apply({ type: 'activity', event: ev('sean', 400) })
+    expect(getState().lastActivity['r-last']).toEqual({ sean: 400, artkin: 50, eli: 10, christian: 349 })
   })
 
   it('keeps a newer pushed time over an older loaded one, and leaves other projects alone', () => {
-    apply({ type: 'activity', event: ev('ivy', 900, 'r-race') })
+    apply({ type: 'activity', event: ev('teng', 900, 'r-race') })
     const before = getState().lastActivity
-    actions.activity.setLast('r-race', { ivy: 800, wren: 700 })
-    expect(getState().lastActivity['r-race']).toEqual({ ivy: 900, wren: 700 })
+    actions.activity.setLast('r-race', { teng: 800, wren: 700 })
+    expect(getState().lastActivity['r-race']).toEqual({ teng: 900, wren: 700 })
     expect(getState().lastActivity['r-last']).toBe(before['r-last'])
-    apply({ type: 'activity', event: { ...ev('ivy', 1000), projectId: undefined } })
-    expect(getState().lastActivity['r-race'].ivy).toBe(900)
+    apply({ type: 'activity', event: { ...ev('teng', 1000), projectId: undefined } })
+    expect(getState().lastActivity['r-race'].teng).toBe(900)
   })
 })

@@ -18,8 +18,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const REPO = {
   'README.md': '# client\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\nrole: Frontend\n---\nYou are Kai. Open a PR for each task.',
-  '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\nrole: Frontend\n---\nYou are Christian. Open a PR for each task.',
+  '.claude/agents/artkin.md': '---\nname: artkin\ndescription: Reviews PRs.\nrole: Reviewer\n---\nYou are Artkin.'
 }
 
 const info = (state: PrInfo['state']): PrInfo => ({ workspaceId: '', number: 42, url: 'https://github.com/o/r/pull/42', title: 'feat: table', state, baseRef: 'main', checks: [], comments: [], conflicts: [] })
@@ -43,7 +43,7 @@ async function setup() {
   const project = await k.addProject(repo)
   const lead = await k.leadChat(project.id)
   const kernel = (await k.agents(project.id)).find((a) => a.lead) as AgentDef
-  const author = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+  const author = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
   const create = kernelTools(k.lead['leadToolDeps'](project.id, kernel, lead)).find((t) => t.name === 'create_workspace')!
   /** create_workspace as the Lead calls it; the id of the new workspace, or the refusal. */
   const handOff = async (args: Record<string, string>) => {
@@ -65,7 +65,7 @@ describe('create_workspace with a reviewer on another workspace\'s branch (KERNE
     const { k, gh, author, handOff, status } = await setup()
     gh.pr = info('ready')
     await k.refreshPr(author.id)
-    const review = await handOff({ agent: 'theo', title: 'Review PR #42', brief: 'Review it', base_ref: `origin/${author.branch}` }) as Workspace
+    const review = await handOff({ agent: 'artkin', title: 'Review PR #42', brief: 'Review it', base_ref: `origin/${author.branch}` }) as Workspace
     expect(review.reviewOf).toBe(author.id)
     gh.pr = info('merged')
     await k.refreshPr(author.id)
@@ -80,14 +80,14 @@ describe('create_workspace with a reviewer on another workspace\'s branch (KERNE
     await run('git', ['-C', project.path, 'remote', 'add', 'origin', remote])
     await run('git', ['-C', project.path, 'push', '-q', 'origin', 'main'])
     // The branch review_of can't start a review from yet (KERNEL-265), pushed with a commit on it.
-    const author = await k.createWorkspace(project.id, { prompt: 'Fix it', agentId: 'kai', title: 'MCP servers', leadChatId: lead.id, branch: 'cjjutbaofficial/kernel-295-agents-in-the-kernel-repo-start-three-mcp-servers-they-never' })
+    const author = await k.createWorkspace(project.id, { prompt: 'Fix it', agentId: 'christian', title: 'MCP servers', leadChatId: lead.id, branch: 'cjjutbaofficial/kernel-295-agents-in-the-kernel-repo-start-three-mcp-servers-they-never' })
     await writeFile(join(author.path, 'mcp.ts'), 'export {}\n')
     await run('git', ['-C', author.path, 'add', '-A'])
     await run('git', ['-C', author.path, 'commit', '-q', '-m', 'mcp'])
     await run('git', ['-C', author.path, 'push', '-q', 'origin', author.branch])
     gh.pr = info('ready')
     await k.refreshPr(author.id)
-    const review = await handOff({ agent: 'theo', title: 'Review PR #213', brief: 'Review it', base_ref: `origin/${author.branch}`, branch: 'review/kernel-295-pr-213' }) as Workspace
+    const review = await handOff({ agent: 'artkin', title: 'Review PR #213', brief: 'Review it', base_ref: `origin/${author.branch}`, branch: 'review/kernel-295-pr-213' }) as Workspace
     expect(review).toMatchObject({ reviewOf: author.id, branch: 'review/kernel-295-pr-213', baseRef: `origin/${author.branch}` })
     expect((await run('git', ['-C', review.path, 'log', '-1', '--format=%s'])).trim()).toBe('mcp')
     gh.pr = info('merged')
@@ -98,16 +98,16 @@ describe('create_workspace with a reviewer on another workspace\'s branch (KERNE
 
   it('runs the review checks: a second review by the same reviewer is refused', async () => {
     const { author, handOff } = await setup()
-    const first = await handOff({ agent: 'theo', title: 'Review PR #42', brief: 'Review it', base_ref: author.branch }) as Workspace
+    const first = await handOff({ agent: 'artkin', title: 'Review PR #42', brief: 'Review it', base_ref: author.branch }) as Workspace
     expect(first.reviewOf).toBe(author.id)
-    expect(await handOff({ agent: 'theo', title: 'Review it again', brief: 'Review it', base_ref: author.branch })).toBe(`Not created: Theo already has a review of this open (workspace ${first.id}). Ask for another pass with message_agent.`)
+    expect(await handOff({ agent: 'artkin', title: 'Review it again', brief: 'Review it', base_ref: author.branch })).toBe(`Not created: Artkin already has a review of this open (workspace ${first.id}). Ask for another pass with message_agent.`)
   })
 
   it('leaves a task on another workspace\'s branch alone when that work merges', async () => {
     const { k, gh, author, handOff, status } = await setup()
     gh.pr = info('ready')
     await k.refreshPr(author.id)
-    const task = await handOff({ agent: 'kai', title: 'Invoice export', brief: 'Build on the table', base_ref: author.branch }) as Workspace
+    const task = await handOff({ agent: 'christian', title: 'Invoice export', brief: 'Build on the table', base_ref: author.branch }) as Workspace
     expect(task.reviewOf).toBeUndefined()
     gh.pr = info('merged')
     await k.refreshPr(author.id)
@@ -118,7 +118,7 @@ describe('create_workspace with a reviewer on another workspace\'s branch (KERNE
 
   it('leaves a reviewer on main alone', async () => {
     const { handOff } = await setup()
-    const ws = await handOff({ agent: 'theo', title: 'Audit the repo', brief: 'Look around', base_ref: 'main' }) as Workspace
+    const ws = await handOff({ agent: 'artkin', title: 'Audit the repo', brief: 'Look around', base_ref: 'main' }) as Workspace
     expect(ws.reviewOf).toBeUndefined()
   })
 })
@@ -131,14 +131,14 @@ describe('at start, reviews made with base_ref (KERNEL-299)', () => {
       const w = await k.createWorkspace(project.id, { prompt: title, agentId, title, leadChatId: lead.id })
       return k.store.saveWorkspace({ ...w, baseRef: `origin/${of.branch}` })
     }
-    const merged = await stale('theo', author, 'Review PR #42')
-    const dirty = await stale('theo', author, 'Second look at PR #42')
+    const merged = await stale('artkin', author, 'Review PR #42')
+    const dirty = await stale('artkin', author, 'Second look at PR #42')
     await writeFile(join(dirty.path, 'scratch.md'), 'notes\n')
-    const task = await stale('kai', author, 'Invoice export')
-    const other = await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export UI', leadChatId: lead.id })
-    const openReview = await stale('theo', other, 'Review the export')
-    const closed = await k.createWorkspace(project.id, { prompt: 'Try a chart', agentId: 'kai', title: 'Invoice chart', leadChatId: lead.id })
-    const closedReview = await stale('theo', closed, 'Review the chart')
+    const task = await stale('christian', author, 'Invoice export')
+    const other = await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'christian', title: 'Invoice export UI', leadChatId: lead.id })
+    const openReview = await stale('artkin', other, 'Review the export')
+    const closed = await k.createWorkspace(project.id, { prompt: 'Try a chart', agentId: 'christian', title: 'Invoice chart', leadChatId: lead.id })
+    const closedReview = await stale('artkin', closed, 'Review the chart')
     // The PRs merge and close while nothing links the reviews, so nothing archives them.
     gh.pr = info('ready')
     for (const w of [author, other, closed]) await k.refreshPr(w.id)

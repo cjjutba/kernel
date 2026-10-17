@@ -90,7 +90,7 @@ export const CONTEXT_WARN = 90
 const rejected = (l: RateLimit, now: number) => l.status === 'rejected' && (l.resetsAt === undefined || l.resetsAt * 1000 > now)
 const modelLabel = (id: string) => MODELS.find((m) => m.id === id)?.label ?? id
 
-/** "Theo", "Theo and Noor", "Theo, Noor and Kai". */
+/** "Artkin", "Artkin and Sean", "Artkin, Sean and Christian". */
 const names = (list: string[]) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`)
 
 /** "3:40 PM" today, else "tomorrow at 4:00 AM", "Monday at 9:00 AM" or "Oct 21 at 9:00 AM": the time something waits until. */

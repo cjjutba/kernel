@@ -36,7 +36,7 @@ const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000003000000020806000
 const HTML = '<!doctype html><html><head><title>Checkout mockup</title><style>body{margin:0}</style></head><body><h1>Pay</h1></body></html>'
 
 async function setup(o: { sharing?: boolean; opened?: string[]; capture?: (f: SharedFile, v: number) => Promise<Buffer | null> } = {}) {
-  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/theo.md': AGENT('theo', 'role: Reviewer\n') })
+  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/christian.md': AGENT('christian'), '.claude/agents/artkin.md': AGENT('artkin', 'role: Reviewer\n') })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(o.sharing === undefined ? {} : { experimental: { sharing: o.sharing } }) }))
@@ -52,9 +52,9 @@ async function setup(o: { sharing?: boolean; opened?: string[]; capture?: (f: Sh
   const project = await k.addProject(repo)
   const lead = await k.leadChat(project.id)
   const leadWs = k.store.workspace(lead.workspaceId)!
-  const kai = await k.createWorkspace(project.id, { prompt: 'Build the checkout', agentId: 'kai', title: 'Checkout', leadChatId: lead.id })
-  await git(kai.path, 'commit', '--allow-empty', '-qm', 'start')
-  const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review checkout', leadChatId: lead.id, reviewOf: kai.id })
+  const christian = await k.createWorkspace(project.id, { prompt: 'Build the checkout', agentId: 'christian', title: 'Checkout', leadChatId: lead.id })
+  await git(christian.path, 'commit', '--allow-empty', '-qm', 'start')
+  const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'artkin', title: 'Review checkout', leadChatId: lead.id, reviewOf: christian.id })
   const agents = await k.agents(project.id)
   const agent = (id: string) => agents.find((a) => a.id === id) as AgentDef
   const chatOf = (ws: Workspace) => (ws.id === leadWs.id ? lead : k.store.chats(ws.id).find((c) => c.kind !== 'terminal')!)
@@ -66,7 +66,7 @@ async function setup(o: { sharing?: boolean; opened?: string[]; capture?: (f: Sh
     return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
   }
   const restart = async () => { await k.stop(); k = await make(); return k }
-  return { k: () => k, repo, dataDir, project, lead, leadWs, kai, review, agent, chatOf, put, share, restart, revealed }
+  return { k: () => k, repo, dataDir, project, lead, leadWs, christian, review, agent, chatOf, put, share, restart, revealed }
 }
 
 const onlyFile = (k: Kernel) => { const [f] = k.store.sharedFiles(); return f }
@@ -130,71 +130,71 @@ describe('what a shared file is (KERNEL-302)', () => {
 
 describe('share_file (KERNEL-302)', () => {
   it("copies a teammate's file as v1, puts its card in the chat, tells the renderer and keeps the folder out of git", async () => {
-    const { k, kai, put, share, chatOf, dataDir, repo } = await setup()
+    const { k, christian, put, share, chatOf, dataDir, repo } = await setup()
     const pushed: PushEvent[] = []
     const on = (e: PushEvent) => pushed.push(e)
     bus.on('push', on)
     onTestFinished(() => { bus.off('push', on) })
-    await put(kai, '.kernel/shared/checkout.html', HTML)
-    expect(await share(kai, { path: '.kernel/shared/checkout.html', note: 'First pass' })).toEqual({ isError: false, text: `Shared "Checkout mockup" as v1 (HTML, ${HTML.length} bytes). The user sees a card for it in this chat and can open it in a tab. Share the same path again after changes to add a version.` })
+    await put(christian, '.kernel/shared/checkout.html', HTML)
+    expect(await share(christian, { path: '.kernel/shared/checkout.html', note: 'First pass' })).toEqual({ isError: false, text: `Shared "Checkout mockup" as v1 (HTML, ${HTML.length} bytes). The user sees a card for it in this chat and can open it in a tab. Share the same path again after changes to add a version.` })
     const f = onlyFile(k())
-    expect(f).toMatchObject({ projectId: kai.projectId, workspaceId: kai.id, agentId: 'kai', source: '.kernel/shared/checkout.html', title: 'Checkout mockup', kind: 'html' })
-    expect(f.versions).toEqual([expect.objectContaining({ n: 1, file: 'checkout.html', mime: 'text/html', bytes: HTML.length, chatId: chatOf(kai).id, note: 'First pass' })])
+    expect(f).toMatchObject({ projectId: christian.projectId, workspaceId: christian.id, agentId: 'christian', source: '.kernel/shared/checkout.html', title: 'Checkout mockup', kind: 'html' })
+    expect(f.versions).toEqual([expect.objectContaining({ n: 1, file: 'checkout.html', mime: 'text/html', bytes: HTML.length, chatId: chatOf(christian).id, note: 'First pass' })])
     expect(f.versions[0]).not.toHaveProperty('outside')
     expect(await readFile(join(dataDir, 'shared', f.id, 'v1', 'checkout.html'), 'utf8')).toBe(HTML)
-    expect(k().store.items(chatOf(kai).id).filter((i) => i.kind === 'shared')).toEqual([expect.objectContaining({ kind: 'shared', sharedId: f.id, version: 1 })])
+    expect(k().store.items(chatOf(christian).id).filter((i) => i.kind === 'shared')).toEqual([expect.objectContaining({ kind: 'shared', sharedId: f.id, version: 1 })])
     expect(pushed).toContainEqual({ type: 'shared', file: f })
     expect(await readFile(join(repo, '.git', 'info', 'exclude'), 'utf8')).toContain('/.kernel/shared/\n')
-    expect((await git(kai.path, 'status', '--porcelain')).trim()).toBe('')
+    expect((await git(christian.path, 'status', '--porcelain')).trim()).toBe('')
   })
 
   it('adds a version for new bytes, nothing for the same bytes, and lets the newest title win', async () => {
-    const { k, kai, put, share, chatOf } = await setup()
-    await put(kai, 'mock.html', HTML)
-    await share(kai, { path: 'mock.html' })
-    expect(await share(kai, { path: 'mock.html' })).toEqual({ isError: false, text: 'Already shared: "Checkout mockup" v1 is the same file, so there is no new version.' })
-    await put(kai, 'mock.html', HTML.replace('Pay', 'Pay now'))
-    expect((await share(kai, { path: './mock.html', title: 'Checkout, take two' })).text).toMatch(/^Shared "Checkout, take two" as v2 \(HTML, /)
+    const { k, christian, put, share, chatOf } = await setup()
+    await put(christian, 'mock.html', HTML)
+    await share(christian, { path: 'mock.html' })
+    expect(await share(christian, { path: 'mock.html' })).toEqual({ isError: false, text: 'Already shared: "Checkout mockup" v1 is the same file, so there is no new version.' })
+    await put(christian, 'mock.html', HTML.replace('Pay', 'Pay now'))
+    expect((await share(christian, { path: './mock.html', title: 'Checkout, take two' })).text).toMatch(/^Shared "Checkout, take two" as v2 \(HTML, /)
     // The same file by its absolute path is the same source.
-    expect((await share(kai, { path: join(kai.path, 'mock.html') })).text).toBe('Already shared: "Checkout, take two" v2 is the same file, so there is no new version.')
+    expect((await share(christian, { path: join(christian.path, 'mock.html') })).text).toBe('Already shared: "Checkout, take two" v2 is the same file, so there is no new version.')
     const f = onlyFile(k())
     expect(f.versions.map((v) => v.n)).toEqual([1, 2])
     expect(f.title).toBe('Checkout, take two')
-    expect(k().store.items(chatOf(kai).id).filter((i) => i.kind === 'shared').map((i) => i.kind === 'shared' && i.version)).toEqual([1, 2])
+    expect(k().store.items(chatOf(christian).id).filter((i) => i.kind === 'shared').map((i) => i.kind === 'shared' && i.version)).toEqual([1, 2])
     expect((await k().handlers()['shared.read']({ sharedId: f.id, version: 1 })).text).toBe(HTML)
     expect((await k().handlers()['shared.read']({ sharedId: f.id, version: 2 })).text).toContain('Pay now')
   })
 
   it('takes turns per file, so two calls at once make one version each and never the same number', async () => {
-    const { k, kai, put, share } = await setup()
-    await put(kai, 'a.md', '# A\n')
-    const [one, two] = await Promise.all([share(kai, { path: 'a.md' }), share(kai, { path: 'a.md' })])
+    const { k, christian, put, share } = await setup()
+    await put(christian, 'a.md', '# A\n')
+    const [one, two] = await Promise.all([share(christian, { path: 'a.md' }), share(christian, { path: 'a.md' })])
     expect([one.text, two.text].map((t) => t.split(' (')[0].split(' is ')[0]).sort()).toEqual(['Already shared: "A" v1', 'Shared "A" as v1'])
     expect(onlyFile(k()).versions).toHaveLength(1)
   })
 
   it('warns when outside references in HTML will not load', async () => {
-    const { k, kai, put, share } = await setup()
-    await put(kai, 'x.html', '<title>X</title><link rel="stylesheet" href="x.css"><img src="https://x.dev/a.png">')
-    const r = await share(kai, { path: 'x.html' })
+    const { k, christian, put, share } = await setup()
+    await put(christian, 'x.html', '<title>X</title><link rel="stylesheet" href="x.css"><img src="https://x.dev/a.png">')
+    const r = await share(christian, { path: 'x.html' })
     expect(r.isError).toBe(false)
     expect(r.text).toMatch(/Share the same path again after changes to add a version\. 2 references to other files or the network won't load: the preview has no network\./)
     expect(onlyFile(k()).versions[0].outside).toBe(2)
   })
 
   it('refuses what it cannot share, each with a reason that starts "Not shared:"', async () => {
-    const { k, kai, put, share, dataDir } = await setup()
+    const { k, christian, put, share, dataDir } = await setup()
     const outside = join(await mkdtemp(join(tmpdir(), 'kernel-outside-')), 'secret.html')
     await writeFile(outside, HTML)
-    await put(kai, 'folder.html/inner.md', '# x\n')
-    await symlink(outside, join(kai.path, 'link.html'))
-    await symlink(dirname(outside), join(kai.path, 'outdir'))
-    await put(kai, 'notes.txt', 'plain')
-    await put(kai, 'big.html', Buffer.alloc(10 * 1024 * 1024 + 1, 0x61))
-    await put(kai, 'big.svg', Buffer.concat([Buffer.from('<svg>'), Buffer.alloc(2 * 1024 * 1024, 0x20)]))
-    await put(kai, 'fake.png', 'hello')
-    await put(kai, 'nul.html', 'a\x00b')
-    await put(kai, 'latin1.md', Buffer.from([0x23, 0x20, 0xe9, 0x0a]))
+    await put(christian, 'folder.html/inner.md', '# x\n')
+    await symlink(outside, join(christian.path, 'link.html'))
+    await symlink(dirname(outside), join(christian.path, 'outdir'))
+    await put(christian, 'notes.txt', 'plain')
+    await put(christian, 'big.html', Buffer.alloc(10 * 1024 * 1024 + 1, 0x61))
+    await put(christian, 'big.svg', Buffer.concat([Buffer.from('<svg>'), Buffer.alloc(2 * 1024 * 1024, 0x20)]))
+    await put(christian, 'fake.png', 'hello')
+    await put(christian, 'nul.html', 'a\x00b')
+    await put(christian, 'latin1.md', Buffer.from([0x23, 0x20, 0xe9, 0x0a]))
     const refused: [string, string][] = [
       ['nope.html', 'there is no file at nope.html.'],
       ['folder.html', 'folder.html is a folder. Share one file.'],
@@ -210,21 +210,21 @@ describe('share_file (KERNEL-302)', () => {
       ['latin1.md', "latin1.md isn't UTF-8 text. Save Markdown as UTF-8."],
       ['  ', 'give the path of the file to share.']
     ]
-    for (const [path, why] of refused) expect(await share(kai, { path }), path).toEqual({ isError: true, text: `Not shared: ${why}` })
+    for (const [path, why] of refused) expect(await share(christian, { path }), path).toEqual({ isError: true, text: `Not shared: ${why}` })
     expect(k().store.sharedFiles()).toEqual([])
 
     // A file at its version limit, and a copy that fails, add nothing.
-    await put(kai, 'full.md', '# Full\n')
-    await share(kai, { path: 'full.md' })
+    await put(christian, 'full.md', '# Full\n')
+    await share(christian, { path: 'full.md' })
     const f = onlyFile(k())
     k().store.saveSharedFile({ ...f, versions: Array.from({ length: MAX_VERSIONS }, (_, i) => ({ ...f.versions[0], n: i + 1 })) })
-    await put(kai, 'full.md', '# Full\nmore\n')
-    expect(await share(kai, { path: 'full.md' })).toEqual({ isError: true, text: 'Not shared: "Full" already has 100 versions. Save it under a new name to share more.' })
-    await put(kai, 'other.md', '# Other\n')
+    await put(christian, 'full.md', '# Full\nmore\n')
+    expect(await share(christian, { path: 'full.md' })).toEqual({ isError: true, text: 'Not shared: "Full" already has 100 versions. Save it under a new name to share more.' })
+    await put(christian, 'other.md', '# Other\n')
     // The data folder's shared folder is a file now, so the copy can't be written.
     await rm(join(dataDir, 'shared'), { recursive: true })
     await writeFile(join(dataDir, 'shared'), 'not a folder')
-    const failed = await share(kai, { path: 'other.md' })
+    const failed = await share(christian, { path: 'other.md' })
     expect(failed.isError).toBe(true)
     expect(failed.text).toMatch(/^Not shared: Kernel couldn't copy other\.md \(/)
     expect(k().store.sharedFiles().map((x) => x.source)).toEqual(['full.md'])
@@ -245,26 +245,26 @@ describe('share_file (KERNEL-302)', () => {
   })
 
   it("adds a teammate's share to the Lead's next Team update and nothing for the Lead's own", async () => {
-    const { k, kai, leadWs, put, share } = await setup()
-    await put(kai, 'a.png', PNG)
+    const { k, christian, leadWs, put, share } = await setup()
+    await put(christian, 'a.png', PNG)
     await put(leadWs, 'b.png', PNG)
-    await share(kai, { path: 'a.png', title: 'Logo' })
+    await share(christian, { path: 'a.png', title: 'Logo' })
     await share(leadWs, { path: 'b.png' })
     const pending = (k().store.meta<{ pending: [string, { events: { kind: string; workspaceId: string; shared?: unknown }[] }][] }>('leadUpdates')?.pending ?? []).flatMap(([, p]) => p.events)
-    expect(pending.filter((e) => e.kind === 'shared')).toEqual([expect.objectContaining({ workspaceId: kai.id, shared: expect.objectContaining({ title: 'Logo', kind: 'image', version: 1, source: 'a.png' }) })])
-    expect(k().store.sharedFiles({ workspaceId: kai.id })[0].versions[0]).toMatchObject({ width: 3, height: 2, mime: 'image/png' })
+    expect(pending.filter((e) => e.kind === 'shared')).toEqual([expect.objectContaining({ workspaceId: christian.id, shared: expect.objectContaining({ title: 'Logo', kind: 'image', version: 1, source: 'a.png' }) })])
+    expect(k().store.sharedFiles({ workspaceId: christian.id })[0].versions[0]).toMatchObject({ width: 3, height: 2, mime: 'image/png' })
   })
 
   it('serves images and PDFs as data URLs and reveals the source while it still matches, else the copy', async () => {
-    const { k, kai, put, share, revealed, dataDir } = await setup()
-    await put(kai, 'logo.png', PNG)
-    await share(kai, { path: 'logo.png' })
+    const { k, christian, put, share, revealed, dataDir } = await setup()
+    await put(christian, 'logo.png', PNG)
+    await share(christian, { path: 'logo.png' })
     const f = onlyFile(k())
     expect(await k().handlers()['shared.read']({ sharedId: f.id, version: 1 })).toEqual({ kind: 'image', mime: 'image/png', dataUrl: `data:image/png;base64,${PNG.toString('base64')}` })
     await k().handlers()['shared.reveal']({ sharedId: f.id, version: 1 })
-    await put(kai, 'logo.png', Buffer.concat([PNG, Buffer.from([0])]))
+    await put(christian, 'logo.png', Buffer.concat([PNG, Buffer.from([0])]))
     await k().handlers()['shared.reveal']({ sharedId: f.id, version: 1 })
-    expect(revealed).toEqual([join(kai.path, 'logo.png'), join(dataDir, 'shared', f.id, 'v1', 'logo.png')])
+    expect(revealed).toEqual([join(christian.path, 'logo.png'), join(dataDir, 'shared', f.id, 'v1', 'logo.png')])
     await expect(k().handlers()['shared.read']({ sharedId: f.id, version: 9 })).rejects.toThrow('That shared file or version is gone.')
     expect(k().sharedFile(f.id, 1)?.path).toBe(join(dataDir, 'shared', f.id, 'v1', 'logo.png'))
     expect(k().sharedFile(f.id, 2)).toBeUndefined()
@@ -272,11 +272,11 @@ describe('share_file (KERNEL-302)', () => {
 
   it("opens Kernel's copy of a PDF in the default app, and nothing else", async () => {
     const opened: string[] = []
-    const { k, kai, put, share, dataDir } = await setup({ opened })
-    await put(kai, 'sample.pdf', Buffer.from('%PDF-1.7\n'))
-    await put(kai, 'logo.png', PNG)
-    await share(kai, { path: 'sample.pdf' })
-    await share(kai, { path: 'logo.png' })
+    const { k, christian, put, share, dataDir } = await setup({ opened })
+    await put(christian, 'sample.pdf', Buffer.from('%PDF-1.7\n'))
+    await put(christian, 'logo.png', PNG)
+    await share(christian, { path: 'sample.pdf' })
+    await share(christian, { path: 'logo.png' })
     const [pdf, png] = [k().store.sharedFiles({}).find((f) => f.kind === 'pdf')!, k().store.sharedFiles({}).find((f) => f.kind === 'image')!]
     await k().handlers()['shared.open']({ sharedId: pdf.id, version: 1 })
     expect(opened).toEqual([join(dataDir, 'shared', pdf.id, 'v1', 'sample.pdf')])
@@ -287,31 +287,31 @@ describe('share_file (KERNEL-302)', () => {
 
   it('saves the thumbnail a capture draws, and has none without one', async () => {
     const thumbs: [string, number][] = []
-    const { k, kai, put, share } = await setup({ capture: async (f, v) => { thumbs.push([f.id, v]); return PNG } })
-    await put(kai, 'x.html', HTML)
-    await share(kai, { path: 'x.html' })
+    const { k, christian, put, share } = await setup({ capture: async (f, v) => { thumbs.push([f.id, v]); return PNG } })
+    await put(christian, 'x.html', HTML)
+    await share(christian, { path: 'x.html' })
     const f = onlyFile(k())
     await vi.waitFor(() => expect(k().store.sharedFile(f.id)?.versions[0].thumb).toBe(true))
     expect(thumbs).toEqual([[f.id, 1]])
     expect(await k().handlers()['shared.thumb']({ sharedId: f.id, version: 1 })).toBe(`data:image/png;base64,${PNG.toString('base64')}`)
 
     const plain = await setup()
-    await plain.put(plain.kai, 'x.html', HTML)
-    await plain.share(plain.kai, { path: 'x.html' })
+    await plain.put(plain.christian, 'x.html', HTML)
+    await plain.share(plain.christian, { path: 'x.html' })
     expect(await plain.k().handlers()['shared.thumb']({ sharedId: onlyFile(plain.k()).id, version: 1 })).toBeNull()
   })
 
   it('keeps the copies when the workspace is archived and after a restart, and deletes them with the project', async () => {
-    const { k, kai, put, share, dataDir, restart, project } = await setup()
-    await put(kai, 'x.html', HTML)
-    await share(kai, { path: 'x.html' })
+    const { k, christian, put, share, dataDir, restart, project } = await setup()
+    await put(christian, 'x.html', HTML)
+    await share(christian, { path: 'x.html' })
     const f = onlyFile(k())
     const copy = join(dataDir, 'shared', f.id, 'v1', 'x.html')
-    await k().archiveWorkspace(kai.id)
-    expect(k().store.workspace(kai.id)?.status).toBe('archived')
+    await k().archiveWorkspace(christian.id)
+    expect(k().store.workspace(christian.id)?.status).toBe('archived')
     expect(await readFile(copy, 'utf8')).toBe(HTML)
     await restart()
-    expect(await k().handlers()['shared.list']({ workspaceId: kai.id })).toEqual([f])
+    expect(await k().handlers()['shared.list']({ workspaceId: christian.id })).toEqual([f])
     expect((await k().handlers()['shared.read']({ sharedId: f.id, version: 1 })).text).toBe(HTML)
     await k().removeProject(project.id, false)
     expect(k().store.sharedFiles()).toEqual([])
@@ -324,7 +324,7 @@ describe('who gets share_file (KERNEL-302)', () => {
     const s = await setup()
     await mkdir(join(s.project.path, '.kernel'), { recursive: true })
     await writeFile(join(s.project.path, '.kernel', 'settings.local.toml'), '[disabled]\nmcp = ["kernel", "chrome-devtools"]\n')
-    for (const [ws, id] of [[s.leadWs, 'kernel-lead'], [s.review, 'theo'], [s.kai, 'kai']] as const) {
+    for (const [ws, id] of [[s.leadWs, 'kernel-lead'], [s.review, 'artkin'], [s.christian, 'christian']] as const) {
       const c = await started(s, ws)
       const tools = s.k().toolsFor(ws, s.agent(id), s.chatOf(ws)).map((t) => t.name)
       expect(tools, id).toContain('share_file')
@@ -336,7 +336,7 @@ describe('who gets share_file (KERNEL-302)', () => {
   it('gives a new Lead, reviewer and teammate session share_file, and the Lead its rule, with no setting in settings.json (KERNEL-308)', async () => {
     // setup writes no experimental table unless asked, so these sessions run on the defaults.
     const s = await setup()
-    for (const ws of [s.leadWs, s.review, s.kai]) {
+    for (const ws of [s.leadWs, s.review, s.christian]) {
       const c = await started(s, ws)
       expect(c.mcpServers?.kernel.tools, ws.agentId).toContain('share_file')
       if (ws === s.leadWs) expect(c.systemPrompt?.append).toContain(LEAD_SHARING_RULE)
@@ -349,16 +349,16 @@ describe('who gets share_file (KERNEL-302)', () => {
     const lead = names(on, on.leadWs, 'kernel-lead')
     expect(lead).toEqual(expect.arrayContaining(['create_workspace', 'message_agent', 'share_file']))
     expect(lead.at(-1)).toBe('share_file')
-    expect(names(on, on.review, 'theo')).toEqual(['submit_review', 'get_issue', 'share_file'])
-    expect(names(on, on.kai, 'kai')).toEqual(['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue', 'share_file'])
+    expect(names(on, on.review, 'artkin')).toEqual(['submit_review', 'get_issue', 'share_file'])
+    expect(names(on, on.christian, 'christian')).toEqual(['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue', 'share_file'])
     const mcp = (s: typeof on, ws: Workspace, id: string) => (s.k().sessions as unknown as { d: { mcpFor: (w: Workspace, a: AgentDef, c: Chat) => Record<string, { name: string; tools: string[] }> } }).d.mcpFor(ws, s.agent(id), s.chatOf(ws))
-    expect(mcp(on, on.kai, 'kai')).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue', 'share_file'] } })
+    expect(mcp(on, on.christian, 'christian')).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue', 'share_file'] } })
     expect(mcp(on, on.leadWs, 'kernel-lead').kernel.tools).toEqual(lead)
 
     const off = await setup({ sharing: false })
     expect(names(off, off.leadWs, 'kernel-lead')).toEqual(lead.slice(0, -1))
-    expect(mcp(off, off.review, 'theo')).toEqual({ kernel: { name: 'kernel', tools: ['submit_review', 'get_issue'] } })
-    expect(mcp(off, off.kai, 'kai')).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue'] } })
+    expect(mcp(off, off.review, 'artkin')).toEqual({ kernel: { name: 'kernel', tools: ['submit_review', 'get_issue'] } })
+    expect(mcp(off, off.christian, 'christian')).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue'] } })
     expect(mcp(off, off.leadWs, 'kernel-lead').kernel.tools).toEqual(lead.slice(0, -1))
 
     // The Lead's prompt names shared files only while sharing is on. With it off, each session starts as on main: the
@@ -371,7 +371,7 @@ describe('who gets share_file (KERNEL-302)', () => {
     expect(offLead.mcpServers).toEqual({ kernel: { name: 'kernel', tools: lead.slice(0, -1) } })
     const offReview = await started(off, off.review)
     expect(offReview.mcpServers).toEqual({ kernel: { name: 'kernel', tools: ['submit_review', 'get_issue'] } })
-    const offKai = await started(off, off.kai)
+    const offKai = await started(off, off.christian)
     expect(offKai.mcpServers).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue'] } })
     for (const c of [offLead, offReview, offKai]) {
       expect(c.systemPrompt?.append).not.toContain(LEAD_SHARING_RULE)

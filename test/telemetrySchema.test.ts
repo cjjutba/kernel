@@ -25,7 +25,7 @@ describe('telemetry events', () => {
     expect(checkEvent({ name: 'repo.opened' })).toMatch(/unknown event/)
     expect(checkEvent({ name: 'app.started', project: 'client-portal' })).toMatch(/no property project/)
     expect(checkEvent({ name: 'handoff.refused' })).toMatch(/reason/)
-    expect(checkEvent({ name: 'handoff.refused', reason: 'Kai is busy' })).toMatch(/reason/)
+    expect(checkEvent({ name: 'handoff.refused', reason: 'Christian is busy' })).toMatch(/reason/)
     expect(checkEvent({ name: 'pr.ready_unreviewed', hasReviewer: 'yes' })).toMatch(/hasReviewer/)
   })
 

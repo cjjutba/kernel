@@ -114,7 +114,7 @@ export const LEAD_MODE_ICON: Record<LeadMode, IconName> = { handoff: 'team', bui
 
 export const LEAD_MODE_DESC: Record<LeadMode, string> = {
   handoff: 'Kernel plans with you and gives each task to a teammate. It doesn’t edit files.',
-  build: 'Kernel makes the change itself in this chat’s worktree, opens a PR, and Theo reviews it.'
+  build: 'Kernel makes the change itself in this chat’s worktree, opens a PR, and Artkin reviews it.'
 }
 
 /** Under the open composer's text, per mode. `name` is the Lead's name. */

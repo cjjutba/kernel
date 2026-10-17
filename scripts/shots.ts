@@ -813,7 +813,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsTeamOwnAgents: (page) => scrollToSection(page, 'In this repo'),
   ChatRail: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   ChatRailOpen: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await openRail(page, 'Reword that in plain words') },
-  ChatRailLead: (page) => openRail(page, 'Kai, opened PR #162')
+  ChatRailLead: (page) => openRail(page, 'Christian, opened PR #162')
 }
 
 // Motion (KERNEL-831). A fixture's `motion` is an action and a length. CSS animations and transitions are paused as they start and

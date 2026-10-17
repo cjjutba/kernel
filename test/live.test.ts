@@ -395,7 +395,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live session gone', () => {
   it('starts a fresh session that replies when the saved one is gone', { timeout: 180_000 }, async () => {
     const dir = await mkdtemp(join(tmpdir(), 'kernel-live-gone-'))
     const store = new Store(join(dir, 'kernel.db'))
-    const ws = { id: 'ws', projectId: 'project', name: 'gone', branch: 'main', baseRef: 'main', path: dir, mode: 'current', agentId: 'noor', port: 4311, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
+    const ws = { id: 'ws', projectId: 'project', name: 'gone', branch: 'main', baseRef: 'main', path: dir, mode: 'current', agentId: 'sean', port: 4311, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
     const missing = randomUUID()
     const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Gone', kind: 'chat', model: 'claude-haiku-4-5-20251001', effort: 'low', plan: false, createdAt: 1, sessionId: missing }
     store.saveWorkspace(ws)

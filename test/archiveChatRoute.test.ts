@@ -25,12 +25,12 @@ const project: Project = { id: 'r1', name: 'Client A', path: '/r/r1', defaultBra
 const kernel = { id: 'kernel', lead: true } as AgentDef
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace =>
   ({ id, projectId: 'r1', name: id, branch: `kernel/${id}`, baseRef: 'origin/main', path: `/w/${id}`, mode: 'worktree', agentId: 'kernel', lead: true, port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
-const kai = (id: string, threadId: string) => ws(id, { lead: undefined, agentId: 'kai', threadId, prState: 'ready', prNumber: 7 })
+const christian = (id: string, threadId: string) => ws(id, { lead: undefined, agentId: 'christian', threadId, prState: 'ready', prNumber: 7 })
 const thread = (id: string, at: number): Thread => ({ id, projectId: 'r1', title: `Chat ${id}`, createdAt: at })
 const tab = (id: string, workspaceId: string, threadId: string): Chat => ({ id, workspaceId, threadId, title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1 })
 
 // Newest first in the sidebar: c, b, a.
-const workspaces = () => [ws('a', { threadId: 't1' }), ws('b', { threadId: 't2' }), ws('c', { threadId: 't3' }), kai('kai-b', 't2')]
+const workspaces = () => [ws('a', { threadId: 't1' }), ws('b', { threadId: 't2' }), ws('c', { threadId: 't3' }), christian('christian-b', 't2')]
 const archived = (id: string): PushEvent => ({ type: 'workspace', workspace: { ...getState().workspaces.find((w) => w.id === id)!, status: 'archived', archivedAt: 9 } })
 const closed = (id: string): PushEvent => ({ type: 'thread', thread: { ...getState().threads[id], closedAt: 9 } })
 
@@ -82,8 +82,8 @@ const door: Route = { name: 'leadNew', projectId: 'r1' }
 
 describe('archiving the chat on screen (KERNEL-596)', () => {
   it('moves once, to the front door, in the step that stores the archived workspace, and never to the chat above', async () => {
-    main = async () => { deliver(archived('kai-b')); deliver(archived('b')); deliver(closed('t2')) }
-    await archiveChatNow('t2', ['kai-b', 'b'])
+    main = async () => { deliver(archived('christian-b')); deliver(archived('b')); deliver(closed('t2')) }
+    await archiveChatNow('t2', ['christian-b', 'b'])
     expect(routes).toEqual([door])
     expect(exposed).toEqual([])
     expect(calls).toEqual(['threads.archive'])
@@ -105,9 +105,9 @@ describe('archiving the chat on screen (KERNEL-596)', () => {
   })
 
   it('moves when a workspace the chat handed off is the one on screen, and stays put as the rest of the archive arrives', async () => {
-    on('kai-b')
-    main = async () => { deliver(archived('kai-b')); deliver(archived('b')); deliver(closed('t2')) }
-    await archiveChatNow('t2', ['kai-b', 'b'])
+    on('christian-b')
+    main = async () => { deliver(archived('christian-b')); deliver(archived('b')); deliver(closed('t2')) }
+    await archiveChatNow('t2', ['christian-b', 'b'])
     expect(routes).toEqual([door])
     expect(exposed).toEqual([])
   })
@@ -130,8 +130,8 @@ describe('archiving the chat on screen (KERNEL-596)', () => {
   })
 
   it('never shows History or another chat on the way, whatever order main archives in', async () => {
-    main = async () => { deliver(archived('b')); deliver(archived('kai-b')); deliver(closed('t2')) }
-    await archiveChatNow('t2', ['kai-b', 'b'])
+    main = async () => { deliver(archived('b')); deliver(archived('christian-b')); deliver(closed('t2')) }
+    await archiveChatNow('t2', ['christian-b', 'b'])
     expect(routes).toEqual([door])
     expect(routes.some((r) => r.name === 'history' || (r.name === 'workspace' && r.workspaceId !== 'b'))).toBe(false)
   })

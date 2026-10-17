@@ -4,10 +4,10 @@ import type { Approval, Chat, Workspace } from '../src/shared/types'
 
 const tab = (id: string, title: string): Chat => ({ id, workspaceId: 'lead', title, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1 })
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace =>
-  ({ id, projectId: 'r1', name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
+  ({ id, projectId: 'r1', name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'christian', port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
 const ask = (id: string, over: Partial<Approval>): Approval => ({ id, kind: 'question', source: 'sdk', title: '', status: 'pending', createdAt: 100, ...over })
 const tabs = [tab('c1', 'Client portal login'), tab('c2', 'Fix the login redirect')]
-const owned = [ws('invoice-table', { title: 'Invoice table', agentId: 'noor' })]
+const owned = [ws('invoice-table', { title: 'Invoice table', agentId: 'sean' })]
 
 describe('chat waits (KERNEL-339)', () => {
   it('counts a workspace the chat started, and shows the one that has waited longest', () => {

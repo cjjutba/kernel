@@ -4,7 +4,7 @@ import { commentParts, commentText, whereOf } from '../src/main/services/sharedC
 import type { SharedAnchor, SharedFile } from '../src/shared/types'
 
 const file = (kind: SharedFile['kind'], title = 'Pricing page draft', latest = 2): SharedFile => ({
-  id: 'sh', projectId: 'r', workspaceId: 'w', agentId: 'noor', source: '.kernel/shared/pricing.html', title, kind, createdAt: 1, updatedAt: 1,
+  id: 'sh', projectId: 'r', workspaceId: 'w', agentId: 'sean', source: '.kernel/shared/pricing.html', title, kind, createdAt: 1, updatedAt: 1,
   versions: Array.from({ length: latest }, (_, i) => ({ n: i + 1, at: i + 1, file: 'f', mime: 'text/html', bytes: 1, sha256: `s${i}`, width: 616, height: 385 }))
 })
 const page: SharedAnchor = { x: 412, y: 188, viewport: { width: 1280, height: 800, scrollY: 0 }, element: { selector: 'section.hero > div.actions > button.cta', tag: 'button', text: 'Start free trial', rect: { x: 40, y: 160, width: 120, height: 36 } } }

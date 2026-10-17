@@ -6,7 +6,7 @@ import type { AgentDef, Chat, Project, Route, SharedFile, Workspace } from '../s
 
 const project = (id: string, over: Partial<Project> = {}): Project => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1, ...over }) as Project
 const ws = (id: string, projectId: string, over: Partial<Workspace> = {}): Workspace =>
-  ({ id, projectId, name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', ...over }) as Workspace
+  ({ id, projectId, name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'christian', port: 0, status: 'ready', ...over }) as Workspace
 const chat = (id: string, workspaceId: string, over: Partial<Chat> = {}): Chat => ({ id, workspaceId, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: 1, ...over }) as Chat
 const lead = { id: 'kernel', lead: true } as AgentDef
 
@@ -88,7 +88,7 @@ describe('openTab', () => {
 })
 
 const sharedFile = (id: string, versions: number[]): SharedFile => ({
-  id, projectId: 'r1', workspaceId: 'lead', agentId: 'noor', source: `.kernel/shared/${id}.html`, title: id, kind: 'html', createdAt: 1, updatedAt: 1,
+  id, projectId: 'r1', workspaceId: 'lead', agentId: 'sean', source: `.kernel/shared/${id}.html`, title: id, kind: 'html', createdAt: 1, updatedAt: 1,
   versions: versions.map((n) => ({ n, at: n, file: `${id}.html`, mime: 'text/html', bytes: 10, sha256: `${id}${n}` }))
 })
 
@@ -316,7 +316,7 @@ describe('restorePlace', () => {
     expect(restorePlace(saved({ name: 'team', projectId: 'r2' }), getState())?.route).toEqual({ name: 'leadNew', projectId: 'r1' })
   })
   it('opens the project\'s Agents page in Settings for a team, agent, task, floor or board route', () => {
-    for (const route of [{ name: 'team', projectId: 'r1' }, { name: 'agent', projectId: 'r1', agentId: 'kai' }, { name: 'task', projectId: 'r1', taskId: 't1' }, { name: 'floor', projectId: 'r1' }, { name: 'board', projectId: 'r1' }]) {
+    for (const route of [{ name: 'team', projectId: 'r1' }, { name: 'agent', projectId: 'r1', agentId: 'christian' }, { name: 'task', projectId: 'r1', taskId: 't1' }, { name: 'floor', projectId: 'r1' }, { name: 'board', projectId: 'r1' }]) {
       expect(restorePlace(saved(route), getState())?.route).toEqual({ name: 'settings', page: 'project', projectId: 'r1', section: 'agents' })
     }
   })

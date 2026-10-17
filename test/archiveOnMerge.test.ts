@@ -17,8 +17,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const REPO = {
   'README.md': '# client\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
-  '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.',
+  '.claude/agents/artkin.md': '---\nname: artkin\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Artkin.'
 }
 
 /** Archiving runs git, which takes seconds when the whole suite runs at once (KERNEL-187). */
@@ -28,7 +28,7 @@ const info = (state: PrInfo['state'], head?: string): PrInfo => ({ workspaceId: 
 
 
 /**
- * A project with the Lead, Kai's work and Theo's review of it, its PR open. `archiveOnMerge` and `deleteBranch` are the
+ * A project with the Lead, Christian's work and Artkin's review of it, its PR open. `archiveOnMerge` and `deleteBranch` are the
  * app-wide switches, `project` and `projectDelete` the project's own values in `.kernel/settings.local.toml`, written as given, so
  * a string stays a string. `origin` gives the repo a bare remote before the work starts.
  */
@@ -66,8 +66,8 @@ async function setup(o: { archiveOnMerge?: boolean; project?: boolean; deleteBra
   k.github = { info: async (_cwd, _ref, workspaceId) => (gh.pr ? { ...gh.pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
   const project = await k.addProject(repo)
   const lead = await k.leadChat(project.id)
-  const author = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
-  const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
+  const author = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
+  const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'artkin', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
   const notes: string[] = []
   const onActivity = (e: { kind: string; text: string; workspaceId?: string; quote?: string }) => { if (e.kind === 'note' && e.text.startsWith('kept the')) notes.push(`${e.workspaceId}: ${e.quote}`) }
   bus.on('activity', onActivity)
@@ -271,7 +271,7 @@ describe('Archive on merge (KERNEL-114)', () => {
   it('releases the workspaces waiting on the merge, and still tells the Lead the work merged', async () => {
     const { k, project, lead, author, status, land } = await setup()
     // Not handed off in the Lead's chat, so the merge is the last of that chat's work.
-    const waiter = await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export' })
+    const waiter = await k.createWorkspace(project.id, { prompt: 'Build the export', agentId: 'christian', title: 'Invoice export' })
     k.store.saveWorkspace({ ...k.store.workspace(waiter.id)!, waitsFor: { on: [author.id], held: false } })
     const posts: string[] = []
     k.sessions.post = (chatId: string, parts: ChatPart[]) => { posts.push(`${chatId}: ${parts.map((p) => (p.type === 'text' ? p.text : '')).join('')}`); return true }
@@ -280,7 +280,7 @@ describe('Archive on merge (KERNEL-114)', () => {
     await vi.waitFor(() => expect(status(author)).toBe('archived'), SLOW)
     // Released, not broken: the work it waited for merged.
     expect(k.store.workspace(waiter.id)!.waitsFor?.releasing).toBe(true)
-    expect(posts.some((p) => p.startsWith(`${k.store.chats(waiter.id)[0].id}: PR #42 by Kai merged into main.`))).toBe(true)
+    expect(posts.some((p) => p.startsWith(`${k.store.chats(waiter.id)[0].id}: PR #42 by Christian merged into main.`))).toBe(true)
     await vi.waitFor(() => expect(posts.some((p) => p.startsWith(`${lead.id}:`) && p.includes('PR #42 was merged.'))).toBe(true), SLOW)
   })
 })
@@ -424,15 +424,15 @@ describe('Archive on merge at start (KERNEL-114)', () => {
 })
 
 describe('the toast for a workspace Kernel archives on merge while it is open (KERNEL-114)', () => {
-  const ws = (extra: Partial<Workspace>) => ({ id: 'w', projectId: 'r', name: 'w', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'archived', prState: 'none', createdAt: 1, ...extra }) as Workspace
+  const ws = (extra: Partial<Workspace>) => ({ id: 'w', projectId: 'r', name: 'w', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'christian', port: 1, status: 'archived', prState: 'none', createdAt: 1, ...extra }) as Workspace
 
   it('says what Kernel did when the PR merged', () => {
-    expect(archiveToast(ws({ prState: 'merged', prNumber: 164 }), undefined, 'Kai')).toEqual({ title: "Archived Kai's workspace after PR #164 merged", sub: 'Restore it from History.' })
+    expect(archiveToast(ws({ prState: 'merged', prNumber: 164 }), undefined, 'Christian')).toEqual({ title: "Archived Christian's workspace after PR #164 merged", sub: 'Restore it from History.' })
     expect(archiveToast(ws({ prState: 'merged' }), undefined, undefined)).toMatchObject({ title: 'Archived the workspace' })
   })
 
   it('has none for a PR that was only closed, or a workspace with no PR', () => {
-    expect(archiveToast(ws({ prState: 'closed', prNumber: 164 }), undefined, 'Kai')).toBeUndefined()
-    expect(archiveToast(ws({}), undefined, 'Kai')).toBeUndefined()
+    expect(archiveToast(ws({ prState: 'closed', prNumber: 164 }), undefined, 'Christian')).toBeUndefined()
+    expect(archiveToast(ws({}), undefined, 'Christian')).toBeUndefined()
   })
 })

@@ -50,7 +50,7 @@ describe('question card choices (KERNEL-882)', () => {
     expect(activeRow(9, -1, 3)).toBe(2)
   })
 
-  const question: Approval = { id: 'a1', kind: 'question', source: 'sdk', projectId: 'r1', chatId: 'c1', agentId: 'kai', title: 'Keep the invoice number?', options: ['Yes', 'No', 'Random'], status: 'pending', createdAt: 0 } as Approval
+  const question: Approval = { id: 'a1', kind: 'question', source: 'sdk', projectId: 'r1', chatId: 'c1', agentId: 'christian', title: 'Keep the invoice number?', options: ['Yes', 'No', 'Random'], status: 'pending', createdAt: 0 } as Approval
 
   it('renders the choices as one group with one tab stop, and the arrows move focus', () => {
     const host = mount(React.createElement(ApprovalCard, { approval: question }))

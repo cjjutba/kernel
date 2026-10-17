@@ -8,10 +8,10 @@ import { kernelTools } from '../src/main/services/kernelMcp'
 import { tempRepo, freePort } from './helpers'
 
 const KERNEL = '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.\n'
-const KAI = '---\nname: kai\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash, Grep, Glob\n---\nYou are Kai.\n'
+const CHRISTIAN = '---\nname: christian\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash, Grep, Glob\n---\nYou are Christian.\n'
 
 async function boot(files: Record<string, string> = {}) {
-  const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/kai.md': KAI, ...files })
+  const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/christian.md': CHRISTIAN, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
@@ -51,7 +51,7 @@ describe('setup script feature end to end', () => {
     await h['settings.setProject']({ projectId: project.id, patch: s[0].patch })
     const local = await readFile(join(repo, '.kernel', 'settings.local.toml'), 'utf8')
     expect(local).not.toContain('CONDUCTOR')
-    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'x', agentId: 'kai', title: 'x' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'x', agentId: 'christian', title: 'x' })
     expect(ws.status).toBe('ready')
     expect(await readFile(join(ws.path, 'setup.txt'), 'utf8')).toBe(`p=${ws.port}\n`)
   })
@@ -65,7 +65,7 @@ describe('setup script feature end to end', () => {
     expect(s[0].patch.scripts?.archive).toBe('echo down')
     expect(s[0].patch.scripts?.run).toBe('echo run $KERNEL_WORKSPACE_NAME')
     await h['settings.setProject']({ projectId: project.id, patch: s[0].patch })
-    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'x', agentId: 'kai', title: 'x' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'x', agentId: 'christian', title: 'x' })
     expect(await readFile(join(ws.path, 'b.txt'), 'utf8')).toBe('b\n')
   })
 

@@ -8,8 +8,8 @@ import { bus } from '../src/main/bus'
 import { Tasks, derive, nextTaskId } from '../src/main/services/tasks'
 
 const agent = (id: string, name: string, role: string, lead = false): AgentDef => ({ id, name, role, description: '', lead, prompt: '', file: `.claude/agents/${id}.md` })
-const agents = [agent('kernel', 'Kernel', 'Lead', true), agent('kai', 'Kai', 'Frontend'), agent('ivy', 'Ivy', 'QA')]
-const ws = (extra: Partial<Workspace> = {}): Workspace => ({ id: 'w1', projectId: 'r', name: 'invoice-table', branch: 'wt/t-14', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...extra })
+const agents = [agent('kernel', 'Kernel', 'Lead', true), agent('christian', 'Christian', 'Frontend'), agent('teng', 'Teng', 'QA')]
+const ws = (extra: Partial<Workspace> = {}): Workspace => ({ id: 'w1', projectId: 'r', name: 'invoice-table', branch: 'wt/t-14', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'christian', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...extra })
 
 const open: Tasks[] = []
 afterEach(() => { open.forEach((t) => t.detach()); open.length = 0 })
@@ -25,7 +25,7 @@ async function setup() {
 
 const plan = (extra: Partial<Approval> = {}): Approval => ({
   id: 'p1', kind: 'plan', source: 'sdk', projectId: 'r', agentId: 'kernel', title: 'T-15 Export invoices as PDF', status: 'allowed', createdAt: 1,
-  steps: [{ title: 'T-15a PDF renderer', taskId: 'T-15a', agentId: 'kai' }, { title: 'T-15b Snapshot tests', taskId: 'T-15b', agentId: 'ivy' }, { title: 'Write the release note', agentId: 'kai' }], ...extra
+  steps: [{ title: 'T-15a PDF renderer', taskId: 'T-15a', agentId: 'christian' }, { title: 'T-15b Snapshot tests', taskId: 'T-15b', agentId: 'teng' }, { title: 'Write the release note', agentId: 'christian' }], ...extra
 })
 
 describe('task status', () => {
@@ -64,7 +64,7 @@ describe('tasks service', () => {
     bus.push({ type: 'approval', approval: plan() })
     const list = tasks.list('r')
     expect(list.map((x) => [x.id, x.title, x.column, x.parentId, x.agentId])).toEqual([
-      ['T-15a', 'PDF renderer', 'plan', 'T-15', 'kai'], ['T-15b', 'Snapshot tests', 'plan', 'T-15', 'ivy'], ['T-16', 'Write the release note', 'plan', undefined, 'kai']
+      ['T-15a', 'PDF renderer', 'plan', 'T-15', 'christian'], ['T-15b', 'Snapshot tests', 'plan', 'T-15', 'teng'], ['T-16', 'Write the release note', 'plan', undefined, 'christian']
     ])
     bus.push({ type: 'approval', approval: plan() })
     expect(tasks.list('r')).toHaveLength(3)
@@ -80,11 +80,11 @@ describe('tasks service', () => {
   it('links the next waiting task for an agent, then follows the workspace and its PR', async () => {
     const { store, tasks } = await setup()
     bus.push({ type: 'approval', approval: plan() })
-    store.saveWorkspace(ws({ id: 'w1', agentId: 'kai' }))
-    expect(tasks.link('r', 'kai', 'w1')).toMatchObject({ id: 'T-15a', workspaceId: 'w1', column: 'build', state: 'working' })
-    store.saveWorkspace(ws({ id: 'w2', agentId: 'kai' }))
-    expect(tasks.link('r', 'kai', 'w2')).toMatchObject({ id: 'T-16', workspaceId: 'w2' })
-    expect(tasks.link('r', 'kai', 'w3')).toBeUndefined()
+    store.saveWorkspace(ws({ id: 'w1', agentId: 'christian' }))
+    expect(tasks.link('r', 'christian', 'w1')).toMatchObject({ id: 'T-15a', workspaceId: 'w1', column: 'build', state: 'working' })
+    store.saveWorkspace(ws({ id: 'w2', agentId: 'christian' }))
+    expect(tasks.link('r', 'christian', 'w2')).toMatchObject({ id: 'T-16', workspaceId: 'w2' })
+    expect(tasks.link('r', 'christian', 'w3')).toBeUndefined()
 
     const saved = store.workspace('w1')!
     store.saveWorkspace({ ...saved, prState: 'open', prNumber: 41 })
@@ -100,8 +100,8 @@ describe('tasks service', () => {
     const { store, tasks } = await setup()
     bus.push({ type: 'approval', approval: plan() })
     store.saveWorkspace(ws())
-    tasks.link('r', 'kai', 'w1')
-    const ask: Approval = { id: 'a1', kind: 'tool', source: 'sdk', projectId: 'r', workspaceId: 'w1', agentId: 'kai', title: 'Run pnpm install', status: 'pending', createdAt: 2 }
+    tasks.link('r', 'christian', 'w1')
+    const ask: Approval = { id: 'a1', kind: 'tool', source: 'sdk', projectId: 'r', workspaceId: 'w1', agentId: 'christian', title: 'Run pnpm install', status: 'pending', createdAt: 2 }
     store.saveApproval(ask)
     bus.push({ type: 'approval', approval: ask })
     expect(store.task('r', 'T-15a')?.state).toBe('needs')
@@ -114,7 +114,7 @@ describe('tasks service', () => {
     const { store, tasks } = await setup()
     bus.push({ type: 'approval', approval: plan() })
     store.saveWorkspace(ws())
-    tasks.link('r', 'kai', 'w1')
+    tasks.link('r', 'christian', 'w1')
     const seen: string[] = []
     const on = (e: { type: string; task?: { id: string } }) => { if (e.type === 'task') seen.push(e.task!.id) }
     bus.on('push', on)
@@ -129,8 +129,8 @@ describe('tasks service', () => {
   it('makes and closes tasks from hooks of sessions outside Kernel', async () => {
     const { tasks, store } = await setup()
     const ctx = { projectId: 'r', workspaceId: undefined, agentId: undefined }
-    bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: 'abc', session_id: 's1', task_subject: 'Fix the login redirect', teammate_name: 'kai' }, ctx)
-    expect(tasks.list('r')).toMatchObject([{ id: 'T-01', title: 'Fix the login redirect', column: 'build', state: 'working', agentId: 'kai', externalId: 's1/abc' }])
+    bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: 'abc', session_id: 's1', task_subject: 'Fix the login redirect', teammate_name: 'christian' }, ctx)
+    expect(tasks.list('r')).toMatchObject([{ id: 'T-01', title: 'Fix the login redirect', column: 'build', state: 'working', agentId: 'christian', externalId: 's1/abc' }])
     bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: 'abc', session_id: 's1', task_subject: 'Fix the login redirect' }, ctx)
     expect(tasks.list('r')).toHaveLength(1)
     bus.emit('hook', { hook_event_name: 'TaskCompleted', task_id: 'abc', session_id: 's1', task_subject: 'Fix the login redirect' }, ctx)

@@ -17,7 +17,7 @@ import { branchExists } from '../src/main/services/worktrees'
 // A plain sh starts fast, as in runScripts.test.ts.
 process.env.SHELL = '/bin/sh'
 
-const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+const CHRISTIAN = '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 
 async function boot(dataDir: string, home: string) {
   const k = new Kernel({ dataDir, home })
@@ -29,13 +29,13 @@ async function boot(dataDir: string, home: string) {
 
 /** A project whose archive script is `script`, with one workspace whose branch is pushed nowhere. */
 async function setup(script?: string, app: object = {}) {
-  const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': KAI, ...(script ? { '.kernel/settings.toml': `[scripts]\narchive = ${JSON.stringify(script)}\n` } : {}) })
+  const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/christian.md': CHRISTIAN, ...(script ? { '.kernel/settings.toml': `[scripts]\narchive = ${JSON.stringify(script)}\n` } : {}) })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
   const k = await boot(dataDir, home)
   const project = await k.addProject(repo)
-  const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+  const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Invoice table' })
   return { k, repo, project, ws, dataDir, home }
 }
 
@@ -68,7 +68,7 @@ describe('archive returns before its cleanup (KERNEL-702)', () => {
     const { k, project, ws } = await setup(g.script)
     await k.archiveWorkspace(ws.id)
     expect(k.workspaces.reservedPorts.has(ws.port)).toBe(true)
-    const next = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const next = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Invoice table' })
     expect(blocksOverlap(next.port, ws.port)).toBe(false)
     expect(next.path).not.toBe(ws.path)
     await g.open()
@@ -211,7 +211,7 @@ describe('archive ends what still runs in the worktree (KERNEL-810)', () => {
   it('signals nothing for a current-branch workspace, and never Kernel itself', async () => {
     const { k, repo, project, ws } = await setup()
     // Work on the project's checkout, as a current-branch workspace does, with the user's own program running there.
-    const current = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'On main' })
+    const current = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'On main' })
     k.store.saveWorkspace({ ...k.store.workspace(current.id)!, mode: 'current', path: repo, branch: 'main' })
     const mine = await leave(repo, 'nohup')
     expect(await signalled(async () => { await k.archiveWorkspace(current.id); await k.archive.cleanedUp(current.id) })).toEqual([])

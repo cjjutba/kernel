@@ -9,12 +9,12 @@ const refOf = (w: Workspace, agents: AgentDef[]): NoteRef => ({ text: waitLabel(
 const line = (refs: NoteRef[], one: string, many: string, wrap: (names: string, verb: string) => string): WaitLine | undefined =>
   refs.length ? { text: wrap(joinLabels(refs.map((r) => r.text)), refs.length > 1 ? many : one), refs } : undefined
 
-/** "Queued. Sends when PR 164 by Noor merges.": what a held brief still waits for. Nothing once all of it merged. */
+/** "Queued. Sends when PR 164 by Sean merges.": what a held brief still waits for. Nothing once all of it merged. */
 export function heldLine(ws: Workspace, workspaces: Workspace[], agents: AgentDef[]): WaitLine | undefined {
   return line(waitingOn(ws, workspaces).map((t) => refOf(t, agents)), 'merges', 'merge', (names, verb) => `Queued. Sends when ${names} ${verb}.`)
 }
 
-/** "KERNEL-12 by Kai waits for this to merge.", in the workspace others wait for, until it merges. */
+/** "KERNEL-12 by Christian waits for this to merge.", in the workspace others wait for, until it merges. */
 export function waitersLine(ws: Workspace, workspaces: Workspace[], agents: AgentDef[]): WaitLine | undefined {
   if (isMerged(ws)) return undefined
   return line(waitersOf(ws.id, workspaces).map((w) => refOf(w, agents)), 'waits', 'wait', (names, verb) => `${names} ${verb} for this to merge.`)

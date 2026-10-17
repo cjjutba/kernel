@@ -65,14 +65,14 @@ describe('projects service', () => {
     expect(expandHome('~/Projects/x', home)).toBe(join(home, 'Projects', 'x'))
   })
 
-  it("seats the picked starter agents, Theo too but not Kernel, and writes settings.toml once", async () => {
+  it("seats the picked starter agents, Artkin too but not Kernel, and writes settings.toml once", async () => {
     const repo = await tempRepo()
-    expect(await seatStarterTeam(starter, repo, ['kai', 'kernel', 'theo', 'nobody'])).toEqual(['kai', 'theo'])
-    expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['kai.md', 'theo.md'])
+    expect(await seatStarterTeam(starter, repo, ['christian', 'kernel', 'artkin', 'nobody'])).toEqual(['christian', 'artkin'])
+    expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['artkin.md', 'christian.md'])
     // A file the repo already has stays as it is.
-    await writeFile(join(repo, '.claude', 'agents', 'noor.md'), '---\nname: noor\ndescription: Ours.\n---\nx\n')
-    expect(await seatStarterTeam(starter, repo, ['kai', 'noor', 'ivy'])).toEqual(['ivy'])
-    expect(await readFile(join(repo, '.claude', 'agents', 'noor.md'), 'utf8')).toContain('Ours.')
+    await writeFile(join(repo, '.claude', 'agents', 'sean.md'), '---\nname: sean\ndescription: Ours.\n---\nx\n')
+    expect(await seatStarterTeam(starter, repo, ['christian', 'sean', 'teng'])).toEqual(['teng'])
+    expect(await readFile(join(repo, '.claude', 'agents', 'sean.md'), 'utf8')).toContain('Ours.')
     expect(await ensureRepoSettings(repo)).toBe(true)
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[files]\ncopy = []\n')
     expect(await ensureRepoSettings(repo)).toBe(false)
@@ -142,7 +142,7 @@ describe('Kernel projects', () => {
     const { k } = await kernel()
     const repo = await tempRepo({ 'README.md': '# x\n', '.gitignore': '*.env\n', '.kernel/settings.toml': '[files]\ncopy = ["*.env"]\n' })
     for (const n of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) await writeFile(join(repo, `${n}.env`), 'X=1\n')
-    const project = await k.createProject({ source: 'folder', name: 'Env app', from: repo, team: ['kai'], autostart: false })
+    const project = await k.createProject({ source: 'folder', name: 'Env app', from: repo, team: ['christian'], autostart: false })
     expect((await setupDone(project.id)).find((s) => s.id === 'copy')).toMatchObject({ state: 'ok', detail: 'a.env, b.env, c.env, d.env, e.env and 2 more' })
     await k.stop()
   })
@@ -150,13 +150,13 @@ describe('Kernel projects', () => {
   it('creates a project from a folder, runs setup, then removes it without touching the folder', async () => {
     const { k } = await kernel()
     const repo = await tempRepo({ 'README.md': '# x\n' })
-    const done = (async () => { const project = await k.createProject({ source: 'folder', name: 'Own app', desc: 'Nights', from: repo, team: ['kai'], autostart: false }); return { project, steps: await setupDone(project.id) } })()
+    const done = (async () => { const project = await k.createProject({ source: 'folder', name: 'Own app', desc: 'Nights', from: repo, team: ['christian'], autostart: false }); return { project, steps: await setupDone(project.id) } })()
     const { project, steps } = await done
     expect(project).toMatchObject({ name: 'Own app', kind: 'folder', path: repo })
     expect(steps.map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['copy', 'ok'], ['hooks', 'fail'], ['agents', 'ok']])
     expect(steps.find((s) => s.id === 'hooks')?.error).toContain('Check hooks')
-    expect((await k.agents(project.id)).map((a) => a.id)).toEqual(['kernel-lead', 'kai'])
-    expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Kai from .claude/agents, Kernel leads' })
+    expect((await k.agents(project.id)).map((a) => a.id)).toEqual(['kernel-lead', 'christian'])
+    expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Christian from .claude/agents, Kernel leads' })
     expect(steps.find((s) => s.id === 'agents')?.brought).toBeUndefined()
     expect(await stat(join(repo, '.kernel', 'settings.toml'))).toBeTruthy()
 
@@ -169,13 +169,13 @@ describe('Kernel projects', () => {
     await k.removeProject(project.id, false)
     expect(k.store.project(project.id)).toBeUndefined()
     expect(await stat(join(repo, 'README.md'))).toBeTruthy()
-    expect(await stat(join(repo, '.claude', 'agents', 'kai.md'))).toBeTruthy()
+    expect(await stat(join(repo, '.claude', 'agents', 'christian.md'))).toBeTruthy()
     await k.stop()
   })
 
   it('tries a failed setup again from the failed step, one try at a time, and refuses once the project is set up (KERNEL-876)', async () => {
     const { k } = await kernel()
-    const project = await k.createProject({ source: 'folder', name: 'Retry app', from: await tempRepo(), team: ['kai'], autostart: false })
+    const project = await k.createProject({ source: 'folder', name: 'Retry app', from: await tempRepo(), team: ['christian'], autostart: false })
     expect((await setupDone(project.id)).find((s) => s.id === 'hooks')?.state).toBe('fail')
     await k.handlers()['hooks.install']({ port: (await k.hooks.hooksStatus()).port })
 
@@ -194,7 +194,7 @@ describe('Kernel projects', () => {
     expect(steps.map((s) => s.state)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok'])
     expect(steps.find((s) => s.id === 'hooks')?.error).toBeUndefined()
     // The starter agents the first try seated are still Kernel's, not agents the repo brought.
-    expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Kai from .claude/agents, Kernel leads' })
+    expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Christian from .claude/agents, Kernel leads' })
     expect(steps.find((s) => s.id === 'agents')?.brought).toBeUndefined()
 
     await expect(k.handlers()['projects.retrySetup']({ projectId: project.id })).rejects.toThrow('Retry app is already set up.')
@@ -241,7 +241,7 @@ describe('Kernel projects', () => {
     const { k, home } = await kernel()
     const src = await tempRepo({ 'README.md': '# x\n' })
     const clones = await withFlakyClone(src, async () => {
-      const project = await k.createProject({ source: 'repo', name: 'Clone app', from: 'me/clone-app', cloneTo: join(home, 'Projects', 'clone-app'), team: ['kai'], autostart: false })
+      const project = await k.createProject({ source: 'repo', name: 'Clone app', from: 'me/clone-app', cloneTo: join(home, 'Projects', 'clone-app'), team: ['christian'], autostart: false })
       const first = await setupDone(project.id)
       expect(first.find((s) => s.id === 'clone')).toMatchObject({ state: 'fail', error: expect.stringContaining('early EOF') })
       expect(existsSync(join(project.path, 'half.txt'))).toBe(true)
@@ -262,7 +262,7 @@ describe('Kernel projects', () => {
     const picked = join(home, 'Picked')
     await mkdir(picked)
     const clones = await withFlakyClone(await tempRepo(), async () => {
-      const project = await k.createProject({ source: 'repo', name: 'Picked app', from: 'me/picked-app', cloneTo: picked, team: ['kai'], autostart: false })
+      const project = await k.createProject({ source: 'repo', name: 'Picked app', from: 'me/picked-app', cloneTo: picked, team: ['christian'], autostart: false })
       expect((await setupDone(project.id)).find((s) => s.id === 'clone')?.state).toBe('fail')
 
       const done = setupDone(project.id)
@@ -276,7 +276,7 @@ describe('Kernel projects', () => {
 
   it('tries a setup that failed before a restart again after it (KERNEL-883)', async () => {
     const first = await kernel()
-    const project = await first.k.createProject({ source: 'folder', name: 'Restart app', from: await tempRepo(), team: ['kai'], autostart: false })
+    const project = await first.k.createProject({ source: 'folder', name: 'Restart app', from: await tempRepo(), team: ['christian'], autostart: false })
     expect((await setupDone(project.id)).find((s) => s.id === 'hooks')?.state).toBe('fail')
     await first.k.stop({ budgetMs: 0 })
 
@@ -327,7 +327,7 @@ describe('Kernel projects', () => {
     const remote = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
     await exec('git', ['init', '-q', '--bare', remote])
     await exec('git', ['-C', repo, 'remote', 'add', 'origin', remote])
-    const project = await k.createProject({ source: 'folder', name: 'Pushed app', from: repo, team: ['kai'], autostart: false })
+    const project = await k.createProject({ source: 'folder', name: 'Pushed app', from: repo, team: ['christian'], autostart: false })
     const steps = await setupDone(project.id)
     expect(steps.map((s) => s.id)).toEqual(['clone', 'host', 'worktrees', 'copy', 'hooks', 'push', 'agents'])
     expect(steps.find((s) => s.id === 'push')).toMatchObject({ state: 'ok', title: 'Check push access', detail: 'git can push to origin' })
@@ -398,7 +398,7 @@ describe('Kernel projects', () => {
     await writeFile(join(plain, 'index.html'), '<p>hi</p>')
     await writeFile(join(plain, '.env'), 'SECRET=1\n')
     await expect(k.createProject({ source: 'folder', name: 'Plain', from: plain, team: [], autostart: false })).rejects.toThrow('not a git repository')
-    const wait = (async () => { const project = await k.createProject({ source: 'folder', name: 'Plain', from: plain, team: ['kai'], autostart: false, initGit: true }); return { project, steps: await setupDone(project.id) } })()
+    const wait = (async () => { const project = await k.createProject({ source: 'folder', name: 'Plain', from: plain, team: ['christian'], autostart: false, initGit: true }); return { project, steps: await setupDone(project.id) } })()
     const { project, steps } = await wait
     expect((await exec('git', ['-C', plain, 'symbolic-ref', '--short', 'HEAD'])).stdout.trim()).toBe('main')
     expect((await exec('git', ['-C', plain, 'rev-parse', '--verify', '--quiet', 'HEAD'])).code).not.toBe(0)
@@ -406,7 +406,7 @@ describe('Kernel projects', () => {
     expect(project.defaultBranch).toBe('main')
     // Until the user commits, a new workspace says why it can't start.
     k.sessions.send = async () => ({ queued: false })
-    await expect(k.workspaces.createWorkspace(project.id, { prompt: 'Go', title: 'Go', agentId: 'kai', mode: 'worktree' })).rejects.toThrow('has no commit yet')
+    await expect(k.workspaces.createWorkspace(project.id, { prompt: 'Go', title: 'Go', agentId: 'christian', mode: 'worktree' })).rejects.toThrow('has no commit yet')
     await k.stop()
   })
 
@@ -428,17 +428,17 @@ describe('Kernel projects', () => {
   it('gives two projects with the same name their own worktree folders, and keeps an older project in its old one (KERNEL-231)', async () => {
     const { k, home } = await kernel()
     k.sessions.send = async () => ({ queued: false })
-    const agent = { '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nHi' }
+    const agent = { '.claude/agents/christian.md': '---\nname: christian\ndescription: Builds.\n---\nHi' }
     const one = await k.addProject(await tempRepo(agent), 'app')
     const two = await k.addProject(await tempRepo(agent), 'app')
-    const a = await k.workspaces.createWorkspace(one.id, { prompt: 'Go', title: 'Go', agentId: 'kai', mode: 'worktree', baseRef: 'main' })
-    const b = await k.workspaces.createWorkspace(two.id, { prompt: 'Go', title: 'Go', agentId: 'kai', mode: 'worktree', baseRef: 'main' })
+    const a = await k.workspaces.createWorkspace(one.id, { prompt: 'Go', title: 'Go', agentId: 'christian', mode: 'worktree', baseRef: 'main' })
+    const b = await k.workspaces.createWorkspace(two.id, { prompt: 'Go', title: 'Go', agentId: 'christian', mode: 'worktree', baseRef: 'main' })
     expect(a.path.startsWith(join(home, 'wt', one.id) + '/')).toBe(true)
     expect(b.path.startsWith(join(home, 'wt', two.id) + '/')).toBe(true)
     // A project saved before KERNEL-231 has no folder of its own and keeps the slug of its name.
     const { worktreeDir: _dir, ...old } = k.store.project(one.id)!
     k.store.saveProject({ ...old, name: 'Old app' })
-    const c = await k.workspaces.createWorkspace(one.id, { prompt: 'More', title: 'More', agentId: 'kai', mode: 'worktree', baseRef: 'main' })
+    const c = await k.workspaces.createWorkspace(one.id, { prompt: 'More', title: 'More', agentId: 'christian', mode: 'worktree', baseRef: 'main' })
     expect(c.path.startsWith(join(home, 'wt', 'old-app') + '/')).toBe(true)
     expect(k.store.workspace(a.id)?.path).toBe(a.path)
     await k.stop()
@@ -459,10 +459,10 @@ describe('Kernel projects', () => {
 
   it('gives two workspaces created at once in one project their own branch and folder (KERNEL-231)', async () => {
     const { k } = await kernel()
-    const repo = await tempRepo({ '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nHi' })
+    const repo = await tempRepo({ '.claude/agents/christian.md': '---\nname: christian\ndescription: Builds.\n---\nHi' })
     const project = await k.addProject(repo)
     k.sessions.send = async () => ({ queued: false })
-    const make = () => k.workspaces.createWorkspace(project.id, { prompt: 'Same task', title: 'Same task', agentId: 'kai', mode: 'worktree', baseRef: 'main' })
+    const make = () => k.workspaces.createWorkspace(project.id, { prompt: 'Same task', title: 'Same task', agentId: 'christian', mode: 'worktree', baseRef: 'main' })
     const [a, b] = await Promise.all([make(), make()])
     expect(a.branch).not.toBe(b.branch)
     expect(a.path).not.toBe(b.path)
@@ -491,7 +491,7 @@ describe("the project's Install step (KERNEL-260, KERNEL-913)", () => {
     k.sessions.send = async () => ({ queued: false })
     k.sessions.release = () => undefined
     const repo = await tempRepo({ 'README.md': '# x\n', ...files })
-    const project = await k.createProject({ source: 'folder', name: 'Cloned app', from: repo, team: ['kai'], autostart: false })
+    const project = await k.createProject({ source: 'folder', name: 'Cloned app', from: repo, team: ['christian'], autostart: false })
     const steps = await setupDone(project.id)
     return { k, repo, project, steps, h: k.handlers() }
   }
@@ -501,7 +501,7 @@ describe("the project's Install step (KERNEL-260, KERNEL-913)", () => {
       const { k, repo, project, steps } = await start({ 'package.json': pkg('touch ran.txt') })
       expect(steps.map((s) => s.id)).not.toContain('install')
       expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
-      const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'First' })
+      const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'First' })
       expect(ws.status).toBe('ready')
       await k.stop()
     })
@@ -535,9 +535,9 @@ describe('Projects page helpers', () => {
     expect([120, 3600, 7200, 86400 * 2, 86400 * 21].map((s) => ago(now - s * 1000, now))).toEqual(['2 min ago', '1 hour ago', '2 hours ago', '2 days ago', '3 weeks ago'])
   })
 
-  it("counts the team without Kernel's Theo, which the list keeps only to name old reviews (KERNEL-553)", () => {
+  it("counts the team without Kernel's Artkin, which the list keeps only to name old reviews (KERNEL-553)", () => {
     const agent = (id: string, retired?: boolean) => ({ id, name: id, role: 'Engineer', model: 'opus', file: '', retired }) as never
-    expect(teamOf([agent('kernel'), agent('kai'), agent('kernel-reviewer', true)]).map((a) => a.id)).toEqual(['kernel', 'kai'])
+    expect(teamOf([agent('kernel'), agent('christian'), agent('kernel-reviewer', true)]).map((a) => a.id)).toEqual(['kernel', 'christian'])
     expect(teamOf(undefined)).toEqual([])
   })
 })

@@ -391,7 +391,7 @@ describe('store reads', () => {
   it('lists shared files newest first by project or workspace, finds one by source and deletes them with the project (KERNEL-302)', () => {
     const store = new Store(':memory:')
     const file = (id: string, projectId: string, workspaceId: string, source: string, updatedAt: number): SharedFile =>
-      ({ id, projectId, workspaceId, agentId: 'kai', source, title: id, kind: 'html', versions: [], createdAt: 1, updatedAt })
+      ({ id, projectId, workspaceId, agentId: 'christian', source, title: id, kind: 'html', versions: [], createdAt: 1, updatedAt })
     store.saveSharedFile(file('a', 'r1', 'w1', '.kernel/shared/a.html', 1))
     store.saveSharedFile(file('b', 'r1', 'w2', '.kernel/shared/b.html', 3))
     store.saveSharedFile(file('c', 'r2', 'w3', '.kernel/shared/c.html', 2))
@@ -418,7 +418,7 @@ describe('deleting workspaces (KERNEL-333)', () => {
       store.saveWorkspace({ id, projectId: 'r1', name: id, status: 'archived', createdAt: 1 } as Workspace)
       store.saveChat({ id: `c-${id}`, workspaceId: id, title: id, createdAt: 1 } as never)
       store.saveItem(`c-${id}`, { kind: 'text', id: `i-${id}`, ts: 1, text: 'hi' })
-      store.saveSharedFile({ id: `s-${id}`, projectId: 'r1', workspaceId: id, agentId: 'kai', source: `${id}.html`, title: id, kind: 'html', versions: [], createdAt: 1, updatedAt: 1 })
+      store.saveSharedFile({ id: `s-${id}`, projectId: 'r1', workspaceId: id, agentId: 'christian', source: `${id}.html`, title: id, kind: 'html', versions: [], createdAt: 1, updatedAt: 1 })
       store.saveApproval(approval({ id: `a-${id}`, status: 'allowed', workspaceId: id } as never))
       store.saveActivity({ id: `e-${id}`, ts: 1, projectId: 'r1', workspaceId: id, kind: 'turn.done', text: 'done' } as never)
       store.saveNotification({ id: `n-${id}`, kind: 'finished', projectId: 'r1', workspaceId: id, title: id, sub: '', createdAt: 1 } as never)

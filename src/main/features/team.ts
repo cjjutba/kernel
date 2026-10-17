@@ -109,7 +109,7 @@ export class Team extends Feature {
       if (!(await copyAgentFiles(from.path, project.path))) throw new Error(`${from.name} has no agents to copy.`)
     } else {
       if (!this.o.starterDir) throw new Error('No starter team found. Add agent files to .claude/agents.')
-      await seatStarterTeam(this.o.starterDir, project.path, template.kind === 'pair' ? ['kai'] : [...STARTER_IDS])
+      await seatStarterTeam(this.o.starterDir, project.path, template.kind === 'pair' ? ['christian'] : [...STARTER_IDS])
     }
     const list = await this.agents(projectId)
     bus.push({ type: 'agents', projectId, agents: this.listed(projectId, list) })

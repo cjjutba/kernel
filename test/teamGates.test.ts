@@ -28,19 +28,19 @@ describe('team gates', () => {
     const g = teamGates(() => ({ requireTestOutput: false, keepTeammatesWorking: false }))
     await call(g.onTaskCreated, { task_id: '1', task_subject: 'Add login' })
     expect(await call(g.onTaskCompleted, { task_id: '9' })).toEqual({})
-    expect(await call(g.onIdle, { teammate_name: 'kai' })).toEqual({})
+    expect(await call(g.onIdle, { teammate_name: 'christian' })).toEqual({})
   })
 
   it('sends an idle teammate back while tasks are open, a few times at most', async () => {
     const g = teamGates(() => ({ requireTestOutput: false, keepTeammatesWorking: true }))
-    expect(await call(g.onIdle, { teammate_name: 'kai' })).toEqual({})
+    expect(await call(g.onIdle, { teammate_name: 'christian' })).toEqual({})
     await call(g.onTaskCreated, { task_id: '1', task_subject: 'Add login' })
-    const r = await call(g.onIdle, { teammate_name: 'kai' }) as { decision: string; reason: string }
+    const r = await call(g.onIdle, { teammate_name: 'christian' }) as { decision: string; reason: string }
     expect(r.decision).toBe('block')
     expect(r.reason).toContain('"Add login"')
-    for (let i = 1; i < IDLE_NUDGES; i++) expect(await call(g.onIdle, { teammate_name: 'kai' })).toMatchObject({ decision: 'block' })
-    expect(await call(g.onIdle, { teammate_name: 'kai' })).toEqual({})
+    for (let i = 1; i < IDLE_NUDGES; i++) expect(await call(g.onIdle, { teammate_name: 'christian' })).toMatchObject({ decision: 'block' })
+    expect(await call(g.onIdle, { teammate_name: 'christian' })).toEqual({})
     await call(g.onTaskCompleted, { task_id: '1' })
-    expect(await call(g.onIdle, { teammate_name: 'kai' })).toEqual({})
+    expect(await call(g.onIdle, { teammate_name: 'christian' })).toEqual({})
   })
 })

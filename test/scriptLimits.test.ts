@@ -63,7 +63,7 @@ describe('exec', () => {
 
 describe('setup and archive scripts', () => {
   async function kernelWith(scripts: string, minutes: number) {
-    const repo = await tempRepo({ 'README.md': '# demo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.', '.kernel/settings.toml': scripts })
+    const repo = await tempRepo({ 'README.md': '# demo\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nKai.', '.kernel/settings.toml': scripts })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
@@ -85,7 +85,7 @@ describe('setup and archive scripts', () => {
   it('fails a setup that never exits, says why, and leaves none of its processes', async () => {
     const { k, project } = await kernelWith('[scripts]\nsetup = "sleep 600 & echo pid-$!; wait"\n', 0.01)
     const started = Date.now()
-    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build', agentId: 'christian', title: 'Build' })
     expect(Date.now() - started).toBeLessThan(10_000)
     expect(ws.status).toBe('failed')
     const lines = linesOf(ws.id)
@@ -98,7 +98,7 @@ describe('setup and archive scripts', () => {
 
   it('stops an archive script that never exits and archives anyway', async () => {
     const { k, project } = await kernelWith('[scripts]\narchive = "sleep 600"\n', 0.01)
-    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
+    const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build', agentId: 'christian', title: 'Build' })
     await k.archive.archiveWorkspace(ws.id)
     await k.archive.cleanedUp(ws.id)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')

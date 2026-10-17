@@ -11,12 +11,12 @@ import { Kernel } from '../src/main/kernel'
 
 // KERNEL-68: the Lead can name a workspace's branch, and Kernel follows an agent that switches branches in its worktree.
 
-const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+const CHRISTIAN = '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 const LINEAR = 'cjjutbaofficial/kernel-53-symlink-node_modules-into-new-worktrees'
 const prInfo = (state: PrState, number = 54): PrInfo => ({ workspaceId: '', number, url: `https://github.com/x/y/pull/${number}`, title: 'Symlink node_modules', state, baseRef: 'main', checks: [], comments: [], conflicts: [] })
 
 async function setup() {
-  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': KAI })
+  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/christian.md': CHRISTIAN })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
@@ -46,29 +46,29 @@ async function commit(path: string, file: string) {
 describe('the Lead names the branch', () => {
   it('creates the workspace on the given branch, with a suffix when the name is taken', async () => {
     const { k, project } = await setup()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Symlink node_modules', branch: LINEAR })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Symlink node_modules', branch: LINEAR })
     // Cut to 60 characters at a dash (KERNEL-275).
     const cut = 'cjjutbaofficial/kernel-53-symlink-node_modules-into-new'
     expect(ws.branch).toBe(cut)
     expect(await head(ws.path)).toBe(cut)
-    const again = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Again', branch: LINEAR })
+    const again = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Again', branch: LINEAR })
     expect(again.branch).toBe(`${cut}-2`)
-    await expect(k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Bad', branch: 'bad..name' })).rejects.toThrow('not a valid branch name')
+    await expect(k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Bad', branch: 'bad..name' })).rejects.toThrow('not a valid branch name')
     await k.stop()
   })
 
   it('passes branch from create_workspace through to the workspace', async () => {
     const asked: Parameters<KernelToolDeps['createWorkspace']>[0][] = []
     const deps: KernelToolDeps = {
-      projectId: 'project', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
+      projectId: 'project', lead: undefined, agents: async () => [{ id: 'sean', name: 'Sean', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
       createWorkspace: async (o) => { asked.push(o); return { id: 'ws-1', branch: o.branch ?? 'feat/x', agentId: o.agentId } as never },
       messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
     }
     const tool = kernelTools(deps).find((t) => t.name === 'create_workspace')!
-    const out = await tool.handler({ agent: 'noor', title: 'Symlink node_modules', brief: 'Goal', branch: LINEAR } as never, {})
-    expect(asked[0]).toMatchObject({ agentId: 'noor', branch: LINEAR })
-    expect((out.content[0] as { text: string }).text).toBe(`Created ws-1 on ${LINEAR} for noor.`)
+    const out = await tool.handler({ agent: 'sean', title: 'Symlink node_modules', brief: 'Goal', branch: LINEAR } as never, {})
+    expect(asked[0]).toMatchObject({ agentId: 'sean', branch: LINEAR })
+    expect((out.content[0] as { text: string }).text).toBe(`Created ws-1 on ${LINEAR} for sean.`)
     expect(LEAD_RULE).toContain('Pass branch only when the user asks for a particular name.')
   })
 })
@@ -76,8 +76,8 @@ describe('the Lead names the branch', () => {
 describe('an agent switches branches in its worktree', () => {
   it('finds the PR, merges and archives on the branch the work is on', async () => {
     const { k, project, gh } = await setup()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Symlink node_modules' })
-    // What Noor did on KERNEL-53: a new branch in the same worktree, a commit, and a PR from it.
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Symlink node_modules' })
+    // What Sean did on KERNEL-53: a new branch in the same worktree, a commit, and a PR from it.
     await run('git', ['-C', ws.path, 'checkout', '-q', '-b', LINEAR])
     await commit(ws.path, 'link.ts')
     gh.prs.set(LINEAR, prInfo('ready'))
@@ -92,7 +92,7 @@ describe('an agent switches branches in its worktree', () => {
 
   it("archives the branch the workspace is on, and leaves the one it left", async () => {
     const { k, project } = await setup()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Moved' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Moved' })
     await run('git', ['-C', ws.path, 'checkout', '-q', '-b', 'moved-here'])
     await k.archiveWorkspace(ws.id, true)
     await k.archive.cleanedUp(ws.id)
@@ -105,7 +105,7 @@ describe('an agent switches branches in its worktree', () => {
 
   it('restores on the branch the work was on', async () => {
     const { k, project } = await setup()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Come back' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Come back' })
     await run('git', ['-C', ws.path, 'checkout', '-q', '-b', 'kept-work'])
     await commit(ws.path, 'work.ts')
     await k.archiveWorkspace(ws.id, false)
@@ -118,7 +118,7 @@ describe('an agent switches branches in its worktree', () => {
 
   it("drops the old branch's PR, and ignores a detached HEAD", async () => {
     const { k, project, gh } = await setup()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Two branches' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Two branches' })
     gh.prs.set(ws.branch, prInfo('ready', 12))
     expect((await k.refreshPr(ws.id)).prNumber).toBe(12)
     await run('git', ['-C', ws.path, 'checkout', '-q', '--detach'])

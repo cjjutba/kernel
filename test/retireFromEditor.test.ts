@@ -14,14 +14,14 @@ const { getState, setState } = await import('../src/renderer/src/store')
 const { retireAgent } = await import('../src/renderer/src/screens/agent/retireAgent')
 
 const agent = (id: string) => ({ id, name: id }) as AgentDef
-const open = (route: Route) => setState((s) => ({ agents: { r1: [agent('kai'), agent('ana')] }, ui: { ...s.ui, route, modal: { name: 'confirm', kind: 'retire', projectId: 'r1', agentId: 'kai' } } }))
+const open = (route: Route) => setState((s) => ({ agents: { r1: [agent('christian'), agent('ana')] }, ui: { ...s.ui, route, modal: { name: 'confirm', kind: 'retire', projectId: 'r1', agentId: 'christian' } } }))
 
 describe('retireAgent', () => {
   beforeEach(() => { calls.length = 0 })
 
   it('goes back to the project’s Agents list from that agent’s editor', async () => {
-    open({ name: 'settings', page: 'project', projectId: 'r1', section: 'agents', agentId: 'kai' })
-    await retireAgent('r1', 'kai')
+    open({ name: 'settings', page: 'project', projectId: 'r1', section: 'agents', agentId: 'christian' })
+    await retireAgent('r1', 'christian')
     expect(calls).toEqual(['agents.retire'])
     expect(getState().ui.route).toEqual({ name: 'settings', page: 'project', projectId: 'r1', section: 'agents' })
     expect(getState().agents.r1.map((a) => a.id)).toEqual(['ana'])
@@ -31,11 +31,11 @@ describe('retireAgent', () => {
   it('leaves the route alone when the window is somewhere else or on another agent', async () => {
     const other: Route = { name: 'settings', page: 'project', projectId: 'r1', section: 'agents', agentId: 'ana' }
     open(other)
-    await retireAgent('r1', 'kai')
+    await retireAgent('r1', 'christian')
     expect(getState().ui.route).toEqual(other)
     const elsewhere: Route = { name: 'settings', page: 'project', projectId: 'r1', section: 'agents' }
     open(elsewhere)
-    await retireAgent('r1', 'kai')
+    await retireAgent('r1', 'christian')
     expect(getState().ui.route).toEqual(elsewhere)
   })
 })

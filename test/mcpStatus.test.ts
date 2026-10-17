@@ -100,7 +100,7 @@ describe("a project's MCP servers", () => {
     return { k, h: k.handlers(), repo, pushes }
   }
 
-  const noor = { id: 'noor', name: 'Noor', role: 'Backend', description: 'APIs.', lead: false, prompt: '', file: '/r/noor.md', tools: ['Read', 'mcp__linear', 'mcp__claude_ai_Linear', 'mcp__neon', 'mcp__figma', 'mcp__slack', 'mcp__gmail'] } as AgentDef
+  const sean = { id: 'sean', name: 'Sean', role: 'Backend', description: 'APIs.', lead: false, prompt: '', file: '/r/sean.md', tools: ['Read', 'mcp__linear', 'mcp__claude_ai_Linear', 'mcp__neon', 'mcp__figma', 'mcp__slack', 'mcp__gmail'] } as AgentDef
 
   it('checks a project the first time its servers are listed, keeps what sessions report, and warns about what an agent lacks', async () => {
     const { k, h, pushes } = await project()
@@ -109,7 +109,7 @@ describe("a project's MCP servers", () => {
       server('claude.ai Linear', 'needs-auth', 'claudeai'), server('plugin:github:github', 'connected', 'plugin')
     ]]
     // Until a probe lists Claude's servers, a server no file names may be a claude.ai connector, so none is called missing.
-    expect(await k.mcp.warnings('project', noor)).toEqual([{ kind: 'mcp-off', detail: 'figma' }])
+    expect(await k.mcp.warnings('project', sean)).toEqual([{ kind: 'mcp-off', detail: 'figma' }])
     expect(await h['mcp.list']({ projectId: 'project' })).toEqual([
       { name: 'figma', source: 'project', enabled: false }, { name: 'linear', source: 'user', enabled: true }, { name: 'neon', source: 'user', enabled: true }
     ])
@@ -136,13 +136,13 @@ describe("a project's MCP servers", () => {
     expect(pushes[1].servers.map((s) => [s.name, s.status])).toEqual([['figma', undefined], ['linear', 'connected'], ['neon', 'connected'], ['claude.ai Linear', 'needs-auth'], ['plugin:github:github', 'connected'], ['claude.ai Gmail', 'connected']])
 
     // The list is whole now: a server nothing names is missing, with a connected one whose name contains it offered.
-    expect(await k.mcp.warnings('project', noor)).toEqual([
+    expect(await k.mcp.warnings('project', sean)).toEqual([
       { kind: 'mcp-needs-auth', detail: 'claude.ai Linear' }, { kind: 'mcp-off', detail: 'figma' },
       { kind: 'mcp-missing', detail: 'slack' }, { kind: 'mcp-missing', detail: 'gmail', suggestion: 'claude_ai_Gmail' }
     ])
     // Once the user confirms the alias, the agent's file reaches the connector.
     await saveRepoSettings(k.store.project('project')!.path, { mcp: { aliases: { gmail: 'claude_ai_Gmail' } } })
-    expect((await k.mcp.warnings('project', noor)).map((w) => w.detail)).toEqual(['claude.ai Linear', 'figma', 'slack'])
+    expect((await k.mcp.warnings('project', sean)).map((w) => w.detail)).toEqual(['claude.ai Linear', 'figma', 'slack'])
 
     // A probe asked for waits, and its list replaces Claude's: a server gone from every file goes.
     sdk.lists = [[server('linear', 'connected', 'user'), server('neon', 'connected', 'user')]]
@@ -290,7 +290,7 @@ describe("every account's MCP servers, saved and checked in the background", () 
     const repo = await tempRepo({ 'README.md': '# demo\n' })
     await saveRepoSettings(repo, { mcp: { aliases: { gmail: 'claude_ai_Gmail' } } })
     k.store.saveProject({ id: 'project', name: 'Invoices', path: repo, createdAt: 1 } as never)
-    const agent = (tools: string[]) => ({ id: 'noor', name: 'Noor', role: 'Backend', description: '', lead: false, prompt: '', file: '/r/noor.md', tools }) as AgentDef
+    const agent = (tools: string[]) => ({ id: 'sean', name: 'Sean', role: 'Backend', description: '', lead: false, prompt: '', file: '/r/sean.md', tools }) as AgentDef
     expect(await k.mcp.signInsFor('project', agent(['Read', 'mcp__porkbun__*', 'mcp__linear', 'mcp__gmail', 'mcp__neon', 'mcp__kernel']))).toEqual({
       account: 'Claude Code’s own login', servers: [{ name: 'porkbun', state: 'needs-sign-in' }, { name: 'claude.ai Gmail', state: 'needs-sign-in' }]
     })
@@ -321,7 +321,7 @@ describe("every account's MCP servers, saved and checked in the background", () 
   })
 
   // KERNEL-940: the edge cases, walked end to end.
-  const agent = (tools: string[]) => ({ id: 'noor', name: 'Noor', role: 'Backend', description: '', lead: false, prompt: '', file: '/r/noor.md', tools }) as AgentDef
+  const agent = (tools: string[]) => ({ id: 'sean', name: 'Sean', role: 'Backend', description: '', lead: false, prompt: '', file: '/r/sean.md', tools }) as AgentDef
   const withProject = async (k: Kernel) => {
     vi.spyOn(k.team, 'pickFor').mockReturnValue({ provider: 'claude' } as never)
     k.store.saveProject({ id: 'project', name: 'Invoices', path: await tempRepo({ 'README.md': '# demo\n' }), createdAt: 1 } as never)

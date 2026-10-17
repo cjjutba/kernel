@@ -53,7 +53,7 @@ const next = (h: number, m: number) => { const d = new Date(); d.setHours(h, m, 
 /** Today at `h`:`m`, past or not: when a token account's last turn read its usage. */
 const todayAt = (h: number, m: number) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime() }
 const nextMonday = () => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(9, 0, 0, 0); return d.getTime() }
-/** Kai's next turn on the invoice table, after a move to another account: the note, then three tool calls and the reply (KERNEL-569). */
+/** Christian's next turn on the invoice table, after a move to another account: the note, then three tool calls and the reply (KERNEL-569). */
 const afterSwitch = (note: string): ChatItem[] => [
   ...tableItems,
   { kind: 'user', id: 'u-skeleton', ts: at(10, 43), parts: [{ type: 'text', text: 'Also add a loading skeleton.' }] },
@@ -329,23 +329,23 @@ const sharedCodex = (): McpAccount[] => {
 const setUpRun: McpSignInAll = { accountId: 'personal', servers: ['Linear', 'Vercel', 'claude.ai Gmail', 'claude.ai Google Drive', 'claude.ai Notion'], current: 'Vercel', done: ['Linear'], failed: [], ignored: ['plugin:vercel:vercel'] }
 const setUpConnect = { provider: 'claude' as const, accountId: 'personal', email: 'cj@jutba.example', url: connectUrl, servers: ['claude.ai Gmail', 'claude.ai Google Drive', 'claude.ai Notion'] }
 const personalMcpSignIns = [{ server: 'Linear', connector: false }, { server: 'claude.ai Gmail', connector: true }, { server: 'claude.ai Google Drive', connector: true }]
-/** As Kernel resolves them (KERNEL-397): Kernel leads, and Theo reviews with tools that can't open a PR, so takes no tasks. */
-const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'kernel-lead', reviewer: id === 'theo', member: id !== 'kernel-lead' && id !== 'theo', prompt: '', ...(id === 'kernel-lead' ? { builtIn: 'lead' as const, file: '' } : { file: `.claude/agents/${id}.md` }), model: id === 'kernel-lead' || id === 'theo' ? 'opus' : 'sonnet' })
+/** As Kernel resolves them (KERNEL-397): Kernel leads, and Artkin reviews with tools that can't open a PR, so takes no tasks. */
+const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'kernel-lead', reviewer: id === 'artkin', member: id !== 'kernel-lead' && id !== 'artkin', prompt: '', ...(id === 'kernel-lead' ? { builtIn: 'lead' as const, file: '' } : { file: `.claude/agents/${id}.md` }), model: id === 'kernel-lead' || id === 'artkin' ? 'opus' : 'sonnet' })
 const sixAgents: AgentDef[] = [
-  agentFile('kernel-lead', 'Kernel', 'Lead', 'Plans and hands out tasks'), agentFile('kai', 'Kai', 'Frontend', 'UI work, follows DESIGN.md'),
-  agentFile('noor', 'Noor', 'Backend', 'Schema, API, migrations'), agentFile('ivy', 'Ivy', 'QA', 'Runs tests, attaches output'),
-  agentFile('theo', 'Theo', 'Reviewer', 'Types, security, tenancy'), agentFile('wren', 'Wren', 'Designer', 'Joined today')
+  agentFile('kernel-lead', 'Kernel', 'Lead', 'Plans and hands out tasks'), agentFile('christian', 'Christian', 'Frontend', 'UI work, follows DESIGN.md'),
+  agentFile('sean', 'Sean', 'Backend', 'Schema, API, migrations'), agentFile('teng', 'Teng', 'QA', 'Runs tests, attaches output'),
+  agentFile('artkin', 'Artkin', 'Reviewer', 'Types, security, tenancy'), agentFile('wren', 'Wren', 'Designer', 'Joined today')
 ]
 /** The agents Settings, Models lists under each row: Frontend and Backend in two projects, one pinned to a model, one with a custom role. */
 const modelsPage = () => settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } })
 const modelsAgents = (): Fixture['agents'] => {
-  const kai = agentFile('kai', 'Kai', 'Frontend', 'UI work, follows DESIGN.md')
-  const noor = { ...agentFile('noor', 'Noor', 'Backend', 'Schema, API, migrations'), model: undefined }
+  const christian = agentFile('christian', 'Christian', 'Frontend', 'UI work, follows DESIGN.md')
+  const sean = { ...agentFile('sean', 'Sean', 'Backend', 'Schema, API, migrations'), model: undefined }
   const rio = { ...agentFile('rio', 'Rio', 'Data analyst', 'Reports and queries'), model: undefined }
   const mira = { ...agentFile('mira', 'Mira', 'Frontend', 'Design systems'), model: 'claude-opus-5-5' }
-  const theo = { ...agentFile('theo', 'Theo', 'Reviewer', 'Types, security, tenancy'), model: undefined }
+  const artkin = { ...agentFile('artkin', 'Artkin', 'Reviewer', 'Types, security, tenancy'), model: undefined }
   const lead = agentFile('kernel-lead', 'Kernel', 'Lead', 'Plans and hands out tasks')
-  return { [ids.projectA]: [{ ...lead, model: undefined }, { ...kai, model: undefined }, noor, theo], [ids.projectB]: [{ ...kai, model: undefined }, mira, noor, rio], [ids.projectOwn]: [{ ...lead, model: undefined }], [ids.projectPortfolio]: [{ ...kai, model: undefined }] }
+  return { [ids.projectA]: [{ ...lead, model: undefined }, { ...christian, model: undefined }, sean, artkin], [ids.projectB]: [{ ...christian, model: undefined }, mira, sean, rio], [ids.projectOwn]: [{ ...lead, model: undefined }], [ids.projectPortfolio]: [{ ...christian, model: undefined }] }
 }
 /** KERNEL-995: the real setup, four projects and about sixty agents. Most Backend agents pin their own model, so the row follows few of them, and helpers and a retired agent sit beside them. */
 const REAL_PROJECTS: Record<string, string> = { [ids.projectA]: 'Kernel', [ids.projectB]: 'Fiscplus', [ids.projectOwn]: 'Cjjutba Dev', [ids.projectPortfolio]: 'aurahire' }
@@ -360,7 +360,7 @@ const largeAgents = (): Fixture['agents'] => {
   const mk = (name: string, role: string, model?: string, over: Partial<AgentDef> = {}): AgentDef => ({ ...agentFile(slug(name), name, role, `${name} for this project`), model, ...over })
   const team = (n: number): AgentDef[] => [
     { ...agentFile('kernel-lead', 'Kernel', 'Lead', 'Plans and hands out tasks'), model: undefined },
-    mk('Kai', 'Frontend'), mk('Noor', 'Backend'), mk('Ivy', 'QA'), mk('Theo', 'Reviewer'), mk('Rio', 'Backend', 'claude-sonnet-5-5'), mk('Mira', 'Backend', 'claude-opus-5-5'), mk('Sol', 'Backend', 'haiku'),
+    mk('Christian', 'Frontend'), mk('Sean', 'Backend'), mk('Teng', 'QA'), mk('Artkin', 'Reviewer'), mk('Rio', 'Backend', 'claude-sonnet-5-5'), mk('Mira', 'Backend', 'claude-opus-5-5'), mk('Sol', 'Backend', 'haiku'),
     ...specialists.filter((_, i) => (i + n) % 2 === 0 || n === 1).map((name, i) => mk(name, 'Specialist', i % 9 === 0 ? undefined : i % 4 === 0 ? 'opus' : 'sonnet')),
     mk('Frontend Component Dev', 'Frontend Specialist', 'sonnet'),
     mk('Explore', 'Backend', undefined, { member: false }), mk('Plan', 'Backend', undefined, { member: false }), mk('Old Migrator', 'Backend', undefined, { retired: true })
@@ -495,7 +495,7 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsNotifications: settingsPage('notifications'),
   SettingsShortcuts: settingsPage('shortcuts'),
   // KERNEL-406, KERNEL-974: Frontend runs on Codex and Backend on Opus, each on its own row. The rest stay on their defaults.
-  // KERNEL-974: Kai and Noor in two projects, Mira on her own model, and Rio with a custom role that lands under Backend. QA has no one.
+  // KERNEL-974: Christian and Sean in two projects, Mira on her own model, and Rio with a custom role that lands under Backend. QA has no one.
   SettingsModels: settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),
   // KERNEL-988: a role's Model cell opens the model picker under it, on Claude, on Codex, and with the Legacy models flyout open.
   SettingsModelsPicker: modelsPage(),
@@ -745,7 +745,7 @@ export const platformFixtures: Record<string, Fixture> = {
   // An empty project with another project that has agents: Add the team, Copy from another project and New agent. No PNG, built from the Settings kit.
   SettingsTeamEmpty: scene((f) => ({ ...clientA(), ...empty, projects: f.projects, agents: { ...f.agents, [ids.projectA]: [] }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
   // KERNEL-639: the project's agents grouped by where they come from, scrolled to In this repo. Yours has a personal agent, and From plugins two with View, one with a long description cleaned to two lines.
-  SettingsTeamOrigins: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.projectA]: [...sixAgents.filter((a) => ['kernel-lead', 'kai', 'noor', 'ivy', 'theo'].includes(a.id)), ...extraAgents] }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
+  SettingsTeamOrigins: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.projectA]: [...sixAgents.filter((a) => ['kernel-lead', 'christian', 'sean', 'teng', 'artkin'].includes(a.id)), ...extraAgents] }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
   // KERNEL-641: Settings, Agents with no project open: Yours has a personal agent and From plugins two. No PNG, built from the Settings kit and AgentProfile.png's fields.
   // KERNEL-780: the Hand off and Build here defaults. The app default is Build here in both; Team's project overrides it with Hand off.
   SettingsAgentsLeadMode: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), team: { ...DEFAULT_SETTINGS('/Users/you').team, leadMode: 'build' as const } }, agents: { ...f.agents, [ids.projectA]: sixAgents }, ui: { route: { name: 'settings', page: 'agents' } } })),
@@ -755,14 +755,14 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsAgentEdit: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
   // KERNEL-641: a plugin's agent read only: the fields are disabled, the line names the plugin, and there is no Save changes or Retire.
   SettingsAgentPlugin: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'vercel:deployment-expert' } } })),
-  // KERNEL-557: Client A's `[review]` as the canvas draws it (KERNEL-594: and its always-review paths). The code review runs as Kernel, so the project has no agent that reviews. Security runs as Theo, and the UX review as Wren, which is optional.
+  // KERNEL-557: Client A's `[review]` as the canvas draws it (KERNEL-594: and its always-review paths). The code review runs as Kernel, so the project has no agent that reviews. Security runs as Artkin, and the UX review as Wren, which is optional.
   SettingsProjectPrs: scene((f) => ({
     ...clientA({
       review: {
         rounds: 2,
         kinds: {
           code: { enabled: true, paths: [], required: true, model: 'claude-opus-5-5', provider: 'claude' },
-          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'theo', model: 'claude-opus-5-5', provider: 'claude' },
+          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'artkin', model: 'claude-opus-5-5', provider: 'claude' },
           ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren', model: 'claude-sonnet-5-5', provider: 'claude' }
         }
       },
@@ -782,7 +782,7 @@ export const platformFixtures: Record<string, Fixture> = {
         rounds: 2,
         kinds: {
           code: { enabled: true, paths: [], required: true, model: 'claude-opus-5-5', provider: 'claude' },
-          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'theo', model: 'claude-opus-5-5', provider: 'claude' },
+          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'artkin', model: 'claude-opus-5-5', provider: 'claude' },
           ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren', model: 'claude-sonnet-5-5', provider: 'claude' }
         }
       },
@@ -801,7 +801,7 @@ export const platformFixtures: Record<string, Fixture> = {
         rounds: 2,
         kinds: {
           code: { enabled: true, paths: [], required: true, model: 'claude-opus-5-5', provider: 'claude' },
-          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'theo', model: 'claude-opus-5-5', provider: 'claude' },
+          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'artkin', model: 'claude-opus-5-5', provider: 'claude' },
           ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren', model: 'claude-sonnet-5-5', provider: 'claude' }
         }
       },
@@ -854,9 +854,9 @@ export const platformFixtures: Record<string, Fixture> = {
     }
   }),
   // KERNEL-472: Client B's repo is on GitHub and Linear isn't connected, so detection says GitHub Issues, and the menu marks it.
-  SettingsProjectTracker: trackerProject(ids.projectB, ['kernel-lead', 'noor', 'theo'], { path: '/Users/you/Projects/client-b', repo: 'cjjutba/client-b' }, true),
+  SettingsProjectTracker: trackerProject(ids.projectB, ['kernel-lead', 'sean', 'artkin'], { path: '/Users/you/Projects/client-b', repo: 'cjjutba/client-b' }, true),
   // KERNEL-472: Portfolio is a folder with no GitHub remote and no Linear, so there is nothing to detect and the tracker is None.
-  SettingsProjectTrackerNone: trackerProject(ids.projectPortfolio, ['kernel-lead', 'kai'], { path: '/Users/you/Projects/portfolio', repo: undefined, kind: 'folder' }),
+  SettingsProjectTrackerNone: trackerProject(ids.projectPortfolio, ['kernel-lead', 'christian'], { path: '/Users/you/Projects/portfolio', repo: undefined, kind: 'folder' }),
   // KERNEL-750: Client A's General page with no reference folders, then with two, one of them gone from this Mac.
   SettingsReferenceFoldersEmpty: scene(settingsProject),
   SettingsReferenceFolders: scene((f) => {
@@ -900,21 +900,21 @@ export const platformFixtures: Record<string, Fixture> = {
   SetupBedrock: setup(passing({ id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', meta: 'us-east-1' })),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
-  // KERNEL-406: Kai on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has headroom.
+  // KERNEL-406: Christian on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has headroom.
   WorkspaceProviderLimit: scene(() => ({
     settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
     accounts: claudeAccounts,
     usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }, { type: 'five_hour', status: 'allowed', utilization: 0.12, resetsAt: secs(next(15, 40)), accountId: 'work' }],
     ui: open
   })),
-  // KERNEL-524: the account on offer is an API key, so the banner says it is billed per token. Kai's project runs on Codex too, as in the one above.
+  // KERNEL-524: the account on offer is an API key, so the banner says it is billed per token. Christian's project runs on Codex too, as in the one above.
   WorkspaceProviderLimitApiKey: scene(() => ({
     settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
     accounts: [claudeAccounts[0], keyAccount('claude')],
     usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }],
     ui: open
   })),
-  // KERNEL-619: the only other account is signed out, so the banner says so and offers its sign-in beside Notify me. Kai's project runs on Codex too, as in the ones above.
+  // KERNEL-619: the only other account is signed out, so the banner says so and offers its sign-in beside Notify me. Christian's project runs on Codex too, as in the ones above.
   WorkspaceProviderLimitSignedOut: scene(() => ({
     settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
     accounts: [workClaude, { ...personalClaude, signedIn: false }],
@@ -940,10 +940,10 @@ export const platformFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: afterSwitch('Now on Personal (Work hit its 5-hour limit)') },
     ui: open
   })),
-  // KERNEL-619: after a switch to Personal, whose plan lacks Opus 5.5, which Theo and Noor use. The banner offers the way back and the place to pick another model.
+  // KERNEL-619: after a switch to Personal, whose plan lacks Opus 5.5, which Artkin and Sean use. The banner offers the way back and the place to pick another model.
   WorkspaceSwitchWarning: scene(() => ({
     account: personalAccount,
-    accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true, missingModels: [{ model: 'claude-opus-5-5', label: 'Opus 5.5', agents: ['Theo', 'Noor'] }] }],
+    accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true, missingModels: [{ model: 'claude-opus-5-5', label: 'Opus 5.5', agents: ['Artkin', 'Sean'] }] }],
     ui: open
   })),
   WorkspaceWeeklyLimit: scene(() => ({ usage: [{ type: 'seven_day', status: 'rejected', utilization: 1, resetsAt: secs(nextMonday()) }], ui: open })),

@@ -24,7 +24,7 @@ async function project() {
     const path = await createWorktree({ repo, root: join(repo, '..', `wt-${name}-${Date.now()}`), branch, baseRef: 'main' })
     return { id: `ws-${name}`, projectId: 'r', name, branch, baseRef: 'main', path, mode: 'worktree', agentId, port: 4000, status: 'ready', prState: 'none', createdAt }
   }
-  return { repo, kai: await mk('invoice-table', 'kai', 1), noor: await mk('invoice-schema', 'noor', 2) }
+  return { repo, christian: await mk('invoice-table', 'christian', 1), sean: await mk('invoice-schema', 'sean', 2) }
 }
 
 const pushed: PushEvent[] = []
@@ -49,30 +49,30 @@ describe('line ranges', () => {
     expect(formatRanges([[30, 34], [20, 25], [26, 28]])).toBe('lines 20-28, 30-34')
   })
   it('reads the lines a worktree changed', async () => {
-    const { kai } = await project()
-    await edit(kai.path, 'src/invoices.ts', 20, 34)
-    expect(await lineRanges(kai.path, await mergeBase(kai.path, 'main'), 'src/invoices.ts')).toBe('lines 20-34')
+    const { christian } = await project()
+    await edit(christian.path, 'src/invoices.ts', 20, 34)
+    expect(await lineRanges(christian.path, await mergeBase(christian.path, 'main'), 'src/invoices.ts')).toBe('lines 20-34')
   })
 })
 
 describe('overlap detection across two real worktrees', () => {
   it('raises an overlap for a file both workspaces changed, with each side\'s lines, and logs it once', async () => {
-    const { kai, noor } = await project()
-    const svc = service(() => [kai, noor])
-    await edit(kai.path, 'src/invoices.ts', 20, 34)
-    await edit(noor.path, 'src/invoices.ts', 18, 40)
-    await edit(kai.path, 'src/other.ts', 1, 1)
+    const { christian, sean } = await project()
+    const svc = service(() => [christian, sean])
+    await edit(christian.path, 'src/invoices.ts', 20, 34)
+    await edit(sean.path, 'src/invoices.ts', 18, 40)
+    await edit(christian.path, 'src/other.ts', 1, 1)
 
     const found = await svc.check('r')
     expect(found).toHaveLength(1)
     expect(found[0]).toMatchObject({ projectId: 'r', path: 'src/invoices.ts' })
     expect(found[0].parties).toEqual([
-      { agentId: 'kai', workspaceId: kai.id, lines: 'lines 20-34' },
-      { agentId: 'noor', workspaceId: noor.id, lines: 'lines 18-40' }
+      { agentId: 'christian', workspaceId: christian.id, lines: 'lines 20-34' },
+      { agentId: 'sean', workspaceId: sean.id, lines: 'lines 18-40' }
     ])
     const line = logged.find((e) => e.kind === 'overlap')!
     expect(line).toMatchObject({ projectId: 'r', agentId: 'kernel', object: 'invoices.ts', warn: true })
-    expect(line.data).toMatchObject({ workspaceIds: [kai.id, noor.id] })
+    expect(line.data).toMatchObject({ workspaceIds: [christian.id, sean.id] })
 
     // The next turn changes nothing: no second line, no second push.
     await svc.check('r')
@@ -81,41 +81,41 @@ describe('overlap detection across two real worktrees', () => {
   })
 
   it('stays quiet for different files', async () => {
-    const { kai, noor } = await project()
-    await edit(kai.path, 'src/other.ts', 1, 2)
-    await edit(noor.path, 'src/third.ts', 1, 2)
-    expect(await service(() => [kai, noor]).check('r')).toEqual([])
+    const { christian, sean } = await project()
+    await edit(christian.path, 'src/other.ts', 1, 2)
+    await edit(sean.path, 'src/third.ts', 1, 2)
+    expect(await service(() => [christian, sean]).check('r')).toEqual([])
     expect(logged.filter((e) => e.kind === 'overlap')).toEqual([])
   })
 
   it('clears when one workspace merges, and when the overlap goes away', async () => {
-    const { kai, noor } = await project()
-    let all = [kai, noor]
+    const { christian, sean } = await project()
+    let all = [christian, sean]
     const svc = service(() => all)
-    await edit(kai.path, 'src/invoices.ts', 20, 34)
-    await edit(noor.path, 'src/invoices.ts', 18, 40)
+    await edit(christian.path, 'src/invoices.ts', 20, 34)
+    await edit(sean.path, 'src/invoices.ts', 18, 40)
     await svc.check('r')
 
-    all = [{ ...kai, prState: 'merged', mergedAt: Date.now() }, noor]
+    all = [{ ...christian, prState: 'merged', mergedAt: Date.now() }, sean]
     expect(await svc.check('r')).toEqual([])
     const cleared = overlapEvents().at(-1) as Overlap
     expect(cleared).toMatchObject({ path: 'src/invoices.ts', resolved: true })
 
     // It comes back as new when both touch the file again, and goes when one reverts it.
-    all = [kai, noor]
+    all = [christian, sean]
     expect(await svc.check('r')).toHaveLength(1)
-    await writeFile(join(noor.path, 'src/invoices.ts'), lines(60))
+    await writeFile(join(sean.path, 'src/invoices.ts'), lines(60))
     expect(await svc.check('r')).toEqual([])
   })
 
   it('stays out of the Inbox once handed to the Lead, until it clears', async () => {
-    const { kai, noor } = await project()
-    const svc = service(() => [kai, noor])
-    await edit(kai.path, 'src/invoices.ts', 20, 34)
-    await edit(noor.path, 'src/invoices.ts', 18, 40)
+    const { christian, sean } = await project()
+    const svc = service(() => [christian, sean])
+    await edit(christian.path, 'src/invoices.ts', 20, 34)
+    await edit(sean.path, 'src/invoices.ts', 18, 40)
     const [o] = await svc.check('r')
     svc.resolve(o.id)
-    await edit(noor.path, 'src/invoices.ts', 41, 42)
+    await edit(sean.path, 'src/invoices.ts', 41, 42)
     const [again] = await svc.check('r')
     expect(again.resolved).toBe(true)
     expect(again.parties[1].lines).toBe('lines 18-42')
@@ -123,45 +123,45 @@ describe('overlap detection across two real worktrees', () => {
   })
 
   it("counts a chat in Build here, whose worktree holds the Lead's own edits (KERNEL-778)", async () => {
-    const { kai, noor } = await project()
-    const build: Workspace = { ...noor, agentId: 'kernel', lead: true, threadId: 't', leadMode: 'build' }
-    await edit(kai.path, 'src/invoices.ts', 1, 3)
+    const { christian, sean } = await project()
+    const build: Workspace = { ...sean, agentId: 'kernel', lead: true, threadId: 't', leadMode: 'build' }
+    await edit(christian.path, 'src/invoices.ts', 1, 3)
     await edit(build.path, 'src/invoices.ts', 2, 4)
-    const [o] = await service(() => [kai, build]).check('r')
-    expect(o.parties.map((p) => [p.agentId, p.workspaceId])).toEqual([['kai', kai.id], ['kernel', noor.id]])
+    const [o] = await service(() => [christian, build]).check('r')
+    expect(o.parties.map((p) => [p.agentId, p.workspaceId])).toEqual([['christian', christian.id], ['kernel', sean.id]])
   })
 
   it('ignores archived workspaces', async () => {
-    const { kai, noor } = await project()
-    await edit(kai.path, 'src/invoices.ts', 1, 3)
-    await edit(noor.path, 'src/invoices.ts', 1, 3)
-    expect(await service(() => [kai, { ...noor, status: 'archived' }]).check('r')).toEqual([])
+    const { christian, sean } = await project()
+    await edit(christian.path, 'src/invoices.ts', 1, 3)
+    await edit(sean.path, 'src/invoices.ts', 1, 3)
+    expect(await service(() => [christian, { ...sean, status: 'archived' }]).check('r')).toEqual([])
   })
 })
 
 describe('overlaps across a restart', () => {
   it('keeps an overlap and its dismissal, so a restart neither logs it again nor brings it back, and drops it once it clears', async () => {
-    const { kai, noor } = await project()
+    const { christian, sean } = await project()
     const file = join(await mkdtemp(join(tmpdir(), 'kernel-overlaps-')), 'kernel.db')
-    await edit(kai.path, 'src/invoices.ts', 20, 34)
-    await edit(noor.path, 'src/invoices.ts', 18, 40)
-    const first = service(() => [kai, noor], new Store(file))
+    await edit(christian.path, 'src/invoices.ts', 20, 34)
+    await edit(sean.path, 'src/invoices.ts', 18, 40)
+    const first = service(() => [christian, sean], new Store(file))
     const [o] = await first.check('r')
     first.resolve(o.id)
     expect(logged.filter((e) => e.kind === 'overlap')).toHaveLength(1)
 
     // Kernel starts again on the same database.
     const store = new Store(file)
-    const svc = service(() => [kai, noor], store)
+    const svc = service(() => [christian, sean], store)
     expect(svc.list('r')).toEqual([{ ...o, resolved: true }])
     pushed.length = 0
     expect(await svc.check('r')).toEqual([{ ...o, resolved: true }])
     expect(logged.filter((e) => e.kind === 'overlap')).toHaveLength(1)
     expect(overlapEvents()).toEqual([])
 
-    await writeFile(join(noor.path, 'src/invoices.ts'), lines(60))
+    await writeFile(join(sean.path, 'src/invoices.ts'), lines(60))
     expect(await svc.check('r')).toEqual([])
     expect(store.overlaps()).toEqual([])
-    expect(service(() => [kai, noor], new Store(file)).list('r')).toEqual([])
+    expect(service(() => [christian, sean], new Store(file)).list('r')).toEqual([])
   })
 })

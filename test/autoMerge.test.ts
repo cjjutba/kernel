@@ -20,14 +20,14 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 
 const AGENTS = {
   'README.md': '# shop\n',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
 const ON = { pr: { autoMerge: { on: true } } }
 const GREEN: PrCheck[] = [{ name: 'Test', state: 'pass' }]
 const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i}`).join('\n') + '\n'
 
 /**
- * A project on a fake GitHub whose `main` holds `main` besides the agents, with the app's settings `app`. `pr` opens Kai's work on
+ * A project on a fake GitHub whose `main` holds `main` besides the agents, with the app's settings `app`. `pr` opens Christian's work on
  * a PR that passed `checks`, with the code review's approval of its head and the blockers of the kinds `blockers` names.
  */
 async function setup(o: { app?: object; main?: Record<string, string>; local?: boolean } = {}) {
@@ -59,7 +59,7 @@ async function setup(o: { app?: object; main?: Record<string, string>; local?: b
   onTestFinished(() => { bus.off('activity', onActivity) })
   /** `build`: the work is a chat with Kernel's own, in Build here (KERNEL-778). */
   const pr = async (files: Record<string, string>, r: { checks?: PrCheck[]; blockers?: ReviewKind[]; approved?: ReviewKind[]; build?: boolean } = {}) => {
-    const ws = r.build ? await buildChat() : await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'kai', title: 'Task' })
+    const ws = r.build ? await buildChat() : await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Task' })
     for (const [f, c] of Object.entries(files)) { await mkdir(dirname(join(ws.path, f)), { recursive: true }); await writeFile(join(ws.path, f), c) }
     await git(ws.path, 'add', '-A')
     await git(ws.path, 'commit', '-qm', 'work')
@@ -84,7 +84,7 @@ describe('which PRs merge by themselves', () => {
     ['a PR that touches it in another case, as the Mac reads it', { files: { '.KERNEL/settings.toml': '[merge]\nauto = true\n' } }, "It changes .KERNEL/settings.toml, which always needs a person's review."],
     // KERNEL-632: the agents' files and instructions count at the root and in any folder below it.
     ...['CLAUDE.md', 'AGENTS.md', '.claude/agents/x.md', 'src/CLAUDE.md', 'packages/x/AGENTS.md', 'apps/web/.claude/agents/x.md'].map((f): Row =>
-      [`a PR that touches ${f}`, { files: { [f]: 'You are Kai.\n' } }, `It changes ${f}, which always needs a person's review.`]),
+      [`a PR that touches ${f}`, { files: { [f]: 'You are Christian.\n' } }, `It changes ${f}, which always needs a person's review.`]),
     ["a path the base branch's [merge] always_review adds", { main: { '.kernel/settings.toml': '[merge]\nalways_review = ["migrations/**"]\n' }, files: { 'migrations/001.sql': 'select 1;\n' } }, "It changes migrations/001.sql, which always needs a person's review."],
     ['a shared settings file that turns it on', { app: OFF, main: { '.kernel/settings.toml': '[merge]\nauto = true\nmax_lines = 5000\n' } }, 'Auto-merge is off.'],
     ['a personal settings file the repo committed', { app: OFF, main: { '.kernel/settings.local.toml': '[merge]\nauto = true\n' } }, 'Auto-merge is off.'],
@@ -364,7 +364,7 @@ describe('weighing again', () => {
 
   it.each([
     ['over the line limit', { 'big.txt': lines(401) }, 'It changes 401 lines, more than the 400 auto-merge allows.'],
-    ['touching an always-review path', { 'CLAUDE.md': 'You are Kai.\n' }, "It changes CLAUDE.md, which always needs a person's review."]
+    ['touching an always-review path', { 'CLAUDE.md': 'You are Christian.\n' }, "It changes CLAUDE.md, which always needs a person's review."]
   ])('weighs a PR %s once, and the Lead hears why', async (_label, files, refused) => {
     const { k, ws, gh, weighed, told } = await weighing(files, (pr) => pr)
     k.prs.considerAutoMerge(ws)
@@ -409,7 +409,7 @@ describe('a PR behind its base', () => {
   type Setup = Awaited<ReturnType<typeof setup>>
 
   /**
-   * Kai's PRs from `files`, numbered from 101, on a fake GitHub that merges into the project's main and updates a branch the way
+   * Christian's PRs from `files`, numbered from 101, on a fake GitHub that merges into the project's main and updates a branch the way
    * GitHub does: a merge of the base into it, whose checks then run, or a BranchConflict. `pass` lets a PR's checks pass.
    */
   async function hub(s: Setup, ...files: Record<string, string>[]) {
@@ -458,7 +458,7 @@ describe('a PR behind its base', () => {
     const s = await setup({ app: { pr: { autoMerge: { on: true }, autoReview: true } } })
     const h = await hub(s, { 'src/a.ts': 'export const a = 1\n' }, { 'src/b.ts': 'export const b = 1\n' })
     const [a] = h.wss
-    // The code review approved Kai's second PR in its first round.
+    // The code review approved Christian's second PR in its first round.
     const b = s.k.store.saveWorkspace({ ...h.wss[1], reviewRound: { n: 1, rounds: 3, head: h.wss[1].prHead!, prNumber: 102, kinds: ['code'] } })
     const started = vi.spyOn(s.k.reviews as unknown as { startReview: () => Promise<unknown> }, 'startReview').mockResolvedValue(b)
     const again = vi.spyOn(s.k.reviews as unknown as { reviewAgain: () => Promise<unknown> }, 'reviewAgain').mockResolvedValue(undefined)
@@ -477,10 +477,10 @@ describe('a PR behind its base', () => {
     const to = (r as { updated: string }).updated
     expect(h.updates).toEqual([102])
     expect(s.k.store.workspace(b.id)?.baseUpdates).toEqual([{ from: b.prHead, to }])
-    // Kai's worktree was clean and idle, so it moved to the merge.
+    // Christian's worktree was clean and idle, so it moved to the merge.
     expect((await git(b.path, 'rev-parse', 'HEAD')).trim()).toBe(to)
     expect(h.branchUpdated).toHaveBeenCalledWith(expect.objectContaining({ id: b.id }), 'main')
-    // The Lead update and the activity entry carry the update. Kai's chat gets no note about it (KERNEL-970).
+    // The Lead update and the activity entry carry the update. Christian's chat gets no note about it (KERNEL-970).
     const chat = s.k.store.chats(b.id)[0]
     expect(chat).toBeDefined()
     expect(s.k.store.items(chat.id).filter((i) => i.kind === 'note' && i.text.includes('up to date'))).toEqual([])
@@ -539,7 +539,7 @@ describe('a PR behind its base', () => {
     await h.moveMain('moved.txt')
     // GitHub says behind, and gives no base commit to compare.
     h.prs.set(w.id, { ...h.prs.get(w.id)!, blocked: 'behind', baseOid: undefined })
-    // Kai has changes it hasn't committed, so its worktree stays where it is.
+    // Christian has changes it hasn't committed, so its worktree stays where it is.
     await writeFile(join(w.path, 'src/a.ts'), 'export const a = 3\n')
     const sent = vi.spyOn(s.k.sessions, 'send')
     expect(await s.k.prs.autoMerge(w.id)).toEqual({ updated: expect.any(String) })
@@ -747,45 +747,45 @@ describe('the settings', () => {
 describe('what Kernel hears', () => {
   const open: LeadUpdates[] = []
   afterEach(() => { open.forEach((u) => u.detach()); open.length = 0 })
-  const ws = (prState: Workspace['prState']) => ({ id: 'w1', projectId: 'r', name: 'w1', agentId: 'kai', prState, prNumber: 54, prUrl: 'https://github.com/o/shop/pull/54', status: 'ready' }) as Workspace
+  const ws = (prState: Workspace['prState']) => ({ id: 'w1', projectId: 'r', name: 'w1', agentId: 'christian', prState, prNumber: 54, prUrl: 'https://github.com/o/shop/pull/54', status: 'ready' }) as Workspace
   const ev = (kind: TeamEvent['kind'], o: Partial<TeamEvent> = {}): TeamEvent => ({ n: 1, workspaceId: 'w1', kind, pr: 54, ...o })
   const auto = { why: "the code review approved its latest commit, its check passed, it changes 12 lines, within the user's limit of 400, and it changes no path that always needs a person's review", card: 'Code approved, checks passed, 12 lines' }
 
   it('asks for a short merge summary on the ready to merge line, and says why auto-merge left the PR when it is on', () => {
     const review = { approved: ['code' as const], blocking: [], blockers: false, reviewing: [], inProgress: false, waiting: [] }
     const c = { allMerged: () => false, review }
-    expect(decide({ ws: ws('ready'), name: 'Kai', events: [ev('pr.ready')] }, c).todo).toEqual([
+    expect(decide({ ws: ws('ready'), name: 'Christian', events: [ev('pr.ready')] }, c).todo).toEqual([
       'PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.'
     ])
-    expect(decide({ ws: ws('ready'), name: 'Kai', events: [ev('pr.ready')] }, { ...c, refused: () => 'It changes 612 lines, more than the 400 auto-merge allows.' }).todo).toEqual([
+    expect(decide({ ws: ws('ready'), name: 'Christian', events: [ev('pr.ready')] }, { ...c, refused: () => 'It changes 612 lines, more than the 400 auto-merge allows.' }).todo).toEqual([
       "PR #54 passed checks, has no conflicts and the code review approved it. Auto-merge is on, and Kernel didn't merge it. It changes 612 lines, more than the 400 auto-merge allows. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, why Kernel didn't merge it, and anything they should know."
     ])
   })
 
   it('tells Kernel to pass on a merge Kernel made by itself, with the link, even once the work is archived', () => {
-    const out = decide({ ws: { ...ws('merged'), status: 'archived' }, name: 'Kai', events: [ev('pr.merged', { auto })] }, { allMerged: () => false })
+    const out = decide({ ws: { ...ws('merged'), status: 'archived' }, name: 'Christian', events: [ev('pr.merged', { auto })] }, { allMerged: () => false })
     expect(out.todo).toEqual(['Tell the user Kernel merged PR #54 automatically and why, in a line or two, with its link https://github.com/o/shop/pull/54.'])
   })
 
   it("carries Kernel's update of a PR without waking the Lead, and wakes it to tell the user once Kernel stops (KERNEL-835)", () => {
     const c = { allMerged: () => false }
-    expect(decide({ ws: ws('checks'), name: 'Kai', events: [ev('pr.updated', { updated: { base: 'main' } })] }, c).todo).toEqual([])
-    expect(decide({ ws: ws('ready'), name: 'Kai', events: [ev('pr.updated', { updated: { base: 'main', capped: 3 } })] }, c).todo).toEqual([
+    expect(decide({ ws: ws('checks'), name: 'Christian', events: [ev('pr.updated', { updated: { base: 'main' } })] }, c).todo).toEqual([])
+    expect(decide({ ws: ws('ready'), name: 'Christian', events: [ev('pr.updated', { updated: { base: 'main', capped: 3 } })] }, c).todo).toEqual([
       "Tell the user main keeps moving past PR #54, so Kernel stopped bringing it up to date after 3 tries and won't merge it by itself. They can update and merge it by hand."
     ])
   })
 
-  /** Kai's ready PR #54 in w1, and Theo's review workspace of it, handed off in the Lead chat lc. */
+  /** Christian's ready PR #54 in w1, and Artkin's review workspace of it, handed off in the Lead chat lc. */
   async function lead() {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-am-')), 'k.db'))
     store.saveProject({ id: 'r', name: 'Shop', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
     const base = { projectId: 'r', baseRef: 'main', mode: 'worktree', port: 1, status: 'ready', leadChatId: 'lc', createdAt: 1 }
-    store.saveWorkspace({ ...base, id: 'w1', name: 'w1', branch: 'w1', path: '/x/w1', agentId: 'kai', prState: 'ready', prNumber: 54, prUrl: 'https://github.com/o/shop/pull/54', title: 'Task' } as Workspace)
-    store.saveWorkspace({ ...base, id: 'rv', name: 'rv', branch: 'rv', path: '/x/rv', agentId: 'theo', prState: 'none', reviewOf: 'w1', title: 'Review PR #54' } as Workspace)
+    store.saveWorkspace({ ...base, id: 'w1', name: 'w1', branch: 'w1', path: '/x/w1', agentId: 'christian', prState: 'ready', prNumber: 54, prUrl: 'https://github.com/o/shop/pull/54', title: 'Task' } as Workspace)
+    store.saveWorkspace({ ...base, id: 'rv', name: 'rv', branch: 'rv', path: '/x/rv', agentId: 'artkin', prState: 'none', reviewOf: 'w1', title: 'Review PR #54' } as Workspace)
     store.saveChat({ id: 'lc', workspaceId: 'lead', title: 'lc', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 } as Chat)
     const posts: { text: string; update: TeamUpdate }[] = []
     const u = new LeadUpdates({
-      store, enabled: () => true, target: () => ({ chat: store.chat('lc')! }), isLead: () => false, agentName: (_r, id) => (id === 'kai' ? 'Kai' : 'Theo'),
+      store, enabled: () => true, target: () => ({ chat: store.chat('lc')! }), isLead: () => false, agentName: (_r, id) => (id === 'christian' ? 'Christian' : 'Artkin'),
       post: (_chatId, text, update) => { posts.push({ text, update }); return true }, delayMs: 10
     })
     u.attach()
@@ -796,7 +796,7 @@ describe('what Kernel hears', () => {
   it('holds a verdict about a PR Kernel is weighing for auto-merge until it knows the outcome', async () => {
     const { store, u, posts } = await lead()
     u.readingPr('w1')
-    u.reviewed(store.workspace('rv')!, store.workspace('w1')!, { workspaceId: 'rv', agentId: 'theo', verdict: 'approved', summary: 'Good.', lens: 'code', ts: 1 })
+    u.reviewed(store.workspace('rv')!, store.workspace('w1')!, { workspaceId: 'rv', agentId: 'artkin', verdict: 'approved', summary: 'Good.', lens: 'code', ts: 1 })
     await new Promise((r) => setTimeout(r, 60))
     expect(posts).toEqual([])
     u.readPr('w1')

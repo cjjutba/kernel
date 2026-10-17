@@ -14,7 +14,7 @@ export function shirtOf(agent: AgentDef, team: AgentDef[], project?: Pick<Projec
   return agent.look?.shirt ?? overflowShirt(Math.max(0, overflow.findIndex((a) => a.id === agent.id)))
 }
 
-/** Short path under the repo: ".claude/agents/kai.md". */
+/** Short path under the repo: ".claude/agents/christian.md". */
 export const shortFile = (file: string) => {
   const at = file.lastIndexOf('.claude/')
   return at >= 0 ? file.slice(at) : file

@@ -7,23 +7,23 @@ import { toUserMessage } from '../src/main/services/providers/claude'
 import { toCodexInput } from '../src/main/services/providers/codex/runner'
 
 const kernel = { id: 'kernel', name: 'Kernel', role: 'Lead', lead: true } as AgentDef
-const noor = { id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef
-const kai = { id: 'kai', name: 'Kai', role: 'Frontend', lead: false } as AgentDef
+const sean = { id: 'sean', name: 'Sean', role: 'Engine', lead: false } as AgentDef
+const christian = { id: 'christian', name: 'Christian', role: 'Frontend', lead: false } as AgentDef
 const mira = { id: 'mira', name: 'Mira', role: 'Docs helper', lead: false, member: false } as AgentDef
-const team = [kernel, noor, kai, mira]
+const team = [kernel, sean, christian, mira]
 const at = (a: AgentDef): ChatPart => ({ type: 'agent', name: a.name, agentId: a.id })
 
 describe('the text the Lead reads for a message with mentions (KERNEL-745)', () => {
   it('names the one teammate the user addressed', () => {
-    expect(mentionNote([at(noor), { type: 'text', text: 'the Stop hook drops reminders' }], team)).toBe('The user addressed this to Noor.')
+    expect(mentionNote([at(sean), { type: 'text', text: 'the Stop hook drops reminders' }], team)).toBe('The user addressed this to Sean.')
   })
 
   it('names both teammates once each, and leaves the Lead itself out', () => {
-    expect(mentionNote([at(noor), { type: 'text', text: 'and' }, at(kai), at(noor), at(kernel)], team)).toBe('The user addressed this to Noor and Kai.')
+    expect(mentionNote([at(sean), { type: 'text', text: 'and' }, at(christian), at(sean), at(kernel)], team)).toBe('The user addressed this to Sean and Christian.')
   })
 
   it("adds a line for a teammate who doesn't take tasks, and for one no longer on the team", () => {
-    expect(mentionNote([at(mira), at({ ...noor, id: 'ivo', name: 'Ivo' })], team)).toBe([
+    expect(mentionNote([at(mira), at({ ...sean, id: 'ivo', name: 'Ivo' })], team)).toBe([
       'The user addressed this to Mira and Ivo.',
       "Mira doesn't take tasks in this project, so tell the user or ask with mcp__kernel__ask_user who should take it.",
       "Ivo isn't on this project's team now, so tell the user or ask with mcp__kernel__ask_user who should take it."
@@ -41,21 +41,21 @@ describe('the text the Lead reads for a message with mentions (KERNEL-745)', () 
   })
 
   it('shows each mention as @name where it sat, on Claude and Codex', () => {
-    const parts: ChatPart[] = [at(noor), { type: 'text', text: 'take the hook' }]
-    expect((toUserMessage(parts).message.content as { text: string }[]).map((c) => c.text)).toEqual(['@Noor', 'take the hook'])
-    expect(toCodexInput(parts)).toEqual([{ type: 'text', text: '@Noor take the hook', text_elements: [] }])
+    const parts: ChatPart[] = [at(sean), { type: 'text', text: 'take the hook' }]
+    expect((toUserMessage(parts).message.content as { text: string }[]).map((c) => c.text)).toEqual(['@Sean', 'take the hook'])
+    expect(toCodexInput(parts)).toEqual([{ type: 'text', text: '@Sean take the hook', text_elements: [] }])
   })
 })
 
 describe("the Lead's tools close mentions (KERNEL-745)", () => {
   function tools() {
     const acted = vi.fn()
-    const ws = { id: 'ws-kai', name: 'kai-ws', branch: 'feat/x', agentId: 'kai', status: 'ready', prState: 'none' } as Workspace
+    const ws = { id: 'ws-christian', name: 'christian-ws', branch: 'feat/x', agentId: 'christian', status: 'ready', prState: 'none' } as Workspace
     const deps = {
       projectId: 'project', lead: kernel, agents: async () => team, workspaces: () => [ws],
-      createWorkspace: async () => ({ id: 'ws-noor', branch: 'feat/y', agentId: 'noor' }) as Workspace,
+      createWorkspace: async () => ({ id: 'ws-sean', branch: 'feat/y', agentId: 'sean' }) as Workspace,
       messageWorkspace: async (id: string) => (id === ws.id ? { ok: true, sent: true, note: 'Sent.' } : { ok: false, sent: false, note: 'Not sent.' }),
-      askUser: async () => ({ behavior: 'answer', text: 'Give it to Noor' }), hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false,
+      askUser: async () => ({ behavior: 'answer', text: 'Give it to Sean' }), hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false,
       planMode: () => true, acted
     } as unknown as KernelToolDeps
     const byName = Object.fromEntries(kernelTools(deps).map((t) => [t.name, t]))
@@ -65,14 +65,14 @@ describe("the Lead's tools close mentions (KERNEL-745)", () => {
 
   it('create_workspace reports the agent it hands to, message_agent the workspace it reaches, ask_user what it is about (KERNEL-749)', async () => {
     const t = tools()
-    await t.run('create_workspace', { agent: 'noor', title: 'Stop hook', brief: 'Goal, files, acceptance criteria' })
-    expect(t.acted).toHaveBeenLastCalledWith({ created: 'noor' })
-    await t.run('message_agent', { workspace_id: 'ws-kai', text: 'Also the composer' })
-    expect(t.acted).toHaveBeenLastCalledWith({ messaged: expect.objectContaining({ id: 'ws-kai', agentId: 'kai' }) })
+    await t.run('create_workspace', { agent: 'sean', title: 'Stop hook', brief: 'Goal, files, acceptance criteria' })
+    expect(t.acted).toHaveBeenLastCalledWith({ created: 'sean' })
+    await t.run('message_agent', { workspace_id: 'ws-christian', text: 'Also the composer' })
+    expect(t.acted).toHaveBeenLastCalledWith({ messaged: expect.objectContaining({ id: 'ws-christian', agentId: 'christian' }) })
     await t.run('ask_user', { question: 'Who takes the docs?' })
     expect(t.acted).toHaveBeenLastCalledWith({ asked: [] })
-    await t.run('ask_user', { question: 'Per tab?', about: ['ws-kai'] })
-    expect(t.acted).toHaveBeenLastCalledWith({ asked: ['ws-kai'] })
+    await t.run('ask_user', { question: 'Per tab?', about: ['ws-christian'] })
+    expect(t.acted).toHaveBeenLastCalledWith({ asked: ['ws-christian'] })
     expect(t.acted).toHaveBeenCalledTimes(4)
   })
 

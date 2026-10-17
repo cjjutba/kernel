@@ -552,7 +552,7 @@ export class Reviews extends Feature {
     return {
       // The PR header's Overrule and its Undo (KERNEL-732).
       'reviews.overrule': async ({ workspaceId, note, clear }) => this.overrule(workspaceId, { by: 'user', note, clear }),
-      // Kai's Settings page for reviews writes through this (KERNEL-549).
+      // Christian's Settings page for reviews writes through this (KERNEL-549).
       'settings.setReview': async ({ projectId, review }) => this.k.config.wrote(projectId, await saveReviewSettings(this.mustProject(projectId).path, review)),
       // The Reviews page's always-review box writes through this (KERNEL-594).
       'settings.setAlwaysReview': async ({ projectId, paths }) => this.k.config.wrote(projectId, await saveAlwaysReview(this.mustProject(projectId).path, paths))

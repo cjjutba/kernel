@@ -4,15 +4,15 @@ import type { AgentDef, Chat, Project, Thread, Workspace } from '../src/shared/t
 
 const project: Project = { id: 'a', name: 'Client A', path: '/p/a', defaultBranch: 'main', paused: false, createdAt: 0 }
 const kernel: AgentDef = { id: 'kernel', name: 'Kernel', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/kernel.md' }
-const kai: AgentDef = { ...kernel, id: 'kai', name: 'Kai', role: 'Frontend', lead: false }
-const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, projectId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
+const christian: AgentDef = { ...kernel, id: 'christian', name: 'Christian', role: 'Frontend', lead: false }
+const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, projectId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'christian', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
 const chat = (id: string, over: Partial<Chat> = {}): Chat => ({ id, workspaceId: 'home', title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1, ...over })
 const thread = (id: string, over: Partial<Thread> = {}): Thread => ({ id, projectId: 'a', title: id, createdAt: 1, ...over })
 const threadsOf = (...list: Thread[]) => Object.fromEntries(list.map((t) => [t.id, t]))
 /** A Lead chat's own workspace for the thread `t`, and its tabs (KERNEL-405). */
 const own = (t: string, over: Partial<Workspace> = {}) => ws(`ws-${t}`, { name: t, branch: `kernel/${t}`, agentId: 'kernel', lead: true, threadId: t, ...over })
 const tabsOf = (t: string, ...list: Chat[]) => ({ [`ws-${t}`]: list.length ? list : [chat(`${t}-tab`, { workspaceId: `ws-${t}`, threadId: t })] })
-const agents = { a: [kernel, kai] }
+const agents = { a: [kernel, christian] }
 const keys = (rows: ReturnType<typeof sidebarRows>) => rows.map(slotKey)
 
 describe('sidebar rows (KERNEL-405)', () => {
@@ -54,7 +54,7 @@ describe('sidebar rows (KERNEL-405)', () => {
   it('keeps the Lead row while no chat is open, and lists only workspaces when the project has no Lead', () => {
     expect(keys(sidebarRows(project, agents, [ws('w1')], {}))).toEqual(['lead', 'workspace:w1'])
     expect(keys(sidebarRows(project, agents, [own('t1', { status: 'archived' }), ws('w1', { threadId: 't1' })], {}))).toEqual(['lead', 'workspace:w1'])
-    expect(keys(sidebarRows(project, { a: [kai] }, [ws('w1')], {}))).toEqual(['workspace:w1'])
+    expect(keys(sidebarRows(project, { a: [christian] }, [ws('w1')], {}))).toEqual(['workspace:w1'])
   })
 
   it("never lists the shared Lead workspace from before, or archived workspaces, or another project's", () => {
@@ -82,7 +82,7 @@ describe('sidebar rows (KERNEL-405)', () => {
 
   it('numbers the Lead row when no chat is open, and nothing when the project has no Lead', () => {
     expect(keys(slotsFor(project, agents, [], {}))).toEqual(['lead'])
-    expect(slotsFor(project, { a: [kai] }, [ws('w1')], {})).toEqual([])
+    expect(slotsFor(project, { a: [christian] }, [ws('w1')], {})).toEqual([])
   })
 
   it('opens a chat on the tab last shown in it, else its first tab', () => {

@@ -12,7 +12,7 @@ export interface TeammateToolDeps {
   /** The project's workspaces, archived ones included. */
   workspaces: () => Workspace[]
   isLead: (w: Workspace) => boolean
-  /** The agent's name for a workspace: "Noor". */
+  /** The agent's name for a workspace: "Sean". */
   nameOf: (w: Workspace) => string
   /** Kernel's setWait on the caller's workspace, as a wait the teammate set itself, which the Lead hasn't heard about. */
   setWait: (on: string[], why?: string) => Promise<Workspace>

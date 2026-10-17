@@ -21,7 +21,7 @@ const read = new Map<string, Promise<Record<string, string | undefined>>>()
 function starterFiles(starterDir: string) {
   let files = read.get(starterDir)
   if (!files) {
-    files = Promise.all(['kernel', 'theo'].map(async (id) => [id, await readFile(join(starterDir, `${id}.md`), 'utf8').catch(() => undefined)] as const)).then(Object.fromEntries)
+    files = Promise.all(([['kernel', 'kernel.md'], ['theo', 'legacy/theo.md']] as const).map(async ([id, file]) => [id, await readFile(join(starterDir, file), 'utf8').catch(() => undefined)] as const)).then(Object.fromEntries)
     read.set(starterDir, files)
   }
   return files

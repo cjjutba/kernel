@@ -180,7 +180,7 @@ describe('Kernel env', () => {
       'README.md': '# env\n',
       '.env.shared': 'FROM_FILE=one\nOVERRIDDEN=file\nANTHROPIC_BASE_URL=https://proxy.example\nCLAUDE_CODE_USE_BEDROCK=1\nCLAUDE_CODE_AUTO_COMPACT_WINDOW=50000\n',
       '.env.later': 'OVERRIDDEN=later-file\n',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.',
       '.kernel/settings.toml': [
         '[scripts]',
         'setup = "echo \\"$PROJECT_SECRET|$APP_ONLY|$FROM_FILE|$OVERRIDDEN|$KERNEL_WORKSPACE_ID|$PORT|$FORCE_COLOR\\" > seen.txt"',
@@ -219,7 +219,7 @@ describe('Kernel env', () => {
     expect((await h['settings.project']({ projectId: project.id })).env).toEqual({ files: ['.env.shared', '.env.missing', '.env.later', '../outside.env'] })
 
     // The setup script writes what it saw. The project's variable wins over both files, and the missing file is skipped.
-    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Env' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Env' })
     expect(ws.status).toBe('ready')
     expect((await readFile(join(ws.path, 'seen.txt'), 'utf8')).trim()).toBe(`project-secret-42|app-value-77|one|project|${ws.id}|${ws.port}|${process.env.FORCE_COLOR ?? ''}`)
 
@@ -325,7 +325,7 @@ describe('Kernel env', () => {
       'README.md': '# env\n',
       '.env.a': 'A=1\n',
       '.env.b': 'B=1\n',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.',
       '.kernel/settings.toml': '[env]\nfiles = [".env.a"]\n'
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -335,7 +335,7 @@ describe('Kernel env', () => {
     await k.start()
     k.sessions.send = async () => ({ queued: false })
     const project = await k.addProject(repo)
-    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Env' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Env' })
     expect(ws.status).toBe('ready')
     expect(k.envFor(ws)).toMatchObject({ A: '1' })
 
@@ -450,7 +450,7 @@ describe('Production values (KERNEL-449)', () => {
 
 describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
   async function project(files: Record<string, string>) {
-    const repo = await tempRepo({ 'README.md': '# env\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.', ...files })
+    const repo = await tempRepo({ 'README.md': '# env\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.', ...files })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
@@ -464,8 +464,8 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
   it("gives each worktree its own Compose project and database, from the user's own .env.kernel", async () => {
     const { k, repo, project: r, h } = await project({ '.gitignore': '.env.kernel\n' })
     await writeFile(join(repo, '.env.kernel'), 'DATABASE_URL=postgres://localhost:5432/app_${KERNEL_WORKSPACE_SLUG}\nWEB=http://localhost:${KERNEL_PORT}\n')
-    const a = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'One' })
-    const b = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'Two' })
+    const a = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'christian', title: 'One' })
+    const b = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'christian', title: 'Two' })
     const envA = k.env.envFor(a)
     const envB = k.env.envFor(b)
     expect(envA.KERNEL_WORKSPACE_SLUG).toBe(workspaceSlug(a))
@@ -499,7 +499,7 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
 
   it('leaves a .env.kernel the repo commits alone until [env] files lists it', async () => {
     const { k, repo, project: r, h } = await project({ '.env.kernel': 'FROM_REPO=1\nBASH_ENV=./evil.sh\n' })
-    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'One' })
+    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'christian', title: 'One' })
     expect(k.env.envFor(ws).FROM_REPO).toBeUndefined()
     expect(k.env.envFor(ws).BASH_ENV).toBe(process.env.BASH_ENV)
     expect((await h['env.get']({ projectId: r.id })).files).toEqual([])
@@ -513,7 +513,7 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
   it("stops reading .env.kernel once the user's commit tracks it", async () => {
     const { k, repo, project: r } = await project({})
     await writeFile(join(repo, '.env.kernel'), 'MINE=1\n')
-    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'One' })
+    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'christian', title: 'One' })
     expect(k.env.envFor(ws).MINE).toBe('1')
     await run('git', ['-C', repo, 'add', '.env.kernel'])
     await writeFile(join(repo, '.env.kernel'), 'MINE=2\n')

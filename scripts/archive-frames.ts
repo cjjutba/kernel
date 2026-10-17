@@ -159,7 +159,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 const call = (page: Page, channel: string, req?: unknown) => page.evaluate(([c, r]) => (window as any).kernel.invoke(c, r), [channel, req] as const)
 
 function sh(cmd: string, args: string[], cwd?: string) {
-  const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 'Kai', GIT_AUTHOR_EMAIL: 'kai@example.com', GIT_COMMITTER_NAME: 'Kai', GIT_COMMITTER_EMAIL: 'kai@example.com' } })
+  const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 'Christian', GIT_AUTHOR_EMAIL: 'christian@example.com', GIT_COMMITTER_NAME: 'Christian', GIT_COMMITTER_EMAIL: 'christian@example.com' } })
   if (r.status !== 0) throw new Error(`${cmd} ${args.join(' ')} failed in ${cwd ?? '.'}:\n${r.stderr || r.stdout}`)
   return r.stdout
 }
@@ -215,7 +215,7 @@ async function launch(dir: string, live: string): Promise<Ctx> {
     // Preflight passes on this without a Claude sign-in, and no session is ever started. The mock keychain (an argument below) keeps Electron's
     // safe storage off the real keychain, which a faked HOME hides and which then asks for a password in a dialog nobody sees.
     CLAUDE_CODE_USE_BEDROCK: '1',
-    GIT_AUTHOR_NAME: 'Kai', GIT_AUTHOR_EMAIL: 'kai@example.com', GIT_COMMITTER_NAME: 'Kai', GIT_COMMITTER_EMAIL: 'kai@example.com'
+    GIT_AUTHOR_NAME: 'Christian', GIT_AUTHOR_EMAIL: 'christian@example.com', GIT_COMMITTER_NAME: 'Christian', GIT_COMMITTER_EMAIL: 'christian@example.com'
   })
   const executablePath: string = createRequire(import.meta.url)('electron')
   // Playwright sometimes never gets its devtools connection from a headless Electron. A second try on the same folder works, once the first is gone.
@@ -333,7 +333,7 @@ async function buildWorld(ctx: Ctx): Promise<World> {
   const project: any = await call(page, 'projects.update', { projectId: added.id, patch: { host: 'local' } })
   await until('the project team', async () => ((await call(page, 'agents.list', { projectId: project.id })) as any[]).some((a) => a.lead))
   // Teammates for the workspaces: the Lead's own workspaces are never archived on merge, so a workspace made without one would stay.
-  for (const id of ['kai', 'theo']) await call(page, 'agents.addStarter', { projectId: project.id, id })
+  for (const id of ['christian', 'artkin']) await call(page, 'agents.addStarter', { projectId: project.id, id })
   sh('git', ['add', '-A'], repo)
   sh('git', ['commit', '-m', 'Add the team'], repo)
   sh('git', ['push', 'origin', 'main'], repo)
@@ -347,7 +347,7 @@ async function buildWorld(ctx: Ctx): Promise<World> {
   }
   const workspaces: World['workspaces'] = {}
   const make = async (key: string) => {
-    const made: any = await call(page, 'workspaces.create', { projectId: project.id, prompt: '', agentId: 'kai' })
+    const made: any = await call(page, 'workspaces.create', { projectId: project.id, prompt: '', agentId: 'christian' })
     const ws = await ready(page, made.id)
     workspaces[key] = { id: ws.id, path: ws.path }
   }
@@ -370,7 +370,7 @@ async function buildWorld(ctx: Ctx): Promise<World> {
   for (const w of WORKSPACES) if (w.key !== 'csv') await make(w.key)
   await patch(ctx, WORKSPACES.map((w) => ({
     id: workspaces[w.key].id,
-    set: { title: w.title, ...(w.chat ? { threadId: chats[w.chat].threadId, leadChatId: chats[w.chat].chatId } : {}), ...(w.key === 'review' ? { reviewOf: workspaces.reviewed.id, agentId: 'theo' } : {}) }
+    set: { title: w.title, ...(w.chat ? { threadId: chats[w.chat].threadId, leadChatId: chats[w.chat].chatId } : {}), ...(w.key === 'review' ? { reviewOf: workspaces.reviewed.id, agentId: 'artkin' } : {}) }
   })))
   // Real git in the real worktrees: uncommitted files for the confirms, and commits to merge.
   for (const key of ['nav', 'button']) writeFileSync(join(workspaces[key].path, `${key}-notes.md`), 'half done\n')

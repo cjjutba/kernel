@@ -3,7 +3,7 @@ import type { ChatItem } from './types'
 /** First line of Kernel's teammate updates before KERNEL-111. Older Lead chats still hold messages that start with it. */
 export const LEGACY_UPDATE_HEADER = 'Update from Kernel (not the user):'
 
-/** A line of an update before KERNEL-117: "- Kai · Inbox actions (workspace <id>): what happened". */
+/** A line of an update before KERNEL-117: "- Christian · Inbox actions (workspace <id>): what happened". */
 const LEGACY_LINE = /^- .+ \(workspace [^)]+\): /m
 
 /**

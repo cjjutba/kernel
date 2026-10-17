@@ -30,9 +30,9 @@ function leadTools(answer: Decision | null, plan = { on: true }) {
   const planApproved = vi.fn()
   const handedOff = vi.fn()
   const askUser = vi.fn(async () => answer)
-  const ws = { id: 'ws-1', branch: 'kernel/symlink-node-modules', agentId: 'noor' } as Workspace
+  const ws = { id: 'ws-1', branch: 'kernel/symlink-node-modules', agentId: 'sean' } as Workspace
   const deps: KernelToolDeps = {
-    projectId: 'project', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
+    projectId: 'project', lead: undefined, agents: async () => [{ id: 'sean', name: 'Sean', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
     createWorkspace: async () => ws, messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser, hireAgent: async () => '',
     archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false,
     planMode: () => plan.on, planApproved, handedOff
@@ -50,7 +50,7 @@ const PLAN = '# Symlink node_modules\n\nWorktrees reinstall every package. Link 
 
 /** request_plan_approval in a real Kernel's Lead chat, and the project's plan approvals. */
 async function realLead() {
-  const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.', '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor. Open a PR for each task.' })
+  const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.', '.claude/agents/sean.md': '---\nname: sean\ndescription: Engine.\nrole: Engine\n---\nYou are Sean. Open a PR for each task.' })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -78,42 +78,42 @@ describe('what teammates are told about setup (KERNEL-1012)', () => {
     expect(SETUP_LINE).toContain('Never wait for a note that hasn\'t come.')
     expect(SETUP_LINE).not.toMatch(/Wait for Kernel's note/)
     expect(TEAMMATE_RULE).toContain(SETUP_LINE)
-    expect(reviewRule({ author: 'Kai', task: 'x', workspaceId: 'w', branch: 'b', base: 'main' })).toContain(SETUP_LINE)
+    expect(reviewRule({ author: 'Christian', task: 'x', workspaceId: 'w', branch: 'b', base: 'main' })).toContain(SETUP_LINE)
   })
 })
 
 describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
   it('answers an approval with "hand it off now" and marks the plan approved', async () => {
     const t = leadTools({ behavior: 'allow' })
-    expect(await t.call('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Noor'] })).toBe(`approved. ${HANDOFF_NOW}`)
+    expect(await t.call('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Sean'] })).toBe(`approved. ${HANDOFF_NOW}`)
     expect(t.planApproved).toHaveBeenCalledOnce()
   })
 
   it('does not mark a plan approved when the user asks for changes', async () => {
     const t = leadTools({ behavior: 'deny', message: 'Split it in two' })
-    expect(await t.call('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Noor'] })).toBe('changes requested: Split it in two')
+    expect(await t.call('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Sean'] })).toBe('changes requested: Split it in two')
     expect(t.planApproved).not.toHaveBeenCalled()
   })
 
   it('counts a created workspace as the hand-off', async () => {
     const t = leadTools(null)
-    expect(await t.call('create_workspace', { agent: 'noor', title: 'Symlink node_modules', brief: 'Goal, files, acceptance criteria' })).toBe('Created ws-1 on kernel/symlink-node-modules for noor.')
+    expect(await t.call('create_workspace', { agent: 'sean', title: 'Symlink node_modules', brief: 'Goal, files, acceptance criteria' })).toBe('Created ws-1 on kernel/symlink-node-modules for sean.')
     expect(t.handedOff).toHaveBeenCalledOnce()
   })
 })
 
 describe("create_workspace stops at the project's open teammate workspaces (KERNEL-220)", () => {
-  const ws = (n: number, extra: Partial<Workspace> = {}) => Array.from({ length: n }, (_, i) => ({ id: `w${i}-${extra.status ?? extra.prState ?? extra.reviewOf ?? 'open'}`, name: `w${i}`, branch: `feat/w${i}`, agentId: 'noor', status: 'ready', prState: 'none', ...extra }) as Workspace)
+  const ws = (n: number, extra: Partial<Workspace> = {}) => Array.from({ length: n }, (_, i) => ({ id: `w${i}-${extra.status ?? extra.prState ?? extra.reviewOf ?? 'open'}`, name: `w${i}`, branch: `feat/w${i}`, agentId: 'sean', status: 'ready', prState: 'none', ...extra }) as Workspace)
   const kernel = { id: 'kernel', name: 'Kernel', role: 'Lead', lead: true } as AgentDef
-  const noor = { id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef
-  const args = { agent: 'noor', title: 'Next task', brief: 'Goal, files, acceptance criteria' }
+  const sean = { id: 'sean', name: 'Sean', role: 'Engine', lead: false } as AgentDef
+  const args = { agent: 'sean', title: 'Next task', brief: 'Goal, files, acceptance criteria' }
   const APP = "Archive one, or the user can raise Agents working at once in Settings, Models and effort, or set this project's own limit in Settings, app, Agents."
   const PROJECT = 'Archive one, or the user can change it in Settings, app, Agents.'
   /** create_workspace with `cap` from Settings, Models, or from the project's own limit when `own`. */
   function tools(workspaces: Workspace[], cap?: number, own = false) {
-    const createWorkspace = vi.fn(async () => ({ id: 'new', branch: 'feat/next-task', agentId: 'noor' }) as Workspace)
+    const createWorkspace = vi.fn(async () => ({ id: 'new', branch: 'feat/next-task', agentId: 'sean' }) as Workspace)
     const deps = {
-      projectId: 'project', lead: kernel, agents: async () => [kernel, noor], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }),
+      projectId: 'project', lead: kernel, agents: async () => [kernel, sean], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }),
       askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, ...(cap === undefined ? {} : { agentCap: async () => ({ cap, own, project: 'app' }) })
     } as unknown as KernelToolDeps
     const create = kernelTools(deps).find((t) => t.name === 'create_workspace')!
@@ -159,12 +159,12 @@ describe("create_workspace stops at the project's open teammate workspaces (KERN
   })
 
   it('refuses nothing it should not: a review of one of them goes through at the limit', async () => {
-    const reviewer = { id: 'theo', name: 'Theo', role: 'Reviewer', lead: false } as AgentDef
+    const reviewer = { id: 'artkin', name: 'Artkin', role: 'Reviewer', lead: false } as AgentDef
     const workspaces = ws(3)
-    const createWorkspace = vi.fn(async () => ({ id: 'rv', branch: 'review/w0', agentId: 'theo' }) as Workspace)
-    const deps = { projectId: 'project', lead: kernel, agents: async () => [kernel, noor, reviewer], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }), askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, agentCap: async () => ({ cap: 3, own: false, project: 'app' }) } as unknown as KernelToolDeps
+    const createWorkspace = vi.fn(async () => ({ id: 'rv', branch: 'review/w0', agentId: 'artkin' }) as Workspace)
+    const deps = { projectId: 'project', lead: kernel, agents: async () => [kernel, sean, reviewer], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }), askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, agentCap: async () => ({ cap: 3, own: false, project: 'app' }) } as unknown as KernelToolDeps
     const create = kernelTools(deps).find((t) => t.name === 'create_workspace')!
-    const r = await create.handler({ agent: 'theo', title: 'Review w0', brief: 'Review it', review_of: workspaces[0].id } as never, {})
+    const r = await create.handler({ agent: 'artkin', title: 'Review w0', brief: 'Review it', review_of: workspaces[0].id } as never, {})
     expect((r as { isError?: boolean }).isError).toBeFalsy()
     expect(createWorkspace).toHaveBeenCalledOnce()
   })
@@ -184,7 +184,7 @@ describe("create_workspace stops at the project's open teammate workspaces (KERN
     k.sessions.send = async () => ({ queued: false })
     const lead = (await k.agents(project.id)).find((a) => a.lead)!
     const create = kernelTools(k.lead.leadToolDeps(project.id, lead, chat)).find((t) => t.name === 'create_workspace')!
-    const make = async (title: string, more: object = {}) => { const r = await create.handler({ agent: 'noor', title, brief: 'Build it', ...more } as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } }
+    const make = async (title: string, more: object = {}) => { const r = await create.handler({ agent: 'sean', title, brief: 'Build it', ...more } as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } }
     const projectCap = (openWorkspaces: number | null) => k.handlers()['settings.setProject']({ projectId: project.id, patch: { agents: { openWorkspaces } } })
     const appCap = (agentLimit: number) => k.handlers()['settings.set']({ patch: { models: { agentLimit } } })
     const open = () => k.store.workspaces(project.id).filter((w) => !w.lead).length
@@ -195,7 +195,7 @@ describe("create_workspace stops at the project's open teammate workspaces (KERN
     // The project's No limit wins over the app's 3. A workspace the user opens from New workspace counts like a hand-off.
     await projectCap(0)
     await appCap(3)
-    await k.handlers()['workspaces.create']({ projectId: project.id, agentId: 'noor', prompt: 'Mine' })
+    await k.handlers()['workspaces.create']({ projectId: project.id, agentId: 'sean', prompt: 'Mine' })
     expect((await make('Four')).isError).toBe(false)
     expect(open()).toBe(4)
     // With the project on Same as, the app's 4 applies, and the user's workspace is one of the four.
@@ -211,7 +211,7 @@ describe("create_workspace stops at the project's open teammate workspaces (KERN
 })
 
 describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () => {
-  const plan = { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Noor'] }
+  const plan = { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Sean'] }
 
   it('refuses with plan mode off and creates no approval', async () => {
     const t = leadTools({ behavior: 'allow' }, { on: false })
@@ -321,35 +321,35 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
       const out = await tools.find((t) => t.name === name)!.handler(args as never, {})
       return { text: (out.content[0] as { text: string }).text, isError: !!(out as { isError?: boolean }).isError }
     }
-    const handOff = (more: object = {}) => run('create_workspace', { agent: 'noor', title: 'Symlink node_modules', brief: 'Build it', ...more })
+    const handOff = (more: object = {}) => run('create_workspace', { agent: 'sean', title: 'Symlink node_modules', brief: 'Build it', ...more })
     const teammates = () => k.store.workspaces(project.id).filter((w) => !w.lead)
     return { ...r, run, handOff, teammates }
   }
 
   it('matches a quote in the message, ignoring case and whitespace', () => {
-    expect(quotesUser('Hand it  to\nnoor', 'Looks good. hand it to Noor, thanks')).toBe(true)
-    expect(quotesUser('hand it to Kai', 'hand it to Noor')).toBe(false)
-    expect(quotesUser('  ', 'hand it to Noor')).toBe(false)
-    expect(quotesUser(undefined, 'hand it to Noor')).toBe(false)
+    expect(quotesUser('Hand it  to\nsean', 'Looks good. hand it to Sean, thanks')).toBe(true)
+    expect(quotesUser('hand it to Christian', 'hand it to Sean')).toBe(false)
+    expect(quotesUser('  ', 'hand it to Sean')).toBe(false)
+    expect(quotesUser(undefined, 'hand it to Sean')).toBe(false)
     expect(quotesUser('yes', undefined)).toBe(false)
   })
 
   it('refuses a hand-off with no go-ahead, or one the latest message does not say, and creates nothing', { timeout: 60_000 }, async () => {
     const t = await offLead('Yes, but should it also cover pnpm?')
     expect(await t.handOff()).toEqual({ isError: true, text: NO_GO_AHEAD })
-    expect(await t.handOff({ go_ahead: 'hand it to Noor' })).toEqual({ isError: true, text: NO_GO_AHEAD })
+    expect(await t.handOff({ go_ahead: 'hand it to Sean' })).toEqual({ isError: true, text: NO_GO_AHEAD })
     expect(t.teammates()).toEqual([])
     // An older message doesn't count once the user wrote again.
-    t.k.store.saveItem(t.chat.id, { kind: 'user', id: 'later', ts: Date.now() + 1, parts: [{ type: 'text', text: 'What would Noor change?' }] })
+    t.k.store.saveItem(t.chat.id, { kind: 'user', id: 'later', ts: Date.now() + 1, parts: [{ type: 'text', text: 'What would Sean change?' }] })
     expect(await t.handOff({ go_ahead: 'Yes' })).toEqual({ isError: true, text: NO_GO_AHEAD })
     expect(t.teammates()).toEqual([])
   })
 
   it('hands off in the same turn when the latest message says to, and keeps the quote', { timeout: 60_000 }, async () => {
-    const t = await offLead('hand it to Noor')
-    const r = await t.handOff({ go_ahead: 'Hand it to  Noor' })
+    const t = await offLead('hand it to Sean')
+    const r = await t.handOff({ go_ahead: 'Hand it to  Sean' })
     expect(r.isError, r.text).toBe(false)
-    expect(t.teammates()).toEqual([expect.objectContaining({ agentId: 'noor', goAhead: 'Hand it to  Noor' })])
+    expect(t.teammates()).toEqual([expect.objectContaining({ agentId: 'sean', goAhead: 'Hand it to  Sean' })])
   })
 
   it('needs no go-ahead in plan mode or after an approved plan', { timeout: 60_000 }, async () => {
@@ -357,7 +357,7 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     await t.k.sessions.configure(t.chat.id, { plan: true })
     expect((await t.handOff({ title: 'In plan mode' })).isError).toBe(false)
     // The approval takes the chat out of plan mode, and the hand-off that follows needs no quote.
-    const asked = t.run('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Noor'] })
+    const asked = t.run('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Sean'] })
     for (let i = 0; i < 100 && !t.plans().length; i++) await new Promise((r) => setTimeout(r, 20))
     t.k.approvals.decide(t.plans()[0].id, { behavior: 'allow' })
     await asked
@@ -415,7 +415,7 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     const t = await offLead('Plan the symlink work')
     const { wrote, file } = fileTracker(t)
     await t.k.sessions.configure(t.chat.id, { plan: true })
-    const asked = t.run('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Noor'] })
+    const asked = t.run('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Sean'] })
     for (let i = 0; i < 100 && !t.plans().length; i++) await new Promise((r) => setTimeout(r, 20))
     t.k.approvals.decide(t.plans()[0].id, { behavior: 'allow' })
     await asked
@@ -427,8 +427,8 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
   })
 
   it('needs no go-ahead for a review, or for a follow-up Kernel started on approved work', { timeout: 60_000 }, async () => {
-    const t = await offLead('hand it to Noor')
-    expect((await t.handOff({ go_ahead: 'hand it to Noor' })).isError).toBe(false)
+    const t = await offLead('hand it to Sean')
+    expect((await t.handOff({ go_ahead: 'hand it to Sean' })).isError).toBe(false)
     const built = t.teammates()[0]
     t.k.store.saveWorkspace({ ...built, prState: 'open', prNumber: 7 })
     expect((await t.handOff({ title: 'Review it', review_of: built.id })).isError).toBe(false)
@@ -501,7 +501,7 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
 })
 
 describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
-  const steps = ['Symlink node_modules · Noor']
+  const steps = ['Symlink node_modules · Sean']
 
   it('refuses task lines without the plan and says what is missing', async () => {
     const t = leadTools({ behavior: 'allow' })
@@ -530,7 +530,7 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
     }
 
     const first = await ask(PLAN)
-    expect(first.approval).toMatchObject({ detail: PLAN, steps: [{ title: 'Symlink node_modules', agentId: 'noor' }], planFile: '.kernel/plans/plan.md' })
+    expect(first.approval).toMatchObject({ detail: PLAN, steps: [{ title: 'Symlink node_modules', agentId: 'sean' }], planFile: '.kernel/plans/plan.md' })
     expect(await readFile(join(dir, first.approval.planFile!), 'utf8')).toBe(`${PLAN}\n`)
     k.approvals.decide(first.approval.id, { behavior: 'deny', message: 'Add a rollback step' })
     expect(((await first.asked).content[0] as { text: string }).text).toBe('changes requested: Add a rollback step')
@@ -577,27 +577,27 @@ describe('waiting for another PR (KERNEL-259)', () => {
 describe('a hand-off says when a tool needs a sign-in on the agent\'s account (KERNEL-939)', () => {
   it('adds one line to create_workspace and message_agent, and still hands off', async () => {
     const asked: string[] = []
-    const noor = { id: 'noor', name: 'Noor', role: 'Engine', lead: false, tools: ['Read', 'Edit', 'Bash', 'mcp__porkbun'] } as AgentDef
-    const ws = { id: 'ws-1', branch: 'noor/dns', agentId: 'noor' } as Workspace
+    const sean = { id: 'sean', name: 'Sean', role: 'Engine', lead: false, tools: ['Read', 'Edit', 'Bash', 'mcp__porkbun'] } as AgentDef
+    const ws = { id: 'ws-1', branch: 'sean/dns', agentId: 'sean' } as Workspace
     const deps: KernelToolDeps = {
-      projectId: 'project', lead: undefined, agents: async () => [noor], workspaces: () => [ws],
+      projectId: 'project', lead: undefined, agents: async () => [sean], workspaces: () => [ws],
       createWorkspace: async () => ws, messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false,
       signIns: async (agent) => { asked.push(agent.id); return { account: 'Main account', servers: [{ name: 'porkbun', state: 'needs-sign-in' }] } }
     }
     const tools = Object.fromEntries(kernelTools(deps).map((t) => [t.name, t]))
-    const created = await tools.create_workspace.handler({ agent: 'noor', title: 'DNS records', brief: 'Goal' } as never, {})
+    const created = await tools.create_workspace.handler({ agent: 'sean', title: 'DNS records', brief: 'Goal' } as never, {})
     expect(created.isError).toBeFalsy()
-    expect((created.content[0] as { text: string }).text).toBe('Created ws-1 on noor/dns for noor. Porkbun needs a sign-in on Main account. Noor starts without it.')
+    expect((created.content[0] as { text: string }).text).toBe('Created ws-1 on sean/dns for sean. Porkbun needs a sign-in on Main account. Sean starts without it.')
     const sent = await tools.message_agent.handler({ workspace_id: 'ws-1', text: 'One more record' } as never, {})
-    expect((sent.content[0] as { text: string }).text).toBe('Sent. Porkbun needs a sign-in on Main account. Noor carries on without it.')
-    expect(asked).toEqual(['noor', 'noor'])
+    expect((sent.content[0] as { text: string }).text).toBe('Sent. Porkbun needs a sign-in on Main account. Sean carries on without it.')
+    expect(asked).toEqual(['sean', 'sean'])
   })
 
   it('names every server, the ones still being checked apart', () => {
-    expect(signInNote('Noor', 'Side', [{ name: 'porkbun', state: 'needs-sign-in' }, { name: 'claude.ai Gmail', state: 'needs-sign-in' }, { name: 'neon', state: 'checking' }], true))
-      .toBe('Porkbun and claude.ai Gmail need a sign-in on Side. Kernel is still checking Neon on Side. Noor starts without them.')
-    expect(signInNote('Noor', 'Side', [{ name: 'neon', state: 'checking' }], false)).toBe('Kernel is still checking Neon on Side. Noor carries on without it until the check passes.')
+    expect(signInNote('Sean', 'Side', [{ name: 'porkbun', state: 'needs-sign-in' }, { name: 'claude.ai Gmail', state: 'needs-sign-in' }, { name: 'neon', state: 'checking' }], true))
+      .toBe('Porkbun and claude.ai Gmail need a sign-in on Side. Kernel is still checking Neon on Side. Sean starts without them.')
+    expect(signInNote('Sean', 'Side', [{ name: 'neon', state: 'checking' }], false)).toBe('Kernel is still checking Neon on Side. Sean carries on without it until the check passes.')
   })
 })
 
@@ -605,15 +605,15 @@ describe('create_workspace with issue (KERNEL-163)', () => {
   it('passes the issue key through, and the rule tells the Lead to', async () => {
     const asked: Parameters<KernelToolDeps['createWorkspace']>[0][] = []
     const deps: KernelToolDeps = {
-      projectId: 'project', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
-      createWorkspace: async (o) => { asked.push(o); return { id: 'ws-1', branch: 'cj/kernel-83-issues', agentId: 'noor' } as Workspace },
+      projectId: 'project', lead: undefined, agents: async () => [{ id: 'sean', name: 'Sean', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
+      createWorkspace: async (o) => { asked.push(o); return { id: 'ws-1', branch: 'cj/kernel-83-issues', agentId: 'sean' } as Workspace },
       messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
     }
     const tool = kernelTools(deps).find((t) => t.name === 'create_workspace')!
-    await tool.handler({ agent: 'noor', title: 'Issues screen', brief: 'Goal', issue: 'KERNEL-83' } as never, {})
-    await tool.handler({ agent: 'noor', title: 'Other', brief: 'Goal' } as never, {})
-    expect(asked[0]).toMatchObject({ agentId: 'noor', title: 'Issues screen', issue: 'KERNEL-83' })
+    await tool.handler({ agent: 'sean', title: 'Issues screen', brief: 'Goal', issue: 'KERNEL-83' } as never, {})
+    await tool.handler({ agent: 'sean', title: 'Other', brief: 'Goal' } as never, {})
+    expect(asked[0]).toMatchObject({ agentId: 'sean', title: 'Issues screen', issue: 'KERNEL-83' })
     expect(asked[1]).not.toHaveProperty('issue')
     expect(LEAD_RULE).toContain("When a task builds an issue from the project's tracker, pass its key as issue to create_workspace. The issue goes into the teammate's brief, and mcp__kernel__get_issue reads any issue.")
   })
@@ -749,10 +749,10 @@ describe('Handoffs', () => {
 describe('create_workspace picks a real teammate (KERNEL-119)', () => {
   const team = [
     { id: 'kernel', name: 'Kernel', role: 'Lead', lead: true },
-    { id: 'kai', name: 'Kai', role: 'Frontend', lead: false },
-    { id: 'theo', name: 'Theo', role: 'Reviewer', lead: false },
-    { id: 'theo-2', name: 'Theo', role: 'Reviewer', lead: false },
-    { id: 'ivy-qa', name: 'Ivy', role: 'QA', lead: false }
+    { id: 'christian', name: 'Christian', role: 'Frontend', lead: false },
+    { id: 'artkin', name: 'Artkin', role: 'Reviewer', lead: false },
+    { id: 'artkin-2', name: 'Artkin', role: 'Reviewer', lead: false },
+    { id: 'teng-qa', name: 'Teng', role: 'QA', lead: false }
   ] as AgentDef[]
   function tools(made: Partial<Workspace & { setupFailed: string; queued: QueueReason }> = {}) {
     const asked: string[] = []
@@ -772,41 +772,41 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
 
   it('takes an exact id, and an id or name in any case, with spaces around it', async () => {
     const t = tools()
-    expect(await t.create('kai')).toEqual({ text: 'Created ws-1 on feat/x for kai.', isError: false })
-    expect(await t.create('KAI')).toEqual({ text: 'Created ws-1 on feat/x for kai.', isError: false })
-    expect(await t.create(' kai ')).toEqual({ text: 'Created ws-1 on feat/x for kai.', isError: false })
-    expect(await t.create('theo-2')).toEqual({ text: 'Created ws-1 on feat/x for theo-2.', isError: false })
+    expect(await t.create('christian')).toEqual({ text: 'Created ws-1 on feat/x for christian.', isError: false })
+    expect(await t.create('CHRISTIAN')).toEqual({ text: 'Created ws-1 on feat/x for christian.', isError: false })
+    expect(await t.create(' christian ')).toEqual({ text: 'Created ws-1 on feat/x for christian.', isError: false })
+    expect(await t.create('artkin-2')).toEqual({ text: 'Created ws-1 on feat/x for artkin-2.', isError: false })
     // A name that isn't the id.
-    expect(await t.create('ivy')).toEqual({ text: 'Created ws-1 on feat/x for ivy-qa.', isError: false })
-    expect(t.asked).toEqual(['kai', 'kai', 'kai', 'theo-2', 'ivy-qa'])
+    expect(await t.create('teng')).toEqual({ text: 'Created ws-1 on feat/x for teng-qa.', isError: false })
+    expect(t.asked).toEqual(['christian', 'christian', 'christian', 'artkin-2', 'teng-qa'])
   })
 
   it('refuses an agent the team does not have, listing the teammates, and creates nothing', async () => {
     const t = tools()
-    expect(await t.create('Noor')).toEqual({ isError: true, text: 'Not created: no agent "Noor" on this team. Use an id from list_agents: kai (Kai, Frontend), theo (Theo, Reviewer), theo-2 (Theo, Reviewer), ivy-qa (Ivy, QA).' })
+    expect(await t.create('Sean')).toEqual({ isError: true, text: 'Not created: no agent "Sean" on this team. Use an id from list_agents: christian (Christian, Frontend), artkin (Artkin, Reviewer), artkin-2 (Artkin, Reviewer), teng-qa (Teng, QA).' })
     expect(t.asked).toEqual([])
   })
 
   it('refuses a name two agents share', async () => {
     const t = tools()
-    expect(await t.create('Theo')).toEqual({ isError: true, text: 'Not created: "Theo" matches more than one agent (theo, theo-2). Use the id from list_agents.' })
+    expect(await t.create('Artkin')).toEqual({ isError: true, text: 'Not created: "Artkin" matches more than one agent (artkin, artkin-2). Use the id from list_agents.' })
   })
 
   it('says when setup failed, so the teammate has not started, and keeps the Created prefix (KERNEL-126)', async () => {
     const t = tools({ status: 'failed', setupFailed: 'exit code 1' })
-    expect(await t.create('kai')).toEqual({ isError: false, text: "Created ws-1 on feat/x for kai. Setup failed (exit code 1), so Kai hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace." })
+    expect(await t.create('christian')).toEqual({ isError: false, text: "Created ws-1 on feat/x for christian. Setup failed (exit code 1), so Christian hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace." })
   })
 
   it('says when the brief waits for a slot, a pause or the connection, so the teammate has not started (KERNEL-272)', async () => {
     const said: [QueueReason | undefined, string][] = [
-      ['capacity', "Created ws-1 on feat/x for kai. Every agent slot in Settings, Models is in use, so Kai hasn't started. The brief goes out when a slot frees up."],
-      ['paused', "Created ws-1 on feat/x for kai. The project is paused, so Kai hasn't started. The brief goes out when the user resumes it."],
-      ['offline', "Created ws-1 on feat/x for kai. Kernel is offline or signed out, so Kai hasn't started. The brief goes out once it is back."],
+      ['capacity', "Created ws-1 on feat/x for christian. Every agent slot in Settings, Models is in use, so Christian hasn't started. The brief goes out when a slot frees up."],
+      ['paused', "Created ws-1 on feat/x for christian. The project is paused, so Christian hasn't started. The brief goes out when the user resumes it."],
+      ['offline', "Created ws-1 on feat/x for christian. Kernel is offline or signed out, so Christian hasn't started. The brief goes out once it is back."],
       // The brief went out: a message the Lead sent during setup waiting behind it is not the teammate waiting.
-      ['running', 'Created ws-1 on feat/x for kai.'],
-      [undefined, 'Created ws-1 on feat/x for kai.']
+      ['running', 'Created ws-1 on feat/x for christian.'],
+      [undefined, 'Created ws-1 on feat/x for christian.']
     ]
-    for (const [queued, note] of said) expect(await tools({ queued }).create('kai')).toEqual({ isError: false, text: note })
+    for (const [queued, note] of said) expect(await tools({ queued }).create('christian')).toEqual({ isError: false, text: note })
   })
 
   it('refuses to hand a task to the Lead', async () => {
@@ -819,10 +819,10 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
 describe('create_workspace with review_of (KERNEL-130)', () => {
   const team = [
     { id: 'kernel', name: 'Kernel', role: 'Lead', lead: true },
-    { id: 'kai', name: 'Kai', role: 'Frontend', lead: false },
-    { id: 'theo', name: 'Theo', role: 'Reviewer', lead: false }
+    { id: 'christian', name: 'Christian', role: 'Frontend', lead: false },
+    { id: 'artkin', name: 'Artkin', role: 'Reviewer', lead: false }
   ] as AgentDef[]
-  const ws = (id: string, extra: Partial<Workspace> = {}) => ({ id, name: id, agentId: 'kai', status: 'ready', mode: 'worktree', ...extra }) as Workspace
+  const ws = (id: string, extra: Partial<Workspace> = {}) => ({ id, name: id, agentId: 'christian', status: 'ready', mode: 'worktree', ...extra }) as Workspace
   function tools(list: Workspace[]) {
     const made: { reviewOf?: string }[] = []
     const deps: KernelToolDeps = {
@@ -833,7 +833,7 @@ describe('create_workspace with review_of (KERNEL-130)', () => {
     }
     const tool = kernelTools(deps).find((t) => t.name === 'create_workspace')!
     const review = async (of: string) => {
-      const r = await tool.handler({ agent: 'theo', title: 'Review PR #108', brief: 'Review it', review_of: of } as never, {})
+      const r = await tool.handler({ agent: 'artkin', title: 'Review PR #108', brief: 'Review it', review_of: of } as never, {})
       return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
     }
     return { review, made }
@@ -841,17 +841,17 @@ describe('create_workspace with review_of (KERNEL-130)', () => {
 
   it('passes the link through for open work', async () => {
     const t = tools([ws('w1')])
-    expect(await t.review('w1')).toEqual({ isError: false, text: 'Created rv on feat/x-review for theo.' })
-    expect(t.made).toEqual([expect.objectContaining({ agentId: 'theo', reviewOf: 'w1' })])
+    expect(await t.review('w1')).toEqual({ isError: false, text: 'Created rv on feat/x-review for artkin.' })
+    expect(t.made).toEqual([expect.objectContaining({ agentId: 'artkin', reviewOf: 'w1' })])
   })
 
   it('refuses unknown or archived work, the Lead\'s own, a review of a review, and a second open review by the same reviewer', async () => {
-    const t = tools([ws('gone', { status: 'archived' }), ws('lead', { agentId: 'kernel', mode: 'current' }), ws('w1'), ws('rv1', { agentId: 'theo', reviewOf: 'w1' }), ws('main', { mode: 'current' }), ws('done', { prState: 'merged' })])
+    const t = tools([ws('gone', { status: 'archived' }), ws('lead', { agentId: 'kernel', mode: 'current' }), ws('w1'), ws('rv1', { agentId: 'artkin', reviewOf: 'w1' }), ws('main', { mode: 'current' }), ws('done', { prState: 'merged' })])
     expect(await t.review('nope')).toEqual({ isError: true, text: 'Not created: there is no workspace nope in this project to review. Call list_workspaces for the ids.' })
     expect(await t.review('gone')).toEqual({ isError: true, text: 'Not created: gone is archived. Ask the user to restore it from History first.' })
     expect(await t.review('lead')).toEqual({ isError: true, text: 'Not created: that is your own workspace.' })
     expect(await t.review('rv1')).toEqual({ isError: true, text: 'Not created: rv1 is itself a review. Review the work it reviews instead (workspace w1).' })
-    expect(await t.review('w1')).toEqual({ isError: true, text: 'Not created: Theo already has a review of this open (workspace rv1). Ask for another pass with message_agent.' })
+    expect(await t.review('w1')).toEqual({ isError: true, text: 'Not created: Artkin already has a review of this open (workspace rv1). Ask for another pass with message_agent.' })
     expect(await t.review('done')).toEqual({ isError: true, text: "Not created: done's PR is already merged, so there is nothing left to review." })
     expect(await t.review('main')).toEqual({ isError: true, text: 'Not created: main works on the main checkout, not a branch of its own, so there is no branch to review. Ask its teammate to commit and open a pull request first.' })
     expect(t.made).toEqual([])
@@ -859,19 +859,19 @@ describe('create_workspace with review_of (KERNEL-130)', () => {
 })
 
 describe('reviews block only on real problems (KERNEL-377)', () => {
-  const rule = reviewRule({ author: 'Kai', task: 'T', workspaceId: 'w', branch: 'feat/x', base: 'origin/main' })
+  const rule = reviewRule({ author: 'Christian', task: 'T', workspaceId: 'w', branch: 'feat/x', base: 'origin/main' })
 
-  it('gives the reviewer, submit_review and both Theo files the same blocker list', async () => {
+  it('gives the reviewer, submit_review and both Artkin files the same blocker list', async () => {
     const [submit] = reviewTools({ submit: async () => '' })
-    const theos = await Promise.all([join('docs', 'starter-agents', 'theo.md'), join('.claude', 'agents', 'theo.md')].map((f) => readFile(join(__dirname, '..', f), 'utf8')))
+    const theos = await Promise.all([join('docs', 'starter-agents', 'artkin.md'), join('.claude', 'agents', 'theo.md')].map((f) => readFile(join(__dirname, '..', f), 'utf8')))
     // Kernel's own code review too, which runs when a project has no reviewer (KERNEL-549).
     const code = await readFile(join(__dirname, '..', 'docs', 'lenses', 'code.md'), 'utf8')
     for (const text of [rule, submit.description, ...theos, code]) expect(text).toContain(BLOCKER_RULE)
-    for (const theo of theos) expect(theo).not.toMatch(/nits|file, line, fix/)
+    for (const artkin of theos) expect(artkin).not.toMatch(/nits|file, line, fix/)
   })
 
   it('keeps blockers short, approves with notes, and scopes a re-review to the earlier blockers', () => {
-    expect(rule).toContain('Write each blocker in one or two sentences: what breaks, and its file and line. No code and no design proposal. Kai picks the fix.')
+    expect(rule).toContain('Write each blocker in one or two sentences: what breaks, and its file and line. No code and no design proposal. Christian picks the fix.')
     expect(rule).toContain('When nothing blocks, approve. Put minor findings in the summary as at most three short notes.')
     expect(rule).toContain('check only your earlier blockers and anything the fix broke')
     expect(rule).toContain('Raise nothing new unless the fix caused it.')
@@ -879,7 +879,7 @@ describe('reviews block only on real problems (KERNEL-377)', () => {
   })
 
   // KERNEL-773: the method behind the blockers an audit of 46 verdicts found real, and a shorter approval.
-  const codeReviews = () => Promise.all([join('docs', 'lenses', 'code.md'), join('docs', 'starter-agents', 'theo.md'), join('.claude', 'agents', 'theo.md')].map((f) => readFile(join(__dirname, '..', f), 'utf8')))
+  const codeReviews = () => Promise.all([join('docs', 'lenses', 'code.md'), join('docs', 'starter-agents', 'artkin.md'), join('.claude', 'agents', 'theo.md')].map((f) => readFile(join(__dirname, '..', f), 'utf8')))
 
   it('gives all three code reviews the same way of finding bugs and the same short approval', async () => {
     const lines = [
@@ -894,14 +894,14 @@ describe('reviews block only on real problems (KERNEL-377)', () => {
   })
 
   it('makes a file outside Owns a note in this repo, while kernel.ts, hex values and release notes still block', async () => {
-    const theo = (await codeReviews())[2]
-    expect(theo).toContain("A file outside the issue's Owns doesn't block. Name it in a note, and the Lead decides.")
-    expect(theo.split('\n').find((l) => l.includes('a broken AGENTS.md rule'))).toBe('- In this repo, a broken AGENTS.md rule includes code added to kernel.ts, a hex value in screen code and a missing release note.')
+    const artkin = (await codeReviews())[2]
+    expect(artkin).toContain("A file outside the issue's Owns doesn't block. Name it in a note, and the Lead decides.")
+    expect(artkin.split('\n').find((l) => l.includes('a broken AGENTS.md rule'))).toBe('- In this repo, a broken AGENTS.md rule includes code added to kernel.ts, a hex value in screen code and a missing release note.')
   })
 
   it("doesn't approve while a check runs", () => {
     expect(rule).toContain("Don't approve while a check is still running. Wait for it with `gh pr checks --watch`. Never block only because a check is running.")
-    expect(reviewRule({ author: 'Kai', task: 'T', workspaceId: 'w', branch: 'feat/x', base: 'origin/main', lens: 'security' })).toContain("Don't approve while a check is still running.")
+    expect(reviewRule({ author: 'Christian', task: 'T', workspaceId: 'w', branch: 'feat/x', base: 'origin/main', lens: 'security' })).toContain("Don't approve while a check is still running.")
   })
 
   it("runs the security review on this repo's risky paths only, and keeps it required", async () => {

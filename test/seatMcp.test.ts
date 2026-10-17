@@ -20,7 +20,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const REPO = {
   'README.md': '# shop\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai. Open a PR for each task.',
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian. Open a PR for each task.',
   '.kernel/settings.toml': '[pr]\nmerge_method = "merge"\n'
 }
 
@@ -52,7 +52,7 @@ beforeAll(async () => {
   }
   lead = await chatWs('handoff')
   build = await chatWs('build')
-  const made = await setUp(k, (await k.workspaces.createWorkspace(projectId, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
+  const made = await setUp(k, (await k.workspaces.createWorkspace(projectId, { prompt: 'Build the cart', agentId: 'christian', title: 'Cart' })).id)
   mate = { ws: made, chatId: k.store.chats(made.id)[0].id }
   seats = k.seats
   await seats.start()

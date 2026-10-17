@@ -114,18 +114,18 @@ describe('personal and plugin agents without a project (KERNEL-640)', () => {
 
   it('refuses a team agent with no project, and writes nothing', async () => {
     const { h, home } = await boot()
-    const draft = await h['agents.draft']({ description: 'QA. Runs the tests.', name: 'Ivy' })
+    const draft = await h['agents.draft']({ description: 'QA. Runs the tests.', name: 'Teng' })
     await expect(h['agents.create']({ draft, scope: 'team' })).rejects.toThrow("A team agent is saved in a project's repo. Open a project to add one.")
-    await expect(readFile(join(home, '.claude', 'agents', 'ivy.md'), 'utf8')).rejects.toThrow()
+    await expect(readFile(join(home, '.claude', 'agents', 'teng.md'), 'utf8')).rejects.toThrow()
   })
 
   it('creates with no project open, and a project Kernel has read picks the agent up', async () => {
     const { k, h } = await boot()
-    const project = await k.projects.addProject(await tempRepo({ 'README.md': '# shop\n', '.claude/agents/ivy.md': '---\nname: ivy\ndescription: QA.\n---\nYou are Ivy.' }))
+    const project = await k.projects.addProject(await tempRepo({ 'README.md': '# shop\n', '.claude/agents/teng.md': '---\nname: teng\ndescription: QA.\n---\nYou are Teng.' }))
     await k.team.agents(project.id)
     // A project's file would win over the user's own, so its names are taken.
-    const ivy = await h['agents.draft']({ description: 'QA. Runs the tests.', name: 'Ivy' })
-    await expect(h['agents.create']({ draft: ivy })).rejects.toThrow('Ivy is already on the team.')
+    const teng = await h['agents.draft']({ description: 'QA. Runs the tests.', name: 'Teng' })
+    await expect(h['agents.create']({ draft: teng })).rejects.toThrow('Teng is already on the team.')
     const nia = await h['agents.draft']({ description: 'Docs writer. Keeps the README current.', name: 'Nia' })
     await h['agents.create']({ draft: nia })
     expect(k.team.agentsSync(project.id).find((a) => a.id === 'nia')).toMatchObject({ origin: 'personal' })

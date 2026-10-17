@@ -31,8 +31,8 @@ describe('agents', () => {
     expect(body).toBe('You are Wren.')
   })
   it('derives display name, role and lead', () => {
-    const a = agentFromFile('/r/.claude/agents/kai.md', '---\nname: kai\ndescription: Frontend engineer. Builds UI.\nmodel: sonnet\ntools: Read, Edit\n---\nBody')
-    expect(a).toMatchObject({ id: 'kai', name: 'Kai', role: 'Frontend', model: 'sonnet', tools: ['Read', 'Edit'], lead: false })
+    const a = agentFromFile('/r/.claude/agents/christian.md', '---\nname: christian\ndescription: Frontend engineer. Builds UI.\nmodel: sonnet\ntools: Read, Edit\n---\nBody')
+    expect(a).toMatchObject({ id: 'christian', name: 'Christian', role: 'Frontend', model: 'sonnet', tools: ['Read', 'Edit'], lead: false })
     // Only the file marks the Lead: lead: true, or a role that says Lead. A description that does isn't enough (KERNEL-397).
     const r = agentFromFile('/r/.claude/agents/kernel.md', '---\nname: kernel\ndescription: Lead. Plans and hands out tasks.\n---\n')
     expect(r).toMatchObject({ role: 'Lead', lead: false })
@@ -91,8 +91,8 @@ describe('agents', () => {
   })
 
   it("keeps a file Claude Code can't read, with what went wrong, no tools and no Lead", () => {
-    const broken = agentFromFile('/r/.claude/agents/kai.md', '---\nname: kai\ndescription: "Frontend engineer\nlead: true\n---\nYou are Kai.')
-    expect(broken).toMatchObject({ id: 'kai', name: 'Kai', role: 'Agent', description: '', lead: false, tools: [], prompt: '', file: '/r/.claude/agents/kai.md' })
+    const broken = agentFromFile('/r/.claude/agents/christian.md', '---\nname: christian\ndescription: "Frontend engineer\nlead: true\n---\nYou are Christian.')
+    expect(broken).toMatchObject({ id: 'christian', name: 'Christian', role: 'Agent', description: '', lead: false, tools: [], prompt: '', file: '/r/.claude/agents/christian.md' })
     expect(broken.warnings).toHaveLength(1)
     // Team shows it as "Kernel couldn't read its file: line 5 isn't valid YAML. Missing closing "quote."
     expect(broken.warnings![0]).toEqual({ kind: 'unreadable-file', detail: 'line 5 isn\'t valid YAML. Missing closing "quote' })
@@ -111,31 +111,31 @@ describe('agents', () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
     const dir = join(repo, '.claude', 'agents')
     await mkdir(join(dir, 'notes.md'), { recursive: true })
-    await saveAgent(repo, { id: 'kai', description: 'Frontend engineer.', prompt: 'You are Kai.' })
-    const text = '---\nname: ivy\ndescription: "QA\n---\nYou are Ivy.\n'
-    await writeFile(join(dir, 'ivy.md'), text)
+    await saveAgent(repo, { id: 'christian', description: 'Frontend engineer.', prompt: 'You are Christian.' })
+    const text = '---\nname: teng\ndescription: "QA\n---\nYou are Teng.\n'
+    await writeFile(join(dir, 'teng.md'), text)
     const list = await loadAgents(repo)
-    expect(list.map((a) => [a.id, a.warnings?.map((w) => w.kind) ?? []])).toEqual([['ivy', ['unreadable-file']], ['kai', []], ['notes', ['unreadable-file']]])
+    expect(list.map((a) => [a.id, a.warnings?.map((w) => w.kind) ?? []])).toEqual([['christian', []], ['notes', ['unreadable-file']], ['teng', ['unreadable-file']]])
     expect(list.find((a) => a.id === 'notes')!.warnings![0].detail).toBe("it's a folder, not a file")
-    expect(list.find((a) => a.id === 'ivy')!.joinedAt).toBeGreaterThan(0)
-    await expect(updateAgent(repo, 'ivy', { model: 'opus' })).rejects.toThrow('Kernel can\'t read ivy.md: line 4 isn\'t valid YAML. Missing closing "quote. Fix the file, then save again.')
-    expect(await readFile(join(dir, 'ivy.md'), 'utf8')).toBe(text)
+    expect(list.find((a) => a.id === 'teng')!.joinedAt).toBeGreaterThan(0)
+    await expect(updateAgent(repo, 'teng', { model: 'opus' })).rejects.toThrow('Kernel can\'t read teng.md: line 4 isn\'t valid YAML. Missing closing "quote. Fix the file, then save again.')
+    expect(await readFile(join(dir, 'teng.md'), 'utf8')).toBe(text)
     // New agent won't write a file Claude Code can't read.
     await expect(createAgent(repo, { ...draftAgent({ description: 'QA', name: 'Rex' }), text })).rejects.toThrow('Claude Code can\'t read this file: line 4 isn\'t valid YAML. Missing closing "quote.')
   })
 
   it('round-trips, loads lead first, and retires out of the loaded folder', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
-    await saveAgent(repo, { id: 'kai', description: 'Frontend engineer.', prompt: 'You are Kai.' })
+    await saveAgent(repo, { id: 'christian', description: 'Frontend engineer.', prompt: 'You are Christian.' })
     await saveAgent(repo, { id: 'kernel', description: 'Lead.', prompt: 'You are Kernel.', lead: true, role: 'Lead' })
     const list = await loadAgents(repo)
-    expect(list.map((a) => a.id)).toEqual(['kernel', 'kai'])
-    await retireAgent(repo, 'kai')
+    expect(list.map((a) => a.id)).toEqual(['kernel', 'christian'])
+    await retireAgent(repo, 'christian')
     expect((await loadAgents(repo)).map((a) => a.id)).toEqual(['kernel'])
-    expect(await readdir(join(repo, '.claude', 'retired-agents'))).toEqual(['kai.md'])
+    expect(await readdir(join(repo, '.claude', 'retired-agents'))).toEqual(['christian.md'])
   })
   it('renders a file Claude Code can read', () => {
-    expect(renderAgentFile({ id: 'ivy', description: 'QA.', prompt: 'Test things.', tools: ['Read', 'Bash'] })).toContain('tools: Read, Bash')
+    expect(renderAgentFile({ id: 'teng', description: 'QA.', prompt: 'Test things.', tools: ['Read', 'Bash'] })).toContain('tools: Read, Bash')
   })
   it('returns no agents for a repo without the folder', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'none-'))
@@ -147,13 +147,13 @@ describe('agents', () => {
   it('round-trips effort and keeps frontmatter Kernel does not manage when saving an edit', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
     await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
-    await writeFile(join(repo, '.claude', 'agents', 'kai.md'), '---\nname: kai\ndescription: Frontend engineer.\nmodel: sonnet\ncolor: green\ntools: Read, Edit\n---\nYou are Kai.\n')
-    const saved = await updateAgent(repo, 'kai', { description: 'UI work.\nFollows DESIGN.md.', effort: 'xhigh', tools: ['Read', 'Bash'], skills: ['/verify'], prompt: 'New instructions.' })
-    expect(saved).toMatchObject({ id: 'kai', description: 'UI work. Follows DESIGN.md.', effort: 'xhigh', tools: ['Read', 'Bash'], skills: ['/verify'], model: 'sonnet', prompt: 'New instructions.' })
-    const file = await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')
+    await writeFile(join(repo, '.claude', 'agents', 'christian.md'), '---\nname: christian\ndescription: Frontend engineer.\nmodel: sonnet\ncolor: green\ntools: Read, Edit\n---\nYou are Christian.\n')
+    const saved = await updateAgent(repo, 'christian', { description: 'UI work.\nFollows DESIGN.md.', effort: 'xhigh', tools: ['Read', 'Bash'], skills: ['/verify'], prompt: 'New instructions.' })
+    expect(saved).toMatchObject({ id: 'christian', description: 'UI work. Follows DESIGN.md.', effort: 'xhigh', tools: ['Read', 'Bash'], skills: ['/verify'], model: 'sonnet', prompt: 'New instructions.' })
+    const file = await readFile(join(repo, '.claude', 'agents', 'christian.md'), 'utf8')
     expect(file).toContain('color: green')
     expect(file).toContain('effort: xhigh')
-    await expect(updateAgent(repo, 'kai', { description: '  ' })).rejects.toThrow(/description/)
+    await expect(updateAgent(repo, 'christian', { description: '  ' })).rejects.toThrow(/description/)
     await expect(updateAgent(repo, 'nobody', {})).rejects.toThrow(/not in/)
   })
   it('drafts a file from a description and creates it once', async () => {
@@ -185,14 +185,14 @@ describe('agents', () => {
   })
   it('lists retired agents and restores one, refusing when the name is taken', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
-    await saveAgent(repo, { id: 'kai', description: 'Frontend engineer.', prompt: 'You are Kai.' })
-    await retireAgent(repo, 'kai')
-    expect((await loadAgents(repo, { retired: true })).map((a) => [a.id, a.retired])).toEqual([['kai', true]])
-    await saveAgent(repo, { id: 'kai', description: 'A newer Kai.', prompt: 'x' })
-    await expect(restoreAgent(repo, 'kai')).rejects.toThrow(/already an agent/)
-    await retireAgent(repo, 'kai')
-    await restoreAgent(repo, 'kai')
-    expect((await loadAgents(repo)).map((a) => a.id)).toEqual(['kai'])
+    await saveAgent(repo, { id: 'christian', description: 'Frontend engineer.', prompt: 'You are Christian.' })
+    await retireAgent(repo, 'christian')
+    expect((await loadAgents(repo, { retired: true })).map((a) => [a.id, a.retired])).toEqual([['christian', true]])
+    await saveAgent(repo, { id: 'christian', description: 'A newer Christian.', prompt: 'x' })
+    await expect(restoreAgent(repo, 'christian')).rejects.toThrow(/already an agent/)
+    await retireAgent(repo, 'christian')
+    await restoreAgent(repo, 'christian')
+    expect((await loadAgents(repo)).map((a) => a.id)).toEqual(['christian'])
     await expect(retireAgent(repo, 'ghost')).rejects.toThrow(/not in/)
   })
   it('tells the watcher about files added outside Kernel, even before the folder exists', async () => {
@@ -207,17 +207,17 @@ describe('agents', () => {
       // The folder's own watch started just now, in the restart that may drop the next change.
       stops.push(await watchesLive())
       const afterDir = hits
-      await writeFile(join(repo, '.claude', 'agents', 'theo.md'), '---\nname: theo\ndescription: Reviewer.\n---\nx')
+      await writeFile(join(repo, '.claude', 'agents', 'artkin.md'), '---\nname: artkin\ndescription: Reviewer.\n---\nx')
       await vi.waitFor(() => expect(hits).toBeGreaterThan(afterDir), WATCH)
     } finally { for (const stop of stops) await stop() }
   })
   it('saves only the fields an edit changed, so block values and lists keep their form', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
     await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
-    const head = 'name: kai\ndescription: >-\n  Frontend engineer.\n  Builds UI.\ntools:\n  - Read\n  - Edit\nmodel: sonnet'
-    await writeFile(join(repo, '.claude', 'agents', 'kai.md'), `---\n${head}\n---\nYou are Kai.\n`)
-    await updateAgent(repo, 'kai', { effort: 'high', description: 'Frontend engineer. Builds UI.', tools: ['Read', 'Edit'] })
-    expect(await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')).toBe(`---\n${head}\neffort: high\n---\n\nYou are Kai.\n`)
+    const head = 'name: christian\ndescription: >-\n  Frontend engineer.\n  Builds UI.\ntools:\n  - Read\n  - Edit\nmodel: sonnet'
+    await writeFile(join(repo, '.claude', 'agents', 'christian.md'), `---\n${head}\n---\nYou are Christian.\n`)
+    await updateAgent(repo, 'christian', { effort: 'high', description: 'Frontend engineer. Builds UI.', tools: ['Read', 'Edit'] })
+    expect(await readFile(join(repo, '.claude', 'agents', 'christian.md'), 'utf8')).toBe(`---\n${head}\neffort: high\n---\n\nYou are Christian.\n`)
   })
   it('saves, retires and restores an agent whose name differs from its file', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
@@ -232,28 +232,28 @@ describe('agents', () => {
   })
   it("never replaces an agent the project has, or takes the name of Kernel's own", async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
-    await saveAgent(repo, { id: 'kai', description: 'Frontend engineer.', prompt: 'You are Kai.' })
-    await expect(saveAgent(repo, { id: 'kai', description: 'Another Kai.', prompt: 'x' })).rejects.toThrow(/already on the team/)
-    expect(await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')).toContain('You are Kai.')
+    await saveAgent(repo, { id: 'christian', description: 'Frontend engineer.', prompt: 'You are Christian.' })
+    await expect(saveAgent(repo, { id: 'christian', description: 'Another Christian.', prompt: 'x' })).rejects.toThrow(/already on the team/)
+    expect(await readFile(join(repo, '.claude', 'agents', 'christian.md'), 'utf8')).toContain('You are Christian.')
     await expect(saveAgent(repo, { id: 'kernel-lead', description: 'Lead.', prompt: 'x' })).rejects.toThrow("kernel-lead is Kernel's own name. Pick another name.")
     await expect(createAgent(repo, draftAgent({ description: 'reviews', name: 'Kernel Reviewer' }))).rejects.toThrow(/Kernel's own reviewer/)
-    await writeFile(join(repo, '.claude', 'agents', 'other.md'), '---\nname: ivy\ndescription: QA.\n---\nx\n')
-    await expect(saveAgent(repo, { id: 'ivy', description: 'QA.', prompt: 'x' })).rejects.toThrow(/already on the team/)
+    await writeFile(join(repo, '.claude', 'agents', 'other.md'), '---\nname: teng\ndescription: QA.\n---\nx\n')
+    await expect(saveAgent(repo, { id: 'teng', description: 'QA.', prompt: 'x' })).rejects.toThrow(/already on the team/)
   })
   it('saves an edit without touching nested frontmatter or quoted values', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
     await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
     const hooks = 'hooks:\n  PreToolUse:\n    - matcher: Bash\n      hooks:\n        - type: command\n          command: ./check.sh'
-    await writeFile(join(repo, '.claude', 'agents', 'kai.md'), `---\nname: kai\ndescription: "Frontend: builds UI"\n# keep this comment\n${hooks}\nmodel: sonnet\n---\nYou are Kai.\n`)
-    const saved = await updateAgent(repo, 'kai', { effort: 'high' })
+    await writeFile(join(repo, '.claude', 'agents', 'christian.md'), `---\nname: christian\ndescription: "Frontend: builds UI"\n# keep this comment\n${hooks}\nmodel: sonnet\n---\nYou are Christian.\n`)
+    const saved = await updateAgent(repo, 'christian', { effort: 'high' })
     expect(saved).toMatchObject({ description: 'Frontend: builds UI', effort: 'high', model: 'sonnet' })
-    const file = await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')
+    const file = await readFile(join(repo, '.claude', 'agents', 'christian.md'), 'utf8')
     expect(file).toContain(hooks)
     expect(file).toContain('# keep this comment')
     expect(file).toContain('description: "Frontend: builds UI"')
     // A new colon in a description is quoted so the file stays valid YAML, and the draft does the same.
-    await updateAgent(repo, 'kai', { description: 'Designer: checks # every screen' })
-    expect(await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')).toContain('description: "Designer: checks # every screen"')
+    await updateAgent(repo, 'christian', { description: 'Designer: checks # every screen' })
+    expect(await readFile(join(repo, '.claude', 'agents', 'christian.md'), 'utf8')).toContain('description: "Designer: checks # every screen"')
     expect(draftAgent({ description: 'a reviewer: checks diffs', name: 'Rex' }).text).toContain('description: "A reviewer: checks diffs."')
     expect(agentFromFile('/r/rex.md', draftAgent({ description: 'a reviewer: checks diffs', name: 'Rex' }).text).description).toBe('A reviewer: checks diffs.')
   })

@@ -7,7 +7,7 @@ import { bus } from '../bus'
 type Deps = {
   store: Store
   settings: () => AppSettings
-  /** Name of an agent in a project, for "Noor wants to run ...". */
+  /** Name of an agent in a project, for "Sean wants to run ...". */
   agentName: (projectId: string | undefined, agentId: string | undefined) => string | undefined
   /** Show a macOS notification. Not called while the app has focus. */
   show?: (n: Notification, o: { silent: boolean; sound?: string }) => void

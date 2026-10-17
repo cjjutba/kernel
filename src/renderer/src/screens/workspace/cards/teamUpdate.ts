@@ -125,7 +125,7 @@ export function eventTone(e: { kind: TeamEventKind; text: string; actionable: bo
   }
 }
 
-// The lines of an update before KERNEL-117: "- Kai · Inbox actions (workspace <id>): PR #54 is ready to merge".
+// The lines of an update before KERNEL-117: "- Christian · Inbox actions (workspace <id>): PR #54 is ready to merge".
 const LINE = /^- (.+?) · (.+?) \(workspace ([^)]+)\): (.+)$/
 const CLOSED = /^From "(.+)", (a Lead chat that is now closed|a tab you closed):$/
 const LEFT_OUT = /^- (\d+) earlier updates? (?:are|is) left out\.$/

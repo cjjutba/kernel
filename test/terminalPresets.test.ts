@@ -23,7 +23,7 @@ async function binDir() {
 
 /** A Kernel on a temp repo whose big terminals record the command they would type instead of starting a shell. */
 async function kernel(settings: { terminal?: object; [key: string]: unknown } = {}) {
-  const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+  const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...settings, terminal: { connect: false, ...settings.terminal } }))
@@ -65,7 +65,7 @@ describe('terminal presets', () => {
 
   it('starts each built-in, a found CLI and a custom preset with its own command, titled after the preset', async () => {
     const { k, project, run } = await kernel({ terminal: { custom: [{ id: 'logs', name: 'Dev server logs', command: 'tail -f logs/dev.log' }] } })
-    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Presets' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Presets' })
     expect(ws.mode).toBe('worktree')
     process.env.PATH = await binDir()
 
@@ -87,7 +87,7 @@ describe('terminal presets', () => {
 
   it('opens the settings\' preset when none is picked, Claude when that one is gone, and refuses an unknown one', async () => {
     const { k, h, project, run } = await kernel({ terminal: { preset: 'codex' } })
-    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Default' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Default' })
     process.env.PATH = await binDir()
     expect((await run(ws.id)).command).toBe('codex')
     process.env.PATH = ''
@@ -98,8 +98,8 @@ describe('terminal presets', () => {
 
   it('drops the skip flag on a current-branch workspace with Only in worktrees on, and keeps it in a worktree or with the switch off', async () => {
     const { k, h, project, run } = await kernel({ terminal: { custom: [{ id: 'yolo', name: 'Yolo', command: 'claude --dangerously-skip-permissions --verbose' }] } })
-    const current = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Here', mode: 'current' })
-    const tree = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'There' })
+    const current = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Here', mode: 'current' })
+    const tree = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'There' })
     expect(current.mode).toBe('current')
 
     const dropped = await run(current.id, 'claude-skip')
@@ -135,7 +135,7 @@ describe('terminal presets', () => {
     ]
     const custom = rows.map(([command], i) => ({ id: `c${i}`, name: `C${i}`, command }))
     const { k, h, project, run } = await kernel({ terminal: { custom: [...custom, { id: 'other', name: 'Other', command: 'claude --dangerously-skip-permissions-x' }] } })
-    const current = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Here', mode: 'current' })
+    const current = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Here', mode: 'current' })
     const list = await h['terminal.presets']()
     for (const [i, [command, stripped]] of rows.entries()) {
       expect(list.find((p) => p.id === `c${i}`)?.skipsPermissions, command).toBe(true)
@@ -149,7 +149,7 @@ describe('terminal presets', () => {
 
   it('restarts a terminal chat from before presets with claude', async () => {
     const { k, h, project, started } = await kernel()
-    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Old' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Old' })
     const first = k.store.chats(ws.id)[0]
     const old = k.store.saveChat({ ...first, id: 'old-terminal', kind: 'terminal', title: 'Terminal (claude)', sessionId: undefined, autoTitle: undefined })
     expect(old.terminal).toBeUndefined()
@@ -160,7 +160,7 @@ describe('terminal presets', () => {
 
   it('refuses a new terminal tab while big terminal tabs are off', async () => {
     const { k, h, project } = await kernel({ terminal: { enabled: false } })
-    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'kai', title: 'Off' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Off' })
     await expect(h['chats.create']({ workspaceId: ws.id, kind: 'terminal' })).rejects.toThrow('Big terminal tabs are off')
     expect((await h['chats.create']({ workspaceId: ws.id })).kind).toBe('chat')
     await k.stop()

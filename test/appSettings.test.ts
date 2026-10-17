@@ -677,15 +677,15 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     const repo = await tempRepo({
       'README.md': '# x\n',
       '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nrole: Lead\nlead: true\n---\nYou are Kernel.',
-      '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer.\nrole: Reviewer\n---\nYou are Theo.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\nrole: Frontend\n---\nYou are Kai.',
-      '.claude/agents/noor.md': '---\nname: noor\ndescription: Backend.\nrole: Backend\nmodel: opus\n---\nYou are Noor.'
+      '.claude/agents/artkin.md': '---\nname: artkin\ndescription: Reviewer.\nrole: Reviewer\n---\nYou are Artkin.',
+      '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\nrole: Frontend\n---\nYou are Christian.',
+      '.claude/agents/sean.md': '---\nname: sean\ndescription: Backend.\nrole: Backend\nmodel: opus\n---\nYou are Sean.'
     })
     const { k, h } = await kernel({ plan: 'pro' })
     const project = await k.addProject(repo)
     await h['account.get'](undefined)
     const models = async () => Object.fromEntries((await k.team.agents(project.id)).map((a) => [a.id, k.team.modelFor(a)]))
-    expect(await models()).toMatchObject({ 'kernel-lead': 'claude-sonnet-5-5', theo: 'claude-sonnet-5-5', kai: 'claude-sonnet-5-5', noor: 'claude-opus-5-5' })
+    expect(await models()).toMatchObject({ 'kernel-lead': 'claude-sonnet-5-5', artkin: 'claude-sonnet-5-5', christian: 'claude-sonnet-5-5', sean: 'claude-opus-5-5' })
     await h['settings.set']({ patch: { models: { roles: { lead: { provider: 'claude', model: 'claude-opus-5-5' } } } } })
     expect((await models())['kernel-lead']).toBe('claude-opus-5-5')
     await k.stop()
@@ -734,22 +734,22 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     it('saves each row on its own, and a frontend agent reads Frontend while every other engineer reads Backend', async () => {
       const repo = await tempRepo({
         'README.md': '# x\n',
-        '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\nrole: Frontend\n---\nYou are Kai.',
-        '.claude/agents/noor.md': '---\nname: noor\ndescription: Backend.\nrole: Backend\n---\nYou are Noor.',
+        '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\nrole: Frontend\n---\nYou are Christian.',
+        '.claude/agents/sean.md': '---\nname: sean\ndescription: Backend.\nrole: Backend\n---\nYou are Sean.',
         '.claude/agents/rio.md': '---\nname: rio\ndescription: Platform.\nrole: Platform\nmodel: opus\n---\nYou are Rio.'
       })
       const { k, h, file, dataDir } = await kernel({ settings: { version: 2, models: { roles: { engineers: { provider: 'claude', model: 'claude-opus-5-5' } } } } })
       const project = await k.addProject(repo)
       const picks = async () => Object.fromEntries((await k.team.agents(project.id)).map((a) => [a.id, k.team.pickFor(a)]))
-      expect(await picks()).toMatchObject({ kai: { model: 'claude-opus-5-5' }, noor: { model: 'claude-opus-5-5' } })
+      expect(await picks()).toMatchObject({ christian: { model: 'claude-opus-5-5' }, sean: { model: 'claude-opus-5-5' } })
       await h['settings.set']({ patch: { models: { roles: { frontend: codex }, compact: { frontend: '200k' } } } })
       expect(k.settings.models.roles.engineers).toEqual({ provider: 'claude', model: 'claude-opus-5-5', effort: 'high' })
       expect(k.settings.models.compact.engineers).toBe('full')
       await h['settings.set']({ patch: { models: { roles: { engineers: { provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' } } } } })
       expect(k.settings.models.roles.frontend).toEqual(codex)
       const all = await picks()
-      expect(all.kai).toEqual(codex)
-      expect(all.noor).toEqual({ provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' })
+      expect(all.christian).toEqual(codex)
+      expect(all.sean).toEqual({ provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' })
       // A model line in the agent's file still wins over its row.
       expect(all.rio).toMatchObject({ provider: 'claude', model: 'claude-opus-5-5' })
       expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ version: 3, models: { roles: { frontend: codex, engineers: { model: 'claude-haiku-4-5-20251001' } }, compact: { frontend: '200k' } } })
@@ -769,8 +769,8 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
       const repo = await tempRepo({
         'README.md': '# x\n',
         '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nrole: Lead\nlead: true\n---\nYou are Kernel.',
-        '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer.\nrole: Reviewer\n---\nYou are Theo.',
-        '.claude/agents/noor.md': '---\nname: noor\ndescription: Backend.\nrole: Backend\n---\nYou are Noor.'
+        '.claude/agents/artkin.md': '---\nname: artkin\ndescription: Reviewer.\nrole: Reviewer\n---\nYou are Artkin.',
+        '.claude/agents/sean.md': '---\nname: sean\ndescription: Backend.\nrole: Backend\n---\nYou are Sean.'
       })
       const k = await kernel({ settings: { version: 3, hookPort: await freePort(), workspace: { baseRef: 'main' }, pr: { autoReview: true }, models: { roles: { engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' } } } } })
       const project = await k.k.addProject(repo)
@@ -783,10 +783,10 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
 
     it('starts a new chat on the row as it is now, and leaves a chat made before the change on what it had', async () => {
       const { k, h, firstChat } = await setup()
-      const before = await firstChat('noor')
+      const before = await firstChat('sean')
       expect(before.chat).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
       await h['settings.set']({ patch: { models: { roles: { engineers: haiku } } } })
-      const after = await firstChat('noor')
+      const after = await firstChat('sean')
       expect(after.chat).toMatchObject({ model: haiku.model, effort: haiku.effort })
       expect(k.store.chat(before.chat.id)).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
       await k.stop({ budgetMs: 0 })
@@ -795,7 +795,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     it('starts a review chat on the Reviewer row', async () => {
       const { k, h, firstChat, project } = await setup()
       await h['settings.set']({ patch: { models: { roles: { reviewer: haiku } } } })
-      const { ws } = await firstChat('noor')
+      const { ws } = await firstChat('sean')
       await writeFile(join(ws.path, 'notes.md'), 'notes\n')
       await git(ws.path, 'add', '-A')
       await git(ws.path, 'commit', '-qm', 'work')
@@ -803,14 +803,14 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
       k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prNumber: 101, prTitle: 'Task', prState: 'ready', prHead: head })
       await k.reviews.onReady(ws.id)
       const rws = k.store.workspaces(project.id).find((w) => w.reviewOf === ws.id)!
-      expect(rws.agentId).toBe('theo')
+      expect(rws.agentId).toBe('artkin')
       expect(k.store.chats(rws.id)[0]).toMatchObject({ model: haiku.model, effort: haiku.effort, lens: { kind: 'code' } })
       await k.stop({ budgetMs: 0 })
     })
   })
 
   it("leaves the model out of the starter agent files, so Kernel's role models decide", async () => {
-    for (const id of ['kernel', 'theo', 'kai', 'noor', 'ivy']) {
+    for (const id of ['kernel', 'artkin', 'christian', 'sean', 'teng']) {
       const text = await readFile(join(__dirname, '..', 'docs', 'starter-agents', `${id}.md`), 'utf8')
       expect(text.split('\n---\n')[0], id).not.toMatch(/^model:/m)
     }

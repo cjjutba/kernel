@@ -23,10 +23,10 @@ export const agent = (id: string, name: string, role: string, model: string, lea
 
 export const team: AgentDef[] = [
   agent('kernel-lead', 'Kernel', 'Lead', 'opus', true),
-  agent('kai', 'Kai', 'Frontend', 'sonnet'),
-  agent('noor', 'Noor', 'Engine', 'opus'),
-  agent('theo', 'Theo', 'Reviewer', 'sonnet'),
-  agent('ivy', 'Ivy', 'QA', 'sonnet')
+  agent('christian', 'Christian', 'Frontend', 'sonnet'),
+  agent('sean', 'Sean', 'Engine', 'opus'),
+  agent('artkin', 'Artkin', 'Reviewer', 'sonnet'),
+  agent('teng', 'Teng', 'QA', 'sonnet')
 ]
 
 const ws = (id: string, name: string, branch: string, agentId: string, port: number, extra: Partial<Workspace> = {}): Workspace => ({
@@ -64,8 +64,8 @@ export const tableItems: ChatItem[] = [
   tool('Bash', 'Run Playwright', 'pnpm playwright test invoices', 41_000, { output: '4 passed (38.2s)' }),
   tool('Bash', 'Check types', 'pnpm tsc --noEmit', 6100),
   tool('Bash', 'Run the linter', 'pnpm eslint src/app/invoices', 3200),
-  tool('Bash', 'Attach the output for Ivy', 'cp playwright-report/summary.txt .kernel/handoff/ivy.txt', 40),
-  { kind: 'text', id: 'x1', ts: at(10, 31), text: 'Done. The table sorts by date, client and amount, and each state has its own component. Vitest and Playwright pass locally, and I attached the output for Ivy.' },
+  tool('Bash', 'Attach the output for Teng', 'cp playwright-report/summary.txt .kernel/handoff/teng.txt', 40),
+  { kind: 'text', id: 'x1', ts: at(10, 31), text: 'Done. The table sorts by date, client and amount, and each state has its own component. Vitest and Playwright pass locally, and I attached the output for Teng.' },
   { kind: 'result', id: 'r1', ts: at(10, 31), durationMs: 252_000, ok: true, files: [
     { path: 'src/app/invoices/table.tsx', status: 'M', added: 212, removed: 20 },
     { path: 'src/app/invoices/empty-state.tsx', status: 'A', added: 64, removed: 0 },
@@ -91,9 +91,9 @@ const tableSource = [
 
 /** Pending in other projects, so the Inbox shows 3 while Client A shows nothing waiting (Inbox.png). */
 const waiting: Approval[] = [
-  { id: 'ap-migrate', kind: 'tool', source: 'sdk', projectId: ids.projectB, agentId: 'noor', toolName: 'Bash', input: { command: 'pnpm db:migrate' }, title: 'Run pnpm db:migrate', detail: 'Applies 2 pending migrations to the local database.', status: 'pending', createdAt: at(10, 48) },
-  { id: 'ap-plan', kind: 'plan', source: 'sdk', projectId: ids.projectOwn, agentId: 'kernel-lead', title: 'Plan for the settings page', detail: '1. Kai builds the form\n2. Noor adds the settings table\n3. Ivy covers both with tests', status: 'pending', createdAt: at(10, 44) },
-  { id: 'ap-question', kind: 'question', source: 'sdk', projectId: ids.projectPortfolio, agentId: 'kai', title: 'Should the case studies page keep the old URLs?', options: ['Keep them with redirects', 'Use the new URLs only'], status: 'pending', createdAt: at(10, 40) }
+  { id: 'ap-migrate', kind: 'tool', source: 'sdk', projectId: ids.projectB, agentId: 'sean', toolName: 'Bash', input: { command: 'pnpm db:migrate' }, title: 'Run pnpm db:migrate', detail: 'Applies 2 pending migrations to the local database.', status: 'pending', createdAt: at(10, 48) },
+  { id: 'ap-plan', kind: 'plan', source: 'sdk', projectId: ids.projectOwn, agentId: 'kernel-lead', title: 'Plan for the settings page', detail: '1. Christian builds the form\n2. Sean adds the settings table\n3. Teng covers both with tests', status: 'pending', createdAt: at(10, 44) },
+  { id: 'ap-question', kind: 'question', source: 'sdk', projectId: ids.projectPortfolio, agentId: 'christian', title: 'Should the case studies page keep the old URLs?', options: ['Keep them with redirects', 'Use the new URLs only'], status: 'pending', createdAt: at(10, 40) }
 ]
 
 export const base: Fixture = {
@@ -105,14 +105,14 @@ export const base: Fixture = {
   ],
   agents: { [ids.projectA]: team, [ids.projectB]: team, [ids.projectOwn]: team, [ids.projectPortfolio]: team },
   status: {
-    [ids.projectA]: { 'kernel-lead': 'idle', kai: 'working', noor: 'working', theo: 'working', ivy: 'idle' }
+    [ids.projectA]: { 'kernel-lead': 'idle', christian: 'working', sean: 'working', artkin: 'working', teng: 'idle' }
   },
   workspaces: [
     // Kernel's chat, in a workspace of its own (KERNEL-405).
     ws(ids.lead, 'lead', 'kernel/lead', 'kernel-lead', 4300, { lead: true, threadId: 't-lead', path: '/Users/you/kernel/worktrees/client-a/kernel-lead', createdAt: at(9, 5) }),
-    ws(ids.table, 'invoice-table', 'feat/t-14-invoice-table', 'kai', 4312, { stat: { files: 4, added: 412, removed: 38 } }),
-    ws(ids.schema, 'invoice-schema', 'feat/t-12-invoice-schema', 'noor', 4313, { createdAt: at(10, 3) }),
-    ws(ids.invites, 'org-invites', 'feat/t-09-org-invites', 'kai', 4314, { prNumber: 41, prUrl: 'https://github.com/cjjutba/client-a/pull/41', prState: 'open', createdAt: at(10, 4) })
+    ws(ids.table, 'invoice-table', 'feat/t-14-invoice-table', 'christian', 4312, { stat: { files: 4, added: 412, removed: 38 } }),
+    ws(ids.schema, 'invoice-schema', 'feat/t-12-invoice-schema', 'sean', 4313, { createdAt: at(10, 3) }),
+    ws(ids.invites, 'org-invites', 'feat/t-09-org-invites', 'christian', 4314, { prNumber: 41, prUrl: 'https://github.com/cjjutba/client-a/pull/41', prState: 'open', createdAt: at(10, 4) })
   ],
   chats: [
     { id: ids.leadChat, workspaceId: ids.lead, title: 'Lead', kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: true, threadId: 't-lead', createdAt: at(9, 5) },
@@ -124,10 +124,10 @@ export const base: Fixture = {
   items: { [ids.tableChat]: tableItems },
   approvals: waiting,
   activity: [
-    { id: 'ev4', ts: at(11, 1), projectId: ids.projectA, workspaceId: ids.invites, agentId: 'theo', kind: 'tool.end', text: 'opened the diff for', object: 'T-09' },
-    { id: 'ev3', ts: at(10, 59), projectId: ids.projectA, workspaceId: ids.schema, agentId: 'noor', kind: 'tool.end', text: 'edited', object: 'schema.ts' },
-    { id: 'ev2', ts: at(10, 57), projectId: ids.projectA, workspaceId: ids.table, agentId: 'kai', kind: 'tool.end', text: 'edited', object: 'table.tsx' },
-    { id: 'ev1', ts: at(10, 55), projectId: ids.projectA, agentId: 'ivy', kind: 'task.completed', text: 'passed', object: 'T-11' }
+    { id: 'ev4', ts: at(11, 1), projectId: ids.projectA, workspaceId: ids.invites, agentId: 'artkin', kind: 'tool.end', text: 'opened the diff for', object: 'T-09' },
+    { id: 'ev3', ts: at(10, 59), projectId: ids.projectA, workspaceId: ids.schema, agentId: 'sean', kind: 'tool.end', text: 'edited', object: 'schema.ts' },
+    { id: 'ev2', ts: at(10, 57), projectId: ids.projectA, workspaceId: ids.table, agentId: 'christian', kind: 'tool.end', text: 'edited', object: 'table.tsx' },
+    { id: 'ev1', ts: at(10, 55), projectId: ids.projectA, agentId: 'teng', kind: 'task.completed', text: 'passed', object: 'T-11' }
   ],
   usage: [],
   preflight: [

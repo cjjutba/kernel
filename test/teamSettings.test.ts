@@ -37,8 +37,8 @@ setup = "pnpm install"
 
   it('adds the table at the end when the file has none, and removes it when nothing is left', () => {
     const plain = '[files]\ncopy = [".env"]\n'
-    const added = upsertTomlTable(plain, 'team', { members: ['scout', 'kai'] })
-    expect(added).toBe('[files]\ncopy = [".env"]\n\n[team]\nmembers = ["scout", "kai"]\n')
+    const added = upsertTomlTable(plain, 'team', { members: ['scout', 'christian'] })
+    expect(added).toBe('[files]\ncopy = [".env"]\n\n[team]\nmembers = ["scout", "christian"]\n')
     expect(upsertTomlTable(added, 'team', { members: null })).toBe(plain)
     expect(upsertTomlTable('', 'team', { lead: 'kernel-lead' })).toBe('[team]\nlead = "kernel-lead"\n')
     expect(upsertTomlTable(plain, 'team', { lead: null })).toBe(plain)

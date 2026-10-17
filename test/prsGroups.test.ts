@@ -3,9 +3,9 @@ import type { Workspace } from '../src/shared/types'
 import type { LeadPr } from '../src/renderer/src/screens/workspace/pr/leadPrList'
 import { groupOpen, issueKey, matchesMerged, mergedRow, parseTitle } from '../src/renderer/src/screens/prs/model'
 
-const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, projectId: 'r', agentId: 'kai', prState: 'open', prNumber: 1, ...o }) as Workspace
+const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, projectId: 'r', agentId: 'christian', prState: 'open', prNumber: 1, ...o }) as Workspace
 const row = (id: string, o: { ready?: boolean; group?: LeadPr['group']; ws?: Partial<Workspace> } = {}): LeadPr =>
-  ({ ws: ws(id, o.ws), name: 'Kai', ready: o.ready ?? false, review: { text: 'Not reviewed', tone: 'faint' }, group: o.group ?? 'progress' }) as LeadPr
+  ({ ws: ws(id, o.ws), name: 'Christian', ready: o.ready ?? false, review: { text: 'Not reviewed', tone: 'faint' }, group: o.group ?? 'progress' }) as LeadPr
 
 describe('groupOpen', () => {
   it('lists what can merge, then what needs a person, then what is on its way, and leaves empty groups out', () => {
@@ -44,12 +44,12 @@ describe('parseTitle', () => {
 })
 
 describe('matchesMerged', () => {
-  const w = ws('a', { prTitle: 'feat(team): editor (KERNEL-995)', branch: 'feat/kernel-995-chip', agentId: 'kai' })
+  const w = ws('a', { prTitle: 'feat(team): editor (KERNEL-995)', branch: 'feat/kernel-995-chip', agentId: 'christian' })
   it('searches the title, the key and the branch, and narrows by agent', () => {
     expect(matchesMerged(w, 'EDITOR', undefined)).toBe(true)
     expect(matchesMerged(w, 'kernel-995', undefined)).toBe(true)
     expect(matchesMerged(w, 'feat/kernel-995-chip', undefined)).toBe(true)
     expect(matchesMerged(w, 'nothing', undefined)).toBe(false)
-    expect(matchesMerged(w, '', 'noor')).toBe(false)
+    expect(matchesMerged(w, '', 'sean')).toBe(false)
   })
 })

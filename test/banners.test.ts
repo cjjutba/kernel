@@ -4,10 +4,10 @@ import { bannerFor, limitBannerExpired, limitBannerKey, setupCommand, type Banne
 
 const now = new Date(2026, 9, 7, 11, 0).getTime()
 const S = (ms: number) => Math.round(ms / 1000)
-const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-table', branch: 'feat/x', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-table', branch: 'feat/x', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'christian', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
 const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Table', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: 1 }
 const input = (o: Partial<BannerInput> = {}): BannerInput => ({
-  ws, chat, agentName: 'Kai', running: false, usage: [], account: { signedIn: true }, online: true,
+  ws, chat, agentName: 'Christian', running: false, usage: [], account: { signedIn: true }, online: true,
   hooks: { port: 7420, listening: true, installed: true, events: [] }, now, ...o
 })
 
@@ -18,7 +18,7 @@ describe('workspace banners', () => {
 
   it('words the 5-hour limit with its reset time, and keeps the composer open for queueing', () => {
     const b = bannerFor(input({ usage: [{ type: 'five_hour', status: 'rejected', resetsAt: S(new Date(2026, 9, 7, 15, 40).getTime()) }] }))
-    expect(b).toMatchObject({ id: 'session', kind: 'limit', title: "You've hit your 5-hour limit", sub: 'Resets at 3:40 PM. Kai finished this turn and stopped.', blocks: false, limit: 'five_hour' })
+    expect(b).toMatchObject({ id: 'session', kind: 'limit', title: "You've hit your 5-hour limit", sub: 'Resets at 3:40 PM. Christian finished this turn and stopped.', blocks: false, limit: 'five_hour' })
     expect(b?.actions.map((a) => a.label)).toEqual(['Queue message', 'Notify me'])
   })
 
@@ -218,12 +218,12 @@ describe('workspace banners', () => {
   it('names the setup command that failed and its exit code', () => {
     const scripts = [{ kind: 'setup' as const, line: '$ pnpm install --frozen-lockfile && cp ../.env .env', stream: 'stdout' as const }]
     expect(setupCommand(scripts)).toBe('pnpm install')
-    expect(bannerFor(input({ ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))?.sub).toBe('pnpm install exited with code 1. Kai waits until setup passes.')
+    expect(bannerFor(input({ ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))?.sub).toBe('pnpm install exited with code 1. Christian waits until setup passes.')
   })
 
   it('names the agent and doesn\'t block when setup failed and the chat works on (KERNEL-1012)', () => {
     const ran = { ...ws, status: 'ready' as const, setupRun: { startedAt: 1, endedAt: 2, end: 1 } }
-    expect(bannerFor(input({ ws: ran, skipsSetup: true }))).toMatchObject({ id: 'setup', title: 'Setup failed', sub: 'Kai keeps working without it.', blocks: false, actions: [{ label: 'Edit script' }, { label: 'Rerun setup' }] })
+    expect(bannerFor(input({ ws: ran, skipsSetup: true }))).toMatchObject({ id: 'setup', title: 'Setup failed', sub: 'Christian keeps working without it.', blocks: false, actions: [{ label: 'Edit script' }, { label: 'Rerun setup' }] })
     expect(bannerFor(input({ ws: { ...ran, setupRun: { startedAt: 1, endedAt: 2, end: 0 } }, skipsSetup: true }))).toBeNull()
     expect(bannerFor(input({ ws: { ...ran, setupRun: { startedAt: 1, endedAt: 2, end: null } }, skipsSetup: true }))).toBeNull()
   })

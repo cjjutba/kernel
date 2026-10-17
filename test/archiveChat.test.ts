@@ -60,7 +60,7 @@ describe('archiving a chat with Kernel from the sidebar (KERNEL-405)', () => {
   it('asks first when it would stop a running agent, an open PR, uncommitted changes or unpushed commits, or when it cannot tell', async () => {
     for (const row of [{ running: true }, { pr: 41 }, { dirty: 2 }, { unpushed: 1 }, { unknown: true }]) {
       calls.length = 0
-      preview = { threadId: 't2', title: 'Chat t2', workspaces: [{ ...clean('kai'), own: false, ...row }, clean('b')] }
+      preview = { threadId: 't2', title: 'Chat t2', workspaces: [{ ...clean('christian'), own: false, ...row }, clean('b')] }
       expect(stopsSomething(preview.workspaces[0])).toBe(true)
       await archiveChatFromSidebar(getState().threads.t2)
       expect(calls.map((c) => c.channel)).toEqual(['threads.archivePreview'])
@@ -75,9 +75,9 @@ describe('archiving a chat with Kernel from the sidebar (KERNEL-405)', () => {
 
 describe('History and chats with Kernel (KERNEL-405)', () => {
   it("lists an archived chat by its title, and leaves out the shared Lead workspace from before", () => {
-    const list = [ws('a', { threadId: 't1', status: 'archived', archivedAt: 5, name: 'lead' }), ws('old', { name: 'lead', status: 'archived', archivedAt: 6 }), ws('kai', { lead: undefined, agentId: 'kai', status: 'archived', archivedAt: 4 })]
-    expect(archivedList(list).map((w) => w.id)).toEqual(['a', 'kai'])
+    const list = [ws('a', { threadId: 't1', status: 'archived', archivedAt: 5, name: 'lead' }), ws('old', { name: 'lead', status: 'archived', archivedAt: 6 }), ws('christian', { lead: undefined, agentId: 'christian', status: 'archived', archivedAt: 4 })]
+    expect(archivedList(list).map((w) => w.id)).toEqual(['a', 'christian'])
     expect(historyName(list[0], getState().threads)).toBe('Chat t1')
-    expect(historyName(list[2], getState().threads)).toBe('kai')
+    expect(historyName(list[2], getState().threads)).toBe('christian')
   })
 })

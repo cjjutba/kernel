@@ -5,15 +5,15 @@ import { searchFiles } from '../src/main/services/files'
 import { tempRepo } from './helpers'
 
 const agent = (id: string, name: string, extra: Partial<AgentDef> = {}) => ({ id, file: `.claude/agents/${id}.md`, name, role: 'Engine', description: '', lead: false, prompt: '', ...extra }) as AgentDef
-const team = [agent('kernel-lead', 'Kernel', { lead: true }), agent('noor', 'Noor'), agent('kai', 'Kai')]
+const team = [agent('kernel-lead', 'Kernel', { lead: true }), agent('sean', 'Sean'), agent('christian', 'Christian')]
 
 describe('@ in the Lead composer (KERNEL-743)', () => {
-  it('offers Noor under Agents, and not the Lead itself', () => {
-    const menu = mentionMenu([], filterAgents(team, 'noor'))
+  it('offers Sean under Agents, and not the Lead itself', () => {
+    const menu = mentionMenu([], filterAgents(team, 'sean'))
     expect(menu.map((g) => g.label)).toEqual(['Agents'])
-    expect(menu[0].rows.map((r) => r.kind === 'agent' && r.agent.name)).toEqual(['Noor'])
+    expect(menu[0].rows.map((r) => r.kind === 'agent' && r.agent.name)).toEqual(['Sean'])
     expect(filterAgents(team, 'kernel')).toEqual([])
-    expect(mentionPart(menu[0].rows[0])).toEqual({ type: 'agent', name: 'Noor', agentId: 'noor' })
+    expect(mentionPart(menu[0].rows[0])).toEqual({ type: 'agent', name: 'Sean', agentId: 'sean' })
   })
 
   it('offers src/ first for @src, with no Agents heading in a composer that passes no team', async () => {
@@ -24,8 +24,8 @@ describe('@ in the Lead composer (KERNEL-743)', () => {
   })
 
   it('lists teammates above files and folders when both match', async () => {
-    const repo = await tempRepo({ 'src/noor/a.ts': 'a\n' })
-    const menu = mentionMenu(await searchFiles(repo, 'noor'), filterAgents(team, 'noor'))
+    const repo = await tempRepo({ 'src/sean/a.ts': 'a\n' })
+    const menu = mentionMenu(await searchFiles(repo, 'sean'), filterAgents(team, 'sean'))
     expect(menu.map((g) => g.label)).toEqual(['Agents', 'Files'])
   })
 })

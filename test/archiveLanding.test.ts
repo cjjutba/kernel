@@ -18,18 +18,18 @@ const { archiveByHand, restoredFromHistory } = await import('../src/renderer/src
 
 const project = (id: string): Project => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1 }) as Project
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace =>
-  ({ id, projectId: 'r1', name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
+  ({ id, projectId: 'r1', name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'christian', port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
 const chat = (id: string, threadId: string, over: Partial<Workspace> = {}) => ws(id, { lead: true, threadId, agentId: 'kernel', ...over })
 const thread = (id: string, over: Partial<Thread> = {}): Thread => ({ id, projectId: 'r1', title: id, createdAt: 1, ...over }) as Thread
 const kernel = { id: 'kernel', lead: true } as AgentDef
-const kai = { id: 'kai', name: 'Kai' } as AgentDef
-const theo = { id: 'theo', name: 'Theo' } as AgentDef
+const christian = { id: 'christian', name: 'Christian' } as AgentDef
+const artkin = { id: 'artkin', name: 'Artkin' } as AgentDef
 
 const world = () => [
   chat('newer', 't2', { createdAt: 2 }), chat('older', 't1'),
   ws('handed', { threadId: 't2' }), ws('plain'),
   ws('merged', { prState: 'merged', prNumber: 164 }),
-  ws('review', { agentId: 'theo', reviewOf: 'merged' })
+  ws('review', { agentId: 'artkin', reviewOf: 'merged' })
 ]
 const at = (workspaceId: string): Route => ({ name: 'workspace', workspaceId })
 const door: Route = { name: 'leadNew', projectId: 'r1' }
@@ -38,7 +38,7 @@ const archived = (id: string): PushEvent => ({ type: 'workspace', workspace: { .
 beforeEach(() => {
   fail = undefined
   setState({
-    projects: [project('r1')], agents: { r1: [kernel, kai, theo] }, workspaces: world(),
+    projects: [project('r1')], agents: { r1: [kernel, christian, artkin] }, workspaces: world(),
     threads: { t1: thread('t1', { createdAt: 1 }), t2: thread('t2', { createdAt: 2 }) }, chats: {}
   })
   setState((s) => ({ ui: { ...s.ui, route: { name: 'inbox' }, modal: null, toasts: [] } }))
@@ -51,7 +51,7 @@ describe("the project's front door (KERNEL-596)", () => {
   })
 
   it('is the Agents page of a project with no Lead, and reads a Lead from its workspaces before agents load', () => {
-    setState({ agents: { r1: [kai] } })
+    setState({ agents: { r1: [christian] } })
     expect(frontDoor('r1', getState())).toEqual({ name: 'settings', page: 'project', projectId: 'r1', section: 'agents' })
     setState({ agents: {} })
     expect(frontDoor('r1', getState())).toEqual(door)
@@ -187,10 +187,10 @@ describe('the route follows the archived status (KERNEL-596)', () => {
   it('tells the user when Kernel archived the workspace on screen after its PR merged, or a review after its work did', () => {
     on('merged')
     deliver(archived('merged'))
-    expect(getState().ui.toasts.map((t) => ({ title: t.title, sub: t.sub }))).toEqual([{ title: "Archived Kai's workspace after PR #164 merged", sub: 'Restore it from History.' }])
+    expect(getState().ui.toasts.map((t) => ({ title: t.title, sub: t.sub }))).toEqual([{ title: "Archived Christian's workspace after PR #164 merged", sub: 'Restore it from History.' }])
     on('review')
     deliver(archived('review'))
-    expect(getState().ui.toasts.map((t) => t.title)).toEqual(["Archived Theo's review after PR #164 merged"])
+    expect(getState().ui.toasts.map((t) => t.title)).toEqual(["Archived Artkin's review after PR #164 merged"])
   })
 
   it('moves without a toast for any other archive Kernel makes, such as the Lead archiving a workspace', () => {

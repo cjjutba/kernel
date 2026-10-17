@@ -173,7 +173,7 @@ type ImageArg = { path: string } | { shared: string; version: number }
 
 /**
  * create_workspace's and message_agent's line on the servers an agent's tools line names that its account can't give it yet
- * (KERNEL-939): "Porkbun needs a sign-in on Main account. Noor starts without it." `starts` is a hand-off, else a follow-up.
+ * (KERNEL-939): "Porkbun needs a sign-in on Main account. Sean starts without it." `starts` is a hand-off, else a follow-up.
  */
 export function signInNote(agent: string, account: string, servers: AccountSignIn[], starts: boolean): string {
   const name = (s: AccountSignIn) => (/^[a-z][a-z0-9_-]*$/.test(s.name) ? s.name[0].toUpperCase() + s.name.slice(1) : s.name)
@@ -498,7 +498,7 @@ export function kernelTools(d: KernelToolDeps) {
   }
   /**
    * What list_workspaces shows for a review workspace's kinds, each with its agent and latest verdict:
-   * " · reviews: code by Theo (approved), security by Kernel's reviewer (found blockers)" (feat-review-messages-reach-named).
+   * " · reviews: code by Artkin (approved), security by Kernel's reviewer (found blockers)" (feat-review-messages-reach-named).
    */
   const reviewKinds = (w: Workspace) => {
     const kinds = d.reviewKinds?.(w.id) ?? []
@@ -506,7 +506,7 @@ export function kernelTools(d: KernelToolDeps) {
     const state = (k: (typeof kinds)[number]) => (!k.verdict ? 'no verdict yet' : `${k.verdict === 'approved' ? 'approved' : 'found blockers'}${k.current ? '' : ', on an earlier commit'}`)
     return ` · reviews: ${kinds.map((k) => `${k.kind} by ${k.agent} (${state(k)})`).join(', ')}`
   }
-  /** "PR #164 by Noor" for each target, joined. */
+  /** "PR #164 by Sean" for each target, joined. */
   const labels = (targets: Workspace[], team: AgentDef[]) => joinLabels(targets.map((t) => waitLabel(t, team.find((a) => a.id === t.agentId)?.name ?? t.agentId)))
   /**
    * A hand-off Kernel made wait because the tracker marks its issue as blocked (KERNEL-263): the teammate started, and Kernel
@@ -598,7 +598,7 @@ export function kernelTools(d: KernelToolDeps) {
       return text(decision.behavior === 'answer' ? decision.text : decision.behavior)
     }),
     tool('create_workspace', 'Create a workspace for one task and hand it to an agent. The agent starts right away while the setup script runs alongside, or, with wait_for, once those PRs merge. When the user turned on Wait for setup, it starts once setup passes.', {
-      agent: z.string().describe('Agent id from list_agents, for example "kai"'),
+      agent: z.string().describe('Agent id from list_agents, for example "christian"'),
       title: z.string().describe('Task title, used to name the branch'),
       brief: z.string().describe('Everything the agent needs: goal, files, acceptance criteria'),
       mode: z.enum(['worktree', 'current']).optional(),
@@ -610,7 +610,7 @@ export function kernelTools(d: KernelToolDeps) {
       runs_in: z.enum(['kernel', 'terminal']).optional().describe("Where the teammate runs: 'kernel' as a chat in Kernel, 'terminal' in a terminal tab of its workspace that the user can watch and type into. Left out, the project's setting and then Settings, Terminal decide, and a hand-off from a terminal Lead runs in a terminal when they say 'lead'. Not for a review, and Codex agents run in Kernel"),
       user_asked: z.boolean().optional().describe("Set to true only when the user explicitly asked for more teammate workspaces than the project's limit allows. Left out, create_workspace refuses once the limit is reached"),
       confirm: z.boolean().optional().describe('Set to true only after the user said to start anyway, when create_workspace warned that someone else may already be on the issue. Left out, Kernel checks for a branch on the remote, an open PR or another assignee first'),
-      go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved this hand-off, quoted from their latest message, for example \"hand it to Noor\". Kernel refuses the hand-off when they aren't in it. Not needed after an approved plan, for a review, or for a follow-up on approved work"),
+      go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved this hand-off, quoted from their latest message, for example \"hand it to Sean\". Kernel refuses the hand-off when they aren't in it. Not needed after an approved plan, for a review, or for a follow-up on approved work"),
       images: imagesArg.describe(IMAGES_DESCRIBE)
     }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, runs_in, wait_for, user_asked, confirm, go_ahead, images }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).

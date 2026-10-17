@@ -12,7 +12,7 @@ async function setup() {
   const repo = await tempRepo({
     'README.md': '# client\n',
     '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-    '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+    '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -50,7 +50,7 @@ const trash = (k: Kernel) => k.store.meta<string[]>('trash') ?? []
 describe('archive moves the worktree aside and deletes it later (KERNEL-284)', () => {
   it('resolves before the folder is deleted, and the folder goes once the queue drains', async () => {
     const { repo, k, project } = await setup()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
     await fill(ws.path)
     // Hold the delete queue: archive resolving anyway shows it doesn't wait for the delete.
     const release = hold(k)
@@ -76,7 +76,7 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
     const { repo, k, project } = await setup()
     await mkdir(join(repo, 'node_modules', 'left-pad'), { recursive: true })
     await writeFile(join(repo, 'node_modules', 'left-pad', 'index.js'), 'module.exports = 1\n')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
     expect(await linkNodeModules(repo, ws.path)).toBe(true)
     await k.archiveWorkspace(ws.id, true)
     await k.archive.cleanedUp(ws.id)
@@ -123,7 +123,7 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
 
   it('leaves nothing in .trash for a worktree with Electron in its node_modules (KERNEL-810)', async () => {
     const { k, project } = await setup()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
     // Under Electron, Kernel's own fs reads this file as a folder. test/removeTree.mac.test.ts runs the delete there. The
     // Linux Electron has no such file, so the test uses a stand-in there.
     const res = join(ws.path, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'Resources')
@@ -138,7 +138,7 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
 
   it('restores right after archive, while the old folder is still being deleted', async () => {
     const { k, project } = await setup()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
     await fill(ws.path)
     const release = hold(k)
     await k.archiveWorkspace(ws.id, false)
@@ -155,8 +155,8 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
 
   it('moves aside and deletes the worktrees of a removed project when asked to delete them', async () => {
     const { repo, k, project } = await setup()
-    const a = await k.createWorkspace(project.id, { prompt: 'One', agentId: 'kai', title: 'One' })
-    const b = await k.createWorkspace(project.id, { prompt: 'Two', agentId: 'kai', title: 'Two' })
+    const a = await k.createWorkspace(project.id, { prompt: 'One', agentId: 'christian', title: 'One' })
+    const b = await k.createWorkspace(project.id, { prompt: 'Two', agentId: 'christian', title: 'Two' })
     await k.removeProject(project.id, true)
     for (const ws of [a, b]) await expect(stat(ws.path)).rejects.toThrow(/ENOENT/)
     expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toMatch(new RegExp(`${basename(a.path)}|${basename(b.path)}`))
@@ -166,7 +166,7 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
 
   it('archives, leaves the folder alone and warns when the worktree cannot be read (KERNEL-702)', async () => {
     const { k, project } = await setup()
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
     await chmod(dirname(ws.path), 0o000)
     onTestFinished(() => chmod(dirname(ws.path), 0o755))
     await k.archiveWorkspace(ws.id, false)

@@ -45,9 +45,9 @@ async function land(origin: string, file: string) {
   await run('git', ['-C', dir, 'push', '-q', 'origin', 'HEAD:main'])
 }
 
-/** A project on a repo with a bare origin and a fake GitHub. Noor's work is open as PR #164 for KERNEL-197; Kai has started on its brief. */
+/** A project on a repo with a bare origin and a fake GitHub. Sean's work is open as PR #164 for KERNEL-197; Christian has started on its brief. */
 async function setup() {
-  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.claude/agents/theo.md': AGENT('theo', 'role: Reviewer\n') })
+  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/christian.md': AGENT('christian'), '.claude/agents/sean.md': AGENT('sean'), '.claude/agents/artkin.md': AGENT('artkin', 'role: Reviewer\n') })
   const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
   await run('git', ['clone', '-q', '--bare', repo, origin])
   await run('git', ['-C', repo, 'remote', 'add', 'origin', origin])
@@ -61,11 +61,11 @@ async function setup() {
   await k.start()
   const project = await k.addProject(repo)
   const lead = await k.leadChat(project.id)
-  const made = await k.createWorkspace(project.id, { prompt: 'Tool rows', agentId: 'noor', title: 'Tool rows', leadChatId: lead.id })
+  const made = await k.createWorkspace(project.id, { prompt: 'Tool rows', agentId: 'sean', title: 'Tool rows', leadChatId: lead.id })
   prs.set(made.branch, prInfo('open', 164))
   await k.refreshPr(made.id)
-  const noor = k.store.saveWorkspace({ ...k.store.workspace(made.id)!, source: { kind: 'issue', id: 'KERNEL-197', title: 'Tool rows' } })
-  const kai = await k.createWorkspace(project.id, { prompt: 'Build KERNEL-198', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id })
+  const sean = k.store.saveWorkspace({ ...k.store.workspace(made.id)!, source: { kind: 'issue', id: 'KERNEL-197', title: 'Tool rows' } })
+  const christian = await k.createWorkspace(project.id, { prompt: 'Build KERNEL-198', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id })
   const call = async (ws: Workspace, input: { on: string; why?: string }) => {
     const [t] = teammateTools(k.waits['teammateToolDeps'](ws.id))
     const r = await t.handler(input as never, {})
@@ -78,7 +78,7 @@ async function setup() {
     return k.refreshPr(ws.id)
   }
   const deps = (k.sessions as unknown as { d: { mcpFor: (ws: Workspace, a: AgentDef | undefined, c: Chat) => Record<string, { tools: string[] }> | undefined; rulesFor: (ws: Workspace, a: AgentDef | undefined) => string | undefined } }).d
-  return { k, project, lead, noor, kai, call, mergeOnGitHub, deps }
+  return { k, project, lead, sean, christian, call, mergeOnGitHub, deps }
 }
 
 const chatOf = (k: Kernel, ws: Workspace) => k.store.chats(ws.id).find((c) => c.kind !== 'terminal')!
@@ -90,118 +90,118 @@ const pending = (k: Kernel) => (k.store.meta<{ pending: [string, { events: { kin
 
 describe("a teammate's wait_for_merge", () => {
   it('records the wait on its own workspace whether it names the PR, the Linear issue or the workspace', async () => {
-    const { k, noor, kai, call } = await setup()
-    for (const on of ['#164', '164', 'KERNEL-197', 'kernel-197', noor.id]) {
-      k.store.saveWorkspace({ ...k.store.workspace(kai.id)!, waitsFor: undefined })
-      expect(await call(kai, { on })).toEqual({ isError: false, text: 'Kernel will message you when PR #164 merges. End your turn now.' })
-      expect(k.store.workspace(kai.id)!.waitsFor).toEqual({ on: [noor.id], held: false })
+    const { k, sean, christian, call } = await setup()
+    for (const on of ['#164', '164', 'KERNEL-197', 'kernel-197', sean.id]) {
+      k.store.saveWorkspace({ ...k.store.workspace(christian.id)!, waitsFor: undefined })
+      expect(await call(christian, { on })).toEqual({ isError: false, text: 'Kernel will message you when PR #164 merges. End your turn now.' })
+      expect(k.store.workspace(christian.id)!.waitsFor).toEqual({ on: [sean.id], held: false })
     }
-    expect(k.store.workspace(noor.id)!.waitsFor).toBeUndefined()
-    expect(k.store.items(chatOf(k, kai).id).filter((i) => i.kind === 'note').at(-1)).toMatchObject({ text: 'Waiting for PR #164 by Noor to merge. Kernel asks Kai to rebase onto it then.' })
+    expect(k.store.workspace(sean.id)!.waitsFor).toBeUndefined()
+    expect(k.store.items(chatOf(k, christian).id).filter((i) => i.kind === 'note').at(-1)).toMatchObject({ text: 'Waiting for PR #164 by Sean to merge. Kernel asks Christian to rebase onto it then.' })
     await k.stop({ budgetMs: 0 })
   })
 
   it('refuses refs it cannot wait for, with what to pass instead', async () => {
-    const { k, project, lead, noor, kai, call } = await setup()
-    const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #164', leadChatId: lead.id, reviewOf: noor.id })
+    const { k, project, lead, sean, christian, call } = await setup()
+    const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'artkin', title: 'Review PR #164', leadChatId: lead.id, reviewOf: sean.id })
     const leadWs = k.store.workspace(lead.workspaceId)!
-    const refused = async (on: string) => { const r = await call(kai, { on }); expect(r.isError).toBe(true); return r.text }
+    const refused = async (on: string) => { const r = await call(christian, { on }); expect(r.isError).toBe(true); return r.text }
     expect(await refused('#999')).toBe('Not set: there is no workspace "#999" in this project to wait for. Pass a PR number like #164, an issue key or a workspace id.')
     expect(await refused('KERNEL-1')).toBe('Not set: there is no workspace "KERNEL-1" in this project to wait for. Pass a PR number like #164, an issue key or a workspace id.')
-    expect(await refused(kai.id)).toBe(`Not set: ${kai.name} can't wait for itself.`)
+    expect(await refused(christian.id)).toBe(`Not set: ${christian.name} can't wait for itself.`)
     expect(await refused(leadWs.id)).toBe(`Not set: ${leadWs.name} is the Lead's workspace, which never opens a pull request.`)
-    expect(await refused(review.id)).toBe(`Not set: ${review.name} is a review. Wait for the work it reviews instead (workspace ${noor.id}).`)
-    // Noor already waits for Kai, so Kai waiting for Noor would hold both forever.
-    k.store.saveWorkspace({ ...k.store.workspace(noor.id)!, waitsFor: { on: [kai.id], held: false } })
-    expect(await refused('#164')).toBe(`Not set: ${noor.name} already waits for ${kai.name}, so both would wait forever.`)
-    expect(k.store.workspace(kai.id)!.waitsFor).toBeUndefined()
+    expect(await refused(review.id)).toBe(`Not set: ${review.name} is a review. Wait for the work it reviews instead (workspace ${sean.id}).`)
+    // Sean already waits for Christian, so Christian waiting for Sean would hold both forever.
+    k.store.saveWorkspace({ ...k.store.workspace(sean.id)!, waitsFor: { on: [christian.id], held: false } })
+    expect(await refused('#164')).toBe(`Not set: ${sean.name} already waits for ${christian.name}, so both would wait forever.`)
+    expect(k.store.workspace(christian.id)!.waitsFor).toBeUndefined()
     await k.stop({ budgetMs: 0 })
   })
 
   it('tells a teammate on the main checkout to say it in its reply instead', async () => {
-    const { k, kai, call } = await setup()
-    k.store.saveWorkspace({ ...k.store.workspace(kai.id)!, mode: 'current' })
-    expect(await call(kai, { on: '#164' })).toEqual({ isError: true, text: "Not set: you work on the main checkout, which has no branch of its own to rebase later, so you can't wait for a PR. Say in your reply what you are waiting for, and the Lead picks it up." })
+    const { k, christian, call } = await setup()
+    k.store.saveWorkspace({ ...k.store.workspace(christian.id)!, mode: 'current' })
+    expect(await call(christian, { on: '#164' })).toEqual({ isError: true, text: "Not set: you work on the main checkout, which has no branch of its own to rebase later, so you can't wait for a PR. Say in your reply what you are waiting for, and the Lead picks it up." })
     await k.stop({ budgetMs: 0 })
   })
 
   it('refuses work that merges into another base, which the branch would never get (KERNEL-693)', async () => {
-    const { k, noor, kai, call } = await setup()
-    k.store.saveWorkspace({ ...k.store.workspace(noor.id)!, baseRef: 'origin/release/1.2' })
-    expect(await call(kai, { on: '#164' })).toEqual({ isError: true, text: 'Not set: PR #164 merges into release/1.2, and your workspace starts from main, so its merge never reaches that branch.' })
-    expect(k.store.workspace(kai.id)!.waitsFor).toBeUndefined()
+    const { k, sean, christian, call } = await setup()
+    k.store.saveWorkspace({ ...k.store.workspace(sean.id)!, baseRef: 'origin/release/1.2' })
+    expect(await call(christian, { on: '#164' })).toEqual({ isError: true, text: 'Not set: PR #164 merges into release/1.2, and your workspace starts from main, so its merge never reaches that branch.' })
+    expect(k.store.workspace(christian.id)!.waitsFor).toBeUndefined()
     // The remote's copy of the same branch is the same base.
-    k.store.saveWorkspace({ ...k.store.workspace(noor.id)!, baseRef: 'origin/main' })
-    expect((await call(kai, { on: '#164' })).isError).toBe(false)
+    k.store.saveWorkspace({ ...k.store.workspace(sean.id)!, baseRef: 'origin/main' })
+    expect((await call(christian, { on: '#164' })).isError).toBe(false)
     await k.stop({ budgetMs: 0 })
   })
 
   it('records nothing for work that already merged', async () => {
-    const { k, noor, kai, call, mergeOnGitHub } = await setup()
-    await mergeOnGitHub(noor)
-    expect(await call(kai, { on: '#164' })).toEqual({ isError: false, text: 'PR #164 already merged, so there is nothing to wait for. Rebase onto it and carry on.' })
-    expect(k.store.workspace(kai.id)!.waitsFor).toBeUndefined()
+    const { k, sean, christian, call, mergeOnGitHub } = await setup()
+    await mergeOnGitHub(sean)
+    expect(await call(christian, { on: '#164' })).toEqual({ isError: false, text: 'PR #164 already merged, so there is nothing to wait for. Rebase onto it and carry on.' })
+    expect(k.store.workspace(christian.id)!.waitsFor).toBeUndefined()
     // A branch on origin takes the base by a merge, since its rebase would need a force push (KERNEL-886).
-    await run('git', ['-C', kai.path, 'push', '-q', '-u', 'origin', 'HEAD'])
-    expect(await call(kai, { on: '#164' })).toEqual({ isError: false, text: 'PR #164 already merged, so there is nothing to wait for. Merge origin/main into your branch and carry on.' })
+    await run('git', ['-C', christian.path, 'push', '-q', '-u', 'origin', 'HEAD'])
+    expect(await call(christian, { on: '#164' })).toEqual({ isError: false, text: 'PR #164 already merged, so there is nothing to wait for. Merge origin/main into your branch and carry on.' })
     await k.stop({ budgetMs: 0 })
   })
 
   it("keeps what the Lead set it waiting for, and adds the teammate's own", async () => {
-    const { k, project, lead, noor, kai, call } = await setup()
-    const ivy = await k.createWorkspace(project.id, { prompt: 'Other work', agentId: 'noor', title: 'Other work', leadChatId: lead.id })
-    await k.setWait(kai.id, [ivy.id])
-    await call(kai, { on: '#164' })
-    expect(k.store.workspace(kai.id)!.waitsFor).toEqual({ on: [ivy.id, noor.id], held: false })
+    const { k, project, lead, sean, christian, call } = await setup()
+    const teng = await k.createWorkspace(project.id, { prompt: 'Other work', agentId: 'sean', title: 'Other work', leadChatId: lead.id })
+    await k.setWait(christian.id, [teng.id])
+    await call(christian, { on: '#164' })
+    expect(k.store.workspace(christian.id)!.waitsFor).toEqual({ on: [teng.id, sean.id], held: false })
     await k.stop({ budgetMs: 0 })
   })
 
   it("is news for the Lead, with the teammate's reason, while the Lead's own wait isn't", async () => {
-    const { k, noor, kai, call } = await setup()
-    await call(kai, { on: '#164', why: 'I need the full tool input it adds.' })
-    expect(pending(k).filter((e) => e.kind === 'wait.started')).toEqual([expect.objectContaining({ workspaceId: kai.id, wait: expect.objectContaining({ why: 'I need the full tool input it adds.' }) })])
+    const { k, sean, christian, call } = await setup()
+    await call(christian, { on: '#164', why: 'I need the full tool input it adds.' })
+    expect(pending(k).filter((e) => e.kind === 'wait.started')).toEqual([expect.objectContaining({ workspaceId: christian.id, wait: expect.objectContaining({ why: 'I need the full tool input it adds.' }) })])
     expect(pending(k).find((e) => e.kind === 'wait.started')!.wait).not.toHaveProperty('told')
-    await k.setWait(kai.id, [noor.id])
+    await k.setWait(christian.id, [sean.id])
     expect(pending(k).find((e) => e.kind === 'wait.started')!.wait).toMatchObject({ told: true })
     await k.stop({ budgetMs: 0 })
   })
 
   it("gets Kernel's rebase message once the PR it waits for merges", async () => {
-    const { k, noor, kai, call, mergeOnGitHub } = await setup()
-    await call(kai, { on: '#164' })
-    callsIn(kai)[0].feed(result('r1'))
+    const { k, sean, christian, call, mergeOnGitHub } = await setup()
+    await call(christian, { on: '#164' })
+    callsIn(christian)[0].feed(result('r1'))
     await flush()
-    await mergeOnGitHub(noor)
-    const chat = chatOf(k, kai)
-    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task. PR #164 is "PR 164". Read what changed with `gh pr view 164` and `git log HEAD..origin/main`.', 'kernel']), SLOW)
+    await mergeOnGitHub(sean)
+    const chat = chatOf(k, christian)
+    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Sean merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task. PR #164 is "PR 164". Read what changed with `gh pr view 164` and `git log HEAD..origin/main`.', 'kernel']), SLOW)
     // The teammate rebases before its turn ends, so the wait ends (KERNEL-691).
-    await run('git', ['-C', kai.path, 'rebase', '-q', 'origin/main'])
-    callsIn(kai)[0].feed(result('r2'))
-    await vi.waitFor(() => expect(k.store.workspace(kai.id)?.waitsFor).toBeUndefined(), SLOW)
+    await run('git', ['-C', christian.path, 'rebase', '-q', 'origin/main'])
+    callsIn(christian)[0].feed(result('r2'))
+    await vi.waitFor(() => expect(k.store.workspace(christian.id)?.waitsFor).toBeUndefined(), SLOW)
     await k.stop({ budgetMs: 0 })
   })
 })
 
 describe('who gets wait_for_merge', () => {
   it('gives the tool and the rule to teammates, not to reviewers or the Lead', async () => {
-    const { k, project, lead, noor, kai, deps } = await setup()
+    const { k, project, lead, sean, christian, deps } = await setup()
     const agents = await k.agents(project.id)
     const agent = (id: string) => agents.find((a) => a.id === id)
-    const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #164', leadChatId: lead.id, reviewOf: noor.id })
+    const review = await k.createWorkspace(project.id, { prompt: 'Review it', agentId: 'artkin', title: 'Review PR #164', leadChatId: lead.id, reviewOf: sean.id })
     const leadWs = k.store.workspace(lead.workspaceId)!
-    expect(deps.mcpFor(kai, agent('kai'), chatOf(k, kai))?.kernel.tools).toEqual(['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue', 'share_file'])
-    expect(deps.mcpFor(review, agent('theo'), chatOf(k, review))?.kernel.tools).toEqual(['submit_review', 'get_issue', 'share_file'])
+    expect(deps.mcpFor(christian, agent('christian'), chatOf(k, christian))?.kernel.tools).toEqual(['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue', 'share_file'])
+    expect(deps.mcpFor(review, agent('artkin'), chatOf(k, review))?.kernel.tools).toEqual(['submit_review', 'get_issue', 'share_file'])
     expect(deps.mcpFor(leadWs, agent('kernel-lead'), lead)?.kernel.tools).not.toContain('submit_review')
-    expect(deps.rulesFor(kai, agent('kai'))).toBe(`${TEAMMATE_RULE}\n${SHARE_RULE}`)
-    expect(deps.rulesFor(review, agent('theo'))).not.toContain('wait_for_merge')
+    expect(deps.rulesFor(christian, agent('christian'))).toBe(`${TEAMMATE_RULE}\n${SHARE_RULE}`)
+    expect(deps.rulesFor(review, agent('artkin'))).not.toContain('wait_for_merge')
     expect(deps.rulesFor(leadWs, agent('kernel-lead'))).not.toContain('wait_for_merge')
     expect(TEAMMATE_RULE).toContain("If you can't go on until another teammate's PR merges, call mcp__kernel__wait_for_merge and end your turn. Don't poll or loop.")
     await k.stop({ budgetMs: 0 })
   })
 
   it("runs in the teammate's session without asking for permission, as submit_review does", async () => {
-    const { k, kai } = await setup()
-    const options = callsIn(kai)[0].options
+    const { k, christian } = await setup()
+    const options = callsIn(christian)[0].options
     expect(options.mcpServers.kernel.tools).toEqual(['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue', 'share_file'])
     expect(options.systemPrompt.append).toContain(TEAMMATE_RULE)
     // A prompt would wait on the user; this answers at once.

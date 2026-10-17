@@ -180,9 +180,9 @@ export async function initGit(path: string, home = homedir()) {
 
 /**
  * The starter agents New project and Team can seat. Kernel leads without a file, so no Lead is seated (KERNEL-397),
- * and Customize on Kernel's profile writes kernel.md (KERNEL-692). Theo reviews as a starter like the others (KERNEL-553).
+ * and Customize on Kernel's profile writes kernel.md (KERNEL-692). Artkin reviews as a starter like the others (KERNEL-553).
  */
-export const STARTER_IDS = ['kai', 'noor', 'ivy', 'theo'] as const
+export const STARTER_IDS = ['christian', 'sean', 'teng', 'artkin'] as const
 
 /** Agent file names in .claude/agents. Empty when the folder is missing. */
 export async function agentFiles(repoPath: string): Promise<string[]> {

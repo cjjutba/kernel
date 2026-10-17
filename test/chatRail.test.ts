@@ -22,8 +22,8 @@ describe('what the rail lists', () => {
     reply('x1'),
     { kind: 'tool', id: 't1', ts: 0, toolUseId: 'tu', name: 'Bash', label: 'Run', detail: 'ls', status: 'done' },
     user('n1', 'Kernel restarted this chat.', { from: 'kernel' }),
-    update('tu1', [row('Kai', [ev('pr.ready', 'Ready to merge')])]),
-    user('u2', 'Ask Kai to fix it', { from: 'lead' }),
+    update('tu1', [row('Christian', [ev('pr.ready', 'Ready to merge')])]),
+    user('u2', 'Ask Christian to fix it', { from: 'lead' }),
     { kind: 'user', id: 'i1', ts: 0, parts: [{ type: 'file', name: 'create-pr.md', text: 'Open the PR' }] },
     { kind: 'note', id: 'note1', ts: 0, text: 'PR #7 passed checks.' },
     user('u3', 'What can I merge?')
@@ -38,7 +38,7 @@ describe('what the rail lists', () => {
   it('adds the Team updates in Kernel\'s chat, in place', () => {
     const list = railEntries(items, true)
     expect(list.map((e) => e.id)).toEqual(['u1', 'tu1', 'u2', 'u3'])
-    expect(list.find((e) => e.id === 'tu1')).toMatchObject({ update: true, label: 'Kai, PR ready', more: 0 })
+    expect(list.find((e) => e.id === 'tu1')).toMatchObject({ update: true, label: 'Christian, PR ready', more: 0 })
   })
 
   it('reads the first line of a message, and a chip\'s name when it has no text', () => {
@@ -65,38 +65,38 @@ describe('a Team update\'s row', () => {
   const label = (rows: TeamUpdateRow[]) => updateLabel(update('u', rows))
 
   it('reads the teammate and the newest event in a few words', () => {
-    expect(label([row('Kai', [ev('turn', 'Finished a turn'), ev('pr.opened', 'Pushed a fix'), ev('pr.ready', 'Ready to merge')])])?.label).toBe('Kai, PR ready')
-    expect(label([row('Kai', [ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed')])])?.label).toBe('Kai, checks failed')
-    expect(label([row('Noor', [ev('pr.opened', 'Opened PR #161')])])?.label).toBe('Noor, opened PR #161')
-    expect(label([row('Noor', [ev('pr.merged', 'Merged PR #150')])])?.label).toBe('Noor, merged PR #150')
-    expect(label([row('Theo', [ev('review', 'Approved PR #161')])])?.label).toBe('Theo, approved')
-    expect(label([row('Theo', [ev('review', 'Code review approved PR #161')])])?.label).toBe('Theo, approved')
-    expect(label([row('Theo', [ev('review', 'Found 2 blockers in PR #161')])])?.label).toBe('Theo, found 2 blockers')
-    expect(label([row('Ivy', [ev('turn', 'Finished a turn')])])?.label).toBe('Ivy, finished a turn')
-    expect(label([row('Ivy', [ev('setup.failed', 'Setup failed')])])?.label).toBe('Ivy, setup failed')
+    expect(label([row('Christian', [ev('turn', 'Finished a turn'), ev('pr.opened', 'Pushed a fix'), ev('pr.ready', 'Ready to merge')])])?.label).toBe('Christian, PR ready')
+    expect(label([row('Christian', [ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed')])])?.label).toBe('Christian, checks failed')
+    expect(label([row('Sean', [ev('pr.opened', 'Opened PR #161')])])?.label).toBe('Sean, opened PR #161')
+    expect(label([row('Sean', [ev('pr.merged', 'Merged PR #150')])])?.label).toBe('Sean, merged PR #150')
+    expect(label([row('Artkin', [ev('review', 'Approved PR #161')])])?.label).toBe('Artkin, approved')
+    expect(label([row('Artkin', [ev('review', 'Code review approved PR #161')])])?.label).toBe('Artkin, approved')
+    expect(label([row('Artkin', [ev('review', 'Found 2 blockers in PR #161')])])?.label).toBe('Artkin, found 2 blockers')
+    expect(label([row('Teng', [ev('turn', 'Finished a turn')])])?.label).toBe('Teng, finished a turn')
+    expect(label([row('Teng', [ev('setup.failed', 'Setup failed')])])?.label).toBe('Teng, setup failed')
   })
 
   it('skips the grey review segment that follows Ready to merge, and never says "Team update from Kernel"', () => {
-    const l = label([row('Kai', [ev('pr.opened', 'Opened PR #162'), ev('pr.ready', 'Ready to merge'), ev('pr.review', 'Theo approved')])])
-    expect(l?.label).toBe('Kai, PR ready')
+    const l = label([row('Christian', [ev('pr.opened', 'Opened PR #162'), ev('pr.ready', 'Ready to merge'), ev('pr.review', 'Artkin approved')])])
+    expect(l?.label).toBe('Christian, PR ready')
     expect(l?.label).not.toMatch(/team update|from kernel/i)
   })
 
   it('counts the rows after the first, and reads the first row\'s own newest event', () => {
-    const l = label([row('Kai', [ev('pr.ready', 'Ready to merge')]), row('Noor', [ev('pr.opened', 'Opened PR #161')]), row('Theo', [ev('review', 'Approved PR #161')])])
-    expect(l).toEqual({ label: 'Kai, PR ready', more: 2 })
+    const l = label([row('Christian', [ev('pr.ready', 'Ready to merge')]), row('Sean', [ev('pr.opened', 'Opened PR #161')]), row('Artkin', [ev('review', 'Approved PR #161')])])
+    expect(l).toEqual({ label: 'Christian, PR ready', more: 2 })
   })
 
   it('gives the name alone for a row with nothing to say, and says a shared file', () => {
-    expect(label([row('Kai', [])])?.label).toBe('Kai')
-    expect(label([row('Kai', [], { shared: [{ sharedId: 's', version: 1, title: 'Notes', kind: 'markdown' }] })])?.label).toBe('Kai, shared a file')
+    expect(label([row('Christian', [])])?.label).toBe('Christian')
+    expect(label([row('Christian', [], { shared: [{ sharedId: 's', version: 1, title: 'Notes', kind: 'markdown' }] })])?.label).toBe('Christian, shared a file')
   })
 
   it('reads an update from before the card data was saved from its lines', () => {
-    const text = ['Update from Kernel (not the user):', '- Kai · Remove the Try section (workspace w1): PR #108 is ready to merge', '- Theo · Review PR 108 (workspace w2): opened PR #109'].join('\n')
+    const text = ['Update from Kernel (not the user):', '- Christian · Remove the Try section (workspace w1): PR #108 is ready to merge', '- Artkin · Review PR 108 (workspace w2): opened PR #109'].join('\n')
     const old: UserItem = { kind: 'user', id: 'old', ts: 0, from: 'kernel', parts: [{ type: 'text', text }] }
-    expect(updateLabel(old)).toEqual({ label: 'Kai, PR ready', more: 1 })
-    expect(railEntries([old], true)[0]).toMatchObject({ id: 'old', update: true, label: 'Kai, PR ready' })
+    expect(updateLabel(old)).toEqual({ label: 'Christian, PR ready', more: 1 })
+    expect(railEntries([old], true)[0]).toMatchObject({ id: 'old', update: true, label: 'Christian, PR ready' })
   })
 })
 
@@ -183,7 +183,7 @@ describe('the marks\' gap', () => {
   })
 })
 
-const list = (n: number, update = new Set<number>()): RailEntry[] => Array.from({ length: n }, (_, i) => ({ id: `e${i}`, label: update.has(i) ? `Kai, PR ready ${i}` : `Message ${i}`, more: update.has(i) ? 1 : 0, update: update.has(i) }))
+const list = (n: number, update = new Set<number>()): RailEntry[] => Array.from({ length: n }, (_, i) => ({ id: `e${i}`, label: update.has(i) ? `Christian, PR ready ${i}` : `Message ${i}`, more: update.has(i) ? 1 : 0, update: update.has(i) }))
 
 describe('the rail', () => {
   const html = (entries: RailEntry[]) => renderToStaticMarkup(React.createElement(ChatRail, { entries, scroller: { current: null } }))
@@ -231,8 +231,8 @@ describe('the rail', () => {
 
   it('ends a Team update row with its count of more rows, faint and not read twice', () => {
     const view = renderToStaticMarkup(React.createElement(RailView, { entries: list(3, new Set([1])), current: 0, at: 0, open: true, id: 'r' }))
-    expect(view).toContain('<span class="rail-opt-tx">Kai, PR ready 1</span><span class="rail-opt-nx" aria-hidden="true">+1</span>')
-    expect(view).toContain('aria-label="Kai, PR ready 1, and 1 more"')
+    expect(view).toContain('<span class="rail-opt-tx">Christian, PR ready 1</span><span class="rail-opt-nx" aria-hidden="true">+1</span>')
+    expect(view).toContain('aria-label="Christian, PR ready 1, and 1 more"')
     expect(view.match(/rail-opt-nx/g)).toHaveLength(1)
   })
 })

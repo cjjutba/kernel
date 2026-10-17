@@ -228,7 +228,7 @@ export interface ChatArchivePreview {
   workspaces: { id: string; name: string; own: boolean; running: boolean; pr?: number; dirty: number; unpushed: number; unknown?: boolean }[]
 }
 
-/** Words in a note that open a workspace: "PR #164 by Noor" in "Waiting for PR #164 by Noor to merge." */
+/** Words in a note that open a workspace: "PR #164 by Sean" in "Waiting for PR #164 by Sean to merge." */
 export interface NoteRef { text: string; workspaceId: string }
 
 /** Where an item came from when it did not come from a Kernel session: `terminal` is a row read from a big terminal's Claude Code transcript (KERNEL-1002). */

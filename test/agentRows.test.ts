@@ -4,10 +4,10 @@ import { agentGroup, agentLabel, agentSource, cleanDescription } from '../src/re
 describe('agent rows', () => {
   it('drops the role when it repeats the name', () => {
     expect(agentLabel({ name: 'Ai Architect', role: 'ai architect' })).toBe('Ai Architect')
-    expect(agentLabel({ name: 'Kai', role: 'Frontend' })).toBe('Kai · Frontend')
+    expect(agentLabel({ name: 'Christian', role: 'Frontend' })).toBe('Christian · Frontend')
   })
   it('names the real source of each agent', () => {
-    expect(agentSource({ id: 'kai' })).toBe('.claude/agents/kai.md')
+    expect(agentSource({ id: 'christian' })).toBe('.claude/agents/christian.md')
     expect(agentSource({ id: 'ops', origin: 'personal' })).toBe('~/.claude/agents/ops.md')
     expect(agentSource({ id: 'vercel:ai-architect', origin: 'plugin' })).toBe('From the vercel plugin')
     expect(agentSource({ id: 'kernel', builtIn: 'lead' })).toBe('Built into Kernel')

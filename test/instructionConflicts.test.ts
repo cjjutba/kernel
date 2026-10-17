@@ -149,7 +149,7 @@ describe('repo instructions that fight Kernel', () => {
   it('keeps what project setup found on the project, and never edits the files', async () => {
     const k = await kernel()
     const repo = await tempRepo({ 'CLAUDE.md': CLAUDE, 'AGENTS.md': AGENTS, '.claude/CLAUDE.md': NESTED })
-    const project = await k.projects.createProject({ source: 'folder', name: 'Rules app', from: repo, team: ['kai'], autostart: false })
+    const project = await k.projects.createProject({ source: 'folder', name: 'Rules app', from: repo, team: ['christian'], autostart: false })
     await setupDone(project.id)
     expect(k.store.project(project.id)?.instructionConflicts).toEqual([
       { kind: 'commit-to-main', text: 'Commit straight to main. Skip the PR for small changes.', file: 'CLAUDE.md', line: 5, kernel: 'Work on your own branch and open a pull request.' },
@@ -166,7 +166,7 @@ describe('repo instructions that fight Kernel', () => {
     expect(again.instructionConflicts?.find((c) => c.kind === 'stacked-prs')?.kernel).toBe('Start from origin/release. One task, one branch, one pull request.')
 
     const plain = await tempRepo()
-    const quiet = await k.projects.createProject({ source: 'folder', name: 'Plain app', from: plain, team: ['kai'], autostart: false })
+    const quiet = await k.projects.createProject({ source: 'folder', name: 'Plain app', from: plain, team: ['christian'], autostart: false })
     await setupDone(quiet.id)
     expect(k.store.project(quiet.id)?.instructionConflicts).toEqual([])
     await k.stop()

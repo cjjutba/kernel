@@ -15,7 +15,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const REPO = {
   'README.md': '# client\n',
   '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
 
 async function dirs() {
@@ -38,7 +38,7 @@ describe('a workspace whose folder was deleted outside Kernel (KERNEL-291)', () 
     const k = await boot(await dirs())
     const project = await k.addProject(await tempRepo(REPO))
     k.sessions.send = async () => ({ queued: false })
-    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Invoice table' })
     delete (k.sessions as { send?: unknown }).send
     const chat = k.chatTabs(ws.id)[0]
     const pushed: boolean[] = []
@@ -65,7 +65,7 @@ describe('a workspace whose folder was deleted outside Kernel (KERNEL-291)', () 
     let k = await boot(where)
     const project = await k.addProject(await tempRepo(REPO))
     k.sessions.send = async () => ({ queued: false })
-    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Invoice table' })
     await k.stop({ budgetMs: 0 })
     await rm(ws.path, { recursive: true, force: true })
     k = await boot(where)
@@ -85,11 +85,11 @@ describe('a workspace whose folder was deleted outside Kernel (KERNEL-291)', () 
     const repo = await tempRepo(REPO)
     const project = await k.addProject(repo)
     k.sessions.send = async () => ({ queued: false })
-    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const ws = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Invoice table' })
     k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, folderGone: true })
     expect(await k.workspaces.checkFolder(ws.id)).toBe(false)
     expect(k.store.workspace(ws.id)?.folderGone).toBeUndefined()
-    const current = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'kai', title: 'Here', mode: 'current' })
+    const current = await k.createWorkspace(project.id, { prompt: 'Go', agentId: 'christian', title: 'Here', mode: 'current' })
     k.store.saveWorkspace({ ...current, path: join(repo, 'not-there') })
     expect(await k.workspaces.checkFolder(current.id)).toBe(false)
     expect(k.store.workspace(current.id)?.folderGone).toBeUndefined()

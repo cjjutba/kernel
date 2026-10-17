@@ -56,15 +56,15 @@ describe('the batch read', () => {
 describe('review threads (KERNEL-564)', () => {
   it("reads each thread's id with its comment, so the agent can reply in the thread", () => {
     expect(prQuery(42)).toContain('reviewThreads(first:100){nodes{id isResolved')
-    const comment = { id: 'c1', body: 'Rename it.', authorAssociation: 'MEMBER', author: { login: 'theo' } }
+    const comment = { id: 'c1', body: 'Rename it.', authorAssociation: 'MEMBER', author: { login: 'artkin' } }
     expect(reviewsOf({
       reviewThreads: { nodes: [{ id: 'PRRT_kw1', isResolved: false, path: 'src/a.ts', line: 3, comments: { nodes: [comment] } }, { isResolved: false, path: 'src/b.ts', line: 1, comments: { nodes: [{ ...comment, id: 'c2' }] } }] },
-      latestReviews: { nodes: [{ id: 'r1', state: 'CHANGES_REQUESTED', body: 'Two things.', authorAssociation: 'MEMBER', author: { login: 'theo' } }] }
+      latestReviews: { nodes: [{ id: 'r1', state: 'CHANGES_REQUESTED', body: 'Two things.', authorAssociation: 'MEMBER', author: { login: 'artkin' } }] }
     })).toEqual([
       // A review's own body has no thread.
-      { id: 'r1', author: 'theo', body: 'Two things.', resolved: false, association: 'trusted' },
-      { id: 'c1', author: 'theo', path: 'src/a.ts', line: 3, body: 'Rename it.', resolved: false, association: 'trusted', threadId: 'PRRT_kw1' },
-      { id: 'c2', author: 'theo', path: 'src/b.ts', line: 1, body: 'Rename it.', resolved: false, association: 'trusted' }
+      { id: 'r1', author: 'artkin', body: 'Two things.', resolved: false, association: 'trusted' },
+      { id: 'c1', author: 'artkin', path: 'src/a.ts', line: 3, body: 'Rename it.', resolved: false, association: 'trusted', threadId: 'PRRT_kw1' },
+      { id: 'c2', author: 'artkin', path: 'src/b.ts', line: 1, body: 'Rename it.', resolved: false, association: 'trusted' }
     ])
   })
 })
@@ -218,7 +218,7 @@ describe('the fingerprint a poll compares', () => {
   const base = infoOf('w', view({ headRefOid: 'a', updatedAt: 't1', statusCheckRollup: [run('Test', null)] }), [], [])
 
   it('is the same for the same read, whatever the comments, conflicting files or check durations', () => {
-    const again: PrInfo = { ...base, comments: [{ id: 'c', author: 'theo', body: 'x', resolved: false }], conflicts: ['a.ts'], workspaceId: 'other', checks: base.checks.map((c) => ({ ...c, meta: '12s' })) }
+    const again: PrInfo = { ...base, comments: [{ id: 'c', author: 'artkin', body: 'x', resolved: false }], conflicts: ['a.ts'], workspaceId: 'other', checks: base.checks.map((c) => ({ ...c, meta: '12s' })) }
     expect(fingerprintOf(again)).toBe(fingerprintOf(base))
   })
 

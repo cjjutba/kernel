@@ -6,7 +6,7 @@ const user = (text: string, extra: Partial<Extract<ChatItem, { kind: 'user' }>> 
   ({ kind: 'user', id: 'u', ts: 1, parts: [{ type: 'text', text }], ...extra })
 
 const update: TeamUpdate = {
-  rows: [{ workspaceId: 'w1', agentId: 'kai', name: 'Kai', task: 'Remove the Try section', prNumber: 108, events: [{ kind: 'pr.ready', text: 'Passed checks, no conflicts. Not reviewed yet', actionable: true }] }]
+  rows: [{ workspaceId: 'w1', agentId: 'christian', name: 'Christian', task: 'Remove the Try section', prNumber: 108, events: [{ kind: 'pr.ready', text: 'Passed checks, no conflicts. Not reviewed yet', actionable: true }] }]
 }
 
 describe('isKernelUpdate (KERNEL-112)', () => {
@@ -15,7 +15,7 @@ describe('isKernelUpdate (KERNEL-112)', () => {
   })
 
   it("is true for an older item that starts with the legacy header, also once Retry sent it again as Kernel's", () => {
-    const legacy = `${LEGACY_UPDATE_HEADER}\n- Kai · Remove the Try section (workspace w1): PR #108 is ready to merge`
+    const legacy = `${LEGACY_UPDATE_HEADER}\n- Christian · Remove the Try section (workspace w1): PR #108 is ready to merge`
     expect(isKernelUpdate(user(legacy))).toBe(true)
     expect(isKernelUpdate(user(legacy, { from: 'kernel' }))).toBe(true)
   })
