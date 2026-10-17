@@ -3,12 +3,15 @@ import { join } from 'node:path'
 import type { Chat, ChatPart } from '@shared/types'
 import type { TurnBy } from '../services/sessions'
 import { seatDir } from '../services/seatLaunch'
+import { pastable } from './shared'
 import { Feature } from './feature'
 
 /** A pasted message goes in as one bracketed paste, then Enter, so a multi-line message is one prompt. */
 const PASTE_START = '\x1b[200~'
 const PASTE_END = '\x1b[201~'
 const ENTER_AFTER_MS = 150
+
+const PENDING = 'seatMessages'
 
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 
@@ -19,7 +22,7 @@ export function partsText(parts: ChatPart[]): string {
 /**
  * A teammate that runs in a terminal tab instead of Kernel's chat (KERNEL-1004). Its tab is a seat (KERNEL-998) started as
  * `claude "<brief>"`. Kernel writes into it only between turns: a message waits for `Stop`, and only if the user has typed
- * nothing since their last prompt. Memory only, so a restart forgets a message that hadn't gone in.
+ * nothing since their last prompt. A message that hasn't gone in is kept in SQLite, so a restart doesn't lose it (KERNEL-1029).
  */
 export class TeammateSeats extends Feature {
   /** Seats in a turn, the ones Kernel started included: they count toward the agent limit. */
@@ -32,9 +35,25 @@ export class TeammateSeats extends Feature {
   private ours = new Set<string>()
   /** The turn in progress started with a Kernel prompt. */
   private turnBy = new Map<string, TurnBy>()
-  private pending = new Map<string, ChatPart[][]>()
+  private loaded?: Map<string, ChatPart[][]>
   /** Briefs waiting for a free slot, in the order they came. */
   private waiting = new Map<string, ChatPart[]>()
+
+  /** Messages waiting for each seat, oldest first. Read from SQLite on first use, since a feature's constructor does no work. */
+  private get pending(): Map<string, ChatPart[][]> {
+    if (!this.loaded) {
+      this.loaded = new Map()
+      try {
+        for (const [id, queue] of Object.entries(this.store.meta<Record<string, ChatPart[][]>>(PENDING) ?? {})) {
+          const chat = this.store.chat(id)
+          if (Array.isArray(queue) && queue.length && chat && !chat.closed) this.loaded.set(id, queue)
+        }
+      } catch { this.loaded.clear() }
+    }
+    return this.loaded
+  }
+
+  private savePending() { this.store.saveMeta(PENDING, Object.fromEntries(this.pending)) }
 
   seatOf(workspaceId: string): Chat | undefined {
     return this.store.chats(workspaceId).find((c) => c.terminal?.handoff && !c.closed)
@@ -116,7 +135,7 @@ export class TeammateSeats extends Feature {
   /** A seat's tab closed or its workspace archived: nothing of it is left. */
   gone(chatId: string) {
     this.exited(chatId)
-    this.pending.delete(chatId)
+    if (this.pending.delete(chatId)) this.savePending()
     this.waiting.delete(chatId)
     this.startWaiting()
   }
@@ -124,9 +143,22 @@ export class TeammateSeats extends Feature {
   /** A message for the seat. It goes in at once when the seat is between turns and the user has typed nothing, else at a later Stop. */
   message(chat: Chat, parts: ChatPart[]): 'sent' | 'waiting' {
     const queue = this.pending.get(chat.id) ?? []
-    queue.push(parts)
+    const text = partsText(parts)
+    if (!queue.some((q) => partsText(q) === text)) queue.push(parts)
     this.pending.set(chat.id, queue)
+    this.savePending()
     return this.deliver(chat.id) ? 'sent' : 'waiting'
+  }
+
+  /**
+   * Kernel's own nudge for a teammate (checks, conflicts, a wait that ended, a base that moved): pasted into the seat's terminal
+   * on the same rule as a message from the Lead (KERNEL-1029). False when the chat is no teammate seat, and the caller sends it
+   * the way it does for a chat in Kernel.
+   */
+  nudge(chat: Chat, parts: ChatPart[]): boolean {
+    if (!chat.terminal?.handoff || chat.closed || !pastable(parts)) return false
+    this.message(chat, parts)
+    return true
   }
 
   private deliver(chatId: string): boolean {
@@ -134,6 +166,7 @@ export class TeammateSeats extends Feature {
     if (!queue?.length) return false
     if (!this.idle.has(chatId) || this.typed.has(chatId) || !this.ptys.has(chatId)) return false
     this.pending.delete(chatId)
+    this.savePending()
     this.idle.delete(chatId)
     this.ours.add(chatId)
     const text = queue.map(partsText).join('\n\n')

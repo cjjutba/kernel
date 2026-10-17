@@ -182,11 +182,58 @@ describe('updates for a terminal Lead', () => {
     sent.mockRestore()
   })
 
-  it('drops the queue when the tab closes', async () => {
+  it('answers seat.pending with the count waiting per tab (KERNEL-1029)', async () => {
+    expect(await k.handlers()['seat.pending']()).toEqual({})
+    await ask(mateWs, 'Counted?')
+    expect(await k.handlers()['seat.pending']()).toEqual({ [lead.id]: 1 })
+    await call(lead, 'check_team', {})
+    expect(await k.handlers()['seat.pending']()).toEqual({})
+  })
+
+  it('hands a closed tab\'s queue to the chat Lead for that work (KERNEL-1029)', async () => {
     await ask(mateWs, 'Last one?')
     expect(k.leadUpdates.seatPending(lead.id)).toBe(1)
-    k.seats.closeSeat(lead.id)
+    const chat = k.store.chats(leadWs.id).find((c) => c.kind === 'chat')!
+    const post = vi.spyOn(k.sessions, 'post').mockReturnValue(true)
+    await k.chats.closeChat(lead.id)
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(post.mock.calls[0][0]).toBe(chat.id)
+    const said = (post.mock.calls[0][1][0] as { text: string }).text
+    expect(said).toContain('Last one?')
+    expect(said).toContain('a tab you closed')
+    post.mockRestore()
     expect(k.leadUpdates.seatPending(lead.id)).toBe(0)
     expect(k.store.notification(seatId(lead.id))).toMatchObject({ needsYou: false })
+  })
+
+  it('keeps a closed tab\'s queue until a Lead chat can take it', async () => {
+    const tab = await open(leadWs, 'lead')
+    k.store.saveWorkspace({ ...mateWs, leadChatId: tab.id })
+    k.leadUpdates.asked(k.store.workspace(mateWs.id)!, 'Still there?')
+    bus.push({ type: 'chat.running', chatId: k.store.chats(mateWs.id).find((c) => c.kind === 'chat')!.id, running: false })
+    await vi.waitFor(() => expect(k.leadUpdates.seatPending(tab.id)).toBe(1), { timeout: 3000, interval: 20 })
+    const post = vi.spyOn(k.sessions, 'post').mockReturnValue(false)
+    await k.chats.closeChat(tab.id)
+    expect(k.leadUpdates.seatPending(tab.id)).toBe(1)
+    post.mockReturnValue(true)
+    k.leadUpdates.flush(k.store.workspace(leadWs.id)!.projectId)
+    expect(post).toHaveBeenCalledTimes(2)
+    expect(k.leadUpdates.seatPending(tab.id)).toBe(0)
+    post.mockRestore()
+  })
+
+  it('keeps the queue through an archive and offers it again on restore', async () => {
+    const tab = await open(leadWs, 'lead')
+    k.store.saveWorkspace({ ...mateWs, leadChatId: tab.id })
+    k.leadUpdates.asked(k.store.workspace(mateWs.id)!, 'After the archive?')
+    bus.push({ type: 'chat.running', chatId: k.store.chats(mateWs.id).find((c) => c.kind === 'chat')!.id, running: false })
+    await vi.waitFor(() => expect(k.leadUpdates.seatPending(tab.id)).toBe(1), { timeout: 3000, interval: 20 })
+    k.seats.closeWorkspace(leadWs.id, [tab.id])
+    expect(k.leadUpdates.seatPending(tab.id)).toBe(1)
+    expect(k.store.notification(seatId(tab.id))).toMatchObject({ needsYou: false })
+    k.leadUpdates.seatRestored(tab)
+    expect(k.store.notification(seatId(tab.id))).toMatchObject({ needsYou: true })
+    expect(context(await prompt(tab, 'Back'))).toContain('After the archive?')
+    expect(k.leadUpdates.seatPending(tab.id)).toBe(0)
   })
 })

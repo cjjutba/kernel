@@ -8,6 +8,7 @@ import { Kernel } from '../src/main/kernel'
 import { hookToken } from '../src/main/services/hookToken'
 import { seatDir } from '../src/main/services/seatLaunch'
 import { pastable } from '../src/main/features/shared'
+import { agentPrompt } from '../src/main/services/sessions'
 import { setUp, tempRepo, freePort } from './helpers'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -301,5 +302,61 @@ describe('the agent limit', () => {
     expect(b.text).toContain('slot')
     await stop(first)
     await vi.waitFor(() => expect(started).toContain(second.id))
+  })
+})
+
+describe('what survives a restart and what reaches a terminal (KERNEL-1029)', () => {
+  const pasted = () => writes.filter((w) => w.data.startsWith('\x1b[200~'))
+  const message = async (ws: Workspace, text: string) => {
+    const tools = k.tools.toolsFor(leadWs, k.team.agentOf(projectId, leadWs.agentId), chatLead)
+    return tools.find((t) => t.name === 'message_agent')!.handler({ workspace_id: ws.id, text } as never, {})
+  }
+  const seatFor = async () => {
+    const r = await handOff('chat', { runs_in: 'terminal' })
+    await setUp(k, r.ws!.id)
+    return { ws: r.ws!, seat: seatOf(r.ws!.id)! }
+  }
+
+  it('gives a terminal Lead a launch prompt without the plan card tool, and a chat Lead its own', async () => {
+    const lead = k.team.agentOf(projectId, leadWs.agentId)
+    const ws = k.store.workspace(leadWs.id)!
+    expect(agentPrompt(lead, ws, undefined, true)).not.toContain('request_plan_approval')
+    expect(agentPrompt(lead, ws, undefined, true)).toContain("Claude Code's own plan dialog")
+    expect(agentPrompt(lead, ws)).toContain('mcp__kernel__request_plan_approval')
+    const launched = k.seats.launch(termLead.id, {})
+    expect(launched).toBeTruthy()
+    expect(await readFile(join(seatDir(dataDir, termLead.id), 'prompt.txt'), 'utf8')).not.toContain('request_plan_approval')
+  })
+
+  it('keeps a waiting message in SQLite and pastes it once after a restart', async () => {
+    const { ws, seat } = await seatFor()
+    await prompt(seat, 'Build the cart')
+    await message(ws, 'Use the shared button.')
+    expect((k.store.meta<Record<string, unknown[]>>('seatMessages') ?? {})[seat.id]).toHaveLength(1)
+    const features = k.teammateSeats as unknown as { loaded?: unknown }
+    features.loaded = undefined
+    k.teammateSeats.exited(seat.id)
+    expect(pasted()).toEqual([])
+    await prompt(seat, 'Carry on')
+    await stop(seat)
+    await vi.waitFor(() => expect(pasted()).toHaveLength(1))
+    expect(pasted()[0].data).toBe('\x1b[200~Use the shared button.\x1b[201~')
+    expect((k.store.meta<Record<string, unknown[]>>('seatMessages') ?? {})[seat.id]).toBeUndefined()
+    features.loaded = undefined
+    await prompt(seat, 'Again')
+    await stop(seat)
+    await new Promise((res) => setTimeout(res, 50))
+    expect(pasted()).toHaveLength(1)
+  })
+
+  it('pastes Kernel\'s own nudge into a terminal teammate instead of sending it a turn', async () => {
+    const { ws, seat } = await seatFor()
+    await prompt(seat, 'Build the cart')
+    await (k.prs as unknown as { pullUpdate(ws: Workspace, to: string, base: string, pr: number): Promise<void> }).pullUpdate(k.store.workspace(ws.id)!, 'deadbeef', 'main', 7)
+    expect(sent.filter((s) => s.chatId === seat.id)).toEqual([])
+    expect(pasted()).toEqual([])
+    await stop(seat)
+    await vi.waitFor(() => expect(pasted()).toHaveLength(1))
+    expect(pasted()[0].data).toContain('Run git pull --no-rebase')
   })
 })

@@ -1,4 +1,4 @@
-import type { Workspace } from '@shared/types'
+import type { ChatPart, Workspace } from '@shared/types'
 import { buildsHere } from '@shared/leadMode'
 import { bus } from '../bus'
 import { exec, git } from '../services/exec'
@@ -166,7 +166,8 @@ export class BaseWatch extends Feature {
       const chat = this.prChat(ws.id)
       if (held() || !chat) return false
       let sent = false
-      try { sent = this.sessions.post(chat.id, [{ type: 'text', text: catchUpMessage(ws.baseRef, behind, pushedTo) }]) } catch { return false }
+      const catchUp: ChatPart[] = [{ type: 'text', text: catchUpMessage(ws.baseRef, behind, pushedTo) }]
+      try { sent = this.k.teammateSeats.nudge(chat, catchUp) || this.sessions.post(chat.id, catchUp) } catch { return false }
       if (!sent) return false
       this.updateWs(ws.id, { fetchFailed: undefined })
       bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `told ${agent} to ${pushedTo ? `merge ${ws.baseRef} in` : `rebase onto ${ws.baseRef}`}, since its workspace started from it as last fetched` })
@@ -190,7 +191,8 @@ export class BaseWatch extends Feature {
     const chat = this.prChat(ws.id)
     if (!chat || !this.watched(ws)) return false
     let sent = false
-    try { sent = this.sessions.post(chat.id, [{ type: 'text', text: baseMessage(ws.baseRef, state.behind, state.conflicts, pushedTo) }]) } catch { return false }
+    const base: ChatPart[] = [{ type: 'text', text: baseMessage(ws.baseRef, state.behind, state.conflicts, pushedTo) }]
+    try { sent = this.k.teammateSeats.nudge(chat, base) || this.sessions.post(chat.id, base) } catch { return false }
     if (!sent) return false
     const agent = this.k.team.agentOf(ws.projectId, ws.agentId)
     bus.activity({ kind: 'note', projectId: ws.projectId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `told ${agent?.name ?? 'the teammate'} to ${pushedTo ? `merge ${ws.baseRef} in` : 'rebase'}, since ${ws.baseRef} moved ${state.behind} ${state.behind === 1 ? 'commit' : 'commits'} and would conflict in`, object: listFiles(state.conflicts, 3) })

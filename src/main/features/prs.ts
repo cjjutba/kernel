@@ -1,4 +1,4 @@
-import type { AutoMerge, GitHubErrorKind, GitHubStatus, MergeMethod, PrInfo, PrReads, PrPending, PrState, Project, Workspace } from '@shared/types'
+import type { AutoMerge, ChatPart, GitHubErrorKind, GitHubStatus, MergeMethod, PrInfo, PrReads, PrPending, PrState, Project, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { type AppSettings, autoMergeInProject, loadRepoSettings, localSettingsOwn, prInstructions, sharedMergeOf } from '../services/settings'
 import { branchExists, currentBranch, fastForward, fetchOrigin, folderGone, freeBranch, isAncestor, isPushed, stripRemote } from '../services/worktrees'
@@ -88,7 +88,8 @@ export class Prs extends Feature {
     const written = (await this.prTexts(ws)).createInstructions
     const text = await prTextFor('create', written, ws.path, ctx)
     // Kernel's own text says `--draft` in its command. Text that goes out as written gets the line.
-    await this.sessions.send(chat.id, [{ type: 'file', name: 'create-pr.md', text: text === written && ctx.draft ? `${text}\nOpen as draft` : text }])
+    const create: ChatPart[] = [{ type: 'file', name: 'create-pr.md', text: text === written && ctx.draft ? `${text}\nOpen as draft` : text }]
+    if (!this.k.teammateSeats.nudge(chat, create)) await this.sessions.send(chat.id, create)
     return this.setPrState(ws, 'creating')
   }
 
@@ -184,7 +185,8 @@ export class Prs extends Feature {
     const texts = await this.prTexts(ws)
     const [name, text] = resolveFile(ws.prState, { ...texts, [key]: await prTextFor(kind, texts[key], ws.path, ctx) }, info)
     this.k.lead.userSpoke(chat.id)
-    await this.sessions.send(chat.id, [{ type: 'file', name, text }])
+    const fix: ChatPart[] = [{ type: 'file', name, text }]
+    if (!this.k.teammateSeats.nudge(chat, fix)) await this.sessions.send(chat.id, fix)
     this.setPrState(ws, 'resolving')
   }
 
@@ -211,7 +213,8 @@ export class Prs extends Feature {
     const steps = pushed
       ? `run git merge ${base}, resolve any conflicts, re-run the tests and push as usual. The branch is on ${remote}, so merge rather than rebase.`
       : `run git merge ${base}, resolve any conflicts and re-run the tests.`
-    await this.sessions.send(chat.id, [{ type: 'text', text: `${base} has ${behind} new ${behind === 1 ? 'commit' : 'commits'} that this branch doesn't have. Commit your work, ${steps} Then say what you changed.` }])
+    const behindNote: ChatPart[] = [{ type: 'text', text: `${base} has ${behind} new ${behind === 1 ? 'commit' : 'commits'} that this branch doesn't have. Commit your work, ${steps} Then say what you changed.` }]
+    if (!this.k.teammateSeats.nudge(chat, behindNote)) await this.sessions.send(chat.id, behindNote)
   }
 
   /** Each PR's last full read and when, so opening a workspace again within `infoMs` doesn't read GitHub again. */
@@ -687,7 +690,8 @@ export class Prs extends Feature {
     }
     const chat = this.prChat(ws.id)
     if (!chat) return
-    await this.sessions.send(chat.id, [{ type: 'text', text: `Kernel brought PR #${pr} up to date with ${base} on GitHub, so the branch there has a merge commit your worktree doesn't. Run git pull --no-rebase before you push again.` }], { from: 'kernel' })
+    const pull: ChatPart[] = [{ type: 'text', text: `Kernel brought PR #${pr} up to date with ${base} on GitHub, so the branch there has a merge commit your worktree doesn't. Run git pull --no-rebase before you push again.` }]
+    if (!this.k.teammateSeats.nudge(chat, pull)) await this.sessions.send(chat.id, pull, { from: 'kernel' })
   }
 
   /**

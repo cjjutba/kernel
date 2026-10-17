@@ -267,6 +267,8 @@ export interface KernelApi {
   'terminal.reconnect': { req: { chatId: string }; res: Ok }
   /** Pushes the terminal's kept output as one `terminal.data` with `replace`, for a window that wasn't there to see it (KERNEL-340). */
   'terminal.replay': { req: { chatId: string }; res: Ok }
+  /** How many Team updates wait for each terminal Lead tab, by chat id, for a window that missed the `seat.updates` pushes. Tabs with none are left out (KERNEL-1029). */
+  'seat.pending': { req: void; res: Record<string, number> }
   /** The presets a new big terminal tab can run: the built-ins, the CLIs on the PATH, then the custom ones (KERNEL-248). */
   'terminal.presets': { req: { workspaceId?: string } | void; res: TerminalPreset[] }
 
