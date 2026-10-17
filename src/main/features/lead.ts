@@ -113,6 +113,10 @@ export class Lead extends Feature {
     const project = this.store.project(projectId)
     const leadMode = o.leadMode ?? newChatLeadMode(this.settings, project ? await loadRepoSettings(project.path).catch(() => undefined) : undefined)
     const thread = this.pushThread({ id: newId(), projectId, title: NEW_TAB, createdAt: Date.now() })
+    if (leadMode === 'handoff' && !o.baseRef) {
+      const shared = await this.startShared(projectId, thread, o, pick, lead, leadMode).catch((e) => { this.store.deleteThread(thread.id); throw e })
+      if (shared) return shared
+    }
     let cut: Awaited<ReturnType<Workspaces['cutWorkspace']>>
     try { cut = await this.k.workspaces.cutWorkspace(projectId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id }, worktreeLater: true }) }
     catch (e) { this.store.deleteThread(thread.id); throw e }
@@ -138,6 +142,34 @@ export class Lead extends Feature {
   }
 
   /**
+   * A new chat in Hand off starts in the project's shared main folder with no worktree, branch, ports or setup (KERNEL-1050):
+   * its record is ready at once and its first message goes right away. Undefined for a project with no commit, which cuts the
+   * chat as before.
+   */
+  private async startShared(projectId: string, thread: Thread, o: { prompt: string; parts?: ChatPart[]; clientId?: string; mode?: PermissionMode }, pick: { provider: Provider; model: string; effort: Effort; plan: boolean }, lead: AgentDef, leadMode: LeadMode): Promise<Chat | undefined> {
+    const project = this.mustProject(projectId)
+    const remote = await this.k.config.remoteFor(project.path)
+    const base = await leadBase(project.path, remote)
+    if (!base) return undefined
+    const path = await this.k.mainFolder.ensure(projectId)
+    await this.k.mainFolder.sync(projectId).catch(() => undefined)
+    const title = o.prompt.split(/\s+/).slice(0, 6).join(' ')
+    const ws: Workspace = {
+      id: newId(), projectId, name: slugify(title || 'chat'), branch: 'HEAD', baseRef: base, path, mode: 'worktree', agentId: lead.id, lead: true, shared: true,
+      port: 0, status: 'ready', title, threadId: thread.id, leadMode, prState: 'none', createdAt: Date.now()
+    }
+    this.store.saveWorkspace(ws)
+    bus.push({ type: 'workspace', workspace: ws })
+    bus.activity({ kind: 'workspace.created', projectId, workspaceId: ws.id, agentId: lead.id, text: 'started', object: ws.name })
+    const tab = this.newChat(ws.id, NEW_TAB, { ...pick, threadId: thread.id })
+    const chat = o.mode ? await this.sessions.configure(this.saveChat(tab).id, { mode: o.mode }) : this.saveChat(tab)
+    this.userSpoke(chat.id)
+    const parts = messageOf(o.prompt, o.parts)
+    if (parts.length) await this.sessions.send(chat.id, parts, { clientId: o.clientId })
+    return chat
+  }
+
+  /**
    * Switches a chat with Kernel to Hand off or Build here (KERNEL-770). Each tab gets a divider, or its last one updates, and the chat's idle processes
    * end, so the next turn starts with the mode's prompt and tools. A running turn finishes in the mode it started in, and its
    * process restarts after it. That tab's divider waits for the turn to end, so it sits before the first reply in the new mode.
@@ -147,6 +179,7 @@ export class Lead extends Feature {
     const ws = this.store.workspace(workspaceId)
     if (!ws || !isLeadChatWorkspace(ws)) throw new Error('Only a chat with Kernel can switch between Hand off and Build here.')
     if (ws.status === 'archived') throw new Error('This chat is archived. Restore it from History first.')
+    if (ws.shared) throw new Error('This chat works in the shared main folder, so it stays in Hand off for now.')
     const was = leadModeOf(ws)
     if (was === mode) return ws
     const next = this.updateWs(ws.id, { leadMode: mode, buildGoAhead: undefined })
@@ -251,7 +284,7 @@ export class Lead extends Feature {
     if (!project) return
     void this.k.config.remoteFor(project.path).then(async (remote) => {
       if ((await exec('git', ['-C', project.path, 'remote', 'get-url', remote])).code === 0) await fetchOrigin(project.path, remote)
-    }).catch(() => undefined).then(() => this.k.workspaces.prepareSpare(projectId)).catch(() => undefined)
+    }).catch(() => undefined).then(() => Promise.all([this.k.mainFolder.ensure(projectId).catch(() => undefined), this.k.workspaces.prepareSpare(projectId)])).catch(() => undefined)
   }
 
   /** Syncs of each chat's worktree, by workspace, so two never run git in it at once. */
@@ -281,7 +314,11 @@ export class Lead extends Feature {
     const ids = o.workspaceId ? [o.workspaceId] : this.chatWorkspaces(projectId).map((w) => w.id)
     // A folder that waits to move to match its branch moves first, while the chat is idle (KERNEL-424).
     // A Build here chat whose PR merged starts its next branch before the sync (KERNEL-778).
-    await Promise.all(ids.map((id) => this.inOrder(id, async () => { await this.moveNow(id); await this.freshNow(id); await this.syncNow(id) }).catch(failed)))
+    await Promise.all([
+      ...ids.map((id) => this.inOrder(id, async () => { await this.moveNow(id); await this.freshNow(id); await this.syncNow(id) }).catch(failed)),
+      // The shared main folder of chats in Hand off moves with the base too, once every chat on it is idle (KERNEL-1050).
+      this.k.mainFolder.sync(projectId).catch(failed)
+    ])
   }
 
   /** The merged Build here chats Kernel told it couldn't update to the latest base, by workspace and PR, so each is told once (KERNEL-990). */
@@ -290,7 +327,7 @@ export class Lead extends Feature {
   /** The fetch after a merge failed, so a merged Build here chat stays where it is and says so in a row (KERNEL-990). */
   private offline(projectId: string, base: string) {
     for (const ws of this.chatWorkspaces(projectId)) {
-      if (!buildsHere(ws) || ws.prState !== 'merged' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending) continue
+      if (ws.shared || !buildsHere(ws) || ws.prState !== 'merged' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending) continue
       const key = `${ws.id} ${ws.prNumber ?? ws.branch}`
       if (this.told.has(key)) continue
       this.told.add(key)
@@ -323,7 +360,7 @@ export class Lead extends Feature {
     if (this.k.stopped) return
     const ws = this.store.workspace(id)
     const project = ws && this.store.project(ws.projectId)
-    if (!ws || !project || project.archived || !buildsHere(ws) || ws.prState !== 'merged' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending) return
+    if (!ws || !project || project.archived || ws.shared || !buildsHere(ws) || ws.prState !== 'merged' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending) return
     if (this.folderBusy(id) || await folderGone(ws.path).catch(() => true)) return
     const merged = ws.prNumber ? `PR #${ws.prNumber}` : 'The PR'
     const repo = await loadRepoSettings(project.path)
@@ -415,7 +452,7 @@ export class Lead extends Feature {
   private async moveNow(id: string) {
     const ws = this.k.stopped ? undefined : this.store.workspace(id)
     const project = ws && this.store.project(ws.projectId)
-    if (!ws || !project || ws.naming !== 'folder' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending || this.folderBusy(id)) return
+    if (!ws || !project || ws.shared || ws.naming !== 'folder' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending || this.folderBusy(id)) return
     const root = projectWorktreeRoot(this.settings.worktreeRoot, project)
     if (join(root, worktreeFolder(ws.branch)) === ws.path) { this.updateWs(id, { naming: undefined }); return }
     const held: string[] = []
@@ -449,7 +486,7 @@ export class Lead extends Feature {
    * Something runs in the workspace's folder, or waits to: a turn, a background task, a queued or held message, setup run again,
    * a run script or a terminal command.
    */
-  private folderBusy(id: string) {
+  folderBusy(id: string) {
     return this.k.setup.settingUp.has(id) || runningRuns(id).length > 0 || this.k.chats.busyTerminals(id)
       || this.store.chats(id).some((c) => this.sessions.isRunning(c.id) || this.sessions.hasTasks(c.id) || this.sessions.queued(c.id).length > 0 || this.sessions.isHeld(c.id))
   }
@@ -461,7 +498,7 @@ export class Lead extends Feature {
     const project = ws && this.store.project(ws.projectId)
     const lead = ws && this.agentsSync(ws.projectId).find((a) => a.lead)
     // A chat still setting up, or one whose setup failed, isn't moved under its setup. One with no worktree yet has nothing to move.
-    if (!ws || !project || project.archived || !lead || !ws.lead || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending) return
+    if (!ws || !project || project.archived || !lead || !ws.lead || ws.shared || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending) return
     // Read again after each step that waits on git: a turn can start while git runs, and the files mustn't move under it.
     const held = () => this.k.stopped || this.store.chats(ws.id).some((c) => this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0)
     if (held() || await folderGone(ws.path).catch(() => true)) return
@@ -647,7 +684,7 @@ export class Lead extends Feature {
       // git renames the branch once it has made it. A worktree it couldn't make keeps the name for a later title (KERNEL-542).
       await this.k.workspaces.worktreeMade(id)
       const ws = this.store.workspace(id)
-      if (!ws || this.stopped || ws.naming !== 'branch' || ws.status === 'archived' || ws.worktreePending) return
+      if (!ws || this.stopped || ws.shared || ws.naming !== 'branch' || ws.status === 'archived' || ws.worktreePending) return
       if (ws.mode !== 'worktree' || ws.branch === 'HEAD' || ws.prNumber || ws.prState !== 'none') { this.updateWs(id, { naming: undefined }); return }
       const project = this.mustProject(ws.projectId)
       const repo = await loadRepoSettings(project.path)
@@ -1120,7 +1157,7 @@ export class Lead extends Feature {
       const base = { id: w.id, name: w.name, own: !!w.lead, running: this.k.archive.working(w.id), ...(pr ? { pr } : {}) }
       // A current-branch workspace removes no files, and neither does a worktree whose folder is already gone (KERNEL-109).
       // Nor does one whose worktree isn't made yet (KERNEL-542).
-      if (w.mode !== 'worktree' || w.folderGone || w.worktreePending || await folderGone(w.path).catch(() => false)) return { ...base, dirty: 0, unpushed: 0 }
+      if (w.shared || w.mode !== 'worktree' || w.folderGone || w.worktreePending || await folderGone(w.path).catch(() => false)) return { ...base, dirty: 0, unpushed: 0 }
       try {
         const git = await gitStatus(w.path, w.branch, w.baseRef, await this.k.config.remoteOfWs(w))
         return { ...base, dirty: git.dirty.files, unpushed: git.ahead }

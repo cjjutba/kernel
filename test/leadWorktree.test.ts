@@ -39,7 +39,7 @@ const REPO = {
 async function dirs(workspace: Record<string, unknown> = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...workspace } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...workspace } }))
   return { dataDir, home }
 }
 
@@ -527,5 +527,154 @@ describe("keeping each chat's worktree on the latest main (KERNEL-181, KERNEL-40
     await k.lead.syncLead(project.id, { workspaceId: wa.id })
     expect(await sha(wa.path, 'HEAD')).toBe(was)
     await rm(join(repo, 'merged-0.txt'))
+  })
+})
+
+// KERNEL-1050: a new chat in Hand off opens in one shared folder per project, with no worktree, branch, ports or setup of its own.
+describe('chats in Hand off on the shared main folder (KERNEL-1050)', () => {
+  const start = (k: Kernel, projectId: string, prompt = 'Plan it', o: Record<string, unknown> = {}) => k.lead.newLeadChat(projectId, { prompt, leadMode: 'handoff', ...o })
+  const mainFolder = (k: Kernel, project: { id: string }) => k.mainFolder.path(project.id)
+  const trees = async (repo: string) => (await git(repo, 'worktree', 'list', '--porcelain')).split('\n').filter((l) => l.startsWith('worktree ')).map((l) => l.slice(9)).filter((p) => p.endsWith('/.main'))
+  /** The mocked sessions never end a turn, so the chats count as busy until the test says they are idle. */
+  const idle = (k: Kernel) => { k.sessions.isRunning = () => false }
+  const notes = (k: Kernel, projectId: string) => k.store.activity(projectId, 500).filter((x) => x.actor === 'kernel' && /shared main folder/.test(x.text)).reverse()
+
+  it('starts with no worktree, branch, ports or setup, and sends the first message at once', async () => {
+    const { repo, bare } = await withOrigin({ '.kernel/settings.toml': '[scripts]\nsetup = "touch setup-ran.txt"\n' })
+    const k = await boot(await dirs({ leadWaitForSetup: true }))
+    const project = await k.addProject(repo)
+    const merged = await pushElsewhere(bare, 'merged')
+    await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
+    sdk.calls.length = 0
+    const chat = await start(k, project.id)
+    const ws = k.store.workspace(chat.workspaceId)!
+    expect(ws).toMatchObject({ lead: true, shared: true, threadId: chat.threadId, branch: 'HEAD', baseRef: 'origin/main', mode: 'worktree', status: 'ready', port: 0 })
+    expect(ws.worktreePending).toBeFalsy()
+    expect(ws.path).toBe(join(projectWorktreeRoot(k.settings.worktreeRoot, project), '.main'))
+    expect(await sha(ws.path, 'HEAD')).toBe(merged)
+    expect(existsSync(join(ws.path, 'setup-ran.txt'))).toBe(false)
+    expect(k.sessions.isHeld(chat.id)).toBe(false)
+    expect(k.sessions.queued(chat.id)).toEqual([])
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
+    expect(callIn(ws.path)[0].options.systemPrompt.append).toContain('detached at origin/main')
+    // No branch of its own was cut.
+    expect((await git(repo, 'branch', '--list', 'kernel/*')).trim()).toBe('')
+    expect(await branchOf(repo)).toBe('main')
+  })
+
+  it('shares one folder between chats, makes it once for chats started together, and makes it again when it is deleted', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const [a, b] = await Promise.all([start(k, project.id, 'One'), start(k, project.id, 'Two')])
+    const [wa, wb] = [a, b].map((c) => k.store.workspace(c.workspaceId)!)
+    expect(wa.id).not.toBe(wb.id)
+    expect(wa.path).toBe(wb.path)
+    expect((await trees(repo))).toHaveLength(1)
+    await rm(wa.path, { recursive: true, force: true })
+    const c = await start(k, project.id, 'Three')
+    expect(k.store.workspace(c.workspaceId)!.path).toBe(wa.path)
+    expect(existsSync(join(wa.path, 'README.md'))).toBe(true)
+    expect((await trees(repo))).toHaveLength(1)
+  })
+
+  it('links node_modules into the folder when the project asks for it', async () => {
+    const repo = await tempRepo({ ...REPO, '.kernel/settings.toml': '[files]\nsymlink_node_modules = true\n' })
+    await mkdir(join(repo, 'node_modules'))
+    await writeFile(join(repo, 'node_modules', 'dep.txt'), 'dep\n')
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const ws = k.store.workspace((await start(k, project.id)).workspaceId)!
+    expect(await readFile(join(ws.path, 'node_modules', 'dep.txt'), 'utf8')).toBe('dep\n')
+  })
+
+  it('fast-forwards only while every chat on the folder is idle', async () => {
+    const { repo, bare } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const a = await start(k, project.id, 'One')
+    await start(k, project.id, 'Two')
+    idle(k)
+    const path = mainFolder(k, project)
+    const was = await sha(path, 'HEAD')
+    const merged = await pushElsewhere(bare, 'merged')
+    await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
+    k.sessions.isRunning = (id) => id === a.id
+    await k.mainFolder.sync(project.id)
+    expect(await sha(path, 'HEAD')).toBe(was)
+    idle(k)
+    await k.mainFolder.sync(project.id)
+    expect(await sha(path, 'HEAD')).toBe(merged)
+    expect(await branchOf(path)).toBe('HEAD')
+    expect(notes(k, project.id).map((x) => x.text)).toEqual(['updated the shared main folder to origin/main, 1 new commit'])
+  })
+
+  it('stays put with tracked changes or a commit of its own, and warns once per sha', async () => {
+    const { repo, bare } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    await start(k, project.id)
+    idle(k)
+    const path = mainFolder(k, project)
+    const was = await sha(path, 'HEAD')
+    await writeFile(join(path, 'README.md'), '# edited\n')
+    await pushElsewhere(bare, 'first')
+    await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
+    await k.mainFolder.sync(project.id)
+    await k.mainFolder.sync(project.id)
+    expect(await sha(path, 'HEAD')).toBe(was)
+    expect(await readFile(join(path, 'README.md'), 'utf8')).toBe('# edited\n')
+    expect(notes(k, project.id).map((x) => x.object)).toEqual(['tracked files have changes'])
+    // A commit of its own is a different reason on the same sha, so it warns again, and then not again.
+    await run('git', ['-C', path, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-am', 'own'])
+    const own = await sha(path, 'HEAD')
+    await k.mainFolder.sync(project.id)
+    await k.mainFolder.sync(project.id)
+    expect(await sha(path, 'HEAD')).toBe(own)
+    expect(notes(k, project.id).map((x) => x.object)).toEqual(['tracked files have changes', 'it has a commit of its own'])
+  })
+
+  it('syncs after the merge fetch through syncLead', async () => {
+    const { repo, bare } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    await start(k, project.id)
+    idle(k)
+    const merged = await pushElsewhere(bare, 'merged')
+    await k.lead.syncLead(project.id, { fetch: true })
+    expect(await sha(mainFolder(k, project), 'HEAD')).toBe(merged)
+  })
+
+  it('shows no changes, refuses Create PR and refuses run scripts for a shared chat', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const chat = await start(k, project.id)
+    const ws = k.store.workspace(chat.workspaceId)!
+    await writeFile(join(ws.path, 'README.md'), '# edited\n')
+    const h = k.handlers()
+    expect(await h['workspaces.changes']({ workspaceId: ws.id })).toEqual([])
+    await expect(h['pr.create']({ workspaceId: ws.id })).rejects.toThrow('Switch this chat to Build here first')
+    await expect(h['scripts.run']({ workspaceId: ws.id, kind: 'run' } as never)).rejects.toThrow(/shared main folder/)
+  })
+
+  it('leaves a Build here chat, an explicit target branch and a project with no commit as they were', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const build = k.store.workspace((await start(k, project.id, 'Build', { leadMode: 'build' })).workspaceId)!
+    await k.workspaces.worktreeMade(build.id)
+    expect(build.shared).toBeFalsy()
+    expect(build.path).not.toBe(mainFolder(k, project))
+    const picked = k.store.workspace((await start(k, project.id, 'Target', { baseRef: 'origin/main' })).workspaceId)!
+    expect(picked.shared).toBeFalsy()
+
+    const empty = await mkdtemp(join(tmpdir(), 'kernel-'))
+    await run('git', ['init', '-q', '-b', 'main', empty])
+    for (const [f, c] of Object.entries(REPO)) { await mkdir(join(empty, f, '..'), { recursive: true }); await writeFile(join(empty, f), c) }
+    const noCommit = await k.addProject(empty)
+    const ws = k.store.workspace((await start(k, noCommit.id)).workspaceId)!
+    expect(ws).toMatchObject({ mode: 'current', path: empty })
+    expect(ws.shared).toBeFalsy()
   })
 })

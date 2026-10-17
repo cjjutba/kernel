@@ -42,6 +42,7 @@ import { History } from './features/history'
 import { Waits } from './features/waits'
 import { Chats } from './features/chats'
 import { Lead } from './features/lead'
+import { MainFolder } from './features/mainFolder'
 import { Tools } from './features/tools'
 import { Mcp } from './features/mcp'
 import { Sharing } from './features/sharing'
@@ -104,6 +105,7 @@ export class Kernel {
   readonly waits = new Waits(this)
   readonly chats = new Chats(this)
   readonly lead = new Lead(this)
+  readonly mainFolder = new MainFolder(this)
   readonly tools = new Tools(this)
   readonly mcp = new Mcp(this)
   readonly sharing = new Sharing(this)

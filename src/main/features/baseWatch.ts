@@ -75,7 +75,7 @@ export class BaseWatch extends Feature {
   }
 
   /** A teammate's workspace, or a Build here chat's, which builds like one (KERNEL-778). */
-  private teammateLike(ws: Workspace) { return !this.isLeadWorkspace(ws) || buildsHere(ws) }
+  private teammateLike(ws: Workspace) { return !ws.shared && (!this.isLeadWorkspace(ws) || buildsHere(ws)) }
 
   /** One read and one write, with nothing awaited between them, so two projects' checks never undo each other's change. */
   private put(id: string, state?: Watched) {
