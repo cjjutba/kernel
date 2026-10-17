@@ -8,73 +8,117 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 
 ## Color (dark)
 
-| Token | Value | Use |
-|---|---|---|
-| canvas | #09090a | window background and the sidebar |
-| panel | #121213 | main panel |
-| surface | #18181a | inputs, cards |
-| surface-2 | #1d1d1f | menus, modals |
-| surface-3 | #232325 | selected rows, hover fills |
-| hover | #2a2a2c | menu item hover |
-| line | #1f1f21 | dividers |
-| line-2 | #29292b | hairlines on cards, tables and chips |
-| line-3 | #333335 | buttons, menus |
-| input-line | #717174 | input borders, 3:1 on every surface an input sits on (KERNEL-575) |
-| ink | #f7f7f8 | emphasis only: titles, the current row, unread, the primary button |
-| ink-2 | #d6d6d7 | default text: rows, body, the transcript |
-| ink-3 | #b6b6b8 | secondary text |
-| muted | #919194 | labels, meta, placeholders, sidebar and Settings nav rows (KERNEL-611) |
-| faint | #757578 | icons, disabled, decoration. Never body text |
-| add | #4cb782 | diff additions, passing checks |
-| del | #f06363 | diff deletions, errors, the context ring from 90% |
-| mod | #e2c08d | a modified file's name and letter (KERNEL-399) |
-| merged | #b9a3f5 (text), #7c5ce0 (fill) | merged PRs only |
-| working | #7cb2ff | unused: the sidebar hover card is monochrome (kernel-630-sidebar-hover-card) |
-| needs | #f2c55c | amber text. Usage reads amber from 75% (feat-providers-redesign) |
-| needs-fill, del-fill | #f2c55c, #f06363 | amber and red as fills: meter bars from 75% and 90%, the context ring, the waiting icon on sidebar rows and chat tabs, every warning triangle, the limit banner's icon (feat-providers-redesign) |
-| danger | #e5484d | destructive confirm buttons |
-| aside | #0d0d0e | the stage behind a shared preview. The workspace's right panel sits on panel, like the chat (KERNEL-526) |
-| plan | #5aa2ff (on-plan #06101e) | plan mode: composer border and glow, caret, send, Approve |
-| pr-merged-* | band #2a2140, line #3c2f5c, soft #372b55, edge #64509c, fg #d4c2ff, text #b88fff, solid #8b45f5 | PR header band: merged |
-| pr-ready-* | band #15281f, line #22432f, soft #1d3b2c, edge #33704f, fg #a3e8c3, text #62d69d, solid #1b7f50 | PR header band: open, ready, merging |
-| pr-fail-* | band #2c1719, line #472428, soft #3e2125, edge #70353c, fg #ffbdbd, text #ff8a8a | PR header band: checks failed, changes requested, conflicts |
+Every token in `tokens.css`, with its role. A screen picks a role, not a value.
 
-The neutrals are grey with a slight cool lean, sampled from Linear: red equals green and blue sits 0 to 3 points above (KERNEL-611, amending KERNEL-431). Nav rows in the sidebar and Settings sit at muted and brighten to ink-2 on hover, so the content area leads. There is no brand accent. Primary buttons are ink on canvas. The one brand color is `--claude`, the fill of the Claude mark, because it is Claude's logo (claude-mark-in-model-picker). Codex shows the OpenAI mark in `currentColor`, ink, since OpenAI allows it only in black or white, so it adds no color (openai-mark). Both marks come from `ProviderMark` wherever a provider is a heading or a pick. `working` has no use now that sidebar rows show no hover card (remove-sidebar-hover-card). Usage takes color as it fills, on every meter and the context ring alike: grey, amber from 75%, red from 90% (`--needs-fill`, `--del-fill`, KERNEL-334, feat-providers-redesign). Amber means this needs your attention: the waiting icon (question, permission) on a sidebar row or a chat tab and every warning triangle render in `needs-fill`, since light mode's `needs` is a text value that reads brown on a small glyph (amber-waiting-icons-and-warning, replacing no-amber-icons). A plan waiting for review is the exception: its icon takes `plan` blue, the color of plan mode and the Approve button (plan-waiting-icon-blue). Settings warning lines (`.set-warn`) take an amber icon, and Providers' limit banner a red one. The account in use on Providers wears the green Active pill (`--add`, `--pr-ready-line`) (feat-providers-redesign). `plan` is plan mode only, and the `pr-*` sets are the PR header, the Merge button on a Team update row, and the header and Merge button on the Lead's PRs tab (KERNEL-347). The state words on that tab take only `add` for an approved review and `del` for a failing state, each with a 13px icon, and every other state stays muted (KERNEL-897). Files are the other exception (KERNEL-399): a file or folder's icon comes in color from Material Icon Theme, and a changed file's name and letter take VS Code's git colors, `mod` for modified, `add` for added, untracked and renamed, `del` for deleted.
+| Token | Value | Role |
+|---|---|---|
+| canvas | #141414 | window background and the sidebar |
+| panel | #1b1b1b | main panel |
+| surface | #212121 | composer and cards that sit on a hairline |
+| surface-2 | #252525 | menus, modals |
+| surface-3 | #292929 | selected rows, hover fills |
+| hover | #2c2c2c | menu item hover |
+| line | #232323 | dividers in a header or list |
+| line-2 | #2a2a2a | hairlines on the composer and tables |
+| line-3 | #333333 | buttons, menus, modals |
+| line-4 | #424242 | the strongest hairline: hover borders, indent guide beside the focused row, the scroll thumb, the drop overlay |
+| input-line | #727272 | input borders, 3:1 on every surface an input sits on (KERNEL-575) |
+| ink | #f7f7f7 | emphasis only: titles, the current row, unread, the primary button |
+| ink-2 | #d6d6d6 | default text: rows, body, the transcript |
+| ink-3 | #acacac | secondary text |
+| muted | #939393 | labels, meta, placeholders, sidebar and Settings nav rows |
+| faint | #757575 | icons, disabled, decoration. Never text |
+| add | #4cb782 | diff additions, passing checks, the Active pill, an added file |
+| del | #f36b6b | diff deletions, errors, failing states |
+| mod | #e2c08d | a modified file's name and letter (KERNEL-399) |
+| merged | #b9a3f5 | merged PR text and icons. Merged only |
+| merged-solid | #7c5ce0 | the Merged button fill. Merged only |
+| needs | #f2c55c | amber text |
+| needs-fill | #f2c55c | amber as a fill: meter bars from 75%, the waiting icon, every warning triangle |
+| del-fill | #f36b6b | red as a fill: meter bars from 90%, the context ring, the limit banner icon |
+| tint-muted | #262626 | the pill behind a muted status word in a hover card |
+| aside | #181818 | the stage behind a shared preview |
+| plan | #5aa2ff | plan mode: composer border and glow, caret, send, Approve |
+| on-plan | #06101e | text on a plan fill |
+| claude | #d97757 | the fill of the Claude mark, nowhere else |
+| pr-merged-* | band #30254a, line #433468, soft #3d305f, edge #6a55a4, fg #d4c2ff, text #b88fff, solid #8b45f5 | PR header band: merged |
+| pr-ready-* | band #1a3126, line #284b38, soft #22422f, edge #387755, fg #a3e8c3, text #62d69d, solid #1b7f50 | PR header band: open, ready, merging; also the green Merge pills on Work, Pull requests |
+| pr-fail-* | band #341a1d, line #50292e, soft #47262b, edge #783a42, fg #ffbdbd, text #ff8a8a | PR header band: checks failed, changes requested, conflicts |
+| danger | #e5484d | destructive confirm buttons |
+| on-solid | #ffffff | text on danger and merged fills |
+| on-ink | #141414 | text on the primary button |
+| ink-hover | #ffffff | text and icon on hover where ink-2 is not bright enough |
+| panel-line | #212121 | the main panel's border, Settings tab underline and the Settings search field |
+| nav-hover | #1c1c1c | hover fill of a sidebar or Settings nav row |
+| panel-hover | #262626 | hover fill of a row that sits on panel (Inbox, Issues, Projects, Pull requests, History) |
+| input-bg | #1e1e1e | input fill |
+| card-bg | #212121 | card and banner fill |
+| card-line | #2c2c2c | card and banner border, modal footer rule |
+| code-bg | #171717 | code block fill |
+| chip-line | #353535 | chip border |
+| pill-line | #262626 | pill border. Used only with --r-pill |
+| track | #454545 | meter and toggle tracks |
+| scrim | rgba(0, 0, 0, 0.3) | the blur scrim behind a modal |
+| focus | rgba(247, 247, 247, 0.55) | the focus ring, 3:1 on every surface |
+| term-* | black #7a7a7a, red #f06363, green #4cb782, yellow #d9b44a, blue #6ea8fe, magenta #b9a3f5, cyan #5ec8d8, white #e0e0e0 | the terminal palette |
+
+The neutrals are grey with a slight cool lean, sampled from Linear: red equals green and blue sits 0 to 3 points above (KERNEL-611, amending KERNEL-431). Nav rows in the sidebar and Settings sit at muted and brighten to ink-2 on hover, so the content area leads. There is no brand accent. Primary buttons are ink on canvas. The one brand color is `--claude`, the fill of the Claude mark, because it is Claude's logo (claude-mark-in-model-picker). Codex shows the OpenAI mark in `currentColor`, ink, since OpenAI allows it only in black or white, so it adds no color (openai-mark). Both marks come from `ProviderMark` wherever a provider is a heading or a pick. Usage takes color as it fills, on every meter and the context ring alike: grey, amber from 75%, red from 90% (`--needs-fill`, `--del-fill`, KERNEL-334, feat-providers-redesign). Amber means this needs your attention: the waiting icon (question, permission) on a sidebar row or a chat tab and every warning triangle render in `needs-fill`, since light mode's `needs` is a text value that reads brown on a small glyph (amber-waiting-icons-and-warning, replacing no-amber-icons). A plan waiting for review is the exception: its icon takes `plan` blue, the color of plan mode and the Approve button (plan-waiting-icon-blue). Settings warning lines (`.set-warn`) take an amber icon, and Providers' limit banner a red one. The account in use on Providers wears the green Active pill (`--add`, `--pr-ready-line`) (feat-providers-redesign). `plan` is plan mode only, and the `pr-*` sets are the PR header, the Merge button on a Team update row, the header and Merge button on the Lead's PRs tab (KERNEL-347) and the green Merge pills on Work, Pull requests. The state words on that tab take only `add` for an approved review and `del` for a failing state, each with a 13px icon, and every other state stays muted (KERNEL-897). Files are the other exception (KERNEL-399): a file or folder's icon comes in color from Material Icon Theme, and a changed file's name and letter take VS Code's git colors, `mod` for modified, `add` for added, untracked and renamed, `del` for deleted.
 
 ## Color (light)
 
-Light values are in `src/renderer/src/tokens.css`. Where text failed 4.5:1 on any surface, the value was darkened until it passed. `test/theme.test.ts` checks every pair.
+Light values are in `src/renderer/src/tokens.css`. Where text failed 4.5:1 on any surface, the value was darkened until it passed. `test/theme.test.ts` checks every pair. Roles are the ones in the dark table.
 
-| Token | Value | Use |
+| Token | Value | Role |
 |---|---|---|
-| canvas | #f3f3f4 | window background |
-| panel | #ffffff | main panel |
-| surface | #f4f4f5 | inputs, cards |
-| surface-2 | #efeff1 | menus, modals |
-| surface-3 | #eaeaed | selected rows, hover fills |
-| hover | #e6e6e9 | menu item hover |
-| line | #e8e8eb | dividers |
-| line-2 | #dedee2 | hairlines on cards, tables and chips |
-| line-3 | #d6d6db | buttons, menus |
-| input-line | #82848a | input borders, 3:1 on every surface an input sits on (KERNEL-575) |
-| ink | #18191b | emphasis only: titles, the current row, unread, the primary button |
-| ink-2 | #35383f | default text: rows, body, the transcript |
-| ink-3 | #4c4f56 | secondary text |
-| muted | #62666d | labels, meta, placeholders |
-| faint | #7b7f88 | icons, disabled, decoration. Never body text |
-| add | #166a45 | diff additions, passing checks |
-| del | #b32e2e | diff deletions, errors, the context ring from 90% |
+| canvas | #f2f2f2 | window background and the sidebar |
+| panel | #fcfcfc | main panel |
+| surface | #f8f8f8 | composer and cards that sit on a hairline |
+| surface-2 | #f3f3f3 | menus, modals |
+| surface-3 | #e9e9e9 | selected rows, hover fills |
+| hover | #e6e6e6 | menu item hover |
+| line | #ececec | dividers in a header or list |
+| line-2 | #e2e2e2 | hairlines on the composer and tables |
+| line-3 | #d8d8d8 | buttons, menus, modals |
+| line-4 | #c6c6c6 | the strongest hairline: hover borders, indent guide beside the focused row, the scroll thumb, the drop overlay |
+| input-line | #858585 | input borders, 3:1 on every surface an input sits on (KERNEL-575) |
+| ink | #1b1b1b | emphasis only: titles, the current row, unread, the primary button |
+| ink-2 | #333333 | default text: rows, body, the transcript |
+| ink-3 | #535353 | secondary text |
+| muted | #676767 | labels, meta, placeholders, sidebar and Settings nav rows |
+| faint | #838383 | icons, disabled, decoration. Never text |
+| add | #166a45 | diff additions, passing checks, the Active pill, an added file |
+| del | #b32e2e | diff deletions, errors, failing states |
 | mod | #895503 | a modified file's name and letter (KERNEL-399) |
-| merged | #6b4bd0 (text), #7c5ce0 (fill) | merged PRs only |
-| working | #1a56b0 | unused: the sidebar hover card is monochrome (kernel-630-sidebar-hover-card) |
+| merged | #6b4bd0 | merged PR text and icons. Merged only |
+| merged-solid | #7c5ce0 | the Merged button fill. Merged only |
 | needs | #7a4f00 | amber text |
-| needs-fill, del-fill | #d97706, #dc3e42 | amber and red as fills. Text-safe amber reads brown on a bar, so fills get their own values (feat-providers-redesign) |
-| danger | #bd2b2b | destructive confirm buttons |
-| aside | #f7f7f8 | the stage behind a shared preview |
-| plan | #1f5fbf (on-plan #ffffff) | plan mode |
+| needs-fill | #d97706 | amber as a fill: meter bars from 75%, the waiting icon, every warning triangle |
+| del-fill | #dc3e42 | red as a fill: meter bars from 90%, the context ring, the limit banner icon |
+| tint-muted | #e8e8e8 | the pill behind a muted status word in a hover card |
+| aside | #f7f7f7 | the stage behind a shared preview |
+| plan | #1f5fbf | plan mode: composer border and glow, caret, send, Approve |
+| on-plan | #ffffff | text on a plan fill |
+| claude | #d97757 | the fill of the Claude mark, nowhere else |
 | pr-merged-* | band #f3effd, line #e2d9fa, soft #ebe4fc, edge #b9a7ef, fg #4f34ad, text #5e3fc6, solid #7c5ce0 | PR header band: merged |
-| pr-ready-* | band #eef7f2, line #d3eadd, soft #e1f1e8, edge #8fc5a7, fg #0f5235, text #166a45, solid #1a7a4f | PR header band: open, ready, merging |
+| pr-ready-* | band #eef7f2, line #d3eadd, soft #e1f1e8, edge #8fc5a7, fg #0f5235, text #166a45, solid #1a7a4f | PR header band: open, ready, merging; also the green Merge pills on Work, Pull requests |
 | pr-fail-* | band #fcf0f0, line #f3d6d6, soft #f8e5e5, edge #e0a3a3, fg #8f2222, text #b32e2e | PR header band: checks failed, changes requested, conflicts |
+| danger | #bd2b2b | destructive confirm buttons |
+| on-solid | #ffffff | text on danger and merged fills |
+| on-ink | #f2f2f2 | text on the primary button |
+| ink-hover | #000000 | text and icon on hover where ink-2 is not bright enough |
+| panel-line | #e8e8e8 | the main panel's border, Settings tab underline and the Settings search field |
+| nav-hover | #ebebeb | hover fill of a sidebar or Settings nav row |
+| panel-hover | #ebebeb | hover fill of a row that sits on panel (Inbox, Issues, Projects, Pull requests, History) |
+| input-bg | #f8f8f8 | input fill |
+| card-bg | #f8f8f8 | card and banner fill |
+| card-line | #e2e2e2 | card and banner border, modal footer rule |
+| code-bg | #f2f2f2 | code block fill |
+| chip-line | #d4d4d4 | chip border |
+| pill-line | #e6e6e6 | pill border. Used only with --r-pill |
+| track | #bebebe | meter and toggle tracks |
+| scrim | rgba(20, 21, 24, 0.14) | the blur scrim behind a modal |
+| focus | rgba(27, 27, 27, 0.55) | the focus ring, 3:1 on every surface |
+| term-* | black #18191b, red #b32e2e, green #166a45, yellow #8a5a00, blue #1f5fbf, magenta #6b4bd0, cyan #0b6f80, white #4a4d54 | the terminal palette |
 
 The terminal palette (`--term-*`) follows the theme. Colors live in `tokens.css`; `test/theme.test.ts` fails on a hex or rgb value anywhere else in the renderer.
 
@@ -112,13 +156,14 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 
 - No status dots, anywhere. Status is a word ("working", "needs you").
 - One modal shell: a blur scrim over the whole window (sidebar included) at z-index 40, the modal at 50, 18px radius, 1px border.
-- Dropdowns (KERNEL-680): every dropdown is `Select` from `ui`, never a native `<select>` (`test/noNativeSelect.test.ts`). The button is 28px (30px in a Settings card) with an `--input-line` hairline and a chevron, and takes the open fill only while its list is open. The list is a `.menu`: groups get a heading, a choice can have a muted second line, the picked one has a check, and an action row (Custom folder…, Choose image…) sits under a rule. `variant="chip"` is the filled filter chip and `variant="plain"` text and a chevron at the end of a menu row.
+- Dropdowns (KERNEL-680): every dropdown is `Select` from `ui`, never a native `<select>` (`test/noNativeSelect.test.ts`). The button is 28px, in a Settings card too with an `--input-line` hairline and a chevron, and takes the open fill only while its list is open. The list is a `.menu`: groups get a heading, a choice can have a muted second line, the picked one has a check, and an action row (Custom folder…, Choose image…) sits under a rule. `variant="chip"` is the filled filter chip and `variant="plain"` text and a chevron at the end of a menu row.
 - Segmented controls (KERNEL-680): every option is the same width, so none reads as the default.
 - File names (KERNEL-399): wherever a repo file shows (file trees, the Changes list, file and diff tabs, view headers, the @ menu, file chips, Read, Edit and Write rows, approvals, the Inbox, Settings file lists), its Material icon sits in front, drawn by `FileIcon` or `FileLabel`. Pasted text, attached images and folders on disk keep their stroke glyphs. A tree row is 24px with 12px steps, a 16px chevron, the icon, the name and the status letter (M, A, U, R, D) at the right. 1px indent guides in `line-2` run down each open folder, the one beside the focused row in `line-4`. A folder with changes inside takes its strongest child's color, modified over deleted over the rest, with no dot. Folders that hold only one folder share a row (`src/renderer/src`). The open file's row is selected in `surface-3`. A tree is one tab stop: arrows move, open and close, Home and End jump.
 - Hover actions: message actions (copy, retry, edit, and a reply's `...` menu with its forks) and sidebar `...` menus appear on hover and on keyboard focus. A finished turn's reply ends in one line: the turn's time (`4m 12s · 10:31`), always shown, then those actions (KERNEL-346).
+- Hover fills: a sidebar or Settings nav row hovers on `--nav-hover`, and a row that sits on `--panel` (Inbox, Issues, Projects, Pull requests, History) on `--panel-hover`. A menu item hovers on `--hover`.
 - Sidebar rows sit 3px apart, so hover and selected fills never touch.
 - Unread is a bold title, never a dot. A chat row, workspace row, collapsed project and chat tab take 600 weight in `--ink`, and the icon keeps its state, so a row that needs you shows its blue plan or amber question icon and the bold title together. The chat on screen is read (KERNEL-508).
-- Banners for failures and for work held on you: neutral surface (#141517) with an icon per type (limit/clock, offline/wifi, auth/key, setup/x-circle, hooks/plug, retry/dot loader). Never red backgrounds.
+- Banners for failures and for work held on you: `card-bg` surface with an icon per type (limit/clock, offline/wifi, auth/key, setup/x-circle, hooks/plug, retry/dot loader). Never red backgrounds.
 - Check rows (KERNEL-437): a readiness check, a project setup step and a project's Push access row say their result with an icon and a word. A green check passes, a red x-circle fails, and an amber triangle warns. A failing row gives its one fix under it, a command in a code box with Copy or a single button. A warning never blocks. Continue stays on and the row's own button is bordered, so the one ink button is the way forward. A line that passes with more to say, like the gh login's source or Bedrock, adds a muted note under its detail. A warning about files names the file and the variable, never the value. A failed hooks install in Check hooks follows the same shape in its own card. `docs/decisions/KERNEL-437.md` lists the copy.
 - Toasts: bottom right of the main panel, 12px in from its right and bottom edges, 360px wide, with no close button. The title is row 1 and the sub row 2, with the action on the right. The surface, hairline and radius are the Usage popover's. A toast leaves by itself after 5s (6s for a heads-up, see (4)), or sooner when you swipe it right or down (toast-motion-and-swipe). A toast is for something you can't see on screen: (1) a call that failed ("Could not ..."), (2) something Kernel or an agent did without your click, like a PR created or merged, an archive after a merge, a config mistake or the window reloading after a crash, (3) an action that changes nothing on screen, like Path copied, Branch copied, Logs exported or the Check for updates result. (4) a heads-up about a cost you just took on that the screen doesn't show, like switching models in a chat that has run a turn (KERNEL-771). That kind stays up about 6s. A click whose result you can see gets no toast: the archived row is gone, the restored workspace opens (KERNEL-495).
 - Icon buttons: hover brightens the icon to `--ink` with no fill behind it, because a fill around a small glyph reads louder than the glyph. A fill means the button is on or its menu is open (`aria-pressed`, `aria-expanded`), never hover. Buttons with a label, menu items, rows, and the filled send and stop circles keep their hover fills.
@@ -133,6 +178,11 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - Every split button is `SplitButton` (`src/renderer/src/ui/SplitButton.tsx`): Run, Open in, Create PR, Open file and Settings' Open settings files. One joined control inside a 1px `--line-3` frame, a main half that acts and a caret half that opens a menu, with a hairline between them. Never a detached caret, never its own fill.
 - Two sizes: `sm` is 26px with `--r-sm`, `md` is 28px with `--r`. The halves carry no border and no background of their own, so a tone is set once on the frame (`color`, `background`, `border-color`), as the PR band does. Hover is a faint fill, and an open menu holds a stronger one on the caret.
 - Both halves are real buttons in the tab order, and focus is `--focus` drawn inside the frame. The caret has an `aria-label` and `aria-expanded`. The main half spins and can't be pressed twice while `busy`.
+
+## Link button (KERNEL-1047)
+
+- Every text button that acts like a link is `LinkButton` (`src/renderer/src/ui/LinkButton.tsx`), a real button with three variants. `inline` is underlined, for a link inside a sentence or a one-off action (Undo, Open in editor). `action` is plain until pointed at, as in the Inbox. `quiet` is muted, for a see-all or a card's Open.
+- Without a `size` it takes the size of the text around it. `meta` and `ui` set one. Focus is the global `--focus` ring. It spins and can't be pressed twice while `busy`, like `Button`.
 
 ## Attaching files (KERNEL-815)
 
@@ -152,7 +202,6 @@ Dragging, dropping, pasting and picking a file all answer at once, in the worksp
 
 ## Saving in Settings
 
-- Every Settings page has one muted line under its title: "Changes save as you make them." (KERNEL-721).
 - Toggles, segments and dropdowns save on click and get no note and no toast. The control is the confirmation.
 - Text and number fields save when they lose focus. A note in muted text sits beside the field: "Saving" with a spinner while the call runs, then "Saved" with a check. It fades about 1.5s after main answers. The state comes from the save promise, never a timer.
 - When main corrects a number, the note says "Set to N, the most allowed" or "Set to N, the least allowed" and stays until the next edit.
@@ -218,20 +267,27 @@ The three kinds of motion:
 
 ## Type, layer and motion tokens (KERNEL-681)
 
-`tokens.css` names every font size, line height, weight, layer, duration and curve the app uses, by role, at the value already on screen. A screen uses the token and never spells the value. `test/theme.test.ts` fails on a literal one outside `tokens.css`, on a literal type, color or spacing in an inline style, on a raw `type="checkbox"`, on a `var()` that names no token and on a token nothing uses. The checks are strict for every file (KERNEL-929). `test/designParity.test.ts` keeps the add and merged colors equal to the site's.
+`tokens.css` names every font size, line height, weight, layer, duration and curve the app uses, by role, at the value already on screen. A screen uses the token and never spells the value. `test/theme.test.ts` fails on a literal one outside `tokens.css`, on a literal type, color or spacing in an inline style, on a raw `type="checkbox"`, on a `var()` that names no token and on a token nothing uses. It also fails a color token used outside its role (below). The checks are strict for every file (KERNEL-929). `test/designParity.test.ts` keeps the add and merged colors equal to the site's.
 
 | Family | Tokens | Rule |
 | --- | --- | --- |
-| `--fs-*` | `tile-xs` 8.5, `tile-sm` 9, `tile-md` 9.5, `tile` 10, `badge` 11, `chip` 11.5, `meta` 12, `code` 12.5, `ui` 13, `row` 13.5, `chat` 14, `sub` 15, `doc-h3` 15.5, `dialog` 16, `md-h1` 17, `doc-h2` 19, `title-sm` 20, `title` 22, `doc-h1` 24, `page` 26, `hero` 36 | Named by role. A size that isn't here is a new token with a role, never a rounded neighbor. |
-| `--lh-*` | `none` 1, `hero` 1.15, `compact` 1.2, `tight` 1.25, `heading` 1.3, `snug` 1.4, `ui` 1.45, `lh` 1.5, `prose` 1.55, `relaxed` 1.6, `code` 1.65, `loose` 1.7 | Unitless only. A px line height stays beside the control height it centres text in. |
-| `--fw-*` | `regular` 400, `medium` 500, `semibold` 600 | 600 for page titles, names on cards, letter tiles, avatars, dialog headings and bold text in a reply. |
+| `--fs-*` | `tile-xs` 8.5, `tile-sm` 9, `tile-md` 9.5, `tile` 10, `badge` 11, `chip` 11.5, `meta` 12, `code` 12.5, `ui` 13, `row` 13.5, `chat` 14, `sub` 15, `doc-h3` 15.5, `dialog` 16, `md-h1` 17, `doc-h2` 19, `title-sm` 20, `title` 22, `doc-h1` 24, `page` 26, `wordmark` 42.5 | Named by role. A size that isn't here is a new token with a role, never a rounded neighbor. |
+| `--lh-*` | `none` 1, `compact` 1.2, `tight` 1.25, `heading` 1.3, `snug` 1.4, `ui` 1.45, `lh` 1.5, `prose` 1.55, `relaxed` 1.6, `code` 1.65, `loose` 1.7 | Unitless only. A px line height stays beside the control height it centres text in. |
+| `--fw-*` | `regular` 400, `medium` 500, `semibold` 600, `wordmark` 800 | 600 for page titles, names on cards, letter tiles, avatars, dialog headings and bold text in a reply. |
 | `--z-*` | `veil` 30, `scrim` 40, `modal` 50, `popover` 60, `submenu` 61, `preview` 65, `toast` 70, `tooltip` 90 | Anything that floats over other components. 1 to 9 order siblings inside one component and stay literal. |
 | `--dur-*` | `fast` 120ms, `base` 160ms, `glide` 180ms, `scroll-in` 150ms, `turn` 150ms, `slow` 200ms, `enter` 300ms, `delay` 80ms, `spin` 0.8s, `ring` 1.2s, `pulse` 1.4s, `sweep` 1.6s, `breathe` 8s | The first three are in Motion tokens above. `turn` is a chevron turning. `spin`, `ring`, `pulse`, `sweep` and `breathe` are loops and ambient motion. |
 | `--ease-*` | `out`, `glide`, `enter` `cubic-bezier(0.22, 1, 0.36, 1)`, `exit` `cubic-bezier(0.4, 0, 1, 1)`, `sweep` `cubic-bezier(0.4, 0.1, 0.6, 0.9)`, `dip` `cubic-bezier(0.37, 0, 0.63, 1)` (the dot loader), `plan` `cubic-bezier(0.33, 0, 0.2, 1)` | Keywords such as `ease-in` stay as they are. |
 | `--plan-dur` | 0.5s | Every plan mode state change. The 8s breathing loop is ambient and keeps `--dur-breathe`. |
 | `--archive-fold`, `--archive-fade` | `--dur-base`, `--dur-fast` | The archive beat. `archiveMotion.tsx` reads them in ms. |
 
-Shared controls that came with them: `Checkbox` (the box in ink, centred on its label or `align="top"` for a label that wraps), `Button size="sm"` (26px, between md 28px and the toolbar's 24px) and `IconButton box` (`md` 26px, `sm` 24px, `xs` 22px; the icon keeps its own `size`). A shared utility class goes in `tokens.css` only when three or more screens need it, and it never uses `!important`.
+Roles the theme test holds (KERNEL-1048):
+
+- `--pill-line` only on a rule that sets `--r-pill`. `--line`, `--line-2` and `--panel-line` only as a 1px rule, never a fill. `--faint` never as a text color; use `--ink-3`.
+- `--add` and `--del` only on diff lines, tones, error text and the other allowed selectors listed in `ADD_DEL_ALLOWED`.
+- A radius is a token, or a calc on one. A `box-shadow` is `none`. A `.btn` height is 24, 26, 28 or 32.
+- A `:focus-visible` outline is `2px solid var(--focus)`. `outline-style: none` is only for a row or box in `FOCUS_ON_ANCESTOR`, where an ancestor draws the ring.
+
+Shared controls that came with them: `Checkbox` (the box in ink, centred on its label or `align="top"` for a label that wraps), `Button` sizes `xs` (24px, `--r-sm`), `sm` (26px, `--r-sm`), md (28px, `--r`) and `lg` (32px), the only heights a `.btn` has and `IconButton box` (`md` 26px, `sm` 24px, `xs` 22px; the icon keeps its own `size`). A shared utility class goes in `tokens.css` only when three or more screens need it, and it never uses `!important`.
 
 ## Motion
 

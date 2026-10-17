@@ -14,12 +14,12 @@
 .prs-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 96px 150px 90px 100px; align-items: center; column-gap: 14px; height: 60px; padding: 0 10px; border-radius: var(--r-sm); color: var(--ink-2); }
 .prs-list .prs-row:hover { background: var(--panel-hover); }
 .prs-list .prs-row:has(.prs-main:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
-.prs-main:focus-visible { outline: none; }
+.prs-main:focus-visible { outline-style: none; }
 .prs-head { min-height: 28px; font-size: var(--fs-meta); color: var(--muted); }
 .prs-main { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
 /* The whole row opens the workspace; Merge sits above this layer. */
 .prs-main::after { content: ''; position: absolute; inset: 0; border-radius: var(--r-sm); }
-.prs-main:focus-visible { outline: none; }
+.prs-main:focus-visible { outline-style: none; }
 .prs-main > svg { flex-shrink: 0; color: var(--muted); }
 .prs-title { font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
 .prs-sub { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 2px; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }

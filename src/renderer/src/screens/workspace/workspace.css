@@ -89,7 +89,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 .rail-list { position: relative; width: min(320px, calc(100cqw - 48px)); max-height: 440px; overflow-y: auto; padding: 6px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: var(--surface-2); }
 .rail-opt { display: flex; align-items: baseline; gap: 8px; height: 28px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-ui); line-height: 28px; color: var(--ink-2); cursor: default; }
 .rail-opt-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rail-opt-nx { flex-shrink: 0; font-size: var(--fs-meta); color: var(--faint); }
+.rail-opt-nx { flex-shrink: 0; font-size: var(--fs-meta); color: var(--ink-3); }
 .rail-opt[data-now] { color: var(--ink); font-weight: var(--fw-medium); }
 .rail-opt[data-update] { color: var(--muted); }
 .rail-opt[data-active] { background: var(--hover); color: var(--ink); }
@@ -256,7 +256,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .step-slot .avatar { display: flex; }
 /* A row's preview is a sentence: what it touched, in the muted body face, then its folder fainter and, on a failure, the error's first line. Only a raw command is mono. */
 .step-dir, .step-det { margin-left: 8px; }
-.step-dir { color: var(--faint); }
+.step-dir { color: var(--ink-3); }
 .step-cmd { font-size: var(--fs-meta); }
 /* An opened row is one hairline card. Each section has a small muted heading with its Copy in the corner, always shown, then its text capped
    at 260px with a fade where it is cut. Copy raw call sits in the card's footer. Ink and weight only: red and green are for diff lines. */
@@ -264,12 +264,12 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .tool-sec + .tool-sec, .tool-foot { border-top: 1px solid var(--line-2); }
 .tool-head { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 4px 0 12px; }
 .tool-title { font-size: var(--fs-chip); font-weight: var(--fw-medium); color: var(--muted); }
-.tool-note { font: var(--fs-chip) var(--mono); color: var(--faint); }
+.tool-note { font: var(--fs-chip) var(--mono); color: var(--ink-3); }
 .tool-head > .icon-btn { margin-left: auto; width: 24px; height: 24px; }
 .tool-body { max-height: 260px; overflow: auto; padding: 0 12px 10px; font: var(--fs-meta)/var(--lh-relaxed) var(--mono); color: var(--ink-3); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .tool-body[data-more] { -webkit-mask-image: linear-gradient(to bottom, var(--canvas) calc(100% - 36px), transparent); mask-image: linear-gradient(to bottom, var(--canvas) calc(100% - 36px), transparent); }
 .tool-body:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
-.tool-body .hunk, .tool-body .file { color: var(--faint); }
+.tool-body .hunk, .tool-body .file { color: var(--ink-3); }
 .tool-foot { display: flex; padding: 2px 4px; }
 /* The image a Read image row opened, the chip a message draws. The negative margin keeps the row as tall as its neighbours, and a long name is clipped rather than push the row's note off. */
 .step-chip { display: flex; min-width: 0; }
@@ -390,10 +390,12 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .compare-pick { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 200px; height: 24px; padding: 0 6px 0 9px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); }
 .compare-pick .mono { font-size: var(--fs-meta); }
 .compare-pick svg { flex-shrink: 0; color: var(--muted); }
-.compare-pick:hover, .compare-pick:focus-visible { background: var(--hover); outline: 0; }
+.compare-pick:hover, .compare-pick:focus-visible { background: var(--hover); }
+.compare-pick:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .compare-rule { height: 1px; margin: 6px -6px; background: var(--line-3); }
 .compare-row, .compare-back { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); text-align: left; }
-.compare-row:hover, .compare-row:focus-visible, .compare-back:hover, .compare-back:focus-visible { background: var(--hover); outline: 0; }
+.compare-row:hover, .compare-row:focus-visible, .compare-back:hover, .compare-back:focus-visible { background: var(--hover); }
+.compare-row:focus-visible, .compare-back:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .compare-back svg { color: var(--muted); }
 .compare-ck { display: inline-flex; flex-shrink: 0; width: 16px; height: 16px; color: var(--ink); }
 .compare-commit { align-items: flex-start; min-height: 44px; padding: 6px 8px; }

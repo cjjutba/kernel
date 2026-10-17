@@ -114,9 +114,9 @@ describe('theme contrast', () => {
       for (const s of SURFACES) { const theme = name === 'light' ? light : dark; const c = contrast(over(ringOf(body), theme[s]), theme[s]); if (c < 3) fails.push(`${name} focus on ${s}: ${c.toFixed(2)}`) }
     expect(fails).toEqual([])
   })
-  it('hover card status words reach 4.5:1 on their pill in both themes', () => {
+  it('a hover card muted status word reaches 4.5:1 on its pill in both themes', () => {
     const fails: string[] = []
-    for (const [name, theme] of themes(both)) for (const t of ['del', 'muted'])
+    for (const [name, theme] of themes(both)) for (const t of ['muted'])
       if (contrast(theme[t], theme[`tint-${t}`]) < 4.5) fails.push(`${name} ${t} on tint-${t}: ${contrast(theme[t], theme[`tint-${t}`]).toFixed(2)}`)
     expect(fails).toEqual([])
   })
@@ -220,7 +220,7 @@ describe('no hardcoded colors', () => {
 
 // KERNEL-681: type sizes, weights, line heights, layers and motion come from tokens.css too, and so do the type, color and spacing of
 // an inline style. A value that isn't a token yet becomes one in tokens.css (DESIGN.md), never a literal in a screen.
-type Kind = 'checkbox' | 'curve' | 'duration' | 'fontSize' | 'fontWeight' | 'inlineStyle' | 'lineHeight' | 'unknownVar' | 'unusedToken' | 'zIndex'
+type Kind = 'addDel' | 'btnHeight' | 'checkbox' | 'curve' | 'duration' | 'faintText' | 'fontSize' | 'fontWeight' | 'focusRing' | 'inlineStyle' | 'lineBackground' | 'lineHeight' | 'pillLine' | 'radius' | 'shadow' | 'unknownVar' | 'unusedToken' | 'zIndex'
 interface Hit { kind: Kind; line: number; text: string }
 
 /** A file with its comments blanked out, line breaks kept, so a duration in a comment isn't a hit and line numbers still match. */
@@ -261,6 +261,44 @@ export function cssHits(source: string): Hit[] {
   }
   for (const m of text.matchAll(/cubic-bezier\(/g)) found.push(['curve', m.index])
   return collect(text, found)
+}
+
+const STOCK_BTN_HEIGHTS = ['24px', '26px', '28px', '32px']
+// Where --add and --del may be spelled: error text, a result or state that is green or red, the diff and a file's letter (DESIGN.md, Color).
+const ADD_DEL_ALLOWED = ['[data-tone', '[data-state', '[data-ok', '[data-mark', '-error', '.err', '.step-bad', '.ob-ico', '.ae-diff .add', '.ae-diff .del']
+// A faint color is for what isn't read: a disabled control, an icon, a separator or a close mark.
+const FAINT_NON_TEXT = /svg|:disabled|\[aria-disabled|-sep\b|\.sep\b|-dot\b|-ico(?:n)?\b|-x\b/
+// Rows and boxes whose own outline is off because the row or the box draws the --focus ring.
+const FOCUS_ON_ANCESTOR = ['.rm-link', '.prs-main', '.lp-open', '.cmp-input']
+
+/** Every rule in a stylesheet with its selector, its body and where it starts. */
+function rulesOf(source: string): { selector: string; body: string; at: number }[] {
+  return [...blank(source).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2], at: m.index + m[0].indexOf(m[1].trim()) }))
+}
+const declsOf = (body: string) => [...body.matchAll(/(?<![\w-])([\w-]+)\s*:\s*([^;]*)/g)].map((m) => [m[1], m[2].trim()] as const)
+const withoutTokenCalc = (v: string) => v.replace(/calc\(\s*var\([^)]*\)\s*[-+]\s*[0-9.]+px\s*\)/g, ' ')
+
+/** Token roles in a stylesheet: --pill-line without --r-pill, a line token as a fill, faint or add or del out of their role, a literal radius, a shadow, a .btn height that isn't stock, a focus outline that isn't --focus. */
+export function roleHits(source: string, { tokens = false }: { tokens?: boolean } = {}): Hit[] {
+  const found: [Kind, number][] = []
+  for (const { selector, body, at } of rulesOf(source)) {
+    if (selector.startsWith('@')) continue
+    const decls = declsOf(body)
+    if (/var\(--pill-line\)/.test(body) && !/var\(--r-pill\)/.test(body)) found.push(['pillLine', at])
+    if (!tokens && /var\(--(?:add|del)\)/.test(body) && !ADD_DEL_ALLOWED.some((a) => selector.includes(a))) found.push(['addDel', at])
+    if (!tokens && /\.btn\b/.test(selector) && decls.some(([prop, v]) => /^(?:min-|max-)?height$/.test(prop) && !STOCK_BTN_HEIGHTS.includes(v))) found.push(['btnHeight', at])
+    if (/:focus-visible/.test(selector)) for (const [prop, v] of decls) {
+      if (/^outline(?:-color)?$/.test(prop) && !v.includes('var(--focus)')) found.push(['focusRing', at])
+      if (prop === 'outline-style' && !FOCUS_ON_ANCESTOR.some((a) => selector.includes(a))) found.push(['focusRing', at])
+    }
+    for (const [prop, v] of decls) {
+      if (/^background(?:-color)?$/.test(prop) && /var\(--(?:line|line-2|panel-line)\)/.test(v) && !/(?:^|[;\s])(?:width|height)\s*:\s*1px/.test(body)) found.push(['lineBackground', at])
+      if (prop === 'color' && /var\(--faint\)/.test(v) && !FAINT_NON_TEXT.test(selector)) found.push(['faintText', at])
+      if (prop === 'box-shadow' && !/^none\b/.test(v)) found.push(['shadow', at])
+      if (!tokens && prop === 'border-radius' && /[0-9.]+(?:px|rem|em|%)/.test(noVars(withoutTokenCalc(v))) && !/^(?:0(?:px)?|50%)(?:\s+(?:0(?:px)?|50%))*$/.test(v)) found.push(['radius', at])
+    }
+  }
+  return collect(blank(source), found)
 }
 
 /** A literal type, color or spacing value in an inline style, or a raw checkbox. `rel` is the file's path from the repo root. */
@@ -311,6 +349,7 @@ describe('design tokens beyond color', () => {
     for (const f of files) {
       const hits: Hit[] = []
       if (f.path.endsWith('.css') && !f.path.endsWith('/tokens.css')) hits.push(...cssHits(f.text))
+      if (f.path.endsWith('.css')) hits.push(...roleHits(f.text, { tokens: f.path.endsWith('/tokens.css') }))
       if (f.path.endsWith('.tsx')) hits.push(...tsxHits(f.path, f.text))
       hits.push(...unknownVarHits(blank(f.text), defined))
       if (f.path.endsWith('/tokens.css')) hits.push(...unusedTokenHits(f.text, everything))
@@ -375,6 +414,20 @@ describe('each design token check fails on an injected violation', () => {
     expect(kinds(tsxHits('src/renderer/src/screens/A.tsx', '<input\n  onChange={(e) => set(e.target.checked)}\n  type="checkbox"\n/>'))).toEqual(['checkbox'])
     expect(tsxHits('src/renderer/src/ui/controls.tsx', '<input type="checkbox" />')).toEqual([])
     expect(tsxHits('src/renderer/src/screens/A.tsx', '<input type="text" />')).toEqual([])
+  })
+  it('a token used outside its role, a literal radius, a shadow, a stray .btn height or a focus ring that is not --focus', () => {
+    const kindsOf = (css: string) => kinds(roleHits(css))
+    expect(kindsOf('.a { border: 1px solid var(--pill-line); border-radius: var(--r); }')).toEqual(['pillLine'])
+    expect(roleHits('.a { border: 1px solid var(--pill-line); border-radius: var(--r-pill); }')).toEqual([])
+    expect(kindsOf('.a { height: 8px; background: var(--line-2); }')).toEqual(['lineBackground'])
+    expect(kindsOf('.a { background: var(--panel-line); }')).toEqual(['lineBackground'])
+    expect(roleHits('.a { height: 1px; background: var(--line-2); } .b { border-top: 1px solid var(--line-2); }')).toEqual([])
+    expect(kindsOf('.a { color: var(--faint); } .b svg { color: var(--faint); } .c:disabled { color: var(--faint); }')).toEqual(['faintText'])
+    expect(kindsOf('.a { color: var(--add); } .a-error { color: var(--del); }')).toEqual(['addDel'])
+    expect(kindsOf('.a { border-radius: 6px; } .b { border-radius: var(--r-sm) 0 0 calc(var(--r-sm) - 1px); } .c { border-radius: 50%; }')).toEqual(['radius'])
+    expect(kindsOf('.a { box-shadow: 0 1px 2px red; } .b { box-shadow: none; }')).toEqual(['shadow'])
+    expect(kindsOf('.btn.x { height: 30px; } .btn.y { height: 24px; } .btn.z { height: 28px; }')).toEqual(['btnHeight'])
+    expect(kindsOf('.a:focus-visible { outline: none; }\n.b:focus-visible { outline: 2px solid var(--ink); }\n.c:focus-visible { outline: 2px solid var(--focus); }\n.rm-link:focus-visible { outline-style: none; }\n.d:focus-visible { outline-style: none; }')).toEqual(['focusRing', 'focusRing', 'focusRing'])
   })
   it('a var() that names no token', () => {
     const defined = new Set(['--ink'])

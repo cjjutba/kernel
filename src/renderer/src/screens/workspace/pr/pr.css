@@ -96,11 +96,11 @@ section:first-child > .lp-sec { padding-top: 6px; }
 .lp-body { flex: 1; min-width: 0; }
 .lp-l1 { display: flex; align-items: center; gap: 10px; height: 22px; }
 .lp-open { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: var(--fs-ui); font-weight: var(--fw-medium); line-height: 18px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.lp-open:focus-visible { outline: none; }
+.lp-open:focus-visible { outline-style: none; }
 .lp-open::after { content: ''; position: absolute; inset: 0; border-radius: var(--r-sm); }
 .lp-act, .lp-num { position: relative; z-index: 1; }
 .lp-act { flex-shrink: 0; display: flex; align-items: center; }
-.lp-row .pr-tone .btn { height: 22px; padding: 0 9px; border-radius: var(--r-sm); }
+.lp-row .pr-tone .btn { height: 24px; padding: 0 9px; border-radius: var(--r-sm); }
 /* Rows with nothing to press show where a click goes, on hover or focus. */
 .lp-chev { flex-shrink: 0; display: inline-flex; color: var(--ink-3); opacity: 0; }
 .lp-row:hover .lp-chev, .lp-row:has(.lp-open:focus-visible) .lp-chev { opacity: 1; }

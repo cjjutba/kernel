@@ -5,10 +5,10 @@
    its ::before, so they are positioned with no z-index: the model, + and context popovers still open past the box. */
 .cmp { --cmp-pad-top: 12px; position: relative; display: flex; flex-direction: column; gap: 6px; padding: var(--cmp-pad-top) 12px 10px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--input-bg); }
 .cmp > * { position: relative; }
-.cmp:focus-within { border-color: var(--line-4); }
+.cmp:focus-within { border-color: var(--focus); }
 /* The body turns selection off, and a contenteditable needs it back. The box border shows focus, as it did for the textarea. */
 .cmp-input { position: relative; min-height: 34px; max-height: 168px; overflow-y: auto; color: var(--ink-2); font-size: var(--fs-chat); line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
-.cmp-input:focus-visible { outline: none; }
+.cmp-input:focus-visible { outline-style: none; }
 .cmp-field { position: relative; }
 .cmp-hint { position: absolute; top: 0; right: 0; font-size: var(--fs-meta); line-height: 24px; color: var(--muted); white-space: nowrap; pointer-events: none; user-select: none; }
 .cmp-field[data-hint] .cmp-input[data-empty]::before { max-width: calc(100% - 96px); }
@@ -136,7 +136,7 @@
 .pick-list { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
 .pick-item { position: relative; display: flex; align-items: center; }
 .pick-item > .pick-row { flex: 1; min-width: 0; padding-right: 35px; }
-.pick-star { position: absolute; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
+.pick-star { position: absolute; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
 .pick-item[data-active='true'] .pick-star, .pick-star[aria-pressed='true'], .pick-star:focus-visible { opacity: 1; }
 .pick-star:hover { color: var(--ink); }
 .pick-star[aria-pressed='true'] { color: var(--ink); }
