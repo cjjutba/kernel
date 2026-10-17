@@ -6,6 +6,7 @@ import { actions, go, useStore } from '../../../store'
 import { Button, useBusy } from '../../../ui'
 import { downloadPercent, installFailedTitle, installFailure, updateReason } from '../../../components/footer/updateModel'
 import { Page, Row, Section } from '../kit'
+import appIcon from '../../../assets/icon.png'
 
 /**
  * What Check for updates says. A failed check (offline, or no releases reachable) is not "up to date", and a copy outside
@@ -36,7 +37,7 @@ export function About() {
   return (
     <Page title="About">
       <section className="sys-about" aria-label="Version">
-        <span className="sys-about-mark" aria-hidden="true">K</span>
+        <img className="sys-about-mark" src={appIcon} alt="" />
         <span className="sys-about-text">
           <span className="sys-about-name">Kernel</span>
           <span className="sys-about-sub">Version <span className="mono">{info?.version ?? ''}</span>{sub && ` · ${sub}`}</span>

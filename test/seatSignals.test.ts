@@ -8,6 +8,7 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { hookToken } from '../src/main/services/hookToken'
 import { seatDir } from '../src/main/services/seatLaunch'
+import { LEAD_INSTRUCTIONS, TERMINAL_LEAD_INSTRUCTIONS } from '../src/main/services/kernelMcp'
 import { ASK_IN_TERMINAL, NO_HOOKS_REFUSAL } from '../src/main/features/seatSignals'
 import { setUp, tempRepo, freePort } from './helpers'
 
@@ -211,6 +212,21 @@ describe('session and title', () => {
 
 describe('plan approval', () => {
   const plan = '# Export invoices\n\n1. Add the button\n2. Write the CSV'
+
+  it('gives a terminal Lead no request_plan_approval and plan-dialog instructions, and a chat Lead its own (KERNEL-1022)', async () => {
+    const seat = k.seats.serve({ chatId: lead.id, workspaceId: lead.workspaceId, role: 'lead' })!
+    expect(seat.tools.map((t) => t.name)).not.toContain('request_plan_approval')
+    expect(seat.tools.map((t) => t.name)).toContain('create_workspace')
+    expect(seat.instructions).toBe(TERMINAL_LEAD_INSTRUCTIONS)
+    expect(seat.instructions).toMatch(/exit plan mode for approval/)
+    expect(seat.instructions).toMatch(/Once the user approves, hand each task to one teammate with create_workspace/)
+    const chat = await k.handlers()['chats.create']({ workspaceId: leadWs.id, kind: 'chat' } as never)
+    const chatSeat = k.seats.serve({ chatId: chat.id, workspaceId: leadWs.id, role: 'lead' })!
+    expect(chatSeat.tools.map((t) => t.name)).toContain('request_plan_approval')
+    expect(chatSeat.instructions).toBe(LEAD_INSTRUCTIONS)
+    const mateSeat = k.seats.serve({ chatId: mate.id, workspaceId: mate.workspaceId, role: 'teammate' })!
+    expect(mateSeat.instructions).toBeUndefined()
+  })
 
   it('saves the plan accepted in the TUI, so read_plans and the plan rules see it', async () => {
     expect((await call(lead, 'read_plans', {})).text).toContain('No plan has been approved')

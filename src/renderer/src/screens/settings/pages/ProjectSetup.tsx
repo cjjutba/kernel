@@ -101,7 +101,7 @@ export function ProjectSetup({ projectId }: { projectId?: string }) {
   const offerFor = (kind: ScriptKey) => found.find((s) => s.patch.scripts?.[kind]?.trim())
   const wait = rs?.workspace.leadWaitForSetup
   return (
-    <ProjectPage project={project} rs={rs} title="Scripts" subtitle="Commands that run when workspaces are set up, run or archived.">
+    <ProjectPage project={project} rs={rs} title="Scripts">
       <ScriptEditor projectId={projectId} kind="setup" rs={rs} offer={offerFor('setup')} />
       <Section label="Setup">
         <Row id="wait-for-setup" setting="workspace.leadWaitForSetup" label="Wait for setup before the first message" {...projectValue(rs, 'workspace.leadWaitForSetup', () => void patchProjectSettings(projectId, { workspace: { leadWaitForSetup: null } }), { to: { page: 'git' }, label: 'Settings, Git' })}>
