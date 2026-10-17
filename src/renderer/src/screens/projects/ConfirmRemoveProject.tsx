@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { Checkbox, ConfirmDialog, useBusy } from '../../ui'
+import { afterProjectLeaves } from './afterProjectLeaves'
 import { tilde } from './draft'
 import { teamOf } from './projectInfo'
 import './projects.css'
@@ -24,8 +25,9 @@ export function ConfirmRemoveProject({ projectId }: { projectId: string }) {
       await call('projects.remove', { projectId, deleteWorktrees: worktrees })
       const route = getState().ui.route
       const here = ('projectId' in route && route.projectId === projectId) || (route.name === 'workspace' && getState().workspaces.find((w) => w.id === route.workspaceId)?.projectId === projectId)
+      const next = afterProjectLeaves(getState().projects, projectId)
       actions.projects.remove(projectId)
-      if (here) actions.ui.go({ name: 'projects' })
+      if (here) actions.ui.go(next)
       actions.ui.closeModal()
     } catch (e) { setError(cleanError(e)) }
   })
