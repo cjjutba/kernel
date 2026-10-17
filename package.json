@@ -1,7 +1,7 @@
 {
   "name": "kernel",
   "productName": "Kernel",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A Mac app that keeps your AI coding agents organized: say what you need, and Kernel plans it, hands it out and brings it back for your approval.",
   "license": "Elastic-2.0",
   "private": true,
