@@ -177,9 +177,58 @@ describe('which PRs merge by themselves', () => {
 })
 
 describe('the trigger', () => {
+  // KERNEL-1017: a PR no review approved is weighed when merging without a review is on or reviews are off.
+  describe('with no review approving the PR', () => {
+    const files = { 'src/a.ts': 'export const a = 1\n' }
+    const apply = (autoReview: boolean, withoutReview: boolean) => ({ pr: { autoReview, autoMerge: { on: true, withoutReview } } })
+
+    it('merges on green checks when the setting is on, and the Lead hears no review', async () => {
+      const { k, gh, pr } = await setup({ app: apply(false, true) })
+      const ws = await pr(files, { approved: [] })
+      const told = vi.spyOn(k.leadUpdates, 'autoMerging')
+      bus.push({ type: 'workspace', workspace: ws })
+      await vi.waitFor(() => expect(k.store.workspace(ws.id)?.prState).toBe('merged'))
+      expect(gh.merged).toEqual(['squash'])
+      expect(told).toHaveBeenCalledWith(ws.id, expect.objectContaining({ card: 'Checks passed, 1 line, no review' }))
+    })
+
+    it('tells the Lead why it did not merge, naming the setting, when it is off and reviews are off', async () => {
+      const { k, gh, pr } = await setup({ app: apply(false, false) })
+      const ws = await pr(files, { approved: [] })
+      const told = vi.spyOn(k.leadUpdates, 'autoMergeRefused')
+      bus.push({ type: 'workspace', workspace: ws })
+      await vi.waitFor(() => expect(told).toHaveBeenCalledWith(ws.id, 'No review approved it. Turn on Merge without a review in Settings, Pull requests to merge on green checks.'))
+      expect(gh.merged).toEqual([])
+    })
+
+    it('says nothing while reviews are on and the setting is off, so a review can still approve', async () => {
+      const { k, gh, pr } = await setup({ app: apply(true, false) })
+      k.settings.pr.autoReview = true
+      const ws = await pr(files, { approved: [] })
+      const weighed = vi.spyOn(k.prs, 'autoMerge')
+      bus.push({ type: 'workspace', workspace: ws })
+      await new Promise((r) => setTimeout(r, 100))
+      expect(weighed).not.toHaveBeenCalled()
+      expect(gh.reads).toBe(0)
+      const approved = k.store.saveWorkspace({ ...ws, reviews: [{ workspaceId: 'rev', agentId: 'kernel-reviewer', verdict: 'approved', summary: '', sha: ws.prHead, prNumber: 101, lens: 'code', ts: 1 }] })
+      bus.push({ type: 'workspace', workspace: approved })
+      await vi.waitFor(() => expect(k.store.workspace(ws.id)?.prState).toBe('merged'))
+    })
+
+    it('still returns early on a blocker with the setting on', async () => {
+      const { k, gh, pr } = await setup({ app: apply(false, true) })
+      const ws = await pr(files, { approved: [], blockers: ['code'] })
+      const weighed = vi.spyOn(k.prs, 'autoMerge')
+      bus.push({ type: 'workspace', workspace: ws })
+      await new Promise((r) => setTimeout(r, 100))
+      expect(weighed).not.toHaveBeenCalled()
+      expect(gh.merged).toEqual([])
+    })
+  })
+
   it('is off by default: a PR every review approved reads nothing and stays open', async () => {
     const { k, gh, pr } = await setup({ app: {} })
-    expect(DEFAULT_SETTINGS('/h').pr.autoMerge).toEqual({ on: false, maxLines: 400, alwaysReview: [] })
+    expect(DEFAULT_SETTINGS('/h').pr.autoMerge).toEqual({ on: false, maxLines: 400, alwaysReview: [], withoutReview: false })
     expect(k.settings.pr.autoMerge.on).toBe(false)
     const ws = await pr({ 'src/a.ts': 'export const a = 1\n' })
     bus.push({ type: 'workspace', workspace: ws })
@@ -190,6 +239,7 @@ describe('the trigger', () => {
 
   it('merges once the approval of the head is saved, from the workspace push alone, and weighs each head once', async () => {
     const { k, gh, pr } = await setup()
+    k.settings.pr.autoReview = true
     const ws = await pr({ 'src/a.ts': 'export const a = 1\n' }, { approved: [] })
     const weighed = vi.spyOn(k.prs, 'autoMerge')
     // No approval of the head yet: nothing to weigh.
@@ -541,7 +591,7 @@ describe('Merge PR while a check the repo does not require runs (KERNEL-703)', (
 describe('the rule', () => {
   const pr: PrInfo = { workspaceId: 'w', number: 7, url: '', title: '', state: 'ready', baseRef: 'main', checks: GREEN, comments: [], conflicts: [], head: 'a'.repeat(40) }
   const clean: AutoMergeFacts = {
-    rules: { on: true, maxLines: 400, alwaysReview: [] }, local: false, requireGreen: true, pr,
+    rules: { on: true, maxLines: 400, alwaysReview: [], withoutReview: false }, local: false, requireGreen: true, pr,
     reviews: { required: ['code'], approved: ['code', 'ux'], blocking: [], running: false }, diff: { lines: 120, touched: [] }
   }
 
@@ -572,6 +622,45 @@ describe('the rule', () => {
     expect(autoMergeBlock({ ...clean, diff: { lines: 400, touched: [] } })).toBeUndefined()
     expect(autoMergeBlock({ ...clean, diff: { lines: 3, touched: ['CLAUDE.md', 'AGENTS.md'] } })).toBe("It changes CLAUDE.md and 1 other file that always need a person's review.")
     expect(autoMergeWhy({ ...clean, diff: undefined })).toBeUndefined()
+  })
+
+  // KERNEL-1017: merging without a review skips the approval rules and nothing else.
+  describe('without a review', () => {
+    const r = clean.reviews!
+    const none: NonNullable<AutoMergeFacts['reviews']> = { ...r, required: [], approved: [] }
+    const free = { ...clean, rules: { ...clean.rules, withoutReview: true }, reviews: none }
+
+    it('names the setting when nothing approved and no review is required', () => {
+      const off = { ...clean, reviews: none }
+      expect(autoMergeBlock(off)).toBe('No review approved it. Turn on Merge without a review in Settings, Pull requests to merge on green checks.')
+      expect(autoMergeBlock({ ...off, reviews: { ...none, required: ['code'] } })).toBe(autoMergeBlock(off))
+    })
+
+    it('merges on green checks alone, and says no review ran', () => {
+      expect(autoMergeBlock(free)).toBeUndefined()
+      expect(autoMergeBlock({ ...free, reviews: { ...none, required: ['code', 'security'] } })).toBeUndefined()
+      expect(autoMergeWhy(free)).toEqual({
+        why: "its check passed, it changes 120 lines, within the user's limit of 400, and it changes no path that always needs a person's review, and no review ran",
+        card: 'Checks passed, 120 lines, no review'
+      })
+      expect(autoMergeWhy({ ...free, reviews: { ...none, approved: ['code'] } })?.card).toBe('Code approved, checks passed, 120 lines')
+    })
+
+    it('still holds for blockers, an overrule, a running review and every other rule', () => {
+      expect(autoMergeBlock({ ...free, reviews: { ...none, blocking: ['code'] } })).toBe('The code review found blockers on the latest commit.')
+      expect(autoMergeBlock({ ...free, reviews: { ...none, overruled: ['code'] } })).toBe("The code review found blockers on the latest commit, and auto-merge doesn't merge past an overrule.")
+      expect(autoMergeBlock({ ...free, reviews: { ...none, running: true } })).toBe('A review of it is still running.')
+      expect(autoMergeBlock({ ...free, diff: { lines: 401, touched: [] } })).toBe('It changes 401 lines, more than the 400 auto-merge allows.')
+      expect(autoMergeBlock({ ...free, pr: { ...pr, checks: [] } })).toBe('It has no required checks, and auto-merge needs at least one to pass.')
+    })
+
+    it('weighs again only what had not settled', () => {
+      expect(autoMergeRetry(free)).toBe(false)
+      expect(autoMergeRetry({ ...free, reviews: { ...none, running: true } })).toBe(true)
+      expect(autoMergeRetry({ ...free, reviews: { ...none, blocking: ['code'] } })).toBe(false)
+      expect(autoMergeRetry({ ...free, diff: undefined })).toBe(true)
+      expect(autoMergeRetry({ ...clean, reviews: none })).toBe(false)
+    })
   })
 
   // KERNEL-768: what GitHub or Kernel hadn't settled is weighed again; the user's own rules are final.
@@ -623,21 +712,35 @@ describe('the settings', () => {
 
   it("lets the personal file override the app's setting for its project, its paths adding to the app's", async () => {
     const repo = await tempRepo()
-    const app = { on: false, maxLines: 400, alwaysReview: ['infra/**'] }
+    const app = { on: false, maxLines: 400, alwaysReview: ['infra/**'], withoutReview: false }
     expect(autoMergeInProject(repo, app)).toEqual({ rules: app, personal: false, ignored: [] })
     await mkdir(join(repo, '.kernel'), { recursive: true })
     await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[merge]\nauto = true\nmax_lines = 150\nalways_review = ["db/**"]\n')
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[merge]\nauto = false\n')
-    expect(autoMergeInProject(repo, app)).toEqual({ rules: { on: true, maxLines: 150, alwaysReview: ['infra/**', 'db/**'] }, personal: true, ignored: ['auto'] })
+    expect(autoMergeInProject(repo, app)).toEqual({ rules: { on: true, maxLines: 150, alwaysReview: ['infra/**', 'db/**'], withoutReview: false }, personal: true, ignored: ['auto'] })
+    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[merge]\nwithout_review = true\n')
+    expect(autoMergeInProject(repo, app).rules.withoutReview).toBe(true)
+    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[merge]\nwithout_review = "yes"\n')
+    expect(autoMergeInProject(repo, { ...app, withoutReview: true }).rules.withoutReview).toBe(true)
+  })
+
+  it('ignores without_review in the shared file', async () => {
+    const repo = await tempRepo()
+    const app = { on: true, maxLines: 400, alwaysReview: [], withoutReview: false }
+    await mkdir(join(repo, '.kernel'), { recursive: true })
+    await writeFile(join(repo, '.kernel', 'settings.toml'), '[merge]\nwithout_review = true\n')
+    expect(sharedMergeOf('[merge]\nwithout_review = true\n')).toEqual({ alwaysReview: [], ignored: ['without_review'] })
+    expect(autoMergeInProject(repo, app)).toEqual({ rules: app, personal: false, ignored: ['without_review'] })
   })
 
   it("keeps a hand-edited settings.json's auto-merge off unless it says true", async () => {
     const dir = await mkdtemp(join(tmpdir(), 'kernel-set-'))
     const file = join(dir, 'settings.json')
-    await writeFile(file, JSON.stringify({ version: 2, pr: { autoMerge: { on: 'yes', maxLines: -3, alwaysReview: 'all' } } }))
-    expect((await loadAppSettings(file, dir)).resolved.pr.autoMerge).toEqual({ on: false, maxLines: 400, alwaysReview: [] })
+    await writeFile(file, JSON.stringify({ version: 2, pr: { autoMerge: { on: 'yes', maxLines: -3, alwaysReview: 'all', withoutReview: 'yes' } } }))
+    expect((await loadAppSettings(file, dir)).resolved.pr.autoMerge).toEqual({ on: false, maxLines: 400, alwaysReview: [], withoutReview: false })
     const next = applySettingsPatch((await loadAppSettings(file, dir)).resolved, { pr: { autoMerge: { on: true, maxLines: 250.5 } } })
-    expect(next.pr.autoMerge).toEqual({ on: true, maxLines: 400, alwaysReview: [] })
+    expect(next.pr.autoMerge).toEqual({ on: true, maxLines: 400, alwaysReview: [], withoutReview: false })
+    expect(applySettingsPatch(next, { pr: { autoMerge: { withoutReview: true } } }).pr.autoMerge.withoutReview).toBe(true)
   })
 })
 

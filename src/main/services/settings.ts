@@ -65,7 +65,7 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
     // Each review is a full extra agent run on every PR, so it starts off on every plan (feat-automatic-review-off-by-default).
     autoReview: false,
     // Nothing merges by itself until the user turns this on (KERNEL-556).
-    autoMerge: { on: false, maxLines: 400, alwaysReview: [] },
+    autoMerge: { on: false, maxLines: 400, alwaysReview: [], withoutReview: false },
     // Create PR sends this fitted to the repo's PR template, contributing guide and commitlint (KERNEL-468).
     createInstructions: createPrText(),
     resolveInstructions: resolveText(),
@@ -164,7 +164,7 @@ const MAX_LINES = 100_000
 
 /**
  * `pr.autoMerge` as Kernel reads it (KERNEL-556): on only when `on` is `true`, `maxLines` a whole number from 1, and
- * `alwaysReview` a list of paths. A value of the wrong type takes the fallback's, so a hand-edited `"on": "yes"` stays off.
+ * `alwaysReview` a list of paths, `withoutReview` a boolean. A value of the wrong type takes the fallback's, so a hand-edited `"on": "yes"` stays off.
  */
 export function autoMergeOf(v: unknown, fallback: AutoMerge): AutoMerge {
   const t = isTable(v) ? v : {}
@@ -172,7 +172,8 @@ export function autoMergeOf(v: unknown, fallback: AutoMerge): AutoMerge {
   return {
     on: typeof t.on === 'boolean' ? t.on : fallback.on,
     maxLines: Number.isInteger(lines) && (lines as number) >= 1 ? Math.min(lines as number, MAX_LINES) : fallback.maxLines,
-    alwaysReview: Array.isArray(t.alwaysReview) ? pathList(t.alwaysReview) : fallback.alwaysReview
+    alwaysReview: Array.isArray(t.alwaysReview) ? pathList(t.alwaysReview) : fallback.alwaysReview,
+    withoutReview: typeof t.withoutReview === 'boolean' ? t.withoutReview : fallback.withoutReview
   }
 }
 
@@ -705,7 +706,7 @@ export function reviewPolicyOf(text: string | undefined): { review: ReviewConfig
 }
 
 /** The `[merge]` keys only the personal settings file may set, as the file names them (KERNEL-556). */
-const PERSONAL_MERGE = ['auto', 'max_lines'] as const
+const PERSONAL_MERGE = ['auto', 'max_lines', 'without_review'] as const
 
 /** What a shared settings file's `[merge]` table says: the paths it adds, and the personal keys it sets, which Kernel ignores. */
 function sharedMerge(doc: Record<string, unknown>): { alwaysReview: string[]; ignored: string[] } {
@@ -734,7 +735,7 @@ export function autoMergeInProject(repo: string, app: AutoMerge): { rules: AutoM
   const { ignored } = sharedMerge(readTomlSync(repoFile(repo, 'settings.toml')))
   const own = readTomlSync(repoFile(repo, 'settings.local.toml')).merge
   if (!isTable(own)) return { rules: app, personal: false, ignored }
-  const rules = autoMergeOf({ on: own.auto, maxLines: own.max_lines, alwaysReview: [...app.alwaysReview, ...pathList(own.always_review)] }, app)
+  const rules = autoMergeOf({ on: own.auto, maxLines: own.max_lines, alwaysReview: [...app.alwaysReview, ...pathList(own.always_review)], withoutReview: own.without_review }, app)
   return { rules, personal: true, ignored }
 }
 

@@ -520,16 +520,18 @@ export class Prs extends Feature {
     if (this.stopped || ws.status === 'archived' || ws.reviewOf || ws.prState !== 'ready' || !ws.prNumber) return
     const s = kindStates(ws)
     // An overrule clears the way for a merge a person starts, never for Kernel's own (KERNEL-732).
-    if (!s.approved.length || s.blocking.length || s.overruled.length) return
+    if (s.blocking.length || s.overruled.length) return
+    const project = this.store.project(ws.projectId)
+    const app = this.settings?.pr.autoMerge
+    if (!project || !app) return
+    const { rules, ignored } = autoMergeInProject(project.path, app)
+    // With reviews on and merging without one off, a review may still approve, so Kernel waits instead of refusing before it lands (KERNEL-1017).
+    if (!s.approved.length && !rules.withoutReview && this.settings.pr.autoReview) return
     // The checks as the last read settled them, so a check that ran after a weigh refused it brings a new one (KERNEL-703).
     const checks = (this.infos.get(ws.id)?.info.checks ?? []).map((c) => `${c.name}=${c.state}${c.url ? `@${c.url}` : ''}`).join(',')
     const key = [ws.prNumber, ws.prHead ?? '', s.approved.join(','), ws.prBlocked ?? '', checks].join(':')
     if (this.weighed.get(ws.id) === key) return
     this.weighed.set(ws.id, key)
-    const project = this.store.project(ws.projectId)
-    const app = this.settings?.pr.autoMerge
-    if (!project || !app) return
-    const { rules, ignored } = autoMergeInProject(project.path, app)
     this.warnIgnored(project, ignored)
     if (!rules.on) return
     this.leadUpdates.readingPr(ws.id)

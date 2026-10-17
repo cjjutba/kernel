@@ -373,7 +373,7 @@ describe('an overrule of the blockers on the head commit (KERNEL-732)', () => {
   })
 
   it('never counts as an approval for auto-merge', () => {
-    const facts = { rules: { on: true, maxLines: 400, alwaysReview: [] }, local: false, requireGreen: true, pr: info({ checks: [{ name: 'Test', state: 'pass' as const }] }), diff: { lines: 1, touched: [] } }
+    const facts = { rules: { on: true, maxLines: 400, alwaysReview: [], withoutReview: false }, local: false, requireGreen: true, pr: info({ checks: [{ name: 'Test', state: 'pass' as const }] }), diff: { lines: 1, touched: [] } }
     const s = kindStates(ws({ reviews: [code('approved'), security('blockers', B, { optional: true })], overruled: over(['security']) }))
     expect(s).toMatchObject({ approved: ['code'], blocking: [], overruled: ['security'] })
     expect(autoMergeBlock({ ...facts, reviews: { required: ['code'], approved: s.approved, blocking: s.blocking, overruled: s.overruled, running: false } }))
