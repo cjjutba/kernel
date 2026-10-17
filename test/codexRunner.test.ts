@@ -11,7 +11,7 @@ import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { BUILD_CLOSED } from '../src/main/services/permissions'
 import { forProvider, HANDOFF_NOW, HANDOFF_REMINDER, kernelTool, LEAD_BUILD_RULE, LEAD_RULE, planChanges, TEAMMATE_RULE } from '../src/main/services/handoff'
-import { SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/services/sessions'
+import { LIMIT_LIFTED, SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/services/sessions'
 import { mentionNote } from '../src/main/services/mentions'
 import { OpenItems, openReminder } from '../src/main/features/openItems'
 import type { Kernel } from '../src/main/kernel'
@@ -41,7 +41,7 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Sean.' } as AgentDef
 const kernel: AgentDef = { ...sean, id: 'kernel', name: 'Kernel', role: 'Lead', lead: true, prompt: 'You are Kernel.' }
 
-async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; references?: string[]; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string }; team?: AgentDef[]; buildOpen?: () => boolean } = {}) {
+async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; references?: string[]; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string }; team?: AgentDef[]; buildOpen?: () => boolean; deps?: Partial<SessionDeps> } = {}) {
   const fake = await fakeCodex()
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
   const repo = await tempRepo()
@@ -65,7 +65,8 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
     disabledFor: () => ({ skills: [], mcp: o.off ?? [] }), aliasesFor: () => o.aliases, accessFor: () => o.access, onMcp: o.onMcp,
     // What a Lead chat owes, on the same store (KERNEL-749).
     openItems,
-    ...(o.buildOpen ? { buildOpen: o.buildOpen } : {})
+    ...(o.buildOpen ? { buildOpen: o.buildOpen } : {}),
+    ...o.deps
   })
   const items = () => store.items(chat.id)
   const of = <K extends ChatItem['kind']>(kind: K) => items().filter((i): i is Extract<ChatItem, { kind: K }> => i.kind === kind)
@@ -103,6 +104,24 @@ describe('a chat on Codex (KERNEL-406)', () => {
     await t.sessions.send('chat', [{ type: 'text', text: 'again' }])
     await until(async () => (await t.sent('thread/resume')).length === 1)
     expect((await t.sent('thread/resume'))[0].params).toMatchObject({ threadId: 'thread-1', developerInstructions: expect.stringContaining('You are Sean.') })
+  })
+
+  it('keeps a chat a usage limit stopped on the carry-on list and reports it carried on at the first clean reply (KERNEL-1031)', async () => {
+    const carried: string[] = []
+    const cutOff: Record<string, { reason: string; account?: string }>[] = []
+    const t = track(await setup({ deps: { onCarriedOn: (id) => { carried.push(id) }, onCutOff: (c) => { cutOff.push(c) } } }))
+    await t.sessions.send('chat', [{ type: 'text', text: script({ limit: true }) }])
+    await t.idle()
+    expect(cutOff.at(-1)).toMatchObject({ chat: { reason: 'limit', account: 'cli' } })
+    expect(t.of('result')).toMatchObject([{ ok: false, limit: true }])
+    expect(carried).toEqual([])
+    for (const key of (t.sessions as unknown as { limits: Map<string, unknown> }).limits.keys()) t.sessions.resetLimit(key)
+    t.sessions.drainWaiting()
+    await until(() => carried.length === 1)
+    await t.idle()
+    expect(carried).toEqual(['chat'])
+    expect(cutOff.at(-1)).toEqual({})
+    expect((await t.sent('turn/start')).at(-1).params.input[0].text).toBe(LIMIT_LIFTED)
   })
 
   it('says a compact happened, once per item (KERNEL-808)', async () => {

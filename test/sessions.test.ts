@@ -11,7 +11,7 @@ import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { NO_PROMPTS } from '../src/main/services/exec'
 import { bashVerdict, matchesProjectRule, projectRule } from '../src/main/services/bashGuard'
-import { COMPACT_INSTRUCTIONS, IDLE_STOP_MS, LIMIT_LIFTED, limitsFromEvent, limitsFromUsage, mergeLimit, sessionEnv, SESSION_GONE_NOTE, Sessions, TOO_LONG_NOTE, type CutOffReason, type LimitPatch, type SessionDeps } from '../src/main/services/sessions'
+import { COMPACT_INSTRUCTIONS, IDLE_STOP_MS, LIMIT_LIFTED, limitsFromEvent, limitsFromUsage, mergeLimit, sessionEnv, SESSION_GONE_NOTE, Sessions, TOO_LONG_NOTE, type CutOffEntry, type CutOffReason, type LimitPatch, type SessionDeps } from '../src/main/services/sessions'
 import { REJECT_HOLD_MS } from '../src/main/services/providers/limits'
 import type { AppSettings } from '../src/main/services/settings'
 import { ClaudeRunner, readUsage } from '../src/main/services/providers/claude'
@@ -334,7 +334,7 @@ describe('idle stop (KERNEL-183)', () => {
     store.saveChat({ ...chat, id: 'other', title: 'Other' })
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: o.agentLimit ?? 0 } } as unknown as AppSettings
     const exits: string[] = []
-    const cutOff: Record<string, CutOffReason>[] = []
+    const cutOff: Record<string, CutOffEntry>[] = []
     const sessions = new Sessions({
       store, approvals: new Approvals(store), settings: () => settings, agentFor: () => o.agent ?? sean, mcpFor: () => undefined,
       projectAllow: () => [], allowInProject: () => {}, onExit: (_ws, c) => { exits.push(c.id) }, onCutOff: (ids) => { cutOff.push(ids) }
@@ -532,7 +532,7 @@ describe('idle stop (KERNEL-183)', () => {
     call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: Math.floor(Date.now() / 1000) + 86_400 } })
     call.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r-limit', duration_ms: 5 })
     await flush()
-    expect(cutOff.at(-1)).toEqual({ chat: 'limit' })
+    expect(cutOff.at(-1)).toMatchObject({ chat: { reason: 'limit', account: 'cli' } })
     await vi.advanceTimersByTimeAsync(3 * IDLE_STOP_MS)
     expect(stopped(call)).toBe(false)
   })
@@ -1046,17 +1046,18 @@ describe('a limit cut-off and its carry-on, for the Lead (KERNEL-777)', () => {
   afterEach(() => { bus.removeAllListeners('push') })
   const flush = () => new Promise((r) => setTimeout(r, 10))
 
-  async function setup() {
+  async function setup(o: { chats?: string[]; accountFor?: SessionDeps['accountFor'] } = {}) {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-limit-')), 'kernel.db'))
     const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     store.saveWorkspace(ws)
-    store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
+    for (const id of o.chats ?? ['chat']) store.saveChat({ id, workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
     const turns: Parameters<NonNullable<SessionDeps['onTurnDone']>>[2][] = []
     const carried: [string, CutOffReason][] = []
     const sessions = new Sessions({
       store, approvals: new Approvals(store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {},
-      onTurnDone: (_ws, _chat, t) => { turns.push(t) }, onCarriedOn: (id, reason) => { carried.push([id, reason]) }
+      onTurnDone: (_ws, _chat, t) => { turns.push(t) }, onCarriedOn: (id, reason) => { carried.push([id, reason]) },
+      ...(o.accountFor ? { accountFor: o.accountFor } : {})
     })
     /** A turn a 5-hour rejection cuts off. */
     const cutOff = async () => {
@@ -1084,12 +1085,26 @@ describe('a limit cut-off and its carry-on, for the Lead (KERNEL-777)', () => {
     expect(turns.at(-1)).not.toHaveProperty('limit')
   })
 
-  it('reports the carry-on when Kernel sends its nudge once the limit lifts', async () => {
+  const clean = async (call: { feed: (m: unknown) => void }, uuid: string) => {
+    call.feed({ type: 'result', subtype: 'success', uuid, duration_ms: 5 })
+    await flush()
+  }
+  /** A turn the limit refuses at once: Claude Code's rejection, then a result whose reply is the limit's text. */
+  const refuse = async (call: { feed: (m: unknown) => void }, uuid: string) => {
+    call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: Math.floor(Date.now() / 1000) + 3600 } })
+    call.feed({ type: 'result', subtype: 'success', uuid, duration_ms: 5 })
+    await flush()
+  }
+  const nudges = (call: { sent: string[] }) => call.sent.filter((t) => t === LIMIT_LIFTED).length
+
+  it('reports the carry-on when the nudge gets its first clean reply, not when it is sent', async () => {
     const { store, sessions, carried, cutOff } = await setup()
-    await cutOff()
+    const call = await cutOff()
     expect(carried).toEqual([])
     sessions.resetLimit('five_hour')
     sessions.drainWaiting()
+    expect(carried).toEqual([])
+    await clean(call, 'r-after')
     expect(carried).toEqual([['chat', 'limit']])
     expect(store.items('chat').filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })
   })
@@ -1104,9 +1119,128 @@ describe('a limit cut-off and its carry-on, for the Lead (KERNEL-777)', () => {
     sessions.drainWaiting()
     expect(carried).toEqual([])
     sessions.resume('project')
+    expect(carried).toEqual([])
+    await clean(sdk.calls.at(-1)!, 'r-queued')
     expect(carried).toEqual([['chat', 'limit']])
     expect(store.items('chat').filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: 'Also add a test' }] })
   })
+  it('carries on a chat whose limited turn ended while its window looked lifted', async () => {
+    const { sessions, carried, store } = await setup()
+    await sessions.send('chat', [{ type: 'text', text: 'Go' }])
+    const call = sdk.calls.at(-1)!
+    call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: Math.floor(Date.now() / 1000) + 3600 } })
+    await flush()
+    sessions.resetLimit('five_hour')
+    call.feed({ type: 'result', subtype: 'success', uuid: 'r-limit', duration_ms: 5 })
+    await flush()
+    expect(store.items('chat').filter((i) => i.kind === 'result')).toMatchObject([{ id: 'r-limit', limit: true }])
+    sessions.drainWaiting()
+    await flush()
+    expect(nudges(call)).toBe(1)
+    await clean(call, 'r-after')
+    expect(carried).toEqual([['chat', 'limit']])
+  })
+
+  it('carries a chat on on the other account after a switch, with chats kept on their account, and ends its idle process', async () => {
+    let active: string | undefined = 'a'
+    const home = 'a'
+    let rejected = new Set<string>()
+    const { sessions, carried, cutOff } = await setup({ accountFor: () => (!rejected.has(home) ? home : active) })
+    const call = await cutOff()
+    const first = (sessions as unknown as { live: Map<string, { account?: string; tasks: Set<string>; runner: { closed: boolean } }> }).live.get('chat')!
+    expect(first.account).toBe('a')
+    first.tasks.add('background-shell')
+    rejected = new Set([home])
+    active = 'b'
+    sessions.restartProvider('claude', { moved: true })
+    sessions.drainWaiting()
+    await flush()
+    expect(first.runner.closed).toBe(true)
+    const live = (sessions as unknown as { live: Map<string, { account?: string }> }).live.get('chat')!
+    expect(live.account).toBe('b')
+    const next = sdk.calls.at(-1)!
+    expect(next).not.toBe(call)
+    expect(nudges(next)).toBe(1)
+    await clean(next, 'r-b')
+    expect(carried).toEqual([['chat', 'limit']])
+  })
+
+  it('replays 15:03: three chats on one account, refused nudges, then a switch carries every chat on once, on the new account', async () => {
+    let active: string | undefined = 'a'
+    const ids = ['c1', 'c2', 'c3']
+    let aFull = false
+    const { sessions, carried, turns } = await setup({ chats: ids, accountFor: () => (aFull ? active : 'a') })
+    const calls = new Map<string, { feed: (m: unknown) => void; sent: string[] }>()
+    for (const id of ids) {
+      await sessions.send(id, [{ type: 'text', text: 'Go' }])
+      const call = sdk.calls.at(-1)!
+      calls.set(id, call)
+      call.feed({ type: 'system', subtype: 'init', session_id: `s-${id}`, apiKeySource: 'none' })
+    }
+    const reset = Math.floor(Date.now() / 1000) + 3600
+    for (const id of ids) {
+      calls.get(id)!.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: reset } })
+      calls.get('c1')!.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 0.4 } })
+    }
+    for (const id of ids) calls.get(id)!.feed({ type: 'result', subtype: 'success', uuid: `r-${id}`, duration_ms: 5 })
+    await flush()
+    expect(turns.filter((t) => t.limit)).toHaveLength(3)
+    sessions.resetLimit('five_hour')
+    sessions.drainWaiting()
+    await flush()
+    const refusedCalls = new Set<unknown>()
+    for (const id of ids.filter((i) => nudges(calls.get(i)!) > 0)) { refusedCalls.add(calls.get(id)); await refuse(calls.get(id)!, `refused-${id}`) }
+    expect(carried).toEqual([])
+    aFull = true
+    active = 'b'
+    sessions.restartProvider('claude', { moved: true })
+    sessions.drainWaiting()
+    const answered = new Set<unknown>()
+    for (let round = 0; round < 3; round++) {
+      await flush()
+      for (const call of sdk.calls.filter((c) => c.sent.includes(LIMIT_LIFTED) && !answered.has(c) && !refusedCalls.has(c))) { answered.add(call); await clean(call, `ok-${round}-${answered.size}`) }
+      sessions.drainWaiting()
+    }
+    expect([...carried].sort()).toEqual(ids.map((id) => [id, 'limit']))
+    for (const id of ids) expect((sessions as unknown as { live: Map<string, { account?: string }> }).live.get(id)?.account).toBe('b')
+  })
+
+  it('stops nudging after three instant refusals, tells the Lead once, and never reports a refused turn as carried on', async () => {
+    const { sessions, carried, turns, store, cutOff } = await setup()
+    const call = await cutOff()
+    for (let i = 1; i <= 3; i++) {
+      sessions.resetLimit('five_hour')
+      sessions.drainWaiting()
+      await flush()
+      expect(nudges(call)).toBe(i)
+      await refuse(call, `refused-${i}`)
+    }
+    expect(carried).toEqual([])
+    expect(turns.filter((t) => t.limit && (!t.refused || t.stuck)).map((t) => !!t.stuck)).toEqual([false, true])
+    expect(store.items('chat').filter((i) => i.kind === 'user' && i.parts.some((p) => p.type === 'text' && p.text === LIMIT_LIFTED))).toHaveLength(1)
+    expect(store.items('chat').filter((i) => i.kind === 'result' && i.limit)).toHaveLength(2)
+    ;(sessions as unknown as { limits: Map<string, unknown> }).limits.clear()
+    sessions.drainWaiting()
+    await flush()
+    expect(nudges(call)).toBe(3)
+    ;(sessions as unknown as { mergeLimits: (p: object[]) => void }).mergeLimits([{ type: 'five_hour', status: 'rejected', provider: 'claude', resetsAt: Math.floor(Date.now() / 1000) + 3600 }])
+    sessions.resetLimit('five_hour')
+    sessions.drainWaiting()
+    await flush()
+    expect(nudges(call)).toBe(4)
+    await clean(call, 'r-fine')
+    expect(carried).toEqual([['chat', 'limit']])
+  })
+
+  it('still reads the old saved forms of the carry-on list', async () => {
+    const { sessions, carried } = await setup({ chats: ['chat', 'old'] })
+    sessions.restore([], { chat: 'limit', old: { reason: 'limit', account: 'cli', at: 1 } })
+    await flush()
+    expect(sdk.calls.slice(-2).map((c) => nudges(c))).toEqual([1, 1])
+    expect(carried).toEqual([])
+  })
+
 })
 
 describe("what an agent started, on Stop, Close chat and archive (KERNEL-810)", () => {

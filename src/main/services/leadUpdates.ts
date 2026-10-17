@@ -691,7 +691,7 @@ export class LeadUpdates {
     if (t.interrupted || verdictTurn) return
     // A limit cut the turn off, and its reply is the limit's text. What Kernel does about it is the news (KERNEL-777). Messages
     // that wait in the chat wait for its carry-on.
-    if (t.limit) { this.add(ws, { kind: 'limit', by: t.by, ...(limit ? { limit } : {}) }); return }
+    if (t.limit) { if (!t.refused || limit) this.add(ws, { kind: 'limit', by: t.by, ...(limit ? { limit } : {}) }); return }
     if (t.queued) return
     if (!t.ok) { this.add(ws, { kind: 'error', by: t.by }); return }
     const reply = [...this.d.store.items(chat.id)].reverse().find((i) => i.kind === 'text')

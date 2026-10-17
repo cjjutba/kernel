@@ -1,0 +1,5 @@
+**Every turn a usage limit cut off goes on the carry-on list.** The list holds `{ reason, account, at }` by chat, whether or not a known window still blocks the account when the turn ends, since that says nothing about the next attempt. Older saved forms (a list of ids, or a reason by chat) still load. An API key account has no windows, so its limited turns stay off the list. KERNEL-1031.
+
+**A carry-on refused again within 10 seconds on the same account is a strike.** At 3 strikes the chat stays on the list and `carryOn` sends it nothing until a window on its target account lifts, or its account or model changes. A clean reply clears the strikes. The Lead hears the third refusal once, as a limit that `stuck` reports; the first two are no news. The nudge row and the limit result row a refused carry-on leaves are reused by the next one. A limited turn's result row carries `limit: true`.
+
+**A carry-on is reported when its turn gets a first clean reply,** not when the nudge is sent, so the Lead never hears that a refused turn carried on. KERNEL-1031.

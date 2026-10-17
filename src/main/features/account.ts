@@ -429,7 +429,14 @@ export class Account extends Feature {
    * move reads accounts or switches, or once the provider runs on another account. Otherwise the chat waits for the reset:
    * the earliest across accounts when none has headroom, else the account's own.
    */
-  limitNews(provider: Provider, account: string | undefined, model?: string): LimitNews {
+  limitNews(provider: Provider, account: string | undefined, model?: string, o: { stuck?: boolean } = {}): LimitNews {
+    const news = this.limitNewsOf(provider, account, model)
+    if (!o.stuck || news.stuck) return news
+    const { switching: _s, ...rest } = news
+    return { ...rest, stuck: 'off' }
+  }
+
+  private limitNewsOf(provider: Provider, account: string | undefined, model?: string): LimitNews {
     const now = Date.now()
     const mine = (this.store.meta<RateLimit[]>('limits') ?? []).filter((l) => limitProvider(l) === provider && l.accountId === account)
     const hit = blockingLimit(mine, now)

@@ -112,7 +112,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
  * What follows a finished turn, in the order that matters: the Lead hears about a turn only after Kernel has read the PR it may
  * have opened. A chat in Kernel and a teammate's terminal seat (KERNEL-1004) both end here.
  */
-export function turnFinished(k: Kernel, ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true }) {
+export function turnFinished(k: Kernel, ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true; refused?: true; stuck?: true }) {
   void k.checkpoints.checkpoint(ws, chat).catch(() => undefined)
   void k.chats.nameChat(ws, chat, true)
   // A turn the user stopped is one they were watching (KERNEL-507).
@@ -128,7 +128,8 @@ export function turnFinished(k: Kernel, ws: Workspace, chat: Chat, turn: { ok: b
   const prPath = teammate || buildsHere(ws)
   if (prPath) k.leadUpdates.readingPr(ws.id)
   // A limit's cut-off says what Kernel does about it: a switch to another account, or a wait for the reset (KERNEL-777).
-  k.leadUpdates.turnDone(ws, chat, done, turn.limit ? k.account.limitNews(chatProvider(chat), turn.account, chat.model) : undefined)
+  // A carry-on a limit refused again is no news until the third refusal stops the nudges (KERNEL-1031).
+  k.leadUpdates.turnDone(ws, chat, done, turn.limit && (!turn.refused || turn.stuck) ? k.account.limitNews(chatProvider(chat), turn.account, chat.model, { stuck: turn.stuck }) : undefined)
   // A workspace that was still working when its work merged, or the work it reviewed merged or closed, goes now (KERNEL-114, KERNEL-131).
   if (k.autoArchive.reviewsToArchive.has(ws.id)) void k.autoArchive.archiveMarked(ws.id).catch(() => undefined)
   void k.workspaces.changes(ws.id).catch(() => undefined)
