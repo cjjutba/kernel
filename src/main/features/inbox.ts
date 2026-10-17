@@ -72,7 +72,20 @@ export class Inbox extends Feature {
     return {
       'notifications.list': async () => this.notifications.list(),
       'notifications.read': async ({ ids }) => this.notifications.read(ids),
-      'notifications.answer': async () => { throw new Error('Not answered: no teammate question here.') },
+      'notifications.answer': async ({ id, text }) => {
+        const n = this.store.notification(id)
+        const answer = text.trim()
+        if (!n?.ask || !n.needsYou) throw new Error('This question was already answered or is gone.')
+        if (!answer) throw new Error('Write an answer first.')
+        const ws = this.store.workspace(n.ask.workspaceId)
+        if (!ws) throw new Error('The teammate who asked is gone.')
+        const sent = await this.k.lead.answerTeammate(ws.projectId, ws.id, answer)
+        if (!sent.ok) throw new Error(sent.note)
+        if (n.chatId) this.leadUpdates.seatAnswered(n.chatId, ws.id, answer)
+        this.notifications.notice({ id, title: n.title, sub: n.sub, needsYou: false, resolved: `You answered: ${answer}` }, { replace: true })
+        this.notifications.read([id])
+        return this.store.notification(id)!
+      },
       'notifications.playSound': async ({ sound }) => {
         this.o.showNotification?.({ id: 'n-sound-preview', kind: 'system', title: 'Kernel', sub: 'This is how a notification sounds.', needsYou: false, read: true, createdAt: Date.now() }, bannerSound(sound))
         return { ok: true }
