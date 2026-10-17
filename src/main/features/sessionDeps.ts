@@ -1,4 +1,5 @@
 import { chatProvider } from '@shared/providers'
+import { buildsHere } from '@shared/leadMode'
 import type { Chat, Workspace } from '@shared/types'
 import type { Kernel } from '../kernel'
 import { bus } from '../bus'
@@ -63,7 +64,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     // A reply proves the network works, so a failing DNS probe behind a proxy doesn't hold every send (KERNEL-231).
     onReached: () => k.account.network?.reached(),
     onReset: (_ws, chat, trigger) => k.chats.resetName(chat, trigger),
-    onTurnDone: (ws, chat, turn) => k.chats.turnFinished(ws, chat, turn),
+    onTurnDone: (ws, chat, turn) => turnFinished(k, ws, chat, turn),
     accountFor: (provider, chat) => k.placement.accountFor(provider, chat),
     // `cli` is the CLI's own login, as CLI_ACCOUNT in features/providers.ts.
     claudeEnv: (account) => k.providers.claudeEnv(account ?? 'cli'),
@@ -102,4 +103,46 @@ export function sessionDeps(k: Kernel): SessionDeps {
     seatsBusy: (chatId) => k.teammateSeats.busy(chatId),
     onFreed: () => { k.leadUpdates.flushSoon(); k.teammateSeats.startWaiting() }
   }
+}
+
+/**
+ * What follows a finished turn, in the order that matters: the Lead hears about a turn only after Kernel has read the PR it may
+ * have opened. A chat in Kernel and a teammate's terminal seat (KERNEL-1004) both end here.
+ */
+export function turnFinished(k: Kernel, ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true }) {
+  void k.checkpoints.checkpoint(ws, chat).catch(() => undefined)
+  void k.chats.nameChat(ws, chat, true)
+  // A turn the user stopped is one they were watching (KERNEL-507).
+  if (!turn.interrupted) k.chats.markUnread(chat)
+  const lead = !!k.team.agentOf(ws.projectId, ws.agentId)?.lead
+  const done = { ...turn, lead, queued: k.sessions.queued(chat.id).length > 0 }
+  k.notifications.turnDone(ws, chat, done)
+  // A teammate's update waits until Kernel has read its PR, so a PR the turn opened speaks for the turn however long GitHub
+  // takes.
+  const own = k.team.isLeadWorkspace(ws)
+  const teammate = !own
+  // A Build here chat's PR takes a teammate's path, and its news comes back to the chat (KERNEL-778).
+  const prPath = teammate || buildsHere(ws)
+  if (prPath) k.leadUpdates.readingPr(ws.id)
+  // A limit's cut-off says what Kernel does about it: a switch to another account, or a wait for the reset (KERNEL-777).
+  k.leadUpdates.turnDone(ws, chat, done, turn.limit ? k.account.limitNews(chatProvider(chat), turn.account, chat.model) : undefined)
+  // A workspace that was still working when its work merged, or the work it reviewed merged or closed, goes now (KERNEL-114, KERNEL-131).
+  if (k.autoArchive.reviewsToArchive.has(ws.id)) void k.autoArchive.archiveMarked(ws.id).catch(() => undefined)
+  void k.workspaces.changes(ws.id).catch(() => undefined)
+  // A read that fails still lets the update go, and says why it may be missing the PR (KERNEL-637).
+  if (prPath) {
+    void k.refreshPr(ws.id).catch((e) => { if (!k.stopped) console.warn(`[lead-updates] could not read the PR of ${ws.id} after its turn: ${(e as Error)?.message ?? e}`) })
+      .then(() => k.leadUpdates.readPr(ws.id)).catch((e) => console.warn(`[lead-updates] could not send the update for ${ws.id}: ${(e as Error)?.message ?? e}`))
+  }
+  // A Lead chat can open a PR from its own branch too (KERNEL-405). Nobody else hears about it.
+  else if (ws.prNumber) void k.refreshPr(ws.id).catch(() => undefined)
+  void k.overlaps.check(ws.projectId).catch(() => undefined)
+  // A teammate that was busy when main moved is told now, if it still would conflict (KERNEL-180). One that started from a
+  // stale base fetches again and catches up (KERNEL-653).
+  if (prPath) void k.baseWatch.check(ws.projectId, { fetch: false, only: ws.id }).catch(() => undefined)
+  void k.waits.releaseTaken(ws.id, chat.id, turn.by).catch(() => undefined)
+  // A sync skipped while this chat's turn ran happens once it ends. It does nothing while another of its tabs runs (KERNEL-181, KERNEL-405).
+  if (own) void k.lead.syncLead(ws.projectId, { workspaceId: ws.id })
+  // The footer shows usage all the time, so the account the turn ran on is read again (KERNEL-673).
+  k.providers.readUsageAfterTurn(chatProvider(chat), turn.account)
 }

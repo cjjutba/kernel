@@ -95,10 +95,10 @@ export class TeammateSeats extends Feature {
     const by = this.turnBy.get(id) ?? 'user'
     this.turnBy.delete(id)
     // The reply is read from the transcript before the Lead's update looks for it.
-    await this.k.transcripts.sync(id).catch(() => undefined)
+    await this.k.chats.transcripts.sync(id).catch(() => undefined)
     const ws = this.store.workspace(chat.workspaceId)
     const now = this.store.chat(id)
-    if (ws && now && ws.status !== 'archived') this.k.chats.turnFinished(ws, now, { ok: true, interrupted: false, by })
+    if (ws && now && ws.status !== 'archived') this.sessions.turnDone(ws, now, { ok: true, interrupted: false, by })
     this.deliver(id)
     this.startWaiting()
   }

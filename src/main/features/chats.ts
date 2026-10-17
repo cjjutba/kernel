@@ -1,12 +1,11 @@
 import type { Chat, ChatItem, Effort, Provider, Workspace } from '@shared/types'
-import { buildsHere } from '@shared/leadMode'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { isSentItem } from '@shared/approvalAnswer'
 import { effortFor } from '@shared/effort'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { chatProvider, providerOf } from '@shared/providers'
 import type { PushEvent } from '@shared/ipc'
-import { sessionEnv, type TurnBy } from '../services/sessions'
+import { sessionEnv } from '../services/sessions'
 import { shellId } from '../services/pty'
 import { askCodexTitle, askTitle, titleText } from '../services/titles'
 import { claudeExecutable } from '../services/providers/binary'
@@ -14,6 +13,7 @@ import { LEAD_PRESET, resolvePreset, terminalCommand, terminalPresets, terminalT
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
+import { TerminalTranscripts } from '../services/terminalTranscript'
 
 const COPY = 'fork:'
 
@@ -25,6 +25,8 @@ const notFound = (e: unknown) => /not found/i.test((e as Error)?.message ?? '')
 
 /** Chat tabs, their names, forks and big terminals (KERNEL-329). */
 export class Chats extends Feature {
+  /** A terminal seat's Claude Code session as a read-only transcript on its chat (KERNEL-1002). */
+  readonly transcripts = new TerminalTranscripts(this.k)
   /** Chats with a turn running. Read from `chat.running` so the quit prompt can count agents (KERNEL-214). */
   private readonly runningChats = new Set<string>()
 
@@ -108,48 +110,6 @@ export class Chats extends Feature {
   private autoName(chat: Chat) {
     this.saveChat(chat)
     this.k.lead.tabNamed(chat)
-  }
-
-  /**
-   * What follows a finished turn, in the order that matters: the Lead hears about a turn only after Kernel has read the PR it may
-   * have opened. A chat in Kernel and a teammate's terminal seat (KERNEL-1004) both end here.
-   */
-  turnFinished(ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true }) {
-    void this.k.checkpoints.checkpoint(ws, chat).catch(() => undefined)
-    void this.k.chats.nameChat(ws, chat, true)
-    // A turn the user stopped is one they were watching (KERNEL-507).
-    if (!turn.interrupted) this.k.chats.markUnread(chat)
-    const lead = !!this.k.team.agentOf(ws.projectId, ws.agentId)?.lead
-    const done = { ...turn, lead, queued: this.k.sessions.queued(chat.id).length > 0 }
-    this.k.notifications.turnDone(ws, chat, done)
-    // A teammate's update waits until Kernel has read its PR, so a PR the turn opened speaks for the turn however long GitHub
-    // takes.
-    const own = this.k.team.isLeadWorkspace(ws)
-    const teammate = !own
-    // A Build here chat's PR takes a teammate's path, and its news comes back to the chat (KERNEL-778).
-    const prPath = teammate || buildsHere(ws)
-    if (prPath) this.k.leadUpdates.readingPr(ws.id)
-    // A limit's cut-off says what Kernel does about it: a switch to another account, or a wait for the reset (KERNEL-777).
-    this.k.leadUpdates.turnDone(ws, chat, done, turn.limit ? this.k.account.limitNews(chatProvider(chat), turn.account, chat.model) : undefined)
-    // A workspace that was still working when its work merged, or the work it reviewed merged or closed, goes now (KERNEL-114, KERNEL-131).
-    if (this.k.autoArchive.reviewsToArchive.has(ws.id)) void this.k.autoArchive.archiveMarked(ws.id).catch(() => undefined)
-    void this.k.workspaces.changes(ws.id).catch(() => undefined)
-    // A read that fails still lets the update go, and says why it may be missing the PR (KERNEL-637).
-    if (prPath) {
-      void this.k.refreshPr(ws.id).catch((e) => { if (!this.k.stopped) console.warn(`[lead-updates] could not read the PR of ${ws.id} after its turn: ${(e as Error)?.message ?? e}`) })
-        .then(() => this.k.leadUpdates.readPr(ws.id)).catch((e) => console.warn(`[lead-updates] could not send the update for ${ws.id}: ${(e as Error)?.message ?? e}`))
-    }
-    // A Lead chat can open a PR from its own branch too (KERNEL-405). Nobody else hears about it.
-    else if (ws.prNumber) void this.k.refreshPr(ws.id).catch(() => undefined)
-    void this.k.overlaps.check(ws.projectId).catch(() => undefined)
-    // A teammate that was busy when main moved is told now, if it still would conflict (KERNEL-180). One that started from a
-    // stale base fetches again and catches up (KERNEL-653).
-    if (prPath) void this.k.baseWatch.check(ws.projectId, { fetch: false, only: ws.id }).catch(() => undefined)
-    void this.k.waits.releaseTaken(ws.id, chat.id, turn.by).catch(() => undefined)
-    // A sync skipped while this chat's turn ran happens once it ends. It does nothing while another of its tabs runs (KERNEL-181, KERNEL-405).
-    if (own) void this.k.lead.syncLead(ws.projectId, { workspaceId: ws.id })
-    // The footer shows usage all the time, so the account the turn ran on is read again (KERNEL-673).
-    this.k.providers.readUsageAfterTurn(chatProvider(chat), turn.account)
   }
 
   /**

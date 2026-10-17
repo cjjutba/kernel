@@ -33,7 +33,7 @@ export class Seats extends Feature {
     this.starting = undefined
     await starting?.catch(() => undefined)
     this.registry.revokeAll()
-    this.k.transcripts.stop()
+    this.k.chats.transcripts.stop()
     await this.http?.close()
     this.http = undefined
     await rm(seatsDir(this.o.dataDir), { recursive: true, force: true }).catch(() => undefined)

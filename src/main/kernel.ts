@@ -47,7 +47,6 @@ import { Mcp } from './features/mcp'
 import { Sharing } from './features/sharing'
 import { SeatSignals } from './features/seatSignals'
 import { TeammateSeats } from './features/teammateSeats'
-import { TerminalTranscripts } from './features/terminalTranscript'
 import { Seats } from './features/seats'
 import { Prs } from './features/prs'
 import { CodeHosts } from './features/codeHost'
@@ -107,8 +106,6 @@ export class Kernel {
   readonly history = new History(this)
   readonly waits = new Waits(this)
   readonly chats = new Chats(this)
-  /** A terminal seat's Claude Code session as a read-only transcript on its chat (KERNEL-1002). */
-  readonly transcripts = new TerminalTranscripts(this)
   readonly lead = new Lead(this)
   readonly tools = new Tools(this)
   readonly mcp = new Mcp(this)
