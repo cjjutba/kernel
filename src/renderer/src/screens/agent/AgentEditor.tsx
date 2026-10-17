@@ -4,7 +4,7 @@ import { EFFORTS, MODELS } from '@shared/types'
 import { roleOf } from '@shared/team'
 import { call } from '../../api'
 import { useStore } from '../../store'
-import { Icon, SegmentedControl } from '../../ui'
+import { Icon, Pill, SegmentedControl } from '../../ui'
 import { SettingsLink } from '../settings/kit'
 import { defaultEffortOf } from '../workspace/composer/modelPrefs'
 import { STANDARD_TOOLS, modelAlias, sameModel, warningText, withExtras } from './model'
@@ -122,14 +122,14 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
         <div className="ap-field">
           <span className="ap-label" id="ap-tools">Tools</span>
           <div className="ap-chips" role="group" aria-labelledby="ap-tools">
-            {toolList.map((t) => <button key={t} type="button" className="ap-chip" aria-pressed={!!form.tools?.includes(t)} onClick={() => set({ tools: pick(form.tools, t, toolList) })}>{t}</button>)}
+            {toolList.map((t) => <Pill key={t} pressed={!!form.tools?.includes(t)} onClick={() => set({ tools: pick(form.tools, t, toolList) })}>{t}</Pill>)}
           </div>
           {!form.tools && <span className="hint">{locked ? `${agent.name} can use every tool.` : `No tools line in the file, so ${agent.name} can use every tool. Pick some to limit them.`}</span>}
         </div>
         <div className="ap-field">
           <span className="ap-label" id="ap-skills">Skills</span>
           <div className="ap-chips" role="group" aria-labelledby="ap-skills">
-            {skillList.map((t) => <button key={t} type="button" className="ap-chip" aria-pressed={form.skills.map(slash).includes(t)} onClick={() => set({ skills: pick(form.skills.map(slash), t, skillList) })}>{t}</button>)}
+            {skillList.map((t) => <Pill key={t} pressed={form.skills.map(slash).includes(t)} onClick={() => set({ skills: pick(form.skills.map(slash), t, skillList) })}>{t}</Pill>)}
             {!skillList.length && <span className="hint">{noSkillsHint}</span>}
           </div>
         </div>

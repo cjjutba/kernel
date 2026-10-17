@@ -3,9 +3,9 @@
 .rm-tabs .pill { gap: 6px; font-size: var(--fs-ui); }
 .rm-n { font-size: var(--fs-meta); color: var(--muted); font-weight: var(--fw-regular); }
 .rm-table { flex: 1; min-height: 0; overflow: auto; padding: 0 12px; }
-.rm-head, .rm-row { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.6fr) 150px 130px 90px; align-items: center; gap: 16px; padding: 0 12px; }
+.rm-head, .rm-row { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.6fr) 150px 130px 90px; align-items: center; gap: 16px; padding: 0 10px; }
 .rm-head { height: 40px; font-size: var(--fs-meta); color: var(--muted); }
-.rm-row { height: 60px; border-top: 1px solid var(--line); cursor: pointer; }
+.rm-row { height: 60px; border-radius: var(--r-sm); cursor: pointer; }
 .rm-row:hover { background: var(--nav-hover); }
 .rm-row:has(.rm-link:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
 .rm-link:focus-visible { outline: none; }
