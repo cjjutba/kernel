@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import type { LinearScope } from '@shared/types'
 import { trackerKind } from '@shared/trackerKind'
 import { call, cleanError } from '../../../api'
-import { actions, go } from '../../../store'
+import { actions, getState, go } from '../../../store'
 import { Button, ConfirmDialog, Select, useBusy } from '../../../ui'
+import { afterProjectLeaves } from '../../projects/afterProjectLeaves'
 import { sourceOf } from '../../projects/projectInfo'
 import { ProjectIconRow } from './ProjectIconRow'
 import { ProjectReferences } from './ProjectReferences'
@@ -41,7 +42,7 @@ export function Project({ projectId }: { projectId?: string }) {
   const archive = () => run('archive', async () => {
     try {
       await call('projects.update', { projectId, patch: { archived: true } })
-      go({ name: 'projects' })
+      go(afterProjectLeaves(getState().projects, projectId))
     } catch (e) { actions.ui.toast({ title: 'Could not archive the project', sub: cleanError(e) }) }
     setConfirming(false)
   })

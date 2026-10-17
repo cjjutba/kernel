@@ -8,6 +8,7 @@ import type { ProjectSetupStep } from '../src/shared/types'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
+import { afterProjectLeaves } from '../src/renderer/src/screens/projects/afterProjectLeaves'
 import { ago, agoShort, projectState, teamOf } from '../src/renderer/src/screens/projects/projectInfo'
 import { repoOfUrl } from '../src/renderer/src/screens/projects/ConnectRepo'
 import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listOwners, lockfileInstall, recentFolders, repoAvailable, seatStarterTeam } from '../src/main/services/projects'
@@ -521,6 +522,15 @@ describe("the project's Install step (KERNEL-260, KERNEL-913)", () => {
     }, { bundle: '#!/bin/sh\ntouch ran.txt\n' })
   }, 90000)
 
+})
+
+describe('where a project leaves to', () => {
+  const p = (id: string, archived = false) => ({ id, archived }) as any
+  it('opens New chat when no active project remains, All projects otherwise', () => {
+    expect(afterProjectLeaves([p('a')], 'a')).toEqual({ name: 'leadNew', projectId: '' })
+    expect(afterProjectLeaves([p('a'), p('b', true)], 'a')).toEqual({ name: 'leadNew', projectId: '' })
+    expect(afterProjectLeaves([p('a'), p('b')], 'a')).toEqual({ name: 'projects' })
+  })
 })
 
 describe('Projects page helpers', () => {
