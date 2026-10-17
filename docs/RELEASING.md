@@ -40,7 +40,7 @@ Every PR that changes the app adds a fragment in `.changes/unreleased/`: one sen
 
 A release compiles the fragments into `site/content/releases/<version>.md` and moves them to `.changes/released/<version>/`. That one file feeds three places (D-058):
 
-- **The website.** `site/content/changelog.ts` reads every release file at build time. Every release is its own entry, newest first. Merging the release PR deploys the file, but the site hides it until GitHub has published the release, and picks it up within about 5 minutes of `pnpm release` finishing (KERNEL-412). The newest published version gets the Latest badge and sets the hero pill.
+- **The website.** `site/content/changelog.ts` reads every release file at build time. Every release is its own entry, newest first. Merging the release PR deploys the file through the Site workflow, but the site hides it until GitHub has published the release (KERNEL-412). `pnpm release` deploys the site again right after it publishes, so the entry shows as soon as the script finishes. The newest published version gets the Latest badge and sets the hero pill.
 - **The GitHub release.** `scripts/release.sh` publishes the notes as the release body, then adds GitHub's generated list of merged PRs under "Full list of changes".
 - **What's new in the app.** `scripts/release.sh` renders the notes for the app and passes them to electron-builder, which copies them into `latest-mac.yml`. Installed copies read a new version's notes from there. The script also writes them into the build as `out/release-notes/<version>.md`, so the app can show its own version's notes (KERNEL-154).
 
@@ -68,11 +68,13 @@ Run `/release` in Claude Code. It does the steps below, stops for you where a pe
    pnpm release
    ```
 
-   The script checks the tag (on HEAD and on origin), the release notes file, the certificate and the notary profile. It builds, signs with the hardened runtime, notarizes and staples the app, and verifies it with `codesign`, `spctl` and `stapler`. It adds `minimumSystemVersion` to `latest-mac.yml`, so a Mac older than the build needs isn't offered the update (KERNEL-223). It also writes `stagingPercentage`, 100 unless you pass `--rollout` (see Staged rollout). Only then does it create the GitHub release with `gh`, uploading `Kernel-arm64.dmg`, `Kernel-arm64.zip`, their blockmaps and `latest-mac.yml`. Then it checks the live feed against the zip (see Checking the live feed). Last, at a rollout of 100, it updates the Homebrew cask (see Homebrew).
+   The script checks the tag (on HEAD and on origin), the release notes file, the certificate and the notary profile. It builds, signs with the hardened runtime, notarizes and staples the app, and verifies it with `codesign`, `spctl` and `stapler`. It adds `minimumSystemVersion` to `latest-mac.yml`, so a Mac older than the build needs isn't offered the update (KERNEL-223). It also writes `stagingPercentage`, 100 unless you pass `--rollout` (see Staged rollout). Only then does it create the GitHub release with `gh`, uploading `Kernel-arm64.dmg`, `Kernel-arm64.zip`, their blockmaps and `latest-mac.yml`. Then it checks the live feed against the zip (see Checking the live feed). At a rollout of 100 it updates the Homebrew cask (see Homebrew). Last, it deploys the website from the same commit (see Deploying the site).
 
 `pnpm release --dry` does everything except publish, skips the tag check, writes the release body to `dist/release-body.md`, and prints the cask change it would push. `pnpm dist:mac` makes an unsigned local build with no certificate needed.
 
-When the release PR merges, Vercel redeploys the site, because the release file is inside `site/`. The Ignored Build Step compares with the last successful deployment (D-057), so the deploy happens even when later commits skip `site/`. Vercel deploys only from main (KERNEL-233), so a release that merges while Vercel is rate limited deploys on the next push to main after the limit resets, and the release file is still in that diff because the step compares with the last successful deployment.
+### Deploying the site
+
+The site reaches production two ways. The Site workflow deploys every push to main that changes `site/`, with the `VERCEL_TOKEN` repo secret, so merging the release PR deploys it. `pnpm release` then deploys it again with `scripts/deploy-site.sh`, once the GitHub release is public. That script uses this Mac's Vercel login (`npx vercel login`), uploads only what the tagged commit holds, and needs no secret, so a release still reaches the site when the workflow's token is broken. The release checks the login before it builds. A failed deploy after publishing warns instead of failing the release; rerun it with `pnpm site:deploy`.
 
 ## Testing an update between two signed builds
 
