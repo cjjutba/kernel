@@ -87,24 +87,8 @@ export interface Chat {
   contextUsage?: { used: number; max: number; rows: { name: string; tokens: number; kind: 'used' | 'free' | 'buffer' }[] }
   /** Closed tabs keep their transcript but leave the tab strip. */
   closed?: boolean
-  /**
-   * Whether a terminal seat is connected to Kernel now: true from its first hook or use of its token, false from the start of its
-   * pty until then and again when the pty exits. Absent for a chat that is not a terminal seat (KERNEL-999).
-   */
-  seat?: { connected: boolean }
   /** A big terminal's preset and the command it types into the login shell, null for a plain shell. Older terminal chats have none and run `claude` (KERNEL-248). */
-  terminal?: {
-    preset: string
-    command: string | null
-    /** The seat's role once its pty has started connected to Kernel (KERNEL-999). Absent for a terminal that is not a seat. */
-    role?: 'lead' | 'build' | 'teammate'
-    /** The Claude Code session the seat's hooks last reported, which the next `claude` in the tab resumes (KERNEL-999). */
-    sessionId?: string
-    /** Where that session's transcript is, as its hooks reported it. */
-    transcriptPath?: string
-    /** The seat is a teammate's, made by a hand-off that runs in a terminal: its first tab, started with the Lead's brief (KERNEL-1004). */
-    handoff?: true
-  }
+  terminal?: { preset: string; command: string | null }
   /** Kernel picks this chat's name and may change it. `turns` is the finished-turn count it last named it at. A name the user types clears it (KERNEL-202). */
   autoTitle?: { turns: number }
   /** The Lead chat this tab belongs to. Set on every Lead tab, absent elsewhere (KERNEL-337). */
@@ -231,9 +215,6 @@ export interface ChatArchivePreview {
 /** Words in a note that open a workspace: "PR #164 by Sean" in "Waiting for PR #164 by Sean to merge." */
 export interface NoteRef { text: string; workspaceId: string }
 
-/** Where an item came from when it did not come from a Kernel session: `terminal` is a row read from a big terminal's Claude Code transcript (KERNEL-1002). */
-export type ItemSource = 'terminal'
-
 /** One rendered row in a chat transcript. Mirrors the kinds drawn on the canvas. */
 export type ChatItem =
   /**
@@ -243,13 +224,11 @@ export type ChatItem =
    * `answer-<approvalId>`, right after the card: drawn as the user's bubble and never sent to the agent (`approvalAnswer.ts`).
    * `checkpointId` is on the chat's first message only: the start checkpoint, taken before it went out (KERNEL-764).
    */
-  | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; source?: ItemSource; from?: MessageFrom; update?: TeamUpdate; approvalId?: string; checkpointId?: string }
-  | { kind: 'text'; id: string; ts: number; text: string; source?: ItemSource }
-  | { kind: 'thinking'; id: string; ts: number; text: string; source?: ItemSource }
-  /** A plan the agent put forward with ExitPlanMode in a terminal, as the markdown it wrote (KERNEL-1002). */
-  | { kind: 'plan'; id: string; ts: number; text: string; source?: ItemSource }
+  | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; from?: MessageFrom; update?: TeamUpdate; approvalId?: string; checkpointId?: string }
+  | { kind: 'text'; id: string; ts: number; text: string }
+  | { kind: 'thinking'; id: string; ts: number; text: string }
   /** `input` is the tool's input as the SDK sent it, long strings clipped. `outputCut` says `output` was cut short. */
-  | { kind: 'tool'; id: string; ts: number; toolUseId: string; name: string; label: string; detail: string; status: 'running' | 'done' | 'failed'; output?: string; outputCut?: boolean; input?: Record<string, unknown>; durationMs?: number; source?: ItemSource }
+  | { kind: 'tool'; id: string; ts: number; toolUseId: string; name: string; label: string; detail: string; status: 'running' | 'done' | 'failed'; output?: string; outputCut?: boolean; input?: Record<string, unknown>; durationMs?: number }
   /**
    * End of a turn. `files` is the "Changed" chip row under the reply. `checkpointId` is the checkpoint taken as the turn ended,
    * set on every turn that wrote a result, with or without files (KERNEL-764). Both arrive a moment after the row, in a `chat.item` push.

@@ -89,7 +89,7 @@ export class Prs extends Feature {
     const text = await prTextFor('create', written, ws.path, ctx)
     // Kernel's own text says `--draft` in its command. Text that goes out as written gets the line.
     const create: ChatPart[] = [{ type: 'file', name: 'create-pr.md', text: text === written && ctx.draft ? `${text}\nOpen as draft` : text }]
-    if (!this.k.teammateSeats.nudge(chat, create)) await this.sessions.send(chat.id, create)
+    await this.sessions.send(chat.id, create)
     return this.setPrState(ws, 'creating')
   }
 
@@ -186,7 +186,7 @@ export class Prs extends Feature {
     const [name, text] = resolveFile(ws.prState, { ...texts, [key]: await prTextFor(kind, texts[key], ws.path, ctx) }, info)
     this.k.lead.userSpoke(chat.id)
     const fix: ChatPart[] = [{ type: 'file', name, text }]
-    if (!this.k.teammateSeats.nudge(chat, fix)) await this.sessions.send(chat.id, fix)
+    await this.sessions.send(chat.id, fix)
     this.setPrState(ws, 'resolving')
   }
 
@@ -214,7 +214,7 @@ export class Prs extends Feature {
       ? `run git merge ${base}, resolve any conflicts, re-run the tests and push as usual. The branch is on ${remote}, so merge rather than rebase.`
       : `run git merge ${base}, resolve any conflicts and re-run the tests.`
     const behindNote: ChatPart[] = [{ type: 'text', text: `${base} has ${behind} new ${behind === 1 ? 'commit' : 'commits'} that this branch doesn't have. Commit your work, ${steps} Then say what you changed.` }]
-    if (!this.k.teammateSeats.nudge(chat, behindNote)) await this.sessions.send(chat.id, behindNote)
+    await this.sessions.send(chat.id, behindNote)
   }
 
   /** Each PR's last full read and when, so opening a workspace again within `infoMs` doesn't read GitHub again. */
@@ -691,7 +691,7 @@ export class Prs extends Feature {
     const chat = this.prChat(ws.id)
     if (!chat) return
     const pull: ChatPart[] = [{ type: 'text', text: `Kernel brought PR #${pr} up to date with ${base} on GitHub, so the branch there has a merge commit your worktree doesn't. Run git pull --no-rebase before you push again.` }]
-    if (!this.k.teammateSeats.nudge(chat, pull)) await this.sessions.send(chat.id, pull, { from: 'kernel' })
+    await this.sessions.send(chat.id, pull, { from: 'kernel' })
   }
 
   /**

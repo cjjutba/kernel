@@ -294,8 +294,6 @@ export interface SessionDeps {
    * (KERNEL-637, KERNEL-651).
    */
   onFreed?: () => void
-  /** How many teammate terminal seats are in a turn, not counting `chatId`'s own. They take slots of the agent limit (KERNEL-1004). */
-  seatsBusy?: (chatId: string) => number
 }
 
 /**
@@ -1381,13 +1379,10 @@ export class Sessions {
   private atCapacity(chatId: string): boolean {
     const max = this.d.settings().models?.agentLimit
     if (!max || max < 1 || this.isLeadChat(chatId)) return false
-    let running = this.d.seatsBusy?.(chatId) ?? 0
+    let running = 0
     for (const [id, l] of this.live) if (l.running && id !== chatId && !this.isLeadChat(id)) running++
     return running >= max
   }
-
-  /** Whether the agent limit is reached for a teammate's terminal seat that wants to start (KERNEL-1004). */
-  atLimit(chatId: string): boolean { return this.atCapacity(chatId) }
 
   /**
    * The chat's next turn re-reads its history cold (`coldSize`) while COLD_AT_ONCE others do (KERNEL-844). It waits for one
@@ -2132,7 +2127,7 @@ export class Sessions {
     this.drainWaiting()
   }
 
-  /** What follows a finished turn (`onTurnDone`). A teammate's terminal seat ends its turns here too (KERNEL-1004). */
+  /** What follows a finished turn (`onTurnDone`). */
   turnDone(ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true; refused?: true; stuck?: true }) {
     this.d.onTurnDone?.(ws, chat, turn)
   }
@@ -2383,7 +2378,7 @@ export class Sessions {
   private mustWorkspace(id: string) { const w = this.d.store.workspace(id); if (!w) throw new Error(`Unknown workspace ${id}`); return w }
 }
 
-export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: string, terminal = false): string {
+export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: string): string {
   // Before KERNEL-405 the Lead's shared worktree was detached, on no branch. Each Lead chat now has a branch of its own.
   const where = ws.lead && ws.mode === 'worktree' && ws.branch === 'HEAD'
     ? `You are working in your own git worktree at ${ws.path}, detached at ${ws.baseRef}, not on a branch. It is not the main checkout, which the user may be running. Stay inside it.`
@@ -2392,7 +2387,7 @@ export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: s
     : `You are working directly in the main checkout at ${ws.path} on ${ws.branch}. Some files already had changes before you started; never commit those unless asked.`
   const port = `If you start a dev server, use port ${ws.port} ($KERNEL_PORT).`
   // The chat's mode picks the Lead's rule: Hand off plans and hands off, Build here builds in this worktree (KERNEL-770).
-  return [agent?.prompt, agent?.lead && leadRule(leadModeOf(ws), terminal), rule, where, port].filter(Boolean).join('\n\n')
+  return [agent?.prompt, agent?.lead && leadRule(leadModeOf(ws)), rule, where, port].filter(Boolean).join('\n\n')
 }
 
 /** What Restart session sends, after any messages held for the chat. */

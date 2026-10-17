@@ -9,10 +9,9 @@ const files = [join(dir, 'kit.tsx'), ...readdirSync(join(dir, 'pages')).filter((
 const lines = files.flatMap((f) => readFileSync(f, 'utf8').split('\n')).filter((l) => /\bsetting=|appliesTo\(/.test(l))
 
 /**
- * Settings that have no row in Settings at all: main reads them, but only a settings file sets them. `terminal.connect` lost its row with
- * terminal seats (KERNEL-1036) and goes from main in KERNEL-1037.
+ * Settings that have no row in Settings at all: main reads them, but only a settings file sets them.
  */
-const NO_ROW = new Set(['hookPort', 'experimental.sharing', 'models.effortByModel', 'mcp.aliases', 'agents.unlistedTools', 'agents.allow', 'terminal.connect'])
+const NO_ROW = new Set(['hookPort', 'experimental.sharing', 'models.effortByModel', 'mcp.aliases', 'agents.unlistedTools', 'agents.allow'])
 
 const NOTED = new Set(['newChats', 'newWorkspaces', 'newProjects', 'restart'])
 const noted = (map: Record<string, string>) => Object.entries(map).filter(([, t]) => NOTED.has(t)).map(([k]) => k)

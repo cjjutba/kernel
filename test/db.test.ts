@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { KEEP_ACTIVITY_MS, KEEP_APPROVAL_INPUT_MS, Store } from '../src/main/db'
@@ -65,7 +65,7 @@ describe('kernel.db versions', () => {
 
     const store = new Store(file)
     expect(store.db.pragma('user_version', { simple: true })).toBe(LATEST)
-    expect(LATEST).toBe(8)
+    expect(LATEST).toBe(9)
     for (const t of TABLES) {
       // Approvals gain two columns, and rooms are projects (KERNEL-880); the rest of each row stays as it was.
       const now = rows(store.db, t).map(({ settled_at: _s, pruned: _p, ...r }) => r)
@@ -91,6 +91,41 @@ describe('kernel.db versions', () => {
     expect(again.approvals().map((a) => a.id).sort()).toEqual(['a1', 'a2'])
     again.db.close()
     expect(readdirSync(d).filter((n) => n.includes('.bak-'))).toEqual(['kernel.db.bak-v1'])
+  })
+
+  it('drops what terminal seats left and keeps the terminal chat as a plain terminal (KERNEL-1037)', () => {
+    const d = dir()
+    const file = join(d, 'kernel.db')
+    new Store(file).db.close()
+    const db = new Database(file)
+    const seat = { id: 'c1', workspaceId: 'w1', kind: 'terminal', title: 'Terminal (claude)', seat: { connected: true }, terminal: { preset: 'claude', command: 'claude', role: 'lead', sessionId: 's1', transcriptPath: '/x.jsonl', handoff: true } }
+    const plain = { id: 'c2', workspaceId: 'w1', kind: 'chat', title: 'Chat', sessionId: 's2' }
+    db.prepare('insert into chats (id, workspace_id, data, created_at) values (?, ?, ?, 1), (?, ?, ?, 2)').run('c1', 'w1', JSON.stringify(seat), 'c2', 'w1', JSON.stringify(plain))
+    const item = db.prepare('insert into chat_items (id, chat_id, seq, data) values (?, ?, ?, ?)')
+    item.run('i1', 'c1', 1, JSON.stringify({ kind: 'text', id: 'i1', ts: 1, text: 'read from the terminal', source: 'terminal' }))
+    item.run('i2', 'c1', 2, JSON.stringify({ kind: 'plan', id: 'i2', ts: 2, text: 'a plan', source: 'terminal' }))
+    item.run('i3', 'c2', 1, JSON.stringify({ kind: 'text', id: 'i3', ts: 3, text: 'a reply' }))
+    const note = db.prepare('insert into notifications (id, project_id, data, created_at) values (?, ?, ?, 1)')
+    for (const id of ['n-seat-c1', 'n-ask-c1-w2', 'n-other']) note.run(id, 'p1', JSON.stringify({ id }))
+    const meta = db.prepare('insert into meta (key, data) values (?, ?)')
+    meta.run('seatMessages', JSON.stringify({ c1: ['x'] }))
+    meta.run('leadUpdates', JSON.stringify({ v: 1, seq: 4, pending: [], stopped: [], seatQueue: [['c1', [{ text: 'x' }]]] }))
+    db.pragma('user_version = 8')
+    db.close()
+    mkdirSync(join(d, 'seats', 'c1'), { recursive: true })
+    writeFileSync(join(d, 'seats', 'c1', 'mcp.json'), '{}')
+
+    const store = new Store(file)
+    expect(store.db.pragma('user_version', { simple: true })).toBe(9)
+    expect(store.chat('c1')).toEqual({ id: 'c1', workspaceId: 'w1', kind: 'terminal', title: 'Terminal (claude)', terminal: { preset: 'claude', command: 'claude' } })
+    expect(store.chat('c2')).toEqual(plain)
+    expect(store.items('c1')).toEqual([])
+    expect(store.items('c2').map((i) => i.id)).toEqual(['i3'])
+    expect((store.db.prepare('select id from notifications').all() as { id: string }[]).map((r) => r.id)).toEqual(['n-other'])
+    expect(store.meta('seatMessages')).toBeUndefined()
+    expect(store.meta('leadUpdates')).toEqual({ v: 1, seq: 4, pending: [], stopped: [] })
+    expect(existsSync(join(d, 'seats'))).toBe(false)
+    store.db.close()
   })
 
   it('starts a new file at the latest version with no backup', () => {

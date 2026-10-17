@@ -133,9 +133,6 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   // resolvePreset() in services/terminalPresets.ts, when a tab opens.
   'terminal.preset': 'newChats',
   'terminal.onlyInWorktrees': 'newChats',
-  'terminal.connect': 'newChats',
-  // Lead.runsIn() in features/lead.ts, on each hand-off (KERNEL-1004).
-  'terminal.teammatesRunIn': 'now',
   'terminal.custom': 'now',
   // features/tools.ts adds share_file to the tools a chat's process starts with.
   'experimental.sharing': 'newChats',
@@ -196,8 +193,6 @@ export const PROJECT_SETTING_TIMING: Record<ProjectSettingPath, SettingTiming> =
   'agents.openWorkspaces': 'now',
   // newLeadChat() in features/lead.ts, when a chat with Kernel starts (KERNEL-770).
   'agents.leadMode': 'newChats',
-  // Lead.runsIn() in features/lead.ts, on each hand-off (KERNEL-1004).
-  'terminal.teammatesRunIn': 'now',
   'preview.urls': 'now',
   // envFor() in features/env.ts builds a chat's env when its process starts. Scripts read it when they start.
   'env.files': 'newChats',

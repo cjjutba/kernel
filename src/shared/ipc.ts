@@ -263,12 +263,8 @@ export interface KernelApi {
   'commands.list': { req: void; res: BuiltinCommand[] }
   'terminal.write': { req: { chatId: string; data: string }; res: Ok }
   'terminal.resize': { req: { chatId: string; cols: number; rows: number }; res: Ok }
-  /** Starts a terminal seat's pty again, resuming its session, as it was launched (KERNEL-999). A running pty is replaced, an exited one starts. Its output so far stays. */
-  'terminal.reconnect': { req: { chatId: string }; res: Ok }
   /** Pushes the terminal's kept output as one `terminal.data` with `replace`, for a window that wasn't there to see it (KERNEL-340). */
   'terminal.replay': { req: { chatId: string }; res: Ok }
-  /** How many Team updates wait for each terminal Lead tab, by chat id, for a window that missed the `seat.updates` pushes. Tabs with none are left out (KERNEL-1029). */
-  'seat.pending': { req: void; res: Record<string, number> }
   /** The presets a new big terminal tab can run: the built-ins, the CLIs on the PATH, then the custom ones (KERNEL-248). */
   'terminal.presets': { req: { workspaceId?: string } | void; res: TerminalPreset[] }
 
@@ -291,8 +287,6 @@ export interface KernelApi {
   // home and inbox (KERNEL-17)
   'notifications.list': { req: void; res: Notification[] }
   'notifications.read': { req: { ids: string[] | 'all' }; res: Notification[] }
-  /** Answers the teammate question an inbox row (`Notification.ask`) carries, and settles the row (KERNEL-1000). */
-  'notifications.answer': { req: { id: string; text: string }; res: Notification }
   /** Settings, Notifications, Play: shows one macOS banner with the sound, so the user hears it (KERNEL-680). */
   'notifications.playSound': { req: { sound: AppSettings['notifications']['sound'] }; res: Ok }
   /**
@@ -661,8 +655,6 @@ export type PushEvent =
   /** /clear started a fresh conversation, so the transcript starts over. */
   | { type: 'chat.cleared'; chatId: string }
   | { type: 'chat.running'; chatId: string; running: boolean }
-  /** How many Team updates wait for a terminal Lead tab's next prompt or check_team, sent when the number changes (KERNEL-1000). */
-  | { type: 'seat.updates'; chatId: string; count: number }
   /**
    * The chat's queue, or what it waits for, changed. `why` is set while the queue holds messages and something holds them,
    * and is absent once it is empty (KERNEL-271).

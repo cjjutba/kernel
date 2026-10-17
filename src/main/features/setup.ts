@@ -254,13 +254,12 @@ export class Setup extends Feature {
     const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
     // A chat that already had a turn, as a restored workspace's has, starts nothing new, so it takes no start checkpoint (KERNEL-77).
     const begun = this.store.items(chat.id).some((i) => i.kind === 'user')
-    return finish(await this.setupDone(ws, project, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => { settle(); if (chat.terminal?.handoff) await this.k.teammateSeats.release(chat); else this.releaseTabs(ws.id, chat.id) }, { checkpoint: !begun, note: o.note, run: !alongside }))
+    return finish(await this.setupDone(ws, project, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => { settle(); this.releaseTabs(ws.id, chat.id) }, { checkpoint: !begun, note: o.note, run: !alongside }))
   }
 
-  /** The chat a workspace's brief goes to: its hand-off's terminal seat, else its first chat (KERNEL-1004). */
+  /** The chat a workspace's brief goes to: its first chat. */
   briefChat(workspaceId: string): Chat | undefined {
-    const chats = this.store.chats(workspaceId)
-    return chats.find((c) => c.terminal?.handoff && !c.closed) ?? chats.find((c) => c.kind !== 'terminal')
+    return this.store.chats(workspaceId).find((c) => c.kind !== 'terminal')
   }
 
   /**

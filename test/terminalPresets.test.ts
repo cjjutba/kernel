@@ -3,6 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tempRepo, freePort } from './helpers'
+import Database from 'better-sqlite3'
 import { Kernel } from '../src/main/kernel'
 import { DEFAULT_SETTINGS, loadAppSettings, loadRepoSettings, saveRepoSettings } from '../src/main/services/settings'
 import { foundClis } from '../src/main/services/terminalPresets'
@@ -26,7 +27,7 @@ async function kernel(settings: { terminal?: object; [key: string]: unknown } = 
   const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...settings, terminal: { connect: false, ...settings.terminal } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...settings }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   k.sessions.send = async () => ({ queued: false })
@@ -158,6 +159,40 @@ describe('terminal presets', () => {
     await k.stop()
   })
 
+  it('starts with the settings and rows an install with terminal seats saved (KERNEL-1037)', async () => {
+    const first = await kernel()
+    const ws = await first.k.createWorkspace(first.project.id, { prompt: 'go', agentId: 'christian', title: 'Seated' })
+    const tab = first.k.store.saveChat({ ...first.k.store.chats(ws.id)[0], id: 'seat-tab', kind: 'terminal', title: 'Terminal (claude)', sessionId: undefined, autoTitle: undefined })
+    const { dataDir } = first
+    await first.k.stop({ budgetMs: 0 })
+    const db = new Database(join(dataDir, 'kernel.db'))
+    const seat = { ...tab, seat: { connected: true }, terminal: { preset: 'claude', command: 'claude', role: 'lead', sessionId: 's1', transcriptPath: '/x.jsonl' } }
+    db.prepare('update chats set data = ? where id = ?').run(JSON.stringify(seat), tab.id)
+    db.prepare('insert into chat_items (id, chat_id, seq, data) values (?, ?, 1, ?)').run('tt-1', tab.id, JSON.stringify({ kind: 'plan', id: 'tt-1', ts: 1, text: 'plan', source: 'terminal' }))
+    db.prepare('insert into notifications (id, project_id, data, created_at) values (?, ?, ?, 1)').run(`n-seat-${tab.id}`, ws.projectId, JSON.stringify({ id: `n-seat-${tab.id}`, title: 'x', sub: 'x', kind: 'system', needsYou: true, read: false, createdAt: 1 }))
+    db.prepare("insert into meta (key, data) values ('seatMessages', '{}')").run()
+    db.pragma('user_version = 8')
+    db.close()
+    const settings = JSON.parse(await readFile(join(dataDir, 'settings.json'), 'utf8'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ ...settings, terminal: { connect: true, teammatesRunIn: 'terminal', preset: 'shell' } }))
+
+    const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')) })
+    await k.start()
+    const started = new Map<string, { command?: string; env?: Record<string, string> }>()
+    k.ptys.start = (id, o) => { started.set(id, { command: o.command, env: o.env }) }
+    expect(k.settings.terminal).toEqual({ ...DEFAULT_SETTINGS('/home').terminal, preset: 'shell' })
+    expect(k.store.chat(tab.id)).toMatchObject({ kind: 'terminal', terminal: { preset: 'claude', command: 'claude' } })
+    expect(k.store.chat(tab.id)).not.toHaveProperty('seat')
+    expect(k.store.chat(tab.id)?.terminal).toEqual({ preset: 'claude', command: 'claude' })
+    expect(k.store.items(tab.id)).toEqual([])
+    expect(k.store.notifications().map((n) => n.id)).not.toContain(`n-seat-${tab.id}`)
+    await k.handlers()['terminal.write']({ chatId: tab.id, data: '' })
+    expect(started.get(tab.id)?.command).toBe('claude')
+    expect(Object.keys(started.get(tab.id)?.env ?? {})).not.toEqual(expect.arrayContaining(['KERNEL_CHAT_ID']))
+    expect(started.get(tab.id)?.env?.PATH).toBe(process.env.PATH)
+    await k.stop({ budgetMs: 0 })
+  })
+
   it('refuses a new terminal tab while big terminal tabs are off', async () => {
     const { k, h, project } = await kernel({ terminal: { enabled: false } })
     const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Off' })
@@ -176,7 +211,7 @@ describe('terminal settings', () => {
 
   it('moves the two experimental switches of an existing settings file into terminal', async () => {
     const { resolved: s } = await loadAppSettings(await file({ experimental: { bigTerminal: false, bigTerminalWorktreeOnly: false, walking: false, floor3d: true, voice: true } }), '/home')
-    expect(s.terminal).toEqual({ enabled: false, preset: 'claude', onlyInWorktrees: false, connect: true, teammatesRunIn: 'kernel', custom: [] })
+    expect(s.terminal).toEqual({ enabled: false, preset: 'claude', onlyInWorktrees: false, custom: [] })
     // sharing was never in a saved file, so it takes the default (KERNEL-308). Voice briefs went with the Experimental page (KERNEL-540), walking and floor3d with the floor (KERNEL-680).
     expect(s.experimental).toEqual({ sharing: true })
   })
@@ -188,21 +223,20 @@ describe('terminal settings', () => {
     expect((await loadAppSettings(await file({}), '/home')).resolved.terminal).toEqual(DEFAULT_SETTINGS('/home').terminal)
   })
 
-  it('runs teammates in Kernel unless a saved value of the three says otherwise (KERNEL-1004)', async () => {
-    expect(DEFAULT_SETTINGS('/home').terminal.teammatesRunIn).toBe('kernel')
-    for (const v of ['kernel', 'terminal', 'lead']) expect((await loadAppSettings(await file({ terminal: { teammatesRunIn: v } }), '/home')).resolved.terminal.teammatesRunIn).toBe(v)
-    expect((await loadAppSettings(await file({ terminal: { teammatesRunIn: 'both' } }), '/home')).resolved.terminal.teammatesRunIn).toBe('kernel')
+  it('drops the seat settings an earlier build saved and keeps the rest (KERNEL-1037)', async () => {
+    const saved = { terminal: { enabled: false, preset: 'shell', connect: false, teammatesRunIn: 'terminal' } }
+    const { resolved, saved: kept } = await loadAppSettings(await file(saved), '/home')
+    expect(resolved.terminal).toEqual({ ...DEFAULT_SETTINGS('/home').terminal, enabled: false, preset: 'shell' })
+    expect(kept.terminal).toEqual({ enabled: false, preset: 'shell' })
   })
 
-  it("reads and saves a project's [terminal] teammates_run_in, the personal file over the shared one (KERNEL-1004)", async () => {
-    const repo = await tempRepo({ 'README.md': '# x\n', '.kernel/settings.toml': '[terminal]\nteammates_run_in = "terminal"\n' })
-    expect((await loadRepoSettings(repo)).terminal?.teammatesRunIn).toBe('terminal')
-    await saveRepoSettings(repo, { terminal: { teammatesRunIn: 'lead' } })
-    expect((await loadRepoSettings(repo)).terminal?.teammatesRunIn).toBe('lead')
-    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[terminal]\nteammates_run_in = "both"\n')
-    expect((await loadRepoSettings(repo)).terminal?.teammatesRunIn).toBe('terminal')
-    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[terminal]\nteammates_run_in = "kernel"\n')
-    expect((await loadRepoSettings(repo)).terminal?.teammatesRunIn).toBe('kernel')
+  it("starts with a project's [terminal] teammates_run_in left in its settings file, and keeps it there (KERNEL-1037)", async () => {
+    const toml = '[terminal]\nteammates_run_in = "terminal"\n\n[scripts]\nsetup = "pnpm install"\n'
+    const repo = await tempRepo({ 'README.md': '# x\n', '.kernel/settings.toml': toml })
+    expect((await loadRepoSettings(repo)).scripts?.setup).toBe('pnpm install')
+    expect(await loadRepoSettings(repo)).not.toHaveProperty('terminal')
+    await saveRepoSettings(repo, { scripts: { run: 'pnpm dev' } })
+    expect((await loadRepoSettings(repo)).scripts).toMatchObject({ setup: 'pnpm install', run: 'pnpm dev' })
   })
 
   it('leaves out a custom command with no id, name or command, and a repeated id', async () => {
@@ -229,7 +263,7 @@ describe('terminal settings', () => {
     await h['settings.set']({ patch: { terminal: { preset: 'shell' } } })
     const saved = JSON.parse(await readFile(join(dataDir, 'settings.json'), 'utf8'))
     // Only what differs from the defaults is saved: the old switch that was off, and the preset just picked (KERNEL-225).
-    expect(saved.terminal).toEqual({ connect: false, enabled: false, preset: 'shell' })
+    expect(saved.terminal).toEqual({ enabled: false, preset: 'shell' })
     // The two old switches are gone, and nothing else in Experimental was chosen.
     expect(saved.experimental).toBeUndefined()
     expect(JSON.stringify(saved)).not.toContain('bigTerminal')

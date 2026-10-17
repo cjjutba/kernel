@@ -1,0 +1,15 @@
+# KERNEL-1037: terminal seats are deleted
+
+**Terminal seats are gone from the codebase, not switched off.** Plain `claude` in the user's own terminal app is the better way to use Claude Code in a terminal, and a seat made Kernel keep a second path for every message, hook, plan and Team update. KERNEL-1034 switched them off for v1. CJ then decided they aren't worth building, so the engine (this change), the renderer (KERNEL-1036) and the shared contracts no longer carry them.
+
+- **The tag.** `terminal-seats-v1` points at `main` before any deletion. `git checkout terminal-seats-v1` has the whole feature, flag and all.
+- **The PRs.** KERNEL-997 to 1006 built it, KERNEL-1022 (plan approval in Claude Code's own dialog), 1028, 1029 (Team updates for a terminal Lead) and 1034 (the flag) changed it, KERNEL-1035 and 1036 removed the renderer side, and this one removes the engine. Their decision files stay as history.
+- **What went.** The seat endpoint and launch wiring (token, MCP config, appended prompt, `claude` shell function, seat environment variables), the transcript follower, seat signals, teammate seats, the Team update queue kept for a terminal Lead and its `check_team` tool, `runs_in` on `create_workspace`, the `lead` preset, `TERMINAL_LEAD_INSTRUCTIONS` and the terminal variants of the Lead's rules, the `X-Kernel-Chat` hook header and the hook server's chat resolution and prompt context, Settings `terminal.connect` and `terminal.teammatesRunIn` (app and project), and in `src/shared` `Chat.seat`, the seat fields on `Chat.terminal`, `seat.updates`, `seat.pending`, `terminal.reconnect`, `notifications.answer`, `Notification.ask` and `chatId`, the `terminal` item source and the `plan` item kind.
+- **There are no seat tables.** Seat state was never in its own SQLite table. It lived in JSON on chat rows, in `chat_items`, in `notifications`, in two `meta` keys and in a `seats` folder in the data folder. Migration 9 removes each of them, and turns a seat's terminal chat into a plain big terminal tab.
+- **Saved settings are dropped on load.** A settings file that still has `terminal.connect` or `terminal.teammatesRunIn` loads, the keys are not kept, and the next save leaves them out. A project's `[terminal]` table in `.kernel/settings.toml` is no longer read and is not rewritten.
+- **The hook command changes.** It no longer sends `X-Kernel-Chat`. Installed hook entries still count as installed, and the refresh at start rewrites them to the shorter command.
+- **What stayed.** `toolsFor`, which the Lead's, a reviewer's and a teammate's own tools are all built on. The fixture `saved` field. The big terminal tab with its presets, the plain shell and `kind: 'terminal'` chats. The plan approval card for chats in Kernel. `seatStarterTeam`, "Seat agents" and the account switcher's Team seats share the word and have nothing to do with terminals.
+
+Amends KERNEL-1034 and the seat decisions KERNEL-997 to 1006, 1022, 1028 and 1029, which stay as written.
+
+KERNEL-1037

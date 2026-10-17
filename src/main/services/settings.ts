@@ -4,7 +4,7 @@ import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type TeamConfig, type TeamPatch, type TeammatesRunIn, type TrackerKind, type UnlistedTools, REVIEW_KINDS, TEAMMATES_RUN_IN } from '@shared/types'
+import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { LEAD_MODES } from '@shared/leadMode'
 import { terminalSettingsOf } from './terminalPresets'
@@ -73,7 +73,7 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
     addressReviewInstructions: addressReviewText()
   },
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
-  terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, connect: true, teammatesRunIn: 'kernel', custom: [] },
+  terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, custom: [] },
   experimental: { sharing: true },
   privacy: { telemetry: 'ask' }
 })
@@ -273,7 +273,7 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   const own = group('terminal')
   if (own) {
     const checked = terminalSettingsOf(deepMerge(defaults.terminal, own), defaults.terminal) as unknown as Record<string, unknown>
-    s.terminal = Object.fromEntries(Object.keys(own).map((k) => [k, checked[k]]))
+    s.terminal = Object.fromEntries(Object.keys(own).filter((k) => k in checked).map((k) => [k, checked[k]]))
   }
   const sparseFile = typeof version === 'number' && version >= SPARSE_SINCE
   const saved: DeepPartial<AppSettings> = (sparseFile ? s : sparse(s, defaults)) ?? {}
@@ -483,7 +483,7 @@ const DEFAULT_COPY = ['.env', '.env.local']
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
 
 /** The tables a project's settings files may hold. Anything else in a patch or a file is left alone. */
-const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env', 'tracker', 'mcp', 'agents', 'terminal'] as const
+const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env', 'tracker', 'mcp', 'agents'] as const
 type Group = (typeof GROUPS)[number]
 
 /** The keys that hold a table of names: both files merge it name by name, and a patch changes only the names it lists (KERNEL-432). */
@@ -565,7 +565,6 @@ function projectValues(doc: Record<string, any>): Record<Group, Record<string, u
     // `kind = "jira"` from a project set up before Jira was removed reads as none, and a leftover `[jira]` table is no group.
     tracker: picked({ kind: doc.tracker?.kind === 'jira' ? 'none' : doc.tracker?.kind }, ['kind'], (v) => TRACKER_KINDS.includes(v as TrackerKind)),
     mcp: Object.keys(aliases).length ? { aliases } : {},
-    terminal: picked(doc.terminal, ['teammatesRunIn'], (v) => TEAMMATES_RUN_IN.includes(v as TeammatesRunIn)),
     // `open_workspaces` is a whole number from 0, no limit, to 12 (KERNEL-492).
     agents: {
       ...picked(doc.agents, ['unlistedTools'], (v) => UNLISTED_TOOLS.includes(v as UnlistedTools)),
@@ -621,7 +620,7 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
   const runs = new Map([...sharedRuns, ...localRuns])
   for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
   if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
-  const { scripts, files, workspace, disabled, linear, pr, preview, env, tracker, mcp, agents, terminal } = merged
+  const { scripts, files, workspace, disabled, linear, pr, preview, env, tracker, mcp, agents } = merged
   // `references` only from the personal file: the paths differ per Mac (KERNEL-748).
   const references = referencesOf(localDoc)
   const missingReferences = references.filter((p) => !isFolder(p))
@@ -651,7 +650,6 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
     ...(tracker.kind ? { tracker: { kind: tracker.kind } } : {}),
     ...(mcp.aliases ? { mcp: { aliases: mcp.aliases } } : {}),
     ...(Object.keys(agents).length ? { agents } : {}),
-    ...(terminal.teammatesRunIn ? { terminal: { teammatesRunIn: terminal.teammatesRunIn } } : {}),
     sources
   }
 }

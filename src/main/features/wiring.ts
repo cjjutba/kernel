@@ -56,8 +56,6 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
     // A review of the chat's own PR in Build here is a row in its transcript, with no turn (KERNEL-990).
     row: (chatId, update) => updateRow(k.store, chatId, update),
     opened: (chat, rows) => k.openItems.delivered(chat, rows),
-    // A terminal Lead tab's news that needs it: an inbox row naming the tab and a Mac notification (KERNEL-1000).
-    notify: (n) => { if (n.needsYou || k.store.notification(n.id)) k.notifications.notice(n, { replace: true }) },
     // Delivery timings reach Kernel's log, so Help, Copy diagnostics shows why an update was late. The log hears warnings
     // through the console already (KERNEL-651).
     log: k.o.log && ((level, line) => { console[level](line); if (level === 'info') k.o.log?.info(line) })
