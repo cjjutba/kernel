@@ -35,7 +35,7 @@
 .is-chev[data-open='false'] { transform: rotate(-90deg); }
 .is-slot { width: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
 .is-row { display: flex; align-items: center; gap: 12px; width: 100%; height: 60px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; }
-.is-row:hover { background: var(--nav-hover); }
+.is-row:hover { background: var(--panel-hover); }
 .is-row:focus-visible { outline-offset: -2px; }
 .is-row[aria-current='true'] { background: var(--surface-3); color: var(--ink); }
 .is-title { font-size: var(--fs-ui); font-weight: var(--fw-medium); }

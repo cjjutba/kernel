@@ -6,7 +6,7 @@ import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
-import { Button, Icon, Menu, SplitButton, useBusy } from '../../../ui'
+import { Button, LinkButton, Icon, Menu, SplitButton, useBusy } from '../../../ui'
 import { NO_RULES, actionIcon, actionKey, blockerFacts, blockersHold, busyLabel, failTitle, hasChanges, headerView, overruleOn, overruleText, type PrAction } from './model'
 import { useLocalMerge } from './useLocalMerge'
 import { ConfirmMergeAnyway } from '../ConfirmMergeAnyway'
@@ -118,11 +118,11 @@ export function PrHeader({ ws, spread, capsule, toggle }: { ws: Workspace; sprea
   // the actions at full width, in line with the chat's tab row. The capsule keeps one row: the state, the link, then the actions
   // (KERNEL-528). `extra` renders outside the rows, as the Merge anyway confirmation does.
   const line = overruled && (
-    <div className="pr-overruled"><span className="pr-overruled-text" data-tip={overruleText(overruled)}>{overruleText(overruled)}</span><button type="button" className="pr-undo" onClick={undo}>Undo</button></div>
+    <div className="pr-overruled"><span className="pr-overruled-text" data-tip={overruleText(overruled)}>{overruleText(overruled)}</span><LinkButton className="pr-undo" onClick={undo}>Undo</LinkButton></div>
   )
   const out = (buttons: ReactNode, extra?: ReactNode) => spread
     ? tone(<><div className="pr-r1">{state}{gap}{link}{toggle}</div>{buttons && <div className="pr-r2">{buttons}</div>}{line}{extra}</>)
-    : tone(<>{state}{link}{buttons}{overruled && <button type="button" className="pr-undo" data-tip={overruleText(overruled)} onClick={undo}>Undo</button>}{extra}</>)
+    : tone(<>{state}{link}{buttons}{overruled && <LinkButton className="pr-undo" data-tip={overruleText(overruled)} onClick={undo}>Undo</LinkButton>}{extra}</>)
 
   if (busy) return out(spinner(busy))
 

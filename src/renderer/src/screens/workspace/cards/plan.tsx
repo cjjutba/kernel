@@ -2,7 +2,7 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentDef, Approval, PlanStep } from '@shared/types'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
-import { Button, CopyButton, Icon, useScreenEscape } from '../../../ui'
+import { Button, LinkButton, CopyButton, Icon, useScreenEscape } from '../../../ui'
 import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt } from '../MessageActions'
@@ -46,7 +46,7 @@ export function PlanTasks({ a, agents }: { a: Approval; agents: AgentDef[] }) {
           <li key={i}>
             <span className="plan-n mono" aria-hidden="true">{i + 1}</span>
             <span className="plan-task">{s.title}{who && <span className="plan-who">{who}</span>}</span>
-            {a.status === 'allowed' && ws && <button type="button" className="plan-open" aria-label={`Open ${who ?? 'the'} workspace for ${s.title}`} onClick={() => go({ name: 'workspace', workspaceId: ws })}>Open workspace</button>}
+            {a.status === 'allowed' && ws && <LinkButton size="meta" className="plan-open" aria-label={`Open ${who ?? 'the'} workspace for ${s.title}`} onClick={() => go({ name: 'workspace', workspaceId: ws })}>Open workspace</LinkButton>}
           </li>
         )
       })}

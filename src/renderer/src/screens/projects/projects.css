@@ -6,7 +6,7 @@
 .rm-head, .rm-row { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.6fr) 150px 130px 90px; align-items: center; gap: 16px; padding: 0 10px; }
 .rm-head { height: 40px; font-size: var(--fs-meta); color: var(--muted); }
 .rm-row { height: 60px; border-radius: var(--r-sm); cursor: pointer; }
-.rm-row:hover { background: var(--nav-hover); }
+.rm-row:hover { background: var(--panel-hover); }
 .rm-row:has(.rm-link:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
 .rm-link:focus-visible { outline: none; }
 .rm-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -80,7 +80,6 @@
 .cr-ago { width: 64px; text-align: right; font-size: var(--fs-meta); color: var(--muted); }
 .cr-where { font-size: var(--fs-meta); color: var(--muted); padding-left: 2px; }
 .cr-where .mono { font-size: var(--fs-meta); }
-.cr-link { margin-left: 8px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-meta); text-decoration: underline; }
 .of-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 136px; border-radius: var(--r-lg); border: 1.5px dashed var(--line-3); background: var(--panel); }
 .of-drop > svg { color: var(--ink-2); }
 .of-rowwrap { position: relative; flex-shrink: 0; }
@@ -214,4 +213,3 @@
 .nps-hint { font-size: var(--fs-meta); color: var(--muted); }
 .nps-hint .mono { color: var(--ink-2); }
 .nps-other { font-size: var(--fs-meta); color: var(--muted); }
-.nps-other .cr-link { margin-left: 0; }

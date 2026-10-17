@@ -32,8 +32,6 @@
 .set-label { font-size: var(--fs-row); font-weight: var(--fw-medium); }
 .set-desc { font-size: var(--fs-code); color: var(--muted); }
 .set-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.set-link { padding: 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; text-decoration: underline; cursor: pointer; }
-.set-link:hover { color: var(--ink); }
 .set-value { font-family: var(--mono); font-size: var(--fs-code); color: var(--ink-2); }
 .set-full { flex-basis: 100%; min-width: 0; }
 .set-card .select-trigger { background: var(--surface-2); border-color: var(--input-line); font-weight: var(--fw-regular); font-size: var(--fs-ui); }
@@ -111,7 +109,6 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-field .set-error { font-size: var(--fs-code); color: var(--del); }
 .set-field .input.set-text-input { font: var(--fs-ui) var(--font); }
 .set-field-head { display: flex; align-items: baseline; justify-content: space-between; }
-.set-field-head .set-link { font-size: var(--fs-meta); }
 .set-form > .segmented { display: flex; }
 .set-form > .segmented button { flex: 1; height: 26px; }
 .set-help { margin: 0; font-size: var(--fs-code); color: var(--muted); }
@@ -134,9 +131,6 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 /* A warning under an account's name (KERNEL-619): an amber triangle, what is wrong and the way out. The link in it is ink and spins while its call runs. */
 .set-warn { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: var(--fs-code); color: var(--ink-2); }
 .set-warn > svg { flex-shrink: 0; color: var(--needs-fill); }
-.set-warn .set-link { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-size: var(--fs-code); }
-.set-warn .set-link:disabled { opacity: 0.55; cursor: default; }
-.set-warn .set-link[aria-busy='true'] { opacity: 1; color: var(--ink-3); text-decoration: none; }
 .set-warn-note { margin-left: 18px; font-size: var(--fs-code); color: var(--muted); }
 .set-row.set-sub { padding-left: 48px; }
 /* Files to copy: the files that look like production (KERNEL-449, SettingsFilesProduction.png). */
@@ -167,7 +161,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .ae-pick legend { padding: 0; margin-bottom: 8px; font-size: var(--fs-ui); color: var(--muted); }
 .ae-opt { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--line-2); cursor: pointer; }
 .ae-opt:has(input:checked) { border-color: var(--ink-3); }
-.ae-opt:has(input:focus-visible) { outline: 2px solid var(--ink-3); outline-offset: 2px; }
+.ae-opt:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ae-opt input { margin: 3px 0 0; accent-color: var(--ink); }
 .ae-opt span { display: flex; flex-direction: column; gap: 2px; color: var(--ink-2); }
 .ae-opt small { font-size: var(--fs-ui); line-height: var(--lh); color: var(--muted); }
@@ -249,8 +243,6 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-tags > .set-save { align-self: center; padding-left: 4px; }
 @media (prefers-reduced-motion: reduce) { .set-save { transition: none; } }
 
-.set-from .set-link { color: var(--muted); text-decoration: none; }
-.set-from .set-link:hover { color: var(--ink-2); text-decoration: underline; }
 
 .set-row[data-hit], .set-section[data-hit] { animation: set-hit var(--dur-sweep) ease-out forwards; }
 @keyframes set-hit { from { background: var(--surface-3); } to { background: transparent; } }

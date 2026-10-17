@@ -7,8 +7,8 @@ type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'merged'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
-  /** sm is 26px, for a toolbar or a card row (Run, Stop, Open). md is 28px, lg 32px. */
-  size?: 'sm' | 'md' | 'lg'
+  /** xs is 24px, for the footer and a hover card. sm is 26px, for a toolbar or a card row (Run, Stop, Open). md is 28px, lg 32px. */
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   icon?: IconName
   /** The work this button started is running: it spins, says `busyLabel` and can't be pressed again (DESIGN.md, Busy buttons). */
   busy?: boolean

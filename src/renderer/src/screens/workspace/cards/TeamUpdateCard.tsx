@@ -3,7 +3,7 @@ import type { ChatItem, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/typ
 import { mergeableState } from '@shared/merge'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
-import { Icon } from '../../../ui'
+import { LinkButton, Icon } from '../../../ui'
 import { KernelNote } from '../KernelNote'
 import { SharedRow } from './SharedCard'
 import { MergeButton } from '../pr/MergeButton'
@@ -106,10 +106,10 @@ function Row({ row, itemId, compact, workspaceOf, useNewest, useAutoReview = () 
         {ws && (
           <span className="tucard-act">
             {stuck ? <span className="tucard-why">Needs you</span> : merge && <MergeButton ws={merge} />}
-            <button type="button" className="tucard-open" data-to={archived ? 'history' : 'workspace'} aria-label={archived ? `Find ${row.name}'s workspace for ${row.task} in History` : `Open ${row.name}'s workspace for ${row.task}`}
+            <LinkButton variant="quiet" size="meta" className="tucard-open" data-to={archived ? 'history' : 'workspace'} aria-label={archived ? `Find ${row.name}'s workspace for ${row.task} in History` : `Open ${row.name}'s workspace for ${row.task}`}
               onClick={() => (archived ? go({ name: 'history' }) : go({ name: 'workspace', workspaceId: ws.id }))}>
               {archived ? 'In History' : 'Open'}
-            </button>
+            </LinkButton>
           </span>
         )}
       </div>

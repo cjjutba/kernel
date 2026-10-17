@@ -18,7 +18,7 @@
 .hire-servers-note, .hire-scope { margin: 0; font-size: var(--fs-code); line-height: var(--lh); color: var(--muted); }
 .tcard .grow-input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--code-bg); color: var(--ink-2); font-size: var(--fs-ui); }
 .tcard textarea.grow-input { height: auto; padding: 8px 10px; resize: vertical; line-height: var(--lh); }
-.tcard .grow-input:focus-visible { outline: 1px solid var(--ink-3); outline-offset: 1px; }
+.tcard .grow-input:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
 .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; min-height: 24.6px; font-size: var(--fs-row); color: var(--ink-2); }
 .steps .n { color: var(--muted); font-size: var(--fs-meta); }
@@ -32,7 +32,7 @@
 /* Every row aligns to its first line, with or without a description, and grows with a long label (KERNEL-416). */
 .qrow { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 36px; box-sizing: border-box; padding: 8px 12px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); line-height: 18px; text-align: left; }
 .qrow[data-desc='true'] { padding: 10px 12px; line-height: 19.5px; }
-.qrow:not(:disabled):hover { background: var(--surface-3); }
+.qrow:not(:disabled):hover { background: var(--surface-3); border-color: var(--line-4); }
 .qrow:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .qrow:disabled { opacity: 0.55; cursor: default; }
 .qrow[aria-checked='true'], .qrow[aria-checked='true']:not(:disabled):hover { background: var(--hover); border-color: var(--ink-3); color: var(--ink); }
@@ -90,7 +90,7 @@
 .plan-file { min-width: 0; max-width: 340px; height: 22px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: var(--fs-chip); }
 .plan-file:hover { border-color: var(--line-4); color: var(--ink); }
 .plan-inline .plan-copy { width: 24px; height: 24px; margin-left: -2px; }
-.plan-open { flex-shrink: 0; margin-left: 10px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-code); text-decoration: underline; text-underline-offset: 2px; }
+.plan-open { flex-shrink: 0; margin-left: 10px; }
 /* Kernel's team update in the Lead's chat (cards/TeamUpdateCard.tsx, KERNEL-127): an outline with a small header, one
    row per teammate, the events as a line of text and the reply as plain text (KERNEL-274). */
 .tucard-wrap { align-self: stretch; width: 100%; }
@@ -111,9 +111,8 @@
 /* The merged glyph before the word, at the PR band's size and gap (.pr-state). */
 .tucard-merged { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--merged); }
 .tucard-merged svg { flex-shrink: 0; }
-.tucard-open { flex-shrink: 0; border: 0; background: transparent; padding: 0; color: var(--muted); font-size: var(--fs-meta); }
+.tucard-open { flex-shrink: 0; }
 .tucard-open[data-to='workspace']::after { content: ' ↗'; }
-.tucard-open:hover { color: var(--ink); }
 .tucard-events { margin: 0; font-size: var(--fs-code); line-height: var(--lh); color: var(--muted); }
 .tucard-sep { margin: 0 6px; color: var(--faint); }
 .tucard-ev[data-tone='ink2'] { color: var(--ink-2); }

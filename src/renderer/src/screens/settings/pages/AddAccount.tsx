@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Provider } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { Button, Icon, Modal, SegmentedControl, useBusy } from '../../../ui'
+import { Button, LinkButton, Icon, Modal, SegmentedControl, useBusy } from '../../../ui'
 
 type Kind = 'subscription' | 'apiKey'
 
@@ -99,7 +99,7 @@ export function AddAccount({ provider, signIn, replaceKey, kind: startKind = 'su
             <div className="set-field">
               <div className="set-field-head">
                 <label htmlFor="acct-key">API key</label>
-                <button type="button" className="set-link" aria-label={`Get a key at ${page.host}`} onClick={() => void call('system.openExternal', { url: page.url }).catch((e) => actions.ui.toast({ title: 'Could not open the page', sub: cleanError(e) }))}>Get key</button>
+                <LinkButton size="meta" aria-label={`Get a key at ${page.host}`} onClick={() => void call('system.openExternal', { url: page.url }).catch((e) => actions.ui.toast({ title: 'Could not open the page', sub: cleanError(e) }))}>Get key</LinkButton>
               </div>
               <input id="acct-key" className="input" type="password" autoComplete="off" spellCheck={false} placeholder={page.placeholder} aria-invalid={failed ? true : undefined} aria-describedby={failed ? 'acct-key-error' : 'acct-key-hint'} value={apiKey} onChange={(e) => { setApiKey(e.target.value); setFailed(null) }} onKeyDown={(e) => e.key === 'Enter' && void saveKey()} />
               {failed
@@ -124,10 +124,10 @@ export function AddAccount({ provider, signIn, replaceKey, kind: startKind = 'su
           <p className="set-result" data-state="fail" role="alert"><Icon name="xCircle" size={14} />{failed?.replace(/\.$/, '')}</p>
         )}
         {!keyForm && started && (
-          <p className="set-help" role="status">Finish signing in in your browser.{step?.url && <> <button type="button" className="set-link" onClick={() => void call('system.openExternal', { url: step.url! })}>Open the page again</button></>}</p>
+          <p className="set-help" role="status">Finish signing in in your browser.{step?.url && <> <LinkButton onClick={() => void call('system.openExternal', { url: step.url! })}>Open the page again</LinkButton></>}</p>
         )}
         {!keyForm && started && step?.step === 'code' && !codeShown && (
-          <p className="set-help"><button type="button" className="set-link" onClick={() => setCodeShown(true)}>The page shows a code?</button></p>
+          <p className="set-help"><LinkButton onClick={() => setCodeShown(true)}>The page shows a code?</LinkButton></p>
         )}
         {!keyForm && started && step?.step === 'code' && codeShown && (
           <div className="set-field">

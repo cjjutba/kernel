@@ -3,6 +3,7 @@ import type { ChatPart, IssueSummary, ProjectTracker, TrackerKind } from '@share
 import { call } from '../../api'
 import { Icon, IssuePriority } from '../../icons'
 import { go, useStore } from '../../store'
+import { LinkButton } from '../../ui'
 import { readUpNext, storeUpNext } from './upNextCache'
 
 /** Up next shows this many issues. */
@@ -54,7 +55,7 @@ export function UpNext({ projectId, lead, onPlan }: { projectId: string; lead: s
     <section className="up-next" aria-label={`Up next in ${name}`}>
       <div className="up-next-head">
         <h3>Up next in {name}</h3>
-        <button type="button" className="up-next-all" onClick={() => go({ name: 'issues', projectId })}>All issues</button>
+        <LinkButton variant="quiet" size="meta" onClick={() => go({ name: 'issues', projectId })}>All issues</LinkButton>
       </div>
       <ul className={ranked ? undefined : 'up-next-plain'}>
         {shown.map((i) => (

@@ -4,7 +4,7 @@ import { leadModeName, leadModeOf, leadModeSwitched } from '@shared/leadMode'
 import { maskSecrets, stripAnsi, toolView } from '@shared/toolView'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
-import { Avatar, Button, Card, CopyButton, EmptyState, Icon, IconButton, Spinner, useBusy, type IconName } from '../../ui'
+import { Avatar, Button, LinkButton, Card, CopyButton, EmptyState, Icon, IconButton, Spinner, useBusy, type IconName } from '../../ui'
 import { ServiceMark } from '../../icons'
 import { actions, getState, go, loadWorkspace, setLeadMode, useStore } from '../../store'
 import { openProject } from '../../lead'
@@ -157,7 +157,7 @@ function TurnFilesCard({ rowId, files, inWorkspace, onOpenDiff }: { rowId: strin
   return (
     <Card className="tf" role="group" aria-label="Files changed in this reply">
       <div className="tf-h"><span className="tf-c">{v.title}</span><Counts added={v.added} removed={v.removed} />
-        {inWorkspace !== undefined && <button type="button" className="tf-all" aria-label={`Show all ${inWorkspace} changed ${inWorkspace === 1 ? 'file' : 'files'} in this workspace`} onClick={showChanges}>{inWorkspace} in workspace</button>}
+        {inWorkspace !== undefined && <LinkButton variant="quiet" size="meta" className="tf-all" aria-label={`Show all ${inWorkspace} changed ${inWorkspace === 1 ? 'file' : 'files'} in this workspace`} onClick={showChanges}>{inWorkspace} in workspace</LinkButton>}
       </div>
       <div className="tf-b" onKeyDown={move}>
         {rows.map((r) => (

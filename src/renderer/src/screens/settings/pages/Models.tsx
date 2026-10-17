@@ -2,7 +2,7 @@ import './agents.css'
 import { useRef, useState } from 'react'
 import { EFFORT_LABELS, type AppSettings, type CompactWindow, type Effort, type Provider, type ProviderModel, type Role, type RoleModel } from '@shared/types'
 import { roleOf, takesTasks } from '@shared/team'
-import { Icon, Popover, ProviderMark, Select, Toggle } from '../../../ui'
+import { LinkButton, Icon, Popover, ProviderMark, Select, Toggle } from '../../../ui'
 import { ModelPicker } from '../../workspace/composer/ModelPicker'
 import { agentModelLabel, COMPACT_LABELS, fitEffort, modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
 import { appliesTo, Page, Row, Section } from '../kit'
@@ -66,7 +66,7 @@ function RoleAgents({ title, provider, follow, own }: { title: string; provider:
   const line = (l: WhoLine) => (
     <li key={l.key} className="ag-who-line">
       {l.open
-        ? <button type="button" className="set-link ag-who-name" onClick={() => go({ name: 'settings', page: 'project', projectId: l.open!.projectId, section: 'agents', agentId: l.open!.agentId })}>{l.name}</button>
+        ? <LinkButton variant="action" className="ag-who-name" onClick={() => go({ name: 'settings', page: 'project', projectId: l.open!.projectId, section: 'agents', agentId: l.open!.agentId })}>{l.name}</LinkButton>
         : <span className="ag-who-name">{l.name}</span>}
       <span className="ag-who-right ellipsis">{l.right}</span>
     </li>
