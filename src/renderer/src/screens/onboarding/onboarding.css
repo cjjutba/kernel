@@ -65,7 +65,6 @@
 .ob-list.ob-modes { margin-top: 20px; }
 .ob-bar.ob-modes-bar { margin-top: 20px; }
 
-.ob-bar .btn.primary:disabled { opacity: 1; background: var(--surface-3); border-color: transparent; color: var(--faint); }
 .panel.ob-bare { background: transparent; border: 0; }
 .ob-h1.ob-h1-lg { font-size: var(--fs-page); letter-spacing: -0.6px; }
 .ob-sub.ob-sub-lg { font-size: var(--fs-chat); }
