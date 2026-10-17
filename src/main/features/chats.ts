@@ -441,7 +441,7 @@ export class Chats extends Feature {
         if (now && copy) await this.sendNow(chatId, copy.id)
         return { ok: true }
       },
-      'chats.send': async ({ chatId, parts, clientId }) => { this.k.lead.userSpoke(chatId); return this.sessions.send(chatId, parts, { clientId }) },
+      'chats.send': async ({ chatId, parts, clientId }) => this.k.lead.send(chatId, parts, { clientId }),
       'chats.interrupt': async ({ chatId }) => { await this.sessions.interrupt(chatId); return { ok: true } },
       'chats.configure': async ({ chatId, ...patch }) => {
         const chat = this.mustChat(chatId)

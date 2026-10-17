@@ -302,6 +302,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
       ws.leadMode = mode
       return ws
     },
+    'lead.retryCopy': async () => { throw new Error('Fixture mode does not make working copies.') },
+    'lead.sendAsHandoff': async () => { throw new Error('Fixture mode does not make working copies.') },
     'threads.list': async ({ projectId }) => (f.threads ?? []).filter((t) => !projectId || t.projectId === projectId),
     'threads.rename': async () => { throw new Error('Fixture mode does not rename chats.') },
     'threads.archivePreview': async ({ threadId }) => {
