@@ -126,7 +126,7 @@
 .tucard-items li { display: flex; align-items: baseline; gap: 10px; min-width: 0; font-size: var(--fs-code); color: var(--muted); }
 .tucard-kind { flex-shrink: 0; width: 58px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-2); }
 .tucard-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tucard-items .tucard-more-open { padding-left: 68px; font-size: var(--fs-meta); color: var(--faint); }
+.tucard-items .tucard-more-open { padding-left: 68px; font-size: var(--fs-meta); color: var(--ink-3); }
 .tucard-pr { margin-left: 6px; white-space: nowrap; color: var(--merged); text-decoration: none; }
 .tucard-pr[data-lone] { margin-left: 0; }
 .tucard-pr:hover { text-decoration: underline; }

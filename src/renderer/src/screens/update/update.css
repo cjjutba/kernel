@@ -19,7 +19,7 @@
 .wn-sec-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: baseline; gap: 8px; padding: 18px 0 10px; background: var(--surface-2); border-bottom: 1px solid transparent; transition: border-color var(--dur-fast) ease-out; }
 .wn-sec-head[data-stuck] { border-bottom-color: var(--line-2); }
 .wn-sec-head h3 { margin: 0; font-size: var(--fs-ui); line-height: var(--lh-heading); font-weight: var(--fw-semibold); color: var(--ink); }
-.wn-count { font-size: var(--fs-meta); font-variant-numeric: tabular-nums; color: var(--faint); }
+.wn-count { font-size: var(--fs-meta); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 
 .wn-hl { margin: 0 0 6px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; }
 .wn-hl li { display: flex; flex-direction: column; gap: 2px; }

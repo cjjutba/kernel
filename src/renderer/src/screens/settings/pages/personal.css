@@ -24,7 +24,7 @@
 .pe-filter > span { position: absolute; left: 11px; color: var(--muted); pointer-events: none; }
 .pe-filter input { width: 100%; height: 34px; padding: 0 12px 0 31px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink); font-size: var(--fs-ui); user-select: text; }
 .pe-filter input:hover, .pe-filter input:focus { border-color: var(--line-4); }
-.pe-filter input:focus-visible { outline: none; }
+.pe-filter input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .pe-empty { margin: -12px 0 0; padding: 32px 0; text-align: center; font-size: var(--fs-ui); color: var(--muted); }
 .set-row.pe-compact { min-height: 40px; padding: 8px 12px 8px 16px; }
 .set-row.pe-compact .set-label { font-size: var(--fs-ui); font-weight: var(--fw-regular); }

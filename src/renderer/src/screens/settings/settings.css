@@ -12,7 +12,7 @@
 .set-search input::placeholder { color: var(--muted); }
 .set-search input:hover { border-color: var(--line-3); }
 .set-search input:focus { border-color: var(--line-4); background: var(--input-bg); }
-.set-search input:focus-visible { outline: none; }
+.set-search input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .set-group { margin: 10px 0 2px; padding: 0 8px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
 .nav-item.set-item { height: 28px; }
 .set-icon { position: relative; flex-shrink: 0; display: flex; align-items: center; gap: 10px; }
