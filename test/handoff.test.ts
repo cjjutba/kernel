@@ -8,7 +8,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo, freePort } from './helpers'
-import { BLOCKER_RULE, GO_AHEAD_LINE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, TEAMMATE_RULE, UPDATE_HEADER } from '../src/main/services/handoff'
+import { BLOCKER_RULE, GO_AHEAD_LINE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, SETUP_LINE, TEAMMATE_RULE, UPDATE_HEADER } from '../src/main/services/handoff'
 import { reviewTools } from '../src/main/services/reviewMcp'
 import { reviewPolicyOf } from '../src/main/services/settings'
 import { kindsFor } from '../src/main/services/lenses'
@@ -72,6 +72,15 @@ async function realLead() {
   }
   return { k, project, chat, tool, plans, planSaved }
 }
+
+describe('what teammates are told about setup (KERNEL-1012)', () => {
+  it('never tells an agent to wait for a note that may not come', () => {
+    expect(SETUP_LINE).toContain('Never wait for a note that hasn\'t come.')
+    expect(SETUP_LINE).not.toMatch(/Wait for Kernel's note/)
+    expect(TEAMMATE_RULE).toContain(SETUP_LINE)
+    expect(reviewRule({ author: 'Kai', task: 'x', workspaceId: 'w', branch: 'b', base: 'main' })).toContain(SETUP_LINE)
+  })
+})
 
 describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
   it('answers an approval with "hand it off now" and marks the plan approved', async () => {

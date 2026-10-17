@@ -130,7 +130,7 @@ export function reviewRule(r: { author: string; task: string; workspaceId: strin
  */
 export const SHARE_RULE = 'When the user should see your work without running it, call mcp__kernel__share_file with a self-contained HTML mock, a screenshot, a Markdown report or a diagram. Comments on a file you shared arrive as messages naming the file and version. Answer one by sharing the same path again.'
 
-export const SETUP_LINE = "Kernel's setup script for this worktree may still be running when you start. Don't run your own install. Wait for Kernel's note that setup finished before you run tests or builds."
+export const SETUP_LINE = "Kernel's setup script for this worktree may still be running when you start. Don't run your own install. If it is still running, Kernel adds one note to a later tool result or message saying whether it passed. A build or test that fails for missing dependencies before then may only need that. Never wait for a note that hasn't come."
 
 /** Appended to the prompt of every teammate that isn't reviewing, next to its wait_for_merge, ask_lead and propose_handoff tools (KERNEL-262, KERNEL-747). */
 export const TEAMMATE_RULE = [
