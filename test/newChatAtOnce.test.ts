@@ -374,6 +374,50 @@ describe('a new chat claims the spare worktree (KERNEL-1014)', () => {
     expect((await git(ws.path, 'rev-parse', 'HEAD')).trim()).toBe((await git(other, 'rev-parse', 'HEAD')).trim())
   })
 
+  const sparePath = async (repo: string) => {
+    const list = (await git(repo, 'worktree', 'list', '--porcelain')).split('\n')
+    const i = list.findIndex((l) => l.startsWith('branch refs/heads/kernel-spare/'))
+    return list[i - 2]!.slice('worktree '.length)
+  }
+
+  it('does not claim a spare with edits left in it, and makes a fresh worktree', async () => {
+    const { k, project: r } = await project()
+    await k.workspaces.prepareSpare(r.id)
+    const dirty = await sparePath(r.path)
+    await writeFile(join(dirty, 'README.md'), 'edited in the spare\n')
+    const added = fetches.adds
+    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan the PDF export' })
+    await k.workspaces.worktreeMade(chat.workspaceId)
+    const ws = wsOf(k, chat)
+    expect(fetches.adds).toBe(added + 1)
+    expect(ws.path).not.toBe(dirty)
+    expect(await git(ws.path, 'status', '--porcelain')).toBe('')
+    expect(existsSync(dirty)).toBe(false)
+  })
+
+  it('does not claim a spare whose commits the base moved back past, and makes a fresh worktree', async () => {
+    const { k, project: r } = await project()
+    const remote = (await git(r.path, 'remote', 'get-url', 'origin')).trim()
+    const other = await mkdtemp(join(tmpdir(), 'kernel-other-'))
+    await run('git', ['clone', '-q', '-b', 'main', remote, other])
+    const base = (await git(other, 'rev-parse', 'HEAD')).trim()
+    await writeFile(join(other, 'AHEAD.md'), 'ahead\n')
+    await run('git', ['-C', other, '-c', 'user.name=t', '-c', 'user.email=t@t', 'add', '.'])
+    await run('git', ['-C', other, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'ahead'])
+    await run('git', ['-C', other, 'push', '-q', 'origin', 'main'])
+    await run('git', ['-C', r.path, 'fetch', '-q', 'origin'])
+    await k.workspaces.prepareSpare(r.id)
+    expect((await git(await sparePath(r.path), 'rev-parse', 'HEAD')).trim()).not.toBe(base)
+    await run('git', ['-C', other, 'push', '-q', '-f', 'origin', `${base}:main`])
+    const added = fetches.adds
+    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan the PDF export' })
+    await k.workspaces.worktreeMade(chat.workspaceId)
+    const ws = wsOf(k, chat)
+    expect(fetches.adds).toBe(added + 1)
+    expect((await git(ws.path, 'rev-parse', 'HEAD')).trim()).toBe(base)
+    expect(existsSync(join(ws.path, 'AHEAD.md'))).toBe(false)
+  })
+
   it('does not claim a spare that starts from another base than the one picked', async () => {
     const { k, project: r } = await project()
     await run('git', ['-C', r.path, 'branch', 'dev'])

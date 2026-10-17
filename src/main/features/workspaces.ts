@@ -7,7 +7,7 @@ import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, referencesInProject, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
 import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, projectWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
-import { claimSpare as turnSpareIntoWorktree, fastForward, makeSpare, revParse, sweepSpares } from '../services/worktrees'
+import { claimSpare as turnSpareIntoWorktree, fastForward, isAncestor, makeSpare, revParse, sweepSpares } from '../services/worktrees'
 import { linkNodeModules, NoFreePortBlock, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
 import { listTree, readImage, readWorkspaceFile, resolvePaths, scratchpadDir, searchFiles } from '../services/files'
@@ -310,11 +310,16 @@ export class Workspaces extends Feature {
     }
   }
 
-  /** Brings a claimed spare, which has no changes of its own, up to `baseRef` when main moved since it was made. False when it can't. */
+  /**
+   * A claimed spare starts the chat only when nothing in it is the chat's to inherit: its working tree is clean, and its HEAD is
+   * the base or behind it, so a fast-forward lands exactly on the base. Edits left in the spare, or commits a base moved back
+   * past, fail it, and the caller makes a fresh worktree. False when it can't be brought up to `baseRef`.
+   */
   private async catchUp(path: string, baseRef: string): Promise<boolean> {
-    const [here, there] = await Promise.all([revParse(path, 'HEAD'), revParse(path, baseRef)])
-    if (!here || !there) return false
-    return here === there || await fastForward(path, baseRef)
+    const [here, there, status] = await Promise.all([revParse(path, 'HEAD'), revParse(path, baseRef), exec('git', ['-C', path, 'status', '--porcelain'])])
+    if (!here || !there || status.code !== 0 || status.stdout.trim()) return false
+    if (here === there) return true
+    return await isAncestor(path, here, there) === true && await fastForward(path, baseRef) && await revParse(path, 'HEAD') === there
   }
 
   /** Worktrees being made for Lead chats, by workspace (KERNEL-542). */
