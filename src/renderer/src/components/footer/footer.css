@@ -24,8 +24,7 @@
 .ft-pc[data-tone='near'], .pm-mp[data-tone='near'] { color: var(--needs); }
 .ft-pc[data-tone='full'], .pm-mp[data-tone='full'] { color: var(--del); }
 .ft-div { width: 1px; height: 14px; margin: 0 6px; background: var(--line-2); }
-.ft-pill { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-meta); }
-.ft-pill { height: 26px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-pill); color: var(--ink-2); }
+.ft-pill { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-pill); background: transparent; color: var(--ink-2); font-size: var(--fs-meta); }
 .ft-pill:hover { background: var(--surface-3); }
 .ft-pill:focus-visible { outline-offset: 2px; }
 /* The pill fits the 32px footer. */
@@ -80,6 +79,6 @@ button.pm-head:focus-visible { outline: 0; background: var(--hover); }
 .plan-other-use { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
 .plan-num { display: inline-flex; gap: 4px; }
 .plan-sep { color: var(--faint); }
-.btn.plan-signin { height: 24px; padding: 0 10px; font-size: var(--fs-meta); }
+.btn.plan-signin { height: 24px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .plan-foot { padding: 6px; }
 
