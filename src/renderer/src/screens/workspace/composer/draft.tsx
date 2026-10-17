@@ -159,13 +159,27 @@ function rangeAt(el: HTMLElement, offset: number): Range {
   return endOf(el)
 }
 
-/** Scrolls the box so the caret in `r` shows, by the least that does it. */
+/** Scrolls the box so the caret in `r` shows, by the least that does it. A caret on a new last line has no box of its own,
+ * so the box scrolls to its end. */
 function reveal(el: HTMLElement, r: Range) {
   const c = r.getBoundingClientRect()
-  if (!c.height) return
+  if (!c.height) {
+    const tail = document.createRange()
+    tail.selectNodeContents(el)
+    tail.setStart(r.startContainer, r.startOffset)
+    if (!tail.toString().trim()) el.scrollTop = el.scrollHeight
+    return
+  }
   const box = el.getBoundingClientRect()
   if (c.bottom > box.bottom) el.scrollTop += c.bottom - box.bottom
   else if (c.top < box.top) el.scrollTop -= box.top - c.top
+}
+
+/** Breaks the line at the caret and keeps the caret in view: a break made by script doesn't scroll the box the way typing does. */
+function breakLine(el: HTMLElement) {
+  document.execCommand('insertLineBreak')
+  const sel = getSelection()
+  if (sel?.rangeCount) reveal(el, sel.getRangeAt(0))
 }
 
 const caretAfter = (node: Node) => {
@@ -412,7 +426,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     }
     // Enter from anywhere breaks the line instead of opening a <div>, and Cmd+B or Cmd+I don't style the text.
     const onBeforeInput = (e: InputEvent) => {
-      if (e.inputType === 'insertParagraph') { e.preventDefault(); document.execCommand('insertLineBreak') }
+      if (e.inputType === 'insertParagraph') { e.preventDefault(); breakLine(el) }
       else if (e.inputType.startsWith('format')) e.preventDefault()
     }
     // A box that isn't laid out (a hidden tab) reads a scroll of 0, which is not where the user left it.
@@ -511,7 +525,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.altKey || e.nativeEvent.isComposing) return
     e.preventDefault()
-    document.execCommand('insertLineBreak')
+    if (input.current) breakLine(input.current)
   }
 
   /** The x on a chip. Undoable like a Backspace. */
