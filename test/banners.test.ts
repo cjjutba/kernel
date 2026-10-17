@@ -223,7 +223,7 @@ describe('workspace banners', () => {
 
   it('names the agent and doesn\'t block when setup failed and the chat works on (KERNEL-1012)', () => {
     const ran = { ...ws, status: 'ready' as const, setupRun: { startedAt: 1, endedAt: 2, end: 1 } }
-    expect(bannerFor(input({ ws: ran, skipsSetup: true }))).toMatchObject({ id: 'setup', title: 'Setup failed', sub: 'Kai keeps working without it.', blocks: false, actions: [{ label: 'Edit script' }, { label: 'Rerun setup' }] })
+    expect(bannerFor(input({ ws: ran, skipsSetup: true }))).toMatchObject({ id: 'setup', title: 'Setup failed', sub: 'Christian keeps working without it.', blocks: false, actions: [{ label: 'Edit script' }, { label: 'Rerun setup' }] })
     expect(bannerFor(input({ ws: { ...ran, setupRun: { startedAt: 1, endedAt: 2, end: 0 } }, skipsSetup: true }))).toBeNull()
     expect(bannerFor(input({ ws: { ...ran, setupRun: { startedAt: 1, endedAt: 2, end: null } }, skipsSetup: true }))).toBeNull()
   })

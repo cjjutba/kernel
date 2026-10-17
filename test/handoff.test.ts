@@ -78,7 +78,7 @@ describe('what teammates are told about setup (KERNEL-1012)', () => {
     expect(SETUP_LINE).toContain('Never wait for a note that hasn\'t come.')
     expect(SETUP_LINE).not.toMatch(/Wait for Kernel's note/)
     expect(TEAMMATE_RULE).toContain(SETUP_LINE)
-    expect(reviewRule({ author: 'Kai', task: 'x', workspaceId: 'w', branch: 'b', base: 'main' })).toContain(SETUP_LINE)
+    expect(reviewRule({ author: 'Christian', task: 'x', workspaceId: 'w', branch: 'b', base: 'main' })).toContain(SETUP_LINE)
   })
 })
 

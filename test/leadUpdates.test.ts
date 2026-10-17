@@ -700,8 +700,8 @@ describe("a teammate's setup (KERNEL-126)", () => {
     await wait()
     expect(parts(s.posts.pop()!)).toEqual({
       header: UPDATE_HEADER,
-      body: [NOOR, '- Setup failed with exit code 2. Noor already started and keeps working without it. The user can fix setup and click Run again in that workspace.'],
-      todo: ["- Setup failed in Noor's workspace. Noor already started and keeps working without it. Tell the user it can be fixed and run again there."]
+      body: [NOOR, '- Setup failed with exit code 2. Sean already started and keeps working without it. The user can fix setup and click Run again in that workspace.'],
+      todo: ["- Setup failed in Sean's workspace. Sean already started and keeps working without it. Tell the user it can be fixed and run again there."]
     })
   })
 })
