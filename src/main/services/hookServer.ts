@@ -22,6 +22,8 @@ export interface HookServerOptions {
   resolve: (cwd: string, sessionId: string, chatId?: string) => HookContext
   /** Sessions Kernel started itself report through in-process hooks, so their posts here are ignored. */
   isManaged: (sessionId: string) => boolean
+  /** Text a seat's `UserPromptSubmit` answers with as `additionalContext`, so the agent reads it with the user's message (KERNEL-1000). */
+  promptContext?: (chatId: string) => string | undefined
   /** This server's build. A post from a session, terminal or script the other build started is ignored (KERNEL-675). */
   build?: HookBuild
   /** A function so a change in Settings applies to the next request without restarting the server. */
@@ -60,6 +62,10 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
     if (!parsed.known) return json(res, 200, {})
 
     const ev = parsed.event as HookPayload
+    if (ev.hook_event_name === 'UserPromptSubmit' && ctx.chatId) {
+      const additionalContext = o.promptContext?.(ctx.chatId)
+      if (additionalContext) return json(res, 200, { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext } })
+    }
     if (ev.hook_event_name === 'PermissionRequest') {
       // A session outside every project asks in its own window, as if Kernel weren't installed (D-138).
       if (!ctx.projectId) return json(res, 200, permissionResponse(null))

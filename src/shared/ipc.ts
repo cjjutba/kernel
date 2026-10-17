@@ -289,6 +289,8 @@ export interface KernelApi {
   // home and inbox (KERNEL-17)
   'notifications.list': { req: void; res: Notification[] }
   'notifications.read': { req: { ids: string[] | 'all' }; res: Notification[] }
+  /** Answers the teammate question an inbox row (`Notification.ask`) carries, and settles the row (KERNEL-1000). */
+  'notifications.answer': { req: { id: string; text: string }; res: Notification }
   /** Settings, Notifications, Play: shows one macOS banner with the sound, so the user hears it (KERNEL-680). */
   'notifications.playSound': { req: { sound: AppSettings['notifications']['sound'] }; res: Ok }
   /**
@@ -657,6 +659,8 @@ export type PushEvent =
   /** /clear started a fresh conversation, so the transcript starts over. */
   | { type: 'chat.cleared'; chatId: string }
   | { type: 'chat.running'; chatId: string; running: boolean }
+  /** How many Team updates wait for a terminal Lead tab's next prompt or check_team, sent when the number changes (KERNEL-1000). */
+  | { type: 'seat.updates'; chatId: string; count: number }
   /**
    * The chat's queue, or what it waits for, changed. `why` is set while the queue holds messages and something holds them,
    * and is absent once it is empty (KERNEL-271).

@@ -1,6 +1,7 @@
 import type { AgentDef, Chat, Workspace } from '@shared/types'
 import { reviewTools } from '../services/reviewMcp'
 import { teammateTools } from '../services/teammateMcp'
+import { checkTeamTools } from '../services/checkTeamMcp'
 import { kernelServer } from '../services/kernelServer'
 import { sharedTools } from '../services/sharedMcp'
 import { issueTools } from '../services/issueMcp'
@@ -22,7 +23,9 @@ export class Tools extends Feature {
       : ws.reviewOf ? reviewTools({ submit: (review) => this.k.reviews.submitReview(ws.id, review, chat.id) })
       : teammateTools(this.k.waits.teammateToolDeps(ws.id))
     const issue = issueTools({ issueKey: () => this.issueKey(ws.id), tracker: (key) => this.k.integrations.trackerOf(ws.projectId, { id: key }) })
-    return [...own, ...issue, ...(this.sharing ? sharedTools({ share: (o) => this.k.sharing.shareFile(ws.id, chat.id, o) }) : [])]
+    // Kernel can't start a turn in a terminal, so a terminal Lead reads its team's news with a tool (KERNEL-1000).
+    const team = chat.kind === 'terminal' && agent?.lead ? checkTeamTools({ take: () => this.leadUpdates.takeSeat(chat.id) }) : []
+    return [...own, ...team, ...issue, ...(this.sharing ? sharedTools({ share: (o) => this.k.sharing.shareFile(ws.id, chat.id, o) }) : [])]
   }
 
   /** The issue a workspace builds, as saved now. A review reads the issue of the work it reviews. */

@@ -87,6 +87,7 @@ export class Hooks extends Feature {
         approvals: this.approvals,
         approvalTimeoutMs: () => this.settings.permissions.approvalTimeoutSec * 1000,
         isManaged: (id) => this.sessions.isManaged(id),
+        promptContext: (chatId) => this.leadUpdates.takeSeat(chatId),
         build: this.build,
         resolve: (cwd, _session, chatId) => this.resolveCwd(cwd, chatId)
       })

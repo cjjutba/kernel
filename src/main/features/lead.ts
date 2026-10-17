@@ -50,7 +50,9 @@ export class Lead extends Feature {
     // The Lead chat that handed off the newest of the workspaces hears about it (KERNEL-105), and learns which other Lead chats are
     // involved, by their titles. Other tabs of its own Lead chat aren't another chat (KERNEL-337).
     const owners = o.parties.map((p) => this.store.workspace(p.workspaceId)).filter((w): w is Workspace => !!w).sort((a, b) => b.createdAt - a.createdAt)
-    const chat = (owners.length ? this.leadUpdateTarget(o.projectId, owners[0].leadChatId)?.chat : undefined) ?? await this.leadChat(o.projectId)
+    // A terminal tab can't be sent a message, so the overlap goes to a chat (KERNEL-1000).
+    const owner = owners.length ? this.leadUpdateTarget(o.projectId, owners[0].leadChatId)?.chat : undefined
+    const chat = (owner?.kind === 'terminal' ? undefined : owner) ?? await this.leadChat(o.projectId)
     const threadOf = (w: Workspace) => w.threadId ?? (w.leadChatId ? this.store.chat(w.leadChatId)?.threadId : undefined)
     const others = [...new Set(owners.map(threadOf).filter((id): id is string => !!id && id !== chat.threadId))].map((id) => this.store.thread(id)?.title).filter(Boolean)
     const elsewhere = others.length ? ` Part of this work was handed off in another Lead chat: ${others.map((t) => `"${t}"`).join(', ')}.` : ''
@@ -912,6 +914,11 @@ export class Lead extends Feature {
     }
   }
 
+  /** The user's answer to a teammate's question, sent from the inbox when the Lead is a terminal that can't be sent a turn (KERNEL-1000). */
+  answerTeammate(projectId: string, workspaceId: string, answer: string) {
+    return this.messageWorkspace(projectId, workspaceId, `The user answered your question in Kernel's inbox: ${answer}`)
+  }
+
   /**
    * The Lead's `message_agent` (KERNEL-118). It sends only into an open workspace of this project that has its folder and
    * isn't the Lead's own, opening a chat there when none is open, and says what really happened: sent, waiting for the
@@ -1033,6 +1040,11 @@ export class Lead extends Feature {
     return !chat.closed && chat.kind !== 'terminal' && this.store.workspace(chat.workspaceId)?.status !== 'archived'
   }
 
+  /** A terminal tab that is a Lead's or Build here seat, still open in a workspace that isn't archived (KERNEL-1000). */
+  private isOpenSeat(chat: Chat) {
+    return chat.kind === 'terminal' && !chat.closed && (chat.terminal?.role === 'lead' || chat.terminal?.role === 'build') && this.store.workspace(chat.workspaceId)?.status !== 'archived'
+  }
+
   /**
    * Where teammate updates about work handed off in the tab `owner` go (KERNEL-105, KERNEL-337): that tab while it's open,
    * else the newest open tab of its Lead chat (forks included, since a fork stays in the chat), else its newest open fork
@@ -1043,6 +1055,8 @@ export class Lead extends Feature {
   leadUpdateTarget(projectId: string, owner?: string): { chat: Chat; from?: From } | undefined {
     const was = owner ? this.store.chat(owner) : undefined
     if (was && this.isOpenChat(was)) return { chat: was }
+    // A terminal Lead hears about its own hand-offs too, by queue and never by a turn (KERNEL-1000).
+    if (was && this.isOpenSeat(was)) return { chat: was }
     const sibling = was && this.store.threadTabs(was.id).filter((c) => c.id !== was.id && this.isOpenChat(c)).at(-1)
     if (sibling) return { chat: sibling, from: { title: was.title, tab: true } }
     const fork = was && this.store.chats(was.workspaceId).filter((c) => c.forkOf?.chatId === was.id && this.isOpenChat(c)).sort((a, b) => b.createdAt - a.createdAt)[0]

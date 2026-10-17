@@ -75,7 +75,7 @@ export class Seats extends Feature {
 
   closeWorkspace(workspaceId: string, chatIds: string[]) {
     this.registry.revokeWorkspace(workspaceId)
-    for (const id of chatIds) { removeSeatDir(seatDir(this.o.dataDir, id)); this.k.seatSignals.forget(id) }
+    for (const id of chatIds) { removeSeatDir(seatDir(this.o.dataDir, id)); this.k.seatSignals.forget(id); this.leadUpdates.seatClosed(id) }
   }
 
   /** A closed tab's seat: its token and its folder. */
@@ -83,6 +83,7 @@ export class Seats extends Feature {
     this.registry.revokeChat(chatId)
     removeSeatDir(seatDir(this.o.dataDir, chatId))
     this.k.seatSignals.forget(chatId)
+    this.leadUpdates.seatClosed(chatId)
   }
 
   /** Where a seat's `claude` finds the endpoint, once started. */
