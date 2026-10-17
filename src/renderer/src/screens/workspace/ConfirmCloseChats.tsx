@@ -12,8 +12,6 @@ import { nextTab } from './nextTab'
 import { sharedTab } from './shared/shared'
 import { archiveChatFromSidebar } from './archiveChat'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
-import { isSeat, seatTitle } from './terminal/seat'
-import { TERMINAL_SEATS_IN_APP } from '../../seats'
 import './confirm.css'
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
@@ -92,7 +90,6 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
   const agent = useStore((s) => (ws ? s.agents[ws.projectId]?.find((a) => a.id === ws.agentId)?.name : undefined)) ?? 'The agent'
   const chats = useStore((s) => s.chats[workspaceId])?.filter((c) => chatIds.includes(c.id)) ?? []
   const working = useStore((s) => chatIds.filter((id) => s.running[id]))
-  const waitingOnYou = useStore((s) => s.approvals.some((a) => !!a.chatId && chatIds.includes(a.chatId) && a.status === 'pending'))
   const queued = useStore((s) => chatIds.reduce((n, id) => n + (s.queue[id]?.length ?? 0), 0))
   // Every open tab of a Lead chat: the whole chat closes, which has its own words (GroupedCloseLastTab.png). Read live, since the Lead's chats may load
   // after the dialog opens, then frozen at the first chat it finds: pressing Close chat closes the tabs, and a live read would then turn this into the
@@ -118,18 +115,6 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
 
   const one = chatIds.length === 1
 
-  // A terminal seat is a Claude Code session in a pty, so closing it ends the session. It asks only while the seat is working or waits on the user.
-  if (TERMINAL_SEATS_IN_APP && one && chats[0] && isSeat(chats[0])) {
-    return (
-      <ConfirmDialog
-        title="Close this terminal?" body={working.length ? "It's still working." : waitingOnYou ? "It's waiting on you." : 'Closing ends its session.'}
-        danger busy={!!closing} busyPattern="scatter" busyLabel="Closing" confirmLabel="Close" onConfirm={() => void close()} onCancel={actions.ui.closeModal}
-      >
-        <div className="wsc-facts mono"><span>{seatTitle(chats[0])}</span></div>
-        {error && <p role="alert" className="wsc-error">{error}</p>}
-      </ConfirmDialog>
-    )
-  }
   const where = one ? 'this chat' : working.length === 1 ? chats.find((c) => c.id === working[0])?.title ?? 'one of them' : `${working.length} of them`
   const drops = queued ? ` and drops ${plural(queued, 'queued message')}` : ''
   const body = `${agent} is still working in ${where}. Closing stops ${working.length > 1 ? 'those turns' : 'the turn'}${drops}. Changes already in the worktree stay.`

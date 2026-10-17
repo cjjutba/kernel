@@ -492,9 +492,6 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .term { flex: 1; min-height: 0; display: flex; background: var(--code-bg); padding: 12px 0 8px 18px; }
 .term-compact { padding: 8px 0 4px 12px; }
 .term-notice { margin: 0; padding: 8px 18px; border-bottom: 1px solid var(--line-2); font-size: var(--fs-code); color: var(--muted); }
-.term-seat { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.seat-bar { display: flex; align-items: center; gap: 12px; padding: 8px 18px; border-bottom: 1px solid var(--line-2); }
-.seat-note { margin: 0; font-size: var(--fs-code); color: var(--muted); }
 .term-host { flex: 1; min-width: 0; min-height: 0; }
 .term .xterm { height: 100%; }
 .term .xterm-viewport { background-color: transparent !important; }

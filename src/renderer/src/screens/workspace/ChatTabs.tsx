@@ -5,7 +5,6 @@ import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { FileIcon } from '../../components/FileIcon'
 import { isUnread } from '../../components/sidebar/unread'
 import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
-import { TERMINAL_SEATS_IN_APP } from '../../seats'
 import { Icon, IconButton, Menu, Spinner, type IconName } from '../../ui'
 import { closeChats, closesThread } from './ConfirmCloseChats'
 import { archiveChatFromSidebar } from './archiveChat'
@@ -14,7 +13,6 @@ import { kindFile, sharedTab } from './shared/shared'
 import { attempt } from './MessageActions'
 import { focusComposerIn, focusComposerWhenOpen } from './composer/bus'
 import { newChatTab, tabAfterKey, tabStop } from './leadNoChat'
-import { isLeadSeat, isSeat, seatTitle } from './terminal/seat'
 
 export const fileTab = (path: string) => `file:${path}`
 /** An empty path is the diff of every changed file. */
@@ -38,8 +36,6 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
   const sharedFiles = useStore((s) => s.shared)
   // Only this workspace's tabs: another chat starting or stopping leaves the strip alone.
   const running = useStore((s) => Object.fromEntries(chats.filter((c) => s.running[c.id]).map((c) => [c.id, true])))
-  // A terminal Lead tab's team updates waiting to be read, from `seat.updates`. Only this strip's Lead seats.
-  const pendingUpdates = useStore((s) => Object.fromEntries(chats.filter((c) => TERMINAL_SEATS_IN_APP && isLeadSeat(c)).map((c) => [c.id, s.seatUpdates[c.id] ?? 0])))
   const [renaming, setRenaming] = useState<string | null>(null)
   const terminal = useStore((s) => s.settings?.terminal)
   // Main refuses a terminal tab while the big terminal is off, so neither the menu nor ⌘⇧T offers one then.
@@ -68,10 +64,6 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
     const whole = closesThread(getState(), workspaceId, ids)
     const ws = getState().workspaces.find((w) => w.id === workspaceId)
     if (whole && ws && isLeadChatWorkspace(ws)) return attempt('Could not archive the chat', () => archiveChatFromSidebar(whole))
-    // A terminal seat that is working or waits on you asks first, whichever tab strip it is in. An idle seat and a plain terminal close at once.
-    const live = getState()
-    const busySeat = (live.chats[workspaceId] ?? chats).some((c) => ids.includes(c.id) && TERMINAL_SEATS_IN_APP && isSeat(c) && (live.running[c.id] || live.approvals.some((a) => a.chatId === c.id && a.status === 'pending')))
-    if (busySeat) return actions.ui.openModal({ name: 'confirm', kind: 'closeChats', workspaceId, chatIds: ids })
     const asks = !threadId || !!whole
     if (asks && ids.some((id) => getState().running[id])) return actions.ui.openModal({ name: 'confirm', kind: 'closeChats', workspaceId, chatIds: ids })
     return attempt(ids.length > 1 ? 'Could not close the other tabs' : 'Could not close the tab', () => closeChats(workspaceId, ids, active, onSelect, tabs.map((t) => t.id)))
@@ -134,7 +126,7 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
     requestAnimationFrame(() => document.getElementById(`ws-tab-${next}`)?.focus())
   }
   const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'diff' | 'shared' | 'image' | 'text' | 'terminal'; path?: string; icon?: IconName; file?: string; unread?: boolean }[] = [
-    ...chats.map((c) => ({ id: c.id, title: TERMINAL_SEATS_IN_APP ? seatTitle(c) : c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const, unread: c.kind === 'chat' && isUnread(c) })),
+    ...chats.map((c) => ({ id: c.id, title: c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const, unread: c.kind === 'chat' && isUnread(c) })),
     ...files.map((p) => ({ id: fileTab(p), title: base(p), kind: 'file' as const, path: p, file: p })),
     ...diffs.map((p) => ({ id: diffTab(p), title: p ? base(p) : 'All changes', kind: 'diff' as const, path: p, file: p || undefined })),
     ...shared.map((id) => ({ id: sharedTab(id), title: sharedFiles[id]?.title ?? 'Shared file', kind: 'shared' as const, file: kindFile[sharedFiles[id]?.kind ?? 'markdown'] })),
@@ -149,13 +141,10 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
           const on = t.id === active
           const editing = renaming === t.id
           // A chat tab's icon shows the chat's state, like its sidebar row. The other kinds keep their own icon.
-          // A terminal tab takes the same working and needs-you icons (D-098) and keeps its terminal icon when neither applies.
-          const state = t.kind === 'chat' || (t.kind === 'terminal' && TERMINAL_SEATS_IN_APP) ? chatGlyph({ waiting: approvals.filter((a) => a.chatId === t.id && a.status === 'pending'), running: !!running[t.id] }) : undefined
-          const g = t.kind === 'terminal' && !state?.label ? undefined : state
+          const g = t.kind === 'chat' ? chatGlyph({ waiting: approvals.filter((a) => a.chatId === t.id && a.status === 'pending'), running: !!running[t.id] }) : undefined
           // A reply you haven't seen bolds the title. The tab on screen is read, and the chat view is asking main to say so (KERNEL-508).
           const unread = !!t.unread && !on
-          const waiting = pendingUpdates[t.id] ?? 0
-          const name = [t.title, g?.label || undefined, unread ? 'Unread' : undefined, waiting ? `${waiting} team ${waiting === 1 ? 'update' : 'updates'} waiting` : undefined].filter(Boolean).join(', ')
+          const name = [t.title, g?.label || undefined, unread ? 'Unread' : undefined].filter(Boolean).join(', ')
           return (
             <span key={t.id} ref={on ? tabAnchor : undefined} className="tab-group" data-on={on || undefined}>
               {editing ? (
@@ -164,7 +153,7 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
                   onKeyDown={(e) => { if (e.key === 'Enter') rename(t.id, e.currentTarget.value); else if (e.key === 'Escape') setRenaming(null) }} />
               ) : (
                 <button type="button" role="tab" aria-selected={on} tabIndex={t.id === stop ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" data-tip={t.title} data-tip-hint={t.kind === 'chat' ? note : undefined} data-unread={unread || undefined} onClick={() => onSelect(t.id)}
-                  aria-label={g?.label || unread || waiting ? name : undefined} aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
+                  aria-label={g?.label || unread ? name : undefined} aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
                   onKeyDown={(e) => { if (t.kind === 'chat' && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) { e.preventDefault(); openTabMenu(t.id) } else arrow(e, t.id) }}
                   onContextMenu={(e) => { if (t.kind !== 'chat') return; e.preventDefault(); openTabMenu(t.id) }}
                   onDoubleClick={() => (t.kind === 'chat' || t.kind === 'terminal') && setRenaming(t.id)}>
@@ -173,7 +162,6 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
                     {g?.icon === 'spin' ? <Spinner label={null} pattern="twinkle" /> : !g && t.file ? <FileIcon path={t.file} size={14} /> : <Icon name={g?.icon ?? t.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'diff' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
                   </span>
                   <span className="ellipsis">{t.title}</span>
-                  {waiting > 0 && <span className="tab-count mono" aria-hidden="true">{waiting}</span>}
                 </button>
               )}
               {/* One slot after the title: the open chat shows a pen at rest, and hover or keyboard focus swaps it for the close button (D-088). */}
