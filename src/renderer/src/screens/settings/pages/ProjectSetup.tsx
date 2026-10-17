@@ -104,8 +104,8 @@ export function ProjectSetup({ projectId }: { projectId?: string }) {
     <ProjectPage project={project} rs={rs} title="Scripts">
       <ScriptEditor projectId={projectId} kind="setup" rs={rs} offer={offerFor('setup')} />
       <Section label="Setup">
-        <Row id="wait-for-setup" setting="workspace.leadWaitForSetup" label="Wait for setup before the first message" {...projectValue(rs, 'workspace.leadWaitForSetup', () => void patchProjectSettings(projectId, { workspace: { leadWaitForSetup: null } }), { to: { page: 'git' }, label: 'Settings, Git' })}>
-          <Toggle label="Wait for setup before the first message" checked={wait ?? appWait ?? false} onChange={(v) => void patchProjectSettings(projectId, { workspace: { leadWaitForSetup: v } })} />
+        <Row id="wait-for-setup" setting="workspace.leadWaitForSetup" label="Wait for setup before agents start" {...projectValue(rs, 'workspace.leadWaitForSetup', () => void patchProjectSettings(projectId, { workspace: { leadWaitForSetup: null } }), { to: { page: 'git' }, label: 'Settings, Git' })}>
+          <Toggle label="Wait for setup before agents start" checked={wait ?? appWait ?? false} onChange={(v) => void patchProjectSettings(projectId, { workspace: { leadWaitForSetup: v } })} />
         </Row>
       </Section>
       <ScriptEditor projectId={projectId} kind="archive" rs={rs} offer={offerFor('archive')} />

@@ -62,7 +62,7 @@ export interface BannerInput {
   isLead?: boolean
   /** The Lead's name, for "Kernel can still answer you". */
   leadName?: string
-  /** A Lead chat with nothing held for setup: setup waiting or failed doesn't hold it, so the composer stays open (KERNEL-490). */
+  /** Nothing in the chat is held for setup, so setup running or failing doesn't hold it and the composer stays open (KERNEL-490, KERNEL-1012). */
   skipsSetup?: boolean
   /** The chat has history, so setup doesn't lock its box (KERNEL-1018). */
   hasHistory?: boolean
@@ -174,8 +174,14 @@ export function bannerFor(i: BannerInput): BannerView | null {
     actions: [{ id: 'tryAgain', label: 'Try again' }], blocks: false
   }
 
-  // A Lead chat that isn't held keeps answering after setup failed (KERNEL-490).
-  const without = `${name} keeps answering without it.`
+  // Setup failed and nothing waits for it: the chat keeps working, so the banner says so and never blocks (KERNEL-1012). That is a
+  // failed setup in a chat that isn't held, whether main marked the workspace failed (no worktree, nothing sent) or let it run on.
+  const run = ws.setupRun
+  const ranOn = ws.status === 'ready' && !!run?.endedAt && run.end !== 0 && run.end !== null && run.end !== undefined
+  if ((ws.status === 'failed' && i.skipsSetup) || ranOn) return {
+    id: 'setup', kind: 'setup', title: 'Setup failed', sub: `${name} keeps working without it.`,
+    actions: [{ id: 'editScript', label: 'Edit script' }, { id: 'runAgain', label: 'Rerun setup', primary: true }], blocks: false
+  }
 
   if (ws.status === 'failed') {
     const cmd = setupCommand(i.scripts)
@@ -183,8 +189,8 @@ export function bannerFor(i: BannerInput): BannerView | null {
     const code = i.setupCode
     return {
       id: 'setup', kind: 'setup', title: 'Setup script failed',
-      sub: `${code === null || code === undefined ? `${cmd ?? 'The setup script'} did not finish` : `${what} with code ${code}`}.${i.skipsSetup ? ` ${without}` : i.hasHistory ? (i.heldForSetup ? ' Messages you send queue until setup passes.' : '') : ` ${name} waits until setup passes.`}`,
-      actions: [{ id: 'editScript', label: 'Edit script' }, { id: 'runAgain', label: 'Run again', primary: true }], blocks: !i.skipsSetup && !i.hasHistory
+      sub: `${code === null || code === undefined ? `${cmd ?? 'The setup script'} did not finish` : `${what} with code ${code}`}.${i.hasHistory ? (i.heldForSetup ? ' Messages you send queue until setup passes.' : '') : ` ${name} waits until setup passes.`}`,
+      actions: [{ id: 'editScript', label: 'Edit script' }, { id: 'runAgain', label: 'Run again', primary: true }], blocks: !i.hasHistory
     }
   }
 

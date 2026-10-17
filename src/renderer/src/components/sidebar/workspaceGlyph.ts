@@ -60,8 +60,9 @@ export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running:
   // Nothing can run in a worktree deleted outside Kernel (KERNEL-291).
   if (ws.folderGone) return FOLDER_GONE
   if (ws.status === 'failed') return { icon: 'warning', tone: 'del', label: 'Setup failed' }
-  if (ws.status === 'setup') return spin('Setting up')
+  // A chat already working while setup runs says so (KERNEL-1012).
   if (o.running) return spin('Working')
+  if (ws.status === 'setup') return spin('Setting up')
   return prGlyph(ws, { local: o.local, pending: o.pending }) ?? { icon: 'branch', tone: 'muted', label: ws.stat?.files ? 'No PR yet' : 'No changes yet' }
 }
 
@@ -124,8 +125,8 @@ export function chatGlyph(o: { ws?: Workspace; waiting: Approval[]; running: boo
   // The chat's own workspace sets up like a teammate's, and its row says so with the same icons (KERNEL-405).
   if (o.ws?.folderGone) return FOLDER_GONE
   if (o.ws?.status === 'failed') return { icon: 'warning', tone: 'del', label: 'Setup failed' }
-  if (o.ws?.status === 'setup') return spin('Setting up')
   if (o.running) return spin('Working')
+  if (o.ws?.status === 'setup') return spin('Setting up')
   // A chat shows its own pull request once it has one. No PR is the chat icon, never the branch (KERNEL-993).
   const ws = o.ws
   if (ws) {

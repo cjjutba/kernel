@@ -1,11 +1,11 @@
 import type { Workspace } from '@shared/types'
-import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 
 /**
- * The chat doesn't wait for setup: a Lead chat with nothing held for setup in main (KERNEL-490). Its first message went at
- * once, or Kernel opened it with none, and no brief is on its way, so what you send goes at once, or waits in main if the chat is held.
+ * The chat doesn't wait for setup unless main actually holds something for it (KERNEL-490, KERNEL-1012). With Wait for setup off, the
+ * default, a brief and a Lead's messages go out once the worktree exists, so a teammate's chat shows its transcript and stays open
+ * while setup runs. Only a chat whose queue reason is `setup` is held.
  */
-export const skipsSetup = (ws: Workspace, held: boolean) => isLeadChatWorkspace(ws) && !held
+export const skipsSetup = (held: boolean) => !held
 
 /**
  * What a chat shows while its workspace sets up, or after its setup failed: `wait` draws SetupWait in place of the transcript, and
