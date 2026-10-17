@@ -12,7 +12,7 @@ import { fixtureHandlers } from '../src/main/fixtures'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { bus } from '../src/main/bus'
 import type { Fixture } from '../fixtures'
-import type { AccountProfile, AgentStatus, Approval, Chat, ChatItem, ChatPart, ChatRunMode, Decision, PlanStep, PrInfo, Provider, RateLimit, SwitchReason, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AccountProfile, Effort, ProviderModel, AgentStatus, Approval, Chat, ChatItem, ChatPart, ChatRunMode, Decision, PlanStep, PrInfo, Provider, RateLimit, SwitchReason, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 
 export const PROJECT = 'project-a'
@@ -55,11 +55,30 @@ const usage: RateLimit[] = [
   limit('codex', 'cli', 'five_hour', 9, 2.4), limit('codex', 'cli', 'seven_day', 17, 120),
   limit('codex', 'work', 'five_hour', 42, 1.1), limit('codex', 'work', 'seven_day', 28, 150)
 ]
+// Codex's model list, as the app's picker shows it: three current models with their own default efforts, and four older ones under Legacy models.
+const codexModel = (label: string, defaultEffort: Effort, legacy: boolean, efforts: Effort[] = ['low', 'medium', 'high', 'xhigh']): ProviderModel =>
+  ({ provider: 'codex', id: label.toLowerCase(), label, legacy, efforts, defaultEffort })
+const codexModels: ProviderModel[] = [
+  { ...codexModel('GPT-6.1-Sol', 'medium', false), isDefault: true },
+  codexModel('GPT-6-Astra', 'low', false),
+  codexModel('GPT-6-Luna', 'medium', false),
+  codexModel('GPT-5.6-Sol', 'medium', true),
+  codexModel('GPT-5.6-Terra', 'medium', true),
+  codexModel('GPT-5.5', 'medium', true),
+  codexModel('GPT-5.4', 'medium', true)
+]
+/** The request names a model, and the engine reads its provider from it: a model in Codex's list runs on Codex. */
+const providerOf = (model?: string, provider?: Provider): { provider?: Provider } => {
+  const p = provider ?? codexModels.find((m) => m.id === model)?.provider
+  return p ? { provider: p } : {}
+}
 const settings = seed.settings ?? DEFAULT_SETTINGS('/Users/you')
 export const f: Fixture = {
   ...seed,
+  models: { codex: codexModels },
   // A new chat starts in the project's usual mode, not plan mode, so switching to Plan is a step the visitor takes.
-  settings: { ...settings, models: { ...settings.models, leadPlanMode: false } },
+  // The efforts the app's picker shows beside each Codex model are the ones picked last, which Settings remembers per model.
+  settings: { ...settings, models: { ...settings.models, leadPlanMode: false, effortByModel: { ...settings.models.effortByModel, 'gpt-6.1-sol': 'medium', 'gpt-6-astra': 'low', 'gpt-6-luna': 'medium' } } },
   projects: [
     { ...seed.projects.find((r) => r.id === PROJECT)!, name: 'Kernel', path: PROJECT_PATH, repo: REPO },
     ...seed.projects.filter((r) => r.id === 'project-own' || r.id === 'project-portfolio')
@@ -236,14 +255,14 @@ let leadChatId = ''
 let threadId = ''
 let planId = ''
 
-function brief(projectId: string, prompt: string, plan: boolean, clientId?: string): Chat {
+function brief(projectId: string, prompt: string, plan: boolean, clientId?: string, pick: Partial<Pick<Chat, 'provider' | 'model' | 'effort'>> = {}): Chat {
   if (leadChatId) throw new Error('This demo runs one chat at a time. Use Start over under the demo to begin again.')
   threadId = 't-demo'
   leadWs = 'ws-demo-lead'
   leadChatId = 'chat-demo-lead'
   upsertThread({ id: threadId, projectId, title: 'New tab', createdAt: now(), lastSentAt: now() })
   upsertWorkspace(leadWorkspace(leadWs, projectId, 'new-chat', threadId, 4340, 0, { createdAt: now() }))
-  const chat = leadChat(leadChatId, leadWs, 'New tab', threadId, 0, { plan, createdAt: now() })
+  const chat = leadChat(leadChatId, leadWs, 'New tab', threadId, 0, { plan, createdAt: now(), ...pick })
   upsertChat(chat)
   f.items[leadChatId] = []
   reach('quiet')
@@ -510,11 +529,11 @@ function send(chat: string, parts: ChatPart[], clientId?: string): ChatItem {
   return row
 }
 
-async function configure(req: { chatId: string; model?: string; effort?: Chat['effort']; plan?: boolean; mode?: Chat['mode'] }) {
+async function configure(req: { chatId: string; provider?: Provider; model?: string; effort?: Chat['effort']; plan?: boolean; mode?: Chat['mode'] }) {
   const { chatId: id, ...patch } = req
   const c = f.chats.find((x) => x.id === id)
   if (!c) throw new Error('That chat is gone.')
-  const next: Chat = { ...c, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) }
+  const next: Chat = { ...c, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)), ...(patch.model ? { provider: providerOf(patch.model, patch.provider).provider ?? 'claude' } : {}) }
   upsertChat(next)
   await runMode(id)
   if (id === leadChatId && next.plan && stage === 'replied') reach('planMode')
@@ -534,7 +553,8 @@ const unavailable = (what: string) => async () => { throw new Error(`${what} wor
 
 /** The bridge answers from these first, then from the fixture. */
 export const storyHandlers: Record<string, (req: never) => Promise<unknown>> = {
-  'lead.start': async ({ projectId, prompt, plan, clientId }: { projectId: string; prompt: string; plan?: boolean; clientId?: string }) => brief(projectId, prompt, !!plan, clientId),
+  'lead.start': async ({ projectId, prompt, plan, clientId, provider, model, effort }: { projectId: string; prompt: string; plan?: boolean; clientId?: string; provider?: Provider; model?: string; effort?: Effort }) =>
+    brief(projectId, prompt, !!plan, clientId, { ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...providerOf(model, provider) }),
   'chats.send': async ({ chatId: id, parts, clientId }: { chatId: string; parts: ChatPart[]; clientId?: string }) => ({ queued: false, item: send(id, parts, clientId) }),
   'chats.configure': async (req: Parameters<typeof configure>[0]) => configure(req),
   'approvals.decide': async ({ id, decision }: { id: string; decision: Decision }) => decide(id, decision),
