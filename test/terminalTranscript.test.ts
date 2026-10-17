@@ -3,7 +3,7 @@ import { appendFile, mkdtemp, readFile, rename, truncate, writeFile } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ChatItem } from '@shared/types'
-import { TerminalTranscripts, TranscriptParser } from '../src/main/features/terminalTranscript'
+import { TerminalTranscripts, TranscriptParser } from '../src/main/services/terminalTranscript'
 
 // KERNEL-1002: a terminal seat's Claude Code session file becomes read-only chat items.
 
