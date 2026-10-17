@@ -149,7 +149,7 @@ export class Workspaces extends Feature {
       const reviewOf = reviewed?.id ?? (mode === 'worktree' ? o.linkReviewOf : undefined)
       const threadId = o.lead?.threadId ?? (o.leadChatId ? this.store.chat(o.leadChatId)?.threadId : undefined)
       const save = (path: string, branch: string, baselineRef?: string) => {
-        const w: Workspace = { id: newId(), projectId, name: slugify(title || 'chat'), branch, baseRef, ...(stale ? { fetchFailed: stale.text } : {}), path, mode, agentId: agent.id, ...(o.lead ? { lead: true as const } : {}), port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(threadId ? { threadId } : {}), ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), ...(later ? { worktreePending: {} } : {}), ...(mode === 'worktree' ? { firstInProject: !this.store.workspaces(projectId).some((x) => x.mode === 'worktree' && !(x.lead && !x.threadId)) } : {}), prState: 'none', createdAt: Date.now() }
+        const w: Workspace = { id: newId(), projectId, name: slugify(title || 'chat'), branch, baseRef, ...(stale ? { fetchFailed: stale.text } : {}), path, mode, agentId: agent.id, ...(o.lead ? { lead: true as const } : {}), port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(threadId ? { threadId } : {}), ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), ...(later ? { worktreePending: {} } : {}), firstInProject: this.isFirstInProject(projectId, { threadId: o.lead?.threadId }), prState: 'none', createdAt: Date.now() }
         this.store.saveWorkspace(w)
         return w
       }
@@ -347,7 +347,7 @@ export class Workspaces extends Feature {
   private async makeNow(id: string): Promise<Workspace> {
     const ws = this.mustWs(id)
     if (!ws.worktreePending || ws.status === 'archived') return ws
-    if (ws.worktreePending.error) this.updateWs(id, { status: 'setup', worktreePending: {} })
+    if (ws.worktreePending.error) this.updateWs(id, { status: 'setup', worktreePending: { ...ws.worktreePending, error: undefined } })
     const project = this.mustProject(ws.projectId)
     try {
       const repo = await loadRepoSettings(project.path)
@@ -400,7 +400,7 @@ export class Workspaces extends Feature {
       if (this.stopped) return ws
       const error = gitSaid(e)
       bus.push({ type: 'script.output', workspaceId: id, kind: 'setup', lines: [{ line: `Kernel couldn't make the worktree: ${error}`, stream: 'stderr' }] })
-      return this.updateWs(id, { status: 'failed', worktreePending: { error } })
+      return this.updateWs(id, { status: 'failed', worktreePending: { ...ws.worktreePending, error } })
     }
   }
 
@@ -615,13 +615,21 @@ export class Workspaces extends Feature {
       const root = projectWorktreeRoot(this.settings.worktreeRoot, project)
       await mkdir(root, { recursive: true })
       const path = await freeWorktreePath(project.path, root, branch, taken.paths)
-      const first = !this.store.workspaces(project.id).some((x) => x.id !== id && !x.shared && x.mode === 'worktree' && !(x.lead && !x.threadId))
-      this.updateWs(id, { shared: undefined, mode: 'worktree', branch, path, baseRef: base, port, status: 'setup', worktreePending: {}, naming: 'branch', firstInProject: first, fetchFailed: undefined })
+      // The stamp it got when it started stays: the first chat of a new project is still the first once it has a copy.
+      this.updateWs(id, { shared: undefined, mode: 'worktree', branch, path, baseRef: base, port, status: 'setup', worktreePending: { fromShared: true }, naming: 'branch', firstInProject: ws.firstInProject === true, fetchFailed: undefined })
     }))
     pending?.()
     const made = await this.makeWorktree(id)
     if (made.worktreePending) throw new Error(made.worktreePending.error ?? "Kernel couldn't make the worktree.")
     return made
+  }
+
+  /**
+   * Whether a chat or workspace started now is the first of a newly added project: the project has no other workspace or chat,
+   * open or archived (KERNEL-1053). `id` and `threadId` are the record and chat that are being made, which don't count.
+   */
+  isFirstInProject(projectId: string, self: { id?: string; threadId?: string } = {}): boolean {
+    return !this.store.workspaces(projectId).some((w) => w.id !== self.id) && !this.store.threads(projectId).some((t) => t.id !== self.threadId)
   }
 
   /** The first port of every open workspace's block. */

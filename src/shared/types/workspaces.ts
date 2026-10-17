@@ -98,8 +98,13 @@ export interface Workspace {
    * fetch. `error` is why making it failed, git's reason as git says it: the workspace is `failed`, the first message still
    * waits in the tab's queue, and Run again (`scripts.run` with `setup`) makes the worktree, then runs setup. Unset once the
    * worktree exists.
+   *
+   * `fromShared` marks the working copy of a chat that started on the shared main folder (KERNEL-1051, KERNEL-1053): Kernel makes it
+   * when the first message is sent in Build here, and holds that message until the copy is ready. The mark is set at that send
+   * and cleared when the copy exists. A record that carries it with an `error` is failed with the message still held, and
+   * `lead.retryCopy` or `lead.sendAsHandoff` ends it.
    */
-  worktreePending?: { error?: string }
+  worktreePending?: { error?: string; fromShared?: true }
   /** The worktree's folder was deleted outside Kernel. Checked at launch and when the workspace is opened (KERNEL-291). */
   folderGone?: true
   /** On a review workspace: the workspace whose work it reviews. */
@@ -147,7 +152,11 @@ export interface Workspace {
   setupRun?: SetupRun
   /** How many local files Kernel copied into the new worktree, for the chat's "Created the worktree" row (KERNEL-951). */
   copied?: number
-  /** Whether this is the project's first worktree chat, which alone shows the setup block at the top of the chat. Absent on chats from before it was stamped, which count as first. */
+  /**
+   * Whether this is the first chat of a newly added project: the project had no other chat or workspace, open or archived, when it
+   * started. Only that chat shows the setup block at the top of the chat. Every new record carries an explicit value (KERNEL-1053),
+   * and one without it, from before it was stamped, counts as not first.
+   */
   firstInProject?: boolean
 }
 
