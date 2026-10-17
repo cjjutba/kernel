@@ -7,7 +7,7 @@ import { discoverSkills, searchFiles } from '../src/main/services/files'
 import { commitHunks, listHunks } from '../src/main/services/hunks'
 import { git } from '../src/main/services/exec'
 import { chatMode } from '../src/main/services/permissions'
-import { attachFiles, Held, numberImages, partOf, pathOnlyFiles, PLAN_FILES_ONLY, PLAN_SEND_BLOCKED } from '../src/renderer/src/screens/workspace/composer/attach'
+import { attachFiles, Held, numberImages, partOf, pathOnlyFiles, previewOf, PLAN_FILES_ONLY, PLAN_SEND_BLOCKED } from '../src/renderer/src/screens/workspace/composer/attach'
 import { mentionMenu, mentionPart } from '../src/renderer/src/screens/workspace/composer/autocomplete'
 import { noteFromParts } from '../src/renderer/src/screens/workspace/cards/steps'
 import { toUserMessage } from '../src/main/services/providers/claude'
@@ -260,7 +260,7 @@ describe('permission mode from the composer', () => {
 describe('attaching files', () => {
   const file = (name: string) => ({ name }) as File
   const host = (log: string[]) => ({
-    hold: (name: string) => { log.push(`hold ${name}`); return `id-${name}` },
+    hold: (part: ChatPart) => { const name = part.type === 'text' ? '' : part.name; log.push(`hold ${name}`); return `id-${name}` },
     settle: (id: string, part: ChatPart) => log.push(`settle ${id} ${part.type === 'text' ? '' : part.name}`),
     drop: (id: string) => log.push(`drop ${id}`)
   })
@@ -269,6 +269,11 @@ describe('attaching files', () => {
     const log: string[] = []
     await attachFiles([file('a.png'), file('b.txt')], host(log), async (f) => { log.push(`read ${f.name}`); return { type: 'file', name: f.name, lines: 1, text: 'x' } })
     expect(log).toEqual(['hold a.png', 'hold b.txt', 'read a.png', 'settle id-a.png a.png', 'read b.txt', 'settle id-b.txt b.txt'])
+  })
+
+  it('lands each chip as it will look, with no loading state, before its read ends', () => {
+    expect(previewOf(new File(['x'], 'image-2.png', { type: 'image/png' }))).toEqual({ type: 'image', name: 'image-2.png' })
+    expect(previewOf(new File(['a\nb'], 'notes.md', { type: 'text/markdown' }))).toEqual({ type: 'file', name: 'notes.md' })
   })
 
   it('names images by their place in the message, after the images already in it, and leaves other files alone', async () => {
@@ -311,8 +316,8 @@ describe('attaching files', () => {
 
   it('stops counting a cancelled file at once, and ignores its read when it ends', () => {
     const held = new Held()
-    held.add('a', 'a.png')
-    held.add('b', 'b.png')
+    held.add('a', { type: 'image', name: 'a.png' })
+    held.add('b', { type: 'image', name: 'b.png' })
     expect(held.release('a')).toBe(true)
     expect(held.size).toBe(1)
     // The cancelled file's read ends later: nothing is left to settle, and the count stays right.

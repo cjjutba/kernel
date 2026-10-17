@@ -180,8 +180,8 @@ const caretAfter = (node: Node) => {
 /** What a chip reads as outside the box, for a copy. */
 const chipText = (p: ChatPart) => (p.type === 'text' ? p.text : p.type === 'skill' ? `/${p.name}` : p.type === 'file' ? p.path ?? p.text ?? p.name : p.name)
 
-/** A chip's slot. `pending` is a file still being read (its part only has the name), `fresh` a chip that just landed and fades in. */
-interface Slot { id: string; el: HTMLElement; part: ChatPart; pending?: boolean; fresh?: boolean }
+/** A chip's slot. `fresh` is a chip that just landed and fades in. */
+interface Slot { id: string; el: HTMLElement; part: ChatPart; fresh?: boolean }
 interface View { parts: ChatPart[]; before: string; after: string; first: boolean; slots: Slot[]; pending: number }
 
 /** The chat pane a draft's box sits in: what shows the drop overlay and takes a drop anywhere on it. */
@@ -213,7 +213,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
   /** The key whose draft the box shows, and where `sync` keeps it. Moves to the new key only after that key's draft is drawn. */
   const shown = useRef(key)
   const [initial] = useState(() => (key ? loadDraft(key) : undefined) ?? [...(init?.parts ?? []), ...(init?.draft ? [text(init.draft)] : [])])
-  /** Files still being read, by the id of their placeholder slot. Their slots are in the box but not in the draft. */
+  /** Files still being read, by the id of their chip's slot. Their slots are in the box but not in the draft. */
   const pending = useRef(new Held())
   /** Chips that just landed, which fade in once. */
   const fresh = useRef(new Set<string>())
@@ -232,12 +232,12 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     const slots: Slot[] = []
     for (const s of el.querySelectorAll<HTMLElement>('[data-chip]')) {
       let id = s.dataset.chip ?? ''
-      const wait = pending.current.nameOf(id)
-      if (wait !== undefined) {
+      const wait = pending.current.get(id)
+      if (wait) {
         if (seen.has(id)) { s.remove(); continue }
         seen.add(id)
         if (!drawn.current.has(s)) { s.replaceChildren(); drawn.current.add(s) }
-        slots.push({ id, el: s, part: { type: 'file', name: wait }, pending: true })
+        slots.push({ id, el: s, part: wait, fresh: fresh.current.has(id) })
         continue
       }
       const part = chips.current.get(id)
@@ -248,7 +248,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
       if (!drawn.current.has(s)) { s.replaceChildren(); drawn.current.add(s) }
       slots.push({ id, el: s, part, fresh: fresh.current.has(id) })
     }
-    // A placeholder the browser removed (Backspace, a cut) is no longer being waited for.
+    // A file's chip the browser removed (Backspace, a cut) is no longer being waited for.
     for (const id of pending.current.ids()) if (!seen.has(id)) pending.current.release(id)
     const parts = readParts(el, chips.current)
     if (shown.current) saveDraft(shown.current, parts, workspaceOf(shown.current))
@@ -311,18 +311,18 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
   const insert = (part: ChatPart, drop = 0) => put([part], drop)
   const insertText = (t: string) => put([text(t)])
 
-  /** A placeholder chip for a file being read, at the caret. */
-  const hold = (name: string) => {
+  /** The chip of a file being read, at the caret. It lands looking done; only its size or line count waits for the read. */
+  const hold = (part: ChatPart) => {
     const id = `c${++chipCount}`
-    pending.current.add(id, name)
-    putHtml(slotHtml(id, { type: 'file', name }), id)
+    pending.current.add(id, part)
+    fresh.current.add(id)
+    putHtml(slotHtml(id, part), id)
     return id
   }
-  /** The file is read: its placeholder becomes the chip, in place. A placeholder that was removed or cleared meanwhile stays gone. */
+  /** The file is read: its chip takes the whole part, in place. A chip that was removed or cleared meanwhile stays gone. */
   const settle = (id: string, part: ChatPart) => {
     if (!pending.current.release(id) || !input.current?.querySelector(`[data-chip="${id}"]`)) return
     chips.current.set(id, part)
-    fresh.current.add(id)
     sync()
   }
   const release = (id: string) => {
@@ -614,7 +614,7 @@ export function DraftInput({ d, className, placeholder, disabled, onKeyDown, onI
         onPaste={d.onPaste} onCopy={d.onCopy} onCut={d.onCut}
         onDragStart={(e) => e.preventDefault()}
       />
-      {d.slots.map((s) => createPortal(<ComposerChip part={s.part} pending={s.pending} entering={s.fresh} onRemove={() => d.removeChip(s.id)} />, s.el, s.id))}
+      {d.slots.map((s) => createPortal(<ComposerChip part={s.part} entering={s.fresh} onRemove={() => d.removeChip(s.id)} />, s.el, s.id))}
       {d.over && d.pane && createPortal(<div className="drop-veil" aria-hidden="true"><div className="drop-frame">Drop to attach</div></div>, d.pane)}
     </>
   )

@@ -3438,7 +3438,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   /** KERNEL-815: files dragged over the chat pane. scripts/shots.ts starts the drag, the overlay is local to the composer. */
   ComposerDragOver: composing({ parts: [], draft: 'Can you check the invoice table against ' }),
-  /** KERNEL-815: three files dropped on the box while they read. scripts/shots.ts slows the read down so the placeholders show. */
+  /** KERNEL-815: three files dropped on the box while the images read. scripts/shots.ts holds the image reads, so the chips show as they land and Send waits. */
   ComposerAttaching: composing({ parts: [], draft: 'Can you check the invoice table against ' }),
   /** KERNEL-909: a PDF attached by path, with its type and size. */
   ComposerFilePdf: composing({

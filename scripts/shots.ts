@@ -608,7 +608,7 @@ async function dragOverPane(page: Page) {
   await page.waitForTimeout(300)
 }
 async function dropWhileReading(page: Page) {
-  // A read that never finishes in time for the shot, so the placeholders are what shows.
+  // An image read that never finishes in time for the shot, so the chips show as they land, before the read fills them in.
   await page.evaluate(() => { FileReader.prototype.readAsDataURL = function () { /* never loads */ } })
   await page.locator('.cmp-input').evaluate((box) => {
     const dt = new DataTransfer()
