@@ -72,7 +72,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 /* transcript */
 /* The scroll area sits in a frame, so the Scroll to bottom button floats over it instead of scrolling away with the thread (KERNEL-532). */
 .ws-chat { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.btn.ws-jump.new { position: absolute; left: 0; right: 0; bottom: 12px; z-index: 1; margin: 0 auto; width: fit-content; height: 32px; border-radius: var(--r-pill); background: var(--surface); color: var(--ink); }
+.btn.ws-jump.new { position: absolute; left: 0; right: 0; bottom: 12px; z-index: 1; margin: 0 auto; width: fit-content; background: var(--surface); }
 .icon-btn.ws-jump { position: absolute; left: 0; right: 0; bottom: 12px; z-index: 1; margin: 0 auto; width: 32px; height: 32px; border: 1px solid var(--line-3); border-radius: 50%; background: var(--surface); }
 /* The top padding is the height of the fade over the top edge, so the first row sits right below it. */
 .ws-scroll { --ws-fade: 24px; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: var(--ws-fade) 32px 8px; }
@@ -121,7 +121,6 @@ button.ws-issue:hover { background: var(--surface-3); }
 .msg-chip .chip-meta { color: var(--muted); }
 .msg-chip[data-state='unreadable'] { opacity: 0.6; }
 .msg-chip[data-state='gone'] .chip-name { color: var(--muted); text-decoration: line-through; }
-.msg-chip[data-kind='image'] svg { color: var(--add); }
 button.msg-chip:hover { border-color: var(--line-4); }
 .msg-reply { gap: 6px; }
 .msg-kernel { gap: 4px; }
@@ -479,7 +478,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .code-line .src, .diff-line .src { white-space: pre; color: var(--ink-2); }
 .diff-line { display: grid; grid-template-columns: 44px 44px 18px minmax(0, 1fr); }
 .diff-line { position: relative; }
-.hunk-send { position: absolute; right: 12px; top: 1px; height: 20px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink-2); font: var(--fs-meta) var(--font); opacity: 0; }
+.hunk-send { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: var(--surface-2); opacity: 0; }
 .diff-line:hover .hunk-send, .hunk-send:focus-visible { opacity: 1; }
 .diff-line .ln { text-align: right; padding-right: 10px; color: var(--muted); user-select: none; }
 .diff-line[data-mark='+'] { background: color-mix(in srgb, var(--add) 8%, transparent); }

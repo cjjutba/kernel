@@ -68,7 +68,6 @@
 .cmp-chip[data-state='unreadable'] { opacity: 0.6; }
 .cmp-chip[data-state='gone'] .chip-name { color: var(--muted); text-decoration: line-through; }
 .chip-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; }
-.chip[data-kind='image'] > .chip-open > svg { color: var(--add); }
 /* Attaching files (KERNEL-815): the chip landing, and the drop overlay over the chat pane (draft.tsx) */
 .cmp-chip[data-entering] { animation: chip-in var(--dur-base) var(--ease-enter); }
 @keyframes chip-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
@@ -128,26 +127,27 @@
 .pick-body { display: flex; flex-direction: column; padding: 6px; }
 .pick-split { display: flex; gap: 6px; }
 .pick-rail { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; padding-right: 6px; border-right: 1px solid var(--card-line); }
-.pick-tab { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
-.pick-tab:hover, .pick-tab:focus-visible { background: var(--hover); color: var(--ink); }
+.pick-tab { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); cursor: pointer; }
+.pick-tab:hover { color: var(--ink); }
+.pick-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; color: var(--ink); }
 .pick-tab[aria-selected='true'] { background: var(--hover); color: var(--ink); }
 .pick-tab[aria-disabled='true'] { opacity: 0.4; cursor: default; }
-.pick-tab[aria-disabled='true']:hover { background: transparent; color: var(--muted); }
+.pick-tab[aria-disabled='true']:hover { color: var(--muted); }
 .pick-list { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
 .pick-item { position: relative; display: flex; align-items: center; }
-.pick-item > .pick-row { flex: 1; min-width: 0; padding-right: 36px; }
+.pick-item > .pick-row { flex: 1; min-width: 0; padding-right: 35px; }
 .pick-star { position: absolute; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
 .pick-item[data-active='true'] .pick-star, .pick-star[aria-pressed='true'], .pick-star:focus-visible { opacity: 1; }
 .pick-star:hover { color: var(--ink); }
 .pick-star[aria-pressed='true'] { color: var(--ink); }
 .pick-star[aria-pressed='true'] svg path { fill: currentColor; }
 .pick-count { flex-shrink: 0; font-size: var(--fs-code); color: var(--muted); }
-.pick-row { height: 36px; padding: 0 10px; gap: 10px; font-size: var(--fs-row); }
+.pick-row { height: 36px; padding: 0 9px; border: 1px solid transparent; gap: 10px; font-size: var(--fs-row); }
 .pick-row > svg { flex-shrink: 0; }
 .pick-row:hover { background: transparent; }
 .pick-row[data-active='true'] { background: var(--hover); }
 /* One look per state: hover and the keyboard cursor fill with --hover, the row whose flyout is open takes the deeper fill and a hairline, the current model keeps full ink. */
-.pick-row[data-open='true'] { background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--line-3); }
+.pick-row[data-open='true'] { background: var(--surface-3); border: 1px solid var(--line-3); }
 .pick-row > svg:last-child { color: var(--muted); }
 .pick-item[data-active='true'] > .pick-row { background: var(--hover); }
 .pick-item[data-active='true'] .pick-name { color: var(--ink); }
@@ -348,7 +348,7 @@
 .where-pop .menu-sep { margin: 4px -4px; }
 .where-branch { position: relative; }
 .where-branch .menu-item { width: 100%; }
-.where-open { position: absolute; top: 50%; right: 36px; display: none; align-items: center; gap: 8px; height: 26px; padding: 0 8px; transform: translateY(-50%); border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink); font-size: var(--fs-code); }
+.where-open { position: absolute; top: 50%; right: 36px; display: none; transform: translateY(-50%); background: var(--surface-2); }
 .where-open .kbd { border: 0; background: transparent; }
 .where-branch:hover .where-open, .where-branch:focus-within .where-open { display: inline-flex; }
 /* An issue or pull request chip: its key in mono, its title in the normal font. */
