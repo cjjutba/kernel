@@ -202,3 +202,40 @@ describe('one send path', () => {
     expect(row).toMatchObject({ id: 'answer-a1', parts: [{ type: 'text', text: 'Split it.' }, { type: 'image', name: 'a.png', dataUrl: 'data:image/png;base64,AA' }] })
   })
 })
+
+describe('updates that arrive together draw together', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    actions.chats.setItems('c1', [])
+    actions.chats.setQueue('c1', [{ id: 'm1', chatId: 'c1', parts: text('hi'), ts: 1 }], 'setup')
+    actions.chats.setRunning('c1', false)
+  })
+
+  it('holds a user row, the running state and the tray change until the burst flushes, in the order main sends them', async () => {
+    const { applyTogether } = await import('../src/renderer/src/store')
+    applyTogether({ type: 'chat.item', chatId: 'c1', item: { kind: 'user', id: 'm1', ts: 5, parts: text('hi') } })
+    applyTogether({ type: 'chat.running', chatId: 'c1', running: true })
+    applyTogether({ type: 'chat.queue', chatId: 'c1', queue: [] })
+    expect(items()).toHaveLength(0)
+    expect(getState().running.c1).toBeFalsy()
+    expect(queue()).toHaveLength(1)
+    vi.runAllTimers()
+    expect(ids()).toEqual(['m1'])
+    expect(getState().running.c1).toBe(true)
+    expect(queue()).toHaveLength(0)
+    vi.useRealTimers()
+  })
+
+  it('still opens a burst on a tray change first, and applies other rows at once', async () => {
+    const { applyTogether } = await import('../src/renderer/src/store')
+    applyTogether({ type: 'chat.item', chatId: 'c1', item: { kind: 'text', id: 't1', ts: 5, text: 'x' } })
+    expect(ids()).toEqual(['t1'])
+    applyTogether({ type: 'chat.queue', chatId: 'c1', queue: [] })
+    applyTogether({ type: 'chat.running', chatId: 'c1', running: true })
+    expect(queue()).toHaveLength(1)
+    vi.runAllTimers()
+    expect(queue()).toHaveLength(0)
+    expect(getState().running.c1).toBe(true)
+    vi.useRealTimers()
+  })
+})

@@ -6,8 +6,8 @@ import type { AccountProfile, MoveNotice, Provider, ProviderModel, ProviderStatu
 import type { Channel, PushEvent } from '@shared/ipc'
 import type { TelemetryRecord } from '@shared/telemetry'
 
-/** What `pnpm shots <Screen> --motion` does: a click on a button by its accessible name, key presses in Playwright's names (`Meta+Shift+Enter`), or `hold`, which hovers a button and keeps the mouse down on it. `push` is no click: main pushes these events, as when a turn ends by itself (KERNEL-895). */
-export type MotionAction = { click: string } | { press: string[] } | { hold: string } | { push: PushEvent[] }
+/** What `pnpm shots <Screen> --motion` does: a click on a button by its accessible name, key presses in Playwright's names (`Meta+Shift+Enter`), or `hold`, which hovers a button and keeps the mouse down on it. `push` is no click: main pushes these events, as when a turn ends by itself (KERNEL-895). `steps` pushes each group of `events` on its own and captures one frame after each, captioned with its `label`, after a first frame of the screen as it opens, for a sequence where every state between two updates has to be seen. Events in one group arrive together, as main sends them in one tick. */
+export type MotionAction = { click: string } | { press: string[] } | { hold: string } | { push: PushEvent[] } | { steps: { label: string; events: PushEvent[] }[] }
 
 /** Everything one screen needs. `KERNEL_FIXTURES=<key>` serves it in place of the kernel. */
 export interface Fixture {

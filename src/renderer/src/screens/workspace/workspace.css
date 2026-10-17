@@ -101,7 +101,9 @@ button.ws-issue:hover { background: var(--surface-3); }
 .thread { width: 100%; max-width: 760px; margin: 0 auto auto; display: flex; flex-direction: column; gap: 12px; }
 /* Rows far above the end skip layout and paint while off screen, and `auto` remembers the height each last had. The last twelve are left alone, so a short chat draws as it always did. The clip margin keeps focus rings, which reach past a row, from being cut. A step row bleeds 8px past its row for its hover fill, and its focus ring sits 1px further out and is 2px thick, so a ring reaches 11px out. 12px covers it (KERNEL-375). */
 .thread > :nth-last-child(n+13) { content-visibility: auto; contain-intrinsic-block-size: auto 60px; overflow-clip-margin: 12px; }
-.msg { display: flex; flex-direction: column; }
+.msg { --msg-acts-h: 24px; display: flex; flex-direction: column; }
+/* The row a message's actions take under it, held empty while the message is only being sent, so the working line sits where the transcript puts it once the row is there. */
+.msg-acts-space { height: var(--msg-acts-h, 24px); flex: none; }
 .msg-user { align-self: flex-end; max-width: 82%; align-items: flex-end; gap: 4px; }
 .bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink-2); font-size: var(--fs-chat); line-height: var(--lh-loose); }
 /* The setup wait (KERNEL-430): messages waiting for setup sit where they will land, at lower contrast, with one line or card for setup. */
@@ -133,7 +135,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .knote:hover { color: var(--ink-2); }
 .knote-full { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 2px 0 2px 20px; color: var(--ink-3); font-size: var(--fs-code); line-height: var(--lh-relaxed); }
 .knote-full p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.msg-acts { display: flex; gap: 2px; height: 24px; opacity: 0; transition: opacity var(--dur-fast); }
+.msg-acts { display: flex; gap: 2px; height: var(--msg-acts-h, 24px); opacity: 0; transition: opacity var(--dur-fast); }
 .msg-reply .msg-acts { margin-left: -5px; }
 /* An open "..." menu or a fork on its way keeps the row up when the pointer leaves. */
 .msg:hover .msg-acts, .msg:focus-within .msg-acts, .msg-foot:hover .msg-acts, .msg-foot:focus-within .msg-acts, .msg-acts:has([aria-expanded='true']), .msg-acts[data-busy] { opacity: 1; }
