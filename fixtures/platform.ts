@@ -418,6 +418,12 @@ const whatsNew: Fixture = {
 const whatsNewCurrent: Fixture = { ...teamFixtures.UpdateReady, update: { status: 'idle', current: '0.6.0', currentNotes: whatsNewNotes }, ui: whatsNewModal }
 /** What's new opened from the sidebar while the updater is in `update`'s state, over the running 0.6.0's notes. */
 const whatsNewWith = (update: Partial<AppUpdate>): Fixture => ({ ...whatsNewCurrent, update: { status: 'idle', current: '0.6.0', currentNotes: whatsNewNotes, ...update } })
+// 0.6.0's notes, published before titles and areas: three flat lists. New shows in full, the rest fold after five.
+const flatNotes = [
+  { title: 'New', body: whatsNewNotes.slice(0, 6).map((n) => `${n.title}. ${n.body}`).concat('File paths that agents mention in chat open the file in a tab when you click them.', 'Command Shift H switches a chat with Kernel between Hand off and Build here.', 'You can attach any file to a message, up to 50 MB each.').join('\n') },
+  { title: 'Improved', body: whatsNewNotes.filter((n) => n.title.startsWith('Improved')).flatMap((n) => n.body.split('\n')).join('\n') },
+  { title: 'Fixed', body: whatsNewNotes.filter((n) => n.title.startsWith('Fixed')).flatMap((n) => n.body.split('\n')).join('\n') }
+]
 // A patch with one short Fixed section lists it flat, with no area rows.
 const whatsNewPatch: Fixture = {
   ...whatsNew,
@@ -476,6 +482,10 @@ export const platformFixtures: Record<string, Fixture> = {
   WhatsNewInstalled: { ...whatsNew, update: { status: 'idle', current: '0.6.0', version: '0.6.0', installed: true, notes: whatsNewNotes } },
   WhatsNewLight: light(whatsNew),
   WhatsNewCurrent: whatsNewCurrent,
+  // A release from before titles and areas, with the area rows' fixture open on Fixed so the stuck heading shows its hairline.
+  WhatsNewFlat: whatsNewWith({ currentNotes: flatNotes }),
+  WhatsNewFlatOpen: { ...whatsNewWith({ currentNotes: flatNotes }), motion: { action: { click: 'Show 3 more' }, ms: 300, area: '.modal' } },
+  WhatsNewGroupOpen: { ...whatsNew, motion: { action: { click: 'Issues and pull requests 3' }, ms: 300, area: '.modal' } },
   // Opened before Kernel answers update.get: Loading release notes.
   WhatsNewLoading: { ...whatsNewCurrent, update: undefined, lag: { 'update.get': 60_000 } },
   // A dev run, or a release without notes.

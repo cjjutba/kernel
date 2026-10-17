@@ -75,7 +75,7 @@ export function notesSections(notes: { title: string; body: string }[] | undefin
       continue
     }
     const title = m[1] as SectionTitle
-    const lines = note.body.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => (title === 'Fixed' ? unfix(l) : l))
+    const lines = note.body.split('\n').map((l) => l.trim()).filter(Boolean)
     if (!lines.length) continue
     const s = section(title)
     if (m[2]) s.groups.push({ area: m[2], lines })
@@ -90,10 +90,4 @@ export function notesSections(notes: { title: string; body: string }[] | undefin
     if (s.lines.length + grouped <= FLAT_MAX) return [{ ...s, lines: [...s.lines, ...s.groups.flatMap((g) => g.lines)], groups: [] }]
     return [s]
   })
-}
-
-/** The Fixed heading already says it, so a line drops its leading "Fixed". */
-function unfix(line: string): string {
-  const rest = line.replace(/^Fixed\s+/, '')
-  return rest === line ? line : rest.charAt(0).toUpperCase() + rest.slice(1)
 }
