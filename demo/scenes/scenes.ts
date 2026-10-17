@@ -94,14 +94,15 @@ function play(item: (chatId: string, it: ChatItem) => void, chatId: string, step
 const team = (): Scene => ({ fixture: storyFixture, answers: storyAnswers, handlers: storyHandlers as Record<string, Handler> })
 
 /**
- * Noor finishes the renderer and asks to write outside the workspace: Allow once. Then a bigger export: Always allow here.
+ * The engineer finishes the renderer and asks to write outside the workspace: Allow once. Then a bigger export: Always allow here.
  * Then a third export in the same folder runs without asking, since that kind of command is now allowed in this workspace.
  */
 function permissions(): Scene {
   const f = sample('WorkspacePermReason')
   const t = tools(f)
   const chatId = ids.tableChat
-  const asked = f.approvals.find((a) => a.id === 'ap-tool-noor')!
+  const asked = f.approvals.find((a) => a.kind === 'tool' && a.status === 'pending')!
+  const who = asked.agentId ?? 'sean'
   const reply = f.items[chatId]!.find((i) => i.id === 'p-reply')!
   // The brief was just sent, so the turn's clock starts near zero and its steps stay open while it runs.
   const brief = f.items[chatId]!.find((i) => i.id === 'p1')!
@@ -112,12 +113,12 @@ function permissions(): Scene {
     const a: Approval = { ...asked, id, title: `Run ${command}`, detail, input: { command }, status: 'pending', createdAt: now() }
     t.approval(a)
     t.item(chatId, { kind: 'approval', id: `approval-${id}`, ts: now(), approvalId: id })
-    t.status(ids.projectA, 'noor', 'needs')
+    t.status(ids.projectA, who, 'needs')
   }
   const finish = () => {
     t.item(chatId, result('pm-res', start))
     t.running(chatId, false)
-    t.status(ids.projectA, 'noor', 'idle')
+    t.status(ids.projectA, who, 'idle')
   }
   return {
     fixture: f,
@@ -125,7 +126,7 @@ function permissions(): Scene {
       ask: () => {
         start = now()
         t.running(chatId, true)
-        t.status(ids.projectA, 'noor', 'working')
+        t.status(ids.projectA, who, 'working')
         play(t.item, chatId, [
           think('pm-th', 'The renderer is in. A few sample PDFs will show whether the fonts embed.'),
           { run: tool('pm-t1', 'Render a sample invoice', 'pnpm pdf:render --sample', { name: 'Bash' }), ms: 800 },
@@ -140,12 +141,12 @@ function permissions(): Scene {
         const a = f.approvals.find((x) => x.id === id)!
         const next: Approval = { ...a, status: decision.behavior === 'allow' ? 'allowed' : 'denied' }
         t.approval(next)
-        t.status(ids.projectA, 'noor', 'working')
+        t.status(ids.projectA, who, 'working')
         if (id === asked.id) {
           play(t.item, chatId, [
             { run: tool('pm-t2', 'Run pnpm pdf:export --out ~/Documents/invoices', 'pnpm pdf:export --out ~/Documents/invoices', { name: 'Bash' }), ms: 1200, output: 'INV-0412.pdf\nINV-0413.pdf\nINV-0414.pdf' },
             say('pm-s1', 'The three samples look right. Next I want every invoice in the seed data, to catch long names and multi-page totals.'),
-            () => ask('ap-tool-noor-2', 'pnpm pdf:export --out ~/Documents/invoices --all', 'Exports all 380 seed invoices as PDF.')
+            () => ask(`${asked.id}-2`, 'pnpm pdf:export --out ~/Documents/invoices --all', 'Exports all 380 seed invoices as PDF.')
           ], 700)
         } else {
           play(t.item, chatId, [

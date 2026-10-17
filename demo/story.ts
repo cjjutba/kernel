@@ -7,12 +7,12 @@
 // 4. Each opens a PR. A team update reaches Kernel, which starts Theo's review. Theo approves, and the PR is ready to merge.
 //
 // Clicks change this fixture and push the same events the engine would, so the real renderer draws every step.
-import { scene } from '../fixtures/base'
+import { agent, scene } from '../fixtures/base'
 import { fixtureHandlers } from '../src/main/fixtures'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { bus } from '../src/main/bus'
 import type { Fixture } from '../fixtures'
-import type { AccountProfile, Effort, ProviderModel, AgentStatus, Approval, Chat, ChatItem, ChatPart, ChatRunMode, Decision, PlanStep, PrInfo, Provider, RateLimit, SwitchReason, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AccountProfile, AgentDef, Effort, Integration, IssueSummary, LinearIssueDetail, LinearScope, ProviderModel, AgentStatus, Approval, Chat, ChatItem, ChatPart, ChatRunMode, Decision, PlanStep, PrInfo, Provider, RateLimit, SwitchReason, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 
 export const PROJECT = 'project-a'
@@ -30,7 +30,7 @@ const leadWorkspace = (id: string, projectId: string, name: string, threadId: st
   agentId: LEAD, lead: true, threadId, port, status: 'ready', prState: 'none', createdAt: ago(minAgo), ...over
 })
 const leadChat = (id: string, workspaceId: string, title: string, threadId: string, minAgo: number, over: Partial<Chat> = {}): Chat =>
-  ({ id, workspaceId, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, mode: 'acceptEdits', threadId, createdAt: ago(minAgo), ...over })
+  ({ id, workspaceId, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, mode: 'acceptEdits', threadId, sessionId: `session-${id}`, createdAt: ago(minAgo), ...over })
 const thread = (id: string, projectId: string, title: string, minAgo: number): Thread => ({ id, projectId, title, createdAt: ago(minAgo), lastSentAt: ago(minAgo) })
 const said = (id: string, minAgo: number, text: string, from?: 'user'): ChatItem =>
   from ? { kind: 'user', id, ts: ago(minAgo), parts: [{ type: 'text', text }] } : { kind: 'text', id, ts: ago(minAgo), text }
@@ -72,10 +72,51 @@ const providerOf = (model?: string, provider?: Provider): { provider?: Provider 
   const p = provider ?? codexModels.find((m) => m.id === model)?.provider
   return p ? { provider: p } : {}
 }
+// The team the story hands work to. The fixture's own agents are other names, which would leave the sidebar, the composer and Settings, Agents
+// without Noor, Kai, Ivy and Theo.
+const team: AgentDef[] = [
+  agent(LEAD, 'Kernel', 'Lead', 'opus', true),
+  agent('noor', 'Noor', 'Engine', 'opus'),
+  agent('kai', 'Kai', 'Workspace', 'sonnet'),
+  agent('ivy', 'Ivy', 'QA', 'sonnet'),
+  { ...agent('theo', 'Theo', 'Reviewer', 'sonnet'), reviewer: true }
+]
+
+// Linear, connected, with a few open issues in the Kernel team: the Up next rows under the composer, Work, Issues, and Link issue.
+const KERNEL_TEAM = { id: 'team-kernel', key: 'KERNEL', name: 'Kernel' }
+const V1 = { id: 'proj-v1', name: 'Kernel v1' }
+const linearScope: LinearScope = { teams: [KERNEL_TEAM], projects: [{ ...V1, teamIds: [KERNEL_TEAM.id] }], cycles: [] }
+const me = { name: 'Sam Rivera', me: true }
+const linearIssue = (n: number, title: string, type: 'todo' | 'backlog' | 'started', priority: number, minAgo: number, over: Partial<LinearIssueDetail> = {}): LinearIssueDetail => ({
+  id: `KERNEL-${n}`, uuid: `uuid-kernel-${n}`, title, url: `https://linear.app/kernel/issue/KERNEL-${n}`, branchName: `feat/kernel-${n}`,
+  state: type === 'started' ? { id: 's-started', name: 'In progress', type: 'started', position: 2 } : type === 'todo' ? { id: 's-todo', name: 'Todo', type: 'unstarted', position: 1 } : { id: 's-backlog', name: 'Backlog', type: 'backlog', position: 0 },
+  priority, assignee: me, labels: [], team: KERNEL_TEAM, project: V1, updatedAt: new Date(t0 - minAgo * 60_000).toISOString(), description: '', comments: [], ...over
+})
+const linearIssues: LinearIssueDetail[] = [
+  linearIssue(718, 'Show when a queued message waits for a chat to move accounts', 'todo', 2, 180),
+  linearIssue(721, 'Archive finished chats from the sidebar in one click', 'todo', 3, 300),
+  linearIssue(724, 'Jump to the next chat that needs you with a shortcut', 'todo', 3, 1440),
+  linearIssue(726, 'Rename a chat from its tab', 'backlog', 4, 2880),
+  linearIssue(729, 'Remember the last branch picked for New chat', 'backlog', 4, 4320),
+  linearIssue(731, 'Copy a code block with one click', 'backlog', 0, 5760, { assignee: { name: 'Maya Chen', me: false } })
+]
+const issueSummary = (i: LinearIssueDetail): IssueSummary => ({ id: i.id, title: i.title, url: i.url, source: 'linear', priority: i.priority, project: i.project?.name })
+const integrations: Integration[] = [
+  { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as sam-rivera' },
+  { id: 'linear', name: 'Linear', connected: true, detail: 'Token saved. Create workspaces from issues' }
+]
 const settings = seed.settings ?? DEFAULT_SETTINGS('/Users/you')
 export const f: Fixture = {
   ...seed,
   models: { codex: codexModels },
+  account: { signedIn: true, name: 'Sam Rivera', login: 'sam-rivera', plan: 'Claude Max' },
+  githubOwners: [{ login: 'sam-rivera', org: false }],
+  preflight: seed.preflight.map((c) => (c.id === 'gh' ? { ...c, detail: 'Signed in as sam-rivera' } : c)),
+  agents: { ...seed.agents, [PROJECT]: team },
+  integrations,
+  linear: { issues: linearIssues, scope: linearScope },
+  issues: linearIssues.filter((i) => i.state.type !== 'started').map(issueSummary),
+  projectSettings: { ...seed.projectSettings, [PROJECT]: { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {}, ...seed.projectSettings?.[PROJECT], linear: { team: 'KERNEL' } } },
   // A new chat starts in the project's usual mode, not plan mode, so switching to Plan is a step the visitor takes.
   // The efforts the app's picker shows beside each Codex model are the ones picked last, which Settings remembers per model.
   settings: { ...settings, models: { ...settings.models, leadPlanMode: false, effortByModel: { ...settings.models.effortByModel, 'gpt-6.1-sol': 'medium', 'gpt-6-astra': 'low', 'gpt-6-luna': 'medium' } } },
@@ -329,6 +370,8 @@ function proposePlan() {
 function approvePlan(a: Approval): Approval {
   const next: Approval = { ...a, status: 'allowed', steps: a.steps?.map((s, i) => ({ ...s, workspaceId: wsId(TASKS[i]!) })) }
   upsertApproval(next)
+  // The issues the plan says Kernel files: in progress, in Work, Issues.
+  f.linear = { ...f.linear, issues: [...TASKS.map((t, i) => linearIssue(Number(t.issue.slice(7)), t.title, 'started', 2, i)), ...(f.linear?.issues ?? [])] }
   const chat = f.chats.find((x) => x.id === leadChatId)!
   upsertChat({ ...chat, plan: false })
   void runMode(leadChatId)
@@ -349,7 +392,7 @@ function startTask(t: Task, i: number) {
     id: wsId(t), projectId: PROJECT, name: t.name, title: t.title, branch: `feat/${t.name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/project-a/${t.name}`, mode: 'worktree',
     agentId: t.agent, port: 4341 + i, status: 'ready', prState: 'none', threadId, leadChatId, createdAt: now(), source: { kind: 'issue', id: t.issue, title: t.title }
   })
-  upsertChat({ id: chatId(t), workspaceId: wsId(t), title: t.title, kind: 'chat', model: t.agent === 'noor' ? 'claude-opus-5-5' : 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: now() })
+  upsertChat({ id: chatId(t), workspaceId: wsId(t), title: t.title, kind: 'chat', model: t.agent === 'noor' ? 'claude-opus-5-5' : 'claude-sonnet-5-5', effort: 'high', plan: false, sessionId: `session-${chatId(t)}`, createdAt: now() })
   f.items[chatId(t)] = []
   status(t.agent, 'working')
   running(chatId(t), true)
@@ -434,7 +477,7 @@ function review(t: Task, head: string) {
     id, projectId: PROJECT, name: `review-pr-${t.pr}`, title: `Review PR #${t.pr}`, branch: `feat/${t.name}-review`, baseRef: `feat/${t.name}`, path: `/Users/you/kernel/worktrees/project-a/review-pr-${t.pr}`,
     mode: 'worktree', agentId: 'theo', port: 4350 + (t.pr % 10), status: 'ready', prState: 'none', reviewOf: wsId(t), threadId, leadChatId, createdAt: now()
   })
-  upsertChat({ id: c, workspaceId: id, title: `Review PR #${t.pr}`, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, lens: { kind: 'code' }, createdAt: now() })
+  upsertChat({ id: c, workspaceId: id, title: `Review PR #${t.pr}`, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, lens: { kind: 'code' }, sessionId: `session-${c}`, createdAt: now() })
   f.items[c] = []
   status('theo', 'working')
   running(c, true)
@@ -557,6 +600,11 @@ export const storyHandlers: Record<string, (req: never) => Promise<unknown>> = {
     brief(projectId, prompt, !!plan, clientId, { ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...providerOf(model, provider) }),
   'chats.send': async ({ chatId: id, parts, clientId }: { chatId: string; parts: ChatPart[]; clientId?: string }) => ({ queued: false, item: send(id, parts, clientId) }),
   'chats.configure': async (req: Parameters<typeof configure>[0]) => configure(req),
+  // Plan with Kernel on an issue: the same chat a brief starts, opened on that issue. A chat already under way is the one that opens.
+  'linear.plan': async ({ id, projectId }: { id: string; projectId: string }) => {
+    if (!leadChatId) brief(projectId, `Plan ${id}: ${f.linear?.issues?.find((i) => i.id === id)?.title ?? 'this issue'}`, false)
+    return { chatId: leadChatId, workspaceId: leadWs }
+  },
   'approvals.decide': async ({ id, decision }: { id: string; decision: Decision }) => decide(id, decision),
   'pr.merge': async ({ workspaceId }: { workspaceId: string }) => merge(workspaceId),
   'workspaces.archive': async ({ workspaceId }: { workspaceId: string }) => { patchWorkspace(workspaceId, { status: 'archived', archivedAt: now() }); return { ok: true } },
