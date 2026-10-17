@@ -3636,6 +3636,15 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: open
     }
   }),
+  /** A follow-up held while other chats move to a new account and re-read their history (KERNEL-1033). */
+  WorkspaceQueuedMoving: scene((f) => {
+    const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text' as const, text: 'Add a loading skeleton to the table' }] }]
+    return {
+      queue: { [ids.tableChat]: queue },
+      push: [...f.push, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'moving' }],
+      ui: open
+    }
+  }),
   /** A brief Kernel handed off with wait_for, held until Sean's PR merges, with Send now to start it sooner (KERNEL-259, KERNEL-361). */
   WorkspaceQueuedMerge: scene((f) => {
     const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 2), from: 'lead' as const, parts: [{ type: 'text' as const, text: 'Build the invoice table on top of the new schema' }] }]
