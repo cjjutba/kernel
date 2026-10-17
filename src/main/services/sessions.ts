@@ -211,7 +211,7 @@ export interface SessionDeps {
    * own login): "Moved to Personal and re-read 310k tokens", from the turn's `lastTurn`, and why when a limit moved it
    * (KERNEL-568, KERNEL-842). Without it the chat says nothing.
    */
-  moveNote?: (chat: Chat, from: string) => string | undefined
+  moveNote?: (chat: Chat, from: string, summary?: { pre?: number; post?: number }) => string | undefined
   /**
    * What the chat's next turn does about moving from its last account to `to`, by Settings, Account and the chat's own
    * choice (`Moves.plan`, KERNEL-844). Without it every move just runs.
@@ -363,6 +363,11 @@ export class Sessions {
    * with another target drops it and decides again, so two quick switches move a chat once.
    */
   private compacted = new Map<string, string>()
+  /**
+   * The note of a summary for a move, by chat, until the move is noted: its id, and the compaction's own note and sizes once
+   * it ended. The move's note replaces it under the same id, so a move shows one note (KERNEL-1026).
+   */
+  private summaries = new Map<string, { id: string; ts: number; compaction?: ChatItem; sizes?: { pre: number; post?: number } }>()
   /** Chats whose turn was too long for the model and that Kernel summarized and sent again, until a turn ends well (KERNEL-844). */
   private shrunk = new Set<string>()
   /** Chats whose queue or reason changed in the current step, sent together by `flushQueues`. */
@@ -1139,7 +1144,11 @@ export class Sessions {
 
   /** `compactOn`, then the chat's turn is over: what waits for it goes out, and the slot it took frees (KERNEL-844). */
   private async compactThen(chat: Chat, ws: Workspace, on: string, note?: string): Promise<boolean> {
-    if (note) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: note })
+    if (note) {
+      const row = { id: randomUUID(), ts: Date.now() }
+      this.summaries.set(chat.id, row)
+      this.item(chat, { kind: 'note', ...row, text: note })
+    } else this.summaries.delete(chat.id)
     const r = await this.compactOn(chat, ws, on)
     if (r && this.live.get(chat.id) === r.live) this.setRunning(this.mustChat(chat.id), ws, r.live, false)
     if (!this.live.get(chat.id)?.running) this.drain(chat.id)
@@ -1185,17 +1194,27 @@ export class Sessions {
     live.interrupted = false
     live.sendNext = false
     const chat = ok ? this.d.store.chat(chatId) : undefined
-    if (chat) this.noteMove(this.recordTurn(chat, live))
-    else live.usage = undefined
+    if (chat) {
+      // A summary that ran on the old account has no move to note yet: it shows its compaction until the move's turn replaces it.
+      const moved = this.noteMove(this.recordTurn(chat, live), true)
+      const s = this.summaries.get(chatId)
+      if (s?.compaction && !moved) this.item(chat, { ...s.compaction, id: s.id, ts: s.ts } as ChatItem)
+    } else {
+      live.usage = undefined
+      this.summaries.delete(chatId)
+    }
     done(ok)
   }
 
   /** After a turn on another account than the chat's last, the note saying where it moved and what that read (KERNEL-842). */
-  private noteMove(chat: Chat) {
+  private noteMove(chat: Chat, keep = false): boolean {
     const from = this.moves.get(chat.id)
     this.moves.delete(chat.id)
-    const moved = from !== undefined && from !== chat.ranOn ? this.d.moveNote?.(chat, from) : undefined
-    if (moved) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: moved })
+    const summary = this.summaries.get(chat.id)
+    const moved = from !== undefined && from !== chat.ranOn ? this.d.moveNote?.(chat, from, summary ? { ...summary.sizes } : undefined) : undefined
+    if (summary && (moved || !keep)) this.summaries.delete(chat.id)
+    if (moved) this.item(chat, { kind: 'note', id: summary?.id ?? randomUUID(), ts: summary?.ts ?? Date.now(), text: moved })
+    return !!moved
   }
 
   /**
@@ -1817,6 +1836,13 @@ export class Sessions {
       },
       managed: (sessionId) => { this.managedIds.add(sessionId) },
       item: (item) => this.item(this.mustChat(chatId), item),
+      compacted: (note, sizes) => {
+        const s = this.summaries.get(chatId)
+        if (!s || !live.compacting) return false
+        s.compaction = note
+        s.sizes = sizes
+        return true
+      },
       sessionStarted: (sessionId, o = {}) => {
         let chat = this.mustChat(chatId)
         this.managedIds.add(sessionId)

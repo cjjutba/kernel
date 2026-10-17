@@ -1190,6 +1190,7 @@ describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
           if (!done) call.feed({ type: 'system', subtype: 'init', session_id: `session-${sdk.calls.indexOf(call)}`, apiKeySource: call.options.env?.ANTHROPIC_API_KEY ? 'ANTHROPIC_API_KEY' : 'none' })
           const text = call.sent[done]
           sent.push(`${call.options.env?.ACCOUNT}: ${text === COMPACT ? '/compact' : text}`)
+          if (text === COMPACT) call.feed({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'manual', pre_tokens: 139_000, post_tokens: 8_000 }, uuid: `c-${sdk.calls.indexOf(call)}-${done}`, session_id: 's' })
           answered.set(call, done + 1)
           const r = answer(text, done)
           if (r) call.feed({ type: 'result', uuid: `r-${sdk.calls.indexOf(call)}-${done}`, duration_ms: 5, ...r })
@@ -1221,7 +1222,8 @@ describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
     await moveAll('side')
     expect((await run('a', 'Next')).sent).toEqual(['work: /compact', 'side: Next'])
     expect(k.store.chat('a')?.ranOn).toBe('side')
-    expect(notes('a')).toEqual(['Kernel is summarizing this chat on Work before it moves to Side, so the move reads the summary rather than the whole chat.', 'Moved to Side and re-read 3k tokens'])
+    // One note: the summarizing one, replaced in place by the move's, with the compaction folded in.
+    expect(notes('a')).toEqual(['Moved to Side, summarized from 139k to 8k tokens'])
     await k.stop({ budgetMs: 0 })
   })
 
@@ -1230,10 +1232,11 @@ describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
     for (const id of ['a', 'b', 'c']) { await run(id, 'Start'); long(id, 120_000, 2 * 60 * MIN) }
     await moveAll('side')
     expect((await run('a', 'Next')).sent).toEqual(['side: /compact', 'side: Next'])
-    expect(notes('a')[0]).toBe('Kernel is summarizing this chat as it moves to Side, so later turns there read the summary rather than the whole chat.')
+    expect(notes('a')).toEqual(['Moved to Side, summarized from 139k to 8k tokens'])
 
     await k.config.setSettings({ accounts: { longChatMove: { claude: 'continue' } } })
     expect((await run('b', 'Next')).sent).toEqual(['side: Next'])
+    expect(notes('b')).toEqual(['Moved to Side and re-read 3k tokens'])
 
     await k.config.setSettings({ accounts: { longChatMove: { claude: 'ask' } } })
     expect(await run('c', 'Next')).toMatchObject({ queued: false, sent: [] })
@@ -1294,7 +1297,17 @@ describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
     await moveAll(key)
     await moveAll('side')
     expect((await run('a', 'Next')).sent).toEqual(['work: /compact', 'side: Next'])
-    expect(notes('a').filter((n) => n.startsWith('Moved'))).toEqual(['Moved to Side and re-read 3k tokens'])
+    expect(notes('a').filter((n) => n.startsWith('Moved'))).toEqual(['Moved to Side, summarized from 139k to 8k tokens'])
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it("keeps a compaction outside a move as its own note, and a stale summary doesn't swallow it", async () => {
+    const { k, run, settle, notes } = await setUp()
+    await run('a', 'Start')
+    const done = k.sessions.compactIdle('a', 'work')
+    await settle()
+    expect(await done).toBe(true)
+    expect(notes('a')).toEqual(['Compacted the conversation, 139k to 8k tokens.'])
     await k.stop({ budgetMs: 0 })
   })
 

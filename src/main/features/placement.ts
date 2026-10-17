@@ -18,7 +18,7 @@ const CACHE_WRITE = 1.25
 const CHARS_PER_TOKEN = 4
 
 /** The notes both runners write when a conversation is compacted (KERNEL-808). What comes before one is no longer in the chat. */
-const COMPACTED = /^(Compacted the conversation|Context was full, so the conversation was compacted)/
+const COMPACTED = /^(Compacted the conversation|Context was full, so the conversation was compacted|Moved to .*, summarized)/
 
 /** The id the CLI's own login goes by in `accounts.*`, as `CLI_ACCOUNT` in features/providers.ts. */
 const CLI_ACCOUNT = 'cli'
@@ -254,18 +254,21 @@ export class Placement extends Feature {
    * The note after the chat's first turn on another account than `from` (Sessions' `moveNote`): "Moved to Personal and
    * re-read 310k tokens", from the turn's first model call, and why when a limit moved it. A turn whose first call read more
    * than half the chat from the cache proves the two accounts share one, which Kernel keeps. A turn with no numbers says
-   * where it moved only.
+   * where it moved only. A move that summarized the chat first says so in the same note, "Moved to Personal, summarized from
+   * 139k to 8k tokens", and not what the first call re-read, which is the summary. A re-read of nothing is left out.
    */
-  moved(chat: Chat, from: string): string {
+  moved(chat: Chat, from: string, summary?: { pre?: number; post?: number }): string {
     const provider = chatProvider(chat)
     const to = chat.ranOn ?? CLI_ACCOUNT
     const turn = chat.lastTurn && !chat.lastTurn.estimated && chat.lastTurn.account === to ? chat.lastTurn : undefined
     const first = turn?.first ?? turn
     const warm = !!turn && !!first && first.cacheRead > turn.context / 2
     if (warm) this.saveShared(provider, from, to)
-    const read = !first ? '' : warm ? ' and read this chat from the cache' : ` and re-read ${kTokens(first.input + first.cacheWrite)} tokens`
+    const reread = first ? first.input + first.cacheWrite : 0
+    const read = summary ? '' : !first ? '' : warm ? ' and read this chat from the cache' : reread > 0 ? ` and re-read ${kTokens(reread)} tokens` : ''
+    const summed = !summary ? '' : summary.pre ? `, summarized from ${kTokens(summary.pre)}${summary.post !== undefined ? ` to ${kTokens(summary.post)}` : ''} tokens` : ', summarized'
     const why = this.k.providers.switchReason(provider, to)
-    return `Moved to ${this.k.providers.label(provider, to)}${read}${why ? ` (${why})` : ''}`
+    return `Moved to ${this.k.providers.label(provider, to)}${read}${summed}${why ? ` (${why})` : ''}`
   }
 
   /**
