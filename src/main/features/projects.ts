@@ -293,7 +293,7 @@ export class Projects extends Feature {
     // the starter agents picked in New project. Kernel fills in a missing Lead either way, and Kernel's code review
     // a missing reviewer (KERNEL-553).
     // A repo with more agents than one team needs asks who joins (KERNEL-465, ProjectSetupRoster.png).
-    await step('agents', async () => {
+    const seated = await step('agents', async () => {
       // The starter agents an earlier try seated are Kernel's, not the repo's.
       const brought = setup.seated ? 0 : (await agentFiles(project.path)).length
       if (!brought) {
@@ -316,6 +316,25 @@ export class Projects extends Feature {
       const detail = [own.length ? `${own.join(', ')} from .claude/agents` : '', list.some((a) => a.lead) ? 'Kernel leads' : ''].filter(Boolean).join(', ')
       return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought } : {}), roster }
     })
+    if (seated) await this.makeFirstChat(project.id)
+  }
+
+  /**
+   * The project's first Kernel chat, made when setup finishes so the first Send stays in it (feat-create-new-projects-first-chat-and).
+   * It takes the `newLeadChat` path with no prompt: the worktree is cut and files copied now, the setup script, if the project
+   * has one, runs in the background, and the chat waits for its first message. Made once: a retry of setup, or a project that
+   * already has a chat, makes none. A chat that can't be made never fails setup, since New chat makes one on first Send.
+   */
+  private async makeFirstChat(projectId: string) {
+    const project = this.store.project(projectId)
+    if (!project || project.firstChatId || project.archived || this.k.lead.chatWorkspaces(projectId).length) return
+    try {
+      const chat = await this.k.lead.newLeadChat(projectId, { prompt: '' })
+      const next = this.store.saveProject({ ...this.mustProject(projectId), firstChatId: chat.id })
+      bus.push({ type: 'project', project: next })
+    } catch (e) {
+      if (!this.k.stopped) console.warn(`[projects] could not make ${project.name}'s first chat`, e)
+    }
   }
 
   /**

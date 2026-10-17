@@ -13,7 +13,7 @@ import { repoOfUrl } from '../src/renderer/src/screens/projects/ConnectRepo'
 import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listOwners, lockfileInstall, recentFolders, repoAvailable, seatStarterTeam } from '../src/main/services/projects'
 import { loadRepoSettings } from '../src/main/services/settings'
 import { repoSlug } from '../src/renderer/src/screens/projects/RepoName'
-import { tempRepo, freePort } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 
 const starter = join(__dirname, '..', 'docs', 'starter-agents')
 
@@ -649,5 +649,54 @@ describe('a GitHub repo for every project (KERNEL-944)', () => {
     expect(repoSlug('recipe-box')).toBe('recipe-box')
     expect(repoSlug('cjjutba.dev')).toBe('cjjutba.dev')
     expect(repoSlug(' My new app! ')).toBe('My-new-app')
+  })
+})
+
+describe("a new project's first chat", () => {
+  /** Creates a project from a folder and waits until its first chat has set up. */
+  async function created(files: Record<string, string> = {}) {
+    const { k } = await kernel()
+    const repo = await tempRepo({ 'README.md': '# x\n', ...files })
+    const project = await k.createProject({ source: 'folder', name: 'First app', from: repo, team: ['christian'], autostart: false })
+    await setupDone(project.id)
+    await vi.waitFor(() => expect(k.store.project(project.id)?.firstChatId).toBeTruthy(), { timeout: 10_000, interval: 10 })
+    const chat = k.store.chat(k.store.project(project.id)!.firstChatId!)!
+    return { k, project, chat, ws: await setUp(k, chat.id, 'settled') }
+  }
+
+  it('is made once setup finishes, with its worktree, and it is the only chat', async () => {
+    const { k, project, ws } = await created()
+    expect(k.lead.chatWorkspaces(project.id).map((w) => w.id)).toEqual([ws.id])
+    expect(ws).toMatchObject({ status: 'ready', mode: 'worktree', firstInProject: true, naming: 'branch' })
+    expect(existsSync(ws.path)).toBe(true)
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('has no setup run and no failure when the project has no setup script', async () => {
+    const { k, ws, chat } = await created()
+    expect(ws.setupRun).toBeUndefined()
+    expect(k.store.items(chat.id)).toEqual([])
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('runs the setup script in the background and still takes a message', async () => {
+    const { k, project, chat, ws } = await created({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' })
+    expect(ws.status).toBe('ready')
+    expect(ws.setupRun?.startedAt).toBeTruthy()
+    const sent = vi.spyOn(k.sessions, 'send').mockResolvedValue({ queued: false })
+    await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
+    expect(sent).toHaveBeenCalledWith(chat.id, expect.anything())
+    expect(k.lead.chatWorkspaces(project.id)).toHaveLength(1)
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.setupRun?.endedAt).toBeTruthy(), { timeout: 10_000, interval: 20 })
+    expect(k.store.workspace(ws.id)?.setupRun?.end).toBe(0)
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('is not made again when setup is retried', async () => {
+    const { k, project, chat } = await created()
+    await (k.projects as unknown as { makeFirstChat(id: string): Promise<void> }).makeFirstChat(project.id)
+    expect(k.lead.chatWorkspaces(project.id).map((w) => w.id)).toHaveLength(1)
+    expect(k.store.project(project.id)?.firstChatId).toBe(chat.id)
+    await k.stop({ budgetMs: 0 })
   })
 })
