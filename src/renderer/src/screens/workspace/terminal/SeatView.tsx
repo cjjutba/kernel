@@ -19,6 +19,7 @@ export function SeatView({ chat, workspaceId, changes, onOpenDiff, onForked }: {
     <>
       <div className="seat-bar">
         <SegmentedControl label="Terminal view" options={OPTIONS} value={view} onChange={(v) => setView(v as (typeof VIEWS)[number])} />
+        {chat.terminal?.handoff && <p className="seat-note">Teammate running in a terminal.</p>}
         {view === 'transcript' && <p className="seat-note">Read from the terminal session.</p>}
       </div>
       {view === 'transcript'
