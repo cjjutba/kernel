@@ -421,6 +421,27 @@ const mcpCall = (id: string, server: string, name: string, input: Record<string,
 
 const DENIED_OUTPUT = "The user doesn't want to proceed with this tool use. The tool use was rejected."
 
+/** KERNEL-1025: a chat with a denied group, a one-call group, three turns and a run of three grey notes. Only the last turn keeps its time and actions in view. */
+const quietChat: ChatItem[] = [
+  userMsg('qt-u1', 'Run the live test again.'),
+  tool('qt-t1', 'Run the live test', 'pnpm test test/terminalLead.live.test.ts', { status: 'failed', output: DENIED_OUTPUT, input: { command: 'pnpm test test/terminalLead.live.test.ts' } }),
+  tool('qt-t2', 'Run the live test without tail', 'pnpm test test/terminalLead.live.test.ts', { status: 'failed', output: DENIED_OUTPUT, input: { command: 'pnpm test test/terminalLead.live.test.ts' } }),
+  { kind: 'text', id: 'qt-x1', ts: at(10, 29), text: 'I still can not run the live test. Both attempts were denied, so I need an allow rule or a run from your terminal.' },
+  { kind: 'result', id: 'qt-r1', ts: at(10, 29), durationMs: 10_000, ok: true },
+  userMsg('qt-u2', 'Check the empty state file.'),
+  tool('qt-t3', 'Read empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Read', input: { file_path: 'src/app/invoices/empty-state.tsx' } }),
+  { kind: 'text', id: 'qt-x2', ts: at(10, 31), text: 'The empty state centres its message and puts the button under it.' },
+  { kind: 'result', id: 'qt-r2', ts: at(10, 31), durationMs: 14_000, ok: true },
+  { kind: 'note', id: 'qt-n1', ts: at(10, 32), text: 'Kernel is summarizing this chat as it moves to the 3rd account.' },
+  { kind: 'note', id: 'qt-n2', ts: at(10, 32), text: 'Compacted the conversation, 139k to 8k tokens.' },
+  { kind: 'note', id: 'qt-n3', ts: at(10, 33), text: 'Moved to the 3rd account and re-read 0 tokens.' },
+  userMsg('qt-u3', 'Thanks. Now the loading state.'),
+  tool('qt-t4', 'Read skeleton.tsx', 'src/app/invoices/skeleton.tsx', { name: 'Read', input: { file_path: 'src/app/invoices/skeleton.tsx' } }),
+  tool('qt-t5', 'Edit skeleton.tsx', 'src/app/invoices/skeleton.tsx', { name: 'Edit', input: { file_path: 'src/app/invoices/skeleton.tsx' } }),
+  { kind: 'text', id: 'qt-x3', ts: at(10, 35), text: 'The loading state now shows six skeleton rows.' },
+  { kind: 'result', id: 'qt-r3', ts: at(10, 35), durationMs: 32_000, ok: true }
+]
+
 const leadSteps: ChatItem[] = [
   { kind: 'user', id: 'ls-u', ts: at(10, 20), parts: [{ type: 'text', text: 'Approved' }] },
   { kind: 'thinking', id: 'ls-th1', ts: at(10, 21), text: 'I should file the Linear issues first, so I need to check team and project names along with labels, then create the sub-issues.' },
@@ -2285,6 +2306,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: readImageItems },
     images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
+  })),
+  /** KERNEL-1025: a denied group that says it once, a one-call group with no parent row, footers only on the last turn, and a run of three notes folded to one line. */
+  WorkspaceQuietTranscript: scene(() => ({
+    items: { [ids.tableChat]: quietChat },
+    ui: open
+  })),
+  /** The same chat after a click on "and 2 more" (scripts/shots.ts). */
+  WorkspaceQuietTranscriptNotes: scene(() => ({
+    items: { [ids.tableChat]: quietChat },
+    ui: open
   })),
   /** A long chat read from higher up, with the Scroll to bottom button over it (KERNEL-532). Scroll position is local to the transcript, so scripts/shots.ts scrolls it up before the shot. */
   WorkspaceScrolledUp: scene(() => ({

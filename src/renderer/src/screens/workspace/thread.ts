@@ -3,6 +3,7 @@ import { parseMcp, SERVICE_NAME, toolView, type ToolService, type ToolView } fro
 import { isQuitNote, userView } from './sender'
 
 type Tool = Extract<ChatItem, { kind: 'tool' }>
+export type NoteItem = Extract<ChatItem, { kind: 'note' }>
 
 /** What a fold lists besides calls: the agent's thinking, and its in-between messages (KERNEL-840). */
 type Step = Tool | Extract<ChatItem, { kind: 'thinking' }> | Extract<ChatItem, { kind: 'text' }>
@@ -23,12 +24,14 @@ export type ThreadBlock =
   | { kind: 'group'; id: string; items: ChatItem[]; entries: Entry[]; summary: Summary; turn: FoldTurn }
   | { kind: 'files'; id: string; files: ChangedFile[] }
   /** A turn's time. `actions` is on a finished turn that doesn't end on text: the time line then carries Copy, Retry and the "..." menu, with `copy` the turn's last message when it has one (KERNEL-828). */
-  | { kind: 'meta'; id: string; text: string; actions?: { copy?: string; files: boolean; checkpointId?: string } }
+  | { kind: 'meta'; id: string; text: string; actions?: { copy?: string; files: boolean; checkpointId?: string }; quiet?: true }
   /**
    * A finished turn's reply with the end of its turn under it: the changed files, then one line with how long the turn took
    * and when, and the reply's actions (KERNEL-346).
    */
-  | { kind: 'reply'; id: string; item: Extract<ChatItem, { kind: 'text' }>; files?: ChangedFile[]; meta: string; checkpointId?: string }
+  | { kind: 'reply'; id: string; item: Extract<ChatItem, { kind: 'text' }>; files?: ChangedFile[]; meta: string; checkpointId?: string; quiet?: true }
+  /** Two or more grey notes in a row, as one line: the latest and "and N more", which opens to all of them. A PR state note never joins one, and neither does an error. */
+  | { kind: 'notes'; id: string; items: NoteItem[] }
   /** Kernel's message right after a quit or crash note, folded into that note's line: the line says what happened, opening it shows the message. */
   | { kind: 'relaunch'; id: string; note: Extract<ChatItem, { kind: 'note' }>; message: Extract<ChatItem, { kind: 'user' }> }
   /** A turn that ended badly. `output` is what the last failed tool printed. */
@@ -141,10 +144,14 @@ const tally = (tools: Tool[], key: string, service?: ToolService): Tally => {
   return t
 }
 
+/** Whether the label already says it all: every call was denied, or every call failed, so a red "2 denied" after "You denied 2 commands" would say it twice. */
+const told = (t: { total: number; done: number; failed: number; denied: number; running?: number }) => !t.running && !t.done && (t.denied === t.total || t.failed === t.total)
+
 /** A run row's words: the sentence with its service, and what went wrong, which draws in red after it. */
 export function runLabel(run: Run): { text: string; bad: string } {
   const at = run.service && run.service !== 'kernel' && run.service !== 'mcp' ? ` in ${SERVICE_NAME[run.service]}` : ''
-  return { text: `${count({ key: run.key, service: run.service, total: run.tools.length, done: run.done, failed: run.failed, denied: run.denied })}${at}`, bad: trouble(run.failed, run.denied) }
+  const t = { key: run.key, service: run.service, total: run.tools.length, done: run.done, failed: run.failed, denied: run.denied }
+  return { text: `${count(t)}${at}`, bad: told(t) ? '' : trouble(run.failed, run.denied) }
 }
 
 export interface Summary { text: string; bad: string }
@@ -168,7 +175,8 @@ export function summarize(items: ChatItem[]): Summary {
   const phrases = all.slice(0, SHOWN).map((t) => count(t, all.length === 1)).map((p, i) => (i ? lower(p) : p))
   const more = all.length - SHOWN
   const text = more > 0 ? `${phrases.join(', ')} and ${more} more` : phrases.join(', ')
-  return { text, bad: trouble(all.reduce((n, t) => n + t.failed, 0), all.reduce((n, t) => n + t.denied, 0)) }
+  const untold = all.filter((t) => !told(t))
+  return { text, bad: trouble(untold.reduce((n, t) => n + t.failed, 0), untold.reduce((n, t) => n + t.denied, 0)) }
 }
 
 /** Thinking or a message with no text has nothing to show, so it never takes a row. */
@@ -282,7 +290,12 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
   const blocks: ThreadBlock[] = []
   let turn: ChatItem[] = []
   let startedAt: number | undefined
+  // Only the last turn keeps its time and actions in view (KERNEL-1025), so each footer remembers its turn until the last one is known.
+  let turns = 0
+  const feet: { block: Extract<ThreadBlock, { kind: 'meta' | 'reply' }>; turn: number }[] = []
+  const foot = (block: Extract<ThreadBlock, { kind: 'meta' | 'reply' }>) => { blocks.push(block); feet.push({ block, turn: turns }) }
   const finish = (open = false) => {
+    turns++
     const result = turn.find((i): i is Extract<ChatItem, { kind: 'result' }> => i.kind === 'result')
     const stop = turn.find((i) => i.kind === 'interrupted')
     const live = open && !result && !stop
@@ -332,12 +345,12 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
     const reply = rest[rest.length - 1]
     if (reply?.kind === 'text') {
       for (const item of rest.slice(0, -1)) blocks.push({ kind: 'item', item })
-      blocks.push({ kind: 'reply', id: reply.id, item: reply, ...(result.files?.length ? { files: result.files } : {}), meta, ...(result.checkpointId ? { checkpointId: result.checkpointId } : {}) })
+      foot({ kind: 'reply', id: reply.id, item: reply, ...(result.files?.length ? { files: result.files } : {}), meta, ...(result.checkpointId ? { checkpointId: result.checkpointId } : {}) })
     } else {
       for (const item of rest) blocks.push({ kind: 'item', item })
       if (result.files?.length) blocks.push({ kind: 'files', id: `files-${result.id}`, files: result.files })
       const copy = [...body].reverse().find((i): i is Extract<ChatItem, { kind: 'text' }> => i.kind === 'text')?.text
-      blocks.push({ kind: 'meta', id: result.id, text: meta, actions: { ...(copy ? { copy } : {}), files: !!result.files?.length, ...(result.checkpointId ? { checkpointId: result.checkpointId } : {}) } })
+      foot({ kind: 'meta', id: result.id, text: meta, actions: { ...(copy ? { copy } : {}), files: !!result.files?.length, ...(result.checkpointId ? { checkpointId: result.checkpointId } : {}) } })
     }
     for (const item of after) blocks.push({ kind: 'item', item })
     turn = []
@@ -355,7 +368,25 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
     } else turn.push(item)
   }
   finish(running)
-  return blocks
+  for (const f of feet) if (f.turn < turns) f.block.quiet = true
+  return foldNotes(blocks)
+}
+
+const isGrey = (b: ThreadBlock): b is { kind: 'item'; item: NoteItem } => b.kind === 'item' && b.item.kind === 'note' && !b.item.pr
+
+/** Two or more grey notes in a row become one `notes` block. A PR state note, an error or any other block ends the run. */
+function foldNotes(blocks: ThreadBlock[]): ThreadBlock[] {
+  const out: ThreadBlock[] = []
+  for (let i = 0; i < blocks.length; i++) {
+    if (!isGrey(blocks[i])) { out.push(blocks[i]); continue }
+    let end = i
+    while (end + 1 < blocks.length && isGrey(blocks[end + 1])) end++
+    if (end === i) { out.push(blocks[i]); continue }
+    const items = blocks.slice(i, end + 1).map((b) => (b as { item: NoteItem }).item)
+    out.push({ kind: 'notes', id: `notes-${items[0].id}`, items })
+    i = end
+  }
+  return out
 }
 
 /** One row of the turn files card: the file's name, its folder, what happened to it and what a screen reader says (KERNEL-586). */

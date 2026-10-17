@@ -144,6 +144,10 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* The end of a finished turn (KERNEL-346): its time, always shown, then the reply's actions on the same line. */
 .msg-foot { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
 .msg-foot .msg-acts { margin-left: 0; }
+.msg-foot .meta { transition: opacity var(--dur-fast); }
+/* Every turn but the last keeps its time and actions out of sight until the reader hovers it or tabs into it (KERNEL-1025). */
+.msg-foot[data-quiet] .meta { opacity: 0; }
+.msg:hover .msg-foot[data-quiet] .meta, .msg-foot[data-quiet]:hover .meta, .msg-foot[data-quiet]:focus-within .meta { opacity: 1; }
 .msg-more { position: relative; display: inline-flex; }
 .msg-more .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
 .msg-reply .tf { margin-top: 8px; }
@@ -317,6 +321,9 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .note.inline[data-pr='closed'] > svg { color: var(--ink-3); }
 /* A decided plan's line keeps its icon grey whatever the outcome. */
 .note.inline[data-plan] > svg { color: var(--ink-3); }
+.note-more { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; padding: 0; border: 0; background: transparent; font: inherit; color: var(--ink-3); cursor: pointer; white-space: nowrap; }
+.note-more:hover, .note-more:focus-visible { color: var(--ink); }
+.note-more .chev { display: inline-flex; }
 .note.inline .note-rule { flex: 1; min-width: 24px; height: 1px; background: var(--line); }
 
 /* right panel */
