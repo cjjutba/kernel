@@ -1,9 +1,9 @@
-import { changelogPageHref, publishedChangelog, RELEASES_PER_PAGE } from '@/content/changelog'
+import { publishedChangelog, releaseHref } from '@/content/changelog'
 import { pullUrl } from '@/lib/links'
 import type { Release } from '@/lib/schema'
 import { SITE_URL } from '@/lib/site'
 
-// /changelog/rss.xml: every published release as an RSS item, newest first, linking to its entry on the changelog.
+// /changelog/rss.xml: every published release as an RSS item, newest first, linking to its own page.
 // It follows the changelog: a release shows here once GitHub has published it (KERNEL-412).
 export const revalidate = 3600
 
@@ -26,8 +26,8 @@ function body(release: Release): string {
 
 export async function GET() {
   const { releases } = await publishedChangelog()
-  const items = releases.map((release, i) => {
-    const url = `${SITE_URL}${changelogPageHref(Math.floor(i / RELEASES_PER_PAGE) + 1)}#v${release.version.replaceAll('.', '')}`
+  const items = releases.map((release) => {
+    const url = `${SITE_URL}${releaseHref(release.version)}`
     return [
       '<item>',
       `<title>${escape(release.title === `Kernel ${release.version}` ? release.title : `Kernel ${release.version}: ${release.title}`)}</title>`,
