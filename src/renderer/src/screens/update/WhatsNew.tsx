@@ -47,6 +47,12 @@ export function WhatsNew({ update: opened }: { update?: AppUpdate }) {
     const el = scroller.current
     if (!el) return
     const next = { scrolled: el.scrollTop > 0, atEnd: el.scrollTop + el.clientHeight >= el.scrollHeight - 2 }
+    // A section heading that sticks gets a hairline, so the lines scrolling under it read as going under, not cut off.
+    const top = el.getBoundingClientRect().top
+    for (const sec of el.querySelectorAll<HTMLElement>('.wn-sec')) {
+      const stuck = sec.getBoundingClientRect().top < top - 1
+      sec.querySelector('.wn-sec-head')?.toggleAttribute('data-stuck', stuck)
+    }
     setEdges((e) => (e.scrolled === next.scrolled && e.atEnd === next.atEnd ? e : next))
   }, [])
   useLayoutEffect(measure)
@@ -146,7 +152,7 @@ function Section({ section, onToggle }: { section: NotesSection; onToggle: () =>
           ))}
         </ul>
       )}
-      {section.lines.length > 0 && <Lines lines={section.lines} onToggle={onToggle} />}
+      {section.lines.length > 0 && <Lines lines={section.lines} fold={section.title !== 'New'} onToggle={onToggle} />}
       {section.groups.length > 0 && (
         <div className="wn-groups">
           {section.groups.map((g) => <Group key={g.area} area={g.area} lines={g.lines} onToggle={onToggle} />)}
@@ -176,9 +182,9 @@ function Group({ area, lines, onToggle }: { area: string; lines: string[]; onTog
 }
 
 /** Changes without an area. A long list, from a release before areas, shows FOLD_AT and a Show more button. */
-function Lines({ lines, onToggle }: { lines: string[]; onToggle: () => void }) {
+function Lines({ lines, fold, onToggle }: { lines: string[]; fold: boolean; onToggle: () => void }) {
   const [open, setOpen] = useState(false)
-  const folds = lines.length > FLAT_MAX
+  const folds = fold && lines.length > FLAT_MAX
   useLayoutEffect(onToggle, [open, onToggle])
   const shown = folds && !open ? lines.slice(0, FOLD_AT) : lines
   return (

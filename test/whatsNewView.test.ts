@@ -55,9 +55,9 @@ describe('notesSections', () => {
     expect(imp!.groups.map((g) => [g.area, g.lines.length])).toEqual([['Chat', 4], ['Keyboard', 4]])
   })
 
-  it('lists a short section flat and drops "Fixed" from each line', () => {
+  it('lists a short section flat, each fix keeping its "Fixed"', () => {
     expect(notesSections([{ title: 'Fixed: Chat', body: 'Fixed a chat drifting.' }, { title: 'Fixed', body: 'Fixed the footer.' }])).toEqual([
-      { title: 'Fixed', count: 2, highlights: [], lines: ['The footer.', 'A chat drifting.'], groups: [] }
+      { title: 'Fixed', count: 2, highlights: [], lines: ['Fixed the footer.', 'Fixed a chat drifting.'], groups: [] }
     ])
   })
 
