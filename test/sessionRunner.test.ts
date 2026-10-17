@@ -2857,6 +2857,20 @@ describe('images in a chat message (KERNEL-545)', () => {
     expect(await Promise.race([next, flush().then(() => 'nothing')])).toBe('nothing')
     await expect(readdir(join(repo, '.kernel/attachments'))).rejects.toThrow()
   })
+
+  it("hands the agent Kernel's setup note at its next tool call, once, and starts no turn (KERNEL-1012)", async () => {
+    const s = await setup('acceptEdits')
+    await s.sessions.send('chat', [{ type: 'text', text: 'go' }])
+    const hooks = (s.call.options as Options).hooks!.PreToolUse!.filter((m) => !m.matcher).flatMap((m) => m.hooks)
+    const input = { hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: {}, tool_use_id: 't', session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never
+    const contexts = async () => (await Promise.all(hooks.map((h) => h(input, 't', { signal: new AbortController().signal } as never)))).flatMap((r) => (r as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput?.additionalContext ?? [])
+    expect(await contexts()).toEqual([])
+    const queued = s.sessions.queued('chat').length
+    s.sessions.noteSetup(s.store.chat('chat')!.workspaceId, 'Kernel: setup finished and passed.')
+    expect(await contexts()).toEqual(['Kernel: setup finished and passed.'])
+    expect(await contexts()).toEqual([])
+    expect(s.sessions.queued('chat')).toHaveLength(queued)
+  })
 })
 
 describe('a chat with Kernel in Hand off or Build here, on Claude (KERNEL-770)', () => {

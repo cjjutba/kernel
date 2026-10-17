@@ -145,6 +145,25 @@ describe('a chat on Codex (KERNEL-406)', () => {
     expect(t.of('text').map((i) => i.text)).toEqual(['Added the column.'])
   })
 
+  it("adds Kernel's setup note to the next Kernel tool answer and to the next turn, once (KERNEL-1012)", async () => {
+    const ref: { t?: Awaited<ReturnType<typeof setup>> } = {}
+    const settle = tool('settle', 'Ends setup.', {}, async () => { ref.t!.sessions.noteSetup('ws', 'Kernel: setup finished and passed.'); return { content: [{ type: 'text' as const, text: 'ok' }] } })
+    const t = (ref.t = track(await setup({ tools: [settle] })))
+    const call = (id: string, name: string, args: Record<string, unknown>) => ({ request: 'item/tool/call', params: { threadId: '$thread', turnId: '$turn', callId: id, namespace: null, tool: name, arguments: args } })
+    await t.sessions.send('chat', [{ type: 'text', text: script(call('d1', 'kernel_settle', {}), call('d2', 'kernel_ping', { text: 'hi' })) }])
+    await t.idle()
+    expect(await t.answers('item/tool/call')).toEqual([
+      { contentItems: [{ type: 'inputText', text: 'ok' }, { type: 'inputText', text: 'Kernel: setup finished and passed.' }], success: true },
+      { contentItems: [{ type: 'inputText', text: 'pong hi' }], success: true }
+    ])
+    t.sessions.noteSetup('ws', 'Kernel: setup finished and failed.')
+    await t.sessions.send('chat', [{ type: 'text', text: 'next' }])
+    await t.idle()
+    const inputs = (await t.sent('turn/start')).map((m) => JSON.stringify(m.params.input))
+    expect(inputs[0]).not.toContain('setup finished')
+    expect(inputs[1]).toContain('Kernel: setup finished and failed.')
+  })
+
   it('declines Never allow without asking, accepts a project rule, and accepts typing into a running terminal in Accept edits', async () => {
     const t = track(await setup())
     t.allow.push('pnpm test')

@@ -158,6 +158,7 @@ export class ClaudeRunner implements Runner {
         held: () => host.held(),
         networkAllowed: () => host.settings().permissions.network !== false,
         afterPlan: () => host.afterPlan(),
+        setupNote: () => host.setupNote(),
         handoff: agent?.lead ? { atStop: () => host.handoffAtStop() } : undefined,
         leadMode: () => host.leadMode()
       }),
@@ -700,6 +701,7 @@ function kernelHooks(o: {
   networkAllowed?: () => boolean
   /** The approved plan's note for the agent, once, as context on ExitPlanMode's answer (plan-cards-survive-restart). */
   afterPlan?: () => string | undefined
+  setupNote?: () => string | undefined
   handoff?: LeadHandoff
   /** The agent file's tools line, when it has one (KERNEL-397). */
   tools?: ToolPolicy
@@ -717,7 +719,7 @@ function kernelHooks(o: {
   /** Settings, Hooks, read each time a gate runs (KERNEL-537). */
   gates?: () => AppSettings['hooks'] | undefined
 }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, cwds, verdict, writeVerdict, buildGate, projectAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, leadMode = () => undefined, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
+  const { ctx, commands, cwds, verdict, writeVerdict, buildGate, projectAllows, askUser, held, networkAllowed = () => true, afterPlan, setupNote, handoff, tools, leadMode = () => undefined, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -755,7 +757,9 @@ function kernelHooks(o: {
         void open.then(done)
       })
     }
-    return {}
+    // Kernel's note that setup ended reaches the agent here, once, at a tool call and never as a turn of its own.
+    const note = setupNote?.()
+    return note ? { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: note } } : {}
   }
   const events: HookEvent[] = ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'TaskCreated', 'TaskCompleted', 'TeammateIdle']
   const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))

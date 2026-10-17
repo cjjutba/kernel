@@ -78,6 +78,8 @@ export async function setUp(k: Kernel, id: string, status: 'ready' | 'failed' | 
     // `settled` is whatever setup ended in: ready or failed.
     if (status === 'settled') await vi.waitFor(() => expect(k.store.workspace(wsId)?.status).not.toBe('setup'), { timeout: 10_000, interval: 10 })
     else await vi.waitFor(() => expect(k.store.workspace(wsId)?.status).toBe(status), { timeout: 10_000, interval: 10 })
+    // Setup runs alongside a started teammate (KERNEL-1012): ready no longer means the script is done.
+    if (status === 'ready') await vi.waitFor(() => expect(k.store.workspace(wsId)?.setupRun?.startedAt === undefined || k.store.workspace(wsId)?.setupRun?.endedAt !== undefined).toBe(true), { timeout: 10_000, interval: 10 })
   } catch (e) {
     throw new Error(`${(e as Error).message}\nSetup log:\n${log.join('\n') || '(none)'}\nWorkspace: ${JSON.stringify(k.store.workspace(wsId))}`, { cause: e })
   } finally { bus.off('push', on) }

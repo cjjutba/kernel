@@ -139,6 +139,7 @@ export interface RunnerHost {
   requestPlan(plan: string, o: { signal?: AbortSignal; toolName?: string; input?: unknown }): Promise<Decision | undefined>
   /** The approved plan's note, once, for Claude's ExitPlanMode answer. A Codex approval goes as a message instead. */
   afterPlan(): string | undefined
+  setupNote(): string | undefined
   /** A Lead's one reminder at a stop before anything was handed off. */
   handoffAtStop(): string | undefined
   /** Send Kernel's own message as the chat's next turn, after what is queued: a plan's approval, a hand-off reminder (Codex). */

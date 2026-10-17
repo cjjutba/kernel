@@ -77,7 +77,7 @@ async function setup(files: Record<string, string> = {}, o: { fetch?: typeof fet
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   // The workspaces start from the local main, which a merge on GitHub doesn't move.
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, scripts: { runAfterSetup: true }, pr: { requireGreen: false } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true }, scripts: { runAfterSetup: true }, pr: { requireGreen: false } }))
   if (o.linearToken) await saveLinearToken(dataDir, o.linearToken)
   // A project with a Linear token and team uses Linear (KERNEL-462).
   if (o.fetch) await saveRepoSettings(repo, { linear: { team: 'KERNEL' } })

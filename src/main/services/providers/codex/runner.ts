@@ -411,8 +411,9 @@ export class CodexRunner implements Runner {
     this.planText = undefined
     this.planAsked = false
     const effort = this.effort
+    const note = this.host.setupNote()
     const r = await this.rpc!.request<TurnStartResponse>('turn/start', {
-      threadId, input: toCodexInput(parts), model: this.model, effort, summary: 'auto', approvalPolicy: 'untrusted', sandboxPolicy: this.sandbox(),
+      threadId, input: toCodexInput(note ? [...parts, { type: 'text', text: note }] : parts), model: this.model, effort, summary: 'auto', approvalPolicy: 'untrusted', sandboxPolicy: this.sandbox(),
       collaborationMode: { mode: this.plan ? 'plan' : 'default', settings: { model: this.model, reasoning_effort: effort, developer_instructions: null } }
     }, { timeoutMs: 60_000 })
     return r.turn.id
@@ -579,7 +580,12 @@ export class CodexRunner implements Runner {
       case 'item/fileChange/requestApproval': return this.approveFiles(params as FileChangeRequestApprovalParams, signal)
       case 'item/permissions/requestApproval': return this.approvePermissions(params as PermissionsRequestApprovalParams, signal)
       case 'item/tool/requestUserInput': return this.question(params as ToolRequestUserInputParams, signal)
-      case 'item/tool/call': { const p = params as DynamicToolCallParams; return callTool(this.o.tools, p.tool, p.arguments, { signal }) }
+      case 'item/tool/call': {
+        const p = params as DynamicToolCallParams
+        const res = await callTool(this.o.tools, p.tool, p.arguments, { signal })
+        const note = this.host.setupNote()
+        return note ? { ...res, contentItems: [...res.contentItems, { type: 'inputText' as const, text: note }] } : res
+      }
       case 'execCommandApproval': case 'applyPatchApproval': return { decision: 'denied' }
       default: throw new RpcError(`Kernel can't answer ${method}.`, -32601)
     }

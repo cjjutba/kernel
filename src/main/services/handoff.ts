@@ -119,7 +119,8 @@ export function reviewRule(r: { author: string; task: string; workspaceId: strin
     "Don't approve while a check is still running. Wait for it with `gh pr checks --watch`. Never block only because a check is running.",
     'When you are done, call mcp__kernel__submit_review once: "approved", or "blockers" with each blocker. The Lead passes blockers on.',
     "Don't approve or request changes on GitHub: the PR was opened from the user's account, and GitHub doesn't let its author do either. If the repo wants a review on GitHub, post it as a comment with `gh pr comment`.",
-    `When you are asked to review again, run \`${pickUp}\` again, check only your earlier blockers and anything the fix broke, and call submit_review again. Raise nothing new unless the fix caused it.`
+    `When you are asked to review again, run \`${pickUp}\` again, check only your earlier blockers and anything the fix broke, and call submit_review again. Raise nothing new unless the fix caused it.`,
+    SETUP_LINE
   ].join('\n')
 }
 
@@ -129,13 +130,16 @@ export function reviewRule(r: { author: string; task: string; workspaceId: strin
  */
 export const SHARE_RULE = 'When the user should see your work without running it, call mcp__kernel__share_file with a self-contained HTML mock, a screenshot, a Markdown report or a diagram. Comments on a file you shared arrive as messages naming the file and version. Answer one by sharing the same path again.'
 
+export const SETUP_LINE = "Kernel's setup script for this worktree may still be running when you start. Don't run your own install. If it is still running, Kernel adds one note to a later tool result or message saying whether it passed. A build or test that fails for missing dependencies before then may only need that. Never wait for a note that hasn't come."
+
 /** Appended to the prompt of every teammate that isn't reviewing, next to its wait_for_merge, ask_lead and propose_handoff tools (KERNEL-262, KERNEL-747). */
 export const TEAMMATE_RULE = [
   "If you can't go on until another teammate's PR merges, call mcp__kernel__wait_for_merge and end your turn. Don't poll or loop. Kernel messages you when it merges.",
   'To read the issue your task builds, call mcp__kernel__get_issue. It needs no tracker MCP server.',
   // KERNEL-747: a question as a tool call, not just a last reply, and part of the work handed back in a form the Lead can act on.
   "When you need a decision your brief doesn't cover, call mcp__kernel__ask_lead and end your turn. The answer arrives as a message.",
-  "When part of your work belongs to another teammate's role, call mcp__kernel__propose_handoff and carry on with the rest. The Lead asks the user, so never start that work yourself."
+  "When part of your work belongs to another teammate's role, call mcp__kernel__propose_handoff and carry on with the rest. The Lead asks the user, so never start that work yourself.",
+  SETUP_LINE
 ].join('\n')
 
 /**

@@ -319,8 +319,10 @@ export class Workspaces extends Feature {
       for (let held = this.k.setup.setups.get(ws.id); held?.later.length; held = this.k.setup.setups.get(ws.id)) { const m = held.later.shift()!; this.k.setup.saveSetups(); await send(m) }
       this.k.setup.setSetup(ws.id, undefined)
     }
+    // Setup runs alongside unless the user asked agents to wait for it (KERNEL-1012).
+    const alongside = this.k.setup.runsOnCreate(repo) && !this.k.setup.holdsForSetup(repo)
     let ready: boolean
-    try { ready = await this.k.setup.prepare(ws, project, repo) } catch (e) { this.k.setup.setSetup(ws.id, undefined); throw e }
+    try { ready = await this.k.setup.prepare(ws, project, repo, { background: alongside }) } catch (e) { this.k.setup.setSetup(ws.id, undefined); throw e }
     // Archived while setup ran: archive stopped the script, and the workspace stays archived.
     if (this.mustWs(ws.id).status === 'archived') { this.k.setup.setSetup(ws.id, undefined); return this.mustWs(ws.id) }
     // The first prompt waits in the chat's queue until setup passes (WorkspaceSetupFailed.png, "Run again").
@@ -351,9 +353,10 @@ export class Workspaces extends Feature {
       this.leadUpdates.waits(held, 'wait.started', { on: held.waitsFor!.on, label, held: true, ...(o.leadChatId && this.sessions.isRunning(o.leadChatId) ? { told: true } : {}) })
       // Something it waits for may have merged while setup ran.
       void this.k.waits.settleWait(ws.id).catch(() => undefined)
+      if (alongside) void this.k.setup.runInBackground(held, project, repo)
       return held
     }
-    return this.k.setup.setupDone(ws, project, chat, o.prompt ?? chat.title, async () => {
+    const done = await this.k.setup.setupDone(ws, project, chat, o.prompt ?? chat.title, async () => {
       // A wait set while the brief was on its way is now a started teammate's (KERNEL-259).
       const late = this.mustWs(ws.id).waitsFor
       if (late?.held) this.updateWs(ws.id, { waitsFor: { ...late, held: false } })
@@ -369,12 +372,15 @@ export class Workspaces extends Feature {
       }
       await this.sessions.sendAll(chat.id, [{ parts, from }, ...later.map((m) => ({ parts: m, from: 'lead' as const }))])
       await after((m) => this.sessions.send(chat.id, m, { from: 'lead' }))
-    })
+    }, { run: !alongside })
+    if (alongside && done.status === 'ready') void this.k.setup.runInBackground(done, project, repo)
+    return done
   }
 
   /** `setUpWorkspace` for a workspace whose chats are already held: a fork, a Lead chat, or a restore. */
   private async setUpHeld(ws: Workspace, project: Project, repo: RepoSettings, chat: Chat, checkpoint?: boolean): Promise<Workspace> {
-    const ready = await this.k.setup.prepare(ws, project, repo)
+    const alongside = this.k.setup.runsOnCreate(repo) && !this.k.setup.holdsForSetup(repo)
+    const ready = await this.k.setup.prepare(ws, project, repo, { background: alongside })
     for (const m of this.k.setup.setups.get(ws.id)?.later ?? []) this.sessions.hold(chat.id, m, { from: 'lead' })
     if (this.k.setup.setups.has(ws.id)) this.k.setup.setSetup(ws.id, undefined)
     if (this.mustWs(ws.id).status === 'archived') return this.mustWs(ws.id)
@@ -385,7 +391,9 @@ export class Workspaces extends Feature {
       if (code !== null && failed.status !== 'archived' && !failed.lead) this.k.leadUpdates.setup(failed, false, { code })
       return failed
     }
-    return this.k.setup.setupDone(ws, project, chat, chat.title, async () => this.k.setup.releaseTabs(ws.id, chat.id), { checkpoint })
+    const done = await this.k.setup.setupDone(ws, project, chat, chat.title, async () => this.k.setup.releaseTabs(ws.id, chat.id), { checkpoint, run: !alongside })
+    if (alongside && done.status === 'ready') void this.k.setup.runInBackground(done, project, repo)
+    return done
   }
 
   /**
