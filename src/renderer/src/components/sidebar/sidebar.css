@@ -129,7 +129,6 @@ button.hc-pr:hover { color: var(--ink); }
 .nav-item[data-arrive] { animation: archive-arrive var(--archive-fade) ease-out; }
 @keyframes archive-arrive { from { background-color: transparent; color: var(--ink-2); } }
 @media (prefers-reduced-motion: reduce) { .row-fold, .row-open, .nav-group:not(:has(> :not(.row-fold))), .nav-item[data-arrive] { animation: none; } .row-fold { display: none; } }
-.ws-right.ws-term { display: inline-flex; align-items: center; color: var(--muted); }
 .ws-right.ws-pr { font-size: var(--fs-badge); }
 .project-row > .nav-item { padding-right: 60px; }
 .nav-hint { font-size: var(--fs-chip); }
