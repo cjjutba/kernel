@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { Chat, QueuedMessage, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { actions, useStore } from '../../store'
@@ -19,10 +20,16 @@ const NO_QUEUE: QueuedMessage[] = []
 export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
   const queue = useStore((s) => (chat ? s.queue[chat.id] : undefined)) ?? NO_QUEUE
   const failed = ws.status === 'failed'
-  // A message a window sent from New chat (it has the id the window gave it, and `sentAt` while this window remembers the press) reads as sent until setup has really
-  // started: with Wait for setup off, main sends it as soon as the worktree exists, before any setup run, so the handover between the two never shows it as waiting.
-  // A started run or a failed setup is main holding it.
-  const going = (q: QueuedMessage) => !failed && (!!ws.worktreePending || (!ws.setupRun && (sentAt(q.id) !== undefined || !!q.clientId)))
+  // Whether setup really holds a first message in main: Wait for setup is on (the project's own choice, else Settings) and a setup script runs on create (KERNEL-490). Until
+  // the project's settings have loaded nothing is known to hold it, so the message reads as sent.
+  const appSettings = useStore((s) => s.settings)
+  const rs = useStore((s) => s.projectSettings[ws.projectId])
+  useEffect(() => { if (!rs) void call('settings.project', { projectId: ws.projectId }).then((v) => actions.settings.setProject(ws.projectId, v)).catch(() => undefined) }, [rs, ws.projectId])
+  const holds = !!rs && !!appSettings && !!(rs.workspace.leadWaitForSetup ?? appSettings.workspace.leadWaitForSetup) && !!rs.scripts.setup?.trim() && appSettings.scripts.setupOnCreate
+  // A message a window sent from New chat (it has the id the window gave it, and `sentAt` while this window remembers the press) reads as sent until main really holds it for
+  // setup. With Wait for setup off it never waits for setup: main sends it as soon as the worktree exists, so a setup run starting first doesn't make it wait, and the handover
+  // never shows it as waiting. A failed setup is main holding it too.
+  const going = (q: QueuedMessage) => !failed && (!!ws.worktreePending || (!holds && (sentAt(q.id) !== undefined || !!q.clientId)))
   // Send now while setup runs stops it and sends (KERNEL-951). With no worktree yet, there is nothing to send to.
   const running = !!ws.setupRun && !ws.setupRun.endedAt && !ws.worktreePending
   const [busy, track] = useBusy<'now'>()

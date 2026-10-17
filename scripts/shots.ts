@@ -820,9 +820,9 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
 // stepped by time with Animation.currentTime, so a frame doesn't depend on how fast the capture runs. A smooth scroll is the
 // compositor's, which can't be stepped: it runs in real time, and a frame in which a scroll offset moved is labelled "sampled".
 const FPS = 30
-type MotionAction = { click: string } | { press: string[] } | { hold: string } | { push: unknown[] }
+type MotionAction = { click: string } | { press: string[] } | { hold: string } | { push: unknown[] } | { steps: { label: string; events: unknown[] }[] }
 type Motion = { action: MotionAction; ms: number; area?: string }
-interface Frame { n: number; ms: number; sampled: boolean; file: string }
+interface Frame { n: number; ms: number; sampled: boolean; file: string; label?: string }
 
 // Pauses every animation the moment it appears, so none runs before its first stepped frame. One that was already running (a
 // loop, a strip still opening) is settled first the way `animations: 'disabled'` does: a finite one finishes, a loop restarts.
@@ -895,6 +895,7 @@ async function stepTo(page: Page, t: number): Promise<boolean> {
 }
 
 async function runMotionAction(page: Page, action: MotionAction, app: ElectronApplication) {
+  if ('steps' in action) return
   if ('push' in action) await app.evaluate((_, events) => (globalThis as { kernelFixturePush?: (e: unknown[]) => void }).kernelFixturePush?.(events), action.push)
   else if ('click' in action) await page.getByRole('button', { name: action.click, exact: true }).or(page.getByRole('tab', { name: action.click })).click()
   else if ('hold' in action) { await page.getByRole('button', { name: action.hold, exact: true }).first().hover(); await page.mouse.down() }
@@ -908,13 +909,13 @@ async function runMotionAction(page: Page, action: MotionAction, app: ElectronAp
 async function contactSheet(app: ElectronApplication, dir: string, name: string, frames: Frame[], size: { w: number; h: number }, out: string) {
   const cols = Math.min(4, Math.max(1, Math.round(1800 / size.w)))
   const cellW = Math.min(size.w, Math.floor(1800 / cols))
-  const cells = frames.map((f) => `<figure><img src="${f.file}" width="${cellW}"><figcaption><b>${f.n}</b> ${f.ms} ms${f.sampled ? ' <i>sampled</i>' : ''}</figcaption></figure>`).join('')
+  const cells = frames.map((f) => `<figure><img src="${f.file}" width="${cellW}"><figcaption><b>${f.n}</b> ${f.label ?? `${f.ms} ms`}${f.sampled ? ' <i>sampled</i>' : ''}</figcaption></figure>`).join('')
   writeFileSync(join(dir, 'sheet.html'), `<!doctype html><meta charset="utf-8"><style>
     body{margin:0;padding:16px;background:#fff;color:#111;font:13px/1.3 ui-monospace,Menlo,monospace}
     h1{font:600 14px/1 ui-monospace,Menlo,monospace;margin:0 0 12px}
     main{display:grid;grid-template-columns:repeat(${cols},${cellW}px);gap:12px;width:max-content}
     figure{margin:0}img{display:block;border:1px solid #ccc}figcaption{padding-top:4px}i{color:#a60}
-  </style><h1>${name} motion: ${frames.length} frames, ${FPS} per second</h1><main>${cells}</main>`)
+  </style><h1>${name} motion: ${frames.length} frames, ${frames[0]?.label ? 'one per step' : `${FPS} per second`}</h1><main>${cells}</main>`)
   const opened = app.waitForEvent('window')
   await app.evaluate(({ BrowserWindow }, file) => { void new BrowserWindow({ show: false, width: 1900, height: 1000 }).loadFile(file) }, join(dir, 'sheet.html'))
   const sheet = await opened
@@ -946,14 +947,23 @@ async function captureMotion(page: Page, app: ElectronApplication, name: string,
       }
       requestAnimationFrame(tick)
     })
-    await runMotionAction(page, motion.action, app)
+    const steps = 'steps' in motion.action ? motion.action.steps : undefined
+    if (!steps) await runMotionAction(page, motion.action, app)
     await page.waitForTimeout(150)
     console.log(`${name} live scrollTop/range (ms): ${(await page.evaluate(() => (window as unknown as { __live: string[] }).__live)).join(' ')}`)
     const area = motion.area ? await page.locator(motion.area).first().boundingBox() : null
     const pad = 24
     const clip = area ? { x: Math.max(0, area.x - pad), y: Math.max(0, area.y - 120), width: Math.min(WIDTH, area.width + pad * 2), height: Math.min(HEIGHT, area.height + 120 + pad) } : { x: 0, y: 0, width: WIDTH, height: HEIGHT }
     const frames: Frame[] = []
-    for (let i = 0; i * 1000 / FPS <= motion.ms; i++) {
+    if (steps) {
+      // One frame for the screen as it opens, then one after each group of events, once what the group made React draw has settled.
+      for (let i = 0; i <= steps.length; i++) {
+        if (i > 0) { await app.evaluate((_, events) => (globalThis as { kernelFixturePush?: (e: unknown[]) => void }).kernelFixturePush?.(events), steps[i - 1].events); await page.waitForTimeout(250) }
+        const file = `f${String(i).padStart(3, '0')}.png`
+        await page.screenshot({ path: join(dir, file), clip, caret: 'hide' })
+        frames.push({ n: i, ms: 0, sampled: false, file, label: i === 0 ? 'as it opens' : steps[i - 1].label })
+      }
+    } else for (let i = 0; i * 1000 / FPS <= motion.ms; i++) {
       const ms = Math.round(i * 1000 / FPS)
       const sampled = await stepTo(page, ms)
       const file = `f${String(i).padStart(3, '0')}.png`
@@ -966,7 +976,7 @@ async function captureMotion(page: Page, app: ElectronApplication, name: string,
     const ffmpeg = ffmpegPath()
     if (!ffmpeg) { console.log(`shots/${name}-motion.gif skipped: ffmpeg not found (brew install ffmpeg). The contact sheet is saved.`); return }
     const gif = join(shotsDir, `${name}-motion.gif`)
-    const made = spawnSync(ffmpeg, ['-y', '-v', 'error', '-framerate', String(FPS), '-i', join(dir, 'f%03d.png'), '-vf', 'scale=min(iw\\,960):-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse', '-loop', '0', gif])
+    const made = spawnSync(ffmpeg, ['-y', '-v', 'error', '-framerate', steps ? '1' : String(FPS), '-i', join(dir, 'f%03d.png'), '-vf', 'scale=min(iw\\,960):-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse', '-loop', '0', gif])
     if (made.status === 0 && existsSync(gif)) console.log(`shots/${name}-motion.gif`)
     else console.log(`shots/${name}-motion.gif failed: ${made.stderr?.toString().trim().split('\n')[0] ?? 'ffmpeg exited'}. The contact sheet is saved.`)
   } finally {

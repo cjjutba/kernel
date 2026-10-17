@@ -641,6 +641,19 @@ function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[
   }
 }
 
+/** A project whose setup script runs on create, with Wait for setup left at its default, off. */
+const handoverSettings: NonNullable<Fixture['projectSettings']> = { [ids.projectA]: { scripts: { setup: 'pnpm install' }, runScripts: [], files: { copy: [] }, workspace: {} } }
+/** The updates after a New chat message whose worktree was pending, in main's order: `worktreePending` clears alone, the setup script starts, then the row, the running state and the empty tray arrive together. */
+function handoverSteps(): { label: string; events: PushEvent[] }[] {
+  const made = scene((f) => setupWait(f, 'setup', [], { pending: {} })).workspaces.find((w) => w.id === ids.table)!
+  const cleared = { ...made, worktreePending: undefined }
+  return [
+    { label: 'worktree made', events: [{ type: 'workspace', workspace: cleared }] },
+    { label: 'setup script started', events: [{ type: 'workspace', workspace: { ...cleared, setupRun: { startedAt: Date.now() } } }] },
+    { label: 'row + running + tray empty', events: [{ type: 'chat.item', chatId: ids.tableChat, item: { kind: 'user', id: setupAsk.id, ts: Date.now(), parts: setupAsk.parts } }, runningEvent(ids.tableChat, true), { type: 'chat.queue', chatId: ids.tableChat, queue: [] }] }
+  ]
+}
+
 /** Composer shots: the same screen, with the composer already holding something. */
 const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft: string }, extra: Partial<Fixture> = {}) =>
   scene(() => ({ ...extra, ui: { ...open, workspace: { right: 'changes', bottom: 'run', composer } } }))
@@ -2120,15 +2133,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // KERNEL-543: the worktree isn't made yet. The message reads as sent, and one line says which base it is made from.
   SetupCreatingWorktree: scene((f) => setupWait(f, 'setup', [setupAsk], { pending: {} })),
   /**
-   * The first message sent from New chat while its worktree is made, with Wait for setup off: the worktree finishes (`workspace`), then main sends the row, the running state
-   * and the empty tray together. The bubble and the working line stay in one place from the press to the running turn, with no setup text and no queue strip.
+   * The first message sent from New chat while its worktree is made, with Wait for setup off, one step per frame as main sends it: the worktree finishes and nothing else has
+   * happened yet, the setup script starts before the row is posted, then the row, the running state and the empty tray arrive together. The bubble and the working line stay in one place
+   * in every frame, with no setup text and no queue strip, though a setup script runs.
    */
-  NewChatSendWorktreeMotion: { ...scene((f) => setupWait(f, 'setup', [{ ...setupAsk, clientId: setupAsk.id }], { pending: {} })), motion: { action: { push: [
-    { type: 'workspace', workspace: { ...scene((f) => setupWait(f, 'setup', [], { pending: {} })).workspaces.find((w) => w.id === ids.table)!, worktreePending: undefined } },
-    { type: 'chat.item', chatId: ids.tableChat, item: { kind: 'user', id: setupAsk.id, ts: Date.now(), parts: setupAsk.parts } },
-    runningEvent(ids.tableChat, true),
-    { type: 'chat.queue', chatId: ids.tableChat, queue: [] }
-  ] }, ms: 1200, area: '.ws-main' } },
+  NewChatSendWorktreeMotion: { ...scene((f) => ({ ...setupWait(f, 'setup', [{ ...setupAsk, clientId: setupAsk.id }], { pending: {} }), projectSettings: handoverSettings })), motion: { action: { steps: handoverSteps() }, ms: 0, area: '.ws-main' } },
+  // Wait for setup is on, so main does hold the message through setup: the same message, sent from New chat, keeps its queued look, label, Edit, Cancel and Send now once the worktree is made.
+  SetupSentHeldWaitOn: scene((f) => ({ ...setupWait(f, 'setup', [{ ...setupAsk, clientId: setupAsk.id }]), projectSettings: { [ids.projectA]: { ...handoverSettings[ids.projectA], workspace: { leadWaitForSetup: true } } } })),
   // Git wouldn't make it: the card says so with git's reason and Try again, and the message is Not sent yet.
   SetupWorktreeFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { pending: { error: "fatal: '/Users/cj/Kernel/worktrees/kernel/in-setup-script-tab-in' already exists" } })),
   SetupSentAnyway: scene((f) => ({
