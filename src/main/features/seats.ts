@@ -1,7 +1,7 @@
 import { rm } from 'node:fs/promises'
 import { buildsHere } from '@shared/leadMode'
 import type { AgentDef, Chat, Workspace } from '@shared/types'
-import { LEAD_INSTRUCTIONS } from '../services/kernelMcp'
+import { LEAD_INSTRUCTIONS, TERMINAL_LEAD_INSTRUCTIONS } from '../services/kernelMcp'
 import { agentPrompt } from '../services/sessions'
 import { removeSeatDir, seatCommand, seatDir, seatsDir, withDirFirst, writeSeatDir, writeSeatSession } from '../services/seatLaunch'
 import { startSeatMcp, SeatRegistry, type Seat, type SeatMcp, type SeatRole, type SeatTools } from '../services/seatMcp'
@@ -114,7 +114,10 @@ export class Seats extends Feature {
     if (!ws || !chat || chat.workspaceId !== ws.id || ws.status === 'archived') return undefined
     const agent = this.agentFor(ws, chat)
     if (chat.kind === 'terminal') this.k.seatSignals.connect(chat.id)
-    return { tools: chat.kind === 'terminal' ? this.k.seatSignals.wrap(chat.id, this.k.tools.toolsFor(ws, agent, chat)) : this.k.tools.toolsFor(ws, agent, chat), instructions: agent?.lead ? LEAD_INSTRUCTIONS : undefined }
+    if (chat.kind !== 'terminal') return { tools: this.k.tools.toolsFor(ws, agent, chat), instructions: agent?.lead ? LEAD_INSTRUCTIONS : undefined }
+    // A terminal shows no Kernel card, so a Lead there plans with Claude Code's own plan dialog, which the hooks record (KERNEL-1022).
+    const own = this.k.tools.toolsFor(ws, agent, chat).filter((t) => !agent?.lead || t.name !== 'request_plan_approval')
+    return { tools: this.k.seatSignals.wrap(chat.id, own), instructions: agent?.lead ? TERMINAL_LEAD_INSTRUCTIONS : undefined }
   }
 
   private agentFor(ws: Workspace, chat: Chat): AgentDef | undefined {
