@@ -52,7 +52,7 @@ export async function SiteFooter() {
           <Link href="/" className="inline-flex">
             <Wordmark />
           </Link>
-          <p className="mt-4 max-w-tagline text-ui leading-relaxed text-muted">Your coding agents, working as a team.</p>
+          <p className="mt-4 max-w-tagline text-ui leading-relaxed text-muted">Your AI coding agents, finally organized</p>
           <Link
             href="/changelog"
             className="mt-6 inline-flex h-7 items-center gap-2 rounded-pill border border-line-strong pr-2.5 pl-1 text-small text-muted transition-colors hover:border-edge-hover hover:text-ink"

@@ -11,7 +11,7 @@ import { latestVersionLabel } from '@/lib/format'
 import { DOWNLOAD_URL } from '@/lib/links'
 import { pageMetadata, SITE_DESCRIPTION, SITE_URL } from '@/lib/site'
 
-const title = 'Kernel · Your coding agents, working as a team'
+const title = 'Kernel · Your AI coding agents, finally organized'
 
 export const metadata: Metadata = pageMetadata({ title, description: SITE_DESCRIPTION, path: '/' })
 

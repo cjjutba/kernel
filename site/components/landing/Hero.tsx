@@ -18,14 +18,14 @@ export function Hero({ version }: { version: string }) {
           Kernel {version} is here
           <ArrowIcon className="text-muted" />
         </Link>
-        {/* Two set lines on wider screens. On phones the break goes and the heading balances instead of leaving "team." alone. */}
+        {/* Two set lines on wider screens. On phones the break goes and the heading balances instead of leaving "organized" alone. */}
         <h1 id="hero-title" className="mt-8 text-display text-balance max-nav:mt-6">
-          Your coding agents,{' '}
+          Your AI coding agents,{' '}
           <br className="max-nav:hidden" />
-          working as a team.
+          finally organized
         </h1>
         <p className="mx-auto mt-6 max-w-lead text-hero-lead text-balance text-muted">
-          Brief a lead, approve the plan, and merge what the team builds.
+          Say what you need, and Kernel plans it, hands it out and brings it back for your approval
         </p>
         <CtaBlock align="center" className="mt-10" />
         <p className="mt-4 text-small text-faint">
