@@ -22,7 +22,7 @@ describe('IPC contract', () => {
     expect(await empty['linear.scope']()).toEqual({ teams: [], projects: [], cycles: [] })
     const issue = {
       id: 'KERNEL-83', uuid: 'u', title: 'Issues screen', url: 'https://linear.app/x', branchName: 'cj/kernel-83', priority: 2, labels: [], updatedAt: '2026-10-09T10:00:00.000Z',
-      state: { id: 's', name: 'Todo', type: 'unstarted' as const, position: 1 }, team: { id: 't', key: 'KERNEL', name: 'Kernel' }, assignee: { name: 'CJ', me: true },
+      state: { id: 's', name: 'Todo', type: 'unstarted' as const, position: 1 }, team: { id: 't', key: 'KERNEL', name: 'Kernel' }, assignee: { name: 'Sam', me: true },
       description: 'Build it.', comments: []
     }
     const h = fixtureHandlers({ ...fixtures.Workspace, linear: { issues: [issue, { ...issue, id: 'KERNEL-84', assignee: undefined }] } })

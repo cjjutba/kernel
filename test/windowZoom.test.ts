@@ -83,7 +83,7 @@ describe('the traffic lights', () => {
   })
 })
 
-// KERNEL-972: Font size zooms the page's root in CSS on top of Electron's page zoom. CJ's window had a saved 120% and Large, so the row sat
+// KERNEL-972: Font size zooms the page's root in CSS on top of Electron's page zoom. The maintainer's window had a saved 120% and Large, so the row sat
 // on 31 x 1.2 x 1.1 while the lights sat on 31 x 1.2, 3.5 high, whatever the page said about its zoom.
 describe('the traffic lights with a Font size', () => {
   const center = (p: { y: number }) => p.y + LIGHT_HEIGHT / 2

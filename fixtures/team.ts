@@ -422,7 +422,7 @@ const linearScope: LinearScope = {
   cycles: [{ id: 'cycle-12', number: 12, teamId: KERNEL.id, active: true }, { id: 'cycle-13', number: 13, teamId: KERNEL.id, active: false }]
 }
 
-const cj = { name: 'CJ Jutba', me: true }
+const cj = { name: 'Sam Rivera', me: true }
 const maya = { name: 'Maya Chen', me: false }
 const states = {
   triage: { id: 's-triage', name: 'Triage', type: 'triage' as const, position: 0 },
@@ -440,19 +440,19 @@ const issue = (n: number, title: string, state: keyof typeof states, priority: n
 })
 const comment = (id: string, author: string, body: string, age: number) => ({ id, author, body, createdAt: new Date(Date.now() - age).toISOString() })
 
-/** Issues.png: nine assigned to CJ and twenty-nine to others, so the pills read Mine 9 and All 38. */
+/** Issues.png: nine assigned to Sam and twenty-nine to others, so the pills read Mine 9 and All 38. */
 const linearIssues = (): LinearIssueDetail[] => {
   const mine = [
     issue(24, 'Invoice table with sorting and empty states', 'started', 2, 'invoices', 3 * DAY, {
       cycle: { id: 'cycle-12', number: 12 }, labels: ['Feature', 'Frontend'],
       description: 'The invoice list needs a table that sorts and handles every state.\n\n## Scope\n\n- Sort by date, client and amount\n- Empty, loading and error states\n- Playwright coverage for each state',
-      comments: [comment('c24a', 'Maya Chen', 'Newest first by default, please.', 4 * DAY), comment('c24b', 'CJ Jutba', 'Reuse the empty state from the dashboard.', 2 * DAY)]
+      comments: [comment('c24a', 'Maya Chen', 'Newest first by default, please.', 4 * DAY), comment('c24b', 'Sam Rivera', 'Reuse the empty state from the dashboard.', 2 * DAY)]
     }),
     issue(27, 'Rate limit the invite endpoint', 'started', 3, 'accounts', DAY),
     issue(31, 'Export invoices as PDF', 'todo', 2, 'invoices', 2 * DAY, {
       cycle: { id: 'cycle-12', number: 12 }, labels: ['Feature', 'Billing'],
       description: 'Clients want a PDF copy of any invoice they can send to their accountant.\n\n## Acceptance criteria\n\n- A Download PDF action on every invoice row\n- The PDF matches the on-screen layout, on one page\n- Fonts are embedded, so it looks the same on every device',
-      comments: [comment('c31a', 'Maya Chen', 'Billing asked for this twice this week. One page per invoice is fine, no custom templates yet.', 3 * DAY), comment('c31b', 'CJ Jutba', 'Use the on-screen design as the layout. Kernel can split it once we agree on the scope.', DAY)]
+      comments: [comment('c31a', 'Maya Chen', 'Billing asked for this twice this week. One page per invoice is fine, no custom templates yet.', 3 * DAY), comment('c31b', 'Sam Rivera', 'Use the on-screen design as the layout. Kernel can split it once we agree on the scope.', DAY)]
     }),
     issue(33, 'Send a reminder for overdue invoices', 'todo', 3, 'billing', 3 * DAY),
     issue(35, 'Show the invoice total in the page title', 'todo', 4, 'invoices', 4 * DAY),
@@ -504,7 +504,7 @@ const issuesScene = (f: Fixture, opts: { issueId?: string; working?: boolean; li
   }
 }
 
-/** IssuesGitHub.png: Client B's open issues. Nine, three of them CJ's, so the pills read Mine 3 and All 9. Times are relative. */
+/** IssuesGitHub.png: Client B's open issues. Nine, three of them Sam's, so the pills read Mine 3 and All 9. Times are relative. */
 const githubIssues = (): GithubIssueDetail[] => {
   const gh = (n: number, title: string, labels: string[], assignees: string[], age: number, extra: Partial<GithubIssueDetail> = {}): GithubIssueDetail => ({
     number: n, id: `#${n}`, title, url: `https://github.com/cjjutba/client-b/issues/${n}`, labels, assignees, author: 'maya-chen', updatedAt: new Date(Date.now() - age).toISOString(),
@@ -897,7 +897,7 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesNoWork: scene((f) => issuesScene(f, { issueId: 'KERNEL-35' })),
   IssuesNoWork1280: scene((f) => issuesScene(f, { issueId: 'KERNEL-35' })),
   IssuesNoProject: scene((f) => issuesScene(f, { linkedProject: false })),
-  // Nothing assigned to CJ, so the default Mine filter finds nothing.
+  // Nothing assigned to Sam, so the default Mine filter finds nothing.
   IssuesEmpty: scene((f) => issuesScene(f, { issues: linearIssues().map((i) => ({ ...i, assignee: maya })) })),
   IssuesConnect: scene((f) => ({ ...issuesScene(f), integrations: linearIntegrations.map((i) => (i.id === 'linear' ? { ...i, connected: false, detail: 'Create workspaces from issues' } : i)) })),
   // Offline: the screen says Linear can't be reached whatever the last answer was.

@@ -71,7 +71,7 @@ describe('repo instructions that fight Kernel', () => {
     'Never run `git pull` in the main checkout, the folder where `main` is checked out (the first line of `git worktree list`).',
     'To see what landed on main, run `git fetch origin` and read `origin/main`.',
     'To bring a branch up to date, rebase it onto `origin/main` in its own worktree.',
-    'CJ pulls main when no agent is running.',
+    'the maintainer pulls main when no agent is running.',
     'Keep PRs to one issue.',
     'Commit with Conventional Commits (`feat(workspace): ...`), open a PR with `gh pr create` that references `KERNEL-N` and lists what changed and what you checked.',
     // Negated, conditional, a noun or about something else.

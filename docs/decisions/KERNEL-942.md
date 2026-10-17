@@ -1,4 +1,4 @@
-**A fresh install sees a splash, then New chat. The checks never take a screen of their own.** Amends KERNEL-27, KERNEL-213 and KERNEL-457. CJ's call, from the onboarding redesign canvas.
+**A fresh install sees a splash, then New chat. The checks never take a screen of their own.** Amends KERNEL-27, KERNEL-213 and KERNEL-457. The maintainer's call, from the onboarding redesign canvas.
 
 **The splash is the wordmark alone.** It shows on a fresh install, and from Settings, About, Show again. It opens New chat when the wordmark's own animation ends (an `animationend` event), not on a timer. Welcome, Checks, Permissions and Create your first project are gone, and `OnboardingStep` is `splash`, `project` and `loading`.
 

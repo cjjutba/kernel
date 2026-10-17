@@ -1,6 +1,6 @@
 # Kernel website: landing page and changelog
 
-Implementation plan for Claude Code. Owner: CJ. Branch: `feat/website`.
+Implementation plan for Claude Code. Owner: the maintainer. Branch: `feat/website`.
 
 > **Since D-104.** The floor and the Board are hidden, so the site no longer shows them. The hero shows Kernel's plan in Kernel's chat (`lead-plan.png`), the tour's Board tab is now Team (`team.png`), and the Details card "The floor" is "Statuses from real events". `design/site/` has the same changes and is still the spec. The plan below is kept as it was written. `floor.png` stays only for the 0.1.0 changelog entry, which shipped with the floor.
 
@@ -8,9 +8,9 @@ Implementation plan for Claude Code. Owner: CJ. Branch: `feat/website`.
 
 You are building Kernel's public website: a landing page at `/` and a changelog at `/changelog`, as a standalone Next.js app in `site/` inside this repo. The design is finished and approved. Your job is to reproduce it faithfully, as production code, without redesigning anything.
 
-**Design source.** The approved design lives on CJ's canvas:
+**Design source.** The approved design lives on the maintainer's canvas:
 **https://claude.ai/artifact/QkKTWG8JptN5AaqvPVBn1o** (section 19, boards "Landing page · desktop" and "Changelog"; section 20, "Logo · The node K").
-You cannot open that link (it needs CJ's login). The same design is in this repo as a machine readable kit at `design/site/` (section 2). Treat the kit as the spec.
+You cannot open that link (it needs the maintainer's login). The same design is in this repo as a machine readable kit at `design/site/` (section 2). Treat the kit as the spec.
 
 **Ground rules.**
 
@@ -18,7 +18,7 @@ You cannot open that link (it needs CJ's login). The same design is in this repo
 2. One task in section 17 equals one Conventional Commit, in that order.
 3. Evidence before assertions: a task is done only when its commands have run and you have read their output.
 4. Do not change the Electron app (`src/`, `test/`, `scripts/`, `electron-builder.yml`, `.claude/`). The only files outside `site/` you may touch are listed in section 4.7.
-5. Copy is final. Take every word verbatim from `design/site/reference/*.html`. Do not rewrite, shorten or "improve" copy. If something reads wrong, ask CJ.
+5. Copy is final. Take every word verbatim from `design/site/reference/*.html`. Do not rewrite, shorten or "improve" copy. If something reads wrong, ask the maintainer.
 6. No em dashes or en dashes anywhere in user facing text. No hex colors in components. No arbitrary Tailwind values. These are enforced by tests (section 14.4).
 7. Do not invent facts: no fake star counts, testimonials, download numbers or features.
 
@@ -31,11 +31,11 @@ You cannot open that link (it needs CJ's login). The same design is in this repo
 - Shared brand: the node K mark and the connected wordmark (the mark is the "K", followed by "ernel").
 - Direct DMG download from every download button (no detour through the GitHub release page).
 - SEO, social preview, icons, accessibility, performance, tests, CI.
-- Deploy configuration for Vercel (CJ performs the account steps, section 16).
+- Deploy configuration for Vercel (the maintainer performs the account steps, section 16).
 
 **Out of scope (follow ups)**
 
-- A dedicated mobile design. Implement the responsive rules in section 10; CJ will design mobile later.
+- A dedicated mobile design. Implement the responsive rules in section 10; the maintainer will design mobile later.
 - Analytics. Do not add any tracking. GitHub already counts DMG downloads.
 - Pulling the changelog automatically from GitHub Releases.
 - Any change to the desktop app.
@@ -67,10 +67,10 @@ git checkout main && git pull
 git checkout -b feat/website
 ```
 
-- First commit: this plan and the kit (`docs(site): add website plan and design kit`). CJ may have already placed them; if so, commit them as they are.
+- First commit: this plan and the kit (`docs(site): add website plan and design kit`). The maintainer may have already placed them; if so, commit them as they are.
 - Push the branch and open a **draft** PR titled `feat(site): Kernel website, landing page and changelog`. Link this plan in the description.
 - After each task: run the task's checks, commit, push, and tick the task in the PR description.
-- When section 18 is fully true, mark the PR ready and ask CJ for review. Do not merge.
+- When section 18 is fully true, mark the PR ready and ask the maintainer for review. Do not merge.
 
 ## 4. Architecture decisions
 
@@ -80,7 +80,7 @@ The site is a separate app in `site/` with its own `package.json`, lockfile, `ts
 
 ### 4.2 Stack
 
-Use CJ's standard stack, pinned to exact versions (no `^` or `~`), latest stable at install time:
+Use the maintainer's standard stack, pinned to exact versions (no `^` or `~`), latest stable at install time:
 
 - Next.js 16 (App Router), React 19, TypeScript in strict mode.
 - Tailwind CSS 4 with design tokens declared in `site/app/globals.css` via `@theme`.
@@ -127,7 +127,7 @@ Keep the download URL in one constant (`site/lib/links.ts`). The reference HTML 
 - Root configs, **only** to exclude `site/` if they would otherwise pick it up: root `tsconfig*.json`, root Vitest config, root ESLint config, `.gitignore` (add `site/.next`, `site/node_modules`, `site/test-results`, `site/playwright-report`).
 - `.github/workflows/site.yml` (new) and `.github/dependabot.yml` (add a `site/` npm entry if the file exists).
 - `docs/DECISIONS.md`: add one entry (next free number) recording the website stack and location.
-- `README.md`: only after CJ confirms the live domain, add a "Website" link.
+- `README.md`: only after the maintainer confirms the live domain, add a "Website" link.
 
 After any root config change, run the root test suite (`ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run`) and confirm it still passes with the same counts.
 
@@ -510,7 +510,7 @@ Run `@axe-core/playwright` on both pages at both viewports. Zero violations.
 
 ### 14.5 Visual comparison
 
-At 1440 px wide, take full page screenshots of `/` and `/changelog` and compare them to `design/site/renders/*.png` with Playwright's `toHaveScreenshot` (allow a small pixel ratio difference for font rasterization, around 2%). Mask the star count. Also save side by side images to the PR for CJ to review.
+At 1440 px wide, take full page screenshots of `/` and `/changelog` and compare them to `design/site/renders/*.png` with Playwright's `toHaveScreenshot` (allow a small pixel ratio difference for font rasterization, around 2%). Mask the star count. Also save side by side images to the PR for the maintainer to review.
 
 The page heights should land close to the renders (landing about 6601 px, changelog about 2915 px). A difference of more than 24 px means spacing drifted: find it before moving on.
 
@@ -531,12 +531,12 @@ Then run the root suite once to prove the app is untouched (section 4.7).
 
 ## 16. Deployment (Vercel)
 
-Prepare the repo so CJ only clicks through:
+Prepare the repo so the maintainer only clicks through:
 
 - `site/README.md` documents: local dev (`npm run dev`), tests, environment variables (`NEXT_PUBLIC_SITE_URL`, optional `GITHUB_TOKEN`), and how to add a changelog entry.
 - `vercel.json` is not required; settings below are set in the dashboard.
 
-CJ's steps (list them in the PR description):
+The maintainer's steps (list them in the PR description):
 
 1. Vercel: Add New Project, import `cjjutba/kernel`, Root Directory `site`, Framework Next.js, Node 22.
 2. Ignored Build Step: `[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && [ "$VERCEL_GIT_PREVIOUS_SHA" != "$(git rev-parse HEAD)" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- .` (skips builds when the site did not change since the last successful deployment). Vercel runs it from the Root Directory, so `.` means `site/`. See D-057.
@@ -575,7 +575,7 @@ Each task lists its commit message and what proves it done.
 - [ ] Lint, typecheck, unit, build, end to end, axe and rules tests pass locally and in CI.
 - [ ] Lighthouse budgets in section 13 are met (attach the reports to the PR).
 - [ ] The root app test suite passes with unchanged counts.
-- [ ] The PR description lists CJ's Vercel steps and includes side by side screenshots.
+- [ ] The PR description lists the maintainer's Vercel steps and includes side by side screenshots.
 - [ ] The PR is ready for review and **not merged**.
 
 ## 19. Follow ups (not in this PR)

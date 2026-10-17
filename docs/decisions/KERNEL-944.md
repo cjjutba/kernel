@@ -1,4 +1,4 @@
-**Every new project lives on GitHub. Kernel creates the repo when a project has none.** Amends KERNEL-460 and KERNEL-477 for new projects. CJ's call, from the onboarding redesign: Kernel's add-a-project flows now ask for a repo up front instead of falling back to a local-only project.
+**Every new project lives on GitHub. Kernel creates the repo when a project has none.** Amends KERNEL-460 and KERNEL-477 for new projects. The maintainer's call, from the onboarding redesign: Kernel's add-a-project flows now ask for a repo up front instead of falling back to a local-only project.
 
 **How.** `NewProjectRequest.github` names an owner and a repo name. Setup runs a `github` step right after the checkout: `gh repo create <owner>/<name> --private --source <folder> --remote origin`, with `--push` when the folder has a commit. The project's `repo` is saved, so Code host reads it as GitHub from then on. `github.owners` lists the signed-in user then their orgs, and `github.repoAvailable` checks a name before the form lets you create it.
 

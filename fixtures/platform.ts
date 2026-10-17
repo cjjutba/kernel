@@ -101,7 +101,7 @@ const subscription = (provider: Provider, id: string, label: string, email: stri
 // KERNEL-561: the accounts the canvas draws. Work is Claude Code's own login with a nickname, and Codex's own login has none, so its name is its email.
 const workClaude = subscription('claude', 'cli', 'Work', 'cj@example.com', 'Claude Max', { active: true })
 const personalClaude = subscription('claude', 'personal', 'Personal', 'cj@jutba.example', 'Claude Pro')
-const personalAccount = { signedIn: true, name: 'CJ Jutba', login: 'cjjutba', email: 'cj@jutba.example', plan: 'Claude Pro' }
+const personalAccount = { signedIn: true, name: 'Sam Rivera', login: 'cjjutba', email: 'cj@jutba.example', plan: 'Claude Pro' }
 const ownCodex = subscription('codex', 'cli', 'cj@example.com', 'cj@example.com', 'ChatGPT Plus', { active: true })
 const personalCodex = subscription('codex', 'personal', 'Personal', 'cj@jutba.example', 'ChatGPT Pro')
 const window5 = (provider: Provider, accountId: string, pct: number, resetsAt: number, readAt?: number): RateLimit => ({ type: 'five_hour', status: 'allowed', utilization: pct / 100, resetsAt: secs(resetsAt), ...(provider === 'codex' ? { provider } : {}), ...(accountId === 'cli' ? {} : { accountId }), ...(readAt ? { readAt } : {}) })
@@ -979,7 +979,7 @@ export const platformFixtures: Record<string, Fixture> = {
     }
   }),
   // Main keeps the last name it read when a session reports the sign-out, so the account menu still says who.
-  WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'CJ Jutba', login: 'cjjutba', plan: 'Claude Max' }, ui: open })),
+  WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'Sam Rivera', login: 'cjjutba', plan: 'Claude Max' }, ui: open })),
   // KERNEL-941: an added account in use signed out. The banner names it and its Sign in opens its row in Settings, Accounts.
   WorkspaceSignedOutAdded: scene(() => ({ account: { signedIn: false, name: 'Personal', plan: 'Claude Pro' }, accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true, signedIn: false }], ui: open })),
   // KERNEL-218: the dialog the banner's Review opens, over the held workspace.

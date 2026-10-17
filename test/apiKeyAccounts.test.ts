@@ -84,7 +84,7 @@ async function kernel(plan = 'max') {
   await k.providers.setPath('codex', { path: fake.bin })
   await k.providers.setPath('claude', { path: await fakeClaudeCli() })
   const reader = { plan }
-  k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: reader.plan })
+  k.accountReader = async () => ({ signedIn: true, name: 'Sam', email: 'cj@example.com', subscriptionType: reader.plan })
   return { k, h: k.handlers(), api, dataDir, home, reader }
 }
 

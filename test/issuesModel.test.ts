@@ -72,7 +72,7 @@ describe('issueAge and initials', () => {
   })
   it('takes the first and last initial', () => {
     expect(initials('Maya Chen')).toBe('MC')
-    expect(initials('CJ Jutba')).toBe('CJ')
+    expect(initials('Sam Rivera')).toBe('SR')
     expect(initials('Cher')).toBe('CH')
     expect(initials('  ')).toBe('')
   })
@@ -175,7 +175,7 @@ describe('GitHub issues (KERNEL-471)', () => {
   it('draws a login as initials the way it draws a name', () => {
     expect(loginInitials('maya-chen')).toBe('MC')
     expect(loginInitials('kai.okoye')).toBe('KO')
-    expect(loginInitials('cjjutba')).toBe('CJ')
+    expect(loginInitials('samrivera')).toBe('SA')
   })
 
   it('lists the most recently updated first', () => {

@@ -1162,7 +1162,7 @@ describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
     await chmod(bin, 0o755)
     const k = new Kernel({ dataDir: await mkdtemp(join(tmpdir(), 'kernel-data-')), home, cipher, fetch: (async () => new Response('{}')) as typeof fetch })
     await k.start()
-    k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    k.accountReader = async () => ({ signedIn: true, name: 'Sam', email: 'cj@example.com', subscriptionType: 'max' })
     await k.providers.setPath('claude', { path: bin })
     const p = k.providers as unknown as { load: () => { claude: { accounts: object[] } }; save: () => Promise<void> }
     for (const [id, label] of [['work', 'Work'], ['side', 'Side']]) p.load().claude.accounts.push({ id, label, home: k.providers.claudeHome(id), signedIn: true, createdAt: 1 })
