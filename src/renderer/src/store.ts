@@ -829,20 +829,56 @@ function accountSwitchedToast(e: Extract<PushEvent, { type: 'accountSwitched' }>
 }
 
 let burst: PushEvent[] | undefined
+let burstTimer: ReturnType<typeof setTimeout> | undefined
+let burstHolds: string | undefined
+
+/** How long a workspace update that leaves setup waits for the message it releases, if none follows. */
+const HOLD_FOR_DRAIN_MS = 200
+
+function flushBurst(mine: PushEvent[]) {
+  if (burst !== mine) return
+  burst = undefined
+  burstHolds = undefined
+  clearTimeout(burstTimer)
+  for (const x of mine) apply(x)
+}
+
+function openBurst(first: PushEvent, ms: number) {
+  const mine = (burst = [first])
+  burstTimer = setTimeout(() => flushBurst(mine), ms)
+}
+
+/**
+ * A workspace update that takes a workspace out of setup (its status leaves 'setup', or its worktree is no longer pending) while one of its chats
+ * holds a message for setup. Main sends it before it releases that message, so drawn alone it leaves one frame with SetupWait gone, no spinner and the
+ * queue strip showing. The strip's chat id is what the release's `chat.queue` names.
+ */
+function leavesSetupHolding(e: PushEvent): string | undefined {
+  if (e.type !== 'workspace') return undefined
+  const was = getState().workspaces.find((w) => w.id === e.workspace.id)
+  if (!was || !(was.status === 'setup' && e.workspace.status !== 'setup') && !(was.worktreePending && !e.workspace.worktreePending)) return undefined
+  const s = getState()
+  return (s.chats[e.workspace.id] ?? []).find((c) => s.queueWhy[c.id] === 'setup' && s.queue[c.id]?.length)?.id
+}
 
 /**
  * A queued message that posts is three events, in the order main sends them: its row arrives (`chat.item`), the chat runs (`chat.running`), and the tray loses it
  * (`chat.queue`, deferred a microtask in `pushQueue`, so it goes last). Each is its own message from main, so each could draw in a frame of its own. A user row, a
  * `chat.queue` or a turn ending (`chat.running` false, which Send now follows with the next message) opens a burst that takes what follows, in order, and draws it as one (KERNEL-895).
+ * A message held for setup is released after the workspace update that ends setup, so that update joins the burst: it waits for the release's `chat.queue`, or
+ * HOLD_FOR_DRAIN_MS when none follows (a failed setup, a chat that keeps holding), and then applies.
  */
 export function applyTogether(e: PushEvent) {
-  if (burst) { burst.push(e); return }
+  if (burst) {
+    burst.push(e)
+    // The release is complete once the tray change arrives; draw the burst after it.
+    if (burstHolds && e.type === 'chat.queue' && e.chatId === burstHolds) { clearTimeout(burstTimer); const mine = burst; burstTimer = setTimeout(() => flushBurst(mine), 0) }
+    return
+  }
+  const held = leavesSetupHolding(e)
+  if (held) { burstHolds = held; openBurst(e, HOLD_FOR_DRAIN_MS); return }
   if (!(e.type === 'chat.queue' || (e.type === 'chat.item' && e.item.kind === 'user') || (e.type === 'chat.running' && !e.running))) return apply(e)
-  const mine = (burst = [e])
-  setTimeout(() => {
-    if (burst === mine) burst = undefined
-    for (const x of mine) apply(x)
-  }, 0)
+  openBurst(e, 0)
 }
 
 /** Apply one push event from main. Exported for tests and fixtures. */

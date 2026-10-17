@@ -661,14 +661,14 @@ function firstChat(f: Fixture, o: { script?: boolean; running?: boolean; sent?: 
 
 /** A project whose setup script runs on create, with Wait for setup left at its default, off. */
 const handoverSettings: NonNullable<Fixture['projectSettings']> = { [ids.projectA]: { scripts: { setup: 'pnpm install' }, runScripts: [], files: { copy: [] }, workspace: {} } }
-/** The updates after a New chat message whose worktree was pending, in main's order: `worktreePending` clears alone, the setup script starts, then the row, the running state and the empty tray arrive together. */
+/** The updates after a New chat message whose worktree was pending, in main's order: `worktreePending` clears alone, the setup script starts, then setup ends and the workspace is ready, and the row, the running state and the empty tray follow it. The ready update and what it releases draw as one frame. */
 function handoverSteps(): { label: string; events: PushEvent[] }[] {
   const made = scene((f) => setupWait(f, 'setup', [], { pending: {} })).workspaces.find((w) => w.id === ids.table)!
   const cleared = { ...made, worktreePending: undefined }
   return [
     { label: 'worktree made', events: [{ type: 'workspace', workspace: cleared }] },
     { label: 'setup script started', events: [{ type: 'workspace', workspace: { ...cleared, setupRun: { startedAt: Date.now() } } }] },
-    { label: 'row + running + tray empty', events: [{ type: 'chat.item', chatId: ids.tableChat, item: { kind: 'user', id: setupAsk.id, ts: Date.now(), parts: setupAsk.parts } }, runningEvent(ids.tableChat, true), { type: 'chat.queue', chatId: ids.tableChat, queue: [] }] }
+    { label: 'ready + row + running + tray empty', events: [{ type: 'workspace', workspace: { ...cleared, status: 'ready', setupRun: { startedAt: Date.now() - 1_000, endedAt: Date.now() } } }, { type: 'chat.item', chatId: ids.tableChat, item: { kind: 'user', id: setupAsk.id, ts: Date.now(), parts: setupAsk.parts } }, runningEvent(ids.tableChat, true), { type: 'chat.queue', chatId: ids.tableChat, queue: [] }] }
   ]
 }
 
