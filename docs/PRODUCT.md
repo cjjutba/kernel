@@ -2,7 +2,7 @@
 
 ## What it is
 
-A Mac app that turns Claude Code and Codex into a small software team. Agents are defined in each repo's `.claude/agents/`, joined by the user's own in `~/.claude/agents/` and those from their Claude Code plugins, and each runs on Claude Code or Codex, as Settings, Models and effort or the agent's own file says. Kernel plans with you and hands each task to an agent, and every agent works in its own git worktree on its own branch. Kernel shows who is doing what in the sidebar and brings everything that needs you to the Inbox.
+A Mac app where one developer hands off coding work to AI agents and keeps the final say. Agents are defined in each repo's `.claude/agents/`, joined by the user's own in `~/.claude/agents/` and those from their Claude Code plugins, and each runs on Claude Code or Codex, as Settings, Models and effort or the agent's own file says. Kernel plans with you and hands each task to an agent, and every agent works in its own git worktree on its own branch. Kernel shows who is doing what in the sidebar and brings everything that needs you to the Inbox.
 
 ## Who it is for
 

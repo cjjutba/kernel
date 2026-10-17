@@ -1,6 +1,6 @@
 # Kernel
 
-Your coding agents, working as a team. Brief a lead, approve the plan, and merge what the team builds. Kernel runs Claude Code and Codex agents on your Mac, each in its own git worktree. They ask before anything risky, open pull requests and wait for you to merge.
+Your AI coding agents, finally organized. Say what you need, and Kernel plans it, hands it out and brings it back for your approval. Kernel runs Claude Code and Codex agents on your Mac, each in its own git worktree. They ask before anything risky, open pull requests and wait for you to merge.
 
 **[Download Kernel for Mac (Apple silicon)](https://github.com/cjjutba/kernel/releases/latest/download/Kernel-arm64.dmg)** · [Website](https://kernel.cjjutba.dev)
 

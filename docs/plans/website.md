@@ -4,6 +4,8 @@ Implementation plan for Claude Code. Owner: the maintainer. Branch: `feat/websit
 
 > **Since D-104.** The floor and the Board are hidden, so the site no longer shows them. The hero shows Kernel's plan in Kernel's chat (`lead-plan.png`), the tour's Board tab is now Team (`team.png`), and the Details card "The floor" is "Statuses from real events". `design/site/` has the same changes and is still the spec. The plan below is kept as it was written. `floor.png` stays only for the 0.1.0 changelog entry, which shipped with the floor.
 
+> **Since the new hero line.** The hero, the page title and the footer say "Your AI coding agents, finally organized", with the description "Say what you need, and Kernel plans it, hands it out and brings it back for your approval" (`docs/decisions/feat-new-landing-page-headline-and.md`). `design/site/reference` still has the old line, so it is no longer the source for the hero and footer copy.
+
 ## 0. Read this first
 
 You are building Kernel's public website: a landing page at `/` and a changelog at `/changelog`, as a standalone Next.js app in `site/` inside this repo. The design is finished and approved. Your job is to reproduce it faithfully, as production code, without redesigning anything.

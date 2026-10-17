@@ -2,7 +2,7 @@
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 
 export const SITE_DESCRIPTION =
-  'Brief a lead, approve the plan, and watch your coding agents build in parallel, each in its own workspace. Free for Macs with Apple silicon.'
+  'Say what you need, and Kernel plans it, hands it out and brings it back for your approval. Free for Macs with Apple silicon.'
 
 /** The canvas color, for the browser's chrome. Mirrors --color-canvas in globals.css. */
 export const THEME_COLOR = '#08090a'
