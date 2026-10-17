@@ -807,6 +807,19 @@ export const teamFixtures: Record<string, Fixture> = {
     push: [{ type: 'project.setup', projectId: clientC.id, steps: warnSteps }],
     ui: { route: { name: 'leadNew', projectId: clientC.id } }
   })),
+  // The project's New chat once setup has ended: the title and Up next, and only a warned or failed step above them.
+  ProjectSetupDone: scene((f) => ({
+    ...projectsScene(f),
+    projects: [...f.projects, clientC],
+    push: [{ type: 'project.setup', projectId: clientC.id, steps: setupSteps.map((s) => ({ ...s, state: 'ok' as const, meta: undefined })) }],
+    ui: { route: { name: 'leadNew', projectId: clientC.id } }
+  })),
+  ProjectSetupDoneWarnings: scene((f) => ({
+    ...projectsScene(f),
+    projects: [...f.projects, clientC],
+    push: [{ type: 'project.setup', projectId: clientC.id, steps: warnSteps }],
+    ui: { route: { name: 'leadNew', projectId: clientC.id } }
+  })),
   // Audit: the install step failed and the later steps never ran.
   ProjectSetupFailed: { ...scene((f) => ({
     ...projectsScene(f),
