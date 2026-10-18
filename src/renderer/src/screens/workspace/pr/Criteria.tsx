@@ -42,7 +42,7 @@ function Criterion({ c }: { c: CriterionEvidence }) {
   )
 }
 
-/** The acceptance criteria of the plan step this PR was handed, each with its state and the events behind it (KERNEL-1066). Nothing when the step had none. */
+/** The acceptance criteria of the plan step this PR was handed, each with its state and the events behind it (KERNEL-1066). Without any, just the reviewer line. */
 export function Criteria({ ws }: { ws: Workspace }) {
   const pr = useStore((s) => s.prs[ws.id])
   const [evidence, setEvidence] = useState<PrEvidence | null>(null)
@@ -55,7 +55,8 @@ export function Criteria({ ws }: { ws: Workspace }) {
     call('evidence.pr', { workspaceId: ws.id }).then((e) => { if (live) setEvidence(e) }).catch(() => undefined)
     return () => { live = false }
   }, [ws.id, ws.prNumber, stamp])
-  if (!evidence?.criteria.length) return null
+  // A PR whose step had no criteria still says which model reviewed it (KERNEL-1077).
+  if (!evidence?.criteria.length) return by ? <span className="muted t-meta">Reviewed by {by}</span> : null
   return (
     <section className="col gap-4" aria-label="Acceptance criteria">
       <div className="row gap-10">

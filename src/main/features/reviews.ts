@@ -198,10 +198,10 @@ export class Reviews extends Feature {
    * until the round is saved, the workspace's `reviewPending` names the head, so a PR waiting for its reviewer's approval
    * doesn't merge before Kernel knows which reviews it gets (KERNEL-717). A plan that comes back empty clears it.
    */
-  async onReady(workspaceId: string): Promise<void> {
+  async onReady(workspaceId: string, asked = false): Promise<void> {
     const of = this.store.workspace(workspaceId)
     if (!of || of.status === 'archived' || of.reviewOf || of.prState !== 'ready' || !of.prNumber || (this.isLeadWorkspace(of) && !buildsHere(of))) return
-    if (this.settings.pr.autoReview === false) {
+    if (this.settings.pr.autoReview === false && !asked) {
       if (of.reviewPending !== undefined) this.updateWs(of.id, { reviewPending: undefined })
       await this.noteNotStarted(of)
       return this.noReview(of.id)
@@ -255,6 +255,25 @@ export class Reviews extends Feature {
       this.starting.delete(of.id)
       // A stopped Kernel's database is closed. The marker stays, and `start` takes it up at the next start.
       if (!this.stopped && this.store.workspace(of.id)?.reviewPending !== undefined) this.updateWs(of.id, { reviewPending: undefined })
+    }
+  }
+
+  /**
+   * The user asked for a review of the PR (KERNEL-1072), by the Lead or by turning automatic review on: the round the setting
+   * would have started, with the setting off or on. Starts nothing for a PR that isn't ready, was reviewed at its head, or
+   * has a review open. Returns the PR's open review workspace once the round has started, else undefined.
+   */
+  async requestReview(workspaceId: string): Promise<Workspace | undefined> {
+    await this.onReady(workspaceId, true)
+    const of = this.store.workspace(workspaceId)
+    return of ? this.openReview(of) : undefined
+  }
+
+  /** Automatic review was just turned on: the ready PRs that never had a round get one now (KERNEL-1072). */
+  async reviewReady(): Promise<void> {
+    for (const ws of this.store.workspaces()) {
+      if (ws.status === 'archived' || ws.reviewOf || ws.prState !== 'ready' || !ws.prNumber || this.roundOf(ws) || this.openReview(ws)) continue
+      void this.onReady(ws.id).catch(() => undefined)
     }
   }
 

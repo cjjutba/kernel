@@ -133,7 +133,7 @@ function PlanAttentionLine({ a }: { a: Approval }) {
           </span>
           {' '}{att.needed === 1 ? 'time' : 'times'}.
           <ul id={listId} className="plan-attn-list" aria-label="What needed you">
-            {ATTENTION_KINDS.map(([k, label]) => <li key={k}><span>{label}</span><span className="mono">{att.byKind[k]}</span></li>)}
+            {ATTENTION_KINDS.filter(([k]) => att.byKind[k] > 0).map(([k, label]) => <li key={k}><span>{label}</span><span className="mono">{att.byKind[k]}</span></li>)}
           </ul>
         </>
       )}
