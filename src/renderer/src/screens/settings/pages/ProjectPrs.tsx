@@ -78,7 +78,7 @@ export function ProjectPrs({ projectId, s }: { projectId?: string; s: AppSetting
             ...(runBy !== KERNEL && !pool.some((a) => a.id === runBy) ? [{ value: runBy, label: runBy }] : [])
           ]
           const modelOptions = [
-            { value: DEFAULT_MODEL, label: 'Default' },
+            { value: DEFAULT_MODEL, label: c.provider || c.model ? 'Default' : 'Other provider from the builder' },
             ...models.map((m) => ({ value: m.id, label: m.label })),
             ...(c.model && !models.some((m) => m.id === c.model) ? [{ value: c.model, label: modelLabelOf(c.model, models) }] : [])
           ]

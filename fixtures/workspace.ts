@@ -1820,6 +1820,14 @@ const T15_STEPS = [
   { title: 'T-15c Snapshot tests for three invoice types', taskId: 'T-15c', agentId: 'teng' }, { title: 'T-15d Review each PR as it lands', taskId: 'T-15d', agentId: 'artkin' }
 ]
 
+/** The same four tasks with the Lead's acceptance criteria (KERNEL-1061), as the plan card lists them under each title (KERNEL-1064). */
+const T15_CRITERIA_STEPS = [
+  { ...T15_STEPS[0], criteria: ['The PDF embeds the invoice font', 'A 200 line invoice fits on three pages or fewer'] },
+  { ...T15_STEPS[1], criteria: ['Each invoice row has a Download PDF action', 'The action is disabled while the PDF is rendering'] },
+  { ...T15_STEPS[2] },
+  { ...T15_STEPS[3], criteria: ['Every PR gets a code review before it merges', 'Blockers go back to the builder'] }
+]
+
 /** The first tab of the Export chat: the plan Kernel wrote and you approved, then the hand-off. */
 const exportItems = (): ChatItem[] => [
   userMsg('g1', 'Add PDF export to invoices. Spec first.'),
@@ -3073,6 +3081,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
   WorkspaceLead: scene((f) => leadWaiting(f)),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'kernel-lead' })),
+  // KERNEL-1064: the same plan with acceptance criteria under three of its four tasks. The third has none and looks as it always did.
+  WorkspaceLeadPlanCriteria: scene((f) => leadPlan(f, { agentId: 'kernel-lead' }, { steps: T15_CRITERIA_STEPS })),
   /** What the Lead chat still owes, above the composer (KERNEL-792): a question, blockers and a proposed hand-off. The collapsed line, and the same with the list opened by scripts/shots.ts. */
   LeadOpenItems: scene((f) => leadOpenItems(f)),
   LeadOpenItemsOpen: scene((f) => leadOpenItems(f)),

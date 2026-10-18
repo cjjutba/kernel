@@ -754,6 +754,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
   LeadOpenItemsOpen: async (page) => { await page.getByRole('button', { name: /3 open/ }).click(); await page.waitForTimeout(200) },
+  SettingsProjectPrsDefault: async (page) => { await page.getByRole('button', { name: 'Show details of the code review' }).click(); await page.waitForTimeout(200) },
   WorkspaceRowsOpen: (page) => openRows(page, ['Thought', 'Run unit tests', 'Edited']),
   WorkspaceRowsFolded: (page) => openRows(page, ['Thought', 'Edited']),
   WorkspaceTurnFoldedOpen: openEveryRow,

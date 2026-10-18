@@ -34,6 +34,12 @@ export function planCopyText(a: Approval, agents: AgentDef[]): string {
 const openPlanFile = (a: Approval) =>
   void attempt('Could not open the plan', async () => { await call('system.openInEditor', { path: (await call('approvals.planFile', { id: a.id })).path }) })
 
+/** A step's acceptance criteria as a muted list under its title. A step without any draws nothing. */
+export function Criteria({ step, className }: { step: PlanStep; className: string }) {
+  if (!step.criteria?.length) return null
+  return <ul className={className} aria-label={`Acceptance criteria for ${step.title}`}>{step.criteria.map((c, i) => <li key={i}>{c}</li>)}</ul>
+}
+
 /** The Lead's tasks as numbered rows, the agent's name muted beside each, with a way into its workspace once the plan is handed off. */
 export function PlanTasks({ a, agents }: { a: Approval; agents: AgentDef[] }) {
   const tasks = useStore((s) => (a.projectId ? s.tasks[a.projectId] : undefined))
@@ -45,7 +51,7 @@ export function PlanTasks({ a, agents }: { a: Approval; agents: AgentDef[] }) {
         return (
           <li key={i}>
             <span className="plan-n mono" aria-hidden="true">{i + 1}</span>
-            <span className="plan-task">{s.title}{who && <span className="plan-who">{who}</span>}</span>
+            <span className="plan-task">{s.title}{who && <span className="plan-who">{who}</span>}<Criteria step={s} className="plan-criteria" /></span>
             {a.status === 'allowed' && ws && <LinkButton size="meta" className="plan-open" aria-label={`Open ${who ?? 'the'} workspace for ${s.title}`} onClick={() => go({ name: 'workspace', workspaceId: ws })}>Open workspace</LinkButton>}
           </li>
         )
