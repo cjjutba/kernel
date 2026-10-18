@@ -65,6 +65,7 @@ export function PRs({ s }: { s: AppSettings }) {
         </Section>
         <Section title="Reviews" note="Each project picks which reviews run.">
           <Row id="auto-review" label="Review every pull request automatically" desc="Off saves usage. You can still ask for a review."><Toggle label="Review every pull request automatically" checked={p.autoReview} onChange={(v) => set({ autoReview: v })} /></Row>
+          <Row id="evidence-comment" label="Post the evidence on the pull request" desc="One comment on GitHub, kept up to date, lists each acceptance criterion with its state."><Toggle label="Post the evidence on the pull request" checked={p.evidenceComment} onChange={(v) => set({ evidenceComment: v })} /></Row>
           <Row id="require-reviewer" label="Wait for the reviewer’s approval to merge"><Toggle label="Wait for the reviewer’s approval to merge" checked={p.requireReviewer} onChange={(v) => set({ requireReviewer: v })} /></Row>
         </Section>
         <Section title="Instructions" note="A project can replace any of them.">

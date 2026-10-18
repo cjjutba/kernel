@@ -733,6 +733,8 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsPRsWithoutReview: settingsPage('prs', { settings: { ...prSettings, pr: { ...prSettings.pr, autoMerge: { ...prSettings.pr.autoMerge, on: true, withoutReview: true } } } }),
   // KERNEL-727: a search for "size limit" landed here: the row is highlighted and its field has focus.
   SettingsPRsLanded: scene(() => ({ settings: prSettings, ui: { route: { name: 'settings', page: 'prs', row: 'size-limit' } } })),
+  // KERNEL-1066: the evidence comment setting, off by default, landed on from a search.
+  SettingsPRsEvidenceComment: scene(() => ({ settings: prSettings, ui: { route: { name: 'settings', page: 'prs', row: 'evidence-comment' } } })),
   // KERNEL-721: Size limit typed and left, shown while main is still saving, just after it answered and after main clamped it. The typing is in scripts/shots.ts.
   SettingsPRsSaving: settingsPage('prs', { settings: prSettings }),
   SettingsPRsSaved: settingsPage('prs', { settings: prSettings }),

@@ -164,3 +164,19 @@ section:first-child > .lp-sec { padding-top: 6px; }
 /* A chat with Kernel's merged band: its next change starts a new branch, so there is no Continue or Archive (KERNEL-780). */
 .pr-next { font-size: var(--fs-code); color: var(--b-fg); }
 .pr-r2.pr-r2-text { height: auto; padding-bottom: 10px; }
+
+/* Acceptance criteria on the Checks tab (KERNEL-1066). The state is a word; color only backs it. */
+.crit-list, .crit-evs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.crit-list { gap: 10px; }
+.crit-head { display: flex; align-items: baseline; gap: 10px; min-height: 26px; }
+.crit-state { display: inline-flex; align-items: center; gap: 4px; flex: none; min-width: 84px; font-size: 11px; font-weight: 500; color: var(--ink-2); }
+.crit-state[data-state='failed'] { color: var(--del); }
+.crit-state[data-state='unverified'], .crit-state[data-state='stale'] { color: var(--muted); }
+.crit-text { color: var(--ink-2); min-width: 0; }
+.crit-evs { gap: 2px; margin: 2px 0 0 94px; }
+.crit-ev { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 12px; }
+.crit-ev[data-stale] { color: var(--faint); }
+.crit-tag { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 11px; color: var(--muted); }
+.crit-link { display: inline-flex; align-items: center; gap: 4px; padding: 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.crit-link:hover span { text-decoration: underline; }
+.crit-link:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; border-radius: 2px; }
