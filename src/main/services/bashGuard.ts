@@ -1068,3 +1068,48 @@ function textMatches(c: string, r: string): boolean {
   if (r.includes('*')) return globRule(r).test(c)
   return c === r || c.startsWith(r + ' ') || c.includes(r)
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Read-only commands (KERNEL-1074)
+
+const READ_PROGRAMS = new Set(['cat', 'head', 'tail', 'ls', 'wc', 'grep', 'egrep', 'fgrep', 'rg'])
+/** Options that make an otherwise reading program write or run another one. */
+const READ_UNSAFE = /^(--output(=|$)|--pre(=|$)|--pre-glob(=|$)|--hostname-bin(=|$))/
+const FIND_UNSAFE = new Set(['-exec', '-execdir', '-ok', '-okdir', '-delete', '-fprint', '-fprint0', '-fprintf', '-fls'])
+const GIT_READS = new Set(['log', 'diff', 'show', 'status', 'blame'])
+const GH_READS = new Set(['pr view', 'pr diff', 'pr checks', 'pr list', 'pr status', 'issue view', 'issue list', 'run view', 'run list'])
+
+function readOnlyGit(s: Simple): boolean {
+  const g = gitCall(s)
+  if (!g?.sub || g.scripts.length || !GIT_READS.has(g.sub) || g.dynamic.some(Boolean)) return false
+  const lead = s.words.slice(1, s.words.indexOf(g.sub))
+  // Only `-C dir` and `--no-pager` precede the command: `-c` could set a pager, an editor or an alias that runs anything.
+  if (!lead.every((w, i) => w === '--no-pager' || w === '-C' || lead[i - 1] === '-C')) return false
+  return !g.args.some((a) => READ_UNSAFE.test(a) || a === '--ext-diff' || a === '--textconv' || a === '--open-files-in-pager' || a.startsWith('--open-files-in-pager='))
+}
+
+function readOnlyGh(s: Simple): boolean {
+  const { words, dynamic } = ghWords(s)
+  if (dynamic.slice(0, 2).some(Boolean) || !GH_READS.has(`${words[0]} ${words[1]}`)) return false
+  return !s.words.some((w) => w === '--web' || w === '-w')
+}
+
+/**
+ * Whether every command in a chain only reads: plain file readers, git reads and gh reads. A review runs
+ * these without asking (KERNEL-1074). No redirection, process substitution, heredoc, expansion or command Kernel can't read
+ * qualifies, and neither does a program with an option that writes or runs another program. Everything else follows the mode.
+ */
+export function readsOnly(command: string): boolean {
+  const { simples } = analyze(command.trim())
+  if (!simples.length || simples.some((s) => !isPlain(s))) return false
+  // The command as written, not unwrapped: `sudo`, `env` and `bash -c` aren't reads.
+  return simples.every((s) => {
+    // A path names a program the PR may have put in the worktree (`./cat`, `node_modules/.bin/git`), so only a bare name counts.
+    if (s.words[0] !== base(s.words[0] ?? '')) return false
+    const cmd = s.words[0]
+    if (cmd === 'git') return readOnlyGit(s)
+    if (cmd === 'gh') return readOnlyGh(s)
+    if (cmd === 'find') return !s.words.some((w) => FIND_UNSAFE.has(w))
+    return READ_PROGRAMS.has(cmd) && !s.words.slice(1).some((w) => READ_UNSAFE.test(w))
+  })
+}

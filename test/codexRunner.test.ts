@@ -209,6 +209,18 @@ describe('a chat on Codex (KERNEL-406)', () => {
     expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'accept' }])
   })
 
+  it('lets a review run read-only commands without asking and asks about one that writes (KERNEL-1074)', async () => {
+    const t = track(await setup({ mode: 'default', ws: { reviewOf: 'ws-0' } }))
+    const ask = (id: string, command: string) => ({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1, environmentId: 'local', command } })
+    await t.sessions.send('chat', [{ type: 'text', text: script(ask('c1', '/bin/zsh -lc "git diff origin/main...HEAD"'), ask('c2', '/bin/zsh -lc "gh pr view 12"'), ask('c3', '/bin/zsh -lc "git commit -am x"')) }])
+    const card = await t.pending()
+    expect(card).toMatchObject({ toolName: 'Bash', title: 'Run git commit -am x' })
+    t.approvals.decide(card.id, { behavior: 'deny' })
+    await t.idle()
+    expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'accept' }, { decision: 'accept' }, { decision: 'decline' }])
+    expect(t.store.approvals({}).map((a) => a.title)).toEqual(['Run git commit -am x'])
+  })
+
   it('asks the user for Always ask commands and for every command in Ask, and saves "Always allow in this project"', async () => {
     const t = track(await setup({ mode: 'default' }))
     await t.sessions.send('chat', [{ type: 'text', text: script({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: 'c1', startedAtMs: 1, environmentId: 'local', command: '/bin/zsh -lc "pnpm build"' } }) }])

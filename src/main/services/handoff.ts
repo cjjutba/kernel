@@ -117,7 +117,7 @@ export function reviewRule(r: { author: string; task: string; workspaceId: strin
     BLOCKER_RULE,
     `Write each blocker in one or two sentences: what breaks, and its file and line. No code and no design proposal. ${r.author} picks the fix.`,
     'When nothing blocks, approve. Put minor findings in the summary as at most three short notes. They don\'t hold the approval.',
-    "Read the PR's checks with `gh pr checks` instead of running the suite. Run shots only for screens the PR changes, and run a test only to confirm a bug you suspect.",
+    "Read the PR's checks with `gh pr checks` instead of running the suite. Run shots only for screens the PR changes, and run a test only to confirm a bug you suspect. Kernel asks the user before any test run, so check `gh pr checks` first.",
     "Don't approve while a check is still running. Wait for it with `gh pr checks --watch`. Never block only because a check is running.",
     'When you are done, call mcp__kernel__submit_review once: "approved", or "blockers" with each blocker. The Lead passes blockers on.',
     "Don't approve or request changes on GitHub: the PR was opened from the user's account, and GitHub doesn't let its author do either. If the repo wants a review on GitHub, post it as a comment with `gh pr comment`.",

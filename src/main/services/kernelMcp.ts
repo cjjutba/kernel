@@ -71,7 +71,7 @@ export interface KernelToolDeps {
    * question's options with their descriptions, as AskUserQuestion's do (KERNEL-407). `signal` is the tool call's: when the
    * turn stops, as when the user writes in the message box instead, the card ends as expired and the answer is null (KERNEL-496).
    */
-  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; steps?: PlanLine[]; agentFile?: Approval['agentFile'] }, signal?: AbortSignal) => Promise<Decision | null>
+  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; about?: string[]; steps?: PlanLine[]; agentFile?: Approval['agentFile'] }, signal?: AbortSignal) => Promise<Decision | null>
   /** Saves the Lead's new agent: the file it wrote for `me`, or the pull request that adds it for `team` (KERNEL-466). */
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }, scope?: AgentScope) => Promise<string | AgentChangePr>
   /**
@@ -596,7 +596,7 @@ export function kernelTools(d: KernelToolDeps) {
       const questions = asked && [{ question, options: asked }]
       // The user decides now, for what `about` names, or for every teammate the message was addressed to.
       d.acted?.({ asked: about ?? [] })
-      const decision = await d.askUser({ kind: 'question', title: question, options: asked?.map((o) => o.label), questions }, signalOf(extra))
+      const decision = await d.askUser({ kind: 'question', title: question, options: asked?.map((o) => o.label), questions, ...(about?.length ? { about } : {}) }, signalOf(extra))
       if (!decision) return text('No answer yet.')
       return text(decision.behavior === 'answer' ? decision.text : decision.behavior)
     }),

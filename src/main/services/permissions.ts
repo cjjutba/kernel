@@ -7,7 +7,7 @@ import { PERMISSION_MODES } from '@shared/types'
 import type { AppSettings } from './settings'
 import type { RunnerHost } from './providers/types'
 import { needsUser } from './approvals'
-import { bashVerdict, publishesWork, pushMightReach, projectRule, usesNetwork, writesGhIssue } from './bashGuard'
+import { bashVerdict, publishesWork, readsOnly, pushMightReach, projectRule, usesNetwork, writesGhIssue } from './bashGuard'
 import { checkedOutBranch } from './worktrees'
 import { isPlanFile } from './agentTools'
 import { sharesFile } from './sharedFiles'
@@ -132,6 +132,8 @@ export interface Rules {
   branch?: string
   /** The project's reference folders, which a file edit may not touch (KERNEL-748). */
   references?: string[]
+  /** The step is a review's: commands that only read run without asking, in every mode (KERNEL-1074). */
+  review?: boolean
   /** The step is the Lead's, which files and edits tracker issues with file_issue only (feat-lead-files-tracker-issues-only-with). */
   lead?: boolean
   /** A Build here Lead with no go-ahead now, read at each step: it commits, pushes and opens PRs only once this says so (KERNEL-992). */
@@ -141,7 +143,7 @@ export interface Rules {
 /** The rules for a runner's next step: Settings, Permissions and the project as they stand now, in `mode`, else the chat's mode now. */
 export function rulesOf(host: Pick<RunnerHost, 'settings' | 'projectAllow' | 'projectTools' | 'workspace' | 'mode'> & Partial<Pick<RunnerHost, 'agent' | 'leadMode' | 'buildOpen'>>, mode: RunMode = host.mode()): Rules {
   const buildClosed = host.agent?.lead && host.buildOpen ? () => host.leadMode?.() === 'build' && !host.buildOpen?.() : undefined
-  return { permissions: host.settings().permissions, mode, projectAllow: () => host.projectAllow(), projectTools: () => host.projectTools(), branch: host.workspace.branch, ...(host.agent?.lead ? { lead: true } : {}), ...(buildClosed ? { buildClosed } : {}) }
+  return { permissions: host.settings().permissions, mode, projectAllow: () => host.projectAllow(), projectTools: () => host.projectTools(), branch: host.workspace.branch, ...(host.workspace.reviewOf ? { review: true } : {}), ...(host.agent?.lead ? { lead: true } : {}), ...(buildClosed ? { buildClosed } : {}) }
 }
 
 const ALLOW: Verdict = { behavior: 'allow' }
@@ -165,7 +167,7 @@ export function guardVerdict(command: string, rules: Rules, cwd?: string): Verdi
   if (v === 'deny') return { behavior: 'deny', message: neverAllowed(command) }
   if (v === 'allow') return ALLOW
   if (v === 'ask') return { behavior: 'ask', reason: ALWAYS_ASK }
-  return undefined
+  return rules.review && readsOnly(command) ? ALLOW : undefined
 }
 
 /**

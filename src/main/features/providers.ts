@@ -126,6 +126,8 @@ export class Providers extends Feature {
   private refused = new Set<string>()
   /** When `readUsage` last read each account, by `provider:id`, so opening the account menu twice reads once. */
   private usageReadAt = new Map<string, number>()
+  /** The accounts, by `provider:id`, whose last usage read failed. A read that works, or an account never read, isn't here (KERNEL-1076). */
+  private usageFailed = new Set<string>()
   /** The read a finished turn asked for, by `provider:id`, which the turns that finish before it runs share (KERNEL-673). */
   private afterTurn = new Map<string, NodeJS.Timeout>()
   /** Usage reads running, by account id, which Remove waits for so none writes to a folder it deleted. */
@@ -641,7 +643,7 @@ export class Providers extends Feature {
       const added = file[provider].accounts.filter((a) => a.auth !== 'apiKey' && (provider === 'codex' || !!a.home)).map((a) => a.id)
       for (const id of [undefined, ...added]) {
         if (o.active && id !== this.active(provider)) continue
-        const read = o.probe ? (merge: (p: LimitPatch[]) => void) => this.tracked(id, provider === 'claude' ? this.readClaudeUsage(id, merge, !!o.check) : this.readCodexUsage(id, merge)) : undefined
+        const read = o.probe ? (merge: (p: LimitPatch[]) => void) => this.noteRead(provider, id, this.tracked(id, provider === 'claude' ? this.readClaudeUsage(id, merge, !!o.check) : this.readCodexUsage(id, merge))) : undefined
         out.push({ provider, ...(id ? { accountId: id } : {}), ...(read ? { read } : {}) })
       }
     }
@@ -681,6 +683,17 @@ export class Providers extends Feature {
     this.afterTurn.set(key, timer)
   }
 
+  /** Records whether a usage read worked, so a failed one isn't taken for one that hasn't happened yet. A read that fails still fails. */
+  private noteRead(provider: Provider, id: string | undefined, read: Promise<void>): Promise<void> {
+    const key = `${provider}:${id ?? CLI_ACCOUNT}`
+    return read.then(() => { this.usageFailed.delete(key) }, (e) => { this.usageFailed.add(key); throw e })
+  }
+
+  /** Whether the last usage read of the account `provider` runs on failed. No read yet is not a failure (KERNEL-1076). */
+  usageReadFailed(provider: Provider): boolean {
+    return this.usageFailed.has(`${provider}:${this.active(provider) ?? CLI_ACCOUNT}`)
+  }
+
   private tracked(id: string | undefined, read: Promise<void>): Promise<void> {
     if (!id) return read
     const running = this.reading.get(id) ?? new Set<Promise<void>>()
@@ -711,6 +724,7 @@ export class Providers extends Feature {
     const chatgpt = r.account?.type === 'chatgpt' ? r.account : undefined
     if (!r.failed) await this.noteLogin('codex', id, { signedIn: !!chatgpt, email: chatgpt?.email ?? undefined, plan: codexPlan(chatgpt?.planType) })
     merge(codexLimits(r.limits?.rateLimits, id))
+    if (r.failed || r.limitsFailed) throw new Error('The Codex usage read failed.')
   }
 
   // ---------- adding, signing in and out

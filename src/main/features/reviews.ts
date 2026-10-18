@@ -1,7 +1,7 @@
-import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, type RateLimit, type ReviewConfig, type ReviewKind, type BaseUpdate, type ReviewRound, type ReviewVerdict, type ResolvedPick, type TeamConfig, type Workspace } from '@shared/types'
+import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, type ReviewConfig, type ReviewKind, type BaseUpdate, type ReviewRound, type ReviewVerdict, type ResolvedPick, type TeamConfig, type Workspace } from '@shared/types'
 import { kindStates, lensOf, reviewsText, reviewVerdicts, sameHeads } from '@shared/merge'
 import { KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
-import { limitProvider, providerOf } from '@shared/providers'
+import { providerOf } from '@shared/providers'
 import { buildsHere } from '@shared/leadMode'
 import { bus } from '../bus'
 import type { ReviewState } from '../services/leadUpdates'
@@ -440,8 +440,8 @@ export class Reviews extends Feature {
 
   /**
    * What a review chat runs on: its kind's `model`, else its agent's pin, else the reviewer role's from Settings, Models. A kind
-   * with no `provider` and no `model` runs on the provider that didn't build the PR when that one is signed in, has known
-   * usage and has room, else on the builder's (KERNEL-1059).
+   * with no `provider` and no `model` runs on the provider that didn't build the PR when that one is signed in, has room
+   * (no usage read yet counts) and its last usage read didn't fail, else on the builder's (KERNEL-1059).
    */
   private modelFor(p: PlannedReview, of?: Workspace): ResolvedPick {
     const side = p.provider ?? (p.model ? undefined : this.otherThanBuilder(of))
@@ -453,13 +453,13 @@ export class Reviews extends Feature {
     return { ...this.k.team.pickRole('reviewer', { chatProvider: use }), fellBack }
   }
 
-  /** The provider that didn't run the PR's builder, when it can take a review now: signed in, usage read, not at or near its limit. */
+  /** The provider that didn't run the PR's builder, when it can take a review now: signed in, not at or near its limit. No usage read yet counts as room; a failed read doesn't. */
   private otherThanBuilder(of?: Workspace): Provider | undefined {
     if (!of) return undefined
     const built = this.chatTabs(of.id).find((c) => c.kind === 'chat' && !c.lens)?.provider ?? 'claude'
     const other: Provider = built === 'claude' ? 'codex' : 'claude'
-    const known = (this.store.meta<RateLimit[]>('limits') ?? []).some((l) => limitProvider(l) === other)
-    return known && this.k.providers.hasRoom(other) && !this.k.account.nearLimit(other) ? other : undefined
+    const { providers, account } = this.k
+    return providers.hasRoom(other) && !providers.usageReadFailed(other) && !account.nearLimit(other) ? other : undefined
   }
 
   /** The first message a review chat gets. Its rule says the rest: where the work is and how to report. */
