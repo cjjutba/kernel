@@ -1081,13 +1081,26 @@ const GH_READS = new Set(['pr view', 'pr diff', 'pr checks', 'pr list', 'pr stat
 /** The repo's own test commands: a package script named test, or a runner called by name. */
 const TEST_RUNNERS = new Set(['vitest', 'jest', 'pytest', 'mocha', 'playwright'])
 
+/** A short option cluster that holds `o`, with or without an attached value: `-o`, `-ofile`, `-ro`. */
+const SHORT_O = /^-[^-]*o/
+
+/** The generic reader's options and arguments, which can't name a file to write: sort's and tree's output, uniq's output file, file's compile mode. */
+function readerIsSafe(cmd: string, args: string[]): boolean {
+  if (args.some((w) => READ_UNSAFE.test(w))) return false
+  if ((cmd === 'sort' || cmd === 'tree') && args.some((w) => SHORT_O.test(w))) return false
+  if (cmd === 'file' && args.some((w) => w === '--compile' || /^-[^-]*C/.test(w))) return false
+  // uniq's second positional is its output file. With options that take a value, counting every plain word is stricter, not looser.
+  if (cmd === 'uniq' && args.filter((w) => !w.startsWith('-')).length > 1) return false
+  return true
+}
+
 function readOnlyGit(s: Simple): boolean {
   const g = gitCall(s)
   if (!g?.sub || g.scripts.length || !GIT_READS.has(g.sub) || g.dynamic.some(Boolean)) return false
   const lead = s.words.slice(1, s.words.indexOf(g.sub))
   // Only `-C dir` and `--no-pager` precede the command: `-c` could set a pager, an editor or an alias that runs anything.
   if (!lead.every((w, i) => w === '--no-pager' || w === '-C' || lead[i - 1] === '-C')) return false
-  return !g.args.some((a) => READ_UNSAFE.test(a) || a === '--ext-diff' || a === '--textconv')
+  return !g.args.some((a) => READ_UNSAFE.test(a) || a === '--ext-diff' || a === '--textconv' || a === '--open-files-in-pager' || a.startsWith('--open-files-in-pager=') || (g.sub === 'grep' && /^-[^-]*O/.test(a)))
 }
 
 function readOnlyGh(s: Simple): boolean {
@@ -1102,9 +1115,9 @@ function testCommand(s: Simple): boolean {
   if (cmd === 'npm' || cmd === 'yarn' || cmd === 'pnpm' || cmd === 'bun') {
     const sub = args[0] === 'run' ? args[1] : args[0]
     if (sub && /^test(:[\w:-]+)?$/.test(sub)) return true
+    // `exec` runs a binary the repo installed. `npx` and `dlx` may fetch and run a package, so they ask.
     return (cmd === 'pnpm' || cmd === 'yarn') && args[0] === 'exec' && TEST_RUNNERS.has(args[1] ?? '')
   }
-  if (cmd === 'npx') return TEST_RUNNERS.has(args[0] ?? '')
   if (cmd === 'cargo' || cmd === 'go') return args[0] === 'test'
   return TEST_RUNNERS.has(cmd)
 }
@@ -1119,11 +1132,13 @@ export function readsOnly(command: string): boolean {
   if (!simples.length || simples.some((s) => !isPlain(s))) return false
   // The command as written, not unwrapped: `sudo`, `env` and `bash -c` aren't reads.
   return simples.every((s) => {
-    const cmd = base(s.words[0] ?? '')
+    // A path names a program the PR may have put in the worktree (`./cat`, `node_modules/.bin/git`), so only a bare name counts.
+    if (s.words[0] !== base(s.words[0] ?? '')) return false
+    const cmd = s.words[0]
     if (cmd === 'git') return readOnlyGit(s)
     if (cmd === 'gh') return readOnlyGh(s)
     if (cmd === 'find') return !s.words.some((w) => FIND_UNSAFE.has(w))
-    if (READ_PROGRAMS.has(cmd)) return !s.words.slice(1).some((w) => READ_UNSAFE.test(w))
+    if (READ_PROGRAMS.has(cmd)) return readerIsSafe(cmd, s.words.slice(1))
     return testCommand(s)
   })
 }

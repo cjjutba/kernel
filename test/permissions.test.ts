@@ -394,7 +394,7 @@ describe('saveAlwaysAllow', () => {
 describe('a review session (KERNEL-1074)', () => {
   const review = (o: Parameters<typeof rules>[0] = {}) => ({ ...rules(o), review: true })
   const reads = ['cat src/a.ts', 'git log --oneline -20', 'git diff origin/main...HEAD', 'git -C ../x show HEAD~1:src/a.ts', 'git status --short', 'git blame src/a.ts', 'gh pr view 12 --json title', 'gh pr diff 12', 'gh pr checks 12', 'rg "TODO" src | head -5', 'pnpm test', 'pnpm test:changed', 'pnpm exec vitest run test/a.test.ts', 'git diff && git log -3']
-  const writes = ['git commit -m x', 'git push origin feat/x', 'git checkout main', 'git -c core.pager=sh log', 'git diff --output=out.txt', 'gh pr merge 12', 'gh pr comment 12 -b x', 'gh pr view 12 --web', 'rm -rf build', 'echo hi > a.txt', 'cat a.txt | sh', 'sed -i s/a/b/ a.ts', 'find . -delete', 'sudo git log', 'pnpm install', 'git log $(touch x)']
+  const writes = ['git commit -m x', 'git push origin feat/x', 'git checkout main', 'git -c core.pager=sh log', 'git diff --output=out.txt', 'gh pr merge 12', 'gh pr comment 12 -b x', 'gh pr view 12 --web', 'rm -rf build', 'echo hi > a.txt', 'cat a.txt | sh', 'sed -i s/a/b/ a.ts', 'find . -delete', 'sudo git log', 'pnpm install', 'git log $(touch x)', './cat a.txt', 'node_modules/.bin/git log', '/tmp/x/rg foo', 'sort -oout.txt a.txt', 'sort -o out.txt a.txt', 'sort --output=out.txt a.txt', 'uniq in.txt out.txt', 'tree -o out.txt', 'file -C', 'npx vitest run', 'npx --package evil vitest', 'npx -p evil vitest', 'pnpm dlx vitest', 'git grep -O foo']
 
   it.each(['default', 'acceptEdits', 'auto', 'bypassPermissions'] as const)('runs read-only commands with no ask in %s, for Claude\'s hook and canUseTool and for Codex', (mode) => {
     for (const c of reads) {
