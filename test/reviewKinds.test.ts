@@ -190,6 +190,49 @@ describe('which reviews a PR gets', () => {
     expect(pushed).toContainEqual({ type: 'providerFellBack', workspaceId: rws.id, from: 'claude', to: 'codex' })
   })
 
+  describe('cross-model review (KERNEL-1059)', () => {
+    const codexUp = (k: Awaited<ReturnType<typeof setup>>['k'], o: { limits?: object[]; signedIn?: boolean } = {}) => {
+      ;(k.providers as unknown as { load: () => { codex: { cli?: { signedIn?: boolean } } } }).load().codex.cli = { signedIn: o.signedIn ?? true }
+      k.store.saveMeta('limits', o.limits ?? [{ type: 'five_hour', status: 'allowed', provider: 'codex', utilization: 0.1 }])
+    }
+    const ran = async (o: Parameters<typeof setup>[0], prep: (k: Awaited<ReturnType<typeof setup>>['k']) => void, builder?: 'codex') => {
+      const s = await setup(o)
+      prep(s.k)
+      const ws = await s.pr({ 'a.txt': 'a\n' })
+      if (builder) for (const c of s.k.store.chats(ws.id)) s.k.store.saveChat({ ...c, provider: builder })
+      await s.k.reviews.onReady(ws.id)
+      return { ...s, rws: s.reviewsOf(ws.id)[0] }
+    }
+
+    it('reviews a Claude-built PR on Codex, and a Codex-built PR on Claude', async () => {
+      const a = await ran({}, (k) => codexUp(k))
+      expect(a.chatOf(a.rws, 'code')).toMatchObject({ provider: 'codex' })
+      const b = await ran({}, (k) => codexUp(k, { limits: [{ type: 'five_hour', status: 'allowed', provider: 'codex' }, { type: 'five_hour', status: 'allowed' }] }), 'codex')
+      expect(b.chatOf(b.rws, 'code').provider ?? 'claude').toBe('claude')
+    })
+
+    it("stays on the builder's provider when Codex isn't signed in, is at its limit, or has no usage read", async () => {
+      const out = await ran({}, (k) => codexUp(k, { signedIn: false }))
+      expect(out.chatOf(out.rws, 'code').provider ?? 'claude').toBe('claude')
+      const full = await ran({}, (k) => codexUp(k, { limits: [{ type: 'five_hour', status: 'rejected', provider: 'codex', resetsAt: Math.round(Date.now() / 1000) + 3600 }] }))
+      expect(full.chatOf(full.rws, 'code').provider ?? 'claude').toBe('claude')
+      const unknown = await ran({}, (k) => codexUp(k, { limits: [] }))
+      expect(unknown.chatOf(unknown.rws, 'code').provider ?? 'claude').toBe('claude')
+    })
+
+    it('lets an explicit provider in [review] decide', async () => {
+      const s = await ran({ settings: '[review.code]\nprovider = "claude"\n' }, (k) => codexUp(k))
+      expect(s.chatOf(s.rws, 'code').provider ?? 'claude').toBe('claude')
+    })
+
+    it('records the provider on the verdict', async () => {
+      const s = await ran({}, (k) => codexUp(k))
+      const chat = s.chatOf(s.rws, 'code')
+      await s.k.reviews.submitReview(s.rws.id, { verdict: 'approved', summary: 'ok' }, chat.id)
+      expect(s.k.store.workspace(s.rws.reviewOf!)!.reviews![0].provider).toBe('codex')
+    })
+  })
+
   it("never lets an agent review its own PR with its own prompt", async () => {
     const { k, pr, reviewsOf, lenses, chatOf } = await setup({ settings: '[review.ux]\nagent = "wren"\n\n[review.security]\nagent = "christian"\n' })
     const ws = await pr({ 'a.txt': 'a\n' }, 'christian')
