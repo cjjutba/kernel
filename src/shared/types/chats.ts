@@ -307,9 +307,10 @@ export type ChatPart =
    * `dir` marks a folder from the @ menu: `path` ends in `/` and the agent gets the path, not the files in it.
    * An attached file has `src`, its absolute path on the Mac (`window.kernel.pathOf`). Sending copies it to the workspace's
    * `.kernel/attachments/` and sets `path`, `size`, `kind`, `readable` (false when the agent has no way to open it) and, for
-   * a PDF, `pages`. A text file up to `INLINE_TEXT_MAX` gets `text` instead (KERNEL-907).
+   * a PDF, `pages`. A text file up to `INLINE_TEXT_MAX` gets `text` instead (KERNEL-907). `pasted` marks text the user pasted
+   * into the composer, which a message of nothing else counts as their own words for a go-ahead, unlike a file (KERNEL-1079).
    */
-  | { type: 'file'; name: string; path?: string; lines?: number; text?: string; dir?: boolean; src?: string; size?: number; kind?: FileKind; readable?: boolean; pages?: number }
+  | { type: 'file'; name: string; path?: string; lines?: number; text?: string; dir?: boolean; src?: string; size?: number; kind?: FileKind; readable?: boolean; pages?: number; pasted?: true }
   | { type: 'image'; name: string; dataUrl?: string; width?: number; height?: number; path?: string }
   | { type: 'skill'; name: string }
   /** + > Link issue. `name` is the key, "KERNEL-83" or "#41". */

@@ -6,10 +6,11 @@ import { Icon } from '../../../ui'
 import { providerLabel } from '../composer/providerModels'
 import './pr.css'
 
-/** The word a criterion shows. Evidence from an older commit no longer counts, so a criterion with only that reads Stale. */
-export const criterionWord = (c: Pick<CriterionEvidence, 'status' | 'stale'>) => (c.status === 'unverified' && c.stale ? 'Stale' : c.status === 'passed' ? 'Passed' : c.status === 'failed' ? 'Failed' : 'Unverified')
+/** The word a criterion shows. Evidence from an older commit no longer counts, so a criterion with only that reads Stale. Only the reviewer's judgment behind it reads "Reviewer says met", never Passed (KERNEL-1078). */
+export const criterionWord = (c: Pick<CriterionEvidence, 'status' | 'stale'>) => (c.status === 'unverified' && c.stale ? 'Stale' : c.status === 'passed' ? 'Passed' : c.status === 'failed' ? 'Failed' : c.status === 'reviewer-met' ? 'Reviewer says met' : 'Unverified')
 
-const GLYPH = { Passed: 'check', Failed: 'close', Unverified: 'minus', Stale: 'minus' } as const
+const GLYPH = { Passed: 'check', Failed: 'close', Unverified: 'minus', Stale: 'minus', 'Reviewer says met': 'check' } as const
+const STATE_KEY = { Passed: 'passed', Failed: 'failed', Unverified: 'unverified', Stale: 'stale', 'Reviewer says met': 'reviewer-met' } as const
 
 /** The provider of the newest verdict that names one, for "Reviewed by Codex". Verdicts from before provider was kept have none. */
 export function reviewedBy(ws: Pick<Workspace, 'reviews' | 'prNumber'>): string | undefined {
@@ -34,7 +35,7 @@ function Criterion({ c }: { c: CriterionEvidence }) {
   return (
     <li className="crit">
       <div className="crit-head">
-        <span className="crit-state" data-state={word.toLowerCase()}><Icon name={GLYPH[word as keyof typeof GLYPH]} size={12} />{word}</span>
+        <span className="crit-state" data-state={STATE_KEY[word as keyof typeof STATE_KEY]}><Icon name={GLYPH[word as keyof typeof GLYPH]} size={12} />{word}</span>
         <span className="crit-text">{c.text}</span>
       </div>
       {c.links.length > 0 && <ul className="crit-evs" aria-label={`Evidence for ${c.text}`}>{c.links.map((l) => <Link key={l.id} l={l} />)}</ul>}
