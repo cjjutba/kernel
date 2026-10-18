@@ -1092,10 +1092,9 @@ export class Lead extends Feature {
       },
       archiveWorkspace: (id) => this.k.archiveWorkspace(id),
       // The setting and the turn are read on each call: the switch can change, and each message starts a new turn (KERNEL-352).
-      mergeWorkspace: async (id) => {
-        const ws = await this.k.prs.mergePr(id)
-        this.k.attention.userMerged(id)
-        return ws
+      mergeWorkspace: (id) => {
+        this.k.attention.userMerging(id)
+        return this.k.prs.mergePr(id)
       },
       leadMerge: () => this.settings.pr.leadMerge,
       overrule: (id, note) => this.k.reviews.overrule(id, { by: 'lead', note }),

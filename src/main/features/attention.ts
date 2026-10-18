@@ -17,9 +17,13 @@ const kindOf = (a: Approval): AttentionKind | undefined => {
  * or a ready row the teammate settled never needed the user.
  */
 export class Attention extends Feature {
-  /** The user merged this workspace's PR, from the Merge button or by asking the Lead. An auto-merge never calls this. */
-  userMerged(workspaceId: string) {
-    if (this.store.workspace(workspaceId)?.prState === 'merged') this.store.saveMeta(mergeKey(workspaceId), true)
+  /**
+   * The user started a merge of this workspace's PR, from the Merge button or by asking the Lead. Called before the merge
+   * runs and kept whatever its refresh reports, since GitHub can merge while the read fails or lags. The merge counts once
+   * the PR reads as merged. An auto-merge never calls this.
+   */
+  userMerging(workspaceId: string) {
+    this.store.saveMeta(mergeKey(workspaceId), true)
   }
 
   plan(approvalId: string): PlanAttention {
@@ -38,7 +42,7 @@ export class Attention extends Feature {
       const ws = this.store.workspace(id)
       if (ws?.prState === 'merged') prsMerged++
       else if (ws && ws.prState !== 'closed') finished = false
-      if (this.store.meta<boolean>(mergeKey(id))) byKind.merge++
+      if (ws?.prState === 'merged' && this.store.meta<boolean>(mergeKey(id))) byKind.merge++
     }
     const mine = new Set([...ids, ...reviews])
     for (const id of mine) {

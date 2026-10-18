@@ -49,9 +49,9 @@ describe('attention counter (KERNEL-1060, KERNEL-1067)', () => {
     }
     expect(k.attention.plan('plan')).toEqual({ prsMerged: 0, needed: 6, byKind: { plan: 1, tool: 3, question: 2, blocker: 0, merge: 0 }, finished: false })
 
-    // w1 merged by the user, w2 by auto-merge, which never calls userMerged.
+    // w1 merged by the user, w2 by auto-merge, which never calls userMerging.
     k.store.saveWorkspace(ws('w1', { prState: 'merged' }))
-    k.attention.userMerged('w1')
+    k.attention.userMerging('w1')
     k.store.saveWorkspace(ws('w2', { prState: 'merged' }))
     expect(k.attention.plan('plan')).toEqual({ prsMerged: 2, needed: 7, byKind: { plan: 1, tool: 3, question: 2, blocker: 0, merge: 1 }, finished: true })
 
@@ -62,13 +62,16 @@ describe('attention counter (KERNEL-1060, KERNEL-1067)', () => {
     expect(again.k.attention.plan('plan')).toMatchObject({ prsMerged: 2, needed: 7, finished: true })
   })
 
-  it('does not count a merge that did not land', async () => {
+  it('counts a user merge once the PR reads as merged, not before', async () => {
     const { k } = await boot()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
     k.store.saveWorkspace(ws('w1'))
     k.store.saveApproval(approval('plan', { kind: 'plan', toolName: undefined, steps: [{ title: 'one', workspaceId: 'w1' }] }))
-    k.attention.userMerged('w1')
+    k.attention.userMerging('w1')
     expect(k.attention.plan('plan').byKind.merge).toBe(0)
+    // The refresh after the merge failed or lagged: the PR reads as merged later, and the user's merge counts then.
+    k.store.saveWorkspace(ws('w1', { prState: 'merged' }))
+    expect(k.attention.plan('plan').byKind.merge).toBe(1)
   })
 
   it('reports a plan with a task not yet handed off as not finished', async () => {
