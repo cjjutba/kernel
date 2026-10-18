@@ -1068,3 +1068,62 @@ function textMatches(c: string, r: string): boolean {
   if (r.includes('*')) return globRule(r).test(c)
   return c === r || c.startsWith(r + ' ') || c.includes(r)
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Read-only commands (KERNEL-1074)
+
+const READ_PROGRAMS = new Set(['cat', 'head', 'tail', 'ls', 'wc', 'grep', 'egrep', 'fgrep', 'rg', 'stat', 'file', 'tree', 'pwd', 'echo', 'which', 'diff', 'cmp', 'uniq', 'cut', 'tr', 'basename', 'dirname', 'realpath', 'nl', 'jq', 'sort', 'true'])
+/** Options that make an otherwise reading program write or run another one. */
+const READ_UNSAFE = /^(--output(=|$)|-o$|--pre(=|$)|--pre-glob(=|$)|--hostname-bin(=|$))/
+const FIND_UNSAFE = new Set(['-exec', '-execdir', '-ok', '-okdir', '-delete', '-fprint', '-fprint0', '-fprintf', '-fls'])
+const GIT_READS = new Set(['log', 'diff', 'show', 'status', 'blame', 'rev-parse', 'rev-list', 'ls-files', 'ls-tree', 'cat-file', 'merge-base', 'diff-tree', 'shortlog', 'describe', 'grep', 'name-rev', 'show-ref', 'whatchanged'])
+const GH_READS = new Set(['pr view', 'pr diff', 'pr checks', 'pr list', 'pr status', 'issue view', 'issue list', 'run view', 'run list'])
+/** The repo's own test commands: a package script named test, or a runner called by name. */
+const TEST_RUNNERS = new Set(['vitest', 'jest', 'pytest', 'mocha', 'playwright'])
+
+function readOnlyGit(s: Simple): boolean {
+  const g = gitCall(s)
+  if (!g?.sub || g.scripts.length || !GIT_READS.has(g.sub) || g.dynamic.some(Boolean)) return false
+  const lead = s.words.slice(1, s.words.indexOf(g.sub))
+  // Only `-C dir` and `--no-pager` precede the command: `-c` could set a pager, an editor or an alias that runs anything.
+  if (!lead.every((w, i) => w === '--no-pager' || w === '-C' || lead[i - 1] === '-C')) return false
+  return !g.args.some((a) => READ_UNSAFE.test(a) || a === '--ext-diff' || a === '--textconv')
+}
+
+function readOnlyGh(s: Simple): boolean {
+  const { words, dynamic } = ghWords(s)
+  if (dynamic.slice(0, 2).some(Boolean) || !GH_READS.has(`${words[0]} ${words[1]}`)) return false
+  return !s.words.some((w) => w === '--web' || w === '-w')
+}
+
+function testCommand(s: Simple): boolean {
+  const [cmd, ...rest] = s.words.map(base)
+  const args = rest.filter((w) => !w.startsWith('-'))
+  if (cmd === 'npm' || cmd === 'yarn' || cmd === 'pnpm' || cmd === 'bun') {
+    const sub = args[0] === 'run' ? args[1] : args[0]
+    if (sub && /^test(:[\w:-]+)?$/.test(sub)) return true
+    return (cmd === 'pnpm' || cmd === 'yarn') && args[0] === 'exec' && TEST_RUNNERS.has(args[1] ?? '')
+  }
+  if (cmd === 'npx') return TEST_RUNNERS.has(args[0] ?? '')
+  if (cmd === 'cargo' || cmd === 'go') return args[0] === 'test'
+  return TEST_RUNNERS.has(cmd)
+}
+
+/**
+ * Whether every command in a chain only reads: file readers, git and gh reads, and the repo's test command. A review runs
+ * these without asking (KERNEL-1074). No redirection, process substitution, heredoc, expansion or command Kernel can't read
+ * qualifies, and neither does a program with an option that writes or runs another program. Everything else follows the mode.
+ */
+export function readsOnly(command: string): boolean {
+  const { simples } = analyze(command.trim())
+  if (!simples.length || simples.some((s) => !isPlain(s))) return false
+  // The command as written, not unwrapped: `sudo`, `env` and `bash -c` aren't reads.
+  return simples.every((s) => {
+    const cmd = base(s.words[0] ?? '')
+    if (cmd === 'git') return readOnlyGit(s)
+    if (cmd === 'gh') return readOnlyGh(s)
+    if (cmd === 'find') return !s.words.some((w) => FIND_UNSAFE.has(w))
+    if (READ_PROGRAMS.has(cmd)) return !s.words.slice(1).some((w) => READ_UNSAFE.test(w))
+    return testCommand(s)
+  })
+}
