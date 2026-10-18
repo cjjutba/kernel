@@ -98,8 +98,11 @@
 .plan-attn { position: relative; margin: 8px 2px 0; font-size: var(--fs-code); color: var(--muted); }
 .plan-attn-n { padding: 0; border: 0; border-bottom: 1px dotted var(--line-4); background: transparent; color: var(--ink-2); font: inherit; cursor: default; }
 .plan-attn-n:hover, .plan-attn-n:focus-visible { color: var(--ink); }
-.plan-attn-list { position: absolute; left: 0; top: 100%; z-index: 2; display: none; min-width: 200px; margin: 4px 0 0; padding: 6px 12px; list-style: none; border: 1px solid var(--card-line); border-radius: var(--r-sm); background: var(--card-bg); color: var(--ink-2); }
-.plan-attn:has(.plan-attn-n:hover) .plan-attn-list, .plan-attn:has(.plan-attn-n:focus-visible) .plan-attn-list { display: block; }
+.plan-attn-list { position: absolute; left: 0; top: 100%; z-index: 2; display: none; min-width: 200px; margin: 0; padding: 6px 12px; list-style: none; border: 1px solid var(--card-line); border-radius: var(--r-sm); background: var(--card-bg); color: var(--ink-2); }
+.plan-attn-list::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 4px; }
+/* The line sits in the thread's flex column, so it is lifted above the rows after it while the list is open. The list starts flush under the number's line, with a 4px strip above it that belongs to the list, so the pointer can cross without closing it. */
+.plan-attn:has(.plan-attn-n:hover, .plan-attn-n:focus-visible, .plan-attn-list:hover) { z-index: 5; }
+.plan-attn:has(.plan-attn-n:hover, .plan-attn-n:focus-visible, .plan-attn-list:hover) .plan-attn-list { display: block; }
 .plan-attn-list li { display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; }
 /* Kernel's team update in the Lead's chat (cards/TeamUpdateCard.tsx, KERNEL-127): an outline with a small header, one
    row per teammate, the events as a line of text and the reply as plain text (KERNEL-274). */
