@@ -3384,6 +3384,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceCriteriaFailed: criteriaScene(['failed'], { provider: 'codex' }),
   WorkspaceCriteriaUnverified: criteriaScene(['unverified']),
   WorkspaceCriteriaStale: criteriaScene(['stale'], { provider: 'claude' }),
+  // KERNEL-1077: a reviewed PR whose step had no criteria still names the model that reviewed it.
+  WorkspaceReviewedByCodex: criteriaScene([], { provider: 'codex' }),
+  WorkspaceReviewedByClaude: criteriaScene([], { provider: 'claude' }),
   WorkspaceChangesRequested: prScene('changes', [
     ...prTurn('r', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42 and asked Artkin for review.')
   ], {
