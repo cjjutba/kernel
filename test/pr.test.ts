@@ -9,7 +9,7 @@ import { tempRepo, freePort } from './helpers'
 import { git } from '../src/main/services/exec'
 import { checkOf, infoOf, parseReviews, prNote, prQuery, prStateOf, REPLY_FOOTER, resolveFile, reviewsOf, type PrView } from '../src/main/services/github'
 import { addressReviewText, createPrText, fixChecksText, resolveText } from '../src/main/services/conventions'
-import { actionIcon, archiveToast, headerView, instructionOf, prToast, reviewLines } from '../src/renderer/src/screens/workspace/pr/model'
+import { actionIcon, archiveToast, headerView, instructionOf, mergeWait, prToast, reviewLines } from '../src/renderer/src/screens/workspace/pr/model'
 import { checkGroups, checkRow } from '../src/renderer/src/screens/workspace/Panels'
 import { Kernel } from '../src/main/kernel'
 import { Prs } from '../src/main/features/prs'
@@ -191,6 +191,35 @@ describe('PR header and toasts', () => {
     expect(actionIcon('Ready for review', 'ready')).toBe('check')
     expect(actionIcon('Reopen', 'reopen')).toBe('pr')
     expect(actionIcon('Something new')).toBeUndefined()
+  })
+  // KERNEL-1071: a push during an approved PR. The header reads the same rule the merge click does.
+  it('is not ready while a required review of the new head runs', () => {
+    const rules = { requireGreen: false, requireReviewer: true }
+    const name = (id: string) => id
+    const review = (sha: string) => ({ workspaceId: 'rev', agentId: 'artkin', verdict: 'approved' as const, summary: '', sha, prNumber: 42, lens: 'code' as const, ts: 1 })
+    const approved = { id: 'w', prState: 'ready', prNumber: 42, prHead: 'h1', reviews: [review('h1')] } as Workspace
+    const at = (_ws: Workspace, head: string) => info({ head })
+    expect(mergeWait(approved, at(approved, 'h1'), rules, name)).toBeUndefined()
+    expect(headerView('ready', true, false, undefined, false, undefined, mergeWait(approved, at(approved, 'h1'), rules, name)).button).toMatchObject({ label: 'Merge PR', action: 'merge' })
+
+    // The push: GitHub still says ready, the new head's review is starting, then running.
+    const starting = { ...approved, prHead: 'h2', reviewPending: 'h2' } as Workspace
+    const running = { ...approved, prHead: 'h2', reviewRound: { n: 1, rounds: 3, head: 'h2', prNumber: 42, kinds: ['code'] } } as Workspace
+    for (const ws of [starting, running]) {
+      const wait = mergeWait(ws, at(ws, 'h2'), rules, name)
+      expect(wait).toMatchObject({ review: true })
+      expect(wait?.reason).toBe(mergeBlock(ws, at(ws, 'h2'), rules, name))
+      const view = headerView('ready', true, false, undefined, false, undefined, wait)
+      expect(view.state).toMatchObject({ label: 'Waiting for review', tone: 'idle' })
+      expect(view.button).toMatchObject({ label: 'Merge PR', disabled: wait?.reason })
+      expect(view.button?.action).toBeUndefined()
+    }
+
+    // The new head's review approves: ready again.
+    const done = { ...running, reviews: [review('h1'), review('h2')] } as Workspace
+    expect(mergeWait(done, at(done, 'h2'), rules, name)).toBeUndefined()
+    // With the rule off, nothing waits.
+    expect(mergeWait(running, at(running, 'h2'), { ...rules, requireReviewer: false }, name)).toBeUndefined()
   })
   it('has a layout for every state', () => {
     expect(headerView('none')).toMatchObject({ link: false, caret: true, button: { label: 'Create PR', action: 'create' } })

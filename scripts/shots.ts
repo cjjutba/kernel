@@ -774,6 +774,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
     await page.waitForTimeout(400)
   },
   TeamUpdateNotReviewedTip: async (page) => { await page.locator('.tucard-ev', { hasText: 'Not reviewed' }).first().hover(); await page.waitForTimeout(900) },
+  // KERNEL-1068: the breakdown opened from the keyboard, over the rows after the plan card.
+  WorkspacePlanFinishedFollowed: async (page) => { await page.locator('.plan-attn-n').focus(); await page.waitForTimeout(300) },
   WorkspaceReadImagePreview: (page) => hoverPreview(page, page.locator('.trow-btn', { hasText: 'Read image' })),
   WorkspacePasteImagePreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open image.png' })),
   WorkspacePasteTextPreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open pasted_text_1.txt' })),
