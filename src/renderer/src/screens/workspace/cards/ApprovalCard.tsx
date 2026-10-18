@@ -10,7 +10,7 @@ import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt } from '../MessageActions'
 import { decideAtOnce, useFoldPhase } from './decideFold'
 import { decideInChat } from './optimisticAnswer'
-import { PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
+import { Criteria, PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
 import { AnswerBubble } from './AnswerBubble'
 import { answerItemId } from '@shared/approvalAnswer'
 import { questionAnswer } from '@shared/approvalAnswer'
@@ -355,7 +355,7 @@ function PlanSteps({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead:
           return (
             <li key={i}>
               <span className="n mono">{i + 1}</span>
-              <span>{stepLine(s, agents)}</span>
+              <span>{stepLine(s, agents)}<Criteria step={s} className="step-criteria" /></span>
               {a.status === 'allowed' && ws && <button type="button" className="open" aria-label={`Open ${who ?? 'the'} workspace for ${s.title}`} onClick={() => open(ws)}>Open workspace</button>}
             </li>
           )

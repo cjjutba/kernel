@@ -797,6 +797,24 @@ export const platformFixtures: Record<string, Fixture> = {
     agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
     ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
   })),
+  // KERNEL-1064: no model or provider set on any review, so each reads Other provider from the builder (KERNEL-1059).
+  SettingsProjectPrsDefault: scene((f) => ({
+    ...clientA({
+      review: {
+        rounds: 2,
+        kinds: {
+          code: { enabled: true, paths: [], required: true },
+          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'artkin' },
+          ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren' }
+        }
+      },
+      merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] },
+      pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
+      sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' }
+    }),
+    agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
+  })),
   // KERNEL-726: a shared review setting was just changed, so the page says to commit settings.toml.
   // KERNEL-726: settings.toml sets the merge method, so the row says Changed for this project and has no Reset.
   SettingsProjectPrsShared: scene((f) => ({

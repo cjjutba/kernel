@@ -9,6 +9,7 @@
 /* The Run by and Model selects sit on the details line, each with its muted prefix inside the button. */
 .set-card .rv-line .select-trigger { max-width: 190px; }
 .set-card .rv-line .rv-by, .set-card .rv-line .rv-model { flex-shrink: 0; }
+.set-card .rv-line .rv-model .select-trigger { max-width: 320px; }
 /* A review that is off keeps its settings in view, quieter, and can't be edited until it is on. */
 .rv-off .rv-line { opacity: 0.5; }
 
