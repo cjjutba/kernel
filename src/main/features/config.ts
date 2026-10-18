@@ -60,6 +60,7 @@ export class Config extends Feature {
     await saveAppSettings(this.settingsFile, this.saved)
     this.sessions.applySettings(before)
     this.o.onSettings?.(this.settings)
+    if (before.pr.autoReview === false && this.settings.pr.autoReview) void this.k.reviews.reviewReady().catch(() => undefined)
     if (before.privacy?.telemetry !== this.settings.privacy.telemetry) await this.k.telemetry.settingsChanged()
     // The server reads the timeout per request. Only the copy in the installed hooks needs rewriting.
     if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await this.k.hooks.present())) await this.k.hooks.writeHooks(this.settings.hookPort)

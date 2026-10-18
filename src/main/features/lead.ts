@@ -1017,6 +1017,12 @@ export class Lead extends Feature {
         const tabs = this.threadTabIds(chat)
         const approvalIds = new Set(this.store.approvals({ projectId }).filter((a) => a.kind === 'plan' && !!a.chatId && tabs.has(a.chatId)).map((a) => a.id))
         const review = given.reviewOf ?? given.linkReviewOf
+        // A review of a PR nobody reviewed is Kernel's own round, on the provider the setting would pick, not the named agent's (KERNEL-1072).
+        const target = review ? this.store.workspace(review) : undefined
+        if (target?.prState === 'ready' && target.prNumber && !target.reviewRound) {
+          const started = await this.k.reviews.requestReview(target.id)
+          if (started) return started
+        }
         // The step's criteria go in the brief, after what the Lead wrote (KERNEL-1061).
         const o = review ? given : { ...given, prompt: withCriteria(given.prompt, this.planStepFor(projectId, given.agentId, chat)?.step.criteria) }
         // The issue the task builds (D-140). Kernel names the branch from it unless the Lead named one (KERNEL-275).

@@ -389,3 +389,21 @@ describe('review rounds near the usage limit', () => {
     ])
   })
 })
+
+describe('KERNEL-1072: reviews on request', () => {
+  it('turning automatic review on reviews ready, unreviewed PRs', async () => {
+    const t = await setup()
+    await t.k.config.setSettings({ pr: { autoReview: false } })
+    expect(t.rws()).toHaveLength(0)
+    await t.k.config.setSettings({ pr: { autoReview: true } })
+    await vi.waitFor(() => expect(t.rws()).toHaveLength(1))
+  })
+
+  it('a review request starts the review with automatic review off', async () => {
+    const t = await setup()
+    await t.k.config.setSettings({ pr: { autoReview: false } })
+    const started = await t.k.reviews.requestReview(t.ws.id)
+    expect(started?.reviewOf).toBe(t.ws.id)
+    expect(t.rws()).toHaveLength(1)
+  })
+})
