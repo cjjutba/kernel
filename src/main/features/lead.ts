@@ -1018,7 +1018,8 @@ export class Lead extends Feature {
         const approvalIds = new Set(this.store.approvals({ projectId }).filter((a) => a.kind === 'plan' && !!a.chatId && tabs.has(a.chatId)).map((a) => a.id))
         const review = given.reviewOf ?? given.linkReviewOf
         // A review of a PR nobody reviewed is Kernel's own round, on the provider the setting would pick, not the named agent's (KERNEL-1072).
-        const target = review ? this.store.workspace(review) : undefined
+        // Not one started from a base_ref or branch (KERNEL-299): that keeps the named agent, base and branch, and is linked by the base.
+        const target = given.reviewOf && !given.baseRef && !given.branch ? this.store.workspace(given.reviewOf) : undefined
         if (target?.prState === 'ready' && target.prNumber && !target.reviewRound) {
           const started = await this.k.reviews.requestReview(target.id)
           if (started) return started
