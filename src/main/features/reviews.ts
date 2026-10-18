@@ -1,7 +1,7 @@
-import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, type ReviewConfig, type ReviewKind, type BaseUpdate, type ReviewRound, type ReviewVerdict, type ResolvedPick, type TeamConfig, type Workspace } from '@shared/types'
+import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, type RateLimit, type ReviewConfig, type ReviewKind, type BaseUpdate, type ReviewRound, type ReviewVerdict, type ResolvedPick, type TeamConfig, type Workspace } from '@shared/types'
 import { kindStates, lensOf, reviewsText, reviewVerdicts, sameHeads } from '@shared/merge'
 import { KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
-import { providerOf } from '@shared/providers'
+import { limitProvider, providerOf } from '@shared/providers'
 import { buildsHere } from '@shared/leadMode'
 import { bus } from '../bus'
 import type { ReviewState } from '../services/leadUpdates'
@@ -157,7 +157,7 @@ export class Reviews extends Feature {
       const files = await this.filesBetween(of, last.head, head)
       kept = files ? plan.filter((p) => before.approved.includes(p.kind) && !touches(p.paths, files)).map((p) => p.kind) : []
     }
-    const skipped = plan.filter((p) => !kept.includes(p.kind) && p.optional && !!this.k.account.nearLimit(this.modelFor(p).provider)).map((p) => p.kind)
+    const skipped = plan.filter((p) => !kept.includes(p.kind) && p.optional && !!this.k.account.nearLimit(this.modelFor(p, of).provider)).map((p) => p.kind)
     const runs = plan.length - kept.length - skipped.length
     const optional = plan.filter((p) => p.optional).map((p) => p.kind)
     return { n: (last?.n ?? 0) + (runs ? 1 : 0), rounds, head, prNumber: of.prNumber!, kinds: plan.map((p) => p.kind), ...(kept.length ? { kept } : {}), ...(skipped.length ? { skipped } : {}), ...(optional.length ? { optional } : {}) }
@@ -411,7 +411,7 @@ export class Reviews extends Feature {
 
   /** A review chat for one kind: `chat` made over, or a new one in the review workspace. */
   private lensChat(rws: Workspace, p: PlannedReview, chat?: Chat): Chat {
-    const pick = this.k.team.announce(rws, this.modelFor(p))
+    const pick = this.k.team.announce(rws, this.modelFor(p, rws.reviewOf ? this.store.workspace(rws.reviewOf) : undefined))
     const title = `${kindLabel(p.kind)} review`
     const lens: NonNullable<Chat['lens']> = { kind: p.kind, ...(p.agent ? { agent: p.agent.id } : {}), ...(p.optional ? { optional: true as const } : {}) }
     const base = chat ?? this.newChat(rws.id, title, { ...pick, plan: false })
@@ -419,14 +419,28 @@ export class Reviews extends Feature {
     return this.saveChat({ ...rest, title, ...(pick.provider !== 'claude' ? { provider: pick.provider } : {}), model: pick.model, effort: pick.effort, plan: false, lens })
   }
 
-  /** What a review chat runs on: its kind's `model`, else its agent's pin, else the reviewer role's from Settings, Models. */
-  private modelFor(p: PlannedReview): ResolvedPick {
-    const base = p.agent ? this.k.team.pickFor(p.agent, { role: 'reviewer' }) : this.k.team.pickRole('reviewer')
+  /**
+   * What a review chat runs on: its kind's `model`, else its agent's pin, else the reviewer role's from Settings, Models. A kind
+   * with no `provider` and no `model` runs on the provider that didn't build the PR when that one is signed in, has known
+   * usage and has room, else on the builder's (KERNEL-1059).
+   */
+  private modelFor(p: PlannedReview, of?: Workspace): ResolvedPick {
+    const side = p.provider ?? (p.model ? undefined : this.otherThanBuilder(of))
+    const base = p.agent ? this.k.team.pickFor(p.agent, { role: 'reviewer', ...(side ? { chatProvider: side } : {}) }) : this.k.team.pickRole('reviewer', side ? { chatProvider: side } : {})
     if (!p.model) return base
     const want = p.provider ?? providerOf(p.model)
     const { use, fellBack } = this.k.team.route(want)
     if (!fellBack) return { provider: want, model: p.model, effort: base.effort }
     return { ...this.k.team.pickRole('reviewer', { chatProvider: use }), fellBack }
+  }
+
+  /** The provider that didn't run the PR's builder, when it can take a review now: signed in, usage read, not at or near its limit. */
+  private otherThanBuilder(of?: Workspace): Provider | undefined {
+    if (!of) return undefined
+    const built = this.chatTabs(of.id).find((c) => c.kind === 'chat' && !c.lens)?.provider ?? 'claude'
+    const other: Provider = built === 'claude' ? 'codex' : 'claude'
+    const known = (this.store.meta<RateLimit[]>('limits') ?? []).some((l) => limitProvider(l) === other)
+    return known && this.k.providers.hasRoom(other) && !this.k.account.nearLimit(other) ? other : undefined
   }
 
   /** The first message a review chat gets. Its rule says the rest: where the work is and how to report. */
@@ -458,6 +472,7 @@ export class Reviews extends Feature {
       workspaceId: rws.id, agentId: lens ? lens.agent ?? KERNEL_REVIEWER : rws.agentId, verdict: review.verdict, summary: review.summary.trim(),
       ...(review.verdict === 'blockers' && review.blockers?.length ? { blockers: review.blockers } : {}),
       ...(/^[0-9a-f]{40}$/.test(sha) ? { sha } : {}), ...(fresh.prNumber ? { prNumber: fresh.prNumber } : {}),
+      provider: (chatId ? this.store.chat(chatId)?.provider : undefined) ?? 'claude',
       ...(lens ? { lens: lens.kind } : {}), ...(lens?.optional ? { optional: true as const } : {}),
       ...(running ? { checksRunning: true as const } : {}), ...(retried ? { checksRetried: true as const } : {}), ts: Date.now()
     }
