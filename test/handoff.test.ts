@@ -317,7 +317,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
       const lead = (await t.k.agents(t.project.id)).find((a) => a.lead)!
       const create = kernelTools(t.k.lead.leadToolDeps(t.project.id, lead, t.chat)).find((x) => x.name === 'create_workspace')!
       const made = vi.spyOn(t.k.workspaces, 'createWorkspace')
-      const brief = async () => { await create.handler({ agent: 'sean', title: 'Invoice table', brief: 'Build the table.' } as never, {}); return made.mock.calls[0][1].prompt }
+      const brief = async (text = 'Build the table.') => { made.mockClear(); await create.handler({ agent: 'sean', title: 'Invoice table', brief: text } as never, {}); return made.mock.calls[0][1].prompt }
       return { ...t, brief }
     }
 
@@ -332,6 +332,30 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     it('lists the step\'s criteria in the brief the teammate receives', { timeout: 30_000 }, async () => {
       const { brief } = await approved([{ task: 'Build the table · Sean', criteria: CRITERIA }])
       expect(await brief()).toBe('Build the table.\n\nAcceptance criteria:\n- Totals match the invoice lines\n- An empty invoice shows a message')
+    })
+
+    const STEP = [{ task: 'Build the table · Sean', criteria: CRITERIA }]
+    const LISTED = 'Acceptance criteria:\n- Totals match the invoice lines\n- An empty invoice shows a message'
+
+    it('replaces a criteria section the Lead wrote with the step\'s own, once', { timeout: 30_000 }, async () => {
+      const { brief } = await approved(STEP)
+      expect(await brief('Build the table.\n\nAcceptance criteria:\n- Totals add up\n- Empty case works\n\nUse the existing Table component.')).toBe(`Build the table.\n\nUse the existing Table component.\n\n${LISTED}`)
+    })
+
+    it('replaces a paraphrased heading too', { timeout: 30_000 }, async () => {
+      const { brief } = await approved(STEP)
+      expect(await brief('Build the table.\n\n**Done when:**\n1. Totals add up\n2. Empty case works')).toBe(`Build the table.\n\n${LISTED}`)
+    })
+
+    it('keeps prose that only mentions criteria', { timeout: 30_000 }, async () => {
+      const { brief } = await approved(STEP)
+      expect(await brief('Build the table. The criteria are in the plan.')).toBe(`Build the table. The criteria are in the plan.\n\n${LISTED}`)
+    })
+
+    it('leaves a criteria section the Lead wrote when the step has none', { timeout: 30_000 }, async () => {
+      const { brief } = await approved(['Build the table · Sean'])
+      const text = 'Build the table.\n\nAcceptance criteria:\n- Totals add up'
+      expect(await brief(text)).toBe(text)
     })
 
     it('leaves the brief as written for a plan saved without criteria', { timeout: 30_000 }, async () => {

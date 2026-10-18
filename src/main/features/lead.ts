@@ -38,10 +38,32 @@ const TURN_NOTES = 'leadTurnNotes'
 const SWITCHED_DURING = 'leadSwitchedDuring'
 
 /** The project's Lead: its workspace and chats, its tools, and where teammates' updates go (KERNEL-329). */
-/** The brief with the plan step's criteria listed under it. A step without any leaves the brief as written. */
+const CRITERIA_HEADING = /^\s*(?:#{1,6}\s*)?(?:\*\*|__)?\s*(?:acceptance criteria|acceptance|success criteria|criteria|definition of done|done when)\s*:?\s*(?:\*\*|__)?\s*:?\s*$/i
+const LIST_ITEM = /^\s*(?:[-*+•]|\d+[.)]|\[[ xX]\])\s+\S/
+
+/** The brief without a criteria section the Lead wrote: a line that is only a criteria heading, with the list under it. Anything else stays. */
+function withoutCriteriaSection(prompt: string): string {
+  const lines = prompt.split('\n')
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (CRITERIA_HEADING.test(lines[i])) {
+      let j = i + 1
+      while (j < lines.length && !lines[j].trim()) j++
+      if (j < lines.length && LIST_ITEM.test(lines[j])) {
+        while (j < lines.length && (LIST_ITEM.test(lines[j]) || /^\s+\S/.test(lines[j]) || !lines[j].trim())) j++
+        i = j - 1
+        continue
+      }
+    }
+    out.push(lines[i])
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()
+}
+
+/** The brief with the plan step's criteria listed under it, once: a criteria section the Lead wrote is dropped first (KERNEL-1081). A step without any leaves the brief as written. */
 export function withCriteria(prompt: string, criteria?: PlanCriterion[]): string {
   const list = (criteria ?? []).map(criterionText).filter((c) => c.trim())
-  return list.length ? `${prompt.trimEnd()}\n\nAcceptance criteria:\n${list.map((c) => `- ${c}`).join('\n')}` : prompt
+  return list.length ? `${withoutCriteriaSection(prompt)}\n\nAcceptance criteria:\n${list.map((c) => `- ${c}`).join('\n')}` : prompt
 }
 
 export class Lead extends Feature {
