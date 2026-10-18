@@ -135,6 +135,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     turn.wake?.()
     return
   }
+  if (method === 'account/rateLimits/read' && process.env.FAKE_CODEX_LIMITS_FAIL) return send({ id, error: { code: -32603, message: 'rate limits unavailable' } })
   if (method === 'account/rateLimits/read' && apiKey) return send({ id, error: { code: -32600, message: 'chatgpt authentication required to read rate limits' } })
   // FAKE_CODEX_USED sets a home's 5-hour use, by CODEX_HOME and '' for none, with a reset an hour from now (KERNEL-568). A home
   // a `limit` step filled reads full.

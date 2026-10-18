@@ -7,6 +7,7 @@ import { mergeBlock } from '@shared/merge'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
+import { fakeCodex } from './helpers/fakeCodex'
 import { loadRepoSettings, reviewOf, reviewPolicyOf, saveAlwaysReview, saveReviewSettings, sharedMergeOf, upsertTomlTable } from '../src/main/services/settings'
 import { inPaths, kindsFor, lensAgent } from '../src/main/services/lenses'
 import { toolPolicy } from '../src/main/services/agentTools'
@@ -231,6 +232,19 @@ describe('which reviews a PR gets', () => {
         ;(k.providers as unknown as { usageFailed: Set<string> }).usageFailed.add('codex:cli')
       })
       expect(failed.chatOf(failed.rws, 'code').provider ?? 'claude').toBe('claude')
+    })
+
+    it("stays on the builder's provider when Codex reads the account but not its rate limits (KERNEL-1076)", async () => {
+      const fake = await fakeCodex()
+      const s = await setup()
+      codexUp(s.k, { limits: [] })
+      ;(s.k.providers as unknown as { binary: () => { path: string } }).binary = () => ({ path: fake.bin })
+      process.env.FAKE_CODEX_LIMITS_FAIL = '1'
+      try { await s.k.providers.readUsage({ provider: 'codex', force: true }) } finally { delete process.env.FAKE_CODEX_LIMITS_FAIL }
+      expect(s.k.providers.usageReadFailed('codex')).toBe(true)
+      const ws = await s.pr({ 'a.txt': 'a\n' })
+      await s.k.reviews.onReady(ws.id)
+      expect(s.chatOf(s.reviewsOf(ws.id)[0], 'code').provider ?? 'claude').toBe('claude')
     })
 
     it('lets an explicit provider in [review] decide', async () => {

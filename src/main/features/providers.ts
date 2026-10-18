@@ -724,7 +724,7 @@ export class Providers extends Feature {
     const chatgpt = r.account?.type === 'chatgpt' ? r.account : undefined
     if (!r.failed) await this.noteLogin('codex', id, { signedIn: !!chatgpt, email: chatgpt?.email ?? undefined, plan: codexPlan(chatgpt?.planType) })
     merge(codexLimits(r.limits?.rateLimits, id))
-    if (r.failed) throw new Error('The Codex account read failed.')
+    if (r.failed || r.limitsFailed) throw new Error('The Codex usage read failed.')
   }
 
   // ---------- adding, signing in and out
