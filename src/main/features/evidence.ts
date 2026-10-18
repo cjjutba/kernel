@@ -1,4 +1,5 @@
 import type { CriterionEvidence, CriterionStatus, EvidenceLink, PlanStep, PrEvidence, PrInfo, RunEvidence, Workspace } from '@shared/types'
+import { criterionCheck, criterionText } from '@shared/criteria'
 import { lensOf } from '@shared/merge'
 import type { Handlers } from '../kernel'
 import { exec } from '../services/exec'
@@ -22,11 +23,13 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const names = (text: string, name: string) => name.length >= 2 && new RegExp(`(^|[^\\w./-])${escape(name)}($|[^\\w/-]|\\.(?!\\w))`, 'i').test(text)
 
 /**
- * Tracks each acceptance criterion of a plan step as passed, failed or unverified, from real events only (KERNEL-1065).
- * A criterion links to a CI check when its text names the check, to the reviewer's judgment when the verdict carries one,
- * to a touched file when its text names the path, and to a shared image when the image's note says "criterion N". Only
- * checks and the reviewer's judgment decide a status. Nothing an agent says counts, and no test command is guessed from
- * its name. A link remembers the head commit it was about and goes stale once the PR has another head.
+ * Tracks each acceptance criterion of a plan step as passed, failed, unverified or met by the reviewer alone, from real
+ * events only (KERNEL-1065). A CI check decides a criterion only when the Lead named that check for it in the plan
+ * (KERNEL-1069); the checks the text merely mentions show as context. The reviewer's judgment links to the criterion it
+ * names, a touched file to the criterion whose text names the path, and a shared image to the "criterion N" its note says.
+ * With no named check, only the reviewer's judgment can move a criterion, and it reads `reviewer-met`, not `passed`.
+ * Nothing an agent says counts, and no test command is guessed from its name. A link remembers the head commit it was
+ * about and goes stale once the PR has another head.
  */
 export class Evidence extends Feature {
   /** The last read of each PR, so a workspace event can weigh the evidence again without asking GitHub. */
@@ -59,7 +62,7 @@ export class Evidence extends Feature {
   }
 
   /** The acceptance criteria of the plan step this workspace was handed, for a reviewer's brief. */
-  criteriaOf(ws: Workspace): string[] { return this.stepOf(ws)?.criteria ?? [] }
+  criteriaOf(ws: Workspace): string[] { return (this.stepOf(ws)?.criteria ?? []).map(criterionText) }
 
   /** Files the branch changed since it left its base, read once per head. */
   private async touched(ws: Workspace, head: string | undefined): Promise<string[]> {
@@ -86,13 +89,17 @@ export class Evidence extends Feature {
   /** The links today's events give each criterion. A criterion with none gets none: that is what unverified means. */
   private fresh(ws: Workspace, info: PrInfo, step: PlanStep, files: string[]): Stored[] {
     const head = info.head ?? ws.prHead
-    const criteria = step.criteria ?? []
+    const criteria = (step.criteria ?? []).map(criterionText)
+    const named = (step.criteria ?? []).map(criterionCheck)
     const out: Stored[] = []
     const add = (criterion: number, link: Omit<EvidenceLink, 'stale'>) => out.push({ ...link, stale: false, criterion })
     criteria.forEach((text, i) => {
+      const check = named[i]?.toLowerCase()
       for (const c of info.checks) {
-        if (!names(text, c.name)) continue
-        const effect = c.state === 'pass' ? 'supports' : c.state === 'fail' ? 'contradicts' : 'context'
+        // Only the check the plan named decides. Any other check shows as context, where the text names it (KERNEL-1069).
+        const decides = !!check && c.name.trim().toLowerCase() === check
+        if (!decides && (check || !names(text, c.name))) continue
+        const effect = !decides ? 'context' : c.state === 'pass' ? 'supports' : c.state === 'fail' ? 'contradicts' : 'context'
         add(i, { id: `check:${c.name}:${head ?? ''}`, source: 'check', label: `CI check ${c.name}: ${c.state === 'pass' ? 'passed' : c.state === 'fail' ? 'failed' : c.state}`, effect, ...(head ? { commit: head } : {}), ...(c.url ? { url: c.url } : {}), ts: Date.now() })
       }
       for (const f of files) {
@@ -150,10 +157,12 @@ export class Evidence extends Feature {
     const freshIds = new Set(fresh.map((l) => `${l.criterion}:${l.id}`))
     const links = [...saved.links.filter((l) => !freshIds.has(`${l.criterion}:${l.id}`)), ...fresh]
       .map((l) => ({ ...l, stale: stale(l) }))
-    const criteria: CriterionEvidence[] = (step?.criteria ?? []).map((text, index) => {
+    const criteria: CriterionEvidence[] = (step?.criteria ?? []).map(criterionText).map((text, index) => {
       const mine = links.filter((l) => l.criterion === index).sort((a, b) => b.ts - a.ts).slice(0, KEEP_PER_CRITERION)
       const current = mine.filter((l) => !l.stale)
-      const status: CriterionStatus = current.some((l) => l.effect === 'contradicts') ? 'failed' : current.some((l) => l.effect === 'supports') ? 'passed' : 'unverified'
+      const status: CriterionStatus = current.some((l) => l.effect === 'contradicts') ? 'failed'
+        : current.some((l) => l.effect === 'supports' && l.source === 'check') ? 'passed'
+        : current.some((l) => l.effect === 'supports') ? 'reviewer-met' : 'unverified'
       return { index, text, status, stale: mine.some((l) => l.stale), links: mine.map(({ criterion: _c, ...l }) => l) }
     })
     const evidence: PrEvidence = {
@@ -200,7 +209,7 @@ export class Evidence extends Feature {
   }
 }
 
-const WORD: Record<CriterionStatus, string> = { passed: 'Passed', failed: 'Failed', unverified: 'Unverified' }
+const WORD: Record<CriterionStatus, string> = { passed: 'Passed', failed: 'Failed', unverified: 'Unverified', 'reviewer-met': 'Reviewer says met' }
 
 /** The comment's text: each criterion with its status and the events behind it. */
 export function render(e: PrEvidence): string {
@@ -211,6 +220,6 @@ export function render(e: PrEvidence): string {
     for (const l of c.links) lines.push(`  - ${l.stale ? '(older commit) ' : ''}${l.label}`)
   }
   const ran = [e.run.approvals.length ? `${e.run.approvals.length} approval${e.run.approvals.length === 1 ? '' : 's'} given` : '', e.run.files.length ? `${e.run.files.length} file${e.run.files.length === 1 ? '' : 's'} touched` : '', e.run.images.length ? `${e.run.images.length} image${e.run.images.length === 1 ? '' : 's'} shared` : ''].filter(Boolean)
-  lines.push('', ran.length ? `During the run: ${ran.join(', ')}.` : '', 'A criterion passes only on a CI check it names or the reviewer\'s judgment. An agent saying it is done never counts.')
+  lines.push('', ran.length ? `During the run: ${ran.join(', ')}.` : '', 'A criterion passes only on the CI check the plan named for it. Without one, the reviewer\'s judgment can at most make it "Reviewer says met". An agent saying it is done never counts.')
   return lines.filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n')
 }

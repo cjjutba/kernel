@@ -1,0 +1,5 @@
+**A CI check decides a criterion only when the Lead named it in the plan.** Kernel no longer matches a criterion's text to check names: "test/ has node:test cases" went to Passed on any green check called `test`. A criterion can carry an optional `check` (the exact check name), and the Lead is told to set it only when a green run of that check really proves the criterion. Checks the text merely mentions show as context. A plain string criterion, which is how earlier plans stored them, loads as one with no named check. Amends KERNEL-1065. KERNEL-1069.
+
+**A criterion only the reviewer supports is `reviewer-met`, not `passed`.** The reviewer's judgment is an opinion, so it gets its own state ("Reviewer says met", also in the GitHub evidence comment). A reviewer saying not met still fails the criterion. KERNEL-1069.
+
+**The reviewer's brief numbers criteria from 1, and submit_review takes `number`.** Kernel stores the verdict with the same 0-based index as before, so saved verdicts stay valid. KERNEL-1069.

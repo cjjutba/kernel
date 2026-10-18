@@ -25,11 +25,11 @@ export function reviewTools(d: ReviewToolDeps) {
       summary: z.string().min(1).describe('A few sentences on what you checked, and at most three short notes on minor findings'),
       blockers: z.array(z.object({ text: z.string().min(1), file: z.string().optional(), line: z.number().int().positive().optional() })).optional()
         .describe('Required with "blockers": each one in one or two sentences, what breaks, with its file and line and no code'),
-      criteria: z.array(z.object({ index: z.number().int().min(0), met: z.boolean(), note: z.string().optional() })).optional()
-        .describe('Only when the brief lists acceptance criteria: your judgment of each, by its number from 0 in that list. Judge only what you checked')
+      criteria: z.array(z.object({ number: z.number().int().min(1), met: z.boolean(), note: z.string().optional() })).optional()
+        .describe('Only when the brief lists acceptance criteria: your judgment of each, by its number in that list, starting at 1. Judge only what you checked')
     }, async (review) => {
       if (review.verdict === 'blockers' && !review.blockers?.length) return { ...text('Not saved: list each blocker in blockers, with its file and line when you know them.'), isError: true }
-      try { return text(await d.submit(review)) } catch (e) { return { ...text(`Not saved: ${e instanceof Error ? e.message : String(e)}`), isError: true } }
+      try { return text(await d.submit({ ...review, criteria: review.criteria?.map(({ number, ...rest }) => ({ index: number - 1, ...rest })) })) } catch (e) { return { ...text(`Not saved: ${e instanceof Error ? e.message : String(e)}`), isError: true } }
     })
   ]
 }
