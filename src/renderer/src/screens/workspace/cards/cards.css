@@ -91,6 +91,12 @@
 .plan-file:hover { border-color: var(--line-4); color: var(--ink); }
 .plan-inline .plan-copy { width: 24px; height: 24px; margin-left: -2px; }
 .plan-open { flex-shrink: 0; margin-left: 10px; }
+.plan-attn { position: relative; margin: 8px 2px 0; font-size: var(--fs-code); color: var(--muted); }
+.plan-attn-n { padding: 0; border: 0; border-bottom: 1px dotted var(--line-4); background: transparent; color: var(--ink-2); font: inherit; cursor: default; }
+.plan-attn-n:hover, .plan-attn-n:focus-visible { color: var(--ink); }
+.plan-attn-list { position: absolute; left: 0; top: 100%; z-index: 2; display: none; min-width: 200px; margin: 4px 0 0; padding: 6px 12px; list-style: none; border: 1px solid var(--card-line); border-radius: var(--r-sm); background: var(--card-bg); color: var(--ink-2); }
+.plan-attn:has(.plan-attn-n:hover) .plan-attn-list, .plan-attn:has(.plan-attn-n:focus-visible) .plan-attn-list { display: block; }
+.plan-attn-list li { display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; }
 /* Kernel's team update in the Lead's chat (cards/TeamUpdateCard.tsx, KERNEL-127): an outline with a small header, one
    row per teammate, the events as a line of text and the reply as plain text (KERNEL-274). */
 .tucard-wrap { align-self: stretch; width: 100%; }

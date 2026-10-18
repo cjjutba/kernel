@@ -1,5 +1,5 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react'
-import type { AgentDef, Approval, PlanStep } from '@shared/types'
+import { useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
+import type { AgentDef, Approval, AttentionKind, PlanAttention, PlanStep } from '@shared/types'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
 import { Button, LinkButton, CopyButton, Icon, useScreenEscape } from '../../../ui'
@@ -94,8 +94,43 @@ export function PlanInline({ a, agents, hasItem }: { a: Approval; agents: AgentD
         {a.steps?.length || !text ? <LeadPlan a={a} agents={agents} /> : <Markdown blocks={blocks} className="md-doc" />}
         {a.status === 'expired' && <PlanExpired a={a} />}
       </div>
+      {a.status === 'allowed' && !!a.steps?.length && <PlanAttentionLine a={a} />}
       {answer && !hasItem && <AnswerBubble text={answer} images={a.images} />}
     </>
+  )
+}
+
+const ATTENTION_KINDS: [AttentionKind, string][] = [['plan', 'Plan approvals'], ['tool', 'Tool approvals'], ['question', 'Questions'], ['blocker', 'Review blockers'], ['merge', 'Merges']]
+
+/** Under an approved plan whose tasks have all merged or closed: how many PRs merged and how often it needed you, with the count by kind on hover or focus (KERNEL-1063). Nothing shows while a task is open. */
+function PlanAttentionLine({ a }: { a: Approval }) {
+  const [att, setAtt] = useState<PlanAttention>()
+  const listId = useId()
+  // A task's PR merging or closing is what finishes the plan, so the counts are asked again when any of its workspaces changes state.
+  const state = useStore((s) => (a.steps ?? []).map((st) => s.workspaces.find((w) => w.id === st.workspaceId)?.prState ?? '').join())
+  useEffect(() => {
+    let live = true
+    call('attention.plan', { approvalId: a.id }).then((r) => { if (live) setAtt(r) }, () => { if (live) setAtt(undefined) })
+    return () => { live = false }
+  }, [a.id, state])
+  if (!att?.finished) return null
+  const prs = `${att.prsMerged} ${att.prsMerged === 1 ? 'PR' : 'PRs'} merged, `
+  return (
+    <p className="plan-attn">
+      {prs}
+      {att.needed === 0 ? 'you were not needed.' : (
+        <>
+          you were needed{' '}
+          <span className="plan-attn-wrap">
+            <button type="button" className="plan-attn-n" aria-describedby={listId}>{att.needed}</button>
+          </span>
+          {' '}{att.needed === 1 ? 'time' : 'times'}.
+          <ul id={listId} className="plan-attn-list" aria-label="What needed you">
+            {ATTENTION_KINDS.map(([k, label]) => <li key={k}><span>{label}</span><span className="mono">{att.byKind[k]}</span></li>)}
+          </ul>
+        </>
+      )}
+    </p>
   )
 }
 
