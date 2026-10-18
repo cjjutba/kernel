@@ -6,6 +6,8 @@ export type ApprovalKind = 'tool' | 'plan' | 'question' | 'agent'
 /** One line of a plan card. `taskId` and `agentId` are set when the Lead plans a hand-off. */
 export interface PlanStep {
   title: string
+  /** What must be true for the step to be done, 2 to 5 testable lines. Plans saved before this have none. */
+  criteria?: string[]
   taskId?: string
   agentId?: string
   /** The workspace the Lead created for this step, set once the plan is approved and handed off. */

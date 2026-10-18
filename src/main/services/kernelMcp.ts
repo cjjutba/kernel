@@ -71,7 +71,7 @@ export interface KernelToolDeps {
    * question's options with their descriptions, as AskUserQuestion's do (KERNEL-407). `signal` is the tool call's: when the
    * turn stops, as when the user writes in the message box instead, the card ends as expired and the answer is null (KERNEL-496).
    */
-  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; steps?: string[]; agentFile?: Approval['agentFile'] }, signal?: AbortSignal) => Promise<Decision | null>
+  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; steps?: PlanLine[]; agentFile?: Approval['agentFile'] }, signal?: AbortSignal) => Promise<Decision | null>
   /** Saves the Lead's new agent: the file it wrote for `me`, or the pull request that adds it for `team` (KERNEL-466). */
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }, scope?: AgentScope) => Promise<string | AgentChangePr>
   /**
@@ -303,6 +303,9 @@ export function quotesUser(quote: string | undefined, said: string | undefined):
 }
 
 /** request_plan_approval's refusal when it gets task lines without the write-up (KERNEL-373). */
+/** One task of a plan as the Lead writes it: the line, and the criteria that say when it is done. */
+export interface PlanLine { task: string; criteria?: string[] }
+
 export const NO_PLAN = 'Not asked: plan is missing. Pass the full plan as markdown in plan (context, approach, files, checks) and one line per task in steps, then call request_plan_approval again.'
 
 /** The longest option label ask_user takes (KERNEL-415). */
@@ -444,7 +447,7 @@ export const SAVE_SCRIPTS_QUESTION = 'Save these scripts to .kernel/settings.loc
 const SAVE = 'Save'
 
 /** What the Lead's server tells the model, next to the tools. */
-export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, answer a question, opinion or report and stop, with no closing offer or question. For a request for work, propose who gets what in one yes-or-no question, and call create_workspace only on a go-ahead that raises nothing new, quoted in go_ahead. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Filing or editing tracker issues with file_issue needs the same go-ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off. When the user says to go past a review\'s blockers, call overrule_blockers with their words in go_ahead.'
+export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat, each with 2 to 5 testable acceptance criteria. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, answer a question, opinion or report and stop, with no closing offer or question. For a request for work, propose who gets what in one yes-or-no question, and call create_workspace only on a go-ahead that raises nothing new, quoted in go_ahead. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Filing or editing tracker issues with file_issue needs the same go-ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off. When the user says to go past a review\'s blockers, call overrule_blockers with their words in go_ahead.'
 
 /** What the Lead's server tells the model in a Build here chat (KERNEL-770). */
 export const LEAD_BUILD_INSTRUCTIONS = 'You lead a team of agents in Kernel, and this chat is in Build here: you make the change yourself in this chat\'s worktree and open the pull request. While the chat is in plan mode, ask for approval with request_plan_approval first, then build it. With plan mode off, call start_build with the user\'s words in go_ahead before your first edit, and build only once it passes. Answer a question, opinion or report without changing anything or ending on an offer. create_workspace only starts a review, with review_of. When the work is for a tracker issue, call link_issue before the first push. File or edit tracker issues with file_issue, quoting the user\'s go-ahead in go_ahead. When the work is bigger than one PR or spans lanes, call suggest_hand_off with the reason. Follow up on teammates\' work with message_agent. Use say for a short status line people see on your card in the sidebar.'
@@ -564,7 +567,8 @@ export function kernelTools(d: KernelToolDeps) {
     tool('request_plan_approval', 'Show a plan to the user and wait for approval. Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off. Put the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Returns "approved" with what to do next, or the requested changes.', {
       title: z.string().describe('Short plan title, for example "T-15 Export invoices as PDF"'),
       plan: z.string().describe('The full plan as markdown: context, approach, files, checks. The tasks go in steps, not here'),
-      steps: z.array(z.string()).min(1).describe('One line per task, ideally "<task> · <agent name>"')
+      steps: z.array(z.union([z.string(), z.object({ task: z.string().describe('The task line, ideally "<task> · <agent name>"'), criteria: z.array(z.string()).describe('2 to 5 testable acceptance criteria: what must be true for the task to be done') })])).min(1)
+        .describe('One entry per task: { task: "<task> · <agent name>", criteria: [...] }, with 2 to 5 testable criteria each. create_workspace puts them in the teammate\'s brief')
     }, async ({ title, plan, steps }, extra) => {
       // The chat's plan toggle decides, so a plan never shows with Copy and Approve in a chat that isn't planning (KERNEL-176).
       if (!d.planMode?.()) return { ...text(build ? BUILD_PLAN_MODE_OFF : PLAN_MODE_OFF), isError: true }
@@ -573,7 +577,7 @@ export function kernelTools(d: KernelToolDeps) {
       bus.activity({ kind: 'approval.requested', projectId: d.projectId, agentId: d.lead?.id, text: 'asked you to review', object: title })
       // A plan to hand off says when this chat's own edits stay behind, since teammates start from the base (KERNEL-770).
       const left = build ? '' : await leftBehind()
-      const decision = await d.askUser({ kind: 'plan', title, detail: left ? `${plan.trimEnd()}\n\n${left}` : plan, steps }, signalOf(extra))
+      const decision = await d.askUser({ kind: 'plan', title, detail: left ? `${plan.trimEnd()}\n\n${left}` : plan, steps: steps.map((st) => (typeof st === 'string' ? { task: st } : st)) }, signalOf(extra))
       if (!decision) return text('No answer yet. Wait and ask again later.')
       // Out of plan mode before the answer goes back, so the hand-off that follows runs outside it.
       if (decision.behavior === 'allow') return text((await d.planApproved?.()) || `approved. ${HANDOFF_NOW}`)

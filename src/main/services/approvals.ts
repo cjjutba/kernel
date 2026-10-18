@@ -236,13 +236,13 @@ function answerOf(prev: Approval, decision: Decision, typed?: Typed): Pick<Appro
 export const needsUser = (toolName: string) => toolName === 'ExitPlanMode' || toolName === 'AskUserQuestion'
 
 /** "T-15a PDF renderer · Sean" becomes a step with the agent's id. Lines without a known name stay as plain text. */
-export function parsePlanSteps(lines: string[], agents: { id: string; name: string }[]): PlanStep[] {
-  return lines.map((line) => {
+export function parsePlanSteps(lines: { task: string; criteria?: string[] }[], agents: { id: string; name: string }[]): PlanStep[] {
+  return lines.map(({ task: line, criteria }) => {
     const at = line.lastIndexOf(' · ')
     const agent = at < 0 ? undefined : agents.find((a) => a.name.toLowerCase() === line.slice(at + 3).trim().toLowerCase() || a.id === line.slice(at + 3).trim().toLowerCase())
     const title = agent ? line.slice(0, at).trim() : line.trim()
     const id = /^(T-\d+[a-z]?)\b/.exec(title)?.[1]
-    return { title, ...(id ? { taskId: id } : {}), ...(agent ? { agentId: agent.id } : {}) }
+    return { title, criteria: (criteria ?? []).map((c) => c.trim()).filter(Boolean), ...(id ? { taskId: id } : {}), ...(agent ? { agentId: agent.id } : {}) }
   })
 }
 
