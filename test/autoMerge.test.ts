@@ -22,7 +22,7 @@ const AGENTS = {
   'README.md': '# shop\n',
   '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.'
 }
-const ON = { pr: { autoMerge: { on: true } } }
+const ON = { pr: { autoReview: false, autoMerge: { on: true } } }
 const GREEN: PrCheck[] = [{ name: 'Test', state: 'pass' }]
 const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i}`).join('\n') + '\n'
 

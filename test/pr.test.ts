@@ -314,7 +314,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...settings }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...settings, pr: { autoReview: false, ...(settings as { pr?: object }).pr } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const sent: ChatPart[][] = []

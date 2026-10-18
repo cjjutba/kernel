@@ -167,7 +167,7 @@ async function kernelProject() {
   await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: false } }))
   const prs = new Map<string, PrInfo>()
   const merged: string[] = []
   const k = new Kernel({ dataDir, home })

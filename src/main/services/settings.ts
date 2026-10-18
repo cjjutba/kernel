@@ -65,8 +65,8 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   permissions: { mode: 'auto', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
     mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, leadMerge: false, evidenceComment: false,
-    // Each review is a full extra agent run on every PR, so it starts off on every plan (feat-automatic-review-off-by-default).
-    autoReview: false,
+    // On for everyone who never chose, so a new user gets the cross-model review without finding a setting (KERNEL-1075).
+    autoReview: true,
     // Nothing merges by itself until the user turns this on (KERNEL-556).
     autoMerge: { on: false, maxLines: 400, alwaysReview: [], withoutReview: false },
     // Create PR sends this fitted to the repo's PR template, contributing guide and commitlint (KERNEL-468).
@@ -84,7 +84,7 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
 /**
  * The settings a Claude plan sets a default for. One the user never set follows the plan (KERNEL-225). The Lead's and the
  * reviewer's models and every role's effort live in `models.roles` since KERNEL-406. No plan sets `pr.autoReview` any more
- * (feat-automatic-review-off-by-default). It stays here so `planDefaulted` still says whether the user chose it. Each role's
+ * (feat-automatic-review-off-by-default, KERNEL-1075). It stays here so `planDefaulted` still says whether the user chose it. Each role's
  * compact window follows the plan too (feat-compact-window-per-role-with-plan).
  */
 export const PLAN_KEYS = [
@@ -97,11 +97,10 @@ export const PLAN_KEYS = [
 /**
  * What every launch saved for the plan keys, and for the PR texts, before KERNEL-225. A saved value in its key's list was
  * never a choice, so an existing file's value counts as unset and the plan's default, or the new text, applies. A user who chose Opus for the reviewer back then can't be told
- * from the default Kernel pinned, and moves to the plan's default too (D-094). `pr.autoReview` keeps its `true`: an old file's
- * `true` was the default of its day, so it reads as unset and follows today's default, off (feat-automatic-review-off-by-default).
+ * from the default Kernel pinned, and moves to the plan's default too (D-094).
  */
 const SAVED_BEFORE: Record<string, unknown[]> = {
-  'models.lead': ['claude-opus-5-5'], 'models.reviewer': ['claude-opus-5-5'], 'models.effort': ['high'], 'models.engineers': ['claude-sonnet-5-5'], 'models.qa': ['claude-sonnet-5-5'], 'models.agentLimit': [0], 'pr.autoReview': [true],
+  'models.lead': ['claude-opus-5-5'], 'models.reviewer': ['claude-opus-5-5'], 'models.effort': ['high'], 'models.engineers': ['claude-sonnet-5-5'], 'models.qa': ['claude-sonnet-5-5'], 'models.agentLimit': [0],
   // Address review's text before it told the agent to act only on the comments listed (KERNEL-222), and the texts of Address
   // review, Resolve conflicts and Fix checks before they put the repo's own steps first and named the branch (KERNEL-564).
   'pr.addressReviewInstructions': [
@@ -132,8 +131,8 @@ export function planOf(subscriptionType: unknown): ClaudePlan {
  * What the plan changes about the app's defaults. Pro has a much lower 5-hour and weekly limit, so it gets Sonnet for the Lead
  * and the reviewer, medium effort, two teammates at a time and a 200k compact window for every role
  * (feat-compact-window-per-role-with-plan). Every other plan, and one Kernel can't read, keeps the defaults
- * but for a Sonnet reviewer (KERNEL-225). Automatic review is off on every plan, in the defaults themselves
- * (feat-automatic-review-off-by-default).
+ * but for a Sonnet reviewer (KERNEL-225). Automatic review is on for every plan, in the defaults themselves
+ * (KERNEL-1075).
  */
 export function planDefaults(plan: ClaudePlan | undefined): DeepPartial<AppSettings> {
   if (plan === 'pro') {
@@ -280,8 +279,6 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   }
   const sparseFile = typeof version === 'number' && version >= SPARSE_SINCE
   const saved: DeepPartial<AppSettings> = (sparseFile ? s : sparse(s, defaults)) ?? {}
-  // An old file's `false` was a choice, back when the default was on. It equals today's default, so `sparse` dropped it (feat-automatic-review-off-by-default).
-  if (!sparseFile && group('pr')?.autoReview === false) saved.pr = { ...saved.pr, autoReview: false }
   migrateRoles(saved)
   if (!(typeof version === 'number' && version >= SAVED_VERSION)) splitEngineers(saved)
   migrateSides(saved)
