@@ -576,7 +576,7 @@ describe('a local merge through the PR feature', () => {
   it("reads the branch as ready, merges it with the project's method, and marks the workspace merged", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false, autoReview: false } }))
     const k = new Kernel({ dataDir, home })
     kernels.push(k)
     await k.start()
@@ -611,7 +611,7 @@ describe('a local merge through the PR feature', () => {
   it('asks the agent to merge the base into a branch that fell behind it, and only then (KERNEL-478, KERNEL-886)', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: false } }))
     const k = new Kernel({ dataDir, home })
     kernels.push(k)
     await k.start()
@@ -655,7 +655,7 @@ describe("the project's merge method (KERNEL-468)", () => {
   async function kernel() {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false, autoReview: false } }))
     const k = new Kernel({ dataDir, home })
     kernels.push(k)
     await k.start()
