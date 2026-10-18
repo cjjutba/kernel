@@ -27,6 +27,7 @@ import { leadUpdateDeps, listen, notificationDeps, overlapDeps, taskDeps } from 
 import { sessionDeps } from './features/sessionDeps'
 import { App } from './features/app'
 import { Inbox } from './features/inbox'
+import { Attention } from './features/attention'
 import { Checkpoints } from './features/checkpoints'
 import { Config } from './features/config'
 import { Hooks } from './features/hooks'
@@ -89,6 +90,7 @@ export class Kernel {
   // Each is built with this Kernel and does no work until it is called (R1), so the order here doesn't matter.
   readonly app = new App(this)
   readonly inbox = new Inbox(this)
+  readonly attention = new Attention(this)
   readonly checkpoints = new Checkpoints(this)
   readonly config = new Config(this)
   readonly hooks = new Hooks(this)
@@ -276,7 +278,7 @@ export class Kernel {
    * its own channels, and `channels` throws if two answer the same one (KERNEL-324).
    */
   handlers(): Handlers {
-    return channels(this.app.handlers(), this.inbox.handlers(), this.checkpoints.handlers(), this.config.handlers(),
+    return channels(this.app.handlers(), this.inbox.handlers(), this.attention.handlers(), this.checkpoints.handlers(), this.config.handlers(),
       this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.projects.handlers(),
       this.setup.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
       this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers(),
