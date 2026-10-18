@@ -8,7 +8,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo, freePort } from './helpers'
-import { BLOCKER_RULE, GO_AHEAD_LINE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, SETUP_LINE, TEAMMATE_RULE, UPDATE_HEADER } from '../src/main/services/handoff'
+import { BLOCKER_RULE, GO_AHEAD_LINE, HANDOFF_NOW, HANDOFF_REMINDER, forProvider, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, SETUP_LINE, TEAMMATE_RULE, UPDATE_HEADER } from '../src/main/services/handoff'
 import { reviewTools } from '../src/main/services/reviewMcp'
 import { reviewPolicyOf } from '../src/main/services/settings'
 import { kindsFor } from '../src/main/services/lenses'
@@ -79,6 +79,16 @@ describe('what teammates are told about setup (KERNEL-1012)', () => {
     expect(SETUP_LINE).not.toMatch(/Wait for Kernel's note/)
     expect(TEAMMATE_RULE).toContain(SETUP_LINE)
     expect(reviewRule({ author: 'Christian', task: 'x', workspaceId: 'w', branch: 'b', base: 'main' })).toContain(SETUP_LINE)
+  })
+})
+
+describe('the Lead leaves acceptance criteria out of the brief (KERNEL-1080)', () => {
+  it('asks for goal and files, and says the plan step\'s criteria are added', () => {
+    for (const rule of [LEAD_RULE, forProvider(LEAD_RULE, 'codex')]) {
+      expect(rule).toContain('with a complete brief: goal and files.')
+      expect(rule).toContain("Its plan step's criteria are added for you.")
+      expect(rule).not.toMatch(/goal, files, acceptance criteria/)
+    }
   })
 })
 
@@ -638,7 +648,8 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     // sentence about limit replies, 176 more, and feat-review-messages-reach-named its sentence about reporting a message's
     // answer and the review kind to name, 118 more. KERNEL-880 renamed room to project, 9 more. feat-lead-stops-ending-answers-with
     // added its line on answering without an offer, 332 more. feat-lead-files-tracker-issues-only-with named file_issue, 29 more.
-    expect(LEAD_RULE.length).toBeLessThanOrEqual(6200)
+    // KERNEL-1080 swapped "acceptance criteria" in the brief for a line saying the plan step's criteria are added for it, 25 more.
+    expect(LEAD_RULE.length).toBeLessThanOrEqual(6225)
   })
 
   // KERNEL-692: Kernel is the Lead, so its rule speaks to Kernel and never about Kernel in the third person.
