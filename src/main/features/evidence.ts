@@ -162,8 +162,7 @@ export class Evidence extends Feature {
       const check = named[l.criterion]
       return !!check && l.id.toLowerCase().startsWith(`check:${check.toLowerCase()}:`)
     })
-    const links = [...kept.filter((l) => !freshIds.has(`${l.criterion}:${l.id}`)), ...fresh]
-      .map((l) => ({ ...l, stale: stale(l) }))
+    const links = onePerSource([...kept.filter((l) => !freshIds.has(`${l.criterion}:${l.id}`)), ...fresh].map((l) => ({ ...l, stale: stale(l) })))
     const criteria: CriterionEvidence[] = (step?.criteria ?? []).map(criterionText).map((text, index) => {
       const mine = links.filter((l) => l.criterion === index).sort((a, b) => b.ts - a.ts).slice(0, KEEP_PER_CRITERION)
       const current = mine.filter((l) => !l.stale)
@@ -214,6 +213,26 @@ export class Evidence extends Feature {
       }
     } satisfies Partial<Handlers>
   }
+}
+
+/** The event a link is about, without the commit or version it was seen at: one check, one file, one reviewer verdict, one image. */
+const sourceKey = (l: Stored) => {
+  const parts = l.id.split(':')
+  if (l.source === 'image') parts.splice(2, 1)
+  else if (l.source !== 'check' && l.source !== 'files' && l.source !== 'review') return l.id
+  else parts.pop()
+  return `${l.criterion}:${parts.join(':')}`
+}
+
+/** Each push keeps the earlier head's links as stale; the list shows the latest one per source, and it is stale only if that one is from an older commit (KERNEL-1070). */
+function onePerSource(links: Stored[]): Stored[] {
+  const best = new Map<string, Stored>()
+  for (const l of links) {
+    const key = sourceKey(l)
+    const cur = best.get(key)
+    if (!cur || (cur.stale && !l.stale) || (cur.stale === l.stale && l.ts >= cur.ts)) best.set(key, l)
+  }
+  return links.filter((l) => best.get(sourceKey(l)) === l)
 }
 
 const WORD: Record<CriterionStatus, string> = { passed: 'Passed', failed: 'Failed', unverified: 'Unverified', 'reviewer-met': 'Reviewer says met' }
