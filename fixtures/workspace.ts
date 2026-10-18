@@ -905,7 +905,7 @@ const planApproved = (f: Fixture): Partial<Fixture> => {
 const planFinished = (f: Fixture): Partial<Fixture> => {
   const s = planApproved(f)
   const id = s.approvals?.[0]?.id ?? ''
-  return { ...s, attention: { [id]: { prsMerged: 4, needed: 6, byKind: { plan: 1, tool: 2, question: 1, blocker: 1, merge: 1 }, finished: true } } }
+  return { ...s, attention: { [id]: { prsMerged: 4, needed: 5, byKind: { plan: 1, tool: 2, question: 1, blocker: 0, merge: 1 }, finished: true } } }
 }
 
 /** The approved plan of a chat that has your answer as a message (KERNEL-838): Approved is the chat's own user row, so the plan card draws no bubble of its own. */
@@ -2910,6 +2910,15 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Tasks still open: no counter. All merged: the line shows (KERNEL-1063).
   WorkspacePlanOpenTasks: scene((f) => { const s = planApproved(f); const id = s.approvals?.[0]?.id ?? ''; return { ...s, attention: { [id]: { prsMerged: 1, needed: 3, byKind: { plan: 1, tool: 1, question: 0, blocker: 0, merge: 1 }, finished: false } } } }),
   WorkspacePlanFinished: scene(planFinished),
+  // The breakdown open over the chat rows that follow the plan card (KERNEL-1068).
+  WorkspacePlanFinishedFollowed: scene((f) => {
+    const s = planFinished(f)
+    const after: ChatItem[] = [
+      { kind: 'user', id: 'pf-u', ts: at(10, 40), parts: [{ type: 'text', text: 'Thanks. Is the invoice export ready to ship?' }] },
+      { kind: 'text', id: 'pf-a', ts: at(10, 41), text: 'Yes. All four PRs are merged and the export runs against a real invoice.' }
+    ]
+    return { ...s, items: { [ids.leadChat]: [...(s.items?.[ids.leadChat] ?? []), ...after] } }
+  }),
   WorkspacePlanChanges: scene(planChanges),
   WorkspacePlanReplaced: scene(planReplaced),
   WorkspacePlanExit: scene(planExit),
@@ -3394,6 +3403,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceCriteriaFailed: criteriaScene(['failed'], { provider: 'codex' }),
   WorkspaceCriteriaUnverified: criteriaScene(['unverified']),
   WorkspaceCriteriaStale: criteriaScene(['stale'], { provider: 'claude' }),
+  // KERNEL-1077: a reviewed PR whose step had no criteria still names the model that reviewed it.
+  WorkspaceReviewedByCodex: criteriaScene([], { provider: 'codex' }),
+  WorkspaceReviewedByClaude: criteriaScene([], { provider: 'claude' }),
   WorkspaceChangesRequested: prScene('changes', [
     ...prTurn('r', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42 and asked Artkin for review.')
   ], {
