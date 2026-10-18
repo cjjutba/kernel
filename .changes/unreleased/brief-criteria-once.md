@@ -1,5 +1,5 @@
 ---
 type: fixed
-issue: KERNEL-1081
+issue: KERNEL-1073
 ---
-Fixed teammate briefs listing the acceptance criteria twice.
+Fixed a teammate's brief listing the acceptance criteria twice.
