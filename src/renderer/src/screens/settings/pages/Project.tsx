@@ -46,6 +46,7 @@ export function Project({ projectId }: { projectId?: string }) {
     } catch (e) { actions.ui.toast({ title: 'Could not archive the project', sub: cleanError(e) }) }
     setConfirming(false)
   })
+  const restore = () => run('restore', () => call('projects.update', { projectId, patch: { archived: false } }).then((r) => actions.projects.upsert(r), (e) => actions.ui.toast({ title: 'Could not restore the project', sub: cleanError(e) })))
   const open = (what: () => Promise<unknown>, failed: string) => void what().catch((e) => actions.ui.toast({ title: failed, sub: cleanError(e) }))
   return (
     <ProjectPage project={project} rs={rs} title="General">
@@ -72,8 +73,10 @@ export function Project({ projectId }: { projectId?: string }) {
       )}
       {rs && <ProjectReferences projectId={projectId} rs={rs} />}
       <Section title="Danger zone">
-        <Row id="archive-project" label="Archive project" desc="Stops every agent and archives its workspaces. You can restore it.">
-          <Button disabled={!!project.archived} onClick={() => setConfirming(true)}>Archive project</Button>
+        <Row id="archive-project" label="Archive project" desc={project.archived ? 'Archived. Its chats stay in History.' : 'Stops every agent and archives its workspaces. You can restore it.'}>
+          {project.archived
+            ? <Button busy={busy === 'restore'} busyLabel="Restoring" onClick={() => void restore()}>Restore project</Button>
+            : <Button onClick={() => setConfirming(true)}>Archive project</Button>}
         </Row>
       </Section>
       {confirming && (

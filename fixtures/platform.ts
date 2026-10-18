@@ -866,6 +866,7 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-893: the integrations read is slow, so each row shows its name and a skeleton, with no Connect.
   SettingsIntegrationsLoading: settingsPage('integrations', { integrations: integrationRows, lag: { 'integrations.list': 60000 } }),
   SettingsProject: scene(settingsProject),
+  SettingsProjectArchived: scene((f) => { const b = settingsProject(f); return { ...b, projects: (b.projects ?? f.projects).map((r) => (r.id === ids.projectA ? { ...r, archived: true } : r)) } }),
   // KERNEL-253: the project has its GitHub avatar and the Icon row's menu is open. The sidebar row for Client A shows it too.
   SettingsProjectIcon: scene((f) => {
     const project = settingsProject(f)
