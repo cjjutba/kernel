@@ -603,7 +603,7 @@ export function kernelTools(d: KernelToolDeps) {
     tool('create_workspace', 'Create a workspace for one task and hand it to an agent. The agent starts right away while the setup script runs alongside, or, with wait_for, once those PRs merge. When the user turned on Wait for setup, it starts once setup passes.', {
       agent: z.string().describe('Agent id from list_agents, for example "christian"'),
       title: z.string().describe('Task title, used to name the branch'),
-      brief: z.string().describe('Everything the agent needs: goal, files, acceptance criteria'),
+      brief: z.string().describe('Everything the agent needs: goal and files. The plan step\'s criteria are added for you'),
       mode: z.enum(['worktree', 'current']).optional(),
       base_ref: z.string().optional(),
       branch: z.string().optional().describe('Only when the user asked for a particular branch name. Left out, Kernel names it from the issue key and title, for example fix/kernel-267-review-cant-start-reviewed-branch'),
