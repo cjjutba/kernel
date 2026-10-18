@@ -7,7 +7,7 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
 import { decide, type ReviewState, type TeamEvent } from '../src/main/services/leadUpdates'
-import { kernelTools, NO_OVERRULE, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { GO_AHEAD_REPEAT, kernelTools, NO_OVERRULE, type KernelToolDeps, type UserWords } from '../src/main/services/kernelMcp'
 import { tempRepo, freePort } from './helpers'
 
 // KERNEL-732: the user, or the Lead on the user's quoted words, overrules the reviews' blockers on a PR's head commit.
@@ -153,7 +153,7 @@ describe('overrule_blockers', () => {
     { id: 'w1', projectId: 'project', name: 'w1', agentId: 'christian', status: 'ready', prState: 'ready', prNumber: 54 } as Workspace,
     { id: 'rv', projectId: 'project', name: 'rv', agentId: 'artkin', status: 'ready', prState: 'none', reviewOf: 'w1' } as Workspace
   ]
-  function lead(o: { said?: string; userTurn?: boolean; fails?: string } = {}) {
+  function lead(o: { said?: string; userTurn?: boolean; fails?: string; words?: UserWords[] } = {}) {
     const all = list()
     const overrule = vi.fn(async (id: string, note?: string) => {
       if (o.fails) throw new Error(o.fails)
@@ -164,7 +164,8 @@ describe('overrule_blockers', () => {
       projectId: 'project', lead: { id: 'kernel', lead: true } as AgentDef, agents: async () => [], workspaces: () => all,
       createWorkspace: async () => all[0], messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => undefined, isRunning: () => false, unsaved: async () => false,
-      overrule, userTurn: () => o.userTurn ?? true, userSaid: () => ({ text: o.said ?? 'Those blockers are fine, ignore them and merge.', at: 1 })
+      overrule, userTurn: () => o.userTurn ?? true, userSaid: () => ({ text: o.said ?? 'Those blockers are fine, ignore them and merge.', at: 1 }),
+      ...(o.words ? { userWords: () => o.words! } : {})
     }
     const tool = kernelTools(deps).find((t) => t.name === 'overrule_blockers')!
     const call = async (a: { workspace_id: string; go_ahead: string; note?: string }) => (await tool.handler(a as never, {})) as { content: { text: string }[]; isError?: boolean }
@@ -185,6 +186,19 @@ describe('overrule_blockers', () => {
       expect(await t.call({ workspace_id: 'w1', go_ahead: quote })).toEqual({ content: [{ type: 'text', text: NO_OVERRULE }], isError: true })
       expect(t.overrule).not.toHaveBeenCalled()
     }
+  })
+
+  // KERNEL-1079: the user's answer on the Lead's card counts in a turn they started, never in one Kernel started.
+  it('overrules on an option the user picked on the card, quoted whole, and says to stop after a second refusal', async () => {
+    const words: UserWords[] = [{ text: 'Should we ship it?', how: 'typed' }, { text: 'Ignore the blockers', how: 'option' }]
+    const t = lead({ words })
+    expect(await t.call({ workspace_id: 'w1', go_ahead: 'the blockers' })).toEqual({ content: [{ type: 'text', text: `${NO_OVERRULE} Quote the whole option they picked on your card, "Ignore the blockers".` }], isError: true })
+    expect(await t.call({ workspace_id: 'w1', go_ahead: 'blockers' })).toEqual({ content: [{ type: 'text', text: `Not overruled: ${GO_AHEAD_REPEAT}` }], isError: true })
+    expect((await t.call({ workspace_id: 'w1', go_ahead: 'ignore the blockers' })).isError).toBeUndefined()
+    expect(t.overrule).toHaveBeenCalledTimes(1)
+    const kernels = lead({ words, userTurn: false })
+    expect(await kernels.call({ workspace_id: 'w1', go_ahead: 'Ignore the blockers' })).toEqual({ content: [{ type: 'text', text: NO_OVERRULE }], isError: true })
+    expect(kernels.overrule).not.toHaveBeenCalled()
   })
 
   it("passes on the feature's refusal", async () => {

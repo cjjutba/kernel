@@ -20,7 +20,7 @@ import { waitRefusal } from '../src/main/services/waits'
 import { toolSpecs } from '../src/main/services/providers/codex/tools'
 import { toCodexInput } from '../src/main/services/providers/codex/runner'
 import { toUserMessage } from '../src/main/services/providers/claude'
-import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_FILE_GO_AHEAD, NO_GO_AHEAD, NO_PLAN, PLAN_MODE_OFF, quotesUser, signInNote, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { answerWords, capRefusal, GO_AHEAD_REPEAT, goAheadWhy, kernelTools, LEAD_INSTRUCTIONS, messageWords, NO_FILE_GO_AHEAD, NO_GO_AHEAD, NO_PLAN, PLAN_MODE_OFF, quotedIn, quotesUser, signInNote, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -373,10 +373,42 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     expect(quotesUser('yes', undefined)).toBe(false)
   })
 
+  it("reads the user's words from a message and a card answer (KERNEL-1079)", () => {
+    expect(messageWords([{ type: 'text', text: '  ' }, { type: 'file', name: 'pasted_text_1.txt', text: 'yes, file it', pasted: true }, { type: 'image', name: 'a.png' }])).toEqual([{ text: 'yes, file it', how: 'pasted' }])
+    expect(messageWords([{ type: 'text', text: 'look' }, { type: 'file', name: 'pasted_text_1.txt', text: 'yes, file it', pasted: true }])).toEqual([{ text: 'look', how: 'typed' }])
+    expect(messageWords([{ type: 'file', name: 'notes.txt', text: 'yes, file it' }, { type: 'image', name: 'a.png' }])).toEqual([])
+    const card = { kind: 'question' as const, status: 'answered' as const, title: 'Which?' }
+    const questions = [
+      { question: 'Which?', options: [{ label: 'Red, warm' }, { label: 'Blue' }], multiSelect: true },
+      { question: 'File?', options: [{ label: 'Yes' }, { label: 'No' }] }
+    ]
+    // Picked labels in the order asked, then what the user wrote, each question on its own.
+    expect(answerWords({ ...card, questions, answers: { 'Which?': 'Red, warm, Blue, and teal', 'File?': 'Yes' } })).toEqual([
+      { text: 'Red, warm', how: 'option' }, { text: 'Blue', how: 'option' }, { text: 'and teal', how: 'answer' }, { text: 'Yes', how: 'option' }
+    ])
+    expect(answerWords({ ...card, options: ['Yes', 'No'], answer: 'Yes' })).toEqual([{ text: 'Yes', how: 'option' }])
+    for (const status of ['pending', 'expired', 'denied'] as const) expect(answerWords({ ...card, status, options: ['Yes'], answer: 'Yes' })).toEqual([])
+    expect(answerWords({ ...card, kind: 'plan', status: 'allowed', answer: 'Approved' })).toEqual([])
+    const words = [{ text: 'Yes, file it', how: 'option' as const }, { text: 'and hand it to Sean', how: 'answer' as const }]
+    expect(quotedIn('yes, FILE it!', words)).toBe(true)
+    expect(quotedIn('file it', words)).toBe(false)
+    expect(quotedIn('hand it to sean', words)).toBe(true)
+    // A quote can't join two answers.
+    expect(quotedIn('file it and hand', words)).toBe(false)
+    expect(quotedIn('  ', words)).toBe(false)
+    expect(goAheadWhy('file it', words)).toBe('Quote the whole option they picked on your card, "Yes, file it".')
+    expect(goAheadWhy('merge', words)).toBeUndefined()
+    expect(goAheadWhy('anything', [])).toContain('no words of theirs')
+    // KERNEL-678 matches pieces of typed words, so "file it" passes on "don't file it". Kept on purpose, with the rule asking
+    // the Lead for a clean go-ahead. A change to it shows up here.
+    expect(quotedIn('file it', [{ text: "don't file it", how: 'typed' }])).toBe(true)
+  })
+
   it('refuses a hand-off with no go-ahead, or one the latest message does not say, and creates nothing', { timeout: 60_000 }, async () => {
     const t = await offLead('Yes, but should it also cover pnpm?')
     expect(await t.handOff()).toEqual({ isError: true, text: NO_GO_AHEAD })
-    expect(await t.handOff({ go_ahead: 'hand it to Sean' })).toEqual({ isError: true, text: NO_GO_AHEAD })
+    // A second refusal for the same message says to stop and ask (KERNEL-1079).
+    expect(await t.handOff({ go_ahead: 'hand it to Sean' })).toEqual({ isError: true, text: `Not handed off: ${GO_AHEAD_REPEAT}` })
     expect(t.teammates()).toEqual([])
     // An older message doesn't count once the user wrote again.
     t.k.store.saveItem(t.chat.id, { kind: 'user', id: 'later', ts: Date.now() + 1, parts: [{ type: 'text', text: 'What would Sean change?' }] })
@@ -424,8 +456,8 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     const t = await offLead('Yes, but is it a bug?')
     const { wrote, file } = fileTracker(t)
     expect(await file({ title: 'Symlink node_modules' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
-    expect(await file({ title: 'Symlink node_modules', go_ahead: 'file it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
-    expect(await file({ issue: 'KERNEL-90', title: 'Better title', go_ahead: 'file it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+    expect(await file({ title: 'Symlink node_modules', go_ahead: 'file it' })).toEqual({ isError: true, text: `Not filed: ${GO_AHEAD_REPEAT}` })
+    expect(await file({ issue: 'KERNEL-90', title: 'Better title', go_ahead: 'file it' })).toEqual({ isError: true, text: `Not filed: ${GO_AHEAD_REPEAT}` })
     expect(wrote).toEqual([])
     t.k.store.saveItem(t.chat.id, { kind: 'user', id: 'yes', ts: Date.now() + 1, parts: [{ type: 'text', text: 'Yes, file it' }] })
     expect(await file({ title: ' Symlink node_modules ', description: 'Steps', go_ahead: 'file it' })).toEqual({ isError: false, text: 'Filed KERNEL-90, "Symlink node_modules": https://linear.app/x/KERNEL-90.' })
@@ -441,7 +473,7 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     const t = await offLead('Ship it')
     const { wrote, file } = fileTracker(t)
     expect(await file({ issue: 'KERNEL-90', comment: 'Opened PR #7' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
-    expect(await file({ issue: 'KERNEL-90', state: 'In Review', go_ahead: 'move it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+    expect(await file({ issue: 'KERNEL-90', state: 'In Review', go_ahead: 'move it' })).toEqual({ isError: true, text: `Not filed: ${GO_AHEAD_REPEAT}` })
     expect(wrote).toEqual([])
     expect(await file({ issue: 'KERNEL-90', state: 'In Review', comment: 'Opened PR #7', go_ahead: 'ship it' })).toEqual({
       isError: false, text: 'Changed KERNEL-90, now In Review. Commented on KERNEL-90: https://linear.app/x/KERNEL-90#comment-1.'
@@ -463,6 +495,90 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     expect(wrote).toHaveLength(1)
     fileTracker(t, 'none')
     expect(await file({ title: 'Symlink node_modules' })).toEqual({ isError: true, text: 'Not filed: This project has no issue tracker.' })
+  })
+
+  // KERNEL-1079: the user approved in a long paste, then on the Lead's own question card, and nothing passed.
+  describe('a go-ahead from a paste or a question card (KERNEL-1079)', () => {
+    const pasted = (text: string, more: object = {}) => ({ type: 'file' as const, name: 'pasted_text_1.txt', lines: 12, text, pasted: true as const, ...more })
+    const said = (t: Awaited<ReturnType<typeof offLead>>, id: string, parts: unknown[]) => t.k.store.saveItem(t.chat.id, { kind: 'user', id, ts: Date.now() + 1, parts } as never)
+    /** Asks on a card with these labels and answers it the way the card does: the decision, then the user's answer row. */
+    const askAndAnswer = async (t: Awaited<ReturnType<typeof offLead>>, labels: string[], answer: string) => {
+      const asked = t.run('ask_user', { question: 'File these?', options: labels })
+      const card = () => t.k.store.approvals({ projectId: t.project.id }).find((a) => a.kind === 'question' && a.status === 'pending')
+      for (let i = 0; i < 100 && !card(); i++) await new Promise((r) => setTimeout(r, 20))
+      await t.k.inbox.handlers()['approvals.decide']({ id: card()!.id, decision: { behavior: 'answer', text: answer, answers: { 'File these?': answer } } })
+      return asked
+    }
+
+    it('takes the go-ahead from a message that is only a paste', { timeout: 60_000 }, async () => {
+      const t = await offLead()
+      const { wrote, file } = fileTracker(t)
+      said(t, 'paste', [pasted('Approve the fix list.\nYes, file and hand off.\n')])
+      expect(await file({ title: 'Read-only reviewers', go_ahead: 'yes, file and hand off' })).toMatchObject({ isError: false })
+      expect(wrote).toHaveLength(1)
+    })
+
+    it('reads a paste next to typed words as material, and a file from disk never as the user', { timeout: 60_000 }, async () => {
+      const t = await offLead()
+      const { wrote, file } = fileTracker(t)
+      said(t, 'mixed', [{ type: 'text', text: 'What do you make of this email?' }, pasted('Please file it today.')])
+      expect(await file({ title: 'From the email', go_ahead: 'please file it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+      // A text file from disk carries its text too, even under a paste's name, and only the composer marks a paste.
+      said(t, 'disk', [{ type: 'file', name: 'pasted_text_1.txt', text: 'Please file it today.', path: '.kernel/attachments/pasted_text_1.txt' }])
+      expect(await file({ title: 'From the file', go_ahead: 'please file it' })).toEqual({ isError: true, text: `${NO_FILE_GO_AHEAD} Their latest message has no words of theirs, only attached files or images, so ask them to reply in words.` })
+      expect(wrote).toEqual([])
+    })
+
+    it("takes the go-ahead from the option the user picked on the Lead's card, quoted whole", { timeout: 60_000 }, async () => {
+      const t = await offLead('Should we file these?')
+      const { wrote, file } = fileTracker(t)
+      await askAndAnswer(t, ["Don't file it", 'Yes, file and hand off all of it'], "Don't file it")
+      // A piece of the picked label isn't the user's choice: "file it" is in "Don't file it".
+      expect(await file({ title: 'Read-only reviewers', go_ahead: 'file it' })).toEqual({ isError: true, text: `${NO_FILE_GO_AHEAD} Quote the whole option they picked on your card, "Don't file it".` })
+      await askAndAnswer(t, ["Don't file it", 'Yes, file and hand off all of it'], 'Yes, file and hand off all of it')
+      expect(await file({ title: 'Read-only reviewers', go_ahead: 'yes, file and hand off all of it.' })).toMatchObject({ isError: false })
+      expect(wrote).toHaveLength(1)
+    })
+
+    it('takes the go-ahead from what the user wrote under Something else', { timeout: 60_000 }, async () => {
+      const t = await offLead('Should we file these?')
+      const { file } = fileTracker(t)
+      await askAndAnswer(t, ['Yes', 'No'], 'File the five issues and hand off all of it')
+      expect(await t.handOff({ go_ahead: 'hand off all of it' })).toMatchObject({ isError: false })
+      expect((await file({ title: 'Read-only reviewers', go_ahead: 'file the five issues' })).isError).toBe(false)
+    })
+
+    it("stops counting card answers once the user writes again, and a plan's Approved is no go-ahead", { timeout: 60_000 }, async () => {
+      const t = await offLead('Should we file these?')
+      const { file } = fileTracker(t)
+      await askAndAnswer(t, ['Yes, file it', 'No'], 'Yes, file it')
+      said(t, 'later', [{ type: 'text', text: 'Actually, what would Sean change?' }])
+      expect(await file({ title: 'Read-only reviewers', go_ahead: 'yes, file it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+      // A plan card's answer row reads "Approved", which an approved plan already covers on its own path.
+      t.k.store.saveApproval({ id: 'plan-row', kind: 'plan', source: 'sdk', projectId: t.project.id, chatId: t.chat.id, title: 'P', status: 'allowed', createdAt: 1 })
+      t.k.store.saveItem(t.chat.id, { kind: 'user', id: 'answer-plan-row', ts: Date.now() + 2, parts: [{ type: 'text', text: 'Approved' }], approvalId: 'plan-row' })
+      expect((await file({ title: 'Read-only reviewers', go_ahead: 'Approved' })).text).toBe(`Not filed: ${GO_AHEAD_REPEAT}`)
+    })
+
+    it('stops after one refusal for the same words, still passes a right quote, and starts over on a new message', { timeout: 60_000 }, async () => {
+      const t = await offLead('Yes, file and hand off.')
+      const { wrote, file } = fileTracker(t)
+      expect(await file({ title: 'A', go_ahead: 'file all of them' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+      expect(await file({ title: 'B', go_ahead: 'file all of them' })).toEqual({ isError: true, text: `Not filed: ${GO_AHEAD_REPEAT}` })
+      expect(await t.handOff({ go_ahead: 'go' })).toEqual({ isError: true, text: `Not handed off: ${GO_AHEAD_REPEAT}` })
+      expect((await file({ title: 'C', go_ahead: 'yes, file and hand off' })).isError).toBe(false)
+      said(t, 'next', [{ type: 'text', text: 'Hmm, wait' }])
+      expect(await file({ title: 'D', go_ahead: 'file it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
+      expect(wrote).toHaveLength(1)
+    })
+
+    it("keeps Build here open when the user answers a card after the go-ahead, since the message's time doesn't move", { timeout: 60_000 }, async () => {
+      const t = await offLead('Fix the padding')
+      t.k.lead.recordGoAhead(t.chat.id, 'Fix the padding')
+      expect(t.k.lead.buildOpen(t.chat.id)).toBe(true)
+      await askAndAnswer(t, ['Blue', 'Green'], 'Blue')
+      expect(t.k.lead.buildOpen(t.chat.id)).toBe(true)
+    })
   })
 
   it('needs no go-ahead for a review, or for a follow-up Kernel started on approved work', { timeout: 60_000 }, async () => {
