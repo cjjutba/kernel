@@ -852,7 +852,7 @@ function openBurst(first: PushEvent, ms: number) {
 
 /**
  * A workspace update that takes a workspace out of setup (its status leaves 'setup', or its worktree is no longer pending) while one of its chats
- * holds a message for setup. Main sends it before it releases that message, so drawn alone it leaves one frame with SetupWait gone, no spinner and the
+ * holds a message until it is made. Main sends it before it releases that message, so drawn alone it leaves one frame with SetupWait gone, no spinner and the
  * queue strip showing. The strip's chat id is what the release's `chat.queue` names.
  */
 function leavesSetupHolding(e: PushEvent): string | undefined {
@@ -860,7 +860,7 @@ function leavesSetupHolding(e: PushEvent): string | undefined {
   const was = getState().workspaces.find((w) => w.id === e.workspace.id)
   if (!was || !(was.status === 'setup' && e.workspace.status !== 'setup') && !(was.worktreePending && !e.workspace.worktreePending)) return undefined
   const s = getState()
-  return (s.chats[e.workspace.id] ?? []).find((c) => s.queueWhy[c.id] === 'setup' && s.queue[c.id]?.length)?.id
+  return (s.chats[e.workspace.id] ?? []).find((c) => s.queueWhy[c.id] === 'worktree' && s.queue[c.id]?.length)?.id
 }
 
 /**

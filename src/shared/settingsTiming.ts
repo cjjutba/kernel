@@ -60,8 +60,6 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   'workspace.oneCurrentBranchPerProject': 'newWorkspaces',
   // The branch a new Lead chat starts on, in features/workspaces.ts and features/lead.ts.
   'workspace.leadBranchPattern': 'newChats',
-  // features/lead.ts, when a Lead chat starts.
-  'workspace.leadWaitForSetup': 'newChats',
   // features/lead.ts, when a Lead chat is archived.
   'workspace.archiveChatWorkspaces': 'now',
   // features/setup.ts, when a workspace is made.
@@ -174,7 +172,6 @@ export const PROJECT_SETTING_TIMING: Record<ProjectSettingPath, SettingTiming> =
   'workspace.baselineCurrentBranch': 'newWorkspaces',
   'workspace.oneCurrentBranchPerProject': 'newWorkspaces',
   'workspace.leadBranchPattern': 'newChats',
-  'workspace.leadWaitForSetup': 'newChats',
   'workspace.archiveChatWorkspaces': 'now',
   // disabledFor() in features/sessionDeps.ts, when a chat's process starts.
   'disabled.skills': 'newChats',
