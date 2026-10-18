@@ -226,7 +226,7 @@ export class Prs extends Feature {
    * The PR's checks, review comments and conflicts, for the Checks tab and the review card. It goes through `refreshPr`, so
    * the header moves with what the tab shows (KERNEL-388). Null when there is no PR or GitHub couldn't be read.
    */
-  private async getPr(id: string) {
+  async getPr(id: string) {
     const ws = this.mustWs(id)
     // A local merge has no number, and what it reads is the branch as it is now (KERNEL-467).
     const local = this.isLocal(ws)

@@ -99,9 +99,10 @@ export interface AppSettings {
    * `autoReview` has Kernel start the reviews a project's `[review]` asks for when a PR passes checks (KERNEL-115, KERNEL-549).
    * Off until the user turns it on, on every plan (feat-automatic-review-off-by-default).
    * `leadMerge` lets the Lead merge ready PRs with merge_workspace, only in a turn the user started (KERNEL-352).
+   * `evidenceComment` posts the evidence against each acceptance criterion as one comment on the PR and edits that comment as it changes. Off by default (KERNEL-1065).
    * `autoMerge` has Kernel merge a PR every review approved by itself, off until the user turns it on (KERNEL-556). Settings, Pull requests has its switch, size limit and paths (KERNEL-557).
    */
-  pr: { mergeMethod: MergeMethod; draft: boolean; requireGreen: boolean; requireReviewer: boolean; autoReview: boolean; leadMerge: boolean; autoMerge: AutoMerge } & PrInstructions
+  pr: { mergeMethod: MergeMethod; draft: boolean; requireGreen: boolean; requireReviewer: boolean; autoReview: boolean; leadMerge: boolean; evidenceComment: boolean; autoMerge: AutoMerge } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
   /**
    * The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace.

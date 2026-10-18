@@ -121,6 +121,8 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   'pr.autoReview': 'now',
   // features/lead.ts, on each merge_workspace call.
   'pr.leadMerge': 'now',
+  // features/evidence.ts, on each update of a PR's evidence.
+  'pr.evidenceComment': 'now',
   // features/prs.ts, on each PR change.
   'pr.autoMerge': 'now',
   // prInstructions() in features/prs.ts, when the action is sent.

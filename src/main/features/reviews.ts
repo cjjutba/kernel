@@ -446,7 +446,9 @@ export class Reviews extends Feature {
   /** The first message a review chat gets. Its rule says the rest: where the work is and how to report. */
   private brief(of: Workspace, kind: ReviewKind): string {
     const author = this.agentsSync(of.projectId).find((a) => a.id === of.agentId)?.name ?? of.agentId
+    const criteria = this.k.evidence.criteriaOf(of)
     return `Run ${reviewsText([kind]).replace(/^The/, 'the')} of PR #${of.prNumber}${of.prTitle ? ` "${of.prTitle}"` : ''} by ${author}.`
+      + (criteria.length ? `\nAcceptance criteria for this task, numbered from 0. Judge each one you can check in submit_review's criteria:\n${criteria.map((c, i) => `${i}. ${c}`).join('\n')}` : '')
   }
 
   private briefParts(of: Workspace, kind: ReviewKind): ChatPart[] { return [{ type: 'text', text: this.brief(of, kind) }] }
@@ -471,6 +473,7 @@ export class Reviews extends Feature {
     const verdict: ReviewVerdict = {
       workspaceId: rws.id, agentId: lens ? lens.agent ?? KERNEL_REVIEWER : rws.agentId, verdict: review.verdict, summary: review.summary.trim(),
       ...(review.verdict === 'blockers' && review.blockers?.length ? { blockers: review.blockers } : {}),
+      ...(review.criteria?.length ? { criteria: review.criteria } : {}),
       ...(/^[0-9a-f]{40}$/.test(sha) ? { sha } : {}), ...(fresh.prNumber ? { prNumber: fresh.prNumber } : {}),
       provider: (chatId ? this.store.chat(chatId)?.provider : undefined) ?? 'claude',
       ...(lens ? { lens: lens.kind } : {}), ...(lens?.optional ? { optional: true as const } : {}),

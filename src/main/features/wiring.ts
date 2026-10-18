@@ -89,6 +89,9 @@ export function listen(k: Kernel): () => void {
     // others. The update goes then, not at the next PR poll (KERNEL-637).
     if ((e.type === 'chat.running' && !e.running) || (e.type === 'chat.queue' && !e.queue.length)) k.leadUpdates.chatFreed()
     if (e.type === 'notification') k.attention.onNotification(e.notification)
+    // The evidence against each criterion follows the PR's checks, reviews and head (KERNEL-1065).
+    if (e.type === 'pr.info') k.evidence.onPrInfo(e.info)
+    if (e.type === 'workspace') k.evidence.onWorkspace(e.workspace)
     if (e.type === 'agent.status') k.team.onStatus(e)
     // An archived project's settings files aren't watched (KERNEL-723).
     if (e.type === 'project' && e.project.archived) k.config.unwatchProject(e.project.id)
