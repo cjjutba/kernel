@@ -73,7 +73,7 @@ export function Project({ projectId }: { projectId?: string }) {
       )}
       {rs && <ProjectReferences projectId={projectId} rs={rs} />}
       <Section title="Danger zone">
-        <Row id="archive-project" label="Archive project" desc={project.archived ? 'Archived. Its chats stay in History.' : 'Stops every agent and archives its workspaces. You can restore it.'}>
+        <Row id="archive-project" label={project.archived ? 'Restore project' : 'Archive project'} desc={project.archived ? 'Archived. Its chats stay in History.' : 'Stops every agent and archives its workspaces. You can restore it.'}>
           {project.archived
             ? <Button busy={busy === 'restore'} busyLabel="Restoring" onClick={() => void restore()}>Restore project</Button>
             : <Button onClick={() => setConfirming(true)}>Archive project</Button>}
