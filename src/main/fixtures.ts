@@ -74,7 +74,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     d.behavior === 'answer' ? { ...a, status: 'answered', answer: d.text } : { ...a, status: d.behavior === 'allow' ? 'allowed' : 'denied' }
 
   const handlers: Handlers = {
-    'attention.plan': async () => ({ prsMerged: 0, needed: 0, byKind: { plan: 0, tool: 0, question: 0, blocker: 0, merge: 0 }, finished: false }),
+    'attention.plan': async ({ approvalId }) => f.attention?.[approvalId] ?? ({ prsMerged: 0, needed: 0, byKind: { plan: 0, tool: 0, question: 0, blocker: 0, merge: 0 }, finished: false }),
     'preflight.run': async () => f.preflight,
     'preflight.fix': async () => { if (f.preflightFixError) throw new Error(f.preflightFixError); return f.preflight },
     'hooks.install': async () => ({ path: '(fixture)', events: [] }),

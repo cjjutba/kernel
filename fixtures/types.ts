@@ -1,4 +1,4 @@
-import type { AccountProfile, MoveNotice, Provider, ProviderModel, ProviderStatus,
+import type { PlanAttention, AccountProfile, MoveNotice, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, ClaudeAccount, DeletePreview,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, GitHubOwner, RepoSummary, Project, ProjectSettings, ProjectTracker, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, ResolvedPath, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
@@ -59,6 +59,8 @@ export interface Fixture {
   folders?: FolderInfo[]
   /** By chat id. */
   queue?: Record<string, QueuedMessage[]>
+  /** What an approved plan needed from you, by approval id (KERNEL-1063). A missing one reads as unfinished. */
+  attention?: Record<string, PlanAttention>
   /** By workspace id. */
   /** What a path mentioned in chat resolves to, by workspace id, then the text as the agent wrote it (`src/a.ts:12-14`). Checked before the tree, for lines, ambiguous names and folders. */
   mentions?: Record<string, Record<string, ResolvedPath>>
