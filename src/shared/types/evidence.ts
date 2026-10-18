@@ -1,5 +1,8 @@
-/** Where a criterion stands. It is `unverified` until a real event links it, and an agent saying it is done is not an event. */
-export type CriterionStatus = 'passed' | 'failed' | 'unverified'
+/**
+ * Where a criterion stands. It is `unverified` until a real event links it, and an agent saying it is done is not an event.
+ * `reviewer-met` is a criterion only the reviewer's judgment supports: no CI check the plan named for it passed (KERNEL-1069).
+ */
+export type CriterionStatus = 'passed' | 'failed' | 'unverified' | 'reviewer-met'
 
 /** The kind of event a link comes from. `review` is always the reviewer's judgment. */
 export type EvidenceSource = 'check' | 'review' | 'files' | 'image'

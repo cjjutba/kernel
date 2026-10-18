@@ -10,6 +10,7 @@ import { AnswerBubble } from './AnswerBubble'
 import { TranscriptGlide } from '../glideContext'
 import { decideInChat } from './optimisticAnswer'
 import { planAnswer } from '@shared/approvalAnswer'
+import { criterionText } from '@shared/criteria'
 import { outcome, planSteps, planText } from './steps'
 import './cards.css'
 
@@ -37,7 +38,7 @@ const openPlanFile = (a: Approval) =>
 /** A step's acceptance criteria as a muted list under its title. A step without any draws nothing. */
 export function Criteria({ step, className }: { step: PlanStep; className: string }) {
   if (!step.criteria?.length) return null
-  return <ul className={className} aria-label={`Acceptance criteria for ${step.title}`}>{step.criteria.map((c, i) => <li key={i}>{c}</li>)}</ul>
+  return <ul className={className} aria-label={`Acceptance criteria for ${step.title}`}>{step.criteria.map((c, i) => <li key={i}>{criterionText(c)}</li>)}</ul>
 }
 
 /** The Lead's tasks as numbered rows, the agent's name muted beside each, with a way into its workspace once the plan is handed off. */

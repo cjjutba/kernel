@@ -3,11 +3,14 @@ import type { ChatPart } from './chats'
 
 export type ApprovalKind = 'tool' | 'plan' | 'question' | 'agent'
 
+/** One acceptance criterion. `check` is the CI check the Lead named as proof of it (KERNEL-1069). A plain string is a criterion with no named check, which is how plans saved before this stored them. */
+export type PlanCriterion = string | { text: string; check?: string }
+
 /** One line of a plan card. `taskId` and `agentId` are set when the Lead plans a hand-off. */
 export interface PlanStep {
   title: string
   /** What must be true for the step to be done, 2 to 5 testable lines. Plans saved before this have none. */
-  criteria?: string[]
+  criteria?: PlanCriterion[]
   taskId?: string
   agentId?: string
   /** The workspace the Lead created for this step, set once the plan is approved and handed off. */
