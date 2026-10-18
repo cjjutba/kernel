@@ -37,6 +37,8 @@ export interface Approval {
   options?: string[]
   /** Question approvals: every question the agent asked. `title` and `options` stay the first one's. */
   questions?: AskedQuestion[]
+  /** Question approvals from the Lead: the ids of the workspaces the question is about, when it names any (KERNEL-1067). */
+  about?: string[]
   /** Question approvals: the answer to each question, keyed by its text. */
   answers?: Record<string, string>
   /** Plan approvals. */
