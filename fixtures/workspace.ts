@@ -219,6 +219,16 @@ const withBlockers = (f: Fixture): Fixture => ({
   prs: Object.fromEntries(Object.entries(f.prs ?? {}).map(([id, info]) => [id, id === ids.table ? { ...info, head: 'h147' } : info]))
 })
 
+/** The invoice table's PR after a push: Artkin approved the first commit, GitHub reads the PR as ready, and the review of the new head is running (KERNEL-1071). */
+const withReviewRunning = (f: Fixture): Fixture => ({
+  ...f,
+  workspaces: f.workspaces.map((w) => (w.id === ids.table ? {
+    ...w, prHead: 'h2', reviewRound: { n: 2, rounds: 3, head: 'h2', prNumber: 147, kinds: ['code' as const] },
+    reviews: [{ workspaceId: 'ws-review-147', agentId: 'artkin', verdict: 'approved' as const, summary: 'Looks good.', sha: 'h1', prNumber: 147, lens: 'code' as const, ts: at(10, 38) }]
+  } : w)),
+  prs: Object.fromEntries(Object.entries(f.prs ?? {}).map(([id, info]) => [id, id === ids.table ? { ...info, head: 'h2' } : info]))
+})
+
 const withOverruled = (f: Fixture, o: Partial<Overrule> = {}): Fixture => ({
   ...f,
   workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, overruled: { head: 'h147', kinds: ['code' as const], by: 'user' as const, ts: at(10, 52), note: 'Retry is tracked in KERNEL-190', ...o } } : w))
@@ -3393,6 +3403,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceCriteriaFailed: criteriaScene(['failed'], { provider: 'codex' }),
   WorkspaceCriteriaUnverified: criteriaScene(['unverified']),
   WorkspaceCriteriaStale: criteriaScene(['stale'], { provider: 'claude' }),
+  // KERNEL-1077: a reviewed PR whose step had no criteria still names the model that reviewed it.
+  WorkspaceReviewedByCodex: criteriaScene([], { provider: 'codex' }),
+  WorkspaceReviewedByClaude: criteriaScene([], { provider: 'claude' }),
   WorkspaceChangesRequested: prScene('changes', [
     ...prTurn('r', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42 and asked Artkin for review.')
   ], {
@@ -3485,6 +3498,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   PrReadyHidden: headerScene('ready', []),
   // Blockers on the latest commit: the band reads Blockers found in red, with a soft Merge anyway (KERNEL-501).
   PrBlockers: withBlockers(headerScene('ready', [], { panel: true })),
+  PrWaitingReview: withReviewRunning(headerScene('ready', [], { panel: true })),
   PrBlockersOverruled: withOverruled(withBlockers(headerScene('ready', [], { panel: true }))),
   ConfirmOverrule: withBlockers(headerScene('ready', [], { panel: true })),
   PrCiFailHidden: headerScene('cifail', [prNote('h-note', 'Checks failed on PR #147.', 'cifail')]),
