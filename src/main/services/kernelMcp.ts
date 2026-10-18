@@ -101,6 +101,11 @@ export interface KernelToolDeps {
    */
   userSaid?: () => { text: string; at: number } | undefined
   /**
+   * What a go-ahead can be quoted from: the words of the user's latest message and of the question cards they answered in this
+   * tab since (`messageWords`, `answerWords`, KERNEL-1079). Left out, the go-ahead checks read `userSaid`'s text.
+   */
+  userWords?: () => UserWords[]
+  /**
    * Whether this Build here chat may change files now (`buildOpen`, KERNEL-992). Read on each call. Left out, start_build
    * refuses.
    */
@@ -290,17 +295,78 @@ export const uncommittedNote = (files: number, base: string) =>
   `This chat's worktree has ${files} uncommitted ${files === 1 ? 'change' : 'changes'}. Teammates start from ${base} and won't see ${files === 1 ? 'it' : 'them'}.`
 
 /** create_workspace's refusal with plan mode off when go_ahead is missing or isn't in the user's latest message (KERNEL-678). */
-export const NO_GO_AHEAD = "Not handed off: quote the user's go-ahead from their latest message, or ask them first."
+export const NO_GO_AHEAD = "Not handed off: quote the user's go-ahead from their latest message or their answer on your card, or ask them first."
 
 /** file_issue's refusal with plan mode off, worded and checked as create_workspace's NO_GO_AHEAD. */
-export const NO_FILE_GO_AHEAD = "Not filed: quote the user's go-ahead from their latest message, or ask them first."
+export const NO_FILE_GO_AHEAD = "Not filed: quote the user's go-ahead from their latest message or their answer on your card, or ask them first."
 
 /** Whether `quote` appears in what the user said, ignoring case and whitespace (KERNEL-678). An empty quote never does. */
 export function quotesUser(quote: string | undefined, said: string | undefined): boolean {
-  const flat = (s: string) => s.toLowerCase().replace(/\s+/g, '')
   const q = flat(quote ?? '')
   return !!q && flat(said ?? '').includes(q)
 }
+
+const flat = (s: string) => s.toLowerCase().replace(/\s+/g, '')
+/** An option label as a quote has to match it: whole, ignoring case, whitespace and a closing full stop or exclamation mark. */
+const whole = (s: string) => flat(s).replace(/[.!]+$/, '')
+
+/**
+ * Something the user said that a go-ahead can be quoted from (KERNEL-1079). `typed` and `pasted` are their latest message,
+ * `answer` is what they wrote on a question card, `option` a label they picked there, which counts only whole: the Lead wrote
+ * it, so a piece of it ("file it" out of "Don't file it") is not the user's choice.
+ */
+export interface UserWords { text: string; how: 'typed' | 'pasted' | 'answer' | 'option' }
+
+/**
+ * The words of the user's latest message: its typed text, or, when it has none, the text they pasted into the composer.
+ * Pasted next to typed words, a paste is material to act on, not their say-so. A file from disk or an image never counts.
+ */
+export function messageWords(parts: ChatPart[]): UserWords[] {
+  const typed = parts.map((p) => (p.type === 'text' ? p.text : '')).join('\n').trim()
+  if (typed) return [{ text: typed, how: 'typed' }]
+  return parts.flatMap((p): UserWords[] => (p.type === 'file' && p.pasted && p.text?.trim() ? [{ text: p.text, how: 'pasted' }] : []))
+}
+
+/**
+ * The words of an answered question card, each question on its own so a quote can't join two answers. An answer is the picked
+ * labels in the order asked, then the typed text, joined with ", " (`pickAnswer`), so each picked label is an `option` and the
+ * rest is an `answer`. Any other card, and a question card that wasn't answered, says nothing.
+ */
+export function answerWords(a: Pick<Approval, 'kind' | 'status' | 'title' | 'options' | 'questions' | 'answers' | 'answer'>): UserWords[] {
+  if (a.kind !== 'question' || a.status !== 'answered') return []
+  const questions = a.questions?.length ? a.questions : [{ question: a.title, options: (a.options ?? []).map((label) => ({ label })) }]
+  return questions.flatMap((q) => {
+    const said = a.answers?.[q.question] ?? (questions.length === 1 ? a.answer : undefined)
+    if (!said?.trim()) return []
+    const out: UserWords[] = []
+    let rest = said.trim()
+    for (const { label } of q.options) {
+      if (rest === label) { out.push({ text: label, how: 'option' }); rest = ''; break }
+      if (rest.startsWith(`${label}, `)) { out.push({ text: label, how: 'option' }); rest = rest.slice(label.length + 2).trim() }
+    }
+    return rest ? [...out, { text: rest, how: 'answer' }] : out
+  })
+}
+
+/** Whether `quote` is the user's: a whole option they picked, or in their typed, pasted or written words. */
+export function quotedIn(quote: string | undefined, words: UserWords[]): boolean {
+  const q = quote?.trim() ?? ''
+  return !!flat(q) && words.some((w) => (w.how === 'option' ? whole(w.text) === whole(q) : quotesUser(q, w.text)))
+}
+
+/** Why a quote didn't pass, when there is more to say than the refusal: nothing of theirs to quote, or a piece of an option. */
+export function goAheadWhy(quote: string | undefined, words: UserWords[]): string | undefined {
+  if (!words.length) return 'Their latest message has no words of theirs, only attached files or images, so ask them to reply in words.'
+  const q = flat(quote?.trim() ?? '')
+  const part = q && words.find((w) => w.how === 'option' && flat(w.text).includes(q))
+  return part ? `Quote the whole option they picked on your card, "${part.text}".` : undefined
+}
+
+/** A go-ahead check's refusal: its full text, and the words it starts with for a repeat. */
+interface Refused { text: string; verb: string }
+
+/** A go-ahead refused again for the same words: the Lead stops and asks, since another try can't pass (KERNEL-1079). */
+export const GO_AHEAD_REPEAT = "this go-ahead was already refused for the user's latest message, and trying again won't pass. Don't call it again: ask the user once in plain words and end your turn."
 
 /** request_plan_approval's refusal when it gets task lines without the write-up (KERNEL-373). */
 /** One task of a plan as the Lead writes it: the line, and the criteria that say when it is done. */
@@ -316,7 +382,7 @@ export const MERGE_OFF = 'Merging is off in Settings, Pull requests. Tell the us
 export const MERGE_NOT_ASKED = 'Only the user can ask you to merge. Tell them which PRs are ready.'
 
 /** overrule_blockers' refusal when the user's latest message doesn't hold go_ahead, or Kernel started the turn (KERNEL-732). */
-export const NO_OVERRULE = "Not overruled: only the user can overrule a review's blockers. Quote their words from their latest message in go_ahead, or tell them what the reviews found and ask."
+export const NO_OVERRULE = "Not overruled: only the user can overrule a review's blockers. Quote their words from their latest message or their answer on your card in go_ahead, or tell them what the reviews found and ask."
 
 /** Why merge_workspace skips a PR in this state (KERNEL-411). */
 const NOT_MERGEABLE = notMergeable
@@ -546,7 +612,7 @@ export function kernelTools(d: KernelToolDeps) {
    * since the user last wrote, or in a turn Kernel started in a chat that already had an approved plan or a hand-off, which is
    * a follow-up on approved work. create_workspace and file_issue both check it.
    */
-  const goAheadOf = (quote: string | undefined): string | false | undefined => {
+  const goAheadOf = (quote: string | undefined, no: Refused): string | { refused: string; repeat: boolean } | undefined => {
     if (!d.userSaid || d.planMode?.()) return undefined
     if (build && d.buildOpen?.()) return undefined
     const plans = d.plans?.() ?? []
@@ -554,7 +620,26 @@ export function kernelTools(d: KernelToolDeps) {
     const said = d.userSaid()
     if (plans.some((p) => p.at > (said?.at ?? 0))) return undefined
     const q = quote?.trim() ?? ''
-    return quotesUser(q, said?.text) ? q : false
+    const words = wordsNow()
+    return quotedIn(q, words) ? q : refusal(no, q, words)
+  }
+  /** The user's words a go-ahead is checked against (KERNEL-1079), or the latest message's text where the chat gives no more. */
+  const wordsNow = (): UserWords[] => {
+    if (d.userWords) return d.userWords()
+    const said = d.userSaid?.()?.text
+    return said?.trim() ? [{ text: said, how: 'typed' }] : []
+  }
+  /**
+   * The words a go-ahead was last refused for. A second refusal for the same words says to stop and ask, so a Lead can't spend
+   * its turn retrying what can't pass. A right quote still passes, and a new message or card answer starts over (KERNEL-1079).
+   */
+  let refusedFor: string | undefined
+  const refusal = (no: Refused, quote: string, words: UserWords[]): { refused: string; repeat: boolean } => {
+    const key = JSON.stringify([d.userSaid?.()?.at ?? 0, words])
+    if (refusedFor === key) return { refused: `${no.verb}: ${GO_AHEAD_REPEAT}`, repeat: true }
+    refusedFor = key
+    const why = goAheadWhy(quote, words)
+    return { refused: why ? `${no.text} ${why}` : no.text, repeat: false }
   }
   return [
     tool('list_agents', 'List the agents in this project with their roles. Helpers, which don\'t take tasks, come as one line of names.', {}, async () => text(agentList(await d.agents()))),
@@ -612,7 +697,7 @@ export function kernelTools(d: KernelToolDeps) {
       wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or an issue key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged'),
       user_asked: z.boolean().optional().describe("Set to true only when the user explicitly asked for more teammate workspaces than the project's limit allows. Left out, create_workspace refuses once the limit is reached"),
       confirm: z.boolean().optional().describe('Set to true only after the user said to start anyway, when create_workspace warned that someone else may already be on the issue. Left out, Kernel checks for a branch on the remote, an open PR or another assignee first'),
-      go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved this hand-off, quoted from their latest message, for example \"hand it to Sean\". Kernel refuses the hand-off when they aren't in it. Not needed after an approved plan, for a review, or for a follow-up on approved work"),
+      go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved this hand-off, quoted from their latest message or their answer on your question card since, for example \"hand it to Sean\". A picked option is quoted whole. Kernel refuses the hand-off when they aren't in it. Not needed after an approved plan, for a review, or for a follow-up on approved work"),
       images: imagesArg.describe(IMAGES_DESCRIBE)
     }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for, user_asked, confirm, go_ahead, images }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
@@ -647,10 +732,10 @@ export function kernelTools(d: KernelToolDeps) {
         }
       }
       // With plan mode off, a hand-off needs the user's go-ahead, quoted from their latest message (KERNEL-678). A review needs none.
-      const goAhead = review_of ? undefined : goAheadOf(go_ahead)
-      if (goAhead === false) {
-        bus.track({ name: 'handoff.refused', reason: 'go-ahead' })
-        return { ...text(NO_GO_AHEAD), isError: true }
+      const goAhead = review_of ? undefined : goAheadOf(go_ahead, { text: NO_GO_AHEAD, verb: 'Not handed off' })
+      if (typeof goAhead === 'object') {
+        bus.track({ name: 'handoff.refused', reason: goAhead.repeat ? 'go-ahead-repeat' : 'go-ahead' })
+        return { ...text(goAhead.refused), isError: true }
       }
       // A project keeps a limited number of teammate workspaces open at once, so a Lead can't fan out without end. A review is no
       // build workspace and doesn't count, and a user who asked for more goes past it (KERNEL-220). A cap of 0 is none (KERNEL-492).
@@ -821,13 +906,16 @@ export function kernelTools(d: KernelToolDeps) {
     }),
     tool('overrule_blockers', "Overrule the blockers the reviews found on a pull request's latest commit, only when the user's own latest message says to go past them. A review's id overrules on the PR it reviewed. Until a new commit, a merge goes ahead without Merge anyway, and the new commit's reviews count again. Auto-merge never merges past an overrule.", {
       workspace_id: z.string().describe('Workspace id from list_workspaces'),
-      go_ahead: z.string().describe("The user's words that overruled the blockers, quoted from their latest message, for example \"those blockers are fine, ignore them\". Kernel refuses when they aren't in it"),
+      go_ahead: z.string().describe("The user's words that overruled the blockers, quoted from their latest message or their answer on your question card since, for example \"those blockers are fine, ignore them\". A picked option is quoted whole. Kernel refuses when they aren't in it"),
       note: z.string().optional().describe("Why, in a line, as the user put it")
     }, async ({ workspace_id, go_ahead, note }) => {
       const refuse = (why: string) => ({ ...text(why), isError: true })
       if (!d.overrule) return refuse('Not overruled: overruling is not available here.')
-      // The same check as create_workspace's go_ahead (KERNEL-678), and only in a turn the user started, as merge_workspace.
-      if (!d.userTurn?.() || !quotesUser(go_ahead, d.userSaid?.()?.text)) return refuse(NO_OVERRULE)
+      // The same check as create_workspace's go_ahead (KERNEL-678), and only in a turn the user started, as merge_workspace. A
+      // card answer counts there too: one given since the user's latest message is from this turn (KERNEL-1079).
+      if (!d.userTurn?.()) return refuse(NO_OVERRULE)
+      const words = wordsNow()
+      if (!quotedIn(go_ahead, words)) return refuse(refusal({ text: NO_OVERRULE, verb: 'Not overruled' }, go_ahead, words).refused)
       const asked = d.workspaces().find((w) => w.id === workspace_id && w.status !== 'archived')
       if (!asked) return refuse(`Not overruled: ${workspace_id} is not an open workspace in this project.`)
       // A review has no PR of its own: its blockers are on the work it reviewed, as merge_workspace reads it.
@@ -856,13 +944,13 @@ export function kernelTools(d: KernelToolDeps) {
       return text('Suggested. The user sees a button to switch this chat to Hand off. Stop here, and build nothing until they answer.')
     }),
     tool('start_build', 'In Build here, before your first edit: show that the user asked for a change, quoting their words in go_ahead from their latest message. Kernel refuses file changes, commits, pushes and pull requests until it passes. Not for a question, options or a bare yes.', {
-      go_ahead: z.string().describe('The user\'s words that asked for the change, quoted from their latest message, for example "fix it"')
+      go_ahead: z.string().describe('The user\'s words that asked for the change, quoted from their latest message or their answer on your question card since, for example "fix it". A picked option is quoted whole')
     }, async ({ go_ahead }) => {
       if (!build) { bus.track({ name: 'build.refused', reason: 'handoff' }); return { ...text(BUILD_IN_HANDOFF), isError: true } }
       if (!d.recordGoAhead) return { ...text('Not started: this chat can\'t record a go-ahead.'), isError: true }
       if (d.planMode?.()) return { ...text(BUILD_PLAN_MODE_ON), isError: true }
-      const goAhead = goAheadOf(go_ahead)
-      if (goAhead === false) { bus.track({ name: 'build.refused', reason: 'go-ahead' }); return { ...text(BUILD_NO_GO_AHEAD), isError: true } }
+      const goAhead = goAheadOf(go_ahead, { text: BUILD_NO_GO_AHEAD, verb: 'Not changed' })
+      if (typeof goAhead === 'object') { bus.track({ name: 'build.refused', reason: goAhead.repeat ? 'go-ahead-repeat' : 'go-ahead' }); return { ...text(goAhead.refused), isError: true } }
       if (goAhead) d.recordGoAhead(goAhead)
       return text('Go ahead: build it')
     }),
@@ -884,7 +972,7 @@ export function kernelTools(d: KernelToolDeps) {
       description: z.string().optional().describe('The description in markdown. On an existing issue it replaces the old one'),
       state: z.string().optional().describe('With issue: the state to move it to, by its name in the tracker, for example "In Review", or "open" or "closed" where issues only open and close'),
       comment: z.string().optional().describe('With issue: a comment to add, in markdown'),
-      go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved this, quoted from their latest message, for example \"file it\". Kernel refuses when they aren't in it. Not needed after an approved plan")
+      go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved this, quoted from their latest message or their answer on your question card since, for example \"file it\". A picked option is quoted whole. Kernel refuses when they aren't in it. Not needed after an approved plan")
     }, async ({ issue, title, description, state, comment, go_ahead }) => {
       const refuse = (why: string) => ({ ...text(`Not filed: ${why}`), isError: true })
       if (!d.tracker) return refuse('filing issues is not available here.')
@@ -894,7 +982,8 @@ export function kernelTools(d: KernelToolDeps) {
       if (!key && !title?.trim()) return refuse('a new issue needs a title.')
       if (key && title === undefined && description === undefined && !state?.trim() && !note) return refuse(`pass the title, description, state or comment to change on ${key}.`)
       // The same go-ahead as a hand-off, since filing an issue is work the user asked for (KERNEL-678).
-      if (goAheadOf(go_ahead) === false) return { ...text(NO_FILE_GO_AHEAD), isError: true }
+      const goAhead = goAheadOf(go_ahead, { text: NO_FILE_GO_AHEAD, verb: 'Not filed' })
+      if (typeof goAhead === 'object') return { ...text(goAhead.refused), isError: true }
       try {
         const tracker = await d.tracker()
         if (!key) {

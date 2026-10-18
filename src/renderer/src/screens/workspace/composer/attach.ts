@@ -158,5 +158,5 @@ export const clipboardImages = (data: DataTransfer) => [...data.files].filter((f
 export function pastedText(text: string, draft: ChatPart[]): ChatPart | null {
   if (!isLongPaste(text)) return null
   const last = Math.max(0, ...draft.map((p) => (p.type === 'file' ? Number(PASTE_NAME.exec(p.name)?.[1] ?? 0) : 0)))
-  return { type: 'file', name: `pasted_text_${last + 1}.txt`, lines: pasteLines(text), text }
+  return { type: 'file', name: `pasted_text_${last + 1}.txt`, lines: pasteLines(text), text, pasted: true }
 }

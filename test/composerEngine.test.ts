@@ -7,7 +7,7 @@ import { discoverSkills, searchFiles } from '../src/main/services/files'
 import { commitHunks, listHunks } from '../src/main/services/hunks'
 import { git } from '../src/main/services/exec'
 import { chatMode } from '../src/main/services/permissions'
-import { attachFiles, Held, numberImages, partOf, pathOnlyFiles, previewOf, PLAN_FILES_ONLY, PLAN_SEND_BLOCKED } from '../src/renderer/src/screens/workspace/composer/attach'
+import { attachFiles, Held, numberImages, partOf, pastedText, pathOnlyFiles, previewOf, PLAN_FILES_ONLY, PLAN_SEND_BLOCKED } from '../src/renderer/src/screens/workspace/composer/attach'
 import { mentionMenu, mentionPart } from '../src/renderer/src/screens/workspace/composer/autocomplete'
 import { noteFromParts } from '../src/renderer/src/screens/workspace/cards/steps'
 import { toUserMessage } from '../src/main/services/providers/claude'
@@ -258,6 +258,13 @@ describe('permission mode from the composer', () => {
 })
 
 describe('attaching files', () => {
+  // KERNEL-1079: the engine counts a message of nothing but pastes as the user's words, so only the composer may mark one.
+  it('marks a long paste as pasted, numbered after the pastes already in the draft', () => {
+    const long = Array.from({ length: 12 }, (_, i) => `line ${i}`).join('\n')
+    expect(pastedText('short', [])).toBeNull()
+    expect(pastedText(long, [{ type: 'file', name: 'pasted_text_1.txt', text: 'x', pasted: true }])).toEqual({ type: 'file', name: 'pasted_text_2.txt', lines: 12, text: long, pasted: true })
+  })
+
   const file = (name: string) => ({ name }) as File
   const host = (log: string[]) => ({
     hold: (part: ChatPart) => { const name = part.type === 'text' ? '' : part.name; log.push(`hold ${name}`); return `id-${name}` },
