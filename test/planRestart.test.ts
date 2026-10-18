@@ -275,6 +275,22 @@ describe('plan cards outlive a restart', () => {
     expect(answers(k2, codex.id)).toHaveLength(1)
   }, 30000)
 
+  it("keeps each step's criteria after a restart", async () => {
+    const { k, where, project } = await kernel()
+    const lead = await k.leadChat(project.id)
+    const leadWs = await setUp(k, lead.id)
+    await k.sessions.configure(lead.id, { plan: true })
+    await k.sessions.send(lead.id, text('Plan the invoice table'))
+    callIn(leadWs.path)!.feed({ type: 'system', subtype: 'init', session_id: 'kernel-session', apiKeySource: 'none' })
+    const leadAgent = (await k.team.agents(project.id)).find((a) => a.lead)!
+    const tool = kernelTools(k.lead.leadToolDeps(project.id, leadAgent, k.store.chat(lead.id)!)).find((t) => t.name === 'request_plan_approval')!
+    void tool.handler({ title: 'Invoice table', plan: PLAN, steps: [{ task: 'Build the table · Christian', criteria: ['Totals match the lines'] }] } as never, {})
+    const card = await until(() => plans(k, lead).find((a) => a.planFile))
+    await k.stop()
+    const { k: k2 } = await relaunch(where)
+    expect(k2.store.approval(card.id)?.steps).toEqual([{ title: 'Build the table', criteria: ['Totals match the lines'], agentId: 'christian' }])
+  }, 30000)
+
   it("has the Lead hand off once after a restart, with the hand-off reminder armed", async () => {
     const { k, where, project } = await kernel()
     const lead = await k.leadChat(project.id)

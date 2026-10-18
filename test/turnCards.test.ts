@@ -91,10 +91,10 @@ describe('Lead requests', () => {
   it('turns "task · agent" lines into steps with the agent id and task id', async () => {
     const { parsePlanSteps } = await import('../src/main/services/approvals')
     const agents = [{ id: 'sean', name: 'Sean' }, { id: 'christian', name: 'Christian' }]
-    expect(parsePlanSteps(['T-15a PDF renderer · Sean', 'T-15b Button · christian', 'Write the docs'], agents)).toEqual([
-      { title: 'T-15a PDF renderer', taskId: 'T-15a', agentId: 'sean' },
-      { title: 'T-15b Button', taskId: 'T-15b', agentId: 'christian' },
-      { title: 'Write the docs' }
+    expect(parsePlanSteps([{ task: 'T-15a PDF renderer · Sean', criteria: ['Renders a PDF'] }, { task: 'T-15b Button · christian' }, { task: 'Write the docs' }], agents)).toEqual([
+      { title: 'T-15a PDF renderer', criteria: ['Renders a PDF'], taskId: 'T-15a', agentId: 'sean' },
+      { title: 'T-15b Button', criteria: [], taskId: 'T-15b', agentId: 'christian' },
+      { title: 'Write the docs', criteria: [] }
     ])
   })
 

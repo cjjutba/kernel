@@ -37,6 +37,12 @@ const TURN_NOTES = 'leadTurnNotes'
 const SWITCHED_DURING = 'leadSwitchedDuring'
 
 /** The project's Lead: its workspace and chats, its tools, and where teammates' updates go (KERNEL-329). */
+/** The brief with the plan step's criteria listed under it. A step without any leaves the brief as written. */
+export function withCriteria(prompt: string, criteria?: string[]): string {
+  const list = (criteria ?? []).filter((c) => c.trim())
+  return list.length ? `${prompt.trimEnd()}\n\nAcceptance criteria:\n${list.map((c) => `- ${c}`).join('\n')}` : prompt
+}
+
 export class Lead extends Feature {
   /**
    * "Let Kernel sort it": the Lead gets both workspaces and the file, and the overlap card is dismissed.
@@ -1005,11 +1011,14 @@ export class Lead extends Feature {
         const source = ws.source?.kind === 'issue' ? ws.source : { id: issue, title: issue }
         return { id: source.id, title: source.title, ...(ws.branch !== before ? { branch: ws.branch } : {}) }
       },
-      createWorkspace: async ({ issue, images, goAhead, ...o }) => {
+      createWorkspace: async ({ issue, images, goAhead, ...given }) => {
         // Only plans approved in this Lead chat, in any of its tabs (KERNEL-337). Another chat's plan with a step for the same
         // agent is a different hand-off.
         const tabs = this.threadTabIds(chat)
         const approvalIds = new Set(this.store.approvals({ projectId }).filter((a) => a.kind === 'plan' && !!a.chatId && tabs.has(a.chatId)).map((a) => a.id))
+        const review = given.reviewOf ?? given.linkReviewOf
+        // The step's criteria go in the brief, after what the Lead wrote (KERNEL-1061).
+        const o = review ? given : { ...given, prompt: withCriteria(given.prompt, this.planStepFor(projectId, given.agentId, chat)?.step.criteria) }
         // The issue the task builds (D-140). Kernel names the branch from it unless the Lead named one (KERNEL-275).
         const linked = issue ? await this.k.integrations.issueSource(projectId, issue, o.title ?? firstLine(o.prompt)) : undefined
         const branch = o.branch
@@ -1017,7 +1026,6 @@ export class Lead extends Feature {
         // The user's screenshots follow the brief, and the send saves them in the teammate's worktree (KERNEL-658).
         const parts = linked?.issue ? [...briefParts(o.prompt, linked.issue.read, linked.issue.kind), ...images ?? []] : images
         // A review is not a task of the plan, so it takes no plan step or task (KERNEL-130).
-        const review = o.reviewOf ?? o.linkReviewOf
         const ws = await this.k.workspaces.createWorkspace(projectId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(parts ? { parts } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: review ? undefined : (w) => this.tasks.link(projectId, o.agentId, w.id, { approvalIds })?.id })
         if (!review) this.linkPlanStep(projectId, o.agentId, ws.id, chat)
         // The user's words that approved it, kept as the record of the go-ahead (KERNEL-678).
@@ -1199,10 +1207,16 @@ export class Lead extends Feature {
    * new workspace (the card's Open workspace link). Plans from the project's other Lead chats are left alone (KERNEL-105, KERNEL-337).
    */
   private linkPlanStep(projectId: string, agentId: string, workspaceId: string, chat: Chat) {
+    const found = this.planStepFor(projectId, agentId, chat)
+    if (!found) return
+    this.approvals.update(found.plan.id, { steps: found.plan.steps!.map((s, i) => (i === found.at ? { ...s, workspaceId } : s)) })
+  }
+
+  /** The first step for this agent, in the latest plan approved in `chat`'s Lead chat, that has no workspace yet. */
+  private planStepFor(projectId: string, agentId: string, chat: Chat) {
     const plan = this.threadPlans(projectId, chat).find((a) => a.steps?.some((s) => s.agentId === agentId && !s.workspaceId))
-    if (!plan?.steps) return
-    const at = plan.steps.findIndex((s) => s.agentId === agentId && !s.workspaceId)
-    this.approvals.update(plan.id, { steps: plan.steps.map((s, i) => (i === at ? { ...s, workspaceId } : s)) })
+    const at = plan?.steps?.findIndex((s) => s.agentId === agentId && !s.workspaceId) ?? -1
+    return plan?.steps && at >= 0 ? { plan, at, step: plan.steps[at] } : undefined
   }
 
   /**

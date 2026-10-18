@@ -223,7 +223,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
   it('asks with plan mode on', async () => {
     const t = leadTools({ behavior: 'allow' }, { on: true })
     expect(await t.run('request_plan_approval', plan)).toEqual({ isError: false, text: `approved. ${HANDOFF_NOW}` })
-    expect(t.askUser).toHaveBeenCalledWith(expect.objectContaining({ kind: 'plan', title: 'KERNEL-53', steps: plan.steps }), undefined)
+    expect(t.askUser).toHaveBeenCalledWith(expect.objectContaining({ kind: 'plan', title: 'KERNEL-53', steps: [{ task: 'Symlink node_modules · Sean' }] }), undefined)
   })
 
   it('reads plan mode on each call, so turning it on mid-session lets the next call ask', async () => {
@@ -292,6 +292,45 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(pushed.at(-1)).toMatchObject({ id: chat.id, plan: false })
     expect(k.sessions.handoffs.due(chat.id)).toBe(true)
     expect(await planSaved()).toBe('.kernel/plans/plan.md')
+  })
+
+  describe('acceptance criteria on each step (KERNEL-1061)', () => {
+    const CRITERIA = ['Totals match the invoice lines', 'An empty invoice shows a message']
+    const approved = async (steps: unknown[]) => {
+      const t = await realLead()
+      await t.k.sessions.configure(t.chat.id, { plan: true })
+      const asked = t.tool.handler({ title: 'Invoice table', plan: PLAN, steps } as never, {})
+      for (let i = 0; i < 100 && !t.plans().length; i++) await new Promise((r) => setTimeout(r, 20))
+      t.k.approvals.decide(t.plans()[0].id, { behavior: 'allow' })
+      await asked
+      await t.planSaved()
+      const lead = (await t.k.agents(t.project.id)).find((a) => a.lead)!
+      const create = kernelTools(t.k.lead.leadToolDeps(t.project.id, lead, t.chat)).find((x) => x.name === 'create_workspace')!
+      const made = vi.spyOn(t.k.workspaces, 'createWorkspace')
+      const brief = async () => { await create.handler({ agent: 'sean', title: 'Invoice table', brief: 'Build the table.' } as never, {}); return made.mock.calls[0][1].prompt }
+      return { ...t, brief }
+    }
+
+    it('stores each step\'s criteria on the approved plan', { timeout: 30_000 }, async () => {
+      const { plans } = await approved([{ task: 'Build the table · Sean', criteria: [...CRITERIA, '  '] }, 'Write the docs'])
+      expect(plans()[0].steps).toEqual([
+        { title: 'Build the table', criteria: CRITERIA, agentId: 'sean' },
+        { title: 'Write the docs', criteria: [] }
+      ])
+    })
+
+    it('lists the step\'s criteria in the brief the teammate receives', { timeout: 30_000 }, async () => {
+      const { brief } = await approved([{ task: 'Build the table · Sean', criteria: CRITERIA }])
+      expect(await brief()).toBe('Build the table.\n\nAcceptance criteria:\n- Totals match the invoice lines\n- An empty invoice shows a message')
+    })
+
+    it('leaves the brief as written for a plan saved without criteria', { timeout: 30_000 }, async () => {
+      const { k, plans, brief } = await approved(['Build the table · Sean'])
+      const old = plans()[0]
+      k.approvals.update(old.id, { steps: [{ title: 'Build the table', agentId: 'sean' }] })
+      expect(k.store.approval(old.id)?.steps).toEqual([{ title: 'Build the table', agentId: 'sean' }])
+      expect(await brief()).toBe('Build the table.')
+    })
   })
 
   it('tells the Lead to ask for approval only in plan mode, and otherwise to ask in the chat before handing off', () => {
@@ -514,7 +553,7 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
   it('asks with the plan as the detail and the task lines as they are', async () => {
     const t = leadTools({ behavior: 'allow' })
     await t.run('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps })
-    expect(t.askUser).toHaveBeenCalledWith({ kind: 'plan', title: 'KERNEL-53', detail: PLAN, steps }, undefined)
+    expect(t.askUser).toHaveBeenCalledWith({ kind: 'plan', title: 'KERNEL-53', detail: PLAN, steps: [{ task: 'Symlink node_modules · Sean' }] }, undefined)
   })
 
   it('saves the plan to .kernel/plans, a revision to the same file and the next plan after an approval to its own (D-092)', { timeout: 30_000 }, async () => {
@@ -530,7 +569,7 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
     }
 
     const first = await ask(PLAN)
-    expect(first.approval).toMatchObject({ detail: PLAN, steps: [{ title: 'Symlink node_modules', agentId: 'sean' }], planFile: '.kernel/plans/plan.md' })
+    expect(first.approval).toMatchObject({ detail: PLAN, steps: [{ title: 'Symlink node_modules', criteria: [], agentId: 'sean' }], planFile: '.kernel/plans/plan.md' })
     expect(await readFile(join(dir, first.approval.planFile!), 'utf8')).toBe(`${PLAN}\n`)
     k.approvals.decide(first.approval.id, { behavior: 'deny', message: 'Add a rollback step' })
     expect(((await first.asked).content[0] as { text: string }).text).toBe('changes requested: Add a rollback step')
