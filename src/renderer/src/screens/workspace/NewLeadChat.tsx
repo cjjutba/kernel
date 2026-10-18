@@ -245,7 +245,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   // Once setup has ended the rows give way to the normal title and Up next. The store keeps the last steps for the session, so this reads their states. Only a step that warned or failed stays, with its action.
   const setupEnded = !!setupSteps && !setupSteps.some((x) => x.state === 'run') && (setupSteps.some((x) => x.state === 'fail') || setupSteps.every((x) => x.id === 'host' || x.state !== 'wait'))
   const setupLive = !!setupSteps && !setupEnded
-  const setupProblems = setupEnded && !!setupSteps.some((x) => x.id !== 'host' && (x.state === 'warn' || x.state === 'fail'))
+  const setupProblems = setupEnded && !!setupSteps.some((x) => x.id !== 'host' && (x.state === 'warn' || x.state === 'fail' || x.state === 'skip'))
   // A project added while this page was open makes its first chat when setup finishes, and the page gives way to it, so the first Send stays in that chat.
   const sawSetup = useRef(false)
   if (setupSteps) sawSetup.current = true

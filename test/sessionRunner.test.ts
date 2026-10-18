@@ -1093,12 +1093,12 @@ describe('who sent a message (KERNEL-116)', () => {
     expect(s.sessions.handoffs.due('chat')).toBe(false)
   })
 
-  it("says what a queued message waits for, and a brief held for setup stays the Lead's", async () => {
+  it("says what a queued message waits for, and a held brief stays the Lead's", async () => {
     const s = await setup()
     init(s)
     await finish(s, 'r1')
     s.sessions.hold('chat', [{ type: 'text', text: 'Build T-14 from the plan' }], { from: 'lead' })
-    expect(await s.sessions.send('chat', [{ type: 'text', text: 'Use EmptyState' }], { from: 'lead' })).toEqual({ queued: true, why: 'setup' })
+    expect(await s.sessions.send('chat', [{ type: 'text', text: 'Use EmptyState' }], { from: 'lead' })).toEqual({ queued: true, why: 'worktree' })
     expect(s.sessions.queued('chat').map((q) => q.from)).toEqual(['lead', 'lead'])
     s.sessions.release('chat')
     expect(users(s).at(-1)).toMatchObject({ from: 'lead', parts: [{ type: 'text', text: 'Build T-14 from the plan' }] })

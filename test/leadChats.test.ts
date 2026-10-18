@@ -39,7 +39,7 @@ const REPO = {
 async function dirs() {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   return { dataDir, home }
 }
 
@@ -329,10 +329,10 @@ describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL
 })
 
 describe("create_workspace when the teammate's setup fails (KERNEL-126)", () => {
-  it('says so with the exit code after the Created prefix, which the backfill still reads', async () => {
+  it('says only that it was created, since the teammate started alongside setup, and the backfill still reads the prefix (KERNEL-1086)', async () => {
     const { first, call } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "exit 3"\n' })
     const said = await call(first, 'create_workspace', { agent: 'christian', title: 'Invoice table', brief: 'Build T-14' })
-    expect(said).toMatch(/^Created \S+ on \S+ for christian\. Setup failed \(exit code 3\), so Christian hasn't started\. The brief waits until the user fixes setup and clicks Run again in that workspace\.$/)
+    expect(said).toMatch(/^Created \S+ on \S+ for christian\.$/)
     // Kernel's backfill of older chats parses this prefix (backfillLeadChats).
     expect(/^Created (\S+) on /.exec(said)?.[1]).toBeTruthy()
   })
@@ -506,7 +506,7 @@ describe("a teammate's shared image passed on to another teammate (KERNEL-659)",
 })
 
 describe("create_workspace in a repo that commits its scripts (KERNEL-913)", () => {
-  it('runs a multi-line setup script with no prompt, then sends the brief', async () => {
+  it('runs a multi-line setup script with no prompt, alongside the brief', async () => {
     const setupScript = '[scripts]\nsetup = """\necho one > one.txt\necho two > two.txt\n"""\n'
     const { k, first, call, byTitle, sent } = await setup({ '.kernel/settings.toml': setupScript, '.gitignore': 'one.txt\ntwo.txt\n' })
     const said = await call(first, 'create_workspace', { agent: 'christian', title: 'Invoice table', brief: 'Build T-14' })
@@ -514,6 +514,7 @@ describe("create_workspace in a repo that commits its scripts (KERNEL-913)", () 
     expect(said).toMatch(new RegExp(`^Created ${ws.id} on ${ws.branch} for christian\\.`))
     expect(said).not.toContain('trust')
     await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
+    await k.setup.settled(ws.id)
     expect(await readFile(join(ws.path, 'one.txt'), 'utf8')).toBe('one\n')
     expect(await readFile(join(ws.path, 'two.txt'), 'utf8')).toBe('two\n')
     await vi.waitFor(() => expect(sent.some((m) => m.text === 'Build T-14')).toBe(true))
@@ -552,7 +553,7 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
     const id = byTitle('Drafts per chat').id
     const said: [QueueReason, string][] = [
       ['running', 'Christian is mid-turn, so the message goes out when that turn ends.'],
-      ['setup', "Setup failed in Christian's workspace, so the message waits until the user clicks Run again."],
+      ['worktree', "Christian's workspace is still being made, so the message goes out once it is."],
       ['paused', 'The project is paused, so the message goes out when the user resumes it.'],
       ['offline', 'Kernel is offline or signed out, so the message goes out once it is back.'],
       ['capacity', 'Every agent slot in Settings, Models is in use, so the message goes out when a slot frees up.']
@@ -575,20 +576,28 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
     expect(sent.at(-1)).toMatchObject({ chatId: open[0].id, text: 'Rebase', from: 'lead' })
   })
 
-  it('sends a message the Lead wrote while setup ran with the brief, and holds both when setup fails', async () => {
+  it('sends a message the Lead wrote while the workspace was made with the brief, whether setup then passes or fails (KERNEL-1086)', async () => {
     for (const [script, fails] of [['sleep 0.4', false], ['sleep 0.4 && false', true]] as const) {
       const { k, project, first, call } = await setup({ '.kernel/settings.toml': `[scripts]\nsetup = "${script}"\n` })
       // The brief and the Lead's message come in one call, as the chat's first turn (KERNEL-393).
       const sentAll: { chatId: string; messages: (string | undefined)[][] }[] = []
       k.sessions.sendAll = async (chatId: string, messages: { parts: ChatPart[]; from?: string }[]) => { sentAll.push({ chatId, messages: messages.map((m) => [m.parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), m.from]) }); return { queued: false } }
+      // The brief waits only for the local files to be copied. Holding the copy holds the workspace in setup.
+      const copy = k.setup.prepare.bind(k.setup)
+      let go!: () => void
+      const gate = new Promise<void>((r) => { go = r })
+      k.setup.prepare = async (...a) => { await gate; return copy(...a) }
       const made = k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: first.id })
       const ws = await vi.waitFor(() => { const w = k.store.workspaces(project.id).find((x) => x.title === 'Invoice table'); if (!w) throw new Error('not yet'); return w })
       expect(ws.status).toBe('setup')
-      expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Use EmptyState' })).toBe("Christian's workspace is still setting up, so the message goes out with the brief.")
+      expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Use EmptyState' })).toBe("Christian's workspace is still being made, so the message goes out with the brief.")
+      go()
       await made
       const chat = k.store.chats(ws.id)[0]
-      if (fails) expect(k.sessions.queued(chat.id).map((q) => [(q.parts[0] as { text: string }).text, q.from])).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
-      else expect(sentAll.filter((x) => x.chatId === chat.id)).toEqual([{ chatId: chat.id, messages: [['Build T-14', 'lead'], ['Use EmptyState', 'lead']] }])
+      expect(sentAll.filter((x) => x.chatId === chat.id)).toEqual([{ chatId: chat.id, messages: [['Build T-14', 'lead'], ['Use EmptyState', 'lead']] }])
+      await k.setup.settled(ws.id)
+      expect(k.store.workspace(ws.id)).toMatchObject({ status: 'ready', setupRun: { end: fails ? 1 : 0 } })
+      expect(k.sessions.queued(chat.id)).toEqual([])
     }
   })
 })
@@ -1338,7 +1347,7 @@ describe('create_workspace when the task is already handed off (KERNEL-287)', ()
 describe('create_workspace when the handed-off task is a review, failed setup or older work (KERNEL-287)', () => {
   const NOOR = { '.claude/agents/sean.md': '---\nname: sean\ndescription: Engine engineer.\n---\nYou are Sean. Open a PR for each task.' }
 
-  it('says when the task is handed off but its setup failed, with or without an issue key', async () => {
+  it('says when the task is handed off but its workspace failed to start, with or without an issue key', async () => {
     const { k, project, first, run } = await setup()
     await run(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
     await run(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })
@@ -1346,8 +1355,8 @@ describe('create_workspace when the handed-off task is a review, failed setup or
     const plain = k.store.workspaces(project.id).find((w) => w.title === 'Drafts per chat')!
     k.store.saveWorkspace({ ...keyed, status: 'failed' })
     k.store.saveWorkspace({ ...plain, status: 'failed' })
-    expect(await run(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).toEqual({ isError: true, text: `Not created: KERNEL-83 is already handed off to Christian (workspace ${keyed.id}), and its setup failed. Tell the user to fix it and click Run again there.` })
-    expect(await run(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })).toEqual({ isError: true, text: `Not created: this task is already handed off to Christian (workspace ${plain.id}), and its setup failed. Tell the user to fix it and click Run again there.` })
+    expect(await run(first, 'create_workspace', { agent: 'christian', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).toEqual({ isError: true, text: `Not created: KERNEL-83 is already handed off to Christian (workspace ${keyed.id}), and that workspace failed to start. Tell the user to click Run again there.` })
+    expect(await run(first, 'create_workspace', { agent: 'christian', title: 'Drafts per chat', brief: 'Go' })).toEqual({ isError: true, text: `Not created: this task is already handed off to Christian (workspace ${plain.id}), and that workspace failed to start. Tell the user to click Run again there.` })
   })
 
   it('never lets an open review block a hand-off with the same issue, or the same agent and title', async () => {

@@ -944,7 +944,7 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
     { id: 'artkin-2', name: 'Artkin', role: 'Reviewer', lead: false },
     { id: 'teng-qa', name: 'Teng', role: 'QA', lead: false }
   ] as AgentDef[]
-  function tools(made: Partial<Workspace & { setupFailed: string; queued: QueueReason }> = {}) {
+  function tools(made: Partial<Workspace & { queued: QueueReason }> = {}) {
     const asked: string[] = []
     const deps: KernelToolDeps = {
       projectId: 'project', lead: team[0], agents: async () => team, workspaces: () => [],
@@ -982,9 +982,9 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
     expect(await t.create('Artkin')).toEqual({ isError: true, text: 'Not created: "Artkin" matches more than one agent (artkin, artkin-2). Use the id from list_agents.' })
   })
 
-  it('says when setup failed, so the teammate has not started, and keeps the Created prefix (KERNEL-126)', async () => {
-    const t = tools({ status: 'failed', setupFailed: 'exit code 1' })
-    expect(await t.create('christian')).toEqual({ isError: false, text: "Created ws-1 on feat/x for christian. Setup failed (exit code 1), so Christian hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace." })
+  it('never says the teammate waits for setup, which runs alongside it, even when it failed (KERNEL-126, KERNEL-1086)', async () => {
+    const t = tools({ setupRun: { startedAt: 1, endedAt: 2, end: 1 } })
+    expect(await t.create('christian')).toEqual({ isError: false, text: 'Created ws-1 on feat/x for christian.' })
   })
 
   it('says when the brief waits for a slot, a pause or the connection, so the teammate has not started (KERNEL-272)', async () => {

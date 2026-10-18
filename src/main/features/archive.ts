@@ -115,7 +115,6 @@ export class Archive extends Feature {
 
   /** The quick part of an archive: everything that stops work in the workspace, then the record says archived (KERNEL-702). */
   private async archiveNow(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean; removingProject?: boolean; noScript?: boolean } = {}) {
-    this.k.setup.setupFailures.delete(id)
     // The branch the work is on now: archive deletes it, and restore brings it back. It is read here because `syncBranch`
     // leaves an archived workspace alone. A Lead chat whose worktree isn't made yet keeps the branch it picked (KERNEL-542).
     const ws = await this.k.prs.syncBranch(id)

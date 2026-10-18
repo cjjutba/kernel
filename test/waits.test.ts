@@ -77,7 +77,7 @@ async function setup(files: Record<string, string> = {}, o: { fetch?: typeof fet
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   // The workspaces start from the local main, which a merge on GitHub doesn't move.
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true }, scripts: { runAfterSetup: true }, pr: { requireGreen: false } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, scripts: { runAfterSetup: true }, pr: { requireGreen: false } }))
   if (o.linearToken) await saveLinearToken(dataDir, o.linearToken)
   // A project with a Linear token and team uses Linear (KERNEL-462).
   if (o.fetch) await saveRepoSettings(repo, { linear: { team: 'KERNEL' } })
@@ -162,11 +162,13 @@ function reasonsPushed() {
 }
 
 describe('a hand-off that waits for a merge', () => {
-  it('creates the worktree and runs setup, then holds the brief with no checkpoint, run script or turn', async () => {
+  it('creates the worktree and runs setup alongside, then holds the brief with no checkpoint, run script or turn', async () => {
     const { k, project, lead, target } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "touch set-up.txt"\nrun = "touch ran.txt"\n' })
     const sean = await target(k, 164)
     const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     const chat = chatOf(k, w)
+    // Setup runs while the brief waits for the merge, and its passing starts no run script before the brief goes (KERNEL-1086).
+    await k.setup.settled(w.id)
     expect(existsSync(join(w.path, 'set-up.txt'))).toBe(true)
     expect(w).toMatchObject({ status: 'ready', waitsFor: { on: [sean.id], held: true, base: await head(w.path) } })
     expect(queue(k, chat)).toEqual([['Build T-15', 'lead']])
@@ -480,30 +482,38 @@ describe('a hand-off that waits for a merge', () => {
     await k.stop()
   })
 
-  it('runs setup again when the branch moved, and a failure there leaves Run again to send the brief', async () => {
+  it('runs setup again alongside the brief when the branch moved, and a failure there holds nothing (KERNEL-1086)', async () => {
     const { k, project, lead, target, mergeOnGitHub } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "test ! -f pr-164.txt || test -f ok.txt"\n' })
     const sean = await target(k, 164)
     const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
     expect(w.status).toBe('ready')
+    await k.setup.settled(w.id)
+    expect(k.store.workspace(w.id)?.setupRun?.end).toBe(0)
     await mergeOnGitHub(k, sean)
-    await vi.waitFor(() => expect(k.store.workspace(w.id)?.status).toBe('failed'), SLOW)
-    expect(k.store.workspace(w.id)?.waitsFor).toBeUndefined()
+    await released(k, w)
     const chat = chatOf(k, w)
-    expect(queue(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Sean')])
-    await writeFile(join(w.path, 'ok.txt'), 'ok\n')
-    expect((await k.retrySetup(w.id)).status).toBe('ready')
     expect(users(k, chat)).toEqual([['Build T-15', 'lead'], ahead('PR #164 by Sean')])
+    await vi.waitFor(() => expect(k.store.workspace(w.id)?.setupRun?.end).toBe(1), SLOW)
+    expect(k.store.workspace(w.id)?.status).toBe('ready')
+    expect(queue(k, chat)).toEqual([])
     await k.stop()
   })
 
-  it('keeps the brief held when Run again passes while the wait still stands', async () => {
+  it('keeps the brief held for the merge, not for setup, through a failed setup and a Rerun setup that passes (KERNEL-1086)', async () => {
     const { k, project, lead, target } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const sean = await target(k, 164)
     const w = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
-    expect(w).toMatchObject({ status: 'failed', waitsFor: { held: true } })
-    await writeFile(join(w.path, 'ok.txt'), 'ok\n')
-    expect(await k.retrySetup(w.id)).toMatchObject({ status: 'ready', waitsFor: { on: [sean.id], held: true } })
+    expect(w).toMatchObject({ status: 'ready', waitsFor: { held: true } })
+    await k.setup.settled(w.id)
+    expect(k.store.workspace(w.id)?.setupRun?.end).toBe(1)
     const chat = chatOf(k, w)
+    expect(k.sessions.queueReason(chat.id)).toBe('merge')
+    // The Lead hears setup failed, and that the brief waits for the merge, not for setup.
+    expect(pending(k).some((e) => e.kind === 'setup.failed' && e.workspaceId === w.id && !!e.wait)).toBe(true)
+    await writeFile(join(w.path, 'ok.txt'), 'ok\n')
+    await k.setup.handlers()['scripts.run']({ workspaceId: w.id, kind: 'setup' })
+    await k.setup.settled(w.id)
+    expect(k.store.workspace(w.id)).toMatchObject({ status: 'ready', waitsFor: { on: [sean.id], held: true } })
     expect(queue(k, chat)).toEqual([['Build T-15', 'lead']])
     expect(users(k, chat)).toEqual([])
     expect(pending(k).some((e) => e.kind === 'setup.passed' && e.workspaceId === w.id && !!e.wait)).toBe(true)
@@ -518,22 +528,6 @@ describe('a hand-off that waits for a merge', () => {
       const sean = await target(k, 164)
       const w = await k.workspaces.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
       const chat = chatOf(k, w)
-      expect(k.sessions.queueReason(chat.id)).toBe('merge')
-      await vi.waitFor(() => expect(pushed.last(chat.id)).toBe('merge'))
-    } finally { pushed.done() }
-    await k.stop()
-  })
-
-  it('says a held brief waits for setup while setup has failed, and for the merge once Run again passes', async () => {
-    const { k, project, lead, target } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
-    const pushed = reasonsPushed()
-    try {
-      const sean = await target(k, 164)
-      const w = await k.workspaces.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Thinking rows', leadChatId: lead.id, waitFor: [sean.id] })
-      const chat = chatOf(k, w)
-      expect(k.sessions.queueReason(chat.id)).toBe('setup')
-      await writeFile(join(w.path, 'ok.txt'), 'ok\n')
-      expect(await k.setup.retrySetup(w.id)).toMatchObject({ status: 'ready', waitsFor: { held: true } })
       expect(k.sessions.queueReason(chat.id)).toBe('merge')
       await vi.waitFor(() => expect(pushed.last(chat.id)).toBe('merge'))
     } finally { pushed.done() }

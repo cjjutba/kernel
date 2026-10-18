@@ -218,7 +218,7 @@ describe('workspace banners', () => {
   it('names the setup command that failed and its exit code', () => {
     const scripts = [{ kind: 'setup' as const, line: '$ pnpm install --frozen-lockfile && cp ../.env .env', stream: 'stdout' as const }]
     expect(setupCommand(scripts)).toBe('pnpm install')
-    expect(bannerFor(input({ ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))?.sub).toBe('pnpm install exited with code 1. Christian waits until setup passes.')
+    expect(bannerFor(input({ ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))?.sub).toBe('pnpm install exited with code 1. Christian starts when you run it again.')
   })
 
   it('names the agent and doesn\'t block when setup failed and the chat works on (KERNEL-1012)', () => {
@@ -236,11 +236,11 @@ describe('workspace banners', () => {
     })
   })
 
-  it('keeps a chat with history open after setup fails, and says messages queue only while some are held (KERNEL-1018)', () => {
+  it('keeps a chat with history open after setup fails, and says messages wait only while some are held (KERNEL-1018)', () => {
     const scripts = [{ kind: 'setup' as const, line: '$ pnpm install', stream: 'stdout' as const }]
     const failed = { ws: { ...ws, status: 'failed' as const }, scripts, setupCode: 1, hasHistory: true }
     expect(bannerFor(input({ ...failed, heldForSetup: true }))).toMatchObject({
-      sub: 'pnpm install exited with code 1. Messages you send queue until setup passes.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
+      sub: 'pnpm install exited with code 1. Messages you send go out when you run it again.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
     })
     expect(bannerFor(input({ ...failed, heldForSetup: false }))).toMatchObject({
       sub: 'pnpm install exited with code 1.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]

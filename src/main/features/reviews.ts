@@ -409,7 +409,7 @@ export class Reviews extends Feature {
     if (r.code !== 0) throw new Error(`Couldn't put the review worktree on ${sha.slice(0, 7)}: ${r.stderr.trim() || `git exited with code ${r.code}`}`)
   }
 
-  /** The review workspace for a PR: one worktree and one setup run, with a chat per kind, each held until setup passes. */
+  /** The review workspace for a PR: one worktree and one setup run, with a chat per kind, each held until the worktree's files are copied. */
   private async startReview(of: Workspace, plan: PlannedReview[]): Promise<Workspace> {
     const [first] = plan
     const agent = first.agent ?? lensAgent(first.kind)
@@ -431,8 +431,8 @@ export class Reviews extends Feature {
 
   /**
    * A new review round with the PR's review workspace open (KERNEL-552): each kind the round runs that has no chat gets one,
-   * and each that has is asked to review again. A review workspace still setting up, or whose setup failed, holds the
-   * messages until setup passes. A kind that turned required or optional since its chat started reads as the round has it.
+   * and each that has is asked to review again. A review workspace still being made, or one an older Kernel failed for setup,
+   * holds the messages until it is ready. A kind that turned required or optional since its chat started reads as the round has it.
    */
   private async reviewAgain(rws: Workspace, of: Workspace, run: PlannedReview[]) {
     // Before any message goes out, so a fetch or checkout that fails starts no round on a stale tree (KERNEL-1083).

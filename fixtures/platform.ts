@@ -463,7 +463,7 @@ function leadSetup(f: Fixture, lines: Omit<ScriptLine, 'kind'>[], code?: number)
     queue: { [ids.leadChat]: queue },
     push: [
       ...f.push,
-      { type: 'chat.queue', chatId: ids.leadChat, queue, why: 'setup' },
+      { type: 'chat.queue', chatId: ids.leadChat, queue, why: 'worktree' },
       ...lines.map((l): PushEvent => ({ type: 'script.output', workspaceId: ids.lead, kind: 'setup', lines: [l] })),
       ...(code === undefined ? [] : [{ type: 'script.exit' as const, workspaceId: ids.lead, kind: 'setup' as const, code }])
     ],

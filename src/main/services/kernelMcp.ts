@@ -29,10 +29,10 @@ export interface KernelToolDeps {
   agents: () => Promise<AgentDef[]>
   workspaces: () => Workspace[]
   /**
-   * `setupFailed` says how setup failed, when it did ("exit code 1"), and `queued` what the brief waits for when it didn't
-   * go out (KERNEL-272), so the result can tell the Lead the teammate hasn't started.
+   * `queued` is what the brief waits for when it didn't go out (KERNEL-272), so the result can tell the Lead the teammate hasn't
+   * started. Never setup, which runs alongside the teammate (KERNEL-1086).
    */
-  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[]; images?: ChatPart[]; goAhead?: string }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
+  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[]; images?: ChatPart[]; goAhead?: string }) => Promise<Workspace & { queued?: QueueReason }>
   /**
    * How many teammate workspaces may be open in the project at once, read on each call: the project's own limit when it sets one,
    * else Settings, Models' agent limit. 0 is no cap, and so is leaving it out (KERNEL-220, KERNEL-492).
@@ -685,7 +685,7 @@ export function kernelTools(d: KernelToolDeps) {
       if (!decision) return text('No answer yet.')
       return text(decision.behavior === 'answer' ? decision.text : decision.behavior)
     }),
-    tool('create_workspace', 'Create a workspace for one task and hand it to an agent. The agent starts right away while the setup script runs alongside, or, with wait_for, once those PRs merge. When the user turned on Wait for setup, it starts once setup passes.', {
+    tool('create_workspace', 'Create a workspace for one task and hand it to an agent. The agent starts right away while the setup script runs alongside, or, with wait_for, once those PRs merge. A setup that fails never stops it.', {
       agent: z.string().describe('Agent id from list_agents, for example "christian"'),
       title: z.string().describe('Task title, used to name the branch'),
       brief: z.string().describe('Everything the agent needs: goal and files. The plan step\'s criteria are added for you'),
@@ -727,7 +727,7 @@ export function kernelTools(d: KernelToolDeps) {
         if (open) {
           const name = team.find((a) => a.id === open.agentId)?.name ?? open.agentId
           const what = issue ? `${issue.trim()} is already handed off` : 'this task is already handed off'
-          if (open.status === 'failed') return refuse(`${what} to ${name} (workspace ${open.id}), and its setup failed. Tell the user to fix it and click Run again there.`)
+          if (open.status === 'failed') return refuse(`${what} to ${name} (workspace ${open.id}), and that workspace failed to start. Tell the user to click Run again there.`)
           return refuse(`${what} to ${name} (workspace ${open.id}). Follow up with message_agent.`)
         }
       }
@@ -754,7 +754,7 @@ export function kernelTools(d: KernelToolDeps) {
         if (target.prState === 'merged' || target.prState === 'closed') return refuse(`${target.name}'s PR is already ${target.prState}, so there is nothing left to review.`)
         if (target.mode === 'current') return refuse(`${target.name} works on the main checkout, not a branch of its own, so there is no branch to review. Ask its teammate to commit and open a pull request first.`)
         const open = d.workspaces().find((w) => w.reviewOf === target.id && w.agentId === pick.id && w.status !== 'archived')
-        if (open?.status === 'failed') return refuse(`${pick.name} already has a review of this open (workspace ${open.id}), and its setup failed. Tell the user to fix it and click Run again there.`)
+        if (open?.status === 'failed') return refuse(`${pick.name} already has a review of this open (workspace ${open.id}), and that workspace failed to start. Tell the user to click Run again there.`)
         if (open) return refuse(`${pick.name} already has a review of this open (workspace ${open.id}). Ask for another pass with message_agent.`)
       }
       // Work that merged already is left out; with nothing left, the hand-off starts as usual (KERNEL-259).
@@ -779,19 +779,18 @@ export function kernelTools(d: KernelToolDeps) {
       d.handedOff?.()
       d.acted?.({ created: pick.id })
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.
-      const failed = ws.status === 'failed' ? ` Setup failed (${ws.setupFailed ?? 'it did not pass'}), so ${pick.name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.` : ''
       const stale = ws.fetchFailed ? ` ${ws.fetchFailed}` : ''
       const waiting = ws.waitsFor?.held && ws.waitsFor.on.length ? ` ${pick.name} waits for ${labels(targets.filter((t) => ws.waitsFor!.on.includes(t.id)), team)} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${pick.name}.` : ''
       // A brief held for a slot, a pause or the connection isn't the teammate starting either (KERNEL-272). A brief held
       // for a merge says so above instead.
-      const queued = failed || waiting ? undefined : queuedNote(ws.queued, { name: pick.name, brief: true })
+      const queued = waiting ? undefined : queuedNote(ws.queued, { name: pick.name, brief: true })
       // A check that couldn't answer didn't hold the start up, and the Lead hears which one (KERNEL-479).
       const unchecked = taken?.notes.length ? ` ${taken.notes.join(' ')}` : ''
       // This chat's own edits stay in its worktree. The Lead tells the user, and nothing is held up (KERNEL-770).
       const left = review_of ? '' : await leftBehind(ws.baseRef)
       // A tool the agent's file names that its account can't give it yet. The agent still starts (KERNEL-939).
       const signIn = await signInLine(pick, true)
-      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${failed}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued)}${unchecked}${signIn}${left ? ` ${left} Tell the user.` : ''}`)
+      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued)}${unchecked}${signIn}${left ? ` ${left} Tell the user.` : ''}`)
     }),
     tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to bring its branch up to date with them. An empty list ends the wait and sends a held brief now.", {
       workspace_id: z.string().describe('The workspace that waits, from list_workspaces'),

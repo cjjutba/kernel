@@ -369,7 +369,7 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
     const repo = await tempRepo({ '.claude/agents/christian.md': '---\nname: christian\ndescription: Builds.\n---\nHi', '.github/pull_request_template.md': '## Summary\n', 'package.json': JSON.stringify({ commitlint: {} }) })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') })
     await k.start()
     try {
@@ -647,7 +647,7 @@ async function startKernel(files?: Record<string, string>) {
   const repo = await tempRepo(files)
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   k.sessions.send = async () => ({ queued: false })
@@ -843,7 +843,7 @@ describe("a project's scripts run without asking (KERNEL-913)", () => {
   async function kernelFor(repo: string, dataDir?: string, app: object = {}) {
     dataDir ??= await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true }, ...app }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const sent: string[] = [], released: string[] = []
@@ -867,6 +867,8 @@ describe("a project's scripts run without asking (KERNEL-913)", () => {
     const { k, project, sent } = await kernelFor(repo)
     const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table' })
     expect(ws.status).toBe('ready')
+    // Setup runs alongside the brief (KERNEL-1086).
+    await k.setup.settled(ws.id)
     expect(await readFile(join(ws.path, 'ran.txt'), 'utf8')).toBe('ran\n')
     expect(await readFile(join(ws.path, '.env.local'), 'utf8')).toBe('SECRET=1\n')
     expect(sent).toEqual(['Build the table'])
@@ -924,15 +926,21 @@ describe("a project's scripts run without asking (KERNEL-913)", () => {
 
   describe('upgrading from a Kernel that held workspaces for trust', () => {
     /**
-     * A Kernel whose workspaces' setup failed, so each brief waits in the saved queues, then quit. `edit` rewrites the
-     * workspaces and the saved state the way the older Kernel would have left them, before the next start.
+     * A Kernel whose workspaces' setup failed, so each brief waits in the saved queues, then quit, as an older Kernel left them:
+     * nothing fails or holds for setup since KERNEL-1086. `edit` rewrites the workspaces and the saved state the way the older
+     * Kernel would have left them, before the next start.
      */
     async function older(edit: (store: Store, ws: Workspace[]) => void, titles = ['Table']) {
       const repo = await clonedRepo('sleep 0.3 && test -f ok.txt')
       const first = await kernelFor(repo)
       const made: Workspace[] = []
-      for (const title of titles) made.push(await first.k.createWorkspace(first.project.id, { prompt: `Build the ${title}`, agentId: 'christian', title, ...(made.length ? { waitFor: [made[0].id] } : {}) }))
-      expect(made.map((w) => first.k.store.workspace(w.id)?.status)).toEqual(titles.map(() => 'failed'))
+      for (const title of titles) {
+        const { ws, chat } = await first.k.workspaces.cutWorkspace(first.project.id, { prompt: `Build the ${title}`, agentId: 'christian', title, ...(made.length ? { waitFor: [made[0].id] } : {}) })
+        first.k.setup.setSetup(ws.id, undefined)
+        first.k.store.saveWorkspace({ ...first.k.store.workspace(ws.id)!, status: 'failed' })
+        first.k.sessions.hold(chat.id, [{ type: 'text', text: `Build the ${title}` }])
+        made.push(ws)
+      }
       const chats = made.map((w) => first.k.store.chats(w.id).find((c) => c.kind !== 'terminal')!)
       await first.k.stop()
       for (const w of made) await writeFile(join(w.path, 'ok.txt'), '')
@@ -967,17 +975,17 @@ describe("a project's scripts run without asking (KERNEL-913)", () => {
       await again.k.stop()
     }, 60000)
 
-    it('fails one a quit left setting up with no setups hold, and sends its brief once Run again passes', async () => {
+    it('finishes one a quit left setting up with no setups hold, and sends its brief while setup runs alongside (KERNEL-1086)', async () => {
       const { repo, dataDir, made: [ws], chats: [chat] } = await older((store, [w]) => {
         store.saveWorkspace({ ...w, status: 'setup' })
         store.saveMeta('setups', {})
       })
       const again = await kernelFor(repo, dataDir)
-      expect(again.k.store.workspace(ws.id)?.status).toBe('failed')
       expect(again.k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build the Table' }]])
-      await again.h['scripts.run']({ workspaceId: ws.id, kind: 'setup' })
       await vi.waitFor(() => expect(again.k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
-      expect(again.released).toEqual([chat.id])
+      await vi.waitFor(() => expect(again.released).toEqual([chat.id]))
+      await again.k.setup.settled(ws.id)
+      expect(again.k.store.workspace(ws.id)?.setupRun?.end).toBe(0)
       await again.k.stop()
     }, 60000)
   })

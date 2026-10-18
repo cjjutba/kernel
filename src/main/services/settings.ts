@@ -46,7 +46,7 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   // Kernel moves to an account with room ahead of a limit unless the user turns it off (KERNEL-941, amends KERNEL-568).
   // Chats keep the account that holds their cache, and a long one is summarized before it moves (KERNEL-841).
   accounts: { switchAtLimit: { claude: true, codex: true }, keepChatsOnAccount: true, longChatMove: { claude: 'summarize', codex: 'summarize' }, longChatTokens: 50_000 },
-  workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, baselineCurrentBranch: true, oneCurrentBranchPerProject: true, leadBranchPattern: '{lead}/{slug}', leadWaitForSetup: false, archiveChatWorkspaces: true },
+  workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, baselineCurrentBranch: true, oneCurrentBranchPerProject: true, leadBranchPattern: '{lead}/{slug}', archiveChatWorkspaces: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true, timeoutMinutes: 15 },
   models: {
     roles: {
@@ -243,6 +243,8 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   if (workspace?.branchPattern === 'feat/{slug}') delete workspace.branchPattern
   // Nothing ever read setUpstream, so it went (KERNEL-460). A file that still has it loads without it.
   if (workspace) delete workspace.setUpstream
+  // Nothing waits for setup any more, so Wait for setup before agents start went (KERNEL-1086). A file that still has it loads without it.
+  if (workspace) delete workspace.leadWaitForSetup
   // Rooms are projects (KERNEL-880): the switch saved under its old name keeps its value, and the next save writes the new one.
   if (workspace && 'oneCurrentBranchPerRoom' in workspace) {
     workspace.oneCurrentBranchPerProject ??= workspace.oneCurrentBranchPerRoom
@@ -611,7 +613,7 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
  * A Cleanup switch with the project's own value first (KERNEL-114, KERNEL-370). The project's file keeps the raw TOML value,
  * so only `true` or `false` counts, and anything else falls back to the app's.
  */
-export function cleanupSwitch(repo: RepoSettings | undefined, app: AppSettings['workspace'], key: 'archiveOnMerge' | 'deleteBranchOnArchive' | 'leadWaitForSetup' | 'archiveChatWorkspaces'): boolean {
+export function cleanupSwitch(repo: RepoSettings | undefined, app: AppSettings['workspace'], key: 'archiveOnMerge' | 'deleteBranchOnArchive' | 'archiveChatWorkspaces'): boolean {
   const own = repo?.workspace[key]
   return typeof own === 'boolean' ? own : app[key]
 }
