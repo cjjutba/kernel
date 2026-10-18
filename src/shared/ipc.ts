@@ -2,7 +2,7 @@ import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubAuth, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewProjectRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
-  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, GitHubOwner, RepoSummary, ResolvedPath, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ChatArchivePreview, MoveChoice, MoveNotice, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  PermissionMode, PlanAttention, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, GitHubOwner, RepoSummary, ResolvedPath, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ChatArchivePreview, MoveChoice, MoveNotice, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -280,6 +280,9 @@ export interface KernelApi {
   'approvals.decide': { req: { id: string; decision: Decision }; res: Approval }
   /** The plan's file, written again from the approval if it was deleted. `relative` is from the workspace folder. */
   'approvals.planFile': { req: { id: string }; res: { path: string; relative: string } }
+
+  /** What an approved plan cost the user so far, from the Inbox events of its workspaces (KERNEL-1060). */
+  'attention.plan': { req: { approvalId: string }; res: PlanAttention }
 
   // tasks (KERNEL-18)
   'tasks.list': { req: { projectId: string }; res: Task[] }
