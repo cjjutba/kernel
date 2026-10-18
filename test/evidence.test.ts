@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { Approval, PrInfo, ReviewVerdict, Workspace } from '../src/shared/types'
 import { run } from '../src/main/services/exec'
 import { Kernel } from '../src/main/kernel'
+import { render } from '../src/main/features/evidence'
 import { chmod } from 'node:fs/promises'
 import { prComment } from '../src/main/services/github'
 import { freePort, tempRepo } from './helpers'
@@ -149,12 +150,36 @@ describe('evidence against each criterion (KERNEL-1065)', () => {
     await run('git', ['-C', t.repo, 'commit', '-qam', 'more'])
     const e = await t.k.evidence.update(await t.info([{ name: 'Export CSV', state: 'queued' }]))
     expect(status(e)).toEqual(['unverified', 'unverified', 'unverified'])
-    expect(e?.criteria[0]).toMatchObject({ stale: true })
-    expect(e?.criteria[0].links.find((l) => l.source === 'check' && l.commit === old)).toMatchObject({ stale: true, effect: 'supports' })
+    // The check's latest run is on the new head, so it replaces the old one in the list (KERNEL-1070).
+    expect(e?.criteria[0].links.filter((l) => l.source === 'check')).toMatchObject([{ stale: false, effect: 'context' }])
     expect(e?.criteria[1].links.find((l) => l.source === 'review')).toMatchObject({ stale: true })
 
     // The new head's own events count again, and the old ones stay stale.
     expect(status(await t.k.evidence.update(await t.info([{ name: 'Export CSV', state: 'pass' }])))).toEqual(['passed', 'unverified', 'unverified'])
+  })
+
+  it('lists one link per source after three pushes, stale only when its latest is from an older commit (KERNEL-1070)', async () => {
+    const t = await boot()
+    const push = async (n: number) => {
+      await writeFile(join(t.repo, 'invoice.ts'), `export const total = ${n}\n`)
+      await run('git', ['-C', t.repo, 'commit', '-qam', `push ${n}`])
+    }
+    const first = await t.head()
+    t.ws({ reviews: [verdict(first, [{ index: 1, met: true, note: 'tax added' }])] })
+    await t.k.evidence.update(await t.info([{ name: 'Export CSV', state: 'pass' }]))
+    await push(2)
+    await t.k.evidence.update(await t.info([{ name: 'Export CSV', state: 'pass' }]))
+    await push(3)
+    const e = await t.k.evidence.update(await t.info([{ name: 'Export CSV', state: 'pass' }]))
+    const head = await t.head()
+    expect(e?.criteria[0].links.map((l) => [l.source, l.commit, l.stale])).toEqual([['check', head, false]])
+    // The verdict was about the first commit and nobody judged again: one row, stale.
+    expect(e?.criteria[1].links.filter((l) => l.source === 'review').map((l) => [l.commit, l.stale])).toEqual([[first, true]])
+    expect(e?.criteria[1].links.filter((l) => l.source === 'files').map((l) => [l.label, l.commit, l.stale])).toEqual([['Touched invoice.ts', head, false]])
+    const body = render(e!)
+    expect(body.match(/Touched invoice\.ts/g)).toHaveLength(1)
+    expect(body.match(/Reviewer's judgment/g)).toHaveLength(1)
+    expect(body).not.toContain('(older commit) Touched')
   })
 
   it('keeps a verdict current when Kernel only brought the branch up to date with its base', async () => {
