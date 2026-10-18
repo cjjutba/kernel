@@ -25,7 +25,7 @@ const prTurn = (id: string, lines: string[], tools: number, reply: string): Chat
 const prNote = (id: string, text: string, pr: 'merged' | 'closed' | 'cifail'): ChatItem => ({ kind: 'note', id, ts: at(10, 40), text, pr })
 
 /**
- * KERNEL-1066: the Checks tab's acceptance criteria for PR #42. Each state has a fixture; WorkspaceCriteria shows all four with the
+ * KERNEL-1066: the Checks tab's acceptance criteria for PR #42. Each state has a fixture; WorkspaceCriteria shows all five with the
  * reviewer's judgment labeled and "Reviewed by Codex". Links that came from a check carry its URL, a judgment has none.
  */
 const link = (id: string, o: Partial<EvidenceLink> & Pick<EvidenceLink, 'source' | 'label' | 'effect'>): EvidenceLink => ({ id, stale: false, commit: 'h42', ts: at(10, 41), ...o })
@@ -36,6 +36,7 @@ const CRITERIA = {
   passed: crit(0, 'Each invoice row has a Download PDF action', 'passed', [vitestPass, judged(true, 'the action is in the row menu')]),
   failed: crit(1, 'The action is disabled while the PDF is rendering', 'failed', [link('check:playwright', { source: 'check', label: 'CI check playwright: failed', effect: 'contradicts', url: 'https://github.com/cjjutba/client-a/actions/runs/43' }), judged(false, 'the button stays enabled')]),
   unverified: crit(2, 'A 200 line invoice fits on three pages or fewer', 'unverified', [link('files:pdf.ts', { source: 'files', label: 'Touched src/pdf/render.ts', effect: 'context' })]),
+  reviewerMet: crit(4, 'The Download PDF action is easy to find', 'reviewer-met', [judged(true, 'the action sits first in the row menu')]),
   stale: crit(3, 'The PDF embeds the invoice font', 'unverified', [link('review:old', { source: 'review', judgedBy: 'reviewer', label: 'Reviewer’s judgment (code): met, the font is embedded', effect: 'supports', commit: 'h41', stale: true })])
 }
 const criteriaScene = (kinds: (keyof typeof CRITERIA)[], o: { provider?: 'claude' | 'codex' } = {}) =>
@@ -3398,10 +3399,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ]
     })
   }, 'checks'),
-  WorkspaceCriteria: criteriaScene(['passed', 'failed', 'unverified', 'stale'], { provider: 'codex' }),
+  WorkspaceCriteria: criteriaScene(['passed', 'reviewerMet', 'failed', 'unverified', 'stale'], { provider: 'codex' }),
   WorkspaceCriteriaPassed: criteriaScene(['passed'], { provider: 'codex' }),
   WorkspaceCriteriaFailed: criteriaScene(['failed'], { provider: 'codex' }),
   WorkspaceCriteriaUnverified: criteriaScene(['unverified']),
+  WorkspaceCriteriaReviewerMet: criteriaScene(['reviewerMet'], { provider: 'codex' }),
   WorkspaceCriteriaStale: criteriaScene(['stale'], { provider: 'claude' }),
   // KERNEL-1077: a reviewed PR whose step had no criteria still names the model that reviewed it.
   WorkspaceReviewedByCodex: criteriaScene([], { provider: 'codex' }),

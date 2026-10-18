@@ -169,11 +169,12 @@ section:first-child > .lp-sec { padding-top: 6px; }
 .crit-list, .crit-evs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .crit-list { gap: 10px; }
 .crit-head { display: flex; align-items: baseline; gap: 10px; min-height: 26px; }
-.crit-state { display: inline-flex; align-items: center; gap: 4px; flex: none; min-width: 84px; font-size: 11px; font-weight: 500; color: var(--ink-2); }
+.crit-state { display: inline-flex; align-items: center; gap: 4px; flex: none; min-width: 112px; font-size: 11px; font-weight: 500; color: var(--ink-2); }
 .crit-state[data-state='failed'] { color: var(--del); }
+.crit-state[data-state='reviewer-met'],
 .crit-state[data-state='unverified'], .crit-state[data-state='stale'] { color: var(--muted); }
 .crit-text { color: var(--ink-2); min-width: 0; }
-.crit-evs { gap: 2px; margin: 2px 0 0 94px; }
+.crit-evs { gap: 2px; margin: 2px 0 0 122px; }
 .crit-ev { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 12px; }
 .crit-ev[data-stale] { color: var(--faint); }
 .crit-tag { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 11px; color: var(--muted); }
