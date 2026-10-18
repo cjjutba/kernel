@@ -104,14 +104,12 @@ export const BLOCKER_RULE = 'A blocker is one of these: an acceptance criterion 
  * user's own and GitHub won't let its author do either. `lens` is the kind of review the chat runs, when Kernel started it
  * (KERNEL-549): the other kinds' chats share the worktree, so it only reads, and it blocks only on its own kind of problem.
  */
-export function reviewRule(r: { author: string; task: string; workspaceId: string; branch: string; resetTo?: string; base: string; pr?: { number: number; url?: string }; lens?: ReviewKind; others?: ReviewKind[] }, remote = 'origin'): string {
-  const to = r.resetTo ?? r.branch
-  const pickUp = to.startsWith(`${remote}/`) ? `git fetch ${remote} ${r.branch} && git reset --hard ${to}` : `git reset --hard ${to}`
+export function reviewRule(r: { author: string; task: string; workspaceId: string; branch: string; head?: string; base: string; pr?: { number: number; url?: string }; lens?: ReviewKind; others?: ReviewKind[] }): string {
   const kind = r.lens && reviewsText([r.lens]).replace(/^The/, 'the')
   return [
     `You are reviewing ${r.author}'s work on "${r.task}" (workspace ${r.workspaceId}) for the Lead.`,
     ...(kind ? [`You run ${kind} of it.${r.others?.length ? ` ${reviewsText(r.others)} ${r.others.length === 1 ? 'runs' : 'run'} in other chats of this workspace, so block only on what ${kind} covers and leave the rest to them.` : ''}`] : []),
-    `Your worktree started at ${r.author}'s branch ${r.branch}. Before each review, run \`${pickUp}\` to pick up ${r.author}'s latest commits, then read the change with \`git diff ${r.base}...HEAD\`.`,
+    `Kernel put your worktree on ${r.author}'s branch ${r.branch}${r.head ? `, at commit ${r.head}` : ''}, before this review started. Read the change with \`git diff ${r.base}...HEAD\`.`,
     r.pr ? `It is PR #${r.pr.number}${r.pr.url ? `: ${r.pr.url}` : ''}.` : `It had no PR when this review started; \`gh pr view ${r.branch}\` shows one if it opened since.`,
     `Don't edit, commit or push. ${r.author} fixes what you find.`,
     BLOCKER_RULE,
@@ -121,7 +119,7 @@ export function reviewRule(r: { author: string; task: string; workspaceId: strin
     "Don't approve while a check is still running. Wait for it with `gh pr checks --watch`. Never block only because a check is running.",
     'When you are done, call mcp__kernel__submit_review once: "approved", or "blockers" with each blocker. The Lead passes blockers on.',
     "Don't approve or request changes on GitHub: the PR was opened from the user's account, and GitHub doesn't let its author do either. If the repo wants a review on GitHub, post it as a comment with `gh pr comment`.",
-    `When you are asked to review again, run \`${pickUp}\` again, check only your earlier blockers and anything the fix broke, and call submit_review again. Raise nothing new unless the fix caused it.`,
+    `When you are asked to review again, Kernel has already moved your worktree to the new head commit, which the message names. Then check only your earlier blockers and anything the fix broke, and call submit_review again. Raise nothing new unless the fix caused it.`,
     SETUP_LINE
   ].join('\n')
 }

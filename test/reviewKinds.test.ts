@@ -128,7 +128,7 @@ describe('which reviews a PR gets', () => {
     // The code review is asked to look at the new commit, once, and the new kind gets its brief.
     const [code, ux] = k.store.chats(rws.id)
     expect(sent.map((m) => m.chatId)).toEqual([code.id, ux.id])
-    expect(sent[0].text).toMatch(new RegExp(`^PR #${ws.prNumber} has new commits, up to [0-9a-f]{7}\\. Review it again`))
+    expect(sent[0].text).toMatch(new RegExp(`^PR #${ws.prNumber} has new commits\\. Your worktree is now on its head commit [0-9a-f]{40}\\. Review it again`))
     expect(sent[1].text).toBe(`Run the UX review of PR #${ws.prNumber} "Task 1" by Christian.`)
     await k.reviews.onReady(ws.id)
     expect(sent).toHaveLength(2)
@@ -570,5 +570,92 @@ describe('paths and prompts', () => {
     expect(lensAgent('ux').prompt).toContain('The code and security reviews cover those.')
     const rule = reviewRule({ author: 'Christian', task: 'T', workspaceId: 'w', branch: 'feat/x', base: 'origin/main', lens: 'security', others: ['code', 'ux'] })
     expect(rule).toContain('You run the security review of it. The code and UX reviews run in other chats of this workspace, so block only on what the security review covers and leave the rest to them.')
+  })
+})
+
+describe('the review worktree is on the PR head before the session starts (KERNEL-1083)', () => {
+  /** Gives the project an origin, so Kernel fetches before a round. */
+  async function withOrigin_(s: Awaited<ReturnType<typeof setup>>) {
+    const bare = await mkdtemp(join(tmpdir(), 'kernel-origin-'))
+    await git(bare, 'init', '-q', '--bare')
+    await git(s.repo, 'remote', 'add', 'origin', bare)
+    await git(s.repo, 'push', '-q', 'origin', 'HEAD')
+    return s
+  }
+  const headOf = async (path: string) => (await git(path, 'rev-parse', 'HEAD')).trim()
+
+  it('puts the worktree on the exact head SHA, even when the branch is ahead of it, before any turn', async () => {
+    const s = await withOrigin_(await setup())
+    const ws = await s.pr({ 'a.txt': 'a\n' })
+    const head = ws.prHead!
+    await writeFile(join(ws.path, 'b.txt'), 'b\n')
+    await git(ws.path, 'add', '-A')
+    await git(ws.path, 'commit', '-qm', 'ahead of the PR head')
+    // The first turn waits for setup, so it can't have run before the worktree moved.
+    const sent: string[] = []
+    s.k.sessions.send = async (_id, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
+    await s.k.reviews.onReady(ws.id)
+    const [rws] = s.reviewsOf(ws.id)
+    expect(await headOf(rws.path)).toBe(head)
+  })
+
+  it('moves the worktree to the new head on a re-review and names it in the message', async () => {
+    const s = await withOrigin_(await setup())
+    const ws = await s.pr({ 'a.txt': 'a\n' })
+    await s.k.reviews.onReady(ws.id)
+    const [rws] = s.reviewsOf(ws.id)
+    const sent: string[] = []
+    s.k.sessions.send = async (_id, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
+    await writeFile(join(ws.path, 'c.txt'), 'c\n')
+    await git(ws.path, 'add', '-A')
+    await git(ws.path, 'commit', '-qm', 'second')
+    const next = await headOf(ws.path)
+    s.k.store.saveWorkspace({ ...s.k.store.workspace(ws.id)!, prHead: next })
+    expect(await headOf(rws.path)).not.toBe(next)
+    await s.k.reviews.onReady(ws.id)
+    expect(await headOf(rws.path)).toBe(next)
+    expect(sent[0]).toContain(next)
+  })
+
+  it('starts no round when the fetch fails: no workspace, no session', async () => {
+    const s = await withOrigin_(await setup())
+    const ws = await s.pr({ 'a.txt': 'a\n' })
+    await git(s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-origin'))
+    const sent: string[] = []
+    s.k.sessions.send = async (_id, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
+    const notes: string[] = []
+    const note = (e: { warn?: boolean; text: string; object?: string }) => { if (e.warn) notes.push(`${e.text} ${e.object}`) }
+    bus.on('activity', note)
+    await s.k.reviews.onReady(ws.id)
+    bus.off('activity', note)
+    expect(s.reviewsOf(ws.id)).toHaveLength(0)
+    expect(sent).toHaveLength(0)
+    expect(notes).toContain(`couldn't start the review of PR #${ws.prNumber}`)
+  })
+
+  it('stops a re-review before any message when the fetch fails', async () => {
+    const s = await withOrigin_(await setup())
+    const ws = await s.pr({ 'a.txt': 'a\n' })
+    await s.k.reviews.onReady(ws.id)
+    const [rws] = s.reviewsOf(ws.id)
+    const before = await headOf(rws.path)
+    await writeFile(join(ws.path, 'c.txt'), 'c\n')
+    await git(ws.path, 'add', '-A')
+    await git(ws.path, 'commit', '-qm', 'second')
+    s.k.store.saveWorkspace({ ...s.k.store.workspace(ws.id)!, prHead: await headOf(ws.path) })
+    await git(s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-origin'))
+    const sent: string[] = []
+    s.k.sessions.send = async (_id, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
+    await s.k.reviews.onReady(ws.id)
+    expect(sent).toHaveLength(0)
+    expect(await headOf(rws.path)).toBe(before)
+  })
+
+  it('has no instruction to fetch or reset in any review rule, and names the commit', () => {
+    for (const lens of [undefined, 'code', 'security', 'ux'] as const) {
+      const rule = reviewRule({ author: 'Christian', task: 'T', workspaceId: 'w', branch: 'feat/x', head: 'abc123def456', base: 'origin/main', pr: { number: 7 }, ...(lens ? { lens } : {}) })
+      expect(rule).not.toMatch(/reset --hard|git reset|git fetch/)
+      expect(rule).toContain('at commit abc123def456')
+    }
   })
 })
