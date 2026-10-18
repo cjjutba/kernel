@@ -1075,7 +1075,7 @@ export class Lead extends Feature {
         if (o.kind === 'plan') this.approvals.expireIds(this.approvals.waitingPlans(chat.id, projectId).map((p) => p.id), 'replaced')
         // The turn stopping, as when the user writes in the message box instead, ends the card as expired (KERNEL-496).
         const { approval, decision } = this.approvals.request({
-          kind: o.kind, source: 'sdk', projectId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options, questions: o.questions,
+          kind: o.kind, source: 'sdk', projectId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options, questions: o.questions, about: o.about,
           steps: o.steps && parsePlanSteps(o.steps, agents), agentFile: o.agentFile
         }, { signal })
         this.sessions.placeApproval(chat.id, approval.id)
@@ -1092,7 +1092,11 @@ export class Lead extends Feature {
       },
       archiveWorkspace: (id) => this.k.archiveWorkspace(id),
       // The setting and the turn are read on each call: the switch can change, and each message starts a new turn (KERNEL-352).
-      mergeWorkspace: (id) => this.k.prs.mergePr(id),
+      mergeWorkspace: async (id) => {
+        const ws = await this.k.prs.mergePr(id)
+        this.k.attention.userMerged(id)
+        return ws
+      },
       leadMerge: () => this.settings.pr.leadMerge,
       overrule: (id, note) => this.k.reviews.overrule(id, { by: 'lead', note }),
       userTurn: () => this.userTurnIn(chat.id),

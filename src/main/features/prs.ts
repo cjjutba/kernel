@@ -1127,7 +1127,11 @@ export class Prs extends Feature {
     return {
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
       'pr.refresh': async ({ workspaceId }) => this.k.refreshPr(workspaceId),
-      'pr.merge': async ({ workspaceId, override }) => this.mergePr(workspaceId, { override }),
+      'pr.merge': async ({ workspaceId, override }) => {
+        const ws = await this.mergePr(workspaceId, { override })
+        this.k.attention.userMerged(workspaceId)
+        return ws
+      },
       'pr.resolve': async ({ workspaceId }) => { await this.resolvePr(workspaceId); return { ok: true } },
       'pr.update': async ({ workspaceId }) => { await this.updateBranch(workspaceId); return { ok: true } },
       'pr.get': async ({ workspaceId }) => this.getPr(workspaceId),

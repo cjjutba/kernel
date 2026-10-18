@@ -1,10 +1,8 @@
-import type { Approval, AttentionKind, Notification, PlanAttention } from '@shared/types'
+import type { Approval, AttentionKind, PlanAttention } from '@shared/types'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
-type Recorded = Record<string, Extract<AttentionKind, 'blocker' | 'merge'>>
-
-const metaKey = (workspaceId: string) => `attention.${workspaceId}`
+const mergeKey = (workspaceId: string) => `attention.merge.${workspaceId}`
 
 const kindOf = (a: Approval): AttentionKind | undefined => {
   if (a.kind === 'plan' || a.toolName === 'ExitPlanMode') return 'plan'
@@ -12,16 +10,18 @@ const kindOf = (a: Approval): AttentionKind | undefined => {
   if (a.kind === 'tool') return 'tool'
   return undefined
 }
+
+/**
+ * What a plan needed from the user: the approvals they decided in its step workspaces and in the review workspaces of their
+ * PRs, and the Lead's questions that name one of those workspaces, and the merges they started (KERNEL-1067). `blocker` stays in `byKind` at 0, since a failed check, a change request
+ * or a ready row the teammate settled never needed the user.
+ */
 export class Attention extends Feature {
-  onNotification(n: Notification) {
-    if (!n.workspaceId || !n.needsYou) return
-    const kind = n.kind === 'check' ? 'blocker' : n.kind === 'merge' ? 'merge' : undefined
-    if (!kind) return
-    const key = metaKey(n.workspaceId)
-    const seen = this.store.meta<Recorded>(key) ?? {}
-    if (seen[n.id]) return
-    this.store.saveMeta(key, { ...seen, [n.id]: kind })
+  /** The user merged this workspace's PR, from the Merge button or by asking the Lead. An auto-merge never calls this. */
+  userMerged(workspaceId: string) {
+    if (this.store.workspace(workspaceId)?.prState === 'merged') this.store.saveMeta(mergeKey(workspaceId), true)
   }
+
   plan(approvalId: string): PlanAttention {
     const plan = this.store.approval(approvalId)
     if (!plan || plan.kind !== 'plan' || !plan.steps?.length) throw new Error('This is not an approved plan.')
@@ -33,17 +33,25 @@ export class Attention extends Feature {
       if (!step.workspaceId) { finished = false; continue }
       ids.add(step.workspaceId)
     }
+    const reviews = this.store.workspaces().filter((w) => w.reviewOf && ids.has(w.reviewOf)).map((w) => w.id)
     for (const id of ids) {
       const ws = this.store.workspace(id)
       if (ws?.prState === 'merged') prsMerged++
       else if (ws && ws.prState !== 'closed') finished = false
+      if (this.store.meta<boolean>(mergeKey(id))) byKind.merge++
+    }
+    const mine = new Set([...ids, ...reviews])
+    for (const id of mine) {
       for (const a of this.store.approvals({ workspaceId: id })) {
-        const kind = a.status === 'expired' ? undefined : kindOf(a)
+        const kind = a.status === 'pending' || a.status === 'expired' ? undefined : kindOf(a)
         if (kind) byKind[kind]++
       }
-      const rows = Object.values(this.store.meta<Recorded>(metaKey(id)) ?? {})
-      byKind.blocker += rows.filter((k) => k === 'blocker').length
-      if (rows.includes('merge')) byKind.merge++
+    }
+    // A question the Lead asked about this plan's work sits in the Lead's workspace, and counts when it names one of these.
+    if (plan.projectId) {
+      for (const a of this.store.approvals({ projectId: plan.projectId })) {
+        if (a.kind === 'question' && a.status === 'answered' && !mine.has(a.workspaceId ?? '') && a.about?.some((id) => mine.has(id))) byKind.question++
+      }
     }
     const needed = Object.values(byKind).reduce((a, b) => a + b, 0)
     return { prsMerged, needed, byKind, finished }

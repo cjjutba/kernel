@@ -770,6 +770,20 @@ describe("the Lead's ask_user options (KERNEL-407)", () => {
     expect(await asking).toBe('No')
   })
 
+  it('keeps the workspaces a question is about on its card (KERNEL-1067)', async () => {
+    const { k, first, call } = shared()
+    const asking = call(first, 'ask_user', { question: 'Merge both?', options: ['Yes', 'No'], about: ['w1'] })
+    const p = await waiting(k)
+    expect(p.about).toEqual(['w1'])
+    k.approvals.decide(p.id, { behavior: 'answer', text: 'Yes' })
+    await asking
+    const plain = call(first, 'ask_user', { question: 'Anything else?' })
+    const q = await waiting(k)
+    expect(q.about).toBeUndefined()
+    k.approvals.decide(q.id, { behavior: 'answer', text: 'No' })
+    await plain
+  })
+
   it('refuses a label over 60 characters, string options included, and asks nothing (KERNEL-415)', async () => {
     const { k, first, run } = await setup()
     const long = 'Guided sign-in, because Kernel opens the browser and nobody has to copy a token by hand'
