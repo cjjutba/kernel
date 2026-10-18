@@ -859,6 +859,13 @@ const planApproved = (f: Fixture): Partial<Fixture> => {
   }
 }
 
+/** The approved plan once every task has merged: a line under the card counts the PRs and how often it needed you (KERNEL-1063). */
+const planFinished = (f: Fixture): Partial<Fixture> => {
+  const s = planApproved(f)
+  const id = s.approvals?.[0]?.id ?? ''
+  return { ...s, attention: { [id]: { prsMerged: 4, needed: 6, byKind: { plan: 1, tool: 2, question: 1, blocker: 1, merge: 1 }, finished: true } } }
+}
+
 /** The approved plan of a chat that has your answer as a message (KERNEL-838): Approved is the chat's own user row, so the plan card draws no bubble of its own. */
 const planApprovedItem = (f: Fixture): Partial<Fixture> => {
   const s = planApproved(f)
@@ -2850,6 +2857,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePlanApprove: { ...scene(planWaiting), motion: { action: { click: 'Approve' }, ms: 1000, area: '.ws-main' } },
   WorkspacePlanApproved: scene(planApproved), // an older chat: no answer row, so the plan card draws the bubble
   WorkspacePlanApprovedItem: scene(planApprovedItem),
+  // Tasks still open: no counter. All merged: the line shows (KERNEL-1063).
+  WorkspacePlanOpenTasks: scene((f) => { const s = planApproved(f); const id = s.approvals?.[0]?.id ?? ''; return { ...s, attention: { [id]: { prsMerged: 1, needed: 3, byKind: { plan: 1, tool: 1, question: 0, blocker: 0, merge: 1 }, finished: false } } } }),
+  WorkspacePlanFinished: scene(planFinished),
   WorkspacePlanChanges: scene(planChanges),
   WorkspacePlanReplaced: scene(planReplaced),
   WorkspacePlanExit: scene(planExit),
