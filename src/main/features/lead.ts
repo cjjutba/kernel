@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs'
 import { cp, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, LeadMode, PermissionMode, Provider, QueueReason, QueuedMessage, ReviewKind, Project, Thread, Workspace } from '@shared/types'
+import { criterionText } from '@shared/criteria'
+import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, LeadMode, PermissionMode, PlanCriterion, Provider, QueueReason, QueuedMessage, ReviewKind, Project, Thread, Workspace } from '@shared/types'
 import { buildsHere, LEAD_MODES, leadModeName, leadModeOf, newChatLeadMode } from '@shared/leadMode'
 import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
 import { providerOf } from '@shared/providers'
@@ -38,8 +39,8 @@ const SWITCHED_DURING = 'leadSwitchedDuring'
 
 /** The project's Lead: its workspace and chats, its tools, and where teammates' updates go (KERNEL-329). */
 /** The brief with the plan step's criteria listed under it. A step without any leaves the brief as written. */
-export function withCriteria(prompt: string, criteria?: string[]): string {
-  const list = (criteria ?? []).filter((c) => c.trim())
+export function withCriteria(prompt: string, criteria?: PlanCriterion[]): string {
+  const list = (criteria ?? []).map(criterionText).filter((c) => c.trim())
   return list.length ? `${prompt.trimEnd()}\n\nAcceptance criteria:\n${list.map((c) => `- ${c}`).join('\n')}` : prompt
 }
 

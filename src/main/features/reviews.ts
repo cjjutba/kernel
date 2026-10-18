@@ -467,7 +467,7 @@ export class Reviews extends Feature {
     const author = this.agentsSync(of.projectId).find((a) => a.id === of.agentId)?.name ?? of.agentId
     const criteria = this.k.evidence.criteriaOf(of)
     return `Run ${reviewsText([kind]).replace(/^The/, 'the')} of PR #${of.prNumber}${of.prTitle ? ` "${of.prTitle}"` : ''} by ${author}.`
-      + (criteria.length ? `\nAcceptance criteria for this task, numbered from 0. Judge each one you can check in submit_review's criteria:\n${criteria.map((c, i) => `${i}. ${c}`).join('\n')}` : '')
+      + (criteria.length ? `\nAcceptance criteria for this task, numbered from 1. Judge each one you can check in submit_review's criteria, by its number:\n${criteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}` : '')
   }
 
   private briefParts(of: Workspace, kind: ReviewKind): ChatPart[] { return [{ type: 'text', text: this.brief(of, kind) }] }

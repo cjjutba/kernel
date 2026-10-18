@@ -29,7 +29,7 @@ async function boot() {
   const ws = (extra: Partial<Workspace> = {}) => k.store.saveWorkspace({ id: 'w1', projectId: 'p', name: 'w1', branch: 'feat/export', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'sean', port: 1, status: 'ready', prState: 'checks', prNumber: 7, createdAt: 1, ...extra } as Workspace)
   ws()
   const approval = (id: string, extra: Partial<Approval> = {}): Approval => ({ id, kind: 'tool', source: 'sdk', projectId: 'p', toolName: 'Bash', title: 'Run it', status: 'allowed', createdAt: 2, ...extra })
-  k.store.saveApproval(approval('plan', { kind: 'plan', toolName: undefined, steps: [{ title: 'Export invoices', criteria: CRITERIA, workspaceId: 'w1' }] }))
+  k.store.saveApproval(approval('plan', { kind: 'plan', toolName: undefined, steps: [{ title: 'Export invoices', criteria: [{ text: CRITERIA[0], check: 'Export CSV' }, ...CRITERIA.slice(1)], workspaceId: 'w1' }] }))
   const comments = new Map<string, string>()
   const calls: { id?: string }[] = []
   k.github = {
@@ -65,8 +65,56 @@ describe('evidence against each criterion (KERNEL-1065)', () => {
     const failed = await t.k.evidence.update(await t.info([{ name: 'Export CSV', state: 'fail', url: 'https://ci/1' }]))
     expect(status(failed)).toEqual(['failed', 'unverified', 'unverified'])
     expect(failed?.criteria[0].links).toMatchObject([{ source: 'check', effect: 'contradicts', url: 'https://ci/1' }])
-    // A running check, or one no criterion names, decides nothing. Test names are never guessed from commands.
+    // A running check, or one the plan did not name, decides nothing. Test names are never guessed from commands.
     expect(status(await t.k.evidence.update(await t.info([{ name: 'Export CSV', state: 'running' }, { name: 'vitest', state: 'pass' }])))).toEqual(['unverified', 'unverified', 'unverified'])
+  })
+
+  it('lets only the check the plan named decide, not a check the criterion text mentions (KERNEL-1069)', async () => {
+    const t = await boot()
+    t.k.store.saveApproval(t.approval('plan', { kind: 'plan', toolName: undefined, steps: [{
+      title: 'Slugify',
+      criteria: ['test/ has node:test cases covering mixed case and an empty input', { text: 'npm test passes and the test check is green', check: 'test' }, { text: 'Lint is clean', check: 'lint' }],
+      workspaceId: 'w1'
+    }] }))
+    const e = await t.k.evidence.update(await t.info([{ name: 'test', state: 'pass' }]))
+    // The first mentions node:test and the test check, but names none: the green check is context only.
+    expect(e?.criteria[0]).toMatchObject({ status: 'unverified', links: [{ source: 'check', effect: 'context' }] })
+    expect(e?.criteria[1]).toMatchObject({ status: 'passed', links: [{ source: 'check', effect: 'supports' }] })
+    // A named check that has not run leaves the criterion unverified.
+    expect(e?.criteria[2]).toMatchObject({ status: 'unverified', links: [] })
+    const failed = await t.k.evidence.update(await t.info([{ name: 'Test', state: 'fail' }]))
+    expect(status(failed)).toEqual(['unverified', 'failed', 'unverified'])
+  })
+
+  it('ignores a decisive check link saved before the plan named checks (KERNEL-1069)', async () => {
+    const t = await boot()
+    const head = await t.head()
+    t.k.store.saveApproval(t.approval('plan', { kind: 'plan', toolName: undefined, steps: [{ title: 'Slugify', criteria: ['test/ has node:test cases'], workspaceId: 'w1' }] }))
+    t.k.store.saveMeta('evidence.w1', { links: [{ id: `check:test:${head}`, source: 'check', label: 'CI check test: passed', effect: 'supports', commit: head, stale: false, ts: 1, criterion: 0 }] })
+    const e = await t.k.evidence.update(await t.info([{ name: 'test', state: 'pass' }]))
+    expect(status(e)).toEqual(['unverified'])
+    expect(e?.criteria[0].links).toMatchObject([{ source: 'check', effect: 'context' }])
+  })
+
+  it('shows reviewer-only support as its own state, in the comment too (KERNEL-1069)', async () => {
+    const t = await boot()
+    t.k.settings.pr.evidenceComment = true
+    t.ws({ reviews: [verdict(await t.head(), [{ index: 1, met: true }])] })
+    const e = await t.k.evidence.update(await t.info())
+    expect(status(e)).toEqual(['unverified', 'reviewer-met', 'unverified'])
+    const body = [...t.comments.values()][0]
+    expect(body).toMatch(/\*\*Reviewer says met\*\*: invoice\.ts totals include tax/)
+    expect(body).not.toMatch(/\*\*Passed\*\*: invoice/)
+  })
+
+  it('loads a plan saved with plain string criteria, and numbers the reviewer\'s brief from 1 (KERNEL-1069)', async () => {
+    const t = await boot()
+    t.k.store.saveApproval(t.approval('plan', { kind: 'plan', toolName: undefined, steps: [{ title: 'Old plan', criteria: ['First thing', 'Second thing'], workspaceId: 'w1' }] }))
+    expect(status(await t.k.evidence.update(await t.info([{ name: 'First thing', state: 'pass' }])))).toEqual(['unverified', 'unverified'])
+    const brief = (t.k.reviews as unknown as { brief(ws: Workspace, kind: string): string }).brief(t.k.store.workspace('w1')!, 'code')
+    expect(brief).toContain('numbered from 1')
+    expect(brief).toContain('\n1. First thing\n2. Second thing')
+    expect(brief).not.toContain('0. ')
   })
 
   it("labels the reviewer's judgment and lets it pass or fail a criterion", async () => {
@@ -74,7 +122,7 @@ describe('evidence against each criterion (KERNEL-1065)', () => {
     const head = await t.head()
     t.ws({ reviews: [verdict(head, [{ index: 1, met: true, note: 'totals add tax' }, { index: 2, met: false }])] })
     const e = await t.k.evidence.update(await t.info())
-    expect(status(e)).toEqual(['unverified', 'passed', 'failed'])
+    expect(status(e)).toEqual(['unverified', 'reviewer-met', 'failed'])
     expect(e?.criteria[1].links.find((l) => l.source === 'review')).toMatchObject({ judgedBy: 'reviewer', effect: 'supports' })
     expect(e?.criteria[1].links.find((l) => l.source === 'review')?.label).toMatch(/^Reviewer's judgment \(code\): met, totals add tax/)
   })
@@ -95,7 +143,7 @@ describe('evidence against each criterion (KERNEL-1065)', () => {
     const t = await boot()
     const old = await t.head()
     t.ws({ reviews: [verdict(old, [{ index: 1, met: true }])] })
-    expect(status(await t.k.evidence.update(await t.info([{ name: 'Export CSV', state: 'pass' }])))).toEqual(['passed', 'passed', 'unverified'])
+    expect(status(await t.k.evidence.update(await t.info([{ name: 'Export CSV', state: 'pass' }])))).toEqual(['passed', 'reviewer-met', 'unverified'])
 
     await writeFile(join(t.repo, 'invoice.ts'), 'export const total = 2\n')
     await run('git', ['-C', t.repo, 'commit', '-qam', 'more'])
@@ -117,7 +165,7 @@ describe('evidence against each criterion (KERNEL-1065)', () => {
     await run('git', ['-C', t.repo, 'commit', '-qm', 'merge base'])
     const to = await t.head()
     t.ws({ reviews: [verdict(from, [{ index: 1, met: true }])], baseUpdates: [{ from, to }] })
-    expect(status(await t.k.evidence.update(await t.info()))).toEqual(['unverified', 'passed', 'unverified'])
+    expect(status(await t.k.evidence.update(await t.info()))).toEqual(['unverified', 'reviewer-met', 'unverified'])
   })
 
   it('posts nothing by default, and with the setting on two updates leave one comment', async () => {
@@ -155,6 +203,16 @@ describe('evidence against each criterion (KERNEL-1065)', () => {
     const saved = t.k.store.meta<{ links: unknown[] }>('evidence.w1')
     expect(saved?.links.length).toBeGreaterThan(0)
     expect(Object.keys(t.k.handlers())).toContain('evidence.pr')
+  })
+})
+
+describe('the reviewer refers to criteria by number (KERNEL-1069)', () => {
+  it('turns a 1-based number into the criterion index', async () => {
+    const { reviewTools } = await import('../src/main/services/reviewMcp')
+    const seen: unknown[] = []
+    const [submit] = reviewTools({ submit: async (r) => { seen.push(r.criteria); return 'saved' } })
+    await submit.handler({ verdict: 'approved', summary: 'ok', criteria: [{ number: 1, met: true }, { number: 3, met: false, note: 'n' }] } as never, {})
+    expect(seen).toEqual([[{ index: 0, met: true }, { index: 2, met: false, note: 'n' }]])
   })
 })
 
