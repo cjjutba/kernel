@@ -59,7 +59,7 @@ describe('the review link (KERNEL-130)', () => {
     expect(deps.mcpFor(author, agent('christian'), chat)).toHaveProperty('kernel')
     const rule = deps.rulesFor(review, agent('artkin'))!
     expect(rule).toContain(`You are reviewing Christian's work on "Remove the Try section" (workspace ${author.id})`)
-    expect(rule).toContain(`git reset --hard ${author.branch}`)
+    expect(rule).toContain(`Kernel put your worktree on Christian's branch ${author.branch}`)
     expect(rule).toContain('mcp__kernel__submit_review')
     expect(deps.rulesFor(author, agent('christian'))).toBe(`${TEAMMATE_RULE}\n${SHARE_RULE}`)
   })
@@ -76,11 +76,12 @@ describe('the review link (KERNEL-130)', () => {
     expect(deps.mcpFor(author, agent('christian'), k.store.chats(author.id)[0])).toHaveProperty('kernel')
   })
 
-  it("resets to the PR's commit on GitHub once the work has a PR, the commit verdicts are checked against (KERNEL-136)", async () => {
-    const { k, review, author, agent, deps } = await setup()
-    k.store.saveWorkspace({ ...k.store.workspace(author.id)!, prNumber: 108, prState: 'ready' })
+  it("names the PR's head commit in the rule once the work has a PR, and never tells the reviewer to fetch or reset (KERNEL-1083)", async () => {
+    const { k, review, author, tip, agent, deps } = await setup()
+    k.store.saveWorkspace({ ...k.store.workspace(author.id)!, prNumber: 108, prState: 'ready', prHead: tip })
     const rule = deps.rulesFor(k.store.workspace(review.id)!, agent('artkin'))!
-    expect(rule).toContain(`git fetch origin ${author.branch} && git reset --hard origin/${author.branch}`)
+    expect(rule).toContain(`at commit ${tip}`)
+    expect(rule).not.toMatch(/reset --hard|git fetch/)
   })
 
   it('starts a review from the branch the author is on now (KERNEL-136)', async () => {
@@ -164,15 +165,11 @@ describe('the review link (KERNEL-130)', () => {
 })
 
 describe('the review rule (KERNEL-130)', () => {
-  it('fetches and resets to origin when the review started from origin', () => {
-    const rule = reviewRule({ author: 'Christian', task: 'T', workspaceId: 'w', branch: 'feat/x', resetTo: 'origin/feat/x', base: 'origin/main' })
-    expect(rule).toContain('`git fetch origin feat/x && git reset --hard origin/feat/x`')
+  it('points at the PR and the base, with no fetch or reset step (KERNEL-1083)', () => {
+    const rule = reviewRule({ author: 'Christian', task: 'T', workspaceId: 'w', branch: 'feat/x', head: 'abc123', base: 'origin/main' })
     expect(rule).toContain('`gh pr view feat/x`')
-  })
-
-  it("fetches from the project's remote when it isn't origin (KERNEL-190)", () => {
-    const rule = reviewRule({ author: 'Christian', task: 'T', workspaceId: 'w', branch: 'feat/x', resetTo: 'upstream/feat/x', base: 'upstream/main' }, 'upstream')
-    expect(rule).toContain('`git fetch upstream feat/x && git reset --hard upstream/feat/x`')
+    expect(rule).toContain('`git diff origin/main...HEAD`')
+    expect(rule).not.toMatch(/reset --hard|git fetch/)
   })
 })
 

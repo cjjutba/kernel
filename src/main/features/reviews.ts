@@ -8,7 +8,7 @@ import type { ReviewState } from '../services/leadUpdates'
 import type { ReviewInput } from '../services/reviewMcp'
 import { reviewRule } from '../services/handoff'
 import { remoteOf, reviewPolicyOf, saveAlwaysReview, saveReviewSettings } from '../services/settings'
-import { fetchOrigin, resolveBaseRef } from '../services/worktrees'
+import { fetchOrigin, resolveBaseRef, revParse } from '../services/worktrees'
 import { exec } from '../services/exec'
 import { isUnreadable } from '../services/agents'
 import { inPaths, kindLabel, kindsFor, lensAgent } from '../services/lenses'
@@ -48,14 +48,9 @@ export class Reviews extends Feature {
     const of = ws.reviewOf ? this.store.workspace(ws.reviewOf) : undefined
     if (!of) return undefined
     const author = this.agentsSync(ws.projectId).find((a) => a.id === of.agentId)?.name ?? of.agentId
-    // With a PR, the review is of what the PR holds on GitHub, the commit verdicts are checked against. Before one, it is
-    // of the author's local branch, or the remote's copy when the local one was gone (reviewBase).
-    const project = this.store.project(ws.projectId)
-    const remote = remoteOf({ workspace: { remote: project && this.k.config['projectRemotes'].get(project.path) } }, this.settings)
-    const resetTo = of.prNumber ? `${remote}/${of.branch}` : ws.baseRef
     const lens = chat?.lens?.kind
     const others = lens ? [...new Set(this.chatTabs(ws.id).flatMap((c) => (c.lens && c.lens.kind !== lens ? [c.lens.kind] : [])))] : []
-    return reviewRule({ author, task: of.title ?? of.name, workspaceId: of.id, branch: of.branch, resetTo, base: of.baseRef, ...(of.prNumber ? { pr: { number: of.prNumber, url: of.prUrl } } : {}), ...(lens ? { lens, others } : {}) }, remote)
+    return reviewRule({ author, task: of.title ?? of.name, workspaceId: of.id, branch: of.branch, ...(of.prHead ? { head: of.prHead } : {}), base: of.baseRef, ...(of.prNumber ? { pr: { number: of.prNumber, url: of.prUrl } } : {}), ...(lens ? { lens, others } : {}) })
   }
 
   /**
@@ -389,15 +384,46 @@ export class Reviews extends Feature {
     return round.kinds.filter((k) => !round.skipped?.includes(k) && !current.some((v) => lensOf(v) === k))
   }
 
+  /**
+   * The commit a review round reads (KERNEL-1083): the PR's head as Kernel knows it, else the branch's tip on the remote, after
+   * a fresh fetch from the project's folder when it has the remote. Throws when the fetch fails or the commit isn't here, so no round starts on a stale tree.
+   */
+  private async reviewHead(of: Workspace): Promise<string> {
+    const project = this.mustProject(of.projectId)
+    const remote = remoteOf({ workspace: { remote: this.k.config['projectRemotes'].get(project.path) } }, this.settings)
+    // A folder without that remote has nothing to fetch, and reads the commits it has.
+    if ((await exec('git', ['-C', project.path, 'remote', 'get-url', remote])).code === 0) {
+      const fetched = await fetchOrigin(project.path, remote, { fresh: true })
+      if (!fetched.ok) throw new Error(`Fetching ${remote} failed (${fetched.error}), so the review of ${of.branch} has nothing current to read.`)
+    }
+    for (const ref of [of.prHead, `${remote}/${of.branch}`, of.branch]) {
+      const sha = ref ? await revParse(project.path, ref) : undefined
+      if (sha) return sha
+    }
+    throw new Error(`${of.branch} is not on ${remote} or in this repo, so there is nothing to review.`)
+  }
+
+  /** Puts the review worktree at `sha`. Nobody edits there, so the reset loses nothing. */
+  private async putOnHead(path: string, sha: string): Promise<void> {
+    const r = await exec('git', ['-C', path, 'reset', '--hard', '--quiet', sha])
+    if (r.code !== 0) throw new Error(`Couldn't put the review worktree on ${sha.slice(0, 7)}: ${r.stderr.trim() || `git exited with code ${r.code}`}`)
+  }
+
   /** The review workspace for a PR: one worktree and one setup run, with a chat per kind, each held until setup passes. */
   private async startReview(of: Workspace, plan: PlannedReview[]): Promise<Workspace> {
     const [first] = plan
     const agent = first.agent ?? lensAgent(first.kind)
     // The verdicts go where the PR's news goes: the chat that handed it off, or the Build here chat it came from (KERNEL-778).
     const leadChatId = of.leadChatId ?? this.k.lead.buildTab(of)
+    // Fetched before the workspace exists, so a fetch that fails leaves nothing behind (KERNEL-1083).
+    const head = await this.reviewHead(of)
     const { ws, project, repo, chat } = await this.k.workspaces.cutWorkspace(of.projectId, {
       prompt: this.brief(of, first.kind), title: `Review PR #${of.prNumber}`, agentId: agent.id, agent, reviewOf: of.id, ...(leadChatId ? { leadChatId } : {})
     })
+    try { await this.putOnHead(ws.path, head) } catch (e) {
+      await this.k.archive.archiveWorkspace(ws.id).catch(() => undefined)
+      throw e
+    }
     const chats = plan.map((p, i) => this.lensChat(ws, p, i === 0 ? chat : undefined))
     for (const [i, c] of chats.entries()) this.sessions.hold(c.id, this.briefParts(of, plan[i].kind), { from: 'kernel' })
     return this.k.workspaces.setUpWorkspace(ws, project, repo, chats[0])
@@ -409,6 +435,9 @@ export class Reviews extends Feature {
    * messages until setup passes. A kind that turned required or optional since its chat started reads as the round has it.
    */
   private async reviewAgain(rws: Workspace, of: Workspace, run: PlannedReview[]) {
+    // Before any message goes out, so a fetch or checkout that fails starts no round on a stale tree (KERNEL-1083).
+    const head = await this.reviewHead(of)
+    await this.putOnHead(rws.path, head)
     const tabs = this.chatTabs(rws.id).filter((c) => c.kind === 'chat')
     for (const p of run) {
       // A review chat from before review kinds runs the code review.
@@ -423,7 +452,7 @@ export class Reviews extends Feature {
         const { optional: _optional, ...lens } = chat.lens
         this.saveChat({ ...chat, lens: { ...lens, ...(p.optional ? { optional: true as const } : {}) } })
       }
-      const text = `PR #${of.prNumber} has new commits${of.prHead ? `, up to ${of.prHead.slice(0, 7)}` : ''}. Review it again as your rule says, and call submit_review again.`
+      const text = `PR #${of.prNumber} has new commits. Your worktree is now on its head commit ${head}. Review it again as your rule says, and call submit_review again.`
       await this.sessions.send(chat.id, [{ type: 'text', text }], { from: 'kernel' })
     }
   }
