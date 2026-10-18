@@ -418,12 +418,12 @@ export class Prs extends Feature {
   /**
    * Merges with the project's method (`codeHost.methodFor`, KERNEL-468) once `mergeBlock` finds nothing in the way: green
    * checks and a reviewer's approval of the latest commit, as far as Settings > Pull requests asks for them (KERNEL-115),
-   * and no blockers on it. `override` is a person's Merge anyway past those blockers; the Lead never passes it
+   * and no blockers on it. `user` marks a merge the user started, which the attention count keeps (KERNEL-1067). `override` is a person's Merge anyway past those blockers; the Lead never passes it
    * (KERNEL-497). `head` is the commit auto-merge weighed: a PR GitHub reads at another one doesn't merge (KERNEL-556).
    */
-  mergePr(id: string, o: { override?: boolean; head?: string } = {}) { return this.running(id, 'merge', () => this.merge(id, o)) }
+  mergePr(id: string, o: { override?: boolean; head?: string; user?: true } = {}) { return this.running(id, 'merge', () => this.merge(id, o)) }
 
-  private async merge(id: string, o: { override?: boolean; head?: string }) {
+  private async merge(id: string, o: { override?: boolean; head?: string; user?: true }) {
     let ws = await this.syncBranch(id)
     const rules = this.settings.pr
     // GitHub is read fresh for every PR that last read as mergeable, since another merge may have sent GitHub back to
@@ -454,6 +454,8 @@ export class Prs extends Feature {
     const name = (agentId: string) => this.agentsSync(ws.projectId).find((a) => a.id === agentId)?.name ?? agentId
     const block = mergeBlock(ws, info, rules, name, { override: o.override })
     if (block) throw new Error(block)
+    // The merge is the user's from here: Kernel's own checks passed, so a GitHub error after this keeps the mark (KERNEL-1067).
+    if (o.user) this.k.attention.userMerging(id)
     const method = await this.k.codeHost.methodFor(this.mustProject(ws.projectId))
     this.merging.add(id)
     this.setPrState(ws, 'merging')
@@ -1128,8 +1130,7 @@ export class Prs extends Feature {
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
       'pr.refresh': async ({ workspaceId }) => this.k.refreshPr(workspaceId),
       'pr.merge': async ({ workspaceId, override }) => {
-        this.k.attention.userMerging(workspaceId)
-        return this.mergePr(workspaceId, { override })
+        return this.mergePr(workspaceId, { override, user: true })
       },
       'pr.resolve': async ({ workspaceId }) => { await this.resolvePr(workspaceId); return { ok: true } },
       'pr.update': async ({ workspaceId }) => { await this.updateBranch(workspaceId); return { ok: true } },

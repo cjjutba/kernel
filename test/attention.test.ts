@@ -74,6 +74,17 @@ describe('attention counter (KERNEL-1060, KERNEL-1067)', () => {
     expect(k.attention.plan('plan').byKind.merge).toBe(1)
   })
 
+  it('leaves no mark when Kernel refuses the merge before it reaches GitHub', async () => {
+    const { k } = await boot()
+    onTestFinished(() => k.stop({ budgetMs: 0 }))
+    k.store.saveProject({ id: 'p', name: 'P', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
+    k.store.saveWorkspace(ws('w1', { prState: 'checks' }))
+    k.store.saveApproval(approval('plan', { kind: 'plan', toolName: undefined, steps: [{ title: 'one', workspaceId: 'w1' }] }))
+    await expect(k.prs.mergePr('w1', { user: true })).rejects.toThrow()
+    k.store.saveWorkspace(ws('w1', { prState: 'merged' }))
+    expect(k.attention.plan('plan').byKind.merge).toBe(0)
+  })
+
   it('reports a plan with a task not yet handed off as not finished', async () => {
     const { k } = await boot()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
