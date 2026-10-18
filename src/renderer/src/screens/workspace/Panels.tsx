@@ -16,6 +16,7 @@ import { LeadPrs } from './pr/LeadPrs'
 import { useLeadPrs } from './pr/leadPrList'
 import { OUTSIDE_THE_REPO, type LocalStand } from './pr/model'
 import { useLocalMerge } from './pr/useLocalMerge'
+import { Criteria } from './pr/Criteria'
 import { SharedPanel, sharedHere } from './shared/SharedPanel'
 import { configuredTargets, detectedTarget, detectedUrl, openTarget, type PreviewTarget } from './previewUrls'
 import { pickerNames, runAllNames, runningRuns } from './runScripts'
@@ -309,6 +310,7 @@ function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
         <ToolButton icon="ext" label="Open on GitHub" disabled={!url} onClick={() => { if (url) void attempt('Could not open GitHub', () => call('system.openExternal', { url })) }} />
       </PanelTools>
       <div ref={scroller} className="panel-scroll checks-body">
+        <Criteria ws={ws} />
         {groups.map((g) => (
           <div key={g.title} className="col gap-4">
             <span className="muted t-meta t-medium">{g.title}</span>

@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { ChatPart, Notification, AccountProfile, MoveNotice, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { CriterionEvidence, EvidenceLink, PrEvidence, ChatPart, Notification, AccountProfile, MoveNotice, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
@@ -23,6 +23,38 @@ const prTurn = (id: string, lines: string[], tools: number, reply: string): Chat
   { kind: 'result', id: `${id}-res`, ts: at(10, 34), durationMs: 65_000, ok: true }
 ]
 const prNote = (id: string, text: string, pr: 'merged' | 'closed' | 'cifail'): ChatItem => ({ kind: 'note', id, ts: at(10, 40), text, pr })
+
+/**
+ * KERNEL-1066: the Checks tab's acceptance criteria for PR #42. Each state has a fixture; WorkspaceCriteria shows all four with the
+ * reviewer's judgment labeled and "Reviewed by Codex". Links that came from a check carry its URL, a judgment has none.
+ */
+const link = (id: string, o: Partial<EvidenceLink> & Pick<EvidenceLink, 'source' | 'label' | 'effect'>): EvidenceLink => ({ id, stale: false, commit: 'h42', ts: at(10, 41), ...o })
+const crit = (index: number, text: string, status: CriterionEvidence['status'], links: EvidenceLink[], stale = links.some((l) => l.stale)): CriterionEvidence => ({ index, text, status, stale, links })
+const vitestPass = link('check:vitest', { source: 'check', label: 'CI check vitest: passed', effect: 'supports', url: 'https://github.com/cjjutba/client-a/actions/runs/42' })
+const judged = (met: boolean, note: string) => link(`review:${met}`, { source: 'review', judgedBy: 'reviewer', label: `Reviewer’s judgment (code): ${met ? 'met' : 'not met'}, ${note}`, effect: met ? 'supports' : 'contradicts' })
+const CRITERIA = {
+  passed: crit(0, 'Each invoice row has a Download PDF action', 'passed', [vitestPass, judged(true, 'the action is in the row menu')]),
+  failed: crit(1, 'The action is disabled while the PDF is rendering', 'failed', [link('check:playwright', { source: 'check', label: 'CI check playwright: failed', effect: 'contradicts', url: 'https://github.com/cjjutba/client-a/actions/runs/43' }), judged(false, 'the button stays enabled')]),
+  unverified: crit(2, 'A 200 line invoice fits on three pages or fewer', 'unverified', [link('files:pdf.ts', { source: 'files', label: 'Touched src/pdf/render.ts', effect: 'context' })]),
+  stale: crit(3, 'The PDF embeds the invoice font', 'unverified', [link('review:old', { source: 'review', judgedBy: 'reviewer', label: 'Reviewer’s judgment (code): met, the font is embedded', effect: 'supports', commit: 'h41', stale: true })])
+}
+const criteriaScene = (kinds: (keyof typeof CRITERIA)[], o: { provider?: 'claude' | 'codex' } = {}) =>
+  scene((f) => {
+    const evidence: PrEvidence = {
+      workspaceId: ids.table, prNumber: 42, head: 'h42', stepTitle: 'Download PDF from the invoice table',
+      criteria: kinds.map((k, i) => ({ ...CRITERIA[k], index: i })), run: { approvals: [], files: ['src/pdf/render.ts'], images: [] },
+      commentUrl: 'https://github.com/cjjutba/client-a/pull/42#issuecomment-1'
+    }
+    return {
+      workspaces: withWorkspace(f, ids.table, {
+        ...pr, prTitle, prState: 'open', prHead: 'h42',
+        reviews: [{ workspaceId: 'ws-review-42', agentId: 'artkin', verdict: 'approved' as const, summary: 'Looks right.', sha: 'h42', prNumber: 42, ts: at(10, 41), ...(o.provider ? { provider: o.provider } : {}) }]
+      }),
+      prs: prInfo('open', { head: 'h42', checks: [{ name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'fail' }] }),
+      evidence: { [ids.table]: evidence },
+      ui: { ...open, workspace: { right: 'checks', bottom: 'run' } }
+    }
+  })
 
 /** PR #42 on the invoice table in one state, with the transcript, checks and comments the canvas shows for it. */
 const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partial<Fixture> = {}, right: 'changes' | 'checks' = 'changes') =>
@@ -3347,6 +3379,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ]
     })
   }, 'checks'),
+  WorkspaceCriteria: criteriaScene(['passed', 'failed', 'unverified', 'stale'], { provider: 'codex' }),
+  WorkspaceCriteriaPassed: criteriaScene(['passed'], { provider: 'codex' }),
+  WorkspaceCriteriaFailed: criteriaScene(['failed'], { provider: 'codex' }),
+  WorkspaceCriteriaUnverified: criteriaScene(['unverified']),
+  WorkspaceCriteriaStale: criteriaScene(['stale'], { provider: 'claude' }),
   WorkspaceChangesRequested: prScene('changes', [
     ...prTurn('r', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42 and asked Artkin for review.')
   ], {

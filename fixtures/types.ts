@@ -1,4 +1,4 @@
-import type { PlanAttention, AccountProfile, MoveNotice, Provider, ProviderModel, ProviderStatus,
+import type { PrEvidence, PlanAttention, AccountProfile, MoveNotice, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, ClaudeAccount, DeletePreview,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, GitHubOwner, RepoSummary, Project, ProjectSettings, ProjectTracker, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, ResolvedPath, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
@@ -42,6 +42,8 @@ export interface Fixture {
   notifications?: Notification[]
   /** By workspace id. */
   prs?: Record<string, PrInfo>
+  /** The evidence against each acceptance criterion of a workspace's PR, by workspace id (KERNEL-1066). A missing one reads as none. */
+  evidence?: Record<string, PrEvidence>
   overlaps?: Overlap[]
   /** Lead chats, each holding the Lead tabs whose `threadId` names it (KERNEL-337). */
   threads?: Thread[]
