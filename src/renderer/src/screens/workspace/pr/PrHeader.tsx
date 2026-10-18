@@ -7,7 +7,7 @@ import { leadModeOf } from '@shared/leadMode'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
 import { Button, LinkButton, Icon, Menu, SplitButton, useBusy } from '../../../ui'
-import { NO_RULES, actionIcon, actionKey, blockerFacts, blockersHold, busyLabel, failTitle, hasChanges, headerView, overruleOn, overruleText, type PrAction } from './model'
+import { NO_RULES, actionIcon, actionKey, blockerFacts, blockersHold, busyLabel, failTitle, hasChanges, headerView, mergeWait, overruleOn, overruleText, type PrAction } from './model'
 import { useLocalMerge } from './useLocalMerge'
 import { ConfirmMergeAnyway } from '../ConfirmMergeAnyway'
 import { ConfirmOverrule } from '../ConfirmOverrule'
@@ -58,7 +58,9 @@ export function PrHeader({ ws, spread, capsule, toggle }: { ws: Workspace; sprea
   const overruled = !held && mergeableState(ws.prState) ? overruleOn(ws, pr) : undefined
   // An action started from another button or by a tool spins this band too, and turns its keys off (KERNEL-520).
   const pending = useStore((s) => s.prPending[ws.id])
-  const view = headerView(ws.prState, changed, !!ws.prBlocked, local, !!held, pending)
+  // The merge rule every Merge button uses: while it refuses, the band doesn't read ready and Merge PR is off with its reason (KERNEL-1071).
+  const wait = local ? undefined : mergeWait(ws, pr, rules, (agentId) => agents?.find((a) => a.id === agentId)?.name ?? agentId)
+  const view = headerView(ws.prState, changed, !!ws.prBlocked, local, !!held, pending, wait)
   const override = !!view.button?.override
 
   const act = (label: string, title: string, fn: () => Promise<unknown>) => run(label, async () => {
@@ -158,7 +160,7 @@ export function PrHeader({ ws, spread, capsule, toggle }: { ws: Workspace; sprea
   const main = !b ? null
     : b.kind === 'busy' ? spinner(b.label)
       : split ? null
-        : <Button variant="secondary" className={solid ? 'pr-solid' : 'pr-soft'} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && press(b.action)}>{icon && <Icon name={icon} size={12} />}{b.label}</Button>
+        : <Button variant="secondary" className={solid ? 'pr-solid' : 'pr-soft'} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} disabled={!!b.disabled} aria-describedby={b.disabled ? `${id}-pr-wait` : undefined} data-tip={b.disabled ?? (key && b.label)} onClick={() => b.action && press(b.action)}>{icon && <Icon name={icon} size={12} />}{b.label}</Button>
 
   const overrule = facts && <Button className="pr-soft" onClick={() => setOverruling(true)}>Overrule</Button>
   const buttons = !main && !split && !view.archive ? null : (
@@ -192,6 +194,7 @@ export function PrHeader({ ws, spread, capsule, toggle }: { ws: Workspace; sprea
     </>
   )
   return out(buttons, <>
+    {spread && b?.disabled && <div className="pr-r2 pr-r2-text"><span id={`${id}-pr-wait`} className="pr-next">{b.disabled}</span></div>}
     {confirm && createPortal(<ConfirmMergeAnyway ws={ws} {...confirm} onClose={() => setConfirm(null)} />, document.body)}
     {overruling && facts && createPortal(<ConfirmOverrule ws={ws} facts={facts} onClose={() => setOverruling(false)} />, document.body)}
   </>)
