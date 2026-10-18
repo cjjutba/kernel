@@ -3,7 +3,7 @@ import type { Project } from '@shared/types'
 import { actions, useStore } from '../../store'
 import { openProject } from '../../lead'
 import { KernelMark } from '../../icons'
-import { Button, Icon, Pill, useBusy, useListKeys } from '../../ui'
+import { Button, Icon, LinkButton, Pill, useBusy, useListKeys } from '../../ui'
 import { call, cleanError } from '../../api'
 import { oneOf, useRemembered } from '../../remember'
 import { openNewProject } from './draft'
@@ -34,7 +34,7 @@ function ProjectRow({ project, nav }: { project: Project; nav: ReturnType<typeof
           <span className="rm-desc ellipsis">{project.desc}</span>
         </span>
         {project.hidden && <button type="button" className="rm-show" aria-label={`Show ${project.name} in the sidebar`} onClick={(e) => { e.stopPropagation(); show() }}>Show in sidebar</button>}
-        {project.archived && <button type="button" className="rm-show" disabled={!!restoring} aria-label={`Restore ${project.name}`} onClick={(e) => { e.stopPropagation(); void restore() }}>{restoring ? 'Restoring' : 'Restore'}</button>}
+        {project.archived && <LinkButton size="meta" className="rm-show" busy={!!restoring} busyLabel="Restoring" aria-label={`Restore ${project.name}`} onClick={(e) => { e.stopPropagation(); void restore() }}>Restore</LinkButton>}
       </span>
       <span className="rm-source">
         <Icon name={project.kind === 'folder' || (!project.repo && project.kind !== 'scratch') ? 'folder' : project.kind === 'scratch' ? 'burst' : 'branch'} size={16} />
