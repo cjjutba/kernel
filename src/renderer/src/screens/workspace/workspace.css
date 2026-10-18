@@ -99,8 +99,8 @@ button.ws-issue:hover { background: var(--surface-3); }
 .msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { outline: 1px solid var(--line-4); animation: jump-ring var(--dur-ring) linear forwards; }
 @media (prefers-reduced-motion: reduce) { .msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { animation: none; } }
 .thread { width: 100%; max-width: 760px; margin: 0 auto auto; display: flex; flex-direction: column; gap: 12px; }
-/* Rows far above the end skip layout and paint while off screen, and `auto` remembers the height each last had. The last twelve are left alone, so a short chat draws as it always did. The clip margin keeps focus rings, which reach past a row, from being cut. A step row bleeds 8px past its row for its hover fill, and its focus ring sits 1px further out and is 2px thick, so a ring reaches 11px out. 12px covers it (KERNEL-375). */
-.thread > :nth-last-child(n+13) { content-visibility: auto; contain-intrinsic-block-size: auto 60px; overflow-clip-margin: 12px; }
+/* Rows far above the end skip layout and paint while off screen, and `auto` remembers the height each last had. The last twelve are left alone, so a short chat draws as it always did. The clip margin keeps focus rings, which reach past a row, from being cut. A step row bleeds 8px past its row for its hover fill, and its focus ring sits 1px further out and is 2px thick, so a ring reaches 11px out. 12px covers it (KERNEL-375). The attention line is left alone too: paint containment would clip its breakdown list to the row (KERNEL-1082). */
+.thread > :nth-last-child(n+13):not(.plan-attn) { content-visibility: auto; contain-intrinsic-block-size: auto 60px; overflow-clip-margin: 12px; }
 .msg { --msg-acts-h: 24px; display: flex; flex-direction: column; }
 /* The row a message's actions take under it, held empty while the message is only being sent, so the working line sits where the transcript puts it once the row is there. */
 .msg-acts-space { height: var(--msg-acts-h, 24px); flex: none; }

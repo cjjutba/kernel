@@ -2920,6 +2920,15 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ]
     return { ...s, items: { [ids.leadChat]: [...(s.items?.[ids.leadChat] ?? []), ...after] } }
   }),
+  // The same breakdown with more than 12 rows after the plan card, where older rows skip paint (KERNEL-1082).
+  WorkspacePlanFinishedLong: scene((f) => {
+    const s = planFinished(f)
+    const after: ChatItem[] = Array.from({ length: 7 }, (_, i): ChatItem[] => [
+      { kind: 'user', id: `pfl-u${i}`, ts: at(10, 40 + i), parts: [{ type: 'text', text: `Question ${i + 1}: is the export ready for another invoice?` }] },
+      { kind: 'text', id: `pfl-a${i}`, ts: at(10, 40 + i), text: 'Yes. The export runs against a real invoice.' }
+    ]).flat()
+    return { ...s, items: { [ids.leadChat]: [...(s.items?.[ids.leadChat] ?? []), ...after] } }
+  }),
   WorkspacePlanChanges: scene(planChanges),
   WorkspacePlanReplaced: scene(planReplaced),
   WorkspacePlanExit: scene(planExit),
