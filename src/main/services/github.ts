@@ -452,13 +452,29 @@ export interface CodeHost {
    * Rejects with BranchConflict when the merge conflicts. A host without it can't update a branch.
    */
   updateBranch?: (cwd: string, ref: string) => Promise<void>
+  /**
+   * Writes `body` as the one comment Kernel keeps on the PR and returns its id (KERNEL-1065). With `id` it edits that comment.
+   * Without one it edits the comment already carrying `marker`, and only posts a new comment when none does, so a lost id never
+   * leaves two. A host without it takes no comments.
+   */
+  comment?: (cwd: string, ref: string, body: string, o: { marker: string; id?: string }) => Promise<{ id: string; url?: string }>
 }
 
 /** The name `CodeHost` had while GitHub was the only host. */
 export type GitHub = CodeHost
 
+/** See `CodeHost.comment`. gh fills `{owner}/{repo}` from the repository at `cwd`. */
+export async function prComment(cwd: string, ref: string, body: string, o: { marker: string; id?: string }): Promise<{ id: string; url?: string }> {
+  const opts = { cwd, timeoutMs: 30000 }
+  const found = o.id ?? (await run('gh', ['api', '--paginate', `repos/{owner}/{repo}/issues/${ref}/comments`, '--jq', `.[] | select(.body | contains(${JSON.stringify(o.marker)})) | .id`], opts)).split('\n').find(Boolean)
+  const out = await run('gh', ['api', '--method', found ? 'PATCH' : 'POST', found ? `repos/{owner}/{repo}/issues/comments/${found}` : `repos/{owner}/{repo}/issues/${ref}/comments`, '-f', `body=${body}`, '--jq', '[.id, .html_url] | @tsv'], opts)
+  const [id, url] = out.trim().split('\t')
+  return { id, ...(url ? { url } : {}) }
+}
+
 export const gh: CodeHost = {
   info: prInfo,
+  comment: prComment,
   prs: async (cwd, numbers, o = {}) => {
     const { views, rate } = await prBatch(cwd, numbers)
     return { infos: new Map([...views].map(([n, v]) => [n, infoOf('', v, [], [], o)])), ...(rate ? { rate } : {}) }

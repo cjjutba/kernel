@@ -1,0 +1,5 @@
+**A criterion passes only on a CI check its text names or on the reviewer's judgment.** Nothing an agent says counts, and Kernel never guesses which test proves a criterion from a command's name. Touched files, approvals and shared images are shown as context and never decide a status, because they show what happened, not that the criterion holds. A criterion with no deciding event stays unverified. KERNEL-1065.
+
+**Evidence goes stale with the head commit.** Each link remembers the PR head it was about. Once the PR has another head, the link stays visible, marked stale, and stops counting, so a pass on an old commit never covers a new one. A verdict on a head that Kernel only brought up to date with its base still counts, as in KERNEL-832. KERNEL-1065.
+
+**The PR comment is one comment, found by a marker.** With `pr.evidenceComment` on (off by default), Kernel keeps the comment's id and edits that comment. With no id it looks for a comment carrying its marker before posting a new one, so a lost id never leaves two. Updates for one PR run one at a time. KERNEL-1065.

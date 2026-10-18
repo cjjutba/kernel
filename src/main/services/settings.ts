@@ -64,7 +64,7 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   team: { defaultTemplate: 'starter', leadMode: 'handoff' },
   permissions: { mode: 'auto', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
-    mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, leadMerge: false,
+    mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, leadMerge: false, evidenceComment: false,
     // Each review is a full extra agent run on every PR, so it starts off on every plan (feat-automatic-review-off-by-default).
     autoReview: false,
     // Nothing merges by itself until the user turns this on (KERNEL-556).
