@@ -155,7 +155,14 @@ export class Evidence extends Feature {
     const stale = this.staleAt(ws, head)
     const fresh = step ? this.fresh(ws, info, step, files) : []
     const freshIds = new Set(fresh.map((l) => `${l.criterion}:${l.id}`))
-    const links = [...saved.links.filter((l) => !freshIds.has(`${l.criterion}:${l.id}`)), ...fresh]
+    // A check link saved before the plan named checks may have been matched on the criterion's text. It decides only for the named check (KERNEL-1069).
+    const named = (step?.criteria ?? []).map(criterionCheck)
+    const kept = saved.links.filter((l) => {
+      if (l.source !== 'check' || l.effect === 'context') return true
+      const check = named[l.criterion]
+      return !!check && l.id.toLowerCase().startsWith(`check:${check.toLowerCase()}:`)
+    })
+    const links = [...kept.filter((l) => !freshIds.has(`${l.criterion}:${l.id}`)), ...fresh]
       .map((l) => ({ ...l, stale: stale(l) }))
     const criteria: CriterionEvidence[] = (step?.criteria ?? []).map(criterionText).map((text, index) => {
       const mine = links.filter((l) => l.criterion === index).sort((a, b) => b.ts - a.ts).slice(0, KEEP_PER_CRITERION)

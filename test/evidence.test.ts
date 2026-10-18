@@ -86,6 +86,16 @@ describe('evidence against each criterion (KERNEL-1065)', () => {
     expect(status(failed)).toEqual(['unverified', 'failed', 'unverified'])
   })
 
+  it('ignores a decisive check link saved before the plan named checks (KERNEL-1069)', async () => {
+    const t = await boot()
+    const head = await t.head()
+    t.k.store.saveApproval(t.approval('plan', { kind: 'plan', toolName: undefined, steps: [{ title: 'Slugify', criteria: ['test/ has node:test cases'], workspaceId: 'w1' }] }))
+    t.k.store.saveMeta('evidence.w1', { links: [{ id: `check:test:${head}`, source: 'check', label: 'CI check test: passed', effect: 'supports', commit: head, stale: false, ts: 1, criterion: 0 }] })
+    const e = await t.k.evidence.update(await t.info([{ name: 'test', state: 'pass' }]))
+    expect(status(e)).toEqual(['unverified'])
+    expect(e?.criteria[0].links).toMatchObject([{ source: 'check', effect: 'context' }])
+  })
+
   it('shows reviewer-only support as its own state, in the comment too (KERNEL-1069)', async () => {
     const t = await boot()
     t.k.settings.pr.evidenceComment = true
