@@ -483,6 +483,8 @@ export interface ReviewVerdict {
   prNumber?: number
   /** The kind of review it is (KERNEL-549). A verdict from before has none and counts as the code review's. */
   lens?: ReviewKind
+  /** The provider the reviewer ran on (KERNEL-1059). A verdict from before has none. */
+  provider?: Provider
   /** Its kind wasn't required for the PR: its approval doesn't count toward a merge, and its blockers still hold one. */
   optional?: true
   /**
