@@ -478,6 +478,8 @@ export interface ReviewVerdict {
   verdict: 'approved' | 'blockers'
   summary: string
   blockers?: { text: string; file?: string; line?: number }[]
+  /** The reviewer's judgment of each acceptance criterion of the plan step, by its position from 0. Evidence labels it as the reviewer's (KERNEL-1065). */
+  criteria?: { index: number; met: boolean; note?: string }[]
   sha?: string
   /** The PR it was about. A verdict for another number no longer counts. */
   prNumber?: number
