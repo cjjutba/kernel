@@ -1017,6 +1017,13 @@ export class Lead extends Feature {
         const tabs = this.threadTabIds(chat)
         const approvalIds = new Set(this.store.approvals({ projectId }).filter((a) => a.kind === 'plan' && !!a.chatId && tabs.has(a.chatId)).map((a) => a.id))
         const review = given.reviewOf ?? given.linkReviewOf
+        // A review of a PR nobody reviewed is Kernel's own round, on the provider the setting would pick, not the named agent's (KERNEL-1072).
+        // Not one started from a base_ref or branch (KERNEL-299): that keeps the named agent, base and branch, and is linked by the base.
+        const target = given.reviewOf && !given.baseRef && !given.branch ? this.store.workspace(given.reviewOf) : undefined
+        if (target?.prState === 'ready' && target.prNumber && !target.reviewRound) {
+          const started = await this.k.reviews.requestReview(target.id)
+          if (started) return started
+        }
         // The step's criteria go in the brief, after what the Lead wrote (KERNEL-1061).
         const o = review ? given : { ...given, prompt: withCriteria(given.prompt, this.planStepFor(projectId, given.agentId, chat)?.step.criteria) }
         // The issue the task builds (D-140). Kernel names the branch from it unless the Lead named one (KERNEL-275).
@@ -1075,7 +1082,7 @@ export class Lead extends Feature {
         if (o.kind === 'plan') this.approvals.expireIds(this.approvals.waitingPlans(chat.id, projectId).map((p) => p.id), 'replaced')
         // The turn stopping, as when the user writes in the message box instead, ends the card as expired (KERNEL-496).
         const { approval, decision } = this.approvals.request({
-          kind: o.kind, source: 'sdk', projectId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options, questions: o.questions,
+          kind: o.kind, source: 'sdk', projectId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options, questions: o.questions, about: o.about,
           steps: o.steps && parsePlanSteps(o.steps, agents), agentFile: o.agentFile
         }, { signal })
         this.sessions.placeApproval(chat.id, approval.id)
@@ -1092,7 +1099,7 @@ export class Lead extends Feature {
       },
       archiveWorkspace: (id) => this.k.archiveWorkspace(id),
       // The setting and the turn are read on each call: the switch can change, and each message starts a new turn (KERNEL-352).
-      mergeWorkspace: (id) => this.k.prs.mergePr(id),
+      mergeWorkspace: (id) => this.k.prs.mergePr(id, { user: true }),
       leadMerge: () => this.settings.pr.leadMerge,
       overrule: (id, note) => this.k.reviews.overrule(id, { by: 'lead', note }),
       userTurn: () => this.userTurnIn(chat.id),

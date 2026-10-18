@@ -7,6 +7,7 @@ import { mergeBlock } from '@shared/merge'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
+import { fakeCodex } from './helpers/fakeCodex'
 import { loadRepoSettings, reviewOf, reviewPolicyOf, saveAlwaysReview, saveReviewSettings, sharedMergeOf, upsertTomlTable } from '../src/main/services/settings'
 import { inPaths, kindsFor, lensAgent } from '../src/main/services/lenses'
 import { toolPolicy } from '../src/main/services/agentTools'
@@ -211,13 +212,39 @@ describe('which reviews a PR gets', () => {
       expect(b.chatOf(b.rws, 'code').provider ?? 'claude').toBe('claude')
     })
 
-    it("stays on the builder's provider when Codex isn't signed in, is at its limit, or has no usage read", async () => {
+    it("stays on the builder's provider when Codex isn't signed in or is at its limit", async () => {
       const out = await ran({}, (k) => codexUp(k, { signedIn: false }))
       expect(out.chatOf(out.rws, 'code').provider ?? 'claude').toBe('claude')
       const full = await ran({}, (k) => codexUp(k, { limits: [{ type: 'five_hour', status: 'rejected', provider: 'codex', resetsAt: Math.round(Date.now() / 1000) + 3600 }] }))
       expect(full.chatOf(full.rws, 'code').provider ?? 'claude').toBe('claude')
-      const unknown = await ran({}, (k) => codexUp(k, { limits: [] }))
-      expect(unknown.chatOf(unknown.rws, 'code').provider ?? 'claude').toBe('claude')
+      const near = await ran({ app: { usage: { pauseNearLimit: true } } }, (k) => codexUp(k, { limits: [{ type: 'five_hour', status: 'allowed', provider: 'codex', utilization: 0.99, resetsAt: Math.round(Date.now() / 1000) + 3600 }] }))
+      expect(near.chatOf(near.rws, 'code').provider ?? 'claude').toBe('claude')
+    })
+
+    it('reviews on Codex right after sign-in, before any usage read (KERNEL-1076)', async () => {
+      const fresh = await ran({}, (k) => codexUp(k, { limits: [] }))
+      expect(fresh.chatOf(fresh.rws, 'code')).toMatchObject({ provider: 'codex' })
+    })
+
+    it("stays on the builder's provider when Codex's usage read failed", async () => {
+      const failed = await ran({}, (k) => {
+        codexUp(k, { limits: [] })
+        ;(k.providers as unknown as { usageFailed: Set<string> }).usageFailed.add('codex:cli')
+      })
+      expect(failed.chatOf(failed.rws, 'code').provider ?? 'claude').toBe('claude')
+    })
+
+    it("stays on the builder's provider when Codex reads the account but not its rate limits (KERNEL-1076)", async () => {
+      const fake = await fakeCodex()
+      const s = await setup()
+      codexUp(s.k, { limits: [] })
+      ;(s.k.providers as unknown as { binary: () => { path: string } }).binary = () => ({ path: fake.bin })
+      process.env.FAKE_CODEX_LIMITS_FAIL = '1'
+      try { await s.k.providers.readUsage({ provider: 'codex', force: true }) } finally { delete process.env.FAKE_CODEX_LIMITS_FAIL }
+      expect(s.k.providers.usageReadFailed('codex')).toBe(true)
+      const ws = await s.pr({ 'a.txt': 'a\n' })
+      await s.k.reviews.onReady(ws.id)
+      expect(s.chatOf(s.reviewsOf(ws.id)[0], 'code').provider ?? 'claude').toBe('claude')
     })
 
     it('lets an explicit provider in [review] decide', async () => {
