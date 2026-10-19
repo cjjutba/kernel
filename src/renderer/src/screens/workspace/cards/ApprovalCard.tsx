@@ -433,19 +433,21 @@ function HireCard({ a, lead, inChat }: { a: Approval; lead: string; inChat?: boo
   const [busy, run] = useBusy()
   const file = a.agentFile
   if (!file) return null
+  const scope = file.scope === 'team' ? 'Proposed to the team as a pull request' : 'Saved just for you'
   return (
     <section aria-label={file.path} className="card tcard">
       <CardHead who={lead} title={file.path} />
       <div className="tc-body">
         <div className="code">{file.text}</div>
         <HireServers servers={file.servers} agent={hireName(file)} lead={lead} />
-        <p className="hire-scope">{file.scope === 'team' ? 'Proposed to the team as a pull request' : 'Saved just for you'}</p>
+        {a.status !== 'pending' && <p className="hire-scope">{scope}</p>}
         {a.status !== 'pending' && <Result a={a} />}
       </div>
       {a.status !== 'pending' ? null : asking ? (
         <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decideHere(a, { behavior: 'deny', message: note || 'Please change the agent file.' })} />
       ) : (
         <div className="tc-foot">
+          <span className="tc-hint hire-scope"><Icon name="user" size={13} />{scope}</span>
           <Button disabled={!!busy} onClick={() => setAsking(true)}>Edit file</Button>
           <Button variant="primary" busy={!!busy} busyPattern="ripple" busyLabel="Creating" onClick={() => void run('create', () => decideHere(a, { behavior: 'allow' }))}>Create agent</Button>
         </div>

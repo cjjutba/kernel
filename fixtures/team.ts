@@ -266,36 +266,43 @@ const navMemory = (f: Fixture): Partial<Fixture> => {
   }
 }
 
-/** An open chat of the Lead's workspace, for the sidebar fixtures. */
-const leadChatRow = (id: string, title: string, minute: number) => ({ id, workspaceId: ids.lead, title, kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: at(9, minute) })
-
 /**
- * SidebarLeadChats (no PNG, KERNEL-165): Client A with four open Lead chats. One waits on a plan, one is running and started three
- * workspaces, one has a title too long for the sidebar, and one workspace has no owning chat. Projects fill in the rest of the sidebar.
+ * SidebarLeadChats (no PNG, KERNEL-165): Client A with four open Lead chats, each its own thread with the workspace that holds it. One waits on a plan, one is running and
+ * started three workspaces, one has a title too long for the sidebar, and one workspace has no owning chat. Projects fill in the rest of the sidebar.
  */
 const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
-  const chat = leadChatRow
-  const ownedBy = (leadChatId: string) => ({ leadChatId })
-  const review: Workspace = { ...f.workspaces.find((w) => w.id === ids.schema)!, id: 'ws-review-pr-146', name: 'review-pr-146', branch: 'feat/t-14-invoice-table-review', agentId: 'artkin', port: 4315, prNumber: undefined }
+  const CHATS = [
+    { key: 'ui', title: 'App UI review' }, { key: 'inbox', title: 'Inbox clutter and old messages in the list' },
+    { key: 'tools', title: 'Tool call display mode' }, { key: 'new', title: 'New chat' }
+  ]
+  const threads: Thread[] = CHATS.map((c, i) => ({ id: `t-lead-${c.key}`, projectId: ids.projectA, title: c.title, createdAt: at(9, 5 + i), lastSentAt: at(9, 30 - i) }))
+  const leads: Workspace[] = CHATS.map((c, i) => ({
+    id: `ws-lead-${c.key}`, projectId: ids.projectA, name: `lead-${c.key}`, branch: `kernel/lead-${c.key}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/lead-${c.key}`, mode: 'worktree',
+    agentId: 'kernel-lead', lead: true, threadId: `t-lead-${c.key}`, port: 4330 + i, status: 'ready', prState: 'none', createdAt: at(9, 5 + i)
+  }))
+  const chats: Chat[] = CHATS.map((c, i) => ({
+    id: `chat-lead-${c.key}`, workspaceId: `ws-lead-${c.key}`, title: c.title, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, threadId: `t-lead-${c.key}`, createdAt: at(9, 5 + i)
+  }))
+  const owned = { threadId: 't-lead-inbox' }
+  const review: Workspace = { ...f.workspaces.find((w) => w.id === ids.schema)!, id: 'ws-review-pr-146', name: 'review-pr-146', branch: 'feat/t-14-invoice-table-review', agentId: 'artkin', port: 4315, prNumber: undefined, threadId: undefined }
   const projects = projectsScene(f)
   return {
     ...projects,
-    chats: [
-      ...f.chats.filter((c) => c.workspaceId !== ids.lead),
-      chat('chat-lead-ui', 'App UI review', 5), chat('chat-lead-inbox', 'Inbox clutter and old messages in the list', 6),
-      chat('chat-lead-tools', 'Tool call display mode', 7), chat('chat-lead-new', 'New chat', 8)
-    ],
+    threads,
+    chats: [...f.chats.filter((c) => c.workspaceId !== ids.lead), ...chats],
     workspaces: [
-      ...withWorkspace(f, ids.table, { ...ownedBy('chat-lead-inbox'), stat: { files: 4, added: 412, removed: 38 } })
-        .map((w) => (w.id === ids.schema || w.id === ids.invites ? { ...w, ...ownedBy('chat-lead-inbox') } : w)),
+      ...leads,
+      ...withWorkspace(f, ids.table, { ...owned, stat: { files: 4, added: 412, removed: 38 } })
+        .filter((w) => w.id !== ids.lead)
+        .map((w) => (w.id === ids.schema || w.id === ids.invites ? { ...w, ...owned } : w)),
       review
     ],
     approvals: [
       ...(projects.approvals ?? []),
-      { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', projectId: ids.projectA, agentId: 'kernel-lead', workspaceId: ids.lead, chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Christian lists the chats\n2. Teng checks the shots', status: 'pending', createdAt: at(10, 44) }
+      { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', projectId: ids.projectA, agentId: 'kernel-lead', workspaceId: 'ws-lead-ui', chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Christian lists the chats\n2. Teng checks the shots', status: 'pending', createdAt: at(10, 44) }
     ],
     push: [{ type: 'chat.running', chatId: 'chat-lead-inbox', running: true }],
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: 'chat-lead-tools', files: [], diffs: [] } } }
+    ui: { route: { name: 'workspace', workspaceId: 'ws-lead-ui' }, workspace: { right: 'changes', bottom: 'run' }, tabs: { 'ws-lead-ui': { tab: 'chat-lead-ui', files: [], diffs: [] } } }
   }
 }
 

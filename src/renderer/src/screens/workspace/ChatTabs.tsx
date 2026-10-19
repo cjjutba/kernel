@@ -24,8 +24,8 @@ const base = (path: string) => path.split('/').pop() ?? path
  * a close button on hover. The new tab menu lists Chat and Terminal, which runs the preset chosen in Settings, Big terminal.
  * In the Lead's workspace `chats` are the tabs of the chat on screen (`threadId`), and a new tab joins that chat (KERNEL-338).
  */
-export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewChat, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
-  /** The tabs sit in the header row, after the project, and not in a row of their own. */ inline?: boolean; /** What the workspace follows ("latest main", "current branch · main"), said in a chat tab's hover card. */ note?: string; workspaceId: string; /** The Lead chat on screen. A new chat tab joins it. Unset outside the Lead's workspace. */ threadId?: string
+export function ChatTabs({ inline, note, branch, workspaceId, threadId, noChat, onNewChat, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
+  /** The tabs sit in the header row, after the project, and not in a row of their own. */ inline?: boolean; /** What the workspace follows ("latest main", "current branch · main"), said in a chat tab's hover card. */ note?: string; /** The branch a Build here chat works on, shown beside the open chat tab's title. */ branch?: string; workspaceId: string; /** The Lead chat on screen. A new chat tab joins it. Unset outside the Lead's workspace. */ threadId?: string
   /** The Lead's workspace shows New chat, so a new tab is that box and starts no chat (KERNEL-366). */ noChat?: boolean; /** Switches the screen to that box when another tab is showing. */ onNewChat?: () => void; chats: Chat[]; files: string[]; diffs: string[]; shared: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
   onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseDiff: (path: string) => void; onCloseShared: (sharedId: string) => void; onCloseImage: (id: string) => void; onCloseText: (id: string) => void
 }) {
@@ -162,6 +162,7 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
                     {g?.icon === 'spin' ? <Spinner label={null} pattern="twinkle" /> : !g && t.file ? <FileIcon path={t.file} size={14} /> : <Icon name={g?.icon ?? t.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'diff' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
                   </span>
                   <span className="ellipsis">{t.title}</span>
+                  {branch && on && t.kind === 'chat' && <span className="tab-branch mono ellipsis"><Icon name="branch" size={12} />{branch}</span>}
                 </button>
               )}
               {/* One slot after the title: the open tab shows its close button, and another tab shows it on hover or keyboard focus. */}

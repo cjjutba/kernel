@@ -125,6 +125,8 @@
 .cmp-ac-row[aria-selected='true'] { background: var(--hover); }
 .cmp-ac-row .file-icon { flex-shrink: 0; margin-right: -4px; }
 .cmp-ac-row .mono { font-size: var(--fs-code); flex-shrink: 0; }
+.cmp-ac-row .cmp-ac-name { flex-shrink: 0; font-size: var(--fs-ui); color: var(--ink); }
+.cmp-ac-row .agent-avatar { flex-shrink: 0; margin-right: -2px; }
 .cmp-ac-row .sub { flex: 1; min-width: 0; color: var(--muted); }
 .cmp-pop { left: 0; bottom: calc(100% + var(--menu-gap)); }
 /* Model and effort (D-093, KERNEL-1111): 300px, search and the provider segments on top, the list, the Effort track, then the footer. */
