@@ -1,7 +1,7 @@
 /* Personal pages (KERNEL-680): the theme cards and the shortcuts filter. Tokens only. */
 .pe-themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .pe-theme { display: flex; flex-direction: column; gap: 10px; padding: 8px 8px 10px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: transparent; text-align: left; transition: border-color var(--dur-fast); }
-.pe-theme:hover { border-color: var(--line-4); }
+.pe-theme:hover { border-color: var(--line-3); }
 .pe-theme[aria-checked='true'] { border-color: var(--ink-3); }
 .pe-art { height: 92px; display: flex; overflow: hidden; border-radius: var(--r); border: 1px solid var(--line-2); }
 .pe-half { width: 50%; flex-shrink: 0; overflow: hidden; display: flex; justify-content: flex-start; }
@@ -15,7 +15,7 @@
 .pe-panel i { height: 5px; background: var(--line-3); }
 .pe-panel i:nth-child(1) { width: 45%; } .pe-panel i:nth-child(2) { width: 85%; } .pe-panel i:nth-child(3) { width: 65%; }
 .pe-name { display: flex; align-items: center; gap: 8px; padding: 0 2px; font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink-2); }
-.pe-dot { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-pill); border: 1px solid var(--line-4); }
+.pe-dot { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-pill); border: 1px solid var(--line-3); }
 .pe-theme[aria-checked='true'] .pe-dot { border-color: var(--ink); }
 .pe-theme[aria-checked='true'] .pe-dot::after { content: ''; width: 6px; height: 6px; border-radius: var(--r-pill); background: var(--ink); }
 
@@ -23,7 +23,7 @@
 .pe-filter { position: relative; display: flex; align-items: center; margin-top: -16px; }
 .pe-filter > span { position: absolute; left: 11px; color: var(--muted); pointer-events: none; }
 .pe-filter input { width: 100%; height: 34px; padding: 0 12px 0 31px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink); font-size: var(--fs-ui); user-select: text; }
-.pe-filter input:hover, .pe-filter input:focus { border-color: var(--line-4); }
+.pe-filter input:hover, .pe-filter input:focus { border-color: var(--line-3); }
 .pe-filter input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .pe-empty { margin: -12px 0 0; padding: 32px 0; text-align: center; font-size: var(--fs-ui); color: var(--muted); }
 .set-row.pe-compact { min-height: 40px; padding: 8px 12px 8px 16px; }

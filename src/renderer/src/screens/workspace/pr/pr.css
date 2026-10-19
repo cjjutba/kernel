@@ -1,7 +1,7 @@
 /* Pull request header states and the PR cards in the transcript. The header is a band in the state's tone (KERNEL-274):
    `.pr-tone` is `display: contents`, so it keeps the parent's flex row and only hands its children the tone. */
 .pr-tone { display: contents; }
-.pr-tone[data-tone='idle'] { --b-band: var(--surface); --b-line: var(--line-2); --b-soft: var(--surface-3); --b-edge: var(--line-4); --b-fg: var(--ink-2); --b-text: var(--ink-3); --b-solid: var(--ink); --b-on: var(--on-ink); }
+.pr-tone[data-tone='idle'] { --b-band: var(--surface); --b-line: var(--line-2); --b-soft: var(--surface-3); --b-edge: var(--line-3); --b-fg: var(--ink-2); --b-text: var(--ink-3); --b-solid: var(--ink); --b-on: var(--on-ink); }
 .pr-tone[data-tone='merged'] { --b-band: var(--pr-merged-band); --b-line: var(--pr-merged-line); --b-soft: var(--pr-merged-soft); --b-edge: var(--pr-merged-edge); --b-fg: var(--pr-merged-fg); --b-text: var(--pr-merged-text); --b-solid: var(--pr-merged-solid); --b-on: var(--on-solid); }
 .pr-tone[data-tone='ready'] { --b-band: var(--pr-ready-band); --b-line: var(--pr-ready-line); --b-soft: var(--pr-ready-soft); --b-edge: var(--pr-ready-edge); --b-fg: var(--pr-ready-fg); --b-text: var(--pr-ready-text); --b-solid: var(--pr-ready-solid); --b-on: var(--on-solid); }
 .pr-tone[data-tone='fail'] { --b-band: var(--pr-fail-band); --b-line: var(--pr-fail-line); --b-soft: var(--pr-fail-soft); --b-edge: var(--pr-fail-edge); --b-fg: var(--pr-fail-fg); --b-text: var(--pr-fail-text); }
@@ -47,7 +47,7 @@
 /* Soft buttons sit in the band's tone; Merge PR and Archive take its solid. Create PR is soft like them, and turns solid only once it is the one step left. */
 /* Merge anyway in a PRs tab or Team update row is an outline: the row's red state already says what is wrong (KERNEL-757). */
 .pr-tone .btn.pr-outline { background: transparent; border-color: var(--line-3); color: var(--ink-2); }
-.pr-tone .btn.pr-outline:hover { background: var(--surface-3); border-color: var(--line-4); color: var(--ink); }
+.pr-tone .btn.pr-outline:hover { background: var(--surface-3); border-color: var(--line-3); color: var(--ink); }
 .pr-tone .btn.pr-soft { background: var(--b-soft); border-color: var(--b-edge); color: var(--b-fg); }
 .pr-tone .btn.pr-soft:hover { background: color-mix(in srgb, var(--b-soft) 85%, var(--b-fg)); }
 .pr-tone .btn.pr-solid { background: var(--b-solid); border-color: var(--b-solid); color: var(--b-on); }
@@ -169,15 +169,15 @@ section:first-child > .lp-sec { padding-top: 6px; }
 .crit-list, .crit-evs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .crit-list { gap: 10px; }
 .crit-head { display: flex; align-items: baseline; gap: 10px; min-height: 26px; }
-.crit-state { display: inline-flex; align-items: center; gap: 4px; flex: none; min-width: 112px; font-size: 11px; font-weight: 500; color: var(--ink-2); }
+.crit-state { display: inline-flex; align-items: center; gap: 4px; flex: none; min-width: 112px; font-size: var(--fs-badge); font-weight: var(--fw-medium); color: var(--ink-2); }
 .crit-state[data-state='failed'] { color: var(--del); }
 .crit-state[data-state='reviewer-met'],
 .crit-state[data-state='unverified'], .crit-state[data-state='stale'] { color: var(--muted); }
 .crit-text { color: var(--ink-2); min-width: 0; }
 .crit-evs { gap: 2px; margin: 2px 0 0 122px; }
-.crit-ev { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 12px; }
-.crit-ev[data-stale] { color: var(--faint); }
-.crit-tag { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 11px; color: var(--muted); }
+.crit-ev { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: var(--fs-meta); }
+.crit-ev[data-stale] { color: var(--muted); }
+.crit-tag { border: 1px solid var(--line); border-radius: var(--r-2xs); padding: 0 5px; font-size: var(--fs-badge); color: var(--muted); }
 .crit-link { display: inline-flex; align-items: center; gap: 4px; padding: 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .crit-link:hover span { text-decoration: underline; }
-.crit-link:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; border-radius: 2px; }
+.crit-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-2xs); }
