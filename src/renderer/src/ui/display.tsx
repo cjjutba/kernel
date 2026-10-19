@@ -75,9 +75,26 @@ export function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="kbd">{children}</kbd>
 }
 
-/** The letter square used for projects, agents and people. */
+/** The letter square used for projects, accounts and GitHub owners. Agents use `AgentAvatar`. */
 export function Avatar({ name, size = 20, solid }: { name: string; size?: number; solid?: boolean }) {
   return <span className="avatar" data-solid={solid ? 'true' : undefined} aria-hidden="true" style={{ width: size, height: size, fontSize: Math.round(size * 0.48) }}>{name.trim()[0]?.toUpperCase()}</span>
+}
+
+const agentPalettes = ['ivy', 'rio', 'sky', 'rose', 'sand', 'iris'] as const
+/** The palette an agent wears: a fixed pick for the two Pen agents, else a stable pick from the name, so an agent keeps its colors everywhere. */
+export function agentPalette(name: string): (typeof agentPalettes)[number] {
+  const key = name.trim().toLowerCase()
+  if (key === 'ivy') return 'ivy'
+  if (key === 'rio') return 'rio'
+  let h = 0
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return agentPalettes[h % agentPalettes.length]
+}
+
+/** An agent's mark: a gradient circle with a two-stop palette per agent, grey for Kernel, never an initial (DESIGN.md, Avatars). */
+export function AgentAvatar({ name, size = 18 }: { name: string; size?: number }) {
+  const kernel = name.trim().toLowerCase() === 'kernel'
+  return <span className="agent-avatar" data-palette={kernel ? 'kernel' : agentPalette(name)} aria-hidden="true" style={{ width: size, height: size }} />
 }
 
 /**

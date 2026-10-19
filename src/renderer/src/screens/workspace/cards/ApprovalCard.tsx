@@ -3,7 +3,7 @@ import type { AgentDef, Approval, AskedQuestion, Decision } from '@shared/types'
 import { call } from '../../../api'
 import { FileLabel } from '../../../components/FileIcon'
 import { go, useStore } from '../../../store'
-import { Button, CopyButton, Icon, IconButton, useBusy } from '../../../ui'
+import { AgentAvatar, Button, CopyButton, Icon, IconButton, useBusy } from '../../../ui'
 import { Markdown } from '../markdown'
 import { HireServers, hireName } from './HireServers'
 import { leadingTitle, parseBlocks } from '../mdParse'
@@ -23,6 +23,11 @@ const EMPTY: AgentDef[] = []
 /** One decision path for every surface: the Inbox and the chat call the same channel, and the push event updates this card. */
 const decide = (a: Approval, decision: Decision) => attempt('Could not send your answer', () => call('approvals.decide', { id: a.id, decision }))
 
+/** The chat card's head: the agent's avatar and a title (DESIGN.md, Chat cards). `aside` sits at the right, such as "Answered". */
+function CardHead({ who, title, aside }: { who: string; title: string; aside?: ReactNode }) {
+  return <div className="tc-head"><AgentAvatar name={who} size={18} /><h3>{title}</h3>{aside}</div>
+}
+
 function Result({ a }: { a: Approval }) {
   return <span className="done-line">{outcome(a)}</span>
 }
@@ -36,17 +41,20 @@ function PermCard({ a, who }: { a: Approval; who: string }) {
   const code = bash ? `$ ${String(input.command ?? '')}` : path || (a.input ? JSON.stringify(a.input, null, 2) : '')
   return (
     <section aria-label={title} className="card tcard">
-      <h3>{title}</h3>
-      {a.detail && <span className="sub">{a.detail}</span>}
-      {code && <div className="code">{!bash && path ? <FileLabel path={path} /> : code}</div>}
-      {a.reason && <p className="reason"><Icon name="info" size={14} />{a.reason}</p>}
-      {phase === 'folded' && a.status === 'pending' ? null : a.status === 'pending' || phase === 'folding' ? (
-        <div className={`acts${phase ? ' decide-fold' : ''}`}>
+      <CardHead who={who} title={title} />
+      <div className="tc-body">
+        {a.detail && <span className="sub">{a.detail}</span>}
+        {code && <div className="code">{!bash && path ? <FileLabel path={path} /> : code}</div>}
+        {a.reason && <p className="reason"><Icon name="info" size={12} />{a.reason}</p>}
+        {a.status !== 'pending' && phase !== 'folding' && <Result a={a} />}
+      </div>
+      {phase === 'folded' && a.status === 'pending' ? null : (a.status === 'pending' || phase === 'folding') && (
+        <div className={`tc-foot${phase ? ' decide-fold' : ''}`}>
           <Button onClick={() => decideAtOnce(a, { behavior: 'deny', message: 'Denied in Kernel.' })}>Deny</Button>
           <Button onClick={() => decideAtOnce(a, { behavior: 'allow', always: true })}>Always allow here</Button>
-          <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>Allow once</Button>
+          <Button variant="primary" aria-keyshortcuts="Meta+Enter" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>Allow once<span className="tc-kbd" aria-hidden="true">⌘↵</span></Button>
         </div>
-      ) : <Result a={a} />}
+      )}
     </section>
   )
 }
@@ -97,9 +105,11 @@ function AnsweredQuestion({ a, who, answered }: { a: Approval; who: string; answ
   const title = `${who} has a question`
   return (
     <section aria-label={title} className="card tcard">
-      <h3>{title}</h3>
-      <span className="sub">{a.title}</span>
-      {!answered && <Result a={a} />}
+      <CardHead who={who} title={`${who} asked`} aside={answered && <span className="tc-aside">Answered</span>} />
+      <div className="tc-body">
+        <span className="sub">{a.title}</span>
+        {!answered && <Result a={a} />}
+      </div>
     </section>
   )
 }
@@ -109,8 +119,8 @@ function AnsweredQuestions({ who, questions }: { who: string; questions: AskedQu
   const title = `${who} asked ${questions.length} questions`
   return (
     <section aria-label={title} className="card tcard">
-      <h3>{title}</h3>
-      <ol className="qans">
+      <CardHead who={who} title={`${who} asked`} aside={<span className="tc-aside">Answered</span>} />
+      <ol className="qans tc-body">
         {questions.map((q, i) => (
           <li key={i}>
             <span className="n mono">{i + 1}</span>
@@ -155,7 +165,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
   }
   const jump = (to: number, focusTab = false) => {
     setStep(to)
-    if (focusTab) focusNext(() => tabs.current?.querySelectorAll<HTMLElement>('button')[to])
+    if (focusTab) focusNext(() => tabs.current?.querySelector<HTMLElement>(to > step ? '[data-next]:not(:disabled), button:not(:disabled)' : 'button:not(:disabled)'))
   }
   const primary = () => {
     if (!pickReady(p) || busy !== null) return
@@ -201,7 +211,14 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
   // that is not another button. A button keeps its own Enter, and the Something else box handles its own keys.
   const keys = (e: KeyboardEvent<HTMLElement>) => {
     const el = e.target as HTMLElement
-    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || el.closest('textarea, input') || busy !== null) return
+    if (e.defaultPrevented || e.ctrlKey || e.altKey || busy !== null) return
+    // ⌘↵ sends from anywhere in the card, the Something else box included.
+    if (e.metaKey && e.key === 'Enter') {
+      if (!pickReady(p)) return
+      e.preventDefault()
+      return primary()
+    }
+    if (e.metaKey || el.closest('textarea, input')) return
     if (e.key === 'Enter') {
       const sendable = !el.closest('button') || (!multi && el.getAttribute('aria-checked') === 'true')
       if (!sendable || !pickReady(p)) return
@@ -226,22 +243,17 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
 
   return (
     <section aria-label={title} className="card tcard" onKeyDown={keys}>
-      <h3>{title}</h3>
-      {many && (
-        <div ref={tabs} className="qtabs" role="group" aria-label="Questions" onKeyDown={arrows}>
-          {qs.map((x, i) => {
-            const label = x.header?.trim() || `Question ${i + 1}`
-            const answered = pickReady(picks[i] ?? emptyPick())
-            return (
-              <button key={i} type="button" className="qtab" tabIndex={i === step ? 0 : -1} aria-current={i === step ? 'step' : undefined} aria-label={answered ? `${label}, answered` : label} disabled={busy !== null} onClick={() => jump(i)}>
-                {answered && i !== step && <Icon name="check" size={12} />}{label}
-              </button>
-            )
-          })}
+      <CardHead who={who} title={title} aside={many && (
+        <div ref={tabs} className="tc-pager" role="group" aria-label="Questions" onKeyDown={arrows}>
+          <button type="button" className="tc-page" aria-label={`Show question ${step}`} disabled={step === 0 || busy !== null} onClick={() => jump(step - 1, true)}><Icon name="chevron" size={14} /></button>
+          <span aria-live="polite">{step + 1} of {qs.length}</span>
+          <button type="button" className="tc-page" data-next aria-label={`Show question ${step + 2}`} disabled={step === qs.length - 1 || busy !== null} onClick={() => jump(step + 1, true)}><Icon name="chevron" size={14} /></button>
         </div>
-      )}
-      <span className="sub">{q.question}{multi ? ' Choose all that apply.' : ''}</span>
-      {!many && a.detail && <div className="code">{a.detail}</div>}
+      )} />
+      <div className="tc-body">
+        <span className="sub">{q.question}{multi ? ' Choose all that apply.' : ''}</span>
+        {!many && a.detail && <div className="code">{a.detail}</div>}
+      </div>
       <div ref={group} role={multi ? 'group' : 'radiogroup'} aria-label={many ? `Question ${step + 1} of ${qs.length}: ${q.question}` : q.question} className="qrows" onKeyDown={rowArrows}>
         {q.options.map((o, i) => {
           const on = p.sel.includes(o.label)
@@ -276,9 +288,11 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
           </button>
         )}
       </div>
-      <div className="acts">
-        {step > 0 && <Button disabled={busy !== null} onClick={() => move(step - 1)}>Back</Button>}
-        <Button variant="primary" busy={busy === 'send'} busyPattern="ripple" busyLabel="Sending" disabled={!pickReady(p) || busy !== null} onClick={primary}>{many && !done ? 'Next' : 'Send'}</Button>
+      <div className="tc-foot">
+        {!multi && <span className="tc-hint">{rowCount > 1 ? `Press 1 to ${Math.min(rowCount, 9)} to pick` : 'Press 1 to pick'}</span>}
+        {step > 0 && <Button variant="ghost" disabled={busy !== null} onClick={() => move(step - 1)}>Back</Button>}
+        {many && step < qs.length - 1 && <Button variant="ghost" disabled={busy !== null} onClick={() => move(step + 1)}>Skip</Button>}
+        <Button variant="primary" aria-keyshortcuts="Meta+Enter" busy={busy === 'send'} busyPattern="ripple" busyLabel="Sending" disabled={!pickReady(p) || busy !== null} onClick={primary}>{many && !done ? 'Next' : many ? 'Send answers' : 'Send'}<span className="tc-kbd" aria-hidden="true">⌘↵</span></Button>
       </div>
     </section>
   )
@@ -299,7 +313,7 @@ function ChangesNote({ onSend, onCancel }: { onSend: (note: string) => Promise<u
   const [busy, run] = useBusy()
   const send = () => void run('send', () => onSend(note.trim()))
   return (
-    <div className="acts" style={{ flexWrap: 'nowrap' }}>
+    <div className="tc-foot" style={{ flexWrap: 'nowrap' }}>
       <input className="grow-input" aria-label="What should change" placeholder="What should change" autoFocus value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send(); if (e.key === 'Escape') onCancel() }} />
       <Button disabled={!!busy} onClick={onCancel}>Cancel</Button>
       <Button variant="primary" busy={!!busy} busyPattern="ripple" busyLabel="Sending" onClick={send}>Send</Button>
@@ -327,10 +341,10 @@ function PlanDecision({ a, lead }: { a: Approval; lead: boolean }) {
   const [asking, setAsking] = useState(false)
   const phase = useFoldPhase(a.id)
   if (phase === 'folded' && a.status === 'pending') return null
-  if (a.status !== 'pending' && phase !== 'folding') return <Result a={a} />
+  if (a.status !== 'pending' && phase !== 'folding') return <div className="tc-body"><Result a={a} /></div>
   if (asking) return <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decide(a, { behavior: 'deny', message: note || 'Please revise the plan.' })} />
   return (
-    <div className={`acts${phase ? ' decide-fold' : ''}`}>
+    <div className={`tc-foot${phase ? ' decide-fold' : ''}`}>
       <Button onClick={() => setAsking(true)}>{lead ? 'Request changes' : 'Keep planning'}</Button>
       <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>{lead ? 'Approve and hand off' : 'Approve and build'}</Button>
     </div>
@@ -344,11 +358,12 @@ function PlanSteps({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead:
   const open = (workspaceId: string) => go({ name: 'workspace', workspaceId })
   return (
     <section aria-label={a.title} className="card tcard">
-      <div className="pcard-row">
+      <div className="tc-head">
+        <AgentAvatar name={agents.find((x) => x.id === a.agentId)?.name ?? 'Kernel'} size={18} />
         <h3>{a.title}</h3>
         <PlanTools a={a} agents={agents} />
       </div>
-      <ol className="steps">
+      <ol className="steps tc-body">
         {steps.map((s, i) => {
           const who = agents.find((x) => x.id === s.agentId)?.name
           const ws = s.workspaceId ?? (s.taskId ? tasks?.find((t) => t.id === s.taskId)?.workspaceId : undefined)
@@ -380,12 +395,12 @@ function PlanDoc({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead: b
   const title = heading ?? a.title
   return (
     <section aria-label={title} className="card tcard pcard">
-      <div className="pcard-head">
-        <span className="pcard-kicker"><Icon name="doc" size={14} />Plan</span>
-        {a.planFile && <span className="pcard-file mono ellipsis" title={a.planFile}>{a.planFile}</span>}
+      <div className="tc-head">
+        <AgentAvatar name={agents.find((x) => x.id === a.agentId)?.name ?? 'Kernel'} size={18} />
+        <h3>{title}</h3>
         <PlanTools a={a} agents={agents} />
       </div>
-      <h3>{title}</h3>
+      {a.planFile && <span className="pcard-file mono ellipsis" title={a.planFile}>{a.planFile}</span>}
       <div id={bodyId} className="pcard-body selectable" data-folded={long && !open ? 'true' : undefined}>
         <Markdown blocks={heading ? blocks.slice(1) : blocks} />
         {!!a.steps?.length && <PlanTasks a={a} agents={agents} />}
@@ -412,14 +427,17 @@ function HireCard({ a, lead, inChat }: { a: Approval; lead: string; inChat?: boo
   if (!file) return null
   return (
     <section aria-label={file.path} className="card tcard">
-      <h3><FileLabel path={file.path} size={16} /></h3>
-      <div className="code">{file.text}</div>
-      <HireServers servers={file.servers} agent={hireName(file)} lead={lead} />
-      <p className="hire-scope">{file.scope === 'team' ? 'Proposed to the team as a pull request' : 'Saved just for you'}</p>
-      {a.status !== 'pending' ? <Result a={a} /> : asking ? (
+      <CardHead who={lead} title={file.path} />
+      <div className="tc-body">
+        <div className="code">{file.text}</div>
+        <HireServers servers={file.servers} agent={hireName(file)} lead={lead} />
+        <p className="hire-scope">{file.scope === 'team' ? 'Proposed to the team as a pull request' : 'Saved just for you'}</p>
+        {a.status !== 'pending' && <Result a={a} />}
+      </div>
+      {a.status !== 'pending' ? null : asking ? (
         <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decideHere(a, { behavior: 'deny', message: note || 'Please change the agent file.' })} />
       ) : (
-        <div className="acts">
+        <div className="tc-foot">
           <Button disabled={!!busy} onClick={() => setAsking(true)}>Edit file</Button>
           <Button variant="primary" busy={!!busy} busyPattern="ripple" busyLabel="Creating" onClick={() => void run('create', () => decideHere(a, { behavior: 'allow' }))}>Create agent</Button>
         </div>

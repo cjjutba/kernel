@@ -215,7 +215,14 @@
   }
 }
 :root {
-  --r-2xs: 4px; --r-xs: 6px; --r-sm: 8px; --r: 10px; --r-md: 12px; --r-lg: 16px; --r-xl: 18px; --r-pill: 999px;
+  --r-2xs: 4px; --r-xs: 6px; --r-sm: 8px; --r: 10px; --r-md: 12px; --r-lg: 16px; --r-xl: 18px; --r-modal: 14px; --r-pill: 999px; --menu-gap: 8px;
+  /* Agent avatar palettes: two stops each, the same in both themes. Ivy and Rio are drawn in the Pen; the rest are picked by name. */
+  --agent-ivy-a: #6ee7b7; --agent-ivy-b: #0ea5e9;
+  --agent-rio-a: #fdba74; --agent-rio-b: #f43f5e;
+  --agent-sky-a: #7dd3fc; --agent-sky-b: #6366f1;
+  --agent-rose-a: #f9a8d4; --agent-rose-b: #a855f7;
+  --agent-sand-a: #fde68a; --agent-sand-b: #f97316;
+  --agent-iris-a: #c4b5fd; --agent-iris-b: #38bdf8;
   --font: 'Geist Variable', 'Geist', -apple-system, 'SF Pro Text', system-ui, sans-serif;
   --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
   /* Type sizes (KERNEL-681), named by role and set to the values in use. A size that isn't here is a new token, never a literal in a screen;
@@ -340,7 +347,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); white-space: nowrap; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .btn.primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
 .btn.ghost { border-color: transparent; color: var(--ink-2); }
-.btn.danger { background: var(--danger); border-color: var(--danger); color: var(--on-solid); }
+.btn.danger { background: var(--del); border-color: var(--del); color: var(--on-solid); }
 .btn.merged { background: var(--merged-solid); border-color: var(--merged-solid); color: var(--on-solid); }
 /* Hover and press (KERNEL-879). :where() keeps these at the specificity of the variant they sit on, so a screen's own .btn rule still wins. */
 .btn:where(:not(.primary, .danger, .merged, :disabled):hover) { background: var(--surface-3); border-color: var(--line-3); }
@@ -348,8 +355,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .btn.ghost:where(:not(:disabled):hover) { color: var(--ink); }
 .btn.primary:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--ink) 88%, var(--on-ink)); }
 .btn.primary:where(:not(:disabled):active) { background: color-mix(in srgb, var(--ink) 76%, var(--on-ink)); }
-.btn.danger:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--danger) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--danger) 88%, var(--on-solid)); }
-.btn.danger:where(:not(:disabled):active) { background: color-mix(in srgb, var(--danger) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--danger) 76%, var(--on-solid)); }
+.btn.danger:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--del) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--del) 88%, var(--on-solid)); }
+.btn.danger:where(:not(:disabled):active) { background: color-mix(in srgb, var(--del) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--del) 76%, var(--on-solid)); }
 .btn.merged:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--merged-solid) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--merged-solid) 88%, var(--on-solid)); }
 .btn.merged:where(:not(:disabled):active) { background: color-mix(in srgb, var(--merged-solid) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--merged-solid) 76%, var(--on-solid)); }
 .btn.lg { height: 32px; font-size: var(--fs-ui); padding: 0 14px; border-radius: var(--r); }
@@ -392,7 +399,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .scrim { position: fixed; inset: 0; z-index: var(--z-scrim); background: var(--scrim); backdrop-filter: blur(2px); animation: scrim-in var(--dur-base) var(--ease-out); }
 .scrim[data-closing] { animation: scrim-out var(--dur-fast) linear forwards; pointer-events: none; }
 /* Modal sets `--modal-y`, the dialog's top in px on the canvas. A dialog taller than the window scrolls (D-084). */
-.modal { --modal-y: 140; --modal-top: calc(var(--modal-y) * 1px); position: fixed; z-index: var(--z-modal); left: 50%; top: var(--modal-top); transform: translateX(-50%); width: 620px; max-width: calc(100vw - 40px); max-height: calc(100vh - var(--modal-top) - 16px); overflow-y: auto; display: flex; flex-direction: column; border-radius: var(--r-xl); border: 1px solid var(--line-3); background: var(--surface-2); animation: modal-in var(--dur-slow) var(--ease-enter); }
+.modal { --modal-y: 140; --modal-top: calc(var(--modal-y) * 1px); position: fixed; z-index: var(--z-modal); left: 50%; top: var(--modal-top); transform: translateX(-50%); width: 480px; max-width: calc(100vw - 40px); max-height: calc(100vh - var(--modal-top) - 16px); overflow-y: auto; display: flex; flex-direction: column; border-radius: var(--r-modal); border: 1px solid var(--line-3); background: var(--panel); animation: modal-in var(--dur-slow) var(--ease-enter); }
 .modal[data-closing] { animation: modal-out var(--dur-fast) var(--ease-exit) forwards; pointer-events: none; }
 /* The separate translate and scale properties leave the centering transform alone. */
 @keyframes scrim-in { from { opacity: 0; } }
@@ -400,9 +407,10 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 @keyframes modal-in { from { opacity: 0; translate: 0 8px; scale: 0.98; } }
 @keyframes modal-out { to { opacity: 0; translate: 0 4px; } }
 @media (prefers-reduced-motion: reduce) { .scrim, .modal { animation: none; } }
-.modal-head { display: flex; align-items: center; height: 52px; padding: 0 10px 0 18px; }
-.modal-head h2 { flex: 1; margin: 0; font-size: var(--fs-chat); font-weight: var(--fw-medium); color: var(--ink); }
-.modal-foot { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--card-line); }
+.modal-head { display: flex; align-items: center; padding: 18px 14px 4px 20px; }
+.modal-head h2 { flex: 1; margin: 0; font-size: var(--fs-dialog); font-weight: var(--fw-semibold); line-height: 21px; color: var(--ink); }
+.modal-foot { display: flex; align-items: center; gap: 8px; padding: 12px 16px 12px 20px; border-top: 1px solid var(--line); }
+.modal-foot .btn { height: 34px; padding: 0 14px; border-radius: var(--r-sm); font-size: var(--fs-ui); }
 
 /* A window under 800px or over 900px tall moves every dialog in proportion to the canvas's 900px height (D-080, KERNEL-577). */
 @media (max-height: 799px), (min-height: 901px) { .modal { --modal-top: calc(var(--modal-y) * 100vh / 900); } }

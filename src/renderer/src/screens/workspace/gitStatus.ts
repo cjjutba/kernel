@@ -5,7 +5,7 @@ export type GitStatus = ChangedFile['status']
 export interface GitDecoration { letter: string; label: string; color: string; struck: boolean }
 
 const DECORATION: Record<GitStatus, GitDecoration> = {
-  M: { letter: 'M', label: 'Modified', color: 'var(--mod)', struck: false },
+  M: { letter: 'M', label: 'Modified', color: 'var(--muted)', struck: false },
   A: { letter: 'A', label: 'Added', color: 'var(--add)', struck: false },
   D: { letter: 'D', label: 'Deleted', color: 'var(--del)', struck: true },
   R: { letter: 'R', label: 'Renamed', color: 'var(--add)', struck: false },

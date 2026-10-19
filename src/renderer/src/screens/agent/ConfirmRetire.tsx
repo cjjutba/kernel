@@ -35,7 +35,7 @@ export function ConfirmRetire({ projectId, agentId }: { projectId: string; agent
 
   return (
     <ConfirmDialog
-      title={`Retire ${agent.name}?`} busy={!!busy} busyPattern="ripple" busyLabel="Retiring" confirmLabel={`Retire ${agent.name}`} onConfirm={() => void retire()} onCancel={actions.ui.closeModal}
+      title={`Retire ${agent.name}?`} danger busy={!!busy} busyPattern="ripple" busyLabel="Retiring" confirmLabel={`Retire ${agent.name}`} onConfirm={() => void retire()} onCancel={actions.ui.closeModal}
       body={`${agent.name} finishes the current turn, then leaves the team and the workspace picker. The file moves to .claude/retired-agents so you can bring ${agent.name} back.`}
     >
       <div className="tm-box mono"><span>{shortFile(agent.file)}</span><span>{handoff}</span></div>

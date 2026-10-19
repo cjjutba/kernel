@@ -383,7 +383,7 @@ button.msg-chip:hover { border-color: var(--line-3); }
 /* The Changes ⋯ and its menu (PanelCompare.png, KERNEL-517): 332px under the button, 10px clear of it and level with its right edge, narrower in a panel that is. The ⋯ reads pressed while the menu is open. */
 .panel-tools .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
 .compare-anchor { position: relative; display: inline-flex; }
-.compare-menu { top: calc(100% + 10px); right: 0; display: flex; flex-direction: column; width: min(332px, calc(100cqw - 16px)); max-height: min(480px, calc(100vh - 140px)); }
+.compare-menu { top: calc(100% + var(--menu-gap)); right: 0; display: flex; flex-direction: column; width: min(332px, calc(100cqw - 16px)); max-height: min(480px, calc(100vh - 140px)); }
 .compare-menu > * { flex-shrink: 0; }
 .compare-target { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 8px; font-size: var(--fs-ui); }
 .compare-pick { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 200px; height: 24px; padding: 0 6px 0 9px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); }

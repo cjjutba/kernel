@@ -1,7 +1,7 @@
 import type { SharedFile, SharedKind, SharedVersion } from '@shared/types'
 import { useStore } from '../../../store'
 import { FileIcon } from '../../../components/FileIcon'
-import { Button, EmptyState } from '../../../ui'
+import { AgentAvatar, Button, EmptyState } from '../../../ui'
 import { kindFile, kindLabel, useOpenShared, useSharer, useThumb, versionLine, versionOf } from '../shared/shared'
 import '../shared/shared.css'
 
@@ -27,29 +27,20 @@ const picture = (kind: SharedKind) => kind === 'html' || kind === 'image'
  */
 export function SharedCard({ sharedId, version }: { sharedId: string; version: number }) {
   const { file, v, thumb, by, open } = useCard(sharedId, version)
-  if (!file || !v) return <div className="card shcard" data-layout="missing"><EmptyState icon="doc" title="A shared file">This file is no longer available</EmptyState></div>
+  if (!file || !v) return <div className="card tcard shcard" data-layout="missing"><EmptyState icon="doc" title="A shared file">This file is no longer available</EmptyState></div>
   const meta = `${versionLine(file, v.n)} · ${by}`
-  const button = <Button className="small shcard-open" aria-label={`Open ${file.title}`} onClick={open}>Open</Button>
-  if (thumb && picture(file.kind)) {
-    return (
-      <div className="card shcard" data-layout="picture">
-        <div className="shcard-text">
-          <div className="shcard-line"><span className="shcard-title ellipsis">{file.title}</span>{button}</div>
-          <span className="shcard-meta ellipsis">{meta}</span>
-        </div>
-        <div className="shcard-thumb" aria-hidden="true" onClick={open}><img src={thumb} alt="" /></div>
-      </div>
-    )
-  }
+  const shown = !!thumb && picture(file.kind)
   return (
-    <div className="card shcard" data-layout="tile">
-      <span className="shcard-tile" aria-hidden="true"><FileIcon path={kindFile[file.kind]} /></span>
-      <div className="shcard-text">
-        <span className="shcard-title ellipsis">{file.title}</span>
+    <section className="card tcard shcard" data-layout={shown ? 'picture' : 'tile'} aria-label={file.title}>
+      <div className="tc-head"><AgentAvatar name={by} size={18} /><h3 className="ellipsis">{file.title}</h3></div>
+      <div className="tc-body">
+        {shown
+          ? <div className="shcard-thumb" aria-hidden="true" onClick={open}><img src={thumb} alt="" /></div>
+          : <div className="shcard-file"><span className="shcard-tile" aria-hidden="true"><FileIcon path={kindFile[file.kind]} /></span></div>}
         <span className="shcard-meta ellipsis">{meta}</span>
       </div>
-      {button}
-    </div>
+      <div className="tc-foot"><Button aria-label={`Open ${file.title}`} onClick={open}>Open</Button></div>
+    </section>
   )
 }
 

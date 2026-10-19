@@ -43,7 +43,7 @@ describe('file tree', () => {
   it('marks untracked files U and deleted ones struck through, as VS Code does', () => {
     expect(gitDecoration('?')).toMatchObject({ letter: 'U', color: 'var(--add)' })
     expect(gitDecoration('D')).toMatchObject({ letter: 'D', struck: true })
-    expect(gitDecoration('M')?.color).toBe('var(--mod)')
+    expect(gitDecoration('M')?.color).toBe('var(--muted)')
     expect(gitDecoration(undefined)).toBeUndefined()
   })
 

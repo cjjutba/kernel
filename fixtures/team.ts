@@ -740,6 +740,12 @@ export const teamFixtures: Record<string, Fixture> = {
   // The update pill stays in the footer while the sidebar is hidden (KERNEL-588).
   UpdateReadyNoSidebar: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: { ...home, sidebar: false } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
+  // The plan card with a write-up and a saved file, on the chat card shell (KERNEL-1110).
+  InboxPlanDoc: scene((f) => {
+    const home = homeScene(f)
+    const detail = '# Export invoices as PDF\n\nInvoices get a PDF renderer and a Download PDF action in each row. Two tasks run in parallel, and Artkin reviews each PR as it lands.\n\n- T-15a renders the invoice with embedded fonts\n- T-15b adds Download PDF to the row actions'
+    return { ...home, approvals: home.approvals!.map((a) => (a.id === 'ap-plan15' ? { ...a, detail, planFile: '.claude/plans/t-15-invoice-pdf.md' } : a)), ui: { route: { name: 'inbox' } } }
+  }),
   InboxRowFocused: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
   InboxApprovalFold: { ...scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })), motion: { action: { click: 'Approve' }, ms: 700, area: '.ib-body-wrap' } },
   // KERNEL-785: an MCP call's approval is titled as the chat's row says it, the newest row, so the detail pane opens on it.
