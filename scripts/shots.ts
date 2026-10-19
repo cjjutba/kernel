@@ -637,11 +637,10 @@ async function openRoleAgents(page: Page, row = 'Backend') {
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
-async function openRoleFlyout(page: Page, row: string, flyout: 'Effort' | 'Compact at') {
+async function openRoleEffort(page: Page, row: string) {
   await page.getByRole('row', { name: row }).getByRole('button', { name: new RegExp(`^${row} Claude Code model`) }).click()
-  await page.getByRole('button', { name: new RegExp(`^${flyout}`) }).hover()
-  await page.getByRole('menu', { name: flyout }).waitFor()
-  await page.waitForTimeout(300)
+  await page.getByRole('radio', { name: 'High', exact: true }).hover()
+  await page.waitForTimeout(500)
 }
 async function starModels(page: Page) {
   for (const name of ['Opus 5.5', 'Haiku 5.5']) {
@@ -654,9 +653,8 @@ async function starModels(page: Page) {
   await page.waitForTimeout(300)
 }
 async function openEffortFlyout(page: Page) {
-  await page.getByRole('button', { name: /^Effort/ }).hover()
-  await page.getByRole('menu', { name: 'Effort' }).waitFor()
-  await page.waitForTimeout(300)
+  await page.getByRole('radio', { name: 'High', exact: true }).hover()
+  await page.waitForTimeout(500)
 }
 async function hoverLockedProvider(page: Page) {
   await page.getByRole('tab', { name: 'Codex' }).hover()
@@ -673,8 +671,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsModelsPickerLegacy: (page) => openRolePicker(page, undefined, true),
   SettingsModelsAgents: (page) => openRoleAgents(page),
   SettingsModelsAgentsNone: (page) => openRoleAgents(page, 'QA'),
-  SettingsModelsPickerEffort: (page) => openRoleFlyout(page, 'Kernel', 'Effort'),
-  SettingsModelsPickerCompact: (page) => openRoleFlyout(page, 'Kernel', 'Compact at'),
+  SettingsModelsPickerEffort: (page) => openRoleEffort(page, 'Kernel'),
+  SettingsModelsPickerCompact: (page) => openRolePicker(page),
   SettingsModelsPickerCodexRole: async (page) => { await page.getByRole('button', { name: /^Frontend Codex model/ }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsModelsNarrow: windowAt(720),
   WorkspaceModelPickerKeys: async (page) => { await page.keyboard.press('ArrowUp'); await page.waitForTimeout(300) },
