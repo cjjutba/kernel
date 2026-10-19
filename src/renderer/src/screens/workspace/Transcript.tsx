@@ -4,7 +4,7 @@ import { leadModeName, leadModeOf, leadModeSwitched } from '@shared/leadMode'
 import { maskSecrets, stripAnsi, toolView } from '@shared/toolView'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
-import { Avatar, Button, LinkButton, Card, CopyButton, EmptyState, Icon, IconButton, Spinner, useBusy, type IconName } from '../../ui'
+import { AgentAvatar, Button, LinkButton, Card, CopyButton, EmptyState, Icon, IconButton, Spinner, useBusy, type IconName } from '../../ui'
 import { ServiceMark } from '../../icons'
 import { actions, getState, go, loadWorkspace, setLeadMode, useStore } from '../../store'
 import { openProject } from '../../lead'
@@ -568,7 +568,7 @@ function useToolLook(item: Tool) {
   const root = useStore((s) => s.workspaces.find((w) => w.id === workspaceId)?.path)
   const target = useStore(agentNamed(item.name.endsWith('__message_agent') ? item.input?.workspace_id : undefined))
   const view = useMemo(() => toolView(item, { root, agentOf: target ? () => target : undefined }), [item, root, target])
-  const mark = view.file ? <FileIcon path={view.file} size={15} /> : view.agent ? <Avatar name={view.agent} size={15} /> : view.service ? <span className="step-mark"><ServiceMark name={view.service} size={15} /></span> : undefined
+  const mark = view.file ? <FileIcon path={view.file} size={15} /> : view.agent ? <AgentAvatar name={view.agent} size={15} /> : view.service ? <span className="step-mark"><ServiceMark name={view.service} size={15} /></span> : undefined
   return { view, mark }
 }
 

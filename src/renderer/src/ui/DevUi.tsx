@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Avatar, Banner, Button, Card, Checkbox, Chip, CodeBlock, ConfirmDialog, EmptyState, Icon, IconButton, Kbd, Menu, MENU_SEPARATOR, Meter, Modal, Pill, Popover, SegmentedControl, Select, Skeleton, Spinner, Tabs, Toast, Toggle, bannerIcon, iconNames, LoadingRow, EmptyList, FailedState, NotConnectedState } from './index'
+import { AgentAvatar, Avatar, Banner, Button, Card, Checkbox, Chip, CodeBlock, ConfirmDialog, EmptyState, Icon, IconButton, Kbd, Menu, MENU_SEPARATOR, Meter, Modal, Pill, Popover, SegmentedControl, Select, Skeleton, Spinner, Tabs, Toast, Toggle, bannerIcon, iconNames, LoadingRow, EmptyList, FailedState, NotConnectedState } from './index'
 import type { BannerKind, DevUiPage } from '@shared/types'
 import { spinnerPatterns } from './dotPatterns'
 
@@ -70,7 +70,7 @@ function Controls() {
         <div className="col devui-gap-10">
           <div className="col devui-gap-6"><Meter label="Session, 40%" value={0.4} /><Meter label="Weekly, 85%" value={0.85} /><Meter label="Session, 100%" value={1} /></div>
           <CodeBlock>{'pnpm shots Home'}</CodeBlock>
-          <div className="devui-row"><Kbd>⌘K</Kbd><Kbd>⇧⌘N</Kbd><Avatar name="Client A" /><Avatar name="Kernel" size={28} solid /><Spinner /><Skeleton width={120} /></div>
+          <div className="devui-row"><Kbd>⌘K</Kbd><Kbd>⇧⌘N</Kbd><Avatar name="Client A" /><Avatar name="Kernel" size={28} solid /><AgentAvatar name="Ivy" size={28} /><AgentAvatar name="Rio" size={28} /><AgentAvatar name="Kernel" size={28} /><Spinner /><Skeleton width={120} /></div>
         </div>
       </Section>
       <Section title="Card, empty state">

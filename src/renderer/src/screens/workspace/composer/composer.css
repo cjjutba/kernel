@@ -117,7 +117,7 @@
 .img-modal { display: flex; justify-content: center; padding: 0 16px 16px; }
 .img-modal img { display: block; max-width: 100%; max-height: calc(100vh - 260px); border-radius: var(--r-sm); }
 
-.cmp-ac { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: var(--z-popover); width: 420px; max-width: 100%; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
+.cmp-ac { position: absolute; left: 0; bottom: calc(100% + var(--menu-gap)); z-index: var(--z-popover); width: 420px; max-width: 100%; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
 .cmp-ac p { margin: 2px 8px 6px; font-size: var(--fs-meta); color: var(--muted); }
 .cmp-ac p.cmp-ac-none { margin: 6px 8px; }
 .cmp-ac-row + p { margin-top: 10px; }
@@ -126,11 +126,11 @@
 .cmp-ac-row .file-icon { flex-shrink: 0; margin-right: -4px; }
 .cmp-ac-row .mono { font-size: var(--fs-code); flex-shrink: 0; }
 .cmp-ac-row .sub { flex: 1; min-width: 0; color: var(--muted); }
-.cmp-pop { left: 0; bottom: calc(100% + 8px); }
+.cmp-pop { left: 0; bottom: calc(100% + var(--menu-gap)); }
 /* Model and effort (D-093). The link pickers share the search field. */
 .model-pop { display: flex; flex-direction: column; width: 380px; padding: 0; background: var(--surface-2); }
 /* Opening down from a Settings cell (KERNEL-988) instead of up from the composer. */
-.cmp-pop[data-placement='down'] { bottom: auto; top: calc(100% + 6px); }
+.cmp-pop[data-placement='down'] { bottom: auto; top: calc(100% + var(--menu-gap)); }
 .cmp-pop[data-align='right'] { left: auto; right: 0; }
 /* Taller than the project above the composer, the model list scrolls and the search, Effort and footer stay. */
 .model-pop > .pick-search, .model-pop > .pick-foot { flex-shrink: 0; }
@@ -345,11 +345,11 @@
 
 
 /* New chat's Run in and Branch menus (KERNEL-786). They open upward from the + button, lined up with its right edge, and may cover the box (KERNEL-805). */
-.where-pop { left: -8px; bottom: calc(100% + 8px); display: flex; flex-direction: column; max-height: min(420px, calc(100vh - 220px)); padding: 4px; background: var(--surface-2); z-index: var(--z-popover); }
+.where-pop { left: -8px; bottom: calc(100% + var(--menu-gap)); display: flex; flex-direction: column; max-height: min(420px, calc(100vh - 220px)); padding: 4px; background: var(--surface-2); z-index: var(--z-popover); }
 .where-pop[data-align='end'] { left: auto; right: 0; }
 .where-pop > * { flex-shrink: 0; }
 /* New chat's project menu hangs centred under the title, the one where-row menu above the box. */
-.where-pop[data-drop='down'] { left: 50%; bottom: auto; top: calc(100% + 10px); transform: translateX(-50%); font-size: var(--fs-ui); font-weight: var(--fw-regular); letter-spacing: normal; line-height: normal; text-align: left; }
+.where-pop[data-drop='down'] { left: 50%; bottom: auto; top: calc(100% + var(--menu-gap)); transform: translateX(-50%); font-size: var(--fs-ui); font-weight: var(--fw-regular); letter-spacing: normal; line-height: normal; text-align: left; }
 .where-search { height: 34px; margin: 0 0 4px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
 .where-list { display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto; }
 .where-branches { max-height: 330px; }

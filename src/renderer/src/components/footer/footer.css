@@ -40,7 +40,7 @@
    body bleeds in under the provider's name, 24px past the mark. Switch rows bleed 8px past the body's padding and pad themselves back, so their hover
    fill is wider than their text. The meters are the shared Meter: grey, amber from 75%, red from 90%. */
 .popover.usage-pop { width: 392px; padding: 0; overflow: hidden auto; max-height: calc(100vh - 56px); }
-.popover.usage-pop[data-side='top'] { bottom: calc(100% + 6px); }
+.popover.usage-pop[data-side='top'] { bottom: calc(100% + var(--menu-gap)); }
 .pm-top { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line-2); }
 .pm-title { font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
 .pm-sec + .pm-sec, .pm-sec + .plan-foot { border-top: 1px solid var(--line-2); }

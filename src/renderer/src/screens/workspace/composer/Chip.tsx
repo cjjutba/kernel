@@ -6,7 +6,7 @@ import { actions, useStore } from '../../../store'
 import { ServiceMark } from '../../../icons'
 import { issueFromPart, issueOpen, issueUrl, type IssueTarget } from '../issueKey'
 import { FileIcon } from '../../../components/FileIcon'
-import { Avatar, Icon, Modal, type IconName } from '../../../ui'
+import { AgentAvatar, Icon, Modal, type IconName } from '../../../ui'
 
 const KIND_LABELS: Record<FileKind, string> = {
   pdf: 'PDF', doc: 'Document', sheet: 'Spreadsheet', slides: 'Slides', archive: 'Archive', audio: 'Audio', video: 'Video', image: 'Image', text: 'Text', binary: 'File'
@@ -72,7 +72,7 @@ export function ChipIcon({ part }: { part: ChatPart }) {
   if (part.type === 'file' && isAttachment(part)) return <Icon name={part.readable === false ? 'eyeoff' : 'doc'} size={12} />
   if (part.type === 'image') return <FileIcon path={part.name} size={14} />
   if (part.type === 'issue') return <ServiceMark name={part.source} size={12} />
-  if (part.type === 'agent') return <Avatar name={part.name} size={14} />
+  if (part.type === 'agent') return <AgentAvatar name={part.name} size={14} />
   return part.type === 'file' && (part.path || part.src) ? <FileIcon path={part.path ?? part.name} dir={part.dir} size={14} /> : <Icon name={chipIcon(part)} size={12} />
 }
 

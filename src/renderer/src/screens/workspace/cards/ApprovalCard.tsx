@@ -3,7 +3,7 @@ import type { AgentDef, Approval, AskedQuestion, Decision } from '@shared/types'
 import { call } from '../../../api'
 import { FileLabel } from '../../../components/FileIcon'
 import { go, useStore } from '../../../store'
-import { Button, CopyButton, Icon, IconButton, useBusy } from '../../../ui'
+import { AgentAvatar, Button, CopyButton, Icon, IconButton, useBusy } from '../../../ui'
 import { Markdown } from '../markdown'
 import { HireServers, hireName } from './HireServers'
 import { leadingTitle, parseBlocks } from '../mdParse'
@@ -23,6 +23,11 @@ const EMPTY: AgentDef[] = []
 /** One decision path for every surface: the Inbox and the chat call the same channel, and the push event updates this card. */
 const decide = (a: Approval, decision: Decision) => attempt('Could not send your answer', () => call('approvals.decide', { id: a.id, decision }))
 
+/** The chat card's head: the agent's avatar and a title (DESIGN.md, Chat cards). `aside` sits at the right, such as "Answered". */
+function CardHead({ who, title, aside }: { who: string; title: string; aside?: ReactNode }) {
+  return <div className="tc-head"><AgentAvatar name={who} size={18} /><h3>{title}</h3>{aside}</div>
+}
+
 function Result({ a }: { a: Approval }) {
   return <span className="done-line">{outcome(a)}</span>
 }
@@ -36,17 +41,20 @@ function PermCard({ a, who }: { a: Approval; who: string }) {
   const code = bash ? `$ ${String(input.command ?? '')}` : path || (a.input ? JSON.stringify(a.input, null, 2) : '')
   return (
     <section aria-label={title} className="card tcard">
-      <h3>{title}</h3>
-      {a.detail && <span className="sub">{a.detail}</span>}
-      {code && <div className="code">{!bash && path ? <FileLabel path={path} /> : code}</div>}
-      {a.reason && <p className="reason"><Icon name="info" size={14} />{a.reason}</p>}
-      {phase === 'folded' && a.status === 'pending' ? null : a.status === 'pending' || phase === 'folding' ? (
-        <div className={`acts${phase ? ' decide-fold' : ''}`}>
+      <CardHead who={who} title={title} />
+      <div className="tc-body">
+        {a.detail && <span className="sub">{a.detail}</span>}
+        {code && <div className="code">{!bash && path ? <FileLabel path={path} /> : code}</div>}
+        {a.reason && <p className="reason"><Icon name="info" size={12} />{a.reason}</p>}
+        {a.status !== 'pending' && phase !== 'folding' && <Result a={a} />}
+      </div>
+      {phase === 'folded' && a.status === 'pending' ? null : (a.status === 'pending' || phase === 'folding') && (
+        <div className={`tc-foot${phase ? ' decide-fold' : ''}`}>
           <Button onClick={() => decideAtOnce(a, { behavior: 'deny', message: 'Denied in Kernel.' })}>Deny</Button>
           <Button onClick={() => decideAtOnce(a, { behavior: 'allow', always: true })}>Always allow here</Button>
           <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>Allow once</Button>
         </div>
-      ) : <Result a={a} />}
+      )}
     </section>
   )
 }
@@ -97,9 +105,11 @@ function AnsweredQuestion({ a, who, answered }: { a: Approval; who: string; answ
   const title = `${who} has a question`
   return (
     <section aria-label={title} className="card tcard">
-      <h3>{title}</h3>
-      <span className="sub">{a.title}</span>
-      {!answered && <Result a={a} />}
+      <CardHead who={who} title={`${who} asked`} aside={answered && <span className="tc-aside">Answered</span>} />
+      <div className="tc-body">
+        <span className="sub">{a.title}</span>
+        {!answered && <Result a={a} />}
+      </div>
     </section>
   )
 }
@@ -109,8 +119,8 @@ function AnsweredQuestions({ who, questions }: { who: string; questions: AskedQu
   const title = `${who} asked ${questions.length} questions`
   return (
     <section aria-label={title} className="card tcard">
-      <h3>{title}</h3>
-      <ol className="qans">
+      <CardHead who={who} title={`${who} asked`} aside={<span className="tc-aside">Answered</span>} />
+      <ol className="qans tc-body">
         {questions.map((q, i) => (
           <li key={i}>
             <span className="n mono">{i + 1}</span>
@@ -226,7 +236,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
 
   return (
     <section aria-label={title} className="card tcard" onKeyDown={keys}>
-      <h3>{title}</h3>
+      <CardHead who={who} title={title} />
       {many && (
         <div ref={tabs} className="qtabs" role="group" aria-label="Questions" onKeyDown={arrows}>
           {qs.map((x, i) => {
@@ -240,8 +250,10 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
           })}
         </div>
       )}
-      <span className="sub">{q.question}{multi ? ' Choose all that apply.' : ''}</span>
-      {!many && a.detail && <div className="code">{a.detail}</div>}
+      <div className="tc-body">
+        <span className="sub">{q.question}{multi ? ' Choose all that apply.' : ''}</span>
+        {!many && a.detail && <div className="code">{a.detail}</div>}
+      </div>
       <div ref={group} role={multi ? 'group' : 'radiogroup'} aria-label={many ? `Question ${step + 1} of ${qs.length}: ${q.question}` : q.question} className="qrows" onKeyDown={rowArrows}>
         {q.options.map((o, i) => {
           const on = p.sel.includes(o.label)
@@ -276,8 +288,9 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
           </button>
         )}
       </div>
-      <div className="acts">
-        {step > 0 && <Button disabled={busy !== null} onClick={() => move(step - 1)}>Back</Button>}
+      <div className="tc-foot">
+        {!multi && <span className="tc-hint">{rowCount > 1 ? `Press 1 to ${Math.min(rowCount, 9)} to pick` : 'Press 1 to pick'}</span>}
+        {step > 0 && <Button variant="ghost" disabled={busy !== null} onClick={() => move(step - 1)}>Back</Button>}
         <Button variant="primary" busy={busy === 'send'} busyPattern="ripple" busyLabel="Sending" disabled={!pickReady(p) || busy !== null} onClick={primary}>{many && !done ? 'Next' : 'Send'}</Button>
       </div>
     </section>

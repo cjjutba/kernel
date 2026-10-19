@@ -189,11 +189,10 @@ export function ConfirmDialog({ title, body, children, extra, confirmLabel, canc
   const id = useId()
   return (
     <Modal
-      title={title} onClose={onDismiss ?? onCancel} width={460} top={220} bare role="alertdialog" labelledBy={`${id}t`} describedBy={`${id}b`}
+      title={title} onClose={onDismiss ?? onCancel} width={480} top={220} role="alertdialog" describedBy={`${id}b`}
       footer={<>{extra}<span className="grow" /><Button variant="ghost" size="lg" {...(onDismiss ? { disabled, onClick: onCancel } : { 'data-dismiss': true })}>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" data-autofocus={focusConfirm || undefined} busy={busy} busyLabel={busyLabel} busyPattern={busyPattern} disabled={disabled} onClick={onConfirm}>{confirmLabel}</Button></>}
     >
       <div className="confirm-body">
-        <h2 id={`${id}t`}>{title}</h2>
         <p id={`${id}b`}>{body}</p>
         {children}
       </div>
