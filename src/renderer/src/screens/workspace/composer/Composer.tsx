@@ -337,6 +337,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
   // A banner's "Queue message" sends what is typed (main holds it while the limit lasts), "Switch model" opens the picker.
   // Subscribed on every render, so the listener always sees the current draft.
   useEffect(() => onComposerCommand((c) => {
+    if (c === 'project') return
     if (c === 'model') { setMenu('model'); return }
     if (!d.empty) void send()
     else d.focus()

@@ -488,10 +488,10 @@ button.msg-chip:hover { border-color: var(--line-3); }
 .term .xterm-viewport { background-color: transparent !important; }
 .chat-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding-bottom: 12px; text-align: center; }
 .chat-empty h2 { margin: 0; font-size: var(--fs-title-sm); font-weight: var(--fw-semibold); color: var(--ink); letter-spacing: -0.01em; }
-/* New chat is a chat's page without a transcript: the title block takes the space above Up next, Up next sits on the box, and the box is the composer shell, pinned to the bottom edge like a chat's.
-   A long draft grows the box up. The title block gives way first (NewLeadChat hides it), then Up next scrolls. */
+/* New chat is a chat's page without a transcript: the title, the box and Up next stand as one stack, with the box at the page's middle. The box is the composer shell, and a long draft grows it up:
+   the space below it is fixed, so the toolbar stays put, the title block gives way first (NewLeadChat hides it), then Up next scrolls. Once a message is sent the box is pinned to the bottom edge like a chat's. */
 .lead-new { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.lead-top { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; padding: 0 24px; text-align: center; }
+.lead-top { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; padding: 0 24px 24px; text-align: center; }
 .lead-title { flex-shrink: 0; }
 /* The project menu hangs below the title, past the block's edge, so the block lets it out while it is open. */
 .lead-top:has(.lead-project-anchor [aria-expanded='true'], .lead-sub [aria-expanded='true']) { position: relative; overflow: visible; z-index: 2; }
@@ -512,28 +512,30 @@ button.msg-chip:hover { border-color: var(--line-3); }
 .lead-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px 0 12px; border: 1px solid var(--line-3); border-radius: var(--r-pill); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); font-weight: var(--fw-medium); }
 .lead-pill > svg { color: var(--muted); }
 .lead-pill:hover { background: var(--surface-3); border-color: var(--line-3); color: var(--ink); }
-.lead-up { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 0 24px 16px; }
-.lead-up .up-next { max-width: 760px; margin: 0 auto; }
-/* Up next: the tracker's issues nobody has started. A quiet header, then one row per issue that fills on hover, with Plan showing at the end. */
-.up-next { width: 100%; max-width: 640px; text-align: left; }
-.up-next-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 10px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--line-2); }
-.up-next-head h3 { margin: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
+.lead-up { flex: 0 0 calc(50% - 61px); min-height: 0; overflow-y: auto; padding: 18px 24px 16px; }
+.lead-up .up-next, .lead-up .up-next-none { max-width: 760px; margin: 0 auto; }
+/* Up next: the tracker's issues nobody has started. A quiet header, then a bordered list with one row per issue and a Plan button at the end of each. */
+.up-next { width: 100%; text-align: left; }
+.up-next-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 8px; }
+.up-next-head h3 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
 /* The rows share one grid, so keys, titles and projects line up across rows. A tracker with no priority drops that column. */
-.up-next ul { display: grid; grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) auto; margin: 0; padding: 0; list-style: none; }
+.up-next ul { display: grid; grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) auto; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line-3); border-radius: var(--r-md); overflow: hidden; }
 .up-next ul.up-next-plain { grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content) auto; }
 .up-next-item { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
-.up-next-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: 12px; align-items: center; height: 38px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-2); font: inherit; font-size: var(--fs-ui); text-align: left; cursor: pointer; }
-.up-next-item + .up-next-item { margin-top: 1px; }
+.up-next-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: 12px; align-items: center; height: 46px; padding: 0 10px 0 14px; border: 0; background: none; color: var(--ink-2); font: inherit; font-size: var(--fs-ui); text-align: left; cursor: pointer; }
+.up-next-item + .up-next-item { border-top: 1px solid var(--line-2); }
 .up-next-row:hover, .up-next-row:focus-visible { background: var(--surface-3); color: var(--ink); }
 .up-next-row:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
 .up-next-row > svg { color: var(--ink-3); }
 .up-next-key { font-size: var(--fs-chip); color: var(--muted); }
 .up-next-title { min-width: 0; }
 .up-next-project { max-width: 180px; justify-self: end; font-size: var(--fs-meta); color: var(--muted); }
-.up-next-plan { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 48px; font-size: var(--fs-meta); color: var(--muted); }
-.up-next-plan svg { transition: transform var(--dur-fast) var(--ease-out); }
-.up-next-row:hover .up-next-plan, .up-next-row:focus-visible .up-next-plan { color: var(--ink); }
-.up-next-row:hover .up-next-plan svg, .up-next-row:focus-visible .up-next-plan svg { transform: translateX(2px); }
+.up-next-plan { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-sm); font-size: var(--fs-meta); color: var(--ink-2); }
+.up-next-row:hover .up-next-plan, .up-next-row:focus-visible .up-next-plan { color: var(--ink); background: var(--surface-2); }
+/* A project with no tracker: one line in Up next's place that says where to choose one. */
+.up-next-none { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line-3); border-radius: var(--r-md); color: var(--muted); font-size: var(--fs-ui); }
+.up-next-none > svg { flex-shrink: 0; }
+.up-next-none p { flex: 1; min-width: 0; margin: 0; }
 .chat-suggest { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; }
 .chat-suggest button { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: transparent; color: var(--ink-2); font-size: var(--fs-code); }
 .chat-suggest button svg { color: var(--muted); }

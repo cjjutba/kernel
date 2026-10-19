@@ -15,7 +15,7 @@ import { takenFindings } from '../new-workspace/taken'
 import { issueTracker } from './issueKey'
 import { OpenIssue } from './composer/Chip'
 import { useProjectTracker } from '../issues/useProjectTracker'
-import { focusComposerIn, onComposerFocusAsked, takeComposerFocus } from './composer/bus'
+import { focusComposerIn, onComposerCommand, onComposerFocusAsked, takeComposerFocus } from './composer/bus'
 import { readBranches, useBaseBranch, useBranches } from './composer/BranchPicker'
 import { useDraft } from './composer/draft'
 import { ComposerInput } from './composer/ComposerInput'
@@ -171,13 +171,16 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   /** Sends what is typed. A picked branch goes as the base, and as a line for the Lead. A failed start keeps the text. */
   const start = () => {
     const typed = d.message()
-    if (!typed.length || !usable) {
-      actions.ui.toast(usable ? { title: 'Nothing to send', sub: `Type a message for ${name} first.` } : { title: 'Pick a project first', sub: 'This project is archived or gone, so there is nowhere to start the chat.' })
-      d.focus()
+    // Every error here is a toast, and the draft stays in the box (Pen 3.8).
+    if (!usable) {
+      actions.ui.toast(projectId
+        ? { title: 'This project is archived or gone', sub: 'There is nowhere to start the chat. Pick another project.', action: { label: 'Pick project', pickProject: true } }
+        : { title: 'Pick a project first', sub: 'Kernel and its team work inside one repo at a time.', action: { label: 'Pick project', pickProject: true } })
       return
     }
-    if (!checkedOut) {
-      actions.ui.toast({ title: 'Still setting up', sub: `${project?.name ?? 'The project'} has no checkout yet. Send again once it does.` })
+    if (!typed.length) {
+      actions.ui.toast({ title: 'Nothing to send', sub: `Type a message for ${name} first.` })
+      d.focus()
       return
     }
     const parts = briefParts(typed, null, pickedLines({ mode: place, target: base.target, fallback: base.fallback, picked: '' }))
@@ -190,6 +193,12 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
       if (failed) { setSent(null); actions.ui.toast({ title: 'Could not send', sub: failed }); refocus.current = true }
     })
   }
+  // A toast's Pick project opens the title's menu, or Add a project when there is none.
+  useEffect(() => onComposerCommand((c) => {
+    if (c !== 'project') return
+    if (projects.length) setMenu('project')
+    else actions.ui.openModal({ name: 'newProject' })
+  }))
   // The box is disabled while the send runs, so the caret goes back once it is enabled again.
   const refocus = useRef(false)
   useEffect(() => { if (!busy && refocus.current) { refocus.current = false; d.focus() } }, [busy])
@@ -239,7 +248,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   const { read: trackerRead } = useProjectTracker(projectId)
   // A project that was archived or removed under the page, or none at all: the title asks without one, and nothing sends until one is picked.
   const usable = !!project && !project.archived
-  // Setup shows as one line under the box (KERNEL-1089). Nothing sends until the checkout is there.
+  // Setup shows as one line under the box (KERNEL-1089) and never holds a send.
   const setupSteps = useStore((s) => s.projectSetup[projectId])
   // A project added while this page was open makes its first chat when setup finishes, and the page gives way to it, so the first Send stays in that chat.
   const sawSetup = useRef(false)
@@ -252,7 +261,6 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
     focusComposerIn(first.workspaceId)
     actions.ui.go({ name: 'workspace', workspaceId: first.workspaceId }, { history: 'replace' })
   }, [firstWs])
-  const checkedOut = !setupSteps || (['clone', 'github'] as const).every((id) => (setupSteps.find((x) => x.id === id)?.state ?? 'ok') === 'ok')
   const projectPicker = (variant: 'title' | 'button') => (
     <ProjectPicker variant={variant} projects={projects} project={usable ? project : undefined} open={menu === 'project'} disabled={busy} onToggle={() => setMenu(menu === 'project' ? null : 'project')} onClose={() => setMenu((m) => (m === 'project' ? null : m))} onPick={pickProject} onNewProject={() => actions.ui.openModal({ name: 'newProject' })} />
   )
@@ -289,7 +297,6 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
               </>}
         </div>
       </div>
-      <div className="lead-up" style={sent ? GONE : undefined}>{usable && <UpNext projectId={projectId} lead={name} onPlan={planIssue} />}</div>
       <ComposerShell
         above={<>{!projects.length && <FirstProjectPills />}</>}
         input={<>
@@ -302,10 +309,11 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
           model={{ label: modelLabelOf(model, codexModels), provider: providerOf(model), open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider: providerOf(model), grouped: codexInUse, model, effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: pickEffort } }}
           mode={{ provider: providerOf(model), availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
           plus={{ panel: plusPanel, onPanel: setMenu, projectId, disabled: busy || !usable, where: { lead: leadMode, place, picked, branch: stripRemote(base.target, base.remote), local: stripRemote(base.fallback, base.remote), onPlace: pickPlace, onBranch: (ref) => savePicks(draftKey, { baseRef: ref || undefined }) }, onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
-          send={{ label: 'Send', ready: hasDraft && usable && checkedOut, busy: busy || d.pending > 0, busyLabel: d.pending > 0 ? 'Attaching' : checking ? 'Checking' : 'Sending', onSend: start }} />}
+          send={{ label: 'Send', ready: hasDraft, busy: busy || d.pending > 0, busyLabel: d.pending > 0 ? 'Attaching' : checking ? 'Checking' : 'Sending', onSend: start }} />}
         below={project && setupSteps ? <SetupLine project={project} steps={setupSteps} /> : undefined}
         hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
       />
+      <div className="lead-up" style={sent ? GONE : undefined}>{usable && <UpNext projectId={projectId} projectName={project?.name} lead={name} onPlan={planIssue} />}</div>
     </div>
     </OpenIssue.Provider>
   )

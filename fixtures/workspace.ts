@@ -3326,7 +3326,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft } } } }
   }),
   // KERNEL-869: the first visit to New chat in a project with no tracker. The tracker answers late, and nothing was held for Up next, so the box stays where it was.
-  NewChatNoTracker: { ...scene((f) => ({ ...noPlan(leadNoChats(f)), ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }, trackers: { [ids.projectA]: { kind: 'none' as const, available: { linear: false } } }, lag: { 'issues.next': 700, 'issues.tracker': 700 } })), motion: { action: { click: 'New chat in Client A' }, ms: 1000, area: '.lead-new' } },
+  NewChatNoTracker: scene((f) => ({ ...noPlan(leadNoChats(f)), trackers: { [ids.projectA]: { kind: 'none' as const, available: { linear: false } } } })),
+  NewChatNoTrackerMotion: { ...scene((f) => ({ ...noPlan(leadNoChats(f)), ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }, trackers: { [ids.projectA]: { kind: 'none' as const, available: { linear: false } } }, lag: { 'issues.next': 700, 'issues.tracker': 700 } })), motion: { action: { click: 'New chat in Client A' }, ms: 1000, area: '.lead-new' } },
   NewChatPlan: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: true } } })),
   // KERNEL-786: the + menu with Run in and Branch, and each picker open (the shot opens them, scripts/shots.ts). NewChatLocal has Local picked by Settings' workspace mode, so the chip beside + says Local.
   // NewChatBranch lists branches with two that have an open workspace, one that is local only, and the default first. NewChatBranchChip picks one, so the chip says where the chat starts from.
@@ -3337,6 +3338,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const p = noPlan(leadNoChats(f))
     const gone = { ...f.projects[0], id: 'project-gone', name: 'Old app', archived: true }
     return { ...p, projects: [...(p.projects ?? f.projects), gone], ui: { ...p.ui!, route: { name: 'leadNew', projectId: gone.id } } }
+  }),
+  // KERNEL-1090: a send with no project picked, and a send to a project that was archived or removed. Each is a toast in the bottom right, and the draft stays in the box.
+  NewChatPickProject: scene((f) => {
+    const p = noPlan(leadNoChats(f))
+    return { ...p, ui: { ...p.ui!, route: { name: 'leadNew', projectId: '' }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'Plan the soak harness before anyone writes code.' } }, toasts: [{ id: 'pick-project', title: 'Pick a project first', sub: 'Kernel and its team work inside one repo at a time.', action: { label: 'Pick project', pickProject: true } }] } }
+  }),
+  NewChatProjectGone: scene((f) => {
+    const p = noPlan(leadNoChats(f))
+    const gone = { ...f.projects[0], id: 'project-gone', name: 'Old app', archived: true }
+    return { ...p, projects: [...(p.projects ?? f.projects), gone], ui: { ...p.ui!, route: { name: 'leadNew', projectId: gone.id }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'Plan the soak harness before anyone writes code.' } }, toasts: [{ id: 'project-gone', title: 'This project is archived or gone', sub: 'There is nowhere to start the chat. Pick another project.', action: { label: 'Pick project', pickProject: true } }] } }
   }),
   // KERNEL-943: no project at all yet. The title asks what we're building, and the three ways to add a project sit above the box.
   NewChatFirstProject: scene(() => ({ projects: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [], ui: { route: { name: 'leadNew', projectId: '' }, workspace: { right: 'changes', bottom: 'run' } } })),
