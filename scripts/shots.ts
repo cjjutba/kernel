@@ -720,6 +720,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   LeadChatTabBranch: hoverChatTab,
   TurnFilesHover: hoverAndFocusRows,
   InboxRowFocused: focusListRow,
+  InboxPlanDoc: async (page) => { await page.getByText('Plan ready: Export invoices as PDF').click(); await page.waitForTimeout(300) },
   IssuesRowFocused: focusListRow,
   IssuesNoWork1280: windowAt(1280),
   ProjectsRowFocused: focusListRow,

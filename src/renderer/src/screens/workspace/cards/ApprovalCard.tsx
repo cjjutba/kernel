@@ -52,7 +52,7 @@ function PermCard({ a, who }: { a: Approval; who: string }) {
         <div className={`tc-foot${phase ? ' decide-fold' : ''}`}>
           <Button onClick={() => decideAtOnce(a, { behavior: 'deny', message: 'Denied in Kernel.' })}>Deny</Button>
           <Button onClick={() => decideAtOnce(a, { behavior: 'allow', always: true })}>Always allow here</Button>
-          <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>Allow once</Button>
+          <Button variant="primary" aria-keyshortcuts="Meta+Enter" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>Allow once<span className="tc-kbd" aria-hidden="true">⌘↵</span></Button>
         </div>
       )}
     </section>
@@ -165,7 +165,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
   }
   const jump = (to: number, focusTab = false) => {
     setStep(to)
-    if (focusTab) focusNext(() => tabs.current?.querySelectorAll<HTMLElement>('button')[to])
+    if (focusTab) focusNext(() => tabs.current?.querySelector<HTMLElement>(to > step ? '[data-next]:not(:disabled), button:not(:disabled)' : 'button:not(:disabled)'))
   }
   const primary = () => {
     if (!pickReady(p) || busy !== null) return
@@ -211,7 +211,14 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
   // that is not another button. A button keeps its own Enter, and the Something else box handles its own keys.
   const keys = (e: KeyboardEvent<HTMLElement>) => {
     const el = e.target as HTMLElement
-    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || el.closest('textarea, input') || busy !== null) return
+    if (e.defaultPrevented || e.ctrlKey || e.altKey || busy !== null) return
+    // ⌘↵ sends from anywhere in the card, the Something else box included.
+    if (e.metaKey && e.key === 'Enter') {
+      if (!pickReady(p)) return
+      e.preventDefault()
+      return primary()
+    }
+    if (e.metaKey || el.closest('textarea, input')) return
     if (e.key === 'Enter') {
       const sendable = !el.closest('button') || (!multi && el.getAttribute('aria-checked') === 'true')
       if (!sendable || !pickReady(p)) return
@@ -236,20 +243,13 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
 
   return (
     <section aria-label={title} className="card tcard" onKeyDown={keys}>
-      <CardHead who={who} title={title} />
-      {many && (
-        <div ref={tabs} className="qtabs" role="group" aria-label="Questions" onKeyDown={arrows}>
-          {qs.map((x, i) => {
-            const label = x.header?.trim() || `Question ${i + 1}`
-            const answered = pickReady(picks[i] ?? emptyPick())
-            return (
-              <button key={i} type="button" className="qtab" tabIndex={i === step ? 0 : -1} aria-current={i === step ? 'step' : undefined} aria-label={answered ? `${label}, answered` : label} disabled={busy !== null} onClick={() => jump(i)}>
-                {answered && i !== step && <Icon name="check" size={12} />}{label}
-              </button>
-            )
-          })}
+      <CardHead who={who} title={title} aside={many && (
+        <div ref={tabs} className="tc-pager" role="group" aria-label="Questions" onKeyDown={arrows}>
+          <button type="button" className="tc-page" aria-label={`Show question ${step}`} disabled={step === 0 || busy !== null} onClick={() => jump(step - 1, true)}><Icon name="chevron" size={14} /></button>
+          <span aria-live="polite">{step + 1} of {qs.length}</span>
+          <button type="button" className="tc-page" data-next aria-label={`Show question ${step + 2}`} disabled={step === qs.length - 1 || busy !== null} onClick={() => jump(step + 1, true)}><Icon name="chevron" size={14} /></button>
         </div>
-      )}
+      )} />
       <div className="tc-body">
         <span className="sub">{q.question}{multi ? ' Choose all that apply.' : ''}</span>
         {!many && a.detail && <div className="code">{a.detail}</div>}
@@ -291,7 +291,8 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
       <div className="tc-foot">
         {!multi && <span className="tc-hint">{rowCount > 1 ? `Press 1 to ${Math.min(rowCount, 9)} to pick` : 'Press 1 to pick'}</span>}
         {step > 0 && <Button variant="ghost" disabled={busy !== null} onClick={() => move(step - 1)}>Back</Button>}
-        <Button variant="primary" busy={busy === 'send'} busyPattern="ripple" busyLabel="Sending" disabled={!pickReady(p) || busy !== null} onClick={primary}>{many && !done ? 'Next' : 'Send'}</Button>
+        {many && step < qs.length - 1 && <Button variant="ghost" disabled={busy !== null} onClick={() => move(step + 1)}>Skip</Button>}
+        <Button variant="primary" aria-keyshortcuts="Meta+Enter" busy={busy === 'send'} busyPattern="ripple" busyLabel="Sending" disabled={!pickReady(p) || busy !== null} onClick={primary}>{many && !done ? 'Next' : many ? 'Send answers' : 'Send'}<span className="tc-kbd" aria-hidden="true">⌘↵</span></Button>
       </div>
     </section>
   )
@@ -394,12 +395,12 @@ function PlanDoc({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead: b
   const title = heading ?? a.title
   return (
     <section aria-label={title} className="card tcard pcard">
-      <div className="pcard-head">
-        <span className="pcard-kicker"><Icon name="doc" size={14} />Plan</span>
-        {a.planFile && <span className="pcard-file mono ellipsis" title={a.planFile}>{a.planFile}</span>}
+      <div className="tc-head">
+        <AgentAvatar name={agents.find((x) => x.id === a.agentId)?.name ?? 'Kernel'} size={18} />
+        <h3>{title}</h3>
         <PlanTools a={a} agents={agents} />
       </div>
-      <h3>{title}</h3>
+      {a.planFile && <span className="pcard-file mono ellipsis" title={a.planFile}>{a.planFile}</span>}
       <div id={bodyId} className="pcard-body selectable" data-folded={long && !open ? 'true' : undefined}>
         <Markdown blocks={heading ? blocks.slice(1) : blocks} />
         {!!a.steps?.length && <PlanTasks a={a} agents={agents} />}
