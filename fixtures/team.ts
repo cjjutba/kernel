@@ -785,6 +785,9 @@ export const teamFixtures: Record<string, Fixture> = {
   ConnectRepo: scene((f) => ({ ...projectsScene(f), repos, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
   // Audit: the repo list never answers, and the signed-in account has no repos.
   ConnectRepoLoading: scene((f) => ({ ...projectsScene(f), hold: ['github.repos'], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
+  // 2.11: a search with no match (the shot types the query), and the clone running with its button busy (the shot picks a repo and presses Clone repo).
+  ConnectRepoNoMatch: scene((f) => ({ ...projectsScene(f), repos, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
+  ConnectRepoCloning: scene((f) => ({ ...projectsScene(f), repos, hold: ['projects.create'], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
   ConnectRepoEmpty: scene((f) => ({ ...projectsScene(f), repos: [], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
   // KERNEL-863: the repo list fails to load, and gh is signed out.
   ConnectRepoFailed: scene((f) => ({ ...projectsScene(f), fails: { 'github.repos': 'GitHubError[offline]: Could not reach GitHub.' }, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
@@ -803,6 +806,13 @@ export const teamFixtures: Record<string, Fixture> = {
   OpenFolderNoRemote: scene((f) => ({ ...projectsScene(f), folders: [recentFolders[1], recentFolders[0], ...recentFolders.slice(2)], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   OpenFolderNotGit: scene((f) => ({ ...projectsScene(f), folders: [recentFolders[3], ...recentFolders.slice(0, 3)], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   ProjectSetup: scene((f) => ({
+    ...projectsScene(f),
+    projects: [...f.projects, clientC],
+    push: [{ type: 'project.setup', projectId: clientC.id, steps: setupSteps }],
+    ui: { route: { name: 'leadNew', projectId: clientC.id } }
+  })),
+  // 2.7: the same run with Details open, every step listed.
+  ProjectSetupDetails: scene((f) => ({
     ...projectsScene(f),
     projects: [...f.projects, clientC],
     push: [{ type: 'project.setup', projectId: clientC.id, steps: setupSteps }],
@@ -834,7 +844,7 @@ export const teamFixtures: Record<string, Fixture> = {
     push: [{ type: 'project.setup', projectId: clientC.id, steps: failedSteps }],
     afterRetry: retryEvents('ok'),
     ui: { route: { name: 'leadNew', projectId: clientC.id } }
-  })), motion: { action: { click: 'Try again' }, ms: 3000, area: '.ob-col' } },
+  })), motion: { action: { click: 'Try again' }, ms: 3000, area: '.composer-wrap' } },
   // KERNEL-877: the motion presses Try again, and setup runs the failed step and the rest and finishes. The retry in the next one fails again, with a new reason.
   ProjectSetupRetryFailed: {
     ...scene((f) => ({
@@ -844,7 +854,7 @@ export const teamFixtures: Record<string, Fixture> = {
       afterRetry: retryEvents('fail'),
       ui: { route: { name: 'leadNew', projectId: clientC.id } }
     })),
-    motion: { action: { click: 'Try again' }, ms: 1800, area: '.ob-col' }
+    motion: { action: { click: 'Try again' }, ms: 1800, area: '.composer-wrap' }
   },
   ProjectSetupGitHub: scene((f) => ({
     ...projectsScene(f),
