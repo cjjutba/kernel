@@ -51,3 +51,5 @@
 .na-field { gap: 6px; }
 .na-label { font-size: var(--fs-meta); }
 .na-author { font-weight: var(--fw-medium); }
+/* The model picker opens past the dialog, so it stays whole when the dialog is shorter than the picker. */
+.modal:has(.na-body .cmp-pop) { overflow: visible; }

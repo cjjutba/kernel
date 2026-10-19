@@ -673,6 +673,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsModelsAgentsNone: (page) => openRoleAgents(page, 'QA'),
   SettingsModelsPickerEffort: (page) => openRoleEffort(page, 'Kernel'),
   SettingsModelsPickerCompact: (page) => openRolePicker(page),
+  NewAgentPicker: async (page) => { await page.getByRole('button', { name: /^Model, / }).click(); await page.getByRole('dialog').last().waitFor() },
+  SettingsAgentEditPicker: async (page) => { await page.getByRole('button', { name: /^Model and effort, / }).click() },
   SettingsModelsPickerCodexRole: async (page) => { await page.getByRole('button', { name: /^Frontend Codex model/ }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsModelsNarrow: windowAt(720),
   WorkspaceModelPickerKeys: async (page) => { await page.keyboard.press('ArrowUp'); await page.waitForTimeout(300) },
