@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AgentDraft, NewAgentPrefill } from '@shared/types'
+import type { AgentDraft, Effort, NewAgentPrefill } from '@shared/types'
+import { MODELS } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { openLeadChat } from '../../lead'
 import { KernelMark } from '../../icons'
-import { Button, LinkButton, Modal, Pill, SegmentedControl, useBusy } from '../../ui'
-import { shirtOf, shortFile } from './model'
+import { Button, LinkButton, Modal, Pill, useBusy } from '../../ui'
+import { ModelField } from '../workspace/composer/ModelField'
+import { defaultEffortOf } from '../workspace/composer/modelPrefs'
+import { modelAlias, sameModel, shirtOf, shortFile } from './model'
 import './agent.css'
 
 type Step = 'describe' | 'draft' | 'done'
@@ -16,7 +19,6 @@ const PRESETS: { label: string; description: string }[] = [
   { label: 'Docs writer', description: 'A docs writer who keeps the README and docs in step with every merged change.' },
   { label: 'Data engineer', description: 'A data engineer who writes schema changes and migrations and checks them against real data.' }
 ]
-const MODEL_CHOICES = [{ value: 'sonnet', label: 'Sonnet 5.5' }, { value: 'opus', label: 'Opus 5.5' }, { value: 'haiku', label: 'Haiku 5.5' }]
 
 /**
  * New agent in three steps (NewAgent.png, NewAgentDraft.png, NewAgentDone.png): describe it, review and edit the file Kernel drafted,
@@ -29,6 +31,9 @@ export function NewAgent({ projectId, step, prefill }: { projectId?: string; ste
   const [name, setName] = useState(prefill?.name ?? '')
   const [description, setDescription] = useState(prefill?.description ?? '')
   const [model, setModel] = useState(prefill?.model ?? 'sonnet')
+  const settingsModels = useStore((s) => s.settings?.models)
+  const [effort, setEffort] = useState<Effort | undefined>()
+  const modelId = MODELS.find((m) => sameModel(model, m.id))?.id ?? ''
   const [draft, setDraft] = useState<AgentDraft | undefined>(prefill?.draft)
   const [text, setText] = useState(prefill?.draft?.text ?? '')
   const [busy, run] = useBusy<'draft' | 'create' | 'refine'>()
@@ -89,7 +94,7 @@ export function NewAgent({ projectId, step, prefill }: { projectId?: string; ste
           </div>
           <div className="na-two">
             <label className="col na-field"><span className="muted na-label">Name</span><input className="input" value={name} placeholder="Wren" onChange={(e) => setName(e.target.value)} /></label>
-            <div className="col na-field"><span className="muted na-label">Model</span><SegmentedControl label="Model" value={model} onChange={setModel} options={MODEL_CHOICES} /></div>
+            <div className="col na-field"><span className="muted na-label">Model</span><ModelField label="Model" only="claude" model={modelId} effort={effort ?? defaultEffortOf(undefined, settingsModels)} onChange={(id, e) => { setModel(modelAlias(id)); setEffort(e) }} onEffort={setEffort} /></div>
           </div>
         </form>
       </Modal>

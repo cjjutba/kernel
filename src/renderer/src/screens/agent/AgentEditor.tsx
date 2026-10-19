@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentDef, AgentEdit, Effort, Role } from '@shared/types'
-import { EFFORTS, MODELS } from '@shared/types'
+import { MODELS } from '@shared/types'
 import { roleOf } from '@shared/team'
 import { roleSide } from '@shared/rolePick'
 import { call } from '../../api'
 import { useStore } from '../../store'
-import { Icon, Pill, SegmentedControl } from '../../ui'
+import { Icon, Pill } from '../../ui'
+import { ModelField } from '../workspace/composer/ModelField'
 import { SettingsLink } from '../settings/kit'
 import { defaultEffortOf } from '../workspace/composer/modelPrefs'
 import { STANDARD_TOOLS, modelAlias, sameModel, warningText, withExtras } from './model'
@@ -86,7 +87,7 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
     return order.filter((x) => on.has(x))
   }
   // Kernel's own agents have no model of their own: Settings, Models picks it.
-  const modelId = builtIn ? (models ? roleSide(agent.lead ? models.roles.lead : models.roles.reviewer).model : '') : MODELS.find((m) => sameModel(form.model, m.id))?.id ?? ''
+  const modelId = builtIn ? (models ? roleSide(agent.lead ? models.roles.lead : models.roles.reviewer).model : '') : agent.provider === 'codex' ? form.model : MODELS.find((m) => sameModel(form.model, m.id))?.id ?? ''
   const effort = form.effort ?? defaultEffortOf(agent, models)
   return (
     <>
@@ -108,17 +109,10 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
           <textarea id="ap-desc" className="ap-text" rows={2} value={form.description} onChange={(e) => set({ description: e.target.value })} />
           <span className="hint">Kernel reads this to decide what to hand {agent.name}.</span>
         </div>
-        <div className="ap-two">
-          <div className="ap-field">
-            <span className="ap-label" id="ap-model">Model</span>
-            <SegmentedControl label="Model" value={modelId} onChange={(id) => set({ model: modelAlias(id) })} options={['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'].map((id) => ({ value: id, label: MODELS.find((m) => m.id === id)?.label ?? id }))} />
-            {builtIn ? <span className="hint">From <SettingsLink to={{ page: 'models' }}>Models and effort</SettingsLink></span> : <PinHint agent={agent} model={form.model} disabled={locked} onClear={() => set({ model: '' })} />}
-          </div>
-          <div className="ap-field">
-            <span className="ap-label">Effort</span>
-            <SegmentedControl label="Effort" value={effort} onChange={(v) => set({ effort: v as Effort })} options={EFFORTS.map((e) => ({ value: e.id, label: e.label }))} />
-            {builtIn && <span className="hint">From <SettingsLink to={{ page: 'models' }}>Models and effort</SettingsLink></span>}
-          </div>
+        <div className="ap-field">
+          <span className="ap-label" id="ap-model">Model and effort</span>
+          <ModelField label="Model and effort" provider={agent.provider === 'codex' ? 'codex' : 'claude'} disabled={locked} model={modelId} effort={effort} onChange={(id, e) => set({ model: agent.provider === 'codex' ? id : modelAlias(id), effort: e })} onEffort={(e) => set({ effort: e })} />
+          {builtIn ? <span className="hint">From <SettingsLink to={{ page: 'models' }}>Models and effort</SettingsLink></span> : <PinHint agent={agent} model={form.model} disabled={locked} onClear={() => set({ model: '' })} />}
         </div>
         <div className="ap-field">
           <span className="ap-label" id="ap-tools">Tools</span>
