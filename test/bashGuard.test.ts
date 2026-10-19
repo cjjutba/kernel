@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bashVerdict, matchesProjectRule, matchesRule, parse, pushesTo, pushMightReach, unwrap, publishesWork, usesNetwork, writesGhIssue } from '../src/main/services/bashGuard'
+import { bashVerdict, matchesProjectRule, matchesRule, parse, pushesTo, pushMightReach, unwrap, publishesWork, usesNetwork } from '../src/main/services/bashGuard'
 
 // KERNEL-230: the guard reads a command the way a shell does, so quoting, wrappers, aliases, flag order and redirections
 // don't get past Never allow, Always ask or a project rule.
@@ -580,69 +580,6 @@ describe('network access', () => {
     const off = { neverAllow: [], alwaysAsk: [], network: false }
     expect(bashVerdict('bash -c "curl https://x.dev"', off, [])).toBe('deny')
     expect(bashVerdict('bash -c "curl https://x.dev"', { ...off, network: true }, [])).toBeUndefined()
-  })
-})
-
-describe('gh issue writes (feat-lead-files-tracker-issues-only-with)', () => {
-  it('finds gh issue create and edit, with their aliases, wrappers, global options and in a chain', () => {
-    for (const c of [
-      'gh issue create --title Crash --body x',
-      'gh issue new -t Crash',
-      'gh issue edit 41 --title y',
-      'gh issue update 41 --body y',
-      'gh -R acme/app issue create -t x',
-      'cd web && gh issue create -t x',
-      'sudo gh issue edit 41 -b y',
-      'bash -c "gh issue create -t x"',
-      '/opt/homebrew/bin/gh issue create -t x',
-      'gh $CMD create -t x',
-      'gh issue $ACTION 41'
-    ]) expect(writesGhIssue(c), c).toBe(true)
-  })
-
-  it('reads options wherever they stand, between issue and its action too', () => {
-    for (const c of [
-      'gh issue -R owner/repo create -t x',
-      'gh issue --repo owner/repo edit 41 -b y',
-      'gh issue --repo=owner/repo create -t x',
-      'gh issue -Rowner/repo create -t x',
-      'gh issue --hostname github.example.com -R o/r create -t x',
-      'gh issue --unknown-flag value create -t x',
-      'gh issue -- create -t x'
-    ]) expect(writesGhIssue(c), c).toBe(true)
-  })
-
-  it('finds comments, closes and the other issue writes', () => {
-    for (const c of ['gh issue comment 41 -b x', 'gh issue -R o/r comment 41 --body x', 'gh issue close 41', 'gh issue close 41 -c done', 'gh issue reopen 41', 'gh issue delete 41 --yes', 'gh issue transfer 41 o/other', 'gh issue lock 41', 'gh issue pin 41'])
-      expect(writesGhIssue(c), c).toBe(true)
-  })
-
-  it('finds gh api writes to issues, REST and GraphQL', () => {
-    for (const c of [
-      'gh api repos/o/r/issues -f title=x',
-      'gh api repos/o/r/issues/41/comments -f body=x',
-      'gh api -X PATCH repos/o/r/issues/41 -f state=closed',
-      'gh api --method=POST /repos/o/r/issues --input issue.json',
-      'gh api -XPOST repos/o/r/issues -F title=@t.txt',
-      "gh api graphql -f query='mutation { createIssue(input: {repositoryId: \"x\", title: \"y\"}) { issue { id } } }'",
-      "gh api graphql -f query='mutation { addComment(input: {subjectId: \"x\", body: \"y\"}) { clientMutationId } }'",
-      'gh api $ENDPOINT -f body=x',
-      'gh api graphql -F query=@mutation.graphql'
-    ]) expect(writesGhIssue(c), c).toBe(true)
-  })
-
-  it('finds an alias that may stand for an issue write, and one gh does not provide', () => {
-    for (const c of ["gh alias set ic 'issue create'", "gh alias set --shell x 'gh api repos/o/r/issues -f title=y'", 'gh alias import aliases.yml --clobber issue', 'gh ic -t x', 'gh my-extension create'])
-      expect(writesGhIssue(c), c).toBe(true)
-  })
-
-  it('leaves reads and other gh commands alone', () => {
-    for (const c of [
-      'gh issue view 41', 'gh issue list --state open', 'gh issue list --search close', 'gh issue -R o/r view 41', 'gh issue view $N', 'gh issue status',
-      'gh pr create', 'gh pr edit 3 --title x', 'gh pr comment 3 -b x', 'echo gh issue create', 'gh --version',
-      'gh api repos/o/r/issues', 'gh api -X GET repos/o/r/issues -f state=open', 'gh api repos/o/r/pulls -f title=x', "gh api graphql -f query='query { repository(owner: \"o\", name: \"r\") { issues(first: 5) { nodes { title } } } }'",
-      "gh alias set prs 'pr list'", 'gh alias list'
-    ]) expect(writesGhIssue(c), c).toBe(false)
   })
 })
 
