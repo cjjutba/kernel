@@ -78,7 +78,8 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
   terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, custom: [] },
   experimental: { sharing: true },
-  privacy: { telemetry: 'ask' }
+  privacy: { telemetry: 'ask' },
+  onboarding: { done: false, out: [], reviewer: 'artkin' }
 })
 
 /**
