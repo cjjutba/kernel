@@ -1,7 +1,7 @@
 import type { PrInfo, Workspace } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions } from '../../../store'
-import { Button, useBusy } from '../../../ui'
+import { AgentAvatar, Button, useBusy } from '../../../ui'
 import { openComments, reviewLines } from './model'
 import '../cards/cards.css'
 
@@ -19,10 +19,12 @@ export function ReviewCard({ ws, pr, agentName }: { ws: Workspace; pr: PrInfo; a
   })
   return (
     <section aria-label="Review comments" className="card tcard">
-      <h3>{reviewer} requested changes on #{pr.number}</h3>
-      <span className="sub">{comments.length} {comments.length === 1 ? 'comment' : 'comments'}</span>
-      <div className="code">{reviewLines(comments).join('\n')}</div>
-      <div className="acts">
+      <div className="tc-head"><AgentAvatar name={agentName} size={18} /><h3>{reviewer} requested changes on #{pr.number}</h3></div>
+      <div className="tc-body">
+        <span className="sub">{comments.length} {comments.length === 1 ? 'comment' : 'comments'}</span>
+        <div className="code">{reviewLines(comments).join('\n')}</div>
+      </div>
+      <div className="tc-foot">
         <button type="button" className="btn" onClick={() => void call('system.openExternal', { url: pr.url })}>Open on GitHub</button>
         <Button variant="primary" busy={!!busy} busyPattern="ripple" busyLabel="Sending" onClick={() => void send()}>Send to {agentName}</Button>
       </div>

@@ -3,7 +3,7 @@ import type { ChatItem, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/typ
 import { mergeableState } from '@shared/merge'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
-import { LinkButton, Icon } from '../../../ui'
+import { AgentAvatar, LinkButton, Icon } from '../../../ui'
 import { KernelNote } from '../KernelNote'
 import { SharedRow } from './SharedCard'
 import { MergeButton } from '../pr/MergeButton'
@@ -60,7 +60,7 @@ function UpdateView({ update: data, itemId, legacy, quiet, workspaceOf, useNewes
   return (
     <div className="msg tucard-wrap">
       <section className="card tcard tucard" data-compact={compact || undefined} aria-label={compact ? 'Review' : 'Team update'}>
-        {!compact && <header className="tucard-head"><h3 className="tucard-title">Team update</h3><span className="muted">from Kernel</span></header>}
+        {!compact && <header className="tucard-head"><AgentAvatar name="Kernel" size={18} /><h3 className="tucard-title">Team update</h3><span className="muted">from Kernel</span></header>}
         {sections(data.rows).map((s, i) => (
           <div key={i} className="tucard-section">
             {s.fromChat && <div className="tucard-from">From "{s.fromChat}", {s.fromTab ? 'a tab you closed' : 'a Lead chat that is now closed'}</div>}

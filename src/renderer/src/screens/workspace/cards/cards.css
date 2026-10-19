@@ -1,4 +1,4 @@
-.tcard { display: flex; flex-direction: column; gap: 0; padding: 0; margin: 6px 0 0; border-color: var(--line-2); border-radius: var(--r-md); background: transparent; }
+.card.tcard { display: flex; flex-direction: column; gap: 0; padding: 0; margin: 6px 0 0; border-color: var(--line-2); border-radius: var(--r-md); background: transparent; }
 /* The chat card shell (DESIGN.md, Chat cards): no fill, the agent's avatar and a title, a body, then the actions bottom right. */
 .tc-head { display: flex; align-items: center; gap: 10px; padding: 14px 12px 0 16px; }
 .tc-aside { margin-left: auto; color: var(--muted); font-size: var(--fs-meta); }
@@ -7,6 +7,8 @@
 .tc-foot .btn { height: 30px; padding: 0 12px; border-radius: 7px; font-size: var(--fs-code); }
 .tc-foot .btn:not(.primary) { border-color: var(--line-3); color: var(--ink-2); background: transparent; }
 .tc-foot .btn.ghost { border-color: transparent; color: var(--ink-3); }
+.pcard-foot .tc-foot { padding: 0; }
+.tc-foot .grow-input { height: 30px; }
 .tc-hint { margin-right: auto; color: var(--faint); font-size: var(--fs-meta); }
 .tcard h3 { margin: 0; font-size: var(--fs-row); font-weight: var(--fw-semibold); color: var(--ink); display: flex; align-items: center; gap: 8px; }
 .tcard h3 .err { color: var(--del); display: inline-flex; }
@@ -63,16 +65,14 @@
 .qans li { display: flex; gap: 12px; }
 .qans .qans-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; overflow-wrap: anywhere; }
 .tcard .done-line { padding: 0; color: var(--muted); font-size: var(--fs-code); overflow-wrap: anywhere; }
-.pcard-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.pcard-row h3 { flex: 1; min-width: 0; }
-.pcard-row .pcard-tools { margin: -6px -6px -6px 0; }
+.tc-head .pcard-tools { margin-right: -4px; }
+.tc-head h3 { flex: 1; min-width: 0; }
 .pcard-tools { display: flex; align-items: center; gap: 2px; flex-shrink: 0; margin-left: auto; }
 .pcard-tools .icon-btn { width: 26px; height: 26px; }
-.tcard.pcard { gap: 0; padding: 0; }
 .pcard-head { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 8px 0 16px; min-height: 36px; }
 .pcard-kicker { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--muted); font-size: var(--fs-code); }
 .pcard-file { min-width: 0; font-size: var(--fs-chip); color: var(--muted); }
-.tcard.pcard h3 { display: block; padding: 4px 16px 0; font-size: var(--fs-dialog); font-weight: var(--fw-semibold); line-height: var(--lh-snug); }
+.card.tcard.pcard h3 { display: block; padding: 4px 16px 0; font-size: var(--fs-dialog); font-weight: var(--fw-semibold); line-height: var(--lh-snug); }
 .pcard-body { padding: 14px 16px 2px; }
 .pcard-body[data-folded='true'] { max-height: 320px; overflow: hidden; mask-image: linear-gradient(to bottom, black 55%, transparent); }
 .pcard-more { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 28px; margin: 6px 0 0 10px; padding: 0 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: var(--fs-code); }
@@ -115,9 +115,9 @@
 /* Kernel's team update in the Lead's chat (cards/TeamUpdateCard.tsx, KERNEL-127): an outline with a small header, one
    row per teammate, the events as a line of text and the reply as plain text (KERNEL-274). */
 .tucard-wrap { align-self: stretch; width: 100%; }
-.tcard.tucard { gap: 0; padding: 0; margin: 0; background: var(--card-bg); border-color: var(--card-line); }
-.tucard-head { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 16px; border-bottom: 1px solid var(--line); font-size: var(--fs-meta); }
-.tucard .tucard-title { display: block; margin: 0; color: var(--ink-3); font-size: inherit; font-weight: var(--fw-medium); }
+.card.tcard.tucard { margin: 0; }
+.tucard-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 8px; font-size: var(--fs-meta); }
+.tucard .tucard-title { display: block; margin: 0; color: var(--ink); font-size: var(--fs-row); font-weight: var(--fw-semibold); }
 .tucard-head .muted { color: var(--muted); }
 .tucard-row { display: flex; flex-direction: column; gap: 3px; padding: 12px 16px 13px; }
 .tucard-row + .tucard-row, .tucard-section + .tucard-section { border-top: 1px solid var(--line); }

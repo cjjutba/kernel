@@ -312,7 +312,7 @@ function ChangesNote({ onSend, onCancel }: { onSend: (note: string) => Promise<u
   const [busy, run] = useBusy()
   const send = () => void run('send', () => onSend(note.trim()))
   return (
-    <div className="acts" style={{ flexWrap: 'nowrap' }}>
+    <div className="tc-foot" style={{ flexWrap: 'nowrap' }}>
       <input className="grow-input" aria-label="What should change" placeholder="What should change" autoFocus value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send(); if (e.key === 'Escape') onCancel() }} />
       <Button disabled={!!busy} onClick={onCancel}>Cancel</Button>
       <Button variant="primary" busy={!!busy} busyPattern="ripple" busyLabel="Sending" onClick={send}>Send</Button>
@@ -340,10 +340,10 @@ function PlanDecision({ a, lead }: { a: Approval; lead: boolean }) {
   const [asking, setAsking] = useState(false)
   const phase = useFoldPhase(a.id)
   if (phase === 'folded' && a.status === 'pending') return null
-  if (a.status !== 'pending' && phase !== 'folding') return <Result a={a} />
+  if (a.status !== 'pending' && phase !== 'folding') return <div className="tc-body"><Result a={a} /></div>
   if (asking) return <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decide(a, { behavior: 'deny', message: note || 'Please revise the plan.' })} />
   return (
-    <div className={`acts${phase ? ' decide-fold' : ''}`}>
+    <div className={`tc-foot${phase ? ' decide-fold' : ''}`}>
       <Button onClick={() => setAsking(true)}>{lead ? 'Request changes' : 'Keep planning'}</Button>
       <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>{lead ? 'Approve and hand off' : 'Approve and build'}</Button>
     </div>
@@ -357,11 +357,12 @@ function PlanSteps({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead:
   const open = (workspaceId: string) => go({ name: 'workspace', workspaceId })
   return (
     <section aria-label={a.title} className="card tcard">
-      <div className="pcard-row">
+      <div className="tc-head">
+        <AgentAvatar name={agents.find((x) => x.id === a.agentId)?.name ?? 'Kernel'} size={18} />
         <h3>{a.title}</h3>
         <PlanTools a={a} agents={agents} />
       </div>
-      <ol className="steps">
+      <ol className="steps tc-body">
         {steps.map((s, i) => {
           const who = agents.find((x) => x.id === s.agentId)?.name
           const ws = s.workspaceId ?? (s.taskId ? tasks?.find((t) => t.id === s.taskId)?.workspaceId : undefined)
@@ -425,14 +426,17 @@ function HireCard({ a, lead, inChat }: { a: Approval; lead: string; inChat?: boo
   if (!file) return null
   return (
     <section aria-label={file.path} className="card tcard">
-      <h3><FileLabel path={file.path} size={16} /></h3>
-      <div className="code">{file.text}</div>
-      <HireServers servers={file.servers} agent={hireName(file)} lead={lead} />
-      <p className="hire-scope">{file.scope === 'team' ? 'Proposed to the team as a pull request' : 'Saved just for you'}</p>
-      {a.status !== 'pending' ? <Result a={a} /> : asking ? (
+      <CardHead who={lead} title={file.path} />
+      <div className="tc-body">
+        <div className="code">{file.text}</div>
+        <HireServers servers={file.servers} agent={hireName(file)} lead={lead} />
+        <p className="hire-scope">{file.scope === 'team' ? 'Proposed to the team as a pull request' : 'Saved just for you'}</p>
+        {a.status !== 'pending' && <Result a={a} />}
+      </div>
+      {a.status !== 'pending' ? null : asking ? (
         <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decideHere(a, { behavior: 'deny', message: note || 'Please change the agent file.' })} />
       ) : (
-        <div className="acts">
+        <div className="tc-foot">
           <Button disabled={!!busy} onClick={() => setAsking(true)}>Edit file</Button>
           <Button variant="primary" busy={!!busy} busyPattern="ripple" busyLabel="Creating" onClick={() => void run('create', () => decideHere(a, { behavior: 'allow' }))}>Create agent</Button>
         </div>

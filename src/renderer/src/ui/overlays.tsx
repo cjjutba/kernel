@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, type WheelEvent } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, type WheelEvent } from 'react'
 import { call } from '../api'
 import { Icon, type IconName } from '../icons'
 import { Button } from './controls'
@@ -80,13 +80,24 @@ function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { i
               )}
             </button>
             {sub && open === m.id && (
-              <div className="submenu"><MenuList items={m.children!} onClose={onClose} onBack={() => { setOpen(null); openers.current[m.id]?.focus() }} label={m.label} /></div>
+              <Submenu><MenuList items={m.children!} onClose={onClose} onBack={() => { setOpen(null); openers.current[m.id]?.focus() }} label={m.label} /></Submenu>
             )}
           </div>
         )
       })}
     </div>
   )
+}
+
+/** A flyout: opens to the right, level with its row, and opens upward (its bottom level with the row's) when there is no room below. */
+function Submenu({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [up, setUp] = useState(false)
+  useLayoutEffect(() => {
+    const r = ref.current?.getBoundingClientRect()
+    if (r && r.bottom > window.innerHeight - 8) setUp(true)
+  }, [])
+  return <div ref={ref} className="submenu" data-up={up || undefined}>{children}</div>
 }
 
 /**
