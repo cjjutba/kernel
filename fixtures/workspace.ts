@@ -3349,6 +3349,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const gone = { ...f.projects[0], id: 'project-gone', name: 'Old app', archived: true }
     return { ...p, projects: [...(p.projects ?? f.projects), gone], ui: { ...p.ui!, route: { name: 'leadNew', projectId: gone.id }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'Plan the soak harness before anyone writes code.' } }, toasts: [{ id: 'project-gone', title: 'This project is archived or gone', sub: 'There is nowhere to start the chat. Pick another project.', action: { label: 'Pick project', pickProject: true } }] } }
   }),
+  // KERNEL-1090: the two confirms New chat opens, drawn over New chat. Bypass permissions asks once, and an issue someone may already be on holds the brief until Start anyway.
+  ConfirmBypassNewChat: scene((f) => {
+    const p = noPlan(leadNoChats(f))
+    return { ...p, ui: { ...p.ui!, modal: { name: 'confirm', kind: 'bypass' } } }
+  }),
+  ConfirmIssueTakenNewChat: scene((f) => {
+    const p = noPlan(leadNoChats(f))
+    const held = { projectId: ids.projectA, source: { kind: 'issue' as const, id: 'KERNEL-232', title: 'Soak harness for the sync engine' }, parts: [{ type: 'text' as const, text: 'KERNEL-232: Soak harness for the sync engine' }], picks: { mode: 'worktree' as const, model: 'claude-opus-5-5', effort: 'high' as const, plan: false, baseRef: '' } }
+    return { ...p, ui: { ...p.ui!, modal: { name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-232', findings: [{ kind: 'branch', ref: 'origin/feat/kernel-232-soak-harness' }, { kind: 'pr', number: 41, title: 'Soak harness for the sync engine' }, { kind: 'assignee', name: 'Maya Chen' }], held } } }
+  }),
   // KERNEL-943: no project at all yet. The title asks what we're building, and the three ways to add a project sit above the box.
   NewChatFirstProject: scene(() => ({ projects: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [], ui: { route: { name: 'leadNew', projectId: '' }, workspace: { right: 'changes', bottom: 'run' } } })),
   NewChatMode: scene((f) => noPlan(leadNoChats(f))),
