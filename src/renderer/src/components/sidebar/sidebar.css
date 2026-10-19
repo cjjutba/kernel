@@ -1,5 +1,6 @@
-/* The state icon in front of a workspace row. Muted by default, like every sidebar icon. Tokens only. */
+/* The state icon in front of a workspace row. Muted by default, like every sidebar icon. Tokens only. Status icons take an accent (KERNEL-1092, docs/decisions/KERNEL-1092.md): a running row's wave loader is the terminal blue, and the label of the state is the icon's tooltip. */
 .nav-glyph { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.nav-glyph[data-busy] { --spin-ink: var(--term-blue); }
 .nav-item .nav-glyph[data-tone='needs'] svg { color: var(--needs-fill); }
 .nav-item .nav-glyph[data-tone='plan'] svg { color: var(--plan); }
 .nav-item .nav-glyph[data-tone='add'] svg { color: var(--add); }
