@@ -100,17 +100,18 @@
 .toast-top { display: flex; align-items: flex-start; gap: 10px; }
 .toast-glyph { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 16px; height: 20px; color: var(--ink); }
 .toast-glyph[data-glyph='merged'] { color: var(--merged); }
-.toast-close { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 20px; height: 20px; padding: 0; border: 0; background: transparent; color: var(--faint); cursor: pointer; }
-.toast-close:hover { color: var(--ink); }
+.toast-close { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 20px; height: 20px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.toast-close svg { color: var(--faint); }
+.toast-close:hover svg { color: var(--ink); }
 .toast-actions { display: flex; justify-content: flex-end; gap: 8px; padding-left: 26px; }
 .toast[data-swiping] { transition: none; }
 .toast-slot[data-leaving] > .toast { animation: toast-sink var(--dur-slow) ease-in forwards; }
 .toast-slot[data-leaving='right'] > .toast { animation-name: toast-out-right; }
 .toast-slot[data-leaving='down'] > .toast { animation-name: toast-out-down; }
-.toast-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-row); line-height: 1.4; }
+.toast-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-row); line-height: var(--lh-snug); }
 .toast-title { font-weight: var(--fw-semibold); color: var(--ink); }
-.toast-sub { color: var(--muted); font-size: var(--fs-code); line-height: 1.45; }
-.toast-action { height: 28px; padding: 0 11px; border: 1px solid var(--line-3); border-radius: 7px; background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); cursor: pointer; transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+.toast-sub { color: var(--muted); font-size: var(--fs-code); line-height: var(--lh-ui); }
+.toast-action { height: 28px; padding: 0 11px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); cursor: pointer; transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .toast-action:hover { background: var(--surface-3); color: var(--ink); }
 .toast-action[data-primary] { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }
 .toast-action[data-primary]:hover { background: color-mix(in srgb, var(--ink) 88%, var(--on-ink)); color: var(--on-ink); }
