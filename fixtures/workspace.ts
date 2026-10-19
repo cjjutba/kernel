@@ -1207,7 +1207,7 @@ const leadPlan = (f: Fixture, ws: Partial<Workspace>, plan: Partial<Approval> = 
     tool('l-t2', 'Write the plan', 'cat > plans/t-15-invoice-pdf.md', { name: 'Write' }),
     { kind: 'text', id: 'l-tx', ts: at(10, 29), text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will hand them out.' }
   ], {
-    approvals: [pending('plan', 'kernel-lead', { workspaceId: ids.lead, title: 'Plan for T-15', steps: T15_STEPS, ...plan }), ...f.approvals]
+    approvals: [pending('plan', 'kernel-lead', { workspaceId: ids.lead, title: 'Plan for T-15', planFile: 'plans/t-15-invoice-pdf.md', steps: T15_STEPS, ...plan }), ...f.approvals]
   }, { plan: true, model: 'claude-opus-5-5' }),
   changes: { [ids.lead]: [{ path: 'plans/t-15-invoice-pdf.md', status: 'A', added: 64, removed: 0 }] }
 })
@@ -2259,6 +2259,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return rest
   }),
   /** Running, done, failed and denied steps of Bash with and without a description, Edit, Read and an MCP tool the app has no mark for, and a command with tokens in it (KERNEL-782). */
+  WorkspaceLeadStepOpen: scene((f) => { const { approvals: _none, ...rest } = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Settings save feedback', leadSteps, {}, { model: 'claude-opus-5-5' }); return rest }),
+  WorkspaceLeadStepsOpen: scene((f) => { const { approvals: _none, ...rest } = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Settings save feedback', leadSteps, {}, { model: 'claude-opus-5-5' }); return rest }),
   WorkspaceStepStates: scene(() => ({
     items: { [ids.tableChat]: stepStates },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false } }
@@ -3160,6 +3162,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
   WorkspaceLead: scene((f) => leadWaiting(f)),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'kernel-lead' })),
+  // KERNEL-1091: the plan opened from its path link in a file tab (4.4), the New tab menu over the Lead's chat, and a Lead turn's steps opened in place (4.2). The shots click the step.
+  WorkspacePlanFile: scene((f) => { const p = planWaiting(f); return { ...p, fileText: { [ids.lead]: { 'plans/t-15-invoice-pdf.md': LEAD_PLAN } }, ui: { ...p.ui, tabs: { [ids.lead]: { tab: 'file:plans/t-15-invoice-pdf.md', lastChat: ids.leadChat, files: ['plans/t-15-invoice-pdf.md'], diffs: [] } } } } }),
+  WorkspaceNewTabMenu: scene((f) => { const p = leadWaiting(f); return { ...p, ui: { ...p.ui, menu: 'newTab' } } }),
   // KERNEL-1064: the same plan with acceptance criteria under three of its four tasks. The third has none and looks as it always did.
   WorkspaceLeadPlanCriteria: scene((f) => leadPlan(f, { agentId: 'kernel-lead' }, { steps: T15_CRITERIA_STEPS })),
   /** What the Lead chat still owes, above the composer (KERNEL-792): a question, blockers and a proposed hand-off. The collapsed line, and the same with the list opened by scripts/shots.ts. */

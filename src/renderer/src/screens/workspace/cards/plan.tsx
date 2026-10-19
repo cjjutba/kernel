@@ -2,12 +2,13 @@ import { useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { AgentDef, Approval, AttentionKind, PlanAttention, PlanStep } from '@shared/types'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
-import { Button, LinkButton, CopyButton, Icon, useScreenEscape } from '../../../ui'
+import { AgentAvatar, Button, LinkButton, CopyButton, Icon, useScreenEscape } from '../../../ui'
 import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt } from '../MessageActions'
 import { AnswerBubble } from './AnswerBubble'
 import { TranscriptGlide } from '../glideContext'
+import { openMention } from '../fileLinks'
 import { decideInChat } from './optimisticAnswer'
 import { planAnswer } from '@shared/approvalAnswer'
 import { criterionText } from '@shared/criteria'
@@ -32,7 +33,13 @@ export function planCopyText(a: Approval, agents: AgentDef[]): string {
   return [doc, planSteps(a).map((s, i) => `${i + 1}. ${stepLine(s, agents)}`).join('\n')].join('\n\n')
 }
 
+/** The plan's file opens in a tab of its workspace. Without one, or when the tab can't show it, the editor gets it. */
 const openPlanFile = (a: Approval) =>
+  a.workspaceId && a.planFile
+    ? void openMention(a.workspaceId, { kind: 'file', path: a.planFile })
+    : openPlanInEditor(a)
+
+const openPlanInEditor = (a: Approval) =>
   void attempt('Could not open the plan', async () => { await call('system.openInEditor', { path: (await call('approvals.planFile', { id: a.id })).path }) })
 
 /** A step's acceptance criteria as a muted list under its title. A step without any draws nothing. */
@@ -48,11 +55,13 @@ export function PlanTasks({ a, agents }: { a: Approval; agents: AgentDef[] }) {
     <ol className="plan-tasks">
       {planSteps(a).map((s, i) => {
         const ws = s.workspaceId ?? (s.taskId ? tasks?.find((t) => t.id === s.taskId)?.workspaceId : undefined)
-        const who = agents.find((x) => x.id === s.agentId)?.name
+        const agent = agents.find((x) => x.id === s.agentId)
+        const who = agent?.name
         return (
           <li key={i}>
-            <span className="plan-n mono" aria-hidden="true">{i + 1}</span>
-            <span className="plan-task">{s.title}{who && <span className="plan-who">{who}</span>}<Criteria step={s} className="plan-criteria" /></span>
+            <span className="plan-n" aria-hidden="true">{i + 1}.</span>
+            <span className="plan-task">{s.title}<Criteria step={s} className="plan-criteria" /></span>
+            {who && <span className="plan-who"><AgentAvatar name={who} size={16} />{who}{agent?.role && <span className="plan-role">{agent.role}</span>}</span>}
             {a.status === 'allowed' && ws && <LinkButton size="meta" className="plan-open" aria-label={`Open ${who ?? 'the'} workspace for ${s.title}`} onClick={() => go({ name: 'workspace', workspaceId: ws })}>Open workspace</LinkButton>}
           </li>
         )
@@ -69,8 +78,9 @@ function LeadPlan({ a, agents }: { a: Approval; agents: AgentDef[] }) {
     return leadingTitle(parsed) ? parsed : [{ type: 'h' as const, level: 1, text: a.title }, ...parsed]
   }, [text, a.title])
   return (
-    <div className="plan-card">
+    <div className="plan-doc">
       <Markdown blocks={blocks} />
+      <h2 className="plan-tasks-h">Tasks</h2>
       <PlanTasks a={a} agents={agents} />
     </div>
   )
@@ -95,7 +105,7 @@ export function PlanInline({ a, agents, hasItem }: { a: Approval; agents: AgentD
         <div className="trow">
           <span className="plan-doc-icon"><Icon name="doc" size={16} /></span>
           <span className="ink2">Propose plan</span>
-          {file && <button type="button" className="plan-file mono ellipsis" aria-label={`Open ${file} in editor`} data-tip="Open in editor" onClick={() => openPlanFile(a)}>{file}</button>}
+          {file && <button type="button" className="plan-file mono ellipsis" aria-label={`Open ${file} in a new tab`} data-tip="Open in a new tab" onClick={() => openPlanFile(a)}>{a.planFile}<span aria-hidden="true"> ↗</span></button>}
           <CopyButton className="plan-copy" text={() => planCopyText(a, agents)} label="Copy plan" />
         </div>
         {a.steps?.length || !text ? <LeadPlan a={a} agents={agents} /> : <Markdown blocks={blocks} className="md-doc" />}

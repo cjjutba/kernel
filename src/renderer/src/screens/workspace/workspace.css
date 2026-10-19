@@ -46,27 +46,26 @@ button.ws-issue:hover { background: var(--surface-3); }
 .ws-tab[aria-selected='true'] { color: var(--ink); }
 /* A tab with a reply you haven't seen is bold, like its sidebar row (KERNEL-508). The tab on screen is read, so it is never marked. */
 .ws-tab[data-unread] { color: var(--ink); font-weight: var(--fw-semibold); }
-/* The pen and the close button share one slot. Focus only counts from the keyboard, so a clicked tab keeps its pen. */
+/* The close button sits after the title. */
 .tab-end { display: inline-grid; place-items: center; margin-left: -8px; }
 .tab-end > * { grid-area: 1 / 1; }
-.tab-pen { display: flex; color: var(--muted); pointer-events: none; }
 .tab-caret { width: 22px; height: 22px; border-radius: var(--r-sm); }
-.tab-caret.more, .tab-pen { transition: opacity var(--dur-fast); }
+.tab-caret.more { transition: opacity var(--dur-fast); }
 .tab-caret.more { opacity: 0; }
-.tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more, .tab-group[data-rest] .tab-caret.more { opacity: 1; }
-.tab-group:hover .tab-pen, .tab-group:has(:focus-visible) .tab-pen { opacity: 0; }
+.tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more, .tab-group[data-rest] .tab-caret.more, .tab-group[data-on] .tab-caret.more { opacity: 1; }
 
-/* One-row header (a Lead chat): the tabs sit in the header after the project, so the row is the header's height and its hairline is the only one. */
+/* One-row header (a Lead chat): the project, then the tabs in one `$surface` pill. The open tab is `$surface-3` with its close button, and + closes the pill. The header's hairline is the only one. */
 .header[data-one-row] { padding-left: 12px; gap: 4px; }
 .header[data-one-row] .crumb { margin-left: 2px; }
-.ws-tabs[data-inline] { align-self: stretch; flex: 0 1 auto; height: auto; min-width: 0; padding: 0; border: 0; }
-.ws-tabs[data-inline] > [role='tablist'] { height: 100%; flex: 0 1 auto; min-width: 0; }
+.ws-tabs[data-inline] { align-self: center; flex: 0 1 auto; height: 32px; min-width: 0; padding: 2px; gap: 2px; align-items: center; border: 0; border-radius: 9px; background: var(--surface); }
+.ws-tabs[data-inline] > [role='tablist'] { height: 100%; flex: 0 1 auto; min-width: 0; align-items: center !important; gap: 2px; }
 /* The project avatar and name, + and the right side keep their size. The tabs are what gives way, and a title truncates. */
 .header[data-one-row] .crumb-avatar, .ws-tabs[data-inline] .tab-new { flex-shrink: 0; }
-.ws-tabs[data-inline] .tab-group { height: 100%; }
-.ws-tabs[data-inline] .tab-new { margin-left: 2px; }
-.ws-tabs[data-inline] .ws-tab { padding: 0 8px; gap: 6px; }
-.ws-tabs[data-inline] > [role='tablist'] { gap: 0; }
+.ws-tabs[data-inline] .tab-group { height: 28px; padding-right: 4px; border-bottom: 0; border-radius: 7px; }
+.ws-tabs[data-inline] .tab-group[data-on] { background: var(--surface-3); }
+.ws-tabs[data-inline] .tab-new { align-self: center; margin: 0; }
+.ws-tabs[data-inline] .tab-new .icon-btn, .ws-tabs[data-inline] .tab-new > button { width: 28px; height: 28px; border-radius: 7px; }
+.ws-tabs[data-inline] .ws-tab { padding: 0 8px 0 9px; gap: 7px; }
 
 /* transcript */
 /* The scroll area sits in a frame, so the Scroll to bottom button floats over it instead of scrolling away with the thread (KERNEL-532). */
@@ -229,8 +228,7 @@ button.msg-chip:hover { border-color: var(--line-3); }
 .group-text { min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* What went wrong in a run or a summary, after its sentence. */
 .step-bad { color: var(--del); }
-/* Steps in a fold keep their icons, joined by a thin rail in line-2 through the icons' centres. Each item draws the stretch from under its
-   own icon to the top of the next one's, so the rail never crosses an icon and runs down the side of an opened card. */
+/* Steps in a fold keep their icons, indented, with no line joining them. An opened step shows its result nested under it. */
 .run-list, .group-list { display: flex; flex-direction: column; min-width: 0; }
 /* A fold opens and closes by its height. Its list leaves the page once the close has played (ToolGroup). */
 .group-collapse { display: grid; grid-template-rows: 1fr; grid-template-columns: minmax(0, 1fr); }
@@ -248,7 +246,6 @@ button.msg-chip:hover { border-color: var(--line-3); }
 .group-earlier { align-self: flex-start; height: 26px; margin: 4px 0 0 21px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--fs-ui); }
 .group-earlier:hover { color: var(--ink-2); }
 .group-item { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px 0; }
-.group-item:not(:last-child)::after { content: ''; position: absolute; left: 7px; top: 29px; bottom: -7px; width: 1px; background: var(--line-2); pointer-events: none; }
 .step-glyph { display: inline-flex; flex-shrink: 0; }
 /* The service's mark in the icon slot, in ink at the row's muted tone, so a row says where it went without a color. */
 .step-mark { display: inline-flex; color: var(--muted); }
@@ -259,7 +256,7 @@ button.msg-chip:hover { border-color: var(--line-3); }
 .step-cmd { font-size: var(--fs-meta); }
 /* An opened row is one hairline card. Each section has a small muted heading with its Copy in the corner, always shown, then its text capped
    at 260px with a fade where it is cut. Copy raw call sits in the card's footer. Ink and weight only: red and green are for diff lines. */
-.tool-card { border: 1px solid var(--card-line); background: var(--card-bg); border-radius: var(--r-md); overflow: hidden; min-width: 0; }
+.tool-card { border: 0; background: var(--surface); border-radius: var(--r-md); overflow: hidden; min-width: 0; }
 .tool-sec + .tool-sec, .tool-foot { border-top: 1px solid var(--line-2); }
 .tool-head { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 4px 0 12px; }
 .tool-title { font-size: var(--fs-chip); font-weight: var(--fw-medium); color: var(--muted); }
