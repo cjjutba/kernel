@@ -11,6 +11,7 @@ import { currentRoute } from '@shared/settingsRoutes'
 import { call, cleanError, onPush } from './api'
 import { writeSaved } from './remember'
 import { startupTheme } from './ui/theme'
+import { setupToasts } from './screens/onboarding/setupToasts'
 import { closeAllLayers } from './ui/hooks'
 import { installFailedToast } from './components/footer/updateModel'
 import { hasTab, isChatTab, landing, nearest, placeToSave, restorePlace, projectHome, samePlace, stillThere, tabOf, type Place } from './nav'
@@ -991,8 +992,7 @@ async function start() {
   // somewhere else hears about it in a toast.
   void call('preflight.run', undefined).then((checks) => {
     actions.system.setPreflight(checks)
-    const blocking = checks.find((c) => !c.ok && c.blocking)
-    if (blocking && projects.length && state.ui.route.name !== 'leadNew') actions.ui.toast({ title: blocking.title, sub: 'New chat shows how to fix it.' })
+    if (projects.length || getState().settings?.onboarding.done) setupToasts(checks)
   }).catch(() => undefined)
   // After an update installs, What's new opens once with that version's notes (KERNEL-30). It waits for the route above, which closes modals,
   // and carries its own copy, since the updater's first check pushes a new state that drops `installed` and the notes.

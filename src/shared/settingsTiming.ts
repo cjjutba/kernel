@@ -140,7 +140,11 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   'terminal.custom': 'now',
   // features/tools.ts adds share_file to the tools a chat's process starts with.
   'experimental.sharing': 'newChats',
-  'privacy.telemetry': 'now'
+  'privacy.telemetry': 'now',
+  // Onboarding's choices seed the team of a project added after them (KERNEL-1088).
+  'onboarding.done': 'now',
+  'onboarding.out': 'newProjects',
+  'onboarding.reviewer': 'newProjects'
 }
 
 type Project = Omit<Required<ProjectSettings>, 'sources' | 'missingReferences'>

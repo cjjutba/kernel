@@ -33,7 +33,6 @@ import { useProjectSettings } from '../settings/useSettings'
 import { stripRemote } from '../settings/remote'
 import { UpNext } from './UpNext'
 import { SetupRows, StepRows } from './SetupRows'
-import { ReadinessLine } from './ReadinessLine'
 import { PartChip, TurnLine } from './Transcript'
 
 /**
@@ -295,7 +294,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
       </div>
       <div className="lead-up" style={sent ? GONE : undefined}>{usable && !setupLive && <UpNext projectId={projectId} lead={name} onPlan={planIssue} />}</div>
       <ComposerShell
-        above={<>{!projects.length && <FirstProjectPills />}<ReadinessLine /></>}
+        above={<>{!projects.length && <FirstProjectPills />}</>}
         input={<>
           {sent && <ComposerInput d={blank} aria-label={`Message ${name}`} disabled placeholder="Add a follow up" />}
           <div style={sent ? GONE : { display: 'contents' }}><ComposerInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(leadMode, name)} onKeyDown={onKey} /></div>

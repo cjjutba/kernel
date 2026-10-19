@@ -42,7 +42,7 @@ export function NewAgent({ projectId, step, prefill }: { projectId?: string; ste
   useEffect(() => { gone.current = false; return () => { gone.current = true } }, [])
   const close = () => { gone.current = true; actions.ui.closeModal() }
   // Done with no project goes back to Settings, Agents, where the new agent shows under Yours.
-  const finish = () => { actions.ui.closeModal(); if (!projectId) actions.ui.go({ name: 'settings', page: 'agents' }) }
+  const finish = () => { actions.ui.closeModal(); if (!projectId && getState().ui.route.name !== 'onboarding') actions.ui.go({ name: 'settings', page: 'agents' }) }
   const lead = agents?.find((a) => a.lead)
   const to = (next: Step, p: NewAgentPrefill = { name, description, model, draft }) => actions.ui.openModal({ name: 'newAgent', projectId, step: next, prefill: p })
 

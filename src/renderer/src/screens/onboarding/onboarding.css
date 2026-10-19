@@ -71,18 +71,69 @@
 .ob-link.ob-later { margin-top: 24px; font-size: var(--fs-ui); }
 .ob-reconnect { font-size: var(--fs-code); }
 
-/* Splash (KERNEL-942): the wordmark alone, brushed grey like the app icon and a little sunk into the canvas. The K settles in from a
-   soft blur, then ernel wipes in from the left. The wipe's animationend opens New chat. */
+/* Splash (KERNEL-1088): the K mark alone in one solid color. It settles in from a soft blur, and its animationend moves on. */
 .ob-splash { flex: 1; display: flex; align-items: center; justify-content: center; }
-.ob-wordmark { display: flex; align-items: baseline; opacity: 0.7; }
-.ob-wordmark-k { flex-shrink: 0; display: block; animation: ob-k-in var(--dur-splash) var(--ease-enter) var(--dur-splash-k) both; }
-.ob-k-stem { fill: var(--ink); }
-.ob-k-chevron { fill: var(--ink-3); }
-.ob-wordmark-rest { display: block; padding-left: 3px; animation: ob-rest-in var(--dur-splash) var(--ease-wipe) var(--dur-splash-rest) both; }
-.ob-wordmark-text { display: block; font-size: var(--fs-wordmark); font-weight: var(--fw-wordmark); letter-spacing: -0.05em; line-height: 30px; background: linear-gradient(180deg, var(--ink-hover) 0%, var(--ink) 40%, var(--ink-3) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ob-k { display: block; fill: var(--ink); animation: ob-k-in var(--dur-splash) var(--ease-enter) both; }
 @keyframes ob-k-in { from { opacity: 0; filter: blur(10px); transform: scale(.94); } to { opacity: 1; filter: blur(0); transform: none; } }
-@keyframes ob-rest-in { from { opacity: 0; clip-path: inset(0 100% 0 0); filter: blur(5px); } to { opacity: 1; clip-path: inset(0 0 0 0); filter: blur(0); } }
 @media (prefers-reduced-motion: reduce) {
-  .ob-wordmark-k, .ob-wordmark-rest { animation: ob-fade var(--dur-splash-fade) var(--ease-out) both; }
+  .ob-k { animation: ob-fade var(--dur-splash-fade) var(--ease-out) both; }
   @keyframes ob-fade { from { opacity: 0; } to { opacity: 1; } }
 }
+
+/* The four steps (KERNEL-1088): a track at the top, a 560px column whose heading sits at one height on every step, and a footer. */
+.ob-flow { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; }
+.ob-track { display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 18px; }
+.ob-segs { display: flex; gap: 6px; }
+.ob-seg { width: 46px; height: 2px; border-radius: var(--r-pill); background: var(--line-2); }
+.ob-seg[data-on="true"] { background: var(--ink); }
+.ob-where { font-size: var(--fs-meta); color: var(--muted); }
+.ob-main { flex: 1 0 auto; width: 100%; display: flex; justify-content: center; padding: min(150px, 11vh) 0 24px; box-sizing: border-box; }
+.ob-main > .ob-col { gap: 0; }
+.ob-main .ob-h1 { font-size: var(--fs-title); }
+.ob-main .ob-sub { line-height: var(--lh-prose); min-height: 46px; }
+.ob-foot { flex-direction: row; align-items: center; gap: 8px; padding: 0 0 22px; flex: none; }
+.ob-foot .grow { flex: 1; }
+.ob-time { font-size: var(--fs-meta); color: var(--muted); }
+.ob-enter { margin-left: 8px; opacity: .6; }
+
+.ob-card { margin-top: 24px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: transparent; }
+.ob-card + .ob-card { margin-top: 12px; }
+.ob-card.ob-settings { margin-top: 24px; }
+.ob-row { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; min-height: 64px; box-sizing: border-box; text-align: left; }
+.ob-row + .ob-row { border-top: 1px solid var(--line); }
+.ob-row > .ob-ico { margin-top: 2px; color: var(--ink); }
+.ob-row .ob-ico[data-state="fail"] { color: var(--del); }
+.ob-row .ob-ico[data-state="skip"] { color: var(--muted); }
+.ob-tag { margin-left: 8px; padding: 1px 6px; border-radius: var(--r-2xs); background: var(--surface); font-size: var(--fs-meta); font-weight: var(--fw-regular); color: var(--muted); }
+.ob-meta { margin-left: auto; font: var(--fs-meta) var(--mono); color: var(--muted); flex-shrink: 0; }
+.ob-row .btn { align-self: center; flex-shrink: 0; }
+.ob-cmd { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 7px 8px 7px 12px; border-radius: var(--r); background: var(--code-bg); }
+.ob-cmd-text { flex: 1; min-width: 0; font: var(--fs-code) var(--mono); user-select: text; overflow-wrap: anywhere; }
+.ob-cmd-prompt { margin-right: 8px; color: var(--muted); }
+.ob-code { padding: 0 4px; border-radius: var(--r-2xs); background: var(--code-bg); font: var(--fs-meta) var(--mono); }
+.ob-tile { width: 28px; height: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line-3); border-radius: var(--r-sm); color: var(--ink); }
+.ob-acct { align-items: center; }
+.ob-done { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: var(--fs-code); color: var(--muted); }
+.ob-done .ob-ico { margin: 0; }
+.ob-note { display: flex; align-items: center; gap: 6px; }
+.ob-cap { margin: 16px 0 0; font-size: var(--fs-meta); color: var(--muted); }
+.ob-cap + .ob-card { margin-top: 8px; }
+
+.ob-member { align-items: center; min-height: 58px; padding-block: 9px; }
+.ob-member .ag-chip { border-color: transparent; background: transparent; }
+.ob-member[data-off] .ob-body, .ob-member[data-off] .avatar { opacity: .45; }
+.ob-pick { width: 16px; flex-shrink: 0; display: inline-flex; justify-content: center; color: var(--muted); }
+.ob-role { margin-left: 8px; font-size: var(--fs-meta); font-weight: var(--fw-regular); color: var(--muted); }
+.ob-create { width: 100%; border: 0; background: transparent; color: var(--ink); cursor: pointer; align-items: center; }
+.ob-row + .ob-create { border-top: 1px solid var(--line); }
+.ob-create:hover { background: var(--hover); }
+.ob-plus { width: 28px; height: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px dashed var(--line-3); border-radius: var(--r-pill); color: var(--muted); }
+.ob-card .ob-row .model-field, .ob-member > .model-field { flex-shrink: 0; margin-left: auto; }
+
+.ob-asks { display: flex; flex-direction: column; }
+.ob-ask-q { padding: 14px 16px 0; font-weight: var(--fw-medium); }
+.ob-ask { cursor: pointer; align-items: center; border-top: 0; min-height: 0; }
+.ob-ask + .ob-ask { border-top: 0; }
+.ob-radio { width: 16px; height: 16px; flex-shrink: 0; border: 1px solid var(--line-3); border-radius: var(--r-pill); box-sizing: border-box; }
+.ob-ask[data-on] .ob-radio { border: 5px solid var(--ink); }
+.ob-ask:has(input:focus-visible) .ob-radio { outline: 2px solid var(--focus); outline-offset: 2px; }
