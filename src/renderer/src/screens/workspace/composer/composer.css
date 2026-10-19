@@ -180,6 +180,8 @@
 .pick-step span { position: absolute; left: 0; right: 0; top: 4px; height: 6px; border-radius: 3px; background: var(--line-3); }
 .pick-step[data-on='true'] span { background: var(--ink-3); }
 .pick-step:hover span { background: var(--ink-2); }
+.pick-step[data-off='true'] { cursor: default; opacity: 0.4 }
+.pick-step[data-off='true']:hover span { background: var(--line-3); }
 .pick-step:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 3px; }
 .pick-effort-ends { display: flex; justify-content: space-between; margin-top: -4px; font-size: var(--fs-chip); color: var(--faint); }
 .pick-compact { position: relative; padding: 0 6px 4px; border-top: 1px solid var(--line-2); }
