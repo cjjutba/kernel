@@ -32,7 +32,7 @@ export function SortOverlap({ overlap: o }: { overlap: Overlap }) {
   const [busy, run] = useBusy()
   const name = lead?.name ?? 'the Lead'
   return (
-    <Button variant="primary" busy={!!busy} busyPattern="arrow-right" busyLabel="Sending" disabled={!!busy} onClick={() => void run('sort', () => attempt(`Could not hand that to ${name}`, () => call('projects.resolveOverlap', { overlapId: o.id })))}>
+    <Button variant="primary" busy={!!busy} busyPattern="ripple" busyLabel="Sending" disabled={!!busy} onClick={() => void run('sort', () => attempt(`Could not hand that to ${name}`, () => call('projects.resolveOverlap', { overlapId: o.id })))}>
       Let {name} sort it
     </Button>
   )

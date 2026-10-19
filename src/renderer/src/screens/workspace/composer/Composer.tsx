@@ -367,7 +367,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
         {loadFailureLine(failed) && (
           <div className="note" role="status">
             <span className="note-text grow">{loadFailureLine(failed)}</span>
-            <Button variant="ghost" busy={retrying === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void runRetry('retry', retry)}>Retry</Button>
+            <Button variant="ghost" busy={retrying === 'retry'} busyLabel="Trying again" busyPattern="ripple" onClick={() => void runRetry('retry', retry)}>Retry</Button>
           </div>
         )}
         {!compact && (

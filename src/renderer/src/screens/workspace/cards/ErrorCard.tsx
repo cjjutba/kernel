@@ -12,8 +12,8 @@ export function ErrorCard({ message, output, agentName, onTerminal, onFix, onRet
       {output && <div className="code">{output}</div>}
       <div className="acts">
         <Button busy={busy === 'terminal'} busyLabel="Opening" disabled={busy !== null} onClick={() => void run('terminal', onTerminal)}>Open terminal</Button>
-        <Button busy={busy === 'retry'} busyPattern="rotate" busyLabel="Retrying" disabled={busy !== null} onClick={() => void run('retry', onRetry)}>Retry</Button>
-        <Button variant="primary" busy={busy === 'fix'} busyPattern="arrow-right" busyLabel="Sending" disabled={busy !== null} onClick={() => void run('fix', onFix)}>Ask {agentName} to fix</Button>
+        <Button busy={busy === 'retry'} busyPattern="ripple" busyLabel="Retrying" disabled={busy !== null} onClick={() => void run('retry', onRetry)}>Retry</Button>
+        <Button variant="primary" busy={busy === 'fix'} busyPattern="ripple" busyLabel="Sending" disabled={busy !== null} onClick={() => void run('fix', onFix)}>Ask {agentName} to fix</Button>
       </div>
     </section>
   )

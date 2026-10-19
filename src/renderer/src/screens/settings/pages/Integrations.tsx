@@ -64,7 +64,7 @@ export function Integrations() {
         </Row>
         <Row id="linear" lead={<Mark name="linear" />} label="Linear" desc={linear?.detail} full={form}>
           {linear?.connected
-            ? <Button variant="ghost" busy={busy === 'linear'} busyPattern="scatter" busyLabel="Disconnecting" disabled={busy !== null} onClick={() => void disconnectLinear()}>Disconnect</Button>
+            ? <Button variant="ghost" busy={busy === 'linear'} busyPattern="ripple" busyLabel="Disconnecting" disabled={busy !== null} onClick={() => void disconnectLinear()}>Disconnect</Button>
             : !asking && <Button disabled={!linear || busy !== null} onClick={() => { close(); setAsking(true) }}>Connect</Button>}
         </Row>
         </>}

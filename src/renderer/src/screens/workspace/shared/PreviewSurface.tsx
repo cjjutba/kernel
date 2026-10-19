@@ -179,7 +179,7 @@ function PagePreview({ workspaceId, file, version, width, again, comment }: { wo
           <span className="sv-crash-icon"><Icon name="warning" size={20} /></span>
           <span className="sv-crash-title">This page stopped responding</span>
           <span className="sv-crash-sub">Reload to run it again.</span>
-          <Button variant="primary" className="sv-reload" busy={busy === 'reload'} busyPattern="rotate" busyLabel="Reloading" onClick={() => void reload()}>Reload</Button>
+          <Button variant="primary" className="sv-reload" busy={busy === 'reload'} busyPattern="ripple" busyLabel="Reloading" onClick={() => void reload()}>Reload</Button>
         </div>
       )}
     </div>

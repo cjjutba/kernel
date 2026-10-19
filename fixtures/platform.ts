@@ -909,7 +909,7 @@ export const platformFixtures: Record<string, Fixture> = {
     return { ...project, projectSettings: { [ids.projectA]: { ...rs, references: ['/Users/you/Projects/client-a-api', '/Users/you/Projects/design-system'], missingReferences: ['/Users/you/Projects/design-system'] } } }
   }),
   DevUi: { ...gallery('components'), motion: { action: { hold: 'Deny' }, ms: 400, area: '.devui-row' } },
-  DevUiDisplay: gallery('display'),
+  DevUiDisplay: { ...gallery('display'), motion: { action: { press: [] }, ms: 800, area: '.devui-row' } },
   DevUiStates: gallery('states'),
   DevUiOverlays: gallery('overlays'),
   DevUiDialogs: gallery('dialogs'),
@@ -1083,14 +1083,14 @@ export const platformFixtures: Record<string, Fixture> = {
   // The home screen while an update downloads or fails: a quiet footer line.
   AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } },
   AuditHomeUpdateError: { ...teamFixtures.UpdateReady, update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } },
-  // Toasts: three at once, and one with a long title and sub, over Home.
-  AuditToastsStacked: { ...teamFixtures.UpdateReady, ui: { ...teamFixtures.UpdateReady.ui, toasts: [
-    { id: 't1', title: 'Archived Invoice table', sub: 'Its branch was kept.', action: { label: 'Undo', route: { name: 'inbox' } } },
-    { id: 't2', title: 'Could not save the setting' },
-    { id: 't3', title: 'Switched Claude Code to Work', action: { label: 'Undo', switchAccount: { provider: 'claude', accountId: 'cli' } } }
+  // Toasts: three at once (merged, failed with a second action, plain), and one with a long title and sub, over a workspace.
+  ToastsStacked: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [
+    { id: 't1', glyph: 'merged', title: 'PR #1151 merged', sub: 'Squashed into main', action: { label: 'View', href: 'https://github.com/kernel/kernel/pull/1151' } },
+    { id: 't2', glyph: 'error', title: "Couldn't push to origin", sub: 'The remote rejected the push.', action: { label: 'Try again', primary: true, route: { name: 'inbox' } } },
+    { id: 't3', title: 'Copied' }
   ] } },
-  AuditToastLong: { ...teamFixtures.UpdateReady, ui: { ...teamFixtures.UpdateReady.ui, toasts: [
-    { id: 'long', title: 'Could not archive the Client portal login workspace because its worktree has uncommitted changes in 14 files', sub: 'Commit or discard them in the Changes tab, then try again. The folder is /Users/you/kernel/worktrees/client-portal/feat-login-with-a-very-long-branch-name-that-keeps-going', action: { label: 'Open workspace', route: { name: 'workspace', workspaceId: ids.table } } }
+  ToastLong: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [
+    { id: 'long', glyph: 'error', title: "Couldn't start the dev server for kernel-232a-clean-account", sub: 'The port 4300 is already in use by another process. Stop it, then try again.', other: { label: 'Open Scripts', route: { name: 'inbox' } }, action: { label: 'Try again', primary: true, route: { name: 'inbox' } } }
   ] } },
   // A turn running and a toast up, and Settings with a toast up: Escape goes to the open thing first, the screen next, the toast last (KERNEL-878).
   AuditEscapeTurnToast: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } },

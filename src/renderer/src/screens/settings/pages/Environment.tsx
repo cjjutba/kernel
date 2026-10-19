@@ -87,7 +87,7 @@ function Variables({ projectId, project, env, error, action }: { projectId?: str
         <ConfirmDialog
           title={`Remove ${removing}?`}
           body={`${project ? `Chats and scripts in ${project.name}` : 'Chats and scripts in every project'} stop getting ${removing} once they start afterwards. The ones already running keep it.`}
-          confirmLabel="Remove" danger busy={busy === 'remove'} busyPattern="scatter" busyLabel="Removing"
+          confirmLabel="Remove" danger busy={busy === 'remove'} busyPattern="ripple" busyLabel="Removing"
           onConfirm={() => void remove(removing)} onCancel={() => setRemoving(null)}
         />
       )}
@@ -115,7 +115,7 @@ function EnvFiles({ projectId, rs, env }: { projectId: string; rs: ProjectSettin
   const rows: TableRow[] = files.map((f) => ({
     key: f.path,
     cells: [<span className="mono"><FileLabel path={f.path} /></span>, f.missing ? 'Missing' : ''],
-    actions: <Button variant="ghost" aria-label={`Remove ${f.path}`} busy={busy === `remove:${f.path}`} busyPattern="scatter" busyLabel="Removing" disabled={busy !== null} onClick={() => void save(`remove:${f.path}`, () => latest().filter((p) => p !== f.path))}>Remove</Button>
+    actions: <Button variant="ghost" aria-label={`Remove ${f.path}`} busy={busy === `remove:${f.path}`} busyPattern="ripple" busyLabel="Removing" disabled={busy !== null} onClick={() => void save(`remove:${f.path}`, () => latest().filter((p) => p !== f.path))}>Remove</Button>
   }))
   const source = isOverride(rs, path) ? 'Changed for this project' : undefined
   return (

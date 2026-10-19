@@ -133,7 +133,7 @@ export function ConnectRepo() {
             })}
             {!repos && <LoadingRow what="repositories" />}
             {repos && !repos.length && fail && error && (
-              <Banner kind={fail.kind} title={fail.title} actions={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void retry()}>Try again</Button>}>
+              <Banner kind={fail.kind} title={fail.title} actions={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="ripple" onClick={() => void retry()}>Try again</Button>}>
                 {error.kind === 'signed-out' ? 'Run gh auth login in a terminal, then try again.' : error.message}
               </Banner>
             )}

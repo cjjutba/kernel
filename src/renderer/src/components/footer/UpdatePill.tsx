@@ -25,7 +25,7 @@ export function UpdatePill() {
     <span className="ft-upd" role="status">
       {updateReason(update?.error, online)}
       <button type="button" className="ft-pill ft-retry" disabled={busy !== null} aria-busy={busy !== null || undefined} onClick={retry}>
-        {busy ? <><Spinner label={null} pattern="rotate" />Trying again</> : 'Try again'}
+        {busy ? <><Spinner label={null} pattern="ripple" />Trying again</> : 'Try again'}
       </button>
     </span>
   )

@@ -256,7 +256,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
         <RefreshNotice kind="auth" title="Linear rejected the token" action={<Button size="md" onClick={openIntegrations}>Open Settings, Integrations</Button>}>Reconnect Linear to refresh these issues.</RefreshNotice>
       )}
       {ready && failed && failed.kind === 'error' && (
-        <RefreshNotice kind="offline" title={failed.title} action={<Button size="md" busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{failed.sub} {unread ? 'No issues are shown for this filter.' : 'The issues below are from the last time it loaded.'}</RefreshNotice>
+        <RefreshNotice kind="offline" title={failed.title} action={<Button size="md" busy={refreshing} busyPattern="ripple" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{failed.sub} {unread ? 'No issues are shown for this filter.' : 'The issues below are from the last time it loaded.'}</RefreshNotice>
       )}
 
       {ready && scope && !unread && flat.length === 0 && (() => {

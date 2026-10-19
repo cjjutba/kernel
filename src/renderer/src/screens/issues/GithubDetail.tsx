@@ -110,7 +110,7 @@ export function GithubDetail({ keep, project, id, summary, tick }: { keep: strin
             <span className="grow" />
             {issue.url && <a className="btn lg" href={issue.url} target="_blank" rel="noreferrer">Open on GitHub<Icon name="ext" size={12} /></a>}
             <Button size="lg" onClick={newChat}>New chat</Button>
-            <Button size="lg" variant={linked[0] ? 'secondary' : 'primary'} busy={busy === 'plan'} busyPattern="arrow-right" busyLabel="Sending" disabled={busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
+            <Button size="lg" variant={linked[0] ? 'secondary' : 'primary'} busy={busy === 'plan'} busyPattern="ripple" busyLabel="Sending" disabled={busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
             {linked[0] && <Button size="lg" variant="primary" onClick={() => go({ name: 'workspace', workspaceId: linked[0].id })}>Open workspace</Button>}
           </div>
         </div>

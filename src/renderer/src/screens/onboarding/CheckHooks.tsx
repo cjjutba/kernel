@@ -118,7 +118,7 @@ export function CheckHooks() {
         ))}
       </div>
       <div className="hk-test">
-        <Button busy={busy === 'test'} busyPattern="arrow-right" busyLabel="Sending" disabled={busy !== null || !hooks?.installed || !hooks.listening} onClick={() => void test()}>Send test event</Button>
+        <Button busy={busy === 'test'} busyPattern="ripple" busyLabel="Sending" disabled={busy !== null || !hooks?.installed || !hooks.listening} onClick={() => void test()}>Send test event</Button>
         <span className="hk-note" role="status" aria-live="polite">{note}</span>
       </div>
       <pre className="code hk-snip"><span className="path">~/.claude/settings.json</span>{`\n"hooks": {\n  "PreToolUse": [{\n    "hooks": [{ "type": "command", "command": "/usr/bin/curl ... || true" }]\n  }],\n  ...one entry per event\n}`}</pre>
@@ -139,7 +139,7 @@ function ProblemModal({ problem, busy, note, retry }: { problem: HookProblem; bu
         <>
           <span className="grow" />
           <Button variant={button ? 'ghost' : 'primary'} onClick={actions.ui.closeModal}>Done</Button>
-          {c.retry && button && <Button variant="primary" busy={busy === c.retry} busyPattern={c.retry === 'check' ? 'rotate' : undefined} busyLabel={button[1]} disabled={busy !== null} onClick={() => void retry[c.retry!]()}>{button[0]}</Button>}
+          {c.retry && button && <Button variant="primary" busy={busy === c.retry} busyPattern={c.retry === 'check' ? 'ripple' : undefined} busyLabel={button[1]} disabled={busy !== null} onClick={() => void retry[c.retry!]()}>{button[0]}</Button>}
         </>
       }
     >

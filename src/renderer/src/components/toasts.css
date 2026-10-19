@@ -1,8 +1,4 @@
-/* Bottom right of the main panel, 12px in from its right and bottom edges: the 8px right padding of .main plus 12, the 32px footer plus 12 (WorkspaceToast.png). */
-.app-toasts .toast-stack { right: 20px; bottom: 44px; }
-.app-toasts .toast-sub { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
-.app-toasts .toast-action { text-decoration: underline; text-underline-offset: 2px; }
-.app-toasts .toast-action[data-boxed] { height: 24px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-sm); font-size: var(--fs-meta); text-decoration: none; }
+.app-toasts .toast-sub { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 
 /* The update card (KERNEL-164): a toast's surface and hairline, no close button, like a toast. */
 .update-card { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }

@@ -125,13 +125,19 @@ export interface Banner {
   chatId?: string
 }
 
-/** Bottom-right toast, auto-dismissed after 5s (WorkspaceToast.png). */
+/** What pressing a toast's button does. `href` opens in the browser. `tab` opens that tab of the workspace in the app (KERNEL-311: Open chat after a comment is sent). `route` goes to that screen (KERNEL-627). `modal` opens it (KERNEL-661). `switchAccount` switches that provider to that account, as Undo does after a switch (KERNEL-699). `primary` draws it filled, for the action that fixes what went wrong (Try again). */
+export interface ToastAction { label: string; href?: string; tab?: { workspaceId: string; id: string }; route?: Route; modal?: Exclude<Modal, null>; switchAccount?: { provider: Provider; accountId: string }; primary?: boolean }
+
+/** Bottom-right toast, auto-dismissed after 5s (Pen 18.1 and 18.3). */
 export interface Toast {
   id: string
   title: string
   sub?: string
-  /** `href` opens in the browser. `tab` opens that tab of the workspace in the app (KERNEL-311: Open chat after a comment is sent). `route` goes to that screen (KERNEL-627). `modal` opens it (KERNEL-661). `switchAccount` switches that provider to that account, as Undo does after a switch (KERNEL-699). */
-  action?: { label: string; href?: string; tab?: { workspaceId: string; id: string }; route?: Route; modal?: Exclude<Modal, null>; switchAccount?: { provider: Provider; accountId: string } }
+  /** The icon in front of the title (KERNEL-1109): `error` for a call that failed, `merged` for a PR that landed, `done` for the rest. Left out, it is `error` when the title starts "Could not" or "Couldn't", `done` otherwise. */
+  glyph?: 'done' | 'error' | 'merged'
+  action?: ToastAction
+  /** A second, quieter button that sits before `action` (Open Scripts beside Try again). */
+  other?: ToastAction
 }
 
 /** The three ways a turn's folds behave. */
