@@ -164,10 +164,9 @@ export function ChatTabs({ inline, note, workspaceId, threadId, noChat, onNewCha
                   <span className="ellipsis">{t.title}</span>
                 </button>
               )}
-              {/* One slot after the title: the open chat shows a pen at rest, and hover or keyboard focus swaps it for the close button (D-088). */}
+              {/* One slot after the title: the open tab shows its close button, and another tab shows it on hover or keyboard focus. */}
               {!editing && (
                 <span className="tab-end">
-                  {t.kind === 'chat' && on && <span className="tab-pen"><Icon name="pen" size={12} /></span>}
                   <IconButton className="tab-caret more" icon="close" size={12} label={`Close ${t.title}`} data-tip-kbd={on ? '⌘W' : undefined}
                     onClick={() => (t.kind === 'file' && t.path ? onCloseFile(t.path) : t.kind === 'diff' ? onCloseDiff(t.path ?? '') : t.kind === 'shared' ? onCloseShared(t.id.slice(7)) : t.kind === 'image' ? onCloseImage(t.id) : t.kind === 'text' ? onCloseText(t.id) : void close([t.id]))} />
                 </span>

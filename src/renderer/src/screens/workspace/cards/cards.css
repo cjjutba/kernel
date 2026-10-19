@@ -81,28 +81,29 @@
 /* A plan in its chat (cards/plan.tsx) */
 .plan-inline { display: flex; flex-direction: column; gap: 14px; scroll-margin: 8px 0 14px; }
 .plan-inline > .trow { gap: 8px; }
-/* The plan reads as part of plan mode, so its icon, list markers and step numbers take the plan blue. */
 .plan-doc-icon { display: inline-flex; color: var(--plan); }
 .plan-inline .md-doc ol > li::marker { color: var(--plan); }
-/* The Lead's plan: a bordered document, its write-up, then one hairline-separated row per task (PlanWaiting.png). */
-.plan-card { border: 1px solid var(--card-line); background: var(--card-bg); border-radius: var(--r-md); padding: 16px 18px 4px; }
-.plan-card .md > .md-h[data-level='1'] { font-size: var(--fs-sub); line-height: var(--lh-snug); margin-bottom: 6px; }
-.plan-card .md > :not(.md-h):not(:last-child) { margin-bottom: 12px; }
-.plan-card .md { font-size: var(--fs-row); color: var(--ink-2); }
-.plan-card .md > p:last-child { margin-bottom: 12px; }
-.plan-tasks { list-style: none; margin: 4px 0 0; padding: 0; }
-.plan-tasks li { display: flex; align-items: baseline; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: var(--fs-row); font-weight: var(--fw-medium); color: var(--ink-2); }
-.plan-n { width: 14px; flex-shrink: 0; color: var(--plan); font-size: var(--fs-meta); font-weight: var(--fw-regular); }
+/* The Lead's plan: a Markdown document with no card or fill. Its write-up, a Tasks heading, then a numbered list with the owner on the right and the criteria as bullets under each task. */
+.plan-doc { padding: 4px 0 0; }
+.plan-doc .md > .md-h[data-level='1'] { font-size: var(--fs-sub); line-height: var(--lh-snug); margin-bottom: 6px; }
+.plan-doc .md > :not(.md-h):not(:last-child) { margin-bottom: 12px; }
+.plan-doc .md { font-size: var(--fs-row); color: var(--ink-2); }
+.plan-tasks-h { margin: 18px 0 8px; font-size: var(--fs-row); font-weight: var(--fw-semibold); color: var(--ink); }
+.plan-tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.plan-tasks li { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-row); font-weight: var(--fw-regular); color: var(--ink); }
+.plan-n { width: 16px; flex-shrink: 0; color: var(--ink-2); font-size: var(--fs-row); }
 .plan-task { flex: 1; min-width: 0; }
-.plan-who { margin-left: 6px; color: var(--muted); font-size: var(--fs-code); font-weight: var(--fw-regular); }
-.plan-file { min-width: 0; max-width: 340px; height: 22px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: var(--fs-chip); }
-.plan-file:hover { border-color: var(--line-3); color: var(--ink); }
-.plan-inline .plan-copy { width: 24px; height: 24px; margin-left: -2px; }
+.plan-who { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; align-self: flex-start; margin-left: 12px; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-regular); }
+.plan-role { color: var(--muted); }
+.plan-file { display: inline-flex; align-items: center; min-width: 0; max-width: 340px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-chip); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line-3); }
+.plan-file:hover { color: var(--ink); }
+.plan-inline > .trow .plan-copy { margin-left: auto; }
+.plan-inline .plan-copy { width: 24px; height: 24px; }
 .plan-criteria, .step-criteria { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-code); font-weight: var(--fw-regular); color: var(--muted); }
 .plan-criteria li, .step-criteria li { display: block; position: relative; min-height: 0; padding: 0 0 0 12px; border: 0; font-size: inherit; font-weight: inherit; color: inherit; line-height: var(--lh-snug); }
-.plan-criteria li::before, .step-criteria li::before { content: ''; position: absolute; left: 2px; top: 0.6em; width: 3px; height: 1px; background: currentColor; }
+.plan-criteria li::before, .step-criteria li::before { content: ''; position: absolute; left: 2px; top: 0.6em; width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
 .steps li { align-items: start; }
-.plan-open { flex-shrink: 0; margin-left: 10px; }
+.plan-open { flex-shrink: 0; margin-left: 10px; align-self: flex-start; gap: 4px; }
 .plan-attn { position: relative; margin: 8px 2px 0; font-size: var(--fs-code); color: var(--muted); }
 .plan-attn-n { padding: 0; border: 0; border-bottom: 1px dotted var(--line-3); background: transparent; color: var(--ink-2); font: inherit; cursor: default; }
 .plan-attn-n:hover, .plan-attn-n:focus-visible { color: var(--ink); }

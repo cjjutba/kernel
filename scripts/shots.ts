@@ -764,6 +764,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   AuditGroupCollapseMotion: async (page) => { await page.locator('.group-btn').first().focus() },
   AuditGroupOpenMotion: async (page) => { await page.waitForTimeout(800); await page.locator('.group-btn').first().focus() },
   WorkspacePlanApproveDraft: askApprove,
+  WorkspaceLeadStepOpen: async (page) => { await page.locator('.group-btn').first().click(); await page.locator('.group-item .trow-btn:not(:disabled)').first().click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  WorkspaceLeadStepsOpen: async (page) => { for (const g of await page.locator('.group-btn').all()) await g.click(); await openEveryRow(page) },
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
   LeadOpenItemsOpen: async (page) => { await page.getByRole('button', { name: /3 open/ }).click(); await page.waitForTimeout(200) },
