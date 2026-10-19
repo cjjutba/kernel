@@ -906,7 +906,9 @@ const planApproved = (f: Fixture): Partial<Fixture> => {
 const planFinished = (f: Fixture): Partial<Fixture> => {
   const s = planApproved(f)
   const id = s.approvals?.[0]?.id ?? ''
-  return { ...s, attention: { [id]: { prsMerged: 4, needed: 5, byKind: { plan: 1, tool: 2, question: 1, blocker: 0, merge: 1 }, finished: true } } }
+  const base = f.workspaces[0]
+  const merged = [0, 1, 2, 3].map((j) => ({ ...base, id: `ws-t15-${j}`, name: `t-15${'abcd'[j]}`, branch: `t-15${'abcd'[j]}`, prState: 'merged' as const, prNumber: 160 + j }))
+  return { ...s, workspaces: [...(s.workspaces ?? f.workspaces), ...merged], attention: { [id]: { prsMerged: 4, needed: 5, byKind: { plan: 1, tool: 2, question: 1, blocker: 0, merge: 1 }, finished: true } } }
 }
 
 /** The approved plan of a chat that has your answer as a message (KERNEL-838): Approved is the chat's own user row, so the plan card draws no bubble of its own. */

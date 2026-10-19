@@ -2,7 +2,7 @@ import { useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { AgentDef, Approval, AttentionKind, PlanAttention, PlanStep } from '@shared/types'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
-import { AgentAvatar, Button, LinkButton, CopyButton, Icon, useScreenEscape } from '../../../ui'
+import { AgentAvatar, Button, CopyButton, Icon, useScreenEscape } from '../../../ui'
 import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt } from '../MessageActions'
@@ -51,10 +51,13 @@ export function Criteria({ step, className }: { step: PlanStep; className: strin
 /** The Lead's tasks as numbered rows, the agent's name muted beside each, with a way into its workspace once the plan is handed off. */
 export function PlanTasks({ a, agents }: { a: Approval; agents: AgentDef[] }) {
   const tasks = useStore((s) => (a.projectId ? s.tasks[a.projectId] : undefined))
+  const workspaces = useStore((s) => s.workspaces)
   return (
     <ol className="plan-tasks">
       {planSteps(a).map((s, i) => {
         const ws = s.workspaceId ?? (s.taskId ? tasks?.find((t) => t.id === s.taskId)?.workspaceId : undefined)
+        const w = ws ? workspaces.find((x) => x.id === ws) : undefined
+        const merged = w?.prState === 'merged' && w.prNumber
         const agent = agents.find((x) => x.id === s.agentId)
         const who = agent?.name
         return (
@@ -62,7 +65,11 @@ export function PlanTasks({ a, agents }: { a: Approval; agents: AgentDef[] }) {
             <span className="plan-n" aria-hidden="true">{i + 1}.</span>
             <span className="plan-task">{s.title}<Criteria step={s} className="plan-criteria" /></span>
             {who && <span className="plan-who"><AgentAvatar name={who} size={16} />{who}{agent?.role && <span className="plan-role">{agent.role}</span>}</span>}
-            {a.status === 'allowed' && ws && <LinkButton size="meta" className="plan-open" aria-label={`Open ${who ?? 'the'} workspace for ${s.title}`} onClick={() => go({ name: 'workspace', workspaceId: ws })}>Open workspace</LinkButton>}
+            {a.status === 'allowed' && ws && (
+              <Button size="xs" className="plan-open" icon={merged ? 'merged' : undefined} aria-label={`Open ${who ?? 'the'} workspace for ${s.title}`} onClick={() => go({ name: 'workspace', workspaceId: ws })}>
+                {merged ? `#${w.prNumber} merged` : <>Open workspace <Icon name="arrowRight" size={12} /></>}
+              </Button>
+            )}
           </li>
         )
       })}

@@ -103,7 +103,7 @@
 .plan-criteria li, .step-criteria li { display: block; position: relative; min-height: 0; padding: 0 0 0 12px; border: 0; font-size: inherit; font-weight: inherit; color: inherit; line-height: var(--lh-snug); }
 .plan-criteria li::before, .step-criteria li::before { content: ''; position: absolute; left: 2px; top: 0.6em; width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
 .steps li { align-items: start; }
-.plan-open { flex-shrink: 0; margin-left: 10px; }
+.plan-open { flex-shrink: 0; margin-left: 10px; align-self: flex-start; gap: 4px; }
 .plan-attn { position: relative; margin: 8px 2px 0; font-size: var(--fs-code); color: var(--muted); }
 .plan-attn-n { padding: 0; border: 0; border-bottom: 1px dotted var(--line-3); background: transparent; color: var(--ink-2); font: inherit; cursor: default; }
 .plan-attn-n:hover, .plan-attn-n:focus-visible { color: var(--ink); }
