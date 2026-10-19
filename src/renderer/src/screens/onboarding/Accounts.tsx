@@ -3,15 +3,16 @@ import type { AccountProfile, PreflightCheck, Provider } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, Icon, ProviderMark, useBusy, type IconName } from '../../ui'
+import { ServiceMark } from '../../icons'
 import { AddAccount } from '../settings/pages/AddAccount'
 import { Card, Command, StateMark } from './parts'
 import type { StepFrame } from './Onboarding'
 
 /** A row with a tile in front, its name over a line, and what is on the right: a state word with a check, or a button. */
-function Line({ mark, name, what, note, children, cmd }: { mark: IconName | Provider; name: string; what: string; note?: string; children?: React.ReactNode; cmd?: string }) {
+function Line({ mark, name, what, note, children, cmd }: { mark: IconName | Provider | 'github'; name: string; what: string; note?: string; children?: React.ReactNode; cmd?: string }) {
   return (
     <div className="ob-row ob-acct" role="listitem">
-      <span className="ob-tile" aria-hidden="true">{mark === 'claude' || mark === 'codex' ? <ProviderMark provider={mark} size={14} /> : <Icon name={mark} size={14} />}</span>
+      <span className="ob-tile" aria-hidden="true">{mark === 'claude' || mark === 'codex' ? <ProviderMark provider={mark} size={14} /> : mark === 'github' ? <ServiceMark name="github" size={14} /> : <Icon name={mark} size={14} />}</span>
       <span className="ob-body">
         <span className="ob-name">{name}</span>
         <span className="ob-detail">{what}</span>
@@ -25,7 +26,7 @@ function Line({ mark, name, what, note, children, cmd }: { mark: IconName | Prov
 
 const Done = ({ word }: { word: string }) => <span className="ob-done"><StateMark state="ok" />{word}</span>
 
-const planLine = (a: AccountProfile) => `${a.plan ? `${a.plan.replace(/^Claude /, '')} plan. ` : ''}${a.cli || a.alsoCli ? 'Signed in with Claude Code.' : 'Signed in.'}`
+const planLine = (a: AccountProfile) => `${a.cli || a.alsoCli ? 'Signed in with Claude Code.' : 'Signed in.'}${a.plan ? ` ${a.plan.replace(/^Claude /, '')} plan.` : ''}`
 
 /** Accounts (KERNEL-1088): Claude is required and checked, and the rest is optional and can wait for Settings, Accounts. Kernel never sees a password. */
 export function useAccounts(): StepFrame {
@@ -70,7 +71,7 @@ export function useAccounts(): StepFrame {
           <Line mark="codex" name="ChatGPT, for Codex" what="Only needed if a role runs on Codex.">
             {codex ? <Done word="Signed in" /> : <Button size="sm" disabled={!!sheet} onClick={() => setSheet('codex')}>Sign in</Button>}
           </Line>
-          <Line mark="branch" name="GitHub" what={gh?.ok ? gh.detail : 'Opens and merges pull requests. Sign in with the GitHub CLI.'} cmd={!gh?.ok ? gh?.fix?.command ?? 'gh auth login' : undefined}>
+          <Line mark="github" name="GitHub" what={gh?.ok ? gh.detail : 'Opens and merges pull requests. Sign in with the GitHub CLI.'} cmd={!gh?.ok ? gh?.fix?.command ?? 'gh auth login' : undefined}>
             {gh?.ok && <Done word="Connected" />}
           </Line>
         </Card>

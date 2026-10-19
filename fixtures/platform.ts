@@ -33,6 +33,8 @@ const setup = (checks: PreflightCheck[]) => scene(() => ({ ...empty, preflight: 
 const gitOk: PreflightCheck = { id: 'git', ok: true, blocking: true, title: 'Git', detail: 'Found on your PATH', meta: 'git 2.45' }
 const codexOff: PreflightCheck = { id: 'codex', ok: false, blocking: false, title: 'Codex', detail: 'Not set up' }
 const stepChecks = (...over: PreflightCheck[]) => [claudeOk, gitOk, authOk, ghOk, hooksOk, codexOff].map((c) => over.find((o) => o.id === c.id) ?? c)
+/** Your team as the Pen draws it: Teng left out, Artkin reviews on Opus. */
+const teamSettings = (() => { const d = DEFAULT_SETTINGS('/Users/you'); return { ...d, models: { ...d.models, roles: { ...d.models.roles, reviewer: { ...d.models.roles.reviewer, claude: { model: 'claude-opus-5-5', effort: 'high' as const } } } }, onboarding: { done: false, out: ['teng'], reviewer: 'artkin' } } })()
 const firstRun = (step: 'checks' | 'accounts' | 'team' | 'loop', extra: Partial<Fixture> = {}, menu?: 'obReviewer' | 'obMode' | 'obModel' | 'obAllowed' | 'obDenied') =>
   scene(() => ({ ...empty, preflight: stepChecks(), telemetry: { canSend: true }, ...extra, ui: { route: { name: 'onboarding', step }, ...(menu ? { menu } : {}) } }))
 
@@ -924,8 +926,8 @@ export const platformFixtures: Record<string, Fixture> = {
   DevUiStates: gallery('states'),
   DevUiOverlays: gallery('overlays'),
   DevUiDialogs: gallery('dialogs'),
-  // KERNEL-942: the wordmark a fresh install sees before New chat.
-  Splash: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'splash' } } })),
+  // KERNEL-1088: the K mark. The settings save that follows it is held, as the shot's finished animation would open New chat otherwise.
+  Splash: { ...scene(() => ({ ...empty, settings: setupDone(), ui: { route: { name: 'onboarding', step: 'splash' } } })), hold: ['settings.set'] },
   // KERNEL-217: boot failed. The Loading layout with the error and Try again. No PNG.
   LoadingError: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'loading' }, startError: 'Could not read the Kernel database. Quit Kernel and open it again.' } })),
   LoadingApp: scene((f) => ({ ...sixRunning(f), ui: { route: { name: 'onboarding', step: 'loading' } } })),
@@ -958,16 +960,16 @@ export const platformFixtures: Record<string, Fixture> = {
   OnboardingChecksRunning: firstRun('checks', { hold: ['preflight.run'] }),
   ChecksRequiredFailed: firstRun('checks', { preflight: stepChecks({ id: 'claude', ok: false, blocking: true, title: 'Claude Code not found', detail: 'Kernel runs agents with its own copy. Install Claude Code to sign in from Terminal.', fix: { command: 'curl -fsSL https://claude.ai/install.sh | bash' } }) }),
   ChecksOptionalMissing: firstRun('checks', { preflight: stepChecks({ id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not installed', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'brew install gh' } }) }),
-  ChecksPortTaken: firstRun('checks', { preflight: stepChecks({ id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } }) }),
+  ChecksPortTaken: firstRun('checks', { preflight: stepChecks({ id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another app is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } }) }),
   OnboardingAccounts: firstRun('accounts', { accounts: [claudeAccounts[0]!] }),
   ClaudeSignedOut: firstRun('accounts', { accounts: [], preflight: stepChecks({ id: 'auth', ok: false, blocking: true, title: 'Not signed in to Claude', detail: 'Agents run on your own Claude plan.', fix: { command: 'claude auth login' } }) }),
   ClaudeBedrock: firstRun('accounts', { accounts: [], preflight: stepChecks({ id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', meta: 'us-east-1' }) }),
   SecondAccount: firstRun('accounts', { accounts: claudeAccounts }),
-  OnboardingTeam: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: { ...DEFAULT_SETTINGS('/Users/you'), onboarding: { done: false, out: ['teng'], reviewer: 'artkin' } } }),
-  OnboardingTeamModel: firstRun('team', { accounts: [claudeAccounts[0]!, ...codexAccounts], models: { codex: codexModels } }, 'obModel'),
+  OnboardingTeam: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: teamSettings }),
+  OnboardingTeamModel: firstRun('team', { accounts: [claudeAccounts[0]!, ...codexAccounts], models: { codex: codexModels }, settings: teamSettings }, 'obModel'),
   CodexUnavailable: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }) }),
-  ReviewerMenu: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels } }, 'obReviewer'),
-  PermissionMenu: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels } }, 'obMode'),
+  ReviewerMenu: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: teamSettings }, 'obReviewer'),
+  PermissionMenu: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: teamSettings }, 'obMode'),
   OnboardingNewAgent: ({ ...firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels } }), ui: { route: { name: 'onboarding', step: 'team' }, modal: { name: 'newAgent', step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } }),
   OnboardingLoop: firstRun('loop'),
   UsageUnpicked: firstRun('loop', {}, 'obAllowed'),

@@ -12,9 +12,9 @@ import type { StepFrame } from './Onboarding'
 type NotifyState = 'idle' | 'allowed' | 'denied'
 const startState = (): NotifyState => { const m = getState().ui.menu; return m === 'obAllowed' ? 'allowed' : m === 'obDenied' ? 'denied' : 'idle' }
 
-const ASKS: { id: 'on' | 'off'; name: string; what: string }[] = [
-  { id: 'on', name: 'Share usage data', what: 'Anonymous errors and counts of what goes wrong. Never code, prompts, file paths or names.' },
-  { id: 'off', name: 'Don’t share', what: 'Nothing is sent. You can change this in Settings, Privacy.' }
+const ASKS: { id: 'on' | 'off'; name: string }[] = [
+  { id: 'on', name: 'Share usage data' },
+  { id: 'off', name: 'Don’t share' }
 ]
 
 /** Stay in the loop (KERNEL-1088): banners when an agent needs you, and the one question about usage data, with no answer picked for you. */
@@ -46,7 +46,7 @@ export function useLoop(): StepFrame {
   })
   return {
     title: 'Stay in the loop',
-    sub: 'Agents work while you do something else. Kernel tells you when one needs an answer, and asks you one question about usage data.',
+    sub: 'Kernel tells you when an agent needs you, so you can leave the team working and come back.',
     canContinue: !!s && (!sends || !!answer),
     busy: busy === 'finish',
     busyLabel: 'Finishing',
@@ -57,8 +57,8 @@ export function useLoop(): StepFrame {
           <div className="ob-row ob-acct" role="listitem">
             <span className="ob-tile" aria-hidden="true"><Icon name="bell" size={14} /></span>
             <span className="ob-body">
-              <span className="ob-name">Notifications</span>
-              <span className="ob-detail">{notify === 'denied' ? 'Banners are off for Kernel. Turn them on in System Settings, Notifications.' : 'A banner when an agent asks for approval, finishes a task or hits a limit.'}</span>
+              <span className="ob-name">{notify === 'denied' ? 'Notifications are off' : 'Notifications'}</span>
+              <span className="ob-detail">{notify === 'denied' ? 'macOS has them turned off for Kernel. You’ll still see everything inside Kernel.' : notify === 'allowed' ? 'Questions, approvals, plans, merged pull requests and failed checks.' : 'Questions, approvals, plans, merges and failed checks. macOS asks once.'}</span>
             </span>
             {notify === 'allowed' ? <span className="ob-done"><Icon name="check" size={14} />Allowed</span>
               : notify === 'denied' ? <Button size="sm" onClick={() => void call('system.openExternal', { url: 'x-apple.systempreferences:com.apple.Notifications-Settings.extension' }).catch((e) => actions.ui.toast({ title: 'Could not open System Settings', sub: cleanError(e) }))}>Open System Settings</Button>
@@ -69,13 +69,15 @@ export function useLoop(): StepFrame {
           <Card label="Usage data" className="ob-settings">
             <div role="radiogroup" aria-label="Share usage data with Kernel?" className="ob-asks">
               <span className="ob-ask-q">Share usage data with Kernel?</span>
+              <p className="ob-ask-what">Kernel can send anonymous usage data: errors, and counts of what goes wrong, like a task it couldn’t hand off. It never sends code, prompts, file paths or names. You can change this in Settings, Privacy.</p>
               {ASKS.map((a) => (
                 <label key={a.id} className="ob-row ob-ask" data-on={answer === a.id || undefined}>
                   <input type="radio" name="ob-telemetry" className="sr-only" checked={answer === a.id} onChange={() => setPick(a.id)} />
                   <span className="ob-radio" aria-hidden="true" />
-                  <span className="ob-body"><span className="ob-name">{a.name}</span><span className="ob-detail">{a.what}</span></span>
+                  <span className="ob-name">{a.name}</span>
                 </label>
               ))}
+              <button type="button" className="ob-link ob-ask-see" onClick={() => go({ name: 'settings', page: 'privacy' })}>See what’s sent<Icon name="ext" size={12} /></button>
             </div>
           </Card>
         )}

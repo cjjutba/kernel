@@ -23,10 +23,11 @@
 .ob-bar .btn.lg { height: 32px; }
 
 
-.ob-load { width: 237px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px; padding: 58px 14px 0 15px; box-sizing: border-box; }
-.ob-load-group { display: flex; flex-direction: column; gap: 12px; }
-.ob-load-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--r-md); }
-.ob-load-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 48px 0; box-sizing: border-box; }
+.ob-load { width: 216px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px; padding: 58px 14px 0 14px; box-sizing: border-box; background: var(--panel); }
+.ob-load-row { display: flex; align-items: center; gap: 8px; }
+.ob-load-tile { width: 12px; height: 12px; flex-shrink: 0; border-radius: var(--r-sm); background: var(--surface); }
+.ob-load-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+.ob-load-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--canvas); }
 .ob-load-title { display: inline-flex; align-items: center; gap: 8px; }
 .ob-load-error { max-width: 420px; padding: 0 16px; text-align: center; font-size: var(--fs-code); text-wrap: balance; user-select: text; }
 
@@ -73,7 +74,7 @@
 
 /* Splash (KERNEL-1088): the K mark alone in one solid color. It settles in from a soft blur, and its animationend moves on. */
 .ob-splash { flex: 1; display: flex; align-items: center; justify-content: center; }
-.ob-k { display: block; fill: var(--ink); animation: ob-k-in var(--dur-splash) var(--ease-enter) both; }
+.ob-k { display: block; fill: var(--ink-2); animation: ob-k-in var(--dur-splash) var(--ease-enter) both; }
 @keyframes ob-k-in { from { opacity: 0; filter: blur(10px); transform: scale(.94); } to { opacity: 1; filter: blur(0); transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .ob-k { animation: ob-fade var(--dur-splash-fade) var(--ease-out) both; }
@@ -132,7 +133,10 @@
 
 .ob-asks { display: flex; flex-direction: column; }
 .ob-ask-q { padding: 14px 16px 0; font-weight: var(--fw-medium); }
-.ob-ask { cursor: pointer; align-items: center; border-top: 0; min-height: 0; }
+.ob-ask-what { margin: 6px 0 0; padding: 0 16px 8px; font-size: var(--fs-meta); line-height: var(--lh); color: var(--muted); }
+.ob-ask-see { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; margin: 4px 16px 14px; }
+.ob-ask { cursor: pointer; align-items: center; border-top: 0; min-height: 0; gap: 10px; margin: 0 8px; padding: 10px 8px; border-radius: var(--r-sm); }
+.ob-ask[data-on] { background: var(--surface); }
 .ob-ask + .ob-ask { border-top: 0; }
 .ob-radio { width: 16px; height: 16px; flex-shrink: 0; border: 1px solid var(--line-3); border-radius: var(--r-pill); box-sizing: border-box; }
 .ob-ask[data-on] .ob-radio { border: 5px solid var(--ink); }

@@ -20,8 +20,8 @@ export function General({ s }: { s: AppSettings }) {
           <Select label="Open to" value={g.openTo} onChange={(v) => void patchSettings({ general: { openTo: v as General['openTo'] } })} options={[{ value: 'lastPlace', label: 'Where I left off' }, { value: 'inbox', label: 'Inbox' }]} />
         </Row>
       </Section>
-      <Section title="Onboarding">
-        <Row id="run-onboarding" label="Setup" desc="Check your Mac, accounts and team again, step by step."><Button busy={busy === 'again'} busyLabel="Opening" onClick={() => void again()}>Run again</Button></Row>
+      <Section title="Setup">
+        <Row id="run-onboarding" label="Onboarding" desc="Walk through the checks, accounts, team and notifications again."><Button busy={busy === 'again'} busyLabel="Opening" onClick={() => void again()}>Run again</Button></Row>
       </Section>
       <Section title="Composer">
         <Row id="send-with" label="Send with" desc="The other one adds a new line.">
