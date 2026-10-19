@@ -41,7 +41,7 @@ function stepToast(project: Project, s: ProjectSetupStep) {
   } else if (s.id === 'copy' && s.production?.length) {
     actions.ui.toast({ title: `Skipped ${s.production.length} local ${s.production.length === 1 ? 'file' : 'files'}`, sub: `${s.production.join(' and ')} look${s.production.length === 1 ? 's' : ''} like production, so Kernel left ${s.production.length === 1 ? 'it' : 'them'} out of the worktrees.`, glyph: 'error', action: { label: 'Review files', route: { name: 'settings', page: 'project', projectId: project.id, section: 'environment' }, primary: true } })
   } else {
-    actions.ui.toast({ title: s.title, sub: s.detail, glyph: 'error', ...(s.fix?.command ? { other: { label: 'Copy fix', copy: s.fix.command } } : {}), action: { label: 'Check again', retrySetup: project.id, primary: true } })
+    actions.ui.toast({ title: s.title, sub: s.detail, glyph: 'error', ...(s.fix?.command ? { other: { label: 'Copy fix', copy: s.fix.command } } : {}), action: { label: 'Check again', ...(s.id === 'push' ? { recheckPush: project.id } : { retrySetup: project.id }), primary: true } })
   }
 }
 
@@ -71,6 +71,8 @@ export function SetupLine({ project, steps }: { project: Project; steps: Project
   const problems = counted.filter((s) => s.state === 'warn' || s.state === 'fail')
   const skipped = problems[0]
   useEffect(() => {
+    // A step that runs again can raise its toast again, so a retry that fails once more still shows its error and Try again.
+    for (const s of counted) if (s.state === 'run' || s.state === 'wait') for (const st of ['fail', 'warn']) toasted.delete(`${project.id}:${s.id}:${st}`)
     if (ended) for (const s of problems) stepToast(project, s)
   }, [ended, steps])
   const team = agents.filter((a) => !a.retired)
