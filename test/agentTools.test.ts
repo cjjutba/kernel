@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canOpenPr, LEAD_FILES_ISSUES, mcpWarnings, missingServers, serverReach, toolKind, toolName, toolPolicy } from '../src/main/services/agentTools'
+import { canOpenPr, mcpWarnings, missingServers, serverReach, toolKind, toolName, toolPolicy } from '../src/main/services/agentTools'
 import { toolServerName } from '../src/main/services/mcp'
 import { BUILD_CLOSED, buildWrite, guardVerdict, type Rules } from '../src/main/services/permissions'
 
@@ -200,47 +200,15 @@ describe('agent tools', () => {
     expect(serverReach(['mcp__linear'], [{ name: 'claude.ai Linear', status: 'connected' }], { aliases: { linear: 'claude.ai Linear' }, complete: true })).toEqual({ reach: ['claude.ai Linear'], blocked: [] })
   })
 
-  it("takes a Lead's tracker issue writes away under the usual server names, keeps its reads, and leaves a teammate's alone (feat-lead-files-tracker-issues-only-with)", () => {
-    const writes = ['mcp__linear__save_issue', 'mcp__linear__save_comment', 'mcp__claude_ai_Linear__save_issue', 'mcp__linear-server__create_issue', 'mcp__github__issue_write', 'mcp__github__add_issue_comment', 'mcp__claude_ai_github__issue_write', 'mcp__claude_ai_github__update_issue_comment']
-    const reads = ['mcp__linear__get_issue', 'mcp__claude_ai_Linear__list_comments', 'mcp__github__issue_read', 'mcp__claude_ai_github__search_issues', 'mcp__figma__save_issue']
+  it("keeps a Lead's tracker issue writes in Hand off and Build here, as a teammate's (KERNEL-1113)", () => {
     for (const lead of ['handoff', 'build'] as const) {
-      for (const tools of [undefined, ['Read', 'Bash', 'mcp__linear', 'mcp__github', 'mcp__claude_ai_Linear', 'mcp__claude_ai_github', 'mcp__linear-server', 'mcp__figma']]) {
-        const p = toolPolicy(tools, { lead })!
-        for (const t of writes) {
-          expect(p.allows(t), t).toBe(false)
-          expect(p.modeRefuses(t), t).toBe(LEAD_FILES_ISSUES)
-        }
-        for (const t of reads) expect(p.allows(t), t).toBe(true)
-        expect(p.hidden).toEqual(expect.arrayContaining(['mcp__linear__save_issue', 'mcp__claude_ai_Linear__save_issue', 'mcp__github__issue_write', 'mcp__claude_ai_github__issue_write', 'mcp__claude_ai_github__add_issue_comment']))
-        // Codex turns them off on the server by tool name.
-        expect(p.server('linear')).toEqual({ on: true, except: expect.arrayContaining(['save_issue', 'save_comment']) })
-        expect(p.server('github')).toEqual({ on: true, except: expect.arrayContaining(['issue_write', 'add_issue_comment']) })
-        expect(p.server('figma')).toEqual({ on: true })
+      const p = toolPolicy(undefined, { lead })!
+      for (const t of ['mcp__linear__save_issue', 'mcp__claude_ai_Linear__save_comment', 'mcp__github__issue_write']) {
+        expect(p.hidden, `${lead}: ${t}`).not.toContain(t)
+        expect(p.allows(t), `${lead}: ${t}`).toBe(true)
+        expect(p.modeRefuses(t), `${lead}: ${t}`).toBeUndefined()
       }
     }
-    // A line naming only some of a server's tools keeps the reads among them.
-    expect(toolPolicy(['mcp__linear__get_issue', 'mcp__linear__save_issue'], { lead: 'handoff' })!.server('linear')).toEqual({ on: true, only: ['get_issue'] })
-    const mate = toolPolicy(['Read', 'mcp__linear', 'mcp__github'])!
-    for (const t of ['mcp__linear__save_issue', 'mcp__github__issue_write']) expect(mate.allows(t), t).toBe(true)
-    expect(mate.hidden.some((t) => t.startsWith('mcp__'))).toBe(false)
-  })
-
-  it("takes a Lead's issue writes away on a server the project aliases to Linear or GitHub, whatever its name (feat-lead-files-tracker-issues-only-with)", () => {
-    // The file's name on the left, the server's own on the right, as `[mcp.aliases]` has them, in either direction.
-    const aliases = { linear: 'tracker', 'work-gh': 'github', 'claude.ai Linear': 'acme-issues' }
-    const p = toolPolicy(undefined, { lead: 'handoff', aliases })!
-    for (const t of ['mcp__tracker__save_issue', 'mcp__tracker__save_comment', 'mcp__work-gh__issue_write', 'mcp__acme-issues__create_issue']) {
-      expect(p.allows(t), t).toBe(false)
-      expect(p.modeRefuses(t), t).toBe(LEAD_FILES_ISSUES)
-    }
-    for (const t of ['mcp__tracker__get_issue', 'mcp__work-gh__issue_read', 'mcp__sentry__update_issue']) expect(p.allows(t), t).toBe(true)
-    expect(p.hidden).toEqual(expect.arrayContaining(['mcp__tracker__save_issue', 'mcp__work-gh__issue_write', 'mcp__acme-issues__save_issue']))
-    // Codex turns them off on the server by its own name.
-    expect(p.server('tracker')).toEqual({ on: true, except: expect.arrayContaining(['save_issue', 'save_comment']) })
-    expect(p.server('acme-issues')).toEqual({ on: true, except: expect.arrayContaining(['save_issue']) })
-    expect(p.server('sentry')).toEqual({ on: true })
-    // A teammate with the same aliases keeps them.
-    expect(toolPolicy(['mcp__linear'], { aliases })!.allows('mcp__tracker__save_issue')).toBe(true)
   })
 
   it('lets an agent use the MCP servers its project allows it, unless disallowedTools takes them (KERNEL-537)', () => {
@@ -275,7 +243,7 @@ describe("Build here's gate on file changes and publishing (KERNEL-992)", () => 
     expect(gate('Edit', { file_path: 'src/a.ts' })).toBeUndefined()
   })
 
-  const rules = (mode: Rules['mode'], open: () => boolean): Rules => ({ permissions: { mode, alwaysAsk: [], neverAllow: [], protectedBranches: ['main'], approvalTimeoutSec: 300 } as unknown as Rules['permissions'], mode, projectAllow: () => [], projectTools: () => [], lead: true, buildClosed: () => !open() })
+  const rules = (mode: Rules['mode'], open: () => boolean): Rules => ({ permissions: { mode, alwaysAsk: [], neverAllow: [], protectedBranches: ['main'], approvalTimeoutSec: 300 } as unknown as Rules['permissions'], mode, projectAllow: () => [], projectTools: () => [], buildClosed: () => !open() })
 
   it('denies git commit, git push and gh pr create while closed, in chains, under bash -c and with env prefixes, in Bypass permissions too, and runs the rest', () => {
     let open = false

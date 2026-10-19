@@ -11,12 +11,12 @@ import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { askReason, awaitDecision, HOLD_TIMEOUT_SEC, HOOK_ASK_MS, muteShadowedWarning, PROJECT_TOOLS, SHADOWED_WARNING, type ClaudeRunner } from '../src/main/services/providers/claude'
-import { ALWAYS_ASK, LEAD_GH_ISSUE, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
+import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
 import type { Ask } from '../src/main/services/providers/types'
 import { BYPASS_OFF_AGAIN, BYPASS_WAITS, CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
 import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_BUILD_RULE, LEAD_RULE } from '../src/main/services/handoff'
-import { HANDOFF_NO_EDIT, HANDOFF_SWITCHED, LEAD_FILES_ISSUES } from '../src/main/services/agentTools'
+import { HANDOFF_NO_EDIT, HANDOFF_SWITCHED } from '../src/main/services/agentTools'
 import { OpenItems, openReminder } from '../src/main/features/openItems'
 import type { Kernel } from '../src/main/kernel'
 import type { AppSettings } from '../src/main/services/settings'
@@ -2914,23 +2914,10 @@ describe('a chat with Kernel in Hand off or Build here, on Claude (KERNEL-770)',
     expect(await use(gate, 'WebFetch')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
   })
 
-  it('Build here with no tools line limits only the tracker issue writes', async () => {
-    const { options } = await setup('acceptEdits', { agent: lead, ws: leadWs('build') })
-    expect(options.disallowedTools!.every((t) => t.startsWith('mcp__'))).toBe(true)
-    expect(options.disallowedTools).toContain('mcp__linear__save_issue')
-  })
-
-  // feat-lead-files-tracker-issues-only-with: the Lead files with file_issue, which checks the user's go-ahead.
-  it.each(['handoff', 'build'] as const)("refuses the Lead's tracker issue writes in %s, under any server name and whatever a project rule says, and keeps reads", async (mode) => {
-    const { options, runGuard, allowTools } = await setup('bypassPermissions', { agent: lead, ws: leadWs(mode) })
-    allowTools.push('mcp__linear', 'mcp__my-linear__save_issue')
-    expect(options.disallowedTools).toEqual(expect.arrayContaining(['mcp__linear__save_issue', 'mcp__claude_ai_Linear__save_issue', 'mcp__github__issue_write', 'mcp__claude_ai_github__issue_write']))
-    const gate = gateOf(options)
-    const leadOnly = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: LEAD_FILES_ISSUES } }
-    for (const tool of ['mcp__linear__save_issue', 'mcp__my-linear__save_issue', 'mcp__claude_ai_Linear__save_comment', 'mcp__github__issue_write', 'mcp__claude_ai_github__add_issue_comment']) expect(await use(gate, tool), tool).toEqual(leadOnly)
-    for (const tool of ['mcp__linear__get_issue', 'mcp__claude_ai_Linear__list_issues', 'mcp__github__issue_read', 'mcp__kernel__file_issue']) expect(await use(gate, tool), tool).toEqual({})
-    expect(await runGuard('g1', 'gh issue create --title Crash')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: LEAD_GH_ISSUE } })
-    expect(await runGuard('g2', 'gh issue view 41')).toEqual({})
+  it('Build here with no tools line hides nothing, tracker issue writes included (KERNEL-1113)', async () => {
+    const { options, runGuard } = await setup('acceptEdits', { agent: lead, ws: leadWs('build') })
+    expect(options.disallowedTools ?? []).not.toContain('mcp__linear__save_issue')
+    expect(await runGuard('g1', 'gh issue edit 41 --body done')).toEqual({})
   })
 
   it("leaves a teammate's tracker issue writes alone", async () => {
@@ -2953,7 +2940,7 @@ describe('a chat with Kernel in Hand off or Build here, on Claude (KERNEL-770)',
     const next = sdk.calls[sdk.calls.length - 1].options as Options
     expect(next.resume).toBe(options.sessionId)
     expect((next.systemPrompt as { append: string }).append).toContain(LEAD_BUILD_RULE)
-    // Hand off's hidden writers are back, and only the tracker issue writes stay out (feat-lead-files-tracker-issues-only-with).
-    expect(next.disallowedTools).not.toContain('NotebookEdit')
+    // Hand off's hidden writers are back (KERNEL-1113: nothing else is hidden).
+    expect(next.disallowedTools ?? []).not.toContain('NotebookEdit')
   })
 })
