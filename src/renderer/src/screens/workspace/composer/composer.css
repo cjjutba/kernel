@@ -365,6 +365,7 @@
 .where-row:hover { background: var(--hover); }
 .where-mode { height: auto; min-height: 44px; padding-top: 6px; padding-bottom: 6px; text-align: left; }
 .where-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.menu-item[data-rich]:has(> .where-tx) { flex-direction: row; align-items: flex-start; gap: 10px; }
 .where-t { font-size: var(--fs-ui); line-height: 18px; color: var(--ink); }
 .where-t.mono { font-size: var(--fs-code); }
 .where-d { font-size: var(--fs-meta); line-height: 16px; color: var(--muted); }

@@ -458,12 +458,14 @@ async function pickBuildHere(page: Page) {
   await page.waitForTimeout(300)
 }
 async function openBranchMenu(page: Page) {
+  await page.getByRole('button', { name: 'Build here' }).click()
   await openPlusPicker(page, /^Branch/, /invoice-table/)
   // The row with a workspace shows Open workspace while it is the active one, as on hover or focus.
   await page.getByRole('menuitemradio', { name: /t-12-invoice-schema/ }).focus()
   await page.waitForTimeout(300)
 }
 async function pickBranchChip(page: Page) {
+  await page.getByRole('button', { name: 'Build here' }).click()
   await openPlusPicker(page, /^Branch/, /invoice-table/)
   await page.getByRole('menuitemradio', { name: /t-14-invoice-table/ }).click()
   await page.mouse.move(0, 0)
@@ -473,6 +475,7 @@ async function pickBranchChip(page: Page) {
 // LeadNoChatsBranch is New chat with Kernel with the + menu's Branch picker open, main checked. The menu is the composer's own, so open it and wait for the
 // remote's branches, which the menu reads when it opens.
 async function openBaseBranch(page: Page) {
+  await page.getByRole('button', { name: 'Build here' }).click()
   await openPlusPicker(page, /^Branch/, /invoice-table/)
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
