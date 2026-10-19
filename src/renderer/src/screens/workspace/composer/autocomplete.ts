@@ -82,7 +82,7 @@ export function filterAgents(team: AgentDef[], query: string, limit = 5): AgentD
  */
 export function mentionMenu(entries: FileEntry[], agents: AgentDef[] = []): { label: string; rows: MentionRow[] }[] {
   return [
-    { label: 'Agents', rows: agents.map((agent): MentionRow => ({ kind: 'agent', agent })) },
+    { label: 'Teammates', rows: agents.map((agent): MentionRow => ({ kind: 'agent', agent })) },
     { label: 'Files', rows: entries.map((entry): MentionRow => ({ kind: 'file', entry })) }
   ].filter((g) => g.rows.length)
 }

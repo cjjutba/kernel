@@ -3,7 +3,7 @@ import type { CriterionEvidence, EvidenceLink, PrEvidence, ChatPart, Notificatio
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
-import { at, ids, scene, tableItems, withWorkspace } from './base'
+import { agent, at, ids, scene, tableItems, team, withWorkspace } from './base'
 import { downloadFlowMarkdown, fontsCheckImage, invoiceLayoutStill, invoicePdfStill, pdfNotesMarkdown, pricingStill } from './sharedStills'
 
 // Workspace lane: the workspace screen (KERNEL-10), PR states (KERNEL-15), agent turns and requests (KERNEL-14).
@@ -725,7 +725,7 @@ const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft:
  */
 const bypassPicked = (f: Fixture, menu?: 'mode') => ({
   workspaces: withWorkspace(f, ids.lead, { mode: 'current' }),
-  chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false, effort: 'xhigh' as const, mode: 'bypassPermissions' as const } : c)),
+  chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false, effort: 'medium' as const, mode: 'bypassPermissions' as const } : c)),
   ui: { route: { name: 'workspace' as const, workspaceId: ids.lead }, ...(menu ? { menu } : {}) }
 })
 
@@ -796,6 +796,8 @@ const mentionFolderTree: FileEntry[] = [{ path: 'src', dir: true }, { path: 'src
 
 /** KERNEL-750: rows from a reference folder carry the folder's name, which the menu shows where a repo file shows its folder. */
 const mentionReferenceTree: FileEntry[] = [{ path: '/Users/you/Projects/client-a-api/src/invoices/routes.ts', dir: false, reference: 'client-a-api' }, { path: '/Users/you/Projects/design-system/src/invoice-table.tsx', dir: false, reference: 'design-system' }, ...mentionFolderTree.slice(1, 2), file('src/app/invoices/table.tsx')]
+
+const mentionAgentTree: FileEntry[] = ['src/lib/money.ts', 'docs/journeys/clean-account.md'].map(file)
 
 const mentionTree: FileEntry[] = ['src/app/invoices/table.tsx', 'tests/invoices.spec.ts', 'src/pdf/invoice-pdf.ts', 'src/db/schema/invoices.ts', 'src/app/invoices/invoice-row.tsx', 'package.json'].map(file)
 
@@ -2152,26 +2154,26 @@ export const workspaceFixtures: Record<string, Fixture> = {
     }
   }),
   LeadChatTabBranch: scene((f) => {
-    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', mode: 'current', branch: 'main' }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', mode: 'worktree', branch: 'cjjutba/refund-rounding' }, 'Refund rounding', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
     const { approvals: _none, ...rest } = s
     const tab = (id: string, title: string, m: number): Chat => ({ id, workspaceId: ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', createdAt: at(9, m) })
     return {
       ...rest,
       ui: { ...rest.ui!, rightPanel: false, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } },
-      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
-      chats: [tab('chat-hdr-long', 'Split the invoice export into one PDF per client and email each client their own copy', 1), tab('chat-hdr-inbox', 'Inbox rows', 2), ...(rest.chats ?? f.chats)]
+      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'kernel' } : r)),
+      chats: [...(rest.chats ?? f.chats), tab('chat-hdr-usage', 'Usage meter after a reset', 2)]
     }
   }),
   // Three chat tabs and two file tabs with the right panel open: the tabs shrink and truncate, and the project, + and editor button keep their size. KERNEL-760 is the linked issue.
   LeadChatTabsFull: scene((f) => {
-    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', source: { kind: 'issue', id: 'KERNEL-760', title: 'Export invoices as PDF' } }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', source: { kind: 'issue', id: 'KERNEL-760', title: 'Export invoices as PDF' } }, 'Clean-account journey', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
     const { approvals: _none, ...rest } = s
     const tab = (id: string, title: string, m: number): Chat => ({ id, workspaceId: ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', createdAt: at(9, m) })
     return {
       ...rest,
-      ui: { ...rest.ui!, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: ['src/app/invoices/table.tsx', 'src/app/invoices/pdf-renderer.tsx'], diffs: [] } } },
-      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
-      chats: [tab('chat-hdr-long', 'Split the invoice export into one PDF per client and email each client their own copy', 1), tab('chat-hdr-inbox', 'Inbox rows', 2), ...(rest.chats ?? f.chats)]
+      ui: { ...rest.ui!, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: ['journey.test.ts', 'kernel-232-clean-account.md'], diffs: [] } } },
+      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'kernel' } : r)),
+      chats: [tab('chat-hdr-long', 'How long should a journey run before it times out', 1), tab('chat-hdr-inbox', 'Export retries', 2), ...(rest.chats ?? f.chats)]
     }
   }),
   // KERNEL-161: the workspace started on a Linear issue shows its key after the branch.
@@ -3811,10 +3813,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: { ...open, menu: 'model' }
   })),
   // KERNEL-746: in the Lead's chat @ offers the project's teammates above Files. A teammate's chat (WorkspaceMention) lists files only.
-  ComposerMentionAgent: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@no' } } } })),
-  ComposerMentionAgentEmpty: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@zzz' } } } })),
+  ComposerMentionAgent: scene((f) => ({
+    agents: { ...f.agents, [ids.projectA]: [...(f.agents[ids.projectA] ?? [team[0]]), agent('ivy', 'Ivy', 'QA', 'sonnet'), agent('rio', 'Rio', 'Platform', 'sonnet'), agent('theo', 'Theo', 'Review', 'sonnet'), agent('noor', 'Noor', 'Engine', 'opus')] },
+    tree: { [ids.lead]: mentionAgentTree },
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@' } } }
+  })),
+  ComposerMentionAgentEmpty: scene((f) => ({
+    agents: { ...f.agents, [ids.projectA]: [team[0]] },
+    workspaces: f.workspaces.map((w) => (w.projectId === ids.projectA ? { ...w, agentId: team[0].id } : w)),
+    status: { ...f.status, [ids.projectA]: {} },
+    tree: { [ids.lead]: mentionAgentTree },
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@' } } }
+  })),
   ComposerMentionAgentSent: scene((f) => ({
-    items: { [ids.leadChat]: [{ kind: 'user', id: 'u-agent', ts: at(10, 41), parts: [{ type: 'agent', name: 'Sean', agentId: 'sean' }, { type: 'text', text: 'take the invoice export, and ask Christian for the table first' }] }] },
+    items: { [ids.leadChat]: [{ kind: 'user', id: 'u-agent', ts: at(10, 41), parts: [{ type: 'agent', name: 'Ivy', agentId: 'ivy' }, { type: 'text', text: 'can rerun the journey on the release candidate?' }] }] },
     chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)),
     ui: { route: { name: 'workspace', workspaceId: ids.lead } }
   })),
@@ -3822,7 +3834,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ComposerMentionReference: composing({ parts: [], draft: '@invoice' }, { tree: { [ids.table]: mentionReferenceTree } }),
   ComposerModes: scene((f) => bypassPicked(f)),
   ComposerModesNarrow: scene((f) => bypassPicked(f)),
-  ComposerModeMenu: scene((f) => bypassPicked(f, 'mode')),
+  // A Codex chat with a turn running: Auto can't run for Codex, and the Bypass pick waits on the turn.
+  ComposerModeMenu: scene((f) => {
+    const b = bypassPicked(f, 'mode')
+    return { ...b, workspaces: f.workspaces, chats: b.chats.map((c) => (c.id === ids.leadChat ? { ...c, provider: 'codex' as const, model: 'gpt-6-astra', effort: 'medium' as const } : c)), models: { codex: codexModels }, push: [{ type: 'chat.running', chatId: ids.leadChat, running: true }] }
+  }),
   // KERNEL-751: a modal opened while the mode menu was open closes it, so nothing sits above the backdrop.
   ComposerModeMenuUnderModal: scene((f) => ({ ...bypassPicked(f, 'mode'), ui: { ...bypassPicked(f).ui, modal: { name: 'search' } } })),
   WorkspaceQueued: scene((f) => ({

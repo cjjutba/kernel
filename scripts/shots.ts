@@ -321,13 +321,6 @@ async function focusListRow(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// LeadChatTabBranch is the open chat tab hovered, long enough for its hover card to open: the title and what the chat follows.
-async function hoverChatTab(page: Page) {
-  await page.getByRole('tab', { name: 'Export invoices as PDF' }).hover()
-  await page.locator('.tooltip').waitFor()
-  await page.waitForTimeout(300)
-}
-
 // HeaderBranchTooltip is the header with the title hovered, long enough for the tooltip to open (KERNEL-413).
 async function hoverTitle(page: Page) {
   await page.locator('.ws-title-btn').hover()
@@ -729,7 +722,6 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SearchArchived: typeArchived,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
-  LeadChatTabBranch: hoverChatTab,
   TurnFilesHover: hoverAndFocusRows,
   InboxRowFocused: focusListRow,
   InboxPlanDoc: async (page) => { await page.getByText('Plan ready: Export invoices as PDF').click(); await page.waitForTimeout(300) },

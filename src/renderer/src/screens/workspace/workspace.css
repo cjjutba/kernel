@@ -42,6 +42,8 @@ button.ws-issue:hover { background: var(--surface-3); }
 .tab-glyph[data-tone='plan'] svg { color: var(--plan); }
 /* The team updates a terminal Lead tab has not read yet. Quiet: muted, no badge fill. Not drawn at 0. */
 .tab-count { flex-shrink: 0; color: var(--muted); font-size: var(--fs-badge); font-variant-numeric: tabular-nums; }
+.ws-tab:has(.tab-branch) { max-width: 340px; }
+.tab-branch { flex: 0 20 auto; overflow: hidden; display: inline-flex; align-items: center; gap: 4px; min-width: 0; color: var(--ink-3); font-size: var(--fs-code); }
 .ws-tab:hover { color: var(--ink); }
 .ws-tab[aria-selected='true'] { color: var(--ink); }
 /* A tab with a reply you haven't seen is bold, like its sidebar row (KERNEL-508). The tab on screen is read, so it is never marked. */
@@ -301,6 +303,10 @@ button.msg-chip:hover { border-color: var(--line-3); }
 .running { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; font: var(--fs-code) var(--mono); color: var(--muted); }
 .interrupted { align-self: flex-start; font: var(--fs-meta) var(--mono); letter-spacing: 0.06em; color: var(--muted); }
 .note { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--r); background: var(--card-bg); color: var(--ink-3); font-size: var(--fs-code); }
+.note-card { border: 1px solid var(--line); }
+.note-card .note-text { display: flex; flex-direction: column; gap: 2px; }
+.note-card .note-title { color: var(--ink-2); }
+.note-card .note-sub { color: var(--ink-3); }
 .note a { color: var(--ink-2); font-weight: var(--fw-medium); white-space: nowrap; }
 /* Kernel's notes in a chat ("PR #42 was merged on GitHub.") read as a quiet line with a hairline after it (KERNEL-274). */
 .note.inline { padding: 2px 0; border-radius: 0; background: transparent; color: var(--muted); }
@@ -551,7 +557,8 @@ button.msg-chip:hover { border-color: var(--line-3); }
 .mode-divider { display: flex; align-items: center; gap: 8px; padding: 6px 0; color: var(--muted); font-size: var(--fs-meta); }
 .mode-divider::before, .mode-divider::after { content: ''; flex: 1; height: 1px; background: var(--card-line); }
 .mode-divider > svg { flex: none; }
-.mode-suggest { display: flex; padding: 2px 0 4px; }
+.mode-suggest { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 2px 0 4px; }
+.mode-suggest-why { margin: 0; color: var(--ink-3); font-size: var(--fs-code); }
 /* A check that stops agents, with its fix, above New chat's box (KERNEL-942). No box of its own: one quiet line. */
 
 /* What used to be inline styles (KERNEL-929). */
@@ -568,6 +575,7 @@ button.msg-chip:hover { border-color: var(--line-3); }
 .lead-top[data-setup] { justify-content: flex-start; text-align: left; padding-top: 24px; overflow-y: auto; }
 .su-rows { width: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 4px; }
 .su-banner { margin: 0 0 10px; padding: 13px 16px; border-radius: var(--r); background: var(--surface-2); color: var(--ink); font-size: var(--fs-chat); }
+.su-shared { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--ink-3); font-size: var(--fs-code); }
 .su-banner code { font: var(--fs-ui) var(--mono); }
 .su-row { display: flex; align-items: center; gap: 12px; min-height: 34px; font-size: var(--fs-chat); color: var(--ink-2); }
 .su-row[data-state='run'] { color: var(--muted); }

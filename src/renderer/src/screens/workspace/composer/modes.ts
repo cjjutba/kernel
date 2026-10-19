@@ -46,12 +46,12 @@ export function shownMode(planning: boolean, run: ChatRunMode | undefined, fallb
  * Why the chat's own provider can't run `mode`, as the line under its row, or nothing when it can. `unavailable` words the answer for
  * every provider and ends each line with what the others use instead, so it is asked about this provider alone and the last sentence is cut.
  */
-export function offLine(mode: ComposerMode, provider: Provider, availability: ModeAvailabilities | null): string | undefined {
+export function offLine(mode: ComposerMode, provider: Provider, availability: ModeAvailabilities | null, full = false): string | undefined {
   if (mode === 'plan' || !availability) return undefined
   const only = Object.fromEntries(PROVIDERS.map((p) => [p.id, p.id === provider ? availability[p.id] : { auto: true, bypass: true }])) as ModeAvailabilities
   const line = unavailable(mode, only).lines[0]
   if (!line) return undefined
-  const end = line.lastIndexOf('. ')
+  const end = full ? -1 : line.lastIndexOf('. ')
   return end > 0 ? line.slice(0, end) : line
 }
 
@@ -97,7 +97,7 @@ export function modeRows(shown: Shown, provider: Provider, availability: ModeAva
     const off = offLine(mode, provider, availability)
     const checked = mode === shown.picked
     const why = checked ? whyLine(shown.why, shown.runs, off) : undefined
-    return { mode, name: modeName(mode), desc: why ?? off ?? MODE_DESC[mode], icon: MODE_ICON[mode], checked, off: !!off, why: !!why }
+    return { mode, name: modeName(mode), desc: why ?? (off && offLine(mode, provider, availability, true)) ?? MODE_DESC[mode], icon: MODE_ICON[mode], checked, off: !!off, why: !!why }
   })
 }
 

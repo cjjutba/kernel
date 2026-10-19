@@ -65,7 +65,7 @@ export function CopyFailedRow({ ws }: { ws: Workspace }) {
     <div className="su-row su-copy-failed" data-state="fail" role="alert">
       <span className="su-ico"><Icon name="close" size={16} /></span>
       <span className="su-text">
-        <span>Couldn't make a working copy</span>
+        <span>Couldn't create the worktree</span>
         <span className="su-error">{error}</span>
       </span>
       <span className="grow" />
@@ -103,6 +103,7 @@ export function ChatSetupRows({ ws, underQueue }: { ws: Workspace; underQueue?: 
   // Only the project's first chat shows the whole block. A chat without the stamp counts as not first.
   // A later chat shows just a failure, which it needs for Try again, Run again and Send anyway.
   const later = ws.firstInProject !== true
+  if (later && shared && ws.lead && !pending?.error && !end?.failed) return <p className="su-shared"><Icon name="folder" size={14} />This chat works in the main folder. Changes and Run have nothing of their own until Build here.</p>
   if (later && !pending?.error && !end?.failed) return null
   const tail = run ? lastLine(lines) : undefined
   // Failed with the chat held, Run again and Send anyway. Failed or stopped with nothing held, the chat works on, so only Rerun setup (KERNEL-1012).
