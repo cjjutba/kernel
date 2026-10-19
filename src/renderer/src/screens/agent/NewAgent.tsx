@@ -114,7 +114,7 @@ export function NewAgent({ projectId, step, prefill }: { projectId?: string; ste
             <div className="na-file-head">{draft.file}<span className="na-tag">new file</span></div>
             <textarea className="na-code" aria-label={`Contents of ${draft.file}`} value={text} spellCheck={false} onChange={(e) => setText(e.target.value)} />
           </div>
-          {projectId && <LinkButton size="ui" className="na-link" disabled={busy !== null} busy={busy === 'refine'} busyLabel={`Sending to ${author}`} busyPattern="arrow-right" onClick={() => void refine()}>{`Refine it in a chat with ${author}`}</LinkButton>}
+          {projectId && <LinkButton size="ui" className="na-link" disabled={busy !== null} busy={busy === 'refine'} busyLabel={`Sending to ${author}`} busyPattern="ripple" onClick={() => void refine()}>{`Refine it in a chat with ${author}`}</LinkButton>}
         </div>
       </Modal>
     )

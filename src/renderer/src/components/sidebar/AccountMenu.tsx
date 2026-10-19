@@ -47,7 +47,7 @@ export function AccountButton() {
       ariaLabel: here ? `Switching ${provider} to ${a.label}` : !a.signedIn ? `${provider}, ${a.label}, signed out. Opens providers` : a.active ? `${provider}, ${a.label}, in use` : `Switch ${provider} to ${a.label}`,
       content: (
         <span className="acct-row">
-          <span className="acct-mark">{here ? <Spinner label={null} pattern="wave-back" /> : a.active ? <Icon name="check" size={14} /> : null}</span>
+          <span className="acct-mark">{here ? <Spinner label={null} pattern="ripple" /> : a.active ? <Icon name="check" size={14} /> : null}</span>
           <span className="acct-name ellipsis">{a.label}</span>
           <span className="acct-plan ellipsis">{meta}</span>
         </span>

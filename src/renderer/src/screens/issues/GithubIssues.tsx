@@ -187,7 +187,7 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
 
       {shown.kind === 'error' && (() => {
         const p = githubProblem(shown.why, shown.message, where ?? 'this repo')
-        if (shown.why === 'signed-out') return <EmptyList icon="key" title={p.title} action={<Button busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{p.sub}</EmptyList>
+        if (shown.why === 'signed-out') return <EmptyList icon="key" title={p.title} action={<Button busy={refreshing} busyPattern="ripple" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{p.sub}</EmptyList>
         if (shown.why === 'not-found') return <EmptyList icon="warning" title={p.title} action={<Button onClick={() => chooseTracker(project.id)}>Open project settings</Button>}>{p.sub}</EmptyList>
         return <FailedState title={p.title} onRetry={load}>{p.sub}</FailedState>
       })()}
@@ -196,7 +196,7 @@ export function GithubIssues({ project, where, issueId, head }: { project: Proje
         const p = githubProblem(failed.why, failed.message, where ?? 'this repo')
         const action = failed.why === 'not-found'
           ? <Button size="md" onClick={() => chooseTracker(project.id)}>Open project settings</Button>
-          : <Button size="md" busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>
+          : <Button size="md" busy={refreshing} busyPattern="ripple" busyLabel="Trying" onClick={refresh}>Try again</Button>
         return <RefreshNotice kind={p.banner} title={p.title} action={action}>{`${p.sub} The issues below are from the last time they loaded.`}</RefreshNotice>
       })()}
 

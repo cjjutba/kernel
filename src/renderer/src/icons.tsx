@@ -3,6 +3,7 @@ import type { Provider } from '@shared/types'
 import {
   Add01Icon,
   Alert02Icon,
+  AlertCircleIcon,
   ArrowDown01Icon,
   ArrowDown02Icon,
   ArrowLeft01Icon,
@@ -123,6 +124,7 @@ const H = {
   wifioff: WifiOff01Icon,
   key: Key01Icon,
   warning: Alert02Icon,
+  alertCircle: AlertCircleIcon,
   xCircle: CancelCircleIcon,
   clip: Attachment01Icon,
   book: BookOpen01Icon,

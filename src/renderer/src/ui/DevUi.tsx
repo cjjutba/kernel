@@ -45,13 +45,10 @@ function Controls() {
       </Section>
       <Section title="Busy buttons">
         <div className="devui-row">
-          <Button variant="primary" busy busyLabel="Sending" busyPattern="arrow-right">Send</Button>
-          <Button busy busyLabel="Merging" busyPattern="ripple-in">Merge</Button>
-          <Button variant="primary" busy busyLabel="Approving" busyPattern="pulse">Approve</Button>
-          <Button variant="danger" busy busyLabel="Archiving" busyPattern="scatter">Archive</Button>
-          <Button busy busyLabel="Refreshing" busyPattern="rotate">Refresh</Button>
-          <Button busy busyLabel="Starting" busyPattern="snake">Run</Button>
-          <Button busy busyLabel="Restoring" busyPattern="wave-back">Restore</Button>
+          <Button variant="primary" busy busyLabel="Sending" busyPattern="ripple">Send</Button>
+          <Button busy busyLabel="Merging" busyPattern="ripple">Merge</Button>
+          <Button variant="danger" busy busyLabel="Archiving" busyPattern="ripple">Archive</Button>
+          <Button busy busyLabel="Refreshing" busyPattern="ripple">Refresh</Button>
           <Button busy busyLabel="Saving">Save</Button>
         </div>
       </Section>
@@ -125,7 +122,7 @@ function Overlays() {
         </div>
       </Section>
       <Section title="Toast, bottom right, 5s">
-        <div className="devui-stage" style={{ minHeight: 70 }}><div className="toast-stack"><Toast title="Branch copied" sub="samrivera/kernel-9" action={{ label: 'Undo' }} /></div></div>
+        <div className="devui-stage" style={{ minHeight: 70 }}><div className="toast-stack"><Toast title="Branch copied" sub="samrivera/kernel-9" actions={[{ label: 'Undo' }]} /></div></div>
       </Section>
     </>
   )

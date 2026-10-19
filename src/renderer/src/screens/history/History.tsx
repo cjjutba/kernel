@@ -75,7 +75,7 @@ export function History() {
                     <span className="hs-pr" data-merged={w.prState === 'merged' ? 'true' : undefined}>{w.prNumber ? <Icon name={prGlyph(w)} size={12} /> : null}{prLabel(w)}</span>
                     <span className="hs-when">{whenLabel(endedAt(w))}</span>
                     <span className="hs-actions">
-                      <Button busy={busy === w.id} busyPattern="wave-back" busyLabel="Restoring" disabled={busy !== null} aria-label={busy === w.id ? `Restoring ${nameOf(w)}` : `Restore ${nameOf(w)}`} onClick={() => void restore(w)}>Restore</Button>
+                      <Button busy={busy === w.id} busyPattern="ripple" busyLabel="Restoring" disabled={busy !== null} aria-label={busy === w.id ? `Restoring ${nameOf(w)}` : `Restore ${nameOf(w)}`} onClick={() => void restore(w)}>Restore</Button>
                       <IconButton icon="trash" label={`Delete ${nameOf(w)}`} disabled={busy !== null} onClick={() => confirmDelete([w.id])} />
                     </span>
                   </li>

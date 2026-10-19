@@ -91,20 +91,29 @@
 .modal-body { padding: 4px 18px 18px; line-height: var(--lh); }
 .modal:focus { outline: 0; }
 
-/* toast: WorkspaceToast.png, with the title over the sub and no close button, on the Usage popover's surface (toast-motion-and-swipe) */
-.toast-stack { position: fixed; z-index: var(--z-toast); right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; width: 360px; }
+/* toast (Pen 18.1, 18.3): 400px wide, 20px above the window's bottom edge (the composer's gap) and 16px from its right edge (the Session card's gap), on every screen. A glyph, the title over its sub, a close button, and up to two actions under them. */
+.toast-stack { position: fixed; z-index: var(--z-toast); right: 16px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; width: 400px; }
 /* Each toast's slot opens before it slides in and closes after it slides out, so the toasts above glide instead of jumping. The -8px takes up the stack's gap. A flex item keeps its content height unless min-height is 0. */
 .toast-slot { min-height: 0; interpolate-size: allow-keywords; animation: toast-open var(--dur-base) ease-out, toast-clip var(--dur-base); }
 .toast-slot[data-leaving] { animation: toast-close var(--dur-base) ease-in var(--dur-slow) forwards, toast-clip var(--dur-base) var(--dur-slow) forwards; }
-.toast { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 14px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); transition: transform var(--dur-slow) ease-out; animation: toast-in var(--dur-enter) ease-out var(--dur-base) backwards; }
+.toast { display: flex; flex-direction: column; gap: 10px; padding: 12px 12px 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); transition: transform var(--dur-slow) ease-out; animation: toast-in var(--dur-enter) ease-out var(--dur-base) backwards; }
+.toast-top { display: flex; align-items: flex-start; gap: 10px; }
+.toast-glyph { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 16px; height: 20px; color: var(--ink); }
+.toast-glyph[data-glyph='merged'] { color: var(--merged); }
+.toast-close { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 20px; height: 20px; padding: 0; border: 0; background: transparent; color: var(--faint); cursor: pointer; }
+.toast-close:hover { color: var(--ink); }
+.toast-actions { display: flex; justify-content: flex-end; gap: 8px; padding-left: 26px; }
 .toast[data-swiping] { transition: none; }
 .toast-slot[data-leaving] > .toast { animation: toast-sink var(--dur-slow) ease-in forwards; }
 .toast-slot[data-leaving='right'] > .toast { animation-name: toast-out-right; }
 .toast-slot[data-leaving='down'] > .toast { animation-name: toast-out-down; }
-.toast-text { display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
-.toast-title { font-weight: var(--fw-medium); color: var(--ink); }
-.toast-sub { color: var(--muted); }
-.toast-action { padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); text-decoration: none; cursor: pointer; }
+.toast-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-row); line-height: 1.4; }
+.toast-title { font-weight: var(--fw-semibold); color: var(--ink); }
+.toast-sub { color: var(--muted); font-size: var(--fs-code); line-height: 1.45; }
+.toast-action { height: 28px; padding: 0 11px; border: 1px solid var(--line-3); border-radius: 7px; background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); cursor: pointer; transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+.toast-action:hover { background: var(--surface-3); color: var(--ink); }
+.toast-action[data-primary] { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }
+.toast-action[data-primary]:hover { background: color-mix(in srgb, var(--ink) 88%, var(--on-ink)); color: var(--on-ink); }
 /* The slot clips only while its height animates, so the toast can rise from below and sink or swipe down past its slot unclipped. */
 @keyframes toast-clip { from, to { overflow-y: clip; } }
 @keyframes toast-open { from { height: 0; margin-top: -8px; } }

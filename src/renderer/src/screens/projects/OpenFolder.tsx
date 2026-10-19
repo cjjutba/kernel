@@ -98,7 +98,7 @@ export function OpenFolder() {
           ))}
           {!folders && <LoadingRow what="recent folders" />}
           {folders && !folders.length && loadError && (
-            <Banner kind="setup" title="Could not read your recent folders" actions={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void retry()}>Try again</Button>}>{loadError}</Banner>
+            <Banner kind="setup" title="Could not read your recent folders" actions={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="ripple" onClick={() => void retry()}>Try again</Button>}>{loadError}</Banner>
           )}
           {folders && !folders.length && !loadError && <p className="muted cr-empty">No recent folders. Use Choose folder…, or drop one here.</p>}
         </div>

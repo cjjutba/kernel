@@ -64,7 +64,7 @@ function Chip({ g, c, compact, open, onOpen }: { g: FooterGroup; c: FooterChip; 
     <button type="button" className="ft-chip" data-on="" aria-label={label} aria-haspopup="dialog" aria-expanded={open} aria-busy={c.switching || undefined} onClick={(e) => onOpen(g.provider, e.currentTarget)}>
       <span className="ft-mark"><ProviderMark provider={g.provider} size={13} /></span>
       {(c.billed || c.switching || !compact) && <span className="ft-name">{c.name}</span>}
-      {c.switching && <span className="ft-switching"><Spinner label={null} pattern="wave-back" /><span>Switching</span></span>}
+      {c.switching && <span className="ft-switching"><Spinner label={null} pattern="ripple" /><span>Switching</span></span>}
       {!c.switching && !c.billed && !compact && (
         <>
           <span aria-hidden="true" className="ft-bar"><Meter label={`${g.name} 5-hour`} value={c.five ?? 0} /></span>
@@ -107,5 +107,5 @@ function RefreshButton() {
   const refresh = () => run('refresh', async () => {
     try { actions.usage.set(await call('usage.get', { force: true })) } catch { /* a failed read keeps the last numbers */ }
   })
-  return <IconButton className="ft-refresh" icon="refresh" size={14} label="Refresh usage" busy={busy !== null} busyPattern="rotate" busyLabel="Refreshing usage" onClick={refresh} />
+  return <IconButton className="ft-refresh" icon="refresh" size={14} label="Refresh usage" busy={busy !== null} busyPattern="ripple" busyLabel="Refreshing usage" onClick={refresh} />
 }

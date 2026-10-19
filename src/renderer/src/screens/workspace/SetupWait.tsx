@@ -48,7 +48,7 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
             {going(q) ? <div className="msg-acts-space" aria-hidden /> : (
             <div className="queued-meta">
               {i === queue.length - 1 && <span>{failed ? (ws.worktreePending?.fromShared ? 'Not sent yet' : 'Waiting for setup') : 'Sends when setup finishes'}</span>}
-              {i === queue.length - 1 && running && <Button size="sm" variant="ghost" busy={busy === 'now'} busyPattern="arrow-right" busyLabel="Sending" onClick={() => void now()}>Send now</Button>}
+              {i === queue.length - 1 && running && <Button size="sm" variant="ghost" busy={busy === 'now'} busyPattern="ripple" busyLabel="Sending" onClick={() => void now()}>Send now</Button>}
               <span className="queued-edit">
                 <LinkButton variant="quiet" size="meta" onClick={() => editQueuedInComposer(q)}>Edit</LinkButton>
                 <LinkButton variant="quiet" size="meta" onClick={() => unqueue(q)}>Cancel</LinkButton>

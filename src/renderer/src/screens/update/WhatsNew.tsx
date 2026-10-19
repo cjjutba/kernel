@@ -75,7 +75,7 @@ export function WhatsNew({ update: opened }: { update?: AppUpdate }) {
     ? <>
         <span className="wn-note">{busy ? 'Agents pause, Kernel restarts, agents resume.' : failed ? '' : 'Running agents pause for a few seconds.'}</span>
         <Button key="later" variant="ghost" size="lg" disabled={busy} onClick={close}>Later</Button>
-        <Button key="restart" variant="primary" size="lg" data-autofocus busy={busy} busyPattern="rotate" busyLabel="Restarting" onClick={restart}>{failed ? 'Try again' : 'Restart to update'}</Button>
+        <Button key="restart" variant="primary" size="lg" data-autofocus busy={busy} busyPattern="ripple" busyLabel="Restarting" onClick={restart}>{failed ? 'Try again' : 'Restart to update'}</Button>
       </>
     : <><span className="grow" /><Button key="done" variant="primary" size="lg" data-autofocus onClick={close}>Done</Button></>
 
@@ -110,7 +110,7 @@ export function WhatsNew({ update: opened }: { update?: AppUpdate }) {
               <Banner
                 kind="offline"
                 title="Could not check for updates"
-                actions={<Button size="md" busy={retrying === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={retryCheck}>Try again</Button>}
+                actions={<Button size="md" busy={retrying === 'retry'} busyLabel="Trying again" busyPattern="ripple" onClick={retryCheck}>Try again</Button>}
               >
                 {reason === 'Could not check for updates' ? undefined : reason}
               </Banner>

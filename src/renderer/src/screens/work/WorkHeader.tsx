@@ -126,7 +126,7 @@ export function WorkHeader({ tab, head, allProjects, counts, where, onRefresh, r
       <span className="grow" />
       {head.tracker && <TrackerToggle {...head.tracker} />}
       {where && <span className="wk-where">{where}</span>}
-      {onRefresh && <IconButton icon="refresh" size={16} label="Refresh" busy={refreshing} busyPattern="rotate" busyLabel="Refreshing" onClick={onRefresh} />}
+      {onRefresh && <IconButton icon="refresh" size={16} label="Refresh" busy={refreshing} busyPattern="ripple" busyLabel="Refreshing" onClick={onRefresh} />}
     </header>
   )
 }

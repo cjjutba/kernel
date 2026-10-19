@@ -236,7 +236,7 @@ Dragging, dropping, pasting and picking a file all answer at once, in the worksp
 
 A button that waits on the main process shows it is working until the call returns. That means git, GitHub, the network, files, agent sessions, scripts and opening Terminal.
 
-- The ripple dot loader (the 13px grid, `pattern="ripple-out"` in code, which `Button` and `IconButton` set) takes the icon's place and the label says what is happening: "Archiving", "Merging", "Creating". One or two plain words, no trailing dots, the way the PR header writes "Creating PR".
+- The ripple dot loader (the 13px grid, `pattern="ripple"` in code, which `Button` and `IconButton` set) takes the icon's place and the label says what is happening: "Archiving", "Merging", "Creating". One or two plain words, no trailing dots, the way the PR header writes "Creating PR".
 - The button is disabled while the call runs, so a second click, Enter or a shortcut can't start the work twice. Buttons next to it that act on the same thing (Deny beside Approve, Cancel beside Send) are disabled too.
 - Every variant takes the Creating PR look at full opacity: surface-3 fill, line-3 border, ink-3 text. A busy primary or danger button turns grey. The PR header band is the exception: there a busy button keeps the band's tone, with its soft fill and edge, dimmer text and a dot loader in the band's text color, so it never reads as a hole in the band (KERNEL-274).
 - Every busy button shows the ripple, whatever the action. The other patterns belong to other waits (see the table under Motion).
@@ -328,7 +328,7 @@ Shared controls that came with them: `Checkbox` (the box in ink, centred on its 
 | `twinkle` | two or three dots dip at once, fixed uneven delays | three dots | chat tabs working |
 | `checker` | the X, then the plus, alternating | the X | PR checks running: PR rows, PR band status |
 | `arrow-down` | a `v` chevron moving down, row by row | the chevron | loading data and Starting |
-| `ripple` (`ripple-out` in code until KERNEL-1109) | center and edges together, then corners | the plus | busy buttons and inline action links |
+| `ripple` | center and edges together, then corners | the plus | busy buttons and inline action links |
 
 - Modals (KERNEL-648): every modal opens with the scrim fading in over 160ms `ease-out` while the dialog fades in, rises from 8px below and scales from 0.98 over 200ms, `cubic-bezier(0.22, 1, 0.36, 1)`. Escape, the scrim, Close and Cancel play an exit: the dialog fades and drops 4px over 120ms, `cubic-bezier(0.4, 0, 1, 1)`, and the scrim fades over the same 120ms. Neither takes input during the exit, and the modal leaves when it ends. A close after an action that changes the screen leaves at once. Reduced motion turns it on and off in place.
 - Escape order and focus return (KERNEL-878): one Escape does one thing, the innermost thing first. In order: a field being edited (it cancels or clears), an open menu, picker or modal (the newest closes), the screen's own Escape (leave Settings, back out of the plan question, leave New chat, stop the running turn), and a toast last. A handled Escape stops there, so one press never both cancels an edit and dismisses a toast. A text field keeps Escape from the screen and the toast whether or not it uses it; the message box does not, so an Escape it leaves alone goes on. Menus, pickers and modals register with `useLayer`, the screen's own Escape with `useScreenEscape` and a toast with `useToastEscape` (`ui/hooks.ts`), never with a window listener of their own.

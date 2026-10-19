@@ -180,7 +180,7 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
             )}
             <span className="grow" />
             <Button size="lg" disabled={!project} onClick={newChat}>New chat</Button>
-            <Button size="lg" variant={work ? 'secondary' : 'primary'} busy={busy === 'plan'} busyPattern="arrow-right" busyLabel="Sending" disabled={!project || busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
+            <Button size="lg" variant={work ? 'secondary' : 'primary'} busy={busy === 'plan'} busyPattern="ripple" busyLabel="Sending" disabled={!project || busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
             {work && <Button size="lg" variant="primary" onClick={() => go({ name: 'workspace', workspaceId: work.id })}>Open workspace</Button>}
           </div>
         </div>

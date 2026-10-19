@@ -69,8 +69,8 @@ export function CopyFailedRow({ ws }: { ws: Workspace }) {
         <span className="su-error">{error}</span>
       </span>
       <span className="grow" />
-      <Button size="sm" variant="ghost" busy={busy === 'retry'} busyPattern="rotate" busyLabel="Trying again" disabled={busy !== null} onClick={() => void retry()}>Try again</Button>
-      <Button size="sm" variant="ghost" busy={busy === 'handoff'} busyPattern="arrow-right" busyLabel="Sending" disabled={busy !== null} onClick={() => void handoff()}>Send as Hand off</Button>
+      <Button size="sm" variant="ghost" busy={busy === 'retry'} busyPattern="ripple" busyLabel="Trying again" disabled={busy !== null} onClick={() => void retry()}>Try again</Button>
+      <Button size="sm" variant="ghost" busy={busy === 'handoff'} busyPattern="ripple" busyLabel="Sending" disabled={busy !== null} onClick={() => void handoff()}>Send as Hand off</Button>
     </div>
   )
 }
@@ -118,12 +118,12 @@ export function ChatSetupRows({ ws, underQueue }: { ws: Workspace; underQueue?: 
       {project && !later && <p className="su-banner">{shared ? <>You're working in the main folder of <code>{project.name}</code>, with no branch of your own yet</> : <>You're in a new copy of <code>{project.name}</code> on its own branch</>}</p>}
       {pending ? (
         <div className="su-row" data-state={pending.error ? 'fail' : 'run'} role="status">
-          <span className="su-ico">{pending.error ? <Icon name="close" size={16} /> : <Spinner label={null} pattern="rotate" />}</span>
+          <span className="su-ico">{pending.error ? <Icon name="close" size={16} /> : <Spinner label={null} pattern="snake" />}</span>
           <span className="su-text">
             <span>{pending.error ? "Couldn't create the worktree" : <>Creating the worktree from <code>{ws.baseRef}</code></>}</span>
             {pending.error && <span className="su-error">{pending.error}</span>}
           </span>
-          {pending.error && <><span className="grow" /><Button size="sm" variant="ghost" busy={busy === 'again'} busyPattern="rotate" busyLabel="Creating" disabled={busy !== null} onClick={() => void again()}>Try again</Button></>}
+          {pending.error && <><span className="grow" /><Button size="sm" variant="ghost" busy={busy === 'again'} busyPattern="ripple" busyLabel="Creating" disabled={busy !== null} onClick={() => void again()}>Try again</Button></>}
         </div>
       ) : !later && !shared && (
         <>
@@ -150,13 +150,13 @@ export function ChatSetupRows({ ws, underQueue }: { ws: Workspace; underQueue?: 
       )}
       {run && !pending && (!run.endedAt ? !later && (
         <div className="su-row su-tall" data-state="run" role="status">
-          <span className="su-ico"><Spinner label={null} pattern="rotate" /></span>
+          <span className="su-ico"><Spinner label={null} pattern="snake" /></span>
           <span className="su-text">
             <span className="su-head"><span className="su-ink">Running setup script</span><span className="su-clock">{since}</span></span>
             {tail && <span className="su-tail">{tail}</span>}
           </span>
           <span className="grow" />
-          <Button size="sm" variant="ghost" busy={busy === 'stop'} busyPattern="rotate" busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>Stop</Button>
+          <Button size="sm" variant="ghost" busy={busy === 'stop'} busyPattern="ripple" busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>Stop</Button>
           {logLink}
         </div>
       ) : end && (
@@ -169,10 +169,10 @@ export function ChatSetupRows({ ws, underQueue }: { ws: Workspace; underQueue?: 
           {!end.failed && !rerun && logLink}
           {(end.failed || rerun) && <span className="grow" />}
           {end.failed && held && <>
-            <Button size="sm" variant="ghost" busy={busy === 'again'} busyPattern="rotate" busyLabel="Starting" disabled={busy !== null} onClick={() => void again()}>Run again</Button>
-            <Button size="sm" variant="ghost" busy={busy === 'skip'} busyPattern="arrow-right" busyLabel="Sending" disabled={busy !== null} onClick={() => void skip()}>Send anyway</Button>
+            <Button size="sm" variant="ghost" busy={busy === 'again'} busyPattern="ripple" busyLabel="Starting" disabled={busy !== null} onClick={() => void again()}>Run again</Button>
+            <Button size="sm" variant="ghost" busy={busy === 'skip'} busyPattern="ripple" busyLabel="Sending" disabled={busy !== null} onClick={() => void skip()}>Send anyway</Button>
           </>}
-          {rerun && <Button size="sm" variant="ghost" busy={busy === 'again'} busyPattern="rotate" busyLabel="Starting" disabled={busy !== null} onClick={() => void again()}>Rerun setup</Button>}
+          {rerun && <Button size="sm" variant="ghost" busy={busy === 'again'} busyPattern="ripple" busyLabel="Starting" disabled={busy !== null} onClick={() => void again()}>Rerun setup</Button>}
           {(end.failed || rerun) && logLink}
         </div>
       ))}

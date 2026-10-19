@@ -278,7 +278,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
       </div>
       <div className="acts">
         {step > 0 && <Button disabled={busy !== null} onClick={() => move(step - 1)}>Back</Button>}
-        <Button variant="primary" busy={busy === 'send'} busyPattern="arrow-right" busyLabel="Sending" disabled={!pickReady(p) || busy !== null} onClick={primary}>{many && !done ? 'Next' : 'Send'}</Button>
+        <Button variant="primary" busy={busy === 'send'} busyPattern="ripple" busyLabel="Sending" disabled={!pickReady(p) || busy !== null} onClick={primary}>{many && !done ? 'Next' : 'Send'}</Button>
       </div>
     </section>
   )
@@ -302,7 +302,7 @@ function ChangesNote({ onSend, onCancel }: { onSend: (note: string) => Promise<u
     <div className="acts" style={{ flexWrap: 'nowrap' }}>
       <input className="grow-input" aria-label="What should change" placeholder="What should change" autoFocus value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send(); if (e.key === 'Escape') onCancel() }} />
       <Button disabled={!!busy} onClick={onCancel}>Cancel</Button>
-      <Button variant="primary" busy={!!busy} busyPattern="arrow-right" busyLabel="Sending" onClick={send}>Send</Button>
+      <Button variant="primary" busy={!!busy} busyPattern="ripple" busyLabel="Sending" onClick={send}>Send</Button>
     </div>
   )
 }
@@ -421,7 +421,7 @@ function HireCard({ a, lead, inChat }: { a: Approval; lead: string; inChat?: boo
       ) : (
         <div className="acts">
           <Button disabled={!!busy} onClick={() => setAsking(true)}>Edit file</Button>
-          <Button variant="primary" busy={!!busy} busyPattern="pulse" busyLabel="Creating" onClick={() => void run('create', () => decideHere(a, { behavior: 'allow' }))}>Create agent</Button>
+          <Button variant="primary" busy={!!busy} busyPattern="ripple" busyLabel="Creating" onClick={() => void run('create', () => decideHere(a, { behavior: 'allow' }))}>Create agent</Button>
         </div>
       )}
     </section>

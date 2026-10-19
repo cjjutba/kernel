@@ -34,7 +34,7 @@ export function ReadinessLine() {
       {check.fix?.command && <CopyButton text={check.fix.command} label="Copy command" failSub={check.fix.command} disabled={busy !== null} />}
       {check.fix?.action === 'use-next-port'
         ? <Button size="sm" variant="primary" busy={busy === 'fix'} busyLabel="Switching" disabled={busy !== null} onClick={() => void fix()}>{port ? `Use ${port}` : 'Use the next port'}</Button>
-        : <Button size="sm" variant="primary" busy={busy === 'check'} busyLabel="Checking" busyPattern="rotate" disabled={busy !== null} onClick={() => void recheck()}>Check again</Button>}
+        : <Button size="sm" variant="primary" busy={busy === 'check'} busyLabel="Checking" busyPattern="ripple" disabled={busy !== null} onClick={() => void recheck()}>Check again</Button>}
     </div>
   )
 }

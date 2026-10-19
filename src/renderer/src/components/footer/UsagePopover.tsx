@@ -63,7 +63,7 @@ function Row({ s, compact, open, counts, busy, onSignIn }: { s: PlanSection; com
         <div className="pm-head">
           <span className="pm-mark"><ProviderMark provider={s.provider} size={14} /></span>
           <span className="pm-who"><span className="pm-line"><span className="pm-name">{s.name}</span><span className="pm-acct">Not signed in</span></span></span>
-          <Button size="xs" aria-label={`Sign in to ${s.name}`} busy={busy === `signin:${s.provider}`} busyPattern="wave-back" busyLabel="Signing in" disabled={busy !== null} onClick={() => onSignIn(s.provider, !s.signedOut || s.signedOut.cli)}>Sign in</Button>
+          <Button size="xs" aria-label={`Sign in to ${s.name}`} busy={busy === `signin:${s.provider}`} busyPattern="ripple" busyLabel="Signing in" disabled={busy !== null} onClick={() => onSignIn(s.provider, !s.signedOut || s.signedOut.cli)}>Sign in</Button>
         </div>
       </section>
     )

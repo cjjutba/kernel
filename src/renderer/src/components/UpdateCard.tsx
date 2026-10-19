@@ -34,7 +34,7 @@ export function UpdateCard() {
       <span className="update-card-title">New update available</span>
       <div className="update-card-actions">
         <Button disabled={busy} onClick={seeChanges}>See changes</Button>
-        <Button variant="primary" busy={busy} busyPattern="rotate" busyLabel="Restarting" onClick={restart}>Restart</Button>
+        <Button variant="primary" busy={busy} busyPattern="ripple" busyLabel="Restarting" onClick={restart}>Restart</Button>
       </div>
     </div>
   )

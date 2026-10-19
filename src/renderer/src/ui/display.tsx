@@ -20,7 +20,7 @@ export function Banner({ kind, title, children, actions, onDismiss }: { kind: Ba
   const { ref, leaving, leave, handlers } = useSwipeDismiss<HTMLDivElement>(onDismiss)
   return (
     <div role="alert" className="banner" data-kind={kind} data-dismissible={onDismiss ? '' : undefined} data-leaving={leaving || undefined} ref={ref} {...handlers}>
-      {kind === 'retry' ? <Spinner label={null} pattern="rotate" /> : <Icon name={kind === 'warn' ? 'warning' : bannerIcon[kind]} />}
+      {kind === 'retry' ? <Spinner label={null} pattern="ripple" /> : <Icon name={kind === 'warn' ? 'warning' : bannerIcon[kind]} />}
       <div className="grow"><div className="banner-title">{title}</div>{children && <div className="muted">{children}</div>}</div>
       {actions}
       {onDismiss && <IconButton className="banner-close" icon="close" label="Dismiss" size={12} onClick={leave} />}
