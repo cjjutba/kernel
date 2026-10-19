@@ -601,3 +601,27 @@ button.su-link:hover .su-link-text { text-decoration: underline; text-underline-
 .md-file:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .code-line[data-hit] { background: var(--surface-3); }
 .code-line[data-hit] .ln { color: var(--ink-2); }
+
+/* Project setup as one line under the box (KERNEL-1089): the project, the step, n of m, Details, and a 2px track. */
+.su-line { display: flex; flex-direction: column; gap: 8px; padding: 0 6px; font-size: var(--fs-meta); color: var(--muted); }
+.su-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.su-lead { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.su-name { color: var(--ink); }
+.su-step { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.su-n { font-variant-numeric: tabular-nums; }
+.su-sep { color: var(--ink-3); }
+.su-more { position: relative; display: inline-flex; align-items: center; gap: 8px; }
+.su-details { border: 0; background: transparent; padding: 0; font: inherit; color: var(--ink-2); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-3); text-underline-offset: 3px; }
+.su-details:hover { color: var(--ink); }
+.su-track { height: 2px; border-radius: 1px; background: var(--line-3); overflow: hidden; }
+.su-fill { display: block; height: 100%; background: var(--ink); transition: width var(--dur, 200ms) ease; }
+.su-pop { width: 300px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; border-color: var(--line-3); }
+.su-pop-head { display: flex; align-items: baseline; justify-content: space-between; }
+.su-pop-title { color: var(--ink); font-weight: var(--fw-medium); }
+.su-pop-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.su-pop-row { display: flex; align-items: center; gap: 10px; color: var(--ink-2); }
+.su-pop-row[data-state='wait'] { color: var(--muted); }
+.su-pop-ico { width: 14px; display: inline-flex; justify-content: center; flex-shrink: 0; }
+.su-pop-text { flex: 1; min-width: 0; }
+.su-pop-meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+.su-team { display: flex; align-items: center; gap: 8px; margin: 0; }

@@ -11,6 +11,8 @@ import { setupToasts } from '../screens/onboarding/setupToasts'
 export function runToastAction(action: NonNullable<Toast['action']>) {
   if (action.copy) void navigator.clipboard.writeText(action.copy).catch(() => actions.ui.toast({ title: 'Could not copy', sub: action.copy }))
   if (action.recheck || action.fix) void (action.fix ? call('preflight.fix', { id: action.fix }) : call('preflight.run', undefined)).then((checks) => { actions.system.setPreflight(checks); setupToasts(checks) }).catch((e) => actions.ui.toast({ title: 'Could not check again', sub: cleanError(e) }))
+  if (action.retrySetup) void call('projects.retrySetup', { projectId: action.retrySetup }).catch((e) => actions.ui.toast({ title: 'Could not try again', sub: cleanError(e) }))
+  if (action.recheckPush) void call('projects.pushCheck', { projectId: action.recheckPush, recheck: true }).catch((e) => actions.ui.toast({ title: 'Could not check again', sub: cleanError(e) }))
   if (action.href) void call('system.openExternal', { url: action.href })
   if (action.route) actions.ui.go(action.route)
   if (action.modal) actions.ui.openModal(action.modal)

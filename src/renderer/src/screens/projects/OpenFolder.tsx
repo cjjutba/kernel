@@ -3,13 +3,16 @@ import type { FolderInfo } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions } from '../../store'
 import { openNewChat } from '../../lead'
-import { Banner, Button, Icon, LoadingRow, Modal, useBusy } from '../../ui'
+import { Button, EmptyList, Icon, LoadingRow, Modal, useBusy } from '../../ui'
 import { baseName, defaultTeam, tilde } from './draft'
 import { RepoNameField, useRepoName } from './RepoName'
 import './projects.css'
 
 /** What a folder's row says on the right: on GitHub, a repo with no remote, or not a repo at all. */
 const stateOf = (f: FolderInfo) => (!f.git ? 'Not a git repo' : f.remote ? 'GitHub' : 'No remote')
+
+/** Every error is a toast (KERNEL-1089). */
+const toast = (title: string, sub: string) => actions.ui.toast({ title, sub, glyph: 'error' })
 
 /** A dropped file's path on the Mac, or nothing for one made in the page. */
 const pathOf = (file: File) => { try { return window.kernel.pathOf(file) } catch { return '' } }
@@ -22,12 +25,11 @@ const pathOf = (file: File) => { try { return window.kernel.pathOf(file) } catch
 export function OpenFolder() {
   const [folders, setFolders] = useState<FolderInfo[] | null>(null)
   const [picked, setPicked] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [over, setOver] = useState(false)
   const [busy, run] = useBusy<'retry' | 'open'>()
 
-  const load = () => call('projects.recentFolders', undefined).then((list) => { setFolders(list); setLoadError(null); setPicked((p) => p || list[0]?.path || '') }, (e: unknown) => { setFolders([]); setLoadError(cleanError(e)) })
+  const load = () => call('projects.recentFolders', undefined).then((list) => { setFolders(list); setLoadError(null); setPicked((p) => p || list[0]?.path || '') }, (e: unknown) => { setFolders([]); setLoadError(cleanError(e)); toast('Could not read your recent folders', cleanError(e)) })
   useEffect(() => { void load() }, [])
   const retry = () => run('retry', async () => {
     setFolders(null)
@@ -45,13 +47,11 @@ export function OpenFolder() {
       const f = await call('projects.inspectFolder', { path })
       setFolders((list) => [f, ...(list ?? []).filter((x) => x.path !== f.path)])
       setPicked(f.path)
-      setError(null)
-    } catch (e) { setError(cleanError(e)) }
+    } catch (e) { toast('Could not open that folder', cleanError(e)) }
   }
   const choose = async () => { const path = await call('system.pickFolder', undefined); if (path) await add(path) }
   const open = () => run('open', async () => {
     if (!current || (needsRepo && !repo.ready)) return
-    setError(null)
     try {
       const project = await call('projects.create', {
         source: 'folder', name: baseName(current.path), from: current.path, baseBranch: current.branch, team: defaultTeam(), autostart: false,
@@ -59,9 +59,10 @@ export function OpenFolder() {
       })
       actions.projects.upsert(project)
       openNewChat(project.id)
-    } catch (e) { setError(cleanError(e)) }
+    } catch (e) { toast(needsRepo ? 'Could not create the repo' : 'Could not open the folder', cleanError(e)) }
   })
 
+  const tryAgain = <Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="ripple" onClick={() => void retry()}>Try again</Button>
   return (
     <Modal
       title="Open a folder" onClose={actions.ui.closeModal} width={560} top={112}
@@ -83,10 +84,9 @@ export function OpenFolder() {
           <p className="rm-sub of-sub">Pick a recent folder, or drop one anywhere here.</p>
           <Button size="md" onClick={() => void choose()}>Choose folder…</Button>
         </div>
-        {error && <p role="alert" className="del of-err">{error}</p>}
         <div role="radiogroup" aria-label="Recent folders" className="of-list2" aria-busy={!folders}>
           {folders?.map((f) => (
-            <button key={f.path} type="button" role="radio" aria-checked={picked === f.path} className="of-row2" onClick={() => { setPicked(f.path); setError(null) }}>
+            <button key={f.path} type="button" role="radio" aria-checked={picked === f.path} className="of-row2" onClick={() => setPicked(f.path)}>
               <Icon name="folder" size={16} />
               <span className="grow of-row2-text">
                 <span className="of-row2-name">{baseName(f.path)}</span>
@@ -97,10 +97,9 @@ export function OpenFolder() {
             </button>
           ))}
           {!folders && <LoadingRow what="recent folders" />}
-          {folders && !folders.length && loadError && (
-            <Banner kind="setup" title="Could not read your recent folders" actions={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="ripple" onClick={() => void retry()}>Try again</Button>}>{loadError}</Banner>
-          )}
-          {folders && !folders.length && !loadError && <p className="muted cr-empty">No recent folders. Use Choose folder…, or drop one here.</p>}
+          {folders && !folders.length && (loadError
+            ? <EmptyList icon="warning" title="Could not read your recent folders" action={tryAgain}>{loadError}</EmptyList>
+            : <EmptyList icon="folder" title="No recent folders" action={tryAgain}>Use Choose folder…, or drop one here.</EmptyList>)}
         </div>
         {current && (
           <div className="of-detail">

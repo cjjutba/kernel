@@ -146,6 +146,8 @@
 /* Clone a GitHub repo (KERNEL-945): a URL, your repos with their owner's avatar, and the folder it lands in. */
 .cl-body { display: flex; flex-direction: column; gap: 18px; padding-top: 4px; position: relative; }
 .cl-acct { position: absolute; top: -40px; right: 34px; display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px 0 3px; border: 1px solid var(--line-3); border-radius: var(--r-pill); font-size: var(--fs-meta); color: var(--ink-2); }
+.cl-acct-note { color: var(--ink-3); }
+.cl-sub { margin: 0; font-size: var(--fs-ui); color: var(--ink-2); }
 .cl-av { flex-shrink: 0; border-radius: 50%; object-fit: cover; background: var(--surface-3); }
 .cl-av-none { display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); color: var(--ink-2); text-transform: lowercase; }
 .cl-field { display: flex; flex-direction: column; gap: 6px; }

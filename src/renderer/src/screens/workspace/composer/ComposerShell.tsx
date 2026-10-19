@@ -5,7 +5,7 @@ import './composer.css'
  * The frame of the message box, for a chat's composer and New chat's: the wrap and its width, what stacks above the box, the box
  * with its input and its toolbar. Both render this, so the box has one position, width and slot order.
  */
-export function ComposerShell({ compact, wrap, above, popup, box, top, input, foot, hidden }: {
+export function ComposerShell({ compact, wrap, above, popup, box, top, input, foot, below, hidden }: {
   /** One line: the input, + and Stop, with the toolbar and what only an open box needs hidden (KERNEL-934). */
   compact?: boolean
   /** Focus and press handlers for the whole frame, so the box can tell when focus has left it. */
@@ -20,6 +20,8 @@ export function ComposerShell({ compact, wrap, above, popup, box, top, input, fo
   input: ReactNode
   /** The toolbar: model and effort, the permission picker, a spacer, then the context meter, + and send. */
   foot: ReactNode
+  /** A quiet line under the box, such as project setup's progress. */
+  below?: ReactNode
   /** Elements that draw nothing, such as the file input. */
   hidden?: ReactNode
 }) {
@@ -35,6 +37,7 @@ export function ComposerShell({ compact, wrap, above, popup, box, top, input, fo
             <div className="row cmp-foot">{foot}</div>
           </div>
         </div>
+        {below}
         {hidden}
       </div>
     </div>

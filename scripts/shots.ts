@@ -662,6 +662,9 @@ async function hoverLockedProvider(page: Page) {
 }
 
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  ProjectSetupDetails: async (page) => { await page.getByRole('button', { name: 'Details' }).click(); await page.waitForTimeout(300) },
+  ConnectRepoNoMatch: async (page) => { await page.getByPlaceholder('Search').fill('kernel-docs'); await page.waitForTimeout(500) },
+  ConnectRepoCloning: async (page) => { await page.getByRole('radio').first().click(); await page.getByRole('button', { name: /^Clone repo/ }).click(); await page.waitForTimeout(300) },
   ComposerDragOver: dragOverPane,
   WorkspaceModelPickerCodex: openLegacyModels,
   WorkspaceModelPickerLegacy: openLegacyModels,
