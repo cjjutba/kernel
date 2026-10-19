@@ -532,6 +532,9 @@ export const platformFixtures: Record<string, Fixture> = {
   // No agent follows the QA row, but Teng pins its own model, so the count still opens and lists only that agent.
   SettingsModelsAgentsNone: settingsPage('models', { agents: { ...modelsAgents(), [ids.projectA]: [...modelsAgents()[ids.projectA], agentFile('teng', 'Teng', 'QA', 'Runs tests, attaches output')] }, status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),
   SettingsModelsPickerEffort: modelsPage(),
+  // KERNEL-1116: the five-step track on a Codex model (Pen 8.3, 8.11), and a Claude role's picker with Codex open (Pen 15.34).
+  SettingsModelsPickerEffortCodex: modelsPage(),
+  SettingsModelsPickerBoth: modelsPage(),
   SettingsModelsPickerCompact: modelsPage(),
   SettingsModelsPickerCodexRole: modelsPage(),
   SettingsModelsNarrow: largeModels(),

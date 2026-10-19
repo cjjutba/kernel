@@ -11,6 +11,9 @@ import { isCycleEffortKey, shortcutNumber } from './modelShortcuts'
 
 export { EFFORTS }
 
+/** The five steps of the Effort track (Pen 8.3, 8.11), Low to Max, for both providers. A model that doesn't take a step shows it disabled. Codex's `ultra` has no step: at `ultra` the track is full. */
+const TRACK: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
+
 /** A flyout of choices with a check on the current one. Escape or ArrowLeft goes back to the picker. */
 function ChoiceMenu({ label, options, value, at, onAt, onPick, onClose, flip }: { label: string; options: { id: string; label: string }[]; value: string; at: number; onAt: (i: number) => void; onPick: (id: string) => void; onClose: () => void; flip?: boolean }) {
   useLayer({ onEscape: onClose })
@@ -46,13 +49,13 @@ type Tab = 'favorites' | Provider
  * and a tooltip that says to start a new chat (KERNEL-406). Codex is dimmed too when it isn't set up (`grouped` is false). It opens 8px above its
  * trigger and aligns left; in Settings (`placement="down"`) it opens below and aligns right.
  *
- * `variant="settings"` is the role picker in Settings, Models (KERNEL-988, KERNEL-995): no ^⌘N hints, and nothing is locked by a chat, but `only`
- * limits a role's column to one provider, so the other segment is dimmed (KERNEL-1056). A Claude role also gets a Compact at row (`compact`, `onCompact`).
+ * `variant="settings"` is the role picker in Settings, Models (KERNEL-988, KERNEL-995): no ^⌘N hints, and nothing is locked by a chat. Both providers stay open there (Pen 15.34, KERNEL-1116),
+ * and `onModel` says which provider the pick is on. A caller that holds one provider (New agent, the agent editor) passes `only`, so the other segment is dimmed (KERNEL-1056). A Claude role also gets a Compact at row (`compact`, `onCompact`).
  * Each model row's effort is what the role would get on it, `fitEffort(effort, model)`.
  */
 export function ModelPicker({ provider = 'claude', grouped = false, started = false, variant = 'composer', only, placement = 'up', model, effort, fallback, compact, onCompact, onModel, onEffort, onClose, anchorRef }: {
   anchorRef: React.RefObject<HTMLElement | null>; provider?: Provider; grouped?: boolean; started?: boolean; variant?: 'composer' | 'settings'; only?: Provider; placement?: 'up' | 'down'; model: string; effort: Effort; fallback: Effort; compact?: CompactWindow; onCompact?: (w: CompactWindow) => void
-  onModel: (m: string, effort: Effort) => void; onEffort: (e: Effort) => void; onClose: () => void
+  onModel: (m: string, effort: Effort, provider: Provider) => void; onEffort: (e: Effort) => void; onClose: () => void
 }) {
   const codex = useProviderModels('codex')
   const claude = useProviderModels('claude')
@@ -75,7 +78,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const lockReason = (p: Provider): string | undefined => {
     if (settings && only && p !== only) return `This is the ${short(only)} model. Set ${short(p)}'s on its own chip.`
     if (!settings && started && p !== provider) return `This chat started on ${short(provider)}. Start a new chat to use ${short(p)}.`
-    if (p === 'codex' && !grouped && provider !== 'codex') return "Codex isn't set up. Sign in to it in Settings, Accounts."
+    if (!settings && p === 'codex' && !grouped && provider !== 'codex') return "Codex isn't set up. Sign in to it in Settings, Accounts."
     return undefined
   }
   const locked = (p: Provider) => lockReason(p) !== undefined
@@ -132,7 +135,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const effortRow = items.length
   const compactRow = hasCompact ? items.length + 1 : -1
   const rowEffort = (m: Row) => (settings ? fitEffort(effort, m.id, listOf(m.provider)) : m.id === model ? effort : fitEffort(effortFor(m.id, memory, fallback), m.id, listOf(m.provider)))
-  const pickModel = (m: Row) => { if (!locked(m.provider)) onModel(m.id, rowEffort(m)) }
+  const pickModel = (m: Row) => { if (!locked(m.provider)) onModel(m.id, rowEffort(m), m.provider) }
   const pickEffort = (e: Effort) => onEffort(e)
   const pickCompact = (w: CompactWindow) => { onCompact?.(w); setFlyout(null) }
   const openCompact = () => { setSubAt(Math.max(0, COMPACT_WINDOWS.indexOf(compact ?? 'full'))); setFlyout('compact') }
@@ -184,9 +187,8 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
       </button>
     </div>
   )
+  const trackAt = TRACK.indexOf(effort) < 0 ? TRACK.length - 1 : TRACK.indexOf(effort)
   const empty = needle ? `No model matches "${q.trim()}".` : tab === 'favorites' ? 'Star a model to keep it here.' : 'No models to show.'
-  const first = efforts[0]
-  const last = efforts[efforts.length - 1]
 
   return (
     <div ref={ref} className="menu cmp-pop model-pop" role="dialog" aria-label={settings ? 'Model' : 'Model and effort'} data-placement={down ? 'down' : undefined} data-align={settings ? 'right' : undefined} onKeyDown={onKey} style={{ maxHeight }}>
@@ -228,12 +230,15 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
           <span className="pick-effort-value">{effortLabel(effort)}</span>
         </div>
         <div className="pick-track" role="radiogroup" aria-label="Effort">
-          {efforts.map((x, i) => (
-            <button key={x} type="button" role="radio" aria-checked={x === effort} aria-label={EFFORT_LABELS[x]} data-tip-side="above" tabIndex={-1} className="pick-step" data-on={i <= efforts.indexOf(effort)}
-              onMouseDown={(e) => e.preventDefault()} onClick={() => pickEffort(x)}><span /></button>
-          ))}
+          {TRACK.map((x, i) => {
+            const offered = efforts.includes(x)
+            return (
+              <button key={x} type="button" role="radio" aria-checked={x === effort} aria-disabled={offered ? undefined : true} aria-label={EFFORT_LABELS[x]} data-tip-side="above" tabIndex={-1} className="pick-step" data-on={i <= trackAt} data-off={offered ? undefined : true}
+                onMouseDown={(e) => e.preventDefault()} onClick={() => { if (offered) pickEffort(x) }}><span /></button>
+            )
+          })}
         </div>
-        <div className="pick-effort-ends"><span>{first ? EFFORT_LABELS[first] : ''}</span><span>{last ? EFFORT_LABELS[last] : ''}</span></div>
+        <div className="pick-effort-ends"><span>{EFFORT_LABELS.low}</span><span>{EFFORT_LABELS.max}</span></div>
       </div>
       {hasCompact && (
         <div className="pick-compact">

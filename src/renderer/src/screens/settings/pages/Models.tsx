@@ -86,7 +86,7 @@ function RoleAgents({ title, follow, own }: { title: string; follow: WhoLine[]; 
 }
 
 /** One side of a role, Claude's or Codex's: like the composer's model chip, with the model, then the effort and, on Claude, the compact window. Opens the model picker under it (KERNEL-988, KERNEL-995). Escape and a pick return focus to the chip. */
-function ModelChip({ title, current, compact, models, onPick, onEffort, onCompact }: { title: string; current: RoleModel; compact: CompactWindow; models: ProviderModel[]; onPick: (model: string) => void; onEffort: (e: Effort) => void; onCompact: (w: CompactWindow) => void }) {
+function ModelChip({ title, current, compact, models, onPick, onEffort, onCompact }: { title: string; current: RoleModel; compact: CompactWindow; models: ProviderModel[]; onPick: (model: string, provider: Provider) => void; onEffort: (e: Effort) => void; onCompact: (w: CompactWindow) => void }) {
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLSpanElement>(null)
   const button = useRef<HTMLButtonElement>(null)
@@ -107,8 +107,8 @@ function ModelChip({ title, current, compact, models, onPick, onEffort, onCompac
         <span className="ag-chip-detail ellipsis">{detail}</span>
         <Icon name="chevron" size={12} />
       </button>
-      {open && <ModelPicker variant="settings" only={current.provider} placement="down" anchorRef={wrap} provider={current.provider} model={current.model} effort={current.effort} fallback={current.effort} compact={claude ? compact : undefined}
-        onModel={(m) => { onPick(m); close() }} onEffort={onEffort} onCompact={onCompact} onClose={close} />}
+      {open && <ModelPicker variant="settings" placement="down" anchorRef={wrap} provider={current.provider} model={current.model} effort={current.effort} fallback={current.effort} compact={claude ? compact : undefined}
+        onModel={(m, _e, p) => { onPick(m, p); close() }} onEffort={onEffort} onCompact={onCompact} onClose={close} />}
     </span>
   )
 }
@@ -129,7 +129,9 @@ function RoleLine({ title, roleKey, choice, compact }: { title: string; roleKey:
     return (
       <span role="cell" className="ag-side">
         <ModelChip title={`${title} ${providerLabel(provider)}`} current={current} compact={compact} models={listOf(provider)}
-          onPick={(model) => save(provider, model, fitEffort(current.effort, model, listOf(provider)))}
+          onPick={(model, picked) => (picked === provider
+            ? save(provider, model, fitEffort(current.effort, model, listOf(provider)))
+            : void patchSettings({ models: { roles: { [roleKey]: { prefer: picked, [picked]: { model, effort: fitEffort(roleSide(choice, picked).effort, model, listOf(picked)) } } } } }))}
           onEffort={(effort) => save(provider, current.model, effort)} onCompact={(w) => void patchSettings({ models: { compact: { [roleKey]: w } } })} />
       </span>
     )
