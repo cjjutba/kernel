@@ -554,11 +554,6 @@ button.msg-chip:hover { border-color: var(--line-3); }
 .mode-divider > svg { flex: none; }
 .mode-suggest { display: flex; padding: 2px 0 4px; }
 /* A check that stops agents, with its fix, above New chat's box (KERNEL-942). No box of its own: one quiet line. */
-.lead-ready { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 4px 0 14px; margin-bottom: 8px; color: var(--ink-2); }
-.lead-ready > svg { flex-shrink: 0; color: var(--ink); }
-.lead-ready-text { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
-.lead-ready-title { font-weight: var(--fw-medium); color: var(--ink); white-space: nowrap; }
-.lead-ready-detail { min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* What used to be inline styles (KERNEL-929). */
 .tab-new { position: relative; align-self: center; margin-left: 4px; }

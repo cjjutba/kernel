@@ -26,7 +26,17 @@ const failing = (failed: PreflightCheck) => allOk.map((c) => (c.id === failed.id
 /** Every check passing, the one at `id` with more to say (KERNEL-437). */
 const passing = (row: PreflightCheck) => allOk.map((c) => (c.id === row.id ? row : c))
 
-const setup = (checks: PreflightCheck[]) => scene(() => ({ ...empty, preflight: checks, ui: onboarding }))
+// A launch after setup is done: the failing check is a toast on New chat, and nothing stops the app (KERNEL-1088).
+const setup = (checks: PreflightCheck[]) => scene(() => ({ ...empty, preflight: checks, settings: setupDone(), ui: onboarding }))
+
+// First run (KERNEL-1088): the four steps, with the checks the first one lists.
+const gitOk: PreflightCheck = { id: 'git', ok: true, blocking: true, title: 'Git', detail: 'Found on your PATH', meta: 'git 2.45' }
+const codexOff: PreflightCheck = { id: 'codex', ok: false, blocking: false, title: 'Codex', detail: 'Not set up' }
+const stepChecks = (...over: PreflightCheck[]) => [claudeOk, gitOk, authOk, ghOk, hooksOk, codexOff].map((c) => over.find((o) => o.id === c.id) ?? c)
+/** Your team as the Pen draws it: Teng left out, Artkin reviews on Opus. */
+const teamSettings = (() => { const d = DEFAULT_SETTINGS('/Users/you'); return { ...d, models: { ...d.models, roles: { ...d.models.roles, reviewer: { ...d.models.roles.reviewer, claude: { model: 'claude-opus-5-5', effort: 'high' as const } } } }, onboarding: { done: false, out: ['teng'], reviewer: 'artkin' } } })()
+const firstRun = (step: 'checks' | 'accounts' | 'team' | 'loop', extra: Partial<Fixture> = {}, menu?: 'obReviewer' | 'obMode' | 'obModel' | 'obAllowed' | 'obDenied') =>
+  scene(() => ({ ...empty, preflight: stepChecks(), telemetry: { canSend: true }, ...extra, ui: { route: { name: 'onboarding', step }, ...(menu ? { menu } : {}) } }))
 
 /** Six running sessions, the count the canvas shows: the seed's chats, topped up with copies. */
 const sixRunning = (f: Fixture) => {
@@ -350,6 +360,8 @@ const sixAgents: AgentDef[] = [
   agentFile('artkin', 'Artkin', 'Reviewer', 'Types, security, tenancy'), agentFile('wren', 'Wren', 'Designer', 'Joined today')
 ]
 /** The agents Settings, Models lists under each row: Frontend and Backend in two projects, one pinned to a model, one with a custom role. */
+/** Settings once onboarding is finished, so a failing check shows as a toast instead of the first-run steps (KERNEL-1088). */
+function setupDone(): AppSettings { const d = DEFAULT_SETTINGS('/Users/you'); return { ...d, onboarding: { ...d.onboarding, done: true } } }
 const modelsPage = () => settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } })
 const modelsAgents = (): Fixture['agents'] => {
   const christian = agentFile('christian', 'Christian', 'Frontend', 'UI work, follows DESIGN.md')
@@ -914,8 +926,8 @@ export const platformFixtures: Record<string, Fixture> = {
   DevUiStates: gallery('states'),
   DevUiOverlays: gallery('overlays'),
   DevUiDialogs: gallery('dialogs'),
-  // KERNEL-942: the wordmark a fresh install sees before New chat.
-  Splash: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'splash' } } })),
+  // KERNEL-1088: the K mark. The settings save that follows it is held, as the shot's finished animation would open New chat otherwise.
+  Splash: { ...scene(() => ({ ...empty, settings: setupDone(), ui: { route: { name: 'onboarding', step: 'splash' } } })), hold: ['settings.set'] },
   // KERNEL-217: boot failed. The Loading layout with the error and Try again. No PNG.
   LoadingError: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'loading' }, startError: 'Could not read the Kernel database. Quit Kernel and open it again.' } })),
   LoadingApp: scene((f) => ({ ...sixRunning(f), ui: { route: { name: 'onboarding', step: 'loading' } } })),
@@ -943,6 +955,27 @@ export const platformFixtures: Record<string, Fixture> = {
   SetupGhToken: setup(passing({ ...ghOk, detail: 'Signed in as cjjutba-bot, from `GH_TOKEN` in your shell', note: 'Kernel passes it on because gh has no stored login.' })),
   SetupShellTimeout: setup([{ id: 'shell', ok: false, blocking: false, title: 'Reading your shell timed out', detail: 'Kernel reads PATH and proxy settings from your login shell and gave up after 10 seconds. Tools from nvm, or a proxy set in `.zshrc`, may be missing until it can.', note: 'Look in `.zshrc` for a slow command, or one that waits for an answer, like an update prompt.', fix: { action: 'recheck' } }, ...allOk]),
   SetupBedrock: setup(passing({ id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', meta: 'us-east-1' })),
+  // KERNEL-1088: the four first-run steps. Each state of the 1.12 sheet is one fixture, named as the sheet names it.
+  OnboardingChecks: firstRun('checks'),
+  OnboardingChecksRunning: firstRun('checks', { hold: ['preflight.run'] }),
+  ChecksRequiredFailed: firstRun('checks', { preflight: stepChecks({ id: 'claude', ok: false, blocking: true, title: 'Claude Code not found', detail: 'Kernel runs agents with its own copy. Install Claude Code to sign in from Terminal.', fix: { command: 'curl -fsSL https://claude.ai/install.sh | bash' } }) }),
+  ChecksOptionalMissing: firstRun('checks', { preflight: stepChecks({ id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not installed', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'brew install gh' } }) }),
+  ChecksPortTaken: firstRun('checks', { preflight: stepChecks({ id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another app is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } }) }),
+  OnboardingAccounts: firstRun('accounts', { accounts: [claudeAccounts[0]!] }),
+  ClaudeSignedOut: firstRun('accounts', { accounts: [], preflight: stepChecks({ id: 'auth', ok: false, blocking: true, title: 'Not signed in to Claude', detail: 'Agents run on your own Claude plan.', fix: { command: 'claude auth login' } }) }),
+  ClaudeBedrock: firstRun('accounts', { accounts: [], preflight: stepChecks({ id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', meta: 'us-east-1' }) }),
+  SecondAccount: firstRun('accounts', { accounts: claudeAccounts }),
+  OnboardingTeam: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: teamSettings }),
+  OnboardingTeamModel: firstRun('team', { accounts: [claudeAccounts[0]!, ...codexAccounts], models: { codex: codexModels }, settings: teamSettings }, 'obModel'),
+  CodexUnavailable: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }) }),
+  ReviewerMenu: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: teamSettings }, 'obReviewer'),
+  PermissionMenu: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: teamSettings }, 'obMode'),
+  OnboardingNewAgent: ({ ...firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels } }), ui: { route: { name: 'onboarding', step: 'team' }, modal: { name: 'newAgent', step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } }),
+  OnboardingLoop: firstRun('loop'),
+  UsageUnpicked: firstRun('loop', {}, 'obAllowed'),
+  NotificationsAllowed: firstRun('loop', {}, 'obAllowed'),
+  NotificationsDenied: firstRun('loop', {}, 'obDenied'),
+  SettingsRunOnboarding: settingsPage('general'),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
   // KERNEL-406: Christian on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has headroom.

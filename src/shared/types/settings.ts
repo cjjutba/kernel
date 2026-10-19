@@ -115,6 +115,12 @@ export interface AppSettings {
    * Settings, Privacy changes it.
    */
   privacy: { telemetry: 'ask' | 'on' | 'off' }
+  /**
+   * First-launch onboarding (KERNEL-1088). `done` is set when Finish setup is pressed, and Settings, General can clear it to run it
+   * again. `out` holds the starter agents left off the team, and `reviewer` who reviews pull requests (an agent id,
+   * `kernel-reviewer` or `none`). A project seeded with the starter team afterwards reads both.
+   */
+  onboarding: { done: boolean; out: string[]; reviewer: string }
 }
 
 /**
