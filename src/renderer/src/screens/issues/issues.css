@@ -8,7 +8,7 @@
 .is-sep { width: 1px; height: 16px; margin: 0 6px; background: var(--line-2); }
 .is-search { position: relative; display: inline-flex; align-items: center; }
 .is-search > svg { position: absolute; left: 9px; color: var(--muted); pointer-events: none; }
-.is-search input { width: 220px; height: 28px; box-sizing: border-box; padding: 0 10px 0 28px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink-2); font-size: var(--fs-code); outline: none; }
+.is-search input { width: 220px; height: 28px; box-sizing: border-box; padding: 0 10px 0 28px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink-2); font-size: var(--fs-code); outline: none; }
 .is-search input:focus-visible { border-color: var(--ink-3); }
 .is-search input::-webkit-search-cancel-button { display: none; }
 

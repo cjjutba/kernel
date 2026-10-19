@@ -92,14 +92,13 @@ describe('theme contrast', () => {
   it('the dark neutrals are grey with a slight cool lean: red equals green, blue 0 to 3 above (KERNEL-611)', () => {
     const rgb = (v: string) => [1, 3, 5].map((i) => parseInt(v.slice(i, i + 2), 16))
     const lean = Object.entries(dark).filter(([k, v]) => {
-      if (![...SURFACES, 'hover', 'aside', ...LADDER, 'line', 'line-2', 'line-3', 'line-4', 'input-line'].includes(k)) return false
+      if (![...SURFACES, 'hover', 'aside', ...LADDER, 'line', 'line-2', 'line-3'].includes(k)) return false
       const [r, g, b] = rgb(v)
       return r !== g || b - r < 0 || b - r > 3
     })
     expect(lean).toEqual([])
   })
-  it('an input border reaches 3:1 on every surface it sits on, and line-2 stays a hairline', () => {
-    expect(themes(both).flatMap(([name, theme]) => under(name, theme, ['input-line'], BORDERED, 3))).toEqual([])
+  it('line-2 stays a hairline', () => {
     for (const theme of [light, dark]) expect(contrast(theme['line-2'], theme.panel)).toBeLessThan(1.5)
   })
   it('a container edge or row divider stays visibly apart from the fill it sits on, in both themes (KERNEL-1038)', () => {
@@ -159,7 +158,7 @@ describe('prefers-contrast: more', () => {
   const normal = { light: tokens("[data-theme='light']"), dark: tokens(":root, [data-theme='dark']") }
   const more = { light: { ...normal.light, ...hexes(lightBody) }, dark: { ...normal.dark, ...hexes(darkBody) } }
   const bodies = { light: lightBody, dark: darkBody }
-  const LINES = ['line', 'line-2', 'line-3', 'line-4', 'input-line', 'panel-line', 'card-line', 'chip-line', 'pill-line']
+  const LINES = ['line', 'line-2', 'line-3', 'panel-line', 'card-line', 'chip-line', 'pill-line']
   const DIVIDERS = ['line', 'panel-line']
   it('sets the same tokens in both themes', () => {
     expect(Object.keys(hexes(lightBody)).sort()).toEqual(Object.keys(hexes(darkBody)).sort())
@@ -185,10 +184,10 @@ describe('prefers-contrast: more', () => {
     for (const [name, theme] of themes(more)) LADDER.slice(1).forEach((tier, i) => { if (contrast(theme[tier], theme.panel) > contrast(theme[LADDER[i]], theme.panel)) fails.push(`${name} ${tier} is above ${LADDER[i]}`) })
     expect(fails).toEqual([])
   })
-  it('strengthens every line: dividers reach 2:1, the rest 3:1, and line-4 and the input border 4.5:1', () => {
+  it('strengthens every line: dividers reach 2:1 and the rest 3:1', () => {
     const fails: string[] = []
     for (const [name, theme] of themes(more)) for (const l of LINES) {
-      const min = DIVIDERS.includes(l) ? 2 : ['line-4', 'input-line'].includes(l) ? 4.5 : 3
+      const min = DIVIDERS.includes(l) ? 2 : 3
       if (contrast(theme[l], theme.panel) <= contrast(normal[name][l], normal[name].panel)) fails.push(`${name} ${l} is no stronger than normal`)
       for (const s of DIVIDERS.includes(l) ? ['panel'] : BORDERED) if (contrast(theme[l], theme[s]) < min) fails.push(`${name} ${l} on ${s}: ${contrast(theme[l], theme[s]).toFixed(2)}`)
     }
@@ -325,11 +324,11 @@ export function unknownVarHits(source: string, defined: Set<string>): Hit[] {
 /** Names a file declares (`--x:`), and names it quotes (`'--x'`, set or read from script). */
 const declared = (text: string) => [...text.matchAll(/(?<![\w-])(--[\w-]+)\s*:/g), ...text.matchAll(/['"`](--[\w-]+)['"`]/g)].map((m) => m[1])
 
-/** Every token `tokens` declares that `usage` never reads. The terminal reads its palette by a built name and the scrollbar transitions --scroll-thumb by name. */
+/** Every token `tokens` declares that `usage` never reads. The terminal reads its palette by a built name and the scrollbar transitions --scroll-thumb by name. --merge is the Merge button's green (KERNEL-1108), which the redesign parts move onto; drop it from this list when the first one does. */
 export function unusedTokenHits(tokens: string, usage: string): Hit[] {
   const text = blank(tokens)
   const names = [...new Set(declared(text).filter((n) => text.includes(`${n}:`)))]
-  const unused = names.filter((n) => !n.startsWith('--term-') && n !== '--scroll-thumb' && !new RegExp(`var\\(${n}(?![\\w-])`).test(usage) && !new RegExp(`['"\`]${n}['"\`]`).test(usage))
+  const unused = names.filter((n) => !n.startsWith('--term-') && n !== '--scroll-thumb' && n !== '--merge' && !new RegExp(`var\\(${n}(?![\\w-])`).test(usage) && !new RegExp(`['"\`]${n}['"\`]`).test(usage))
   return unused.map((n) => {
     const line = lineOf(text, text.search(new RegExp(`(?<![\\w-])${n}\\s*:`)))
     return { kind: 'unusedToken' as const, line, text: n }

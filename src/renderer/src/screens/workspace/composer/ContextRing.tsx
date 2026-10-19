@@ -49,7 +49,7 @@ export function ContextRing({ chat, blocked, open, onOpen }: { chat: Chat; block
         data-tip={usage ? `${formatTokens(usage.used)} of ${formatTokens(usage.max)} tokens used` : `${pct}% of context used`}
         onClick={() => onOpen(!open)}>
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r={R} fill="none" stroke="var(--line-4)" strokeWidth="2" />
+          <circle cx="8" cy="8" r={R} fill="none" stroke="var(--line-3)" strokeWidth="2" />
           <circle cx="8" cy="8" r={R} className="ctx-arc" fill="none" strokeWidth="2" strokeLinecap="butt" strokeDasharray={`${(C * pct) / 100} ${C}`} transform="rotate(-90 8 8)" />
         </svg>
       </button>

@@ -53,7 +53,7 @@
 .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
 .icon-btn.send:not([data-ready='true']) { background: var(--surface-3); }
 .icon-btn.send:disabled { cursor: default; }
-.icon-btn.send.stop { background: transparent; border: 1px solid var(--line-4); }
+.icon-btn.send.stop { background: transparent; border: 1px solid var(--line-3); }
 .icon-btn.send.stop:hover { background: var(--surface-3); }
 .icon-btn.stop span { width: 9px; height: 9px; border-radius: calc(var(--r-2xs) - 1px); background: var(--ink); }
 
@@ -89,16 +89,16 @@
 @keyframes chip-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .cmp-chip[data-entering] { animation: none; } }
 .lead-new { position: relative; }
-.cmp[data-drop] { border-color: var(--line-4); }
+.cmp[data-drop] { border-color: var(--line-3); }
 .drop-veil { position: absolute; inset: 0; z-index: var(--z-veil); padding: 12px; background: color-mix(in srgb, var(--surface) 92%, transparent); pointer-events: none; }
-.drop-frame { display: flex; align-items: center; justify-content: center; height: 100%; border: 1px dashed var(--line-4); border-radius: var(--r-lg); color: var(--ink-2); font-size: var(--fs-chat); font-weight: var(--fw-medium); }
+.drop-frame { display: flex; align-items: center; justify-content: center; height: 100%; border: 1px dashed var(--line-3); border-radius: var(--r-lg); color: var(--ink-2); font-size: var(--fs-chat); font-weight: var(--fw-medium); }
 /* Hover previews (Chip.tsx HoverPreview): every kind wears .peek-frame, the landing page's demo bezel at its small size without the drop shadows. A 1px outer edge
    lit along the top and fading to the line color down the sides (::before), a 3px glow centered on the top edge (::after, the recipe of the resize edge in
    resize.css), and a faint lift toward the top of the glass. The kind's class sets size and content. The frame's padding is 6px, so each kind's max size is 480x320 minus it. */
 .peek-frame { --edge-glow: color-mix(in srgb, var(--ink) 45%, transparent); position: fixed; z-index: var(--z-preview); box-sizing: border-box; padding: 6px; border-radius: calc(var(--r-sm) + 6px); pointer-events: none;
   background: linear-gradient(180deg, color-mix(in srgb, var(--ink) 5%, transparent), transparent 22%), linear-gradient(180deg, var(--surface-2), var(--surface) 40%, var(--canvas)); }
 .peek-frame::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--ink) 34%, transparent), color-mix(in srgb, var(--ink) 12%, transparent) 14%, var(--line-4) 50%, var(--line-3) 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ink) 34%, transparent), color-mix(in srgb, var(--ink) 12%, transparent) 14%, var(--line-3) 50%, var(--line-3) 100%);
   mask: linear-gradient(black 0 0) content-box exclude, linear-gradient(black 0 0); }
 .peek-frame::after { content: ''; position: absolute; top: -2px; left: 18px; right: 18px; height: 3px; pointer-events: none;
   background: radial-gradient(ellipse closest-side at 50% 50%, var(--edge-glow) 0%, var(--edge-glow) 25%, transparent 100%); }
@@ -220,7 +220,7 @@
 .link-id { flex-shrink: 0; min-width: 64px; font-size: var(--fs-meta); color: var(--muted); }
 .link-name { flex-shrink: 0; max-width: 55%; color: var(--ink-2); }
 .link-sub { font-size: var(--fs-chip); color: var(--muted); text-align: right; }
-.link-box { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 15px; height: 15px; border: 1px solid var(--line-4); border-radius: var(--r-2xs); color: var(--on-ink); }
+.link-box { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 15px; height: 15px; border: 1px solid var(--line-3); border-radius: var(--r-2xs); color: var(--on-ink); }
 .link-box[data-on] { border-color: var(--ink); background: var(--ink); }
 .link-note { margin: 8px 10px; font-size: var(--fs-code); color: var(--muted); }
 .link-none { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-bottom: 6px; }
@@ -268,7 +268,7 @@
    It moves slowly (KERNEL-322): the glow rises and fades over --plan-dur each way (KERNEL-418, KERNEL-565), and
    breathes every 8s while the box waits for input. Focus settles it. The strip opens over --plan-dur and one light crosses it.
    Every plan mode state change reads --plan-dur (KERNEL-650); the 8s breathing loop is ambient, so it keeps its own length.
-   Normal mode focus is not a plan mode change: the real border goes --line-2 to --line-4 in 160ms ease-out like the rest of the app.
+   Normal mode focus is not a plan mode change: the real border goes --line-2 to --line-3 in 160ms ease-out like the rest of the app.
    The blue border is a ring on ::after that fades its opacity and color over --plan-dur, so turning plan mode off fades the blue
    out over --plan-dur even though the border underneath only ever moves at 160ms (CSS can't tell a plan-off from a blur, both land
    on the same style).
@@ -350,7 +350,7 @@
 .where-pop > * { flex-shrink: 0; }
 /* New chat's project menu hangs centred under the title, the one where-row menu above the box. */
 .where-pop[data-drop='down'] { left: 50%; bottom: auto; top: calc(100% + 10px); transform: translateX(-50%); font-size: var(--fs-ui); font-weight: var(--fw-regular); letter-spacing: normal; line-height: normal; text-align: left; }
-.where-search { height: 34px; margin: 0 0 4px; padding: 0 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
+.where-search { height: 34px; margin: 0 0 4px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
 .where-list { display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto; }
 .where-branches { max-height: 330px; }
 .where-row { height: 32px; gap: 10px; }
@@ -371,14 +371,14 @@
 .cmp-chip[data-kind='issue'] .chip-meta, .cmp-chip[data-kind='pr'] .chip-meta { font: var(--fs-meta) var(--font); }
 
 /* What the Lead chat still owes, above the box (KERNEL-792). */
-.open-items { display: flex; flex-direction: column; border: 1px solid var(--line-4); border-radius: var(--r-sm); font-size: var(--fs-code); }
+.open-items { display: flex; flex-direction: column; border: 1px solid var(--line-3); border-radius: var(--r-sm); font-size: var(--fs-code); }
 .open-items-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 12px; border: 0; background: transparent; color: var(--ink-2); font: inherit; text-align: left; }
 .open-items-head:hover { color: var(--ink); }
 .open-items-line { flex: 1; min-width: 0; }
 .open-items-head[aria-expanded="true"] svg { transform: rotate(180deg); }
-.open-items-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line-4); }
+.open-items-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line-3); }
 .open-items-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; color: var(--ink-2); }
-.open-items-row + .open-items-row { border-top: 1px solid var(--line-4); }
+.open-items-row + .open-items-row { border-top: 1px solid var(--line-3); }
 .open-items-text { flex: 1; min-width: 0; }
 .open-items-row .btn { height: 24px; padding: 0 8px; font-size: var(--fs-meta); }
 

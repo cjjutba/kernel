@@ -95,8 +95,8 @@ button.ws-issue:hover { background: var(--surface-3); }
 .rail-opt[data-active] { background: var(--hover); color: var(--ink); }
 .rail-opt[data-update][data-active] { color: var(--ink-2); }
 /* The jumped-to message holds a 1px ring for 1.2s, fading over the last 400ms. */
-@keyframes jump-ring { 0%, 66.6% { outline-color: var(--line-4); } 100% { outline-color: transparent; } }
-.msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { outline: 1px solid var(--line-4); animation: jump-ring var(--dur-ring) linear forwards; }
+@keyframes jump-ring { 0%, 66.6% { outline-color: var(--line-3); } 100% { outline-color: transparent; } }
+.msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { outline: 1px solid var(--line-3); animation: jump-ring var(--dur-ring) linear forwards; }
 @media (prefers-reduced-motion: reduce) { .msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { animation: none; } }
 .thread { width: 100%; max-width: 760px; margin: 0 auto auto; display: flex; flex-direction: column; gap: 12px; }
 /* Rows far above the end skip layout and paint while off screen, and `auto` remembers the height each last had. The last twelve are left alone, so a short chat draws as it always did. The clip margin keeps focus rings, which reach past a row, from being cut. A step row bleeds 8px past its row for its hover fill, and its focus ring sits 1px further out and is 2px thick, so a ring reaches 11px out. 12px covers it (KERNEL-375). The attention line is left alone too: paint containment would clip its breakdown list to the row (KERNEL-1082). */
@@ -117,7 +117,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 .msg-chip .chip-meta { color: var(--muted); }
 .msg-chip[data-state='unreadable'] { opacity: 0.6; }
 .msg-chip[data-state='gone'] .chip-name { color: var(--muted); text-decoration: line-through; }
-button.msg-chip:hover { border-color: var(--line-4); }
+button.msg-chip:hover { border-color: var(--line-3); }
 .msg-reply { gap: 6px; }
 .msg-kernel { gap: 4px; }
 /* Kernel's message as one note line that opens to its full text (KernelNote). */
@@ -173,8 +173,8 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .md ul[data-tasks] { padding-left: 2px; }
 .md li[data-task] { list-style: none; display: grid; grid-template-columns: 22px minmax(0, 1fr); }
 .md li[data-task] > :not(.md-box) { grid-column: 2; }
-.md-box { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 4px; border: 1px solid var(--line-4); border-radius: var(--r-2xs); color: var(--ink-2); }
-.md li[data-task='done'] > .md-li { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-4); }
+.md-box { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 4px; border: 1px solid var(--line-3); border-radius: var(--r-2xs); color: var(--ink-2); }
+.md li[data-task='done'] > .md-li { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-3); }
 .md blockquote { margin-left: 0; margin-right: 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--line-3); color: var(--ink-3); }
 .md blockquote > * { margin: 0 0 6px; }
 .md blockquote > *:last-child { margin-bottom: 0; }
@@ -335,7 +335,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .panel-tools .tool-text { height: 24px; margin-right: 4px; padding: 0 9px; border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); font-size: var(--fs-meta); font-weight: var(--fw-regular); }
 /* The filter under the strip (PanelFilter.png). The match is lit in the row's name and folder. */
 .ffield { flex-shrink: 0; padding: 0 10px 8px; }
-.finput { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 3px 0 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
+.finput { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 3px 0 10px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
 .finput:focus-within { border-color: var(--ink-3); }
 .finput input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); }
 .finput input::placeholder { color: var(--muted); }
@@ -369,7 +369,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .tree-chev svg { transition: transform var(--dur-fast); }
 .tree-chev[data-open] svg { transform: rotate(90deg); }
 .tree-guide { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-2); pointer-events: none; }
-.tree-guide[data-lit] { background: var(--line-4); }
+.tree-guide[data-lit] { background: var(--line-3); }
 .tree-name { flex: 1; min-width: 0; }
 .tree-name [data-struck], .tree-name[data-struck] { text-decoration: line-through; }
 .tree-counts { display: inline-flex; flex-shrink: 0; gap: 6px; font-size: var(--fs-chip); font-variant-numeric: tabular-nums; }
@@ -408,7 +408,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* The commits and the branches scroll under the rows that stay put. */
 .compare-commits, .compare-list { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; overflow-y: auto; }
 .compare-note { margin: 0; padding: 6px 8px; font-size: var(--fs-meta); color: var(--muted); }
-.compare-filter { display: flex; align-items: center; gap: 8px; height: 30px; margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
+.compare-filter { display: flex; align-items: center; gap: 8px; height: 30px; margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
 .compare-filter:focus-within { border-color: var(--ink-3); }
 .compare-filter input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); }
 .compare-filter input::placeholder { color: var(--muted); }
@@ -511,7 +511,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .lead-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 12px; }
 .lead-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px 0 12px; border: 1px solid var(--line-3); border-radius: var(--r-pill); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); font-weight: var(--fw-medium); }
 .lead-pill > svg { color: var(--muted); }
-.lead-pill:hover { background: var(--surface-3); border-color: var(--line-4); color: var(--ink); }
+.lead-pill:hover { background: var(--surface-3); border-color: var(--line-3); color: var(--ink); }
 .lead-up { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 0 24px 16px; }
 .lead-up .up-next { max-width: 760px; margin: 0 auto; }
 /* Up next: the tracker's issues nobody has started. A quiet header, then one row per issue that fills on hover, with Plan showing at the end. */
@@ -538,7 +538,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .chat-suggest button { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: transparent; color: var(--ink-2); font-size: var(--fs-code); }
 .chat-suggest button svg { color: var(--muted); }
 .chat-suggest button:hover { background: var(--surface-3); border-color: var(--line-3); }
-.tab-rename { height: 26px; width: 150px; padding: 0 8px; margin: 0 6px; align-self: center; border: 1px solid var(--input-line); border-radius: var(--r-sm); background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: var(--fs-ui); font-weight: var(--fw-medium); }
+.tab-rename { height: 26px; width: 150px; padding: 0 8px; margin: 0 6px; align-self: center; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: var(--fs-ui); font-weight: var(--fw-medium); }
 
 /* A narrow chat column: the transcript and composer pull in from the edges (D-080). */
 @container chat (max-width: 520px) {
@@ -585,7 +585,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .su-out:hover { color: var(--ink); }
 button.su-link { border: 0; background: transparent; padding: 0; text-align: left; color: var(--muted); align-self: flex-start; }
 button.su-link:hover { color: var(--ink); }
-button.su-link:hover .su-link-text { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-4); }
+button.su-link:hover .su-link-text { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-3); }
 /* A chat's worktree and setup script, as rows above its first message (KERNEL-951). Same rows as project setup. */
 .su-rows.su-chat { margin-bottom: 18px; flex-shrink: 0; }
 .su-rows code { font: var(--fs-ui) var(--mono); color: var(--ink); }

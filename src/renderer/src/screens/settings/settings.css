@@ -4,14 +4,14 @@
 .set-list { flex: 1; display: flex; flex-direction: column; }
 .set-back { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; }
 .set-back:hover { background: var(--nav-hover); }
-/* A quiet field: the panel's hairline instead of --input-line, brighter on hover and focus, no ring. Its icon and placeholder say what it is
+/* A quiet field: the panel's hairline instead of the old input border, brighter on hover and focus, no ring. Its icon and placeholder say what it is
    (feat-providers-redesign). */
 .set-search { position: relative; display: flex; align-items: center; margin: 6px 0 6px; }
 .set-search svg { position: absolute; left: 9px; color: var(--faint); pointer-events: none; }
 .set-search input { width: 100%; height: 30px; padding: 0 10px 0 29px; border-radius: var(--r-sm); border: 1px solid var(--panel-line); background: var(--panel); color: var(--ink-2); outline: none; user-select: text; transition: border-color var(--dur-fast), background var(--dur-fast); }
 .set-search input::placeholder { color: var(--muted); }
 .set-search input:hover { border-color: var(--line-3); }
-.set-search input:focus { border-color: var(--line-4); background: var(--input-bg); }
+.set-search input:focus { border-color: var(--line-3); background: var(--input-bg); }
 .set-search input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .set-group { margin: 10px 0 2px; padding: 0 8px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
 .nav-item.set-item { height: 28px; }
@@ -34,16 +34,16 @@
 .set-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .set-value { font-family: var(--mono); font-size: var(--fs-code); color: var(--ink-2); }
 .set-full { flex-basis: 100%; min-width: 0; }
-.set-card .select-trigger { background: var(--surface-2); border-color: var(--input-line); font-weight: var(--fw-regular); font-size: var(--fs-ui); }
-.set-card .select-trigger:hover:not(:disabled), .set-card .select-trigger[aria-expanded='true'] { border-color: var(--line-4); }
+.set-card .select-trigger { background: var(--surface-2); border-color: var(--line-3); font-weight: var(--fw-regular); font-size: var(--fs-ui); }
+.set-card .select-trigger:hover:not(:disabled), .set-card .select-trigger[aria-expanded='true'] { border-color: var(--line-3); }
 .set-card .select-trigger[aria-expanded='true'] { background: var(--surface-3); }
 .set-card .segmented button { height: 26px; font-weight: var(--fw-medium); }
-.set-lines { width: 100%; resize: none; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--code-bg); color: var(--ink-2); font: var(--fs-code)/var(--lh-loose) var(--mono); outline: none; white-space: pre; overflow: hidden; user-select: text; }
+.set-lines { width: 100%; resize: none; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--code-bg); color: var(--ink-2); font: var(--fs-code)/var(--lh-loose) var(--mono); outline: none; white-space: pre; overflow: hidden; user-select: text; }
 .set-lines:focus { border-color: var(--ink-3); }
 .set-inline { width: 260px; max-width: 100%; height: 30px; padding: 0 10px; border-radius: var(--r); border: 1px solid transparent; background: transparent; color: var(--ink-2); font: var(--fs-code) var(--mono); text-align: right; outline: none; user-select: text; }
-.set-inline:hover { border-color: var(--input-line); }
-.set-inline.set-boxed { border-color: var(--input-line); cursor: text; }
-.set-inline.set-boxed:hover { border-color: var(--line-4); }
+.set-inline:hover { border-color: var(--line-3); }
+.set-inline.set-boxed { border-color: var(--line-3); cursor: text; }
+.set-inline.set-boxed:hover { border-color: var(--line-3); }
 .set-inline.set-boxed:focus { border-color: var(--ink-3); }
 .set-inline:focus { border-color: var(--ink-3); background: var(--surface-2); text-align: left; }
 .set-keys { display: inline-flex; gap: 4px; }
@@ -67,7 +67,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-line:first-child { border-top: 0; }
 .set-line code { flex: 1; min-width: 0; overflow-wrap: anywhere; font: var(--fs-code) var(--mono); color: var(--ink-2); }
 .set-empty { padding: 14px 18px; color: var(--muted); font-size: var(--fs-ui); }
-.set-token { width: 260px; max-width: 100%; height: 30px; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--surface-2); color: var(--ink-2); font: var(--fs-code) var(--mono); outline: none; user-select: text; }
+.set-token { width: 260px; max-width: 100%; height: 30px; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--surface-2); color: var(--ink-2); font: var(--fs-code) var(--mono); outline: none; user-select: text; }
 .set-token:focus { border-color: var(--ink-3); }
 .set-actions { display: inline-flex; gap: 8px; align-items: center; }
 .rm-kernel .set-text { flex-basis: 160px; }
@@ -88,7 +88,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 
 /* Files to copy (KERNEL-252): the preview of what gets copied */
 .set-preview { box-sizing: border-box; width: 100%; height: 148px; margin: 0; padding: 10px 14px 10px 12px; list-style: none; overflow-y: auto; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--code-bg); color: var(--ink-2); font: var(--fs-code)/var(--lh-loose) var(--mono); outline: none; user-select: text; }
-.set-preview:focus-visible { border-color: var(--line-4); }
+.set-preview:focus-visible { border-color: var(--line-3); }
 .set-preview li { white-space: pre; }
 
 /* Run scripts (KERNEL-249): the Add button beside a section heading, the note under its card and a script's actions */
@@ -124,7 +124,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 /* Big terminal (KERNEL-251): the New tab preset radio list. The ring is the radio, and a command sits at the right in mono */
 .set-preset { flex-wrap: nowrap; }
 .set-preset .set-text { flex-basis: 120px; cursor: default; }
-.set-radio { width: 16px; height: 16px; flex-shrink: 0; margin-right: -10px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 1px solid var(--line-4); background: transparent; color: var(--on-ink); }
+.set-radio { width: 16px; height: 16px; flex-shrink: 0; margin-right: -10px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 1px solid var(--line-3); background: transparent; color: var(--on-ink); }
 .set-radio[aria-checked='true'] { border-color: var(--ink); background: var(--ink); }
 
 
@@ -188,7 +188,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-head h1 > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .set-crumb { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--ink-3); font: inherit; letter-spacing: inherit; }
 .set-crumb:hover { color: var(--ink-2); }
-.set-crumb-sep { display: inline-flex; flex-shrink: 0; color: var(--line-4); }
+.set-crumb-sep { display: inline-flex; flex-shrink: 0; color: var(--line-3); }
 .set-section h2, .ag-group h2 { display: inline-flex; align-items: baseline; gap: 8px; }
 .set-count { font-size: var(--fs-code); font-weight: var(--fw-regular); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .set-fold { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
@@ -199,8 +199,8 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-section-note { font-size: var(--fs-code); color: var(--muted); }
 .set-section-act { margin-left: auto; display: inline-flex; gap: 6px; }
 .set-child { padding-left: 44px; border-top-color: transparent; }
-.set-guide { position: absolute; left: 24px; top: 0; height: 100%; width: 1px; background: var(--line-4); }
-.set-guide::after { content: ''; position: absolute; left: 0; top: 50%; width: 10px; height: 1px; background: var(--line-4); }
+.set-guide { position: absolute; left: 24px; top: 0; height: 100%; width: 1px; background: var(--line-3); }
+.set-guide::after { content: ''; position: absolute; left: 0; top: 50%; width: 10px; height: 1px; background: var(--line-3); }
 .set-child:not(:has(+ .set-child)) .set-guide { height: 50%; }
 .set-lead { flex-shrink: 0; display: inline-flex; }
 .set-hoverable, .set-table-row { transition: background var(--dur-fast); }
@@ -230,9 +230,9 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-tag[data-locked] { padding-right: 9px; background: transparent; color: var(--ink-3); }
 .set-tag-x { flex-shrink: 0; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--r-2xs); background: transparent; color: var(--faint); }
 .set-tag-x:hover { color: var(--ink); background: var(--surface-3); }
-.set-tag-add { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border-radius: var(--r-sm); border: 1px dashed var(--line-4); background: transparent; color: var(--muted); font-size: var(--fs-code); }
+.set-tag-add { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border-radius: var(--r-sm); border: 1px dashed var(--line-3); background: transparent; color: var(--muted); font-size: var(--fs-code); }
 .set-tag-add:hover:not(:disabled) { color: var(--ink-2); border-color: var(--ink-3); }
-.set-tag-input { height: 26px; width: 220px; max-width: 100%; box-sizing: border-box; padding: 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line-4); background: var(--input-bg); color: var(--ink); font-size: var(--fs-meta); outline: none; user-select: text; }
+.set-tag-input { height: 26px; width: 220px; max-width: 100%; box-sizing: border-box; padding: 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink); font-size: var(--fs-meta); outline: none; user-select: text; }
 .set-tag-input.mono { font-family: var(--mono); }
 .set-sheet-text { min-height: 320px; max-height: 60vh; overflow: auto; white-space: pre-wrap; }
 

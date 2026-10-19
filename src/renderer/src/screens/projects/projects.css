@@ -20,7 +20,7 @@
 .rm-team span { width: 20px; height: 20px; margin-right: -5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid var(--panel); background: var(--surface-3); color: var(--ink-2); font-size: var(--fs-tile-xs); font-weight: var(--fw-semibold); }
 .rm-count { margin-left: 6px; font-size: var(--fs-meta); color: var(--muted); }
 .rm-status { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-size: var(--fs-meta); color: var(--ink-2); }
-.rm-status[data-state='you'] { border-color: var(--line-4); color: var(--ink); }
+.rm-status[data-state='you'] { border-color: var(--line-3); color: var(--ink); }
 .rm-status[data-state='idle'], .rm-status[data-state='archived'] { border-color: var(--line-2); color: var(--muted); }
 .rm-show { margin-left: auto; flex-shrink: 0; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--fs-meta); text-decoration: underline; }
 .rm-show:hover { color: var(--ink); }
@@ -38,14 +38,14 @@
 .nr-sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .nr-source { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--panel); color: var(--ink-2); text-align: left; }
 .nr-source:hover { background: var(--surface); }
-.nr-source[aria-checked='true'] { border-color: var(--line-4); background: var(--surface-3); }
+.nr-source[aria-checked='true'] { border-color: var(--line-3); background: var(--surface-3); }
 .nr-source svg { color: var(--ink-2); }
 .nr-source-title { font-size: var(--fs-ui); font-weight: var(--fw-medium); }
 .nr-source-sub { font-size: var(--fs-meta); color: var(--muted); line-height: var(--lh-snug); }
 .nr-tick { position: absolute; top: 10px; right: 10px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--ink); color: var(--on-ink); }
 .nr-tick svg { color: var(--on-ink); }
 .nr-fields { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 8px; }
-.nr-field { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 6px 0 10px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--panel); }
+.nr-field { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 6px 0 10px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--panel); }
 .nr-field-value { flex: 1; min-width: 0; font-size: var(--fs-code); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nr-field-input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; font-size: var(--fs-code); }
 .nr-branch { padding: 0 10px; font-size: var(--fs-code); outline: none; color: var(--ink-2); }
@@ -67,7 +67,7 @@
 .cr-sub { font-size: var(--fs-meta); color: var(--muted); }
 .cr-search { position: relative; }
 .cr-search svg { position: absolute; left: 11px; top: 10px; color: var(--muted); }
-.cr-search input { width: 100%; height: 34px; padding: 0 12px 0 32px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--panel); outline: none; font-size: var(--fs-ui); }
+.cr-search input { width: 100%; height: 34px; padding: 0 12px 0 32px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--panel); outline: none; font-size: var(--fs-ui); }
 .cr-search input:focus { border-color: var(--ink-3); }
 /* The list bleeds to the modal's edge, past .rm-pad's 18px, and pads itself back, so its thumb sits on the edge and rows stay put (KERNEL-602). The gutter is
    held, as in the sidebar's .sb-scroll, so rows are the same width whether or not the list scrolls: 18px less the 6px thumb. OpenFolder sets its own margin-top. */
@@ -150,7 +150,7 @@
 .cl-av-none { display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); color: var(--ink-2); text-transform: lowercase; }
 .cl-field { display: flex; flex-direction: column; gap: 6px; }
 .cl-label { font-size: var(--fs-meta); color: var(--ink-3); }
-.cl-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink); font-size: var(--fs-code); outline: none; }
+.cl-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink); font-size: var(--fs-code); outline: none; }
 .cl-input:focus { border-color: var(--ink-3); }
 .cl-list { display: flex; flex-direction: column; gap: 2px; height: 232px; overflow-y: auto; scrollbar-gutter: stable; margin: 2px -8px 0; }
 .cl-repo { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 6px 12px 6px 8px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink); text-align: left; }
@@ -167,7 +167,7 @@
 
 /* Open a folder (KERNEL-946): one list with the pick in place, and what opening does under it. No drop box: the whole dialog takes a dropped folder. */
 .of-body2 { display: flex; flex-direction: column; padding: 0 18px 4px; }
-.of-body2[data-over] { outline: 1px dashed var(--line-4); outline-offset: -4px; border-radius: var(--r-lg); }
+.of-body2[data-over] { outline: 1px dashed var(--line-3); outline-offset: -4px; border-radius: var(--r-lg); }
 .of-head { display: flex; align-items: center; gap: 12px; }
 .of-sub { flex: 1; margin: 0; padding: 0; }
 .of-list2 { display: flex; flex-direction: column; gap: 2px; margin: 12px -8px 0; max-height: 236px; overflow-y: auto; scrollbar-gutter: stable; }
@@ -201,7 +201,7 @@
 .rn-status .mono { color: var(--ink-2); }
 .rn-status > svg { color: var(--ink-3); }
 .rn-label { font-size: var(--fs-meta); color: var(--ink-3); }
-.rn-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink); outline: none; }
+.rn-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink); outline: none; }
 .rn-input:focus { border-color: var(--ink-3); }
 .of-err { margin: 10px 0 0; font-size: var(--fs-meta); }
 

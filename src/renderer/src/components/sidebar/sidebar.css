@@ -94,9 +94,9 @@ button.hc-pr:hover { color: var(--ink); }
    nested row carries its own length of it, from the 3px gap above the row to the row's bottom edge, so no length depends on the block's height and the line meets the next
    row's. The last row that isn't folding away ends it at its bottom edge. A row folding away in the middle keeps its length and shrinks with it, and the row before it runs
    on 3px to cover the gap its clip hides. A trailing row that is folding draws none, so the line already ends where it will once the row is gone. The line is --line-3, and
-   --line-4 in the block that holds the open row. A folded chat has no workspaces drawn and so no guide. */
+   --line-3 in the block that holds the open row. A folded chat has no workspaces drawn and so no guide. */
 .nav-group { --guide: var(--line-3); position: relative; display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
-.nav-group:has([aria-current='page']) { --guide: var(--line-4); }
+.nav-group:has([aria-current='page']) { --guide: var(--line-3); }
 .nav-group[data-guide]::before { content: ''; position: absolute; z-index: 1; left: 28px; top: 25px; height: 8px; width: 1px; background: var(--guide); pointer-events: none; }
 .nav-group[data-guide] > .ws-row::before { content: ''; position: absolute; z-index: 1; left: 28px; top: -3px; bottom: 0; width: 1px; background: var(--guide); pointer-events: none; }
 .nav-group[data-guide] > .ws-row:has(+ .row-fold)::before { bottom: -3px; }
