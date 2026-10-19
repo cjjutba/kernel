@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { Store } from '../src/main/db'
 import { Approvals, describeTool } from '../src/main/services/approvals'
 import { toActivity } from '../src/main/services/hookServer'
-import { permissionTitle } from '../src/renderer/src/screens/workspace/cards/steps'
+import { permissionQueue, permissionTitle, queueTitle } from '../src/renderer/src/screens/workspace/cards/steps'
 import { answerParts, approvalAnswer } from '../src/shared/approvalAnswer'
 import type { Approval } from '../src/shared/types'
 
@@ -188,5 +188,25 @@ describe("the user's answer to a card, as their message (KERNEL-836)", () => {
       expect(answerParts(card({ kind, status: 'pending' }))).toBeUndefined()
       expect(answerParts(card({ kind, status: 'expired', expiredBy: 'replaced' }))).toBeUndefined()
     }
+  })
+})
+
+describe('the permission queue pager (KERNEL-1114)', () => {
+  const perm = (id: string, over: Partial<Approval> = {}): Approval => ({ id, kind: 'tool', source: 'sdk', toolName: 'Bash', title: '', status: 'pending', createdAt: 1, workspaceId: 'w', chatId: 'c', ...over })
+  const here = { workspaceId: 'w', chatId: 'c' }
+
+  it('lists the permissions waiting in the same chat, in the order they arrived', () => {
+    const list = [perm('b', { createdAt: 2 }), perm('a', { createdAt: 1 }), perm('other-chat', { chatId: 'x' }), perm('other-ws', { workspaceId: 'v' })]
+    expect(permissionQueue(list, here).map((x) => x.id)).toEqual(['a', 'b'])
+  })
+
+  it('drops an answered permission, and leaves out questions, plans and hires', () => {
+    const list = [perm('a', { status: 'allowed' }), perm('b'), perm('q', { kind: 'question' }), perm('p', { toolName: 'ExitPlanMode' }), perm('h', { kind: 'agent' })]
+    expect(permissionQueue(list, here).map((x) => x.id)).toEqual(['b'])
+  })
+
+  it('titles the queue by what waits', () => {
+    expect(queueTitle([perm('a'), perm('b')], 'Ivy')).toBe('Ivy wants to run 2 commands')
+    expect(queueTitle([perm('a'), perm('b', { toolName: 'Write' }), perm('c')], 'Ivy')).toBe('Ivy wants to use 3 tools')
   })
 })
