@@ -49,7 +49,7 @@
 .nr-field-value { flex: 1; min-width: 0; font-size: var(--fs-code); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nr-field-input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; font-size: var(--fs-code); }
 .nr-branch { padding: 0 10px; font-size: var(--fs-code); outline: none; color: var(--ink-2); }
-.nr-branch:focus, .nr-field:focus-within { border-color: var(--ink-3); }
+.nr-branch:focus, .nr-field:focus-within { border-color: var(--line-3); }
 .nr-change { height: 24px; padding: 0 9px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); font-size: var(--fs-meta); }
 .nr-change:hover { background: var(--surface-3); }
 .nr-member { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border-radius: var(--r-pill); border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-size: var(--fs-code); font-weight: var(--fw-medium); }
@@ -68,7 +68,7 @@
 .cr-search { position: relative; }
 .cr-search svg { position: absolute; left: 11px; top: 10px; color: var(--muted); }
 .cr-search input { width: 100%; height: 34px; padding: 0 12px 0 32px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--panel); outline: none; font-size: var(--fs-ui); }
-.cr-search input:focus { border-color: var(--ink-3); }
+.cr-search input:focus { border-color: var(--line-3); }
 /* The list bleeds to the modal's edge, past .rm-pad's 18px, and pads itself back, so its thumb sits on the edge and rows stay put (KERNEL-602). The gutter is
    held, as in the sidebar's .sb-scroll, so rows are the same width whether or not the list scrolls: 18px less the 6px thumb. OpenFolder sets its own margin-top. */
 .cr-list { display: flex; flex-direction: column; gap: 2px; max-height: 276px; overflow-y: auto; scrollbar-gutter: stable; margin-right: -18px; padding-right: 12px; }
@@ -151,7 +151,7 @@
 .cl-field { display: flex; flex-direction: column; gap: 6px; }
 .cl-label { font-size: var(--fs-meta); color: var(--ink-3); }
 .cl-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink); font-size: var(--fs-code); outline: none; }
-.cl-input:focus { border-color: var(--ink-3); }
+.cl-input:focus { border-color: var(--line-3); }
 .cl-list { display: flex; flex-direction: column; gap: 2px; height: 232px; overflow-y: auto; scrollbar-gutter: stable; margin: 2px -8px 0; }
 .cl-repo { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 6px 12px 6px 8px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink); text-align: left; }
 .cl-repo:hover { background: var(--nav-hover); }
@@ -202,7 +202,7 @@
 .rn-status > svg { color: var(--ink-3); }
 .rn-label { font-size: var(--fs-meta); color: var(--ink-3); }
 .rn-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink); outline: none; }
-.rn-input:focus { border-color: var(--ink-3); }
+.rn-input:focus { border-color: var(--line-3); }
 .of-err { margin: 10px 0 0; font-size: var(--fs-meta); }
 
 /* New project from scratch (KERNEL-947): name, location and its private GitHub repo. */

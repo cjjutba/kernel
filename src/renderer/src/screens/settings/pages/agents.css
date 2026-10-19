@@ -31,7 +31,7 @@
 .ag-filter svg { position: absolute; left: 11px; color: var(--muted); pointer-events: none; }
 .ag-filter input { width: 100%; height: 34px; box-sizing: border-box; padding: 0 12px 0 31px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink); font-size: var(--fs-ui); outline: none; user-select: text; }
 .ag-filter input::placeholder { color: var(--muted); }
-.ag-filter input:focus { border-color: var(--ink-3); }
+.ag-filter input:focus { border-color: var(--line-3); }
 .ag-empty { margin: 0; padding: 24px 0; text-align: center; font-size: var(--fs-ui); color: var(--muted); }
 
 .ag-group { display: flex; flex-direction: column; gap: 10px; }

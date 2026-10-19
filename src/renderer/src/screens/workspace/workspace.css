@@ -336,7 +336,7 @@ button.msg-chip:hover { border-color: var(--line-3); }
 /* The filter under the strip (PanelFilter.png). The match is lit in the row's name and folder. */
 .ffield { flex-shrink: 0; padding: 0 10px 8px; }
 .finput { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 3px 0 10px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
-.finput:focus-within { border-color: var(--ink-3); }
+.finput:focus-within { border-color: var(--line-3); }
 .finput input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); }
 .finput input::placeholder { color: var(--muted); }
 .hl { border-radius: var(--r-2xs); background: color-mix(in srgb, var(--ink) 16%, transparent); color: inherit; }
@@ -409,7 +409,7 @@ button.msg-chip:hover { border-color: var(--line-3); }
 .compare-commits, .compare-list { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; overflow-y: auto; }
 .compare-note { margin: 0; padding: 6px 8px; font-size: var(--fs-meta); color: var(--muted); }
 .compare-filter { display: flex; align-items: center; gap: 8px; height: 30px; margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
-.compare-filter:focus-within { border-color: var(--ink-3); }
+.compare-filter:focus-within { border-color: var(--line-3); }
 .compare-filter input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); }
 .compare-filter input::placeholder { color: var(--muted); }
 

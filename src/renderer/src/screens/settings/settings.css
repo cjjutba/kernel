@@ -39,13 +39,13 @@
 .set-card .select-trigger[aria-expanded='true'] { background: var(--surface-3); }
 .set-card .segmented button { height: 26px; font-weight: var(--fw-medium); }
 .set-lines { width: 100%; resize: none; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--code-bg); color: var(--ink-2); font: var(--fs-code)/var(--lh-loose) var(--mono); outline: none; white-space: pre; overflow: hidden; user-select: text; }
-.set-lines:focus { border-color: var(--ink-3); }
+.set-lines:focus { border-color: var(--line-3); }
 .set-inline { width: 260px; max-width: 100%; height: 30px; padding: 0 10px; border-radius: var(--r); border: 1px solid transparent; background: transparent; color: var(--ink-2); font: var(--fs-code) var(--mono); text-align: right; outline: none; user-select: text; }
 .set-inline:hover { border-color: var(--line-3); }
 .set-inline.set-boxed { border-color: var(--line-3); cursor: text; }
 .set-inline.set-boxed:hover { border-color: var(--line-3); }
-.set-inline.set-boxed:focus { border-color: var(--ink-3); }
-.set-inline:focus { border-color: var(--ink-3); background: var(--surface-2); text-align: left; }
+.set-inline.set-boxed:focus { border-color: var(--line-3); }
+.set-inline:focus { border-color: var(--line-3); background: var(--surface-2); text-align: left; }
 .set-keys { display: inline-flex; gap: 4px; }
 .set-keys .kbd { min-width: 22px; height: 22px; justify-content: center; padding: 0 6px; font: var(--fs-meta) var(--font); color: var(--ink-2); background: var(--surface-2); }
 
@@ -68,7 +68,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-line code { flex: 1; min-width: 0; overflow-wrap: anywhere; font: var(--fs-code) var(--mono); color: var(--ink-2); }
 .set-empty { padding: 14px 18px; color: var(--muted); font-size: var(--fs-ui); }
 .set-token { width: 260px; max-width: 100%; height: 30px; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--surface-2); color: var(--ink-2); font: var(--fs-code) var(--mono); outline: none; user-select: text; }
-.set-token:focus { border-color: var(--ink-3); }
+.set-token:focus { border-color: var(--line-3); }
 .set-actions { display: inline-flex; gap: 8px; align-items: center; }
 .rm-kernel .set-text { flex-basis: 160px; }
 .rm-kernel .set-actions { margin-left: auto; }
