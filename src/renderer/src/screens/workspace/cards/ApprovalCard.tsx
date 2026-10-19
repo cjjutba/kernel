@@ -15,7 +15,7 @@ import { AnswerBubble } from './AnswerBubble'
 import { answerItemId } from '@shared/approvalAnswer'
 import { questionAnswer } from '@shared/approvalAnswer'
 import { activeRow, rowStep } from './questionRows'
-import { allAnswered, answerDecision, emptyPick, isPlanApproval, isStepList, nextUnanswered, outcome, permissionTitle, pickReady, planSteps, planText, type Picked } from './steps'
+import { allAnswered, answerDecision, emptyPick, isPlanApproval, isStepList, nextUnanswered, outcome, isPermission, permissionQueue, permissionTitle, pickReady, queueTitle, planSteps, planText, type Picked } from './steps'
 import './cards.css'
 
 const EMPTY: AgentDef[] = []
@@ -32,16 +32,30 @@ function Result({ a }: { a: Approval }) {
   return <span className="done-line">{outcome(a)}</span>
 }
 
-function PermCard({ a, who }: { a: Approval; who: string }) {
+/** The pager in a card's head: "‹ 2 of 3 ›". The question card and the permission queue both use it. */
+function Pager({ label, at, count, busy, onMove, pagerRef, onKeyDown }: { label: string; at: number; count: number; busy?: boolean; onMove: (to: number) => void; pagerRef?: React.Ref<HTMLDivElement>; onKeyDown?: (e: KeyboardEvent<HTMLDivElement>) => void }) {
+  return (
+    <div ref={pagerRef} className="tc-pager" role="group" aria-label={label} onKeyDown={onKeyDown}>
+      <button type="button" className="tc-page" aria-label={`Show ${label.toLowerCase().replace(/s$/, '')} ${at}`} disabled={at === 0 || busy} onClick={() => onMove(at - 1)}><Icon name="chevron" size={14} /></button>
+      <span aria-live="polite">{at + 1} of {count}</span>
+      <button type="button" className="tc-page" data-next aria-label={`Show ${label.toLowerCase().replace(/s$/, '')} ${at + 2}`} disabled={at === count - 1 || busy} onClick={() => onMove(at + 1)}><Icon name="chevron" size={14} /></button>
+    </div>
+  )
+}
+
+/** The permissions waiting in this chat and which one the card shows. Moving is a press on the pager, never a timer. */
+type PermQueue = { items: Approval[]; at: number; onMove: (to: number) => void }
+
+function PermCard({ a, who, queue }: { a: Approval; who: string; queue?: PermQueue }) {
   const phase = useFoldPhase(a.id)
   const input = (a.input ?? {}) as Record<string, unknown>
   const bash = a.toolName === 'Bash'
   const path = String(input.file_path ?? input.path ?? '')
-  const title = permissionTitle(a, who)
+  const title = queue ? queueTitle(queue.items, who) : permissionTitle(a, who)
   const code = bash ? `$ ${String(input.command ?? '')}` : path || (a.input ? JSON.stringify(a.input, null, 2) : '')
   return (
     <section aria-label={title} className="card tcard">
-      <CardHead who={who} title={title} />
+      <CardHead who={who} title={title} aside={queue && <Pager label="Permissions" at={queue.at} count={queue.items.length} onMove={queue.onMove} />} />
       <div className="tc-body">
         {a.detail && <span className="sub">{a.detail}</span>}
         {code && <div className="code">{!bash && path ? <FileLabel path={path} /> : code}</div>}
@@ -243,13 +257,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
 
   return (
     <section aria-label={title} className="card tcard" onKeyDown={keys}>
-      <CardHead who={who} title={title} aside={many && (
-        <div ref={tabs} className="tc-pager" role="group" aria-label="Questions" onKeyDown={arrows}>
-          <button type="button" className="tc-page" aria-label={`Show question ${step}`} disabled={step === 0 || busy !== null} onClick={() => jump(step - 1, true)}><Icon name="chevron" size={14} /></button>
-          <span aria-live="polite">{step + 1} of {qs.length}</span>
-          <button type="button" className="tc-page" data-next aria-label={`Show question ${step + 2}`} disabled={step === qs.length - 1 || busy !== null} onClick={() => jump(step + 1, true)}><Icon name="chevron" size={14} /></button>
-        </div>
-      )} />
+      <CardHead who={who} title={title} aside={many && <Pager label="Questions" at={step} count={qs.length} busy={busy !== null} pagerRef={tabs} onKeyDown={arrows} onMove={(to) => jump(to, true)} />} />
       <div className="tc-body">
         <span className="sub">{q.question}{multi ? ' Choose all that apply.' : ''}</span>
         {!many && a.detail && <div className="code">{a.detail}</div>}
@@ -446,6 +454,20 @@ function HireCard({ a, lead, inChat }: { a: Approval; lead: string; inChat?: boo
   )
 }
 
+/**
+ * Several permissions waiting in one chat are one card that pages through them (KERNEL-1114). The oldest draws it and the rest draw
+ * nothing. Answering one takes it out of the queue, so the card shows the next, and the answered one keeps its result line in the chat.
+ */
+function PermissionRow({ a, who }: { a: Approval; who: string }) {
+  const approvals = useStore((s) => s.approvals)
+  const queue = useMemo(() => permissionQueue(approvals, a), [approvals, a])
+  const [at, setAt] = useState(0)
+  if (a.status !== 'pending' || queue.length < 2) return <PermCard a={a} who={who} />
+  if (queue[0].id !== a.id) return null
+  const here = Math.min(at, queue.length - 1)
+  return <PermCard key={queue[here].id} a={queue[here]} who={who} queue={{ items: queue, at: here, onMove: setAt }} />
+}
+
 /** The card for one approval, by kind (WorkspacePerm, Plan, Question, Hire, Lead). `inChat` is set in a transcript, where a composer sits below. */
 export function ApprovalCard({ approval: a, inChat }: { approval: Approval; inChat?: boolean }) {
   const agents = useStore((s) => (a.projectId ? s.agents[a.projectId] : undefined)) ?? EMPTY
@@ -455,5 +477,5 @@ export function ApprovalCard({ approval: a, inChat }: { approval: Approval; inCh
   if (a.kind === 'agent' || a.agentFile) return <HireCard a={a} lead={agent?.name ?? 'the Lead'} inChat={inChat} />
   if (isPlanApproval(a)) return inChat ? <PlanInline a={a} agents={agents} hasItem={hasItem} /> : <PlanCard a={a} agents={agents} lead={!!agent?.lead} />
   if (a.kind === 'question') return <QuestionCard a={a} who={who} inChat={inChat} hasItem={hasItem} />
-  return <PermCard a={a} who={who} />
+  return inChat && isPermission(a) ? <PermissionRow a={a} who={who} /> : <PermCard a={a} who={who} />
 }

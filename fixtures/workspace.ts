@@ -2127,6 +2127,12 @@ const permWaiting = (f: Fixture) => scene2(f, { name: 'invoice-pdf-renderer', br
     approvals: [pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
   })
 
+/** scene2 puts the chat and workspace on its first approval only. A queue needs them on every one, as real approvals have. */
+const queued = (s: Partial<Fixture>): Partial<Fixture> => {
+  const [first, ...rest] = s.approvals ?? []
+  return { ...s, approvals: first && [first, ...rest.map((a) => (a.status === 'pending' && a.toolName === 'Bash' ? { ...a, workspaceId: first.workspaceId, chatId: first.chatId } : a))] }
+}
+
 export const workspaceFixtures: Record<string, Fixture> = {
   Workspace: scene(() => ({ ui: open })),
   // Chat header mocks: today's two rows on a new Lead chat, then the one-row header with one tab and with three.
@@ -2880,6 +2886,18 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ], {
     approvals: [pending('tool', 'sean', { toolName: 'mcp__claude_ai_Linear__save_issue', input: { title: 'Export invoices as PDF', team: 'Kernel' }, ...describeTool('mcp__claude_ai_Linear__save_issue', { title: 'Export invoices as PDF', team: 'Kernel' }) }), ...f.approvals]
   })),
+  // KERNEL-1114: two permissions waiting in one chat are one card that pages through them. Next pages to the second, and an answer takes one out of the queue.
+  WorkspacePermQueue: { ...scene((f) => queued(scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
+    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
+    ...folded('p', 11, 2),
+    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. I need to push the schema and then seed the dev database.' },
+    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
+  ], {
+    approvals: [
+      { ...pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), id: 'ap-tool-sean-1' },
+      { ...pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm db:seed' }, title: 'Run pnpm db:seed', detail: 'Fills the dev database with three sample invoices.' }), id: 'ap-tool-sean-2', createdAt: at(10, 31) }
+    ]
+  }))), motion: { action: { click: 'Show permission 2' }, ms: 700, area: '.ws-main' } },
   WorkspacePlan: scene(planWaiting),
   /** KERNEL-950: back to a Lead chat with a plan waiting from another tab. The transcript must not move once the strip has opened. */
   WorkspacePlanRoundTrip: { ...scene((f) => { const s = planAfterHistory(planWaiting(f)); return { ...s, chats: [...(s.chats ?? f.chats), { ...extraChat('chat-other', 'Empty state copy'), workspaceId: ids.lead, threadId: 't-lead' }], items: { ...s.items, 'chat-other': [userMsg('o1', 'Shorten the empty state copy.')] }, ui: { ...s.ui, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: ids.leadChat, files: [], diffs: [] } } } } }), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 600, area: '.ws-scroll' } },
