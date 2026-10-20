@@ -229,7 +229,7 @@ export interface ToastButton { label: string; onClick?: () => void; primary?: bo
 export type ToastGlyph = 'done' | 'error' | 'merged'
 const glyphIcon: Record<ToastGlyph, IconName> = { done: 'check', error: 'alertCircle', merged: 'merged' }
 
-export interface ToastProps { title: string; sub?: string; glyph?: ToastGlyph; /** Up to two, drawn left to right with the last at the edge. */ actions?: ToastButton[]; /** Leave now, the way a timeout does. */ closing?: boolean; onDismiss?: () => void }
+export interface ToastProps { title: string; sub?: string; /** A third, quieter line: what the toast is about. */ detail?: string; glyph?: ToastGlyph; /** Up to two, drawn left to right with the last at the edge. */ actions?: ToastButton[]; /** Leave now, the way a timeout does. */ closing?: boolean; onDismiss?: () => void }
 
 /** A sub that is a path breaks at its slashes, not in the middle of a name. */
 function breakAtSlashes(text: string): ReactNode[] {
@@ -248,7 +248,7 @@ type Swipe = { from?: { x: number; y: number }; rx: number; ry: number; axis?: '
  * two-finger swipe right or down on a trackpad, or pressing its action dismisses it sooner. A swipe leaves in its own direction.
  * A toast without `onDismiss` stays put.
  */
-export function Toast({ title, sub, glyph = 'done', actions, closing, onDismiss }: ToastProps) {
+export function Toast({ title, sub, detail, glyph = 'done', actions, closing, onDismiss }: ToastProps) {
   const [held, setHeld] = useState(false)
   const [leaving, setLeaving] = useState<Leave | null>(null)
   const box = useRef<HTMLDivElement>(null)
@@ -336,7 +336,7 @@ export function Toast({ title, sub, glyph = 'done', actions, closing, onDismiss 
       >
         <div className="toast-top">
           <span className="toast-glyph" data-glyph={glyph} aria-hidden="true"><Icon name={glyphIcon[glyph]} size={14} /></span>
-          <span className="grow toast-text"><span className="toast-title">{title}</span>{sub && <span className="toast-sub">{breakAtSlashes(sub)}</span>}</span>
+          <span className="grow toast-text"><span className="toast-title">{title}</span>{sub && <span className="toast-sub">{breakAtSlashes(sub)}</span>}{detail && <span className="toast-detail">{detail}</span>}</span>
           {timed && <button type="button" className="toast-close" aria-label="Close" onClick={() => setLeaving('sink')}><Icon name="close" size={12} /></button>}
         </div>
         {!!actions?.length && (

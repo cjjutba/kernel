@@ -8,12 +8,10 @@ import { Button, Icon, Spinner, useBusy } from '../../ui'
 import { attempt } from './MessageActions'
 import { bottomKindOf } from './bottomSplit'
 import { StepRows } from './SetupRows'
+import { clock } from './setupClock'
 import { useProjectSettings } from '../settings/useSettings'
 
 const NO_LINES: ScriptLine[] = []
-
-/** A duration as M:SS, for the live setup timer and the rows after it. */
-export const clock = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
 
 /** Time since `from`, redrawn each second while it counts. The start is main's, from when the setup script started. */
 function useSince(from: number | undefined) {
