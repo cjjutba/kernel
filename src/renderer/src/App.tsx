@@ -2,7 +2,7 @@ import { Suspense, createElement, lazy, useEffect, useState, type ComponentType,
 import type { DevUiPage, Modal, Route } from '@shared/types'
 import { call } from './api'
 import { SidebarToggle, toggleFocus, toggleRightPanel, toggleSidebar, useFoldPanels } from './components/PanelToggles'
-import { Footer, Sidebar } from './components/Shell'
+import { Sidebar } from './components/Shell'
 import { Toasts } from './components/Toasts'
 import { ConfirmBypass } from './components/ConfirmBypass'
 import { askAboutTelemetry, TelemetryAsk } from './components/TelemetryAsk'
@@ -259,7 +259,6 @@ export function App() {
             <Screen route={route} />
           </div>
         </div>
-        {!fullWindow(route) && <Footer />}
         {/* Once, at a fixed spot, so it is the same element with the sidebar open or hidden. Settings has no toggle: its column can't be hidden. */}
         {!fullWindow(route) && route.name !== 'settings' && <SidebarToggle />}
         {modal && <ModalView modal={modal} />}
