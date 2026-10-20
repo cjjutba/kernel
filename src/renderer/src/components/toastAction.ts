@@ -22,6 +22,7 @@ export function runToastAction(action: NonNullable<Toast['action']>) {
   if (action.rerunSetup) void call('scripts.run', { workspaceId: action.rerunSetup, kind: 'setup' }).catch((e) => actions.ui.toast({ title: 'Could not run setup', sub: cleanError(e) }))
   if (action.openSetup) openSetupLog(action.openSetup)
   if (action.retryWorktree) void call('workspaces.retryWorktree', { workspaceId: action.retryWorktree }).catch((e) => actions.ui.toast({ title: 'Could not create the worktree', sub: cleanError(e) }))
+  if (action.sendAsHandoff) void call('lead.sendAsHandoff', { workspaceId: action.sendAsHandoff }).catch((e) => actions.ui.toast({ title: 'Could not send as Hand off', sub: cleanError(e) }))
   if (action.pickProject) commandComposer('project')
   if (action.retry) runRetry(action.retry)
   if (action.href) void call('system.openExternal', { url: action.href })

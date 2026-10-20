@@ -693,7 +693,7 @@ function firstChat(f: Fixture, o: { script?: boolean; running?: boolean; sent?: 
   const setupRun = !o.script ? undefined : o.running ? { startedAt: started } : { startedAt: started - 40_000, endedAt: started - 28_000, end: 0 }
   return {
     projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'aurahire', firstChatId: ids.tableChat } : r)),
-    workspaces: withWorkspace(f, ids.table, { status: o.running ? 'setup' : 'ready', branch: 'cjjutba/yx6r7', baseRef: 'origin/main', copied: 1028, setupRun }),
+    workspaces: withWorkspace(f, ids.table, { status: o.running ? 'setup' : 'ready', firstInProject: true, branch: 'cjjutba/yx6r7', baseRef: 'origin/main', copied: 1028, setupRun }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'New tab', autoTitle: { turns: 0 } } : c)),
     items: { [ids.tableChat]: o.sent ? [{ kind: 'user', id: 'fc-u', ts: at(10, 0), parts: [{ type: 'text', text: 'hi' }] }, { kind: 'text', id: 'fc-t', ts: at(10, 0, 11), text: "Hi. I'm in the tbilisi workspace on branch cjjutba/yx6r7. The tree is clean.\n\nWhat do you want to work on?" }] : [] },
     projectSettings: { [ids.projectA]: { scripts: o.script ? { setup: 'pnpm install' } : {}, runScripts: [], files: { copy: [] }, workspace: {} } },
