@@ -188,9 +188,11 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
    a guide line, rows whose actions show on hover, status lines, tables and tag lists. */
 .set-head h1 { display: flex; align-items: center; gap: 10px; line-height: var(--lh-compact); }
 .set-head h1 > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.set-crumb { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--ink-3); font: inherit; letter-spacing: inherit; }
+.set-crumb { flex-shrink: 1; min-width: 0; display: inline-flex; align-items: center; gap: 10px; overflow: hidden; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--ink-3); font: inherit; letter-spacing: inherit; }
+.set-crumb-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.set-letter.set-crumb-tile { width: 22px; height: 22px; font-size: var(--fs-chip); }
 .set-crumb:hover { color: var(--ink-2); }
-.set-crumb-sep { display: inline-flex; flex-shrink: 0; color: var(--line-3); }
+.set-crumb-sep { display: inline-flex; flex-shrink: 0; color: var(--faint); font-weight: var(--fw-regular); }
 .set-section h2, .ag-group h2 { display: inline-flex; align-items: baseline; gap: 8px; }
 .set-count { font-size: var(--fs-code); font-weight: var(--fw-regular); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .set-fold { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }

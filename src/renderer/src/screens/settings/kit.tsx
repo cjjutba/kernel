@@ -5,6 +5,7 @@ import { APP_SETTING_TIMING, PROJECT_SETTING_TIMING, type SettingTiming } from '
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, LinkButton, EmptyState, Icon, Kbd, Menu, Spinner, SplitButton, useBusy, type IconName, type LinkVariant } from '../../ui'
+import { ProjectIcon } from '../../components/ProjectIcon'
 import { openNewProject } from '../projects/draft'
 import { useProjectSettings } from './useSettings'
 import { useKeptScroll } from '../../ui/keptScroll'
@@ -26,7 +27,7 @@ export function Page({ title, desc, crumb, action, back, note, children }: { tit
         <div className="set-top">
           {back}
           <div className="set-head">
-            <h1>{crumb && <>{crumb}<span className="set-crumb-sep" aria-hidden="true"><Icon name="right" size={16} /></span></>}<span>{title}</span></h1>
+            <h1>{crumb && <>{crumb}<span className="set-crumb-sep" aria-hidden="true">/</span></>}<span>{title}</span></h1>
             {note}
             {action}
           </div>
@@ -442,6 +443,6 @@ function OpenSettingsFiles({ project, rs, shared }: { project: Project; rs: Proj
  * its General page. `shared` is a page the team shares, so its file button opens settings.toml first.
  */
 export function ProjectPage({ project, rs, title, desc, shared, note, children }: { project: Project; rs: ProjectSettings | null; title: string; desc?: ReactNode; shared?: boolean; note?: ReactNode; children: ReactNode }) {
-  const crumb = <button type="button" className="set-crumb" aria-label={`${project.name} settings`} onClick={() => go({ name: 'settings', page: 'project', projectId: project.id })}>{project.name}</button>
+  const crumb = <button type="button" className="set-crumb" aria-label={`${project.name} settings`} onClick={() => go({ name: 'settings', page: 'project', projectId: project.id })}><ProjectIcon project={project} className="set-letter set-crumb-tile" /><span className="set-crumb-name">{project.name}</span></button>
   return <ProjectScope.Provider value={project.id}><Page title={title} desc={desc} crumb={crumb} note={note} action={<OpenSettingsFiles project={project} rs={rs} shared={shared} />}>{children}</Page></ProjectScope.Provider>
 }
