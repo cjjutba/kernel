@@ -3,6 +3,7 @@ import { call, cleanError } from '../api'
 import { actions } from '../store'
 import { commandComposer } from '../screens/workspace/composer/bus'
 import { setupToasts } from '../screens/onboarding/setupToasts'
+import { runRetry } from '../retry'
 import { retryNow } from '../screens/workspace/banners/retryNow'
 
 /**
@@ -18,6 +19,7 @@ export function runToastAction(action: NonNullable<Toast['action']>) {
   if (action.retryNow) void retryNow(action.retryNow).catch((e) => actions.ui.toast({ title: 'Could not retry', sub: cleanError(e) }))
   if (action.recheckAccount) void Promise.all([call('account.get', undefined).then(actions.account.set), call('accounts.list', undefined).then(actions.accounts.set)]).catch((e) => actions.ui.toast({ title: 'Could not check again', sub: cleanError(e) }))
   if (action.pickProject) commandComposer('project')
+  if (action.retry) runRetry(action.retry)
   if (action.href) void call('system.openExternal', { url: action.href })
   if (action.route) actions.ui.go(action.route)
   if (action.modal) actions.ui.openModal(action.modal)

@@ -525,9 +525,28 @@ async function openDetails(page: Page, account: string) {
   await page.waitForTimeout(300)
 }
 
-// SearchSwitchAccount is the palette with "switch" typed. The query is local to the palette.
+// The palette with a scope tab pressed, or words typed. Both are local to the palette (KERNEL-1098).
+async function pickScope(page: Page, name: string) {
+  await page.getByRole('tablist', { name: 'Search in' }).getByRole('tab', { name, exact: true }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+async function typeInPalette(page: Page, text: string) {
+  await page.getByRole('combobox', { name: 'Type a command or search' }).fill(text)
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
+// IssuesTrackerNoRemote and IssuesTrackerSignedOut are the Work header with the pointer on the dimmed GitHub side, long enough for its tooltip, which says why it is off (KERNEL-1098).
+async function hoverTracker(page: Page) {
+  await page.getByRole('radio', { name: /^GitHub, unavailable/ }).hover()
+  await page.locator('.tooltip').waitFor()
+  await page.waitForTimeout(300)
+}
+
+// SearchSwitchAccount is the palette with "account" typed. The query is local to the palette.
 async function typeSwitch(page: Page) {
-  await page.getByRole('combobox', { name: 'Type a command or search' }).fill('switch')
+  await page.getByRole('combobox', { name: 'Type a command or search' }).fill('account')
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
@@ -719,6 +738,10 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsAccountsMenu: (page) => personalMenu(page),
   SettingsAccountsRemove: (page) => personalMenu(page, 'Remove'),
   SearchSwitchAccount: typeSwitch,
+  SearchQuery: (page) => typeInPalette(page, 'invoice'),
+  SearchNoMatches: (page) => typeInPalette(page, 'flux capacitor'),
+  SearchScope: async (page) => { await pickScope(page, 'Shared'); await typeInPalette(page, 'invoice') },
+  SearchShared: (page) => pickScope(page, 'Shared'),
   SearchArchived: typeArchived,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
@@ -726,6 +749,12 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   InboxRowFocused: focusListRow,
   InboxPlanDoc: async (page) => { await page.getByText('Plan ready: Export invoices as PDF').click(); await page.waitForTimeout(300) },
   IssuesRowFocused: focusListRow,
+  InboxFilter: async (page) => { await page.keyboard.press('/'); await page.getByRole('searchbox', { name: 'Filter the inbox' }).fill('wants'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  IssuesFilters: async (page) => { await page.getByRole('searchbox', { name: 'Search issues' }).fill('invoice'); await page.mouse.move(0, 0); await page.waitForTimeout(600) },
+  IssuesFilteredEmpty: async (page) => { await page.getByRole('searchbox', { name: 'Search issues' }).fill('flux capacitor'); await page.mouse.move(0, 0); await page.waitForTimeout(600) },
+  IssuesTrackerNoRemote: hoverTracker,
+  IssuesTrackerSignedOut: hoverTracker,
+  PullRequestsFilters: async (page) => { await page.getByRole('searchbox', { name: 'Filter pull requests' }).fill('invoice'); await page.mouse.move(0, 0); await page.waitForTimeout(400) },
   IssuesNoWork1280: windowAt(1280),
   ProjectsRowFocused: focusListRow,
   PullRequestsRowFocused: focusListRow,

@@ -95,8 +95,8 @@ export function workspaceState(w: Workspace, running: boolean, long = false): st
   }
 }
 
-/** The state's words and the tone they are drawn in: `bad` is red for what needs a person, `ready` is the green of a PR that can merge. */
-export interface WorkState { word: string; tone: 'plain' | 'bad' | 'ready' }
+/** The state's words and the tone they are drawn in: `bad` is red for what needs a person, `ready` is the green of a PR that can merge, `needs` is amber for work waiting on you and `merged` is the purple of a merged PR. */
+export interface WorkState { word: string; tone: 'plain' | 'bad' | 'ready' | 'needs' | 'merged' }
 
 /** The workspace furthest along: an open PR before a workspace still working, then the newest. */
 const furthest = (linked: Workspace[]): Workspace | undefined =>
@@ -106,8 +106,10 @@ const furthest = (linked: Workspace[]): Workspace | undefined =>
  * `workspaceState` with the PR's own reads laid over it: how many checks fail, changes requested and conflicts read red, and a PR that can
  * merge reads green. `pr` is GitHub's read of the PR, when there is one. Real events only, never a timer.
  */
-export function workState(w: Workspace, running: boolean, pr?: PrInfo | null, long = false): WorkState {
+export function workState(w: Workspace, running: boolean, pr?: PrInfo | null, long = false, waiting = false): WorkState {
+  if (waiting && w.prState === 'none') return { word: 'Needs you', tone: 'needs' }
   switch (w.prState) {
+    case 'merged': return { word: workspaceState(w, running, long), tone: 'merged' }
     case 'ready': return { word: 'Ready to merge', tone: 'ready' }
     case 'cifail': {
       const n = pr?.checks.filter((c) => c.state === 'fail' && !c.optional).length ?? 0
@@ -121,16 +123,16 @@ export function workState(w: Workspace, running: boolean, pr?: PrInfo | null, lo
 }
 
 /** The row's right end for a linked workspace: the agent and what its work is doing. The one furthest along wins. */
-export function rowState(linked: Workspace[], agents: Record<string, AgentDef[]>, runningOf: (w: Workspace) => boolean, prs: Record<string, PrInfo> = {}): (WorkState & { who?: string }) | null {
+export function rowState(linked: Workspace[], agents: Record<string, AgentDef[]>, runningOf: (w: Workspace) => boolean, prs: Record<string, PrInfo> = {}, waitingOf: (w: Workspace) => boolean = () => false): (WorkState & { who?: string }) | null {
   const w = furthest(linked)
   if (!w) return null
   const who = agents[w.projectId]?.find((a) => a.id === w.agentId)?.name
-  return { ...workState(w, runningOf(w), prs[w.id]), who }
+  return { ...workState(w, runningOf(w), prs[w.id], false, waitingOf(w)), who }
 }
 
 /** `rowState` as one line, "Christian · PR open", for a screen reader and for tests. */
-export function rowStatus(linked: Workspace[], agents: Record<string, AgentDef[]>, runningOf: (w: Workspace) => boolean, prs: Record<string, PrInfo> = {}): string | null {
-  const s = rowState(linked, agents, runningOf, prs)
+export function rowStatus(linked: Workspace[], agents: Record<string, AgentDef[]>, runningOf: (w: Workspace) => boolean, prs: Record<string, PrInfo> = {}, waitingOf?: (w: Workspace) => boolean): string | null {
+  const s = rowState(linked, agents, runningOf, prs, waitingOf)
   return s ? (s.who ? `${s.who} · ${s.word}` : s.word) : null
 }
 

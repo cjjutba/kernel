@@ -1,15 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Workspace } from '@shared/types'
 import { go, useStore } from '../../store'
-import { Banner, Button, DayGroupHeader, EmptyList, Icon, NotConnectedState, Pill, ScopeLabel, Select, Skeleton, Spinner, groupByDay, useListKeys } from '../../ui'
+import { Button, EmptyList, FailedState, Icon, LinkButton, LoadingRow, Pill, Select, Skeleton, Spinner, useListKeys } from '../../ui'
+import { failToast, useRetryKey } from '../../retry'
 import { oneOf, useRemembered } from '../../remember'
 import { WorkHeader, ALL_PROJECTS } from '../work/WorkHeader'
+import { GhSignIn } from '../work/GhSignIn'
+import { call } from '../../api'
 import { useWorkProject } from '../work/useWorkProject'
-import { useGithubLogin } from '../work/useGithubLogin'
 import { age } from '../inbox/model'
 import { MergeButton } from '../workspace/pr/MergeButton'
 import { notReviewedTip, type LeadPr } from '../workspace/pr/leadPrList'
-import { MERGED_LIMIT, checksCell, conflictsCell, groupOpen, issueKey, matchesMerged, mergedRow, oldestRead, readFailure, reviewCell, usePullRequests, type Cell } from './model'
+import { MERGED_LIMIT, checksCell, conflictsCell, groupMerged, groupOpen, issueKey, matchesMerged, mergedReview, mergedRow, mergedWhen, oldestRead, readFailure, reviewCell, usePullRequests, type Cell } from './model'
 import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import './prs.css'
 
@@ -19,28 +21,26 @@ const filters: [Filter, string][] = [['open', 'Open'], ['merged', 'Merged']]
 
 const openWorkspace = (ws: Workspace) => go({ name: 'workspace', workspaceId: ws.id })
 
-/** One word of a row's state. Red is for what needs a person, and a spinner for what is running. */
+/** One word of a row's state. Green with a check is what passed or was approved, red is what needs a person, and a loader is what is running. The rest is muted. */
 function CellText({ cell }: { cell: Cell }) {
   const autoReview = useStore((s) => s.settings?.pr.autoReview)
   const tip = notReviewedTip(cell.text, autoReview)
-  return <span className="prs-cell" data-tone={cell.tone} data-tip={tip} aria-description={tip}>{cell.spin && <Spinner label={null} pattern="checker" />}{cell.text}</span>
+  return <span className="prs-cell" data-tone={cell.tone} data-tip={tip} aria-description={tip}>{cell.spin ? <Spinner label={null} pattern="checker" /> : cell.icon && <Icon name={cell.icon} size={12} />}{cell.text}</span>
 }
 
 type Nav = ReturnType<typeof useListKeys>['rowProps']
 
 function OpenRow({ row, nav }: { row: LeadPr; nav: Nav }) {
   const { ws } = row
-  const project = useStore((s) => s.projects.find((r) => r.id === ws.projectId))
   const pr = useStore((s) => s.prs[ws.id])
   const title = ws.prTitle ?? ws.title ?? ws.name
   const key = issueKey(ws)
   return (
     <li className="prs-row" data-keep-id={ws.id}>
       <button type="button" {...nav(ws.id)} className="prs-main" aria-label={`Open ${title}, PR #${ws.prNumber}`} onClick={() => openWorkspace(ws)}>
-        <Icon name={ws.prState === 'draft' ? 'prDraft' : 'pr'} size={16} />
         <span className="col" style={{ minWidth: 0 }}>
           <span className="prs-title ellipsis">{title}</span>
-          <span className="prs-sub"><span className="mono">#{ws.prNumber}</span><span className="ellipsis">{project?.name}</span><span className="ellipsis">{row.name}</span>{key && <span className="mono">{key}</span>}<span className="mono ellipsis">{ws.branch}</span></span>
+          <span className="prs-sub"><span className="mono">#{ws.prNumber}</span><span aria-hidden="true" className="prs-dot">·</span><span>{row.name}</span>{key && <><span aria-hidden="true" className="prs-dot">·</span><span className="mono">{key}</span></>}<span aria-hidden="true" className="prs-dot">·</span><span className="mono ellipsis">{ws.branch}</span></span>
         </span>
       </button>
       <CellText cell={checksCell(ws, pr)} />
@@ -51,41 +51,37 @@ function OpenRow({ row, nav }: { row: LeadPr; nav: Nav }) {
   )
 }
 
-const ago = (t: number, now: number) => (age(t, now) === 'now' ? 'just now' : `${age(t, now)} ago`)
 const count = (n: number) => n.toLocaleString('en-US')
 
-function MergedRow({ ws, nav, now, withProject }: { ws: Workspace; nav: Nav; now: number; withProject: boolean }) {
-  const project = useStore((s) => s.projects.find((r) => r.id === ws.projectId))
+function MergedRow({ ws, nav, now }: { ws: Workspace; nav: Nav; now: number }) {
   const agent = useStore((s) => s.agents[ws.projectId]?.find((a) => a.id === ws.agentId))
-  const { full, text, scope, key } = mergedRow(ws)
+  const { full, text, key } = mergedRow(ws)
   const empty = !!ws.stat && ws.stat.added === 0 && ws.stat.removed === 0
+  const review = mergedReview(ws)
   return (
     <li className="prs-row prs-merged" data-keep-id={ws.id}>
       <button type="button" {...nav(ws.id)} className="prs-main" aria-label={`Open ${full}, PR #${ws.prNumber}`} data-tip={full} data-tip-hint={ws.branch} data-tip-align="start" onClick={() => openWorkspace(ws)}>
+        <Icon name="merged" size={14} />
         <span className="col" style={{ minWidth: 0 }}>
-          <span className="prs-line"><span className="prs-title ellipsis">{text}</span>{scope && <ScopeLabel>{scope}</ScopeLabel>}</span>
-          <span className="prs-sub"><span className="mono">#{ws.prNumber}</span><span aria-hidden="true">·</span><span className="ellipsis">{agent?.name ?? ws.agentId}</span>{withProject && project && <><span aria-hidden="true">·</span><span className="ellipsis">{project.name}</span></>}</span>
+          <span className="prs-title ellipsis">{text}</span>
+          <span className="prs-sub"><span className="mono">#{ws.prNumber}</span><span aria-hidden="true" className="prs-dot">·</span><span className="ellipsis">{agent?.name ?? ws.agentId}</span>{key && <><span aria-hidden="true" className="prs-dot">·</span><span className="mono">{key}</span></>}</span>
         </span>
       </button>
-      <span className="prs-key">{key && <button type="button" className="prs-key-link mono" aria-label={`Open issue ${key}`} onClick={() => go({ name: 'issues', issueId: key, projectId: ws.projectId })}>{key}</button>}</span>
-      <span className="prs-cell" data-tone="faint">{ago(ws.mergedAt ?? ws.createdAt, now)}</span>
+      <span className="prs-cell" data-tone="faint">{mergedWhen(ws.mergedAt ?? ws.createdAt, now)}</span>
       <span className="prs-stat mono">{ws.stat && (empty ? <span className="prs-none">+0 -0</span> : <><span className="add">+{count(ws.stat.added)}</span> <span className="del">-{count(ws.stat.removed)}</span></>)}</span>
+      <CellText cell={review} />
     </li>
   )
 }
 
-/** Rows the shape of the list's own while GitHub's first read is out. */
+/** Rows the shape of the table while GitHub's first read is out, with what is loading under them (Pen 11.16). */
 function PrSkeleton() {
   return (
     <div className="prs-scroll prs-skeleton" role="status" aria-label="Loading pull requests">
-      {[2, 1].map((n, g) => (
-        <div key={g}>
-          <div className="prs-group"><Skeleton width={110} height={10} /></div>
-          {Array.from({ length: n }, (_, i) => (
-            <div key={i} className="prs-row"><span className="col gap-8"><Skeleton width={`${62 - i * 14}%`} height={11} /><Skeleton width="30%" height={9} /></span><Skeleton width={60} height={10} /><Skeleton width={70} height={10} /><Skeleton width={40} height={10} /><span /></div>
-          ))}
-        </div>
+      {[300, 240, 280, 200].map((w, i) => (
+        <div key={i} className="prs-sk-row"><span className="col"><Skeleton width={w} height={9} /><Skeleton width={150} height={7} /></span><Skeleton width={70} height={9} /><Skeleton width={80} height={9} /><Skeleton width={60} height={9} /></div>
       ))}
+      <LoadingRow what="pull requests" inline />
     </div>
   )
 }
@@ -103,19 +99,21 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
   const projects = useStore((s) => s.projects)
   const choices = useMemo(() => projects.filter((r) => !r.archived && !r.hidden), [projects])
   const { scope: project, pick } = useWorkProject(choices)
-  const login = useGithubLogin()
-  const open = project ? all.open.filter((r) => r.ws.projectId === project.id) : all.open
-  // The cap is on the loaded rows of the scope, so one project's list is its own 50 most recent. Search and the agent filter cover only these.
-  const inScope = useMemo(() => (project ? mergedAll.filter((w) => w.projectId === project.id) : mergedAll), [mergedAll, project])
-  const mergedTotal = inScope.length
-  const loaded = useMemo(() => inScope.slice(0, MERGED_LIMIT), [inScope])
+  const online = useStore((s) => s.system.online)
   const [query, setQuery] = useState('')
   const [agentId, setAgentId] = useState('')
   const agentsByProject = useStore((s) => s.agents)
   const agentName = (id: string) => Object.values(agentsByProject).flat().find((a) => a.id === id)?.name ?? id
-  const agentChoices = useMemo(() => [...new Set(loaded.map((w) => w.agentId))].sort((a, b) => agentName(a).localeCompare(agentName(b))), [loaded, agentsByProject])
-  const filtering = query.trim() !== '' || (agentId !== '' && agentChoices.includes(agentId))
-  const merged = useMemo(() => loaded.filter((w) => matchesMerged(w, query, agentChoices.includes(agentId) ? agentId : undefined)), [loaded, query, agentId, agentChoices])
+  const openInScope = useMemo(() => (project ? all.open.filter((r) => r.ws.projectId === project.id) : all.open), [all.open, project])
+  // The cap is on the loaded rows of the scope, so one project's list is its own 50 most recent. Search and the agent filter cover only these.
+  const inScope = useMemo(() => (project ? mergedAll.filter((w) => w.projectId === project.id) : mergedAll), [mergedAll, project])
+  const mergedTotal = inScope.length
+  const loaded = useMemo(() => inScope.slice(0, MERGED_LIMIT), [inScope])
+  const agentChoices = useMemo(() => [...new Set((filter === 'open' ? openInScope.map((r) => r.ws.agentId) : loaded.map((w) => w.agentId)))].sort((a, b) => agentName(a).localeCompare(agentName(b))), [filter, openInScope, loaded, agentsByProject])
+  const agent = agentChoices.includes(agentId) ? agentId : undefined
+  const filtering = query.trim() !== '' || !!agent
+  const open = useMemo(() => (agent ? openInScope.filter((r) => r.ws.agentId === agent) : openInScope), [openInScope, agent])
+  const merged = useMemo(() => loaded.filter((w) => matchesMerged(w, query, agent)), [loaded, query, agent])
   const [refreshing, setRefreshing] = useState(false)
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
@@ -123,51 +121,59 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
     return () => window.clearInterval(t)
   }, [])
   const prs = useStore((s) => s.prs)
-  const groups = useMemo(() => groupOpen(open, prs), [open, prs])
-  const mergedGroups = useMemo(() => groupByDay(merged, (w) => w.mergedAt ?? w.createdAt, now), [merged, now])
-  const projectsShown = !project && choices.length > 1
+  const groups = useMemo(() => groupOpen(open, prs, choices), [open, prs, choices])
+  const mergedGroups = useMemo(() => groupMerged(merged, choices), [merged, choices])
   // A folded group's rows are out of reach of the keys. A fold lasts while the screen is open.
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
   const fold = (id: string) => setFolded((f) => { const n = new Set(f); if (!n.delete(id)) n.add(id); return n })
-  const shown = filter === 'open' ? groups.filter((g) => !folded.has(g.id)).flatMap((g) => g.rows.map((r) => r.ws)) : merged
+  const shown = filter === 'open' ? groups.filter((g) => !folded.has(g.id)).flatMap((g) => g.rows.map((r) => r.ws)) : mergedGroups.filter((g) => !folded.has(`m:${g.id}`)).flatMap((g) => g.rows)
   const keys = useListKeys({ ids: shown.map((w) => w.id), rowId: (id) => `prs-${id}`, onOpen: (id) => { const ws = shown.find((w) => w.id === id); if (ws) openWorkspace(ws) } })
-  
+
   const readAt = oldestRead(reads)
   const failed = reads.find((r) => r.failed)
   // A failed read with nothing cached is not a count of zero: the pill stays blank until a read succeeds.
-  const counts: Record<Filter, number | undefined> = { open: failed && open.length === 0 ? undefined : open.length, merged: failed && mergedTotal === 0 ? undefined : mergedTotal }
+  const counts: Record<Filter, number | undefined> = { open: failed && openInScope.length === 0 ? undefined : openInScope.length, merged: failed && mergedTotal === 0 ? undefined : mergedTotal }
   // Nothing read yet while GitHub is asked: the first read is still out. Signed out in every project: there is nothing to read until gh signs in.
   const loading = filter === 'open' && reading && readAt === undefined
   const signedOut = reads.length > 0 && reads.every((r) => r.failed === 'signed-out')
   const readAgo = readAt === undefined ? undefined : age(readAt, now) === 'now' ? 'just now' : `${age(readAt, now)} ago`
+  const readAgoLong = readAt === undefined ? undefined : age(readAt, now) === 'now' ? 'a moment ago' : `${Math.max(1, Math.round((now - readAt) / 60000))} minutes ago`
+  const reread = () => { setRefreshing(true); return refresh().finally(() => setRefreshing(false)) }
+  useRetryKey('prs', reread)
+  // A read that fails says so once in a toast with Try again. Signed out and offline say it on the page, so they raise none (DESIGN.md, State kinds).
+  const failure = failed?.failed
+  useEffect(() => {
+    if (!failure || failure === 'signed-out' || failure === 'offline' || !online) return
+    const nothing = readAt === undefined || (filter === 'merged' && mergedTotal === 0)
+    failToast(filter === 'merged' && mergedTotal === 0 ? "Couldn't load merged pull requests" : "Couldn't refresh pull requests", nothing ? readFailure(failure) : `Showing what Kernel read ${readAgoLong}.`, 'prs')
+  }, [failure])
   // Each filter keeps its own spot, and one never opened starts at the top. A PR that merged out of Open while away falls back to its neighbor above (KERNEL-919).
   const scroll = useRef<HTMLDivElement>(null)
   useKeptScroll(scroll, { key: spotKey.prs(filter), ready: filter === 'open' ? !loading && open.length > 0 : merged.length > 0 })
+  const repoUrl = project ? loaded.find((w) => w.prUrl)?.prUrl?.replace(/\/pull\/\d+.*$/, '') : undefined
+  const status = reading ? <><Spinner label={null} pattern="checker" />Reading status from GitHub</> : readAgo ? `Status read ${readAgo}` : null
+  const offline = !online || failure === 'offline'
+
   return (
     <div className="panel">
-      <WorkHeader tab="prs" allProjects head={{ projects: choices, project, onProject: pick }} counts={{ prs: all.open.length }} where={login ? `GitHub · ${login}` : 'GitHub'} refreshing={refreshing}
-        onRefresh={() => { setRefreshing(true); void refresh().finally(() => setRefreshing(false)) }} />
+      <WorkHeader tab="prs" allProjects head={{ projects: choices, project, onProject: pick }} counts={{ prs: all.open.length }} where={status} refreshing={refreshing} onRefresh={() => void reread()} />
       <div className="prs-bar" role="group" aria-label="Filter pull requests">
         {filters.map(([id, label]) => <Pill key={id} pressed={filter === id} onClick={() => setFilter(id)}>{label}{counts[id] !== undefined && <span className="prs-n">{counts[id]}</span>}</Pill>)}
-        {filter === 'merged' && loaded.length > 0 && (
+        {agentChoices.length > 0 && (
           <>
-            <Select variant="chip" label="Agent" prefix="Agent" value={agentChoices.includes(agentId) ? agentId : ''} onChange={setAgentId}
+            <span className="prs-sep" aria-hidden="true" />
+            <Select variant="chip" label="Agent" prefix="Agent" value={agent ?? ''} onChange={setAgentId}
               options={[{ value: '', label: 'All' }, ...agentChoices.map((id) => ({ value: id, label: agentName(id) }))]} />
-            <span className="prs-search">
-              <Icon name="search" size={14} />
-              <input type="search" aria-label="Search merged pull requests" placeholder="Search merged" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} />
-            </span>
           </>
         )}
-        <span className="prs-read" role="status">
-          {reading ? <><Spinner label={null} pattern="checker" />Reading status from GitHub</> : readAgo ? `Status read ${readAgo}` : null}
-        </span>
+        <span className="grow" />
+        {filter === 'merged' && loaded.length > 0 && (
+          <span className="prs-search">
+            <Icon name="search" size={14} />
+            <input type="search" aria-label="Filter pull requests" placeholder="Filter pull requests" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </span>
+        )}
       </div>
-      {failed?.failed && !(signedOut && open.length === 0) && (
-        <div className="prs-banner">
-          <Banner kind="warn" title="Couldn't read pull request status from GitHub">{readFailure(failed.failed)} {readAgo ? `Showing what was read ${readAgo}.` : 'Nothing has been read yet, so the lists may be missing pull requests.'}</Banner>
-        </div>
-      )}
       {filter === 'open' ? (
         loading ? <PrSkeleton /> : open.length ? (
           <div className="prs-scroll" ref={scroll}>
@@ -179,7 +185,7 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
                   <section key={g.id} aria-label={g.label}>
                     <h3 className="prs-group">
                       <button type="button" className="prs-fold" aria-expanded={isOpen} aria-label={`${g.label}, ${g.rows.length}`} onClick={() => fold(g.id)}>
-                        <span className="prs-chev" data-open={isOpen}><Icon name="chevron" size={12} /></span><span>{g.label}</span><span className="prs-n">{g.rows.length}</span>
+                        <span className="prs-chev" data-open={isOpen}><Icon name="chevron" size={12} /></span><span className="prs-gname">{g.label}</span><span className="prs-n">{g.rows.length}</span>
                       </button>
                     </h3>
                     {isOpen && <ul className="prs-list">{g.rows.map((r) => <OpenRow key={r.ws.id} row={r} nav={keys.rowProps} />)}</ul>}
@@ -189,41 +195,55 @@ export function PullRequests({ filter: first }: { filter?: Filter }) {
             </div>
           </div>
         ) : signedOut ? (
-          <NotConnectedState icon="key" title="GitHub isn't signed in" page="integrations" label="Open Settings, Integrations">Sign the GitHub CLI in and the pull requests your agents open show up here with their checks and review.</NotConnectedState>
+          <GhSignIn what="pull requests" busy={refreshing} onCheck={reread} />
+        ) : failure && failure !== 'signed-out' && openInScope.length === 0 ? (
+          <FailedState icon="wifioff" title={offline ? "You're offline" : "Pull requests didn't load"} onRetry={offline ? undefined : reread}>{offline ? "Pull requests show again when you're back online." : 'Kernel will try again on its own.'}</FailedState>
         ) : (
-          <EmptyList icon="pr" title="No open pull requests" action={project && all.open.length > 0 ? <Button size="lg" onClick={() => pick(ALL_PROJECTS)}>Show all projects</Button> : merged.length > 0 ? <Button size="lg" onClick={() => setFilter('merged')}>Show merged</Button> : undefined}>
-            {project && all.open.length > 0 ? `${project.name} has none, but other projects do.` : 'When an agent opens a pull request in any project, it shows up here with its checks and review.'}
+          <EmptyList icon="pr" title="No open pull requests" action={project && all.open.length > 0 ? <Button onClick={() => pick(ALL_PROJECTS)}>Show all projects</Button> : merged.length > 0 ? <Button onClick={() => setFilter('merged')}>Show merged</Button> : undefined}>
+            {project && all.open.length > 0 ? `${project.name} has none, but other projects do.` : project ? 'Pull requests your agents open show up here.' : 'None of your projects has an open pull request.'}
           </EmptyList>
         )
       ) : loaded.length ? (
         <div className="prs-scroll" ref={scroll}>
-          <div className="prs-merged-wrap">
-            {mergedTotal > MERGED_LIMIT || filtering ? (
-              <p className="prs-cap" role="status">
-                {filtering ? `${count(merged.length)} of ${count(loaded.length)} merged pull requests match.` : `Showing the ${MERGED_LIMIT} most recent of ${count(mergedTotal)} merged pull requests.`}
-                {filtering && mergedTotal > MERGED_LIMIT && ` Search covers only the latest ${MERGED_LIMIT} of ${count(mergedTotal)}.`}
-              </p>
-            ) : null}
-            {merged.length ? (
-              <div aria-label="Merged pull requests" onKeyDown={keys.onKeyDown}>
-                {mergedGroups.map((g) => (
+          <div className="prs-head prs-row prs-merged" aria-hidden="true"><span>Pull request</span><span>Merged</span><span>Size</span><span>Review</span></div>
+          {filtering ? (
+            <p className="prs-cap" role="status">
+              {`${count(merged.length)} of ${count(loaded.length)} merged pull requests match.`}
+              {mergedTotal > MERGED_LIMIT && ` Search covers only the latest ${MERGED_LIMIT} of ${count(mergedTotal)}.`}
+            </p>
+          ) : null}
+          {merged.length ? (
+            <div aria-label="Merged pull requests" onKeyDown={keys.onKeyDown}>
+              {mergedGroups.map((g) => {
+                const isOpen = !folded.has(`m:${g.id}`)
+                return (
                   <section key={g.id} aria-label={g.label}>
-                    <DayGroupHeader label={g.label} count={g.rows.length} />
-                    <ul className="prs-list">{g.rows.map((w) => <MergedRow key={w.id} ws={w} nav={keys.rowProps} now={now} withProject={projectsShown} />)}</ul>
+                    <h3 className="prs-group">
+                      <button type="button" className="prs-fold" aria-expanded={isOpen} aria-label={`${g.label}, ${g.rows.length}`} onClick={() => fold(`m:${g.id}`)}>
+                        <span className="prs-chev" data-open={isOpen}><Icon name="chevron" size={12} /></span><span className="prs-gname">{g.label}</span><span className="prs-n">{g.rows.length}</span>
+                      </button>
+                    </h3>
+                    {isOpen && <ul className="prs-list">{g.rows.map((w) => <MergedRow key={w.id} ws={w} nav={keys.rowProps} now={now} />)}</ul>}
                   </section>
-                ))}
-              </div>
-            ) : (
-              <EmptyList icon="pr" title="No merged pull request matches" action={<Button size="lg" onClick={() => { setQuery(''); setAgentId('') }}>Clear search</Button>}>
-                {mergedTotal > MERGED_LIMIT ? `Search covered the latest ${MERGED_LIMIT} of ${count(mergedTotal)} merged pull requests, not older ones.` : 'Nothing in the merged list matches that search.'}
-              </EmptyList>
-            )}
-          </div>
+                )
+              })}
+              {!filtering && mergedTotal > MERGED_LIMIT && (
+                <p className="prs-cap" role="status">
+                  Showing the last {MERGED_LIMIT} merged.
+                  {repoUrl && <> <LinkButton variant="inline" size="meta" onClick={() => void call('system.openExternal', { url: `${repoUrl}/pulls?q=is%3Apr+is%3Amerged` })}>See the rest on GitHub<Icon name="ext" size={12} /></LinkButton></>}
+                </p>
+              )}
+            </div>
+          ) : (
+            <EmptyList icon="search" title="No merged pull request matches" action={<Button onClick={() => { setQuery(''); setAgentId('') }}>Clear filters</Button>}>
+              {mergedTotal > MERGED_LIMIT ? `Search covered the latest ${MERGED_LIMIT} of ${count(mergedTotal)} merged pull requests, not older ones.` : 'Nothing in the merged list matches that search.'}
+            </EmptyList>
+          )}
         </div>
-      ) : failed?.failed ? (
-        <EmptyList icon="merged" title="Couldn't tell what merged">{readFailure(failed.failed)} Merged pull requests will show here once GitHub can be read.</EmptyList>
+      ) : failure && failure !== 'signed-out' ? (
+        <FailedState icon="wifioff" title={offline ? "You're offline" : "Merged pull requests didn't load"} onRetry={offline ? undefined : reread}>{offline ? "Merged pull requests show again when you're back online." : 'Kernel will try again on its own.'}</FailedState>
       ) : (
-        <EmptyList icon="merged" title="Nothing merged yet">Pull requests you merge show up here.</EmptyList>
+        <EmptyList icon="merged" title="Nothing merged yet">Merged pull requests from the last 30 days show up here.</EmptyList>
       )}
     </div>
   )

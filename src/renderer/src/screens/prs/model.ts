@@ -11,8 +11,8 @@ import { leadPrs, type LeadPr } from '../workspace/pr/leadPrList'
 /** How many merged PRs the Merged filter lists: the most recent ones. */
 export const MERGED_LIMIT = 50
 
-/** A cell of a row: the words, and the tone they are drawn in. `bad` is the red of what needs a person, `faint` is quiet. */
-export interface Cell { text: string; tone: 'plain' | 'bad' | 'faint'; spin?: boolean }
+/** A cell of a row: the words, and the tone they are drawn in. `good` is the green of what passed or was approved, `bad` is the red of what needs a person, `faint` is quiet. */
+export interface Cell { text: string; tone: 'plain' | 'good' | 'bad' | 'faint'; spin?: boolean; /** A 12px mark before the words: a check for what passed or was approved, a cross for failing checks. */ icon?: 'check' | 'close' }
 
 /**
  * Checks, from the PR's own checks when GitHub's read is in, else from the workspace's state. A required check failing reads Failed,
@@ -20,13 +20,13 @@ export interface Cell { text: string; tone: 'plain' | 'bad' | 'faint'; spin?: bo
  */
 export function checksCell(ws: Workspace, pr: PrInfo | null | undefined): Cell {
   if (pr?.checks.length) {
-    if (pr.checks.some((c) => c.state === 'fail' && !c.optional)) return { text: 'Failed', tone: 'bad' }
+    if (pr.checks.some((c) => c.state === 'fail' && !c.optional)) return { text: 'Failed', tone: 'bad', icon: 'close' }
     if (pr.checks.some((c) => c.state === 'running' || c.state === 'queued')) return { text: 'Running', tone: 'plain', spin: true }
-    return { text: 'Passed', tone: 'plain' }
+    return { text: 'Passed', tone: 'good', icon: 'check' }
   }
-  if (ws.prState === 'cifail') return { text: 'Failed', tone: 'bad' }
+  if (ws.prState === 'cifail') return { text: 'Failed', tone: 'bad', icon: 'close' }
   if (ws.prState === 'checks') return { text: 'Running', tone: 'plain', spin: true }
-  if (['ready', 'changes', 'conflict', 'merging'].includes(ws.prState)) return { text: 'Passed', tone: 'plain' }
+  if (['ready', 'changes', 'conflict', 'merging'].includes(ws.prState)) return { text: 'Passed', tone: 'good', icon: 'check' }
   return { text: 'None yet', tone: 'faint' }
 }
 
@@ -34,8 +34,8 @@ export function checksCell(ws: Workspace, pr: PrInfo | null | undefined): Cell {
 export function reviewCell(row: LeadPr, pr: PrInfo | null | undefined): Cell {
   if (row.ws.prState === 'changes' || pr?.reviewDecision === 'changes') return { text: 'Changes requested', tone: 'bad' }
   if (row.blockers) return { text: row.review.text, tone: 'bad' }
-  if (pr?.reviewDecision === 'approved' && row.review.tone !== 'bad') return { text: 'Approved', tone: 'plain' }
-  return { text: row.review.text, tone: row.review.tone === 'bad' ? 'bad' : row.review.tone === 'good' ? 'plain' : 'faint' }
+  if (pr?.reviewDecision === 'approved' && row.review.tone !== 'bad') return { text: 'Approved', tone: 'good', icon: 'check' }
+  return { text: row.review.text, tone: row.review.tone === 'bad' ? 'bad' : row.review.tone === 'good' ? 'good' : 'faint', ...(row.review.tone === 'good' ? { icon: 'check' as const } : {}) }
 }
 
 /** Conflicts: the files GitHub names, else the state. A draft or a PR still being made has nothing to say. */
@@ -44,7 +44,7 @@ export function conflictsCell(ws: Workspace, pr: PrInfo | null | undefined): Cel
   if (pr?.conflicts.length) return { text: pr.conflicts.length === 1 ? '1 file' : `${pr.conflicts.length} files`, tone: 'bad' }
   if (ws.prState === 'conflict') return { text: 'Conflicts', tone: 'bad' }
   if (ws.prState === 'draft' || ws.prState === 'creating') return { text: 'None yet', tone: 'faint' }
-  return { text: 'None', tone: 'plain' }
+  return { text: 'None', tone: 'faint' }
 }
 
 /** The Open list's groups, top to bottom: what can merge, what needs a person, and what is on its way. */
@@ -61,14 +61,46 @@ export function openGroup(row: LeadPr, pr: PrInfo | null | undefined): OpenGroup
   return bad ? 'needs' : 'progress'
 }
 
-/** The open rows in their groups, in the order the page lists them. Within a group the rows keep the order the Lead's tab gives. Empty groups are left out. */
-export function groupOpen(rows: LeadPr[], prs: Record<string, PrInfo>): { id: OpenGroup; label: string; rows: LeadPr[] }[] {
-  const by = new Map<OpenGroup, LeadPr[]>()
-  for (const r of rows) {
-    const g = openGroup(r, prs[r.ws.id])
-    by.set(g, [...(by.get(g) ?? []), r])
-  }
-  return OPEN_GROUPS.flatMap((g) => (by.get(g.id)?.length ? [{ ...g, rows: by.get(g.id)! }] : []))
+/** A project's open rows, as the page lists them under the project's name. */
+export interface ProjectGroup<T> { id: string; label: string; rows: T[] }
+
+/**
+ * The open rows grouped by project, in the order the projects are given. Inside a project the rows keep the Lead's tab order, with what can merge first, then
+ * what needs a person, then what is on its way. A project with no open PR is left out.
+ */
+export function groupOpen(rows: LeadPr[], prs: Record<string, PrInfo>, projects: { id: string; name: string }[]): ProjectGroup<LeadPr>[] {
+  const rank = (r: LeadPr) => OPEN_GROUPS.findIndex((g) => g.id === openGroup(r, prs[r.ws.id]))
+  return projects.flatMap((p) => {
+    const mine = rows.filter((r) => r.ws.projectId === p.id).map((r, i) => ({ r, i })).sort((a, b) => rank(a.r) - rank(b.r) || a.i - b.i).map((x) => x.r)
+    return mine.length ? [{ id: p.id, label: p.name, rows: mine }] : []
+  })
+}
+
+/** The merged PRs grouped by project, in the order the projects are given, each project's newest first. */
+export function groupMerged(list: Workspace[], projects: { id: string; name: string }[]): ProjectGroup<Workspace>[] {
+  return projects.flatMap((p) => {
+    const mine = list.filter((w) => w.projectId === p.id)
+    return mine.length ? [{ id: p.id, label: p.name, rows: mine }] : []
+  })
+}
+
+/** When a PR merged, in a few words: "Today, 14:21", "Yesterday", "Oct 16" and, from another year, "Oct 16, 2025". */
+export function mergedWhen(at: number, now = Date.now()): string {
+  const d = new Date(at)
+  const n = new Date(now)
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const gap = Math.round((day(n) - day(d)) / 86400000)
+  if (gap <= 0) return `Today, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  if (gap === 1) return 'Yesterday'
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(d.getFullYear() !== n.getFullYear() ? { year: 'numeric' } : {}) })
+}
+
+/** The review a merged PR had: the reviewers' verdicts Kernel kept. Blockers a person overruled still read as that. */
+export function mergedReview(ws: Workspace): Cell {
+  const v = ws.reviews ?? []
+  if (v.length === 0) return { text: 'Merged without review', tone: 'faint' }
+  if (v.some((x) => x.verdict === 'blockers')) return { text: ws.overruled ? 'Blockers overruled' : 'Merged with blockers', tone: 'bad' }
+  return { text: 'Approved', tone: 'good', icon: 'check' }
 }
 
 /** The issue a workspace came from, for a row's sub line: "KERNEL-859". */

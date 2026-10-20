@@ -3,13 +3,13 @@ import type { IssueTakenFinding, LinearIssue, LinearIssueDetail, Project } from 
 import { call, cleanError } from '../../api'
 import { useDetailLoad } from './useDetailLoad'
 import { detailKey, forgetTracker } from './cache'
-import { actions, getState, go, lastProject, useStore } from '../../store'
-import { Button, FailedState, Icon, Select, Skeleton, useBusy } from '../../ui'
+import { actions, getState, lastProject, useStore } from '../../store'
+import { Button, FailedState, Icon, LoadingRow, Select, Skeleton, useBusy } from '../../ui'
+import { failToast, useRetryKey } from '../../retry'
 import { IssuePriority, IssueState, PRIORITIES } from '../../icons'
 import { openLeadChat, openNewChat } from '../../lead'
 import { ProjectIcon } from '../../components/ProjectIcon'
 import { Markdown } from '../workspace/markdown'
-import { DescriptionFailed } from './parts'
 import { initials, issueAge, linkedWorkspaces, stateShape } from './model'
 import { WorkCard } from './WorkCard'
 import { ConfirmIssueTaken } from './ConfirmIssueTaken'
@@ -20,6 +20,9 @@ import { useKeptScroll } from '../../ui/keptScroll'
 export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }: { keep: string; headProject?: Project; id: string; summary?: LinearIssue; tick: number; onPlanned: () => void }) {
   const { loaded, failure, retry } = useDetailLoad<LinearIssueDetail>(id, detailKey('linear', '', id), () => call('linear.issue', { id }), [tick])
   const failed = failure?.id === id ? failure.message : null
+  // A detail that failed says so in a toast with Try again, and the pane shows a calm state in its place (DESIGN.md, State kinds). A cached copy keeps showing, as it did.
+  useRetryKey('issue', retry)
+  useEffect(() => { if (failed) failToast(`Couldn't load ${id}`, failed, 'issue') }, [failed, id])
   const [busy, run] = useBusy<'plan' | 'link'>()
   // Work already on the issue holds Plan with Kernel back until the person says to start anyway.
   // It is pinned to the issue and project Plan was clicked on, so a new selection can't retarget it.
@@ -61,8 +64,6 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
   const choosable = !headProject || project?.id !== headProject.id || picked?.issue === id
   const lead = (project && agents[project.id]?.find((a) => a.lead)?.name) || 'Kernel'
   const linked = linkedWorkspaces(id, workspaces)
-  // The one furthest along, which the footer's main button opens.
-  const work = linked[0]
   const unlinked = !!issue && settled && !linkedProject && !!project
 
   const startPlan = async (issueId: string, projectId: string) => {
@@ -88,13 +89,13 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
   })
   const newChat = () => issue && openNewChat(project?.id, { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url } })
 
-  if (!issue) {
+  if (!issue || (failed && !detail)) {
     return (
       <article className="is-detail" aria-label={id} aria-busy={!failed || undefined}>
-        {failed ? <FailedState title={`Could not load ${id}`} onRetry={retry}>{failed}</FailedState> : (
-          <div className="is-scroll"><div className="is-inner">
-            <span className="mono muted is-key">{id}</span>
-            <Skeleton width="60%" height={26} />
+        {failed ? <FailedState icon="question" title={`${id} didn't load`} onRetry={retry}>The rest of Work still works.</FailedState> : (
+          <div className="is-scroll"><div className="is-skeleton is-sk-detail" role="status" aria-label={`Loading ${id}`}>
+            <div className="is-sk-body"><Skeleton width={90} height={8} /><Skeleton width={340} height={14} /><Skeleton width={420} height={9} /><Skeleton width={380} height={9} /><Skeleton width={260} height={9} /></div>
+            <LoadingRow what={id} inline />
           </div></div>
         )}
       </article>
@@ -111,7 +112,7 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
           <div className="col is-gap-6">
             <span className="is-keyline">
               <span className="mono muted is-key">{issue.id}</span>
-              <a className="is-ext" href={issue.url} target="_blank" rel="noreferrer" aria-label={`Open ${issue.id} in Linear`}><Icon name="ext" size={14} /></a>
+              <a className="is-ext" href={issue.url} target="_blank" rel="noreferrer" aria-label={`Open ${issue.id} in Linear`}><Icon name="ext" size={13} /></a>
             </span>
             <h2>{issue.title}</h2>
           </div>
@@ -119,7 +120,7 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
           <div className="is-cols">
           <dl className="is-facts">
             <dt>Status</dt>
-            <dd><IssueState shape={stateShape(issue.state.type)} />{issue.state.name}</dd>
+            <dd><IssueState shape={stateShape(issue.state.type)} size={14} />{issue.state.name}</dd>
             <dt>Linear project</dt>
             <dd>{issue.project?.name ?? <span className="muted">No Linear project</span>}</dd>
             <dt>Priority</dt>
@@ -133,7 +134,7 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
           </dl>
 
           <div className="is-main">
-          <WorkCard linked={linked} />
+          <WorkCard linked={linked} handOff={project ? { id, lead, planBusy: busy === 'plan', disabled: busy !== null, onPlan: () => void plan(), onHand: newChat } : undefined} />
 
           {detail ? (
             <>
@@ -152,39 +153,35 @@ export function IssueDetail({ keep, headProject, id, summary, tick, onPlanned }:
                 ))}
               </section>
             </>
-          ) : failed ? (
-            <DescriptionFailed onRetry={retry}>{failed}</DescriptionFailed>
           ) : (
-            <div className="col is-gap-8" aria-busy="true"><Skeleton width="85%" /><Skeleton width="70%" /><Skeleton width="40%" /></div>
+            <div className="col is-gap-8" aria-busy="true"><Skeleton width="85%" /><Skeleton width="70%" /><Skeleton width="40%" /><LoadingRow what={id} inline /></div>
           )}
           </div>
           </div>
         </div>
       </div>
 
-      <div className="is-foot">
-        <div className="is-inner">
-          {unlinked && project && (
-            <div role="status" className="banner is-link">
-              <Icon name="link" />
-              <div className="grow"><div className="banner-title">{team} isn't linked to a project</div><div className="muted">Link it to {project.name} so its issues open there by default.</div></div>
-              <Button variant="primary" busy={busy === 'link'} busyLabel="Linking" disabled={busy !== null} onClick={() => void link()}>Link {team} to {project.name}</Button>
-            </div>
-          )}
-          <div className="is-actions">
-            {project && choosable && (
-              <Select
-                variant="chip" className="is-project" prefix="Project" leading={<ProjectIcon project={project} className="is-letter" />} label="Project" value={project.id}
-                options={choices.map((r) => ({ value: r.id, label: r.name, leading: <ProjectIcon project={r} className="is-letter" /> }))} onChange={(v) => setPicked({ issue: id, project: v })}
-              />
+      {((unlinked && project) || (project && choosable)) && (
+        <div className="is-foot">
+          <div className="is-inner">
+            {unlinked && project && (
+              <div role="status" className="banner is-link">
+                <Icon name="link" />
+                <div className="grow"><div className="banner-title">{team} isn't linked to a project</div><div className="muted">Link it to {project.name} so its issues open there by default.</div></div>
+                <Button variant="primary" busy={busy === 'link'} busyLabel="Linking" disabled={busy !== null} onClick={() => void link()}>Link {team} to {project.name}</Button>
+              </div>
             )}
-            <span className="grow" />
-            <Button size="lg" disabled={!project} onClick={newChat}>New chat</Button>
-            <Button size="lg" variant={work ? 'secondary' : 'primary'} busy={busy === 'plan'} busyPattern="ripple" busyLabel="Sending" disabled={!project || busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
-            {work && <Button size="lg" variant="primary" onClick={() => go({ name: 'workspace', workspaceId: work.id })}>Open workspace</Button>}
+            {project && choosable && (
+              <div className="is-actions">
+                <Select
+                  variant="chip" className="is-project" prefix="Plan in" leading={<ProjectIcon project={project} className="is-letter" />} label="Project" value={project.id}
+                  options={choices.map((r) => ({ value: r.id, label: r.name, leading: <ProjectIcon project={r} className="is-letter" /> }))} onChange={(v) => setPicked({ issue: id, project: v })}
+                />
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
       {asking && asking.issue === id && <ConfirmIssueTaken issue={asking.issue} findings={asking.findings} onStart={async () => { await startPlan(asking.issue, asking.projectId); setAsking(null) }} onCancel={() => setAsking(null)} />}
     </article>
   )
