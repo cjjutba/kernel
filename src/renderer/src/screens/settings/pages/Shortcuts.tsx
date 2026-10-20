@@ -34,7 +34,7 @@ export function Shortcuts() {
   const q = query.trim().toLowerCase()
   const groups = SHORTCUTS.map((g) => ({ ...g, rows: g.rows.filter(([label]) => !q || label.toLowerCase().includes(q)) })).filter((g) => g.rows.length)
   return (
-    <Page title="Shortcuts">
+    <Page title="Shortcuts" desc="The keys Kernel listens for. They're fixed, so this page is read only.">
       <div className="pe-filter">
         <span aria-hidden="true"><Icon name="search" size={12} /></span>
         <input type="search" aria-label="Filter shortcuts" placeholder="Filter shortcuts" autoComplete="off" spellCheck={false} value={query} onChange={(e) => setQuery(e.target.value)} />

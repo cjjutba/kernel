@@ -53,7 +53,7 @@ export function Hooks({ s }: { s: AppSettings }) {
   })
   const newPort = Number(port)
   return (
-    <Page title="Hooks">
+    <Page title="Hooks" desc="How Kernel hears what Claude Code does. Hooks report each step to Kernel's hook server on this Mac.">
       <Section label="Status" plain>
         <StatusLine
           icon={status && !status.listening ? 'xCircle' : 'checkCircle'} tone={status && !status.listening ? 'warn' : undefined}

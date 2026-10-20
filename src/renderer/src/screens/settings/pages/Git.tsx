@@ -34,7 +34,7 @@ export function Git({ s }: { s: AppSettings }) {
     try { await call('system.openInEditor', { path: s.worktreeRoot }) } catch (e) { actions.ui.toast({ title: 'Could not open the folder', sub: cleanError(e) }) }
   })
   return (
-    <Page title="Git and worktrees">
+    <Page title="Git and worktrees" desc="Where workspaces live, what their branches are called, and how they're cleaned up.">
       <Section title="New workspaces">
         <Row id="workspace-type" setting="workspace.mode" label="Workspace type" desc="A worktree is an isolated copy on its own branch.">
           <SegmentedControl label="Workspace type" value={w.mode} onChange={(v) => set({ mode: v as Workspace['mode'] })} options={[{ value: 'worktree', label: 'New worktree' }, { value: 'current', label: 'Current branch' }]} />

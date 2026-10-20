@@ -107,7 +107,7 @@ export function McpServers() {
   const firstCheck = total === 0 && !account.error && (account.checking || account.checkedAt === undefined)
   const action = account.needsYou > 0 ? <Button variant="primary" icon="check" aria-label={`Set up all on ${label}`} disabled={!idle} onClick={setUp}>Set up all</Button> : undefined
   return (
-    <Page title="MCP servers" action={action}>
+    <Page title="MCP servers" desc="The servers each Claude Code account sees. Kernel checks them when this page opens." action={action}>
       <div className="ag-bar">
         <Select label="Account" value={key} onChange={pick} options={accounts.map((a) => ({ value: tabId(a), label: tabLabel(a, profile(a)) }))} />
         <span className="ag-summary" role="status">{summary}</span>

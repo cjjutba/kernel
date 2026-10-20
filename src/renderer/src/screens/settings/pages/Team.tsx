@@ -154,7 +154,7 @@ export function Team({ projectId, s }: { projectId?: string; s: AppSettings }) {
     )
   }
   return (
-    <ProjectPage project={project} rs={rs} title="Agents" shared>
+    <ProjectPage project={project} rs={rs} title="Agents" desc="The team in this repo, and what it may do without asking." shared>
       <Section title="Roles">
         <Row id="lead" lead={<span className="rm-avatar" aria-hidden="true"><KernelMark size={14} /></span>} label="Kernel" labelId="rm-lead" className="rm-kernel" desc="Plans with you and hands out tasks.">
         <span className="set-actions">

@@ -30,7 +30,7 @@ export function Appearance({ s }: { s: AppSettings }) {
     document.getElementById(`pe-theme-${next.value}`)?.focus()
   }
   return (
-    <Page title="Appearance">
+    <Page title="Appearance" desc="How Kernel looks.">
       <Section id="theme" title="Theme" plain>
         <div role="radiogroup" aria-label="Theme" className="pe-themes">
           {THEMES.map((t, i) => (

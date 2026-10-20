@@ -57,7 +57,7 @@ export function Agents() {
   }
 
   return (
-    <Page title="Agents" action={<Button variant="primary" icon="plus" onClick={hire}>New agent</Button>}>
+    <Page title="Agents" desc="Who joins every project, and how a chat with Kernel starts." action={<Button variant="primary" icon="plus" onClick={hire}>New agent</Button>}>
       {s && <Section title="Kernel">
         <Row id="lead-mode" setting="team.leadMode" label="New chats start in" desc="Hand off plans and gives tasks to teammates. Build here has Kernel make the change itself. Each chat can switch."><SegmentedControl label="New chats start in" value={s.team.leadMode} onChange={(v) => void patchSettings({ team: { leadMode: v as LeadMode } })} options={[{ value: 'handoff', label: 'Hand off' }, { value: 'build', label: 'Build here' }]} /></Row>
       </Section>}

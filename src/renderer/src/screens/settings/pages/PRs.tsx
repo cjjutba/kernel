@@ -42,7 +42,7 @@ export function PRs({ s }: { s: AppSettings }) {
   const [editing, setEditing] = useState<(typeof INSTRUCTIONS)[number] | null>(null)
   return (
     <>
-      <Page title="Pull requests">
+      <Page title="Pull requests" desc="When Kernel merges on its own, how it merges, and which reviews run.">
         <Section title="Automatic merging" scope="mac">
           <Row id="merge-without-asking" label="Merge without asking me" desc="When checks are green, it’s under the size limit and reviews pass.">
             <Toggle label="Merge without asking me" checked={auto.on} onChange={(on) => setAuto({ on })} />

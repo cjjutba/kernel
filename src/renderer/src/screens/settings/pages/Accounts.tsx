@@ -204,7 +204,7 @@ export function Accounts({ s }: { s: AppSettings }) {
 
   const finishSheet = (close: () => void) => () => { close(); readAll() }
   return (
-    <Page title="Accounts" action={
+    <Page title="Accounts" desc="The accounts agents run on, and what Kernel does at a limit." action={
       <div className="ac-add" ref={addAnchor}>
         <Button variant="primary" icon="plus" aria-haspopup="menu" aria-expanded={addMenu} disabled={busy !== null || sheetOpen} onClick={() => setAddMenu(!addMenu)}>Add account</Button>
         {addMenu && <Menu label="Add account" anchorRef={addAnchor} onClose={() => setAddMenu(false)} style={{ right: 0, top: 36, width: 236 }} items={addItems.map((it) => ({ ...it, ...(it.onSelect ? { onSelect: () => { setAddMenu(false); it.onSelect?.() } } : {}) }))} />}

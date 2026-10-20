@@ -102,7 +102,7 @@ export function ProjectGit({ projectId, s }: { projectId?: string; s: AppSetting
   const named = (list: string[], current: string) => [...new Set([...(current ? [current] : []), ...list])].map((v) => ({ value: v, label: v }))
   const remotes = [...new Set(branches.filter((b) => b.includes('/')).map((b) => b.split('/')[0]))]
   return (
-    <ProjectPage project={project} rs={rs} title="Git">
+    <ProjectPage project={project} rs={rs} title="Git" desc="What this project changes from Settings, Git and worktrees.">
       <PushAccess projectId={projectId} remote={rs?.workspace.remote ?? app.remote} />
       <Section title="New workspaces">
         <Row id="workspace-type" setting="workspace.mode" label="Workspace type" {...state('mode')}>

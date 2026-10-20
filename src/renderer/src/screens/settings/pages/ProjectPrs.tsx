@@ -67,7 +67,7 @@ export function ProjectPrs({ projectId, s }: { projectId?: string; s: AppSetting
   const shared = useSaveNote()
   const sheet = INSTRUCTIONS.find((i) => i.key === editing)
   return (
-    <ProjectPage project={project} rs={rs} shared title="Pull requests" note={<SaveNote state={shared.state} shared />}>
+    <ProjectPage project={project} rs={rs} shared title="Pull requests" desc="Which reviews run on this repo's pull requests, and the rules for merging them." note={<SaveNote state={shared.state} shared />}>
       <Section title="Reviews">
         {REVIEW_KINDS.map(({ id, label }) => {
           const c = review.kinds[id]

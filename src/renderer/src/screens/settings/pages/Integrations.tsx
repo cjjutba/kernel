@@ -45,7 +45,7 @@ export function Integrations() {
     </form>
   ) : undefined
   return (
-    <Page title="Integrations">
+    <Page title="Integrations" desc="The services Kernel reads issues and pull requests from.">
       <Section label="Services" footnote={<>claude.ai connectors are on <SettingsLink to={{ page: 'mcp' }}>MCP servers</SettingsLink>.</>}>
         {!rows && failed && (
           <Row label="Could not read integrations" desc="Try again in a moment.">

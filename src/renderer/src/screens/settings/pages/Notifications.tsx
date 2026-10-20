@@ -28,7 +28,7 @@ export function Notifications({ s }: { s: AppSettings }) {
   if (!options.some((o) => o.value === q) && n.quietHours) options.push({ value: q, label: window12(n.quietHours.from, n.quietHours.to) })
   const toggles = (list: [Events, string][]) => list.map(([key, label]) => <Row key={key} id={`notify-${key}`} label={label}><Toggle label={label} checked={n[key]} onChange={(v) => void patchSettings({ notifications: { [key]: v } })} /></Row>)
   return (
-    <Page title="Notifications">
+    <Page title="Notifications" desc="What Kernel tells you about while you work elsewhere.">
       <Section title="Needs you">{toggles(NEEDS)}</Section>
       <Section title="Updates">{toggles(UPDATES)}</Section>
       <Section title="Delivery">

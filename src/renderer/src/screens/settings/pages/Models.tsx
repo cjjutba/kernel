@@ -160,7 +160,7 @@ export function Models({ s }: { s: AppSettings }) {
   const m = s.models
   const limits = [...new Set([...LIMITS, m.agentLimit])].filter((n) => n > 0).sort((a, b) => a - b)
   return (
-    <Page title="Models and effort">
+    <Page title="Models and effort" desc="Which model each role runs on, and how hard it thinks.">
       <Section title="Roles" plain label="Roles" footnote={appliesTo('models.roles')}>
         <Roles s={s} />
       </Section>

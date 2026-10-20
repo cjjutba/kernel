@@ -20,7 +20,7 @@ export function Privacy({ s }: { s: AppSettings }) {
   useEffect(() => { void call('app.info', undefined).then((i) => setCanSend(i.telemetry)).catch(() => setCanSend(false)) }, [])
   useEffect(() => { void call('telemetry.recent', undefined).then((r) => { setRecent(r); setFailed(false) }).catch(() => setFailed(true)) }, [on])
   return (
-    <Page title="Privacy">
+    <Page title="Privacy" desc="Usage data is off until you turn it on.">
       <Section label="Diagnostics" footnote={canSend === false ? 'This build of Kernel can’t send diagnostics, so nothing leaves this Mac.' : undefined}>
         <Row id="diagnostics" label="Share diagnostics" desc="Errors and counts of what goes wrong. Never your code, prompts or names.">
           <Toggle label="Share diagnostics" checked={on} disabled={canSend === false} onChange={(v) => void patchSettings({ privacy: { telemetry: v ? 'on' : 'off' } })} />

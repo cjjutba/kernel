@@ -49,7 +49,7 @@ export function Project({ projectId }: { projectId?: string }) {
   const restore = () => run('restore', () => call('projects.update', { projectId, patch: { archived: false } }).then((r) => actions.projects.upsert(r), (e) => actions.ui.toast({ title: 'Could not restore the project', sub: cleanError(e) })))
   const open = (what: () => Promise<unknown>, failed: string) => void what().catch((e) => actions.ui.toast({ title: failed, sub: cleanError(e) }))
   return (
-    <ProjectPage project={project} rs={rs} title="General">
+    <ProjectPage project={project} rs={rs} title="General" desc="Shared settings live in .kernel/settings.toml in the repo. The rest stay on this Mac.">
       <Section title="Project">
         <ProjectIconRow project={project} />
         <Row id="repository" label="Repository">

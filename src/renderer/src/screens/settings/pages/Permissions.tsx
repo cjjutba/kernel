@@ -77,7 +77,7 @@ export function Permissions({ s }: { s: AppSettings }) {
     <TagList label={label} value={value} addLabel={addLabel} onChange={(next) => save({ [key]: next })} />
   )
   return (
-    <Page title="Permissions">
+    <Page title="Permissions" desc="How much agents do without asking you.">
       <Section id="mode" title="Mode" plain>
         <ModeCards value={p.mode} availability={availability} />
         {p.mode === 'bypassPermissions' && <div className="set-card ag-wt"><Row id="only-in-worktrees" label="Only in worktrees" desc="Never skip prompts on your current branch."><Toggle label="Only in worktrees" checked={p.bypassOnlyInWorktrees} onChange={(v) => save({ bypassOnlyInWorktrees: v })} /></Row></div>}

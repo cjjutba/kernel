@@ -27,8 +27,8 @@ export function Environment({ projectId }: { projectId?: string }) {
     </>
   )
   return project
-    ? <ProjectPage project={project} rs={rs} title="Environment">{sections}</ProjectPage>
-    : <Page title="Environment" action={add(true)}>{sections}</Page>
+    ? <ProjectPage project={project} rs={rs} title="Environment" desc="The env files and gitignored files each worktree gets from the main checkout.">{sections}</ProjectPage>
+    : <Page title="Environment" desc="Variables every chat, script and terminal gets. Kernel shows names only, and a value only when you ask." action={add(true)}>{sections}</Page>
 }
 
 /**

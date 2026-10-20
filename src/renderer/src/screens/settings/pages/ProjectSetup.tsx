@@ -99,7 +99,7 @@ export function ProjectSetup({ projectId }: { projectId?: string }) {
   if (!project || !projectId) return <NoProject />
   const offerFor = (kind: ScriptKey) => found.find((s) => s.patch.scripts?.[kind]?.trim())
   return (
-    <ProjectPage project={project} rs={rs} title="Scripts">
+    <ProjectPage project={project} rs={rs} title="Scripts" desc="What runs when a workspace is created, archived and started.">
       <ScriptEditor projectId={projectId} kind="setup" rs={rs} offer={offerFor('setup')} />
       <ScriptEditor projectId={projectId} kind="archive" rs={rs} offer={offerFor('archive')} />
       <RunScripts projectId={projectId} rs={rs} />
