@@ -806,10 +806,22 @@ export function mcpRoute(provider: Provider, accountId: string): Route {
 /** "3 MCP servers need you", the words the Providers row, the notice after adding an account and the MCP servers page share. */
 export const mcpNeedYou = (n: number) => `${n} MCP server${n === 1 ? '' : 's'} need${n === 1 ? 's' : ''} you`
 
-/** The notice after adding an account whose MCP servers need the user. Its action opens the Set up this account checklist. */
+/** "Linear and Figma", "Linear, Figma and Vercel", with a claude.ai connector's "claude.ai " left off. */
+const serverList = (servers: string[]) => {
+  const names = servers.map((x) => x.replace(/^claude\.ai\s+/i, ''))
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
+/** The notice after adding an account whose MCP servers need the user: how many, which, and for which account. Its action opens that account on Settings, MCP servers. */
 async function mcpNeededToast(n: McpNeeded) {
   const count = await call('mcp.accounts', undefined).then((all) => all.find((a) => a.provider === n.provider && a.accountId === n.accountId)?.needsYou).catch(() => undefined)
-  actions.ui.toast({ title: mcpNeedYou(count || n.servers.length), action: { label: 'Set up', modal: { name: 'mcpSetUp', provider: n.provider, accountId: n.accountId } } })
+  const total = count || n.servers.length
+  const label = state.accounts.find((a) => a.provider === n.provider && a.id === n.accountId)?.label
+  actions.ui.toast({
+    title: `${total} MCP server${total === 1 ? '' : 's'} need${total === 1 ? 's' : ''} a sign-in`,
+    ...(n.servers.length ? { sub: `${serverList(n.servers)}${label ? `, for ${label}` : ''}.` } : {}),
+    action: { label: 'Open MCP servers', route: mcpRoute(n.provider, n.accountId) }
+  })
 }
 
 let switchToastId: string | undefined
